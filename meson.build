@@ -11,6 +11,7 @@ sources = files(
     'src/core/parser/ast.vala',
     'src/core/parser/ast_visitor.vala',
     'src/core/parser/ast_printer.vala',
+    'src/core/parser/parser.vala',
     'src/main.vala'
 )
 
