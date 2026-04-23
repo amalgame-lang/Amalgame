@@ -147,7 +147,7 @@ Voir [docs/changelog/roadmap.md](docs/changelog/roadmap.md)
 
 ## Licence
 
-MIT License - voir [LICENSE](LICENSE)
+Apache  License - voir [LICENSE](LICENSE)
 
 ---
 
