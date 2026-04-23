@@ -3,68 +3,61 @@
 // ═══════════════════════════════════════════════════════
 
 using CodeTranspiler.Lexer;
+using CodeTranspiler.Ast;
+using CodeTranspiler.Parser;
 
 int main(string[] args) {
 
-    if (args.length < 2) {
-        stderr.printf("Usage: codec <file.code> [-o output]\n");
-        stderr.printf("       codec --version\n");
-        stderr.printf("       codec --help\n");
-        return 1;
-    }
-
-    // Version
-    if (args[1] == "--version") {
-        stdout.printf("CODE Transpiler v0.1.0 (Bootstrap/Vala)\n");
+    if (args.length >= 2 && args[1] == "--version") {
+        stdout.printf("CODE Transpiler v0.1.0\n");
+        stdout.printf("  Lexer  : OK\n");
+        stdout.printf("  AST    : OK\n");
+        stdout.printf("  Parser : OK\n");
         return 0;
     }
 
-    string inputFile  = args[1];
-    string outputFile = inputFile.replace(".code", ".c");
-
-    // Fichier de sortie custom
-    for (int i = 2; i < args.length; i++) {
-        if (args[i] == "-o" && i + 1 < args.length) {
-            outputFile = args[i + 1];
-        }
-    }
-
-    // Lecture du fichier source
-    string source;
-    try {
-        FileUtils.get_contents(inputFile, out source);
-    } catch (Error e) {
-        stderr.printf("Error reading '%s': %s\n", inputFile, e.message);
+    if (args.length < 2) {
+        stderr.printf("Usage: codec <file.code>\n");
         return 1;
     }
 
-    stdout.printf("⚙️  Compiling: %s → %s\n", inputFile, outputFile);
+    string inputFile = args[1];
+    string source;
 
-    // ── LEXER ──────────────────────────────────────
-    var lexer  = new Lexer(source, inputFile);
-    var tokens = lexer.Tokenize();
-
-    stdout.printf("✅ Lexer: %d tokens\n", tokens.size);
-
-    // Debug : afficher les tokens
-    if (Environment.get_variable("CODE_DEBUG") == "1") {
-        foreach (var tok in tokens) {
-            stdout.printf("   %s\n", tok.ToString());
-        }
+    try {
+        FileUtils.get_contents(inputFile, out source);
+    } catch (Error e) {
+        stderr.printf("Error: %s\n", e.message);
+        return 1;
     }
 
-    // ── PARSER (à venir) ───────────────────────────
-    // var parser = new Parser(tokens);
-    // var ast    = parser.Parse();
+    stdout.printf("Compiling: %s\n", inputFile);
 
-    // ── ANALYZER (à venir) ─────────────────────────
-    // var analyzer = new Analyzer(ast);
-    // analyzer.Resolve();
+    // LEXER
+    var lexer  = new CodeTranspiler.Lexer.Lexer(source, inputFile);
+    var tokens = lexer.Tokenize();
+    stdout.printf("Lexer  OK : %d tokens\n", tokens.size);
 
-    // ── GENERATOR (à venir) ────────────────────────
-    // var generator = new CGenerator(ast);
-    // var cCode     = generator.Generate();
+    // PARSER
+    var parser = new Parser(tokens, inputFile);
+    var result = parser.Parse();
 
-    stdout.printf("🚧 Parser/Generator: coming soon...\n");
+    if (!result.Success) {
+        foreach (var err in result.Errors) {
+            stderr.printf("%s\n", err.ToString());
+        }
+        return 1;
+    }
+
+    stdout.printf("Parser OK !\n");
+
+    // AST Printer (debug)
+    if (Environment.get_variable("CODE_DEBUG") == "1") {
+        var printer = new AstPrinter();
+        stdout.printf("\n=== AST ===\n");
+        stdout.printf(printer.Print(result.Program));
+    }
+
+    stdout.printf("Generator : coming soon\n");
     return 0;
 }
