@@ -1,0 +1,32 @@
+# Build
+build/
+_build/
+*.o
+*.so
+*.a
+
+# Binaires compilés
+codec
+codec-lsp
+codec-dap
+
+# C généré (intermédiaire)
+*.c.gen
+
+# VSCode extension
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
