@@ -1,0 +1,10 @@
+namespace MyApp
+
+import Code.IO
+
+public class Program {
+    public static void Main(string[] args) {
+        let name = "World"
+        Console.WriteLine("Hello {name} !")
+    }
+}
