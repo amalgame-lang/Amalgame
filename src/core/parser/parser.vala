@@ -166,6 +166,21 @@ namespace CodeTranspiler.Parser {
         //  NamespaceDecl = "namespace" QualifiedName
         // ═══════════════════════════════════════════════
 
+
+        // Accepte un identifiant OU un mot-cle comme nom
+        private Token ExpectIdentifierOrKeyword() {
+            var tok = Current();
+            if (tok.Type == CodeTranspiler.Lexer.TokenType.IDENTIFIER ||
+                tok.IsKeyword()) {
+                return Advance();
+            }
+            AddError(
+                "Attendu un identifiant, trouve '%s'"
+                .printf(tok.Value), tok
+            );
+            return Advance();
+        }
+
         private NamespaceNode ParseNamespace() {
             var tok  = Expect(CodeTranspiler.Lexer.TokenType.KW_NAMESPACE);
             var name = ParseQualifiedName();
@@ -447,9 +462,46 @@ namespace CodeTranspiler.Parser {
             bool                       isWeak,
             Gee.ArrayList<DecoratorNode> decorators) {
 
-            var nameTok = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
-            Expect(CodeTranspiler.Lexer.TokenType.COLON);
-            var type = ParseTypeRef();
+            // Style Java/C# : type nom ...
+            var type    = ParseTypeRef();
+            var nameTok = ExpectIdentifierOrKeyword();
+
+            // Méthode : type nom ( params ) { body }
+            if (Check(CodeTranspiler.Lexer.TokenType.LPAREN) ||
+                Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
+                // Créer une méthode avec le type de retour
+                var method      = new MethodDeclNode(nameTok.Value);
+                method.SetPosition(nameTok);
+                method.Access     = access;
+                method.IsStatic   = isStatic;
+                method.ReturnType = type;
+
+                // Génériques
+                if (Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
+                    method.Generics = ParseGenericParams();
+                }
+
+                // Paramètres
+                Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+                if (!Check(CodeTranspiler.Lexer.TokenType.RPAREN)) {
+                    ParseParamList(method.Params);
+                }
+                Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+
+                // Corps
+                if (Check(CodeTranspiler.Lexer.TokenType.OP_ARROW)) {
+                    Advance();
+                    method.Body = ParseExpression();
+                    SkipNewlines();
+                } else if (Check(CodeTranspiler.Lexer.TokenType.LBRACE)) {
+                    method.Body = ParseBlock();
+                }
+
+                foreach (var d in decorators) {
+                    method.Decorators.add(d);
+                }
+                return method;
+            }
 
             // Propriété : { get; set; }
             //           : { get => expr }
@@ -535,7 +587,20 @@ namespace CodeTranspiler.Parser {
             bool isPure   = ConsumeIf(CodeTranspiler.Lexer.TokenType.KW_PURE);
             bool isStatic = ConsumeIf(CodeTranspiler.Lexer.TokenType.KW_STATIC);
 
-            var nameTok = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+            // Le nom de la methode peut etre un type
+            // ex: void Main(...) ou string ToString()
+            // On parse d abord le type de retour potentiel
+            // puis le nom si suivi de (
+            var nameTok = ExpectIdentifierOrKeyword();
+            
+            // Si le token suivant n est pas ( ou <
+            // alors c est un type de retour, pas un nom
+            if (!Check(CodeTranspiler.Lexer.TokenType.LPAREN) &&
+                !Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
+                // C est un type de retour, le vrai nom suit
+                // On ignore le type pour l instant (TODO TypeChecker)
+                nameTok = ExpectIdentifierOrKeyword();
+            }
             var node    = new MethodDeclNode(nameTok.Value);
             node.SetPosition(nameTok);
             node.Access   = access;
@@ -593,10 +658,15 @@ namespace CodeTranspiler.Parser {
         }
 
         private ParamNode ParseParam() {
-            bool isWeak = ConsumeIf(CodeTranspiler.Lexer.TokenType.KW_WEAK);
-            var  name   = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
-            Expect(CodeTranspiler.Lexer.TokenType.COLON);
-            var  type   = ParseTypeRef();
+            bool isWeak = ConsumeIf(
+                CodeTranspiler.Lexer.TokenType.KW_WEAK);
+
+            // Style Java/C# : type nom [= default]
+            // Ex: string[] args
+            //     int count = 0
+            //     Player player
+            var type    = ParseTypeRef();
+            var nameTok = ExpectIdentifierOrKeyword();
 
             AstNode? defaultVal = null;
             if (Check(CodeTranspiler.Lexer.TokenType.OP_EQ)) {
@@ -604,8 +674,9 @@ namespace CodeTranspiler.Parser {
                 defaultVal = ParseExpression();
             }
 
-            var node = new ParamNode(name.Value, type, defaultVal);
-            node.SetPosition(name);
+            var node = new ParamNode(
+                nameTok.Value, type, defaultVal);
+            node.SetPosition(nameTok);
             node.IsWeak = isWeak;
             return node;
         }
@@ -1814,7 +1885,9 @@ namespace CodeTranspiler.Parser {
             }
 
             // Type de base ou générique
-            var name = ParseQualifiedName();
+            // Accepter les mots-clés comme noms de types
+            // ex: string, int, bool, void, float...
+            var name = ParseTypeName();
 
             // Générique : List<Player>
             if (Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
@@ -1832,10 +1905,48 @@ namespace CodeTranspiler.Parser {
                 return gen;
             }
 
+            // Tableau : string[] → ArrayType
+            if (Check(CodeTranspiler.Lexer.TokenType.LBRACKET) &&
+                PeekType(1) == CodeTranspiler.Lexer.TokenType.RBRACKET) {
+                Advance(); // [
+                Advance(); // ]
+                // Représenter comme List<T> en interne
+                var arrType    = new SimpleTypeNode(name + "[]");
+                arrType.IsNullable = ConsumeIf(
+                    CodeTranspiler.Lexer.TokenType.QUESTION);
+                return arrType;
+            }
+
             // Simple : int, string, Player
             var simple     = new SimpleTypeNode(name);
-            simple.IsNullable = ConsumeIf(CodeTranspiler.Lexer.TokenType.QUESTION);
+            simple.IsNullable = ConsumeIf(
+                CodeTranspiler.Lexer.TokenType.QUESTION);
             return simple;
+        }
+
+
+        // Parse un nom de type : accepte mots-cles et identifiants
+        // ex: string, int, bool, void, Player, List...
+        private string ParseTypeName() {
+            var tok = Current();
+            // Accepter tous les tokens comme nom de type
+            if (tok.Type == CodeTranspiler.Lexer.TokenType.IDENTIFIER ||
+                tok.IsKeyword()) {
+                Advance();
+                // Qualified : Code.IO.MyType
+                var sb = new StringBuilder(tok.Value);
+                while (Check(CodeTranspiler.Lexer.TokenType.DOT) &&
+                       (PeekType(1) == CodeTranspiler.Lexer.TokenType.IDENTIFIER ||
+                        Peek(1).IsKeyword())) {
+                    Advance(); // .
+                    sb.append(".");
+                    sb.append(Advance().Value);
+                }
+                return sb.str;
+            }
+            AddError("Nom de type attendu, trouve '%s'"
+                     .printf(tok.Value), tok);
+            return "void";
         }
 
         private FuncTypeNode ParseFuncType() {
@@ -1967,11 +2078,32 @@ namespace CodeTranspiler.Parser {
 
         // ── Détection de contexte ──────────────────────
 
+
+        // Vérifie si le token courant peut commencer un type
+        private bool IsTypeStart() {
+            var t = Current().Type;
+            return t == CodeTranspiler.Lexer.TokenType.IDENTIFIER  ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_VOID     ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_INT      ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_FLOAT    ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE   ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_STRING   ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_BOOL     ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_VAR;
+        }
+
         private bool CheckMethodStart() {
-            return Check(CodeTranspiler.Lexer.TokenType.IDENTIFIER) ||
-                   Check(CodeTranspiler.Lexer.TokenType.KW_ASYNC)   ||
-                   Check(CodeTranspiler.Lexer.TokenType.KW_PURE)    ||
-                   Check(CodeTranspiler.Lexer.TokenType.KW_STATIC);
+            var t = Current().Type;
+            return t == CodeTranspiler.Lexer.TokenType.IDENTIFIER  ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_ASYNC    ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_PURE     ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_STATIC   ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_VOID     ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_INT      ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_STRING   ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_BOOL     ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_FLOAT    ||
+                   t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE;
         }
 
         private bool IsLambdaStart() {
