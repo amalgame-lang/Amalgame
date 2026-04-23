@@ -786,11 +786,11 @@ namespace CodeTranspiler.Ast {
      * Break / Continue.
      */
     public class BreakNode    : AstNode {
-        public override void Accept(AstVisitor v) => v.VisitBreak(this);
+        public override void Accept(AstVisitor v) { v.VisitBreak(this); }
     }
 
     public class ContinueNode : AstNode {
-        public override void Accept(AstVisitor v) => v.VisitContinue(this);
+        public override void Accept(AstVisitor v) { v.VisitContinue(this); }
     }
 
     /**
@@ -1135,14 +1135,14 @@ namespace CodeTranspiler.Ast {
      * Référence à "this".
      */
     public class ThisNode : AstNode {
-        public override void Accept(AstVisitor v) => v.VisitThis(this);
+        public override void Accept(AstVisitor v) { v.VisitThis(this); }
     }
 
     /**
      * Littéral null.
      */
     public class NullNode : AstNode {
-        public override void Accept(AstVisitor v) => v.VisitNull(this);
+        public override void Accept(AstVisitor v) { v.VisitNull(this); }
     }
 
     /**
