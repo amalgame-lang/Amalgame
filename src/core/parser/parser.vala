@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────
 //  CODE Programming Language
 //  Copyright (c) 2024 NeitsabTeguom
-//  Licensed under MIT OR Apache 2.0
+//  Licensed under Apache 2.0
 // ─────────────────────────────────────────────────────
 //  parser.vala  -  Parser du langage CODE
 //
