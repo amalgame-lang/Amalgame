@@ -47,16 +47,6 @@ int main(string[] args) {
                      source, inputFile);
     var tokens = lexer.Tokenize();
     stdout.printf("Lexer  OK : %d tokens\n", tokens.size);
-        // DEBUG TOKENS
-    stdout.printf("\n=== TOKENS ===\n");
-    foreach (var tok in tokens) {
-        stdout.printf("  L%d C%d [%s] '%s'\n",
-            tok.Line, tok.Column,
-            tok.Type.to_string(),
-            tok.Value);
-    }
-    stdout.printf("=== FIN TOKENS ===\n\n");
-
 
     // PARSER
     var parser = new CodeTranspiler.Parser.Parser(
