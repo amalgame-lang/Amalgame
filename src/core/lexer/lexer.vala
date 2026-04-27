@@ -1,11 +1,6 @@
-// ─────────────────────────────────────────────────────
-//  CODE Programming Language
-//  Copyright (c) 2024 NeitsabTeguom
-//  Licensed under Apache 2.0
-// ─────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════
-//  lexer.vala  -  Lexer du langage CODE
-// ═══════════════════════════════════════════════════════
+// CODE Language - Lexer
+// Copyright (c) 2024 NeitsabTeguom
+// Licensed under Apache 2.0
 
 namespace CodeTranspiler.Lexer {
 
@@ -17,84 +12,68 @@ namespace CodeTranspiler.Lexer {
         private int      _column;
         private string   _filename;
 
-        // Table des mots clés
-        private static HashTable<string, TokenType> _keywords;
+        private static Gee.HashMap<string,
+            CodeTranspiler.Lexer.TokenType> _keywords;
 
-        // Initialisation statique des mots clés
         static construct {
-            _keywords = new HashTable<string, TokenType>(str_hash, str_equal);
+            _keywords = new Gee.HashMap<string,
+                CodeTranspiler.Lexer.TokenType>();
 
-            // Types
-            _keywords.insert("int",        TokenType.KW_INT);
-            _keywords.insert("float",      TokenType.KW_FLOAT);
-            _keywords.insert("double",     TokenType.KW_DOUBLE);
-            _keywords.insert("string",     TokenType.KW_STRING);
-            _keywords.insert("bool",       TokenType.KW_BOOL);
-            _keywords.insert("void",       TokenType.KW_VOID);
-            _keywords.insert("var",        TokenType.KW_VAR);
-            _keywords.insert("let",        TokenType.KW_LET);
-
-            // OO
-            _keywords.insert("class",      TokenType.KW_CLASS);
-            _keywords.insert("interface",  TokenType.KW_INTERFACE);
-            _keywords.insert("struct",     TokenType.KW_STRUCT);
-            _keywords.insert("enum",       TokenType.KW_ENUM);
-            _keywords.insert("record",     TokenType.KW_RECORD);
-            _keywords.insert("data",       TokenType.KW_DATA);
-            _keywords.insert("trait",      TokenType.KW_TRAIT);
-            _keywords.insert("extends",    TokenType.KW_EXTENDS);
-            _keywords.insert("implements", TokenType.KW_IMPLEMENTS);
-            _keywords.insert("new",        TokenType.KW_NEW);
-            _keywords.insert("this",       TokenType.KW_THIS);
-            _keywords.insert("static",     TokenType.KW_STATIC);
-            _keywords.insert("abstract",   TokenType.KW_ABSTRACT);
-            _keywords.insert("override",   TokenType.KW_OVERRIDE);
-
-            // Accès
-            _keywords.insert("public",     TokenType.KW_PUBLIC);
-            _keywords.insert("private",    TokenType.KW_PRIVATE);
-            _keywords.insert("protected",  TokenType.KW_PROTECTED);
-            _keywords.insert("internal",   TokenType.KW_INTERNAL);
-
-            // Contrôle
-            _keywords.insert("if",         TokenType.KW_IF);
-            _keywords.insert("else",       TokenType.KW_ELSE);
-            _keywords.insert("match",      TokenType.KW_MATCH);
-            _keywords.insert("return",     TokenType.KW_RETURN);
-            _keywords.insert("while",      TokenType.KW_WHILE);
-            _keywords.insert("for",        TokenType.KW_FOR);
-            _keywords.insert("foreach",    TokenType.KW_FOREACH);
-            _keywords.insert("in",         TokenType.KW_IN);
-            _keywords.insert("break",      TokenType.KW_BREAK);
-            _keywords.insert("continue",   TokenType.KW_CONTINUE);
-            _keywords.insert("guard",      TokenType.KW_GUARD);
-
-            // Fonctionnel
-            _keywords.insert("pure",       TokenType.KW_PURE);
-            _keywords.insert("async",      TokenType.KW_ASYNC);
-            _keywords.insert("await",      TokenType.KW_AWAIT);
-            _keywords.insert("go",         TokenType.KW_GO);
-
-            // Erreurs
-            _keywords.insert("try",        TokenType.KW_TRY);
-            _keywords.insert("catch",      TokenType.KW_CATCH);
-            _keywords.insert("throw",      TokenType.KW_THROW);
-
-            // Namespace
-            _keywords.insert("namespace",  TokenType.KW_NAMESPACE);
-            _keywords.insert("import",     TokenType.KW_IMPORT);
-
-            // Littéraux
-            _keywords.insert("true",       TokenType.BOOL_TRUE);
-            _keywords.insert("false",      TokenType.BOOL_FALSE);
-            _keywords.insert("null",       TokenType.NULL);
-
-            // Mémoire
-            _keywords.insert("weak",       TokenType.KW_WEAK);
+            _keywords["int"]        = CodeTranspiler.Lexer.TokenType.KW_INT;
+            _keywords["float"]      = CodeTranspiler.Lexer.TokenType.KW_FLOAT;
+            _keywords["double"]     = CodeTranspiler.Lexer.TokenType.KW_DOUBLE;
+            _keywords["string"]     = CodeTranspiler.Lexer.TokenType.KW_STRING;
+            _keywords["bool"]       = CodeTranspiler.Lexer.TokenType.KW_BOOL;
+            _keywords["void"]       = CodeTranspiler.Lexer.TokenType.KW_VOID;
+            _keywords["var"]        = CodeTranspiler.Lexer.TokenType.KW_VAR;
+            _keywords["let"]        = CodeTranspiler.Lexer.TokenType.KW_LET;
+            _keywords["class"]      = CodeTranspiler.Lexer.TokenType.KW_CLASS;
+            _keywords["interface"]  = CodeTranspiler.Lexer.TokenType.KW_INTERFACE;
+            _keywords["struct"]     = CodeTranspiler.Lexer.TokenType.KW_STRUCT;
+            _keywords["enum"]       = CodeTranspiler.Lexer.TokenType.KW_ENUM;
+            _keywords["record"]     = CodeTranspiler.Lexer.TokenType.KW_RECORD;
+            _keywords["data"]       = CodeTranspiler.Lexer.TokenType.KW_DATA;
+            _keywords["trait"]      = CodeTranspiler.Lexer.TokenType.KW_TRAIT;
+            _keywords["extends"]    = CodeTranspiler.Lexer.TokenType.KW_EXTENDS;
+            _keywords["implements"] = CodeTranspiler.Lexer.TokenType.KW_IMPLEMENTS;
+            _keywords["new"]        = CodeTranspiler.Lexer.TokenType.KW_NEW;
+            _keywords["this"]       = CodeTranspiler.Lexer.TokenType.KW_THIS;
+            _keywords["static"]     = CodeTranspiler.Lexer.TokenType.KW_STATIC;
+            _keywords["abstract"]   = CodeTranspiler.Lexer.TokenType.KW_ABSTRACT;
+            _keywords["override"]   = CodeTranspiler.Lexer.TokenType.KW_OVERRIDE;
+            _keywords["public"]     = CodeTranspiler.Lexer.TokenType.KW_PUBLIC;
+            _keywords["private"]    = CodeTranspiler.Lexer.TokenType.KW_PRIVATE;
+            _keywords["protected"]  = CodeTranspiler.Lexer.TokenType.KW_PROTECTED;
+            _keywords["internal"]   = CodeTranspiler.Lexer.TokenType.KW_INTERNAL;
+            _keywords["if"]         = CodeTranspiler.Lexer.TokenType.KW_IF;
+            _keywords["else"]       = CodeTranspiler.Lexer.TokenType.KW_ELSE;
+            _keywords["match"]      = CodeTranspiler.Lexer.TokenType.KW_MATCH;
+            _keywords["return"]     = CodeTranspiler.Lexer.TokenType.KW_RETURN;
+            _keywords["while"]      = CodeTranspiler.Lexer.TokenType.KW_WHILE;
+            _keywords["for"]        = CodeTranspiler.Lexer.TokenType.KW_FOR;
+            _keywords["foreach"]    = CodeTranspiler.Lexer.TokenType.KW_FOREACH;
+            _keywords["in"]         = CodeTranspiler.Lexer.TokenType.KW_IN;
+            _keywords["break"]      = CodeTranspiler.Lexer.TokenType.KW_BREAK;
+            _keywords["continue"]   = CodeTranspiler.Lexer.TokenType.KW_CONTINUE;
+            _keywords["guard"]      = CodeTranspiler.Lexer.TokenType.KW_GUARD;
+            _keywords["pure"]       = CodeTranspiler.Lexer.TokenType.KW_PURE;
+            _keywords["async"]      = CodeTranspiler.Lexer.TokenType.KW_ASYNC;
+            _keywords["await"]      = CodeTranspiler.Lexer.TokenType.KW_AWAIT;
+            _keywords["go"]         = CodeTranspiler.Lexer.TokenType.KW_GO;
+            _keywords["try"]        = CodeTranspiler.Lexer.TokenType.KW_TRY;
+            _keywords["catch"]      = CodeTranspiler.Lexer.TokenType.KW_CATCH;
+            _keywords["throw"]      = CodeTranspiler.Lexer.TokenType.KW_THROW;
+            _keywords["namespace"]  = CodeTranspiler.Lexer.TokenType.KW_NAMESPACE;
+            _keywords["import"]     = CodeTranspiler.Lexer.TokenType.KW_IMPORT;
+            _keywords["weak"]       = CodeTranspiler.Lexer.TokenType.KW_WEAK;
+            _keywords["true"]       = CodeTranspiler.Lexer.TokenType.BOOL_TRUE;
+            _keywords["false"]      = CodeTranspiler.Lexer.TokenType.BOOL_FALSE;
+            _keywords["null"]       = CodeTranspiler.Lexer.TokenType.NULL;
+            _keywords["sealed"]     = CodeTranspiler.Lexer.TokenType.KW_SEALED;
         }
 
-
-        public Lexer(string source, string filename = "<unknown>") {
+        public Lexer(string source,
+                     string filename = "<unknown>") {
             _source   = source;
             _pos      = 0;
             _line     = 1;
@@ -102,372 +81,335 @@ namespace CodeTranspiler.Lexer {
             _filename = filename;
         }
 
+        // ── Helpers caracteres ─────────────────────────
+        private bool IsLetter(char c) {
+            return (c >= 'a' && c <= 'z') ||
+                   (c >= 'A' && c <= 'Z') ||
+                   c == '_';
+        }
 
-        // ─────────────────────────────────────────────
-        //  Point d'entrée : tokenize tout le source
-        // ─────────────────────────────────────────────
-        public Gee.ArrayList<Token> Tokenize() {
-            var tokens = new Gee.ArrayList<Token>();
+        private bool IsDigit(char c) {
+            return c >= '0' && c <= '9';
+        }
 
-            while (!IsEnd()) {
-                SkipWhitespaceAndComments();
-                if (IsEnd()) break;
+        private bool IsAlphaNum(char c) {
+            return IsLetter(c) || IsDigit(c);
+        }
 
-                var token = NextToken();
-                if (token != null) {
-                    tokens.add(token);
+        // ── Navigation ─────────────────────────────────
+        private char Cur() {
+            if (_pos >= _source.length) return '\0';
+            return _source[_pos];
+        }
+
+        private char Pk(int offset = 1) {
+            int i = _pos + offset;
+            if (i >= _source.length) return '\0';
+            return _source[i];
+        }
+
+        private char Adv() {
+            char c = Cur();
+            if (_pos < _source.length) {
+                _pos++;
+                _column++;
+            }
+            return c;
+        }
+
+        private bool End() {
+            return _pos >= _source.length;
+        }
+
+        private Token Tok(CodeTranspiler.Lexer.TokenType t,
+                          string v, int l, int c) {
+            return new Token(t, v, l, c, _filename);
+        }
+
+        // ── Skip espaces et commentaires ───────────────
+        private void Skip() {
+            while (!End()) {
+                char c = Cur();
+                if (c == ' ' || c == '\t' || c == '\r') {
+                    Adv();
+                } else if (c == '/' && Pk() == '/') {
+                    while (!End() && Cur() != '\n') Adv();
+                } else if (c == '/' && Pk() == '*') {
+                    Adv(); Adv();
+                    while (!End()) {
+                        if (Cur() == '*' && Pk() == '/') {
+                            Adv(); Adv(); break;
+                        }
+                        if (Cur() == '\n') {
+                            _line++; _column = 1;
+                        }
+                        Adv();
+                    }
+                } else {
+                    break;
                 }
             }
+        }
 
-            tokens.add(MakeToken(TokenType.EOF, ""));
+        // ── Point d entree ─────────────────────────────
+        public Gee.ArrayList<Token> Tokenize() {
+            var tokens = new Gee.ArrayList<Token>();
+            while (!End()) {
+                Skip();
+                if (End()) break;
+                var t = NextTok();
+                if (t != null) tokens.add(t);
+            }
+            tokens.add(Tok(
+                CodeTranspiler.Lexer.TokenType.EOF,
+                "", _line, _column));
             return tokens;
         }
 
+        private Token? NextTok() {
+            int  l = _line;
+            int  c = _column;
+            char ch = Cur();
 
-        // ─────────────────────────────────────────────
-        //  Lecture du prochain token
-        // ─────────────────────────────────────────────
-        private Token? NextToken() {
-            int    startLine   = _line;
-            int    startColumn = _column;
-            char   c           = Current();
-
-            // ── Nombres ────────────────────────────
-            if (c.isdigit()) {
-                return ReadNumber(startLine, startColumn);
+            // Newline
+            if (ch == '\n') {
+                Adv();
+                _line++;
+                _column = 1;
+                return Tok(CodeTranspiler.Lexer.TokenType.NEWLINE,
+                           "\n", l, c);
             }
 
-            // ── Identifiants & mots clés ───────────
-            if (c.isalpha() || c == '_') {
-                return ReadIdentifierOrKeyword(startLine, startColumn);
+            // Identifiant ou mot-cle
+            // DOIT etre avant les nombres !
+            if (IsLetter(ch)) {
+                return ReadIdent(l, c);
             }
 
-            // ── Strings ────────────────────────────
-            if (c == '"') {
-                return ReadString(startLine, startColumn);
+            // Nombre
+            if (IsDigit(ch)) {
+                return ReadNum(l, c);
             }
 
-            // ── Strings multi-lignes """ ────────────
-            if (c == '"' && Peek(1) == '"' && Peek(2) == '"') {
-                return ReadMultilineString(startLine, startColumn);
+            // String
+            if (ch == '"') {
+                // Verifier triple quote
+                if (Pk(1) == '"' && Pk(2) == '"') {
+                    return ReadTriple(l, c);
+                }
+                return ReadStr(l, c);
             }
 
-            // ── Décorateurs @ ──────────────────────
-            if (c == '@') {
-                Advance();
-                return new Token(TokenType.AT, "@",
-                                 startLine, startColumn, _filename);
+            // Decorateur
+            if (ch == '@') {
+                Adv();
+                return Tok(CodeTranspiler.Lexer.TokenType.AT,
+                           "@", l, c);
             }
 
-            // ── Opérateurs & délimiteurs ───────────
-            return ReadOperatorOrDelimiter(startLine, startColumn);
+            // Operateurs et delimiteurs
+            return ReadOp(l, c);
         }
 
-
-        // ─────────────────────────────────────────────
-        //  Lecture d'un nombre
-        // ─────────────────────────────────────────────
-        private Token ReadNumber(int line, int col) {
-            var sb       = new StringBuilder();
-            bool isFloat = false;
-
-            while (!IsEnd() && (Current().isdigit() || Current() == '_')) {
-                if (Current() != '_') sb.append_c(Current());
-                Advance();
-            }
-
-            // Partie décimale
-            if (!IsEnd() && Current() == '.' && Peek(1).isdigit()) {
-                isFloat = true;
-                sb.append_c('.');
-                Advance();
-                while (!IsEnd() && Current().isdigit()) {
-                    sb.append_c(Current());
-                    Advance();
-                }
-            }
-
-            // Exposant (1e10, 3.14e-2)
-            if (!IsEnd() && (Current() == 'e' || Current() == 'E')) {
-                isFloat = true;
-                sb.append_c(Current());
-                Advance();
-                if (!IsEnd() && (Current() == '+' || Current() == '-')) {
-                    sb.append_c(Current());
-                    Advance();
-                }
-                while (!IsEnd() && Current().isdigit()) {
-                    sb.append_c(Current());
-                    Advance();
-                }
-            }
-
-            var type = isFloat ? TokenType.FLOAT : TokenType.INTEGER;
-            return new Token(type, sb.str, line, col, _filename);
-        }
-
-
-        // ─────────────────────────────────────────────
-        //  Lecture d'un identifiant ou mot clé
-        // ─────────────────────────────────────────────
-        private Token ReadIdentifierOrKeyword(int line, int col) {
+        // ── Identifiant ou mot-cle ─────────────────────
+        private Token ReadIdent(int l, int c) {
             var sb = new StringBuilder();
-
-            while (!IsEnd() && (Current().isalnum() || Current() == '_')) {
-                sb.append_c(Current());
-                Advance();
+            while (!End() && IsAlphaNum(Cur())) {
+                sb.append_c(Adv());
             }
-
             string word = sb.str;
 
-            // Vérifie si c'est un mot clé
-            TokenType? kwType = _keywords.lookup(word);
-            var type = (kwType != null) ? kwType : TokenType.IDENTIFIER;
+            // Chercher dans les mots-cles
+            if (_keywords.has_key(word)) {
+                return Tok(_keywords[word], word, l, c);
+            }
 
-            return new Token(type, word, line, col, _filename);
+            return Tok(CodeTranspiler.Lexer.TokenType.IDENTIFIER,
+                       word, l, c);
         }
 
+        // ── Nombre ─────────────────────────────────────
+        private Token ReadNum(int l, int c) {
+            var  sb      = new StringBuilder();
+            bool isFloat = false;
 
-        // ─────────────────────────────────────────────
-        //  Lecture d'une string avec interpolation
-        // ─────────────────────────────────────────────
-        private Token ReadString(int line, int col) {
+            while (!End() && (IsDigit(Cur()) || Cur() == '_')) {
+                if (Cur() != '_') sb.append_c(Cur());
+                Adv();
+            }
+
+            if (!End() && Cur() == '.' && IsDigit(Pk())) {
+                isFloat = true;
+                sb.append_c('.');
+                Adv();
+                while (!End() && IsDigit(Cur())) {
+                    sb.append_c(Cur());
+                    Adv();
+                }
+            }
+
+            if (!End() && (Cur() == 'e' || Cur() == 'E')) {
+                isFloat = true;
+                sb.append_c(Adv());
+                if (!End() && (Cur() == '+' || Cur() == '-')) {
+                    sb.append_c(Adv());
+                }
+                while (!End() && IsDigit(Cur())) {
+                    sb.append_c(Adv());
+                }
+            }
+
+            var type = isFloat
+                ? CodeTranspiler.Lexer.TokenType.FLOAT
+                : CodeTranspiler.Lexer.TokenType.INTEGER;
+            return Tok(type, sb.str, l, c);
+        }
+
+        // ── String simple ──────────────────────────────
+        private Token ReadStr(int l, int c) {
             var sb = new StringBuilder();
-            Advance(); // consume "
-
-            while (!IsEnd() && Current() != '"') {
-                if (Current() == '\\') {
-                    Advance();
-                    switch (Current()) {
+            Adv(); // consume "
+            while (!End() && Cur() != '"') {
+                if (Cur() == '\\') {
+                    Adv();
+                    switch (Cur()) {
                         case 'n':  sb.append_c('\n'); break;
                         case 't':  sb.append_c('\t'); break;
                         case '"':  sb.append_c('"');  break;
                         case '\\': sb.append_c('\\'); break;
                         default:
                             sb.append_c('\\');
-                            sb.append_c(Current());
+                            sb.append_c(Cur());
                             break;
                     }
                 } else {
-                    sb.append_c(Current());
+                    sb.append_c(Cur());
                 }
-                Advance();
+                Adv();
             }
-
-            Advance(); // consume "
-            return new Token(TokenType.STRING, sb.str, line, col, _filename);
+            Adv(); // consume "
+            return Tok(CodeTranspiler.Lexer.TokenType.STRING,
+                       sb.str, l, c);
         }
 
-
-        // ─────────────────────────────────────────────
-        //  Lecture d'une string multi-lignes """
-        // ─────────────────────────────────────────────
-        private Token ReadMultilineString(int line, int col) {
+        // ── String triple ──────────────────────────────
+        private Token ReadTriple(int l, int c) {
             var sb = new StringBuilder();
-            Advance(); Advance(); Advance(); // consume """
-
-            while (!IsEnd()) {
-                if (Current() == '"' && Peek(1) == '"' && Peek(2) == '"') {
-                    Advance(); Advance(); Advance(); // consume """
+            Adv(); Adv(); Adv(); // consume """
+            while (!End()) {
+                if (Cur() == '"' && Pk() == '"' && Pk(2) == '"') {
+                    Adv(); Adv(); Adv();
                     break;
                 }
-                sb.append_c(Current());
-                if (Current() == '\n') { _line++; _column = 0; }
-                Advance();
+                if (Cur() == '\n') { _line++; _column = 0; }
+                sb.append_c(Adv());
             }
-
-            return new Token(TokenType.STRING, sb.str, line, col, _filename);
+            return Tok(CodeTranspiler.Lexer.TokenType.STRING,
+                       sb.str, l, c);
         }
 
-
-        // ─────────────────────────────────────────────
-        //  Lecture des opérateurs et délimiteurs
-        // ─────────────────────────────────────────────
-        private Token ReadOperatorOrDelimiter(int line, int col) {
-            char c = Current();
-            Advance();
-
-            switch (c) {
-                case '{': return new Token(TokenType.LBRACE,    "{", line, col, _filename);
-                case '}': return new Token(TokenType.RBRACE,    "}", line, col, _filename);
-                case '(': return new Token(TokenType.LPAREN,    "(", line, col, _filename);
-                case ')': return new Token(TokenType.RPAREN,    ")", line, col, _filename);
-                case '[': return new Token(TokenType.LBRACKET,  "[", line, col, _filename);
-                case ']': return new Token(TokenType.RBRACKET,  "]", line, col, _filename);
-                case ';': return new Token(TokenType.SEMICOLON, ";", line, col, _filename);
-                case ':': return new Token(TokenType.COLON,     ":", line, col, _filename);
-                case ',': return new Token(TokenType.COMMA,     ",", line, col, _filename);
-                case '@': return new Token(TokenType.AT,        "@", line, col, _filename);
-
+        // ── Operateurs ─────────────────────────────────
+        private Token ReadOp(int l, int c) {
+            char ch = Adv();
+            switch (ch) {
+                case '{': return Tok(CodeTranspiler.Lexer.TokenType.LBRACE,    "{", l, c);
+                case '}': return Tok(CodeTranspiler.Lexer.TokenType.RBRACE,    "}", l, c);
+                case '(': return Tok(CodeTranspiler.Lexer.TokenType.LPAREN,    "(", l, c);
+                case ')': return Tok(CodeTranspiler.Lexer.TokenType.RPAREN,    ")", l, c);
+                case '[': return Tok(CodeTranspiler.Lexer.TokenType.LBRACKET,  "[", l, c);
+                case ']': return Tok(CodeTranspiler.Lexer.TokenType.RBRACKET,  "]", l, c);
+                case ';': return Tok(CodeTranspiler.Lexer.TokenType.SEMICOLON, ";", l, c);
+                case ',': return Tok(CodeTranspiler.Lexer.TokenType.COMMA,     ",", l, c);
+                case '~': return Tok(CodeTranspiler.Lexer.TokenType.UNKNOWN,   "~", l, c);
+                case ':':
+                    return Tok(CodeTranspiler.Lexer.TokenType.COLON, ":", l, c);
                 case '.':
-                    if (!IsEnd() && Current() == '.') {
-                        Advance();
-                        if (!IsEnd() && Current() == '.') {
-                            Advance();
-                            return new Token(TokenType.OP_SPREAD, "...", line, col, _filename);
+                    if (!End() && Cur() == '.') {
+                        Adv();
+                        if (!End() && Cur() == '.') {
+                            Adv();
+                            return Tok(CodeTranspiler.Lexer.TokenType.OP_SPREAD, "...", l, c);
                         }
-                        return new Token(TokenType.OP_RANGE, "..", line, col, _filename);
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_RANGE, "..", l, c);
                     }
-                    return new Token(TokenType.DOT, ".", line, col, _filename);
-
-                case '+': return new Token(TokenType.OP_PLUS,   "+", line, col, _filename);
+                    return Tok(CodeTranspiler.Lexer.TokenType.DOT, ".", l, c);
+                case '+': return Tok(CodeTranspiler.Lexer.TokenType.OP_PLUS,    "+", l, c);
+                case '*': return Tok(CodeTranspiler.Lexer.TokenType.OP_STAR,    "*", l, c);
+                case '%': return Tok(CodeTranspiler.Lexer.TokenType.OP_PERCENT, "%", l, c);
+                case '^': return Tok(CodeTranspiler.Lexer.TokenType.OP_POWER,   "^", l, c);
                 case '-':
-                    if (!IsEnd() && Current() == '>') {
-                        Advance();
-                        return new Token(TokenType.OP_THIN_ARROW, "->", line, col, _filename);
+                    if (!End() && Cur() == '>') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_THIN_ARROW, "->", l, c);
                     }
-                    return new Token(TokenType.OP_MINUS, "-", line, col, _filename);
-
-                case '*': return new Token(TokenType.OP_STAR,    "*", line, col, _filename);
-                case '%': return new Token(TokenType.OP_PERCENT, "%", line, col, _filename);
-                case '^': return new Token(TokenType.OP_POWER,   "^", line, col, _filename);
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.OP_MINUS, "-", l, c);
                 case '/':
-                    return new Token(TokenType.OP_SLASH, "/", line, col, _filename);
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.OP_SLASH, "/", l, c);
                 case '=':
-                    if (!IsEnd() && Current() == '=') {
-                        Advance();
-                        return new Token(TokenType.OP_EQEQ, "==", line, col, _filename);
+                    if (!End() && Cur() == '=') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_EQEQ, "==", l, c);
                     }
-                    if (!IsEnd() && Current() == '>') {
-                        Advance();
-                        return new Token(TokenType.OP_ARROW, "=>", line, col, _filename);
+                    if (!End() && Cur() == '>') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_ARROW, "=>", l, c);
                     }
-                    return new Token(TokenType.OP_EQ, "=", line, col, _filename);
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.OP_EQ, "=", l, c);
                 case '!':
-                    if (!IsEnd() && Current() == '=') {
-                        Advance();
-                        return new Token(TokenType.OP_NEQ, "!=", line, col, _filename);
+                    if (!End() && Cur() == '=') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_NEQ, "!=", l, c);
                     }
-                    return new Token(TokenType.OP_NOT, "!", line, col, _filename);
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.OP_NOT, "!", l, c);
                 case '<':
-                    if (!IsEnd() && Current() == '=') {
-                        Advance();
-                        return new Token(TokenType.OP_LTE, "<=", line, col, _filename);
+                    if (!End() && Cur() == '=') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_LTE, "<=", l, c);
                     }
-                    return new Token(TokenType.OP_LT, "<", line, col, _filename);
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.OP_LT, "<", l, c);
                 case '>':
-                    if (!IsEnd() && Current() == '=') {
-                        Advance();
-                        return new Token(TokenType.OP_GTE, ">=", line, col, _filename);
+                    if (!End() && Cur() == '=') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_GTE, ">=", l, c);
                     }
-                    if (!IsEnd() && Current() == '>') {
-                        Advance();
-                        return new Token(TokenType.OP_COMPOSE, ">>", line, col, _filename);
+                    if (!End() && Cur() == '>') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_COMPOSE, ">>", l, c);
                     }
-                    return new Token(TokenType.OP_GT, ">", line, col, _filename);
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.OP_GT, ">", l, c);
                 case '&':
-                    if (!IsEnd() && Current() == '&') {
-                        Advance();
-                        return new Token(TokenType.OP_AND, "&&", line, col, _filename);
+                    if (!End() && Cur() == '&') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_AND, "&&", l, c);
                     }
-                    break;
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.UNKNOWN, "&", l, c);
                 case '|':
-                    if (!IsEnd() && Current() == '|') {
-                        Advance();
-                        return new Token(TokenType.OP_OR, "||", line, col, _filename);
+                    if (!End() && Cur() == '|') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_OR, "||", l, c);
                     }
-                    if (!IsEnd() && Current() == '>') {
-                        Advance();
-                        return new Token(TokenType.OP_PIPE, "|>", line, col, _filename);
+                    if (!End() && Cur() == '>') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_PIPE, "|>", l, c);
                     }
-                    break;
-
+                    return Tok(CodeTranspiler.Lexer.TokenType.UNKNOWN, "|", l, c);
                 case '?':
-                    if (!IsEnd() && Current() == '?') {
-                        Advance();
-                        return new Token(TokenType.OP_NULLCOAL, "??", line, col, _filename);
+                    if (!End() && Cur() == '?') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_NULLCOAL, "??", l, c);
                     }
-                    if (!IsEnd() && Current() == '.') {
-                        Advance();
-                        return new Token(TokenType.OP_NULLSAFE, "?.", line, col, _filename);
+                    if (!End() && Cur() == '.') {
+                        Adv();
+                        return Tok(CodeTranspiler.Lexer.TokenType.OP_NULLSAFE, "?.", l, c);
                     }
-                    return new Token(TokenType.QUESTION, "?", line, col, _filename);
-
-                case '\n':
-                    _line++;
-                    _column = 1;
-                    return new Token(TokenType.NEWLINE, "\\n", line, col, _filename);
-
-                default: break;
-            }
-
-            return new Token(TokenType.UNKNOWN,
-                             c.to_string(), line, col, _filename);
-        }
-
-
-        // ─────────────────────────────────────────────
-        //  Skip espaces et commentaires
-        // ─────────────────────────────────────────────
-        private void SkipWhitespaceAndComments() {
-            while (!IsEnd()) {
-                char c = Current();
-
-                // Espaces
-                if (c == ' ' || c == '\t' || c == '\r') {
-                    Advance();
-                    continue;
-                }
-
-                // Commentaire ligne //
-                if (c == '/' && Peek(1) == '/') {
-                    while (!IsEnd() && Current() != '\n') Advance();
-                    continue;
-                }
-
-                // Commentaire bloc /* ... */
-                if (c == '/' && Peek(1) == '*') {
-                    Advance(); Advance();
-                    while (!IsEnd()) {
-                        if (Current() == '*' && Peek(1) == '/') {
-                            Advance(); Advance();
-                            break;
-                        }
-                        if (Current() == '\n') { _line++; _column = 1; }
-                        Advance();
-                    }
-                    continue;
-                }
-
-                break;
+                    return Tok(CodeTranspiler.Lexer.TokenType.QUESTION, "?", l, c);
+                default:
+                    return Tok(CodeTranspiler.Lexer.TokenType.UNKNOWN,
+                               ch.to_string(), l, c);
             }
         }
 
-
-        // ─────────────────────────────────────────────
-        //  Helpers navigation
-        // ─────────────────────────────────────────────
-        private char Current() {
-            if (IsEnd()) return '\0';
-            return _source[_pos];
-        }
-
-        private char Peek(int offset = 1) {
-            int idx = _pos + offset;
-            if (idx >= _source.length) return '\0';
-            return _source[idx];
-        }
-
-        private void Advance() {
-            if (!IsEnd()) {
-                _pos++;
-                _column++;
-            }
-        }
-
-        private bool IsEnd() {
-            return _pos >= _source.length;
-        }
-
-        private Token MakeToken(TokenType type, string value) {
-            return new Token(type, value, _line, _column, _filename);
-        }
+        // Propriete publique pour compat
+        public bool IsEnd() { return End(); }
     }
 }
