@@ -2079,19 +2079,6 @@ namespace CodeTranspiler.Parser {
         // ── Détection de contexte ──────────────────────
 
 
-        // Vérifie si le token courant peut commencer un type
-        private bool IsTypeStart() {
-            var t = Current().Type;
-            return t == CodeTranspiler.Lexer.TokenType.IDENTIFIER  ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_VOID     ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_INT      ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_FLOAT    ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE   ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_STRING   ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_BOOL     ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_VAR;
-        }
-
         private bool CheckMethodStart() {
             var t = Current().Type;
             return t == CodeTranspiler.Lexer.TokenType.IDENTIFIER  ||
