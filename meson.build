@@ -1,5 +1,5 @@
-project('code-transpiler', 'vala', 'c',
-    version : '0.2.0'
+project('amalgame', 'vala', 'c',
+    version : '0.3.0'
 )
 
 cc       = meson.get_compiler('c')
@@ -35,7 +35,7 @@ vala_sources = files(
     'src/main.vala'
 )
 
-executable('codec',
+executable('amc',
     vala_sources,
     dependencies : [
         glib_dep,

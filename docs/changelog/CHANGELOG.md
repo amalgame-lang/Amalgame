@@ -1,7 +1,56 @@
-# Changelog CODE
+# Changelog Amalgame
 
-Format : [Keep a Changelog](https://keepachangelog.com)
-Versions : [Semantic Versioning](https://semver.org)
+Format: [Keep a Changelog](https://keepachangelog.com)
+Versions: [Semantic Versioning](https://semver.org)
+
+---
+
+## [0.3.0] - 2026-XX-XX
+
+### 🎉 Project renamed: CODE → Amalgame
+
+The project is now named **Amalgame** — reflecting its core philosophy:
+the amalgam of the best features from every programming language.
+
+### Changed
+- Project name: `CODE` → `Amalgame`
+- File extension: `.code` → `.am`
+- Executable: `codec` → `amc`
+- Debug env var: `CODE_DEBUG` → `AMC_DEBUG`
+- All documentation updated to English
+
+### ✅ Added
+
+#### Test suite (`tests/`)
+- `run_tests.sh` — automated test runner with color output
+- `hello.am` — Hello World baseline
+- `variables.am` — primitives, let/var, string interpolation
+- `control_flow.am` — if/else if/else, while, for
+- `classes.am` — constructor, fields, methods, this, new
+- `match.am` — literal and range pattern matching
+- `math.am` — static methods, recursion, return types
+- `record.am` — record types, field access
+
+#### Generator fixes
+- Static vs instance call detection (uppercase/lowercase heuristic)
+- `_localCTypes` map: tracks C types during generation for correct
+  string interpolation wrapping (`code_int_to_string`, `code_float_to_string`)
+- `_LookupFieldCType`: resolves field types from class declarations
+  for correct interpolation of `{this.Name}`, `{obj.Field}`
+- `_LookupMethodReturnType`: infers return type of static method calls
+  for correct `InferCType` on `let x = ClassName.Method(...)`
+- Constructor detection: `MethodDeclNode` with name == class name
+  → emits `ClassName_new(params)` instead of regular method
+- No duplicate constructor: skips `EmitDefaultConstructor` when
+  an explicit constructor exists
+- `VisitNewExpr`: always uses `_new(args)` — removes `_create` variant
+- `VisitFor`: defaults to `i64` instead of `void*` for loop counter
+
+#### Parser fixes
+- `ParseMethodDecl`: properly captures `ReturnType` from AST instead
+  of discarding it — fixes TypeChecker seeing all methods as void
+- `ParseFieldOrProperty`: now parses `Name: Type` style (Amalgame/Kotlin)
+  instead of `Type Name` (Java/C#)
 
 ---
 
@@ -10,158 +59,21 @@ Versions : [Semantic Versioning](https://semver.org)
 ### ✅ Added
 
 #### Analyzer (src/core/analyzer/)
-- `symbol.vala` : symbol table foundation
-  - `SymbolKind` enum : CLASS, INTERFACE, ENUM, ENUM_MEMBER, RECORD,
-    DATA_CLASS, TRAIT, METHOD, CONSTRUCTOR, LAMBDA, FIELD, PROPERTY,
-    LOCAL_VAR, PARAMETER, NAMESPACE, IMPORT
-  - `Symbol` : named entity with kind, DeclNode back-reference,
-    TypeKey, IsLet, IsStatic, source location
-  - `Scope` : lexical scope with parent chain, Declare / Lookup /
-    LookupLocal / AllSymbols / Dump
-  - `SymbolTable` : scope stack (PushScope / PopScope), built-in
-    primitives pre-loaded (int, float, string, bool, void, List,
-    Map, Option, Result, Console, Math…), DidYouMean() via
-    Levenshtein distance for error suggestions
-- `resolver.vala` : two-pass name resolver
-  - Pass 1 — CollectTopLevel : registers all top-level type names
-    in the global scope (enables forward references)
-  - Pass 2 — full AST walk via BaseAstVisitor :
-    - Opens / closes a scope for every class, method, block, lambda,
-      match arm, foreach, for, try/catch
-    - Pre-collects class members (fields, properties, methods) before
-      visiting bodies
-    - Validates all type references (SimpleType, GenericType,
-      FuncType, TupleType) with nullable-strip support
-    - Resolves every IdentifierNode; emits "did you mean?" on miss
-    - Detects duplicate declarations in the same scope
-    - Immutability check : refuses assignment to `let` bindings
-    - Context checks : `break`/`continue` outside loop,
-      `await` outside `async`, `this` outside class
-    - Binds match pattern capture variables into arm scopes
-    - List comprehension variables scoped correctly
-  - `ResolveError` : box-drawing error format consistent with
-    ParseError — `[resolver] file.code:line:col — message`
-  - `ResolveResult` : Success flag, annotated ProgramNode,
-    error list, SymbolTable
+- `symbol.vala` — SymbolKind, Symbol, Scope, SymbolTable, Levenshtein
+- `resolver.vala` — Two-pass name resolver, ResolveError/Result
+- `typechecker.vala` — Type inference & validation, TypeError/Result
 
 #### Parser fix
-- Renamed local variable `with` → `withExpr` in parser.vala
-  (was triggering two Vala keyword-conflict warnings at compile time)
-
-### 🔜 Next (v0.3.0)
-- TypeChecker : type inference and validation
-- Standard Library : Code.IO, Code.Net…
-- LSP Server : real-time errors and autocompletion
-- DAP Server : breakpoints and debug
+- Renamed `with` → `withExpr` (Vala keyword conflict)
 
 ---
 
 ## [0.1.0] - 2024-01-XX
 
-### 🎉 MILESTONE : Hello World fonctionne !
+### 🎉 MILESTONE: Hello World works!
 
-Premier programme CODE transpilé et exécuté avec succès.
-
-### ✅ Ajouté
-
-#### Lexer (src/core/lexer/)
-- `token.vala` : définition complète des TokenType
-  - Littéraux : INTEGER, FLOAT, STRING, BOOL, NULL
-  - Mots-clés : class, interface, enum, let, var...
-  - Opérateurs : +, -, *, /, |>, ??, ?., .., ...
-  - Délimiteurs : {, }, (, ), [, ], @, ...
-- `lexer.vala` : lexer complet
-  - Détection correcte IDENTIFIER vs INTEGER
-  - Helpers IsLetter(), IsDigit(), IsAlphaNum()
-  - Strings simples et multi-lignes
-  - Commentaires // et /* */
-  - Suivi ligne/colonne
-
-#### AST (src/core/parser/)
-- `ast.vala` : tous les nœuds AST
-  - Programme : ProgramNode, NamespaceNode, ImportNode
-  - Déclarations : ClassDeclNode, MethodDeclNode,
-    FieldDeclNode, PropertyDeclNode, EnumDeclNode,
-    RecordDeclNode, DataClassDeclNode, ParamNode
-  - Instructions : BlockNode, VarDeclNode, IfNode,
-    MatchNode, WhileNode, ForNode, ForeachNode,
-    ReturnNode, GuardNode, TryCatchNode, GoStmtNode
-  - Expressions : BinaryExprNode, UnaryExprNode,
-    CallExprNode, MemberAccessNode, NewExprNode,
-    LambdaExprNode, LiteralNode, IdentifierNode...
-  - Types : SimpleTypeNode, GenericTypeNode,
-    FuncTypeNode, TupleTypeNode
-- `ast_visitor.vala` : visitor pattern complet
-- `ast_printer.vala` : debug printer (arbre textuel)
-
-#### Parser (src/core/parser/parser.vala)
-- Recursive descent parser complet
-- Style Java/C# : type nom (pas Kotlin nom: type)
-- Gestion des tableaux : string[]
-- Mots-clés acceptés comme noms de types
-- Décorateurs @memory, @pure, @realtime...
-- Pattern matching complet
-- Expressions avec précédence correcte
-- Messages d erreur clairs avec position
-
-#### Générateur C (src/transpiler/generator/)
-- `c_generator.vala` : génération C depuis AST
-  - Classes → structs C + constructeurs
-  - Méthodes → fonctions C
-  - Variables → déclarations C typées
-  - String interpolation → code_string_format()
-  - Console.WriteLine → printf natif
-  - Directives #line pour debug GDB
-  - Forward declarations automatiques
-
-#### Runtime (src/transpiler/runtime/_runtime.h)
-- Boehm GC intégré
-- Types : i64, f64, f32, code_string, code_bool
-- Console : Console_WriteLine, Console_Write
-- String : format, concat, equals, contains
-- Math : PI, Abs, Sqrt, Pow, Max, Min
-- Collections : CodeList (liste générique)
-- Result<T> et Option<T>
-
-#### Build System
-- `meson.build` : compatible Meson 0.56 + Vala 0.48
-- `compile.sh` : script de build automatisé
-- CI GitHub Actions : build automatique
-
-#### Tests
-- `tests/samples/hello.code` : Hello World ✅
-
-#### Documentation
-- `docs/language/grammar.ebnf` : grammaire formelle
-- `docs/transpiler/lexer.md`
-- `docs/transpiler/tokens.md`
-- `docs/transpiler/ast.md`
-- `README.md` : guide complet
-
-### 🔧 Corrections
-- Fix : isalpha()/isdigit() → IsLetter()/IsDigit()
-  (bug : identifiants tokenisés comme INTEGER)
-- Fix : syntaxe paramètres Java/C# (type nom)
-- Fix : tableaux string[] → code_string*
-- Fix : forward declarations méthodes statiques
-- Fix : Vala 0.48 : => remplacé par {} pour override
-- Fix : TokenType ambigu GLib vs CodeTranspiler
-- Fix : ParseArgList dupliqué → ParseNewArgList
-- Fix : base mot réservé → baseName
-- Fix : Posix.system → GLib.Process.spawn_sync
-
-### 🔜 À venir (v0.2.0)
-- Resolver : résolution des noms et scopes
-- TypeChecker : vérification et inférence des types
-- Librairie Standard : Code.IO, Code.Net...
-- LSP Server : autocomplétion, erreurs temps réel
-- DAP Server : debug avec breakpoints visuels
-
----
-
-## [Unreleased]
-
-### 🔜 En cours
-- Tests unitaires du Lexer et Parser
-- Exemple Guild App complet
-- Resolver / TypeChecker
+### ✅ Added
+- Lexer, AST, Parser, C Generator, Runtime
+- Boehm GC integration
+- Meson build system
+- GitHub Actions CI

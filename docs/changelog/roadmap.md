@@ -1,4 +1,4 @@
-# Roadmap CODE
+# Roadmap Amalgame
 
 ---
 
@@ -10,9 +10,10 @@
 | AST                | ✅     | `src/core/parser/ast.vala`                   |
 | Parser             | ✅     | `src/core/parser/parser.vala`                |
 | Resolver           | ✅     | `src/core/analyzer/resolver.vala`            |
-| Type Checker       | 🔜     | `src/core/analyzer/typechecker.vala`         |
+| Type Checker       | ✅     | `src/core/analyzer/typechecker.vala`         |
 | C Generator        | ✅     | `src/transpiler/generator/c_generator.vala`  |
 | Hello World !      | ✅     | First program running                        |
+| Test suite         | ✅     | `tests/` — 7/7 passing                       |
 
 ## Phase 2 : Ecosystem  [Planned]
 
@@ -30,8 +31,8 @@
 
 | Step               | Status | Description                       |
 |--------------------|--------|-----------------------------------|
-| Package Manager    | 🔜     | `codec pkg`                       |
-| Bootstrap          | 🔜     | CODE written in CODE              |
+| Package Manager    | 🔜     | `amc pkg`                         |
+| Bootstrap          | 🔜     | Amalgame written in Amalgame      |
 | WASM Plugin        | 🔜     | Transpilation to WebAssembly      |
 | IL Plugin          | 🔜     | Transpilation to IL               |
 | LLVM Plugin        | 🔜     | Transpilation to LLVM IR          |

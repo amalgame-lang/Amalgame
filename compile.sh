@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== CODE Transpiler - Build ==="
+echo "=== Amalgame Transpiler - Build ==="
 
 # Nettoyage
 rm -rf build
@@ -14,4 +14,4 @@ ninja -C build
 
 echo ""
 echo "OK Build reussi !"
-./build/codec --version
+./build/amc --version

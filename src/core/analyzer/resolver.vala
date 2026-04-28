@@ -835,6 +835,10 @@ namespace CodeTranspiler.Analyzer {
                 if (name.has_suffix("?"))
                     name = name.substring(0, name.length - 1);
 
+                // Strip trailing '[]' — array of a known type is valid
+                if (name.has_suffix("[]"))
+                    name = name.substring(0, name.length - 2);
+
                 if (_table.Lookup(name) == null) {
                     string? sug = _table.DidYouMean(name);
                     string  msg = (sug != null)

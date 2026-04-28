@@ -1,0 +1,26 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        let health = 75
+
+        match health {
+            100        => Console.WriteLine("Full health"),
+            75..99     => Console.WriteLine("Slightly wounded"),
+            50..74     => Console.WriteLine("Wounded"),
+            1..49      => Console.WriteLine("Critical"),
+            0          => Console.WriteLine("Dead"),
+            _          => Console.WriteLine("Unknown")
+        }
+
+        let day = 3
+        match day {
+            1 => Console.WriteLine("Monday"),
+            2 => Console.WriteLine("Tuesday"),
+            3 => Console.WriteLine("Wednesday"),
+            4 => Console.WriteLine("Thursday"),
+            5 => Console.WriteLine("Friday"),
+            _ => Console.WriteLine("Weekend")
+        }
+    }
+}
