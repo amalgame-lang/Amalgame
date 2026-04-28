@@ -1,0 +1,10 @@
+var parser = new Parser(tokens, "fichier.code");
+var result = parser.Parse();
+
+if (result.Success) {
+    var ast = result.Program;
+} else {
+    foreach (var err in result.Errors) {
+        stderr.printf("%s\\n", err.ToString());
+    }
+}

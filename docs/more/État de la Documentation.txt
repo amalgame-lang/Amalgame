@@ -1,0 +1,15 @@
+✅ README.md          → guide utilisateur
+✅ CHANGELOG.md       → historique complet
+✅ lexer.md           → mis à jour
+✅ tokens.md          → existant
+✅ ast.md             → existant
+✅ parser.md          → nouveau !
+✅ generator.md       → nouveau !
+✅ runtime.md         → nouveau !
+
+🔜 À créer plus tard :
+   resolver.md
+   typechecker.md
+   lsp.md
+   dap.md
+   guides/getting-started.md
