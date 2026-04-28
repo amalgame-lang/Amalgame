@@ -1,0 +1,622 @@
+(* ═══════════════════════════════════════════════════════ *)
+(*  Grammaire EBNF du langage CODE                        *)
+(*  Version : 0.1.0                                       *)
+(* ═══════════════════════════════════════════════════════ *)
+
+(* ── Conventions ────────────────────────────────────────
+   [  x  ]  = optionnel
+   {  x  }  = zéro ou plusieurs
+   (  x  )  = groupement
+   x | y    = x ou y
+   "x"      = terminal littéral
+   ──────────────────────────────────────────────────── *)
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  PROGRAMME                                             *)
+(* ═══════════════════════════════════════════════════════ *)
+
+Program
+    = NamespaceDecl
+      { ImportDecl }
+      { TopLevelDecl }
+    ;
+
+NamespaceDecl
+    = "namespace" QualifiedName NEWLINE
+    ;
+
+ImportDecl
+    = "import" QualifiedName NEWLINE
+    ;
+
+QualifiedName
+    = IDENTIFIER { "." IDENTIFIER }
+    ;
+
+TopLevelDecl
+    = { Decorator }
+      ( ClassDecl
+      | InterfaceDecl
+      | EnumDecl
+      | RecordDecl
+      | DataClassDecl
+      | TraitDecl
+      | FunctionDecl
+      )
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  DÉCORATEURS                                           *)
+(* ═══════════════════════════════════════════════════════ *)
+
+Decorator
+    = "@" IDENTIFIER [ "(" DecoratorArgList ")" ]
+    ;
+
+DecoratorArgList
+    = DecoratorArg { "," DecoratorArg }
+    ;
+
+DecoratorArg
+    = [ IDENTIFIER "=" ] Expression
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  CLASSES                                               *)
+(* ═══════════════════════════════════════════════════════ *)
+
+ClassDecl
+    = AccessModifier "class" IDENTIFIER
+      [ GenericParams ]
+      [ "extends"    TypeRef ]
+      [ "implements" TypeRef { "," TypeRef } ]
+      "{" { ClassMember } "}"
+    ;
+
+ClassMember
+    = { Decorator }
+      ( FieldDecl
+      | PropertyDecl
+      | MethodDecl
+      | ConstructorDecl
+      )
+    ;
+
+FieldDecl
+    = AccessModifier
+      [ "static" ]
+      [ "weak" ]
+      IDENTIFIER ":" TypeRef
+      [ "=" Expression ]
+    ;
+
+PropertyDecl
+    = AccessModifier
+      [ "static" ]
+      IDENTIFIER ":" TypeRef
+      "{" PropertyAccessors "}"
+    ;
+
+PropertyAccessors
+    = GetAccessor [ SetAccessor ]
+    | SetAccessor [ GetAccessor ]
+    ;
+
+GetAccessor
+    = "get" ( "=>" Expression | Block )
+    ;
+
+SetAccessor
+    = "set" ( "=>" Expression | Block )
+    ;
+
+ConstructorDecl
+    = AccessModifier IDENTIFIER
+      "(" [ ParamList ] ")"
+      Block
+    ;
+
+MethodDecl
+    = AccessModifier
+      [ "static"   ]
+      [ "abstract" ]
+      [ "override" ]
+      [ "async"    ]
+      [ "pure"     ]
+      IDENTIFIER
+      [ GenericParams ]
+      "(" [ ParamList ] ")"
+      [ "->" TypeRef ]
+      ( Block | "=>" Expression )
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  INTERFACES                                            *)
+(* ═══════════════════════════════════════════════════════ *)
+
+InterfaceDecl
+    = AccessModifier "interface" IDENTIFIER
+      [ GenericParams ]
+      [ "extends" TypeRef { "," TypeRef } ]
+      "{" { InterfaceMember } "}"
+    ;
+
+InterfaceMember
+    = { Decorator }
+      ( InterfaceMethodDecl
+      | InterfacePropertyDecl
+      )
+    ;
+
+InterfaceMethodDecl
+    = [ "async" ] [ "pure" ]
+      IDENTIFIER
+      "(" [ ParamList ] ")"
+      "->" TypeRef
+      [ "default" Block ]
+    ;
+
+InterfacePropertyDecl
+    = IDENTIFIER ":" TypeRef
+      "{" ( "get" | "set" ) { ";" ( "get" | "set" ) } "}"
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  ENUMS                                                 *)
+(* ═══════════════════════════════════════════════════════ *)
+
+EnumDecl
+    = AccessModifier "enum" IDENTIFIER
+      "{" EnumMember { "," EnumMember }
+          { MethodDecl }
+      "}"
+    ;
+
+EnumMember
+    = IDENTIFIER [ "(" TypeRef { "," TypeRef } ")" ]
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  RECORDS & DATA CLASSES                                *)
+(* ═══════════════════════════════════════════════════════ *)
+
+RecordDecl
+    = AccessModifier "record" IDENTIFIER
+      "(" RecordParamList ")"
+      [ "{" { MethodDecl } "}" ]
+    ;
+
+DataClassDecl
+    = AccessModifier "data" "class" IDENTIFIER
+      "(" RecordParamList ")"
+      [ "{" { ClassMember } "}" ]
+    ;
+
+RecordParamList
+    = RecordParam { "," RecordParam }
+    ;
+
+RecordParam
+    = TypeRef IDENTIFIER [ "=" Expression ]
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  TRAITS                                                *)
+(* ═══════════════════════════════════════════════════════ *)
+
+TraitDecl
+    = AccessModifier "trait" IDENTIFIER
+      [ GenericParams ]
+      "{" { TraitMember } "}"
+    ;
+
+TraitMember
+    = InterfaceMethodDecl
+    | MethodDecl
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  FONCTIONS TOP-LEVEL                                   *)
+(* ═══════════════════════════════════════════════════════ *)
+
+FunctionDecl
+    = AccessModifier
+      [ "static" ]
+      [ "async"  ]
+      [ "pure"   ]
+      IDENTIFIER
+      [ GenericParams ]
+      "(" [ ParamList ] ")"
+      [ "->" TypeRef ]
+      ( Block | "=>" Expression )
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  PARAMÈTRES & TYPES                                    *)
+(* ═══════════════════════════════════════════════════════ *)
+
+ParamList
+    = Param { "," Param }
+    ;
+
+Param
+    = [ "weak" ]
+      IDENTIFIER ":" TypeRef
+      [ "=" Expression ]
+    ;
+
+GenericParams
+    = "<" GenericParam { "," GenericParam } ">"
+    ;
+
+GenericParam
+    = IDENTIFIER
+      [ ":" TypeRef { "," TypeRef } ]
+    ;
+
+TypeRef
+    = SimpleType
+    | GenericType
+    | NullableType
+    | FuncType
+    | TupleType
+    ;
+
+SimpleType
+    = QualifiedName
+    | PrimitiveType
+    ;
+
+PrimitiveType
+    = "int"    | "float"  | "double"
+    | "string" | "bool"   | "void"
+    | "byte"   | "char"
+    ;
+
+GenericType
+    = QualifiedName "<" TypeRef { "," TypeRef } ">"
+    ;
+
+NullableType
+    = TypeRef "?"
+    ;
+
+FuncType
+    = "Func" "<" [ TypeRef { "," TypeRef } "->" ] TypeRef ">"
+    ;
+
+TupleType
+    = "(" TypeRef { "," TypeRef } ")"
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  INSTRUCTIONS (Statements)                             *)
+(* ═══════════════════════════════════════════════════════ *)
+
+Block
+    = "{" { Statement } "}"
+    ;
+
+Statement
+    = VarDecl
+    | IfStmt
+    | MatchStmt
+    | WhileStmt
+    | ForStmt
+    | ForeachStmt
+    | ReturnStmt
+    | GuardStmt
+    | BreakStmt
+    | ContinueStmt
+    | TryCatchStmt
+    | GoStmt
+    | SelectStmt
+    | ExpressionStmt
+    | Block
+    ;
+
+VarDecl
+    = ( "let" | "var" )
+      [ "@" IDENTIFIER ]
+      IDENTIFIER
+      [ ":" TypeRef ]
+      [ "=" Expression ]
+    ;
+
+IfStmt
+    = "if" "(" Expression ")" Block
+      { "else" "if" "(" Expression ")" Block }
+      [ "else" Block ]
+    ;
+
+MatchStmt
+    = "match" Expression
+      "{" { MatchArm } "}"
+    ;
+
+MatchArm
+    = MatchPattern "=>" ( Expression | Block ) ","
+    ;
+
+MatchPattern
+    = "_"
+    | "null"
+    | Literal
+    | RangePattern
+    | TypePattern
+    | DestructurePattern
+    | GuardPattern
+    | QualifiedName [ "(" MatchPattern { "," MatchPattern } ")" ]
+    ;
+
+RangePattern
+    = Literal ".." Literal
+    ;
+
+TypePattern
+    = TypeRef IDENTIFIER
+    ;
+
+DestructurePattern
+    = QualifiedName "(" IDENTIFIER { "," IDENTIFIER } ")"
+    ;
+
+GuardPattern
+    = MatchPattern "if" Expression
+    ;
+
+WhileStmt
+    = "while" "(" Expression ")" Block
+    ;
+
+ForStmt
+    = "for" "(" VarDecl ";" Expression ";" Expression ")" Block
+    ;
+
+ForeachStmt
+    = "foreach" "(" [ "let" | "var" ] IDENTIFIER "in" Expression ")" Block
+    ;
+
+ReturnStmt
+    = "return" [ Expression ]
+    ;
+
+GuardStmt
+    = "guard" Expression "else" Block
+    ;
+
+BreakStmt    = "break"    ;
+ContinueStmt = "continue" ;
+
+TryCatchStmt
+    = "try" Block
+      "catch" "(" IDENTIFIER IDENTIFIER ")" Block
+    ;
+
+GoStmt
+    = "go" Expression
+    ;
+
+SelectStmt
+    = "select" "{"
+      { "case" Expression "=>" ( Expression | Block ) "," }
+      [ "case" "timeout" "(" Expression ")" "=>" Block ]
+      "}"
+    ;
+
+ExpressionStmt
+    = Expression
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  EXPRESSIONS                                           *)
+(* ═══════════════════════════════════════════════════════ *)
+
+Expression
+    = AssignmentExpr
+    ;
+
+AssignmentExpr
+    = PipelineExpr
+      [ ( "=" | "+=" | "-=" | "*=" | "/=" ) AssignmentExpr ]
+    ;
+
+PipelineExpr
+    = NullCoalExpr { "|>" NullCoalExpr }
+    ;
+
+NullCoalExpr
+    = OrExpr { "??" OrExpr }
+    ;
+
+OrExpr
+    = AndExpr { "||" AndExpr }
+    ;
+
+AndExpr
+    = EqualityExpr { "&&" EqualityExpr }
+    ;
+
+EqualityExpr
+    = RelationalExpr { ( "==" | "!=" ) RelationalExpr }
+    ;
+
+RelationalExpr
+    = RangeExpr { ( "<" | ">" | "<=" | ">=" | "is" ) RangeExpr }
+    ;
+
+RangeExpr
+    = AddExpr [ ".." AddExpr ]
+    ;
+
+AddExpr
+    = MulExpr { ( "+" | "-" ) MulExpr }
+    ;
+
+MulExpr
+    = UnaryExpr { ( "*" | "/" | "%" ) UnaryExpr }
+    ;
+
+UnaryExpr
+    = ( "!" | "-" | "+" ) UnaryExpr
+    | PowerExpr
+    ;
+
+PowerExpr
+    = PostfixExpr [ "^" UnaryExpr ]
+    ;
+
+PostfixExpr
+    = PrimaryExpr
+      { MemberAccess
+      | NullSafeAccess
+      | IndexAccess
+      | CallAccess
+      | WithExpr
+      }
+    ;
+
+MemberAccess
+    = "." IDENTIFIER
+    ;
+
+NullSafeAccess
+    = "?." IDENTIFIER
+    ;
+
+IndexAccess
+    = "[" Expression "]"
+    ;
+
+CallAccess
+    = "(" [ ArgList ] ")"
+    ;
+
+WithExpr
+    = "with" "{" IDENTIFIER "=" Expression
+      { "," IDENTIFIER "=" Expression } "}"
+    ;
+
+PrimaryExpr
+    = Literal
+    | IDENTIFIER
+    | "this"
+    | "null"
+    | "new" TypeRef "(" [ ArgList ] ")"
+    | "new" TypeRef "[" Expression "]"
+    | ListLiteral
+    | MapLiteral
+    | LambdaExpr
+    | TupleExpr
+    | AwaitExpr
+    | MatchExpr
+    | "(" Expression ")"
+    ;
+
+ArgList
+    = Arg { "," Arg }
+    ;
+
+Arg
+    = [ IDENTIFIER ":" ] Expression
+    ;
+
+ListLiteral
+    = "[" [ Expression { "," Expression } ] "]"
+    | "[" Expression "for" IDENTIFIER "in" Expression
+          [ "if" Expression ] "]"
+    ;
+
+MapLiteral
+    = "{" [ MapEntry { "," MapEntry } ] "}"
+    ;
+
+MapEntry
+    = Expression ":" Expression
+    ;
+
+LambdaExpr
+    = "(" [ ParamList ] ")" "=>" ( Expression | Block )
+    | IDENTIFIER "=>" ( Expression | Block )
+    ;
+
+TupleExpr
+    = "(" Expression { "," Expression } ")"
+    ;
+
+AwaitExpr
+    = "await" Expression
+    ;
+
+MatchExpr
+    = "match" Expression
+      "{" { MatchArm } "}"
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  LITTÉRAUX                                             *)
+(* ═══════════════════════════════════════════════════════ *)
+
+Literal
+    = INTEGER
+    | FLOAT
+    | STRING
+    | BOOL_TRUE
+    | BOOL_FALSE
+    | "null"
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  MODIFICATEURS D'ACCÈS                                 *)
+(* ═══════════════════════════════════════════════════════ *)
+
+AccessModifier
+    = "public"
+    | "private"
+    | "protected"
+    | "internal"
+    |  (* vide = internal par défaut *)
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  TERMINAUX                                             *)
+(* ═══════════════════════════════════════════════════════ *)
+
+IDENTIFIER
+    = LETTER { LETTER | DIGIT | "_" }
+    ;
+
+INTEGER
+    = DIGIT { DIGIT | "_" }
+    ;
+
+FLOAT
+    = DIGIT { DIGIT } "." DIGIT { DIGIT }
+      [ ( "e" | "E" ) [ "+" | "-" ] DIGIT { DIGIT } ]
+    ;
+
+STRING
+    = '"' { CHAR | Interpolation } '"'
+    | '"""' { ANY } '"""'
+    ;
+
+Interpolation
+    = "{" Expression "}"
+    ;
+
+LETTER = "a".."z" | "A".."Z" | "_" ;
+DIGIT  = "0".."9" ;
