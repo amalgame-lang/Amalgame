@@ -1,3 +1,10 @@
+// ─────────────────────────────────────────────────────
+//  CODE Programming Language
+//  Copyright (c) 2026 Bastien MOUGET
+//  Licensed under Apache 2.0
+//  https://github.com/NeitsabTeguom/CODE
+// ─────────────────────────────────────────────────────
+
 // CODE Language - Lexer
 // Copyright (c) 2024 NeitsabTeguom
 // Licensed under Apache 2.0

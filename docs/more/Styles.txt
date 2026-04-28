@@ -1,0 +1,9 @@
+Le langage CODE utilise le style Java/C# :
+
+// ✅ Type précède le nom (comme Java/C#)
+void Main(string[] args)
+int count = 0
+Player player
+
+// ❌ PAS le style Kotlin (nom: type)
+// main(args: Array<String>)
