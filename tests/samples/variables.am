@@ -1,0 +1,18 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        let x = 42
+        var y = 3.14
+        let name = "CODE"
+        let flag = true
+
+        Console.WriteLine("int: {x}")
+        Console.WriteLine("float: {y}")
+        Console.WriteLine("string: {name}")
+
+        var counter = 0
+        counter = counter + 1
+        Console.WriteLine("counter: {counter}")
+    }
+}

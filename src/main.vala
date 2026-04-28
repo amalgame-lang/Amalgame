@@ -1,15 +1,15 @@
 // ─────────────────────────────────────────────────────
-//  CODE Programming Language
+//  Amalgame Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
-//  https://github.com/NeitsabTeguom/CODE
+//  https://github.com/NeitsabTeguom/Amalgame
 // ─────────────────────────────────────────────────────
 
 // ═══════════════════════════════════════════════════════
-//  main.vala  -  Entry point of the CODE transpiler
+//  main.vala  -  Entry point of the Amalgame transpiler
 //
 //  Pipeline:
-//    source.code
+//    source.am
 //      → Lexer       → tokens
 //      → Parser      → AST
 //      → Resolver    → AST + SymbolTable
@@ -27,7 +27,7 @@ using CodeTranspiler.Generator;
 int main(string[] args) {
 
     if (args.length >= 2 && args[1] == "--version") {
-        stdout.printf("CODE Transpiler v0.2.0\n");
+        stdout.printf("Amalgame Transpiler v0.3.0\n");
         stdout.printf("  Lexer       : OK\n");
         stdout.printf("  AST         : OK\n");
         stdout.printf("  Parser      : OK\n");
@@ -38,12 +38,12 @@ int main(string[] args) {
     }
 
     if (args.length < 2) {
-        stderr.printf("Usage: codec <file.code> [-o output.c] [--no-typecheck]\n");
+        stderr.printf("Usage: amc <file.am> [-o output.c] [--no-typecheck]\n");
         return 1;
     }
 
     string inputFile   = args[1];
-    string outputFile  = inputFile.replace(".code", ".c");
+    string outputFile  = inputFile.replace(".am", ".c");
     bool   skipTC      = false;
 
     for (int i = 2; i < args.length; i++) {
@@ -81,7 +81,7 @@ int main(string[] args) {
     stdout.printf("Parser      OK\n");
 
     // ── AST DEBUG ─────────────────────────────────────
-    if (Environment.get_variable("CODE_DEBUG") == "1") {
+    if (Environment.get_variable("AMC_DEBUG") == "1") {
         var printer = new AstPrinter();
         stdout.printf("\n=== AST ===\n");
         stdout.printf("%s\n", printer.Print(parsed.Program));
@@ -104,12 +104,8 @@ int main(string[] args) {
         var tc      = new TypeChecker(resolved.Symbols, inputFile);
         var checked = tc.Check(parsed.Program);
 
-        // Type errors are warnings for now — we don't abort yet
-        // because the TypeChecker is still being completed.
-        // Change to `return 1` once coverage is solid.
         if (!checked.Success) {
             foreach (var err in checked.Errors) {
-                // Filter out [warning] prefix entries
                 if (err.Message.has_prefix("[warning]"))
                     stdout.printf("%s\n", err.ToString());
                 else
@@ -130,7 +126,7 @@ int main(string[] args) {
     }
 
     // ── C GENERATOR ───────────────────────────────────
-    var generator = new CGenerator(inputFile);
+    var generator = new CGenerator(inputFile, resolved.Symbols);
     var generated = generator.Generate(parsed.Program);
 
     if (!generated.Success) {
@@ -147,11 +143,11 @@ int main(string[] args) {
     stdout.printf("Generator   OK : %s\n", outputFile);
 
     // ── GCC ───────────────────────────────────────────
-    string exeFile   = outputFile.replace(".c", "");
-    string runtimeH  = GLib.Path.get_dirname(
-                           GLib.Path.get_dirname(
-                               GLib.Path.get_dirname(outputFile)))
-                       + "/src/transpiler/runtime";
+    string exeFile  = outputFile.replace(".c", "");
+    string runtimeH = GLib.Path.get_dirname(
+                          GLib.Path.get_dirname(
+                              GLib.Path.get_dirname(outputFile)))
+                      + "/src/transpiler/runtime";
 
     string gccCmd = "gcc -g3 -O0 -I%s %s -lgc -lm -o %s"
                     .printf(runtimeH, outputFile, exeFile);

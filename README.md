@@ -1,17 +1,17 @@
-# CODE Programming Language 🚀
+# Amalgame Programming Language 🚀
 
-> Un langage moderne, expressif et portable.
-> Transpile vers C → compilable partout via GCC.
+> The amalgam of the best of every language.
+> Transpiles to C → compilable everywhere via GCC.
 
 ---
 
 ## Vision
 
-CODE prend le meilleur de chaque langage :
+Amalgame takes the best from each language:
 
-| Fonctionnalité        | Inspiré de        |
+| Feature               | Inspired by       |
 |-----------------------|-------------------|
-| Inférence de types    | Kotlin / Swift    |
+| Type inference        | Kotlin / Swift    |
 | Null safety           | Kotlin / Swift    |
 | Pattern matching      | Rust / Haskell    |
 | Result / Option       | Rust              |
@@ -19,17 +19,17 @@ CODE prend le meilleur de chaque langage :
 | Extension methods     | Kotlin / C#       |
 | Pipeline `\|>`        | F# / Elixir       |
 | Async / Await         | C# / JS           |
-| GC par défaut         | Go / C#           |
-| Décorateurs mémoire   | Nim / D           |
+| GC by default         | Go / C#           |
+| Memory decorators     | Nim / D           |
 
 ---
 
-## Exemple
+## Example
 
-```java
+```amalgame
 namespace MyApp
 
-import Code.IO
+import Amalgame.IO
 
 public class Program {
 
@@ -53,7 +53,7 @@ public class Program {
 }
 ```
 
-Sortie :
+Output:
 ```
 ⚔️  Merlin (Lvl 38)
 ⚔️  Arthus (Lvl 42)
@@ -64,39 +64,42 @@ Sortie :
 ## Architecture
 
 ```
-.code source
+source.am
     │
     ▼
-[ Lexer ]  →  Tokens
+[ Lexer ]       →  Tokens
     │
     ▼
-[ Parser ]  →  AST
+[ Parser ]      →  AST
     │
     ▼
-[ Resolver + TypeChecker ]  →  AST annoté
+[ Resolver ]    →  AST + SymbolTable
     │
     ▼
-[ Générateur C ]  →  .c
+[ TypeChecker ] →  AST annotated
     │
     ▼
-[ GCC ]  →  Exécutable natif
+[ C Generator ] →  .c file
+    │
+    ▼
+[ GCC ]         →  Native executable
 ```
 
 ---
 
-## Outils
+## Tools
 
-| Outil       | Description                    |
+| Tool        | Description                    |
 |-------------|--------------------------------|
-| `codec`     | Transpileur principal          |
-| `codec-lsp` | Serveur LSP (éditeurs)         |
-| `codec-dap` | Debug Adapter (breakpoints)    |
+| `amc`       | Main transpiler                |
+| `amc-lsp`   | LSP server (editors)           |
+| `amc-dap`   | Debug Adapter (breakpoints)    |
 
 ---
 
-## Éditeurs Supportés
+## Supported Editors
 
-Via LSP + DAP :
+Via LSP + DAP:
 - ✅ VSCode
 - ✅ NeoVim
 - ✅ Emacs
@@ -106,19 +109,37 @@ Via LSP + DAP :
 
 ---
 
-## Compilation
+## Build
 
 ```bash
-# Dépendances
+# Dependencies
 sudo apt install valac libglib2.0-dev libgee-0.8-dev \
                  meson ninja-build libgc-dev
 
-# Compiler
+# Build
 meson setup build
 cd build && ninja
 
-# Tester
-./codec --version
+# Test
+./amc --version
+```
+
+---
+
+## Usage
+
+```bash
+# Compile an Amalgame source file
+amc hello.am
+
+# Specify output
+amc hello.am -o hello.c
+
+# Debug — show AST
+AMC_DEBUG=1 amc hello.am
+
+# Skip type checking
+amc hello.am --no-typecheck
 ```
 
 ---
@@ -132,138 +153,16 @@ cd build && ninja
 ✅ AST (complete nodes)
 ✅ Parser
 ✅ Resolver (name resolution & scope checking)
-🔜 Type Checker
+✅ TypeChecker (type inference & validation)
 ✅ C Generator
+✅ Test suite (7/7)
 🔜 Standard Library
 🔜 LSP / DAP
 ```
 
-# Changelog CODE
-
-Format : [Keep a Changelog](https://keepachangelog.com)
-Versions : [Semantic Versioning](https://semver.org)
-
 ---
 
-## [0.1.0] - 2024-01-XX
-
-### 🎉 MILESTONE : Hello World fonctionne !
-
-Premier programme CODE transpilé et exécuté avec succès.
-
-### ✅ Ajouté
-
-#### Lexer (src/core/lexer/)
-- `token.vala` : définition complète des TokenType
-  - Littéraux : INTEGER, FLOAT, STRING, BOOL, NULL
-  - Mots-clés : class, interface, enum, let, var...
-  - Opérateurs : +, -, *, /, |>, ??, ?., .., ...
-  - Délimiteurs : {, }, (, ), [, ], @, ...
-- `lexer.vala` : lexer complet
-  - Détection correcte IDENTIFIER vs INTEGER
-  - Helpers IsLetter(), IsDigit(), IsAlphaNum()
-  - Strings simples et multi-lignes
-  - Commentaires // et /* */
-  - Suivi ligne/colonne
-
-#### AST (src/core/parser/)
-- `ast.vala` : tous les nœuds AST
-  - Programme : ProgramNode, NamespaceNode, ImportNode
-  - Déclarations : ClassDeclNode, MethodDeclNode,
-    FieldDeclNode, PropertyDeclNode, EnumDeclNode,
-    RecordDeclNode, DataClassDeclNode, ParamNode
-  - Instructions : BlockNode, VarDeclNode, IfNode,
-    MatchNode, WhileNode, ForNode, ForeachNode,
-    ReturnNode, GuardNode, TryCatchNode, GoStmtNode
-  - Expressions : BinaryExprNode, UnaryExprNode,
-    CallExprNode, MemberAccessNode, NewExprNode,
-    LambdaExprNode, LiteralNode, IdentifierNode...
-  - Types : SimpleTypeNode, GenericTypeNode,
-    FuncTypeNode, TupleTypeNode
-- `ast_visitor.vala` : visitor pattern complet
-- `ast_printer.vala` : debug printer (arbre textuel)
-
-#### Parser (src/core/parser/parser.vala)
-- Recursive descent parser complet
-- Style Java/C# : type nom (pas Kotlin nom: type)
-- Gestion des tableaux : string[]
-- Mots-clés acceptés comme noms de types
-- Décorateurs @memory, @pure, @realtime...
-- Pattern matching complet
-- Expressions avec précédence correcte
-- Messages d erreur clairs avec position
-
-#### Générateur C (src/transpiler/generator/)
-- `c_generator.vala` : génération C depuis AST
-  - Classes → structs C + constructeurs
-  - Méthodes → fonctions C
-  - Variables → déclarations C typées
-  - String interpolation → code_string_format()
-  - Console.WriteLine → printf natif
-  - Directives #line pour debug GDB
-  - Forward declarations automatiques
-
-#### Runtime (src/transpiler/runtime/_runtime.h)
-- Boehm GC intégré
-- Types : i64, f64, f32, code_string, code_bool
-- Console : Console_WriteLine, Console_Write
-- String : format, concat, equals, contains
-- Math : PI, Abs, Sqrt, Pow, Max, Min
-- Collections : CodeList (liste générique)
-- Result<T> et Option<T>
-
-#### Build System
-- `meson.build` : compatible Meson 0.56 + Vala 0.48
-- `compile.sh` : script de build automatisé
-- CI GitHub Actions : build automatique
-
-#### Tests
-- `tests/samples/hello.code` : Hello World ✅
-
-#### Documentation
-- `docs/language/grammar.ebnf` : grammaire formelle
-- `docs/transpiler/lexer.md`
-- `docs/transpiler/tokens.md`
-- `docs/transpiler/ast.md`
-- `README.md` : guide complet
-
-### 🔧 Corrections
-- Fix : isalpha()/isdigit() → IsLetter()/IsDigit()
-  (bug : identifiants tokenisés comme INTEGER)
-- Fix : syntaxe paramètres Java/C# (type nom)
-- Fix : tableaux string[] → code_string*
-- Fix : forward declarations méthodes statiques
-- Fix : Vala 0.48 : => remplacé par {} pour override
-- Fix : TokenType ambigu GLib vs CodeTranspiler
-- Fix : ParseArgList dupliqué → ParseNewArgList
-- Fix : base mot réservé → baseName
-- Fix : Posix.system → GLib.Process.spawn_sync
-
-### 🔜 À venir (v0.2.0)
-- Resolver : résolution des noms et scopes
-- TypeChecker : vérification et inférence des types
-- Librairie Standard : Code.IO, Code.Net...
-- LSP Server : autocomplétion, erreurs temps réel
-- DAP Server : debug avec breakpoints visuels
-
----
-
-## [Unreleased]
-
-### 🔜 En cours
-- Tests unitaires du Lexer et Parser
-- Exemple Guild App complet
-- Resolver / TypeChecker
-
----
-
-## Roadmap
-
-Voir [docs/changelog/roadmap.md](docs/changelog/roadmap.md)
-
----
-
-## Licence
+## License
 
 Licensed under Apache 2.0
 Copyright (c) 2026 Bastien MOUGET
@@ -271,7 +170,7 @@ Copyright (c) 2026 Bastien MOUGET
 
 ---
 
-## Auteur
+## Author
 
 **NeitsabTeguom**
-GitHub : [@NeitsabTeguom](https://github.com/NeitsabTeguom)
+GitHub: [@NeitsabTeguom](https://github.com/NeitsabTeguom)

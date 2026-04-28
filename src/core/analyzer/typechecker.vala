@@ -44,8 +44,6 @@ namespace CodeTranspiler.Analyzer {
 
     using CodeTranspiler.Ast;
     using CodeTranspiler.Lexer;
-
-
     // ═══════════════════════════════════════════════════
     //  Type error
     // ═══════════════════════════════════════════════════
@@ -83,8 +81,6 @@ namespace CodeTranspiler.Analyzer {
                    .printf(Filename, Line, Column, Message);
         }
     }
-
-
     // ═══════════════════════════════════════════════════
     //  Type check result
     // ═══════════════════════════════════════════════════
@@ -99,8 +95,6 @@ namespace CodeTranspiler.Analyzer {
             Errors = new Gee.ArrayList<TypeError>();
         }
     }
-
-
     // ═══════════════════════════════════════════════════
     //  TypeChecker
     // ═══════════════════════════════════════════════════
@@ -132,8 +126,6 @@ namespace CodeTranspiler.Analyzer {
 
         /** Whether we are inside an async method. */
         private bool    _inAsync;
-
-
         // ── Constructor ────────────────────────────────
 
         public TypeChecker(SymbolTable table,
@@ -146,8 +138,6 @@ namespace CodeTranspiler.Analyzer {
             _currentClass      = null;
             _inAsync           = false;
         }
-
-
         // ═══════════════════════════════════════════════
         //  Public entry point
         // ═══════════════════════════════════════════════
@@ -162,8 +152,6 @@ namespace CodeTranspiler.Analyzer {
             result.Success = (_errors.size == 0);
             return result;
         }
-
-
         // ═══════════════════════════════════════════════
         //  Helpers — type inference storage
         // ═══════════════════════════════════════════════
@@ -180,8 +168,6 @@ namespace CodeTranspiler.Analyzer {
         private string _GetType(AstNode node) {
             return _exprTypes.has_key(node) ? _exprTypes[node] : "?";
         }
-
-
         // ═══════════════════════════════════════════════
         //  Helpers — type compatibility
         // ═══════════════════════════════════════════════
@@ -324,8 +310,6 @@ namespace CodeTranspiler.Analyzer {
         public override void VisitNamespace(NamespaceNode n) {}
         public override void VisitImport(ImportNode n) {}
         public override void VisitDecorator(DecoratorNode n) {}
-
-
         // ═══════════════════════════════════════════════
         //  Visitor — Declarations
         // ═══════════════════════════════════════════════
@@ -333,30 +317,26 @@ namespace CodeTranspiler.Analyzer {
         public override void VisitClassDecl(ClassDeclNode n) {
             string? prev  = _currentClass;
             _currentClass = n.Name;
-            _table.PushScope("class:%s".printf(n.Name));
             foreach (var m in n.Members) m.Accept(this);
-            _table.PopScope();
+            
             _currentClass = prev;
         }
 
         public override void VisitInterfaceDecl(InterfaceDeclNode n) {
-            _table.PushScope("interface:%s".printf(n.Name));
             foreach (var m in n.Members) m.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitEnumDecl(EnumDeclNode n) {
-            _table.PushScope("enum:%s".printf(n.Name));
             foreach (var m in n.Methods) m.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitEnumMember(EnumMemberNode n) {}
 
         public override void VisitRecordDecl(RecordDeclNode n) {
-            _table.PushScope("record:%s".printf(n.Name));
             foreach (var m in n.Methods) m.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitRecordParam(RecordParamNode n) {}
@@ -364,9 +344,8 @@ namespace CodeTranspiler.Analyzer {
         public override void VisitDataClassDecl(DataClassDeclNode n) {
             string? prev  = _currentClass;
             _currentClass = n.Name;
-            _table.PushScope("data:%s".printf(n.Name));
             foreach (var m in n.Members) m.Accept(this);
-            _table.PopScope();
+            
             _currentClass = prev;
         }
 
@@ -407,6 +386,9 @@ namespace CodeTranspiler.Analyzer {
         }
 
         public override void VisitMethodDecl(MethodDeclNode n) {
+            // Always read return type directly from the AST node —
+            // don't rely on Symbol.TypeKey which may not be set yet
+            // when the class scope is not active.
             string retType = (n.ReturnType != null)
                              ? _TypeKey(n.ReturnType) : "void";
 
@@ -414,17 +396,15 @@ namespace CodeTranspiler.Analyzer {
             if (n.IsAsync && !retType.has_prefix("Task"))
                 retType = "Task<%s>".printf(retType);
 
-            // Annotate the method symbol
+            // Annotate the method symbol if found
             var sym = _table.Lookup(n.Name);
             if (sym != null && sym.TypeKey == "")
                 sym.TypeKey = retType;
 
-            string prevReturn = _currentReturnType;
-            bool   prevAsync  = _inAsync;
-            _currentReturnType = retType;
-            _inAsync           = n.IsAsync;
-
-            _table.PushScope("method:%s".printf(n.Name));
+            string prevReturn      = _currentReturnType;
+            bool   prevAsync       = _inAsync;
+            _currentReturnType     = retType;
+            _inAsync               = n.IsAsync;
 
             foreach (var p in n.Params) p.Accept(this);
 
@@ -445,7 +425,6 @@ namespace CodeTranspiler.Analyzer {
                 }
             }
 
-            _table.PopScope();
             _currentReturnType = prevReturn;
             _inAsync           = prevAsync;
         }
@@ -454,10 +433,9 @@ namespace CodeTranspiler.Analyzer {
             string prev        = _currentReturnType;
             _currentReturnType = "void";
 
-            _table.PushScope("constructor:%s".printf(_currentClass ?? "?"));
             foreach (var p in n.Params) p.Accept(this);
             n.Body.Accept(this);
-            _table.PopScope();
+            
 
             _currentReturnType = prev;
         }
@@ -477,16 +455,14 @@ namespace CodeTranspiler.Analyzer {
                            n.Default);
             }
         }
-
-
         // ═══════════════════════════════════════════════
         //  Visitor — Statements
         // ═══════════════════════════════════════════════
 
         public override void VisitBlock(BlockNode n) {
-            _table.PushScope("block");
+            
             foreach (var s in n.Statements) s.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitVarDecl(VarDeclNode n) {
@@ -540,13 +516,13 @@ namespace CodeTranspiler.Analyzer {
         }
 
         public override void VisitFor(ForNode n) {
-            _table.PushScope("for");
+            
             n.Init.Accept(this);
             n.Condition.Accept(this);
             _CheckBool(n.Condition, "for condition");
             n.Step.Accept(this);
             n.Body.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitForeach(ForeachNode n) {
@@ -554,13 +530,11 @@ namespace CodeTranspiler.Analyzer {
             // Infer element type from collection type
             string colType  = _GetType(n.Collection);
             string elemType = _CollectionElementType(colType);
-
-            _table.PushScope("foreach");
             var sym = _table.Lookup(n.VarName);
             if (sym != null && sym.TypeKey == "")
                 sym.TypeKey = elemType;
             n.Body.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitReturn(ReturnNode n) {
@@ -596,11 +570,11 @@ namespace CodeTranspiler.Analyzer {
 
         public override void VisitTryCatch(TryCatchNode n) {
             n.TryBlock.Accept(this);
-            _table.PushScope("catch");
+            
             var sym = _table.Lookup(n.ErrorName);
             if (sym != null) sym.TypeKey = n.ErrorType;
             n.CatchBlock.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitMatch(MatchNode n) {
@@ -613,7 +587,7 @@ namespace CodeTranspiler.Analyzer {
 
         private void _VisitMatchArmTyped(MatchArmNode arm,
                                           string subjectType) {
-            _table.PushScope("match-arm");
+            
             arm.Pattern.Accept(this);
 
             // Bind pattern variable with subject type when TYPE pattern
@@ -628,15 +602,15 @@ namespace CodeTranspiler.Analyzer {
             }
 
             arm.Body.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitMatchArm(MatchArmNode n) {
             // Called only when not going through _VisitMatchArmTyped
-            _table.PushScope("match-arm");
+            
             n.Pattern.Accept(this);
             n.Body.Accept(this);
-            _table.PopScope();
+            
         }
 
         public override void VisitMatchPattern(MatchPatternNode n) {
@@ -652,8 +626,6 @@ namespace CodeTranspiler.Analyzer {
         public override void VisitGoStmt(GoStmtNode n) {
             n.Expression.Accept(this);
         }
-
-
         // ═══════════════════════════════════════════════
         //  Visitor — Expressions
         // ═══════════════════════════════════════════════
@@ -820,11 +792,11 @@ namespace CodeTranspiler.Analyzer {
         }
 
         public override void VisitLambdaExpr(LambdaExprNode n) {
-            _table.PushScope("lambda");
+            
             foreach (var p in n.Params) p.Accept(this);
             n.Body.Accept(this);
             string bodyType = _GetType(n.Body);
-            _table.PopScope();
+            
 
             // Build a rough Func<…,ReturnType> key
             var sb = new StringBuilder("Func<");
@@ -871,7 +843,7 @@ namespace CodeTranspiler.Analyzer {
 
         public override void VisitListLiteral(ListLiteralNode n) {
             if (n.IsComprehension) {
-                _table.PushScope("list-comprehension");
+                
                 if (n.CompSource != null) n.CompSource.Accept(this);
                 if (n.CompFilter != null) {
                     n.CompFilter.Accept(this);
@@ -880,7 +852,7 @@ namespace CodeTranspiler.Analyzer {
                 if (n.CompExpr != null)   n.CompExpr.Accept(this);
                 string elemType = (n.CompExpr != null)
                                   ? _GetType(n.CompExpr) : "?";
-                _table.PopScope();
+                
                 _SetType(n, "List<%s>".printf(elemType));
             } else {
                 string elemType = "?";
@@ -943,8 +915,6 @@ namespace CodeTranspiler.Analyzer {
                     break;
             }
         }
-
-
         // ═══════════════════════════════════════════════
         //  Visitor — Types (no-ops at this pass)
         // ═══════════════════════════════════════════════
@@ -953,8 +923,6 @@ namespace CodeTranspiler.Analyzer {
         public override void VisitGenericType (GenericTypeNode n) {}
         public override void VisitFuncType    (FuncTypeNode    n) {}
         public override void VisitTupleType   (TupleTypeNode   n) {}
-
-
         // ═══════════════════════════════════════════════
         //  Private helpers — type resolution
         // ═══════════════════════════════════════════════

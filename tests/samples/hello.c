@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════
  * Généré par CODE Transpiler v0.1.0
- * Source : ./tests/samples/hello.code
+ * Source : ./tests/samples/hello.am
  * NE PAS MODIFIER MANUELLEMENT
  * ═══════════════════════════════════
  */
@@ -16,7 +16,7 @@ static void Program_Main();
 
 
 
-#line 5 "./tests/samples/hello.code"
+#line 5 "./tests/samples/hello.am"
 /* class Program */
 struct _Program {
 };
@@ -27,13 +27,13 @@ Program* Program_new() {
 }
 
 
-#line 6 "./tests/samples/hello.code"
+#line 6 "./tests/samples/hello.am"
 static void Program_Main(int argc, char** argv) {
 
-#line 7 "./tests/samples/hello.code"
+#line 7 "./tests/samples/hello.am"
     code_string name = "World";
 
-#line 8 "./tests/samples/hello.code"
+#line 8 "./tests/samples/hello.am"
     Console_WriteLine(code_string_format("Hello %s !", name));
 }
 

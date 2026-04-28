@@ -1,0 +1,32 @@
+namespace Tests
+
+public class Animal {
+    public Name: string
+    public Age: int
+
+    public Animal(string name, int age) {
+        this.Name = name
+        this.Age  = age
+    }
+
+    public void Speak() {
+        Console.WriteLine("{this.Name} says hello!")
+    }
+
+    public string Describe() {
+        return "{this.Name} is {this.Age} years old"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let cat = new Animal("Cat", 3)
+        let dog = new Animal("Dog", 5)
+
+        cat.Speak()
+        dog.Speak()
+
+        let desc = cat.Describe()
+        Console.WriteLine(desc)
+    }
+}

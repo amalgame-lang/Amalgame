@@ -1,0 +1,35 @@
+namespace Tests
+
+public class MathHelper {
+    public static int Add(int a, int b) {
+        return a + b
+    }
+
+    public static int Max(int a, int b) {
+        if (a > b) {
+            return a
+        } else {
+            return b
+        }
+    }
+
+    public static int Factorial(int n) {
+        if (n <= 1) {
+            return 1
+        }
+        return n * MathHelper.Factorial(n - 1)
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let sum = MathHelper.Add(21, 21)
+        Console.WriteLine("21 + 21 = {sum}")
+
+        let biggest = MathHelper.Max(42, 17)
+        Console.WriteLine("max(42, 17) = {biggest}")
+
+        let fact = MathHelper.Factorial(5)
+        Console.WriteLine("5! = {fact}")
+    }
+}

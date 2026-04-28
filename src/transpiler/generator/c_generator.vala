@@ -52,17 +52,28 @@ namespace CodeTranspiler.Generator {
         private string        _className;   // classe courante
         private bool          _hasErrors;
         private StringBuilder _errors;
+        // Symbol table from the Resolver/TypeChecker
+        private CodeTranspiler.Analyzer.SymbolTable? _symbolTable;
+        // Local C type map: varName → cType, built during generation
+        // Used to wrap interpolated variables with the right converter
+        private Gee.HashMap<string, string> _localCTypes;
+        // Program AST reference for method return type lookup
+        private ProgramNode? _program;
 
 
-        public CGenerator(string sourceFile) {
-            _sourceFile = sourceFile;
-            _out        = new StringBuilder();
-            _errors     = new StringBuilder();
-            _indent     = 0;
-            _inClass    = false;
-            _className  = "";
-            _hasErrors  = false;
-            _sourceLine = 0;
+        public CGenerator(string sourceFile,
+                          CodeTranspiler.Analyzer.SymbolTable? symbolTable = null) {
+            _sourceFile  = sourceFile;
+            _symbolTable = symbolTable;
+            _out         = new StringBuilder();
+            _errors      = new StringBuilder();
+            _localCTypes = new Gee.HashMap<string, string>();
+            _indent      = 0;
+            _inClass     = false;
+            _className   = "";
+            _hasErrors   = false;
+            _program     = null;
+            _sourceLine  = 0;
         }
 
 
@@ -72,6 +83,7 @@ namespace CodeTranspiler.Generator {
 
         public GeneratorResult Generate(ProgramNode ast) {
             var result = new GeneratorResult();
+            _program   = ast;
 
             // En-tête du fichier C généré
             EmitHeader();
@@ -219,8 +231,20 @@ namespace CodeTranspiler.Generator {
             _indent--;
             Emit("};\n\n");
 
-            // Constructeur par défaut
-            EmitDefaultConstructor(n);
+            // Default constructor — only if no explicit constructor exists.
+            // An explicit constructor is a MethodDeclNode whose name
+            // matches the class name (parser maps it to MethodDeclNode).
+            bool hasExplicitCtor = false;
+            foreach (var member in n.Members) {
+                if (member is MethodDeclNode) {
+                    var md = (MethodDeclNode) member;
+                    if (md.Name == n.Name) { hasExplicitCtor = true; break; }
+                } else if (member is ConstructorDeclNode) {
+                    hasExplicitCtor = true; break;
+                }
+            }
+            if (!hasExplicitCtor)
+                EmitDefaultConstructor(n);
 
             // Méthodes
             foreach (var member in n.Members) {
@@ -287,7 +311,23 @@ namespace CodeTranspiler.Generator {
                                  MethodDeclNode n) {
             EmitLine(n.Line);
 
-            // Type de retour
+            // A MethodDeclNode whose name matches the class name
+            // is actually a constructor (parser limitation).
+            if (n.Name == className) {
+                Emit("%s* %s_new(".printf(className, className));
+                EmitParamList(n.Params);
+                Emit(") {\n");
+                _indent++;
+                EmitI("%s* self = (%s*) code_alloc(sizeof(%s));\n"
+                      .printf(className, className, className));
+                if (n.Body != null) n.Body.Accept(this);
+                EmitI("return self;\n");
+                _indent--;
+                Emit("}\n\n");
+                return;
+            }
+
+            // Return type
             string retType = n.ReturnType != null
                 ? TypeToC(n.ReturnType) : "void";
 
@@ -307,7 +347,7 @@ namespace CodeTranspiler.Generator {
                 Emit(") ");
             }
 
-            // Corps
+            // Body
             if (n.Body != null) {
                 if (n.Body is BlockNode) {
                     n.Body.Accept(this);
@@ -468,6 +508,9 @@ namespace CodeTranspiler.Generator {
                 cType = InferCType(n.Initial);
             }
 
+            // Register for interpolation type lookup
+            _localCTypes[n.Name] = cType;
+
             Emit("%s %s".printf(cType, n.Name));
             if (n.Initial != null) {
                 Emit(" = ");
@@ -578,11 +621,14 @@ namespace CodeTranspiler.Generator {
 
         public override void VisitFor(ForNode n) {
             Emit("for (");
-            // Init sans le ; final (déjà dans VarDecl)
-            string cType = "void*";
+            string cType = "i64";  // default for loop counter
             if (n.Init.VarType != null) {
                 cType = TypeToC(n.Init.VarType);
+            } else if (n.Init.Initial != null) {
+                cType = InferCType(n.Init.Initial);
             }
+            // Register for interpolation
+            _localCTypes[n.Init.Name] = cType;
             Emit("%s %s = ".printf(cType, n.Init.Name));
             if (n.Init.Initial != null) {
                 n.Init.Initial.Accept(this);
@@ -771,18 +817,36 @@ namespace CodeTranspiler.Generator {
             Gee.ArrayList<AstNode>        args,
             Gee.HashMap<string, AstNode>  namedArgs) {
 
-            // Déterminer le nom de la fonction C
-            // obj.Method(args) → TypeName_Method(obj, args)
-            string funcName = "";
+            // Determine the C function name and call style.
+            string funcName   = "";
+            bool   isStaticCall = false;
 
-            if (ma.Target is IdentifierNode) {
+            if (ma.Target is ThisNode) {
+                funcName = "%s_%s".printf(_className, ma.MemberName);
+
+            } else if (ma.Target is IdentifierNode) {
                 var id = (IdentifierNode) ma.Target;
-                funcName = "%s_%s".printf(id.Name, ma.MemberName);
-            } else if (ma.Target is ThisNode) {
-                funcName = "%s_%s".printf(
-                    _className, ma.MemberName);
+
+                if (id.Name.length > 0 && id.Name[0].isupper()) {
+                    // Uppercase → class/type name → static call
+                    funcName    = "%s_%s".printf(id.Name, ma.MemberName);
+                    isStaticCall = true;
+                } else {
+                    // Lowercase → instance variable
+                    // Resolve the class name from _localCTypes
+                    // e.g. "cat" → "Animal*" → "Animal"
+                    string className = id.Name;
+                    if (_localCTypes.has_key(id.Name)) {
+                        string ct = _localCTypes[id.Name];
+                        // Strip "*" suffix to get class name
+                        if (ct.has_suffix("*"))
+                            className = ct.substring(0, ct.length - 1);
+                    }
+                    funcName = "%s_%s".printf(className, ma.MemberName);
+                }
+
             } else {
-                // Expression complexe
+                // Complex expression — emit directly
                 ma.Target.Accept(this);
                 Emit("->%s".printf(ma.MemberName));
                 Emit("(");
@@ -797,22 +861,34 @@ namespace CodeTranspiler.Generator {
 
             Emit("%s(".printf(funcName));
 
-            // this → self comme premier argument
             if (ma.Target is ThisNode) {
+                // this.Method(args) → ClassName_Method(self, args)
                 Emit("self");
+                for (int i = 0; i < args.size; i++) {
+                    Emit(", ");
+                    args[i].Accept(this);
+                }
+            } else if (isStaticCall) {
+                // ClassName.Method(args) → ClassName_Method(args)
+                for (int i = 0; i < args.size; i++) {
+                    if (i > 0) Emit(", ");
+                    args[i].Accept(this);
+                }
+                foreach (var kv in namedArgs.entries) {
+                    if (args.size > 0) Emit(", ");
+                    kv.value.Accept(this);
+                }
             } else {
+                // obj.Method(args) → ClassName_Method(obj, args)
                 ma.Target.Accept(this);
-            }
-
-            for (int i = 0; i < args.size; i++) {
-                Emit(", ");
-                args[i].Accept(this);
-            }
-
-            // Arguments nommés
-            foreach (var kv in namedArgs.entries) {
-                Emit(", ");
-                kv.value.Accept(this);
+                for (int i = 0; i < args.size; i++) {
+                    Emit(", ");
+                    args[i].Accept(this);
+                }
+                foreach (var kv in namedArgs.entries) {
+                    Emit(", ");
+                    kv.value.Accept(this);
+                }
             }
 
             Emit(")");
@@ -841,23 +917,19 @@ namespace CodeTranspiler.Generator {
                 return;
             }
 
-            // new MyClass(args) → MyClass_new(args)
-            // ou MyClass_create(args)
-            if (n.Arguments.size == 0 &&
-                n.NamedArgs.size == 0) {
-                Emit("%s_new()".printf(typeName));
-            } else {
-                Emit("%s_create(".printf(typeName));
-                for (int i = 0; i < n.Arguments.size; i++) {
-                    if (i > 0) Emit(", ");
-                    n.Arguments[i].Accept(this);
-                }
-                foreach (var kv in n.NamedArgs.entries) {
-                    Emit(", ");
-                    kv.value.Accept(this);
-                }
-                Emit(")");
+            // new MyClass()        → MyClass_new()
+            // new MyClass(a, b)    → MyClass_new(a, b)
+            // Records and data classes always generate _new(params)
+            Emit("%s_new(".printf(typeName));
+            for (int i = 0; i < n.Arguments.size; i++) {
+                if (i > 0) Emit(", ");
+                n.Arguments[i].Accept(this);
             }
+            foreach (var kv in n.NamedArgs.entries) {
+                if (n.Arguments.size > 0) Emit(", ");
+                kv.value.Accept(this);
+            }
+            Emit(")");
         }
 
         public override void VisitLambdaExpr(LambdaExprNode n) {
@@ -1050,6 +1122,7 @@ namespace CodeTranspiler.Generator {
                     case LiteralKind.INTEGER: return "i64";
                     case LiteralKind.FLOAT:   return "f64";
                     case LiteralKind.STRING:  return "code_string";
+                    case LiteralKind.INTERPOLATED_STRING: return "code_string";
                     case LiteralKind.BOOL:    return "code_bool";
                     default: return "void*";
                 }
@@ -1058,15 +1131,77 @@ namespace CodeTranspiler.Generator {
                 var n = (NewExprNode) expr;
                 return TypeToC(n.ObjectType);
             }
+            // Call expression: look up the method return type
+            if (expr is CallExprNode) {
+                var call = (CallExprNode) expr;
+                if (call.Callee is MemberAccessNode) {
+                    var ma = (MemberAccessNode) call.Callee;
+                    // Find the method in known classes
+                    string methodType = _LookupMethodReturnType(
+                        ma.Target, ma.MemberName);
+                    if (methodType != "void*") return methodType;
+                }
+            }
+            // Binary expression: infer from operands
+            if (expr is BinaryExprNode) {
+                var bin = (BinaryExprNode) expr;
+                string lt = InferCType(bin.Left);
+                string rt = InferCType(bin.Right);
+                if (lt == "f64" || rt == "f64") return "f64";
+                if (lt == "i64" || rt == "i64") return "i64";
+                if (lt == "code_string" || rt == "code_string")
+                    return "code_string";
+                return lt;
+            }
+            // Identifier: look up in local C types map
+            if (expr is IdentifierNode) {
+                var id = (IdentifierNode) expr;
+                if (_localCTypes.has_key(id.Name))
+                    return _localCTypes[id.Name];
+            }
+            return "void*";
+        }
+
+        /**
+         * Look up the C return type of a method call.
+         * Walks the known class declarations to find the method.
+         */
+        private string _LookupMethodReturnType(AstNode target,
+                                                string memberName) {
+            string className = "";
+            if (target is IdentifierNode)
+                className = ((IdentifierNode) target).Name;
+            else
+                return "void*";
+
+            // Search program declarations for the class
+            if (_program != null) {
+                foreach (var decl in _program.Declarations) {
+                    if (decl is ClassDeclNode) {
+                        var cls = (ClassDeclNode) decl;
+                        if (cls.Name != className) continue;
+                        foreach (var m in cls.Members) {
+                            if (m is MethodDeclNode) {
+                                var md = (MethodDeclNode) m;
+                                if (md.Name == memberName &&
+                                    md.ReturnType != null)
+                                    return TypeToC(md.ReturnType);
+                            }
+                        }
+                    }
+                }
+            }
             return "void*";
         }
 
         /**
          * Gère l'interpolation de strings.
-         * "Hello {name} !" → code_string_format("Hello %s !", name)
+         * "Hello {name} !"   → code_string_format("Hello %s !", name)
+         * "val: {x}"         → code_string_format("val: %s", code_int_to_string(x))
+         * "pt: {p.X}"        → code_string_format("pt: %s", code_float_to_string(p->X))
          */
         private void EmitInterpolatedString(string raw) {
-            // Chercher des {expr} dans la string
+            // No interpolation — emit plain string
             if (!raw.contains("{")) {
                 Emit("\"%s\"".printf(
                     raw.replace("\\", "\\\\")
@@ -1074,7 +1209,7 @@ namespace CodeTranspiler.Generator {
                 return;
             }
 
-            // Parser les segments
+            // Parse segments
             var fmt  = new StringBuilder();
             var args = new Gee.ArrayList<string>();
             int i    = 0;
@@ -1084,7 +1219,7 @@ namespace CodeTranspiler.Generator {
 
                 if (c == '{' && i + 1 < raw.length
                     && raw[i+1] != '{') {
-                    // Début d'interpolation
+                    // Start of interpolation
                     int start = i + 1;
                     int end   = raw.index_of("}", start);
                     if (end < 0) {
@@ -1110,10 +1245,152 @@ namespace CodeTranspiler.Generator {
             } else {
                 Emit("code_string_format(\"%s\"".printf(fmt.str));
                 foreach (var arg in args) {
-                    Emit(", %s".printf(arg));
+                    // Convert member access: p.X → p->X
+                    string cArg = _InterpolArgToC(arg);
+                    // Wrap non-string types with conversion helpers
+                    string wrapped = _WrapInterpolArg(cArg, arg);
+                    Emit(", %s".printf(wrapped));
                 }
                 Emit(")");
             }
+        }
+
+        /**
+         * Convert a CODE expression string inside interpolation
+         * to its C equivalent.
+         *   "p.X"         → "p->X"
+         *   "this.Name"   → "self->Name"
+         *   "counter"     → "counter"
+         */
+        private string _InterpolArgToC(string expr) {
+            // Handle member access chains: a.b.c → a->b->c
+            if (expr.contains(".")) {
+                string[] parts = expr.split(".");
+                var sb = new StringBuilder();
+                for (int j = 0; j < parts.length; j++) {
+                    string part = parts[j].strip();
+                    if (part == "this") part = "self";
+                    if (j == 0)
+                        sb.append(part);
+                    else
+                        sb.append("->%s".printf(part));
+                }
+                return sb.str;
+            }
+            if (expr.strip() == "this") return "self";
+            return expr.strip();
+        }
+
+        /**
+         * Wrap a C interpolation argument with a type conversion
+         * helper so it produces a code_string for %s.
+         *
+         * Heuristic: if the source expression contains a known
+         * numeric variable name or looks like an int/float literal,
+         * wrap with code_int_to_string / code_float_to_string.
+         * Otherwise pass through (assumed already code_string).
+         *
+         * The TypeChecker's symbol table would give us exact types;
+         * for now we use the InferCType heuristic on the raw expr.
+         */
+        private string _WrapInterpolArg(string cArg, string srcExpr) {
+            // 1. Look up in local C type map (most reliable)
+            string simpleKey = srcExpr.strip();
+            if (_localCTypes.has_key(simpleKey)) {
+                string ct = _localCTypes[simpleKey];
+                if (ct == "i64" || ct == "i32" || ct == "i16" ||
+                    ct == "i8"  || ct == "u64" || ct == "u32" ||
+                    ct == "u16" || ct == "u8"  || ct == "byte")
+                    return "code_int_to_string(%s)".printf(cArg);
+                if (ct == "f64" || ct == "f32" || ct == "double" ||
+                    ct == "float")
+                    return "code_float_to_string(%s)".printf(cArg);
+                if (ct == "code_bool")
+                    return "((%s) ? \"true\" : \"false\")".printf(cArg);
+                if (ct == "code_string")
+                    return cArg;
+            }
+
+            // 2. Look up in symbol table (global symbols)
+            if (_symbolTable != null) {
+                var sym = _symbolTable.Lookup(simpleKey);
+                if (sym != null && sym.TypeKey != "" && sym.TypeKey != "?") {
+                    string tk = sym.TypeKey;
+                    if (tk == "int" || tk == "i64" || tk == "i32" ||
+                        tk == "i16" || tk == "i8"  || tk == "byte")
+                        return "code_int_to_string(%s)".printf(cArg);
+                    if (tk == "float" || tk == "double" ||
+                        tk == "f32"   || tk == "f64")
+                        return "code_float_to_string(%s)".printf(cArg);
+                    if (tk == "bool")
+                        return "((%s) ? \"true\" : \"false\")".printf(cArg);
+                    if (tk == "string")
+                        return cArg;
+                }
+            }
+
+            // 3. Member access — resolve field type from class declaration
+            // e.g. "this.Name" → srcExpr has "." → look up in class members
+            if (srcExpr.contains(".")) {
+                string[] parts = srcExpr.strip().split(".");
+                // parts[0] is the object (this / variable name)
+                // parts[1] is the field name
+                if (parts.length >= 2) {
+                    string objName   = parts[0].strip();
+                    string fieldName = parts[parts.length - 1].strip();
+
+                    // Determine the class name
+                    string className = "";
+                    if (objName == "this" || objName == "self") {
+                        className = _className;
+                    } else if (_localCTypes.has_key(objName)) {
+                        string ct = _localCTypes[objName];
+                        if (ct.has_suffix("*"))
+                            className = ct.substring(0, ct.length - 1);
+                    }
+
+                    // Look up the field type in the class declaration
+                    string fieldCType = _LookupFieldCType(className, fieldName);
+                    if (fieldCType == "code_string") return cArg;
+                    if (fieldCType == "i64" || fieldCType == "i32")
+                        return "code_int_to_string(%s)".printf(cArg);
+                    if (fieldCType == "f64" || fieldCType == "f32")
+                        return "code_float_to_string(%s)".printf(cArg);
+                    if (fieldCType == "code_bool")
+                        return "((%s) ? \"true\" : \"false\")".printf(cArg);
+                    if (fieldCType != "")
+                        return cArg; // unknown but non-empty → pass through
+                }
+                // Fallback for unresolved member access
+                return "code_int_to_string((i64)(%s))".printf(cArg);
+            }
+
+            // 4. Unknown — pass through (assume code_string)
+            return cArg;
+        }
+
+        /**
+         * Look up the C type of a field in a known class.
+         */
+        private string _LookupFieldCType(string className, string fieldName) {
+            if (_program == null || className == "") return "";
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != className) continue;
+                foreach (var m in cls.Members) {
+                    if (m is FieldDeclNode) {
+                        var f = (FieldDeclNode) m;
+                        if (f.Name == fieldName)
+                            return TypeToC(f.FieldType);
+                    } else if (m is PropertyDeclNode) {
+                        var p = (PropertyDeclNode) m;
+                        if (p.Name == fieldName)
+                            return TypeToC(p.PropType);
+                    }
+                }
+            }
+            return "";
         }
 
         /**

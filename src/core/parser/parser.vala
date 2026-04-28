@@ -455,9 +455,11 @@ namespace CodeTranspiler.Parser {
             bool                       isWeak,
             Gee.ArrayList<DecoratorNode> decorators) {
 
-            // Style Java/C# : type nom ...
-            var type    = ParseTypeRef();
-            var nameTok = ExpectIdentifierOrKeyword();
+            // CODE uses "Name: Type" style for fields/properties.
+            // When we arrive here, the current token is the field name.
+            var nameTok = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+            Expect(CodeTranspiler.Lexer.TokenType.COLON);
+            var type = ParseTypeRef();
 
             // Méthode : type nom ( params ) { body }
             if (Check(CodeTranspiler.Lexer.TokenType.LPAREN) ||
@@ -575,31 +577,43 @@ namespace CodeTranspiler.Parser {
         private MethodDeclNode ParseMethodDecl(
             AccessModifier access) {
 
-            // Modificateurs inline (async, pure, static...)
+            // Inline modifiers (async, pure, static...)
             bool isAsync  = ConsumeIf(CodeTranspiler.Lexer.TokenType.KW_ASYNC);
             bool isPure   = ConsumeIf(CodeTranspiler.Lexer.TokenType.KW_PURE);
             bool isStatic = ConsumeIf(CodeTranspiler.Lexer.TokenType.KW_STATIC);
 
-            // Le nom de la methode peut etre un type
-            // ex: void Main(...) ou string ToString()
-            // On parse d abord le type de retour potentiel
-            // puis le nom si suivi de (
+            // Parse optional return type then method name.
+            // Pattern: [TypeRef] MethodName ( params )
+            // If the first token is followed by '(' or '<'
+            // it IS the method name (void/auto return).
+            // Otherwise it's the return type and the name follows.
+            TypeNode? returnType = null;
             var nameTok = ExpectIdentifierOrKeyword();
-            
-            // Si le token suivant n est pas ( ou <
-            // alors c est un type de retour, pas un nom
+
             if (!Check(CodeTranspiler.Lexer.TokenType.LPAREN) &&
                 !Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
-                // C est un type de retour, le vrai nom suit
-                // On ignore le type pour l instant (TODO TypeChecker)
+                // The token we just consumed is the return type.
+                // Build a SimpleTypeNode from it.
+                returnType = new SimpleTypeNode(nameTok.Value);
+                returnType.SetPosition(nameTok);
+                // Now consume array brackets if present (e.g. int[])
+                if (Check(CodeTranspiler.Lexer.TokenType.LBRACKET)) {
+                    Advance();
+                    Expect(CodeTranspiler.Lexer.TokenType.RBRACKET);
+                    returnType = new SimpleTypeNode(nameTok.Value + "[]");
+                    returnType.SetPosition(nameTok);
+                }
+                // The real method name follows
                 nameTok = ExpectIdentifierOrKeyword();
             }
+
             var node    = new MethodDeclNode(nameTok.Value);
             node.SetPosition(nameTok);
-            node.Access   = access;
-            node.IsAsync  = isAsync;
-            node.IsPure   = isPure;
-            node.IsStatic = isStatic;
+            node.Access      = access;
+            node.IsAsync     = isAsync;
+            node.IsPure      = isPure;
+            node.IsStatic    = isStatic;
+            node.ReturnType  = returnType;
 
             // Génériques <T>
             if (Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
