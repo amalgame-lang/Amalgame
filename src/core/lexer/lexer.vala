@@ -6,8 +6,6 @@
 // ─────────────────────────────────────────────────────
 
 // CODE Language - Lexer
-// Copyright (c) 2024 NeitsabTeguom
-// Licensed under Apache 2.0
 
 namespace CodeTranspiler.Lexer {
 

@@ -1,6 +1,6 @@
 /*
  * CODE Language Runtime - v0.1.0
- * Copyright (c) 2024 NeitsabTeguom
+ * Copyright (c) 2026 Bastien MOUGET
  */
 
 #ifndef CODE_RUNTIME_H
