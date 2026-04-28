@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════
- * Généré par CODE Transpiler v0.1.0
+ * Généré par Amalgame Transpiler v0.3.0
  * Source : ./tests/samples/record.am
  * NE PAS MODIFIER MANUELLEMENT
  * ═══════════════════════════════════
@@ -69,13 +69,13 @@ static void Program_Main(int argc, char** argv) {
     Point* p = Point_new(3.0, 4.0);
 
 #line 10 "./tests/samples/record.am"
-    Console_WriteLine(code_string_format("Point: (%s, %s)", code_int_to_string((i64)(p->X)), code_int_to_string((i64)(p->Y))));
+    Console_WriteLine(code_string_format("Point: (%s, %s)", code_float_to_string(p->X), code_float_to_string(p->Y)));
 
 #line 12 "./tests/samples/record.am"
     Color* red = Color_new(255, 0, 0);
 
 #line 13 "./tests/samples/record.am"
-    Console_WriteLine(code_string_format("Color: (%s, %s, %s)", code_int_to_string((i64)(red->R)), code_int_to_string((i64)(red->G)), code_int_to_string((i64)(red->B))));
+    Console_WriteLine(code_string_format("Color: (%s, %s, %s)", code_int_to_string(red->R), code_int_to_string(red->G), code_int_to_string(red->B)));
 }
 
 

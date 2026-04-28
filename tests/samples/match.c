@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════
- * Généré par CODE Transpiler v0.1.0
+ * Généré par Amalgame Transpiler v0.3.0
  * Source : ./tests/samples/match.am
  * NE PAS MODIFIER MANUELLEMENT
  * ═══════════════════════════════════

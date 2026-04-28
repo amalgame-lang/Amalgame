@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════
- * Généré par CODE Transpiler v0.1.0
+ * Généré par Amalgame Transpiler v0.3.0
  * Source : ./tests/samples/classes.am
  * NE PAS MODIFIER MANUELLEMENT
  * ═══════════════════════════════════
@@ -82,7 +82,7 @@ static void Program_Main(int argc, char** argv) {
     Animal_Speak(dog);
 
 #line 29 "./tests/samples/classes.am"
-    void* desc = Animal_Describe(cat);
+    code_string desc = Animal_Describe(cat);
 
 #line 30 "./tests/samples/classes.am"
     Console_WriteLine(desc);

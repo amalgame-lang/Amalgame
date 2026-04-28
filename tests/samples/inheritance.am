@@ -1,0 +1,65 @@
+namespace Tests
+
+public class Shape {
+    public Name: string
+
+    public Shape(string name) {
+        this.Name = name
+    }
+
+    public string Describe() {
+        return "Shape: {this.Name}"
+    }
+}
+
+public class Circle extends Shape {
+    public Radius: float
+
+    public Circle(string name, float radius) {
+        this.Name   = name
+        this.Radius = radius
+    }
+
+    public float Area() {
+        return 3.14159 * this.Radius * this.Radius
+    }
+
+    public string Describe() {
+        return "Circle '{this.Name}' r={this.Radius}"
+    }
+}
+
+public class Rectangle extends Shape {
+    public Width: float
+    public Height: float
+
+    public Rectangle(string name, float width, float height) {
+        this.Name   = name
+        this.Width  = width
+        this.Height = height
+    }
+
+    public float Area() {
+        return this.Width * this.Height
+    }
+
+    public string Describe() {
+        return "Rectangle '{this.Name}' {this.Width}x{this.Height}"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let c = new Circle("Sun", 5.0)
+        let r = new Rectangle("Wall", 4.0, 6.0)
+
+        Console.WriteLine(c.Describe())
+        Console.WriteLine(r.Describe())
+
+        let ca = c.Area()
+        let ra = r.Area()
+
+        Console.WriteLine("Circle area: {ca}")
+        Console.WriteLine("Rectangle area: {ra}")
+    }
+}
