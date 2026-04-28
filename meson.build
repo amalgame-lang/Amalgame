@@ -26,6 +26,7 @@ vala_sources = files(
     # Analyzer
     'src/core/analyzer/symbol.vala',
     'src/core/analyzer/resolver.vala',
+    'src/core/analyzer/typechecker.vala',
 
     # Generator
     'src/transpiler/generator/c_generator.vala',
