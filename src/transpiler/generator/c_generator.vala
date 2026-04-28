@@ -59,21 +59,28 @@ namespace CodeTranspiler.Generator {
         private Gee.HashMap<string, string> _localCTypes;
         // Program AST reference for method return type lookup
         private ProgramNode? _program;
+        // Lambda support: counter + preamble buffer
+        private int           _lambdaCounter;
+        private StringBuilder _lambdaPreamble;
+        private bool          _emitToLambda;
 
 
         public CGenerator(string sourceFile,
                           CodeTranspiler.Analyzer.SymbolTable? symbolTable = null) {
-            _sourceFile  = sourceFile;
-            _symbolTable = symbolTable;
-            _out         = new StringBuilder();
-            _errors      = new StringBuilder();
-            _localCTypes = new Gee.HashMap<string, string>();
-            _indent      = 0;
-            _inClass     = false;
-            _className   = "";
-            _hasErrors   = false;
-            _program     = null;
-            _sourceLine  = 0;
+            _sourceFile     = sourceFile;
+            _symbolTable    = symbolTable;
+            _out            = new StringBuilder();
+            _errors         = new StringBuilder();
+            _lambdaPreamble = new StringBuilder();
+            _localCTypes    = new Gee.HashMap<string, string>();
+            _indent         = 0;
+            _inClass        = false;
+            _className      = "";
+            _hasErrors      = false;
+            _program        = null;
+            _sourceLine     = 0;
+            _lambdaCounter  = 0;
+            _emitToLambda   = false;
         }
 
 
@@ -90,6 +97,12 @@ namespace CodeTranspiler.Generator {
 
             // Visiter l'AST
             ast.Accept(this);
+
+            // Inject lambda functions collected during generation
+            if (_lambdaPreamble.len > 0) {
+                Emit("\n/* ── Lambda functions ── */\n");
+                Emit(_lambdaPreamble.str);
+            }
 
             // Pied de page
             EmitFooter();
@@ -108,7 +121,7 @@ namespace CodeTranspiler.Generator {
 
         private void EmitHeader() {
             Emit("/* ═══════════════════════════════════\n");
-            Emit(" * Généré par CODE Transpiler v0.1.0\n");
+            Emit(" * Généré par Amalgame Transpiler v0.3.0\n");
             Emit(" * Source : %s\n".printf(_sourceFile));
             Emit(" * NE PAS MODIFIER MANUELLEMENT\n");
             Emit(" * ═══════════════════════════════════\n");
@@ -214,6 +227,14 @@ namespace CodeTranspiler.Generator {
             Emit("/* class %s */\n".printf(n.Name));
             Emit("struct _%s {\n".printf(n.Name));
             _indent++;
+
+            // Inheritance: embed parent struct as first field
+            // This gives us field access compatibility with the parent.
+            if (n.BaseClass != null) {
+                string parentName = TypeName(n.BaseClass);
+                EmitI("struct _%s _base; /* extends %s */\n"
+                      .printf(parentName, parentName));
+            }
 
             // Champs et propriétés
             foreach (var member in n.Members) {
@@ -372,8 +393,11 @@ namespace CodeTranspiler.Generator {
 
             for (int i = 0; i < parms.size; i++) {
                 if (i > 0) Emit(", ");
-                var p    = parms[i];
+                var p     = parms[i];
                 var cType = TypeToC(p.ParamType);
+
+                // Register param type for InferCType lookups
+                _localCTypes[p.Name] = cType;
 
                 // string[] args → int argc, char** argv
                 if (cType == "code_string*" &&
@@ -719,6 +743,34 @@ namespace CodeTranspiler.Generator {
                 return;
             }
 
+            // String concatenation: string + string → code_string_concat()
+            if (n.Operator == "+") {
+                string lt = InferCType(n.Left);
+                string rt = InferCType(n.Right);
+                if (lt == "code_string" || rt == "code_string") {
+                    Emit("code_string_concat(");
+                    // Wrap non-string left side
+                    if (lt != "code_string") {
+                        Emit("code_int_to_string((i64)(");
+                        n.Left.Accept(this);
+                        Emit("))");
+                    } else {
+                        n.Left.Accept(this);
+                    }
+                    Emit(", ");
+                    // Wrap non-string right side
+                    if (rt != "code_string") {
+                        Emit("code_int_to_string((i64)(");
+                        n.Right.Accept(this);
+                        Emit("))");
+                    } else {
+                        n.Right.Accept(this);
+                    }
+                    Emit(")");
+                    return;
+                }
+            }
+
             n.Left.Accept(this);
             Emit(" %s ".printf(OperatorToC(n.Operator)));
             n.Right.Accept(this);
@@ -739,9 +791,77 @@ namespace CodeTranspiler.Generator {
 
             n.Target.Accept(this);
 
-            // Accès struct C : -> si pointeur, . si valeur
-            Emit("->");
+            // Check if this member belongs to the current class
+            // or is inherited from a parent (needs _base. prefix)
+            string memberAccess = "->";
+            if (_program != null && _inClass) {
+                string parentField = _FindInheritedMemberPrefix(
+                    _className, n.MemberName);
+                if (parentField != "") {
+                    Emit("->_base.");
+                    Emit(n.MemberName);
+                    return;
+                }
+            }
+            Emit(memberAccess);
             Emit(n.MemberName);
+        }
+
+        /**
+         * Returns "_base" if memberName is declared in a parent class,
+         * "" if it belongs to className itself or is unknown.
+         */
+        private string _FindInheritedMemberPrefix(string className,
+                                                   string memberName) {
+            if (_program == null) return "";
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != className) continue;
+
+                // Check if member is in this class directly
+                foreach (var m in cls.Members) {
+                    if (m is FieldDeclNode &&
+                        ((FieldDeclNode) m).Name == memberName) return "";
+                    if (m is PropertyDeclNode &&
+                        ((PropertyDeclNode) m).Name == memberName) return "";
+                    if (m is MethodDeclNode &&
+                        ((MethodDeclNode) m).Name == memberName) return "";
+                }
+
+                // Not found here — check parent
+                if (cls.BaseClass != null) {
+                    string parentName = TypeName(cls.BaseClass);
+                    // Verify parent has this member
+                    if (_ClassHasMember(parentName, memberName))
+                        return "_base";
+                }
+                break;
+            }
+            return "";
+        }
+
+        /**
+         * Returns true if className (or any ancestor) declares memberName.
+         */
+        private bool _ClassHasMember(string className, string memberName) {
+            if (_program == null) return false;
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != className) continue;
+                foreach (var m in cls.Members) {
+                    if (m is FieldDeclNode &&
+                        ((FieldDeclNode) m).Name == memberName) return true;
+                    if (m is PropertyDeclNode &&
+                        ((PropertyDeclNode) m).Name == memberName) return true;
+                    if (m is MethodDeclNode &&
+                        ((MethodDeclNode) m).Name == memberName) return true;
+                }
+                if (cls.BaseClass != null)
+                    return _ClassHasMember(TypeName(cls.BaseClass), memberName);
+            }
+            return false;
         }
 
         public override void VisitCallExpr(CallExprNode n) {
@@ -933,9 +1053,54 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitLambdaExpr(LambdaExprNode n) {
-            // Lambdas → pointeurs de fonction en C
-            // Simplifié pour l'instant
-            Emit("/* lambda */");
+            // Simple single-expression lambda: p => expr
+            // Emitted inline as a GCC nested function (GNU extension)
+            // or as a cast to a function pointer stub.
+            //
+            // Strategy: emit an immediately-called wrapper that
+            // captures by value via a helper macro, or for simple
+            // cases just emit the expression directly (for use in
+            // ForEach-style calls where the body is a statement).
+            if (n.Params.size == 0) {
+                // () => expr
+                if (n.Body != null) n.Body.Accept(this);
+                return;
+            }
+
+            // p => expr  (single param, expression body)
+            // Used inline: emit as a named lambda function reference.
+            _lambdaCounter++;
+            string lambdaName = "_lambda_%d".printf(_lambdaCounter);
+
+            // Build parameter list
+            var paramStr = new StringBuilder();
+            foreach (var p in n.Params) {
+                if (paramStr.len > 0) paramStr.append(", ");
+                paramStr.append("void* %s".printf(p.Name));
+            }
+
+            // Register param names as void* for body generation
+            foreach (var p in n.Params)
+                _localCTypes[p.Name] = "void*";
+
+            // Write lambda function directly into preamble buffer
+            // by temporarily redirecting Emit() calls.
+            // We use a flag to route Emit() to _lambdaPreamble.
+            _emitToLambda = true;
+
+            _lambdaPreamble.append("static void* %s(%s) {\n"
+                .printf(lambdaName, paramStr.str));
+            _indent++;
+            _lambdaPreamble.append("    return (void*)(intptr_t)(");
+            if (n.Body != null) n.Body.Accept(this);
+            _lambdaPreamble.append(");\n");
+            _indent--;
+            _lambdaPreamble.append("}\n");
+
+            _emitToLambda = false;
+
+            // Emit reference to the lambda function
+            Emit(lambdaName);
         }
 
         public override void VisitAwaitExpr(AwaitExprNode n) {
@@ -1120,7 +1285,7 @@ namespace CodeTranspiler.Generator {
                 var lit = (LiteralNode) expr;
                 switch (lit.Kind) {
                     case LiteralKind.INTEGER: return "i64";
-                    case LiteralKind.FLOAT:   return "f64";
+                    case LiteralKind.FLOAT:   return "f32";
                     case LiteralKind.STRING:  return "code_string";
                     case LiteralKind.INTERPOLATED_STRING: return "code_string";
                     case LiteralKind.BOOL:    return "code_bool";
@@ -1131,27 +1296,47 @@ namespace CodeTranspiler.Generator {
                 var n = (NewExprNode) expr;
                 return TypeToC(n.ObjectType);
             }
+            // Member access: look up the field type in the class
+            if (expr is MemberAccessNode) {
+                var ma = (MemberAccessNode) expr;
+                string objType = InferCType(ma.Target);
+                // Strip pointer to get class name: "Animal*" → "Animal"
+                string className = objType.has_suffix("*")
+                    ? objType.substring(0, objType.length - 1) : objType;
+                string ft = _LookupFieldCType(className, ma.MemberName);
+                if (ft != "") return ft;
+                // Could be a method call result
+                return _LookupMethodReturnType(ma.Target, ma.MemberName);
+            }
             // Call expression: look up the method return type
             if (expr is CallExprNode) {
                 var call = (CallExprNode) expr;
                 if (call.Callee is MemberAccessNode) {
                     var ma = (MemberAccessNode) call.Callee;
-                    // Find the method in known classes
                     string methodType = _LookupMethodReturnType(
                         ma.Target, ma.MemberName);
                     if (methodType != "void*") return methodType;
                 }
             }
-            // Binary expression: infer from operands
+            // Binary expression: infer from operands with numeric widening
             if (expr is BinaryExprNode) {
                 var bin = (BinaryExprNode) expr;
                 string lt = InferCType(bin.Left);
                 string rt = InferCType(bin.Right);
-                if (lt == "f64" || rt == "f64") return "f64";
-                if (lt == "i64" || rt == "i64") return "i64";
+                // Comparison → bool
+                if (bin.Operator == "==" || bin.Operator == "!=" ||
+                    bin.Operator == "<"  || bin.Operator == ">"  ||
+                    bin.Operator == "<=" || bin.Operator == ">=")
+                    return "code_bool";
+                // String concat: use code_string
                 if (lt == "code_string" || rt == "code_string")
                     return "code_string";
-                return lt;
+                // Numeric widening: f64 > f32 > i64
+                if (lt == "f64" || rt == "f64") return "f64";
+                if (lt == "f32" || rt == "f32") return "f32";
+                if (lt == "i64" || rt == "i64") return "i64";
+                if (lt != "void*") return lt;
+                return rt;
             }
             // Identifier: look up in local C types map
             if (expr is IdentifierNode) {
@@ -1159,6 +1344,9 @@ namespace CodeTranspiler.Generator {
                 if (_localCTypes.has_key(id.Name))
                     return _localCTypes[id.Name];
             }
+            // This node
+            if (expr is ThisNode)
+                return "%s*".printf(_className);
             return "void*";
         }
 
@@ -1169,25 +1357,50 @@ namespace CodeTranspiler.Generator {
         private string _LookupMethodReturnType(AstNode target,
                                                 string memberName) {
             string className = "";
-            if (target is IdentifierNode)
-                className = ((IdentifierNode) target).Name;
-            else
+            if (target is IdentifierNode) {
+                var id = (IdentifierNode) target;
+                // Check if it's a direct class name (static call)
+                className = id.Name;
+                // Or resolve via _localCTypes for instance calls
+                if (_localCTypes.has_key(id.Name)) {
+                    string ct = _localCTypes[id.Name];
+                    // Strip "*" to get class name: "Circle*" → "Circle"
+                    if (ct.has_suffix("*"))
+                        className = ct.substring(0, ct.length - 1);
+                }
+            } else if (target is ThisNode) {
+                className = _className;
+            } else {
                 return "void*";
+            }
 
-            // Search program declarations for the class
-            if (_program != null) {
-                foreach (var decl in _program.Declarations) {
-                    if (decl is ClassDeclNode) {
-                        var cls = (ClassDeclNode) decl;
-                        if (cls.Name != className) continue;
-                        foreach (var m in cls.Members) {
-                            if (m is MethodDeclNode) {
-                                var md = (MethodDeclNode) m;
-                                if (md.Name == memberName &&
-                                    md.ReturnType != null)
-                                    return TypeToC(md.ReturnType);
-                            }
+            if (_program == null || className == "") return "void*";
+
+            // Search all declarations for the class and method
+            return _LookupMethodInClass(className, memberName);
+        }
+
+        private string _LookupMethodInClass(string className,
+                                             string memberName) {
+            if (_program == null) return "void*";
+            foreach (var decl in _program.Declarations) {
+                if (decl is ClassDeclNode) {
+                    var cls = (ClassDeclNode) decl;
+                    if (cls.Name != className) continue;
+                    foreach (var m in cls.Members) {
+                        if (m is MethodDeclNode) {
+                            var md = (MethodDeclNode) m;
+                            if (md.Name == memberName &&
+                                md.ReturnType != null)
+                                return TypeToC(md.ReturnType);
                         }
+                    }
+                    // Walk parent chain for inherited methods
+                    if (cls.BaseClass != null) {
+                        string parentName = TypeName(cls.BaseClass);
+                        string parentResult = _LookupMethodInClass(
+                            parentName, memberName);
+                        if (parentResult != "void*") return parentResult;
                     }
                 }
             }
@@ -1270,10 +1483,29 @@ namespace CodeTranspiler.Generator {
                 for (int j = 0; j < parts.length; j++) {
                     string part = parts[j].strip();
                     if (part == "this") part = "self";
-                    if (j == 0)
+                    if (j == 0) {
                         sb.append(part);
-                    else
+                    } else if (j == 1) {
+                        // Check if this member is inherited (needs _base.)
+                        string objName = parts[0].strip();
+                        string memberName = part;
+                        string currentClass = _className;
+                        // If accessing via 'this'/'self', use current class
+                        if (objName != "this" && objName != "self" &&
+                            _localCTypes.has_key(objName)) {
+                            string ct = _localCTypes[objName];
+                            if (ct.has_suffix("*"))
+                                currentClass = ct.substring(0, ct.length - 1);
+                        }
+                        string prefix = _FindInheritedMemberPrefix(
+                            currentClass, memberName);
+                        if (prefix != "")
+                            sb.append("->_base.%s".printf(memberName));
+                        else
+                            sb.append("->%s".printf(memberName));
+                    } else {
                         sb.append("->%s".printf(part));
+                    }
                 }
                 return sb.str;
             }
@@ -1375,19 +1607,50 @@ namespace CodeTranspiler.Generator {
         private string _LookupFieldCType(string className, string fieldName) {
             if (_program == null || className == "") return "";
             foreach (var decl in _program.Declarations) {
-                if (!(decl is ClassDeclNode)) continue;
-                var cls = (ClassDeclNode) decl;
-                if (cls.Name != className) continue;
-                foreach (var m in cls.Members) {
-                    if (m is FieldDeclNode) {
-                        var f = (FieldDeclNode) m;
-                        if (f.Name == fieldName)
-                            return TypeToC(f.FieldType);
-                    } else if (m is PropertyDeclNode) {
-                        var p = (PropertyDeclNode) m;
-                        if (p.Name == fieldName)
-                            return TypeToC(p.PropType);
+                // Regular class
+                if (decl is ClassDeclNode) {
+                    var cls = (ClassDeclNode) decl;
+                    if (cls.Name != className) continue;
+                    foreach (var m in cls.Members) {
+                        if (m is FieldDeclNode) {
+                            var f = (FieldDeclNode) m;
+                            if (f.Name == fieldName)
+                                return TypeToC(f.FieldType);
+                        } else if (m is PropertyDeclNode) {
+                            var p = (PropertyDeclNode) m;
+                            if (p.Name == fieldName)
+                                return TypeToC(p.PropType);
+                        }
                     }
+                    // Walk parent class chain
+                    if (cls.BaseClass != null) {
+                        string parentName = TypeName(cls.BaseClass);
+                        string parentResult = _LookupFieldCType(parentName, fieldName);
+                        if (parentResult != "") return parentResult;
+                    }
+                }
+                // Data class
+                else if (decl is DataClassDeclNode) {
+                    var dc = (DataClassDeclNode) decl;
+                    if (dc.Name != className) continue;
+                    foreach (var rp in dc.Params)
+                        if (rp.Name == fieldName)
+                            return TypeToC(rp.ParamType);
+                    foreach (var m in dc.Members) {
+                        if (m is FieldDeclNode) {
+                            var f = (FieldDeclNode) m;
+                            if (f.Name == fieldName)
+                                return TypeToC(f.FieldType);
+                        }
+                    }
+                }
+                // Record
+                else if (decl is RecordDeclNode) {
+                    var rec = (RecordDeclNode) decl;
+                    if (rec.Name != className) continue;
+                    foreach (var rp in rec.Params)
+                        if (rp.Name == fieldName)
+                            return TypeToC(rp.ParamType);
                 }
             }
             return "";
@@ -1408,17 +1671,20 @@ namespace CodeTranspiler.Generator {
          * Émet du texte dans le buffer de sortie.
          */
         private void Emit(string text) {
-            _out.append(text);
+            if (_emitToLambda)
+                _lambdaPreamble.append(text);
+            else
+                _out.append(text);
         }
 
         /**
          * Émet du texte indenté.
          */
         private void EmitI(string text) {
-            for (int i = 0; i < _indent; i++) {
-                _out.append("    ");
-            }
-            _out.append(text);
+            unowned StringBuilder buf = _emitToLambda ? _lambdaPreamble : _out;
+            for (int i = 0; i < _indent; i++)
+                buf.append("    ");
+            buf.append(text);
         }
     }
 }

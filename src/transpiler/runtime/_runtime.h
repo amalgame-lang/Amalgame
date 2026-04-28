@@ -128,6 +128,38 @@ static inline int CodeList_count(CodeList* l) {
     return l->size;
 }
 
+/* ── Collection helpers (lambda-compatible) ── */
+
+typedef void* (*CodePredicate)(void*);
+typedef void  (*CodeAction)(void*);
+
+static inline void CodeList_forEach(CodeList* l, CodeAction fn) {
+    for (int i = 0; i < l->size; i++)
+        fn(l->data[i]);
+}
+
+static inline CodeList* CodeList_where(CodeList* l, CodePredicate fn) {
+    CodeList* result = CodeList_new();
+    for (int i = 0; i < l->size; i++)
+        if (fn(l->data[i])) CodeList_add(result, l->data[i]);
+    return result;
+}
+
+static inline CodeList* CodeList_select(CodeList* l, CodePredicate fn) {
+    CodeList* result = CodeList_new();
+    for (int i = 0; i < l->size; i++)
+        CodeList_add(result, fn(l->data[i]));
+    return result;
+}
+
+static inline void* CodeList_first(CodeList* l) {
+    return l->size > 0 ? l->data[0] : NULL;
+}
+
+static inline void* CodeList_last(CodeList* l) {
+    return l->size > 0 ? l->data[l->size - 1] : NULL;
+}
+
 /* Result et Option */
 typedef struct {
     bool        is_ok;

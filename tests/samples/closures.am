@@ -1,0 +1,58 @@
+namespace Tests
+
+public class Counter {
+    public Value: int
+
+    public Counter(int start) {
+        this.Value = start
+    }
+
+    public void Increment() {
+        this.Value = this.Value + 1
+    }
+
+    public void Add(int n) {
+        this.Value = this.Value + n
+    }
+
+    public string Report() {
+        return "Counter = {this.Value}"
+    }
+}
+
+public class Program {
+    public static int Apply(int x, int delta) {
+        return x + delta
+    }
+
+    public static int Clamp(int value, int min, int max) {
+        if (value < min) {
+            return min
+        }
+        if (value > max) {
+            return max
+        }
+        return value
+    }
+
+    public static void Main(string[] args) {
+        let c = new Counter(0)
+
+        c.Increment()
+        c.Increment()
+        c.Add(8)
+        Console.WriteLine(c.Report())
+
+        let v1 = Program.Apply(5, 3)
+        let v2 = Program.Apply(v1, -2)
+        Console.WriteLine("Apply: {v1} to {v2}")
+
+        let clamped = Program.Clamp(150, 0, 100)
+        Console.WriteLine("Clamp(150, 0, 100) = {clamped}")
+
+        let inner = Program.Clamp(200, 0, 100)
+        let outer = Program.Apply(10, 5)
+        let result = Program.Apply(inner, outer)
+        Console.WriteLine("Nested: {result}")
+    }
+}

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════
- * Généré par CODE Transpiler v0.1.0
+ * Généré par Amalgame Transpiler v0.3.0
  * Source : ./tests/samples/variables.am
  * NE PAS MODIFIER MANUELLEMENT
  * ═══════════════════════════════════
@@ -33,7 +33,7 @@ static void Program_Main(int argc, char** argv) {
     i64 x = 42;
 
 #line 6 "./tests/samples/variables.am"
-    f64 y = 3.14;
+    f32 y = 3.14;
 
 #line 7 "./tests/samples/variables.am"
     code_string name = "CODE";

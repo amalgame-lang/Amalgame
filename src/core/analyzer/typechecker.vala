@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────
-//  CODE Programming Language
+//  Amalgame Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
-//  https://github.com/NeitsabTeguom/CODE
+//  https://github.com/NeitsabTeguom/Amalgame
 // ─────────────────────────────────────────────────────
 
 // ═══════════════════════════════════════════════════════
@@ -1042,15 +1042,17 @@ namespace CodeTranspiler.Analyzer {
                                           AstNode  refNode) {
             Gee.ArrayList<AstNode>? members = null;
             string className = "?";
+            TypeNode? baseClass = null;
 
             if (classDecl is ClassDeclNode) {
-                members   = ((ClassDeclNode) classDecl).Members;
-                className = ((ClassDeclNode) classDecl).Name;
+                var cls = (ClassDeclNode) classDecl;
+                members   = cls.Members;
+                className = cls.Name;
+                baseClass = cls.BaseClass;
             } else if (classDecl is DataClassDeclNode) {
                 members   = ((DataClassDeclNode) classDecl).Members;
                 className = ((DataClassDeclNode) classDecl).Name;
             } else if (classDecl is RecordDeclNode) {
-                // Record fields are in Params, not Members
                 var rec = (RecordDeclNode) classDecl;
                 className = rec.Name;
                 foreach (var rp in rec.Params)
@@ -1090,6 +1092,15 @@ namespace CodeTranspiler.Analyzer {
                 foreach (var rp in dc.Params)
                     if (rp.Name == memberName)
                         return _TypeKey(rp.ParamType);
+            }
+
+            // Walk parent class chain for inherited members
+            if (baseClass != null) {
+                string parentName = _TypeKey(baseClass);
+                var parentSym = _table.LookupGlobal(parentName);
+                if (parentSym != null && parentSym.DeclNode != null)
+                    return _ResolveMemberType(parentSym.DeclNode,
+                                              memberName, refNode);
             }
 
             _Error("'%s' has no member '%s'"
