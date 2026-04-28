@@ -1,0 +1,7 @@
+Pour que GDB pointe sur le .code original :
+
+#line 7 "hello.code"
+    code_string name = "World";
+
+#line 8 "hello.code"
+    Console_WriteLine(...);

@@ -1,0 +1,13 @@
+fichier.code
+    │
+    ▼
+[ Lexer ]        tokens
+    │
+    ▼
+[ Parser ]       AST (Abstract Syntax Tree)
+    │
+    ▼
+[ Generator ]    fichier.c
+    │
+    ▼
+[ GCC ]          exécutable natif

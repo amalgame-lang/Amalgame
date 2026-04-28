@@ -1,0 +1,10 @@
+Fonctionnalités
+✅ Identifiants et mots-clés
+✅ Nombres entiers et flottants
+✅ Strings simples avec échappement
+✅ Strings multi-lignes (""")
+✅ String interpolation ({expr})
+✅ Commentaires // et /* */
+✅ Décorateurs @
+✅ Opérateurs composés (|>, =>, ?., ??, ..)
+✅ Suivi ligne/colonne pour erreurs

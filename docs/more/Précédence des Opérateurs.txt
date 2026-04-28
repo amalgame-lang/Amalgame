@@ -1,0 +1,14 @@
+1.  Affectation    =  +=  -=
+2.  Pipeline       |>
+3.  Null coal.     ??
+4.  Or             ||
+5.  And            &&
+6.  Égalité        ==  !=
+7.  Comparaison    <  >  <=  >=
+8.  Range          ..
+9.  Addition       +  -
+10. Multiplication *  /  %
+11. Unaire         !  -
+12. Puissance      ^
+13. Postfixe       .  ?.  []  ()
+14. Primaire       lit  id  new  lambda
