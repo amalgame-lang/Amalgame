@@ -4,21 +4,25 @@ CODE
 │   │   ├── lexer
 │   │   │   ├── token.vala        ← Tokens
 │   │   │   └── lexer.vala        ← Lexer
-│   │   └── parser
-│   │       ├── ast.vala          ← Nœuds AST
-│   │       ├── ast_visitor.vala  ← Visitor pattern
-│   │       ├── ast_printer.vala  ← Debug printer
-│   │       └── parser.vala       ← Parser
+│   │   ├── parser
+│   │   │   ├── ast.vala          ← AST nodes
+│   │   │   ├── ast_visitor.vala  ← Visitor pattern
+│   │   │   ├── ast_printer.vala  ← Debug printer
+│   │   │   └── parser.vala       ← Parser
+│   │   └── analyzer
+│   │       ├── symbol.vala       ← SymbolKind, Symbol, Scope, SymbolTable
+│   │       ├── resolver.vala     ← Name resolution (pass 1 + 2)
+│   │       └── typechecker.vala  ← Type inference & validation (planned)
 │   ├── transpiler
 │   │   ├── generator
-│   │   │   └── c_generator.vala  ← Générateur C
+│   │   │   └── c_generator.vala  ← C Generator
 │   │   └── runtime
-│   │       └── _runtime.h        ← Runtime C
-│   └── main.vala                 ← Point d entrée
+│   │       └── _runtime.h        ← C Runtime
+│   └── main.vala                 ← Entry point
 ├── tests
 │   └── samples
 │       └── hello.code            ← Hello World
 ├── docs                         ← Documentation
-├── editors                      ← Extensions éditeurs
+├── editors                      ← Editor extensions
 ├── meson.build                   ← Build system
 └── README.md
