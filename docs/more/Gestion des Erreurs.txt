@@ -1,0 +1,7 @@
+Messages clairs avec position exacte :
+
+┌── Erreur dans hello.code:6:29
+│
+│  Nom de type attendu, trouvé ')'
+│
+└──

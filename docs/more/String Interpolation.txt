@@ -1,0 +1,5 @@
+// CODE :
+"Hello {name} !"
+
+// C généré :
+code_string_format("Hello %s !", name)

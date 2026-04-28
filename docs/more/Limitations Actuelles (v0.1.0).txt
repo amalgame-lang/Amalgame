@@ -1,0 +1,5 @@
+🔜 Génériques non compilés vers C
+🔜 Lambda → pointeurs de fonction
+🔜 Async/await → coroutines
+🔜 Pattern matching complexe
+🔜 Inférence de types (TypeChecker requis)

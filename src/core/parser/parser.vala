@@ -1,15 +1,8 @@
 // ─────────────────────────────────────────────────────
 //  CODE Programming Language
-//  Copyright (c) 2024 NeitsabTeguom
+//  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
-// ─────────────────────────────────────────────────────
-//  parser.vala  -  Parser du langage CODE
-//
-//  Transforme une liste de tokens en AST.
-//  Technique : Recursive Descent Parser
-//
-//  Chaque méthode Parse*() correspond à
-//  une règle de la grammaire EBNF.
+//  https://github.com/NeitsabTeguom/CODE
 // ─────────────────────────────────────────────────────
 
 namespace CodeTranspiler.Parser {

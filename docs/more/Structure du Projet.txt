@@ -1,0 +1,24 @@
+CODE
+├── src
+│   ├── core
+│   │   ├── lexer
+│   │   │   ├── token.vala        ← Tokens
+│   │   │   └── lexer.vala        ← Lexer
+│   │   └── parser
+│   │       ├── ast.vala          ← Nœuds AST
+│   │       ├── ast_visitor.vala  ← Visitor pattern
+│   │       ├── ast_printer.vala  ← Debug printer
+│   │       └── parser.vala       ← Parser
+│   ├── transpiler
+│   │   ├── generator
+│   │   │   └── c_generator.vala  ← Générateur C
+│   │   └── runtime
+│   │       └── _runtime.h        ← Runtime C
+│   └── main.vala                 ← Point d entrée
+├── tests
+│   └── samples
+│       └── hello.code            ← Hello World
+├── docs                         ← Documentation
+├── editors                      ← Extensions éditeurs
+├── meson.build                   ← Build system
+└── README.md

@@ -1,12 +1,8 @@
 // ─────────────────────────────────────────────────────
 //  CODE Programming Language
-//  Copyright (c) 2024 NeitsabTeguom
-//  Licensed under MIT OR Apache 2.0
-// ─────────────────────────────────────────────────────
-//  c_generator.vala  -  Générateur de code C depuis AST
-//
-//  Parcourt l'AST avec le Visitor pattern
-//  et produit du code C valide.
+//  Copyright (c) 2026 Bastien MOUGET
+//  Licensed under Apache 2.0
+//  https://github.com/NeitsabTeguom/CODE
 // ─────────────────────────────────────────────────────
 
 namespace CodeTranspiler.Generator {
