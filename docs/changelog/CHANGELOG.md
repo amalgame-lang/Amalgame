@@ -5,6 +5,57 @@ Versions : [Semantic Versioning](https://semver.org)
 
 ---
 
+## [0.2.0] - 2026-XX-XX
+
+### ✅ Added
+
+#### Analyzer (src/core/analyzer/)
+- `symbol.vala` : symbol table foundation
+  - `SymbolKind` enum : CLASS, INTERFACE, ENUM, ENUM_MEMBER, RECORD,
+    DATA_CLASS, TRAIT, METHOD, CONSTRUCTOR, LAMBDA, FIELD, PROPERTY,
+    LOCAL_VAR, PARAMETER, NAMESPACE, IMPORT
+  - `Symbol` : named entity with kind, DeclNode back-reference,
+    TypeKey, IsLet, IsStatic, source location
+  - `Scope` : lexical scope with parent chain, Declare / Lookup /
+    LookupLocal / AllSymbols / Dump
+  - `SymbolTable` : scope stack (PushScope / PopScope), built-in
+    primitives pre-loaded (int, float, string, bool, void, List,
+    Map, Option, Result, Console, Math…), DidYouMean() via
+    Levenshtein distance for error suggestions
+- `resolver.vala` : two-pass name resolver
+  - Pass 1 — CollectTopLevel : registers all top-level type names
+    in the global scope (enables forward references)
+  - Pass 2 — full AST walk via BaseAstVisitor :
+    - Opens / closes a scope for every class, method, block, lambda,
+      match arm, foreach, for, try/catch
+    - Pre-collects class members (fields, properties, methods) before
+      visiting bodies
+    - Validates all type references (SimpleType, GenericType,
+      FuncType, TupleType) with nullable-strip support
+    - Resolves every IdentifierNode; emits "did you mean?" on miss
+    - Detects duplicate declarations in the same scope
+    - Immutability check : refuses assignment to `let` bindings
+    - Context checks : `break`/`continue` outside loop,
+      `await` outside `async`, `this` outside class
+    - Binds match pattern capture variables into arm scopes
+    - List comprehension variables scoped correctly
+  - `ResolveError` : box-drawing error format consistent with
+    ParseError — `[resolver] file.code:line:col — message`
+  - `ResolveResult` : Success flag, annotated ProgramNode,
+    error list, SymbolTable
+
+#### Parser fix
+- Renamed local variable `with` → `withExpr` in parser.vala
+  (was triggering two Vala keyword-conflict warnings at compile time)
+
+### 🔜 Next (v0.3.0)
+- TypeChecker : type inference and validation
+- Standard Library : Code.IO, Code.Net…
+- LSP Server : real-time errors and autocompletion
+- DAP Server : breakpoints and debug
+
+---
+
 ## [0.1.0] - 2024-01-XX
 
 ### 🎉 MILESTONE : Hello World fonctionne !

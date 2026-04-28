@@ -123,17 +123,18 @@ cd build && ninja
 
 ---
 
-## Statut du Projet
+## Project Status
 
 ```
-✅ Spécification du langage
-✅ Grammaire EBNF
+✅ Language specification
+✅ EBNF grammar
 ✅ Lexer
-✅ AST (nœuds complets)
-🔜 Parser
-🔜 Resolver / Type Checker
-🔜 Générateur C
-🔜 Librairie Standard
+✅ AST (complete nodes)
+✅ Parser
+✅ Resolver (name resolution & scope checking)
+🔜 Type Checker
+✅ C Generator
+🔜 Standard Library
 🔜 LSP / DAP
 ```
 

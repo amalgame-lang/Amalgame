@@ -1580,19 +1580,19 @@ namespace CodeTranspiler.Parser {
                 // With : expr with { X = 5 }
                 if (CheckKw("with")) {
                     var tok  = Advance();
-                    var with = new WithExprNode(expr);
-                    with.SetPosition(tok);
+                    var withExpr = new WithExprNode(expr);
+                    withExpr.SetPosition(tok);
                     Expect(CodeTranspiler.Lexer.TokenType.LBRACE);
                     while (!Check(CodeTranspiler.Lexer.TokenType.RBRACE) && !IsEnd()) {
                         var field = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
                         Expect(CodeTranspiler.Lexer.TokenType.OP_EQ);
                         var val = ParseExpression();
-                        with.Changes[field.Value] = val;
+                        withExpr.Changes[field.Value] = val;
                         ConsumeIf(CodeTranspiler.Lexer.TokenType.COMMA);
                         SkipNewlines();
                     }
                     Expect(CodeTranspiler.Lexer.TokenType.RBRACE);
-                    expr = with;
+                    expr = withExpr;
                     continue;
                 }
 

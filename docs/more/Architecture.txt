@@ -7,7 +7,13 @@ fichier.code
 [ Parser ]       AST (Abstract Syntax Tree)
     │
     ▼
+[ Resolver ]     AST + symbol table  (name resolution, scope checking)
+    │
+    ▼
+[ TypeChecker ]  AST annotated       (type inference & validation)
+    │
+    ▼
 [ Generator ]    fichier.c
     │
     ▼
-[ GCC ]          exécutable natif
+[ GCC ]          native executable
