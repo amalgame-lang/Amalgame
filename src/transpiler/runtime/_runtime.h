@@ -1,5 +1,5 @@
 /*
- * CODE Language Runtime - v0.1.0
+ * Amalgame Language Runtime - v0.1.0
  * Copyright (c) 2026 Bastien MOUGET
  */
 
