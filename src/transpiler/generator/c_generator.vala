@@ -248,7 +248,48 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitImport(ImportNode n) {
-            Emit("/* import %s */\n".printf(n.Name));
+            // Map Amalgame stdlib modules to their header files
+            string? header = _ResolveImport(n.Name);
+            if (header != null) {
+                Emit("#include \"%s\"\n".printf(header));
+            } else {
+                // Unknown import — emit as comment for now
+                Emit("/* import %s */\n".printf(n.Name));
+            }
+        }
+
+        /**
+         * Maps an Amalgame import name to its C header file.
+         * Returns null for unknown/user imports.
+         */
+        private string? _ResolveImport(string name) {
+            // Strip alias: "import Amalgame.IO as IO" → "Amalgame.IO"
+            string mod = name;
+            if (mod.contains(" as "))
+                mod = mod.substring(0, mod.index_of(" as ")).strip();
+
+            switch (mod) {
+                case "Amalgame.IO":
+                case "Amalgame.IO.Console":
+                case "Amalgame.IO.File":
+                    return "Amalgame_IO.h";
+
+                case "Amalgame.Math":
+                    return "Amalgame_Math.h";
+
+                case "Amalgame.String":
+                case "Amalgame.Strings":
+                    return "Amalgame_String.h";
+
+                case "Amalgame.Collections":
+                case "Amalgame.Collections.List":
+                case "Amalgame.Collections.Map":
+                    // Collections are already in _runtime.h
+                    return null;
+
+                default:
+                    return null;
+            }
         }
 
         /**
