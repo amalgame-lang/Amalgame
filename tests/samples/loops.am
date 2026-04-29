@@ -1,0 +1,37 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        // break
+        var i = 0
+        while (i < 100) {
+            if (i == 3) { break }
+            Console.WriteLine("w: {i}")
+            i = i + 1
+        }
+
+        // continue
+        for (var j = 0; j < 6; j = j + 1) {
+            if (j % 2 == 0) { continue }
+            Console.WriteLine("odd: {j}")
+        }
+
+        // Nested loops
+        for (var r = 0; r < 3; r = r + 1) {
+            for (var c = 0; c < 3; c = c + 1) {
+                if (r == c) {
+                    Console.WriteLine("diag: {r}")
+                }
+            }
+        }
+
+        // while with multiple conditions
+        var a = 0
+        var b = 10
+        while (a < 5 && b > 5) {
+            a = a + 1
+            b = b - 1
+        }
+        Console.WriteLine("a: {a} b: {b}")
+    }
+}

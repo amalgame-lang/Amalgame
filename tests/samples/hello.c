@@ -14,7 +14,7 @@
 
 /* ── Forward Declarations ── */
 typedef struct _MyApp_Program MyApp_Program;
-static void MyApp_Program_Main();
+static void MyApp_Program_Main(int, char**);
 
 
 

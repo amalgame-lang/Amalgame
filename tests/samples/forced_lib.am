@@ -1,0 +1,22 @@
+namespace MyApp
+
+public class Config {
+    public Host: string
+    public Port: int
+
+    public Config(string host, int port) {
+        this.Host = host
+        this.Port = port
+    }
+
+    public string Address() {
+        return "{this.Host}:{this.Port}"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let cfg = new Config("localhost", 8080)
+        Console.WriteLine(cfg.Address())
+    }
+}

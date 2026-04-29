@@ -15,9 +15,9 @@
 typedef struct _Tests_Stack Tests_Stack;
 typedef struct _Tests_Pair Tests_Pair;
 typedef struct _Tests_Program Tests_Program;
-static i64 Tests_Program_Max();
-static code_string Tests_Program_Repeat();
-static void Tests_Program_Main();
+static i64 Tests_Program_Max(i64, i64);
+static code_string Tests_Program_Repeat(code_string, i64);
+static void Tests_Program_Main(int, char**);
 
 
 
