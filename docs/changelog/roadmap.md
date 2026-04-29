@@ -2,37 +2,45 @@
 
 ---
 
-## Phase 1 : Transpiler MVP  [In progress]
+## Phase 1 : Transpiler MVP  [✅ Complete]
 
-| Step               | Status | Files                                        |
-|--------------------|--------|----------------------------------------------|
-| Token + Lexer      | ✅     | `src/core/lexer/`                            |
-| AST                | ✅     | `src/core/parser/ast.vala`                   |
-| Parser             | ✅     | `src/core/parser/parser.vala`                |
-| Resolver           | ✅     | `src/core/analyzer/resolver.vala`            |
-| Type Checker       | ✅     | `src/core/analyzer/typechecker.vala`         |
-| C Generator        | ✅     | `src/transpiler/generator/c_generator.vala`  |
-| Hello World !      | ✅     | First program running                        |
-| Test suite         | ✅     | `tests/` — 7/7 passing                       |
+| Step                    | Status | Files                                        |
+|-------------------------|--------|----------------------------------------------|
+| Token + Lexer           | ✅     | `src/core/lexer/`                            |
+| AST                     | ✅     | `src/core/parser/ast.vala`                   |
+| Parser                  | ✅     | `src/core/parser/parser.vala`                |
+| Resolver                | ✅     | `src/core/analyzer/resolver.vala`            |
+| Type Checker            | ✅     | `src/core/analyzer/typechecker.vala`         |
+| C Generator             | ✅     | `src/transpiler/generator/c_generator.vala`  |
+| Hello World             | ✅     | First program running                        |
+| Test suite (42/42)      | ✅     | `tests/`                                     |
+| Namespace prefixing     | ✅     | `namespace MyApp` → `MyApp_Symbol`           |
+| Library mode            | ✅     | `amc --lib` / auto-detection                 |
+| Distribution scripts    | ✅     | `install/`, `.github/workflows/`             |
+| Developer Guide         | ✅     | `docs/DEVELOPER_GUIDE.md`                    |
 
-## Phase 2 : Ecosystem  [Planned]
+## Phase 2 : Ecosystem  [In progress]
 
-| Step               | Status | Description                       |
-|--------------------|--------|-----------------------------------|
-| C Runtime          | ✅     | GC, ARC, Arena in C               |
-| Stdlib Core        | 🔜     | Types, Collections, Math          |
-| Stdlib IO          | 🔜     | File, Console, Stream             |
-| Stdlib Net         | 🔜     | Http, WebSocket, Tcp              |
-| LSP Server         | 🔜     | Autocompletion, real-time errors  |
-| DAP Server         | 🔜     | Debug, breakpoints                |
-| VSCode Extension   | 🔜     | Full VSCode support               |
+| Step                    | Status | Description                                  |
+|-------------------------|--------|----------------------------------------------|
+| C Runtime               | ✅     | GC, ARC, Arena in C                          |
+| Stdlib Core             | 🔜     | Types, Math                                  |
+| Stdlib IO               | 🔜     | Console, File, Stream                        |
+| Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
+| Enum generation         | 🔜     | C enum + match support                       |
+| Interface vtable        | 🔜     | Interface dispatch in C                      |
+| Multi-file compilation  | 🔜     | `amc *.am` or package system                 |
+| LSP Server              | 🔜     | Autocompletion, real-time errors             |
+| DAP Server              | 🔜     | Debug, breakpoints                           |
+| VSCode Extension        | 🔜     | Full VSCode support                          |
 
 ## Phase 3 : Maturity  [Future]
 
-| Step               | Status | Description                       |
-|--------------------|--------|-----------------------------------|
-| Package Manager    | 🔜     | `amc pkg`                         |
-| Bootstrap          | 🔜     | Amalgame written in Amalgame      |
-| WASM Plugin        | 🔜     | Transpilation to WebAssembly      |
-| IL Plugin          | 🔜     | Transpilation to IL               |
-| LLVM Plugin        | 🔜     | Transpilation to LLVM IR          |
+| Step                    | Status | Description                                  |
+|-------------------------|--------|----------------------------------------------|
+| Generics (full)         | 🔜     | Hindley-Milner type unification              |
+| Package Manager         | 🔜     | `amc pkg`                                    |
+| Bootstrap               | 🔜     | Amalgame written in Amalgame                 |
+| WASM Plugin             | 🔜     | Transpilation to WebAssembly                 |
+| IL Plugin               | 🔜     | Transpilation to IL (.NET)                   |
+| LLVM Plugin             | 🔜     | Transpilation to LLVM IR                     |
