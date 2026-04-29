@@ -16,7 +16,7 @@ typedef struct _Tests_Shape Tests_Shape;
 typedef struct _Tests_Circle Tests_Circle;
 typedef struct _Tests_Rectangle Tests_Rectangle;
 typedef struct _Tests_Program Tests_Program;
-static void Tests_Program_Main();
+static void Tests_Program_Main(int, char**);
 
 
 

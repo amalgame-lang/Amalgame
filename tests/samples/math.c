@@ -13,11 +13,11 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_MathHelper Tests_MathHelper;
-static i64 Tests_MathHelper_Add();
-static i64 Tests_MathHelper_Max();
-static i64 Tests_MathHelper_Factorial();
+static i64 Tests_MathHelper_Add(i64, i64);
+static i64 Tests_MathHelper_Max(i64, i64);
+static i64 Tests_MathHelper_Factorial(i64);
 typedef struct _Tests_Program Tests_Program;
-static void Tests_Program_Main();
+static void Tests_Program_Main(int, char**);
 
 
 
