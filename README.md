@@ -172,5 +172,5 @@ Copyright (c) 2026 Bastien MOUGET
 
 ## Author
 
-**NeitsabTeguom**
-GitHub: [@NeitsabTeguom](https://github.com/NeitsabTeguom)
+**BastienMOUGET**
+GitHub: [@BastienMOUGET](https://github.com/BastienMOUGET)
