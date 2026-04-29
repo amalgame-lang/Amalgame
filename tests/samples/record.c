@@ -15,7 +15,7 @@
 typedef struct _Tests_Point Tests_Point;
 typedef struct _Tests_Color Tests_Color;
 typedef struct _Tests_Program Tests_Program;
-static void Tests_Program_Main();
+static void Tests_Program_Main(int, char**);
 
 
 

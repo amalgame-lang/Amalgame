@@ -1,0 +1,65 @@
+namespace Tests
+
+public class Counter {
+    public Value: int
+
+    public Counter() {
+        this.Value = 0
+    }
+
+    public void Inc() {
+        this.Value = this.Value + 1
+    }
+
+    public void Dec() {
+        this.Value = this.Value - 1
+    }
+
+    public void Reset() {
+        this.Value = 0
+    }
+
+    public bool IsZero() {
+        return this.Value == 0
+    }
+}
+
+public class Calculator {
+    public static int Add(int a, int b)      => a + b
+    public static int Sub(int a, int b)      => a - b
+    public static int Mul(int a, int b)      => a * b
+    public static bool IsEven(int n)         => n % 2 == 0
+    public static int Abs(int n) {
+        if (n < 0) { return 0 - n }
+        return n
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let c = new Counter()
+        let z1 = c.IsZero()
+        Console.WriteLine("zero: {z1}")
+        c.Inc()
+        c.Inc()
+        c.Inc()
+        Console.WriteLine("val: {c.Value}")
+        c.Dec()
+        Console.WriteLine("val: {c.Value}")
+        c.Reset()
+        let z2 = c.IsZero()
+        Console.WriteLine("zero: {z2}")
+
+        let sum  = Calculator.Add(15, 27)
+        let diff = Calculator.Sub(50, 8)
+        let prod = Calculator.Mul(6, 7)
+        Console.WriteLine("sum: {sum}")
+        Console.WriteLine("diff: {diff}")
+        Console.WriteLine("prod: {prod}")
+
+        let even = Calculator.IsEven(42)
+        let abs  = Calculator.Abs(-17)
+        Console.WriteLine("even: {even}")
+        Console.WriteLine("abs: {abs}")
+    }
+}

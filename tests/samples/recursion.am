@@ -1,0 +1,51 @@
+namespace Tests
+
+public class Algo {
+    public static int Fib(int n) {
+        if (n <= 1) { return n }
+        return Algo.Fib(n - 1) + Algo.Fib(n - 2)
+    }
+
+    public static int SumDigits(int n) {
+        if (n < 10) { return n }
+        return n % 10 + Algo.SumDigits(n / 10)
+    }
+
+    public static int Pow(int base, int exp) {
+        if (exp == 0) { return 1 }
+        return base * Algo.Pow(base, exp - 1)
+    }
+
+    public static int Gcd(int a, int b) {
+        if (b == 0) { return a }
+        return Algo.Gcd(b, a % b)
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let f0  = Algo.Fib(0)
+        let f1  = Algo.Fib(1)
+        let f7  = Algo.Fib(7)
+        let f10 = Algo.Fib(10)
+        Console.WriteLine("fib(0) = {f0}")
+        Console.WriteLine("fib(1) = {f1}")
+        Console.WriteLine("fib(7) = {f7}")
+        Console.WriteLine("fib(10) = {f10}")
+
+        let d1 = Algo.SumDigits(123)
+        let d2 = Algo.SumDigits(999)
+        Console.WriteLine("digits(123) = {d1}")
+        Console.WriteLine("digits(999) = {d2}")
+
+        let p1 = Algo.Pow(2, 8)
+        let p2 = Algo.Pow(3, 4)
+        Console.WriteLine("pow(2,8) = {p1}")
+        Console.WriteLine("pow(3,4) = {p2}")
+
+        let g1 = Algo.Gcd(48, 18)
+        let g2 = Algo.Gcd(100, 75)
+        Console.WriteLine("gcd(48,18) = {g1}")
+        Console.WriteLine("gcd(100,75) = {g2}")
+    }
+}

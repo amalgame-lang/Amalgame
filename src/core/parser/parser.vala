@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────
-//  Amalgame Programming Language
+//  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
 //  https://github.com/BastienMOUGET/Amalgame
@@ -1103,6 +1103,10 @@ namespace CodeTranspiler.Parser {
             AstNode body;
             if (Check(CodeTranspiler.Lexer.TokenType.LBRACE)) {
                 body = ParseBlock();
+            } else if (Check(CodeTranspiler.Lexer.TokenType.KW_RETURN) ||
+                       Check(CodeTranspiler.Lexer.TokenType.KW_BREAK)  ||
+                       Check(CodeTranspiler.Lexer.TokenType.KW_CONTINUE)) {
+                body = ParseStatement();
             } else {
                 body = ParseExpression();
             }

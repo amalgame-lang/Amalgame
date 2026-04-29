@@ -14,9 +14,9 @@
 /* ── Forward Declarations ── */
 typedef struct _Tests_Counter Tests_Counter;
 typedef struct _Tests_Program Tests_Program;
-static i64 Tests_Program_Apply();
-static i64 Tests_Program_Clamp();
-static void Tests_Program_Main();
+static i64 Tests_Program_Apply(i64, i64);
+static i64 Tests_Program_Clamp(i64, i64, i64);
+static void Tests_Program_Main(int, char**);
 
 
 

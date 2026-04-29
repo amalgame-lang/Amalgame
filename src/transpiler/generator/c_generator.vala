@@ -262,17 +262,31 @@ namespace CodeTranspiler.Generator {
                     var c   = (ClassDeclNode) decl;
                     string sym = _SymName(c.Name);
                     Emit("typedef struct _%s %s;\n".printf(sym, sym));
-                    // Forward decl for static methods
+                    // Only static methods need forward declarations
+                    // (instance methods are defined after the struct)
                     foreach (var m in c.Members) {
-                        if (m is MethodDeclNode) {
-                            var md = (MethodDeclNode) m;
-                            if (md.IsStatic && md.Name != c.Name) {
-                                string ret = md.ReturnType != null
-                                    ? TypeToC(md.ReturnType) : "void";
-                                Emit("static %s %s();\n"
-                                     .printf(ret, _MethodName(c.Name, md.Name)));
-                            }
+                        if (!(m is MethodDeclNode)) continue;
+                        var md = (MethodDeclNode) m;
+                        if (!md.IsStatic) continue;
+                        if (md.Name == c.Name) continue; // constructor
+                        string ret = md.ReturnType != null
+                            ? TypeToC(md.ReturnType) : "void";
+                        string mname = _MethodName(c.Name, md.Name);
+                        // Build full parameter list to avoid C type conflicts
+                        var sb = new StringBuilder();
+                        for (int i = 0; i < md.Params.size; i++) {
+                            if (i > 0) sb.append(", ");
+                            var p = md.Params[i];
+                            string pt = TypeToC(p.ParamType);
+                            // Special case: string[] args → int, char**
+                            if (pt == "code_string*" && p.Name == "args")
+                                sb.append("int, char**");
+                            else
+                                sb.append(pt);
                         }
+                        string paramStr = sb.len > 0 ? sb.str : "void";
+                        Emit("static %s %s(%s);\n"
+                             .printf(ret, mname, paramStr));
                     }
                 } else if (decl is RecordDeclNode) {
                     var r   = (RecordDeclNode) decl;
@@ -642,7 +656,12 @@ namespace CodeTranspiler.Generator {
                 _indent++;
                 EmitI("");
                 arm.Body.Accept(this);
-                if (!(arm.Body is BlockNode)) Emit(";");
+                // Don't add ; if body already ends with one (return/break/continue/block)
+                if (!(arm.Body is BlockNode) &&
+                    !(arm.Body is ReturnNode) &&
+                    !(arm.Body is BreakNode)  &&
+                    !(arm.Body is ContinueNode))
+                    Emit(";");
                 Emit("\n");
                 _indent--;
                 EmitI("}\n");
@@ -1018,6 +1037,32 @@ namespace CodeTranspiler.Generator {
                         bareClass = className.substring(_nsPrefix.length + 1);
                     funcName = _MethodName(bareClass, ma.MemberName);
                 }
+
+            } else if (ma.Target is MemberAccessNode) {
+                // Chained: this.Home.Format() → Tests_Address_Format(self->Home)
+                var innerMa = (MemberAccessNode) ma.Target;
+                // Resolve the type of the inner member
+                string innerClassName = "";
+                if (innerMa.Target is ThisNode) {
+                    // this.Field → look up Field type in current class
+                    string ft = _LookupFieldCType(_className, innerMa.MemberName);
+                    innerClassName = _StripNsPrefix(ft);
+                } else if (innerMa.Target is IdentifierNode) {
+                    var innerId = (IdentifierNode) innerMa.Target;
+                    if (_localCTypes.has_key(innerId.Name)) {
+                        innerClassName = _StripNsPrefix(_localCTypes[innerId.Name]);
+                    }
+                }
+                funcName = _MethodName(innerClassName, ma.MemberName);
+                Emit("%s(".printf(funcName));
+                // Emit the object expression as self arg
+                ma.Target.Accept(this);
+                for (int i = 0; i < args.size; i++) {
+                    Emit(", ");
+                    args[i].Accept(this);
+                }
+                Emit(")");
+                return;
 
             } else {
                 // Complex expression — emit directly

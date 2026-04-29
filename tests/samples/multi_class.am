@@ -1,0 +1,54 @@
+namespace Tests
+
+public class Address {
+    public Street: string
+    public City: string
+    public Zip: string
+
+    public Address(string street, string city, string zip) {
+        this.Street = street
+        this.City   = city
+        this.Zip    = zip
+    }
+
+    public string Format() {
+        return "{this.Street}, {this.City} {this.Zip}"
+    }
+}
+
+public class Person {
+    public Name: string
+    public Age: int
+    public Home: Address
+
+    public Person(string name, int age, Address home) {
+        this.Name = name
+        this.Age  = age
+        this.Home = home
+    }
+
+    public string Describe() {
+        let fmt = this.Home.Format()
+        return "{this.Name} ({this.Age}) lives at {fmt}"
+    }
+
+    public bool IsAdult() {
+        return this.Age >= 18
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let addr   = new Address("42 Rue de la Paix", "Paris", "75001")
+        let person = new Person("Arthus", 28, addr)
+
+        let desc   = person.Describe()
+        Console.WriteLine(desc)
+
+        let adult = person.IsAdult()
+        Console.WriteLine("Adult: {adult}")
+
+        let city = addr.City
+        Console.WriteLine("City: {city}")
+    }
+}

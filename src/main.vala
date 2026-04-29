@@ -42,20 +42,32 @@ int main(string[] args) {
         return 1;
     }
 
-    string inputFile   = args[1];
-    string outputFile  = inputFile.replace(".am", ".c");
+
+    string inputFile   = "";
+    string outputFile  = "";
     bool   skipTC      = false;
     bool   forceLib    = false;
 
-    for (int i = 2; i < args.length; i++) {
+    for (int i = 1; i < args.length; i++) {
         if (args[i] == "-o" && i + 1 < args.length) {
             outputFile = args[i + 1];
+            i++;
         } else if (args[i] == "--no-typecheck") {
             skipTC = true;
         } else if (args[i] == "--lib") {
             forceLib = true;
+        } else if (!args[i].has_prefix("-")) {
+            inputFile = args[i];
         }
     }
+
+    if (inputFile == "") {
+        stderr.printf("Usage: amc <file.am> [-o output.c] [--lib] [--no-typecheck]\n");
+        return 1;
+    }
+
+    if (outputFile == "")
+        outputFile = inputFile.replace(".am", ".c");
 
     string source;
     try {
