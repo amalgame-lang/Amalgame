@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────
-//  Amalgame Programming Language
+//  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
 //  https://github.com/BastienMOUGET/Amalgame
@@ -16,9 +16,10 @@ namespace CodeTranspiler.Generator {
     // ═══════════════════════════════════════════════════
 
     public class GeneratorResult : Object {
-        public bool   Success  { get; set; }
-        public string CCode    { get; set; }
-        public string Errors   { get; set; }
+        public bool   Success   { get; set; }
+        public string CCode     { get; set; }
+        public string Errors    { get; set; }
+        public bool   IsLibrary { get; set; default = false; }
 
         public GeneratorResult() {
             CCode  = "";
@@ -46,16 +47,19 @@ namespace CodeTranspiler.Generator {
         // ── État interne ───────────────────────────────
         private StringBuilder _out;         // code C produit
         private int           _indent;      // niveau d'indentation
-        private string        _sourceFile;  // fichier .code source
+        private string        _sourceFile;  // fichier source
         private int           _sourceLine;  // ligne courante source
         private bool          _inClass;     // dans une classe ?
         private string        _className;   // classe courante
         private bool          _hasErrors;
         private StringBuilder _errors;
+        // Namespace prefix: "MyApp" → all symbols become "MyApp_ClassName"
+        private string        _nsPrefix;
+        // Library mode: no main() emitted
+        private bool          _isLibrary;
         // Symbol table from the Resolver/TypeChecker
         private CodeTranspiler.Analyzer.SymbolTable? _symbolTable;
         // Local C type map: varName → cType, built during generation
-        // Used to wrap interpolated variables with the right converter
         private Gee.HashMap<string, string> _localCTypes;
         // Program AST reference for method return type lookup
         private ProgramNode? _program;
@@ -66,7 +70,8 @@ namespace CodeTranspiler.Generator {
 
 
         public CGenerator(string sourceFile,
-                          CodeTranspiler.Analyzer.SymbolTable? symbolTable = null) {
+                          CodeTranspiler.Analyzer.SymbolTable? symbolTable = null,
+                          bool forceLib = false) {
             _sourceFile     = sourceFile;
             _symbolTable    = symbolTable;
             _out            = new StringBuilder();
@@ -81,6 +86,8 @@ namespace CodeTranspiler.Generator {
             _sourceLine     = 0;
             _lambdaCounter  = 0;
             _emitToLambda   = false;
+            _nsPrefix       = "";
+            _isLibrary      = forceLib;
         }
 
 
@@ -92,26 +99,65 @@ namespace CodeTranspiler.Generator {
             var result = new GeneratorResult();
             _program   = ast;
 
-            // En-tête du fichier C généré
-            EmitHeader();
+            // ── Extract namespace prefix ───────────────
+            // "MyApp"         → prefix = "MyApp"
+            // "MyApp.Models"  → prefix = "MyApp_Models"
+            // ""              → no prefix
+            if (ast.Namespace != null) {
+                _nsPrefix = ast.Namespace.Name.replace(".", "_");
+            }
 
-            // Visiter l'AST
+            // ── Detect library mode ────────────────────
+            // A file is a library if:
+            //   1. --lib flag was passed (forceLib=true), OR
+            //   2. No class named "Program" with a static "Main" method
+            if (!_isLibrary) {
+                _isLibrary = !_HasEntryPoint(ast);
+            }
+
+            // ── Emit ──────────────────────────────────
+            EmitHeader();
             ast.Accept(this);
 
-            // Inject lambda functions collected during generation
+            // Lambda functions collected during generation
             if (_lambdaPreamble.len > 0) {
                 Emit("\n/* ── Lambda functions ── */\n");
                 Emit(_lambdaPreamble.str);
             }
 
-            // Pied de page
-            EmitFooter();
+            // Entry point only for executables
+            if (!_isLibrary) {
+                EmitFooter(ast);
+            } else {
+                Emit("\n/* Library — no entry point */\n");
+            }
 
-            result.CCode   = _out.str;
-            result.Success = !_hasErrors;
-            result.Errors  = _errors.str;
+            result.CCode      = _out.str;
+            result.Success    = !_hasErrors;
+            result.Errors     = _errors.str;
+            result.IsLibrary  = _isLibrary;
 
             return result;
+        }
+
+        /**
+         * Returns true if the program has a class "Program"
+         * with a static method "Main".
+         */
+        private bool _HasEntryPoint(ProgramNode ast) {
+            foreach (var decl in ast.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != "Program") continue;
+                foreach (var m in cls.Members) {
+                    if (m is MethodDeclNode) {
+                        var md = (MethodDeclNode) m;
+                        if (md.Name == "Main" && md.IsStatic)
+                            return true;
+                    }
+                }
+            }
+            return false;
         }
 
 
@@ -120,20 +166,28 @@ namespace CodeTranspiler.Generator {
         // ═══════════════════════════════════════════════
 
         private void EmitHeader() {
-            Emit("/* ═══════════════════════════════════\n");
-            Emit(" * Généré par Amalgame Transpiler v0.3.0\n");
-            Emit(" * Source : %s\n".printf(_sourceFile));
-            Emit(" * NE PAS MODIFIER MANUELLEMENT\n");
-            Emit(" * ═══════════════════════════════════\n");
+            string mode = _isLibrary ? "Library" : "Executable";
+            Emit("/* ═══════════════════════════════════════\n");
+            Emit(" * Generated by Amalgame Transpiler v0.3.0\n");
+            Emit(" * Source    : %s\n".printf(_sourceFile));
+            Emit(" * Mode      : %s\n".printf(mode));
+            if (_nsPrefix != "")
+                Emit(" * Namespace : %s\n".printf(_nsPrefix.replace("_", ".")));
+            Emit(" * DO NOT EDIT MANUALLY\n");
+            Emit(" * ═══════════════════════════════════════\n");
             Emit(" */\n\n");
             Emit("#include \"_runtime.h\"\n\n");
         }
 
-        private void EmitFooter() {
-            Emit("\n/* ── Point d entree C ── */\n");
+        private void EmitFooter(ProgramNode ast) {
+            // Find the actual entry class name (may be namespaced)
+            string entryClass  = _SymName("Program");
+            string entryMethod = "%s_Main".printf(entryClass);
+
+            Emit("\n/* ── Entry point ── */\n");
             Emit("int main(int argc, char** argv) {\n");
             Emit("    code_runtime_init();\n");
-            Emit("    Program_Main(argc, argv);\n");
+            Emit("    %s(argc, argv);\n".printf(entryMethod));
             Emit("    return 0;\n");
             Emit("}\n");
         }
@@ -167,7 +221,30 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitNamespace(NamespaceNode n) {
+            // Namespace is handled via _nsPrefix for symbol naming.
+            // Emit a comment for readability.
             Emit("/* namespace %s */\n".printf(n.Name));
+        }
+
+        /**
+         * Returns the full C symbol name for a type/class.
+         * With namespace "MyApp":
+         *   "Player" → "MyApp_Player"
+         *   "Program" → "MyApp_Program"
+         * Without namespace:
+         *   "Player" → "Player"
+         */
+        private string _SymName(string name) {
+            if (_nsPrefix == "") return name;
+            return "%s_%s".printf(_nsPrefix, name);
+        }
+
+        /**
+         * Returns the full C function name for a class method.
+         *   class="Player", method="TakeDamage" → "MyApp_Player_TakeDamage"
+         */
+        private string _MethodName(string className, string methodName) {
+            return "%s_%s".printf(_SymName(className), methodName);
         }
 
         public override void VisitImport(ImportNode n) {
@@ -182,32 +259,29 @@ namespace CodeTranspiler.Generator {
             Emit("/* ── Forward Declarations ── */\n");
             foreach (var decl in n.Declarations) {
                 if (decl is ClassDeclNode) {
-                    var c = (ClassDeclNode) decl;
-                    Emit("typedef struct _%s %s;\n"
-                         .printf(c.Name, c.Name));
-                    // Forward decl des méthodes statiques
+                    var c   = (ClassDeclNode) decl;
+                    string sym = _SymName(c.Name);
+                    Emit("typedef struct _%s %s;\n".printf(sym, sym));
+                    // Forward decl for static methods
                     foreach (var m in c.Members) {
                         if (m is MethodDeclNode) {
                             var md = (MethodDeclNode) m;
-                            if (md.IsStatic) {
+                            if (md.IsStatic && md.Name != c.Name) {
                                 string ret = md.ReturnType != null
-                                    ? TypeToC(md.ReturnType)
-                                    : "void";
-                                Emit("static %s %s_%s();
-"
-                                     .printf(ret, c.Name,
-                                              md.Name));
+                                    ? TypeToC(md.ReturnType) : "void";
+                                Emit("static %s %s();\n"
+                                     .printf(ret, _MethodName(c.Name, md.Name)));
                             }
                         }
                     }
                 } else if (decl is RecordDeclNode) {
-                    var r = (RecordDeclNode) decl;
-                    Emit("typedef struct _%s %s;\n"
-                         .printf(r.Name, r.Name));
+                    var r   = (RecordDeclNode) decl;
+                    string sym = _SymName(r.Name);
+                    Emit("typedef struct _%s %s;\n".printf(sym, sym));
                 } else if (decl is DataClassDeclNode) {
-                    var d = (DataClassDeclNode) decl;
-                    Emit("typedef struct _%s %s;\n"
-                         .printf(d.Name, d.Name));
+                    var d   = (DataClassDeclNode) decl;
+                    string sym = _SymName(d.Name);
+                    Emit("typedef struct _%s %s;\n".printf(sym, sym));
                 }
             }
             Emit("\n");
@@ -223,38 +297,35 @@ namespace CodeTranspiler.Generator {
             _inClass   = true;
             _className = n.Name;
 
-            // Struct C pour la classe
+            string sym = _SymName(n.Name);
+
+            // C struct
             Emit("/* class %s */\n".printf(n.Name));
-            Emit("struct _%s {\n".printf(n.Name));
+            Emit("struct _%s {\n".printf(sym));
             _indent++;
 
             // Inheritance: embed parent struct as first field
-            // This gives us field access compatibility with the parent.
             if (n.BaseClass != null) {
-                string parentName = TypeName(n.BaseClass);
+                string parentName = _SymName(TypeName(n.BaseClass));
                 EmitI("struct _%s _base; /* extends %s */\n"
                       .printf(parentName, parentName));
             }
 
-            // Champs et propriétés
+            // Fields and properties
             foreach (var member in n.Members) {
                 if (member is FieldDeclNode) {
                     member.Accept(this);
                 } else if (member is PropertyDeclNode) {
                     var prop = (PropertyDeclNode) member;
                     EmitI("%s %s;\n".printf(
-                        TypeToC(prop.PropType),
-                        prop.Name
-                    ));
+                        TypeToC(prop.PropType), prop.Name));
                 }
             }
 
             _indent--;
             Emit("};\n\n");
 
-            // Default constructor — only if no explicit constructor exists.
-            // An explicit constructor is a MethodDeclNode whose name
-            // matches the class name (parser maps it to MethodDeclNode).
+            // Default constructor — only if no explicit constructor exists
             bool hasExplicitCtor = false;
             foreach (var member in n.Members) {
                 if (member is MethodDeclNode) {
@@ -267,14 +338,12 @@ namespace CodeTranspiler.Generator {
             if (!hasExplicitCtor)
                 EmitDefaultConstructor(n);
 
-            // Méthodes
+            // Methods
             foreach (var member in n.Members) {
                 if (member is MethodDeclNode) {
-                    var method = (MethodDeclNode) member;
-                    EmitMethod(n.Name, method);
+                    EmitMethod(n.Name, (MethodDeclNode) member);
                 } else if (member is ConstructorDeclNode) {
-                    EmitConstructor(n.Name,
-                        (ConstructorDeclNode) member);
+                    EmitConstructor(n.Name, (ConstructorDeclNode) member);
                 }
             }
 
@@ -283,12 +352,12 @@ namespace CodeTranspiler.Generator {
         }
 
         private void EmitDefaultConstructor(ClassDeclNode n) {
-            Emit("%s* %s_new() {\n".printf(n.Name, n.Name));
+            string sym = _SymName(n.Name);
+            Emit("%s* %s_new() {\n".printf(sym, sym));
             _indent++;
             EmitI("%s* self = (%s*) code_alloc(sizeof(%s));\n"
-                  .printf(n.Name, n.Name, n.Name));
+                  .printf(sym, sym, sym));
 
-            // Initialiser les champs avec valeurs par défaut
             foreach (var member in n.Members) {
                 if (member is FieldDeclNode) {
                     var f = (FieldDeclNode) member;
@@ -307,22 +376,18 @@ namespace CodeTranspiler.Generator {
 
         private void EmitConstructor(string className,
                                       ConstructorDeclNode n) {
-            // Prototype
-            Emit("%s* %s_create(".printf(className, className));
+            string sym = _SymName(className);
+            Emit("%s* %s_new(".printf(sym, sym));
             EmitParamList(n.Params);
             Emit(") {\n");
             _indent++;
-
             EmitI("%s* self = (%s*) code_alloc(sizeof(%s));\n"
-                  .printf(className, className, className));
-
-            // Corps
+                  .printf(sym, sym, sym));
             foreach (var stmt in n.Body.Statements) {
                 EmitI("");
                 stmt.Accept(this);
                 Emit("\n");
             }
-
             EmitI("return self;\n");
             _indent--;
             Emit("}\n\n");
@@ -332,15 +397,17 @@ namespace CodeTranspiler.Generator {
                                  MethodDeclNode n) {
             EmitLine(n.Line);
 
+            string sym = _SymName(className);
+
             // A MethodDeclNode whose name matches the class name
             // is actually a constructor (parser limitation).
             if (n.Name == className) {
-                Emit("%s* %s_new(".printf(className, className));
+                Emit("%s* %s_new(".printf(sym, sym));
                 EmitParamList(n.Params);
                 Emit(") {\n");
                 _indent++;
                 EmitI("%s* self = (%s*) code_alloc(sizeof(%s));\n"
-                      .printf(className, className, className));
+                      .printf(sym, sym, sym));
                 if (n.Body != null) n.Body.Accept(this);
                 EmitI("return self;\n");
                 _indent--;
@@ -354,13 +421,13 @@ namespace CodeTranspiler.Generator {
 
             // Prototype
             if (n.IsStatic) {
-                Emit("static %s %s_%s(".printf(
-                    retType, className, n.Name));
+                Emit("static %s %s(".printf(
+                    retType, _MethodName(className, n.Name)));
                 EmitParamList(n.Params);
                 Emit(") ");
             } else {
-                Emit("%s %s_%s(%s* self".printf(
-                    retType, className, n.Name, className));
+                Emit("%s %s(%s* self".printf(
+                    retType, _MethodName(className, n.Name), sym));
                 if (n.Params.size > 0) {
                     Emit(", ");
                     EmitParamList(n.Params);
@@ -416,20 +483,16 @@ namespace CodeTranspiler.Generator {
 
         public override void VisitRecordDecl(RecordDeclNode n) {
             EmitLine(n.Line);
+            string sym = _SymName(n.Name);
             Emit("/* record %s */\n".printf(n.Name));
-            Emit("struct _%s {\n".printf(n.Name));
+            Emit("struct _%s {\n".printf(sym));
             _indent++;
-
-            foreach (var p in n.Params) {
-                EmitI("%s %s;\n".printf(
-                    TypeToC(p.ParamType), p.Name));
-            }
-
+            foreach (var p in n.Params)
+                EmitI("%s %s;\n".printf(TypeToC(p.ParamType), p.Name));
             _indent--;
             Emit("};\n\n");
 
-            // Constructeur
-            Emit("%s* %s_new(".printf(n.Name, n.Name));
+            Emit("%s* %s_new(".printf(sym, sym));
             for (int i = 0; i < n.Params.size; i++) {
                 if (i > 0) Emit(", ");
                 var p = n.Params[i];
@@ -438,33 +501,26 @@ namespace CodeTranspiler.Generator {
             Emit(") {\n");
             _indent++;
             EmitI("%s* self = (%s*) code_alloc(sizeof(%s));\n"
-                  .printf(n.Name, n.Name, n.Name));
-            foreach (var p in n.Params) {
+                  .printf(sym, sym, sym));
+            foreach (var p in n.Params)
                 EmitI("self->%s = %s;\n".printf(p.Name, p.Name));
-            }
             EmitI("return self;\n");
             _indent--;
             Emit("}\n\n");
         }
 
-        public override void VisitDataClassDecl(
-            DataClassDeclNode n) {
-
+        public override void VisitDataClassDecl(DataClassDeclNode n) {
             EmitLine(n.Line);
+            string sym = _SymName(n.Name);
             Emit("/* data class %s */\n".printf(n.Name));
-            Emit("struct _%s {\n".printf(n.Name));
+            Emit("struct _%s {\n".printf(sym));
             _indent++;
-
-            foreach (var p in n.Params) {
-                EmitI("%s %s;\n".printf(
-                    TypeToC(p.ParamType), p.Name));
-            }
-
+            foreach (var p in n.Params)
+                EmitI("%s %s;\n".printf(TypeToC(p.ParamType), p.Name));
             _indent--;
             Emit("};\n\n");
 
-            // Constructeur
-            Emit("%s* %s_new(".printf(n.Name, n.Name));
+            Emit("%s* %s_new(".printf(sym, sym));
             for (int i = 0; i < n.Params.size; i++) {
                 if (i > 0) Emit(", ");
                 var p = n.Params[i];
@@ -473,10 +529,9 @@ namespace CodeTranspiler.Generator {
             Emit(") {\n");
             _indent++;
             EmitI("%s* self = (%s*) code_alloc(sizeof(%s));\n"
-                  .printf(n.Name, n.Name, n.Name));
-            foreach (var p in n.Params) {
+                  .printf(sym, sym, sym));
+            foreach (var p in n.Params)
                 EmitI("self->%s = %s;\n".printf(p.Name, p.Name));
-            }
             EmitI("return self;\n");
             _indent--;
             Emit("}\n\n");
@@ -814,12 +869,11 @@ namespace CodeTranspiler.Generator {
         private string _FindInheritedMemberPrefix(string className,
                                                    string memberName) {
             if (_program == null) return "";
+            string bare = _StripNsPrefix(className);
             foreach (var decl in _program.Declarations) {
                 if (!(decl is ClassDeclNode)) continue;
                 var cls = (ClassDeclNode) decl;
-                if (cls.Name != className) continue;
-
-                // Check if member is in this class directly
+                if (cls.Name != bare) continue;
                 foreach (var m in cls.Members) {
                     if (m is FieldDeclNode &&
                         ((FieldDeclNode) m).Name == memberName) return "";
@@ -828,11 +882,8 @@ namespace CodeTranspiler.Generator {
                     if (m is MethodDeclNode &&
                         ((MethodDeclNode) m).Name == memberName) return "";
                 }
-
-                // Not found here — check parent
                 if (cls.BaseClass != null) {
-                    string parentName = TypeName(cls.BaseClass);
-                    // Verify parent has this member
+                    string parentName = _StripNsPrefix(TypeName(cls.BaseClass));
                     if (_ClassHasMember(parentName, memberName))
                         return "_base";
                 }
@@ -841,15 +892,13 @@ namespace CodeTranspiler.Generator {
             return "";
         }
 
-        /**
-         * Returns true if className (or any ancestor) declares memberName.
-         */
         private bool _ClassHasMember(string className, string memberName) {
             if (_program == null) return false;
+            string bare = _StripNsPrefix(className);
             foreach (var decl in _program.Declarations) {
                 if (!(decl is ClassDeclNode)) continue;
                 var cls = (ClassDeclNode) decl;
-                if (cls.Name != className) continue;
+                if (cls.Name != bare) continue;
                 foreach (var m in cls.Members) {
                     if (m is FieldDeclNode &&
                         ((FieldDeclNode) m).Name == memberName) return true;
@@ -859,7 +908,8 @@ namespace CodeTranspiler.Generator {
                         ((MethodDeclNode) m).Name == memberName) return true;
                 }
                 if (cls.BaseClass != null)
-                    return _ClassHasMember(TypeName(cls.BaseClass), memberName);
+                    return _ClassHasMember(
+                        _StripNsPrefix(TypeName(cls.BaseClass)), memberName);
             }
             return false;
         }
@@ -942,27 +992,31 @@ namespace CodeTranspiler.Generator {
             bool   isStaticCall = false;
 
             if (ma.Target is ThisNode) {
-                funcName = "%s_%s".printf(_className, ma.MemberName);
+                funcName = _MethodName(_className, ma.MemberName);
 
             } else if (ma.Target is IdentifierNode) {
                 var id = (IdentifierNode) ma.Target;
 
                 if (id.Name.length > 0 && id.Name[0].isupper()) {
                     // Uppercase → class/type name → static call
-                    funcName    = "%s_%s".printf(id.Name, ma.MemberName);
+                    // Apply namespace prefix to the class name
+                    funcName    = _MethodName(id.Name, ma.MemberName);
                     isStaticCall = true;
                 } else {
                     // Lowercase → instance variable
                     // Resolve the class name from _localCTypes
-                    // e.g. "cat" → "Animal*" → "Animal"
                     string className = id.Name;
                     if (_localCTypes.has_key(id.Name)) {
                         string ct = _localCTypes[id.Name];
-                        // Strip "*" suffix to get class name
                         if (ct.has_suffix("*"))
                             className = ct.substring(0, ct.length - 1);
                     }
-                    funcName = "%s_%s".printf(className, ma.MemberName);
+                    // className may already be prefixed (e.g. "MyApp_Animal")
+                    // strip prefix to get bare class name, then re-apply
+                    string bareClass = className;
+                    if (_nsPrefix != "" && className.has_prefix(_nsPrefix + "_"))
+                        bareClass = className.substring(_nsPrefix.length + 1);
+                    funcName = _MethodName(bareClass, ma.MemberName);
                 }
 
             } else {
@@ -1037,10 +1091,10 @@ namespace CodeTranspiler.Generator {
                 return;
             }
 
-            // new MyClass()        → MyClass_new()
-            // new MyClass(a, b)    → MyClass_new(a, b)
-            // Records and data classes always generate _new(params)
-            Emit("%s_new(".printf(typeName));
+            // Apply namespace prefix
+            string sym = _SymName(typeName);
+
+            Emit("%s_new(".printf(sym));
             for (int i = 0; i < n.Arguments.size; i++) {
                 if (i > 0) Emit(", ");
                 n.Arguments[i].Accept(this);
@@ -1224,20 +1278,31 @@ namespace CodeTranspiler.Generator {
                 case "void":   return "void";
                 case "byte":   return "u8";
                 case "char":   return "char";
+                case "i8":     return "i8";
+                case "i16":    return "i16";
+                case "i32":    return "i32";
+                case "i64":    return "i64";
+                case "u8":     return "u8";
+                case "u16":    return "u16";
+                case "u32":    return "u32";
+                case "u64":    return "u64";
+                case "f32":    return "f32";
+                case "f64":    return "f64";
                 case "List":      return "CodeList*";
                 case "var":       return "void*";
                 case "string[]":  return "code_string*";
                 case "int[]":     return "i64*";
-                case "float[]":   return "f64*";
+                case "float[]":   return "f32*";
+                case "double[]":  return "f64*";
                 case "bool[]":    return "code_bool*";
                 default:
-                    // Tableau generique
+                    // Generic array
                     if (name.has_suffix("[]")) {
                         string baseName = name[0:name.length-2];
                         return TypeNameToC(baseName, false) + "*";
                     }
-                    // Type utilisateur → pointeur struct
-                    return "%s*".printf(name);
+                    // User-defined type → apply namespace prefix
+                    return "%s*".printf(_SymName(name));
             }
         }
 
@@ -1359,12 +1424,9 @@ namespace CodeTranspiler.Generator {
             string className = "";
             if (target is IdentifierNode) {
                 var id = (IdentifierNode) target;
-                // Check if it's a direct class name (static call)
                 className = id.Name;
-                // Or resolve via _localCTypes for instance calls
                 if (_localCTypes.has_key(id.Name)) {
                     string ct = _localCTypes[id.Name];
-                    // Strip "*" to get class name: "Circle*" → "Circle"
                     if (ct.has_suffix("*"))
                         className = ct.substring(0, ct.length - 1);
                 }
@@ -1375,36 +1437,48 @@ namespace CodeTranspiler.Generator {
             }
 
             if (_program == null || className == "") return "void*";
-
-            // Search all declarations for the class and method
-            return _LookupMethodInClass(className, memberName);
+            return _LookupMethodInClass(_StripNsPrefix(className), memberName);
         }
 
         private string _LookupMethodInClass(string className,
                                              string memberName) {
             if (_program == null) return "void*";
+            string bare = _StripNsPrefix(className);
             foreach (var decl in _program.Declarations) {
                 if (decl is ClassDeclNode) {
                     var cls = (ClassDeclNode) decl;
-                    if (cls.Name != className) continue;
+                    if (cls.Name != bare) continue;
                     foreach (var m in cls.Members) {
                         if (m is MethodDeclNode) {
                             var md = (MethodDeclNode) m;
-                            if (md.Name == memberName &&
-                                md.ReturnType != null)
+                            if (md.Name == memberName && md.ReturnType != null)
                                 return TypeToC(md.ReturnType);
                         }
                     }
-                    // Walk parent chain for inherited methods
                     if (cls.BaseClass != null) {
-                        string parentName = TypeName(cls.BaseClass);
-                        string parentResult = _LookupMethodInClass(
-                            parentName, memberName);
+                        string parentName = _StripNsPrefix(TypeName(cls.BaseClass));
+                        string parentResult = _LookupMethodInClass(parentName, memberName);
                         if (parentResult != "void*") return parentResult;
                     }
                 }
             }
             return "void*";
+        }
+
+        /**
+         * Strip namespace prefix and pointer suffix from a C type name.
+         * "Tests_Animal*" → "Animal"
+         * "Tests_Animal"  → "Animal"
+         * "Animal*"       → "Animal"
+         * "Animal"        → "Animal"
+         */
+        private string _StripNsPrefix(string name) {
+            string s = name;
+            if (s.has_suffix("*"))
+                s = s.substring(0, s.length - 1);
+            if (_nsPrefix != "" && s.has_prefix(_nsPrefix + "_"))
+                s = s.substring(_nsPrefix.length + 1);
+            return s;
         }
 
         /**
@@ -1606,51 +1680,43 @@ namespace CodeTranspiler.Generator {
          */
         private string _LookupFieldCType(string className, string fieldName) {
             if (_program == null || className == "") return "";
+            string bare = _StripNsPrefix(className);
             foreach (var decl in _program.Declarations) {
-                // Regular class
                 if (decl is ClassDeclNode) {
                     var cls = (ClassDeclNode) decl;
-                    if (cls.Name != className) continue;
+                    if (cls.Name != bare) continue;
                     foreach (var m in cls.Members) {
                         if (m is FieldDeclNode) {
                             var f = (FieldDeclNode) m;
-                            if (f.Name == fieldName)
-                                return TypeToC(f.FieldType);
+                            if (f.Name == fieldName) return TypeToC(f.FieldType);
                         } else if (m is PropertyDeclNode) {
                             var p = (PropertyDeclNode) m;
-                            if (p.Name == fieldName)
-                                return TypeToC(p.PropType);
+                            if (p.Name == fieldName) return TypeToC(p.PropType);
                         }
                     }
-                    // Walk parent class chain
                     if (cls.BaseClass != null) {
-                        string parentName = TypeName(cls.BaseClass);
+                        string parentName = _StripNsPrefix(TypeName(cls.BaseClass));
                         string parentResult = _LookupFieldCType(parentName, fieldName);
                         if (parentResult != "") return parentResult;
                     }
                 }
-                // Data class
                 else if (decl is DataClassDeclNode) {
                     var dc = (DataClassDeclNode) decl;
-                    if (dc.Name != className) continue;
+                    if (dc.Name != bare) continue;
                     foreach (var rp in dc.Params)
-                        if (rp.Name == fieldName)
-                            return TypeToC(rp.ParamType);
+                        if (rp.Name == fieldName) return TypeToC(rp.ParamType);
                     foreach (var m in dc.Members) {
                         if (m is FieldDeclNode) {
                             var f = (FieldDeclNode) m;
-                            if (f.Name == fieldName)
-                                return TypeToC(f.FieldType);
+                            if (f.Name == fieldName) return TypeToC(f.FieldType);
                         }
                     }
                 }
-                // Record
                 else if (decl is RecordDeclNode) {
                     var rec = (RecordDeclNode) decl;
-                    if (rec.Name != className) continue;
+                    if (rec.Name != bare) continue;
                     foreach (var rp in rec.Params)
-                        if (rp.Name == fieldName)
-                            return TypeToC(rp.ParamType);
+                        if (rp.Name == fieldName) return TypeToC(rp.ParamType);
                 }
             }
             return "";
