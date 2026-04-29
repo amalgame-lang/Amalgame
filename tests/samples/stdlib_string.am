@@ -1,0 +1,53 @@
+namespace Tests
+
+import Amalgame.String
+
+public class Program {
+    public static void Main(string[] args) {
+        // Length
+        let len = String_Length("Hello")
+        Console.WriteLine("len = {len}")
+
+        // Search
+        let has = String_Contains("Hello World", "World")
+        Console.WriteLine("contains = {has}")
+
+        let sw = String_StartsWith("Hello", "He")
+        let ew = String_EndsWith("Hello", "lo")
+        Console.WriteLine("startsWith = {sw}")
+        Console.WriteLine("endsWith = {ew}")
+
+        let idx = String_IndexOf("Hello World", "World")
+        Console.WriteLine("indexOf = {idx}")
+
+        // Case
+        let up = String_ToUpper("hello")
+        let lo = String_ToLower("WORLD")
+        Console.WriteLine("upper = {up}")
+        Console.WriteLine("lower = {lo}")
+
+        // Trim
+        let trimmed = String_Trim("  hello  ")
+        Console.WriteLine("trim = '{trimmed}'")
+
+        // Replace
+        let replaced = String_Replace("Hello World", "World", "Amalgame")
+        Console.WriteLine("replace = {replaced}")
+
+        // Repeat
+        let rep = String_Repeat("ab", 3)
+        Console.WriteLine("repeat = {rep}")
+
+        // Conversion
+        let n = String_ToInt("42")
+        Console.WriteLine("toInt = {n}")
+
+        let s = String_FromInt(123)
+        Console.WriteLine("fromInt = {s}")
+
+        let empty = String_IsEmpty("")
+        Console.WriteLine("isEmpty = {empty}")
+
+        Console.WriteLine("String test done")
+    }
+}
