@@ -38,19 +38,22 @@ int main(string[] args) {
     }
 
     if (args.length < 2) {
-        stderr.printf("Usage: amc <file.am> [-o output.c] [--no-typecheck]\n");
+        stderr.printf("Usage: amc <file.am> [-o output.c] [--lib] [--no-typecheck]\n");
         return 1;
     }
 
     string inputFile   = args[1];
     string outputFile  = inputFile.replace(".am", ".c");
     bool   skipTC      = false;
+    bool   forceLib    = false;
 
     for (int i = 2; i < args.length; i++) {
         if (args[i] == "-o" && i + 1 < args.length) {
             outputFile = args[i + 1];
         } else if (args[i] == "--no-typecheck") {
             skipTC = true;
+        } else if (args[i] == "--lib") {
+            forceLib = true;
         }
     }
 
@@ -126,7 +129,7 @@ int main(string[] args) {
     }
 
     // ── C GENERATOR ───────────────────────────────────
-    var generator = new CGenerator(inputFile, resolved.Symbols);
+    var generator = new CGenerator(inputFile, resolved.Symbols, forceLib);
     var generated = generator.Generate(parsed.Program);
 
     if (!generated.Success) {
@@ -140,9 +143,19 @@ int main(string[] args) {
         stderr.printf("Write error: %s\n", e.message);
         return 1;
     }
-    stdout.printf("Generator   OK : %s\n", outputFile);
+
+    string mode = generated.IsLibrary ? "Library" : "Executable";
+    stdout.printf("Generator   OK : %s [%s]\n", outputFile, mode);
 
     // ── GCC ───────────────────────────────────────────
+    // Library mode: only produce .c — no executable
+    if (generated.IsLibrary) {
+        stdout.printf("\nLibrary ready: %s\n", outputFile);
+        stdout.printf("Compile with: gcc -c -I<runtime_dir> %s -lgc -lm\n",
+                      outputFile);
+        return 0;
+    }
+
     string exeFile  = outputFile.replace(".c", "");
     string runtimeH = GLib.Path.get_dirname(
                           GLib.Path.get_dirname(
