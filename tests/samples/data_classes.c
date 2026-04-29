@@ -15,10 +15,10 @@
 typedef struct _Tests_Point Tests_Point;
 typedef struct _Tests_Player Tests_Player;
 typedef struct _Tests_Program Tests_Program;
-static f32 Tests_Program_Distance();
-static code_bool Tests_Program_IsAlive();
-static void Tests_Program_PrintPlayer();
-static void Tests_Program_Main();
+static f32 Tests_Program_Distance(Tests_Point*, Tests_Point*);
+static code_bool Tests_Program_IsAlive(Tests_Player*);
+static void Tests_Program_PrintPlayer(Tests_Player*);
+static void Tests_Program_Main(int, char**);
 
 
 

@@ -1,0 +1,36 @@
+namespace Tests
+
+public class Program {
+    public static string GetName(bool hasName) {
+        if (hasName) {
+            return "Arthus"
+        }
+        return "Unknown"
+    }
+
+    public static int Coalesce(int value, int fallback) {
+        if (value < 0) {
+            return fallback
+        }
+        return value
+    }
+
+    public static void Main(string[] args) {
+        let name1 = Program.GetName(true)
+        let name2 = Program.GetName(false)
+        Console.WriteLine("name1: {name1}")
+        Console.WriteLine("name2: {name2}")
+
+        let v1 = Program.Coalesce(42, 0)
+        let v2 = Program.Coalesce(-1, 99)
+        Console.WriteLine("v1: {v1}")
+        Console.WriteLine("v2: {v2}")
+
+        let flag1 = true
+        let flag2 = false
+        let both   = flag1 && flag2
+        let either = flag1 || flag2
+        Console.WriteLine("both: {both}")
+        Console.WriteLine("either: {either}")
+    }
+}
