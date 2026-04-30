@@ -117,12 +117,24 @@ namespace CodeTranspiler.Generator {
 
             // ── Emit ──────────────────────────────────
             EmitHeader();
+
+            // Two-pass lambda collection:
+            // Pass 1: visit AST to collect all lambda definitions
+            // Pass 2: emit lambda functions before main code, then re-emit main code
+            //
+            // Simpler approach: emit lambdas into a separate buffer,
+            // then insert them after forward decls.
+            // The _lambdaPreamble is populated during ast.Accept().
+            // We emit it right after forward decls by splitting VisitProgram.
             ast.Accept(this);
 
-            // Lambda functions collected during generation
+            // Lambda functions collected during ast traversal —
+            // they need to go BEFORE the entry point.
+            // Insert them into _out before EmitFooter by appending now.
             if (_lambdaPreamble.len > 0) {
                 Emit("\n/* ── Lambda functions ── */\n");
                 Emit(_lambdaPreamble.str);
+                _lambdaPreamble.erase();
             }
 
             // Entry point only for executables
@@ -243,10 +255,23 @@ namespace CodeTranspiler.Generator {
 
             Emit("\n");
 
-            // Déclarations
+            // Déclarations — flush lambda preamble before each one
+            // so lambdas defined in earlier classes appear before later classes
             foreach (var decl in n.Declarations) {
+                // Flush any lambdas accumulated so far
+                if (_lambdaPreamble.len > 0) {
+                    Emit("\n/* ── Lambdas ── */\n");
+                    Emit(_lambdaPreamble.str);
+                    _lambdaPreamble.erase();
+                }
                 decl.Accept(this);
                 Emit("\n");
+            }
+            // Final flush for lambdas in the last class
+            if (_lambdaPreamble.len > 0) {
+                Emit("\n/* ── Lambdas ── */\n");
+                Emit(_lambdaPreamble.str);
+                _lambdaPreamble.erase();
             }
         }
 
@@ -474,6 +499,10 @@ namespace CodeTranspiler.Generator {
         private void EmitForwardDecls(ProgramNode n) {
             Emit("/* ── Forward Declarations ── */\n");
 
+            // Pass 0: pre-scan all lambdas and emit forward stubs
+            // so they're available before the methods that use them
+            _PreScanAndEmitLambdas(n);
+
             // Pass 1a: emit interface fat-pointer typedefs
             foreach (var decl in n.Declarations) {
                 if (!(decl is InterfaceDeclNode)) continue;
@@ -503,14 +532,17 @@ namespace CodeTranspiler.Generator {
                     }
                     Emit(" } %s;\n".printf(sym));
                 } else {
-                    // Rich enum — emit tag enum only for forward decl
+                    // Rich enum — emit tag enum + forward typedef struct
+                    // so the type is available for method forward decls
                     Emit("typedef enum { ");
                     for (int i = 0; i < e.Members.size; i++) {
                         if (i > 0) Emit(", ");
                         Emit("%s_%s_TAG".printf(sym, e.Members[i].Name));
                     }
                     Emit(" } %s_Tag;\n".printf(sym));
-                    // Full struct emitted in VisitEnumDecl
+                    // Forward typedef so Amalgame_Expr is a known type
+                    Emit("typedef struct _%s %s;\n".printf(sym, sym));
+                    // Full struct/ctors emitted in VisitEnumDecl
                 }
             }
 
@@ -922,21 +954,11 @@ namespace CodeTranspiler.Generator {
                      .printf(n.Name));
             } else {
                 // Rich enum (associated types) → tagged union
+                // NOTE: tag enum already emitted in EmitForwardDecls
                 Emit("/* enum %s (tagged union) */\n".printf(n.Name));
-                // Tag enum
-                Emit("typedef enum {\n");
-                _indent++;
-                for (int i = 0; i < n.Members.size; i++) {
-                    var member = n.Members[i];
-                    EmitI("%s_%s_TAG".printf(sym, member.Name));
-                    if (i < n.Members.size - 1) Emit(",");
-                    Emit("\n");
-                }
-                _indent--;
-                Emit("} %s_Tag;\n\n".printf(sym));
 
-                // Data union
-                Emit("typedef struct {\n");
+                // Data union — uses named struct matching forward typedef
+                Emit("struct _%s {\n".printf(sym));
                 _indent++;
                 EmitI("%s_Tag tag;\n".printf(sym));
                 EmitI("union {\n");
@@ -955,7 +977,7 @@ namespace CodeTranspiler.Generator {
                 _indent--;
                 EmitI("} data;\n");
                 _indent--;
-                Emit("} %s;\n\n".printf(sym));
+                Emit("}; /* struct _%s */\n\n".printf(sym));
 
                 // Constructor functions for each variant
                 foreach (var member in n.Members) {
@@ -1148,23 +1170,31 @@ namespace CodeTranspiler.Generator {
 
             bool first = true;
             foreach (var arm in n.Arms) {
-                if (arm.Pattern.Kind ==
-                    MatchPatternKind.WILDCARD) {
-                    // _ → else final
+                if (arm.Pattern.Kind == MatchPatternKind.WILDCARD) {
                     if (!first) EmitI("else ");
                     Emit("{\n");
                 } else {
                     if (first) EmitI("if (");
                     else EmitI("else if (");
-
                     EmitMatchCondition(n.Subject, arm.Pattern);
                     Emit(") {\n");
                 }
 
                 _indent++;
+
+                // Declare destructured variables for DESTRUCTURE patterns
+                // e.g. Add(a, b) → auto a = subject.data.add._v0; auto b = ...
+                if (arm.Pattern.Kind == MatchPatternKind.DESTRUCTURE) {
+                    EmitDestructureBindings(n.Subject, arm.Pattern);
+                }
+                // For simple capture: Num(n) → int n = subject.data.num._v0
+                else if (arm.Pattern.Kind == MatchPatternKind.ENUM_VARIANT &&
+                         arm.Pattern.SubPatterns.size > 0) {
+                    EmitDestructureBindings(n.Subject, arm.Pattern);
+                }
+
                 EmitI("");
                 arm.Body.Accept(this);
-                // Don't add ; if body already ends with one (return/break/continue/block)
                 if (!(arm.Body is BlockNode) &&
                     !(arm.Body is ReturnNode) &&
                     !(arm.Body is BreakNode)  &&
@@ -1178,6 +1208,45 @@ namespace CodeTranspiler.Generator {
 
             _indent--;
             EmitI("}");
+        }
+
+        /**
+         * Emit local variable declarations for destructured enum pattern.
+         * e.g. Num(n) → i64 n = subject.data.num._v0;
+         *      Add(a, b) → Expr a = subject.data.add._v0; Expr b = ...
+         */
+        private void EmitDestructureBindings(AstNode subject,
+                                              MatchPatternNode p) {
+            // Determine variant name and sub-patterns
+            string variantName = "";
+            Gee.ArrayList<MatchPatternNode> subs;
+
+            if (p.Kind == MatchPatternKind.DESTRUCTURE) {
+                variantName = p.BindName ?? "";
+                subs = p.SubPatterns;
+            } else {
+                // ENUM_VARIANT with sub-patterns (e.g. Num(n))
+                variantName = p.BindName ?? "";
+                subs = p.SubPatterns;
+            }
+
+            // Strip enum prefix if present: "Expr.Num" → "Num"
+            if (variantName.contains(".")) {
+                string[] parts = variantName.split(".");
+                variantName = parts[parts.length - 1];
+            }
+
+            string fieldName = variantName.down();
+
+            for (int i = 0; i < subs.size; i++) {
+                var sub = subs[i];
+                string bindVar = sub.BindName ?? "_%d".printf(i);
+                // Emit: auto bindVar = subject.data.fieldName._vi;
+                EmitI("__auto_type %s = ".printf(bindVar));
+                subject.Accept(this);
+                Emit(".data.%s._v%d;\n".printf(fieldName, i));
+                _localCTypes[bindVar] = "void*"; // will be refined by usage
+            }
         }
 
         private void EmitMatchCondition(AstNode subject,
@@ -1208,26 +1277,50 @@ namespace CodeTranspiler.Generator {
                     p.RangeEnd.Accept(this);
                     break;
 
+                case MatchPatternKind.DESTRUCTURE:
+                    // Num(n), Add(a, b) → check tag
+                    if (p.BindName != null) {
+                        string variant = p.BindName;
+                        string enumPart = "", memberPart = variant;
+                        if (variant.contains(".")) {
+                            string[] pts = variant.split(".");
+                            enumPart  = pts[0];
+                            memberPart = pts[pts.length - 1];
+                        } else {
+                            // infer enum type from subject
+                            enumPart = _InferEnumType(p.BindName);
+                        }
+                        subject.Accept(this);
+                        Emit(".tag == %s_%s_TAG".printf(
+                            _SymName(enumPart), memberPart));
+                    }
+                    break;
+
                 case MatchPatternKind.ENUM_VARIANT:
                     // Role.Tank => subject == Tests_Role_Tank
+                    // Num(n) => subject.tag == Enum_Num_TAG
                     if (p.BindName != null) {
                         string variant = p.BindName;
                         if (variant.contains(".")) {
                             string[] parts = variant.split(".");
                             string enumName   = parts[0];
                             string memberName = parts[parts.length - 1];
-                            // Check if this is a rich enum (tagged union)
                             bool isRich = _IsRichEnum(enumName);
                             if (isRich) {
                                 subject.Accept(this);
                                 Emit(".tag == %s_%s_TAG".printf(
                                     _SymName(enumName), memberName));
                             } else {
-                                // Simple enum: direct comparison
                                 subject.Accept(this);
                                 Emit(" == %s_%s".printf(
                                     _SymName(enumName), memberName));
                             }
+                        } else if (p.SubPatterns.size > 0) {
+                            // Num(n) — bare variant name with sub-patterns
+                            string enumType = _InferEnumType(variant);
+                            subject.Accept(this);
+                            Emit(".tag == %s_%s_TAG".printf(
+                                _SymName(enumType), variant));
                         } else {
                             subject.Accept(this);
                             Emit(" == %s".printf(_SymName(variant)));
@@ -1697,7 +1790,16 @@ namespace CodeTranspiler.Generator {
                     return;
                 }
             }
-            Emit("->");
+
+            // Rich enums are passed by value → use . not ->
+            string targetType = InferCType(n.Target);
+            string bare = targetType.replace("*", "").strip();
+            bare = _StripNsPrefix(bare);
+            if (_IsRichEnum(bare)) {
+                Emit(".");
+            } else {
+                Emit("->");
+            }
             Emit(n.MemberName);
         }
 
@@ -1747,6 +1849,86 @@ namespace CodeTranspiler.Generator {
             return "";
         }
 
+        /**
+         * Walk the entire program AST, find all LambdaExprNodes,
+         * and emit their C function definitions upfront.
+         * This ensures lambdas are defined before any method that uses them.
+         */
+        private void _PreScanAndEmitLambdas(ProgramNode prog) {
+            var lambdas = new Gee.ArrayList<LambdaExprNode>();
+            _CollectLambdas(prog, lambdas);
+            if (lambdas.size == 0) return;
+
+            Emit("/* ── Lambda functions (pre-scanned) ── */\n");
+            int idx = 1;
+            foreach (var lam in lambdas) {
+                string lambdaName = "_lambda_%d".printf(idx++);
+                var paramStr = new StringBuilder();
+                foreach (var p in lam.Params) {
+                    if (paramStr.len > 0) paramStr.append(", ");
+                    // Use intptr_t so arithmetic works inside lambda body
+                    paramStr.append("intptr_t %s".printf(p.Name));
+                }
+                foreach (var p in lam.Params)
+                    _localCTypes[p.Name] = "i64"; // intptr_t ≈ i64
+
+                // Capture body
+                int bodyStart = (int) _lambdaPreamble.len;
+                _emitToLambda = true;
+                if (lam.Body != null) lam.Body.Accept(this);
+                _emitToLambda = false;
+                string bodyStr = _lambdaPreamble.str.substring(bodyStart);
+                _lambdaPreamble.erase(bodyStart, -1);
+
+                foreach (var p in lam.Params)
+                    _localCTypes.unset(p.Name);
+
+                Emit("static intptr_t %s(%s) { return (intptr_t)(%s); }\n"
+                     .printf(lambdaName, paramStr.str, bodyStr));
+            }
+            Emit("\n");
+            // Reset counter so VisitLambdaExpr assigns same names
+            _lambdaCounter = 0;
+        }
+
+        private void _CollectLambdas(AstNode node,
+                                       Gee.ArrayList<LambdaExprNode> out_list) {
+            if (node is LambdaExprNode) {
+                var lam = (LambdaExprNode) node;
+                if (lam.Params.size > 0)
+                    out_list.add(lam);
+                return;
+            }
+            // Walk children via simple reflection on known node types
+            if (node is ProgramNode) {
+                var p = (ProgramNode) node;
+                foreach (var d in p.Declarations) _CollectLambdas(d, out_list);
+            } else if (node is ClassDeclNode) {
+                var c = (ClassDeclNode) node;
+                foreach (var m in c.Members) _CollectLambdas(m, out_list);
+            } else if (node is MethodDeclNode) {
+                var m = (MethodDeclNode) node;
+                if (m.Body != null) _CollectLambdas(m.Body, out_list);
+            } else if (node is BlockNode) {
+                var b = (BlockNode) node;
+                foreach (var s in b.Statements) _CollectLambdas(s, out_list);
+            } else if (node is VarDeclNode) {
+                var v = (VarDeclNode) node;
+                if (v.Initial != null) _CollectLambdas(v.Initial, out_list);
+            } else if (node is CallExprNode) {
+                var c = (CallExprNode) node;
+                _CollectLambdas(c.Callee, out_list);
+                foreach (var a in c.Arguments) _CollectLambdas(a, out_list);
+            } else if (node is BinaryExprNode) {
+                var b = (BinaryExprNode) node;
+                _CollectLambdas(b.Left, out_list);
+                _CollectLambdas(b.Right, out_list);
+            } else if (node is ReturnNode) {
+                var r = (ReturnNode) node;
+                if (r.Value != null) _CollectLambdas(r.Value, out_list);
+            }
+        }
+
         private bool _IsRichEnum(string name) {
             if (_program == null) return false;
             foreach (var decl in _program.Declarations) {
@@ -1757,6 +1939,21 @@ namespace CodeTranspiler.Generator {
                     if (m.AssocTypes.size > 0) return true;
             }
             return false;
+        }
+
+        /**
+         * Infer the enum type name from a bare variant name.
+         * e.g. "Num" → "Expr" if enum Expr has variant Num.
+         */
+        private string _InferEnumType(string variantName) {
+            if (_program == null) return variantName;
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is EnumDeclNode)) continue;
+                var e = (EnumDeclNode) decl;
+                foreach (var m in e.Members)
+                    if (m.Name == variantName) return e.Name;
+            }
+            return variantName;
         }
 
         /**
@@ -1867,6 +2064,32 @@ namespace CodeTranspiler.Generator {
                         if (_EmitSetMethod(id.Name, ma.MemberName,
                                            n.Arguments)) return;
                     }
+
+                    // ── Stdlib collection types ─────────────
+                    // Detect by type name (e.g. List, Stack, etc.)
+                    string collType = _localCTypes.has_key(id.Name)
+                        ? _localCTypes[id.Name] : "";
+                    if (collType.has_prefix("Amalgame") &&
+                        !collType.has_prefix("AmalgameList") &&
+                        !collType.has_prefix("AmalgameMap") &&
+                        !collType.has_prefix("AmalgameSet")) {
+                        // User generic class — emit as method call
+                    }
+                }
+
+                // Also handle this.Field.Method() patterns
+                if (ma.Target is MemberAccessNode) {
+                    var innerMa = (MemberAccessNode) ma.Target;
+                    if (innerMa.Target is ThisNode) {
+                        string fieldType = _LookupFieldCType(
+                            _className, innerMa.MemberName);
+                        if (fieldType == "AmalgameList*") {
+                            // this.Items.Add(x) → AmalgameList_add(self->Items, x)
+                            string objExpr = "self->%s".printf(innerMa.MemberName);
+                            if (_EmitListMethod(objExpr, ma.MemberName,
+                                                n.Arguments)) return;
+                        }
+                    }
                 }
 
                 // Generic method call
@@ -1875,6 +2098,33 @@ namespace CodeTranspiler.Generator {
             }
 
             // Simple function call
+            // If callee is a local variable holding a lambda (void* func ptr),
+            // cast it to the appropriate function pointer type
+            if (n.Callee is IdentifierNode) {
+                var id = (IdentifierNode) n.Callee;
+                if (_localCTypes.has_key(id.Name) &&
+                    _localCTypes[id.Name] == "void*") {
+                    // Cast to function pointer: ((intptr_t(*)(intptr_t,...))func)(args)
+                    int argc = n.Arguments.size;
+                    var fpType = new StringBuilder("((intptr_t(*)(");
+                    for (int i = 0; i < argc; i++) {
+                        if (i > 0) fpType.append(", ");
+                        fpType.append("intptr_t");
+                    }
+                    if (argc == 0) fpType.append("void");
+                    fpType.append("))%s)(".printf(id.Name));
+                    Emit(fpType.str);
+                    for (int i = 0; i < n.Arguments.size; i++) {
+                        if (i > 0) Emit(", ");
+                        Emit("(intptr_t)(");
+                        n.Arguments[i].Accept(this);
+                        Emit(")");
+                    }
+                    Emit(")");
+                    return;
+                }
+            }
+
             n.Callee.Accept(this);
             Emit("(");
             for (int i = 0; i < n.Arguments.size; i++) {
@@ -2028,9 +2278,29 @@ namespace CodeTranspiler.Generator {
                 }
             } else {
                 // obj.Method(args) → ClassName_Method(obj, args)
+                // Look up method param types for auto-casting
+                string instClass = "";
+                if (ma.Target is IdentifierNode) {
+                    var iid = (IdentifierNode) ma.Target;
+                    string ct = _localCTypes.has_key(iid.Name)
+                        ? _localCTypes[iid.Name] : "";
+                    instClass = _StripNsPrefix(ct.replace("*","").strip());
+                }
                 ma.Target.Accept(this);
                 for (int i = 0; i < args.size; i++) {
                     Emit(", ");
+                    string expectedPt = _LookupParamType(
+                        instClass, ma.MemberName, i);
+                    if (expectedPt == "void*") {
+                        string argType = InferCType(args[i]);
+                        if (argType == "i64" || argType == "i32" ||
+                            argType == "code_bool" || argType == "char") {
+                            Emit("(void*)(intptr_t)(");
+                            args[i].Accept(this);
+                            Emit(")");
+                            continue;
+                        }
+                    }
                     args[i].Accept(this);
                 }
                 foreach (var kv in namedArgs.entries) {
@@ -2088,54 +2358,13 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitLambdaExpr(LambdaExprNode n) {
-            // Simple single-expression lambda: p => expr
-            // Emitted inline as a GCC nested function (GNU extension)
-            // or as a cast to a function pointer stub.
-            //
-            // Strategy: emit an immediately-called wrapper that
-            // captures by value via a helper macro, or for simple
-            // cases just emit the expression directly (for use in
-            // ForEach-style calls where the body is a statement).
             if (n.Params.size == 0) {
-                // () => expr
                 if (n.Body != null) n.Body.Accept(this);
                 return;
             }
-
-            // p => expr  (single param, expression body)
-            // Used inline: emit as a named lambda function reference.
+            // Definition already emitted by _PreScanAndEmitLambdas
             _lambdaCounter++;
-            string lambdaName = "_lambda_%d".printf(_lambdaCounter);
-
-            // Build parameter list
-            var paramStr = new StringBuilder();
-            foreach (var p in n.Params) {
-                if (paramStr.len > 0) paramStr.append(", ");
-                paramStr.append("void* %s".printf(p.Name));
-            }
-
-            // Register param names as void* for body generation
-            foreach (var p in n.Params)
-                _localCTypes[p.Name] = "void*";
-
-            // Write lambda function directly into preamble buffer
-            // by temporarily redirecting Emit() calls.
-            // We use a flag to route Emit() to _lambdaPreamble.
-            _emitToLambda = true;
-
-            _lambdaPreamble.append("static void* %s(%s) {\n"
-                .printf(lambdaName, paramStr.str));
-            _indent++;
-            _lambdaPreamble.append("    return (void*)(intptr_t)(");
-            if (n.Body != null) n.Body.Accept(this);
-            _lambdaPreamble.append(");\n");
-            _indent--;
-            _lambdaPreamble.append("}\n");
-
-            _emitToLambda = false;
-
-            // Emit reference to the lambda function
-            Emit(lambdaName);
+            Emit("_lambda_%d".printf(_lambdaCounter));
         }
 
         public override void VisitAwaitExpr(AwaitExprNode n) {
@@ -2278,6 +2507,10 @@ namespace CodeTranspiler.Generator {
                 case "Set":       return "AmalgameSet*";
                 case "var":       return "void*";
                 case "string[]":  return "code_string*";
+                // Single-letter generic type params → void*
+                case "T": case "K": case "V": case "E": case "U":
+                case "T1": case "T2": case "T3":
+                    return "void*";
                 case "int[]":     return "i64*";
                 case "float[]":   return "f32*";
                 case "double[]":  return "f64*";
@@ -2290,6 +2523,9 @@ namespace CodeTranspiler.Generator {
                     }
                     // Interface type → fat pointer (value type, no *)
                     if (_IsInterfaceType(name))
+                        return _SymName(name);
+                    // Rich enum → passed by value (tagged union struct)
+                    if (_IsRichEnum(name))
                         return _SymName(name);
                     // User-defined type → apply namespace prefix
                     return "%s*".printf(_SymName(name));
@@ -2336,6 +2572,26 @@ namespace CodeTranspiler.Generator {
          * Infère le type C d'une expression.
          */
         private string InferCType(AstNode expr) {
+            // Call expression — check for rich enum constructors and lambda calls
+            if (expr is CallExprNode) {
+                var call = (CallExprNode) expr;
+                // Lambda variable call → returns intptr_t (i64)
+                if (call.Callee is IdentifierNode) {
+                    var cid = (IdentifierNode) call.Callee;
+                    if (_localCTypes.has_key(cid.Name) &&
+                        _localCTypes[cid.Name] == "void*")
+                        return "i64";
+                }
+                if (call.Callee is MemberAccessNode) {
+                    var ma = (MemberAccessNode) call.Callee;
+                    if (ma.Target is IdentifierNode) {
+                        string enumName = ((IdentifierNode)ma.Target).Name;
+                        if (_IsRichEnum(enumName))
+                            return _SymName(enumName);
+                    }
+                }
+            }
+
             // If expression: infer type from then-branch last statement
             if (expr is IfNode) {
                 var ifn = (IfNode) expr;
