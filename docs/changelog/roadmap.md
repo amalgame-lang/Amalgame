@@ -30,7 +30,7 @@
 | Stdlib Collections      | 🔜     | List, Map, Set (requires generics)           |
 | Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
 | Enum generation         | ✅     | Simple + rich enums, match, namespace prefix  |
-| Interface vtable        | 🔜     | Interface dispatch in C                      |
+| Interface vtable        | ✅     | vtable dispatch, fat pointer, auto-conversion |
 | Multi-file compilation  | 🔜     | `amc *.am` or package system                 |
 | LSP Server              | 🔜     | Autocompletion, real-time errors             |
 | DAP Server              | 🔜     | Debug, breakpoints                           |
