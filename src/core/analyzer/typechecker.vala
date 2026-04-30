@@ -1044,6 +1044,21 @@ namespace CodeTranspiler.Analyzer {
             string className = "?";
             TypeNode? baseClass = null;
 
+            // Enum member access: Direction.North → type is "Direction"
+            if (classDecl is EnumDeclNode) {
+                var en = (EnumDeclNode) classDecl;
+                foreach (var m in en.Members)
+                    if (m.Name == memberName)
+                        return en.Name;   // type of Direction.North is "Direction"
+                foreach (var m in en.Methods)
+                    if (m.Name == memberName)
+                        return (m.ReturnType != null)
+                               ? _TypeKey(m.ReturnType) : "void";
+                _Error("Enum '%s' has no member '%s'"
+                       .printf(en.Name, memberName), refNode);
+                return "?";
+            }
+
             if (classDecl is ClassDeclNode) {
                 var cls = (ClassDeclNode) classDecl;
                 members   = cls.Members;

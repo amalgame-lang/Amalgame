@@ -5,11 +5,59 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ---
 
-## [0.4.0] - 2026-XX-XX
+## [0.4.0] - 2026-04-30
 
 ### ✅ Added
 
-#### Standard Library
+#### Enums
+
+Full enum support — simple and rich (tagged union) variants:
+
+```amalgame
+// Simple enum
+public enum Direction { North, South, East, West }
+
+// Rich enum (associated types)
+public enum Shape {
+    Circle(float),
+    Rectangle(float, float)
+}
+```
+
+- **Simple enums** → `typedef enum { Tests_Direction_North, ... } Tests_Direction`
+- **Rich enums** → tagged union C struct with `static inline` constructors
+- **`match` on enum** → `subject == Tests_Direction_North`
+- **`EnumName.Member`** access → emits `Tests_Direction_North` directly
+- **Enum methods** → methods declared inside enum body
+- **Namespace prefixing** → `namespace Tests` + `Direction` → `Tests_Direction`
+
+**Parser fixes for enums:**
+- `ParseEnumDecl` — members on same line with comma separator now work:
+  `North, South, East, West` parsed correctly
+- `CheckMethodStart()` no longer triggered for enum members — method
+  detection now requires explicit access modifier or type keyword
+- `ParseMatchPattern` — `Direction.North` parsed as single pattern token
+  (`BindName = "Direction.North"`)
+
+**TypeChecker:**
+- `_ResolveMemberType` handles `EnumDeclNode` — `Direction.North` resolves
+  to type `"Direction"` instead of failing with "has no member"
+
+**Generator:**
+- `EmitForwardDecls` — two-pass: enum typedefs emitted first (pass 1),
+  then class typedefs + static method fwd decls (pass 2). Fixes
+  `unknown type name 'Tests_Direction'` in forward declarations.
+- `_IsEnumType` / `_IsRichEnum` helpers for correct code generation
+- `VisitMemberAccess` detects enum types and emits `Tests_Role_Tank`
+  instead of `Role->Tank`
+
+**Resolver:**
+- `VisitEnumDecl` registers each member globally as `Direction_North`
+  for cross-scope access
+
+#### Test suite
+- `tests/samples/enums.am` — 4 tests: basic, match, comparison, all values
+
 
 **`Amalgame.IO`** (`import Amalgame.IO`)
 - `File_ReadAll`, `File_WriteAll`, `File_AppendAll`, `File_Exists`, `File_Delete`, `File_Size`

@@ -469,12 +469,21 @@ namespace CodeTranspiler.Analyzer {
             _table.PushScope("enum:%s".printf(n.Name));
 
             foreach (var member in n.Members) {
+                // Register in local enum scope
                 var sym = new Symbol(
                     member.Name, SymbolKind.SYM_ENUM_MEMBER, member);
                 sym.TypeKey = n.Name;
                 if (!_table.Declare(sym))
                     _Error("Duplicate enum member '%s'".printf(member.Name),
                            member);
+
+                // Also register as "EnumName_MemberName" in global scope
+                // so Role.Tank can be resolved as Tests_Role_Tank
+                string qualName = "%s_%s".printf(n.Name, member.Name);
+                var globalSym = new Symbol(
+                    qualName, SymbolKind.SYM_ENUM_MEMBER, member);
+                globalSym.TypeKey = n.Name;
+                _table.DeclareGlobal(globalSym);
             }
 
             foreach (var method in n.Methods)
@@ -1072,8 +1081,5 @@ namespace CodeTranspiler.Analyzer {
          * with a [warning] prefix so the caller can filter).
          * A proper Warning class can be added in a later pass.
          */
-        private void _Warn(string message, AstNode node) {
-            _Error("[warning] " + message, node);
-        }
     }
 }
