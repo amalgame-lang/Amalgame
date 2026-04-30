@@ -38,26 +38,23 @@ int main(string[] args) {
 
         switch (sub) {
             case "save":
-                // Copy current binary to bootstrap/amc-linux-x86_64
                 string selfBin = args[0];
+                if (!GLib.FileUtils.test(selfBin, GLib.FileTest.EXISTS)) {
+                    selfBin = GLib.Path.build_filename(cwd, "build", "amc");
+                }
+                string[] cpArgs2 = { "cp", selfBin, stableBin, null };
+                int cpRet2 = 0;
                 try {
-                    GLib.FileUtils.set_contents(
-                        stableBin,
-                        (string) GLib.FileUtils.read_bytes(selfBin));
-                    FileUtils.chmod(stableBin, 0755);
-                    // Compute checksum
-                    string[] chkArgs = { "sha256sum", stableBin, null };
-                    string chkOut = "";
-                    GLib.Process.spawn_sync(cwd, chkArgs, null,
+                    GLib.Process.spawn_sync(cwd, cpArgs2, null,
                         GLib.SpawnFlags.SEARCH_PATH,
-                        null, out chkOut, null, null);
-                    string chkFile = GLib.Path.build_filename(
-                        bootstrapDir, "checksums.sha256");
-                    FileUtils.set_contents(chkFile,
-                        "# Generated: %s\n%s".printf(
-                            new GLib.DateTime.now_local().format("%Y-%m-%d"),
-                            chkOut));
-                    stdout.printf("  ✓ Bootstrap saved: bootstrap/amc-linux-x86_64\n");
+                        null, null, null, out cpRet2);
+                    if (cpRet2 == 0) {
+                        stdout.printf("  ✓ Bootstrap saved: bootstrap/amc-linux-x86_64\n");
+                        stdout.printf("    Source: %s\n", selfBin);
+                    } else {
+                        stderr.printf("  ✗ Copy failed\n");
+                        return 1;
+                    }
                 } catch (Error e) {
                     stderr.printf("  ✗ Save failed: %s\n", e.message);
                     return 1;
@@ -144,7 +141,7 @@ int main(string[] args) {
 
     // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
-        stdout.printf("Amalgame Transpiler v0.6.0\n");
+        stdout.printf("Amalgame Transpiler v0.8.0\n");
         stdout.printf("  Lexer          : OK\n");
         stdout.printf("  AST            : OK\n");
         stdout.printf("  Parser         : OK\n");
