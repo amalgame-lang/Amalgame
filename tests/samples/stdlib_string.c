@@ -33,40 +33,40 @@ Tests_Program* Tests_Program_new() {
 static void Tests_Program_Main(int argc, char** argv) {
 
 #line 8 "./tests/samples/stdlib_string.am"
-    void* len = String_Length("Hello");
+    i64 len = String_Length("Hello");
 
 #line 9 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("len = %s", len));
+    Console_WriteLine(code_string_format("len = %s", code_int_to_string(len)));
 
 #line 12 "./tests/samples/stdlib_string.am"
-    void* has = String_Contains("Hello World", "World");
+    code_bool has = String_Contains("Hello World", "World");
 
 #line 13 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("contains = %s", has));
+    Console_WriteLine(code_string_format("contains = %s", ((has) ? "true" : "false")));
 
 #line 15 "./tests/samples/stdlib_string.am"
-    void* sw = String_StartsWith("Hello", "He");
+    code_bool sw = String_StartsWith("Hello", "He");
 
 #line 16 "./tests/samples/stdlib_string.am"
-    void* ew = String_EndsWith("Hello", "lo");
+    code_bool ew = String_EndsWith("Hello", "lo");
 
 #line 17 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("startsWith = %s", sw));
+    Console_WriteLine(code_string_format("startsWith = %s", ((sw) ? "true" : "false")));
 
 #line 18 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("endsWith = %s", ew));
+    Console_WriteLine(code_string_format("endsWith = %s", ((ew) ? "true" : "false")));
 
 #line 20 "./tests/samples/stdlib_string.am"
-    void* idx = String_IndexOf("Hello World", "World");
+    i64 idx = String_IndexOf("Hello World", "World");
 
 #line 21 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("indexOf = %s", idx));
+    Console_WriteLine(code_string_format("indexOf = %s", code_int_to_string(idx)));
 
 #line 24 "./tests/samples/stdlib_string.am"
-    void* up = String_ToUpper("hello");
+    code_string up = String_ToUpper("hello");
 
 #line 25 "./tests/samples/stdlib_string.am"
-    void* lo = String_ToLower("WORLD");
+    code_string lo = String_ToLower("WORLD");
 
 #line 26 "./tests/samples/stdlib_string.am"
     Console_WriteLine(code_string_format("upper = %s", up));
@@ -75,40 +75,40 @@ static void Tests_Program_Main(int argc, char** argv) {
     Console_WriteLine(code_string_format("lower = %s", lo));
 
 #line 30 "./tests/samples/stdlib_string.am"
-    void* trimmed = String_Trim("  hello  ");
+    code_string trimmed = String_Trim("  hello  ");
 
 #line 31 "./tests/samples/stdlib_string.am"
     Console_WriteLine(code_string_format("trim = '%s'", trimmed));
 
 #line 34 "./tests/samples/stdlib_string.am"
-    void* replaced = String_Replace("Hello World", "World", "Amalgame");
+    code_string replaced = String_Replace("Hello World", "World", "Amalgame");
 
 #line 35 "./tests/samples/stdlib_string.am"
     Console_WriteLine(code_string_format("replace = %s", replaced));
 
 #line 38 "./tests/samples/stdlib_string.am"
-    void* rep = String_Repeat("ab", 3);
+    code_string rep = String_Repeat("ab", 3);
 
 #line 39 "./tests/samples/stdlib_string.am"
     Console_WriteLine(code_string_format("repeat = %s", rep));
 
 #line 42 "./tests/samples/stdlib_string.am"
-    void* n = String_ToInt("42");
+    i64 n = String_ToInt("42");
 
 #line 43 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("toInt = %s", n));
+    Console_WriteLine(code_string_format("toInt = %s", code_int_to_string(n)));
 
 #line 45 "./tests/samples/stdlib_string.am"
-    void* s = String_FromInt(123);
+    code_string s = String_FromInt(123);
 
 #line 46 "./tests/samples/stdlib_string.am"
     Console_WriteLine(code_string_format("fromInt = %s", s));
 
 #line 48 "./tests/samples/stdlib_string.am"
-    void* empty = String_IsEmpty("");
+    code_bool empty = String_IsEmpty("");
 
 #line 49 "./tests/samples/stdlib_string.am"
-    Console_WriteLine(code_string_format("isEmpty = %s", empty));
+    Console_WriteLine(code_string_format("isEmpty = %s", ((empty) ? "true" : "false")));
 
 #line 51 "./tests/samples/stdlib_string.am"
     Console_WriteLine("String test done");
