@@ -89,7 +89,75 @@ Program.PrintDesc(c)   // → Tests_Circle_as_IDescribable(c)
 - `TypeNameToC` — interface types returned as value types (no `*`) since
   the fat pointer struct already contains the pointer
 
-#### Multi-file compilation (2026-04-30)
+#### Diagnostic Formatter (2026-04-30)
+
+Compiler errors now display like Rust/Swift — colored, located, readable:
+
+```
+error[syntax]: Attendu un identifiant, trouvé ','
+  --> tests/samples/enums.am:4:10
+   |
+ 4 |     North, South, East, West
+   |          ^
+   |
+```
+
+- `src/transpiler/diagnostics.vala` — new `DiagnosticFormatter` class
+- Color auto-detection via `NO_COLOR` / `FORCE_COLOR` / `TERM` env vars
+- Phases: `error[syntax]`, `error[resolver]`, `error[typechecker]`
+- Source line + `^` caret at error column
+- All error output in `main.vala` routed through `DiagnosticFormatter`
+
+#### Stdlib Collections (2026-04-30)
+
+Full `List<T>`, `Map<K,V>`, `Set<T>` support:
+
+```amalgame
+import Amalgame.Collections
+
+let list = new List<int>()
+list.Add(10)
+let count = list.Count()   // → 1
+
+let map = new Map<string, int>()
+map.Set("alpha", 1)
+let has = map.Has("alpha") // → true
+
+let set = new Set<string>()
+set.Add("warrior")
+set.Add("warrior")         // dedup
+let size = set.Size()      // → 1
+```
+
+**`Amalgame_Collections.h`** — header-only C implementation:
+- `AmalgameList` — dynamic array: Add, Get, Remove, RemoveAt,
+  Contains, Size, IsEmpty, Clear, Reverse, Copy, Slice, Any, All, CountIf
+- `AmalgameMap` — open-addressing hash map (string keys): Set, Get,
+  Has, Remove, Size, IsEmpty, Keys, Values
+- `AmalgameSet` — unique string set (backed by AmalgameMap): Add,
+  Contains, Remove, Size, IsEmpty, ToList
+- `_am_strdup` — GC-safe strdup (GC_STRDUP unavailable in Boehm GC)
+- `AmalgameMap_set` / `_ammap_grow` — `static` (not inline) to allow
+  mutual recursion without linker errors
+
+**Generator:**
+- `VisitNewExpr` intercepts `Map` and `Set` → `AmalgameMap_new()`,
+  `AmalgameSet_new()` (prevents namespace prefix being applied)
+- `_EmitListMethod`, `_EmitMapMethod`, `_EmitSetMethod` dispatch
+  Amalgame method calls to C functions: `list.Add(x)` → `AmalgameList_add`
+- `TypeNameToC`: `Map` → `AmalgameMap*`, `Set` → `AmalgameSet*`
+- `_StdlibReturnType` includes Amalgame-level method names
+  (`IsEmpty`, `Has`, `Contains`, `Count`, `Size`, `Remove`) for correct
+  type inference
+
+**Naming:**
+- All `Code*` prefixes renamed to `Amalgame*`: `CodeList` → `AmalgameList`,
+  `CodeMap` → `AmalgameMap`, `CodeSet` → `AmalgameSet`
+
+#### Test suite (2026-04-30)
+- `tests/samples/stdlib_collections.am` — 12 tests covering List, Map, Set
+
+
 
 Multiple `.am` files compiled into a single executable via AST merge:
 

@@ -226,6 +226,145 @@ namespace CodeTranspiler.Generator {
             Emit("/* namespace %s */\n".printf(n.Name));
         }
 
+        // ── Collection method dispatch helpers ──────────
+
+        private bool _EmitListMethod(string obj, string method,
+                                      Gee.ArrayList<AstNode> args) {
+            switch (method) {
+                case "Add":      case "add":
+                    Emit("AmalgameList_add(%s, (void*)(intptr_t)(".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit("))");
+                    return true;
+                case "Get":      case "get":
+                    Emit("AmalgameList_get(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Count":    case "count":   case "Size":   case "size":
+                    Emit("AmalgameList_size(%s)".printf(obj));
+                    return true;
+                case "IsEmpty":  case "isEmpty":
+                    Emit("AmalgameList_isEmpty(%s)".printf(obj));
+                    return true;
+                case "Clear":    case "clear":
+                    Emit("AmalgameList_clear(%s)".printf(obj));
+                    return true;
+                case "Remove":   case "remove":
+                    Emit("AmalgameList_remove(%s, (void*)(intptr_t)(".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit("))");
+                    return true;
+                case "RemoveAt": case "removeAt":
+                    Emit("AmalgameList_removeAt(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Contains": case "contains":
+                    Emit("AmalgameList_contains(%s, (void*)(intptr_t)(".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit("))");
+                    return true;
+                case "First":    case "first":
+                    Emit("AmalgameList_first(%s)".printf(obj));
+                    return true;
+                case "Last":     case "last":
+                    Emit("AmalgameList_last(%s)".printf(obj));
+                    return true;
+                case "Reverse":  case "reverse":
+                    Emit("AmalgameList_reverse(%s)".printf(obj));
+                    return true;
+                case "Copy":     case "copy":
+                    Emit("AmalgameList_copy(%s)".printf(obj));
+                    return true;
+                case "IndexOf":  case "indexOf":
+                    Emit("AmalgameList_indexOf(%s, (void*)(intptr_t)(".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit("))");
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool _EmitMapMethod(string obj, string method,
+                                     Gee.ArrayList<AstNode> args) {
+            switch (method) {
+                case "Set":    case "set":    case "Put":  case "put":
+                case "Add":    case "add":
+                    Emit("AmalgameMap_set(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(", (void*)(intptr_t)(");
+                    if (args.size > 1) args[1].Accept(this);
+                    Emit("))");
+                    return true;
+                case "Get":    case "get":
+                    Emit("AmalgameMap_get(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Has":    case "has":
+                case "Contains": case "contains":
+                case "ContainsKey": case "containsKey":
+                    Emit("AmalgameMap_has(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Remove": case "remove":
+                    Emit("AmalgameMap_remove(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Size":   case "size":
+                case "Count":  case "count":
+                    Emit("AmalgameMap_size(%s)".printf(obj));
+                    return true;
+                case "IsEmpty": case "isEmpty":
+                    Emit("AmalgameMap_isEmpty(%s)".printf(obj));
+                    return true;
+                case "Keys":   case "keys":
+                    Emit("AmalgameMap_keys(%s)".printf(obj));
+                    return true;
+                case "Values": case "values":
+                    Emit("AmalgameMap_values(%s)".printf(obj));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private bool _EmitSetMethod(string obj, string method,
+                                     Gee.ArrayList<AstNode> args) {
+            switch (method) {
+                case "Add":      case "add":
+                    Emit("AmalgameSet_add(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Contains": case "contains":
+                    Emit("AmalgameSet_contains(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Remove":   case "remove":
+                    Emit("AmalgameSet_remove(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")");
+                    return true;
+                case "Size":     case "size":
+                case "Count":    case "count":
+                    Emit("AmalgameSet_size(%s)".printf(obj));
+                    return true;
+                case "IsEmpty":  case "isEmpty":
+                    Emit("AmalgameSet_isEmpty(%s)".printf(obj));
+                    return true;
+                case "ToList":   case "toList":
+                    Emit("AmalgameSet_toList(%s)".printf(obj));
+                    return true;
+                default:
+                    return false;
+            }
+        }
         /**
          * Returns the full C symbol name for a type/class.
          * With namespace "MyApp":
@@ -284,8 +423,8 @@ namespace CodeTranspiler.Generator {
                 case "Amalgame.Collections":
                 case "Amalgame.Collections.List":
                 case "Amalgame.Collections.Map":
-                    // Collections are already in _runtime.h
-                    return null;
+                case "Amalgame.Collections.Set":
+                    return "Amalgame_Collections.h";
 
                 default:
                     return null;
@@ -1055,12 +1194,12 @@ namespace CodeTranspiler.Generator {
             Emit("/* foreach %s in ... */\n".printf(n.VarName));
             EmitI("{\n");
             _indent++;
-            EmitI("CodeList* _list = (CodeList*)(");
+            EmitI("AmalgameList* _list = (AmalgameList*)(");
             n.Collection.Accept(this);
             Emit(");\n");
             EmitI("for (int _i = 0; _i < _list->size; _i++) {\n");
             _indent++;
-            EmitI("void* %s = CodeList_get(_list, _i);\n"
+            EmitI("void* %s = AmalgameList_get(_list, _i);\n"
                   .printf(n.VarName));
             foreach (var stmt in n.Body.Statements) {
                 EmitI("");
@@ -1311,14 +1450,14 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitCallExpr(CallExprNode n) {
-            // Cas spéciaux : Console.WriteLine, etc.
+            // ── Special dispatch ──────────────────────────
             if (n.Callee is MemberAccessNode) {
                 var ma = (MemberAccessNode) n.Callee;
 
-                // Console.WriteLine("...")
                 if (ma.Target is IdentifierNode) {
                     var id = (IdentifierNode) ma.Target;
 
+                    // Console.WriteLine / Write / ReadLine
                     if (id.Name == "Console") {
                         if (ma.MemberName == "WriteLine") {
                             Emit("Console_WriteLine(");
@@ -1344,15 +1483,36 @@ namespace CodeTranspiler.Generator {
                         Emit(")");
                         return;
                     }
+
+                    // ── List<T> method dispatch ────────────
+                    // Detect: variable whose C type is AmalgameList*
+                    if (_localCTypes.has_key(id.Name) &&
+                        _localCTypes[id.Name] == "AmalgameList*") {
+                        if (_EmitListMethod(id.Name, ma.MemberName,
+                                            n.Arguments)) return;
+                    }
+
+                    // ── Map<K,V> method dispatch ───────────
+                    if (_localCTypes.has_key(id.Name) &&
+                        _localCTypes[id.Name] == "AmalgameMap*") {
+                        if (_EmitMapMethod(id.Name, ma.MemberName,
+                                           n.Arguments)) return;
+                    }
+
+                    // ── Set<T> method dispatch ─────────────
+                    if (_localCTypes.has_key(id.Name) &&
+                        _localCTypes[id.Name] == "AmalgameSet*") {
+                        if (_EmitSetMethod(id.Name, ma.MemberName,
+                                           n.Arguments)) return;
+                    }
                 }
 
-                // Appel méthode : obj.Method(args)
-                // → ClassName_Method(obj, args)
+                // Generic method call
                 EmitMethodCall(ma, n.Arguments, n.NamedArgs);
                 return;
             }
 
-            // Appel fonction simple
+            // Simple function call
             n.Callee.Accept(this);
             Emit("(");
             for (int i = 0; i < n.Arguments.size; i++) {
@@ -1521,7 +1681,7 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitIndexExpr(IndexExprNode n) {
-            Emit("CodeList_get((CodeList*)(");
+            Emit("AmalgameList_get((AmalgameList*)(");
             n.Target.Accept(this);
             Emit("), ");
             n.Index.Accept(this);
@@ -1537,10 +1697,17 @@ namespace CodeTranspiler.Generator {
         public override void VisitNewExpr(NewExprNode n) {
             string typeName = TypeName(n.ObjectType);
 
-            // new List<T>() → CodeList_new()
-            if (typeName == "List") {
-                Emit("CodeList_new()");
-                return;
+            // Stdlib collection constructors
+            switch (typeName) {
+                case "List":
+                    Emit("AmalgameList_new()");
+                    return;
+                case "Map":
+                    Emit("AmalgameMap_new()");
+                    return;
+                case "Set":
+                    Emit("AmalgameSet_new()");
+                    return;
             }
 
             // Apply namespace prefix
@@ -1624,16 +1791,16 @@ namespace CodeTranspiler.Generator {
             ListLiteralNode n) {
 
             if (n.IsComprehension) {
-                Emit("CodeList_new() /* comprehension */");
+                Emit("AmalgameList_new() /* comprehension */");
                 return;
             }
 
-            // [1, 2, 3] → CodeList inline
+            // [1, 2, 3] → AmalgameList inline
             Emit("({\n");
             _indent++;
-            EmitI("CodeList* _tmp = CodeList_new();\n");
+            EmitI("AmalgameList* _tmp = AmalgameList_new();\n");
             foreach (var elem in n.Elements) {
-                EmitI("CodeList_add(_tmp, (void*)(intptr_t)(");
+                EmitI("AmalgameList_add(_tmp, (void*)(intptr_t)(");
                 elem.Accept(this);
                 Emit("));\n");
             }
@@ -1740,7 +1907,9 @@ namespace CodeTranspiler.Generator {
                 case "u64":    return "u64";
                 case "f32":    return "f32";
                 case "f64":    return "f64";
-                case "List":      return "CodeList*";
+                case "List":      return "AmalgameList*";
+                case "Map":       return "AmalgameMap*";
+                case "Set":       return "AmalgameSet*";
                 case "var":       return "void*";
                 case "string[]":  return "code_string*";
                 case "int[]":     return "i64*";
@@ -1908,7 +2077,7 @@ namespace CodeTranspiler.Generator {
         }
 
         private string _StdlibReturnType(string funcName) {
-            // code_bool
+                // code_bool
             switch (funcName) {
                 case "File_Exists": case "File_WriteAll":
                 case "File_AppendAll": case "File_Delete":
@@ -1921,6 +2090,22 @@ namespace CodeTranspiler.Generator {
                 case "Math_IsPrime": case "Math_IsNaN":
                 case "Math_IsInf": case "Math_IsFinite":
                 case "Math_ApproxEq":
+                // Collections C-level names
+                case "AmalgameList_isEmpty": case "AmalgameList_contains":
+                case "AmalgameList_containsStr": case "AmalgameList_remove":
+                case "AmalgameList_any": case "AmalgameList_all":
+                case "AmalgameMap_has": case "AmalgameMap_remove":
+                case "AmalgameMap_isEmpty":
+                case "AmalgameSet_add": case "AmalgameSet_contains":
+                case "AmalgameSet_remove": case "AmalgameSet_isEmpty":
+                // Collections Amalgame-level method names
+                case "IsEmpty": case "isEmpty":
+                case "Contains": case "contains":
+                case "Has": case "has":
+                case "ContainsKey": case "containsKey":
+                case "Any": case "any":
+                case "All": case "all":
+                case "Remove": case "remove":
                     return "code_bool";
 
                 // i64
@@ -1931,6 +2116,16 @@ namespace CodeTranspiler.Generator {
                 case "Math_AbsI": case "Math_PowI":
                 case "Math_Gcd": case "Math_Lcm":
                 case "Math_Sign": case "Math_RandomInt":
+                // Collections C-level
+                case "AmalgameList_size": case "AmalgameList_count":
+                case "AmalgameList_indexOf": case "AmalgameList_countIf":
+                case "AmalgameMap_size": case "AmalgameMap_count":
+                case "AmalgameSet_size": case "AmalgameSet_count":
+                // Collections Amalgame-level
+                case "Count": case "count":
+                case "Size": case "size":
+                case "IndexOf": case "indexOf":
+                case "CountIf": case "countIf":
                     return "i64";
 
                 // f64

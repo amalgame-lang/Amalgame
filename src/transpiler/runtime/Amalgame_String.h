@@ -179,11 +179,11 @@ static inline code_string String_Replace(code_string s,
    Split & Join
    ───────────────────────────────────────────── */
 
-static inline CodeList* String_Split(code_string s,
+static inline AmalgameList* String_Split(code_string s,
                                       code_string sep) {
-    CodeList* list = CodeList_new();
+    AmalgameList* list = AmalgameList_new();
     if (!s || !sep || sep[0] == '\0') {
-        CodeList_add(list, (void*) code_strdup(s ? s : ""));
+        AmalgameList_add(list, (void*) code_strdup(s ? s : ""));
         return list;
     }
     size_t lsep = strlen(sep);
@@ -194,14 +194,14 @@ static inline CodeList* String_Split(code_string s,
         char* part = (char*) GC_MALLOC(len + 1);
         memcpy(part, p, len);
         part[len] = '\0';
-        CodeList_add(list, (void*) part);
+        AmalgameList_add(list, (void*) part);
         p = q + lsep;
     }
-    CodeList_add(list, (void*) code_strdup(p));
+    AmalgameList_add(list, (void*) code_strdup(p));
     return list;
 }
 
-static inline code_string String_Join(CodeList* parts,
+static inline code_string String_Join(AmalgameList* parts,
                                        code_string sep) {
     if (!parts || parts->size == 0) return "";
     size_t lsep = sep ? strlen(sep) : 0;
