@@ -219,6 +219,16 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── Tuples ─────────────────────────────────────────────
+echo ""
+echo "── Tuples ──────────────────────────────"
+run_test "tuple: basic"       "$SAMPLES/tuples.am"  "name: Arthus"
+run_test "tuple: level"       "$SAMPLES/tuples.am"  "level: 42"
+run_test "tuple: 3-tuple ok"  "$SAMPLES/tuples.am"  "ok: true"
+run_test "tuple: quotient"    "$SAMPLES/tuples.am"  "quotient: 3"
+run_test "tuple: remainder"   "$SAMPLES/tuples.am"  "remainder: 2"
+run_test "tuple: div zero"    "$SAMPLES/tuples.am"  "div ok: false"
+
 # ── Multiline strings ──────────────────────────────────
 echo ""
 echo "── Multiline strings ───────────────────"

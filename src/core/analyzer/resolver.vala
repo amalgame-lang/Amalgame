@@ -840,6 +840,20 @@ namespace CodeTranspiler.Analyzer {
                 n.FinallyBlock.Accept(this);
         }
 
+        public override void VisitTupleExpr(TupleExprNode n) {
+            foreach (var e in n.Elements) e.Accept(this);
+        }
+
+        public override void VisitTupleDestructure(TupleDestructureNode n) {
+            n.Value.Accept(this);
+            // Declare each destructured variable in the current scope
+            foreach (var name in n.Names) {
+                var sym = new Symbol(name, SymbolKind.SYM_LOCAL_VAR, n);
+                sym.IsLet = n.IsLet;
+                _table.Declare(sym);
+            }
+        }
+
         public override void VisitThrow(ThrowNode n) {
             if (n.Value != null) n.Value.Accept(this);
         }

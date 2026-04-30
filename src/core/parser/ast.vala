@@ -1297,4 +1297,35 @@ namespace CodeTranspiler.Ast {
             v.VisitTupleType(this);
         }
     }
+
+    /** Tuple expression: (42, "Arthus") */
+    public class TupleExprNode : AstNode {
+        public Gee.ArrayList<AstNode> Elements { get; set; }
+
+        public TupleExprNode() {
+            Elements = new Gee.ArrayList<AstNode>();
+        }
+
+        public override void Accept(AstVisitor v) {
+            v.VisitTupleExpr(this);
+        }
+    }
+
+    /** Tuple destructuring: let (a, b) = expr */
+    public class TupleDestructureNode : AstNode {
+        public Gee.ArrayList<string> Names    { get; set; }
+        public AstNode               Value    { get; set; }
+        public bool                  IsLet    { get; set; }
+
+        public TupleDestructureNode(Gee.ArrayList<string> names,
+                                     AstNode value, bool isLet) {
+            Names  = names;
+            Value  = value;
+            IsLet  = isLet;
+        }
+
+        public override void Accept(AstVisitor v) {
+            v.VisitTupleDestructure(this);
+        }
+    }
 }

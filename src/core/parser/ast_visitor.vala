@@ -87,7 +87,9 @@ namespace CodeTranspiler.Ast {
         public abstract void VisitSimpleType    (SimpleTypeNode  n);
         public abstract void VisitGenericType   (GenericTypeNode n);
         public abstract void VisitFuncType      (FuncTypeNode    n);
-        public abstract void VisitTupleType     (TupleTypeNode   n);
+        public abstract void VisitTupleType        (TupleTypeNode        n);
+        public abstract void VisitTupleExpr        (TupleExprNode        n);
+        public abstract void VisitTupleDestructure (TupleDestructureNode n);
     }
 
 
@@ -151,6 +153,8 @@ namespace CodeTranspiler.Ast {
         public override void VisitSimpleType     (SimpleTypeNode n) {}
         public override void VisitGenericType    (GenericTypeNode n) {}
         public override void VisitFuncType       (FuncTypeNode   n) {}
-        public override void VisitTupleType      (TupleTypeNode  n) {}
+        public override void VisitTupleType          (TupleTypeNode        n) {}
+        public override void VisitTupleExpr          (TupleExprNode        n) {}
+        public override void VisitTupleDestructure   (TupleDestructureNode n) {}
     }
 }
