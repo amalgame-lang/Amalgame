@@ -1,0 +1,4 @@
+amc-linux-x86_64 filter=lfs diff=lfs merge=lfs -text
+amc-macos-arm64 filter=lfs diff=lfs merge=lfs -text
+amc-macos-x86_64 filter=lfs diff=lfs merge=lfs -text
+amc-windows-x86_64.exe filter=lfs diff=lfs merge=lfs -text

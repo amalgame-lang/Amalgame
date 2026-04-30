@@ -42,6 +42,10 @@ int main(string[] args) {
                 if (!GLib.FileUtils.test(selfBin, GLib.FileTest.EXISTS)) {
                     selfBin = GLib.Path.build_filename(cwd, "build", "amc");
                 }
+                // Create bootstrap dir if missing
+                if (!GLib.FileUtils.test(bootstrapDir, GLib.FileTest.IS_DIR)) {
+                    DirUtils.create_with_parents(bootstrapDir, 0755);
+                }
                 string[] cpArgs2 = { "cp", selfBin, stableBin, null };
                 int cpRet2 = 0;
                 try {
