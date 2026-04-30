@@ -9,7 +9,39 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ### ✅ Added
 
-#### `try/catch/finally/throw` — exception handling (2026-04-30)
+#### Multiline strings `"""..."""` (2026-04-30)
+
+```amalgame
+let msg = """
+Hello
+World
+"""
+
+let card = """
+Player: {name}
+Level:  {level}
+"""
+
+let sql = """
+    SELECT *
+    FROM players
+    WHERE level > 10
+    """
+```
+
+- Lexer already handled `"""..."""` as `STRING` token with raw newlines
+- `EmitInterpolatedString` — completely rewritten:
+  - **Normalisation** — strips leading/trailing newline
+  - **Dedent** — computes minimum indentation and strips it from all lines
+  - **`\n` encoding** — real newlines in raw content → `\\n` in C string
+  - **Interpolation** — works identically to single-line strings
+- Single-line triple quotes `"""Hello"""` also supported
+
+#### Test suite
+- `tests/samples/multiline_string.am` — 4 tests: basic, interpolation, dedent, single-line
+
+---
+
 
 ```amalgame
 try {
