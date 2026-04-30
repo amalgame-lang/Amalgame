@@ -67,6 +67,7 @@ namespace CodeTranspiler.Generator {
         private int           _lambdaCounter;
         private StringBuilder _lambdaPreamble;
         private bool          _emitToLambda;
+        private string        _currentReturnType; // return type of current method
 
 
         public CGenerator(string sourceFile,
@@ -86,6 +87,7 @@ namespace CodeTranspiler.Generator {
             _sourceLine     = 0;
             _lambdaCounter  = 0;
             _emitToLambda   = false;
+            _currentReturnType = "";
             _nsPrefix       = "";
             _isLibrary      = forceLib;
         }
@@ -724,6 +726,8 @@ namespace CodeTranspiler.Generator {
             // Return type
             string retType = n.ReturnType != null
                 ? TypeToC(n.ReturnType) : "void";
+            string prevReturnType = _currentReturnType;
+            _currentReturnType = retType;
 
             // Prototype
             if (n.IsStatic) {
@@ -759,6 +763,7 @@ namespace CodeTranspiler.Generator {
             }
 
             Emit("\n\n");
+            _currentReturnType = prevReturnType;
         }
 
         private void EmitParamList(
@@ -1194,11 +1199,25 @@ namespace CodeTranspiler.Generator {
                 }
 
                 EmitI("");
+                // If the arm body is a plain expression (not block/return/break),
+                // emit 'return' so the function returns the value
+                bool needsReturn = !(arm.Body is BlockNode)   &&
+                                   !(arm.Body is ReturnNode)  &&
+                                   !(arm.Body is BreakNode)   &&
+                                   !(arm.Body is ContinueNode) &&
+                                   !(arm.Body is IfNode)      &&
+                                   !(arm.Body is TryCatchNode);
+                if (needsReturn && _currentReturnType != "void" &&
+                    _currentReturnType != "") {
+                    Emit("return ");
+                }
                 arm.Body.Accept(this);
-                if (!(arm.Body is BlockNode) &&
-                    !(arm.Body is ReturnNode) &&
-                    !(arm.Body is BreakNode)  &&
-                    !(arm.Body is ContinueNode))
+                if (needsReturn)
+                    Emit(";");
+                else if (!(arm.Body is BlockNode) &&
+                         !(arm.Body is ReturnNode) &&
+                         !(arm.Body is BreakNode)  &&
+                         !(arm.Body is ContinueNode))
                     Emit(";");
                 Emit("\n");
                 _indent--;
@@ -1241,11 +1260,12 @@ namespace CodeTranspiler.Generator {
             for (int i = 0; i < subs.size; i++) {
                 var sub = subs[i];
                 string bindVar = sub.BindName ?? "_%d".printf(i);
-                // Emit: auto bindVar = subject.data.fieldName._vi;
-                EmitI("__auto_type %s = ".printf(bindVar));
+                // Emit: intptr_t bindVar = (intptr_t)(subject.data.fieldName._vi)
+                // Using intptr_t ensures arithmetic works correctly
+                EmitI("intptr_t %s = (intptr_t)(".printf(bindVar));
                 subject.Accept(this);
-                Emit(".data.%s._v%d;\n".printf(fieldName, i));
-                _localCTypes[bindVar] = "void*"; // will be refined by usage
+                Emit(".data.%s._v%d);\n".printf(fieldName, i));
+                _localCTypes[bindVar] = "i64"; // intptr_t ≈ i64
             }
         }
 
@@ -1842,8 +1862,10 @@ namespace CodeTranspiler.Generator {
                     if (!(m is MethodDeclNode)) continue;
                     var md = (MethodDeclNode) m;
                     if (md.Name != methodName) continue;
-                    if (paramIndex < md.Params.size)
-                        return TypeName(md.Params[paramIndex].ParamType);
+                    if (paramIndex < md.Params.size) {
+                        var param = md.Params[paramIndex];
+                        return TypeToC(param.ParamType);
+                    }
                 }
             }
             return "";
@@ -2258,16 +2280,32 @@ namespace CodeTranspiler.Generator {
                 for (int i = 0; i < args.size; i++) {
                     if (i > 0) Emit(", ");
                     // Check if arg needs interface conversion
-                    string argType = _StripNsPrefix(InferCType(args[i]));
+                    string argCType   = InferCType(args[i]);
+                    string argBare    = _StripNsPrefix(argCType.replace("*","").strip());
                     string expectedType = _LookupParamType(
                         targetClass, ma.MemberName, i);
-                    if (expectedType != "" && _IsInterfaceType(expectedType)
-                        && !_IsInterfaceType(argType)) {
+                    // expectedType is now a C type like "Tests_IDescribable"
+                    // strip ns prefix to get bare name for _IsInterfaceType check
+                    string expectedBare = _StripNsPrefix(
+                        expectedType.replace("*","").strip());
+
+                    if (expectedType != "" && _IsInterfaceType(expectedBare)
+                        && !_IsInterfaceType(argBare)) {
                         // Auto-wrap: Circle* → Tests_Circle_as_IDescribable(c)
                         Emit("%s_as_%s(".printf(
-                            _SymName(argType), expectedType));
+                            _SymName(argBare), expectedBare));
                         args[i].Accept(this);
                         Emit(")");
+                    } else if (expectedType == "void*") {
+                        // Generic param — cast primitive to void*
+                        if (argCType == "i64" || argCType == "i32" ||
+                            argCType == "code_bool" || argCType == "char") {
+                            Emit("(void*)(intptr_t)(");
+                            args[i].Accept(this);
+                            Emit(")");
+                        } else {
+                            args[i].Accept(this);
+                        }
                     } else {
                         args[i].Accept(this);
                     }
@@ -3124,7 +3162,39 @@ namespace CodeTranspiler.Generator {
                 return "code_int_to_string((i64)(%s))".printf(cArg);
             }
 
-            // 4. Unknown — pass through (assume code_string)
+            // 4. Arithmetic/complex expression — check if it contains known int vars
+            // e.g. "r*r", "x+1", "a*b" → wrap in code_int_to_string
+            bool hasArithOp = srcExpr.contains("*") || srcExpr.contains("+") ||
+                              srcExpr.contains("-") || srcExpr.contains("/") ||
+                              srcExpr.contains("%");
+            if (hasArithOp) {
+                // Check if any token in the expression is a known int variable
+                bool likelyInt = false;
+                string[] tokens = srcExpr.replace("*"," ").replace("+"," ")
+                    .replace("-"," ").replace("/"," ").replace("%"," ").split(" ");
+                foreach (var tok in tokens) {
+                    string t = tok.strip();
+                    if (t.length == 0) continue;
+                    if (_localCTypes.has_key(t)) {
+                        string ct = _localCTypes[t];
+                        if (ct == "i64" || ct == "i32" || ct == "i8" ||
+                            ct == "u64" || ct == "u32" || ct == "f64" ||
+                            ct == "f32" || ct == "code_bool") {
+                            likelyInt = true;
+                            break;
+                        }
+                    }
+                    // Pure number literal
+                    if (t.length > 0 && t[0].isdigit()) {
+                        likelyInt = true;
+                        break;
+                    }
+                }
+                if (likelyInt)
+                    return "code_int_to_string((i64)(%s))".printf(cArg);
+            }
+
+            // 5. Unknown — pass through (assume code_string)
             return cArg;
         }
 
