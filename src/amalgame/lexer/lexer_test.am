@@ -1,0 +1,22 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        let source = "let x = 42"
+        let lexer  = new Lexer(source, "<test>")
+        let tokens = lexer.Tokenize()
+
+        let count = tokens.Count()
+        Console.WriteLine("tokens: {count}")
+
+        for i in 0..count {
+            let tok = tokens.Get(i)
+            let line = tok.Line
+            let col  = tok.Column
+            let val  = tok.Value
+            Console.WriteLine("{line}:{col} {val}")
+        }
+    }
+}
