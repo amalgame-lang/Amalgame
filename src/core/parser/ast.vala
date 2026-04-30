@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────
-//  Amalgame Programming Language
+//  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
 //  https://github.com/BastienMOUGET/Amalgame
@@ -736,6 +736,7 @@ namespace CodeTranspiler.Ast {
 
         public bool      IsLet      { get; set; }
         public string    VarName    { get; set; }
+        public string?   IndexVar   { get; set; }  // "for i, item in" → i
         public AstNode   Collection { get; set; }
         public BlockNode Body       { get; set; }
 
@@ -743,6 +744,7 @@ namespace CodeTranspiler.Ast {
                            AstNode collection, BlockNode body) {
             IsLet      = isLet;
             VarName    = varName;
+            IndexVar   = null;
             Collection = collection;
             Body       = body;
         }

@@ -788,6 +788,14 @@ namespace CodeTranspiler.Analyzer {
             n.Collection.Accept(this);
 
             _table.PushScope("foreach");
+
+            // Register index variable if present (for i, item in list)
+            if (n.IndexVar != null) {
+                var idxSym = new Symbol(n.IndexVar, SymbolKind.SYM_LOCAL_VAR, n);
+                idxSym.IsLet = true;
+                _table.Declare(idxSym);
+            }
+
             var sym   = new Symbol(n.VarName, SymbolKind.SYM_LOCAL_VAR, n);
             sym.IsLet = n.IsLet;
             _table.Declare(sym);

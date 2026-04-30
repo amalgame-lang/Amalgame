@@ -5,7 +5,48 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ---
 
-## [0.4.0] - 2026-04-30
+## [0.6.0] - 2026-04-30
+
+### ✅ Added
+
+#### `for item in collection` — modern iteration syntax (2026-04-30)
+
+```amalgame
+// Range
+for i in 0..10 { Console.WriteLine("{i}") }
+
+// List
+for item in myList { Console.WriteLine("{item}") }
+
+// With index
+for i, item in myList { Console.WriteLine("{i}: {item}") }
+
+// String chars
+for ch in "Hello" { count = count + 1 }
+```
+
+**Parser:**
+- `ParseForIn()` — new method handling `for IDENT in` and `for IDENT, IDENT in`
+- Lookahead dispatch in `ParseStatement`: `for x in ...` → `ParseForIn()`,
+  `for (init; cond; step)` → `ParseFor()`, `foreach (...)` kept for compatibility
+
+**AST:**
+- `ForeachNode.IndexVar` — optional index variable for `for i, item in`
+
+**Generator:**
+- Range `0..10` → `for (i64 i = 0; i < 10; i++)`
+- `AmalgameList` → `AmalgameList_get(_lst, _i)`
+- String → `strlen` + `char` indexation
+- Index variable registered in `_localCTypes`
+
+**Resolver:**
+- `VisitForeach` registers `IndexVar` in loop scope
+
+#### Test suite
+- `tests/samples/foreach.am` — 4 tests: range, list, index, string chars
+
+---
+
 
 ### ✅ Added
 
