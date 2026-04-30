@@ -28,16 +28,59 @@ int main(string[] args) {
 
     var fmt = new DiagnosticFormatter();
 
+    // ── pkg subcommand ────────────────────────────────
+    if (args.length >= 2 && args[1] == "pkg") {
+        string sub = args.length >= 3 ? args[2] : "help";
+        string cwd = GLib.Environment.get_current_dir();
+        var pm = new PackageManager(cwd);
+
+        switch (sub) {
+            case "init":
+                string? name = args.length >= 4 ? args[3] : null;
+                return pm.Init(name);
+
+            case "add":
+                if (args.length < 4) {
+                    stderr.printf("Usage: amc pkg add github:user/repo[@tag]\n");
+                    return 1;
+                }
+                return pm.Add(args[3]);
+
+            case "install":
+                return pm.Install();
+
+            case "list":
+                return pm.List();
+
+            case "build":
+                // Find amc binary (self)
+                string amcBin = args[0];
+                return pm.Build(amcBin);
+
+            default:
+                stdout.printf("Amalgame Package Manager\n\n");
+                stdout.printf("Usage: amc pkg <command>\n\n");
+                stdout.printf("Commands:\n");
+                stdout.printf("  init [name]             Create amalgame.json\n");
+                stdout.printf("  add github:user/repo    Add a dependency\n");
+                stdout.printf("  install                 Install all dependencies\n");
+                stdout.printf("  list                    List dependencies\n");
+                stdout.printf("  build                   Build the project\n");
+                return 0;
+        }
+    }
+
     // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
         stdout.printf("Amalgame Transpiler v0.6.0\n");
-        stdout.printf("  Lexer       : OK\n");
-        stdout.printf("  AST         : OK\n");
-        stdout.printf("  Parser      : OK\n");
-        stdout.printf("  Resolver    : OK\n");
-        stdout.printf("  TypeChecker : OK\n");
-        stdout.printf("  Generator   : OK\n");
-        stdout.printf("  Multi-file  : OK\n");
+        stdout.printf("  Lexer          : OK\n");
+        stdout.printf("  AST            : OK\n");
+        stdout.printf("  Parser         : OK\n");
+        stdout.printf("  Resolver       : OK\n");
+        stdout.printf("  TypeChecker    : OK\n");
+        stdout.printf("  Generator      : OK\n");
+        stdout.printf("  Multi-file     : OK\n");
+        stdout.printf("  Package Manager: OK\n");
         return 0;
     }
 
