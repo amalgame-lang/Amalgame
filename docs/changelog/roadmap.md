@@ -31,7 +31,7 @@
 | Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
 | Enum generation         | ✅     | Simple + rich enums, match, namespace prefix  |
 | Interface vtable        | ✅     | vtable dispatch, fat pointer, auto-conversion |
-| Multi-file compilation  | 🔜     | `amc *.am` or package system                 |
+| Multi-file compilation  | ✅     | AST merge, N files → 1 executable            |
 | LSP Server              | 🔜     | Autocompletion, real-time errors             |
 | DAP Server              | 🔜     | Debug, breakpoints                           |
 | VSCode Extension        | 🔜     | Full VSCode support                          |

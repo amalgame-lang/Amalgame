@@ -89,9 +89,38 @@ Program.PrintDesc(c)   // → Tests_Circle_as_IDescribable(c)
 - `TypeNameToC` — interface types returned as value types (no `*`) since
   the fat pointer struct already contains the pointer
 
-#### Test suite
-- `tests/samples/interfaces.am` — 4 tests: basic call, multi-interface,
-  scale via interface, vtable dispatch
+#### Multi-file compilation (2026-04-30)
+
+Multiple `.am` files compiled into a single executable via AST merge:
+
+```bash
+amc models.am utils.am main.am        # → out.c → ./out
+amc models.am utils.am main.am -o app # → app.c → ./app
+amc src/*.am -o mygame                # glob support
+```
+
+**Strategy — AST merge:**
+- Each file is lexed + parsed independently
+- `_MergePrograms()` merges all `ProgramNode`s:
+  - Imports: union, deduplicated
+  - Declarations: concatenated in order (entry point last)
+  - Namespace: entry point's namespace wins
+- Single Resolver → TypeChecker → CGenerator pass on the merged AST
+- Single `.c` output compiled by GCC
+
+**`main.vala` changes:**
+- Accepts N `.am` files as arguments
+- `-o output` — explicit output name (no `.c` extension needed)
+- `AMC_RUNTIME` env var support for runtime header location
+- Runtime path resolution: `AMC_RUNTIME` → relative to source → fallback
+- `--version` now reports `v0.4.0` with `Multi-file: OK`
+
+#### Test suite (2026-04-30)
+- `tests/samples/multifile/models.am` — `Player`, `Enemy` classes
+- `tests/samples/multifile/utils.am` — `Logger`, `MathUtils` classes
+- `tests/samples/multifile/main.am` — entry point using both
+- `run_multifile_test` helper in `run_tests.sh` for multi-arg invocation
+- 4 multi-file tests: player status, logger, cross-file clamp, enemy
 
 
 **`Amalgame.IO`** (`import Amalgame.IO`)
