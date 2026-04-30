@@ -9,7 +9,50 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ### ✅ Added
 
-#### Multiline strings `"""..."""` (2026-04-30)
+#### Tuple return types & destructuring (2026-04-30)
+
+```amalgame
+// Return multiple values
+public static (int, string) GetPlayer() {
+    return (42, "Arthus")
+}
+
+// Destructure
+let (level, name) = Program.GetPlayer()
+Console.WriteLine("{name} lv{level}")
+
+// 3-tuple
+public static (int, int, bool) Divide(int a, int b) {
+    if b == 0 { return (0, 0, false) }
+    return (a / b, a % b, true)
+}
+let (q, r, ok) = Program.Divide(17, 5)
+```
+
+Generated C via anonymous structs:
+```c
+typedef struct { i64 _0; code_string _1; } _Tuple_i64_str;
+_Tuple_i64_str _am_tuple_0 = Tests_Program_GetPlayer();
+i64 level = _am_tuple_0._0;
+code_string name = _am_tuple_0._1;
+```
+
+- `TupleExprNode` + `TupleDestructureNode` — new AST nodes
+- `VisitTupleExpr`, `VisitTupleDestructure` — in visitor, resolver, typechecker, generator
+- `ParseTypeRef()` — `(int, string)` → `TupleTypeNode`
+- `ParseVarDecl()` — returns `AstNode`, handles `let (a, b) = expr`
+- `ParsePrimary()` — `(a, b)` → `TupleExprNode` when comma detected
+- `ParseMethodDecl()` — handles `(int, string) MethodName(...)` return type
+- `CheckMethodStart()` — `LPAREN` added for tuple return types
+- `EmitTupleStructs()` — scans all methods, emits `typedef struct` before use
+- `TypeToC(TupleTypeNode)` → struct name
+- `_TupleStructName`, `_TupleElemType`, `_LookupTupleReturnType` helpers
+
+#### Test suite
+- `tests/samples/tuples.am` — 6 tests: 2-tuple, 3-tuple, div-by-zero guard
+
+---
+
 
 ```amalgame
 let msg = """

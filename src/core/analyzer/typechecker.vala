@@ -577,6 +577,14 @@ namespace CodeTranspiler.Analyzer {
                 n.FinallyBlock.Accept(this);
         }
 
+        public override void VisitTupleExpr(TupleExprNode n) {
+            foreach (var e in n.Elements) e.Accept(this);
+        }
+
+        public override void VisitTupleDestructure(TupleDestructureNode n) {
+            n.Value.Accept(this);
+        }
+
         public override void VisitThrow(ThrowNode n) {
             if (n.Value != null) n.Value.Accept(this);
         }
