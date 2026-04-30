@@ -1,0 +1,16 @@
+namespace Test
+
+public enum Shape {
+    Circle(int)
+    Rect(int, int)
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let s = Shape.Circle(5)
+        match s {
+            Circle(r) => Console.WriteLine("r={r} r*r={r*r}")
+            Rect(w,h) => Console.WriteLine("w*h={w*h}")
+        }
+    }
+}

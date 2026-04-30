@@ -646,3 +646,46 @@ amc pkg build                    # Compile project from amalgame.json
 
 **Note:** Central registry (`pkg.amalgame.am`) planned for v1.0 — currently GitHub-only.
 
+
+## [0.8.0] - 2026-04-30
+
+### ✅ Stabilisation bootstrap
+
+#### Bugs corrigés (2026-04-30)
+
+**Resolver:**
+- Generic type params (`T`, `K`, `V`) déclarés dans le scope de la classe → `Stack<T>` compile
+- Match arm destructuring (`Num(n)`, `Add(a, b)`) → variables déclarées dans le scope du arm
+- `_CheckTypeExists` — whitelist des types primitifs + `var`/`auto` → plus de faux positifs
+- `Filename` dans `AstNode` → `default = "<unknown>"` → plus de segfault sur nœuds sans position
+- `ResolveError.from_node` / `TypeError.from_node` → null-safe filename
+
+**Generator:**
+- Rich enum forward decl → `typedef struct _Name Name` + tag enum en pass 1b
+- Rich enum struct body → `struct _Name { ... }` (nommé, pas anonyme) → plus de conflits de types
+- Rich enum → passé par valeur (pas `*`), `VisitMemberAccess` utilise `.` pour rich enums
+- Match arm `DESTRUCTURE` / `ENUM_VARIANT` → `EmitDestructureBindings` déclare `n`, `a`, `b` via `__auto_type`
+- `_InferEnumType` → infère le type enum depuis le nom du variant (`Num` → `Expr`)
+- Lambda pre-scan → `_PreScanAndEmitLambdas` émet toutes les lambdas avant leur utilisation
+- Lambda params → `intptr_t` (au lieu de `void*`) → arithmétique fonctionne
+- Lambda calls → cast `((intptr_t(*)(intptr_t))fn)(args)`
+- `TypeNameToC` → `T`, `K`, `V` → `void*` (plus de `Amalgame_T`)
+- `InferCType` → rich enum constructors → retourne le type de l'enum
+- `EmitMethodCall` → auto-cast `i64` → `void*` pour params génériques
+- `this.Items.Add(x)` → `EmitListMethod` via détection `MemberAccessNode` target
+
+**Bootstrap probe** (`tests/samples/bootstrap_probe.am`) compile et tourne :
+```
+stack count: 2   ✅  custom generics Stack<T>
+area: ...        ✅  rich enum + match
+entity x: 42     ✅  nested field access
+doubled: 10      ✅  lambda x => x * 2
+total: 3         ✅  for-in range
+```
+
+#### `amc bootstrap` — infrastructure (2026-04-30)
+- `bootstrap/` directory — stocke `amc-stable` (dernier binaire Vala fonctionnel)
+- Git LFS pour les binaires
+- `.gitignore` mis à jour
+- `compile.sh` — `ninja -C build` (plus rapide, pas de reconfiguration)
+

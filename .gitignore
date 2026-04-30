@@ -30,3 +30,15 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Build artifacts
+build/
+*.c
+*.o
+
+# Test binaries
+tests/samples/*.am.bin
+tests/samples/bootstrap_probe
+
+# Bootstrap binaries tracked via Git LFS (not ignored)
+# bootstrap/amc-* → tracked

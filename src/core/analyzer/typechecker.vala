@@ -71,7 +71,8 @@ namespace CodeTranspiler.Analyzer {
 
         public TypeError.from_node(string message, AstNode node) {
             Message  = message;
-            Filename = node.Filename;
+            Filename = (node.Filename != null && node.Filename.length > 0)
+                       ? node.Filename : "<unknown>";
             Line     = node.Line;
             Column   = node.Column;
         }
