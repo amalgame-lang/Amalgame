@@ -1,5 +1,5 @@
 /*
- * Amalgame Language Runtime - v0.1.0
+ * CODE Language Runtime - v0.1.0
  * Copyright (c) 2026 Bastien MOUGET
  */
 
@@ -85,13 +85,12 @@ static inline code_string Console_ReadLine() {
     return buf;
 }
 
-/* Math */
+/* Math constants — only if Amalgame_Math.h not included */
+#ifndef AMALGAME_MATH_H
 #define Math_PI    3.14159265358979323846
-#define Math_Abs   fabs
-#define Math_Sqrt  sqrt
-#define Math_Pow   pow
 #define Math_Max(a,b) ((a)>(b)?(a):(b))
 #define Math_Min(a,b) ((a)<(b)?(a):(b))
+#endif
 
 /* List generique */
 typedef struct {

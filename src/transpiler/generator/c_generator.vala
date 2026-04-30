@@ -1467,6 +1467,11 @@ namespace CodeTranspiler.Generator {
                     string methodType = _LookupMethodReturnType(
                         ma.Target, ma.MemberName);
                     if (methodType != "void*") return methodType;
+                } else if (call.Callee is IdentifierNode) {
+                    // Direct stdlib call: File_WriteAll(...), Math_Sqrt(...), etc.
+                    var id = (IdentifierNode) call.Callee;
+                    string stdlibType = _StdlibReturnType(id.Name);
+                    if (stdlibType != "void*") return stdlibType;
                 }
             }
             // Binary expression: infer from operands with numeric widening
@@ -1523,7 +1528,76 @@ namespace CodeTranspiler.Generator {
             }
 
             if (_program == null || className == "") return "void*";
-            return _LookupMethodInClass(_StripNsPrefix(className), memberName);
+
+            // Try user-defined class first
+            string userResult = _LookupMethodInClass(
+                _StripNsPrefix(className), memberName);
+            if (userResult != "void*") return userResult;
+
+            // Fall back to stdlib return type table
+            return _StdlibReturnType(memberName);
+        }
+
+        private string _StdlibReturnType(string funcName) {
+            // code_bool
+            switch (funcName) {
+                case "File_Exists": case "File_WriteAll":
+                case "File_AppendAll": case "File_Delete":
+                case "Environment_HasVar":
+                case "String_IsEmpty": case "String_IsWhitespace":
+                case "String_Contains": case "String_StartsWith":
+                case "String_EndsWith": case "String_ToBool":
+                case "String_IsDigit": case "String_IsAlpha":
+                case "String_IsAlnum":
+                case "Math_IsPrime": case "Math_IsNaN":
+                case "Math_IsInf": case "Math_IsFinite":
+                case "Math_ApproxEq":
+                    return "code_bool";
+
+                // i64
+                case "File_Size":
+                case "String_Length": case "String_IndexOf":
+                case "String_LastIndexOf": case "String_ToInt":
+                case "Math_MaxI": case "Math_MinI": case "Math_ClampI":
+                case "Math_AbsI": case "Math_PowI":
+                case "Math_Gcd": case "Math_Lcm":
+                case "Math_Sign": case "Math_RandomInt":
+                    return "i64";
+
+                // f64
+                case "Math_Abs": case "Math_Sqrt": case "Math_Cbrt":
+                case "Math_Pow": case "Math_Exp":
+                case "Math_Log": case "Math_Log2": case "Math_Log10":
+                case "Math_Floor": case "Math_Ceil":
+                case "Math_Round": case "Math_Trunc":
+                case "Math_MaxF": case "Math_MinF": case "Math_ClampF":
+                case "Math_CopySign":
+                case "Math_Sin": case "Math_Cos": case "Math_Tan":
+                case "Math_Asin": case "Math_Acos": case "Math_Atan":
+                case "Math_Atan2": case "Math_Sinh": case "Math_Cosh":
+                case "Math_Tanh": case "Math_ToRadians":
+                case "Math_ToDegrees": case "Math_Random":
+                case "String_ToFloat":
+                    return "f64";
+
+                // code_string
+                case "File_ReadAll":
+                case "Path_Combine": case "Path_GetExtension":
+                case "Path_GetFilename": case "Path_GetDirectory":
+                case "Environment_GetVar": case "Environment_GetVarOr":
+                case "String_Substring": case "String_From":
+                case "String_Until": case "String_ToUpper":
+                case "String_ToLower": case "String_TrimStart":
+                case "String_TrimEnd": case "String_Trim":
+                case "String_Replace": case "String_Join":
+                case "String_Repeat": case "String_PadLeft":
+                case "String_PadRight": case "String_FromInt":
+                case "String_FromFloat": case "String_FromBool":
+                    return "code_string";
+
+                default:
+                    return "void*";
+            }
         }
 
         private string _LookupMethodInClass(string className,

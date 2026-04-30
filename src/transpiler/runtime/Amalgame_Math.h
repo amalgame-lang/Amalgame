@@ -9,8 +9,8 @@
 #ifndef AMALGAME_MATH_H
 #define AMALGAME_MATH_H
 
-#include "_runtime.h"
 #include <math.h>
+#include "_runtime.h"
 
 /* ─────────────────────────────────────────────
    Constants
@@ -25,17 +25,17 @@
 #define Amalgame_Math_INF     (1.0 / 0.0)
 
 /* ─────────────────────────────────────────────
-   Basic functions
+   Basic functions — delegate directly to <math.h>
    ───────────────────────────────────────────── */
 
-static inline f64 Math_Abs(f64 x)            { return fabs(x); }
-static inline f64 Math_Sqrt(f64 x)           { return sqrt(x); }
-static inline f64 Math_Cbrt(f64 x)           { return cbrt(x); }
-static inline f64 Math_Pow(f64 base, f64 exp){ return pow(base, exp); }
-static inline f64 Math_Exp(f64 x)            { return exp(x); }
-static inline f64 Math_Log(f64 x)            { return log(x); }
-static inline f64 Math_Log2(f64 x)           { return log2(x); }
-static inline f64 Math_Log10(f64 x)          { return log10(x); }
+static inline f64 Math_Abs(f64 x)             { return fabs(x); }
+static inline f64 Math_Sqrt(f64 x)            { return sqrt(x); }
+static inline f64 Math_Cbrt(f64 x)            { return cbrt(x); }
+static inline f64 Math_Pow(f64 base, f64 exp) { return pow(base, exp); }
+static inline f64 Math_Exp(f64 x)             { return exp(x); }
+static inline f64 Math_Log(f64 x)             { return log(x); }
+static inline f64 Math_Log2(f64 x)            { return log2(x); }
+static inline f64 Math_Log10(f64 x)           { return log10(x); }
 
 /* ─────────────────────────────────────────────
    Rounding

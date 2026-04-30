@@ -5,13 +5,67 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ---
 
-## [0.4.0] - 2026-XX-XX  ← next
+## [0.4.0] - 2026-XX-XX
 
-### 🔜 Planned
-- Standard library: `Amalgame.IO`, `Amalgame.Math`, `Amalgame.Collections`
-- Enum generation in C
-- Interface vtable dispatch
-- Multi-file compilation
+### ✅ Added
+
+#### Standard Library
+
+**`Amalgame.IO`** (`import Amalgame.IO`)
+- `File_ReadAll`, `File_WriteAll`, `File_AppendAll`, `File_Exists`, `File_Delete`, `File_Size`
+- `Path_Combine`, `Path_GetExtension`, `Path_GetFilename`, `Path_GetDirectory`
+- `Environment_GetVar`, `Environment_GetVarOr`, `Environment_HasVar`
+- `Console_WriteError`, `Console_Clear`
+
+**`Amalgame.Math`** (`import Amalgame.Math`)
+- Basic: `Math_Abs`, `Math_Sqrt`, `Math_Cbrt`, `Math_Pow`, `Math_Exp`, `Math_Log/2/10`
+- Rounding: `Math_Floor`, `Math_Ceil`, `Math_Round`, `Math_Trunc`
+- Min/Max/Clamp: `Math_MaxI/F`, `Math_MinI/F`, `Math_ClampI/F`
+- Trig: `Math_Sin/Cos/Tan/Asin/Acos/Atan/Atan2/Sinh/Cosh/Tanh`
+- Conversion: `Math_ToRadians`, `Math_ToDegrees`
+- Integer: `Math_AbsI`, `Math_PowI`, `Math_Gcd`, `Math_Lcm`, `Math_IsPrime`
+- Checks: `Math_IsNaN`, `Math_IsInf`, `Math_IsFinite`, `Math_ApproxEq`
+- Random: `Math_SeedRandom`, `Math_Random`, `Math_RandomInt`
+- Constants: `Amalgame_Math_PI`, `E`, `TAU`, `SQRT2`, `LN2`, `INF`
+
+**`Amalgame.String`** (`import Amalgame.String`)
+- Info: `String_Length`, `String_IsEmpty`, `String_IsWhitespace`
+- Search: `String_Contains`, `String_StartsWith`, `String_EndsWith`, `String_IndexOf`, `String_LastIndexOf`
+- Substrings: `String_Substring`, `String_From`, `String_Until`
+- Case: `String_ToUpper`, `String_ToLower`
+- Trim: `String_Trim`, `String_TrimStart`, `String_TrimEnd`
+- Modify: `String_Replace`, `String_Split`, `String_Join`, `String_Repeat`, `String_PadLeft`, `String_PadRight`
+- Convert: `String_ToInt`, `String_ToFloat`, `String_ToBool`, `String_FromInt`, `String_FromFloat`, `String_FromBool`
+- Chars: `String_CharAt`, `String_IsDigit`, `String_IsAlpha`, `String_IsAlnum`
+
+#### Resolver — stdlib symbol injection
+- `VisitImport` now calls `_RegisterStdlibSymbols()` which pre-injects all
+  stdlib function names into the global SymbolTable — prevents resolver from
+  reporting stdlib functions as unknown identifiers
+
+#### Generator — stdlib type inference
+- `_StdlibReturnType()` — lookup table mapping stdlib function names to their
+  C return types (`code_bool`, `i64`, `f64`, `code_string`)
+- `InferCType` for `CallExprNode` with `IdentifierNode` callee now consults
+  `_StdlibReturnType` → correct C type for `let ok = File_WriteAll(...)`
+- `_LookupMethodReturnType` falls back to `_StdlibReturnType` for functions
+  not found in user-defined classes
+
+#### Test suite
+- `tests/run_stdlib_tests.sh` — dedicated stdlib test runner (33 tests)
+- `tests/run_all_tests.sh` — full suite: core (42) + stdlib (33) = 75 tests
+- `tests/samples/stdlib_io.am` — IO module tests
+- `tests/samples/stdlib_math.am` — Math module tests
+- `tests/samples/stdlib_string.am` — String module tests
+
+### ✅ Fixed
+
+#### Runtime headers
+- `_runtime.h` — removed `Math_Abs`, `Math_Sqrt`, `Math_Pow` macros that
+  caused `static declaration follows non-static` conflicts when combined with
+  `Amalgame_Math.h` (which declares proper `static inline` functions)
+- `Amalgame_Math.h` — `<math.h>` now included before `_runtime.h` to ensure
+  non-static declarations precede any static ones
 
 ---
 

@@ -36,52 +36,52 @@ static void Tests_Program_Main(int argc, char** argv) {
     Console_WriteLine("IO test start");
 
 #line 9 "./tests/samples/stdlib_io.am"
-    void* ok = File_WriteAll("/tmp/amalgame_test.txt", "Hello from Amalgame!");
+    code_bool ok = File_WriteAll("/tmp/amalgame_test.txt", "Hello from Amalgame!");
 
 #line 10 "./tests/samples/stdlib_io.am"
-    Console_WriteLine(code_string_format("write ok: %s", ok));
+    Console_WriteLine(code_string_format("write ok: %s", ((ok) ? "true" : "false")));
 
 #line 12 "./tests/samples/stdlib_io.am"
-    void* exists = File_Exists("/tmp/amalgame_test.txt");
+    code_bool exists = File_Exists("/tmp/amalgame_test.txt");
 
 #line 13 "./tests/samples/stdlib_io.am"
-    Console_WriteLine(code_string_format("exists: %s", exists));
+    Console_WriteLine(code_string_format("exists: %s", ((exists) ? "true" : "false")));
 
 #line 15 "./tests/samples/stdlib_io.am"
-    void* content = File_ReadAll("/tmp/amalgame_test.txt");
+    code_string content = File_ReadAll("/tmp/amalgame_test.txt");
 
 #line 16 "./tests/samples/stdlib_io.am"
     Console_WriteLine(code_string_format("content: %s", content));
 
 #line 18 "./tests/samples/stdlib_io.am"
-    void* size = File_Size("/tmp/amalgame_test.txt");
+    i64 size = File_Size("/tmp/amalgame_test.txt");
 
 #line 19 "./tests/samples/stdlib_io.am"
-    Console_WriteLine(code_string_format("size: %s", size));
+    Console_WriteLine(code_string_format("size: %s", code_int_to_string(size)));
 
 #line 21 "./tests/samples/stdlib_io.am"
-    void* combined = Path_Combine("/tmp", "test.txt");
+    code_string combined = Path_Combine("/tmp", "test.txt");
 
 #line 22 "./tests/samples/stdlib_io.am"
     Console_WriteLine(code_string_format("path: %s", combined));
 
 #line 24 "./tests/samples/stdlib_io.am"
-    void* ext = Path_GetExtension("hello.am");
+    code_string ext = Path_GetExtension("hello.am");
 
 #line 25 "./tests/samples/stdlib_io.am"
     Console_WriteLine(code_string_format("ext: %s", ext));
 
 #line 27 "./tests/samples/stdlib_io.am"
-    void* fname = Path_GetFilename("/home/user/hello.am");
+    code_string fname = Path_GetFilename("/home/user/hello.am");
 
 #line 28 "./tests/samples/stdlib_io.am"
     Console_WriteLine(code_string_format("file: %s", fname));
 
 #line 30 "./tests/samples/stdlib_io.am"
-    void* deleted = File_Delete("/tmp/amalgame_test.txt");
+    code_bool deleted = File_Delete("/tmp/amalgame_test.txt");
 
 #line 31 "./tests/samples/stdlib_io.am"
-    Console_WriteLine(code_string_format("deleted: %s", deleted));
+    Console_WriteLine(code_string_format("deleted: %s", ((deleted) ? "true" : "false")));
 
 #line 33 "./tests/samples/stdlib_io.am"
     Console_WriteLine("IO test done");

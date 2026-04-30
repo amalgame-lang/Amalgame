@@ -24,8 +24,10 @@
 | Step                    | Status | Description                                  |
 |-------------------------|--------|----------------------------------------------|
 | C Runtime               | ✅     | GC, ARC, Arena in C                          |
-| Stdlib Core             | 🔜     | Types, Math                                  |
-| Stdlib IO               | 🔜     | Console, File, Stream                        |
+| Stdlib IO               | ✅     | Console, File, Path, Environment             |
+| Stdlib Math             | ✅     | Full math library with constants             |
+| Stdlib String           | ✅     | Complete string manipulation                 |
+| Stdlib Collections      | 🔜     | List, Map, Set (requires generics)           |
 | Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
 | Enum generation         | 🔜     | C enum + match support                       |
 | Interface vtable        | 🔜     | Interface dispatch in C                      |

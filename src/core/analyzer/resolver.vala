@@ -261,12 +261,10 @@ namespace CodeTranspiler.Analyzer {
             // Register the alias (or last segment) in global scope
             string alias = n.Alias ?? _LastSegment(n.Name);
             var sym      = new Symbol(alias, SymbolKind.SYM_IMPORT, n);
-            if (!_table.DeclareGlobal(sym)) {
-                _Warn("Duplicate import '%s'".printf(n.Name), n);
-            }
+            // Silently ignore if already declared (e.g. "Math" is a builtin)
+            _table.DeclareGlobal(sym);
 
             // Pre-register all stdlib symbols for this module
-            // so the Resolver doesn't report them as unknown
             _RegisterStdlibSymbols(n.Name);
         }
 
