@@ -179,6 +179,14 @@ run_lib_test  "forced lib (--lib)"    "$SAMPLES/forced_lib.am"  "--lib"
 run_c_check   "forced: no int main"   "$SAMPLES/forced_lib.am"  "Library — no entry point" "--lib"
 run_test      "forced: normal mode"   "$SAMPLES/forced_lib.am"  "localhost:8080"
 
+# ── Interfaces ──────────────────────────────────────────
+echo ""
+echo "── Interfaces ──────────────────────────"
+run_test "interface basic"   "$SAMPLES/interfaces.am"   "Circle(r=5)"
+run_test "interface method"  "$SAMPLES/interfaces.am"   "Rect(4x3)"
+run_test "interface scale"   "$SAMPLES/interfaces.am"   "Circle(r=10)"
+run_test "interface dispatch" "$SAMPLES/interfaces.am"  "Circle(r=10)"
+
 # ── Enums ──────────────────────────────────────────────
 echo ""
 echo "── Enums ───────────────────────────────"

@@ -299,8 +299,18 @@ namespace CodeTranspiler.Generator {
         private void EmitForwardDecls(ProgramNode n) {
             Emit("/* ── Forward Declarations ── */\n");
 
-            // Pass 1: emit all enum typedefs first (they must be defined
-            // before any function that uses them as parameter types)
+            // Pass 1a: emit interface fat-pointer typedefs
+            foreach (var decl in n.Declarations) {
+                if (!(decl is InterfaceDeclNode)) continue;
+                var iface = (InterfaceDeclNode) decl;
+                string sym = _SymName(iface.Name);
+                // Forward declare the vtable and fat-pointer structs
+                Emit("typedef struct _%s_vtable %s_vtable;\n"
+                     .printf(sym, sym));
+                Emit("typedef struct _%s %s;\n".printf(sym, sym));
+            }
+
+            // Pass 1b: emit all enum typedefs
             foreach (var decl in n.Declarations) {
                 if (!(decl is EnumDeclNode)) continue;
                 var e   = (EnumDeclNode) decl;
@@ -431,6 +441,10 @@ namespace CodeTranspiler.Generator {
                     EmitConstructor(n.Name, (ConstructorDeclNode) member);
                 }
             }
+
+            // Interface vtables + as_Interface() converters
+            foreach (var iface in n.Interfaces)
+                EmitInterfaceImpl(n, iface);
 
             _inClass   = false;
             _className = "";
@@ -618,6 +632,97 @@ namespace CodeTranspiler.Generator {
             foreach (var p in n.Params)
                 EmitI("self->%s = %s;\n".printf(p.Name, p.Name));
             EmitI("return self;\n");
+            _indent--;
+            Emit("}\n\n");
+        }
+
+
+        // ═══════════════════════════════════════════════
+        //  Interfaces — vtable dispatch
+        // ═══════════════════════════════════════════════
+
+        public override void VisitInterfaceDecl(InterfaceDeclNode n) {
+            EmitLine(n.Line);
+            string sym = _SymName(n.Name);
+
+            Emit("/* interface %s */\n".printf(n.Name));
+
+            // 1. vtable struct — one function pointer per method
+            Emit("typedef struct _%s_vtable {\n".printf(sym));
+            _indent++;
+            foreach (var member in n.Members) {
+                if (!(member is MethodDeclNode)) continue;
+                var md = (MethodDeclNode) member;
+                string ret = md.ReturnType != null
+                    ? TypeToC(md.ReturnType) : "void";
+                // Build param list (self + declared params)
+                var sb = new StringBuilder("void*");
+                foreach (var p in md.Params) {
+                    sb.append(", ");
+                    sb.append(TypeToC(p.ParamType));
+                }
+                EmitI("%s (*%s)(%s);\n".printf(ret, md.Name, sb.str));
+            }
+            _indent--;
+            Emit("} %s_vtable;\n\n".printf(sym));
+
+            // 2. interface "fat pointer" — vtable + self
+            Emit("typedef struct _%s {\n".printf(sym));
+            _indent++;
+            EmitI("%s_vtable* vtable;\n".printf(sym));
+            EmitI("void*           self;\n");
+            _indent--;
+            Emit("} %s;\n\n".printf(sym));
+        }
+
+        /**
+         * Emit vtable initializer and as_Interface() function
+         * for a class that implements an interface.
+         *
+         * class Player implements IDamageable →
+         *   static IDamageable_vtable Tests_Player_IDamageable_vtable = { ... };
+         *   static IDamageable Tests_Player_as_IDamageable(Tests_Player* self) { ... }
+         */
+        private void EmitInterfaceImpl(ClassDeclNode cls,
+                                        TypeNode      ifaceType) {
+            string classSym = _SymName(cls.Name);
+            string ifaceName = TypeName(ifaceType);
+            string ifaceSym  = _SymName(ifaceName);
+
+            // Find the interface declaration to get its method list
+            InterfaceDeclNode? iface = null;
+            if (_program != null) {
+                foreach (var decl in _program.Declarations) {
+                    if (decl is InterfaceDeclNode) {
+                        var id = (InterfaceDeclNode) decl;
+                        if (id.Name == ifaceName) { iface = id; break; }
+                    }
+                }
+            }
+            if (iface == null) return;
+
+            // vtable instance
+            Emit("static %s_vtable %s_%s_vtable = {\n"
+                 .printf(ifaceSym, classSym, ifaceName));
+            _indent++;
+            foreach (var member in iface.Members) {
+                if (!(member is MethodDeclNode)) continue;
+                var md = (MethodDeclNode) member;
+                string implFn = _MethodName(cls.Name, md.Name);
+                EmitI(".%s = (void*)%s,\n".printf(md.Name, implFn));
+            }
+            _indent--;
+            Emit("};\n\n");
+
+            // as_Interface() converter function
+            Emit("static inline %s %s_as_%s(%s* self) {\n"
+                 .printf(ifaceSym, classSym, ifaceName, classSym));
+            _indent++;
+            EmitI("%s _r;\n".printf(ifaceSym));
+            EmitI("_r.vtable = &%s_%s_vtable;\n"
+                  .printf(classSym, ifaceName));
+            EmitI("_r.self   = (void*) self;\n");
+            EmitI("return _r;\n");
             _indent--;
             Emit("}\n\n");
         }
@@ -1107,6 +1212,40 @@ namespace CodeTranspiler.Generator {
             return false;
         }
 
+        private bool _IsInterfaceType(string name) {
+            if (_program == null) return false;
+            string bare = _StripNsPrefix(name);
+            foreach (var decl in _program.Declarations)
+                if (decl is InterfaceDeclNode &&
+                    ((InterfaceDeclNode) decl).Name == bare)
+                    return true;
+            return false;
+        }
+
+        /**
+         * Returns the expected C type of the i-th parameter of a
+         * static method. Used to detect interface auto-conversion.
+         */
+        private string _LookupParamType(string className,
+                                         string methodName,
+                                         int    paramIndex) {
+            if (_program == null) return "";
+            string bare = _StripNsPrefix(className);
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != bare) continue;
+                foreach (var m in cls.Members) {
+                    if (!(m is MethodDeclNode)) continue;
+                    var md = (MethodDeclNode) m;
+                    if (md.Name != methodName) continue;
+                    if (paramIndex < md.Params.size)
+                        return TypeName(md.Params[paramIndex].ParamType);
+                }
+            }
+            return "";
+        }
+
         private bool _IsRichEnum(string name) {
             if (_program == null) return false;
             foreach (var decl in _program.Declarations) {
@@ -1267,12 +1406,24 @@ namespace CodeTranspiler.Generator {
                         string ct = _localCTypes[id.Name];
                         if (ct.has_suffix("*"))
                             className = ct.substring(0, ct.length - 1);
+                        else
+                            className = ct; // interface fat pointer (no *)
                     }
-                    // className may already be prefixed (e.g. "MyApp_Animal")
-                    // strip prefix to get bare class name, then re-apply
-                    string bareClass = className;
-                    if (_nsPrefix != "" && className.has_prefix(_nsPrefix + "_"))
-                        bareClass = className.substring(_nsPrefix.length + 1);
+                    string bareClass = _StripNsPrefix(className);
+
+                    // Check if this is an interface type — use vtable dispatch
+                    if (_IsInterfaceType(bareClass)) {
+                        // obj.Method(args) → obj.vtable->Method(obj.self, args)
+                        Emit("%s.vtable->%s(%s.self"
+                             .printf(id.Name, ma.MemberName, id.Name));
+                        for (int i = 0; i < args.size; i++) {
+                            Emit(", ");
+                            args[i].Accept(this);
+                        }
+                        Emit(")");
+                        return;
+                    }
+
                     funcName = _MethodName(bareClass, ma.MemberName);
                 }
 
@@ -1327,9 +1478,27 @@ namespace CodeTranspiler.Generator {
                 }
             } else if (isStaticCall) {
                 // ClassName.Method(args) → ClassName_Method(args)
+                // Auto-convert concrete types to interface fat pointers if needed
+                string targetClass = "";
+                if (ma.Target is IdentifierNode)
+                    targetClass = ((IdentifierNode) ma.Target).Name;
+
                 for (int i = 0; i < args.size; i++) {
                     if (i > 0) Emit(", ");
-                    args[i].Accept(this);
+                    // Check if arg needs interface conversion
+                    string argType = _StripNsPrefix(InferCType(args[i]));
+                    string expectedType = _LookupParamType(
+                        targetClass, ma.MemberName, i);
+                    if (expectedType != "" && _IsInterfaceType(expectedType)
+                        && !_IsInterfaceType(argType)) {
+                        // Auto-wrap: Circle* → Tests_Circle_as_IDescribable(c)
+                        Emit("%s_as_%s(".printf(
+                            _SymName(argType), expectedType));
+                        args[i].Accept(this);
+                        Emit(")");
+                    } else {
+                        args[i].Accept(this);
+                    }
                 }
                 foreach (var kv in namedArgs.entries) {
                     if (args.size > 0) Emit(", ");
@@ -1584,6 +1753,9 @@ namespace CodeTranspiler.Generator {
                         string baseName = name[0:name.length-2];
                         return TypeNameToC(baseName, false) + "*";
                     }
+                    // Interface type → fat pointer (value type, no *)
+                    if (_IsInterfaceType(name))
+                        return _SymName(name);
                     // User-defined type → apply namespace prefix
                     return "%s*".printf(_SymName(name));
             }
