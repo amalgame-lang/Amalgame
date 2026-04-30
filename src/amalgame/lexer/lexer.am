@@ -1,0 +1,275 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── Lexer ─────────────────────────────────────────────
+public class Lexer {
+    private Source:   string
+    private Pos:      int
+    private Line:     int
+    private Column:   int
+    private Filename: string
+    private Tokens:   List<Token>
+
+    public Lexer(string source, string filename) {
+        this.Source   = source
+        this.Filename = filename
+        this.Pos      = 0
+        this.Line     = 1
+        this.Column   = 1
+        this.Tokens   = new List<Token>()
+    }
+
+    public List<Token> Tokenize() {
+        while (this.Pos < String_Length(this.Source)) {
+            this.SkipWhitespace()
+            if (this.Pos >= String_Length(this.Source)) { break }
+
+            let ch = this.CharAt(this.Pos)
+
+            if (ch == "\n") {
+                this.AddToken(TokenType.NEWLINE, "\\n")
+                this.Pos    = this.Pos + 1
+                this.Line   = this.Line + 1
+                this.Column = 1
+            } else if (ch == "\"") {
+                this.ReadString()
+            } else if (this.IsDigit(ch)) {
+                this.ReadNumber()
+            } else if (this.IsAlpha(ch)) {
+                this.ReadIdentifier()
+            } else {
+                this.ReadSymbol()
+            }
+        }
+        this.AddToken(TokenType.EOF, "")
+        return this.Tokens
+    }
+
+    // ── Helpers ───────────────────────────────────────
+
+    private string CharAt(int i) {
+        if (i < 0 || i >= String_Length(this.Source)) { return "" }
+        return this.Source.Substring(i, 1)
+    }
+
+    private void AddToken(TokenType t, string value) {
+        let tok = new Token(t, value, this.Line, this.Column, this.Filename)
+        this.Tokens.Add(tok)
+    }
+
+    private string Advance() {
+        let ch  = this.CharAt(this.Pos)
+        this.Pos    = this.Pos + 1
+        this.Column = this.Column + 1
+        return ch
+    }
+
+    private bool IsDigit(string c) {
+        return c == "0" || c == "1" || c == "2" || c == "3" || c == "4" || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
+    }
+
+    private bool IsAlpha(string c) {
+        return String_Length(c) == 1 && (c == "_" || (c >= "a" && c <= "z") || (c >= "A" && c <= "Z"))
+    }
+
+    private bool IsAlphaNum(string c) {
+        return this.IsAlpha(c) || this.IsDigit(c)
+    }
+
+    private void SkipWhitespace() {
+        while (this.Pos < String_Length(this.Source)) {
+            let c = this.CharAt(this.Pos)
+            if (c == " " || c == "\t" || c == "\r") {
+                this.Advance()
+            } else if (c == "/" && this.CharAt(this.Pos + 1) == "/") {
+                while (this.Pos < String_Length(this.Source)
+                    && this.CharAt(this.Pos) != "\n") {
+                    this.Advance()
+                }
+            } else {
+                break
+            }
+        }
+    }
+
+    private void ReadString() {
+        this.Advance() // opening "
+        var value = ""
+        while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\"") {
+            let c = this.Advance()
+            if (c == "\\") {
+                let esc = this.Advance()
+                if (esc == "n")  { value = value + "\n" }
+                if (esc == "t")  { value = value + "\t" }
+                if (esc == "\"") { value = value + "\"" }
+                if (esc == "\\") { value = value + "\\" }
+            } else {
+                value = value + c
+            }
+        }
+        if (this.Pos < String_Length(this.Source)) {
+            this.Advance() // closing "
+        }
+        this.AddToken(TokenType.STRING, value)
+    }
+
+    private void ReadNumber() {
+        var value  = ""
+        var isFloat = false
+        while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {
+            value = value + this.Advance()
+        }
+        if (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) == "." && this.IsDigit(this.CharAt(this.Pos + 1))) {
+            isFloat = true
+            value   = value + this.Advance() // .
+            while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {
+                value = value + this.Advance()
+            }
+        }
+        if (isFloat) {
+            this.AddToken(TokenType.FLOAT, value)
+        } else {
+            this.AddToken(TokenType.INTEGER, value)
+        }
+    }
+
+    private void ReadIdentifier() {
+        var value = ""
+        while (this.Pos < String_Length(this.Source) && this.IsAlphaNum(this.CharAt(this.Pos))) {
+            value = value + this.Advance()
+        }
+        let tt = this.LookupKeyword(value)
+        this.AddToken(tt, value)
+    }
+
+    private TokenType LookupKeyword(string word) {
+        if (word == "let")       { return TokenType.KW_LET }
+        if (word == "var")       { return TokenType.KW_VAR }
+        if (word == "if")        { return TokenType.KW_IF }
+        if (word == "else")      { return TokenType.KW_ELSE }
+        if (word == "for")       { return TokenType.KW_FOR }
+        if (word == "while")     { return TokenType.KW_WHILE }
+        if (word == "return")    { return TokenType.KW_RETURN }
+        if (word == "class")     { return TokenType.KW_CLASS }
+        if (word == "public")    { return TokenType.KW_PUBLIC }
+        if (word == "private")   { return TokenType.KW_PRIVATE }
+        if (word == "static")    { return TokenType.KW_STATIC }
+        if (word == "new")       { return TokenType.KW_NEW }
+        if (word == "this")      { return TokenType.KW_THIS }
+        if (word == "null")      { return TokenType.KW_NULL }
+        if (word == "true")      { return TokenType.KW_TRUE }
+        if (word == "false")     { return TokenType.KW_FALSE }
+        if (word == "import")    { return TokenType.KW_IMPORT }
+        if (word == "namespace") { return TokenType.KW_NAMESPACE }
+        if (word == "enum")      { return TokenType.KW_ENUM }
+        if (word == "match")     { return TokenType.KW_MATCH }
+        if (word == "in")        { return TokenType.KW_IN }
+        if (word == "is")        { return TokenType.KW_IS }
+        if (word == "as")        { return TokenType.KW_AS }
+        if (word == "void")      { return TokenType.KW_VOID }
+        if (word == "int")       { return TokenType.KW_INT }
+        if (word == "string")    { return TokenType.KW_STRING_TYPE }
+        if (word == "bool")      { return TokenType.KW_BOOL_TYPE }
+        if (word == "float")     { return TokenType.KW_FLOAT_TYPE }
+        if (word == "try")       { return TokenType.KW_TRY }
+        if (word == "catch")     { return TokenType.KW_CATCH }
+        if (word == "throw")     { return TokenType.KW_THROW }
+        if (word == "finally")   { return TokenType.KW_FINALLY }
+        if (word == "interface") { return TokenType.KW_INTERFACE }
+        if (word == "record")    { return TokenType.KW_RECORD }
+        if (word == "func")      { return TokenType.KW_FUNC }
+        return TokenType.IDENTIFIER
+    }
+
+    private void ReadSymbol() {
+        let c  = this.Advance()
+        let c2 = this.CharAt(this.Pos)
+
+        if (c == "+") { this.AddToken(TokenType.OP_PLUS,    "+") }
+        else if (c == "%") { this.AddToken(TokenType.OP_PERCENT, "%") }
+        else if (c == "@") { this.AddToken(TokenType.AT,         "@") }
+        else if (c == "(") { this.AddToken(TokenType.LPAREN,     "(") }
+        else if (c == ")") { this.AddToken(TokenType.RPAREN,     ")") }
+        else if (c == "{") { this.AddToken(TokenType.LBRACE,     "{") }
+        else if (c == "}") { this.AddToken(TokenType.RBRACE,     "}") }
+        else if (c == "[") { this.AddToken(TokenType.LBRACKET,   "[") }
+        else if (c == "]") { this.AddToken(TokenType.RBRACKET,   "]") }
+        else if (c == ",") { this.AddToken(TokenType.COMMA,      ",") }
+        else if (c == ";") { this.AddToken(TokenType.SEMICOLON,  ";") }
+        else if (c == "/") { this.AddToken(TokenType.OP_SLASH,   "/") }
+        else if (c == "-") {
+            if (c2 == ">") {
+                this.Advance()
+                this.AddToken(TokenType.OP_THIN_ARROW, "->")
+            } else {
+                this.AddToken(TokenType.OP_MINUS, "-")
+            }
+        } else if (c == "*") {
+            this.AddToken(TokenType.OP_STAR, "*")
+        } else if (c == "=") {
+            if (c2 == "=") {
+                this.Advance()
+                this.AddToken(TokenType.OP_EQEQ, "==")
+            } else if (c2 == ">") {
+                this.Advance()
+                this.AddToken(TokenType.OP_ARROW, "=>")
+            } else {
+                this.AddToken(TokenType.OP_EQ, "=")
+            }
+        } else if (c == "!") {
+            if (c2 == "=") {
+                this.Advance()
+                this.AddToken(TokenType.OP_NEQ, "!=")
+            } else {
+                this.AddToken(TokenType.OP_NOT, "!")
+            }
+        } else if (c == "<") {
+            if (c2 == "=") {
+                this.Advance()
+                this.AddToken(TokenType.OP_LTE, "<=")
+            } else {
+                this.AddToken(TokenType.OP_LT, "<")
+            }
+        } else if (c == ">") {
+            if (c2 == "=") {
+                this.Advance()
+                this.AddToken(TokenType.OP_GTE, ">=")
+            } else {
+                this.AddToken(TokenType.OP_GT, ">")
+            }
+        } else if (c == "&") {
+            if (c2 == "&") {
+                this.Advance()
+                this.AddToken(TokenType.OP_AND, "&&")
+            }
+        } else if (c == "|") {
+            if (c2 == "|") {
+                this.Advance()
+                this.AddToken(TokenType.OP_OR, "||")
+            }
+        } else if (c == ".") {
+            if (c2 == ".") {
+                this.Advance()
+                this.AddToken(TokenType.OP_DOTDOT, "..")
+            } else {
+                this.AddToken(TokenType.OP_DOT, ".")
+            }
+        } else if (c == ":") {
+            if (c2 == ":") {
+                this.Advance()
+                this.AddToken(TokenType.COLON, "::")
+            } else {
+                this.AddToken(TokenType.COLON, ":")
+            }
+        } else if (c == "?") {
+            if (c2 == "?") {
+                this.Advance()
+                this.AddToken(TokenType.OP_COALESCE, "??")
+            }
+        } else {
+            this.AddToken(TokenType.UNKNOWN, c)
+        }
+    }
+}
