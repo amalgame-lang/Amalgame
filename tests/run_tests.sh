@@ -179,6 +179,14 @@ run_lib_test  "forced lib (--lib)"    "$SAMPLES/forced_lib.am"  "--lib"
 run_c_check   "forced: no int main"   "$SAMPLES/forced_lib.am"  "Library — no entry point" "--lib"
 run_test      "forced: normal mode"   "$SAMPLES/forced_lib.am"  "localhost:8080"
 
+# ── Enums ──────────────────────────────────────────────
+echo ""
+echo "── Enums ───────────────────────────────"
+run_test "enum basic"        "$SAMPLES/enums.am"        "Direction: North"
+run_test "enum match"        "$SAMPLES/enums.am"        "Summer warm: true"
+run_test "enum comparison"   "$SAMPLES/enums.am"        "isNorth: true"
+run_test "enum all values"   "$SAMPLES/enums.am"        "East: East"
+
 # ── Extended coverage ──────────────────────────────────
 echo ""
 echo "── Extended coverage ───────────────────"
@@ -211,4 +219,3 @@ echo "────────────────────────�
 echo ""
 
 [ $FAIL -eq 0 ] && exit 0 || exit 1
-
