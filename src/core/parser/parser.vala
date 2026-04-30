@@ -1072,12 +1072,46 @@ namespace CodeTranspiler.Parser {
 
 
         // ── If ─────────────────────────────────────────
+        // ── If expression ──────────────────────────────
+        // if cond { expr } else { expr }
+        // if cond { expr } else if cond2 { expr } else { expr }
+        private IfNode ParseIfExpr() {
+            var tok  = Expect(CodeTranspiler.Lexer.TokenType.KW_IF);
+            var cond = ParseExpression();
+            var then = ParseBlock();
+            var node = new IfNode(cond, then);
+            node.IsExpr = true;
+            node.SetPosition(tok);
+
+            SkipNewlines();
+            while (Check(CodeTranspiler.Lexer.TokenType.KW_ELSE)) {
+                Advance();
+                SkipNewlines();
+                if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
+                    Advance();
+                    var cond2  = ParseExpression();
+                    var block2 = ParseBlock();
+                    var elseIf = new ElseIfNode(cond2, block2);
+                    node.ElseIfs.add(elseIf);
+                    SkipNewlines();
+                } else {
+                    node.ElseBlock = ParseBlock();
+                    break;
+                }
+            }
+            return node;
+        }
+
+
+        // ── If statement ───────────────────────────────
         private IfNode ParseIf() {
             var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_IF);
 
-            Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+            // Optional parens around condition (legacy: if (x > 5) or modern: if x > 5)
+            bool hasParen = Check(CodeTranspiler.Lexer.TokenType.LPAREN);
+            if (hasParen) Advance();
             var condition = ParseExpression();
-            Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            if (hasParen) Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
 
             var thenBlock = ParseBlock();
             var node      = new IfNode(condition, thenBlock);
@@ -1092,9 +1126,10 @@ namespace CodeTranspiler.Parser {
 
                 if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
                     Advance();
-                    Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+                    bool hasParen2 = Check(CodeTranspiler.Lexer.TokenType.LPAREN);
+                    if (hasParen2) Advance();
                     var cond2  = ParseExpression();
-                    Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+                    if (hasParen2) Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
                     var block2 = ParseBlock();
                     var elseIf = new ElseIfNode(cond2, block2);
                     node.ElseIfs.add(elseIf);
@@ -1721,6 +1756,11 @@ namespace CodeTranspiler.Parser {
 
         // ── Primaire ───────────────────────────────────
         private AstNode ParsePrimary() {
+
+            // if as expression: if cond { val } else { val }
+            if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
+                return ParseIfExpr();
+            }
 
             // Littéraux
             if (Check(CodeTranspiler.Lexer.TokenType.INTEGER) ||

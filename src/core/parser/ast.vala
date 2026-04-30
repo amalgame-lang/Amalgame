@@ -580,11 +580,13 @@ namespace CodeTranspiler.Ast {
         public BlockNode             ThenBlock  { get; set; }
         public Gee.ArrayList<ElseIfNode> ElseIfs { get; set; }
         public BlockNode?            ElseBlock  { get; set; }
+        public bool                  IsExpr     { get; set; }
 
         public IfNode(AstNode condition, BlockNode then) {
             Condition = condition;
             ThenBlock = then;
             ElseIfs   = new Gee.ArrayList<ElseIfNode>();
+            IsExpr    = false;
         }
 
         public override void Accept(AstVisitor v) {

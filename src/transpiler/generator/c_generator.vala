@@ -1038,6 +1038,36 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitIf(IfNode n) {
+            // If expression: emit as nested ternaries
+            // if cond { a } else if cond2 { b } else { c }
+            // → ((cond) ? (a) : (cond2) ? (b) : (c))
+            if (n.IsExpr) {
+                Emit("((");
+                n.Condition.Accept(this);
+                Emit(") ? (");
+                _EmitBlockExpr(n.ThenBlock);
+                Emit(")");
+
+                foreach (var ei in n.ElseIfs) {
+                    Emit(" : (");
+                    ei.Condition.Accept(this);
+                    Emit(") ? (");
+                    _EmitBlockExpr(ei.Block);
+                    Emit(")");
+                }
+
+                if (n.ElseBlock != null) {
+                    Emit(" : (");
+                    _EmitBlockExpr(n.ElseBlock);
+                    Emit(")");
+                } else {
+                    Emit(" : 0");
+                }
+                Emit(")");
+                return;
+            }
+
+            // If statement
             Emit("if (");
             n.Condition.Accept(this);
             Emit(") ");
@@ -1053,6 +1083,29 @@ namespace CodeTranspiler.Generator {
             if (n.ElseBlock != null) {
                 Emit(" else ");
                 n.ElseBlock.Accept(this);
+            }
+        }
+
+        /**
+         * Emit the "value" of a block used as expression.
+         * Takes the last statement's expression as the value.
+         * { return "big" } → "big"
+         * { "big" }        → "big"
+         */
+        private void _EmitBlockExpr(BlockNode block) {
+            if (block.Statements.size == 0) {
+                Emit("0");
+                return;
+            }
+            var last = block.Statements[block.Statements.size - 1];
+            if (last is ReturnNode) {
+                var ret = (ReturnNode) last;
+                if (ret.Value != null)
+                    ret.Value.Accept(this);
+                else
+                    Emit("0");
+            } else {
+                last.Accept(this);
             }
         }
 
@@ -2050,6 +2103,19 @@ namespace CodeTranspiler.Generator {
          * Infère le type C d'une expression.
          */
         private string InferCType(AstNode expr) {
+            // If expression: infer type from then-branch last statement
+            if (expr is IfNode) {
+                var ifn = (IfNode) expr;
+                if (ifn.IsExpr && ifn.ThenBlock.Statements.size > 0) {
+                    var last = ifn.ThenBlock.Statements[
+                        ifn.ThenBlock.Statements.size - 1];
+                    if (last is ReturnNode && ((ReturnNode)last).Value != null)
+                        return InferCType(((ReturnNode)last).Value);
+                    return InferCType(last);
+                }
+                return "void*";
+            }
+
             if (expr is LiteralNode) {
                 var lit = (LiteralNode) expr;
                 switch (lit.Kind) {
