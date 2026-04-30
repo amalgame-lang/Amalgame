@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────
-//  Amalgame Programming Language
+//  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
 //  https://github.com/BastienMOUGET/Amalgame
@@ -61,6 +61,7 @@ namespace CodeTranspiler.Ast {
         public abstract void VisitBreak         (BreakNode       n);
         public abstract void VisitContinue      (ContinueNode    n);
         public abstract void VisitTryCatch      (TryCatchNode    n);
+        public abstract void VisitThrow         (ThrowNode       n);
         public abstract void VisitGoStmt        (GoStmtNode      n);
 
         // ── Expressions ────────────────────────────────
@@ -86,7 +87,9 @@ namespace CodeTranspiler.Ast {
         public abstract void VisitSimpleType    (SimpleTypeNode  n);
         public abstract void VisitGenericType   (GenericTypeNode n);
         public abstract void VisitFuncType      (FuncTypeNode    n);
-        public abstract void VisitTupleType     (TupleTypeNode   n);
+        public abstract void VisitTupleType        (TupleTypeNode        n);
+        public abstract void VisitTupleExpr        (TupleExprNode        n);
+        public abstract void VisitTupleDestructure (TupleDestructureNode n);
     }
 
 
@@ -128,6 +131,7 @@ namespace CodeTranspiler.Ast {
         public override void VisitBreak          (BreakNode      n) {}
         public override void VisitContinue       (ContinueNode   n) {}
         public override void VisitTryCatch       (TryCatchNode   n) {}
+        public override void VisitThrow          (ThrowNode      n) {}
         public override void VisitGoStmt         (GoStmtNode     n) {}
         public override void VisitBinaryExpr     (BinaryExprNode n) {}
         public override void VisitUnaryExpr      (UnaryExprNode  n) {}
@@ -149,6 +153,8 @@ namespace CodeTranspiler.Ast {
         public override void VisitSimpleType     (SimpleTypeNode n) {}
         public override void VisitGenericType    (GenericTypeNode n) {}
         public override void VisitFuncType       (FuncTypeNode   n) {}
-        public override void VisitTupleType      (TupleTypeNode  n) {}
+        public override void VisitTupleType          (TupleTypeNode        n) {}
+        public override void VisitTupleExpr          (TupleExprNode        n) {}
+        public override void VisitTupleDestructure   (TupleDestructureNode n) {}
     }
 }

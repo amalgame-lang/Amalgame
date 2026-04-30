@@ -5,7 +5,177 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ---
 
-## [0.4.0] - 2026-04-30
+## [0.6.0] - 2026-04-30
+
+### ✅ Added
+
+#### Tuple return types & destructuring (2026-04-30)
+
+```amalgame
+// Return multiple values
+public static (int, string) GetPlayer() {
+    return (42, "Arthus")
+}
+
+// Destructure
+let (level, name) = Program.GetPlayer()
+Console.WriteLine("{name} lv{level}")
+
+// 3-tuple
+public static (int, int, bool) Divide(int a, int b) {
+    if b == 0 { return (0, 0, false) }
+    return (a / b, a % b, true)
+}
+let (q, r, ok) = Program.Divide(17, 5)
+```
+
+Generated C via anonymous structs:
+```c
+typedef struct { i64 _0; code_string _1; } _Tuple_i64_str;
+_Tuple_i64_str _am_tuple_0 = Tests_Program_GetPlayer();
+i64 level = _am_tuple_0._0;
+code_string name = _am_tuple_0._1;
+```
+
+- `TupleExprNode` + `TupleDestructureNode` — new AST nodes
+- `VisitTupleExpr`, `VisitTupleDestructure` — in visitor, resolver, typechecker, generator
+- `ParseTypeRef()` — `(int, string)` → `TupleTypeNode`
+- `ParseVarDecl()` — returns `AstNode`, handles `let (a, b) = expr`
+- `ParsePrimary()` — `(a, b)` → `TupleExprNode` when comma detected
+- `ParseMethodDecl()` — handles `(int, string) MethodName(...)` return type
+- `CheckMethodStart()` — `LPAREN` added for tuple return types
+- `EmitTupleStructs()` — scans all methods, emits `typedef struct` before use
+- `TypeToC(TupleTypeNode)` → struct name
+- `_TupleStructName`, `_TupleElemType`, `_LookupTupleReturnType` helpers
+
+#### Test suite
+- `tests/samples/tuples.am` — 6 tests: 2-tuple, 3-tuple, div-by-zero guard
+
+---
+
+
+```amalgame
+let msg = """
+Hello
+World
+"""
+
+let card = """
+Player: {name}
+Level:  {level}
+"""
+
+let sql = """
+    SELECT *
+    FROM players
+    WHERE level > 10
+    """
+```
+
+- Lexer already handled `"""..."""` as `STRING` token with raw newlines
+- `EmitInterpolatedString` — completely rewritten:
+  - **Normalisation** — strips leading/trailing newline
+  - **Dedent** — computes minimum indentation and strips it from all lines
+  - **`\n` encoding** — real newlines in raw content → `\\n` in C string
+  - **Interpolation** — works identically to single-line strings
+- Single-line triple quotes `"""Hello"""` also supported
+
+#### Test suite
+- `tests/samples/multiline_string.am` — 4 tests: basic, interpolation, dedent, single-line
+
+---
+
+
+```amalgame
+try {
+    let result = Program.SafeDiv(10, 0)
+} catch e {
+    Console.WriteLine("caught!")
+} finally {
+    Console.WriteLine("always runs")
+}
+
+throw new DivisionError("division by zero")
+```
+
+Generated C via `setjmp/longjmp` — zero runtime overhead when no exception thrown.
+
+- `KW_FINALLY` added to lexer
+- `ThrowNode` — new AST node
+- `TryCatchNode.FinallyBlock` — optional finally block
+- `VisitThrow` — in visitor, resolver, typechecker, generator
+- `ParseThrow()` — parses `throw expr`
+- `ParseTryCatch()` — flexible catch: `catch e`, `catch (e)`, `catch (ErrorType e)`, with optional `finally`
+- `_runtime.h` — `AmalgameException`, `_am_ex`, `_am_throw()` inside header guard
+- `VisitTryCatch` — full setjmp/longjmp implementation with env save/restore
+
+#### Test suite
+- `tests/samples/try_catch.am` — 4 tests: normal flow, catch throw, finally, done
+
+---
+
+
+```amalgame
+let label   = if x > 5 { "big" } else { "small" }
+let grade   = if score >= 90 { "A" } else if score >= 80 { "B" } else { "F" }
+let bigger  = if x > 3 { x } else { 3 }
+let isAdult = if x >= 18 { true } else { false }
+```
+
+Generated C ternary:
+```c
+code_string label = ((x > 5) ? ("big") : ("small"));
+```
+
+- `IfNode.IsExpr` — new flag distinguishes expression vs statement
+- `ParseIfExpr()` — parses `if cond { expr }` without parentheses from `ParsePrimary`
+- `ParseIf()` — parentheses now optional for statements: `if x > 5` and `if (x > 5)` both work
+- `VisitIf` — emits nested ternaries when `IsExpr`
+- `_EmitBlockExpr()` — extracts last expression from a block (`return "x"` → `"x"`)
+- `InferCType` — descends into `IfNode` branches to infer result type → prevents `void*` segfault
+
+#### Test suite
+- `tests/samples/if_expr.am` — 4 tests: basic, chained else-if, numeric, bool
+
+---
+
+
+```amalgame
+// Range
+for i in 0..10 { Console.WriteLine("{i}") }
+
+// List
+for item in myList { Console.WriteLine("{item}") }
+
+// With index
+for i, item in myList { Console.WriteLine("{i}: {item}") }
+
+// String chars
+for ch in "Hello" { count = count + 1 }
+```
+
+**Parser:**
+- `ParseForIn()` — new method handling `for IDENT in` and `for IDENT, IDENT in`
+- Lookahead dispatch in `ParseStatement`: `for x in ...` → `ParseForIn()`,
+  `for (init; cond; step)` → `ParseFor()`, `foreach (...)` kept for compatibility
+
+**AST:**
+- `ForeachNode.IndexVar` — optional index variable for `for i, item in`
+
+**Generator:**
+- Range `0..10` → `for (i64 i = 0; i < 10; i++)`
+- `AmalgameList` → `AmalgameList_get(_lst, _i)`
+- String → `strlen` + `char` indexation
+- Index variable registered in `_localCTypes`
+
+**Resolver:**
+- `VisitForeach` registers `IndexVar` in loop scope
+
+#### Test suite
+- `tests/samples/foreach.am` — 4 tests: range, list, index, string chars
+
+---
+
 
 ### ✅ Added
 

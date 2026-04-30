@@ -1,0 +1,24 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        let x = 10
+
+        // Basic if expression
+        let label = if x > 5 { "big" } else { "small" }
+        Console.WriteLine("label: {label}")
+
+        // Chained else-if
+        let score = 75
+        let grade = if score >= 90 { "A" } else if score >= 80 { "B" } else if score >= 70 { "C" } else { "F" }
+        Console.WriteLine("grade: {grade}")
+
+        // Numeric result
+        let bigger = if x > 3 { x } else { 3 }
+        Console.WriteLine("bigger: {bigger}")
+
+        // Bool result
+        let isAdult = if x >= 18 { true } else { false }
+        Console.WriteLine("adult: {isAdult}")
+    }
+}

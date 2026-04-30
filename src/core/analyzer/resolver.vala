@@ -788,6 +788,14 @@ namespace CodeTranspiler.Analyzer {
             n.Collection.Accept(this);
 
             _table.PushScope("foreach");
+
+            // Register index variable if present (for i, item in list)
+            if (n.IndexVar != null) {
+                var idxSym = new Symbol(n.IndexVar, SymbolKind.SYM_LOCAL_VAR, n);
+                idxSym.IsLet = true;
+                _table.Declare(idxSym);
+            }
+
             var sym   = new Symbol(n.VarName, SymbolKind.SYM_LOCAL_VAR, n);
             sym.IsLet = n.IsLet;
             _table.Declare(sym);
@@ -822,12 +830,32 @@ namespace CodeTranspiler.Analyzer {
             n.TryBlock.Accept(this);
 
             _table.PushScope("catch");
-            // Register the caught error variable
             var sym     = new Symbol(n.ErrorName, SymbolKind.SYM_LOCAL_VAR, n);
             sym.TypeKey = n.ErrorType;
             _table.Declare(sym);
             n.CatchBlock.Accept(this);
             _table.PopScope();
+
+            if (n.FinallyBlock != null)
+                n.FinallyBlock.Accept(this);
+        }
+
+        public override void VisitTupleExpr(TupleExprNode n) {
+            foreach (var e in n.Elements) e.Accept(this);
+        }
+
+        public override void VisitTupleDestructure(TupleDestructureNode n) {
+            n.Value.Accept(this);
+            // Declare each destructured variable in the current scope
+            foreach (var name in n.Names) {
+                var sym = new Symbol(name, SymbolKind.SYM_LOCAL_VAR, n);
+                sym.IsLet = n.IsLet;
+                _table.Declare(sym);
+            }
+        }
+
+        public override void VisitThrow(ThrowNode n) {
+            if (n.Value != null) n.Value.Accept(this);
         }
 
         public override void VisitGoStmt(GoStmtNode n) {

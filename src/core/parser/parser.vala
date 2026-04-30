@@ -584,10 +584,43 @@ namespace CodeTranspiler.Parser {
 
             // Parse optional return type then method name.
             // Pattern: [TypeRef] MethodName ( params )
-            // If the first token is followed by '(' or '<'
-            // it IS the method name (void/auto return).
-            // Otherwise it's the return type and the name follows.
+            // Special case: tuple return type starts with '('
             TypeNode? returnType = null;
+
+            if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
+                // Tuple return type: (int, string) MethodName(...)
+                returnType = ParseTypeRef(); // consumes (int, string)
+                var nameTok2 = ExpectIdentifierOrKeyword();
+                var node2    = new MethodDeclNode(nameTok2.Value);
+                node2.SetPosition(nameTok2);
+                node2.Access     = access;
+                node2.IsAsync    = isAsync;
+                node2.IsPure     = isPure;
+                node2.IsStatic   = isStatic;
+                node2.ReturnType = returnType;
+
+                if (Check(CodeTranspiler.Lexer.TokenType.OP_LT))
+                    node2.Generics = ParseGenericParams();
+
+                Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+                if (!Check(CodeTranspiler.Lexer.TokenType.RPAREN))
+                    ParseParamList(node2.Params);
+                Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+
+                if (Check(CodeTranspiler.Lexer.TokenType.OP_THIN_ARROW)) {
+                    Advance();
+                    node2.ReturnType = ParseTypeRef();
+                }
+                if (Check(CodeTranspiler.Lexer.TokenType.OP_ARROW)) {
+                    Advance();
+                    node2.Body = ParseExpression();
+                    SkipNewlines();
+                } else if (Check(CodeTranspiler.Lexer.TokenType.LBRACE)) {
+                    node2.Body = ParseBlock();
+                }
+                return node2;
+            }
+
             var nameTok = ExpectIdentifierOrKeyword();
 
             if (!Check(CodeTranspiler.Lexer.TokenType.LPAREN) &&
@@ -963,12 +996,26 @@ namespace CodeTranspiler.Parser {
                 return ParseWhile();
             }
 
-            // for
+            // for — dispatch: "for x in ..." → foreach, "for (...)" → C-style
             if (Check(CodeTranspiler.Lexer.TokenType.KW_FOR)) {
+                // Look ahead: "for IDENTIFIER in" or "for i, item in" → foreach
+                // "for i, item in": Peek(1)=IDENT, Peek(2)=COMMA or KW_IN
+                bool isForIn = false;
+                if (PeekType(1) == CodeTranspiler.Lexer.TokenType.IDENTIFIER) {
+                    var p2 = PeekType(2);
+                    if (p2 == CodeTranspiler.Lexer.TokenType.KW_IN)
+                        isForIn = true;
+                    else if (p2 == CodeTranspiler.Lexer.TokenType.COMMA &&
+                             PeekType(3) == CodeTranspiler.Lexer.TokenType.IDENTIFIER &&
+                             PeekType(4) == CodeTranspiler.Lexer.TokenType.KW_IN)
+                        isForIn = true;
+                }
+                if (isForIn)
+                    return ParseForIn();
                 return ParseFor();
             }
 
-            // foreach
+            // foreach (legacy syntax — keep for compatibility)
             if (Check(CodeTranspiler.Lexer.TokenType.KW_FOREACH)) {
                 return ParseForeach();
             }
@@ -1006,6 +1053,11 @@ namespace CodeTranspiler.Parser {
                 return ParseTryCatch();
             }
 
+            // throw
+            if (Check(CodeTranspiler.Lexer.TokenType.KW_THROW)) {
+                return ParseThrow();
+            }
+
             // go (goroutine)
             if (Check(CodeTranspiler.Lexer.TokenType.KW_GO)) {
                 return ParseGoStmt();
@@ -1024,9 +1076,27 @@ namespace CodeTranspiler.Parser {
 
 
         // ── VarDecl ────────────────────────────────────
-        private VarDeclNode ParseVarDecl() {
+        private AstNode ParseVarDecl() {
             bool isLet = Check(CodeTranspiler.Lexer.TokenType.KW_LET);
             var  tok   = Advance(); // consume let/var
+
+            // Tuple destructuring: let (a, b) = expr
+            if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
+                Advance(); // consume (
+                var names = new Gee.ArrayList<string>();
+                names.add(Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value);
+                while (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
+                    Advance();
+                    names.add(Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value);
+                }
+                Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+                Expect(CodeTranspiler.Lexer.TokenType.OP_EQ);
+                var value = ParseExpression();
+                var destr = new TupleDestructureNode(names, value, isLet);
+                destr.SetPosition(tok);
+                SkipNewlines();
+                return destr;
+            }
 
             // Hint mémoire : let@arena
             string? memHint = null;
@@ -1058,12 +1128,46 @@ namespace CodeTranspiler.Parser {
 
 
         // ── If ─────────────────────────────────────────
+        // ── If expression ──────────────────────────────
+        // if cond { expr } else { expr }
+        // if cond { expr } else if cond2 { expr } else { expr }
+        private IfNode ParseIfExpr() {
+            var tok  = Expect(CodeTranspiler.Lexer.TokenType.KW_IF);
+            var cond = ParseExpression();
+            var then = ParseBlock();
+            var node = new IfNode(cond, then);
+            node.IsExpr = true;
+            node.SetPosition(tok);
+
+            SkipNewlines();
+            while (Check(CodeTranspiler.Lexer.TokenType.KW_ELSE)) {
+                Advance();
+                SkipNewlines();
+                if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
+                    Advance();
+                    var cond2  = ParseExpression();
+                    var block2 = ParseBlock();
+                    var elseIf = new ElseIfNode(cond2, block2);
+                    node.ElseIfs.add(elseIf);
+                    SkipNewlines();
+                } else {
+                    node.ElseBlock = ParseBlock();
+                    break;
+                }
+            }
+            return node;
+        }
+
+
+        // ── If statement ───────────────────────────────
         private IfNode ParseIf() {
             var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_IF);
 
-            Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+            // Optional parens around condition (legacy: if (x > 5) or modern: if x > 5)
+            bool hasParen = Check(CodeTranspiler.Lexer.TokenType.LPAREN);
+            if (hasParen) Advance();
             var condition = ParseExpression();
-            Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            if (hasParen) Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
 
             var thenBlock = ParseBlock();
             var node      = new IfNode(condition, thenBlock);
@@ -1078,9 +1182,10 @@ namespace CodeTranspiler.Parser {
 
                 if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
                     Advance();
-                    Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+                    bool hasParen2 = Check(CodeTranspiler.Lexer.TokenType.LPAREN);
+                    if (hasParen2) Advance();
                     var cond2  = ParseExpression();
-                    Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+                    if (hasParen2) Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
                     var block2 = ParseBlock();
                     var elseIf = new ElseIfNode(cond2, block2);
                     node.ElseIfs.add(elseIf);
@@ -1255,9 +1360,10 @@ namespace CodeTranspiler.Parser {
 
         // ── For ────────────────────────────────────────
         private ForNode ParseFor() {
-            var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_FOR);
+            var tok  = Expect(CodeTranspiler.Lexer.TokenType.KW_FOR);
             Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
-            var init = ParseVarDecl();
+            var initNode = ParseVarDecl();
+            var init     = (VarDeclNode) initNode; // C-style for always uses VarDecl
             Expect(CodeTranspiler.Lexer.TokenType.SEMICOLON);
             var condition = ParseExpression();
             Expect(CodeTranspiler.Lexer.TokenType.SEMICOLON);
@@ -1270,7 +1376,39 @@ namespace CodeTranspiler.Parser {
         }
 
 
-        // ── Foreach ────────────────────────────────────
+        // ── For-in (modern syntax) ──────────────────────
+        // Handles:
+        //   for item in list { ... }
+        //   for i, item in list { ... }
+        //   for i in 0..10 { ... }
+        private ForeachNode ParseForIn() {
+            var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_FOR);
+
+            // Optional index: "for i, item in" or just "for item in"
+            string? indexName = null;
+            var varTok = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+            string varName = varTok.Value;
+
+            if (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
+                Advance(); // consume ','
+                indexName = varName;
+                varTok  = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+                varName = varTok.Value;
+            }
+
+            Expect(CodeTranspiler.Lexer.TokenType.KW_IN);
+            var collection = ParseExpression();
+            SkipNewlines();
+            var body = ParseBlock();
+
+            var node = new ForeachNode(true, varName, collection, body);
+            node.IndexVar = indexName;
+            node.SetPosition(tok);
+            return node;
+        }
+
+
+        // ── Foreach (legacy: foreach (item in coll)) ───
         private ForeachNode ParseForeach() {
             var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_FOREACH);
             Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
@@ -1328,16 +1466,57 @@ namespace CodeTranspiler.Parser {
         private TryCatchNode ParseTryCatch() {
             var tok      = Expect(CodeTranspiler.Lexer.TokenType.KW_TRY);
             var tryBlock = ParseBlock();
+            SkipNewlines();
 
+            // catch — optional type: "catch e" or "catch (ErrorType e)"
             Expect(CodeTranspiler.Lexer.TokenType.KW_CATCH);
-            Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
-            var errType = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value;
-            var errName = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value;
-            Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            SkipNewlines();
+
+            string errType = "Error";
+            string errName = "e";
+
+            if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
+                // catch (ErrorType name) — typed
+                Advance();
+                var first = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+                if (Check(CodeTranspiler.Lexer.TokenType.IDENTIFIER)) {
+                    // two identifiers: type + name
+                    errType = first.Value;
+                    errName = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value;
+                } else {
+                    // one identifier: just name
+                    errName = first.Value;
+                }
+                Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            } else if (Check(CodeTranspiler.Lexer.TokenType.IDENTIFIER)) {
+                // catch e — bare name, no parens
+                errName = Advance().Value;
+            }
 
             var catchBlock = ParseBlock();
-            var node = new TryCatchNode(tryBlock, errType,
-                                        errName, catchBlock);
+            var node = new TryCatchNode(tryBlock, errType, errName, catchBlock);
+            node.SetPosition(tok);
+            SkipNewlines();
+
+            // finally — optional
+            if (Check(CodeTranspiler.Lexer.TokenType.KW_FINALLY)) {
+                Advance();
+                SkipNewlines();
+                node.FinallyBlock = ParseBlock();
+            }
+
+            return node;
+        }
+
+        private ThrowNode ParseThrow() {
+            var tok  = Expect(CodeTranspiler.Lexer.TokenType.KW_THROW);
+            AstNode? val = null;
+            if (!Check(CodeTranspiler.Lexer.TokenType.NEWLINE) &&
+                !Check(CodeTranspiler.Lexer.TokenType.RBRACE)  &&
+                !Check(CodeTranspiler.Lexer.TokenType.EOF)) {
+                val = ParseExpression();
+            }
+            var node = new ThrowNode(val);
             node.SetPosition(tok);
             return node;
         }
@@ -1676,6 +1855,11 @@ namespace CodeTranspiler.Parser {
         // ── Primaire ───────────────────────────────────
         private AstNode ParsePrimary() {
 
+            // if as expression: if cond { val } else { val }
+            if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
+                return ParseIfExpr();
+            }
+
             // Littéraux
             if (Check(CodeTranspiler.Lexer.TokenType.INTEGER) ||
                 Check(CodeTranspiler.Lexer.TokenType.FLOAT)   ||
@@ -1732,10 +1916,25 @@ namespace CodeTranspiler.Parser {
 
             // Groupe : (expr)
             if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
-                Advance();
-                var expr = ParseExpression();
+                var lpTok = Advance(); // consume (
+                var first = ParseExpression();
+
+                // Tuple: (a, b, ...) — detected by comma after first expr
+                if (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
+                    var tuple = new TupleExprNode();
+                    tuple.SetPosition(lpTok);
+                    tuple.Elements.add(first);
+                    while (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
+                        Advance();
+                        tuple.Elements.add(ParseExpression());
+                    }
+                    Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+                    return tuple;
+                }
+
+                // Grouped expression: (expr)
                 Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
-                return expr;
+                return first;
             }
 
             // Identifiant
@@ -1918,6 +2117,19 @@ namespace CodeTranspiler.Parser {
         // ═══════════════════════════════════════════════
 
         private TypeNode ParseTypeRef() {
+
+            // Tuple type: (int, string) or (int, int, bool)
+            if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
+                Advance();
+                var tuple = new TupleTypeNode();
+                tuple.ElementTypes.add(ParseTypeRef());
+                while (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
+                    Advance();
+                    tuple.ElementTypes.add(ParseTypeRef());
+                }
+                Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+                return tuple;
+            }
 
             // Func<int, int, bool>
             if (CheckKw("Func")) {
@@ -2130,7 +2342,8 @@ namespace CodeTranspiler.Parser {
                    t == CodeTranspiler.Lexer.TokenType.KW_STRING   ||
                    t == CodeTranspiler.Lexer.TokenType.KW_BOOL     ||
                    t == CodeTranspiler.Lexer.TokenType.KW_FLOAT    ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE;
+                   t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE   ||
+                   t == CodeTranspiler.Lexer.TokenType.LPAREN;  // tuple return: (int, string)
         }
 
         private bool IsLambdaStart() {
