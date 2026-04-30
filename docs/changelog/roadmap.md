@@ -29,7 +29,7 @@
 | Stdlib String           | ✅     | Complete string manipulation                 |
 | Stdlib Collections      | 🔜     | List, Map, Set (requires generics)           |
 | Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
-| Enum generation         | 🔜     | C enum + match support                       |
+| Enum generation         | ✅     | Simple + rich enums, match, namespace prefix  |
 | Interface vtable        | 🔜     | Interface dispatch in C                      |
 | Multi-file compilation  | 🔜     | `amc *.am` or package system                 |
 | LSP Server              | 🔜     | Autocompletion, real-time errors             |
