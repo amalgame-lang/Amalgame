@@ -55,8 +55,43 @@ public enum Shape {
 - `VisitEnumDecl` registers each member globally as `Direction_North`
   for cross-scope access
 
+#### Interfaces — vtable dispatch
+
+Full interface support with C vtable pattern:
+
+```amalgame
+public interface IDescribable {
+    Describe() -> string
+}
+
+public class Circle implements IDescribable, IScalable {
+    public string Describe() { return "Circle(r={this.Radius})" }
+}
+
+// Pass as interface — auto-converted
+Program.PrintDesc(c)   // → Tests_Circle_as_IDescribable(c)
+```
+
+**Generator:**
+- `VisitInterfaceDecl` — emits vtable struct + fat pointer struct:
+  ```c
+  typedef struct { code_string (*Describe)(void*); } Tests_IDescribable_vtable;
+  typedef struct { Tests_IDescribable_vtable* vtable; void* self; } Tests_IDescribable;
+  ```
+- `EmitInterfaceImpl` — for each `implements`, emits static vtable instance
+  and `as_Interface()` converter function
+- `EmitForwardDecls` — interface typedefs emitted in pass 1a (before enums
+  and classes) to avoid forward reference issues
+- `EmitMethodCall` — detects interface fat pointer targets and emits vtable
+  dispatch: `obj.vtable->Describe(obj.self)`
+- **Auto-conversion** — `PrintDesc(c)` where `c: Circle*` and param expects
+  `IDescribable` → automatically wraps as `Tests_Circle_as_IDescribable(c)`
+- `TypeNameToC` — interface types returned as value types (no `*`) since
+  the fat pointer struct already contains the pointer
+
 #### Test suite
-- `tests/samples/enums.am` — 4 tests: basic, match, comparison, all values
+- `tests/samples/interfaces.am` — 4 tests: basic call, multi-interface,
+  scale via interface, vtable dispatch
 
 
 **`Amalgame.IO`** (`import Amalgame.IO`)

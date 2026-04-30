@@ -1,0 +1,66 @@
+namespace Tests
+
+public interface IDescribable {
+    Describe() -> string
+}
+
+public interface IScalable {
+    Scale(float factor) -> void
+}
+
+public class Circle implements IDescribable, IScalable {
+    public Radius: float
+
+    public Circle(float radius) {
+        this.Radius = radius
+    }
+
+    public string Describe() {
+        return "Circle(r={this.Radius})"
+    }
+
+    public void Scale(float factor) {
+        this.Radius = this.Radius * factor
+    }
+}
+
+public class Rectangle implements IDescribable {
+    public Width: float
+    public Height: float
+
+    public Rectangle(float w, float h) {
+        this.Width  = w
+        this.Height = h
+    }
+
+    public string Describe() {
+        return "Rect({this.Width}x{this.Height})"
+    }
+}
+
+public class Program {
+    public static void PrintDesc(IDescribable obj) {
+        let d = obj.Describe()
+        Console.WriteLine(d)
+    }
+
+    public static void Main(string[] args) {
+        let c = new Circle(5.0)
+        let r = new Rectangle(4.0, 3.0)
+
+        // Direct method calls
+        let cd = c.Describe()
+        let rd = r.Describe()
+        Console.WriteLine(cd)
+        Console.WriteLine(rd)
+
+        // Scale via interface
+        c.Scale(2.0)
+        let cd2 = c.Describe()
+        Console.WriteLine(cd2)
+
+        // Pass as interface
+        Program.PrintDesc(c)
+        Program.PrintDesc(r)
+    }
+}
