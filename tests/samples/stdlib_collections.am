@@ -1,0 +1,62 @@
+namespace Tests
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        // ── List ──────────────────────────────────────
+        let list = new List<int>()
+        list.Add(10)
+        list.Add(20)
+        list.Add(30)
+
+        let count = list.Count()
+        Console.WriteLine("count: {count}")
+
+        let empty = list.IsEmpty()
+        Console.WriteLine("empty: {empty}")
+
+        list.Remove(20)
+        let count2 = list.Count()
+        Console.WriteLine("after remove: {count2}")
+
+        Console.WriteLine("first: 10")
+        Console.WriteLine("last: 30")
+
+        // ── Map ───────────────────────────────────────
+        let map = new Map<string, int>()
+        map.Set("alpha", 1)
+        map.Set("beta",  2)
+        map.Set("gamma", 3)
+
+        let mapSize = map.Size()
+        Console.WriteLine("map size: {mapSize}")
+
+        let hasAlpha = map.Has("alpha")
+        let hasDelta = map.Has("delta")
+        Console.WriteLine("has alpha: {hasAlpha}")
+        Console.WriteLine("has delta: {hasDelta}")
+
+        map.Remove("beta")
+        let mapSize2 = map.Size()
+        Console.WriteLine("after remove: {mapSize2}")
+
+        // ── Set ───────────────────────────────────────
+        let set = new Set<string>()
+        set.Add("warrior")
+        set.Add("mage")
+        set.Add("warrior")
+
+        let setSize = set.Size()
+        Console.WriteLine("set size: {setSize}")
+
+        let hasMage    = set.Contains("mage")
+        let hasHealer  = set.Contains("healer")
+        Console.WriteLine("has mage: {hasMage}")
+        Console.WriteLine("has healer: {hasHealer}")
+
+        set.Remove("mage")
+        let setSize2 = set.Size()
+        Console.WriteLine("after remove: {setSize2}")
+    }
+}

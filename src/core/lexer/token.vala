@@ -2,7 +2,7 @@
 //  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
-//  https://github.com/NeitsabTeguom/CODE
+//  https://github.com/BastienMOUGET/Amalgame
 // ─────────────────────────────────────────────────────
 
 // ═══════════════════════════════════════════════════════
@@ -84,6 +84,7 @@ namespace CodeTranspiler.Lexer {
         KW_TRY,         // try
         KW_CATCH,       // catch
         KW_THROW,       // throw
+        KW_FINALLY,     // finally
 
         // Namespace
         KW_NAMESPACE,   // namespace

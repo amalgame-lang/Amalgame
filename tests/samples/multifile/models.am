@@ -1,0 +1,35 @@
+namespace Game
+
+public class Player {
+    public Name: string
+    public Health: int
+    public Level: int
+
+    public Player(string name, int health, int level) {
+        this.Name   = name
+        this.Health = health
+        this.Level  = level
+    }
+
+    public bool IsAlive() {
+        return this.Health > 0
+    }
+
+    public string Status() {
+        return "{this.Name} HP={this.Health} Lvl={this.Level}"
+    }
+}
+
+public class Enemy {
+    public Name: string
+    public Power: int
+
+    public Enemy(string name, int power) {
+        this.Name  = name
+        this.Power = power
+    }
+
+    public string Describe() {
+        return "Enemy: {this.Name} (power={this.Power})"
+    }
+}

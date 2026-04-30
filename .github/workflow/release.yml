@@ -1,0 +1,218 @@
+# ═══════════════════════════════════════════════════════════
+#  Amalgame — GitHub Actions Release Workflow
+#
+#  Triggers on: git tag push  (e.g. v0.3.0)
+#
+#  What it does:
+#    - Builds amc on Linux x86_64, Linux ARM64, macOS x86_64, macOS ARM64
+#    - Creates release archives (.tar.gz)
+#    - Generates SHA256 checksums
+#    - Publishes a GitHub Release automatically
+# ═══════════════════════════════════════════════════════════
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+
+  # ── Linux x86_64 ──────────────────────────────────────────
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            valac libglib2.0-dev libgee-0.8-dev \
+            meson ninja-build libgc-dev gcc
+
+      - name: Build
+        run: |
+          meson setup build --buildtype=release
+          ninja -C build
+
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="linux-x86_64"
+          DIRNAME="amc-${VERSION}-${TARGET}"
+          mkdir -p "dist/${DIRNAME}/runtime"
+          cp build/amc                          "dist/${DIRNAME}/"
+          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
+          cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*.tar.gz
+
+  # ── Linux ARM64 ───────────────────────────────────────────
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            valac libglib2.0-dev libgee-0.8-dev \
+            meson ninja-build libgc-dev gcc
+
+      - name: Build
+        run: |
+          meson setup build --buildtype=release
+          ninja -C build
+
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="linux-arm64"
+          DIRNAME="amc-${VERSION}-${TARGET}"
+          mkdir -p "dist/${DIRNAME}/runtime"
+          cp build/amc                          "dist/${DIRNAME}/"
+          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
+          cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: dist/*.tar.gz
+
+  # ── macOS x86_64 ──────────────────────────────────────────
+  build-macos-x86_64:
+    runs-on: macos-13   # Intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install vala glib libgee meson ninja bdw-gc
+
+      - name: Build
+        run: |
+          meson setup build --buildtype=release
+          ninja -C build
+
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="macos-x86_64"
+          DIRNAME="amc-${VERSION}-${TARGET}"
+          mkdir -p "dist/${DIRNAME}/runtime"
+          cp build/amc                          "dist/${DIRNAME}/"
+          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
+          cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64
+          path: dist/*.tar.gz
+
+  # ── macOS ARM64 (Apple Silicon) ───────────────────────────
+  build-macos-arm64:
+    runs-on: macos-latest   # M-series
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install vala glib libgee meson ninja bdw-gc
+
+      - name: Build
+        run: |
+          meson setup build --buildtype=release
+          ninja -C build
+
+      - name: Package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          TARGET="macos-arm64"
+          DIRNAME="amc-${VERSION}-${TARGET}"
+          mkdir -p "dist/${DIRNAME}/runtime"
+          cp build/amc                          "dist/${DIRNAME}/"
+          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
+          cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: dist/*.tar.gz
+
+  # ── Create GitHub Release ─────────────────────────────────
+  release:
+    needs:
+      - build-linux-x86_64
+      - build-linux-arm64
+      - build-macos-x86_64
+      - build-macos-arm64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz > checksums.sha256
+          cat checksums.sha256
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract section between ## [VERSION] and the next ## [
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" \
+                  docs/changelog/CHANGELOG.md)
+          echo "NOTES<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES"     >> "$GITHUB_OUTPUT"
+          echo "EOF"        >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Amalgame ${{ github.ref_name }}"
+          body: |
+            ## Install
+
+            **Quick install (Linux / macOS):**
+            ```bash
+            curl -sSL https://raw.githubusercontent.com/BastienMOUGET/Amalgame/main/install/install.sh | bash
+            ```
+
+            **Homebrew (macOS / Linux):**
+            ```bash
+            brew tap BastienMOUGET/amalgame
+            brew install amalgame
+            ```
+
+            **Manual:** Download the archive for your platform below.
+
+            ---
+
+            ${{ steps.changelog.outputs.NOTES }}
+
+          files: |
+            dist/*.tar.gz
+            dist/checksums.sha256
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

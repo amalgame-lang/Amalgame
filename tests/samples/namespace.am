@@ -1,0 +1,36 @@
+namespace MyApp.Models
+
+public class Player {
+    public Name: string
+    public Level: int
+
+    public Player(string name, int level) {
+        this.Name  = name
+        this.Level = level
+    }
+
+    public string Info() {
+        return "{this.Name} (lvl {this.Level})"
+    }
+}
+
+public class Guild {
+    public Tag: string
+
+    public Guild(string tag) {
+        this.Tag = tag
+    }
+
+    public string Describe() {
+        return "Guild [{this.Tag}]"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let p = new Player("Arthus", 42)
+        let g = new Guild("AMG")
+        Console.WriteLine(p.Info())
+        Console.WriteLine(g.Describe())
+    }
+}

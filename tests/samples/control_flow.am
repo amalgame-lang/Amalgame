@@ -1,0 +1,29 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        // if / else
+        let score = 85
+        if (score >= 90) {
+            Console.WriteLine("Grade: A")
+        } else if (score >= 80) {
+            Console.WriteLine("Grade: B")
+        } else if (score >= 70) {
+            Console.WriteLine("Grade: C")
+        } else {
+            Console.WriteLine("Grade: F")
+        }
+
+        // while
+        var i = 0
+        while (i < 3) {
+            Console.WriteLine("while: {i}")
+            i = i + 1
+        }
+
+        // for
+        for (var j = 0; j < 3; j = j + 1) {
+            Console.WriteLine("for: {j}")
+        }
+    }
+}

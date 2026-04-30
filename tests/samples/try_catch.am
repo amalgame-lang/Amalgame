@@ -1,0 +1,48 @@
+namespace Tests
+
+public class DivisionError {
+    public Message: string
+
+    public DivisionError(string msg) {
+        this.Message = msg
+    }
+}
+
+public class Program {
+    public static int SafeDiv(int a, int b) {
+        if b == 0 {
+            throw new DivisionError("division by zero")
+        }
+        return a / b
+    }
+
+    public static void Main(string[] args) {
+        // Basic try/catch
+        try {
+            let result = Program.SafeDiv(10, 2)
+            Console.WriteLine("result: {result}")
+        } catch e {
+            Console.WriteLine("error caught")
+        }
+
+        // Catch thrown error
+        try {
+            let result = Program.SafeDiv(10, 0)
+            Console.WriteLine("should not reach")
+        } catch e {
+            Console.WriteLine("caught: division by zero")
+        }
+
+        // finally
+        try {
+            let x = 42
+            Console.WriteLine("try ok: {x}")
+        } catch e {
+            Console.WriteLine("catch")
+        } finally {
+            Console.WriteLine("finally runs")
+        }
+
+        Console.WriteLine("done")
+    }
+}

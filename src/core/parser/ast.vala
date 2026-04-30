@@ -2,7 +2,7 @@
 //  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
-//  https://github.com/NeitsabTeguom/CODE
+//  https://github.com/BastienMOUGET/Amalgame
 // ─────────────────────────────────────────────────────
 
 // ═══════════════════════════════════════════════════════
@@ -47,7 +47,7 @@ namespace CodeTranspiler.Ast {
         public int       Column      { get; set; }
 
         /** Fichier source d'origine */
-        public string    Filename    { get; set; }
+        public string    Filename    { get; set; default = "<unknown>"; }
 
         /** Nœud parent dans l'arbre */
         public weak AstNode? Parent { get; set; }
@@ -580,11 +580,13 @@ namespace CodeTranspiler.Ast {
         public BlockNode             ThenBlock  { get; set; }
         public Gee.ArrayList<ElseIfNode> ElseIfs { get; set; }
         public BlockNode?            ElseBlock  { get; set; }
+        public bool                  IsExpr     { get; set; }
 
         public IfNode(AstNode condition, BlockNode then) {
             Condition = condition;
             ThenBlock = then;
             ElseIfs   = new Gee.ArrayList<ElseIfNode>();
+            IsExpr    = false;
         }
 
         public override void Accept(AstVisitor v) {
@@ -736,6 +738,7 @@ namespace CodeTranspiler.Ast {
 
         public bool      IsLet      { get; set; }
         public string    VarName    { get; set; }
+        public string?   IndexVar   { get; set; }  // "for i, item in" → i
         public AstNode   Collection { get; set; }
         public BlockNode Body       { get; set; }
 
@@ -743,6 +746,7 @@ namespace CodeTranspiler.Ast {
                            AstNode collection, BlockNode body) {
             IsLet      = isLet;
             VarName    = varName;
+            IndexVar   = null;
             Collection = collection;
             Body       = body;
         }
@@ -806,23 +810,38 @@ namespace CodeTranspiler.Ast {
      */
     public class TryCatchNode : AstNode {
 
-        public BlockNode TryBlock   { get; set; }
-        public string    ErrorType  { get; set; }
-        public string    ErrorName  { get; set; }
-        public BlockNode CatchBlock { get; set; }
+        public BlockNode  TryBlock    { get; set; }
+        public string     ErrorType   { get; set; }
+        public string     ErrorName   { get; set; }
+        public BlockNode  CatchBlock  { get; set; }
+        public BlockNode? FinallyBlock { get; set; }
 
         public TryCatchNode(BlockNode tryBlock,
                             string    errorType,
                             string    errorName,
                             BlockNode catchBlock) {
-            TryBlock   = tryBlock;
-            ErrorType  = errorType;
-            ErrorName  = errorName;
-            CatchBlock = catchBlock;
+            TryBlock     = tryBlock;
+            ErrorType    = errorType;
+            ErrorName    = errorName;
+            CatchBlock   = catchBlock;
+            FinallyBlock = null;
         }
 
         public override void Accept(AstVisitor v) {
             v.VisitTryCatch(this);
+        }
+    }
+
+    /** throw expression */
+    public class ThrowNode : AstNode {
+        public AstNode? Value { get; set; }
+
+        public ThrowNode(AstNode? value) {
+            Value = value;
+        }
+
+        public override void Accept(AstVisitor v) {
+            v.VisitThrow(this);
         }
     }
 
@@ -1276,6 +1295,37 @@ namespace CodeTranspiler.Ast {
 
         public override void Accept(AstVisitor v) {
             v.VisitTupleType(this);
+        }
+    }
+
+    /** Tuple expression: (42, "Arthus") */
+    public class TupleExprNode : AstNode {
+        public Gee.ArrayList<AstNode> Elements { get; set; }
+
+        public TupleExprNode() {
+            Elements = new Gee.ArrayList<AstNode>();
+        }
+
+        public override void Accept(AstVisitor v) {
+            v.VisitTupleExpr(this);
+        }
+    }
+
+    /** Tuple destructuring: let (a, b) = expr */
+    public class TupleDestructureNode : AstNode {
+        public Gee.ArrayList<string> Names    { get; set; }
+        public AstNode               Value    { get; set; }
+        public bool                  IsLet    { get; set; }
+
+        public TupleDestructureNode(Gee.ArrayList<string> names,
+                                     AstNode value, bool isLet) {
+            Names  = names;
+            Value  = value;
+            IsLet  = isLet;
+        }
+
+        public override void Accept(AstVisitor v) {
+            v.VisitTupleDestructure(this);
         }
     }
 }

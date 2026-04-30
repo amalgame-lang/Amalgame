@@ -1,0 +1,93 @@
+namespace Amalgame
+
+import Amalgame.Collections
+
+// ── Test 1 : Custom generics ──────────────────────────
+public class Stack<T> {
+    private Items: List<T>
+
+    public Stack() {
+        this.Items = new List<T>()
+    }
+
+    public void Push(T item) {
+        this.Items.Add(item)
+    }
+
+    public int Count() => this.Items.Count()
+}
+
+// ── Test 2 : Simple rich enum (non-recursive) ─────────
+public enum Shape {
+    Circle(int)
+    Rectangle(int, int)
+}
+
+public class Eval {
+    public static int Area(Shape s) {
+        match s {
+            Circle(r)       => r * r
+            Rectangle(w, h) => w * h
+        }
+    }
+}
+
+// ── Test 3 : Nested field access ──────────────────────
+public class Position {
+    public X: int
+    public Y: int
+
+    public Position(int x, int y) {
+        this.X = x
+        this.Y = y
+    }
+}
+
+public class Entity {
+    public Pos:  Position
+    public Name: string
+
+    public Entity(string name, Position pos) {
+        this.Name = name
+        this.Pos  = pos
+    }
+}
+
+// ── Test 4 : Lambda ───────────────────────────────────
+public class Program {
+    public static void Main(string[] args) {
+        // Test 1 — custom generics
+        let stack = new Stack<int>()
+        stack.Push(10)
+        stack.Push(20)
+        let count = stack.Count()
+        Console.WriteLine("stack count: {count}")
+
+        // Test 2 — rich enum + match
+        let s = Shape.Circle(5)
+        let area = Eval.Area(s)
+        Console.WriteLine("area: {area}")
+
+        let s2 = Shape.Rectangle(4, 6)
+        let area2 = Eval.Area(s2)
+        Console.WriteLine("area2: {area2}")
+
+        // Test 3 — nested field access
+        let pos = new Position(42, 10)
+        let ent = new Entity("Hero", pos)
+        let ex  = ent.Pos.X
+        Console.WriteLine("entity x: {ex}")
+
+        // Test 4 — lambda
+        let doubler = x => x * 2
+        let d = doubler(5)
+        Console.WriteLine("doubled: {d}")
+
+        // Test 5 — for-in + collections
+        var total = 0
+        for i in 0..3 {
+            total = total + i
+        }
+        Console.WriteLine("total: {total}")
+    }
+}

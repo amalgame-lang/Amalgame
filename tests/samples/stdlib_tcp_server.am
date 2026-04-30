@@ -1,0 +1,29 @@
+namespace Tests
+
+import Amalgame.Net
+
+public class Program {
+    public static void Main(string[] args) {
+        // Simple echo server — run with:
+        //   ./tests/samples/stdlib_tcp_server &
+        //   nc localhost 7777
+        let server = TcpServer_Listen(7777, 5)
+        let listening = TcpServer_IsListening(server)
+        Console.WriteLine("listening: {listening}")
+
+        // Accept one connection and echo
+        let conn = TcpServer_Accept(server)
+        let ip   = conn.RemoteIp
+        Console.WriteLine("client: {ip}")
+
+        let msg = TcpConn_Receive(conn, 1024)
+        Console.WriteLine("received: {msg}")
+
+        TcpConn_Send(conn, msg)
+        Console.WriteLine("echoed back")
+
+        TcpConn_Close(conn)
+        TcpServer_Close(server)
+        Console.WriteLine("server done")
+    }
+}

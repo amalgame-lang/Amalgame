@@ -1,0 +1,55 @@
+namespace Tests
+
+public class Classifier {
+    public static string Classify(int n) {
+        match n {
+            0        => return "zero",
+            1        => return "one",
+            2..9     => return "small",
+            10..99   => return "medium",
+            100..999 => return "large",
+            _        => return "huge"
+        }
+        return "unknown"
+    }
+
+    public static string DayName(int d) {
+        match d {
+            1 => return "Monday",
+            2 => return "Tuesday",
+            3 => return "Wednesday",
+            4 => return "Thursday",
+            5 => return "Friday",
+            6 => return "Saturday",
+            7 => return "Sunday",
+            _ => return "Invalid"
+        }
+        return "Invalid"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let c1 = Classifier.Classify(0)
+        let c2 = Classifier.Classify(1)
+        let c3 = Classifier.Classify(5)
+        let c4 = Classifier.Classify(42)
+        let c5 = Classifier.Classify(500)
+        let c6 = Classifier.Classify(9999)
+        Console.WriteLine(c1)
+        Console.WriteLine(c2)
+        Console.WriteLine(c3)
+        Console.WriteLine(c4)
+        Console.WriteLine(c5)
+        Console.WriteLine(c6)
+
+        let d1 = Classifier.DayName(1)
+        let d5 = Classifier.DayName(5)
+        let d7 = Classifier.DayName(7)
+        let d8 = Classifier.DayName(8)
+        Console.WriteLine(d1)
+        Console.WriteLine(d5)
+        Console.WriteLine(d7)
+        Console.WriteLine(d8)
+    }
+}

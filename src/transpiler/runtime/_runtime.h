@@ -26,7 +26,7 @@ typedef bool     code_bool;
 
 /* Allocation GC */
 #define code_alloc(size)  GC_MALLOC(size)
-#define code_strdup(s)    GC_STRDUP(s)
+#define code_strdup(s)    (s ? (char*)memcpy(GC_MALLOC(strlen(s)+1), (s), strlen(s)+1) : NULL)
 
 /* String helpers */
 static inline code_string code_string_format(
@@ -85,30 +85,29 @@ static inline code_string Console_ReadLine() {
     return buf;
 }
 
-/* Math */
+/* Math constants — only if Amalgame_Math.h not included */
+#ifndef AMALGAME_MATH_H
 #define Math_PI    3.14159265358979323846
-#define Math_Abs   fabs
-#define Math_Sqrt  sqrt
-#define Math_Pow   pow
 #define Math_Max(a,b) ((a)>(b)?(a):(b))
 #define Math_Min(a,b) ((a)<(b)?(a):(b))
+#endif
 
 /* List generique */
 typedef struct {
     void** data;
     int    size;
     int    capacity;
-} CodeList;
+} AmalgameList;
 
-static inline CodeList* CodeList_new() {
-    CodeList* l = (CodeList*) GC_MALLOC(sizeof(CodeList));
+static inline AmalgameList* AmalgameList_new() {
+    AmalgameList* l = (AmalgameList*) GC_MALLOC(sizeof(AmalgameList));
     l->capacity = 8;
     l->size     = 0;
     l->data     = (void**) GC_MALLOC(sizeof(void*) * 8);
     return l;
 }
 
-static inline void CodeList_add(CodeList* l, void* item) {
+static inline void AmalgameList_add(AmalgameList* l, void* item) {
     if (l->size >= l->capacity) {
         l->capacity *= 2;
         void** nd = (void**) GC_MALLOC(
@@ -119,13 +118,45 @@ static inline void CodeList_add(CodeList* l, void* item) {
     l->data[l->size++] = item;
 }
 
-static inline void* CodeList_get(CodeList* l, int i) {
+static inline void* AmalgameList_get(AmalgameList* l, int i) {
     if (i < 0 || i >= l->size) return NULL;
     return l->data[i];
 }
 
-static inline int CodeList_count(CodeList* l) {
+static inline int AmalgameList_count(AmalgameList* l) {
     return l->size;
+}
+
+/* ── Collection helpers (lambda-compatible) ── */
+
+typedef void* (*AmalgamePredicate)(void*);
+typedef void  (*AmalgameAction)(void*);
+
+static inline void AmalgameList_forEach(AmalgameList* l, AmalgameAction fn) {
+    for (int i = 0; i < l->size; i++)
+        fn(l->data[i]);
+}
+
+static inline AmalgameList* AmalgameList_where(AmalgameList* l, AmalgamePredicate fn) {
+    AmalgameList* result = AmalgameList_new();
+    for (int i = 0; i < l->size; i++)
+        if (fn(l->data[i])) AmalgameList_add(result, l->data[i]);
+    return result;
+}
+
+static inline AmalgameList* AmalgameList_select(AmalgameList* l, AmalgamePredicate fn) {
+    AmalgameList* result = AmalgameList_new();
+    for (int i = 0; i < l->size; i++)
+        AmalgameList_add(result, fn(l->data[i]));
+    return result;
+}
+
+static inline void* AmalgameList_first(AmalgameList* l) {
+    return l->size > 0 ? l->data[0] : NULL;
+}
+
+static inline void* AmalgameList_last(AmalgameList* l) {
+    return l->size > 0 ? l->data[l->size - 1] : NULL;
 }
 
 /* Result et Option */
@@ -133,32 +164,62 @@ typedef struct {
     bool        is_ok;
     void*       value;
     code_string error;
-} CodeResult;
+} AmalgameResult;
 
-static inline CodeResult Result_Ok(void* v) {
-    return (CodeResult){true, v, NULL};
+static inline AmalgameResult Result_Ok(void* v) {
+    return (AmalgameResult){true, v, NULL};
 }
 
-static inline CodeResult Result_Error(code_string e) {
-    return (CodeResult){false, NULL, e};
+static inline AmalgameResult Result_Error(code_string e) {
+    return (AmalgameResult){false, NULL, e};
 }
 
 typedef struct {
     bool  has_value;
     void* value;
-} CodeOption;
+} AmalgameOption;
 
-static inline CodeOption Option_Some(void* v) {
-    return (CodeOption){true, v};
+static inline AmalgameOption Option_Some(void* v) {
+    return (AmalgameOption){true, v};
 }
 
-static inline CodeOption Option_None() {
-    return (CodeOption){false, NULL};
+static inline AmalgameOption Option_None() {
+    return (AmalgameOption){false, NULL};
 }
 
 /* Init runtime */
 static inline void code_runtime_init() {
     GC_INIT();
 }
+
+
+/* ================================================================
+   Exception support — setjmp/longjmp based
+   ================================================================ */
+#include <setjmp.h>
+
+typedef struct _AmalgameException {
+    jmp_buf     env;
+    void*       value;     /* thrown object */
+    code_string type;      /* type name as string */
+    code_string message;   /* error message if available */
+    int         active;    /* 1 if exception is in flight */
+} AmalgameException;
+
+/* Thread-local exception state */
+static AmalgameException _am_ex = { {0}, NULL, NULL, NULL, 0 };
+
+/* Throw: save value and longjmp */
+static inline void _am_throw(void* val, code_string type,
+                               code_string msg) {
+    _am_ex.value   = val;
+    _am_ex.type    = type  ? type  : "Error";
+    _am_ex.message = msg   ? msg   : "";
+    _am_ex.active  = 1;
+    longjmp(_am_ex.env, 1);
+}
+
+/* Get message from thrown object — tries .Message field */
+#define _AM_EX_MSG() (_am_ex.message)
 
 #endif /* CODE_RUNTIME_H */

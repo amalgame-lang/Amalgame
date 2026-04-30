@@ -1,0 +1,66 @@
+namespace Tests
+
+public class Stack {
+    private Items: int[]
+    private Size: int
+
+    public Stack() {
+        this.Size = 0
+    }
+
+    public void Push(int value) {
+        this.Size = this.Size + 1
+        Console.WriteLine("Pushed: {value}")
+    }
+
+    public int Size() {
+        return this.Size
+    }
+}
+
+public class Pair {
+    public First: string
+    public Second: int
+
+    public Pair(string first, int second) {
+        this.First  = first
+        this.Second = second
+    }
+
+    public string ToString() {
+        return "({this.First}, {this.Second})"
+    }
+}
+
+public class Program {
+    public static int Max(int a, int b) {
+        if (a > b) {
+            return a
+        }
+        return b
+    }
+
+    public static string Repeat(string s, int n) {
+        var result = ""
+        var i = 0
+        while (i < n) {
+            result = result + s
+            i = i + 1
+        }
+        return result
+    }
+
+    public static void Main(string[] args) {
+        let p1 = new Pair("hello", 42)
+        let p2 = new Pair("world", 99)
+
+        Console.WriteLine(p1.ToString())
+        Console.WriteLine(p2.ToString())
+
+        let bigger = Program.Max(p1.Second, p2.Second)
+        Console.WriteLine("Max: {bigger}")
+
+        let rep = Program.Repeat("ab", 3)
+        Console.WriteLine("Repeat: {rep}")
+    }
+}

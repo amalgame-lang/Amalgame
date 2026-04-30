@@ -1,0 +1,38 @@
+namespace Tests
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        // for-in range
+        var sum = 0
+        for i in 0..5 {
+            sum = sum + i
+        }
+        Console.WriteLine("sum 0..5: {sum}")
+
+        // for-in list
+        let list = new List<int>()
+        list.Add(10)
+        list.Add(20)
+        list.Add(30)
+
+        var total = 0
+        for item in list {
+            total = total + 1
+        }
+        Console.WriteLine("list total: {total}")
+
+        // for-in with index
+        for i, item in list {
+            Console.WriteLine("item[{i}] = {i}")
+        }
+
+        // for-in string chars
+        var count = 0
+        for ch in "Hello" {
+            count = count + 1
+        }
+        Console.WriteLine("chars: {count}")
+    }
+}

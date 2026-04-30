@@ -1,0 +1,52 @@
+namespace Tests
+
+public enum Direction {
+    North, South, East, West
+}
+
+public enum Season {
+    Spring, Summer, Autumn, Winter
+}
+
+public class Program {
+    public static string DirectionName(Direction d) {
+        match d {
+            Direction.North => return "North",
+            Direction.South => return "South",
+            Direction.East  => return "East",
+            Direction.West  => return "West",
+            _               => return "Unknown"
+        }
+        return "Unknown"
+    }
+
+    public static bool IsWarm(Season s) {
+        match s {
+            Season.Spring => return true,
+            Season.Summer => return true,
+            _             => return false
+        }
+        return false
+    }
+
+    public static void Main(string[] args) {
+        let d = Direction.North
+        let name = Program.DirectionName(d)
+        Console.WriteLine("Direction: {name}")
+
+        let s1 = Season.Summer
+        let s2 = Season.Winter
+        let w1 = Program.IsWarm(s1)
+        let w2 = Program.IsWarm(s2)
+        Console.WriteLine("Summer warm: {w1}")
+        Console.WriteLine("Winter warm: {w2}")
+
+        // Direct comparison
+        let isNorth = d == Direction.North
+        Console.WriteLine("isNorth: {isNorth}")
+
+        // All directions
+        let s = Program.DirectionName(Direction.East)
+        Console.WriteLine("East: {s}")
+    }
+}
