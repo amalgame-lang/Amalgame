@@ -1,0 +1,23 @@
+namespace Game
+
+public class Program {
+    public static void Main(string[] args) {
+        let player = new Player("Arthus", 100, 42)
+        let enemy  = new Enemy("Dragon", 99)
+
+        let status = player.Status()
+        Console.WriteLine(status)
+
+        let desc = enemy.Describe()
+        Console.WriteLine(desc)
+
+        let alive = player.IsAlive()
+        Console.WriteLine("Alive: {alive}")
+
+        Logger.Log("Game started")
+        Logger.Info("Player ready")
+
+        let clamped = MathUtils.Clamp(150, 0, 100)
+        Console.WriteLine("Clamped: {clamped}")
+    }
+}

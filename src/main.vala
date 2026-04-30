@@ -8,14 +8,13 @@
 // ═══════════════════════════════════════════════════════
 //  main.vala  -  Entry point of the Amalgame transpiler
 //
-//  Pipeline:
-//    source.am
-//      → Lexer       → tokens
-//      → Parser      → AST
-//      → Resolver    → AST + SymbolTable
-//      → TypeChecker → AST annotated
-//      → CGenerator  → output.c
-//      → GCC         → native executable
+//  Single-file pipeline:
+//    source.am → Lexer → Parser → Resolver → TypeChecker → CGenerator → GCC
+//
+//  Multi-file pipeline (--merge / multiple .am args):
+//    file1.am ─┐
+//    file2.am ─┼─ Lex+Parse each → Merge AST → Resolver → TypeChecker → CGenerator → GCC
+//    file3.am ─┘
 // ═══════════════════════════════════════════════════════
 
 using CodeTranspiler.Lexer;
@@ -26,85 +25,125 @@ using CodeTranspiler.Generator;
 
 int main(string[] args) {
 
+    // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
-        stdout.printf("Amalgame Transpiler v0.3.0\n");
+        stdout.printf("Amalgame Transpiler v0.4.0\n");
         stdout.printf("  Lexer       : OK\n");
         stdout.printf("  AST         : OK\n");
         stdout.printf("  Parser      : OK\n");
         stdout.printf("  Resolver    : OK\n");
         stdout.printf("  TypeChecker : OK\n");
         stdout.printf("  Generator   : OK\n");
+        stdout.printf("  Multi-file  : OK\n");
         return 0;
     }
 
     if (args.length < 2) {
-        stderr.printf("Usage: amc <file.am> [-o output.c] [--lib] [--no-typecheck]\n");
+        stderr.printf("Usage: amc <file.am> [file2.am ...] [-o output] [--lib] [--no-typecheck]\n");
         return 1;
     }
 
-
-    string inputFile   = "";
-    string outputFile  = "";
-    bool   skipTC      = false;
-    bool   forceLib    = false;
+    // ── Argument parsing ──────────────────────────────
+    var    inputFiles = new Gee.ArrayList<string>();
+    string outputFile = "";
+    bool   skipTC     = false;
+    bool   forceLib   = false;
 
     for (int i = 1; i < args.length; i++) {
         if (args[i] == "-o" && i + 1 < args.length) {
-            outputFile = args[i + 1];
-            i++;
+            outputFile = args[++i];
         } else if (args[i] == "--no-typecheck") {
             skipTC = true;
         } else if (args[i] == "--lib") {
             forceLib = true;
         } else if (!args[i].has_prefix("-")) {
-            inputFile = args[i];
+            inputFiles.add(args[i]);
         }
     }
 
-    if (inputFile == "") {
-        stderr.printf("Usage: amc <file.am> [-o output.c] [--lib] [--no-typecheck]\n");
+    if (inputFiles.size == 0) {
+        stderr.printf("Error: no input files\n");
+        stderr.printf("Usage: amc <file.am> [file2.am ...] [-o output] [--lib] [--no-typecheck]\n");
         return 1;
     }
 
-    if (outputFile == "")
-        outputFile = inputFile.replace(".am", ".c");
-
-    string source;
-    try {
-        FileUtils.get_contents(inputFile, out source);
-    } catch (Error e) {
-        stderr.printf("Error: %s\n", e.message);
-        return 1;
+    // Default output: based on first file or "out"
+    if (outputFile == "") {
+        if (inputFiles.size == 1)
+            outputFile = inputFiles[0].replace(".am", ".c");
+        else
+            outputFile = "out.c";
+    } else if (!outputFile.has_suffix(".c")) {
+        // User gave an exe name like "-o mygame" → use mygame.c
+        outputFile = outputFile + ".c";
     }
 
-    stdout.printf("Compiling: %s → %s\n", inputFile, outputFile);
+    bool isMulti = inputFiles.size > 1;
 
-    // ── LEXER ─────────────────────────────────────────
-    var lexer  = new CodeTranspiler.Lexer.Lexer(source, inputFile);
-    var tokens = lexer.Tokenize();
-    stdout.printf("Lexer       OK : %d tokens\n", tokens.size);
+    if (isMulti)
+        stdout.printf("Compiling: %d files → %s\n",
+                      inputFiles.size, outputFile);
+    else
+        stdout.printf("Compiling: %s → %s\n",
+                      inputFiles[0], outputFile);
 
-    // ── PARSER ────────────────────────────────────────
-    var parser = new CodeTranspiler.Parser.Parser(tokens, inputFile);
-    var parsed = parser.Parse();
+    // ── LEX + PARSE each file ─────────────────────────
+    var programs = new Gee.ArrayList<ProgramNode>();
+    int totalTokens = 0;
 
-    if (!parsed.Success) {
-        foreach (var err in parsed.Errors)
-            stderr.printf("%s\n", err.ToString());
-        return 1;
+    foreach (var inputFile in inputFiles) {
+        string source;
+        try {
+            FileUtils.get_contents(inputFile, out source);
+        } catch (Error e) {
+            stderr.printf("Error reading '%s': %s\n", inputFile, e.message);
+            return 1;
+        }
+
+        var lexer  = new CodeTranspiler.Lexer.Lexer(source, inputFile);
+        var tokens = lexer.Tokenize();
+        totalTokens += tokens.size;
+
+        var parser = new CodeTranspiler.Parser.Parser(tokens, inputFile);
+        var parsed = parser.Parse();
+
+        if (!parsed.Success) {
+            foreach (var err in parsed.Errors)
+                stderr.printf("%s\n", err.ToString());
+            return 1;
+        }
+
+        programs.add(parsed.Program);
     }
-    stdout.printf("Parser      OK\n");
+
+    stdout.printf("Lexer       OK : %d tokens\n", totalTokens);
+    stdout.printf("Parser      OK : %d file(s)\n", programs.size);
+
+    // ── MERGE AST ─────────────────────────────────────
+    // Merge all ProgramNodes into a single one.
+    // Strategy:
+    //   - Namespace: use the first file's namespace (or last Program's)
+    //   - Imports: union of all imports (deduplicated)
+    //   - Declarations: concatenation of all declarations
+    ProgramNode merged;
+
+    if (programs.size == 1) {
+        merged = programs[0];
+    } else {
+        merged = _MergePrograms(programs);
+    }
 
     // ── AST DEBUG ─────────────────────────────────────
     if (Environment.get_variable("AMC_DEBUG") == "1") {
         var printer = new AstPrinter();
-        stdout.printf("\n=== AST ===\n");
-        stdout.printf("%s\n", printer.Print(parsed.Program));
+        stdout.printf("\n=== Merged AST ===\n");
+        stdout.printf("%s\n", printer.Print(merged));
     }
 
     // ── RESOLVER ──────────────────────────────────────
-    var resolver = new Resolver(inputFile);
-    var resolved = resolver.Resolve(parsed.Program);
+    string primaryFile = inputFiles[inputFiles.size - 1]; // last = entry point
+    var resolver = new Resolver(primaryFile);
+    var resolved = resolver.Resolve(merged);
 
     if (!resolved.Success) {
         foreach (var err in resolved.Errors)
@@ -116,8 +155,8 @@ int main(string[] args) {
 
     // ── TYPE CHECKER ──────────────────────────────────
     if (!skipTC) {
-        var tc      = new TypeChecker(resolved.Symbols, inputFile);
-        var checked = tc.Check(parsed.Program);
+        var tc      = new TypeChecker(resolved.Symbols, primaryFile);
+        var checked = tc.Check(merged);
 
         if (!checked.Success) {
             foreach (var err in checked.Errors) {
@@ -141,8 +180,8 @@ int main(string[] args) {
     }
 
     // ── C GENERATOR ───────────────────────────────────
-    var generator = new CGenerator(inputFile, resolved.Symbols, forceLib);
-    var generated = generator.Generate(parsed.Program);
+    var generator = new CGenerator(primaryFile, resolved.Symbols, forceLib);
+    var generated = generator.Generate(merged);
 
     if (!generated.Success) {
         stderr.printf("Generator error: %s\n", generated.Errors);
@@ -160,7 +199,6 @@ int main(string[] args) {
     stdout.printf("Generator   OK : %s [%s]\n", outputFile, mode);
 
     // ── GCC ───────────────────────────────────────────
-    // Library mode: only produce .c — no executable
     if (generated.IsLibrary) {
         stdout.printf("\nLibrary ready: %s\n", outputFile);
         stdout.printf("Compile with: gcc -c -I<runtime_dir> %s -lgc -lm\n",
@@ -169,10 +207,33 @@ int main(string[] args) {
     }
 
     string exeFile  = outputFile.replace(".c", "");
-    string runtimeH = GLib.Path.get_dirname(
-                          GLib.Path.get_dirname(
-                              GLib.Path.get_dirname(outputFile)))
-                      + "/src/transpiler/runtime";
+
+    // Resolve runtime header directory.
+    // Priority:
+    //   1. AMC_RUNTIME env var (set by installer)
+    //   2. Relative to the first input file's location
+    //   3. Relative to the output file (single-file fallback)
+    string runtimeH = Environment.get_variable("AMC_RUNTIME") ?? "";
+
+    if (runtimeH == "") {
+        // Try relative to first input file
+        string firstDir = GLib.Path.get_dirname(inputFiles[0]);
+        string candidate = GLib.Path.build_filename(
+            firstDir, "..", "..", "..", "src", "transpiler", "runtime");
+        if (FileUtils.test(
+                GLib.Path.build_filename(candidate, "_runtime.h"),
+                FileTest.EXISTS)) {
+            runtimeH = candidate;
+        }
+    }
+
+    if (runtimeH == "") {
+        // Fallback: relative to output file
+        runtimeH = GLib.Path.get_dirname(
+                       GLib.Path.get_dirname(
+                           GLib.Path.get_dirname(outputFile)))
+                   + "/src/transpiler/runtime";
+    }
 
     string gccCmd = "gcc -g3 -O0 -I%s %s -lgc -lm -o %s"
                     .printf(runtimeH, outputFile, exeFile);
@@ -200,4 +261,51 @@ int main(string[] args) {
     }
 
     return 0;
+}
+
+/**
+ * Merge multiple ProgramNodes into one.
+ *
+ * - Namespace  : the last file's namespace wins (entry point)
+ * - Imports    : union, deduplicated by name
+ * - Declarations: all declarations concatenated in order
+ */
+ProgramNode _MergePrograms(Gee.ArrayList<ProgramNode> programs) {
+
+    // Use the last program's namespace (entry point wins)
+    ProgramNode result = programs[programs.size - 1];
+
+    // Collect all declarations from all files into the last program
+    // (keeping the entry point's namespace and imports as base)
+    var seen = new Gee.HashSet<string>();
+
+    // First: collect imports from all files (deduplicated)
+    var allImports = new Gee.ArrayList<ImportNode>();
+    foreach (var prog in programs) {
+        foreach (var imp in prog.Imports) {
+            if (!seen.contains(imp.Name)) {
+                seen.add(imp.Name);
+                allImports.add(imp);
+            }
+        }
+    }
+    result.Imports.clear();
+    foreach (var imp in allImports)
+        result.Imports.add(imp);
+
+    // Then: merge all declarations (preserve order: libs first, entry last)
+    var allDecls = new Gee.ArrayList<AstNode>();
+    for (int i = 0; i < programs.size - 1; i++) {
+        foreach (var decl in programs[i].Declarations)
+            allDecls.add(decl);
+    }
+    // Entry point declarations last
+    foreach (var decl in programs[programs.size - 1].Declarations)
+        allDecls.add(decl);
+
+    result.Declarations.clear();
+    foreach (var decl in allDecls)
+        result.Declarations.add(decl);
+
+    return result;
 }
