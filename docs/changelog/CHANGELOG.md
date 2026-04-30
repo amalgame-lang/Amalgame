@@ -9,7 +9,61 @@ Versions: [Semantic Versioning](https://semver.org)
 
 ### ✅ Added
 
-#### `for item in collection` — modern iteration syntax (2026-04-30)
+#### `try/catch/finally/throw` — exception handling (2026-04-30)
+
+```amalgame
+try {
+    let result = Program.SafeDiv(10, 0)
+} catch e {
+    Console.WriteLine("caught!")
+} finally {
+    Console.WriteLine("always runs")
+}
+
+throw new DivisionError("division by zero")
+```
+
+Generated C via `setjmp/longjmp` — zero runtime overhead when no exception thrown.
+
+- `KW_FINALLY` added to lexer
+- `ThrowNode` — new AST node
+- `TryCatchNode.FinallyBlock` — optional finally block
+- `VisitThrow` — in visitor, resolver, typechecker, generator
+- `ParseThrow()` — parses `throw expr`
+- `ParseTryCatch()` — flexible catch: `catch e`, `catch (e)`, `catch (ErrorType e)`, with optional `finally`
+- `_runtime.h` — `AmalgameException`, `_am_ex`, `_am_throw()` inside header guard
+- `VisitTryCatch` — full setjmp/longjmp implementation with env save/restore
+
+#### Test suite
+- `tests/samples/try_catch.am` — 4 tests: normal flow, catch throw, finally, done
+
+---
+
+
+```amalgame
+let label   = if x > 5 { "big" } else { "small" }
+let grade   = if score >= 90 { "A" } else if score >= 80 { "B" } else { "F" }
+let bigger  = if x > 3 { x } else { 3 }
+let isAdult = if x >= 18 { true } else { false }
+```
+
+Generated C ternary:
+```c
+code_string label = ((x > 5) ? ("big") : ("small"));
+```
+
+- `IfNode.IsExpr` — new flag distinguishes expression vs statement
+- `ParseIfExpr()` — parses `if cond { expr }` without parentheses from `ParsePrimary`
+- `ParseIf()` — parentheses now optional for statements: `if x > 5` and `if (x > 5)` both work
+- `VisitIf` — emits nested ternaries when `IsExpr`
+- `_EmitBlockExpr()` — extracts last expression from a block (`return "x"` → `"x"`)
+- `InferCType` — descends into `IfNode` branches to infer result type → prevents `void*` segfault
+
+#### Test suite
+- `tests/samples/if_expr.am` — 4 tests: basic, chained else-if, numeric, bool
+
+---
+
 
 ```amalgame
 // Range
