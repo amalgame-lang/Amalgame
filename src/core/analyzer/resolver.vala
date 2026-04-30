@@ -353,12 +353,28 @@ namespace CodeTranspiler.Analyzer {
                     break;
 
                 case "Amalgame.Collections":
+                case "Amalgame.Collections.List":
+                case "Amalgame.Collections.Map":
+                case "Amalgame.Collections.Set":
                     _RegisterFunctions(new string[] {
-                        "CodeList_new", "CodeList_add",
-                        "CodeList_get", "CodeList_count",
-                        "CodeList_forEach", "CodeList_where",
-                        "CodeList_select", "CodeList_first",
-                        "CodeList_last"
+                        // List
+                        "CodeList_new", "CodeList_add", "CodeList_get",
+                        "CodeList_count", "CodeList_size", "CodeList_isEmpty",
+                        "CodeList_clear", "CodeList_remove", "CodeList_removeAt",
+                        "CodeList_contains", "CodeList_first", "CodeList_last",
+                        "CodeList_reverse", "CodeList_copy", "CodeList_indexOf",
+                        "CodeList_forEach", "CodeList_where", "CodeList_select",
+                        "CodeList_find", "CodeList_any", "CodeList_all",
+                        "CodeList_countIf", "CodeList_sort", "CodeList_slice",
+                        "CodeList_addAll",
+                        // Map
+                        "CodeMap_new", "CodeMap_set", "CodeMap_get",
+                        "CodeMap_has", "CodeMap_remove", "CodeMap_size",
+                        "CodeMap_isEmpty", "CodeMap_keys", "CodeMap_values",
+                        // Set
+                        "CodeSet_new", "CodeSet_add", "CodeSet_contains",
+                        "CodeSet_remove", "CodeSet_size", "CodeSet_isEmpty",
+                        "CodeSet_toList", "CodeSet_union", "CodeSet_intersection"
                     });
                     break;
 

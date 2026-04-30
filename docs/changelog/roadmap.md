@@ -27,7 +27,7 @@
 | Stdlib IO               | ✅     | Console, File, Path, Environment             |
 | Stdlib Math             | ✅     | Full math library with constants             |
 | Stdlib String           | ✅     | Complete string manipulation                 |
-| Stdlib Collections      | 🔜     | List, Map, Set (requires generics)           |
+| Stdlib Collections      | ✅     | List, Map, Set — full implementation          |
 | Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
 | Enum generation         | ✅     | Simple + rich enums, match, namespace prefix  |
 | Interface vtable        | ✅     | vtable dispatch, fat pointer, auto-conversion |
