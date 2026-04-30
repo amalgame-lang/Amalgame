@@ -34,6 +34,9 @@ vala_sources = files(
     # Diagnostics
     'src/transpiler/diagnostics.vala',
 
+    # Package manager
+    'src/pkg/package_manager.vala',
+
     # Entry point
     'src/main.vala'
 )

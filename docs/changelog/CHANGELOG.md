@@ -607,3 +607,42 @@ the amalgam of the best features from every programming language.
 - Boehm GC integration
 - Meson build system
 - GitHub Actions CI
+
+## [0.7.0] - 2026-04-30
+
+### ✅ Added
+
+#### Package Manager `amc pkg` (2026-04-30)
+
+```bash
+amc pkg init [name]              # Create amalgame.json + src/main.am
+amc pkg add github:user/repo     # Add a dependency (git clone)
+amc pkg add github:user/repo@v1  # With specific tag
+amc pkg install                  # Install all dependencies
+amc pkg list                     # List dependencies (✓ installed / ? missing)
+amc pkg build                    # Compile project from amalgame.json
+```
+
+**`amalgame.json`** format:
+```json
+{
+  "name": "my-game",
+  "version": "0.1.0",
+  "main": "src/main.am",
+  "sources": ["src/*.am"],
+  "dependencies": {
+    "github:user/mylib": "1.0.0"
+  }
+}
+```
+
+- `src/pkg/package_manager.vala` — dedicated `PackageManager` class
+- `amc pkg init` — creates manifest + starter `src/main.am` with namespace
+- `amc pkg add` — clones from GitHub into `packages/user/repo/`
+- `amc pkg build` — globs sources, calls `amc` with all `.am` files
+- `amc pkg list` — shows installed/missing status per dependency
+- `amc pkg install` — installs all missing dependencies
+- `--version` now reports `Package Manager: OK`
+
+**Note:** Central registry (`pkg.amalgame.am`) planned for v1.0 — currently GitHub-only.
+
