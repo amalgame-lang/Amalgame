@@ -192,4 +192,34 @@ static inline void code_runtime_init() {
     GC_INIT();
 }
 
+
+/* ================================================================
+   Exception support — setjmp/longjmp based
+   ================================================================ */
+#include <setjmp.h>
+
+typedef struct _AmalgameException {
+    jmp_buf     env;
+    void*       value;     /* thrown object */
+    code_string type;      /* type name as string */
+    code_string message;   /* error message if available */
+    int         active;    /* 1 if exception is in flight */
+} AmalgameException;
+
+/* Thread-local exception state */
+static AmalgameException _am_ex = { {0}, NULL, NULL, NULL, 0 };
+
+/* Throw: save value and longjmp */
+static inline void _am_throw(void* val, code_string type,
+                               code_string msg) {
+    _am_ex.value   = val;
+    _am_ex.type    = type  ? type  : "Error";
+    _am_ex.message = msg   ? msg   : "";
+    _am_ex.active  = 1;
+    longjmp(_am_ex.env, 1);
+}
+
+/* Get message from thrown object — tries .Message field */
+#define _AM_EX_MSG() (_am_ex.message)
+
 #endif /* CODE_RUNTIME_H */

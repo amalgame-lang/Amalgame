@@ -810,23 +810,38 @@ namespace CodeTranspiler.Ast {
      */
     public class TryCatchNode : AstNode {
 
-        public BlockNode TryBlock   { get; set; }
-        public string    ErrorType  { get; set; }
-        public string    ErrorName  { get; set; }
-        public BlockNode CatchBlock { get; set; }
+        public BlockNode  TryBlock    { get; set; }
+        public string     ErrorType   { get; set; }
+        public string     ErrorName   { get; set; }
+        public BlockNode  CatchBlock  { get; set; }
+        public BlockNode? FinallyBlock { get; set; }
 
         public TryCatchNode(BlockNode tryBlock,
                             string    errorType,
                             string    errorName,
                             BlockNode catchBlock) {
-            TryBlock   = tryBlock;
-            ErrorType  = errorType;
-            ErrorName  = errorName;
-            CatchBlock = catchBlock;
+            TryBlock     = tryBlock;
+            ErrorType    = errorType;
+            ErrorName    = errorName;
+            CatchBlock   = catchBlock;
+            FinallyBlock = null;
         }
 
         public override void Accept(AstVisitor v) {
             v.VisitTryCatch(this);
+        }
+    }
+
+    /** throw expression */
+    public class ThrowNode : AstNode {
+        public AstNode? Value { get; set; }
+
+        public ThrowNode(AstNode? value) {
+            Value = value;
+        }
+
+        public override void Accept(AstVisitor v) {
+            v.VisitThrow(this);
         }
     }
 

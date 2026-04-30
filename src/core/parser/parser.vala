@@ -1020,6 +1020,11 @@ namespace CodeTranspiler.Parser {
                 return ParseTryCatch();
             }
 
+            // throw
+            if (Check(CodeTranspiler.Lexer.TokenType.KW_THROW)) {
+                return ParseThrow();
+            }
+
             // go (goroutine)
             if (Check(CodeTranspiler.Lexer.TokenType.KW_GO)) {
                 return ParseGoStmt();
@@ -1409,16 +1414,57 @@ namespace CodeTranspiler.Parser {
         private TryCatchNode ParseTryCatch() {
             var tok      = Expect(CodeTranspiler.Lexer.TokenType.KW_TRY);
             var tryBlock = ParseBlock();
+            SkipNewlines();
 
+            // catch — optional type: "catch e" or "catch (ErrorType e)"
             Expect(CodeTranspiler.Lexer.TokenType.KW_CATCH);
-            Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
-            var errType = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value;
-            var errName = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value;
-            Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            SkipNewlines();
+
+            string errType = "Error";
+            string errName = "e";
+
+            if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
+                // catch (ErrorType name) — typed
+                Advance();
+                var first = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+                if (Check(CodeTranspiler.Lexer.TokenType.IDENTIFIER)) {
+                    // two identifiers: type + name
+                    errType = first.Value;
+                    errName = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER).Value;
+                } else {
+                    // one identifier: just name
+                    errName = first.Value;
+                }
+                Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            } else if (Check(CodeTranspiler.Lexer.TokenType.IDENTIFIER)) {
+                // catch e — bare name, no parens
+                errName = Advance().Value;
+            }
 
             var catchBlock = ParseBlock();
-            var node = new TryCatchNode(tryBlock, errType,
-                                        errName, catchBlock);
+            var node = new TryCatchNode(tryBlock, errType, errName, catchBlock);
+            node.SetPosition(tok);
+            SkipNewlines();
+
+            // finally — optional
+            if (Check(CodeTranspiler.Lexer.TokenType.KW_FINALLY)) {
+                Advance();
+                SkipNewlines();
+                node.FinallyBlock = ParseBlock();
+            }
+
+            return node;
+        }
+
+        private ThrowNode ParseThrow() {
+            var tok  = Expect(CodeTranspiler.Lexer.TokenType.KW_THROW);
+            AstNode? val = null;
+            if (!Check(CodeTranspiler.Lexer.TokenType.NEWLINE) &&
+                !Check(CodeTranspiler.Lexer.TokenType.RBRACE)  &&
+                !Check(CodeTranspiler.Lexer.TokenType.EOF)) {
+                val = ParseExpression();
+            }
+            var node = new ThrowNode(val);
             node.SetPosition(tok);
             return node;
         }

@@ -570,11 +570,15 @@ namespace CodeTranspiler.Analyzer {
 
         public override void VisitTryCatch(TryCatchNode n) {
             n.TryBlock.Accept(this);
-            
             var sym = _table.Lookup(n.ErrorName);
             if (sym != null) sym.TypeKey = n.ErrorType;
             n.CatchBlock.Accept(this);
-            
+            if (n.FinallyBlock != null)
+                n.FinallyBlock.Accept(this);
+        }
+
+        public override void VisitThrow(ThrowNode n) {
+            if (n.Value != null) n.Value.Accept(this);
         }
 
         public override void VisitMatch(MatchNode n) {

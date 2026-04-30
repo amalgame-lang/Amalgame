@@ -219,6 +219,14 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── Try/catch/throw ────────────────────────────────────
+echo ""
+echo "── Try/catch/throw ─────────────────────"
+run_test "try: normal flow"   "$SAMPLES/try_catch.am"  "result: 5"
+run_test "try: catch throw"   "$SAMPLES/try_catch.am"  "caught: division by zero"
+run_test "try: finally"       "$SAMPLES/try_catch.am"  "finally runs"
+run_test "try: done"          "$SAMPLES/try_catch.am"  "done"
+
 # ── If expression ─────────────────────────────────────
 echo ""
 echo "── If expression ───────────────────────"

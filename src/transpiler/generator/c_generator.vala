@@ -1370,12 +1370,96 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitTryCatch(TryCatchNode n) {
-            // Pas d'exceptions en C → simuler avec setjmp
-            // Pour l'instant : juste le bloc try
-            Emit("/* try */ ");
-            n.TryBlock.Accept(this);
-            Emit(" /* catch(%s %s) skipped for now */"
-                 .printf(n.ErrorType, n.ErrorName));
+            // try { ... } catch e { ... } finally { ... }
+            // Generated C:
+            //   { jmp_buf _prev; memcpy(&_prev, &_am_ex.env, sizeof(jmp_buf));
+            //     int _caught = setjmp(_am_ex.env);
+            //     if (_caught == 0) { /* try */ ... _am_ex.active = 0; }
+            //     else { void* e = _am_ex.value; _am_ex.active = 0; /* catch */ }
+            //     memcpy(&_am_ex.env, &_prev, sizeof(jmp_buf));
+            //     /* finally */ }
+
+            EmitI("{\n");
+            _indent++;
+            EmitI("jmp_buf _am_prev_env;\n");
+            EmitI("memcpy(&_am_prev_env, &_am_ex.env, sizeof(jmp_buf));\n");
+            EmitI("int _am_caught = setjmp(_am_ex.env);\n");
+            EmitI("if (_am_caught == 0) {\n");
+            _indent++;
+            // try block
+            foreach (var stmt in n.TryBlock.Statements) {
+                EmitI("");
+                stmt.Accept(this);
+                if (!(stmt is ReturnNode || stmt is BreakNode ||
+                      stmt is ContinueNode || stmt is BlockNode ||
+                      stmt is IfNode || stmt is TryCatchNode))
+                    Emit(";");
+                Emit("\n");
+            }
+            EmitI("_am_ex.active = 0;\n");
+            _indent--;
+            EmitI("} else {\n");
+            _indent++;
+            // catch block — declare error variable
+            EmitI("void* %s = _am_ex.value;\n".printf(n.ErrorName));
+            EmitI("_am_ex.active = 0;\n");
+            _localCTypes[n.ErrorName] = "void*";
+            foreach (var stmt in n.CatchBlock.Statements) {
+                EmitI("");
+                stmt.Accept(this);
+                if (!(stmt is ReturnNode || stmt is BreakNode ||
+                      stmt is ContinueNode || stmt is BlockNode ||
+                      stmt is IfNode || stmt is TryCatchNode))
+                    Emit(";");
+                Emit("\n");
+            }
+            _localCTypes.unset(n.ErrorName);
+            _indent--;
+            EmitI("}\n");
+            // Restore previous exception environment
+            EmitI("memcpy(&_am_ex.env, &_am_prev_env, sizeof(jmp_buf));\n");
+            // finally block
+            if (n.FinallyBlock != null) {
+                EmitI("/* finally */\n");
+                foreach (var stmt in n.FinallyBlock.Statements) {
+                    EmitI("");
+                    stmt.Accept(this);
+                    if (!(stmt is ReturnNode || stmt is BreakNode ||
+                          stmt is ContinueNode || stmt is BlockNode ||
+                          stmt is IfNode || stmt is TryCatchNode))
+                        Emit(";");
+                    Emit("\n");
+                }
+            }
+            _indent--;
+            EmitI("}");
+        }
+
+        public override void VisitThrow(ThrowNode n) {
+            // throw new DivisionError("msg") →
+            //   _am_throw(_SymName_DivisionError_new(args), "DivisionError", args[0])
+            if (n.Value is NewExprNode) {
+                var ne = (NewExprNode) n.Value;
+                string typeName = TypeName(ne.ObjectType);
+                Emit("_am_throw((void*)(%s_new(".printf(_SymName(typeName)));
+                for (int i = 0; i < ne.Arguments.size; i++) {
+                    if (i > 0) Emit(", ");
+                    ne.Arguments[i].Accept(this);
+                }
+                Emit(")), \"%s\", ".printf(typeName));
+                // message = first string arg if available
+                if (ne.Arguments.size > 0)
+                    ne.Arguments[0].Accept(this);
+                else
+                    Emit("\"\"");
+                Emit(");");
+            } else if (n.Value != null) {
+                Emit("_am_throw((void*)(");
+                n.Value.Accept(this);
+                Emit("), \"Error\", \"\");");
+            } else {
+                Emit("_am_throw(NULL, \"Error\", \"\");");
+            }
         }
 
         public override void VisitGoStmt(GoStmtNode n) {

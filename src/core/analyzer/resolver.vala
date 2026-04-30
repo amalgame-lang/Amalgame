@@ -830,12 +830,18 @@ namespace CodeTranspiler.Analyzer {
             n.TryBlock.Accept(this);
 
             _table.PushScope("catch");
-            // Register the caught error variable
             var sym     = new Symbol(n.ErrorName, SymbolKind.SYM_LOCAL_VAR, n);
             sym.TypeKey = n.ErrorType;
             _table.Declare(sym);
             n.CatchBlock.Accept(this);
             _table.PopScope();
+
+            if (n.FinallyBlock != null)
+                n.FinallyBlock.Accept(this);
+        }
+
+        public override void VisitThrow(ThrowNode n) {
+            if (n.Value != null) n.Value.Accept(this);
         }
 
         public override void VisitGoStmt(GoStmtNode n) {

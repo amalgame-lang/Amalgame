@@ -30,7 +30,7 @@ int main(string[] args) {
 
     // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
-        stdout.printf("Amalgame Transpiler v0.4.0\n");
+        stdout.printf("Amalgame Transpiler v0.6.0\n");
         stdout.printf("  Lexer       : OK\n");
         stdout.printf("  AST         : OK\n");
         stdout.printf("  Parser      : OK\n");
