@@ -138,12 +138,21 @@ run_test "String: ToInt"              "$SAMPLES/stdlib_string.am" "toInt = 42"
 run_test "String: FromInt"            "$SAMPLES/stdlib_string.am" "fromInt = 123"
 run_test "String: IsEmpty"            "$SAMPLES/stdlib_string.am" "isEmpty = true"
 
-# ── Amalgame.Collections (via runtime) ────────────────
+# ── Amalgame.Collections ────────────────────────────────
 echo ""
 echo "── Amalgame.Collections ────────────────────"
-run_skip "Collections: List<T>"       "planned — requires enum/generics"
-run_skip "Collections: Map<K,V>"      "planned — requires enum/generics"
-run_skip "Collections: Set<T>"        "planned — requires enum/generics"
+run_test "Collections: List.Add/Count"    "$SAMPLES/stdlib_collections.am" "count: 3"
+run_test "Collections: List.IsEmpty"      "$SAMPLES/stdlib_collections.am" "empty: false"
+run_test "Collections: List.Remove"       "$SAMPLES/stdlib_collections.am" "after remove: 2"
+run_test "Collections: List.First/Last"   "$SAMPLES/stdlib_collections.am" "first: 10"
+run_test "Collections: Map.Set/Size"      "$SAMPLES/stdlib_collections.am" "map size: 3"
+run_test "Collections: Map.Has"           "$SAMPLES/stdlib_collections.am" "has alpha: true"
+run_test "Collections: Map.Has missing"   "$SAMPLES/stdlib_collections.am" "has delta: false"
+run_test "Collections: Map.Remove"        "$SAMPLES/stdlib_collections.am" "after remove: 2"
+run_test "Collections: Set.Add/Size"      "$SAMPLES/stdlib_collections.am" "set size: 2"
+run_test "Collections: Set.Contains"      "$SAMPLES/stdlib_collections.am" "has mage: true"
+run_test "Collections: Set.Contains miss" "$SAMPLES/stdlib_collections.am" "has healer: false"
+run_test "Collections: Set.Remove"        "$SAMPLES/stdlib_collections.am" "after remove: 1"
 
 # ── Amalgame.Net ───────────────────────────────────────
 echo ""

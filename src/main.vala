@@ -22,8 +22,11 @@ using CodeTranspiler.Ast;
 using CodeTranspiler.Parser;
 using CodeTranspiler.Analyzer;
 using CodeTranspiler.Generator;
+using CodeTranspiler;
 
 int main(string[] args) {
+
+    var fmt = new DiagnosticFormatter();
 
     // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
@@ -39,7 +42,8 @@ int main(string[] args) {
     }
 
     if (args.length < 2) {
-        stderr.printf("Usage: amc <file.am> [file2.am ...] [-o output] [--lib] [--no-typecheck]\n");
+        stderr.printf("%s\n", fmt.FormatFatal(
+            "no input file\nUsage: amc <file.am> [file2.am ...] [-o output] [--lib] [--no-typecheck]"));
         return 1;
     }
 
@@ -62,8 +66,8 @@ int main(string[] args) {
     }
 
     if (inputFiles.size == 0) {
-        stderr.printf("Error: no input files\n");
-        stderr.printf("Usage: amc <file.am> [file2.am ...] [-o output] [--lib] [--no-typecheck]\n");
+        stderr.printf("%s\n", fmt.FormatFatal(
+            "no input files\nUsage: amc <file.am> [file2.am ...] [-o output] [--lib] [--no-typecheck]"));
         return 1;
     }
 
@@ -96,7 +100,8 @@ int main(string[] args) {
         try {
             FileUtils.get_contents(inputFile, out source);
         } catch (Error e) {
-            stderr.printf("Error reading '%s': %s\n", inputFile, e.message);
+            stderr.printf("%s\n", fmt.FormatFatal(
+                "cannot read '%s': %s".printf(inputFile, e.message)));
             return 1;
         }
 
@@ -108,16 +113,22 @@ int main(string[] args) {
         var parsed = parser.Parse();
 
         if (!parsed.Success) {
-            foreach (var err in parsed.Errors)
-                stderr.printf("%s\n", err.ToString());
+            foreach (var err in parsed.Errors) {
+                stderr.printf("%s", fmt.FormatError(
+                    "syntax",
+                    err.Message,
+                    err.Filename,
+                    err.Line,
+                    err.Column));
+            }
             return 1;
         }
 
         programs.add(parsed.Program);
     }
 
-    stdout.printf("Lexer       OK : %d tokens\n", totalTokens);
-    stdout.printf("Parser      OK : %d file(s)\n", programs.size);
+    stdout.printf("Lexer  OK  %d tokens\n", totalTokens);
+    stdout.printf("Parser OK  %d file(s)\n", programs.size);
 
     // ── MERGE AST ─────────────────────────────────────
     // Merge all ProgramNodes into a single one.
@@ -146,11 +157,17 @@ int main(string[] args) {
     var resolved = resolver.Resolve(merged);
 
     if (!resolved.Success) {
-        foreach (var err in resolved.Errors)
-            stderr.printf("%s\n", err.ToString());
+        foreach (var err in resolved.Errors) {
+            stderr.printf("%s", fmt.FormatError(
+                "resolver",
+                err.Message,
+                err.Filename,
+                err.Line,
+                err.Column));
+        }
         return 1;
     }
-    stdout.printf("Resolver    OK : %d symbols\n",
+    stdout.printf("Resolver OK  %d symbols\n",
                   resolved.Symbols.Global.AllSymbols().size);
 
     // ── TYPE CHECKER ──────────────────────────────────
@@ -160,19 +177,25 @@ int main(string[] args) {
 
         if (!checked.Success) {
             foreach (var err in checked.Errors) {
-                if (err.Message.has_prefix("[warning]"))
-                    stdout.printf("%s\n", err.ToString());
+                bool isWarning = err.Message.has_prefix("[warning]");
+                string msg = isWarning
+                    ? err.Message.substring("[warning] ".length)
+                    : err.Message;
+                string formatted = isWarning
+                    ? fmt.FormatWarning("typechecker", msg,
+                                        err.Filename, err.Line, err.Column)
+                    : fmt.FormatError  ("typechecker", msg,
+                                        err.Filename, err.Line, err.Column);
+                if (isWarning)
+                    stdout.printf("%s", formatted);
                 else
-                    stderr.printf("%s\n", err.ToString());
+                    stderr.printf("%s", formatted);
             }
             int realErrors = 0;
             foreach (var err in checked.Errors)
                 if (!err.Message.has_prefix("[warning]"))
                     realErrors++;
-            if (realErrors > 0) {
-                stderr.printf("TypeChecker: %d error(s)\n", realErrors);
-                return 1;
-            }
+            if (realErrors > 0) return 1;
         }
         stdout.printf("TypeChecker OK\n");
     } else {
@@ -184,7 +207,8 @@ int main(string[] args) {
     var generated = generator.Generate(merged);
 
     if (!generated.Success) {
-        stderr.printf("Generator error: %s\n", generated.Errors);
+        stderr.printf("%s\n", fmt.FormatFatal(
+            "generator: " + generated.Errors));
         return 1;
     }
 
@@ -253,10 +277,9 @@ int main(string[] args) {
     }
 
     if (ret == 0) {
-        stdout.printf("Build       OK : %s\n", exeFile);
-        stdout.printf("\nRun: ./%s\n", exeFile);
+        stdout.printf("%s\n", fmt.FormatSuccess(exeFile));
     } else {
-        stderr.printf("GCC failed!\n");
+        stderr.printf("%s\n", fmt.FormatFatal("GCC compilation failed"));
         return 1;
     }
 
