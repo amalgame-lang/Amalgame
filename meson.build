@@ -1,5 +1,5 @@
 project('amalgame', 'vala', 'c',
-    version : '0.3.0'
+    version : '0.6.0'
 )
 
 cc       = meson.get_compiler('c')

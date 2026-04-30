@@ -1196,22 +1196,96 @@ namespace CodeTranspiler.Generator {
         }
 
         public override void VisitForeach(ForeachNode n) {
-            // foreach → for avec index en C
-            Emit("/* foreach %s in ... */\n".printf(n.VarName));
+            // Detect if collection is a range: 0..10 or start..end
+            bool isRange = false;
+            if (n.Collection is BinaryExprNode) {
+                var bin = (BinaryExprNode) n.Collection;
+                if (bin.Operator == "..") isRange = true;
+            }
+
+            if (isRange) {
+                // for i in 0..10 → for (i64 i = start; i < end; i++)
+                var bin = (BinaryExprNode) n.Collection;
+                string idx = n.VarName;
+                EmitI("for (i64 %s = ".printf(idx));
+                bin.Left.Accept(this);
+                Emit("; %s < ".printf(idx));
+                bin.Right.Accept(this);
+                Emit("; %s++) {\n".printf(idx));
+                _indent++;
+                // Register var type
+                _localCTypes[idx] = "i64";
+                foreach (var stmt in n.Body.Statements) {
+                    EmitI("");
+                    stmt.Accept(this);
+                    if (!(stmt is ReturnNode || stmt is BreakNode ||
+                          stmt is ContinueNode || stmt is BlockNode))
+                        Emit(";");
+                    Emit("\n");
+                }
+                _localCTypes.unset(idx);
+                _indent--;
+                EmitI("}");
+                return;
+            }
+
+            // List/collection iteration
+            // Infer the item type from collection type
+            string collType = InferCType(n.Collection);
+            string itemType = "void*";
+            if (collType == "code_string")
+                itemType = "char";  // char-by-char iteration
+
+            // Generate: { AmalgameList* _lst = ...; for (int _i = ...) }
             EmitI("{\n");
             _indent++;
-            EmitI("AmalgameList* _list = (AmalgameList*)(");
-            n.Collection.Accept(this);
-            Emit(");\n");
-            EmitI("for (int _i = 0; _i < _list->size; _i++) {\n");
-            _indent++;
-            EmitI("void* %s = AmalgameList_get(_list, _i);\n"
-                  .printf(n.VarName));
+
+            if (itemType == "char") {
+                // String character iteration
+                EmitI("code_string _str = (code_string)(");
+                n.Collection.Accept(this);
+                Emit(");\n");
+                EmitI("i64 _slen = (i64) strlen(_str);\n");
+                if (n.IndexVar != null) {
+                    EmitI("for (i64 %s = 0; %s < _slen; %s++) {\n"
+                          .printf(n.IndexVar, n.IndexVar, n.IndexVar));
+                } else {
+                    EmitI("for (i64 _i = 0; _i < _slen; _i++) {\n");
+                }
+                _indent++;
+                EmitI("char %s = _str[%s];\n"
+                      .printf(n.VarName, n.IndexVar ?? "_i"));
+                _localCTypes[n.VarName] = "char";
+            } else {
+                // AmalgameList iteration
+                EmitI("AmalgameList* _lst = (AmalgameList*)(");
+                n.Collection.Accept(this);
+                Emit(");\n");
+                if (n.IndexVar != null) {
+                    _localCTypes[n.IndexVar] = "i64";
+                    EmitI("for (i64 %s = 0; %s < _lst->size; %s++) {\n"
+                          .printf(n.IndexVar, n.IndexVar, n.IndexVar));
+                } else {
+                    EmitI("for (int _i = 0; _i < _lst->size; _i++) {\n");
+                }
+                _indent++;
+                EmitI("void* %s = AmalgameList_get(_lst, %s);\n"
+                      .printf(n.VarName, n.IndexVar ?? "_i"));
+                _localCTypes[n.VarName] = "void*";
+            }
+
+            // Body
             foreach (var stmt in n.Body.Statements) {
                 EmitI("");
                 stmt.Accept(this);
-                Emit(";\n");
+                if (!(stmt is ReturnNode || stmt is BreakNode ||
+                      stmt is ContinueNode || stmt is BlockNode))
+                    Emit(";");
+                Emit("\n");
             }
+
+            _localCTypes.unset(n.VarName);
+            if (n.IndexVar != null) _localCTypes.unset(n.IndexVar);
             _indent--;
             EmitI("}\n");
             _indent--;

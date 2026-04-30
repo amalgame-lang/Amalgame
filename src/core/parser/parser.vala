@@ -963,12 +963,26 @@ namespace CodeTranspiler.Parser {
                 return ParseWhile();
             }
 
-            // for
+            // for — dispatch: "for x in ..." → foreach, "for (...)" → C-style
             if (Check(CodeTranspiler.Lexer.TokenType.KW_FOR)) {
+                // Look ahead: "for IDENTIFIER in" or "for i, item in" → foreach
+                // "for i, item in": Peek(1)=IDENT, Peek(2)=COMMA or KW_IN
+                bool isForIn = false;
+                if (PeekType(1) == CodeTranspiler.Lexer.TokenType.IDENTIFIER) {
+                    var p2 = PeekType(2);
+                    if (p2 == CodeTranspiler.Lexer.TokenType.KW_IN)
+                        isForIn = true;
+                    else if (p2 == CodeTranspiler.Lexer.TokenType.COMMA &&
+                             PeekType(3) == CodeTranspiler.Lexer.TokenType.IDENTIFIER &&
+                             PeekType(4) == CodeTranspiler.Lexer.TokenType.KW_IN)
+                        isForIn = true;
+                }
+                if (isForIn)
+                    return ParseForIn();
                 return ParseFor();
             }
 
-            // foreach
+            // foreach (legacy syntax — keep for compatibility)
             if (Check(CodeTranspiler.Lexer.TokenType.KW_FOREACH)) {
                 return ParseForeach();
             }
@@ -1270,7 +1284,39 @@ namespace CodeTranspiler.Parser {
         }
 
 
-        // ── Foreach ────────────────────────────────────
+        // ── For-in (modern syntax) ──────────────────────
+        // Handles:
+        //   for item in list { ... }
+        //   for i, item in list { ... }
+        //   for i in 0..10 { ... }
+        private ForeachNode ParseForIn() {
+            var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_FOR);
+
+            // Optional index: "for i, item in" or just "for item in"
+            string? indexName = null;
+            var varTok = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+            string varName = varTok.Value;
+
+            if (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
+                Advance(); // consume ','
+                indexName = varName;
+                varTok  = Expect(CodeTranspiler.Lexer.TokenType.IDENTIFIER);
+                varName = varTok.Value;
+            }
+
+            Expect(CodeTranspiler.Lexer.TokenType.KW_IN);
+            var collection = ParseExpression();
+            SkipNewlines();
+            var body = ParseBlock();
+
+            var node = new ForeachNode(true, varName, collection, body);
+            node.IndexVar = indexName;
+            node.SetPosition(tok);
+            return node;
+        }
+
+
+        // ── Foreach (legacy: foreach (item in coll)) ───
         private ForeachNode ParseForeach() {
             var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_FOREACH);
             Expect(CodeTranspiler.Lexer.TokenType.LPAREN);

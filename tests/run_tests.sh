@@ -219,6 +219,14 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── For-in / Foreach ──────────────────────────────────
+echo ""
+echo "── For-in ──────────────────────────────"
+run_test "for-in range"        "$SAMPLES/foreach.am"  "sum 0..5: 10"
+run_test "for-in list"         "$SAMPLES/foreach.am"  "list total: 3"
+run_test "for-in index"        "$SAMPLES/foreach.am"  "item[0] = 0"
+run_test "for-in string chars" "$SAMPLES/foreach.am"  "chars: 5"
+
 # ── Multi-file ─────────────────────────────────────────
 run_multifile_test() {
     local name="$1"
