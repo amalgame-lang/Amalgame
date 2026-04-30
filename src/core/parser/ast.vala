@@ -47,7 +47,7 @@ namespace CodeTranspiler.Ast {
         public int       Column      { get; set; }
 
         /** Fichier source d'origine */
-        public string    Filename    { get; set; }
+        public string    Filename    { get; set; default = "<unknown>"; }
 
         /** Nœud parent dans l'arbre */
         public weak AstNode? Parent { get; set; }

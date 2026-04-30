@@ -28,6 +28,78 @@ int main(string[] args) {
 
     var fmt = new DiagnosticFormatter();
 
+    // ── bootstrap subcommand ──────────────────────────
+    if (args.length >= 2 && args[1] == "bootstrap") {
+        string sub = args.length >= 3 ? args[2] : "help";
+        string cwd = GLib.Environment.get_current_dir();
+        string bootstrapDir = GLib.Path.build_filename(cwd, "bootstrap");
+        string stableBin    = GLib.Path.build_filename(
+            bootstrapDir, "amc-linux-x86_64");
+
+        switch (sub) {
+            case "save":
+                // Copy current binary to bootstrap/amc-linux-x86_64
+                string selfBin = args[0];
+                try {
+                    GLib.FileUtils.set_contents(
+                        stableBin,
+                        (string) GLib.FileUtils.read_bytes(selfBin));
+                    FileUtils.chmod(stableBin, 0755);
+                    // Compute checksum
+                    string[] chkArgs = { "sha256sum", stableBin, null };
+                    string chkOut = "";
+                    GLib.Process.spawn_sync(cwd, chkArgs, null,
+                        GLib.SpawnFlags.SEARCH_PATH,
+                        null, out chkOut, null, null);
+                    string chkFile = GLib.Path.build_filename(
+                        bootstrapDir, "checksums.sha256");
+                    FileUtils.set_contents(chkFile,
+                        "# Generated: %s\n%s".printf(
+                            new GLib.DateTime.now_local().format("%Y-%m-%d"),
+                            chkOut));
+                    stdout.printf("  ✓ Bootstrap saved: bootstrap/amc-linux-x86_64\n");
+                } catch (Error e) {
+                    stderr.printf("  ✗ Save failed: %s\n", e.message);
+                    return 1;
+                }
+                return 0;
+
+            case "restore":
+                if (!GLib.FileUtils.test(stableBin, GLib.FileTest.EXISTS)) {
+                    stderr.printf("  ✗ No stable binary found: %s\n", stableBin);
+                    stderr.printf("    Run 'amc bootstrap save' first.\n");
+                    return 1;
+                }
+                stdout.printf("  → Restoring from bootstrap/amc-linux-x86_64\n");
+                string[] cpArgs = { "cp", stableBin, args[0], null };
+                int cpRet = 0;
+                try {
+                    GLib.Process.spawn_sync(cwd, cpArgs, null,
+                        GLib.SpawnFlags.SEARCH_PATH,
+                        null, null, null, out cpRet);
+                } catch (Error e) {
+                    stderr.printf("  ✗ Restore failed: %s\n", e.message);
+                    return 1;
+                }
+                stdout.printf("  ✓ Restored. Run './compile.sh' to rebuild.\n");
+                return cpRet;
+
+            case "validate":
+                stdout.printf("  → Bootstrap validation not yet implemented.\n");
+                stdout.printf("    Will be available once amc.am exists.\n");
+                return 0;
+
+            default:
+                stdout.printf("Amalgame Bootstrap Manager\n\n");
+                stdout.printf("Usage: amc bootstrap <command>\n\n");
+                stdout.printf("Commands:\n");
+                stdout.printf("  save      Save current binary as stable bootstrap\n");
+                stdout.printf("  restore   Restore stable binary (emergency recovery)\n");
+                stdout.printf("  validate  Validate self-compilation (stage1 == stage2)\n");
+                return 0;
+        }
+    }
+
     // ── pkg subcommand ────────────────────────────────
     if (args.length >= 2 && args[1] == "pkg") {
         string sub = args.length >= 3 ? args[2] : "help";
@@ -72,7 +144,7 @@ int main(string[] args) {
 
     // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
-        stdout.printf("Amalgame Transpiler v0.7.0\n");
+        stdout.printf("Amalgame Transpiler v0.6.0\n");
         stdout.printf("  Lexer          : OK\n");
         stdout.printf("  AST            : OK\n");
         stdout.printf("  Parser         : OK\n");

@@ -64,7 +64,9 @@ public class DiagnosticFormatter : Object {
                                int    line,
                                int    col,
                                string? sourceText = null) {
-        return _Format("error", kind, message, filename,
+        string safeFile = (filename != null && filename.length > 0)
+                          ? filename : "<unknown>";
+        return _Format("error", kind, message, safeFile,
                        line, col, sourceText);
     }
 
@@ -74,7 +76,9 @@ public class DiagnosticFormatter : Object {
                                  int    line,
                                  int    col,
                                  string? sourceText = null) {
-        return _Format("warning", kind, message, filename,
+        string safeFile = (filename != null && filename.length > 0)
+                          ? filename : "<unknown>";
+        return _Format("warning", kind, message, safeFile,
                        line, col, sourceText);
     }
 
