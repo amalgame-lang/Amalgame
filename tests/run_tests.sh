@@ -219,6 +219,67 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── Multi-file ─────────────────────────────────────────
+run_multifile_test() {
+    local name="$1"
+    local expected="$2"
+    shift 2
+    local files=("$@")
+
+    printf "  %-34s" "$name"
+
+    output=$("$AMC" "${files[@]}" -o /tmp/amalgame_multi_test.c 2>&1)
+    amc_exit=$?
+
+    if [ $amc_exit -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (amc exited $amc_exit)"
+        echo "$output" | grep -E "error|Error|\[resolver\]|\[typechecker\]" \
+            | head -5 | sed 's/^/    /'
+        FAIL=$((FAIL + 1)); return
+    fi
+
+    exe="/tmp/amalgame_multi_test"
+    if [ ! -x "$exe" ]; then
+        echo -e "${RED}FAIL${NC} (executable not found)"
+        FAIL=$((FAIL + 1)); return
+    fi
+
+    run_output=$("$exe" 2>&1)
+    run_exit=$?
+
+    if [ $run_exit -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (runtime exited $run_exit)"
+        echo "$run_output" | head -5 | sed 's/^/    /'
+        FAIL=$((FAIL + 1)); return
+    fi
+
+    if echo "$run_output" | grep -qF "$expected"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (output mismatch)"
+        echo "    expected : $expected"
+        echo "    got      : $(echo "$run_output" | head -3 | tr '\n' '|')"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+echo ""
+echo "── Multi-file ──────────────────────────"
+MF="$SAMPLES/multifile"
+run_multifile_test "multifile: player status" \
+    "Arthus HP=100 Lvl=42" \
+    "$MF/models.am" "$MF/utils.am" "$MF/main.am"
+run_multifile_test "multifile: logger" \
+    "[LOG] Game started" \
+    "$MF/models.am" "$MF/utils.am" "$MF/main.am"
+run_multifile_test "multifile: cross-file clamp" \
+    "Clamped: 100" \
+    "$MF/models.am" "$MF/utils.am" "$MF/main.am"
+run_multifile_test "multifile: enemy" \
+    "Enemy: Dragon" \
+    "$MF/models.am" "$MF/utils.am" "$MF/main.am"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "───────────────────────────────────────"
