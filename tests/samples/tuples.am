@@ -1,0 +1,33 @@
+namespace Tests
+
+public class Program {
+    // Tuple return type
+    public static (int, string) GetPlayer() {
+        return (42, "Arthus")
+    }
+
+    // Tuple with 3 values
+    public static (int, int, bool) Divide(int a, int b) {
+        if b == 0 {
+            return (0, 0, false)
+        }
+        return (a / b, a % b, true)
+    }
+
+    public static void Main(string[] args) {
+        // Destructuring
+        let (level, name) = Program.GetPlayer()
+        Console.WriteLine("name: {name}")
+        Console.WriteLine("level: {level}")
+
+        // 3-tuple destructuring
+        let (q, r, ok) = Program.Divide(17, 5)
+        Console.WriteLine("ok: {ok}")
+        Console.WriteLine("quotient: {q}")
+        Console.WriteLine("remainder: {r}")
+
+        // Failed division
+        let (q2, r2, ok2) = Program.Divide(10, 0)
+        Console.WriteLine("div ok: {ok2}")
+    }
+}

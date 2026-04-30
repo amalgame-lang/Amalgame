@@ -219,6 +219,48 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── Tuples ─────────────────────────────────────────────
+echo ""
+echo "── Tuples ──────────────────────────────"
+run_test "tuple: basic"       "$SAMPLES/tuples.am"  "name: Arthus"
+run_test "tuple: level"       "$SAMPLES/tuples.am"  "level: 42"
+run_test "tuple: 3-tuple ok"  "$SAMPLES/tuples.am"  "ok: true"
+run_test "tuple: quotient"    "$SAMPLES/tuples.am"  "quotient: 3"
+run_test "tuple: remainder"   "$SAMPLES/tuples.am"  "remainder: 2"
+run_test "tuple: div zero"    "$SAMPLES/tuples.am"  "div ok: false"
+
+# ── Multiline strings ──────────────────────────────────
+echo ""
+echo "── Multiline strings ───────────────────"
+run_test "multiline basic"    "$SAMPLES/multiline_string.am"  "lines: 2"
+run_test "multiline interp"   "$SAMPLES/multiline_string.am"  "card ok: Arthus"
+run_test "multiline dedent"   "$SAMPLES/multiline_string.am"  "sql ok"
+run_test "multiline single"   "$SAMPLES/multiline_string.am"  "single: Hello World"
+
+# ── Try/catch/throw ────────────────────────────────────
+echo ""
+echo "── Try/catch/throw ─────────────────────"
+run_test "try: normal flow"   "$SAMPLES/try_catch.am"  "result: 5"
+run_test "try: catch throw"   "$SAMPLES/try_catch.am"  "caught: division by zero"
+run_test "try: finally"       "$SAMPLES/try_catch.am"  "finally runs"
+run_test "try: done"          "$SAMPLES/try_catch.am"  "done"
+
+# ── If expression ─────────────────────────────────────
+echo ""
+echo "── If expression ───────────────────────"
+run_test "if-expr basic"    "$SAMPLES/if_expr.am"  "label: big"
+run_test "if-expr else-if"  "$SAMPLES/if_expr.am"  "grade: C"
+run_test "if-expr numeric"  "$SAMPLES/if_expr.am"  "bigger: 10"
+run_test "if-expr bool"     "$SAMPLES/if_expr.am"  "adult: false"
+
+# ── For-in / Foreach ──────────────────────────────────
+echo ""
+echo "── For-in ──────────────────────────────"
+run_test "for-in range"        "$SAMPLES/foreach.am"  "sum 0..5: 10"
+run_test "for-in list"         "$SAMPLES/foreach.am"  "list total: 3"
+run_test "for-in index"        "$SAMPLES/foreach.am"  "item[0] = 0"
+run_test "for-in string chars" "$SAMPLES/foreach.am"  "chars: 5"
+
 # ── Multi-file ─────────────────────────────────────────
 run_multifile_test() {
     local name="$1"

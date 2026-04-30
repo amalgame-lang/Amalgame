@@ -96,7 +96,7 @@ static AmalgameHttpResponse* _amnet_curl(
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Amalgame/0.4.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Amalgame/0.6.0");
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
                      timeoutMs > 0 ? (long)timeoutMs : 30000L);
 

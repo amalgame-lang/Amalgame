@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────
-//  Amalgame Programming Language
+//  CODE Programming Language
 //  Copyright (c) 2026 Bastien MOUGET
 //  Licensed under Apache 2.0
 //  https://github.com/BastienMOUGET/Amalgame
@@ -68,6 +68,7 @@ namespace CodeTranspiler.Lexer {
             _keywords["try"]        = CodeTranspiler.Lexer.TokenType.KW_TRY;
             _keywords["catch"]      = CodeTranspiler.Lexer.TokenType.KW_CATCH;
             _keywords["throw"]      = CodeTranspiler.Lexer.TokenType.KW_THROW;
+            _keywords["finally"]    = CodeTranspiler.Lexer.TokenType.KW_FINALLY;
             _keywords["namespace"]  = CodeTranspiler.Lexer.TokenType.KW_NAMESPACE;
             _keywords["import"]     = CodeTranspiler.Lexer.TokenType.KW_IMPORT;
             _keywords["weak"]       = CodeTranspiler.Lexer.TokenType.KW_WEAK;

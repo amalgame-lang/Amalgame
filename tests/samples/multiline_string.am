@@ -1,0 +1,33 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        // Basic multiline string
+        let msg = """
+Hello
+World
+"""
+        Console.WriteLine("lines: 2")
+
+        // Multiline with interpolation
+        let name = "Arthus"
+        let level = 42
+        let card = """
+Player: {name}
+Level:  {level}
+"""
+        Console.WriteLine("card ok: {name}")
+
+        // Trimmed multiline (leading whitespace stripped per line)
+        let sql = """
+            SELECT *
+            FROM players
+            WHERE level > 10
+            """
+        Console.WriteLine("sql ok")
+
+        // Single-line triple quote
+        let q = """Hello World"""
+        Console.WriteLine("single: {q}")
+    }
+}
