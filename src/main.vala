@@ -28,6 +28,75 @@ int main(string[] args) {
 
     var fmt = new DiagnosticFormatter();
 
+    // ── bootstrap subcommand ──────────────────────────
+    if (args.length >= 2 && args[1] == "bootstrap") {
+        string sub = args.length >= 3 ? args[2] : "help";
+        string cwd = GLib.Environment.get_current_dir();
+        string bootstrapDir = GLib.Path.build_filename(cwd, "bootstrap");
+        string stableBin    = GLib.Path.build_filename(
+            bootstrapDir, "amc-linux-x86_64");
+
+        switch (sub) {
+            case "save":
+                string selfBin = args[0];
+                if (!GLib.FileUtils.test(selfBin, GLib.FileTest.EXISTS)) {
+                    selfBin = GLib.Path.build_filename(cwd, "build", "amc");
+                }
+                string[] cpArgs2 = { "cp", selfBin, stableBin, null };
+                int cpRet2 = 0;
+                try {
+                    GLib.Process.spawn_sync(cwd, cpArgs2, null,
+                        GLib.SpawnFlags.SEARCH_PATH,
+                        null, null, null, out cpRet2);
+                    if (cpRet2 == 0) {
+                        stdout.printf("  ✓ Bootstrap saved: bootstrap/amc-linux-x86_64\n");
+                        stdout.printf("    Source: %s\n", selfBin);
+                    } else {
+                        stderr.printf("  ✗ Copy failed\n");
+                        return 1;
+                    }
+                } catch (Error e) {
+                    stderr.printf("  ✗ Save failed: %s\n", e.message);
+                    return 1;
+                }
+                return 0;
+
+            case "restore":
+                if (!GLib.FileUtils.test(stableBin, GLib.FileTest.EXISTS)) {
+                    stderr.printf("  ✗ No stable binary found: %s\n", stableBin);
+                    stderr.printf("    Run 'amc bootstrap save' first.\n");
+                    return 1;
+                }
+                stdout.printf("  → Restoring from bootstrap/amc-linux-x86_64\n");
+                string[] cpArgs = { "cp", stableBin, args[0], null };
+                int cpRet = 0;
+                try {
+                    GLib.Process.spawn_sync(cwd, cpArgs, null,
+                        GLib.SpawnFlags.SEARCH_PATH,
+                        null, null, null, out cpRet);
+                } catch (Error e) {
+                    stderr.printf("  ✗ Restore failed: %s\n", e.message);
+                    return 1;
+                }
+                stdout.printf("  ✓ Restored. Run './compile.sh' to rebuild.\n");
+                return cpRet;
+
+            case "validate":
+                stdout.printf("  → Bootstrap validation not yet implemented.\n");
+                stdout.printf("    Will be available once amc.am exists.\n");
+                return 0;
+
+            default:
+                stdout.printf("Amalgame Bootstrap Manager\n\n");
+                stdout.printf("Usage: amc bootstrap <command>\n\n");
+                stdout.printf("Commands:\n");
+                stdout.printf("  save      Save current binary as stable bootstrap\n");
+                stdout.printf("  restore   Restore stable binary (emergency recovery)\n");
+                stdout.printf("  validate  Validate self-compilation (stage1 == stage2)\n");
+                return 0;
+        }
+    }
+
     // ── pkg subcommand ────────────────────────────────
     if (args.length >= 2 && args[1] == "pkg") {
         string sub = args.length >= 3 ? args[2] : "help";
@@ -72,7 +141,7 @@ int main(string[] args) {
 
     // ── Version ───────────────────────────────────────
     if (args.length >= 2 && args[1] == "--version") {
-        stdout.printf("Amalgame Transpiler v0.7.0\n");
+        stdout.printf("Amalgame Transpiler v0.8.0\n");
         stdout.printf("  Lexer          : OK\n");
         stdout.printf("  AST            : OK\n");
         stdout.printf("  Parser         : OK\n");

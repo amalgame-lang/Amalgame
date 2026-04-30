@@ -72,7 +72,8 @@ namespace CodeTranspiler.Analyzer {
         /** Build a ResolveError from an AstNode position. */
         public ResolveError.from_node(string message, AstNode node) {
             Message  = message;
-            Filename = node.Filename;
+            Filename = (node.Filename != null && node.Filename.length > 0)
+                       ? node.Filename : "<unknown>";
             Line     = node.Line;
             Column   = node.Column;
         }
@@ -437,6 +438,14 @@ namespace CodeTranspiler.Analyzer {
             _currentClass = n.Name;
             _table.PushScope("class:%s".printf(n.Name));
 
+            // Register generic type parameters as local type aliases
+            // e.g. class Stack<T> → T is a valid type in class scope
+            foreach (var gp in n.Generics) {
+                var sym = new Symbol(gp.Name, SymbolKind.SYM_CLASS, null);
+                sym.Location = "<generic-param>";
+                _table.Declare(sym);
+            }
+
             // Register 'this' in the class scope
             var thisSym      = new Symbol("this", SymbolKind.SYM_LOCAL_VAR, n);
             thisSym.TypeKey  = n.Name;
@@ -747,8 +756,17 @@ namespace CodeTranspiler.Analyzer {
                 case MatchPatternKind.DESTRUCTURE:
                     if (n.PatternType != null)
                         _CheckTypeExists(n.PatternType);
-                    foreach (var sub in n.SubPatterns)
+                    // Declare each captured sub-pattern variable in the arm scope
+                    // e.g. Add(a, b) → declare 'a' and 'b'
+                    foreach (var sub in n.SubPatterns) {
+                        if (sub.BindName != null) {
+                            var sym = new Symbol(sub.BindName,
+                                                 SymbolKind.SYM_LOCAL_VAR, sub);
+                            sym.TypeKey = "";
+                            _table.Declare(sym);
+                        }
                         sub.Accept(this);
+                    }
                     break;
 
                 case MatchPatternKind.GUARD:
@@ -1029,6 +1047,22 @@ namespace CodeTranspiler.Analyzer {
                 // Strip trailing '[]' — array of a known type is valid
                 if (name.has_suffix("[]"))
                     name = name.substring(0, name.length - 2);
+
+                // Primitive types + auto-inference keywords — always valid
+                switch (name) {
+                    case "int": case "int8": case "int16": case "int32":
+                    case "int64": case "i8": case "i16": case "i32":
+                    case "i64": case "uint": case "uint8": case "uint16":
+                    case "uint32": case "uint64": case "u8": case "u16":
+                    case "u32": case "u64":
+                    case "float": case "float32": case "float64":
+                    case "f32": case "f64": case "double":
+                    case "bool": case "string": case "void":
+                    case "char": case "byte":
+                    case "var": case "auto": case "T": case "K": case "V":
+                    case "object": case "any":
+                        return;
+                }
 
                 if (_table.Lookup(name) == null) {
                     string? sug = _table.DidYouMean(name);

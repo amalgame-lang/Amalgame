@@ -3,11 +3,10 @@ set -e
 
 echo "=== Amalgame Transpiler - Build ==="
 
-# Nettoyage
-rm -rf build
-
-# Meson setup
-meson setup build
+# Meson setup si nécessaire
+if [ ! -f build/build.ninja ]; then
+    meson setup build
+fi
 
 # Compilation
 ninja -C build
