@@ -219,6 +219,14 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── Multiline strings ──────────────────────────────────
+echo ""
+echo "── Multiline strings ───────────────────"
+run_test "multiline basic"    "$SAMPLES/multiline_string.am"  "lines: 2"
+run_test "multiline interp"   "$SAMPLES/multiline_string.am"  "card ok: Arthus"
+run_test "multiline dedent"   "$SAMPLES/multiline_string.am"  "sql ok"
+run_test "multiline single"   "$SAMPLES/multiline_string.am"  "single: Hello World"
+
 # ── Try/catch/throw ────────────────────────────────────
 echo ""
 echo "── Try/catch/throw ─────────────────────"

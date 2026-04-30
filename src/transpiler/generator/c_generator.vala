@@ -2489,40 +2489,89 @@ namespace CodeTranspiler.Generator {
          * "pt: {p.X}"        → code_string_format("pt: %s", code_float_to_string(p->X))
          */
         private void EmitInterpolatedString(string raw) {
+            // Normalize multiline string:
+            // Strip leading newline and trailing whitespace+newline
+            string normalized = raw;
+            if (raw.contains("\n")) {
+                // Strip leading newline if string starts with one
+                if (normalized.has_prefix("\n"))
+                    normalized = normalized.substring(1);
+                // Strip trailing newline + optional whitespace
+                if (normalized.has_suffix("\n"))
+                    normalized = normalized.substring(0, normalized.length - 1);
+                // Find minimum indentation to strip (dedent)
+                string[] lines = normalized.split("\n");
+                int minIndent = int.MAX;
+                foreach (var line in lines) {
+                    if (line.strip().length == 0) continue;
+                    int spaces = 0;
+                    for (int k = 0; k < line.length; k++) {
+                        if (line[k] == ' ')  spaces++;
+                        else if (line[k] == '\t') spaces += 4;
+                        else break;
+                    }
+                    if (spaces < minIndent) minIndent = spaces;
+                }
+                if (minIndent == int.MAX) minIndent = 0;
+                if (minIndent > 0) {
+                    var dedented = new StringBuilder();
+                    for (int li = 0; li < lines.length; li++) {
+                        string line = lines[li];
+                        int stripped = 0;
+                        int pos = 0;
+                        while (pos < line.length && stripped < minIndent) {
+                            if (line[pos] == ' ')  { stripped++;      pos++; }
+                            else if (line[pos] == '\t') { stripped += 4; pos++; }
+                            else break;
+                        }
+                        if (li > 0) dedented.append("\n");
+                        dedented.append(line.substring(pos));
+                    }
+                    normalized = dedented.str;
+                }
+            }
+
             // No interpolation — emit plain string
-            if (!raw.contains("{")) {
-                Emit("\"%s\"".printf(
-                    raw.replace("\\", "\\\\")
-                       .replace("\"", "\\\"")));
+            if (!normalized.contains("{")) {
+                var escaped = new StringBuilder();
+                for (int k = 0; k < normalized.length; k++) {
+                    char ch = normalized[k];
+                    if      (ch == '"')  escaped.append("\\\"");
+                    else if (ch == '\\') escaped.append("\\\\");
+                    else if (ch == '\n') escaped.append("\\n");
+                    else if (ch == '\t') escaped.append("\\t");
+                    else                 escaped.append_c(ch);
+                }
+                Emit("\"%s\"".printf(escaped.str));
                 return;
             }
 
-            // Parse segments
+            // Parse segments with interpolation
             var fmt  = new StringBuilder();
             var args = new Gee.ArrayList<string>();
             int i    = 0;
 
-            while (i < raw.length) {
-                char c = raw[i];
+            while (i < normalized.length) {
+                char c = normalized[i];
 
-                if (c == '{' && i + 1 < raw.length
-                    && raw[i+1] != '{') {
-                    // Start of interpolation
+                if (c == '{' && i + 1 < normalized.length
+                    && normalized[i+1] != '{') {
                     int start = i + 1;
-                    int end   = raw.index_of("}", start);
+                    int end   = normalized.index_of("}", start);
                     if (end < 0) {
                         fmt.append_c(c);
                         i++;
                         continue;
                     }
-
-                    string expr = raw[start:end];
+                    string expr = normalized[start:end];
                     fmt.append("%s");
                     args.add(expr);
                     i = end + 1;
                 } else {
-                    if (c == '"')       fmt.append("\\\"");
+                    if      (c == '"')  fmt.append("\\\"");
                     else if (c == '\\') fmt.append("\\\\");
+                    else if (c == '\n') fmt.append("\\n");
+                    else if (c == '\t') fmt.append("\\t");
                     else                fmt.append_c(c);
                     i++;
                 }
@@ -2533,9 +2582,7 @@ namespace CodeTranspiler.Generator {
             } else {
                 Emit("code_string_format(\"%s\"".printf(fmt.str));
                 foreach (var arg in args) {
-                    // Convert member access: p.X → p->X
-                    string cArg = _InterpolArgToC(arg);
-                    // Wrap non-string types with conversion helpers
+                    string cArg   = _InterpolArgToC(arg);
                     string wrapped = _WrapInterpolArg(cArg, arg);
                     Emit(", %s".printf(wrapped));
                 }
