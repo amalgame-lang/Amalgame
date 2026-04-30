@@ -261,9 +261,123 @@ namespace CodeTranspiler.Analyzer {
             // Register the alias (or last segment) in global scope
             string alias = n.Alias ?? _LastSegment(n.Name);
             var sym      = new Symbol(alias, SymbolKind.SYM_IMPORT, n);
-            if (!_table.DeclareGlobal(sym)) {
-                // Duplicate import — warn but continue
-                _Warn("Duplicate import '%s'".printf(n.Name), n);
+            // Silently ignore if already declared (e.g. "Math" is a builtin)
+            _table.DeclareGlobal(sym);
+
+            // Pre-register all stdlib symbols for this module
+            _RegisterStdlibSymbols(n.Name);
+        }
+
+        /**
+         * Register all known symbols for a stdlib module into the
+         * global scope. This prevents the Resolver from reporting
+         * stdlib functions as unknown identifiers.
+         *
+         * Stdlib functions are implemented in C headers, not in .am
+         * files, so they must be injected manually here.
+         */
+        private void _RegisterStdlibSymbols(string moduleName) {
+            // Normalize: strip alias
+            string mod = moduleName;
+            if (mod.contains(" as "))
+                mod = mod.substring(0, mod.index_of(" as ")).strip();
+
+            switch (mod) {
+                case "Amalgame.IO":
+                case "Amalgame.IO.Console":
+                case "Amalgame.IO.File":
+                    _RegisterFunctions(new string[] {
+                        // Console
+                        "Console_WriteError", "Console_Clear",
+                        "Console_ReadPassword",
+                        // File
+                        "File_ReadAll", "File_WriteAll",
+                        "File_AppendAll", "File_Exists",
+                        "File_Delete", "File_Size",
+                        // Path
+                        "Path_Combine", "Path_GetExtension",
+                        "Path_GetFilename", "Path_GetDirectory",
+                        // Environment
+                        "Environment_GetVar", "Environment_GetVarOr",
+                        "Environment_HasVar"
+                    });
+                    break;
+
+                case "Amalgame.Math":
+                    _RegisterFunctions(new string[] {
+                        "Math_Abs", "Math_Sqrt", "Math_Cbrt",
+                        "Math_Pow", "Math_Exp", "Math_Log",
+                        "Math_Log2", "Math_Log10",
+                        "Math_Floor", "Math_Ceil",
+                        "Math_Round", "Math_Trunc",
+                        "Math_MaxF", "Math_MinF",
+                        "Math_MaxI", "Math_MinI",
+                        "Math_ClampF", "Math_ClampI",
+                        "Math_Sign", "Math_CopySign",
+                        "Math_Sin", "Math_Cos", "Math_Tan",
+                        "Math_Asin", "Math_Acos", "Math_Atan",
+                        "Math_Atan2", "Math_Sinh", "Math_Cosh",
+                        "Math_Tanh", "Math_ToRadians", "Math_ToDegrees",
+                        "Math_AbsI", "Math_PowI",
+                        "Math_Gcd", "Math_Lcm", "Math_IsPrime",
+                        "Math_IsNaN", "Math_IsInf", "Math_IsFinite",
+                        "Math_ApproxEq",
+                        "Math_SeedRandom", "Math_Random",
+                        "Math_RandomInt"
+                    });
+                    break;
+
+                case "Amalgame.String":
+                case "Amalgame.Strings":
+                    _RegisterFunctions(new string[] {
+                        "String_Length", "String_IsEmpty",
+                        "String_IsWhitespace",
+                        "String_Contains", "String_StartsWith",
+                        "String_EndsWith", "String_IndexOf",
+                        "String_LastIndexOf",
+                        "String_Substring", "String_From",
+                        "String_Until",
+                        "String_ToUpper", "String_ToLower",
+                        "String_TrimStart", "String_TrimEnd",
+                        "String_Trim",
+                        "String_Replace", "String_Split",
+                        "String_Join",
+                        "String_Repeat", "String_PadLeft",
+                        "String_PadRight",
+                        "String_ToInt", "String_ToFloat",
+                        "String_ToBool", "String_FromInt",
+                        "String_FromFloat", "String_FromBool",
+                        "String_CharAt", "String_IsDigit",
+                        "String_IsAlpha", "String_IsAlnum"
+                    });
+                    break;
+
+                case "Amalgame.Collections":
+                    _RegisterFunctions(new string[] {
+                        "CodeList_new", "CodeList_add",
+                        "CodeList_get", "CodeList_count",
+                        "CodeList_forEach", "CodeList_where",
+                        "CodeList_select", "CodeList_first",
+                        "CodeList_last"
+                    });
+                    break;
+
+                default:
+                    // Unknown import — no pre-registration
+                    break;
+            }
+        }
+
+        /**
+         * Register a list of function names as SYM_METHOD symbols
+         * in the global scope. Used for stdlib injection.
+         */
+        private void _RegisterFunctions(string[] names) {
+            foreach (var name in names) {
+                var sym = new Symbol(name, SymbolKind.SYM_METHOD, null);
+                sym.Location = "<stdlib>";
+                // Ignore duplicates (module may be imported twice)
+                _table.DeclareGlobal(sym);
             }
         }
 

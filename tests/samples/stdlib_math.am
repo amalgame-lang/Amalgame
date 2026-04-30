@@ -1,0 +1,40 @@
+namespace Tests
+
+import Amalgame.Math
+
+public class Program {
+    public static void Main(string[] args) {
+        let sq  = Math_Sqrt(16.0)
+        Console.WriteLine("sqrt(16) = {sq}")
+
+        let pw  = Math_PowI(2, 10)
+        Console.WriteLine("pow(2,10) = {pw}")
+
+        let ab  = Math_AbsI(-42)
+        Console.WriteLine("abs(-42) = {ab}")
+
+        let mx  = Math_MaxI(10, 42)
+        let mn  = Math_MinI(10, 42)
+        Console.WriteLine("max = {mx}")
+        Console.WriteLine("min = {mn}")
+
+        let cl  = Math_ClampI(150, 0, 100)
+        Console.WriteLine("clamp = {cl}")
+
+        let gcd = Math_Gcd(48, 18)
+        Console.WriteLine("gcd(48,18) = {gcd}")
+
+        let p1  = Math_IsPrime(17)
+        let p2  = Math_IsPrime(18)
+        Console.WriteLine("prime(17) = {p1}")
+        Console.WriteLine("prime(18) = {p2}")
+
+        Math_SeedRandom(42)
+        Console.WriteLine("rand seeded: ok")
+
+        let fin = Math_IsFinite(1.0)
+        Console.WriteLine("finite = {fin}")
+
+        Console.WriteLine("Math test done")
+    }
+}
