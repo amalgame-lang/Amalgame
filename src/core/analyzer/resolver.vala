@@ -352,8 +352,32 @@ namespace CodeTranspiler.Analyzer {
                     });
                     break;
 
-                case "Amalgame.Collections":
-                case "Amalgame.Collections.List":
+                case "Amalgame.Net":
+                case "Amalgame.Net.Http":
+                case "Amalgame.Net.Tcp":
+                case "Amalgame.Net.Udp":
+                    _RegisterFunctions(new string[] {
+                        // Http
+                        "Http_Get", "Http_GetWithHeaders", "Http_GetTimeout",
+                        "Http_Post", "Http_PostJson", "Http_PostWithHeaders",
+                        "Http_Put", "Http_Delete", "Http_Patch",
+                        // TcpClient
+                        "TcpClient_Connect", "TcpClient_Send",
+                        "TcpClient_SendBytes", "TcpClient_Receive",
+                        "TcpClient_Close", "TcpClient_IsConnected",
+                        // TcpServer
+                        "TcpServer_Listen", "TcpServer_Accept",
+                        "TcpServer_Close", "TcpServer_IsListening",
+                        "TcpConn_Send", "TcpConn_Receive",
+                        "TcpConn_Close", "TcpConn_IsConnected",
+                        // UdpSocket
+                        "UdpSocket_New", "UdpSocket_Bind",
+                        "UdpSocket_Send", "UdpSocket_Receive",
+                        "UdpSocket_Close"
+                    });
+                    break;
+
+
                 case "Amalgame.Collections.Map":
                 case "Amalgame.Collections.Set":
                     _RegisterFunctions(new string[] {

@@ -259,8 +259,19 @@ int main(string[] args) {
                    + "/src/transpiler/runtime";
     }
 
-    string gccCmd = "gcc -g3 -O0 -I%s %s -lgc -lm -o %s"
-                    .printf(runtimeH, outputFile, exeFile);
+    // Add -lcurl if Amalgame.Net is used
+    bool needsCurl = false;
+    foreach (var imp in merged.Imports) {
+        if (imp.Name.has_prefix("Amalgame.Net")) {
+            needsCurl = true;
+            break;
+        }
+    }
+
+    string gccCmd = "gcc -g3 -O0 -I%s %s -lgc -lm%s -o %s"
+                    .printf(runtimeH, outputFile,
+                            needsCurl ? " -lcurl" : "",
+                            exeFile);
 
     stdout.printf("GCC         : %s\n", gccCmd);
     int ret = 0;

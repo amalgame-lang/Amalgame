@@ -123,6 +123,63 @@ if [[ "${AMC_NO_GCC:-0}" != "1" ]]; then
     fi
 fi
 
+# Runtime dependencies — libgc (Boehm GC), libm, libcurl
+header "Checking runtime dependencies..."
+
+install_runtime_deps_linux() {
+    case "$PKG_MGR" in
+        apt)
+            local missing=()
+            dpkg -s libgc-dev        &>/dev/null || missing+=("libgc-dev")
+            dpkg -s libcurl4-openssl-dev &>/dev/null || missing+=("libcurl4-openssl-dev")
+            if [[ ${#missing[@]} -gt 0 ]]; then
+                info "Installing: ${missing[*]}"
+                sudo apt-get install -y "${missing[@]}"
+            fi
+            ;;
+        dnf)
+            sudo dnf install -y gc-devel libcurl-devel 2>/dev/null || true
+            ;;
+        pacman)
+            sudo pacman -S --noconfirm gc curl 2>/dev/null || true
+            ;;
+        zypper)
+            sudo zypper install -y libgc-devel libcurl-devel 2>/dev/null || true
+            ;;
+        *)
+            warn "Cannot auto-install runtime deps — please install manually:"
+            warn "  Boehm GC  : libgc-dev"
+            warn "  libcurl   : libcurl4-openssl-dev"
+            ;;
+    esac
+}
+
+install_runtime_deps_macos() {
+    if command -v brew &>/dev/null; then
+        brew list bdw-gc &>/dev/null || brew install bdw-gc
+        brew list curl   &>/dev/null || brew install curl
+    else
+        warn "Homebrew not found — install it at https://brew.sh then run:"
+        warn "  brew install bdw-gc curl"
+    fi
+}
+
+case "$OS" in
+    Linux)
+        install_runtime_deps_linux
+        success "Runtime dependencies ready"
+        ;;
+    Darwin)
+        install_runtime_deps_macos
+        success "Runtime dependencies ready"
+        ;;
+    FreeBSD)
+        sudo pkg install -y boehm-gc curl 2>/dev/null || true
+        ;;
+esac
+
+# libm is part of glibc on Linux / libSystem on macOS — no install needed
+
 # curl or wget — for downloading
 HAS_CURL=0; HAS_WGET=0
 check_dep curl && HAS_CURL=1 || true
