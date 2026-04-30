@@ -219,6 +219,14 @@ run_test "recursion pow"     "$SAMPLES/recursion.am"        "pow(2,8) = 256"
 run_test "explicit types"    "$SAMPLES/type_explicit.am"    "count: 2"
 run_test "negative numbers"  "$SAMPLES/type_explicit.am"    "neg: -42"
 
+# ── If expression ─────────────────────────────────────
+echo ""
+echo "── If expression ───────────────────────"
+run_test "if-expr basic"    "$SAMPLES/if_expr.am"  "label: big"
+run_test "if-expr else-if"  "$SAMPLES/if_expr.am"  "grade: C"
+run_test "if-expr numeric"  "$SAMPLES/if_expr.am"  "bigger: 10"
+run_test "if-expr bool"     "$SAMPLES/if_expr.am"  "adult: false"
+
 # ── For-in / Foreach ──────────────────────────────────
 echo ""
 echo "── For-in ──────────────────────────────"
