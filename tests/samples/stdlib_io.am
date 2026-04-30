@@ -1,0 +1,35 @@
+namespace Tests
+
+import Amalgame.IO
+
+public class Program {
+    public static void Main(string[] args) {
+        Console.WriteLine("IO test start")
+
+        let ok = File_WriteAll("/tmp/amalgame_test.txt", "Hello from Amalgame!")
+        Console.WriteLine("write ok: {ok}")
+
+        let exists = File_Exists("/tmp/amalgame_test.txt")
+        Console.WriteLine("exists: {exists}")
+
+        let content = File_ReadAll("/tmp/amalgame_test.txt")
+        Console.WriteLine("content: {content}")
+
+        let size = File_Size("/tmp/amalgame_test.txt")
+        Console.WriteLine("size: {size}")
+
+        let combined = Path_Combine("/tmp", "test.txt")
+        Console.WriteLine("path: {combined}")
+
+        let ext = Path_GetExtension("hello.am")
+        Console.WriteLine("ext: {ext}")
+
+        let fname = Path_GetFilename("/home/user/hello.am")
+        Console.WriteLine("file: {fname}")
+
+        let deleted = File_Delete("/tmp/amalgame_test.txt")
+        Console.WriteLine("deleted: {deleted}")
+
+        Console.WriteLine("IO test done")
+    }
+}
