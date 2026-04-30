@@ -31,6 +31,9 @@ vala_sources = files(
     # Generator
     'src/transpiler/generator/c_generator.vala',
 
+    # Diagnostics
+    'src/transpiler/diagnostics.vala',
+
     # Entry point
     'src/main.vala'
 )
