@@ -1,0 +1,27 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        let hello = "Hello"
+        let world = "World"
+        let greet = hello + ", " + world + "!"
+        Console.WriteLine(greet)
+
+        let x = 6
+        let y = 7
+        let product = x * y
+        Console.WriteLine("Product: {product}")
+
+        let name = "Amalgame"
+        if (name == "Amalgame") {
+            Console.WriteLine("Name matches!")
+        }
+
+        let sentence = "The quick brown fox"
+        Console.WriteLine(sentence)
+
+        let n = 5
+        let doubled = n * 2
+        Console.WriteLine("Doubled: {doubled}")
+    }
+}

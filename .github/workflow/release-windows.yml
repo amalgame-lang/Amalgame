@@ -1,0 +1,107 @@
+# ═══════════════════════════════════════════════════════════
+#  Amalgame — Windows Build & Release Workflow
+#
+#  Builds amc.exe on Windows via MSYS2 + Vala
+#  Produces: amc-VERSION-windows-x86_64.zip
+#            amalgame-VERSION-setup.exe
+# ═══════════════════════════════════════════════════════════
+
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+
+  # ── Build amc.exe ─────────────────────────────────────────
+  build-windows-x86_64:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-vala
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-libgee
+            mingw-w64-x86_64-gc
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkg-config
+
+      - name: Build
+        run: |
+          meson setup build --buildtype=release
+          ninja -C build
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          $Version = "${{ github.ref_name }}" -replace "^v", ""
+          $DirName = "amc-$Version-windows-x86_64"
+          New-Item -ItemType Directory -Path "dist\$DirName\runtime" -Force
+
+          Copy-Item "build\amc.exe"                            "dist\$DirName\amc.exe"
+          Copy-Item "src\transpiler\runtime\_runtime.h"        "dist\$DirName\runtime\_runtime.h"
+          Copy-Item "README.md"                                "dist\$DirName\README.md"
+          Copy-Item "docs\DEVELOPER_GUIDE.md"                  "dist\$DirName\DEVELOPER_GUIDE.md"
+
+          Compress-Archive -Path "dist\$DirName" -DestinationPath "dist\$DirName.zip"
+          Write-Host "Created dist\$DirName.zip"
+
+      - name: Copy exe for Inno Setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "install\windows\build-windows" -Force
+          Copy-Item "build\amc.exe" "install\windows\build-windows\amc.exe"
+
+      - name: Build Inno Setup installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.4
+        with:
+          path: install/windows/amalgame.iss
+          options: /O+
+
+      - name: Rename installer
+        shell: pwsh
+        run: |
+          $Version = "${{ github.ref_name }}" -replace "^v", ""
+          $Src  = "install\windows\Output\amalgame-$Version-setup.exe"
+          $Dest = "dist\amalgame-$Version-windows-setup.exe"
+          Move-Item $Src $Dest
+          Write-Host "Installer: $Dest"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*
+
+  # ── Attach to GitHub Release ──────────────────────────────
+  attach-release:
+    needs: build-windows-x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist
+
+      - name: Add to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

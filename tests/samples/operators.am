@@ -1,0 +1,43 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        let a = 10
+        let b = 3
+
+        let add = a + b
+        let sub = a - b
+        let mul = a * b
+        let div = a / b
+        let mod = a % b
+        Console.WriteLine("add: {add}")
+        Console.WriteLine("sub: {sub}")
+        Console.WriteLine("mul: {mul}")
+        Console.WriteLine("div: {div}")
+        Console.WriteLine("mod: {mod}")
+
+        let eq  = a == b
+        let ne  = a != b
+        let gt  = a > b
+        let gte = a >= 10
+        Console.WriteLine("eq: {eq}")
+        Console.WriteLine("ne: {ne}")
+        Console.WriteLine("gt: {gt}")
+        Console.WriteLine("gte: {gte}")
+
+        let and = true && false
+        let or  = true || false
+        let not = !true
+        Console.WriteLine("and: {and}")
+        Console.WriteLine("or: {or}")
+        Console.WriteLine("not: {not}")
+
+        var x = 10
+        x = x + 5
+        Console.WriteLine("x: {x}")
+        x = x - 3
+        Console.WriteLine("x: {x}")
+        x = x * 2
+        Console.WriteLine("x: {x}")
+    }
+}

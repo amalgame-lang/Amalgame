@@ -1,0 +1,38 @@
+namespace Tests
+
+public data class Point(float X, float Y)
+
+public data class Player(string Name, int Health, int Level)
+
+public class Program {
+    public static float Distance(Point a, Point b) {
+        let dx = a.X - b.X
+        let dy = a.Y - b.Y
+        return dx * dx + dy * dy
+    }
+
+    public static bool IsAlive(Player p) {
+        return p.Health > 0
+    }
+
+    public static void PrintPlayer(Player p) {
+        Console.WriteLine("Player: {p.Name} HP={p.Health} Lvl={p.Level}")
+    }
+
+    public static void Main(string[] args) {
+        let origin = new Point(0.0, 0.0)
+        let target = new Point(3.0, 4.0)
+
+        let dist = Program.Distance(origin, target)
+        Console.WriteLine("Distance squared: {dist}")
+
+        let hero   = new Player("Arthus", 100, 42)
+        let fallen = new Player("Ghost",  0,   10)
+
+        Program.PrintPlayer(hero)
+        Program.PrintPlayer(fallen)
+
+        let alive = Program.IsAlive(hero)
+        Console.WriteLine("Arthus alive: {alive}")
+    }
+}

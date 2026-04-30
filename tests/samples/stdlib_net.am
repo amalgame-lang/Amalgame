@@ -1,0 +1,28 @@
+namespace Tests
+
+import Amalgame.Net
+
+public class Program {
+    public static void Main(string[] args) {
+        let resp = Http_Get("https://httpbin.org/get")
+        let status = resp.Status
+        let ok     = resp.Ok
+        Console.WriteLine("status: {status}")
+        Console.WriteLine("ok: {ok}")
+
+        let resp2 = Http_Get("https://httpbin.org/get")
+        let ok2   = resp2.Ok
+        Console.WriteLine("headers ok: {ok2}")
+
+        let jsonBody = "name=Arthus"
+        let resp3 = Http_Post("https://httpbin.org/post", jsonBody)
+        let ok3   = resp3.Ok
+        Console.WriteLine("post ok: {ok3}")
+
+        let resp4 = Http_PostJson("https://httpbin.org/post", jsonBody)
+        let ok4   = resp4.Ok
+        Console.WriteLine("postJson ok: {ok4}")
+
+        Console.WriteLine("Net test done")
+    }
+}

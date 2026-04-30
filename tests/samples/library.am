@@ -1,0 +1,30 @@
+namespace Amalgame.Utils
+
+public class StringHelper {
+    public static string Repeat(string s, int n) {
+        var result = ""
+        var i = 0
+        while (i < n) {
+            result = result + s
+            i = i + 1
+        }
+        return result
+    }
+
+    public static int CountChars(string s, string target) {
+        return 0
+    }
+}
+
+public class MathHelper {
+    public static int Clamp(int value, int min, int max) {
+        if (value < min) { return min }
+        if (value > max) { return max }
+        return value
+    }
+
+    public static int Abs(int value) {
+        if (value < 0) { return 0 - value }
+        return value
+    }
+}

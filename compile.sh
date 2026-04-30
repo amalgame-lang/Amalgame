@@ -1,17 +1,16 @@
 #!/bin/bash
 set -e
 
-echo "=== CODE Transpiler - Build ==="
+echo "=== Amalgame Transpiler - Build ==="
 
-# Nettoyage
-rm -rf build
-
-# Meson setup
-meson setup build
+# Meson setup si nécessaire
+if [ ! -f build/build.ninja ]; then
+    meson setup build
+fi
 
 # Compilation
 ninja -C build
 
 echo ""
 echo "OK Build reussi !"
-./build/codec --version
+./build/amc --version
