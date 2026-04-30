@@ -298,28 +298,56 @@ namespace CodeTranspiler.Generator {
          */
         private void EmitForwardDecls(ProgramNode n) {
             Emit("/* ── Forward Declarations ── */\n");
+
+            // Pass 1: emit all enum typedefs first (they must be defined
+            // before any function that uses them as parameter types)
+            foreach (var decl in n.Declarations) {
+                if (!(decl is EnumDeclNode)) continue;
+                var e   = (EnumDeclNode) decl;
+                string sym = _SymName(e.Name);
+
+                bool isSimple = true;
+                foreach (var m in e.Members)
+                    if (m.AssocTypes.size > 0) { isSimple = false; break; }
+
+                if (isSimple) {
+                    Emit("typedef enum { ");
+                    for (int i = 0; i < e.Members.size; i++) {
+                        if (i > 0) Emit(", ");
+                        Emit("%s_%s".printf(sym, e.Members[i].Name));
+                    }
+                    Emit(" } %s;\n".printf(sym));
+                } else {
+                    // Rich enum — emit tag enum only for forward decl
+                    Emit("typedef enum { ");
+                    for (int i = 0; i < e.Members.size; i++) {
+                        if (i > 0) Emit(", ");
+                        Emit("%s_%s_TAG".printf(sym, e.Members[i].Name));
+                    }
+                    Emit(" } %s_Tag;\n".printf(sym));
+                    // Full struct emitted in VisitEnumDecl
+                }
+            }
+
+            // Pass 2: class/record/data-class typedef + static method fwd decls
             foreach (var decl in n.Declarations) {
                 if (decl is ClassDeclNode) {
                     var c   = (ClassDeclNode) decl;
                     string sym = _SymName(c.Name);
                     Emit("typedef struct _%s %s;\n".printf(sym, sym));
-                    // Only static methods need forward declarations
-                    // (instance methods are defined after the struct)
                     foreach (var m in c.Members) {
                         if (!(m is MethodDeclNode)) continue;
                         var md = (MethodDeclNode) m;
                         if (!md.IsStatic) continue;
-                        if (md.Name == c.Name) continue; // constructor
+                        if (md.Name == c.Name) continue;
                         string ret = md.ReturnType != null
                             ? TypeToC(md.ReturnType) : "void";
                         string mname = _MethodName(c.Name, md.Name);
-                        // Build full parameter list to avoid C type conflicts
                         var sb = new StringBuilder();
                         for (int i = 0; i < md.Params.size; i++) {
                             if (i > 0) sb.append(", ");
                             var p = md.Params[i];
                             string pt = TypeToC(p.ParamType);
-                            // Special case: string[] args → int, char**
                             if (pt == "code_string*" && p.Name == "args")
                                 sb.append("int, char**");
                             else
@@ -329,6 +357,8 @@ namespace CodeTranspiler.Generator {
                         Emit("static %s %s(%s);\n"
                              .printf(ret, mname, paramStr));
                     }
+                } else if (decl is EnumDeclNode) {
+                    // Already emitted in pass 1 — skip
                 } else if (decl is RecordDeclNode) {
                     var r   = (RecordDeclNode) decl;
                     string sym = _SymName(r.Name);
@@ -594,6 +624,110 @@ namespace CodeTranspiler.Generator {
 
 
         // ═══════════════════════════════════════════════
+        //  Enums
+        // ═══════════════════════════════════════════════
+
+        public override void VisitEnumDecl(EnumDeclNode n) {
+            EmitLine(n.Line);
+            string sym = _SymName(n.Name);
+
+            bool isSimple = true;
+            foreach (var m in n.Members)
+                if (m.AssocTypes.size > 0) { isSimple = false; break; }
+
+            if (isSimple) {
+                // Simple enum typedef already emitted in EmitForwardDecls.
+                // Just emit a comment for readability.
+                Emit("/* enum %s — typedef emitted above */\n\n"
+                     .printf(n.Name));
+            } else {
+                // Rich enum (associated types) → tagged union
+                Emit("/* enum %s (tagged union) */\n".printf(n.Name));
+                // Tag enum
+                Emit("typedef enum {\n");
+                _indent++;
+                for (int i = 0; i < n.Members.size; i++) {
+                    var member = n.Members[i];
+                    EmitI("%s_%s_TAG".printf(sym, member.Name));
+                    if (i < n.Members.size - 1) Emit(",");
+                    Emit("\n");
+                }
+                _indent--;
+                Emit("} %s_Tag;\n\n".printf(sym));
+
+                // Data union
+                Emit("typedef struct {\n");
+                _indent++;
+                EmitI("%s_Tag tag;\n".printf(sym));
+                EmitI("union {\n");
+                _indent++;
+                foreach (var member in n.Members) {
+                    if (member.AssocTypes.size == 0) continue;
+                    EmitI("struct {\n");
+                    _indent++;
+                    for (int i = 0; i < member.AssocTypes.size; i++) {
+                        EmitI("%s _v%d;\n".printf(
+                            TypeToC(member.AssocTypes[i]), i));
+                    }
+                    _indent--;
+                    EmitI("} %s;\n".printf(member.Name.down()));
+                }
+                _indent--;
+                EmitI("} data;\n");
+                _indent--;
+                Emit("} %s;\n\n".printf(sym));
+
+                // Constructor functions for each variant
+                foreach (var member in n.Members) {
+                    string ctorName = "%s_%s".printf(sym, member.Name);
+                    if (member.AssocTypes.size == 0) {
+                        // Constant variant
+                        Emit("static inline %s %s() {\n".printf(sym, ctorName));
+                        _indent++;
+                        EmitI("%s _r; _r.tag = %s_TAG; return _r;\n"
+                              .printf(sym, ctorName));
+                        _indent--;
+                        Emit("}\n");
+                    } else {
+                        // Variant with data
+                        Emit("static inline %s %s(".printf(sym, ctorName));
+                        for (int i = 0; i < member.AssocTypes.size; i++) {
+                            if (i > 0) Emit(", ");
+                            Emit("%s _v%d".printf(
+                                TypeToC(member.AssocTypes[i]), i));
+                        }
+                        Emit(") {\n");
+                        _indent++;
+                        EmitI("%s _r;\n".printf(sym));
+                        EmitI("_r.tag = %s_TAG;\n".printf(ctorName));
+                        for (int i = 0; i < member.AssocTypes.size; i++) {
+                            EmitI("_r.data.%s._v%d = _v%d;\n"
+                                  .printf(member.Name.down(), i, i));
+                        }
+                        EmitI("return _r;\n");
+                        _indent--;
+                        Emit("}\n");
+                    }
+                }
+                Emit("\n");
+            }
+
+            // Enum methods (if any)
+            string savedClass = _className;
+            _className = n.Name;
+            _inClass   = true;
+            foreach (var method in n.Methods)
+                EmitMethod(n.Name, method);
+            _className = savedClass;
+            _inClass   = false;
+        }
+
+        public override void VisitEnumMember(EnumMemberNode n) {
+            // Members are emitted inside VisitEnumDecl
+        }
+
+
+        // ═══════════════════════════════════════════════
         //  Champs et Propriétés
         // ═══════════════════════════════════════════════
 
@@ -739,6 +873,37 @@ namespace CodeTranspiler.Generator {
                     subject.Accept(this);
                     Emit(" <= ");
                     p.RangeEnd.Accept(this);
+                    break;
+
+                case MatchPatternKind.ENUM_VARIANT:
+                    // Role.Tank => subject == Tests_Role_Tank
+                    if (p.BindName != null) {
+                        string variant = p.BindName;
+                        if (variant.contains(".")) {
+                            string[] parts = variant.split(".");
+                            string enumName   = parts[0];
+                            string memberName = parts[parts.length - 1];
+                            // Check if this is a rich enum (tagged union)
+                            bool isRich = _IsRichEnum(enumName);
+                            if (isRich) {
+                                subject.Accept(this);
+                                Emit(".tag == %s_%s_TAG".printf(
+                                    _SymName(enumName), memberName));
+                            } else {
+                                // Simple enum: direct comparison
+                                subject.Accept(this);
+                                Emit(" == %s_%s".printf(
+                                    _SymName(enumName), memberName));
+                            }
+                        } else {
+                            subject.Accept(this);
+                            Emit(" == %s".printf(_SymName(variant)));
+                        }
+                    } else if (p.Value != null) {
+                        subject.Accept(this);
+                        Emit(" == ");
+                        p.Value.Accept(this);
+                    }
                     break;
 
                 default:
@@ -904,11 +1069,19 @@ namespace CodeTranspiler.Generator {
         public override void VisitMemberAccess(
             MemberAccessNode n) {
 
+            // Enum member access: Role.Tank → Tests_Role_Tank
+            // Detect when target is an enum type name
+            if (n.Target is IdentifierNode) {
+                var id = (IdentifierNode) n.Target;
+                if (_IsEnumType(id.Name)) {
+                    Emit("%s_%s".printf(_SymName(id.Name), n.MemberName));
+                    return;
+                }
+            }
+
             n.Target.Accept(this);
 
-            // Check if this member belongs to the current class
-            // or is inherited from a parent (needs _base. prefix)
-            string memberAccess = "->";
+            // Check if this member is inherited (needs _base. prefix)
             if (_program != null && _inClass) {
                 string parentField = _FindInheritedMemberPrefix(
                     _className, n.MemberName);
@@ -918,8 +1091,32 @@ namespace CodeTranspiler.Generator {
                     return;
                 }
             }
-            Emit(memberAccess);
+            Emit("->");
             Emit(n.MemberName);
+        }
+
+        /**
+         * Returns true if 'name' refers to an enum declared in the program.
+         */
+        private bool _IsEnumType(string name) {
+            if (_program == null) return false;
+            foreach (var decl in _program.Declarations)
+                if (decl is EnumDeclNode &&
+                    ((EnumDeclNode) decl).Name == name)
+                    return true;
+            return false;
+        }
+
+        private bool _IsRichEnum(string name) {
+            if (_program == null) return false;
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is EnumDeclNode)) continue;
+                var e = (EnumDeclNode) decl;
+                if (e.Name != name) continue;
+                foreach (var m in e.Members)
+                    if (m.AssocTypes.size > 0) return true;
+            }
+            return false;
         }
 
         /**

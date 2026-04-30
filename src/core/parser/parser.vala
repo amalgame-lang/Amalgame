@@ -753,21 +753,41 @@ namespace CodeTranspiler.Parser {
             // Membres de l'enum
             while (!Check(CodeTranspiler.Lexer.TokenType.RBRACE) && !IsEnd()) {
 
-                // Méthode dans l'enum
-                if (Check(CodeTranspiler.Lexer.TokenType.KW_PUBLIC)  ||
-                    Check(CodeTranspiler.Lexer.TokenType.KW_PRIVATE) ||
-                    CheckMethodStart()) {
+                // Méthode dans l'enum — doit commencer par un access modifier
+                // ou un mot-clé de type explicite suivi d'un nom de méthode.
+                // On détecte une méthode si :
+                //   - token courant est public/private/static/async/void
+                //   - OU token courant est un type (string/int/bool/float)
+                //     ET Peek(1) est un IDENTIFIER (le nom de la méthode)
+                bool isMethod = false;
+                var curType = Current().Type;
+                if (curType == CodeTranspiler.Lexer.TokenType.KW_PUBLIC    ||
+                    curType == CodeTranspiler.Lexer.TokenType.KW_PRIVATE   ||
+                    curType == CodeTranspiler.Lexer.TokenType.KW_STATIC    ||
+                    curType == CodeTranspiler.Lexer.TokenType.KW_ASYNC     ||
+                    curType == CodeTranspiler.Lexer.TokenType.KW_VOID      ||
+                    curType == CodeTranspiler.Lexer.TokenType.KW_PURE) {
+                    isMethod = true;
+                } else if ((curType == CodeTranspiler.Lexer.TokenType.KW_STRING ||
+                             curType == CodeTranspiler.Lexer.TokenType.KW_INT    ||
+                             curType == CodeTranspiler.Lexer.TokenType.KW_BOOL   ||
+                             curType == CodeTranspiler.Lexer.TokenType.KW_FLOAT  ||
+                             curType == CodeTranspiler.Lexer.TokenType.KW_DOUBLE) &&
+                            PeekType(1) == CodeTranspiler.Lexer.TokenType.IDENTIFIER) {
+                    isMethod = true;
+                }
+
+                if (isMethod) {
                     var access2 = ParseAccessModifier();
                     node.Methods.add(ParseMethodDecl(access2));
                     SkipNewlines();
                     continue;
                 }
 
-                // Membre enum
+                // Membre enum : IDENTIFIER optionellement suivi de (types...)
                 if (Check(CodeTranspiler.Lexer.TokenType.IDENTIFIER)) {
                     var memberTok = Advance();
-                    var member    = new EnumMemberNode(
-                                       memberTok.Value);
+                    var member    = new EnumMemberNode(memberTok.Value);
                     member.SetPosition(memberTok);
 
                     // Valeurs associées : Tank(int, string)
@@ -1178,6 +1198,15 @@ namespace CodeTranspiler.Parser {
                                   MatchPatternKind.ENUM_VARIANT);
                 node.BindName = nameTok.Value;
                 node.SetPosition(nameTok);
+
+                // Enum variant: Direction.North → BindName = "Direction.North"
+                if (Check(CodeTranspiler.Lexer.TokenType.DOT) &&
+                    PeekType(1) == CodeTranspiler.Lexer.TokenType.IDENTIFIER) {
+                    Advance(); // consume .
+                    var memberTok = Advance();
+                    node.BindName = "%s.%s".printf(
+                        nameTok.Value, memberTok.Value);
+                }
 
                 // Destructuring : Player(name, health)
                 if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
