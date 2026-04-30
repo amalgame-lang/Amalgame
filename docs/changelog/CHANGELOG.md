@@ -89,6 +89,25 @@ Program.PrintDesc(c)   // → Tests_Circle_as_IDescribable(c)
 - `TypeNameToC` — interface types returned as value types (no `*`) since
   the fat pointer struct already contains the pointer
 
+#### Diagnostic Formatter (2026-04-30)
+
+Compiler errors now display like Rust/Swift — colored, located, readable:
+
+```
+error[syntax]: Attendu un identifiant, trouvé ','
+  --> tests/samples/enums.am:4:10
+   |
+ 4 |     North, South, East, West
+   |          ^
+   |
+```
+
+- `src/transpiler/diagnostics.vala` — new `DiagnosticFormatter` class
+- Color auto-detection via `NO_COLOR` / `FORCE_COLOR` / `TERM` env vars
+- Phases: `error[syntax]`, `error[resolver]`, `error[typechecker]`
+- Source line + `^` caret at error column
+- All error output in `main.vala` routed through `DiagnosticFormatter`
+
 #### Stdlib Collections (2026-04-30)
 
 Full `List<T>`, `Map<K,V>`, `Set<T>` support:
