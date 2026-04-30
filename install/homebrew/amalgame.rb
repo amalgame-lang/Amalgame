@@ -29,6 +29,7 @@ class Amalgame < Formula
   depends_on "glib"
   depends_on "libgee"
   depends_on "bdw-gc"
+  depends_on "curl"    # for Amalgame.Net HTTP support
 
   # GCC is provided by macOS Xcode tools or can be installed separately
   # depends_on "gcc" — optional, user likely already has it

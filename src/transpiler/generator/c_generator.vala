@@ -420,6 +420,12 @@ namespace CodeTranspiler.Generator {
                 case "Amalgame.Strings":
                     return "Amalgame_String.h";
 
+                case "Amalgame.Net":
+                case "Amalgame.Net.Http":
+                case "Amalgame.Net.Tcp":
+                case "Amalgame.Net.Udp":
+                    return "Amalgame_Net.h";
+
                 case "Amalgame.Collections":
                 case "Amalgame.Collections.List":
                 case "Amalgame.Collections.Map":
@@ -1988,6 +1994,20 @@ namespace CodeTranspiler.Generator {
             // Member access: look up the field type in the class
             if (expr is MemberAccessNode) {
                 var ma = (MemberAccessNode) expr;
+
+                // Known Net/stdlib struct fields — fast path
+                switch (ma.MemberName) {
+                    case "Ok": case "Connected": case "Listening":
+                    case "Bound":
+                        return "code_bool";
+                    case "Status": case "RemotePort": case "BoundPort":
+                    case "Port":
+                        return "i64";
+                    case "Body": case "Error": case "RemoteHost":
+                    case "RemoteIp":
+                        return "code_string";
+                }
+
                 string objType = InferCType(ma.Target);
                 // Strip pointer to get class name: "Animal*" → "Animal"
                 string className = objType.has_suffix("*")
@@ -2098,14 +2118,26 @@ namespace CodeTranspiler.Generator {
                 case "AmalgameMap_isEmpty":
                 case "AmalgameSet_add": case "AmalgameSet_contains":
                 case "AmalgameSet_remove": case "AmalgameSet_isEmpty":
-                // Collections Amalgame-level method names
-                case "IsEmpty": case "isEmpty":
-                case "Contains": case "contains":
-                case "Has": case "has":
+                // Net — bool returns
+                case "TcpClient_Send": case "TcpClient_SendBytes":
+                case "TcpClient_IsConnected": case "TcpClient_Close":
+                case "TcpServer_Close": case "TcpServer_IsListening":
+                case "TcpConn_Send": case "TcpConn_Close":
+                case "TcpConn_IsConnected":
+                case "UdpSocket_Bind": case "UdpSocket_Send":
+                case "UdpSocket_Close":
+                // Collections + Net — Amalgame-level bool method names
+                case "IsEmpty":    case "isEmpty":
+                case "Contains":   case "contains":
+                case "Has":        case "has":
                 case "ContainsKey": case "containsKey":
-                case "Any": case "any":
-                case "All": case "all":
-                case "Remove": case "remove":
+                case "Any":        case "any":
+                case "All":        case "all":
+                case "Remove":     case "remove":
+                case "Send":       case "send":
+                case "Bind":       case "bind":
+                case "IsConnected": case "isConnected":
+                case "IsListening": case "isListening":
                     return "code_bool";
 
                 // i64
@@ -2157,7 +2189,28 @@ namespace CodeTranspiler.Generator {
                 case "String_Repeat": case "String_PadLeft":
                 case "String_PadRight": case "String_FromInt":
                 case "String_FromFloat": case "String_FromBool":
+                // Net — string returns
+                case "TcpClient_Receive": case "UdpSocket_Receive":
                     return "code_string";
+
+                // Net — pointer returns (HttpResponse*, TcpClient*, UdpSocket*)
+                case "Http_Get": case "Http_GetWithHeaders":
+                case "Http_GetTimeout": case "Http_Post":
+                case "Http_PostJson": case "Http_PostWithHeaders":
+                case "Http_Put": case "Http_Delete": case "Http_Patch":
+                    return "AmalgameHttpResponse*";
+
+                case "TcpClient_Connect":
+                    return "AmalgameTcpClient*";
+
+                case "TcpServer_Listen":
+                    return "AmalgameTcpServer*";
+
+                case "TcpServer_Accept":
+                    return "AmalgameTcpConn*";
+
+                case "UdpSocket_New":
+                    return "AmalgameUdpSocket*";
 
                 default:
                     return "void*";

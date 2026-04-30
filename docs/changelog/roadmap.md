@@ -28,7 +28,7 @@
 | Stdlib Math             | ✅     | Full math library with constants             |
 | Stdlib String           | ✅     | Complete string manipulation                 |
 | Stdlib Collections      | ✅     | List, Map, Set — full implementation          |
-| Stdlib Net              | 🔜     | Http, WebSocket, Tcp                         |
+| Stdlib Net              | ✅     | Http, TcpClient, TcpServer, UdpSocket        |
 | Enum generation         | ✅     | Simple + rich enums, match, namespace prefix  |
 | Interface vtable        | ✅     | vtable dispatch, fat pointer, auto-conversion |
 | Multi-file compilation  | ✅     | AST merge, N files → 1 executable            |

@@ -157,8 +157,27 @@ run_test "Collections: Set.Remove"        "$SAMPLES/stdlib_collections.am" "afte
 # ── Amalgame.Net ───────────────────────────────────────
 echo ""
 echo "── Amalgame.Net ────────────────────────────"
-run_skip "Net: Http.Get"              "planned"
-run_skip "Net: WebSocket"             "planned"
+
+if curl -s --max-time 3 https://httpbin.org/get > /dev/null 2>&1 && \
+   pkg-config --exists libcurl 2>/dev/null; then
+    run_test "Net: Http.Get status"   "$SAMPLES/stdlib_net.am"  "status: 200"
+    run_test "Net: Http.Get ok"       "$SAMPLES/stdlib_net.am"  "ok: true"
+    run_test "Net: Http.GetHeaders"   "$SAMPLES/stdlib_net.am"  "headers ok: true"
+    run_test "Net: Http.Post"         "$SAMPLES/stdlib_net.am"  "post ok: true"
+    run_test "Net: done"              "$SAMPLES/stdlib_net.am"  "Net test done"
+elif ! pkg-config --exists libcurl 2>/dev/null; then
+    run_skip "Net: Http.Get status"   "libcurl-dev not installed"
+    run_skip "Net: Http.Get ok"       "libcurl-dev not installed"
+    run_skip "Net: Http.GetHeaders"   "libcurl-dev not installed"
+    run_skip "Net: Http.Post"         "libcurl-dev not installed"
+    run_skip "Net: done"              "libcurl-dev not installed"
+else
+    run_skip "Net: Http.Get status"   "no internet"
+    run_skip "Net: Http.Get ok"       "no internet"
+    run_skip "Net: Http.GetHeaders"   "no internet"
+    run_skip "Net: Http.Post"         "no internet"
+    run_skip "Net: done"              "no internet"
+fi
 
 # ── Summary ────────────────────────────────────────────
 echo ""

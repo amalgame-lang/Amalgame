@@ -89,7 +89,55 @@ Program.PrintDesc(c)   // → Tests_Circle_as_IDescribable(c)
 - `TypeNameToC` — interface types returned as value types (no `*`) since
   the fat pointer struct already contains the pointer
 
-#### Diagnostic Formatter (2026-04-30)
+#### Stdlib Net (2026-04-30)
+
+Full network support — HTTP, TCP client/server, UDP:
+
+```amalgame
+import Amalgame.Net
+
+// HTTP
+let resp = Http_Get("https://api.example.com/data")
+Console.WriteLine("status: {resp.Status}")
+
+// TCP Server
+let server = TcpServer_Listen(8080, 10)
+let conn   = TcpServer_Accept(server)
+TcpConn_Send(conn, "Hello!")
+
+// UDP
+let sock = UdpSocket_New()
+UdpSocket_Bind(sock, 9000)
+UdpSocket_Send(sock, "127.0.0.1", 9001, "ping")
+```
+
+**`Amalgame_Net.h`** — header-only, libcurl optional:
+- `Http` — GET, POST, PostJson, PUT, DELETE, PATCH + custom headers + SSL/TLS
+  via libcurl (`#ifdef AMALGAME_HAS_CURL`). Graceful stub if curl absent.
+- `TcpClient` — connect, send, receive, close (POSIX sockets)
+- `TcpServer` — listen, accept → `TcpConn`, close, isListening (POSIX)
+- `TcpConn` — send, receive, close, isConnected, `RemoteIp`, `RemotePort`
+- `UdpSocket` — new, bind, send, receive, close (POSIX)
+- `AmalgameHttpResponse` — `Status` (i64), `Body` (string), `Ok` (bool), `Error` (string)
+- `AMALGAME_SSL_NOVERIFY=1` — env var to disable SSL verification (dev)
+
+**Generator:**
+- `-lcurl` added to GCC command automatically when `import Amalgame.Net` detected
+- `_StdlibReturnType` covers all Net functions
+- `InferCType` fast-path for known struct fields (`Ok`, `Status`, `Body`,
+  `Connected`, `RemoteIp`, etc.) → correct bool/i64/string interpolation
+
+**Installer:**
+- `install.sh` — auto-installs `libcurl4-openssl-dev` + `libgc-dev` via apt/dnf/pacman
+- `amalgame.rb` — `depends_on "curl"` added to Homebrew formula
+- `install.ps1` — MSYS2 instructions for Windows
+
+#### Test suite (2026-04-30)
+- `tests/samples/stdlib_net.am` — 5 Http tests (GET, POST, PostJson)
+- `tests/samples/stdlib_tcp_server.am` — TCP echo server sample
+- `run_stdlib_tests.sh` — auto-skip Net tests if libcurl not installed
+
+
 
 Compiler errors now display like Rust/Swift — colored, located, readable:
 

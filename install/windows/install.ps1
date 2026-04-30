@@ -164,6 +164,17 @@ if (-not $GccFound -and -not $NoGcc) {
     Success "GCC found: $($(gcc --version)[0])"
 }
 
+# ── Runtime dependencies ───────────────────────────────────
+Header "Runtime dependencies..."
+
+Info "Boehm GC and libcurl are required for Amalgame programs."
+Info "If you use MSYS2, install them with:"
+Info "  pacman -S mingw-w64-x86_64-gc mingw-w64-x86_64-curl"
+Info ""
+Info "For Amalgame.Net (HTTP/TCP/UDP):"
+Info "  pacman -S mingw-w64-x86_64-curl"
+Write-Host ""
+
 # ── Add to PATH ───────────────────────────────────────────
 Header "Configuring PATH..."
 
