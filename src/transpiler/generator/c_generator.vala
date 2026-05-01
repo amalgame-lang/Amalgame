@@ -442,6 +442,13 @@ namespace CodeTranspiler.Generator {
          *   class="Player", method="TakeDamage" → "MyApp_Player_TakeDamage"
          */
         private string _MethodName(string className, string methodName) {
+            // Builtin stdlib classes are not namespace-prefixed
+            switch (className) {
+                case "Console": case "File": case "Path":
+                case "Math":    case "Http": case "String":
+                case "Environment": case "Json":
+                    return "%s_%s".printf(className, methodName);
+            }
             return "%s_%s".printf(_SymName(className), methodName);
         }
 
@@ -3200,45 +3207,54 @@ namespace CodeTranspiler.Generator {
          * "pt: {p.X}"        → code_string_format("pt: %s", code_float_to_string(p->X))
          */
         private void EmitInterpolatedString(string raw) {
-            // Normalize multiline string:
-            // Strip leading newline and trailing whitespace+newline
             string normalized = raw;
+
+            // Only apply multiline normalization if the string has actual content
+            // (not simple escape sequences like "\n", "\t")
             if (raw.contains("\n")) {
-                // Strip leading newline if string starts with one
-                if (normalized.has_prefix("\n"))
-                    normalized = normalized.substring(1);
-                // Strip trailing newline + optional whitespace
-                if (normalized.has_suffix("\n"))
-                    normalized = normalized.substring(0, normalized.length - 1);
-                // Find minimum indentation to strip (dedent)
-                string[] lines = normalized.split("\n");
-                int minIndent = int.MAX;
-                foreach (var line in lines) {
-                    if (line.strip().length == 0) continue;
-                    int spaces = 0;
-                    for (int k = 0; k < line.length; k++) {
-                        if (line[k] == ' ')  spaces++;
-                        else if (line[k] == '\t') spaces += 4;
-                        else break;
-                    }
-                    if (spaces < minIndent) minIndent = spaces;
+                string[] checkLines = raw.split("\n");
+                bool hasContentLines = false;
+                foreach (var cl in checkLines) {
+                    if (cl.strip().length > 0) { hasContentLines = true; break; }
                 }
-                if (minIndent == int.MAX) minIndent = 0;
-                if (minIndent > 0) {
-                    var dedented = new StringBuilder();
-                    for (int li = 0; li < lines.length; li++) {
-                        string line = lines[li];
-                        int stripped = 0;
-                        int pos = 0;
-                        while (pos < line.length && stripped < minIndent) {
-                            if (line[pos] == ' ')  { stripped++;      pos++; }
-                            else if (line[pos] == '\t') { stripped += 4; pos++; }
+
+                if (hasContentLines) {
+                    // Strip leading newline if string starts with one
+                    if (normalized.has_prefix("\n"))
+                        normalized = normalized.substring(1);
+                    // Strip trailing newline + optional whitespace
+                    if (normalized.has_suffix("\n"))
+                        normalized = normalized.substring(0, normalized.length - 1);
+                    // Find minimum indentation to strip (dedent)
+                    string[] lines = normalized.split("\n");
+                    int minIndent = int.MAX;
+                    foreach (var line in lines) {
+                        if (line.strip().length == 0) continue;
+                        int spaces = 0;
+                        for (int k = 0; k < line.length; k++) {
+                            if (line[k] == ' ')  spaces++;
+                            else if (line[k] == '\t') spaces += 4;
                             else break;
                         }
-                        if (li > 0) dedented.append("\n");
-                        dedented.append(line.substring(pos));
+                        if (spaces < minIndent) minIndent = spaces;
                     }
-                    normalized = dedented.str;
+                    if (minIndent == int.MAX) minIndent = 0;
+                    if (minIndent > 0) {
+                        var dedented = new StringBuilder();
+                        for (int li = 0; li < lines.length; li++) {
+                            string line = lines[li];
+                            int stripped = 0;
+                            int pos = 0;
+                            while (pos < line.length && stripped < minIndent) {
+                                if (line[pos] == ' ')  { stripped++;      pos++; }
+                                else if (line[pos] == '\t') { stripped += 4; pos++; }
+                                else break;
+                            }
+                            if (li > 0) dedented.append("\n");
+                            dedented.append(line.substring(pos));
+                        }
+                        normalized = dedented.str;
+                    }
                 }
             }
 
@@ -3274,10 +3290,22 @@ namespace CodeTranspiler.Generator {
                         i++;
                         continue;
                     }
-                    string expr = normalized[start:end];
-                    fmt.append("%s");
-                    args.add(expr);
-                    i = end + 1;
+                    string expr = normalized[start:end].strip();
+                    // Only treat as interpolation if expr looks like code
+                    // (starts with letter, digit, 'this.', underscore, or contains ops)
+                    bool isInterp = expr.length > 0 &&
+                        (expr[0].isalpha() || expr[0] == '_' ||
+                         expr[0].isdigit() || expr.has_prefix("this.") ||
+                         expr.has_prefix("-") || expr.has_prefix("!"));
+                    if (isInterp) {
+                        fmt.append("%s");
+                        args.add(expr);
+                        i = end + 1;
+                    } else {
+                        // Not an interpolation — emit as literal {
+                        fmt.append_c(c);
+                        i++;
+                    }
                 } else {
                     if      (c == '"')  fmt.append("\\\"");
                     else if (c == '\\') fmt.append("\\\\");
