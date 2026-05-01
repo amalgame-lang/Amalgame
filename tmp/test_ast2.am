@@ -1,0 +1,18 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        Console.WriteLine("step 1")
+        let prog = Ast.Program(0, 0)
+        Console.WriteLine("step 2")
+        let n = prog.Name
+        Console.WriteLine("name: {n}")
+        Console.WriteLine("step 3")
+        let ch = prog.Children
+        Console.WriteLine("step 4")
+        let count = ch.Count()
+        Console.WriteLine("count: {count}")
+    }
+}
