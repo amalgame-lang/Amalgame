@@ -2165,18 +2165,32 @@ namespace CodeTranspiler.Generator {
                     }
                 }
 
-                // Also handle this.Field.Method() patterns
+                // Also handle this.Field.Method() and obj.Field.Method() patterns
                 if (ma.Target is MemberAccessNode) {
                     var innerMa = (MemberAccessNode) ma.Target;
+                    string fieldType = "";
+                    string objExpr   = "";
+
                     if (innerMa.Target is ThisNode) {
-                        string fieldType = _LookupFieldCType(
-                            _className, innerMa.MemberName);
-                        if (fieldType == "AmalgameList*") {
-                            // this.Items.Add(x) → AmalgameList_add(self->Items, x)
-                            string objExpr = "self->%s".printf(innerMa.MemberName);
-                            if (_EmitListMethod(objExpr, ma.MemberName,
-                                                n.Arguments)) return;
-                        }
+                        fieldType = _LookupFieldCType(_className, innerMa.MemberName);
+                        objExpr   = "self->%s".printf(innerMa.MemberName);
+                    } else if (innerMa.Target is IdentifierNode) {
+                        var innerId = (IdentifierNode) innerMa.Target;
+                        // Resolve class name from local var type
+                        string varCType = _localCTypes.has_key(innerId.Name)
+                            ? _localCTypes[innerId.Name] : "";
+                        string bareClass = _StripNsPrefix(
+                            varCType.replace("*","").strip());
+                        fieldType = _LookupFieldCType(bareClass, innerMa.MemberName);
+                        objExpr   = "%s->%s".printf(innerId.Name, innerMa.MemberName);
+                    }
+
+                    if (fieldType == "AmalgameList*") {
+                        if (_EmitListMethod(objExpr, ma.MemberName, n.Arguments)) return;
+                    } else if (fieldType == "AmalgameMap*") {
+                        if (_EmitMapMethod(objExpr, ma.MemberName, n.Arguments)) return;
+                    } else if (fieldType == "AmalgameSet*") {
+                        if (_EmitSetMethod(objExpr, ma.MemberName, n.Arguments)) return;
                     }
                 }
 
@@ -2303,11 +2317,12 @@ namespace CodeTranspiler.Generator {
                 if (innerMa.Target is ThisNode) {
                     // this.Field → look up Field type in current class
                     string ft = _LookupFieldCType(_className, innerMa.MemberName);
-                    innerClassName = _StripNsPrefix(ft);
+                    innerClassName = _StripNsPrefix(ft.replace("*","").strip());
                 } else if (innerMa.Target is IdentifierNode) {
                     var innerId = (IdentifierNode) innerMa.Target;
                     if (_localCTypes.has_key(innerId.Name)) {
-                        innerClassName = _StripNsPrefix(_localCTypes[innerId.Name]);
+                        innerClassName = _StripNsPrefix(
+                            _localCTypes[innerId.Name].replace("*","").strip());
                     }
                 }
                 funcName = _MethodName(innerClassName, ma.MemberName);
@@ -2735,6 +2750,33 @@ namespace CodeTranspiler.Generator {
                             _listElemType.has_key(enumName)) {
                             return _listElemType[enumName];
                         }
+                        // Static method call → look up return type in class decl
+                        string staticRet = _LookupMethodInClass(enumName, ma.MemberName);
+                        if (staticRet != "void*") return staticRet;
+                    }
+                    // Also handle obj.Field.Get() — list field on class
+                    if (call.Callee is MemberAccessNode) {
+                        var cma = (MemberAccessNode) call.Callee;
+                        // Count/Size on a field list → i64
+                        if (cma.MemberName == "Count" || cma.MemberName == "count" ||
+                            cma.MemberName == "Size"  || cma.MemberName == "size") {
+                            return "i64";
+                        }
+                        if ((cma.MemberName == "Get" || cma.MemberName == "get" ||
+                             cma.MemberName == "First" || cma.MemberName == "first" ||
+                             cma.MemberName == "Last" || cma.MemberName == "last") &&
+                            cma.Target is MemberAccessNode) {
+                            var inner = (MemberAccessNode) cma.Target;
+                            // Resolve field class and look up generic type
+                            string tc = InferCType(inner.Target);
+                            string bc = _StripNsPrefix(tc.replace("*","").strip());
+                            TypeNode? ft = _LookupFieldTypeNode(bc, inner.MemberName);
+                            if (ft is GenericTypeNode) {
+                                var gen = (GenericTypeNode) ft;
+                                if (gen.TypeArgs.size > 0)
+                                    return TypeToC(gen.TypeArgs[0]);
+                            }
+                        }
                     }
                 }
             }
@@ -2866,6 +2908,25 @@ namespace CodeTranspiler.Generator {
                 }
             } else if (target is ThisNode) {
                 className = _className;
+            } else if (target is MemberAccessNode) {
+                // e.g. this.Home → resolve Home's type, then look up method in that class
+                var ma = (MemberAccessNode) target;
+                string fieldOwnerClass = "";
+                if (ma.Target is ThisNode) {
+                    fieldOwnerClass = _className;
+                } else if (ma.Target is IdentifierNode) {
+                    var mid = (IdentifierNode) ma.Target;
+                    if (_localCTypes.has_key(mid.Name)) {
+                        string ct = _localCTypes[mid.Name];
+                        fieldOwnerClass = _StripNsPrefix(ct.replace("*","").strip());
+                    }
+                }
+                if (fieldOwnerClass != "") {
+                    string fieldType = _LookupFieldCType(fieldOwnerClass, ma.MemberName);
+                    if (fieldType != "") {
+                        className = _StripNsPrefix(fieldType.replace("*","").strip());
+                    }
+                }
             } else {
                 return "void*";
             }
@@ -3055,6 +3116,23 @@ namespace CodeTranspiler.Generator {
                     Emit(")");
                     return;
             }
+        }
+
+        private TypeNode? _LookupFieldTypeNode(string className, string fieldName) {
+            if (_program == null) return null;
+            string bare = _StripNsPrefix(className);
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != bare) continue;
+                foreach (var m in cls.Members) {
+                    if (m is FieldDeclNode) {
+                        var f = (FieldDeclNode) m;
+                        if (f.Name == fieldName) return f.FieldType;
+                    }
+                }
+            }
+            return null;
         }
 
         private TypeNode? _LookupMethodReturnTypeNode(string className,
@@ -3296,6 +3374,10 @@ namespace CodeTranspiler.Generator {
                     return "((%s) ? \"true\" : \"false\")".printf(cArg);
                 if (ct == "code_string")
                     return cArg;
+                // void* from Count()/Size() — these are i64 stored as void*
+                // Only do this for simple local vars, not struct fields
+                if (ct == "void*" && !srcExpr.contains("."))
+                    return "code_int_to_string((i64)(intptr_t)(%s))".printf(cArg);
             }
 
             // 2. Look up in symbol table (global symbols)
