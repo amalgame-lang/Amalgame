@@ -1,0 +1,252 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── C Code Emitter ────────────────────────────────────
+public class Emitter {
+    private Lines: List<string>
+    private Indent: int
+
+    public Emitter() {
+        this.Lines  = new List<string>()
+        this.Indent = 0
+    }
+
+    public void Emit(string text) {
+        this.Lines.Add(text)
+    }
+
+    public void EmitLine(string text) {
+        var line = ""
+        let i = this.Indent
+        for k in 0..i {
+            line = line + "    "
+        }
+        line = line + text
+        this.Lines.Add(line)
+    }
+
+    public void EmitBlank() {
+        this.Lines.Add("")
+    }
+
+    public void Indent_() {
+        this.Indent = this.Indent + 1
+    }
+
+    public void Dedent() {
+        this.Indent = this.Indent - 1
+    }
+
+    public string GetOutput() {
+        var result = ""
+        let count = this.Lines.Count()
+        for i in 0..count {
+            let line = this.Lines.Get(i)
+            result = result + line + "\n"
+        }
+        return result
+    }
+}
+
+// ── C Generator ───────────────────────────────────────
+public class CGen {
+    private Out:    Emitter
+    private NsPrefix: string
+
+    public CGen() {
+        this.Out      = new Emitter()
+        this.NsPrefix = ""
+    }
+
+    public string Generate(AstNode prog) {
+        // Extract namespace
+        let ns = prog.Str
+        if (String_Length(ns) > 0) {
+            this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+
+        this.EmitHeader()
+
+        // Forward declarations
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            this.EmitForwardDecl(decl)
+        }
+        this.Out.EmitBlank()
+
+        // Full declarations
+        for j in 0..decls {
+            let decl = prog.Children.Get(j)
+            this.EmitDecl(decl)
+        }
+
+        return this.Out.GetOutput()
+    }
+
+    private string SymName(string name) {
+        let ns = this.NsPrefix
+        if (String_Length(ns) > 0) {
+            return ns + "_" + name
+        }
+        return name
+    }
+
+    private void EmitHeader() {
+        this.Out.EmitLine("#include <stdio.h>")
+        this.Out.EmitLine("#include <stdlib.h>")
+        this.Out.EmitLine("#include <string.h>")
+        this.Out.EmitLine("#include \"_runtime.h\"")
+        this.Out.EmitBlank()
+    }
+
+    // ── Forward declarations ───────────────────────────
+
+    private void EmitForwardDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.ENUM_DECL) {
+            let name = this.SymName(decl.Name)
+            this.Out.EmitLine("typedef enum _" + name + " " + name + ";")
+        }
+        if (k == NodeKind.CLASS_DECL) {
+            let name = this.SymName(decl.Name)
+            this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+        }
+    }
+
+    // ── Full declarations ──────────────────────────────
+
+    private void EmitDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.ENUM_DECL) {
+            this.EmitEnum(decl)
+        }
+        if (k == NodeKind.CLASS_DECL) {
+            this.EmitClass(decl)
+        }
+    }
+
+    // ── Enum ──────────────────────────────────────────
+
+    private void EmitEnum(AstNode en) {
+        let name = this.SymName(en.Name)
+        this.Out.EmitLine("enum _" + name + " {")
+        this.Out.Indent_()
+        let count = en.Children.Count()
+        for i in 0..count {
+            let member = en.Children.Get(i)
+            let mname  = this.SymName(member.Name)
+            let last   = i == count - 1
+            if (last) {
+                this.Out.EmitLine(mname)
+            } else {
+                this.Out.EmitLine(mname + ",")
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("};")
+        this.Out.EmitBlank()
+    }
+
+    // ── Class (struct) ────────────────────────────────
+
+    private void EmitClass(AstNode cls) {
+        let name = this.SymName(cls.Name)
+
+        // Struct definition
+        this.Out.EmitLine("struct _" + name + " {")
+        this.Out.Indent_()
+        let members = cls.Children.Count()
+        for i in 0..members {
+            let m = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.VAR_DECL) {
+                let ftype = this.TypeToC(m.Str)
+                let fname = m.Name
+                this.Out.EmitLine(ftype + " " + fname + ";")
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("};")
+        this.Out.EmitBlank()
+
+        // Constructor
+        this.Out.EmitLine(name + "* " + name + "_new() {")
+        this.Out.Indent_()
+        this.Out.EmitLine(name + "* self = (" + name + "*) malloc(sizeof(" + name + "));")
+        this.Out.EmitLine("return self;")
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+
+        // Methods
+        for j in 0..members {
+            let m2 = cls.Children.Get(j)
+            let mk2 = m2.Kind
+            if (mk2 == NodeKind.METHOD_DECL) {
+                this.EmitMethod(m2, name)
+            }
+        }
+    }
+
+    // ── Method ────────────────────────────────────────
+
+    private void EmitMethod(AstNode method, string className) {
+        let retType = this.TypeToC(method.Str)
+        let mname   = method.Name
+        let isStatic = method.Flag2
+
+        var sig = retType + " " + className + "_" + mname + "("
+        if (!isStatic) {
+            sig = sig + className + "* self"
+        }
+
+        // Params
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            let pt = this.TypeToC(p.Str)
+            let pn = p.Name
+            if (!isStatic || i > 0) {
+                sig = sig + ", "
+            }
+            if (isStatic && i == 0) {
+                sig = sig + pt + " " + pn
+            } else {
+                sig = sig + pt + " " + pn
+            }
+        }
+        sig = sig + ") {"
+
+        this.Out.EmitLine(sig)
+        this.Out.Indent_()
+        this.Out.EmitLine("/* body */")
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+    }
+
+    // ── Type mapping ──────────────────────────────────
+
+    private string TypeToC(string t) {
+        if (t == "int")    { return "i64" }
+        if (t == "float")  { return "double" }
+        if (t == "bool")   { return "int" }
+        if (t == "string") { return "const char*" }
+        if (t == "void")   { return "void" }
+        if (t == "")       { return "void" }
+        // Nullable types
+        if (String_EndsWith(t, "?")) {
+            let inner = String_Substring(t, 0, String_Length(t) - 1)
+            return this.TypeToC(inner) + "*"
+        }
+        // Generic types List<T>
+        if (String_StartsWith(t, "List<")) {
+            return "AmalgameList*"
+        }
+        // User types
+        return this.SymName(t) + "*"
+    }
+}

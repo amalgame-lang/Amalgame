@@ -1,0 +1,28 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+public class Program {
+    public static void Main(string[] args) {
+        // Generate C from token.am
+        let src  = File.ReadAll("./src/amalgame/lexer/token.am")
+        let lex  = new Lexer(src, "token.am")
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+
+        let gen  = new CGen()
+        let code = gen.Generate(prog)
+
+        File.WriteAll("./token_bootstrap.c", code)
+        let clen = String_Length(code)
+        Console.WriteLine("Generated C: {clen} chars")
+        Console.WriteLine("Written to: token_bootstrap.c")
+
+        // Show first 500 chars
+        let preview = String_Substring(code, 0, 500)
+        Console.WriteLine(preview)
+    }
+}
