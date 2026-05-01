@@ -1,0 +1,32 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        let prog = Ast.Program(0, 0)
+        prog.Str = "MyApp"
+
+        let cls = Ast.Class("Foo", 1, 1)
+        cls.Flag = true
+        prog.Children.Add(cls)
+
+        let method = Ast.Method("Bar", "void", 2, 5)
+        method.Flag  = true
+        method.Flag2 = true
+        cls.Children.Add(method)
+
+        let lit = Ast.IntLit("42", 3, 1)
+        let ret = Ast.Return(lit, 3, 1)
+        method.Body = ret
+
+        let count = prog.Children.Count()
+        let mname = method.Name
+        let raw   = lit.Str
+        let rtype = method.Str
+        Console.WriteLine("prog children: {count}")
+        Console.WriteLine("method: {mname}")
+        Console.WriteLine("rettype: {rtype}")
+        Console.WriteLine("literal: {raw}")
+    }
+}
