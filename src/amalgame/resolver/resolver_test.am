@@ -4,35 +4,58 @@ import Amalgame.Collections
 import Amalgame.IO
 import Amalgame.String
 
-public class Program {
-    public static void Main(string[] args) {
-        // Parse token.am then resolve it
-        let src  = File.ReadAll("./src/amalgame/lexer/token.am")
-        let lex  = new Lexer(src, "token.am")
-        let toks = lex.Tokenize()
-        let par  = new Parser(toks)
-        let prog = par.Parse()
+public class BootstrapTest {
+    private Paths: List<string>
 
-        let res  = new Resolver()
-        res.Resolve(prog)
+    public BootstrapTest() {
+        this.Paths = new List<string>()
+    }
+
+    public void AddFile(string path) {
+        this.Paths.Add(path)
+    }
+
+    public void Run() {
+        let res   = new Resolver()
+        let count = this.Paths.Count()
+
+        for i in 0..count {
+            let path = this.Paths.Get(i)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            res.Programs.Add(prog)
+        }
+
+        res.ResolvePrograms()
 
         let hasErr = res.HasErrors()
-        Console.WriteLine("token.am resolver errors: {hasErr}")
+        Console.WriteLine("resolve errors: {hasErr}")
         if (hasErr) {
             let errs = res.GetErrors()
             Console.WriteLine(errs)
         }
 
-        // Parse ast.am then resolve
-        let src2  = File.ReadAll("./src/amalgame/parser/ast.am")
-        let lex2  = new Lexer(src2, "ast.am")
-        let toks2 = lex2.Tokenize()
-        let par2  = new Parser(toks2)
-        let prog2 = par2.Parse()
+        let pcount = res.Programs.Count()
+        for j in 0..pcount {
+            let prog2 = res.Programs.Get(j)
+            let path2 = this.Paths.Get(j)
+            let dc    = prog2.Children.Count()
+            Console.WriteLine("{path2}: {dc} decls")
+        }
+    }
+}
 
-        let res2  = new Resolver()
-        res2.Resolve(prog2)
-        let hasErr2 = res2.HasErrors()
-        Console.WriteLine("ast.am resolver errors: {hasErr2}")
+public class Program {
+    public static void Main(string[] args) {
+        let test = new BootstrapTest()
+        test.AddFile("./src/amalgame/lexer/token.am")
+        test.AddFile("./src/amalgame/lexer/lexer.am")
+        test.AddFile("./src/amalgame/parser/ast.am")
+        test.AddFile("./src/amalgame/parser/parser.am")
+        test.AddFile("./src/amalgame/resolver/symbol.am")
+        test.Run()
     }
 }
