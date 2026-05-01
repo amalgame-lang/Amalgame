@@ -61,6 +61,7 @@ namespace CodeTranspiler.Generator {
         private CodeTranspiler.Analyzer.SymbolTable? _symbolTable;
         // Local C type map: varName → cType, built during generation
         private Gee.HashMap<string, string> _localCTypes;
+        private Gee.HashMap<string, string> _listElemType; // varName → element C type
         // Program AST reference for method return type lookup
         private ProgramNode? _program;
         // Lambda support: counter + preamble buffer
@@ -79,6 +80,7 @@ namespace CodeTranspiler.Generator {
             _errors         = new StringBuilder();
             _lambdaPreamble = new StringBuilder();
             _localCTypes    = new Gee.HashMap<string, string>();
+            _listElemType   = new Gee.HashMap<string, string>();
             _indent         = 0;
             _inClass        = false;
             _className      = "";
@@ -440,6 +442,13 @@ namespace CodeTranspiler.Generator {
          *   class="Player", method="TakeDamage" → "MyApp_Player_TakeDamage"
          */
         private string _MethodName(string className, string methodName) {
+            // Builtin stdlib classes are not namespace-prefixed
+            switch (className) {
+                case "Console": case "File": case "Path":
+                case "Math":    case "Http": case "String":
+                case "Environment": case "Json":
+                    return "%s_%s".printf(className, methodName);
+            }
             return "%s_%s".printf(_SymName(className), methodName);
         }
 
@@ -557,14 +566,16 @@ namespace CodeTranspiler.Generator {
                     foreach (var m in c.Members) {
                         if (!(m is MethodDeclNode)) continue;
                         var md = (MethodDeclNode) m;
-                        if (!md.IsStatic) continue;
-                        if (md.Name == c.Name) continue;
+                        if (md.Name == c.Name) continue; // constructor
                         string ret = md.ReturnType != null
                             ? TypeToC(md.ReturnType) : "void";
                         string mname = _MethodName(c.Name, md.Name);
                         var sb = new StringBuilder();
+                        if (!md.IsStatic) {
+                            sb.append("%s*".printf(sym));
+                        }
                         for (int i = 0; i < md.Params.size; i++) {
-                            if (i > 0) sb.append(", ");
+                            if (sb.len > 0) sb.append(", ");
                             var p = md.Params[i];
                             string pt = TypeToC(p.ParamType);
                             if (pt == "code_string*" && p.Name == "args")
@@ -1085,6 +1096,39 @@ namespace CodeTranspiler.Generator {
 
             // Register for interpolation type lookup
             _localCTypes[n.Name] = cType;
+
+            // Track generic list element type for List<T>.Get() inference
+            if (n.Initial is NewExprNode) {
+                var newExpr = (NewExprNode) n.Initial;
+                if (newExpr.ObjectType is GenericTypeNode) {
+                    var gen = (GenericTypeNode) newExpr.ObjectType;
+                    if (gen.Name == "List" && gen.TypeArgs.size > 0) {
+                        _listElemType[n.Name] = TypeToC(gen.TypeArgs[0]);
+                    }
+                }
+            } else if (cType == "AmalgameList*" && n.Initial is CallExprNode) {
+                // Infer element type from the method's declared return type
+                var callExpr = (CallExprNode) n.Initial;
+                if (callExpr.Callee is MemberAccessNode) {
+                    var ma = (MemberAccessNode) callExpr.Callee;
+                    // Look up the method's return type node in AST
+                    string targetClass = "";
+                    if (ma.Target is IdentifierNode) {
+                        var tid = (IdentifierNode) ma.Target;
+                        if (_localCTypes.has_key(tid.Name)) {
+                            targetClass = _StripNsPrefix(
+                                _localCTypes[tid.Name].replace("*","").strip());
+                        }
+                    }
+                    TypeNode? retTypeNode = _LookupMethodReturnTypeNode(
+                        targetClass, ma.MemberName);
+                    if (retTypeNode is GenericTypeNode) {
+                        var gen = (GenericTypeNode) retTypeNode;
+                        if (gen.TypeArgs.size > 0)
+                            _listElemType[n.Name] = TypeToC(gen.TypeArgs[0]);
+                    }
+                }
+            }
 
             Emit("%s %s".printf(cType, n.Name));
             if (n.Initial != null) {
@@ -1770,6 +1814,21 @@ namespace CodeTranspiler.Generator {
                 }
             }
 
+            // String equality: string == string → code_string_equals()
+            if (n.Operator == "==" || n.Operator == "!=") {
+                string lt = InferCType(n.Left);
+                string rt = InferCType(n.Right);
+                if (lt == "code_string" || rt == "code_string") {
+                    if (n.Operator == "!=") Emit("!");
+                    Emit("code_string_equals(");
+                    n.Left.Accept(this);
+                    Emit(", ");
+                    n.Right.Accept(this);
+                    Emit(")");
+                    return;
+                }
+            }
+
             n.Left.Accept(this);
             Emit(" %s ".printf(OperatorToC(n.Operator)));
             n.Right.Accept(this);
@@ -1951,6 +2010,20 @@ namespace CodeTranspiler.Generator {
             }
         }
 
+        private bool _IsSimpleEnum(string name) {
+            if (_program == null) return false;
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is EnumDeclNode)) continue;
+                var e = (EnumDeclNode) decl;
+                if (e.Name != name) continue;
+                // Simple enum: no associated types
+                foreach (var m in e.Members)
+                    if (m.AssocTypes.size > 0) return false;
+                return true;
+            }
+            return false;
+        }
+
         private bool _IsRichEnum(string name) {
             if (_program == null) return false;
             foreach (var decl in _program.Declarations) {
@@ -2099,18 +2172,32 @@ namespace CodeTranspiler.Generator {
                     }
                 }
 
-                // Also handle this.Field.Method() patterns
+                // Also handle this.Field.Method() and obj.Field.Method() patterns
                 if (ma.Target is MemberAccessNode) {
                     var innerMa = (MemberAccessNode) ma.Target;
+                    string fieldType = "";
+                    string objExpr   = "";
+
                     if (innerMa.Target is ThisNode) {
-                        string fieldType = _LookupFieldCType(
-                            _className, innerMa.MemberName);
-                        if (fieldType == "AmalgameList*") {
-                            // this.Items.Add(x) → AmalgameList_add(self->Items, x)
-                            string objExpr = "self->%s".printf(innerMa.MemberName);
-                            if (_EmitListMethod(objExpr, ma.MemberName,
-                                                n.Arguments)) return;
-                        }
+                        fieldType = _LookupFieldCType(_className, innerMa.MemberName);
+                        objExpr   = "self->%s".printf(innerMa.MemberName);
+                    } else if (innerMa.Target is IdentifierNode) {
+                        var innerId = (IdentifierNode) innerMa.Target;
+                        // Resolve class name from local var type
+                        string varCType = _localCTypes.has_key(innerId.Name)
+                            ? _localCTypes[innerId.Name] : "";
+                        string bareClass = _StripNsPrefix(
+                            varCType.replace("*","").strip());
+                        fieldType = _LookupFieldCType(bareClass, innerMa.MemberName);
+                        objExpr   = "%s->%s".printf(innerId.Name, innerMa.MemberName);
+                    }
+
+                    if (fieldType == "AmalgameList*") {
+                        if (_EmitListMethod(objExpr, ma.MemberName, n.Arguments)) return;
+                    } else if (fieldType == "AmalgameMap*") {
+                        if (_EmitMapMethod(objExpr, ma.MemberName, n.Arguments)) return;
+                    } else if (fieldType == "AmalgameSet*") {
+                        if (_EmitSetMethod(objExpr, ma.MemberName, n.Arguments)) return;
                     }
                 }
 
@@ -2219,6 +2306,14 @@ namespace CodeTranspiler.Generator {
                     }
 
                     funcName = _MethodName(bareClass, ma.MemberName);
+
+                    // ── String method dispatch ──────────────────────
+                    // When target is a code_string variable, use String_* functions
+                    if (_localCTypes.has_key(id.Name) &&
+                        _localCTypes[id.Name] == "code_string") {
+                        _EmitStringMethod(id.Name, ma.MemberName, args);
+                        return;
+                    }
                 }
 
             } else if (ma.Target is MemberAccessNode) {
@@ -2229,16 +2324,41 @@ namespace CodeTranspiler.Generator {
                 if (innerMa.Target is ThisNode) {
                     // this.Field → look up Field type in current class
                     string ft = _LookupFieldCType(_className, innerMa.MemberName);
-                    innerClassName = _StripNsPrefix(ft);
+                    innerClassName = _StripNsPrefix(ft.replace("*","").strip());
                 } else if (innerMa.Target is IdentifierNode) {
                     var innerId = (IdentifierNode) innerMa.Target;
                     if (_localCTypes.has_key(innerId.Name)) {
-                        innerClassName = _StripNsPrefix(_localCTypes[innerId.Name]);
+                        innerClassName = _StripNsPrefix(
+                            _localCTypes[innerId.Name].replace("*","").strip());
                     }
                 }
                 funcName = _MethodName(innerClassName, ma.MemberName);
-                Emit("%s(".printf(funcName));
+
+                // ── String field method dispatch ────────────────
+                // e.g. this.Source.Substring(i, 1) where Source: string
+                string innerCType = "";
+                if (innerMa.Target is ThisNode) {
+                    innerCType = _LookupFieldCType(_className, innerMa.MemberName);
+                } else if (innerMa.Target is IdentifierNode) {
+                    var iid2 = (IdentifierNode) innerMa.Target;
+                    innerCType = _localCTypes.has_key(iid2.Name)
+                        ? _localCTypes[iid2.Name] : "";
+                }
+                if (innerCType == "code_string") {
+                    // Emit the inner member access as string object
+                    var sbStr = new StringBuilder();
+                    // Capture "self->Source" or "id->Field"
+                    if (innerMa.Target is ThisNode)
+                        sbStr.append("self->%s".printf(innerMa.MemberName));
+                    else if (innerMa.Target is IdentifierNode)
+                        sbStr.append("%s->%s".printf(
+                            ((IdentifierNode)innerMa.Target).Name,
+                            innerMa.MemberName));
+                    _EmitStringMethod(sbStr.str, ma.MemberName, args);
+                    return;
+                }
                 // Emit the object expression as self arg
+                Emit("%s(".printf(funcName));
                 ma.Target.Accept(this);
                 for (int i = 0; i < args.size; i++) {
                     Emit(", ");
@@ -2565,6 +2685,9 @@ namespace CodeTranspiler.Generator {
                     // Rich enum → passed by value (tagged union struct)
                     if (_IsRichEnum(name))
                         return _SymName(name);
+                    // Simple enum → passed by value (C integer enum)
+                    if (_IsSimpleEnum(name))
+                        return _SymName(name);
                     // User-defined type → apply namespace prefix
                     return "%s*".printf(_SymName(name));
             }
@@ -2624,8 +2747,43 @@ namespace CodeTranspiler.Generator {
                     var ma = (MemberAccessNode) call.Callee;
                     if (ma.Target is IdentifierNode) {
                         string enumName = ((IdentifierNode)ma.Target).Name;
+                        // Rich enum constructor
                         if (_IsRichEnum(enumName))
                             return _SymName(enumName);
+                        // List<T>.Get() / First() / Last() → return element type
+                        if ((ma.MemberName == "Get" || ma.MemberName == "get" ||
+                             ma.MemberName == "First" || ma.MemberName == "first" ||
+                             ma.MemberName == "Last" || ma.MemberName == "last") &&
+                            _listElemType.has_key(enumName)) {
+                            return _listElemType[enumName];
+                        }
+                        // Static method call → look up return type in class decl
+                        string staticRet = _LookupMethodInClass(enumName, ma.MemberName);
+                        if (staticRet != "void*") return staticRet;
+                    }
+                    // Also handle obj.Field.Get() — list field on class
+                    if (call.Callee is MemberAccessNode) {
+                        var cma = (MemberAccessNode) call.Callee;
+                        // Count/Size on a field list → i64
+                        if (cma.MemberName == "Count" || cma.MemberName == "count" ||
+                            cma.MemberName == "Size"  || cma.MemberName == "size") {
+                            return "i64";
+                        }
+                        if ((cma.MemberName == "Get" || cma.MemberName == "get" ||
+                             cma.MemberName == "First" || cma.MemberName == "first" ||
+                             cma.MemberName == "Last" || cma.MemberName == "last") &&
+                            cma.Target is MemberAccessNode) {
+                            var inner = (MemberAccessNode) cma.Target;
+                            // Resolve field class and look up generic type
+                            string tc = InferCType(inner.Target);
+                            string bc = _StripNsPrefix(tc.replace("*","").strip());
+                            TypeNode? ft = _LookupFieldTypeNode(bc, inner.MemberName);
+                            if (ft is GenericTypeNode) {
+                                var gen = (GenericTypeNode) ft;
+                                if (gen.TypeArgs.size > 0)
+                                    return TypeToC(gen.TypeArgs[0]);
+                            }
+                        }
                     }
                 }
             }
@@ -2661,6 +2819,15 @@ namespace CodeTranspiler.Generator {
             // Member access: look up the field type in the class
             if (expr is MemberAccessNode) {
                 var ma = (MemberAccessNode) expr;
+
+                // Simple enum member: Direction.North → Tests_Direction
+                if (ma.Target is IdentifierNode) {
+                    string tname = ((IdentifierNode)ma.Target).Name;
+                    if (_IsSimpleEnum(tname))
+                        return _SymName(tname);
+                    if (_IsRichEnum(tname))
+                        return _SymName(tname);
+                }
 
                 // Known Net/stdlib struct fields — fast path
                 switch (ma.MemberName) {
@@ -2748,6 +2915,25 @@ namespace CodeTranspiler.Generator {
                 }
             } else if (target is ThisNode) {
                 className = _className;
+            } else if (target is MemberAccessNode) {
+                // e.g. this.Home → resolve Home's type, then look up method in that class
+                var ma = (MemberAccessNode) target;
+                string fieldOwnerClass = "";
+                if (ma.Target is ThisNode) {
+                    fieldOwnerClass = _className;
+                } else if (ma.Target is IdentifierNode) {
+                    var mid = (IdentifierNode) ma.Target;
+                    if (_localCTypes.has_key(mid.Name)) {
+                        string ct = _localCTypes[mid.Name];
+                        fieldOwnerClass = _StripNsPrefix(ct.replace("*","").strip());
+                    }
+                }
+                if (fieldOwnerClass != "") {
+                    string fieldType = _LookupFieldCType(fieldOwnerClass, ma.MemberName);
+                    if (fieldType != "") {
+                        className = _StripNsPrefix(fieldType.replace("*","").strip());
+                    }
+                }
             } else {
                 return "void*";
             }
@@ -2884,6 +3070,95 @@ namespace CodeTranspiler.Generator {
             }
         }
 
+        private void _EmitStringMethod(string obj, string method,
+                                        Gee.ArrayList<AstNode> args) {
+            switch (method) {
+                case "Substring": case "substring":
+                    Emit("String_Substring(%s".printf(obj));
+                    for (int i = 0; i < args.size; i++) {
+                        Emit(", "); args[i].Accept(this);
+                    }
+                    Emit(")");
+                    return;
+                case "Length": case "length":
+                    Emit("String_Length(%s)".printf(obj)); return;
+                case "Contains": case "contains":
+                    Emit("String_Contains(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")"); return;
+                case "StartsWith": case "startsWith":
+                    Emit("String_StartsWith(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")"); return;
+                case "EndsWith": case "endsWith":
+                    Emit("String_EndsWith(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")"); return;
+                case "ToUpper": case "toUpper":
+                    Emit("String_ToUpper(%s)".printf(obj)); return;
+                case "ToLower": case "toLower":
+                    Emit("String_ToLower(%s)".printf(obj)); return;
+                case "Trim": case "trim":
+                    Emit("String_Trim(%s)".printf(obj)); return;
+                case "Replace": case "replace":
+                    Emit("String_Replace(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(", ");
+                    if (args.size > 1) args[1].Accept(this);
+                    Emit(")"); return;
+                case "IndexOf": case "indexOf":
+                    Emit("String_IndexOf(%s, ".printf(obj));
+                    if (args.size > 0) args[0].Accept(this);
+                    Emit(")"); return;
+                case "ToInt": case "toInt":
+                    Emit("String_ToInt(%s)".printf(obj)); return;
+                case "IsEmpty": case "isEmpty":
+                    Emit("String_IsEmpty(%s)".printf(obj)); return;
+                default:
+                    // Fallback
+                    Emit("String_%s(%s".printf(method, obj));
+                    for (int i = 0; i < args.size; i++) {
+                        Emit(", "); args[i].Accept(this);
+                    }
+                    Emit(")");
+                    return;
+            }
+        }
+
+        private TypeNode? _LookupFieldTypeNode(string className, string fieldName) {
+            if (_program == null) return null;
+            string bare = _StripNsPrefix(className);
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != bare) continue;
+                foreach (var m in cls.Members) {
+                    if (m is FieldDeclNode) {
+                        var f = (FieldDeclNode) m;
+                        if (f.Name == fieldName) return f.FieldType;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private TypeNode? _LookupMethodReturnTypeNode(string className,
+                                                        string memberName) {
+            if (_program == null) return null;
+            string bare = _StripNsPrefix(className);
+            foreach (var decl in _program.Declarations) {
+                if (!(decl is ClassDeclNode)) continue;
+                var cls = (ClassDeclNode) decl;
+                if (cls.Name != bare) continue;
+                foreach (var m in cls.Members) {
+                    if (!(m is MethodDeclNode)) continue;
+                    var md = (MethodDeclNode) m;
+                    if (md.Name == memberName) return md.ReturnType;
+                }
+            }
+            return null;
+        }
+
         private string _LookupMethodInClass(string className,
                                              string memberName) {
             if (_program == null) return "void*";
@@ -2932,45 +3207,54 @@ namespace CodeTranspiler.Generator {
          * "pt: {p.X}"        → code_string_format("pt: %s", code_float_to_string(p->X))
          */
         private void EmitInterpolatedString(string raw) {
-            // Normalize multiline string:
-            // Strip leading newline and trailing whitespace+newline
             string normalized = raw;
+
+            // Only apply multiline normalization if the string has actual content
+            // (not simple escape sequences like "\n", "\t")
             if (raw.contains("\n")) {
-                // Strip leading newline if string starts with one
-                if (normalized.has_prefix("\n"))
-                    normalized = normalized.substring(1);
-                // Strip trailing newline + optional whitespace
-                if (normalized.has_suffix("\n"))
-                    normalized = normalized.substring(0, normalized.length - 1);
-                // Find minimum indentation to strip (dedent)
-                string[] lines = normalized.split("\n");
-                int minIndent = int.MAX;
-                foreach (var line in lines) {
-                    if (line.strip().length == 0) continue;
-                    int spaces = 0;
-                    for (int k = 0; k < line.length; k++) {
-                        if (line[k] == ' ')  spaces++;
-                        else if (line[k] == '\t') spaces += 4;
-                        else break;
-                    }
-                    if (spaces < minIndent) minIndent = spaces;
+                string[] checkLines = raw.split("\n");
+                bool hasContentLines = false;
+                foreach (var cl in checkLines) {
+                    if (cl.strip().length > 0) { hasContentLines = true; break; }
                 }
-                if (minIndent == int.MAX) minIndent = 0;
-                if (minIndent > 0) {
-                    var dedented = new StringBuilder();
-                    for (int li = 0; li < lines.length; li++) {
-                        string line = lines[li];
-                        int stripped = 0;
-                        int pos = 0;
-                        while (pos < line.length && stripped < minIndent) {
-                            if (line[pos] == ' ')  { stripped++;      pos++; }
-                            else if (line[pos] == '\t') { stripped += 4; pos++; }
+
+                if (hasContentLines) {
+                    // Strip leading newline if string starts with one
+                    if (normalized.has_prefix("\n"))
+                        normalized = normalized.substring(1);
+                    // Strip trailing newline + optional whitespace
+                    if (normalized.has_suffix("\n"))
+                        normalized = normalized.substring(0, normalized.length - 1);
+                    // Find minimum indentation to strip (dedent)
+                    string[] lines = normalized.split("\n");
+                    int minIndent = int.MAX;
+                    foreach (var line in lines) {
+                        if (line.strip().length == 0) continue;
+                        int spaces = 0;
+                        for (int k = 0; k < line.length; k++) {
+                            if (line[k] == ' ')  spaces++;
+                            else if (line[k] == '\t') spaces += 4;
                             else break;
                         }
-                        if (li > 0) dedented.append("\n");
-                        dedented.append(line.substring(pos));
+                        if (spaces < minIndent) minIndent = spaces;
                     }
-                    normalized = dedented.str;
+                    if (minIndent == int.MAX) minIndent = 0;
+                    if (minIndent > 0) {
+                        var dedented = new StringBuilder();
+                        for (int li = 0; li < lines.length; li++) {
+                            string line = lines[li];
+                            int stripped = 0;
+                            int pos = 0;
+                            while (pos < line.length && stripped < minIndent) {
+                                if (line[pos] == ' ')  { stripped++;      pos++; }
+                                else if (line[pos] == '\t') { stripped += 4; pos++; }
+                                else break;
+                            }
+                            if (li > 0) dedented.append("\n");
+                            dedented.append(line.substring(pos));
+                        }
+                        normalized = dedented.str;
+                    }
                 }
             }
 
@@ -3006,10 +3290,22 @@ namespace CodeTranspiler.Generator {
                         i++;
                         continue;
                     }
-                    string expr = normalized[start:end];
-                    fmt.append("%s");
-                    args.add(expr);
-                    i = end + 1;
+                    string expr = normalized[start:end].strip();
+                    // Only treat as interpolation if expr looks like code
+                    // (starts with letter, digit, 'this.', underscore, or contains ops)
+                    bool isInterp = expr.length > 0 &&
+                        (expr[0].isalpha() || expr[0] == '_' ||
+                         expr[0].isdigit() || expr.has_prefix("this.") ||
+                         expr.has_prefix("-") || expr.has_prefix("!"));
+                    if (isInterp) {
+                        fmt.append("%s");
+                        args.add(expr);
+                        i = end + 1;
+                    } else {
+                        // Not an interpolation — emit as literal {
+                        fmt.append_c(c);
+                        i++;
+                    }
                 } else {
                     if      (c == '"')  fmt.append("\\\"");
                     else if (c == '\\') fmt.append("\\\\");
@@ -3106,6 +3402,10 @@ namespace CodeTranspiler.Generator {
                     return "((%s) ? \"true\" : \"false\")".printf(cArg);
                 if (ct == "code_string")
                     return cArg;
+                // void* from Count()/Size() — these are i64 stored as void*
+                // Only do this for simple local vars, not struct fields
+                if (ct == "void*" && !srcExpr.contains("."))
+                    return "code_int_to_string((i64)(intptr_t)(%s))".printf(cArg);
             }
 
             // 2. Look up in symbol table (global symbols)

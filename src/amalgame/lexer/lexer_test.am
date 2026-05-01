@@ -7,16 +7,41 @@ public class Program {
         let source = "let x = 42"
         let lexer  = new Lexer(source, "<test>")
         let tokens = lexer.Tokenize()
-
-        let count = tokens.Count()
+        let count  = tokens.Count()
         Console.WriteLine("tokens: {count}")
 
         for i in 0..count {
-            let tok = tokens.Get(i)
+            let tok  = tokens.Get(i)
             let line = tok.Line
             let col  = tok.Column
             let val  = tok.Value
             Console.WriteLine("{line}:{col} {val}")
+        }
+
+        // Test 2: numbers and operators
+        let source2 = "123 + 456 == 579"
+        let lexer2  = new Lexer(source2, "<test2>")
+        let tokens2 = lexer2.Tokenize()
+        let count2  = tokens2.Count()
+        Console.WriteLine("---")
+        Console.WriteLine("tokens: {count2}")
+        for j in 0..count2 {
+            let tok2 = tokens2.Get(j)
+            let v    = tok2.Value
+            Console.WriteLine("{v}")
+        }
+
+        // Test 3: keywords
+        let source3 = "class Foo public static void"
+        let lexer3  = new Lexer(source3, "<test3>")
+        let tokens3 = lexer3.Tokenize()
+        let count3  = tokens3.Count()
+        Console.WriteLine("---")
+        Console.WriteLine("keywords: {count3}")
+        for k in 0..count3 {
+            let tok3 = tokens3.Get(k)
+            let v3   = tok3.Value
+            Console.WriteLine("{v3}")
         }
     }
 }

@@ -13,7 +13,10 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_Address Tests_Address;
+static code_string Tests_Address_Format(Tests_Address*);
 typedef struct _Tests_Person Tests_Person;
+static code_string Tests_Person_Describe(Tests_Person*);
+static code_bool Tests_Person_IsAdult(Tests_Person*);
 typedef struct _Tests_Program Tests_Program;
 static void Tests_Program_Main(int, char**);
 
@@ -84,7 +87,7 @@ Tests_Person* Tests_Person_new(code_string name, i64 age, Tests_Address* home) {
 code_string Tests_Person_Describe(Tests_Person* self) {
 
 #line 31 "./tests/samples/multi_class.am"
-    void* fmt = Tests_Address_Format(self->Home);
+    code_string fmt = Tests_Address_Format(self->Home);
 
 #line 32 "./tests/samples/multi_class.am"
     return code_string_format("%s (%s) lives at %s", self->Name, code_int_to_string(self->Age), fmt);

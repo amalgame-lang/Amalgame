@@ -59,7 +59,7 @@ static void Tests_Program_Main(int argc, char** argv) {
     code_string name = "Amalgame";
 
 #line 16 "./tests/samples/strings.am"
-    if (name == "Amalgame") {
+    if (code_string_equals(name, "Amalgame")) {
 
 #line 17 "./tests/samples/strings.am"
         Console_WriteLine("Name matches!");
