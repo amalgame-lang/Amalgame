@@ -13,6 +13,8 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_Animal Tests_Animal;
+static void Tests_Animal_Speak(Tests_Animal*);
+static code_string Tests_Animal_Describe(Tests_Animal*);
 typedef struct _Tests_Program Tests_Program;
 static void Tests_Program_Main(int, char**);
 

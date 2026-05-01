@@ -3,7 +3,6 @@ namespace Amalgame.Compiler
 import Amalgame.Collections
 import Amalgame.String
 
-// ── Lexer ─────────────────────────────────────────────
 public class Lexer {
     private Source:   string
     private Pos:      int
@@ -21,13 +20,59 @@ public class Lexer {
         this.Tokens   = new List<Token>()
     }
 
+    private bool IsSpace(string c) {
+        return c == " " || c == "\t" || c == "\r"
+    }
+
+    private bool IsDigit(string c) {
+        return String_Contains("0123456789", c)
+    }
+
+    private bool IsAlpha(string c) {
+        return String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", c)
+    }
+
+    private bool IsAlphaNum(string c) {
+        return this.IsAlpha(c) || this.IsDigit(c)
+    }
+
+    private string CharAt(int i) {
+        if (i < 0 || i >= String_Length(this.Source)) { return "" }
+        return String_Substring(this.Source, i, 1)
+    }
+
+    private void AddToken(TokenType t, string value) {
+        let tok = new Token(t, value, this.Line, this.Column, this.Filename)
+        this.Tokens.Add(tok)
+    }
+
+    private string Advance() {
+        let ch      = this.CharAt(this.Pos)
+        this.Pos    = this.Pos + 1
+        this.Column = this.Column + 1
+        return ch
+    }
+
+    private void SkipWhitespace() {
+        while (this.Pos < String_Length(this.Source)) {
+            let c = this.CharAt(this.Pos)
+            if (this.IsSpace(c)) {
+                this.Advance()
+            } else if (c == "/" && this.CharAt(this.Pos + 1) == "/") {
+                while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\n") {
+                    this.Advance()
+                }
+            } else {
+                break
+            }
+        }
+    }
+
     public List<Token> Tokenize() {
         while (this.Pos < String_Length(this.Source)) {
             this.SkipWhitespace()
             if (this.Pos >= String_Length(this.Source)) { break }
-
             let ch = this.CharAt(this.Pos)
-
             if (ch == "\n") {
                 this.AddToken(TokenType.NEWLINE, "\\n")
                 this.Pos    = this.Pos + 1
@@ -39,6 +84,8 @@ public class Lexer {
                 this.ReadNumber()
             } else if (this.IsAlpha(ch)) {
                 this.ReadIdentifier()
+            } else if (this.IsSpace(ch)) {
+                this.Advance()
             } else {
                 this.ReadSymbol()
             }
@@ -47,55 +94,8 @@ public class Lexer {
         return this.Tokens
     }
 
-    // ── Helpers ───────────────────────────────────────
-
-    private string CharAt(int i) {
-        if (i < 0 || i >= String_Length(this.Source)) { return "" }
-        return this.Source.Substring(i, 1)
-    }
-
-    private void AddToken(TokenType t, string value) {
-        let tok = new Token(t, value, this.Line, this.Column, this.Filename)
-        this.Tokens.Add(tok)
-    }
-
-    private string Advance() {
-        let ch  = this.CharAt(this.Pos)
-        this.Pos    = this.Pos + 1
-        this.Column = this.Column + 1
-        return ch
-    }
-
-    private bool IsDigit(string c) {
-        return c == "0" || c == "1" || c == "2" || c == "3" || c == "4" || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
-    }
-
-    private bool IsAlpha(string c) {
-        return String_Length(c) == 1 && (c == "_" || (c >= "a" && c <= "z") || (c >= "A" && c <= "Z"))
-    }
-
-    private bool IsAlphaNum(string c) {
-        return this.IsAlpha(c) || this.IsDigit(c)
-    }
-
-    private void SkipWhitespace() {
-        while (this.Pos < String_Length(this.Source)) {
-            let c = this.CharAt(this.Pos)
-            if (c == " " || c == "\t" || c == "\r") {
-                this.Advance()
-            } else if (c == "/" && this.CharAt(this.Pos + 1) == "/") {
-                while (this.Pos < String_Length(this.Source)
-                    && this.CharAt(this.Pos) != "\n") {
-                    this.Advance()
-                }
-            } else {
-                break
-            }
-        }
-    }
-
     private void ReadString() {
-        this.Advance() // opening "
+        this.Advance()
         var value = ""
         while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\"") {
             let c = this.Advance()
@@ -109,39 +109,42 @@ public class Lexer {
                 value = value + c
             }
         }
-        if (this.Pos < String_Length(this.Source)) {
-            this.Advance() // closing "
-        }
+        if (this.Pos < String_Length(this.Source)) { this.Advance() }
         this.AddToken(TokenType.STRING, value)
     }
 
     private void ReadNumber() {
-        var value  = ""
-        var isFloat = false
+        var startCol = this.Column
+        var value    = ""
+        var isFloat  = false
         while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {
             value = value + this.Advance()
         }
         if (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) == "." && this.IsDigit(this.CharAt(this.Pos + 1))) {
             isFloat = true
-            value   = value + this.Advance() // .
+            value   = value + this.Advance()
             while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {
                 value = value + this.Advance()
             }
         }
         if (isFloat) {
-            this.AddToken(TokenType.FLOAT, value)
+            let tok = new Token(TokenType.FLOAT,   value, this.Line, startCol, this.Filename)
+            this.Tokens.Add(tok)
         } else {
-            this.AddToken(TokenType.INTEGER, value)
+            let tok = new Token(TokenType.INTEGER, value, this.Line, startCol, this.Filename)
+            this.Tokens.Add(tok)
         }
     }
 
     private void ReadIdentifier() {
-        var value = ""
+        var startCol = this.Column
+        var value    = ""
         while (this.Pos < String_Length(this.Source) && this.IsAlphaNum(this.CharAt(this.Pos))) {
             value = value + this.Advance()
         }
-        let tt = this.LookupKeyword(value)
-        this.AddToken(tt, value)
+        let tt  = this.LookupKeyword(value)
+        let tok = new Token(tt, value, this.Line, startCol, this.Filename)
+        this.Tokens.Add(tok)
     }
 
     private TokenType LookupKeyword(string word) {
@@ -184,8 +187,9 @@ public class Lexer {
     }
 
     private void ReadSymbol() {
-        let c  = this.Advance()
-        let c2 = this.CharAt(this.Pos)
+        var startCol = this.Column
+        let c        = this.Advance()
+        let c2       = this.CharAt(this.Pos)
 
         if (c == "+") { this.AddToken(TokenType.OP_PLUS,    "+") }
         else if (c == "%") { this.AddToken(TokenType.OP_PERCENT, "%") }
@@ -200,74 +204,46 @@ public class Lexer {
         else if (c == ";") { this.AddToken(TokenType.SEMICOLON,  ";") }
         else if (c == "/") { this.AddToken(TokenType.OP_SLASH,   "/") }
         else if (c == "-") {
-            if (c2 == ">") {
-                this.Advance()
-                this.AddToken(TokenType.OP_THIN_ARROW, "->")
-            } else {
-                this.AddToken(TokenType.OP_MINUS, "-")
-            }
+            if (c2 == ">") { this.Advance()
+                this.AddToken(TokenType.OP_THIN_ARROW, "->") }
+            else { this.AddToken(TokenType.OP_MINUS, "-") }
         } else if (c == "*") {
             this.AddToken(TokenType.OP_STAR, "*")
         } else if (c == "=") {
-            if (c2 == "=") {
-                this.Advance()
-                this.AddToken(TokenType.OP_EQEQ, "==")
-            } else if (c2 == ">") {
-                this.Advance()
-                this.AddToken(TokenType.OP_ARROW, "=>")
-            } else {
-                this.AddToken(TokenType.OP_EQ, "=")
-            }
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_EQEQ, "==") }
+            else if (c2 == ">") { this.Advance()
+                this.AddToken(TokenType.OP_ARROW, "=>") }
+            else { this.AddToken(TokenType.OP_EQ, "=") }
         } else if (c == "!") {
-            if (c2 == "=") {
-                this.Advance()
-                this.AddToken(TokenType.OP_NEQ, "!=")
-            } else {
-                this.AddToken(TokenType.OP_NOT, "!")
-            }
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_NEQ, "!=") }
+            else { this.AddToken(TokenType.OP_NOT, "!") }
         } else if (c == "<") {
-            if (c2 == "=") {
-                this.Advance()
-                this.AddToken(TokenType.OP_LTE, "<=")
-            } else {
-                this.AddToken(TokenType.OP_LT, "<")
-            }
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_LTE, "<=") }
+            else { this.AddToken(TokenType.OP_LT, "<") }
         } else if (c == ">") {
-            if (c2 == "=") {
-                this.Advance()
-                this.AddToken(TokenType.OP_GTE, ">=")
-            } else {
-                this.AddToken(TokenType.OP_GT, ">")
-            }
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_GTE, ">=") }
+            else { this.AddToken(TokenType.OP_GT, ">") }
         } else if (c == "&") {
-            if (c2 == "&") {
-                this.Advance()
-                this.AddToken(TokenType.OP_AND, "&&")
-            }
+            if (c2 == "&") { this.Advance()
+                this.AddToken(TokenType.OP_AND, "&&") }
         } else if (c == "|") {
-            if (c2 == "|") {
-                this.Advance()
-                this.AddToken(TokenType.OP_OR, "||")
-            }
+            if (c2 == "|") { this.Advance()
+                this.AddToken(TokenType.OP_OR, "||") }
         } else if (c == ".") {
-            if (c2 == ".") {
-                this.Advance()
-                this.AddToken(TokenType.OP_DOTDOT, "..")
-            } else {
-                this.AddToken(TokenType.OP_DOT, ".")
-            }
+            if (c2 == ".") { this.Advance()
+                this.AddToken(TokenType.OP_DOTDOT, "..") }
+            else { this.AddToken(TokenType.OP_DOT, ".") }
         } else if (c == ":") {
-            if (c2 == ":") {
-                this.Advance()
-                this.AddToken(TokenType.COLON, "::")
-            } else {
-                this.AddToken(TokenType.COLON, ":")
-            }
+            if (c2 == ":") { this.Advance()
+                this.AddToken(TokenType.COLON, "::") }
+            else { this.AddToken(TokenType.COLON, ":") }
         } else if (c == "?") {
-            if (c2 == "?") {
-                this.Advance()
-                this.AddToken(TokenType.OP_COALESCE, "??")
-            }
+            if (c2 == "?") { this.Advance()
+                this.AddToken(TokenType.OP_COALESCE, "??") }
         } else {
             this.AddToken(TokenType.UNKNOWN, c)
         }
