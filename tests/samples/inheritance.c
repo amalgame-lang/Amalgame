@@ -13,8 +13,13 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_Shape Tests_Shape;
+static code_string Tests_Shape_Describe(Tests_Shape*);
 typedef struct _Tests_Circle Tests_Circle;
+static f32 Tests_Circle_Area(Tests_Circle*);
+static code_string Tests_Circle_Describe(Tests_Circle*);
 typedef struct _Tests_Rectangle Tests_Rectangle;
+static f32 Tests_Rectangle_Area(Tests_Rectangle*);
+static code_string Tests_Rectangle_Describe(Tests_Rectangle*);
 typedef struct _Tests_Program Tests_Program;
 static void Tests_Program_Main(int, char**);
 
