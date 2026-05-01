@@ -89,8 +89,7 @@ public class Parser {
 
     private bool IsEnd() {
         let tok = this.Current()
-        let v = tok.Value
-        return v == "" || tok.Type == TokenType.EOF
+        return tok.Type == TokenType.EOF
     }
 
     private bool CheckType(TokenType t) {
@@ -789,7 +788,14 @@ public class Parser {
 
         if (this.CheckType(TokenType.INTEGER)) {
             this.Advance()
-            return Ast.IntLit(v, tok.Line, tok.Column)
+            let lit = Ast.IntLit(v, tok.Line, tok.Column)
+            // Range: 0..count
+            if (this.CheckValue("..")) {
+                this.Advance()
+                let right = this.ParsePrimary()
+                return Ast.Binary(lit, "..", right, tok.Line, tok.Column)
+            }
+            return lit
         }
         if (this.CheckType(TokenType.STRING)) {
             this.Advance()
@@ -822,7 +828,14 @@ public class Parser {
         }
         if (this.CheckType(TokenType.IDENTIFIER)) {
             this.Advance()
-            return Ast.Ident(v, tok.Line, tok.Column)
+            let ident = Ast.Ident(v, tok.Line, tok.Column)
+            // Range: i..count
+            if (this.CheckValue("..")) {
+                this.Advance()
+                let right = this.ParsePrimary()
+                return Ast.Binary(ident, "..", right, tok.Line, tok.Column)
+            }
+            return ident
         }
 
         this.Advance()
