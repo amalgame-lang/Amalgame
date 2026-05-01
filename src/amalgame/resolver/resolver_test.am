@@ -1,0 +1,38 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+public class Program {
+    public static void Main(string[] args) {
+        // Parse token.am then resolve it
+        let src  = File.ReadAll("./src/amalgame/lexer/token.am")
+        let lex  = new Lexer(src, "token.am")
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+
+        let res  = new Resolver()
+        res.Resolve(prog)
+
+        let hasErr = res.HasErrors()
+        Console.WriteLine("token.am resolver errors: {hasErr}")
+        if (hasErr) {
+            let errs = res.GetErrors()
+            Console.WriteLine(errs)
+        }
+
+        // Parse ast.am then resolve
+        let src2  = File.ReadAll("./src/amalgame/parser/ast.am")
+        let lex2  = new Lexer(src2, "ast.am")
+        let toks2 = lex2.Tokenize()
+        let par2  = new Parser(toks2)
+        let prog2 = par2.Parse()
+
+        let res2  = new Resolver()
+        res2.Resolve(prog2)
+        let hasErr2 = res2.HasErrors()
+        Console.WriteLine("ast.am resolver errors: {hasErr2}")
+    }
+}
