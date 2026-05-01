@@ -1,0 +1,37 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+public class Program {
+    public static void Main(string[] args) {
+        let source = File.ReadAll("./src/amalgame/parser/test_input.txt")
+        let len    = String_Length(source)
+        Console.WriteLine("source len: {len}")
+
+        let lexer  = new Lexer(source, "test")
+        let tokens = lexer.Tokenize()
+        let count  = tokens.Count()
+        Console.WriteLine("tokens: {count}")
+
+        let parser = new Parser(tokens)
+        let prog   = parser.Parse()
+        let ns     = prog.Str
+        Console.WriteLine("namespace: {ns}")
+
+        let decls  = prog.Children.Count()
+        Console.WriteLine("decls: {decls}")
+
+        if (decls > 0) {
+            let cls    = prog.Children.Get(0)
+            let cname  = cls.Name
+            let members = cls.Children.Count()
+            Console.WriteLine("class: {cname}")
+            Console.WriteLine("members: {members}")
+        }
+
+        let hasErr = parser.HasErrors()
+        Console.WriteLine("errors: {hasErr}")
+    }
+}

@@ -1,0 +1,24 @@
+namespace Amalgame.Compiler
+
+import Amalgame.String
+
+public class Program {
+    public static void Main(string[] args) {
+        // Test == on string literals
+        let a = "/"
+        let b = "/"
+        let r1 = a == b
+        Console.WriteLine("/ == /: {r1}")
+
+        // Test == on substring result
+        let src = "//comment"
+        let c1 = String_Substring(src, 0, 1)
+        let c2 = String_Substring(src, 1, 1)
+        let r2 = c1 == "/"
+        let r3 = c2 == "/"
+        Console.WriteLine("c1 == /: {r2}")
+        Console.WriteLine("c2 == /: {r3}")
+        let r4 = c1 == c2
+        Console.WriteLine("c1 == c2: {r4}")
+    }
+}

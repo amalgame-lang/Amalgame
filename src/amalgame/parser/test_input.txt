@@ -1,0 +1,13 @@
+namespace Test
+
+public class Foo {
+    public X: int
+
+    public Foo(int x) {
+        this.X = x
+    }
+
+    public int GetX() {
+        return this.X
+    }
+}
