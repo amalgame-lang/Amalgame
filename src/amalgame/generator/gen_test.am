@@ -6,23 +6,27 @@ import Amalgame.String
 
 public class Program {
     public static void Main(string[] args) {
-        // Generate C from token.am
-        let src  = File.ReadAll("./src/amalgame/lexer/token.am")
-        let lex  = new Lexer(src, "token.am")
-        let toks = lex.Tokenize()
-        let par  = new Parser(toks)
-        let prog = par.Parse()
+        let files = new List<string>()
+        files.Add("./src/amalgame/lexer/token.am")
+        files.Add("./src/amalgame/parser/ast.am")
 
-        let gen  = new CGen()
-        let code = gen.Generate(prog)
+        let count = files.Count()
+        for i in 0..count {
+            let path = files.Get(i)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
 
-        File.WriteAll("./token_bootstrap.c", code)
-        let clen = String_Length(code)
-        Console.WriteLine("Generated C: {clen} chars")
-        Console.WriteLine("Written to: token_bootstrap.c")
+            let gen  = new CGen()
+            let code = gen.Generate(prog)
+            let clen = String_Length(code)
 
-        // Show first 500 chars
-        let preview = String_Substring(code, 0, 500)
-        Console.WriteLine(preview)
+            // Write output
+            let outName = path + "_bootstrap.c"
+            File.WriteAll(outName, code)
+            Console.WriteLine("{path}: {clen} chars → {outName}")
+        }
     }
 }
