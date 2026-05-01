@@ -1,13 +1,114 @@
-namespace Test
+namespace Amalgame.Compiler
 
-public class Foo {
-    public X: int
+// ── Token types ───────────────────────────────────────
+public enum TokenType {
+    // Literals
+    INTEGER
+    FLOAT
+    STRING
+    BOOL
+    NULL
 
-    public Foo(int x) {
-        this.X = x
+    // Identifiers & keywords
+    IDENTIFIER
+    KW_LET
+    KW_VAR
+    KW_IF
+    KW_ELSE
+    KW_FOR
+    KW_WHILE
+    KW_RETURN
+    KW_CLASS
+    KW_PUBLIC
+    KW_PRIVATE
+    KW_STATIC
+    KW_NEW
+    KW_THIS
+    KW_NULL
+    KW_TRUE
+    KW_FALSE
+    KW_IMPORT
+    KW_NAMESPACE
+    KW_ENUM
+    KW_MATCH
+    KW_IN
+    KW_IS
+    KW_AS
+    KW_VOID
+    KW_INT
+    KW_STRING_TYPE
+    KW_BOOL_TYPE
+    KW_FLOAT_TYPE
+    KW_TRY
+    KW_CATCH
+    KW_THROW
+    KW_FINALLY
+    KW_INTERFACE
+    KW_RECORD
+    KW_FUNC
+
+    // Operators
+    OP_PLUS
+    OP_MINUS
+    OP_STAR
+    OP_SLASH
+    OP_PERCENT
+    OP_EQ
+    OP_EQEQ
+    OP_NEQ
+    OP_LT
+    OP_GT
+    OP_LTE
+    OP_GTE
+    OP_AND
+    OP_OR
+    OP_NOT
+    OP_ARROW
+    OP_THIN_ARROW
+    OP_DOT
+    OP_DOTDOT
+    OP_COALESCE
+
+    // Delimiters
+    LPAREN
+    RPAREN
+    LBRACE
+    RBRACE
+    LBRACKET
+    RBRACKET
+    COMMA
+    COLON
+    SEMICOLON
+    AT
+
+    // Special
+    NEWLINE
+    EOF
+    UNKNOWN
+}
+
+// ── Token ─────────────────────────────────────────────
+public class Token {
+    public Type:     TokenType
+    public Value:    string
+    public Line:     int
+    public Column:   int
+    public Filename: string
+
+    public Token(TokenType t, string value, int line, int col, string file) {
+        this.Type     = t
+        this.Value    = value
+        this.Line     = line
+        this.Column   = col
+        this.Filename = file
     }
 
-    public int GetX() {
-        return this.X
+    public string ToString() {
+        return "Token({this.Type}, '{this.Value}', {this.Line}:{this.Column})"
+    }
+
+    public bool IsKeyword() {
+        let v = this.Type
+        return v == TokenType.KW_LET || v == TokenType.KW_VAR || v == TokenType.KW_IF || v == TokenType.KW_ELSE || v == TokenType.KW_FOR || v == TokenType.KW_WHILE || v == TokenType.KW_RETURN || v == TokenType.KW_CLASS || v == TokenType.KW_PUBLIC || v == TokenType.KW_STATIC || v == TokenType.KW_NEW || v == TokenType.KW_ENUM || v == TokenType.KW_MATCH || v == TokenType.KW_IN
     }
 }
