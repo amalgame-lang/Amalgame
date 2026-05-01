@@ -1,0 +1,16 @@
+namespace Test
+
+public class Program {
+    public static void Main(string[] args) {
+        let s = "let x"
+        let pos = 0
+        let c = String_Substring(s, pos, 1)
+        Console.WriteLine("char 0: '{c}'")
+        let isSpace = (c == " ")
+        Console.WriteLine("isSpace: {isSpace}")
+        let c3 = String_Substring(s, 3, 1)
+        Console.WriteLine("char 3: '{c3}'")
+        let isSpace3 = (c3 == " ")
+        Console.WriteLine("isSpace3: {isSpace3}")
+    }
+}

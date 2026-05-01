@@ -13,7 +13,10 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_Address Tests_Address;
+static code_string Tests_Address_Format(Tests_Address*);
 typedef struct _Tests_Person Tests_Person;
+static code_string Tests_Person_Describe(Tests_Person*);
+static code_bool Tests_Person_IsAdult(Tests_Person*);
 typedef struct _Tests_Program Tests_Program;
 static void Tests_Program_Main(int, char**);
 
