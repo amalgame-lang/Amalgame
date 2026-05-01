@@ -1,0 +1,781 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── Parser ────────────────────────────────────────────
+public class Parser {
+    private Tokens:   List<Token>
+    private Pos:      int
+    private Errors:   List<string>
+
+    public Parser(List<Token> tokens) {
+        this.Tokens = tokens
+        this.Pos    = 0
+        this.Errors = new List<string>()
+    }
+
+    // ── Public API ────────────────────────────────────
+
+    public AstNode Parse() {
+        let prog = Ast.Program(1, 1)
+        this.SkipNewlines()
+
+        // namespace declaration
+        if (this.CheckKw("namespace")) {
+            this.Advance()
+            prog.Str = this.ParseQualifiedName()
+            this.SkipNewlines()
+        }
+
+        // import declarations
+        while (this.CheckKw("import")) {
+            this.Advance()
+            this.ParseQualifiedName() // consume, ignore for now
+            this.SkipNewlines()
+        }
+
+        // top-level declarations
+        while (!this.IsEnd()) {
+            this.SkipNewlines()
+            if (this.IsEnd()) { break }
+            let decl = this.ParseDecl()
+            if (decl != null) {
+                prog.Children.Add(decl)
+            }
+            this.SkipNewlines()
+        }
+        return prog
+    }
+
+    public bool HasErrors() {
+        return this.Errors.Count() > 0
+    }
+
+    public string GetErrors() {
+        var result = ""
+        let count = this.Errors.Count()
+        for i in 0..count {
+            let e = this.Errors.Get(i)
+            result = result + e + "\n"
+        }
+        return result
+    }
+
+    // ── Token navigation ──────────────────────────────
+
+    private Token Current() {
+        if (this.Pos >= this.Tokens.Count()) {
+            return this.Tokens.Get(this.Tokens.Count() - 1)
+        }
+        return this.Tokens.Get(this.Pos)
+    }
+
+    private Token Peek(int offset) {
+        let i = this.Pos + offset
+        let count = this.Tokens.Count()
+        if (i >= count) { return this.Tokens.Get(count - 1) }
+        return this.Tokens.Get(i)
+    }
+
+    private Token Advance() {
+        let tok = this.Current()
+        this.Pos = this.Pos + 1
+        return tok
+    }
+
+    private bool IsEnd() {
+        let tok = this.Current()
+        return tok.Value == "" || this.CheckType(TokenType.EOF)
+    }
+
+    private bool CheckType(TokenType t) {
+        let tok = this.Current()
+        return tok.Type == t
+    }
+
+    private bool CheckKw(string word) {
+        let tok = this.Current()
+        return tok.Value == word
+    }
+
+    private bool CheckValue(string v) {
+        let tok = this.Current()
+        return tok.Value == v
+    }
+
+    private void SkipNewlines() {
+        while (!this.IsEnd() && this.CheckType(TokenType.NEWLINE)) {
+            this.Advance()
+        }
+    }
+
+    private Token Expect(string value) {
+        let tok = this.Current()
+        if (tok.Value == value) {
+            return this.Advance()
+        }
+        let line = tok.Line
+        let col  = tok.Column
+        let got  = tok.Value
+        this.Errors.Add("Expected '" + value + "' at " + String_FromInt(line) + ":" + String_FromInt(col) + " got '" + got + "'")
+        return tok
+    }
+
+    private Token ExpectIdent() {
+        let tok = this.Current()
+        if (this.CheckType(TokenType.IDENTIFIER)) {
+            return this.Advance()
+        }
+        let line = tok.Line
+        let got  = tok.Value
+        this.Errors.Add("Expected identifier at line " + String_FromInt(line) + " got '" + got + "'")
+        return tok
+    }
+
+    // ── Qualified name (e.g. Amalgame.Collections) ────
+
+    private string ParseQualifiedName() {
+        let tok = this.ExpectIdent()
+        var name = tok.Value
+        while (this.CheckValue(".")) {
+            this.Advance()
+            let next = this.ExpectIdent()
+            name = name + "." + next.Value
+        }
+        return name
+    }
+
+    // ── Top-level declarations ─────────────────────────
+
+    private AstNode ParseDecl() {
+        var isPublic  = false
+        var isPrivate = false
+        var isStatic  = false
+
+        if (this.CheckKw("public"))  { isPublic  = true; this.Advance() }
+        if (this.CheckKw("private")) { isPrivate = true; this.Advance() }
+        if (this.CheckKw("static"))  { isStatic  = true; this.Advance() }
+
+        if (this.CheckKw("class")) {
+            return this.ParseClass(isPublic)
+        }
+        if (this.CheckKw("enum")) {
+            return this.ParseEnum(isPublic)
+        }
+        if (this.CheckKw("interface")) {
+            return this.ParseInterface(isPublic)
+        }
+
+        // Skip unknown tokens
+        this.Advance()
+        return null
+    }
+
+    // ── Class declaration ──────────────────────────────
+
+    private AstNode ParseClass(bool isPublic) {
+        let tok = this.Advance() // consume 'class'
+        let name = this.ExpectIdent()
+        let cls = Ast.Class(name.Value, tok.Line, tok.Column)
+        cls.Flag = isPublic
+
+        // Generic params <T, ...> — skip
+        if (this.CheckValue("<")) {
+            this.Advance()
+            while (!this.IsEnd() && !this.CheckValue(">")) {
+                this.Advance()
+            }
+            if (this.CheckValue(">")) { this.Advance() }
+        }
+
+        // Base class 'extends Foo'
+        if (this.CheckKw("extends")) {
+            this.Advance()
+            let baseName = this.ParseQualifiedName()
+            cls.Str = baseName
+        }
+
+        this.SkipNewlines()
+        this.Expect("{")
+        this.SkipNewlines()
+
+        while (!this.IsEnd() && !this.CheckValue("}")) {
+            let member = this.ParseMember()
+            if (member != null) {
+                cls.Children.Add(member)
+            }
+            this.SkipNewlines()
+        }
+        this.Expect("}")
+        return cls
+    }
+
+    // ── Class member ───────────────────────────────────
+
+    private AstNode ParseMember() {
+        var isPublic  = false
+        var isPrivate = false
+        var isStatic  = false
+
+        if (this.CheckKw("public"))  { isPublic  = true; this.Advance() }
+        if (this.CheckKw("private")) { isPrivate = true; this.Advance() }
+        if (this.CheckKw("static"))  { isStatic  = true; this.Advance() }
+
+        // Field: Name: Type
+        // Method: ReturnType Name(...) or Name(...) (constructor)
+        let tok = this.Current()
+
+        // Peek ahead to decide field vs method
+        // Field: IDENT COLON ...
+        // Method: IDENT LPAREN or TYPE IDENT LPAREN
+
+        if (this.CheckType(TokenType.IDENTIFIER)) {
+            let peekTok = this.Peek(1)
+            if (peekTok.Value == ":") {
+                return this.ParseField(isPublic)
+            }
+            if (peekTok.Value == "(") {
+                return this.ParseMethod("void", isPublic, isStatic, tok.Line, tok.Column)
+            }
+            // Type then method name
+            let typeName = this.ParseTypeName()
+            let nameT = this.Current()
+            if (this.CheckType(TokenType.IDENTIFIER)) {
+                return this.ParseMethod(typeName, isPublic, isStatic, tok.Line, tok.Column)
+            }
+        }
+
+        // Skip unknown member tokens
+        while (!this.IsEnd() && !this.CheckType(TokenType.NEWLINE) && !this.CheckValue("}")) {
+            this.Advance()
+        }
+        return null
+    }
+
+    // ── Field declaration ──────────────────────────────
+
+    private AstNode ParseField(bool isPublic) {
+        let nameTok = this.ExpectIdent()
+        this.Expect(":")
+        let typeName = this.ParseTypeName()
+        let field = Ast.VarDecl(nameTok.Value, false, nameTok.Line, nameTok.Column)
+        field.Str  = typeName
+        field.Flag = isPublic
+        // optional initializer
+        if (this.CheckValue("=")) {
+            this.Advance()
+            field.Left = this.ParseExpr()
+        }
+        return field
+    }
+
+    // ── Method declaration ─────────────────────────────
+
+    private AstNode ParseMethod(string retType, bool isPublic, bool isStatic, int line, int col) {
+        let nameTok = this.ExpectIdent()
+        let method = Ast.Method(nameTok.Value, retType, line, col)
+        method.Flag  = isPublic
+        method.Flag2 = isStatic
+
+        // Generic params — skip
+        if (this.CheckValue("<")) {
+            this.Advance()
+            while (!this.IsEnd() && !this.CheckValue(">")) { this.Advance() }
+            if (this.CheckValue(">")) { this.Advance() }
+        }
+
+        this.Expect("(")
+        // Parameters
+        while (!this.IsEnd() && !this.CheckValue(")")) {
+            if (this.CheckValue(",")) { this.Advance(); continue }
+            let param = this.ParseParam()
+            if (param != null) {
+                method.Params.Add(param)
+            }
+        }
+        this.Expect(")")
+
+        // Expression body =>
+        if (this.CheckValue("=>")) {
+            this.Advance()
+            let body = Ast.Block(line, col)
+            let ret = Ast.Return(this.ParseExpr(), line, col)
+            body.Children.Add(ret)
+            method.Body = body
+            return method
+        }
+
+        this.SkipNewlines()
+        if (this.CheckValue("{")) {
+            method.Body = this.ParseBlock()
+        }
+        return method
+    }
+
+    // ── Parameter ──────────────────────────────────────
+
+    private AstNode ParseParam() {
+        if (!this.CheckType(TokenType.IDENTIFIER)) { return null }
+        let typeName = this.ParseTypeName()
+        if (!this.CheckType(TokenType.IDENTIFIER)) {
+            return Ast.Param("_", typeName, 0, 0)
+        }
+        let nameTok = this.ExpectIdent()
+        return Ast.Param(nameTok.Value, typeName, nameTok.Line, nameTok.Column)
+    }
+
+    // ── Type name ─────────────────────────────────────
+
+    private string ParseTypeName() {
+        if (!this.CheckType(TokenType.IDENTIFIER)) {
+            let tok = this.Current()
+            let v = tok.Value
+            if (v == "void" || v == "int" || v == "string" || v == "bool" || v == "float") {
+                this.Advance()
+                return v
+            }
+            return "void"
+        }
+        let tok = this.ExpectIdent()
+        var name = tok.Value
+        // Generic: List<int>
+        if (this.CheckValue("<")) {
+            this.Advance()
+            name = name + "<"
+            var depth = 1
+            while (!this.IsEnd() && depth > 0) {
+                let inner = this.Current()
+                let v = inner.Value
+                if (v == "<") { depth = depth + 1 }
+                if (v == ">") { depth = depth - 1 }
+                if (depth > 0) { name = name + v }
+                this.Advance()
+            }
+            name = name + ">"
+        }
+        // Array: string[]
+        if (this.CheckValue("[")) {
+            this.Advance()
+            this.Expect("]")
+            name = name + "[]"
+        }
+        // Nullable: Type?
+        if (this.CheckValue("?")) {
+            this.Advance()
+            name = name + "?"
+        }
+        return name
+    }
+
+    // ── Block { ... } ─────────────────────────────────
+
+    private AstNode ParseBlock() {
+        let tok = this.Expect("{")
+        let block = Ast.Block(tok.Line, tok.Column)
+        this.SkipNewlines()
+
+        while (!this.IsEnd() && !this.CheckValue("}")) {
+            let stmt = this.ParseStmt()
+            if (stmt != null) {
+                block.Children.Add(stmt)
+            }
+            this.SkipNewlines()
+        }
+        this.Expect("}")
+        return block
+    }
+
+    // ── Statement ─────────────────────────────────────
+
+    private AstNode ParseStmt() {
+        let tok = this.Current()
+        let v   = tok.Value
+
+        if (v == "let" || v == "var") {
+            return this.ParseVarDecl()
+        }
+        if (v == "return") {
+            return this.ParseReturn()
+        }
+        if (v == "if") {
+            return this.ParseIf()
+        }
+        if (v == "while") {
+            return this.ParseWhile()
+        }
+        if (v == "for") {
+            return this.ParseForIn()
+        }
+        if (v == "break") {
+            this.Advance()
+            return Ast.This(tok.Line, tok.Column) // reuse as BREAK placeholder
+        }
+        if (v == "continue") {
+            this.Advance()
+            return Ast.This(tok.Line, tok.Column) // reuse as CONTINUE placeholder
+        }
+        if (v == "{") {
+            return this.ParseBlock()
+        }
+
+        // Expression statement
+        let expr = this.ParseExpr()
+        return expr
+    }
+
+    // ── Variable declaration ───────────────────────────
+
+    private AstNode ParseVarDecl() {
+        let kwTok = this.Advance() // let / var
+        let isMut = kwTok.Value == "var"
+        let nameTok = this.ExpectIdent()
+        let decl = Ast.VarDecl(nameTok.Value, isMut, nameTok.Line, nameTok.Column)
+
+        // Optional type annotation
+        if (this.CheckValue(":")) {
+            this.Advance()
+            decl.Str = this.ParseTypeName()
+        }
+
+        if (this.CheckValue("=")) {
+            this.Advance()
+            decl.Left = this.ParseExpr()
+        }
+        return decl
+    }
+
+    // ── Return statement ───────────────────────────────
+
+    private AstNode ParseReturn() {
+        let tok = this.Advance() // 'return'
+        if (this.CheckType(TokenType.NEWLINE) || this.CheckValue("}") || this.IsEnd()) {
+            return Ast.Return(null, tok.Line, tok.Column)
+        }
+        let val = this.ParseExpr()
+        return Ast.Return(val, tok.Line, tok.Column)
+    }
+
+    // ── If statement ───────────────────────────────────
+
+    private AstNode ParseIf() {
+        let tok = this.Advance() // 'if'
+        let hasParen = this.CheckValue("(")
+        if (hasParen) { this.Advance() }
+        let cond = this.ParseExpr()
+        if (hasParen) { this.Expect(")") }
+        this.SkipNewlines()
+        let then = this.ParseBlock()
+        let node = Ast.If(cond, then, tok.Line, tok.Column)
+
+        this.SkipNewlines()
+        if (this.CheckKw("else")) {
+            this.Advance()
+            this.SkipNewlines()
+            node.Flag = true // HasElse
+            if (this.CheckKw("if")) {
+                node.Else = this.ParseIf()
+            } else {
+                node.Else = this.ParseBlock()
+            }
+        }
+        return node
+    }
+
+    // ── While statement ────────────────────────────────
+
+    private AstNode ParseWhile() {
+        let tok = this.Advance() // 'while'
+        let hasParen = this.CheckValue("(")
+        if (hasParen) { this.Advance() }
+        let cond = this.ParseExpr()
+        if (hasParen) { this.Expect(")") }
+        this.SkipNewlines()
+        let body = this.ParseBlock()
+        let node = new AstNode(NodeKind.WHILE_STMT, tok.Line, tok.Column)
+        node.Cond = cond
+        node.Body = body
+        return node
+    }
+
+    // ── For-in statement ───────────────────────────────
+
+    private AstNode ParseForIn() {
+        let tok = this.Advance() // 'for'
+        let varTok = this.ExpectIdent()
+        this.Expect("in")
+        let iter = this.ParseExpr()
+        this.SkipNewlines()
+        let body = this.ParseBlock()
+        let node = new AstNode(NodeKind.FOR_IN_STMT, tok.Line, tok.Column)
+        node.Name = varTok.Value
+        node.Left = iter
+        node.Body = body
+        return node
+    }
+
+    // ── Enum declaration ───────────────────────────────
+
+    private AstNode ParseEnum(bool isPublic) {
+        let tok = this.Advance() // 'enum'
+        let nameTok = this.ExpectIdent()
+        let en = new AstNode(NodeKind.ENUM_DECL, tok.Line, tok.Column)
+        en.Name = nameTok.Value
+        en.Flag = isPublic
+        this.SkipNewlines()
+        this.Expect("{")
+        this.SkipNewlines()
+        while (!this.IsEnd() && !this.CheckValue("}")) {
+            if (this.CheckType(TokenType.NEWLINE)) { this.Advance(); continue }
+            if (this.CheckValue(",")) { this.Advance(); continue }
+            let memberTok = this.ExpectIdent()
+            let member = Ast.Ident(memberTok.Value, memberTok.Line, memberTok.Column)
+            // Rich enum variant with params — skip
+            if (this.CheckValue("(")) {
+                this.Advance()
+                while (!this.IsEnd() && !this.CheckValue(")")) { this.Advance() }
+                this.Expect(")")
+            }
+            en.Children.Add(member)
+            this.SkipNewlines()
+        }
+        this.Expect("}")
+        return en
+    }
+
+    // ── Interface declaration ──────────────────────────
+
+    private AstNode ParseInterface(bool isPublic) {
+        let tok = this.Advance() // 'interface'
+        let nameTok = this.ExpectIdent()
+        let iface = new AstNode(NodeKind.CLASS_DECL, tok.Line, tok.Column)
+        iface.Name  = nameTok.Value
+        iface.Flag  = isPublic
+        iface.Flag2 = true // is interface
+        this.SkipNewlines()
+        this.Expect("{")
+        this.SkipNewlines()
+        while (!this.IsEnd() && !this.CheckValue("}")) {
+            this.SkipNewlines()
+            if (this.CheckValue("}")) { break }
+            let typeName = this.ParseTypeName()
+            let mname = this.ExpectIdent()
+            let m = Ast.Method(mname.Value, typeName, mname.Line, mname.Column)
+            this.Expect("(")
+            while (!this.IsEnd() && !this.CheckValue(")")) {
+                if (this.CheckValue(",")) { this.Advance(); continue }
+                let p = this.ParseParam()
+                if (p != null) { m.Params.Add(p) }
+            }
+            this.Expect(")")
+            iface.Children.Add(m)
+            this.SkipNewlines()
+        }
+        this.Expect("}")
+        return iface
+    }
+
+    // ── Expressions ────────────────────────────────────
+
+    private AstNode ParseExpr() {
+        return this.ParseAssign()
+    }
+
+    private AstNode ParseAssign() {
+        let left = this.ParseOr()
+        if (this.CheckValue("=")) {
+            let tok = this.Advance()
+            let right = this.ParseAssign()
+            return Ast.Binary(left, "=", right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseOr() {
+        var left = this.ParseAnd()
+        while (this.CheckValue("||")) {
+            let tok = this.Advance()
+            let right = this.ParseAnd()
+            left = Ast.Binary(left, "||", right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseAnd() {
+        var left = this.ParseEquality()
+        while (this.CheckValue("&&")) {
+            let tok = this.Advance()
+            let right = this.ParseEquality()
+            left = Ast.Binary(left, "&&", right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseEquality() {
+        var left = this.ParseRelational()
+        while (this.CheckValue("==") || this.CheckValue("!=")) {
+            let tok = this.Advance()
+            let right = this.ParseRelational()
+            left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseRelational() {
+        var left = this.ParseAdd()
+        while (this.CheckValue("<") || this.CheckValue(">") || this.CheckValue("<=") || this.CheckValue(">=")) {
+            let tok = this.Advance()
+            let right = this.ParseAdd()
+            left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseAdd() {
+        var left = this.ParseMul()
+        while (this.CheckValue("+") || this.CheckValue("-")) {
+            let tok = this.Advance()
+            let right = this.ParseMul()
+            left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseMul() {
+        var left = this.ParseUnary()
+        while (this.CheckValue("*") || this.CheckValue("/") || this.CheckValue("%")) {
+            let tok = this.Advance()
+            let right = this.ParseUnary()
+            left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseUnary() {
+        if (this.CheckValue("!") || this.CheckValue("-")) {
+            let tok = this.Advance()
+            let operand = this.ParseUnary()
+            let node = new AstNode(NodeKind.UNARY, tok.Line, tok.Column)
+            node.Str  = tok.Value
+            node.Left = operand
+            return node
+        }
+        return this.ParsePostfix()
+    }
+
+    private AstNode ParsePostfix() {
+        var expr = this.ParsePrimary()
+        while (true) {
+            if (this.CheckValue(".")) {
+                let tok = this.Advance()
+                let memberTok = this.ExpectIdent()
+                expr = Ast.Member(expr, memberTok.Value, tok.Line, tok.Column)
+                if (this.CheckValue("(")) {
+                    expr = this.ParseCallArgs(expr)
+                }
+            } else if (this.CheckValue("(")) {
+                expr = this.ParseCallArgs(expr)
+            } else if (this.CheckValue("[")) {
+                let tok = this.Advance()
+                let idx = this.ParseExpr()
+                this.Expect("]")
+                let node = new AstNode(NodeKind.INDEX_EXPR, tok.Line, tok.Column)
+                node.Left  = expr
+                node.Right = idx
+                expr = node
+            } else {
+                break
+            }
+        }
+        return expr
+    }
+
+    private AstNode ParseCallArgs(AstNode callee) {
+        let tok = this.Expect("(")
+        let call = Ast.Call(callee, tok.Line, tok.Column)
+        this.SkipNewlines()
+        while (!this.IsEnd() && !this.CheckValue(")")) {
+            if (this.CheckValue(",")) { this.Advance(); continue }
+            let arg = this.ParseExpr()
+            call.Args.Add(arg)
+            this.SkipNewlines()
+        }
+        this.Expect(")")
+        return call
+    }
+
+    private AstNode ParsePrimary() {
+        let tok = this.Current()
+        let v   = tok.Value
+
+        if (this.CheckType(TokenType.INTEGER)) {
+            this.Advance()
+            return Ast.IntLit(v, tok.Line, tok.Column)
+        }
+        if (this.CheckType(TokenType.STRING)) {
+            this.Advance()
+            return Ast.StrLit(v, tok.Line, tok.Column)
+        }
+        if (v == "true") {
+            this.Advance()
+            return Ast.BoolLit(true, tok.Line, tok.Column)
+        }
+        if (v == "false") {
+            this.Advance()
+            return Ast.BoolLit(false, tok.Line, tok.Column)
+        }
+        if (v == "null") {
+            this.Advance()
+            return new AstNode(NodeKind.LITERAL_NULL, tok.Line, tok.Column)
+        }
+        if (v == "this") {
+            this.Advance()
+            return Ast.This(tok.Line, tok.Column)
+        }
+        if (v == "new") {
+            return this.ParseNew()
+        }
+        if (v == "(") {
+            this.Advance()
+            let inner = this.ParseExpr()
+            this.Expect(")")
+            return inner
+        }
+        if (this.CheckType(TokenType.IDENTIFIER)) {
+            this.Advance()
+            return Ast.Ident(v, tok.Line, tok.Column)
+        }
+
+        // Skip unknown
+        this.Advance()
+        return Ast.Ident("_unknown_", tok.Line, tok.Column)
+    }
+
+    private AstNode ParseNew() {
+        let tok = this.Advance() // 'new'
+        let typeName = this.ParseQualifiedName()
+        // Generic params
+        if (this.CheckValue("<")) {
+            this.Advance()
+            var depth = 1
+            while (!this.IsEnd() && depth > 0) {
+                let inner = this.Current()
+                let iv = inner.Value
+                if (iv == "<") { depth = depth + 1 }
+                if (iv == ">") { depth = depth - 1 }
+                this.Advance()
+            }
+        }
+        let node = Ast.NewExpr(typeName, tok.Line, tok.Column)
+        if (this.CheckValue("(")) {
+            this.Advance()
+            while (!this.IsEnd() && !this.CheckValue(")")) {
+                if (this.CheckValue(",")) { this.Advance(); continue }
+                let arg = this.ParseExpr()
+                node.Args.Add(arg)
+            }
+            this.Expect(")")
+        }
+        return node
+    }
+}
