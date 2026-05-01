@@ -1,0 +1,191 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+
+// ── Node kinds ────────────────────────────────────────
+public enum NodeKind {
+    PROGRAM
+    CLASS_DECL
+    METHOD_DECL
+    FIELD_DECL
+    PARAM
+    ENUM_DECL
+    BLOCK
+    VAR_DECL
+    ASSIGN
+    RETURN_STMT
+    IF_STMT
+    WHILE_STMT
+    FOR_IN_STMT
+    BREAK_STMT
+    CONTINUE_STMT
+    BINARY
+    UNARY
+    CALL
+    MEMBER
+    IDENTIFIER
+    LITERAL_INT
+    LITERAL_FLOAT
+    LITERAL_STRING
+    LITERAL_BOOL
+    LITERAL_NULL
+    NEW_EXPR
+    THIS_EXPR
+    INDEX_EXPR
+}
+
+// ── Single AstNode type — all fields, used by kind ───
+public class AstNode {
+    public Kind:   NodeKind
+    public Line:   int
+    public Column: int
+
+    // Name fields (class name, method name, var name, ident, member)
+    public Name:   string
+
+    // String values (literal raw, op, type name, namespace)
+    public Str:    string
+    public Str2:   string
+
+    // Bool flags
+    public Flag:   bool
+    public Flag2:  bool
+
+    // Child nodes (nullable)
+    public Left:   AstNode?
+    public Right:  AstNode?
+    public Cond:   AstNode?
+    public Body:   AstNode?
+    public Else:   AstNode?
+
+    // Child lists
+    public Children: List<AstNode>
+    public Params:   List<AstNode>
+    public Args:     List<AstNode>
+
+    public AstNode(NodeKind kind, int line, int col) {
+        this.Kind     = kind
+        this.Line     = line
+        this.Column   = col
+        this.Name     = ""
+        this.Str      = ""
+        this.Str2     = ""
+        this.Flag     = false
+        this.Flag2    = false
+        this.Left     = null
+        this.Right    = null
+        this.Cond     = null
+        this.Body     = null
+        this.Else     = null
+        this.Children = new List<AstNode>()
+        this.Params   = new List<AstNode>()
+        this.Args     = new List<AstNode>()
+    }
+}
+
+// ── Factory functions ─────────────────────────────────
+
+public class Ast {
+    public static AstNode Program(int line, int col) {
+        return new AstNode(NodeKind.PROGRAM, line, col)
+    }
+
+    public static AstNode Class(string name, int line, int col) {
+        let n = new AstNode(NodeKind.CLASS_DECL, line, col)
+        n.Name = name
+        return n
+    }
+
+    public static AstNode Method(string name, string retType, int line, int col) {
+        let n = new AstNode(NodeKind.METHOD_DECL, line, col)
+        n.Name = name
+        n.Str  = retType
+        return n
+    }
+
+    public static AstNode Param(string name, string typeName, int line, int col) {
+        let n = new AstNode(NodeKind.PARAM, line, col)
+        n.Name = name
+        n.Str  = typeName
+        return n
+    }
+
+    public static AstNode Block(int line, int col) {
+        return new AstNode(NodeKind.BLOCK, line, col)
+    }
+
+    public static AstNode VarDecl(string name, bool isMut, int line, int col) {
+        let n    = new AstNode(NodeKind.VAR_DECL, line, col)
+        n.Name   = name
+        n.Flag   = isMut
+        return n
+    }
+
+    public static AstNode Return(AstNode value, int line, int col) {
+        let n  = new AstNode(NodeKind.RETURN_STMT, line, col)
+        n.Left = value
+        return n
+    }
+
+    public static AstNode If(AstNode cond, AstNode then, int line, int col) {
+        let n  = new AstNode(NodeKind.IF_STMT, line, col)
+        n.Cond = cond
+        n.Body = then
+        return n
+    }
+
+    public static AstNode Binary(AstNode left, string op, AstNode right, int line, int col) {
+        let n    = new AstNode(NodeKind.BINARY, line, col)
+        n.Left   = left
+        n.Str    = op
+        n.Right  = right
+        return n
+    }
+
+    public static AstNode Call(AstNode callee, int line, int col) {
+        let n      = new AstNode(NodeKind.CALL, line, col)
+        n.Left     = callee
+        return n
+    }
+
+    public static AstNode Member(AstNode target, string member, int line, int col) {
+        let n    = new AstNode(NodeKind.MEMBER, line, col)
+        n.Left   = target
+        n.Name   = member
+        return n
+    }
+
+    public static AstNode Ident(string name, int line, int col) {
+        let n  = new AstNode(NodeKind.IDENTIFIER, line, col)
+        n.Name = name
+        return n
+    }
+
+    public static AstNode IntLit(string raw, int line, int col) {
+        let n = new AstNode(NodeKind.LITERAL_INT, line, col)
+        n.Str = raw
+        return n
+    }
+
+    public static AstNode StrLit(string raw, int line, int col) {
+        let n = new AstNode(NodeKind.LITERAL_STRING, line, col)
+        n.Str = raw
+        return n
+    }
+
+    public static AstNode BoolLit(bool val, int line, int col) {
+        let n    = new AstNode(NodeKind.LITERAL_BOOL, line, col)
+        n.Flag   = val
+        return n
+    }
+
+    public static AstNode NewExpr(string typeName, int line, int col) {
+        let n  = new AstNode(NodeKind.NEW_EXPR, line, col)
+        n.Name = typeName
+        return n
+    }
+
+    public static AstNode This(int line, int col) {
+        return new AstNode(NodeKind.THIS_EXPR, line, col)
+    }
+}
