@@ -5,14 +5,16 @@ import Amalgame.String
 
 // Sentinel node for "no result"
 public class Parser {
-    private Tokens:   List<Token>
-    private Pos:      int
-    private Errors:   List<string>
+    private Tokens:     List<Token>
+    private Pos:        int
+    private Errors:     List<string>
+    private ParenDepth: int
 
     public Parser(List<Token> tokens) {
-        this.Tokens = tokens
-        this.Pos    = 0
-        this.Errors = new List<string>()
+        this.Tokens     = tokens
+        this.Pos        = 0
+        this.Errors     = new List<string>()
+        this.ParenDepth = 0
     }
 
     // ── Public API ────────────────────────────────────
@@ -507,9 +509,15 @@ public class Parser {
     private AstNode ParseIf() {
         let tok = this.Advance()
         let hasParen = this.CheckValue("(")
-        if (hasParen) { this.Advance() }
+        if (hasParen) {
+            this.Advance()
+            this.ParenDepth = this.ParenDepth + 1
+        }
         let cond = this.ParseExpr()
-        if (hasParen) { this.Expect(")") }
+        if (hasParen) {
+            this.ParenDepth = this.ParenDepth - 1
+            this.Expect(")")
+        }
         this.SkipNewlines()
         let then = this.ParseBlock()
         let node = Ast.If(cond, then, tok.Line, tok.Column)
@@ -532,9 +540,15 @@ public class Parser {
     private AstNode ParseWhile() {
         let tok = this.Advance()
         let hasParen = this.CheckValue("(")
-        if (hasParen) { this.Advance() }
+        if (hasParen) {
+            this.Advance()
+            this.ParenDepth = this.ParenDepth + 1
+        }
         let cond = this.ParseExpr()
-        if (hasParen) { this.Expect(")") }
+        if (hasParen) {
+            this.ParenDepth = this.ParenDepth - 1
+            this.Expect(")")
+        }
         this.SkipNewlines()
         let body = this.ParseBlock()
         let node = new AstNode(NodeKind.WHILE_STMT, tok.Line, tok.Column)
@@ -757,27 +771,26 @@ public class Parser {
     private AstNode ParseCallArgs(AstNode callee) {
         let tok = this.Expect("(")
         let call = Ast.Call(callee, tok.Line, tok.Column)
+        this.ParenDepth = this.ParenDepth + 1
+        let myDepth = this.ParenDepth
         this.SkipNewlines()
         var callSafety = 0
-        while (!this.IsEnd() && !this.CheckValue(")")) {
+        while (!this.IsEnd()) {
             callSafety = callSafety + 1
-            if (callSafety > 200) {
-                let sv = this.Current().Value
-                        break
-            }
+            if (callSafety > 200) { break }
+            if (this.CheckValue(")") && this.ParenDepth == myDepth) { break }
             if (this.CheckValue(",")) {
                 this.Advance()
                 continue
             }
             this.SkipNewlines()
-            if (this.CheckValue(")") || this.IsEnd()) { break }
+            if (this.CheckValue(")") && this.ParenDepth == myDepth) { break }
+            if (this.IsEnd()) { break }
             let arg = this.ParseExpr()
             call.Args.Add(arg)
             this.SkipNewlines()
-            if (!this.CheckValue(")") && !this.CheckValue(",") && !this.IsEnd()) {
-                this.Advance()
-            }
         }
+        this.ParenDepth = this.ParenDepth - 1
         this.Expect(")")
         return call
     }
