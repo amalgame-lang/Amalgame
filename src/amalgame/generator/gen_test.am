@@ -1,0 +1,32 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+public class Program {
+    public static void Main(string[] args) {
+        let files = new List<string>()
+        files.Add("./src/amalgame/lexer/token.am")
+        files.Add("./src/amalgame/parser/ast.am")
+
+        let count = files.Count()
+        for i in 0..count {
+            let path = files.Get(i)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+
+            let gen  = new CGen()
+            let code = gen.Generate(prog)
+            let clen = String_Length(code)
+
+            // Write output
+            let outName = path + "_bootstrap.c"
+            File.WriteAll(outName, code)
+            Console.WriteLine("{path}: {clen} chars → {outName}")
+        }
+    }
+}

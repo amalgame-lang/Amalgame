@@ -1816,16 +1816,21 @@ namespace CodeTranspiler.Generator {
 
             // String equality: string == string → code_string_equals()
             if (n.Operator == "==" || n.Operator == "!=") {
-                string lt = InferCType(n.Left);
-                string rt = InferCType(n.Right);
-                if (lt == "code_string" || rt == "code_string") {
-                    if (n.Operator == "!=") Emit("!");
-                    Emit("code_string_equals(");
-                    n.Left.Accept(this);
-                    Emit(", ");
-                    n.Right.Accept(this);
-                    Emit(")");
-                    return;
+                // If either side is null literal, use pointer comparison
+                bool leftIsNull  = (n.Left  is NullNode);
+                bool rightIsNull = (n.Right is NullNode);
+                if (!leftIsNull && !rightIsNull) {
+                    string lt = InferCType(n.Left);
+                    string rt = InferCType(n.Right);
+                    if (lt == "code_string" || rt == "code_string") {
+                        if (n.Operator == "!=") Emit("!");
+                        Emit("code_string_equals(");
+                        n.Left.Accept(this);
+                        Emit(", ");
+                        n.Right.Accept(this);
+                        Emit(")");
+                        return;
+                    }
                 }
             }
 
