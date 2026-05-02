@@ -1,0 +1,408 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── C Code Emitter ────────────────────────────────────
+public class Emitter {
+    private Lines:  List<string>
+    private Indent: int
+
+    public Emitter() {
+        this.Lines  = new List<string>()
+        this.Indent = 0
+    }
+
+    public void Emit(string text) {
+        this.Lines.Add(text)
+    }
+
+    public void EmitLine(string text) {
+        var line = ""
+        let i = this.Indent
+        for k in 0..i {
+            line = line + "    "
+        }
+        line = line + text
+        this.Lines.Add(line)
+    }
+
+    public void EmitBlank() {
+        this.Lines.Add("")
+    }
+
+    public void Indent_() {
+        this.Indent = this.Indent + 1
+    }
+
+    public void Dedent() {
+        this.Indent = this.Indent - 1
+    }
+
+    public string GetOutput() {
+        var result = ""
+        let count = this.Lines.Count()
+        for i in 0..count {
+            let line = this.Lines.Get(i)
+            result = result + line + "\n"
+        }
+        return result
+    }
+}
+
+// ── C Generator ───────────────────────────────────────
+public class CGen {
+    private Out:      Emitter
+    private NsPrefix: string
+
+    public CGen() {
+        this.Out      = new Emitter()
+        this.NsPrefix = ""
+    }
+
+    public string Generate(AstNode prog) {
+        let ns = prog.Str
+        if (String_Length(ns) > 0) {
+            this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+        this.EmitHeader()
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            this.EmitForwardDecl(decl)
+        }
+        this.Out.EmitBlank()
+        for j in 0..decls {
+            let decl = prog.Children.Get(j)
+            this.EmitDecl(decl)
+        }
+        return this.Out.GetOutput()
+    }
+
+    private string SymName(string name) {
+        let ns = this.NsPrefix
+        if (String_Length(ns) > 0) {
+            return ns + "_" + name
+        }
+        return name
+    }
+
+    private void EmitHeader() {
+        this.Out.EmitLine("#include <stdio.h>")
+        this.Out.EmitLine("#include <stdlib.h>")
+        this.Out.EmitLine("#include <string.h>")
+        this.Out.EmitLine("#include \"_runtime.h\"")
+        this.Out.EmitBlank()
+    }
+
+    private void EmitForwardDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.ENUM_DECL) {
+            let name = this.SymName(decl.Name)
+            this.Out.EmitLine("typedef enum _" + name + " " + name + ";")
+        }
+        if (k == NodeKind.CLASS_DECL) {
+            let name = this.SymName(decl.Name)
+            this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+        }
+    }
+
+    private void EmitDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.ENUM_DECL) { this.EmitEnum(decl) }
+        if (k == NodeKind.CLASS_DECL) { this.EmitClass(decl) }
+    }
+
+    private void EmitEnum(AstNode en) {
+        let name  = this.SymName(en.Name)
+        let count = en.Children.Count()
+        this.Out.EmitLine("enum _" + name + " {")
+        this.Out.Indent_()
+        for i in 0..count {
+            let member = en.Children.Get(i)
+            let mname  = this.SymName(member.Name)
+            let last   = i == count - 1
+            if (last) {
+                this.Out.EmitLine(mname)
+            } else {
+                this.Out.EmitLine(mname + ",")
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("};")
+        this.Out.EmitBlank()
+    }
+
+    private void EmitClass(AstNode cls) {
+        let name    = this.SymName(cls.Name)
+        let members = cls.Children.Count()
+
+        // Struct fields
+        this.Out.EmitLine("struct _" + name + " {")
+        this.Out.Indent_()
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.VAR_DECL) {
+                let ftype = this.TypeToC(m.Str)
+                this.Out.EmitLine(ftype + " " + m.Name + ";")
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("};")
+        this.Out.EmitBlank()
+
+        // Forward declare methods
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.METHOD_DECL) {
+                let sig = this.MethodSig(m, name)
+                this.Out.EmitLine("static " + sig + ";")
+            }
+        }
+        this.Out.EmitBlank()
+
+        // Constructor
+        this.Out.EmitLine(name + "* " + name + "_new() {")
+        this.Out.Indent_()
+        this.Out.EmitLine(name + "* self = (" + name + "*) GC_MALLOC(sizeof(" + name + "));")
+        this.Out.EmitLine("return self;")
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+
+        // Methods
+        for j in 0..members {
+            let m2  = cls.Children.Get(j)
+            let mk2 = m2.Kind
+            if (mk2 == NodeKind.METHOD_DECL) {
+                this.EmitMethod(m2, name)
+            }
+        }
+    }
+
+    private string MethodSig(AstNode method, string className) {
+        let retType  = this.TypeToC(method.Str)
+        let isStatic = method.Flag2
+        var sig      = retType + " " + className + "_" + method.Name + "("
+        var first    = true
+        if (!isStatic) {
+            sig   = sig + className + "* self"
+            first = false
+        }
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p  = method.Params.Get(i)
+            if (!first) { sig = sig + ", " }
+            sig   = sig + this.TypeToC(p.Str) + " " + p.Name
+            first = false
+        }
+        sig = sig + ")"
+        return sig
+    }
+
+    private void EmitMethod(AstNode method, string className) {
+        let sig = this.MethodSig(method, className)
+        this.Out.EmitLine(sig + " {")
+        this.Out.Indent_()
+        if (method.Body != null) {
+            this.EmitBlock(method.Body)
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+    }
+
+    // ── Block & Statements ────────────────────────────
+
+    private void EmitBlock(AstNode block) {
+        let count = block.Children.Count()
+        for i in 0..count {
+            let stmt = block.Children.Get(i)
+            this.EmitStmt(stmt)
+        }
+    }
+
+    private void EmitStmt(AstNode stmt) {
+        let k = stmt.Kind
+        if (k == NodeKind.VAR_DECL) {
+            let t = this.TypeToC(stmt.Str)
+            if (String_Length(t) == 0 || t == "void") {
+                this.Out.EmitLine("void* " + stmt.Name + " = " + this.EmitExprStr(stmt.Left) + ";")
+            } else {
+                this.Out.EmitLine(t + " " + stmt.Name + " = " + this.EmitExprStr(stmt.Left) + ";")
+            }
+        }
+        if (k == NodeKind.RETURN_STMT) {
+            if (stmt.Left != null) {
+                this.Out.EmitLine("return " + this.EmitExprStr(stmt.Left) + ";")
+            } else {
+                this.Out.EmitLine("return;")
+            }
+        }
+        if (k == NodeKind.IF_STMT) {
+            this.Out.EmitLine("if (" + this.EmitExprStr(stmt.Cond) + ") {")
+            this.Out.Indent_()
+            if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+            this.Out.Dedent()
+            if (stmt.Else != null) {
+                this.Out.EmitLine("} else {")
+                this.Out.Indent_()
+                this.EmitBlock(stmt.Else)
+                this.Out.Dedent()
+            }
+            this.Out.EmitLine("}")
+        }
+        if (k == NodeKind.WHILE_STMT) {
+            this.Out.EmitLine("while (" + this.EmitExprStr(stmt.Cond) + ") {")
+            this.Out.Indent_()
+            if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+        }
+        if (k == NodeKind.FOR_IN_STMT) {
+            let iter = this.EmitExprStr(stmt.Left)
+            let vn   = stmt.Name
+            this.Out.EmitLine("/* for " + vn + " in " + iter + " */")
+        }
+        if (k == NodeKind.BREAK_STMT) {
+            this.Out.EmitLine("break;")
+        }
+        if (k == NodeKind.CONTINUE_STMT) {
+            this.Out.EmitLine("continue;")
+        }
+        if (k == NodeKind.BINARY) {
+            this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+        if (k == NodeKind.CALL) {
+            this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+        if (k == NodeKind.MEMBER) {
+            this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+    }
+
+    // ── Expression emission ───────────────────────────
+
+    private string EmitExprStr(AstNode expr) {
+        if (expr == null) { return "NULL" }
+        let k = expr.Kind
+        if (k == NodeKind.LITERAL_INT)    { return expr.Str }
+        if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }
+        if (k == NodeKind.LITERAL_STRING) { return "\"" + expr.Str + "\"" }
+        if (k == NodeKind.LITERAL_BOOL) {
+            if (expr.Flag) { return "1" }
+            return "0"
+        }
+        if (k == NodeKind.LITERAL_NULL) { return "NULL" }
+        if (k == NodeKind.THIS_EXPR)    { return "self" }
+        if (k == NodeKind.IDENTIFIER)   { return expr.Name }
+        if (k == NodeKind.MEMBER) {
+            if (expr.Left != null) {
+                let lk = expr.Left.Kind
+                if (lk == NodeKind.THIS_EXPR) {
+                    return "self->" + expr.Name
+                }
+                if (lk == NodeKind.IDENTIFIER) {
+                    // Enum member: TokenType.KW_LET → Ns_KW_LET (not Ns_TokenType_KW_LET)
+                    // Local variable member: obj.Field → obj->Field
+                    // We use _ for enum type names (capitalized), -> for variables (lowercase)
+                    let tname = expr.Left.Name
+                    let firstChar = String_Substring(tname, 0, 1)
+                    let isUpper = firstChar == String_ToUpper(firstChar)
+                    if (isUpper) {
+                        // Enum or class type → use _ prefix with just the member name
+                        return this.SymName(expr.Name)
+                    }
+                    return tname + "->" + expr.Name
+                }
+            }
+            let target = this.EmitExprStr(expr.Left)
+            return target + "->" + expr.Name
+        }
+        if (k == NodeKind.BINARY) {
+            let left  = this.EmitExprStr(expr.Left)
+            let op    = expr.Str
+            let right = this.EmitExprStr(expr.Right)
+            if (op == "==") { return "code_string_equals(" + left + ", " + right + ")" }
+            if (op == "!=") { return "!code_string_equals(" + left + ", " + right + ")" }
+            return left + " " + op + " " + right
+        }
+        if (k == NodeKind.UNARY) {
+            let operand = this.EmitExprStr(expr.Left)
+            return expr.Str + operand
+        }
+        if (k == NodeKind.CALL) {
+            let callee = this.EmitCalleeStr(expr.Left)
+            var callStr = callee + "("
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                let arg = expr.Args.Get(i)
+                if (i > 0) { callStr = callStr + ", " }
+                callStr = callStr + this.EmitExprStr(arg)
+            }
+            callStr = callStr + ")"
+            return callStr
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            let tname = this.SymName(expr.Name)
+            return tname + "_new()"
+        }
+        if (k == NodeKind.INDEX_EXPR) {
+            let base = this.EmitExprStr(expr.Left)
+            let idx  = this.EmitExprStr(expr.Right)
+            return base + "[" + idx + "]"
+        }
+        return "/* unknown expr */"
+    }
+
+    private string EmitCalleeStr(AstNode callee) {
+        if (callee == null) { return "NULL" }
+        let k = callee.Kind
+        if (k == NodeKind.IDENTIFIER) { return callee.Name }
+        if (k == NodeKind.MEMBER) {
+            let mname = callee.Name
+            if (callee.Left != null) {
+                let lk = callee.Left.Kind
+                if (lk == NodeKind.THIS_EXPR) {
+                    // this.Method() → ClassName_Method(self, ...)
+                    return this.NsPrefix + "_" + mname
+                }
+                if (lk == NodeKind.IDENTIFIER) {
+                    let tname = callee.Left.Name
+                    let firstChar = String_Substring(tname, 0, 1)
+                    let isUpper = firstChar == String_ToUpper(firstChar)
+                    if (isUpper) {
+                        // Static call: ClassName.Method → Ns_ClassName_Method
+                        return this.SymName(tname) + "_" + mname
+                    }
+                    // Instance call: obj.Method → obj_Method (simplified)
+                    return tname + "_" + mname
+                }
+            }
+            let target = this.EmitExprStr(callee.Left)
+            return target + "_" + mname
+        }
+        return this.EmitExprStr(callee)
+    }
+
+    // ── Type mapping ──────────────────────────────────
+
+    private string TypeToC(string t) {
+        if (t == "int")    { return "i64" }
+        if (t == "float")  { return "double" }
+        if (t == "bool")   { return "code_bool" }
+        if (t == "string") { return "code_string" }
+        if (t == "void")   { return "void" }
+        if (t == "")       { return "void" }
+        if (String_EndsWith(t, "?")) {
+            let inner = String_Substring(t, 0, String_Length(t) - 1)
+            return this.TypeToC(inner) + "*"
+        }
+        if (String_StartsWith(t, "List<")) {
+            return "AmalgameList*"
+        }
+        return this.SymName(t) + "*"
+    }
+}
