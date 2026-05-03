@@ -118,11 +118,6 @@ Stratégie conseillée :
 3. Garder l'historique git — il a de la valeur
 4. Quand le bootstrap compiler peut se compiler lui-même → archiver Vala dans `legacy/`
 
-**Si tu veux vraiment repartir à zéro :**
-- Créer un nouveau repo `Amalgame2` ou `amalgame-lang`
-- Garder l'ancien en lecture seule comme référence
-- Copier uniquement `src/amalgame/` + `src/transpiler/runtime/` + `tests/`
-
 ---
 
 ## Comment reprendre dans une nouvelle conversation
