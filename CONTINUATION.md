@@ -8,7 +8,7 @@
 ### Repository
 - **GitHub** : https://github.com/BastienMOUGET/Amalgame
 - **Branche active** : `feature/bootstrap`
-- **Version** : v0.9.4
+- **Version** : v0.9.5
 - **Tests** : 126/126 PASS (76 core + 50 stdlib)
 
 ### Ce qui existe
@@ -19,109 +19,85 @@ Pipeline : source.am → Lexer → Parser → Resolver → TypeChecker → CGene
 Build : `./compile.sh` (meson + ninja)
 
 #### Bootstrap Amalgame (src/amalgame/)
-Le compiler écrit en Amalgame lui-même — objectif final du bootstrap.
+Le compilateur écrit en Amalgame lui-même — objectif final du bootstrap.
 
 ```
 src/amalgame/
 ├── lexer/
-│   ├── token.am      — TokenType enum + Token class ✅
+│   ├── token.am      — TokenType enum + Token class ✅ → C sans warnings ✅
 │   ├── lexer.am      — Lexer complet ✅
-│   └── lexer_test.am — Test (3 sources, 6 tokens) ✅
+│   └── lexer_test.am — Test
 ├── parser/
-│   ├── ast.am        — AstNode flat + Ast factory ✅
+│   ├── ast.am        — AstNode flat + Ast factory ✅ → C sans warnings ✅
 │   ├── parser.am     — Parser récursif descendant ✅
-│   ├── parser_test_real.am — Test
-│   └── test_input.txt — Source de test
+│   └── parser_test_real.am — Test
 ├── resolver/
 │   ├── symbol.am     — SymbolTable + Resolver ✅
 │   └── resolver_test.am — Test cross-fichiers ✅
-└── generator/
-    ├── c_gen.am      — Générateur C ✅
-    └── gen_test.am   — Test : génère token.am → C → GCC OK ✅
+├── generator/
+│   ├── c_gen.am      — Générateur C ✅ (v0.9.5)
+│   └── gen_test.am   — Test : génère token.am + ast.am → C → GCC OK ✅
+├── diagnostics.am    — DiagnosticFormatter ✅
+└── main.am           — Point d'entrée compilateur bootstrap ✅
 ```
 
-#### Pipeline bootstrap fonctionnel
+#### Pipeline bootstrap fonctionnel (v0.9.5)
 ```
-token.am → Lexer.am → Parser.am → CGen.am → token_bootstrap.c → GCC ✅
-ast.am   → Lexer.am → Parser.am → CGen.am → ast_bootstrap.c   → GCC ✅
-```
-
----
-
-## Fichiers à nettoyer (racine du projet)
-
-Ces fichiers sont des artefacts de debug/test à supprimer :
-```bash
-rm debug_eq debug_eq.c
-rm file_lex_test file_lex_test.c
-rm gen_test gen_test.c
-rm lexer_file_test lexer_file_test.c
-rm lexer_simple lexer_simple.c
-rm parser_real parser_real.c
-rm parser_test parser_test.c parser_test2 parser_test2.c
-rm resolver_test resolver_test.c
-rm test_contains2 test_contains2.c
-rm token_bootstrap.c token_bootstrap.o
-rm src/amalgame/lexer/token.am_bootstrap.c
-rm src/amalgame/parser/ast.am_bootstrap.c
+token.am → CGen → token.am_bootstrap.c → GCC sans warnings ✅
+ast.am   → CGen → ast.am_bootstrap.c   → GCC sans warnings ✅
+lexer.am → CGen → lexer.am_bootstrap.c → GCC ← PROCHAINE ÉTAPE (v0.9.6)
 ```
 
 ---
 
-## Prochaines étapes v0.9.5+
+## Ce qui a été fait en v0.9.5 (session mai 2026)
 
-### Court terme — Compléter le CGen bootstrap
+### Changements dans c_gen.am
+1. **Type inference** : `let n = new AstNode(...)` → `Amalgame_Compiler_AstNode* n` (plus de `void*`)
+2. **`new List<T>()`** : parser bootstrap strip les génériques → `node.Name = "List"` → géré dans `TypeToC` et `EmitExprStr`
+3. **Constructeurs avec params** : `_new()` prend les params du constructeur Amalgame et exécute le body
+4. **Enums sans pointeur** : `TypeToC("NodeKind")` → `Amalgame_Compiler_NodeKind` (pas de `*`)
+   - `EnumNames` list alimentée dans `EmitForwardDecl`
+   - `IsEnum()` consulté dans `TypeToC` et `InferTypeFromExpr`
+5. **`== / !=` type-aware** : string → `code_string_equals()`, enum/int/bool → `==`/`!=` C direct
+6. **Inférence de champs** : `let v = this.Type` → inféré comme `Amalgame_Compiler_TokenType` via `FieldTypeGet`
+7. **`(void)self; (void)param;`** : suppression des `-Wunused-parameter`
+8. **`public` vs `private`** : méthodes `public` émises sans `static` en C
+9. **Args dans `_new()`** : `new AstNode(kind, line, col)` → `AstNode_new(kind, line, col)` avec args
 
-**v0.9.5** — Type inference dans CGen
-- `let n = Ast.Class(...)` → inférer `AstNode*` (actuellement `void*`)
-- `List<T>` → `AmalgameList*` + méthodes `Add/Count/Get`
-- `new List<AstNode>()` → `AmalgameList_new()`
-- Objectif : `ast.am → C → GCC sans warnings`
+### Changements dans _runtime.h
+- `static AmalgameException _am_ex = { {{0}}, ... }` → `static AmalgameException _am_ex;`
+  (zero-init garanti par C99 §6.7.8/10 pour les variables statiques — plus de `-Wmissing-braces`)
 
-**v0.9.6** — Générer lexer.am en C compilable
-- Gérer les méthodes avec corps complexes
-- `for i in 0..count` → boucle C
-- Méthodes de string : `String_Contains`, `String_Substring`, etc.
-- Objectif : `lexer.am → C → GCC sans errors`
+---
 
-**v0.9.7** — Bootstrap complet
-- Générer parser.am + resolver/symbol.am
-- Linker tout ensemble
-- Objectif : `amc_bootstrap` binaire qui peut compiler un "Hello World"
+## Prochaines étapes
 
-### Moyen terme — Optimisations et parité Vala
+### v0.9.6 — lexer.am → C sans erreurs/warnings
 
-**Limitations connues du langage Amalgame à corriger :**
-1. `AstNode?` comme type de retour de méthode non supporté
-2. `super()` non supporté (héritage)  
-3. `&&`/`||` multilignes sans parens explicites
-4. Paramètres `out` non supportés
-5. `string == ""` sur retour de méthode directement
+Problèmes identifiés à corriger dans c_gen.am :
 
-**Features à ajouter (parité Vala) :**
-- Pattern matching plus riche (guards, nested patterns)
-- Generics dans les classes utilisateur (pas seulement stdlib)
-- Lambdas/closures plus robustes
-- Type aliases
-- Modules/namespaces imbriqués
-- Exceptions plus riches
+**1. `else if` chaîné**
+- Parser bootstrap : `else if` stocké comme `node.Else = IF_STMT`
+- CGen actuel : `stmt.Else != null` → `EmitBlock(stmt.Else)` → émet IF comme statement dans un bloc else
+- Fix : détecter `stmt.Else.Kind == IF_STMT` → émettre `} else if (...) {` récursivement
 
-### Long terme — Refactoring repository
+**2. `for i in 0..count` → émet juste un commentaire**
+- CGen émet `/* for i in count */` — non compilable
+- Fix : `for (i64 i = START; i < END; i++) { ... }`
+- Parser : `FOR_IN_STMT` avec `stmt.Name = "i"`, `stmt.Left = début`, `stmt.Right = fin` (à vérifier)
 
-**Question : faut-il refaire le repository ?**
+**3. `this.Field.Method()` en statement**
+- `this.Tokens.Add(tok)` → CALL avec callee = MEMBER(MEMBER(THIS,"Tokens"),"Add")
+- `TryEmitListCall` Case 2 doit matcher ce pattern — à valider
 
-**Recommandation : NON, pas de refaire from scratch**
+**4. Méthodes retournant `List<Token>`**
+- `TypeToC` gère `List<` → `AmalgameList*` ✅
+- Mais le parser bootstrap stocke le return type tel quel : `"List<Token>"` → vérifier
 
-Stratégie conseillée :
-1. Merger `feature/bootstrap` → `develop` → `main` quand bootstrap est stable
-2. Créer une branche `feature/pure-amalgame` où on retire graduellement Vala
-3. Garder l'historique git — il a de la valeur
-4. Quand le bootstrap compiler peut se compiler lui-même → archiver Vala dans `legacy/`
+### v0.9.7 — parser.am + symbol.am → C compilable
 
-**Si tu veux vraiment repartir à zéro :**
-- Créer un nouveau repo `Amalgame2` ou `amalgame-lang`
-- Garder l'ancien en lecture seule comme référence
-- Copier uniquement `src/amalgame/` + `src/transpiler/runtime/` + `tests/`
+### v0.9.8 — Linker tout + amc_bootstrap binaire
 
 ---
 
@@ -131,57 +107,45 @@ Dis à Claude :
 
 ```
 Je travaille sur le langage Amalgame (transpiler Amalgame → C).
-Branche feature/bootstrap, version v0.9.4, 126/126 tests.
+Branche feature/bootstrap, version v0.9.5, 126/126 tests.
 
 Context :
-- Compilateur Vala fonctionnel (amc) : src/core/ + src/transpiler/
+- Compilateur Vala fonctionnel (amc) : ./build/amc (src/core/ + src/transpiler/)
 - Bootstrap en cours : src/amalgame/ (lexer, parser, resolver, generator)
-- token.am et ast.am génèrent du C compilable par GCC
-- Prochaine étape : v0.9.5 — type inference dans CGen pour ast.am sans warnings
+- token.am et ast.am → C sans warnings GCC ✅
+- Prochaine étape : v0.9.6 — lexer.am → C sans erreurs
 
-Lire le fichier CONTINUATION.md dans le repo pour le détail.
-Commencer par : ./compile.sh && ./tests/run_all_tests.sh
+Lire CONTINUATION.md pour le détail.
+Commencer par : ./tests/run_all_tests.sh puis coller le résultat.
 ```
 
 ---
 
-## Architecture technique résumée
+## Architecture technique
 
-### Pipeline Vala (actuel)
+### Pipeline Vala (actuel, stable)
 ```
-*.am → Lexer.vala → Parser.vala → Resolver.vala → TypeChecker.vala 
+*.am → Lexer.vala → Parser.vala → Resolver.vala → TypeChecker.vala
      → CGenerator.vala → GCC → binaire
 ```
 
-### Pipeline Bootstrap (en cours)
+### Pipeline Bootstrap (objectif)
 ```
-*.am → token.am/lexer.am → ast.am/parser.am → symbol.am 
-     → c_gen.am → C → GCC → binaire
+*.am → amc_bootstrap (écrit en Amalgame) → C → GCC → binaire
 ```
-
-### Limitations Amalgame documentées (pour le bootstrap)
-1. Pas de `char` literals → utiliser strings
-2. `while (cond)` → parenthèses requises
-3. `&&`/`||` multilignes → seulement dans `(...)`
-4. `AstNode?` comme return type → utiliser sentinel
-5. `super()` → non supporté (héritage limité)
-6. `return null` dans méthode non-nullable → erreur TypeChecker
-7. `;` non supporté pour multiple stmts sur une ligne
-8. `for x in 0..n` → syntaxe standard Amalgame
 
 ---
 
 ## Commandes utiles
 
 ```bash
-# Build
+# Build compilateur Vala
 ./compile.sh
 
-# Tests
+# Tests complets
 ./tests/run_all_tests.sh
-./tests/run_stdlib_tests.sh
 
-# Bootstrap pipeline
+# Pipeline bootstrap (compile + génère les .c)
 ./build/amc src/amalgame/lexer/token.am \
             src/amalgame/lexer/lexer.am \
             src/amalgame/parser/ast.am \
@@ -190,65 +154,36 @@ Commencer par : ./compile.sh && ./tests/run_all_tests.sh
             src/amalgame/generator/gen_test.am \
             -o gen_test && ./gen_test
 
-# Compiler le C généré
-gcc -c -I./src/transpiler/runtime token_bootstrap.c -o token_bootstrap.o
+# Vérifier le C généré
+gcc -Wall -Wextra -Isrc/transpiler/runtime \
+    src/amalgame/lexer/token.am_bootstrap.c -lgc -c 2>&1
+gcc -Wall -Wextra -Isrc/transpiler/runtime \
+    src/amalgame/parser/ast.am_bootstrap.c -lgc -c 2>&1
+gcc -Wall -Wextra -Isrc/transpiler/runtime \
+    src/amalgame/lexer/lexer.am_bootstrap.c -lgc -c 2>&1
 ```
 
 ---
 
-## Fichiers ajoutés — main.am et diagnostics.am
+## Limitations Amalgame documentées (pour le bootstrap)
 
-### src/amalgame/diagnostics.am
-Formatage des erreurs du compilateur (style Rust/Swift).
-- `DiagnosticFormatter` class
-- `FormatError()`, `FormatWarning()`, `PrintCompileOk()`, `PrintCompileError()`
-- Support couleurs ANSI optionnel
+1. Pas de `char` literals → utiliser strings à 1 char
+2. `while (cond)` → parenthèses requises
+3. `&&`/`||` multilignes → seulement dans `(...)`
+4. `AstNode?` comme return type → utiliser sentinel/null check manuel
+5. `super()` → non supporté (héritage limité)
+6. `return null` dans méthode non-nullable → erreur TypeChecker
+7. `;` non supporté pour multiple stmts sur une ligne
+8. `for x in 0..n` → syntaxe standard Amalgame
+9. String interpolation `{expr}` → non générée par CGen bootstrap (émise telle quelle)
+10. Parser bootstrap strip les génériques : `new List<T>()` → `node.Name = "List"` (sans `<T>`)
 
-### src/amalgame/main.am  
-Point d'entrée du compilateur bootstrap.
-- `CompilerArgs` — parsing des arguments CLI
-- `AmalgameCompiler.Run()` — orchestre le pipeline complet
-  1. Lex + Parse tous les fichiers
-  2. Resolve (cross-fichiers)
-  3. Generate C
-  4. Écrire le .c
-  5. Lancer GCC
-- `RunBootstrap()` — subcommands save/restore/validate
-- `Program.Main()` — entry point
+---
 
-### Structure bootstrap complète
-```
-src/amalgame/
-├── diagnostics.am    ← NOUVEAU
-├── main.am           ← NOUVEAU
-├── lexer/
-│   ├── token.am      ✅
-│   └── lexer.am      ✅
-├── parser/
-│   ├── ast.am        ✅
-│   └── parser.am     ✅
-├── resolver/
-│   └── symbol.am     ✅
-└── generator/
-    └── c_gen.am      ✅
-```
+## Ce qui manque encore dans CGen pour compiler main.am
 
-### Commande bootstrap complète (objectif)
-```bash
-./build/amc src/amalgame/lexer/token.am \
-            src/amalgame/lexer/lexer.am \
-            src/amalgame/parser/ast.am \
-            src/amalgame/parser/parser.am \
-            src/amalgame/resolver/symbol.am \
-            src/amalgame/generator/c_gen.am \
-            src/amalgame/diagnostics.am \
-            src/amalgame/main.am \
-            -o amc_bootstrap && ./amc_bootstrap --help
-```
-
-### Ce qui manque encore dans CGen pour compiler main.am
 - `args.Length()` → méthode sur `string[]`
 - `args.Get(i)` → accès indexé sur tableau
 - `Console.WriteError()` → stderr output
 - Variables globales / static fields
-
+- String interpolation `{expr}` → `code_string_format(...)`

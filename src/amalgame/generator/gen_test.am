@@ -6,27 +6,113 @@ import Amalgame.String
 
 public class Program {
     public static void Main(string[] args) {
-        let files = new List<string>()
-        files.Add("./src/amalgame/lexer/token.am")
-        files.Add("./src/amalgame/parser/ast.am")
+        // --- Single-file generation (token.am + ast.am standalone) ---
+        let singles = new List<string>()
+        singles.Add("./src/amalgame/lexer/token.am")
+        singles.Add("./src/amalgame/parser/ast.am")
 
-        let count = files.Count()
-        for i in 0..count {
-            let path = files.Get(i)
+        let sc = singles.Count()
+        for i in 0..sc {
+            let path = singles.Get(i)
             let src  = File.ReadAll(path)
             let lex  = new Lexer(src, path)
             let toks = lex.Tokenize()
             let par  = new Parser(toks)
             let prog = par.Parse()
-
             let gen  = new CGen()
             let code = gen.Generate(prog)
-            let clen = String_Length(code)
-
-            // Write output
             let outName = path + "_bootstrap.c"
             File.WriteAll(outName, code)
+            let clen = String_Length(code)
             Console.WriteLine("{path}: {clen} chars → {outName}")
         }
+
+        // --- Parse all source files once ---
+        let tokPath = "./src/amalgame/lexer/token.am"
+        let tokSrc  = File.ReadAll(tokPath)
+        let tokLex  = new Lexer(tokSrc, tokPath)
+        let tokToks = tokLex.Tokenize()
+        let tokPar  = new Parser(tokToks)
+        let tokProg = tokPar.Parse()
+
+        let lexPath = "./src/amalgame/lexer/lexer.am"
+        let lexSrc  = File.ReadAll(lexPath)
+        let lexLex  = new Lexer(lexSrc, lexPath)
+        let lexToks = lexLex.Tokenize()
+        let lexPar  = new Parser(lexToks)
+        let lexProg = lexPar.Parse()
+
+        let astPath = "./src/amalgame/parser/ast.am"
+        let astSrc  = File.ReadAll(astPath)
+        let astLex  = new Lexer(astSrc, astPath)
+        let astToks = astLex.Tokenize()
+        let astPar  = new Parser(astToks)
+        let astProg = astPar.Parse()
+
+        let parPath = "./src/amalgame/parser/parser.am"
+        let parSrc  = File.ReadAll(parPath)
+        let parLex  = new Lexer(parSrc, parPath)
+        let parToks = parLex.Tokenize()
+        let parPar  = new Parser(parToks)
+        let parProg = parPar.Parse()
+
+        let cgenPath = "./src/amalgame/generator/c_gen.am"
+        let cgenSrc  = File.ReadAll(cgenPath)
+        let cgenLex  = new Lexer(cgenSrc, cgenPath)
+        let cgenToks = cgenLex.Tokenize()
+        let cgenPar  = new Parser(cgenToks)
+        let cgenProg = cgenPar.Parse()
+
+        // --- Lexer bundle: token + lexer ---
+        let gen2 = new CGen()
+        gen2.BeginMulti("Amalgame.Compiler")
+        gen2.AddFilePass1(tokProg)
+        gen2.AddFilePass1(lexProg)
+        gen2.EmitSeparator()
+        gen2.AddFilePass2(tokProg)
+        gen2.AddFilePass2(lexProg)
+        let code2 = gen2.FinishMulti()
+        let out2  = "./src/amalgame/lexer/lexer_bundle_bootstrap.c"
+        File.WriteAll(out2, code2)
+        let clen2 = String_Length(code2)
+        Console.WriteLine("lexer bundle: {clen2} chars → {out2}")
+
+        // --- Parser bundle: token + ast + lexer + parser ---
+        let gen3 = new CGen()
+        gen3.BeginMulti("Amalgame.Compiler")
+        gen3.AddFilePass1(tokProg)
+        gen3.AddFilePass1(astProg)
+        gen3.AddFilePass1(lexProg)
+        gen3.AddFilePass1(parProg)
+        gen3.EmitSeparator()
+        gen3.AddFilePass2(tokProg)
+        gen3.AddFilePass2(astProg)
+        gen3.AddFilePass2(lexProg)
+        gen3.AddFilePass2(parProg)
+        let code3 = gen3.FinishMulti()
+        let out3  = "./src/amalgame/parser/parser_bundle_bootstrap.c"
+        File.WriteAll(out3, code3)
+        let clen3 = String_Length(code3)
+        Console.WriteLine("parser bundle: {clen3} chars → {out3}")
+
+        // --- CGen bundle: token + ast + lexer + parser + c_gen ---
+        let gen4 = new CGen()
+        gen4.BeginMulti("Amalgame.Compiler")
+        gen4.AddFilePass1(tokProg)
+        gen4.AddFilePass1(astProg)
+        gen4.AddFilePass1(lexProg)
+        gen4.AddFilePass1(parProg)
+        gen4.AddFilePass1(cgenProg)
+        gen4.EmitSeparator()
+        gen4.AddFilePass2(tokProg)
+        gen4.AddFilePass2(astProg)
+        gen4.AddFilePass2(lexProg)
+        gen4.AddFilePass2(parProg)
+        gen4.AddFilePass2(cgenProg)
+        let code4 = gen4.FinishMulti()
+        let out4  = "./src/amalgame/generator/cgen_bundle_bootstrap.c"
+        File.WriteAll(out4, code4)
+        let clen4 = String_Length(code4)
+        Console.WriteLine("cgen bundle: {clen4} chars → {out4}")
     }
 }
