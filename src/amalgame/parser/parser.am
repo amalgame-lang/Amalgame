@@ -729,7 +729,10 @@ public class Parser {
     }
 
     private AstNode ParseUnary() {
-        if (this.CheckValue("!") || this.CheckValue("-")) {
+        // Only treat as unary if the token is actually an operator, not a STRING literal
+        let isUnaryNot   = this.CheckValue("!") && !this.CheckType(TokenType.STRING)
+        let isUnaryMinus = this.CheckValue("-") && !this.CheckType(TokenType.STRING)
+        if (isUnaryNot || isUnaryMinus) {
             let tok = this.Advance()
             let operand = this.ParseUnary()
             let node = new AstNode(NodeKind.UNARY, tok.Line, tok.Column)
@@ -778,13 +781,18 @@ public class Parser {
         while (!this.IsEnd()) {
             callSafety = callSafety + 1
             if (callSafety > 200) { break }
-            if (this.CheckValue(")") && this.ParenDepth == myDepth) { break }
-            if (this.CheckValue(",")) {
+            // Only treat ) as end-of-args if it's a real RPAREN token, not a STRING ")"
+            let isRparen = this.CheckValue(")") && !this.CheckType(TokenType.STRING)
+            if (isRparen && this.ParenDepth == myDepth) { break }
+            // Only treat , as separator if it's a real COMMA token, not a STRING ","
+            let isComma = this.CheckValue(",") && !this.CheckType(TokenType.STRING)
+            if (isComma) {
                 this.Advance()
                 continue
             }
             this.SkipNewlines()
-            if (this.CheckValue(")") && this.ParenDepth == myDepth) { break }
+            let isRparen2 = this.CheckValue(")") && !this.CheckType(TokenType.STRING)
+            if (isRparen2 && this.ParenDepth == myDepth) { break }
             if (this.IsEnd()) { break }
             let arg = this.ParseExpr()
             call.Args.Add(arg)

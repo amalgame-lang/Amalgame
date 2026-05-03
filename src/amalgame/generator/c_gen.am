@@ -64,6 +64,9 @@ public class CGen {
     private FieldCTypes:    List<string>
     // Enum names registered at forward-decl time (to avoid TypeToC adding *)
     private EnumNames:      List<string>
+    // Method return types: "ClassName_MethodName" → C return type
+    private MethodRetNames: List<string>
+    private MethodRetTypes: List<string>
 
     public CGen() {
         this.Out            = new Emitter()
@@ -74,6 +77,8 @@ public class CGen {
         this.FieldNames     = new List<string>()
         this.FieldCTypes    = new List<string>()
         this.EnumNames      = new List<string>()
+        this.MethodRetNames = new List<string>()
+        this.MethodRetTypes = new List<string>()
     }
 
     public string Generate(AstNode prog) {
@@ -95,38 +100,35 @@ public class CGen {
         return this.Out.GetOutput()
     }
 
-    // Generate a single unified C file from multiple parsed .am files.
-    // All files must share the same namespace.
-    public string GenerateAll(List<AstNode> progs) {
-        // Set namespace from first program
-        let count = progs.Count()
-        if (count > 0) {
-            let first = progs.Get(0)
-            let ns = first.Str
-            if (String_Length(ns) > 0) {
-                this.NsPrefix = String_Replace(ns, ".", "_")
-            }
+    // Multi-file support: call BeginMulti() once, then AddFile() per file, then FinishMulti()
+    public void BeginMulti(string ns) {
+        if (String_Length(ns) > 0) {
+            this.NsPrefix = String_Replace(ns, ".", "_")
         }
         this.EmitHeader()
-        // Pass 1: all forward declarations across all files
-        for fi in 0..count {
-            let prog = progs.Get(fi)
-            let decls = prog.Children.Count()
-            for i in 0..decls {
-                let decl = prog.Children.Get(i)
-                this.EmitForwardDecl(decl)
-            }
+    }
+
+    public void AddFilePass1(AstNode prog) {
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            this.EmitForwardDecl(decl)
         }
+    }
+
+    public void EmitSeparator() {
         this.Out.EmitBlank()
-        // Pass 2: all definitions across all files
-        for fj in 0..count {
-            let prog = progs.Get(fj)
-            let decls = prog.Children.Count()
-            for j in 0..decls {
-                let decl = prog.Children.Get(j)
-                this.EmitDecl(decl)
-            }
+    }
+
+    public void AddFilePass2(AstNode prog) {
+        let decls = prog.Children.Count()
+        for j in 0..decls {
+            let decl = prog.Children.Get(j)
+            this.EmitDecl(decl)
         }
+    }
+
+    public string FinishMulti() {
         return this.Out.GetOutput()
     }
 
@@ -196,6 +198,25 @@ public class CGen {
         return result
     }
 
+    private void MethodRetSet(string className, string methodName, string ctype) {
+        let key = className + "::" + methodName
+        this.MethodRetNames.Add(key)
+        this.MethodRetTypes.Add(ctype)
+    }
+
+    private string MethodRetGet(string className, string methodName) {
+        let key = className + "::" + methodName
+        let n = this.MethodRetNames.Count()
+        var result = ""
+        for i in 0..n {
+            let k = this.MethodRetNames.Get(i)
+            if (k == key) {
+                result = this.MethodRetTypes.Get(i)
+            }
+        }
+        return result
+    }
+
     // ── Infer C type from RHS expression ─────────────
     private string InferTypeFromExpr(AstNode expr) {
         if (expr == null) { return "" }
@@ -236,24 +257,40 @@ public class CGen {
         // method call returning a known type — check callee
         if (k == NodeKind.CALL) {
             if (expr.Left != null) {
-                let lk = expr.Left.Kind
-                if (lk == NodeKind.MEMBER) {
-                    let mname = expr.Left.Name
-                    if (mname == "Get") {
-                        if (expr.Left.Left != null) {
-                            let llk = expr.Left.Left.Kind
-                            if (llk == NodeKind.IDENTIFIER) {
-                                let varN = expr.Left.Left.Name
-                                let lt = this.LocalTypeGet(varN)
-                                if (lt == "AmalgameList*") { return "void*" }
-                            }
-                            if (llk == NodeKind.THIS_EXPR) { return "void*" }
+                let calleeStr = this.EmitCalleeStr(expr.Left)
+                // Known string-returning methods
+                if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
+                if (String_EndsWith(calleeStr, "_CharAt")) { return "code_string" }
+                if (String_EndsWith(calleeStr, "_Advance")) { return "code_string" }
+                // this.Method() → look up in MethodRetTypes using CurrentClass
+                if (expr.Left.Kind == NodeKind.MEMBER) {
+                    let mname2 = expr.Left.Name
+                    if (expr.Left.Left != null) {
+                        if (expr.Left.Left.Kind == NodeKind.THIS_EXPR) {
+                            let retT = this.MethodRetGet(this.CurrentClass, mname2)
+                            if (String_Length(retT) > 0) { return retT }
                         }
                     }
+                    // List.Get() → void*
+                    if (mname2 == "Get") { return "void*" }
                 }
             }
         }
         return ""
+    }
+
+    // Re-escape a string value (which may contain real newlines, tabs, quotes)
+    // into valid C string literal content.
+    private string EscapeStringForC(string raw) {
+        // The Amalgame lexer converts \n → real newline, \" → real quote, \\ → real backslash.
+        // We must reverse that for C emission.
+        // Order matters: escape backslash first to avoid double-escaping.
+        var s = String_Replace(raw, "\\", "\\\\")
+        s = String_Replace(s, "\"", "\\\"")
+        s = String_Replace(s, "\n", "\\n")
+        s = String_Replace(s, "\t", "\\t")
+        s = String_Replace(s, "\r", "\\r")
+        return s
     }
 
     private void EmitHeader() {
@@ -261,6 +298,8 @@ public class CGen {
         this.Out.EmitLine("#include <stdlib.h>")
         this.Out.EmitLine("#include <string.h>")
         this.Out.EmitLine("#include \"_runtime.h\"")
+        this.Out.EmitLine("#include \"Amalgame_String.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Collections.h\"")
         this.Out.EmitBlank()
     }
 
@@ -345,6 +384,9 @@ public class CGen {
                 if (m.Name != cls.Name) {
                     let sig     = this.MethodSig(m, name)
                     let isPublic = m.Flag
+                    // Register return type for inference
+                    let retC = this.TypeToC(m.Str)
+                    this.MethodRetSet(name, m.Name, retC)
                     if (isPublic) {
                         this.Out.EmitLine(sig + ";")
                     } else {
@@ -613,11 +655,9 @@ public class CGen {
         if (k == NodeKind.LITERAL_INT)    { return expr.Str }
         if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }
         if (k == NodeKind.LITERAL_STRING) {
-            // Re-escape for C: the Amalgame source has \n, \t, \" etc.
-            // The parser stores them as actual escape sequences in Str.
-            // We must ensure they are valid C string content.
             let raw = expr.Str
-            return "\"" + raw + "\""
+            let escaped = this.EscapeStringForC(raw)
+            return "\"" + escaped + "\""
         }
         if (k == NodeKind.LITERAL_BOOL) {
             if (expr.Flag) { return "1" }
@@ -694,6 +734,36 @@ public class CGen {
                 }
                 // Non-string (int, bool, enum, pointer): use C == / !=
                 return left + " " + op + " " + right
+            }
+            // String concatenation: a + b where either side is a string
+            if (op == "+") {
+                let ltype2 = this.InferTypeFromExpr(expr.Left)
+                var useConcat = false
+                if (ltype2 == "code_string") { useConcat = true }
+                if (!useConcat) {
+                    if (expr.Left != null) {
+                        if (expr.Left.Kind == NodeKind.LITERAL_STRING) { useConcat = true }
+                        if (expr.Left.Kind == NodeKind.IDENTIFIER) {
+                            let lt3 = this.LocalTypeGet(expr.Left.Name)
+                            if (lt3 == "code_string") { useConcat = true }
+                        }
+                    }
+                }
+                if (!useConcat) {
+                    if (expr.Right != null) {
+                        if (expr.Right.Kind == NodeKind.LITERAL_STRING) { useConcat = true }
+                    }
+                }
+                if (useConcat) {
+                    // Ensure both sides are code_string (cast void* if needed)
+                    var lcast = left
+                    var rcast = right
+                    let ltype3 = this.InferTypeFromExpr(expr.Left)
+                    let rtype3 = this.InferTypeFromExpr(expr.Right)
+                    if (ltype3 == "void*") { lcast = "(code_string)(" + left + ")" }
+                    if (rtype3 == "void*") { rcast = "(code_string)(" + right + ")" }
+                    return "code_string_concat(" + lcast + ", " + rcast + ")"
+                }
             }
             return left + " " + op + " " + right
         }
@@ -838,8 +908,8 @@ public class CGen {
             if (callee.Left != null) {
                 let lk = callee.Left.Kind
                 if (lk == NodeKind.THIS_EXPR) {
-                    // this.Method() → ClassName_Method(self, ...)
-                    return this.NsPrefix + "_" + mname
+                    // this.Method() → CurrentClass_Method (includes class name)
+                    return this.CurrentClass + "_" + mname
                 }
                 if (lk == NodeKind.IDENTIFIER) {
                     let tname = callee.Left.Name
