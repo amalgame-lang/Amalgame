@@ -4,198 +4,60 @@ import Amalgame.Collections
 import Amalgame.IO
 import Amalgame.String
 
-// ── Entry point du compilateur bootstrap ─────────────
-//
-// Usage: amc_bootstrap [options] file1.am [file2.am ...] -o output
-//
-// Options:
-//   -o <name>    Output binary name (default: a.out)
-//   --lib        Compile as library (no main)
-//   --emit-c     Only emit C, don't run GCC
-//   bootstrap    Subcommands: save | restore | validate
-
-public class CompilerArgs {
-    public InputFiles: List<string>
-    public OutputName: string
-    public IsLib:      bool
-    public EmitC:      bool
-    public IsBootstrap: bool
-    public BootstrapCmd: string
-
-    public CompilerArgs() {
-        this.InputFiles    = new List<string>()
-        this.OutputName    = "a.out"
-        this.IsLib         = false
-        this.EmitC         = false
-        this.IsBootstrap   = false
-        this.BootstrapCmd  = ""
-    }
-}
-
+// Bootstrap compiler entry point
 public class AmalgameCompiler {
     private Diag: DiagnosticFormatter
-    private Args: CompilerArgs
 
     public AmalgameCompiler() {
         this.Diag = new DiagnosticFormatter()
-        this.Args = new CompilerArgs()
     }
 
-    public void Run(List<string> argv) {
-        // Parse arguments
-        this.ParseArgs(argv)
-
-        // Bootstrap subcommand
-        if (this.Args.IsBootstrap) {
-            this.RunBootstrap(this.Args.BootstrapCmd)
-            return
-        }
-
-        // Check inputs
-        let inputCount = this.Args.InputFiles.Count()
+    public void Run(List<string> inputFiles, string outputName) {
+        let inputCount = inputFiles.Count()
         if (inputCount == 0) {
             Console.WriteError("amc: no input files")
-            Console.WriteError("Usage: amc [options] file.am ... -o output")
             return
         }
 
         Console.WriteLine("Compiling: " + String_FromInt(inputCount) + " files")
 
-        // Step 1: Lex + Parse all files
-        let programs = new List<AstNode>()
-        let sources   = new List<string>()
+        let gen = new CGen()
+        gen.BeginMulti("Amalgame.Compiler")
+
         for i in 0..inputCount {
-            let path = this.Args.InputFiles.Get(i)
+            let path = inputFiles.Get(i)
             let src  = File.ReadAll(path)
-            let slen = String_Length(src)
-            if (slen == 0) {
-                Console.WriteError("amc: cannot read file: " + path)
-                return
-            }
-            sources.Add(src)
             let lex  = new Lexer(src, path)
             let toks = lex.Tokenize()
             let par  = new Parser(toks)
             let prog = par.Parse()
-            if (par.HasErrors()) {
-                Console.WriteError("error[syntax]: " + par.GetErrors())
-                return
-            }
-            programs.Add(prog)
+            gen.AddFilePass1(prog)
         }
-        this.Diag.PrintCompileOk("Parser")
 
-        // Step 2: Resolve
-        let res = new Resolver()
+        gen.EmitSeparator()
+
         for j in 0..inputCount {
-            let prog = programs.Get(j)
-            res.Programs.Add(prog)
-        }
-        res.ResolvePrograms()
-        if (res.HasErrors()) {
-            this.Diag.PrintCompileError("Resolver", res.GetErrors())
-            return
-        }
-        this.Diag.PrintCompileOk("Resolver")
-
-        // Step 3: Generate C
-        // Use first program's namespace as NS prefix
-        // (in multi-file, all should share the same namespace)
-        let firstProg = programs.Get(0)
-        let gen = new CGen()
-        var allCode = gen.GenerateHeader()
-
-        for k in 0..inputCount {
-            let prog2 = programs.Get(k)
-            let code  = gen.GenerateDecls(prog2)
-            allCode   = allCode + code
-        }
-        this.Diag.PrintCompileOk("Generator")
-
-        // Step 4: Write C file
-        let outC = this.Args.OutputName + ".c"
-        File.WriteAll(outC, allCode)
-
-        if (this.Args.EmitC) {
-            Console.WriteLine("C code written to: " + outC)
-            return
+            let path2 = inputFiles.Get(j)
+            let src2  = File.ReadAll(path2)
+            let lex2  = new Lexer(src2, path2)
+            let toks2 = lex2.Tokenize()
+            let par2  = new Parser(toks2)
+            let prog2 = par2.Parse()
+            gen.AddFilePass2(prog2)
         }
 
-        // Step 5: Run GCC
-        Console.WriteLine("GCC: compiling " + outC)
+        let code = gen.FinishMulti()
+        let outC  = outputName + ".c"
+        File.WriteAll(outC, code)
+        Console.WriteLine("Generated: " + outC)
         this.Diag.PrintCompileOk("Build")
-    }
-
-    private void ParseArgs(List<string> argv) {
-        let count = argv.Count()
-        for i in 0..count {
-            let arg = argv.Get(i)
-            if (arg == "bootstrap") {
-                this.Args.IsBootstrap = true
-                if (i + 1 < count) {
-                    let next = argv.Get(i + 1)
-                    this.Args.BootstrapCmd = next
-                }
-                return
-            }
-            if (arg == "--lib") {
-                this.Args.IsLib = true
-                continue
-            }
-            if (arg == "--emit-c") {
-                this.Args.EmitC = true
-                continue
-            }
-            if (arg == "-o") {
-                if (i + 1 < count) {
-                    let next = argv.Get(i + 1)
-                    this.Args.OutputName = next
-                }
-                continue
-            }
-            if (String_EndsWith(arg, ".am")) {
-                this.Args.InputFiles.Add(arg)
-                continue
-            }
-        }
-    }
-
-    private void RunBootstrap(string cmd) {
-        if (cmd == "save") {
-            Console.WriteLine("Bootstrap: saving current binary...")
-            Console.WriteLine("(Not yet implemented in bootstrap compiler)")
-        }
-        if (cmd == "restore") {
-            Console.WriteLine("Bootstrap: restoring stable binary...")
-            Console.WriteLine("(Not yet implemented in bootstrap compiler)")
-        }
-        if (cmd == "validate") {
-            Console.WriteLine("Bootstrap validation:")
-            Console.WriteLine("  Stage 1 = Stage 2 check not yet implemented")
-        }
-        if (cmd == "") {
-            Console.WriteLine("Amalgame Bootstrap Manager")
-            Console.WriteLine("")
-            Console.WriteLine("Usage: amc bootstrap <command>")
-            Console.WriteLine("")
-            Console.WriteLine("Commands:")
-            Console.WriteLine("  save      Save current binary as stable bootstrap")
-            Console.WriteLine("  restore   Restore stable binary")
-            Console.WriteLine("  validate  Validate self-compilation")
-        }
     }
 }
 
 public class Program {
     public static void Main(string[] args) {
-        let argv = new List<string>()
-        let argc = args.Length()
-        // Skip args[0] (program name)
-        for i in 1..argc {
-            argv.Add(args.Get(i))
-        }
-
+        let files = new List<string>()
         let compiler = new AmalgameCompiler()
-        compiler.Run(argv)
+        compiler.Run(files, "a.out")
     }
 }
