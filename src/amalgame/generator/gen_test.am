@@ -6,27 +6,49 @@ import Amalgame.String
 
 public class Program {
     public static void Main(string[] args) {
-        let files = new List<string>()
-        files.Add("./src/amalgame/lexer/token.am")
-        files.Add("./src/amalgame/parser/ast.am")
+        // --- Single-file generation (token.am + ast.am standalone) ---
+        let singles = new List<string>()
+        singles.Add("./src/amalgame/lexer/token.am")
+        singles.Add("./src/amalgame/parser/ast.am")
 
-        let count = files.Count()
-        for i in 0..count {
-            let path = files.Get(i)
+        let sc = singles.Count()
+        for i in 0..sc {
+            let path = singles.Get(i)
             let src  = File.ReadAll(path)
             let lex  = new Lexer(src, path)
             let toks = lex.Tokenize()
             let par  = new Parser(toks)
             let prog = par.Parse()
-
             let gen  = new CGen()
             let code = gen.Generate(prog)
-            let clen = String_Length(code)
-
-            // Write output
             let outName = path + "_bootstrap.c"
             File.WriteAll(outName, code)
+            let clen = String_Length(code)
             Console.WriteLine("{path}: {clen} chars → {outName}")
         }
+
+        // --- Multi-file unified generation (token + lexer → one .c) ---
+        let bundle = new List<string>()
+        bundle.Add("./src/amalgame/lexer/token.am")
+        bundle.Add("./src/amalgame/lexer/lexer.am")
+
+        let progs = new List<AstNode>()
+        let bc = bundle.Count()
+        for i in 0..bc {
+            let path = bundle.Get(i)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            progs.Add(prog)
+        }
+
+        let gen2   = new CGen()
+        let code2  = gen2.GenerateAll(progs)
+        let out2   = "./src/amalgame/lexer/lexer_bundle_bootstrap.c"
+        File.WriteAll(out2, code2)
+        let clen2 = String_Length(code2)
+        Console.WriteLine("lexer bundle: {clen2} chars → {out2}")
     }
 }
