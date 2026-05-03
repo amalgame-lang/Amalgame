@@ -392,14 +392,16 @@ public class CGen {
     // Re-escape a string value (which may contain real newlines, tabs, quotes)
     // into valid C string literal content.
     private string EscapeStringForC(string raw) {
-        // The Amalgame lexer converts \n → real newline, \" → real quote, \\ → real backslash.
-        // We must reverse that for C emission.
+        // The Amalgame lexer converts escape sequences to real bytes.
+        // We must reverse that for C string literal emission.
         // Order matters: escape backslash first to avoid double-escaping.
         var s = String_Replace(raw, "\\", "\\\\")
         s = String_Replace(s, "\"", "\\\"")
         s = String_Replace(s, "\n", "\\n")
         s = String_Replace(s, "\t", "\\t")
         s = String_Replace(s, "\r", "\\r")
+        // ESC character (0x1B) used in ANSI color codes
+        s = String_Replace(s, "\x1b", "\\x1b")
         return s
     }
 
@@ -846,9 +848,11 @@ public class CGen {
                         if (lk2 == NodeKind.LITERAL_STRING) { useStrEq = true }
                         // CALL to CharAt / String_* → code_string
                         if (lk2 == NodeKind.CALL) {
-                            let calleeStr = this.EmitCalleeStr(expr.Left.Left)
-                            if (String_StartsWith(calleeStr, "String_") || String_EndsWith(calleeStr, "_CharAt")) {
-                                useStrEq = true
+                            if (expr.Left.Left != null) {
+                                let calleeStr = this.EmitCalleeStr(expr.Left.Left)
+                                if (String_StartsWith(calleeStr, "String_") || String_EndsWith(calleeStr, "_CharAt")) {
+                                    useStrEq = true
+                                }
                             }
                         }
                         // IDENTIFIER whose local type is code_string
@@ -894,9 +898,11 @@ public class CGen {
                             let ltype3 = this.InferTypeFromExpr(expr.Left)
                             if (ltype3 == "code_string") { useConcat = true }
                             // Also detect code_string_concat directly by callee name
-                            let calleeL = this.EmitCalleeStr(expr.Left.Left)
-                            if (String_StartsWith(calleeL, "String_") || calleeL == "code_string_concat") {
-                                useConcat = true
+                            if (expr.Left.Left != null) {
+                                let calleeL = this.EmitCalleeStr(expr.Left.Left)
+                                if (String_StartsWith(calleeL, "String_") || calleeL == "code_string_concat") {
+                                    useConcat = true
+                                }
                             }
                         }
                     }
@@ -906,9 +912,11 @@ public class CGen {
                         let rk3 = expr.Right.Kind
                         if (rk3 == NodeKind.LITERAL_STRING) { useConcat = true }
                         if (rk3 == NodeKind.CALL) {
-                            let calleeR = this.EmitCalleeStr(expr.Right.Left)
-                            if (String_StartsWith(calleeR, "String_") || calleeR == "code_string_concat") {
-                                useConcat = true
+                            if (expr.Right.Left != null) {
+                                let calleeR = this.EmitCalleeStr(expr.Right.Left)
+                                if (String_StartsWith(calleeR, "String_") || calleeR == "code_string_concat") {
+                                    useConcat = true
+                                }
                             }
                         }
                     }
