@@ -207,7 +207,7 @@ typedef struct _AmalgameException {
 } AmalgameException;
 
 /* Thread-local exception state */
-static AmalgameException _am_ex = { {0}, NULL, NULL, NULL, 0 };
+static AmalgameException _am_ex;  /* zero-initialized by default (static storage) */
 
 /* Throw: save value and longjmp */
 static inline void _am_throw(void* val, code_string type,
