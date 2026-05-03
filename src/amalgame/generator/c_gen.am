@@ -225,6 +225,33 @@ public class CGen {
         if (k == NodeKind.LITERAL_FLOAT)  { return "double" }
         if (k == NodeKind.LITERAL_STRING) { return "code_string" }
         if (k == NodeKind.LITERAL_BOOL)   { return "code_bool" }
+        if (k == NodeKind.BINARY) {
+            let bop = expr.Str
+            if (bop == "&&" || bop == "||" || bop == "==" || bop == "!=" ||
+                bop == "<"  || bop == ">"  || bop == "<=" || bop == ">=") {
+                return "code_bool"
+            }
+            // Arithmetic: if either operand is numeric, result is i64
+            if (bop == "+" || bop == "-" || bop == "*" || bop == "/" || bop == "%") {
+                // String concat takes priority over arithmetic
+                let lt = this.InferTypeFromExpr(expr.Left)
+                let rt = this.InferTypeFromExpr(expr.Right)
+                if (lt == "code_string" || rt == "code_string") { return "code_string" }
+                if (expr.Left != null) {
+                    if (expr.Left.Kind == NodeKind.LITERAL_STRING) { return "code_string" }
+                    if (expr.Left.Kind == NodeKind.LITERAL_INT)    { return "i64" }
+                }
+                if (expr.Right != null) {
+                    if (expr.Right.Kind == NodeKind.LITERAL_STRING) { return "code_string" }
+                    if (expr.Right.Kind == NodeKind.LITERAL_INT)    { return "i64" }
+                }
+                if (lt == "i64" || rt == "i64") { return "i64" }
+                if (lt == "double" || rt == "double") { return "double" }
+            }
+        }
+        if (k == NodeKind.UNARY) {
+            if (expr.Str == "!") { return "code_bool" }
+        }
         if (k == NodeKind.IDENTIFIER) {
             // Could be a local var — look it up
             return this.LocalTypeGet(expr.Name)
@@ -244,6 +271,15 @@ public class CGen {
                         return this.FieldTypeGet(bare, expr.Name)
                     }
                 }
+                // CALL.Field — e.g. this.Current().Value → infer type from call return
+                if (lk == NodeKind.CALL) {
+                    let callRetT = this.InferTypeFromExpr(expr.Left)
+                    let bareCall = String_Replace(callRetT, "*", "")
+                    if (String_Length(bareCall) > 0) {
+                        let ft = this.FieldTypeGet(bareCall, expr.Name)
+                        if (String_Length(ft) > 0) { return ft }
+                    }
+                }
             }
             return ""
         }
@@ -258,21 +294,36 @@ public class CGen {
         if (k == NodeKind.CALL) {
             if (expr.Left != null) {
                 let calleeStr = this.EmitCalleeStr(expr.Left)
-                // Known string-returning methods
+                // Known string-returning stdlib functions
                 if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
                 if (String_EndsWith(calleeStr, "_CharAt")) { return "code_string" }
-                if (String_EndsWith(calleeStr, "_Advance")) { return "code_string" }
-                // this.Method() → look up in MethodRetTypes using CurrentClass
+                if (calleeStr == "code_string_concat") { return "code_string" }
+                if (calleeStr == "AmalgameList_count") { return "i64" }
+                if (String_StartsWith(calleeStr, "AmalgameList_count")) { return "i64" }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
+                    // List method return types
+                    if (mname2 == "Count") { return "i64" }
+                    if (mname2 == "Get")   { return "void*" }
                     if (expr.Left.Left != null) {
-                        if (expr.Left.Left.Kind == NodeKind.THIS_EXPR) {
+                        let llk2 = expr.Left.Left.Kind
+                        // this.Method() → look up in MethodRetTypes using CurrentClass
+                        if (llk2 == NodeKind.THIS_EXPR) {
                             let retT = this.MethodRetGet(this.CurrentClass, mname2)
                             if (String_Length(retT) > 0) { return retT }
                         }
+                        // ClassName.Method() → static call, look up SymName(ClassName)
+                        if (llk2 == NodeKind.IDENTIFIER) {
+                            let cname2 = expr.Left.Left.Name
+                            let firstC = String_Substring(cname2, 0, 1)
+                            let isUpp  = firstC == String_ToUpper(firstC)
+                            if (isUpp) {
+                                let symCls = this.SymName(cname2)
+                                let retT2  = this.MethodRetGet(symCls, mname2)
+                                if (String_Length(retT2) > 0) { return retT2 }
+                            }
+                        }
                     }
-                    // List.Get() → void*
-                    if (mname2 == "Get") { return "void*" }
                 }
             }
         }
@@ -331,7 +382,9 @@ public class CGen {
         this.Out.Indent_()
         for i in 0..count {
             let member = en.Children.Get(i)
-            let mname  = this.SymName(member.Name)
+            // Prefix value with enum name to avoid conflicts in multi-file bundles
+            // e.g. NodeKind.IDENTIFIER → Amalgame_Compiler_NodeKind_IDENTIFIER
+            let mname  = name + "_" + member.Name
             let last   = i == count - 1
             if (last) {
                 this.Out.EmitLine(mname)
@@ -585,7 +638,9 @@ public class CGen {
             if (String_Length(t) == 0) { t = "void*" }
             // Record in local type table for later use
             this.LocalTypeSet(stmt.Name, t)
-            this.Out.EmitLine(t + " " + stmt.Name + " = " + this.EmitExprStr(stmt.Left) + ";")
+            // Use __attribute__((unused)) to suppress -Wunused-variable warnings
+            // on variables that are declared for side effects or future use
+            this.Out.EmitLine(t + " __attribute__((unused)) " + stmt.Name + " = " + this.EmitExprStr(stmt.Left) + ";")
         }
         if (k == NodeKind.RETURN_STMT) {
             if (stmt.Left != null) {
@@ -673,15 +728,12 @@ public class CGen {
                     return "self->" + expr.Name
                 }
                 if (lk == NodeKind.IDENTIFIER) {
-                    // Enum member: TokenType.KW_LET → Ns_KW_LET (not Ns_TokenType_KW_LET)
-                    // Local variable member: obj.Field → obj->Field
-                    // We use _ for enum type names (capitalized), -> for variables (lowercase)
                     let tname = expr.Left.Name
                     let firstChar = String_Substring(tname, 0, 1)
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
-                        // Enum or class type → use _ prefix with just the member name
-                        return this.SymName(expr.Name)
+                        // Enum or static class access: TokenType.NEWLINE → Ns_TokenType_NEWLINE
+                        return this.SymName(tname) + "_" + expr.Name
                     }
                     return tname + "->" + expr.Name
                 }
@@ -742,26 +794,43 @@ public class CGen {
                 if (ltype2 == "code_string") { useConcat = true }
                 if (!useConcat) {
                     if (expr.Left != null) {
-                        if (expr.Left.Kind == NodeKind.LITERAL_STRING) { useConcat = true }
-                        if (expr.Left.Kind == NodeKind.IDENTIFIER) {
+                        let lk3 = expr.Left.Kind
+                        if (lk3 == NodeKind.LITERAL_STRING) { useConcat = true }
+                        if (lk3 == NodeKind.IDENTIFIER) {
                             let lt3 = this.LocalTypeGet(expr.Left.Name)
                             if (lt3 == "code_string") { useConcat = true }
+                        }
+                        // CALL that returns code_string (including nested code_string_concat)
+                        if (lk3 == NodeKind.CALL) {
+                            let ltype3 = this.InferTypeFromExpr(expr.Left)
+                            if (ltype3 == "code_string") { useConcat = true }
+                            // Also detect code_string_concat directly by callee name
+                            let calleeL = this.EmitCalleeStr(expr.Left.Left)
+                            if (String_StartsWith(calleeL, "String_") || calleeL == "code_string_concat") {
+                                useConcat = true
+                            }
                         }
                     }
                 }
                 if (!useConcat) {
                     if (expr.Right != null) {
-                        if (expr.Right.Kind == NodeKind.LITERAL_STRING) { useConcat = true }
+                        let rk3 = expr.Right.Kind
+                        if (rk3 == NodeKind.LITERAL_STRING) { useConcat = true }
+                        if (rk3 == NodeKind.CALL) {
+                            let calleeR = this.EmitCalleeStr(expr.Right.Left)
+                            if (String_StartsWith(calleeR, "String_") || calleeR == "code_string_concat") {
+                                useConcat = true
+                            }
+                        }
                     }
                 }
                 if (useConcat) {
-                    // Ensure both sides are code_string (cast void* if needed)
                     var lcast = left
                     var rcast = right
-                    let ltype3 = this.InferTypeFromExpr(expr.Left)
-                    let rtype3 = this.InferTypeFromExpr(expr.Right)
-                    if (ltype3 == "void*") { lcast = "(code_string)(" + left + ")" }
-                    if (rtype3 == "void*") { rcast = "(code_string)(" + right + ")" }
+                    let ltype4 = this.InferTypeFromExpr(expr.Left)
+                    let rtype4 = this.InferTypeFromExpr(expr.Right)
+                    if (ltype4 == "void*") { lcast = "(code_string)(" + left + ")" }
+                    if (rtype4 == "void*") { rcast = "(code_string)(" + right + ")" }
                     return "code_string_concat(" + lcast + ", " + rcast + ")"
                 }
             }
@@ -870,6 +939,19 @@ public class CGen {
                         let ftype = this.FieldTypeGet(this.CurrentClass, fname)
                         if (ftype == "AmalgameList*") {
                             listExpr  = "self->" + fname
+                            listCType = "AmalgameList*"
+                        }
+                    }
+                    // Case 3: varName.Field.Method() where varName is a known struct type
+                    if (llk == NodeKind.IDENTIFIER) {
+                        let vname2  = callee.Left.Left.Name
+                        let vtype2  = this.LocalTypeGet(vname2)
+                        let fname2  = callee.Left.Name
+                        // Strip trailing * to get class name for field lookup
+                        let vbare   = String_Replace(vtype2, "*", "")
+                        let ftype2  = this.FieldTypeGet(vbare, fname2)
+                        if (ftype2 == "AmalgameList*") {
+                            listExpr  = vname2 + "->" + fname2
                             listCType = "AmalgameList*"
                         }
                     }
