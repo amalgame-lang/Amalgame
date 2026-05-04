@@ -116,13 +116,36 @@ int main(int argc, char** argv) {
         if (line) fputs(line, out);
         fputc('\n', out);
     }
-    // Emit main() entry point
-    fprintf(out, "\nint main(int argc, char** argv) {\n");
-    fprintf(out, "    GC_INIT();\n");
-    fprintf(out, "    %s_Program_Main((code_string*)argv);\n", ns);
-    fprintf(out, "    return 0;\n");
-    fprintf(out, "}\n");
-    fclose(out);
-    printf("Generated: %s (%d lines)\n", outPath, lc + 5);
+    fclose(out);  // Must close before reopening for read
+    // Emit main() only if there's a Program class with Main method
+    char mainFuncName[256];
+    snprintf(mainFuncName, sizeof(mainFuncName), "%s_Program_Main", ns);
+
+    FILE* check = fopen(outPath, "r");
+    int hasMain = 0;
+    if (check) {
+        char lineBuf[512];
+        while (fgets(lineBuf, sizeof(lineBuf), check)) {
+            if (strstr(lineBuf, mainFuncName)) {
+                hasMain = 1;
+                break;
+            }
+        }
+        fclose(check);
+    }
+
+    if (hasMain) {
+        FILE* out2 = fopen(outPath, "a");
+        if (out2) {
+            fprintf(out2, "\nint main(int argc, char** argv) {\n");
+            fprintf(out2, "    GC_INIT();\n");
+            fprintf(out2, "    %s((code_string*)argv);\n", mainFuncName);
+            fprintf(out2, "    return 0;\n");
+            fprintf(out2, "}\n");
+            fclose(out2);
+        }
+    }
+
+    printf("Generated: %s (%d lines)\n", outPath, lc + (hasMain ? 5 : 0));
     return 0;
 }

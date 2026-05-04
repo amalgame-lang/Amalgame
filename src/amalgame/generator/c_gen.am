@@ -1008,12 +1008,10 @@ public class CGen {
         if (expr == null) { return "NULL" }
         let k = expr.Kind
         // if expression: emit as ternary (cond ? then_val : else_val)
-        // Note: full block extraction requires runtime type info - emit simplified form
+        // Note: full block extraction requires typed List.Get - emit placeholder
         if (k == NodeKind.IF_STMT) {
             let condStr = this.EmitExprStr(expr.Cond)
-            // For simple if-expressions with literal branches, try to extract values
-            // Otherwise emit a safe default
-            return "(" + condStr + " ? /* if-expr */ 0 : 0)"
+            return "(" + condStr + " ? 0 : 0) /* if-expr */"
         }
         if (k == NodeKind.LITERAL_INT)    { return expr.Str }
         if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }
