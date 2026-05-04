@@ -602,6 +602,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_String.h\"")
         this.Out.EmitLine("#include \"Amalgame_Collections.h\"")
         this.Out.EmitLine("#include \"Amalgame_IO.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Math.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitBlank()
     }
