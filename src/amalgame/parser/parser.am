@@ -262,7 +262,10 @@ public class Parser {
 
     // Parse "data class Name(type field, ...)" → CLASS_DECL with fields + constructor
     private AstNode ParseDataClass(bool isPublic) {
-        this.Advance() // consume 'class'
+        // consume 'class' only if present (not when called from 'record')
+        if (this.CheckKw("class")) {
+            this.Advance()
+        }
         let nameTok = this.ExpectIdent()
         let cls = Ast.Class(nameTok.Value, nameTok.Line, nameTok.Column)
         cls.Flag = isPublic
