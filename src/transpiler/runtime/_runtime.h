@@ -44,6 +44,8 @@ static inline code_string code_string_format(
 
 static inline code_string code_string_concat(
     code_string a, code_string b) {
+    if (!a) a = "";
+    if (!b) b = "";
     size_t la = strlen(a), lb = strlen(b);
     char*  r  = (char*) GC_MALLOC(la + lb + 1);
     memcpy(r, a, la);
@@ -53,6 +55,8 @@ static inline code_string code_string_concat(
 
 static inline bool code_string_equals(
     code_string a, code_string b) {
+    if (!a) a = "";
+    if (!b) b = "";
     return strcmp(a, b) == 0;
 }
 
