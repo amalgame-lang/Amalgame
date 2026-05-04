@@ -84,6 +84,15 @@ public class CGen {
         this.EnumNames      = new List<string>()
         this.MethodRetNames = new List<string>()
         this.MethodRetTypes = new List<string>()
+        // Pre-register stdlib struct fields
+        this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
+        this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
+        this.FieldTypeSet("AmalgameHttpResponse", "Error",  "code_string")
+        this.FieldTypeSet("AmalgameHttpResponse", "Ok",     "code_bool")
+        this.FieldTypeSet("AmalgameTcpConn",      "RemoteIp", "code_string")
+        this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Port",     "i64")
     }
 
     public string Generate(AstNode prog) {
@@ -392,9 +401,18 @@ public class CGen {
                 // File stdlib return types
                 if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete") { return "code_bool" }
                 if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
+                // Net stdlib return types
+                if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }
+                if (calleeStr == "TcpServer_Listen") { return "AmalgameTcpServer*" }
+                if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
+                if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
+                if (calleeStr == "TcpConn_Receive") { return "code_string" }
                 // Math stdlib return types
                 if (calleeStr == "Math_Sqrt" || calleeStr == "Math_Abs" || calleeStr == "Math_Floor" || calleeStr == "Math_Ceil" || calleeStr == "Math_Round" || calleeStr == "Math_Pow" || calleeStr == "Math_Log") { return "double" }
                 if (calleeStr == "Math_Max" || calleeStr == "Math_Min") { return "i64" }
+                if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
+                if (calleeStr == "Math_Random") { return "double" }
+                if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp") { return "i64" }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
                     // List method return types

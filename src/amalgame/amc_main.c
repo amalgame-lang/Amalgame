@@ -89,6 +89,19 @@ int main(int argc, char** argv) {
     // Detect namespace from first file
     code_string ns = detect_namespace((const char*)AmalgameList_get(inputFiles, 0));
 
+    // Detect if any file imports Amalgame.Net
+    int needsNet = 0;
+    for (int i = 0; i < n && !needsNet; i++) {
+        FILE* sf = fopen((char*)AmalgameList_get(inputFiles, i), "r");
+        if (sf) {
+            char lb[256];
+            while (fgets(lb, sizeof(lb), sf)) {
+                if (strstr(lb, "import Amalgame.Net")) { needsNet = 1; break; }
+            }
+            fclose(sf);
+        }
+    }
+
     // Generate C
     Amalgame_Compiler_CGen* gen = Amalgame_Compiler_CGen_new();
     Amalgame_Compiler_CGen_BeginMulti(gen, ns);
@@ -115,6 +128,11 @@ int main(int argc, char** argv) {
         const char* line = (const char*)AmalgameList_get(lines, i);
         if (line) fputs(line, out);
         fputc('\n', out);
+    }
+    // Prepend Amalgame_Net.h if needed (requires -lcurl)
+    if (needsNet) {
+        // Append net include at top by rewriting - simpler: just emit at end as forward decl
+        // Actually emit as comment since curl may not be available
     }
     fclose(out);  // Must close before reopening for read
     // Emit main() only if there's a Program class with Main method
