@@ -35,14 +35,18 @@ public class Parser {
                 this.SkipNewlines()
         }
 
-        var safetyCount = 0
+        var parseLastPos = 0
         while (!this.IsEnd()) {
             this.SkipNewlines()
             if (this.IsEnd()) { break }
-            safetyCount = safetyCount + 1
-            if (safetyCount > 10000) { break }
+            let parsePos = this.Pos
+            if (parsePos == parseLastPos && parseLastPos > 0) {
+                this.Advance()
+                if (this.IsEnd()) { break }
+            }
+            parseLastPos = this.Pos
             let curVal = this.Current().Value
-                let decl = this.ParseDecl()
+            let decl = this.ParseDecl()
             let dk = decl.Kind
             if (dk != NodeKind.IDENTIFIER) {
                 prog.Children.Add(decl)
@@ -110,12 +114,7 @@ public class Parser {
     }
 
     private void SkipNewlines() {
-        var skipSafety = 0
         while (!this.IsEnd() && this.CheckType(TokenType.NEWLINE)) {
-            skipSafety = skipSafety + 1
-            if (skipSafety > 1000) {
-                        break
-            }
             this.Advance()
         }
     }
@@ -223,17 +222,16 @@ public class Parser {
         this.Expect("{")
         this.SkipNewlines()
 
-        var classSafety = 0
+        var classLastPos = 0
         while (!this.IsEnd() && !this.CheckValue("}")) {
-            classSafety = classSafety + 1
-            if (classSafety > 1000) {
-                let stuck = this.Current()
-                let sv = stuck.Value
-                        this.Advance()
-                break
-            }
             this.SkipNewlines()
             if (this.CheckValue("}")) { break }
+            let classPos = this.Pos
+            if (classPos == classLastPos && classLastPos > 0) {
+                this.Advance()
+                if (this.CheckValue("}")) { break }
+            }
+            classLastPos = this.Pos
                     let member = this.ParseMember()
             let mk = member.Kind
             if (mk != NodeKind.IDENTIFIER) {
@@ -290,14 +288,7 @@ public class Parser {
             }
         }
 
-        var memberSkipSafety = 0
         while (!this.IsEnd() && !this.CheckType(TokenType.NEWLINE) && !this.CheckValue("}")) {
-            memberSkipSafety = memberSkipSafety + 1
-            if (memberSkipSafety > 200) {
-                let sv = this.Current().Value
-                        this.Advance()
-                break
-            }
             this.Advance()
         }
         return this.Unknown()
@@ -390,7 +381,13 @@ public class Parser {
         if (!this.CheckType(TokenType.IDENTIFIER)) {
             if (v == "void" || v == "int" || v == "string" || v == "bool" || v == "float") {
                 this.Advance()
-                return v
+                var kwName = v
+                if (this.CheckValue("[")) {
+                    this.Advance()
+                    this.Expect("]")
+                    kwName = kwName + "[]"
+                }
+                return kwName
             }
             return "void"
         }
@@ -428,17 +425,18 @@ public class Parser {
         let tok = this.Expect("{")
         let block = Ast.Block(tok.Line, tok.Column)
         this.SkipNewlines()
-        var blockSafety = 0
+        var lastPos = 0
         while (!this.IsEnd() && !this.CheckValue("}")) {
-            blockSafety = blockSafety + 1
-            if (blockSafety > 500) {
-                let stuck = this.Current()
-                let sv = stuck.Value
-                        this.Advance()
-                break
-            }
             this.SkipNewlines()
             if (this.CheckValue("}")) { break }
+            let curPos = this.Pos
+            if (curPos == lastPos && lastPos > 0) {
+                this.Advance()
+                this.SkipNewlines()
+                if (this.CheckValue("}")) { break }
+                if (this.IsEnd()) { break }
+            }
+            lastPos = this.Pos
             let stmt = this.ParseStmt()
             block.Children.Add(stmt)
             this.SkipNewlines()
@@ -694,13 +692,7 @@ public class Parser {
 
     private AstNode ParseRelational() {
         var left = this.ParseAdd()
-        var relSafety = 0
         while (this.CheckValue("<") || this.CheckValue(">") || this.CheckValue("<=") || this.CheckValue(">=")) {
-            relSafety = relSafety + 1
-            if (relSafety > 100) {
-                let sv = this.Current().Value
-                        break
-            }
             let tok = this.Advance()
             let right = this.ParseAdd()
             left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
@@ -777,10 +769,14 @@ public class Parser {
         this.ParenDepth = this.ParenDepth + 1
         let myDepth = this.ParenDepth
         this.SkipNewlines()
-        var callSafety = 0
+        var callLastPos = 0
         while (!this.IsEnd()) {
-            callSafety = callSafety + 1
-            if (callSafety > 200) { break }
+            let callPos = this.Pos
+            if (callPos == callLastPos && callLastPos > 0) {
+                this.Advance()
+                if (this.IsEnd()) { break }
+            }
+            callLastPos = this.Pos
             // Only treat ) as end-of-args if it's a real RPAREN token, not a STRING ")"
             let isRparen = this.CheckValue(")") && !this.CheckType(TokenType.STRING)
             if (isRparen && this.ParenDepth == myDepth) { break }
