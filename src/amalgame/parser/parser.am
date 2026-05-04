@@ -299,7 +299,10 @@ public class Parser {
                 if (this.CheckValue("{")) { depth2 = depth2 + 1 }
                 if (this.CheckValue("}")) {
                     depth2 = depth2 - 1
-                    if (depth2 == 0) { this.Advance() break }
+                    if (depth2 == 0) {
+                        this.Advance()
+                        break
+                    }
                 }
                 this.Advance()
             }
@@ -929,6 +932,10 @@ public class Parser {
         }
         if (v == "new") {
             return this.ParseNew()
+        }
+        // if expression: if cond { then } else { else }
+        if (v == "if") {
+            return this.ParseIf()
         }
         if (v == "(") {
             this.Advance()

@@ -116,7 +116,13 @@ int main(int argc, char** argv) {
         if (line) fputs(line, out);
         fputc('\n', out);
     }
+    // Emit main() entry point
+    fprintf(out, "\nint main(int argc, char** argv) {\n");
+    fprintf(out, "    GC_INIT();\n");
+    fprintf(out, "    %s_Program_Main((code_string*)argv);\n", ns);
+    fprintf(out, "    return 0;\n");
+    fprintf(out, "}\n");
     fclose(out);
-    printf("Generated: %s (%d lines)\n", outPath, lc);
+    printf("Generated: %s (%d lines)\n", outPath, lc + 5);
     return 0;
 }
