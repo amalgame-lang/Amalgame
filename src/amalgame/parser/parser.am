@@ -814,6 +814,10 @@ public class Parser {
             }
             return lit
         }
+        if (this.CheckType(TokenType.FLOAT)) {
+            this.Advance()
+            return Ast.FloatLit(v, tok.Line, tok.Column)
+        }
         if (this.CheckType(TokenType.STRING)) {
             this.Advance()
             return Ast.StrLit(v, tok.Line, tok.Column)

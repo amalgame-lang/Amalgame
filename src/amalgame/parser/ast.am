@@ -179,6 +179,12 @@ public class Ast {
         return n
     }
 
+    public static AstNode FloatLit(string raw, int line, int col) {
+        let n  = new AstNode(NodeKind.LITERAL_FLOAT, line, col)
+        n.Str  = raw
+        return n
+    }
+
     public static AstNode NewExpr(string typeName, int line, int col) {
         let n  = new AstNode(NodeKind.NEW_EXPR, line, col)
         n.Name = typeName

@@ -377,7 +377,8 @@ public class CGen {
             if (expr.Left != null) {
                 let calleeStr = this.EmitCalleeStr(expr.Left)
                 // Known return types for stdlib functions
-                if (calleeStr == "String_Length" || calleeStr == "String_IndexOf") { return "i64" }
+                if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf") { return "i64" }
+                if (calleeStr == "String_Contains" || calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_IsEmpty") { return "code_bool" }
                 if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
                 if (String_EndsWith(calleeStr, "_CharAt")) { return "code_string" }
                 if (calleeStr == "code_string_concat") { return "code_string" }
@@ -441,6 +442,109 @@ public class CGen {
 
     // Re-escape a string value (which may contain real newlines, tabs, quotes)
     // into valid C string literal content.
+    // Emit a string literal, expanding {varName} interpolations
+    // Only applies to valid {identifier} patterns — not C braces like "{" or "} else {"
+    private string EmitInterpolatedString(string raw) {
+        let hasInterp = String_IndexOf(raw, "{")
+        if (hasInterp < 0) {
+            let escaped = this.EscapeStringForC(raw)
+            return "\"" + escaped + "\""
+        }
+        let len = String_Length(raw)
+        // Check for at least one valid {identifier} pattern
+        var hasValid = false
+        var ci = 0
+        while (ci < len) {
+            let cch = String_Substring(raw, ci, 1)
+            if (cch == "{") {
+                let rest = String_Substring(raw, ci + 1, len - ci - 1)
+                let close = String_IndexOf(rest, "}")
+                if (close > 0) {
+                    let inner = String_Substring(raw, ci + 1, close)
+                    let fc = String_Substring(inner, 0, 1)
+                    // Valid if starts with a letter or "this."
+                    let isAlpha = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", fc)
+                    if (isAlpha || String_StartsWith(inner, "this.")) {
+                        hasValid = true
+                        ci = len
+                    } else {
+                        ci = ci + 1
+                    }
+                } else {
+                    ci = ci + 1
+                }
+            } else {
+                ci = ci + 1
+            }
+        }
+        if (!hasValid) {
+            let escaped = this.EscapeStringForC(raw)
+            return "\"" + escaped + "\""
+        }
+        // Build interpolated expression
+        var result = "\"\""
+        var i = 0
+        var segStart = 0
+        while (i < len) {
+            let ch = String_Substring(raw, i, 1)
+            if (ch == "{") {
+                let rest2 = String_Substring(raw, i + 1, len - i - 1)
+                let close2 = String_IndexOf(rest2, "}")
+                if (close2 > 0) {
+                    let expr = String_Substring(raw, i + 1, close2)
+                    let fc2 = String_Substring(expr, 0, 1)
+                    let isId = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", fc2)
+                    if (isId || String_StartsWith(expr, "this.")) {
+                        if (i > segStart) {
+                            let seg = String_Substring(raw, segStart, i - segStart)
+                            let esc = this.EscapeStringForC(seg)
+                            result = "code_string_concat(" + result + ", \"" + esc + "\")"
+                        }
+                        let cExpr = this.InterpExprToC(expr)
+                        result = "code_string_concat(" + result + ", " + cExpr + ")"
+                        segStart = i + 1 + close2 + 1
+                        i = segStart
+                    } else {
+                        i = i + 1
+                    }
+                } else {
+                    i = i + 1
+                }
+            } else {
+                i = i + 1
+            }
+        }
+        if (segStart < len) {
+            let seg = String_Substring(raw, segStart, len - segStart)
+            let esc = this.EscapeStringForC(seg)
+            result = "code_string_concat(" + result + ", \"" + esc + "\")"
+        }
+        return result
+    }
+
+    // Convert a simple interpolation expression to a C string expression
+    private string InterpExprToC(string expr) {
+        // this.Field → self->Field with String_FromInt/etc wrapping
+        if (String_StartsWith(expr, "this.")) {
+            let field = String_Substring(expr, 5, String_Length(expr) - 5)
+            let ft = this.FieldTypeGet(this.CurrentClass, field)
+            if (ft == "i64") { return "String_FromInt(self->" + field + ")" }
+            if (ft == "double") { return "String_FromFloat(self->" + field + ")" }
+            if (ft == "code_bool") { return "(self->" + field + " ? \"true\" : \"false\")" }
+            return "(self->" + field + " ? self->" + field + " : \"\")"
+        }
+        // Simple variable
+        let varC = this.LocalTypeGet(expr)
+        if (varC == "i64") { return "String_FromInt(" + expr + ")" }
+        if (varC == "double") { return "String_FromFloat(" + expr + ")" }
+        if (varC == "code_bool") { return "(" + expr + " ? \"true\" : \"false\")" }
+        if (String_Length(varC) > 0) {
+            return "(" + expr + " ? " + expr + " : \"\")"
+        }
+        // Fallback: try String_FromInt
+        return "String_FromInt(" + expr + ")"
+    }
+
     private string EscapeStringForC(string raw) {
         // The Amalgame lexer converts escape sequences to real bytes.
         // We must reverse that for C string literal emission.
@@ -854,8 +958,7 @@ public class CGen {
         if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }
         if (k == NodeKind.LITERAL_STRING) {
             let raw = expr.Str
-            let escaped = this.EscapeStringForC(raw)
-            return "\"" + escaped + "\""
+            return this.EmitInterpolatedString(raw)
         }
         if (k == NodeKind.LITERAL_BOOL) {
             if (expr.Flag) { return "1" }
@@ -1205,6 +1308,11 @@ public class CGen {
                     let firstChar = String_Substring(tname, 0, 1)
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
+                        // Stdlib classes are never namespace-prefixed
+                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env"
+                        if (isStdlib) {
+                            return tname + "_" + mname
+                        }
                         // Static call: ClassName.Method → Ns_ClassName_Method
                         return this.SymName(tname) + "_" + mname
                     }
