@@ -390,7 +390,13 @@ public class Parser {
         if (!this.CheckType(TokenType.IDENTIFIER)) {
             if (v == "void" || v == "int" || v == "string" || v == "bool" || v == "float") {
                 this.Advance()
-                return v
+                var kwName = v
+                if (this.CheckValue("[")) {
+                    this.Advance()
+                    this.Expect("]")
+                    kwName = kwName + "[]"
+                }
+                return kwName
             }
             return "void"
         }
