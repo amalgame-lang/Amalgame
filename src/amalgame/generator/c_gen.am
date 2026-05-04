@@ -922,7 +922,8 @@ public class CGen {
             // If inferred void* but we have a typed cast available, upgrade the variable type
             if (t == "void*") {
                 // Check if rhs already contains a typed cast like "(SomeType*)AmalgameList_get"
-                if (String_StartsWith(rhs, "(") && !String_StartsWith(rhs, "(void*)")) {
+                // but NOT a ternary expression like "(cond ? a : b)"
+                if (String_StartsWith(rhs, "(") && !String_StartsWith(rhs, "(void*)") && !String_Contains(rhs, "?")) {
                     // Extract cast type from "(Type*)expr" → strip outer parens up to first )
                     let closeP = String_IndexOf(rhs, ")")
                     if (closeP > 1) {
