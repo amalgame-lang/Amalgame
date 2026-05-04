@@ -1,5 +1,5 @@
-// amc_bootstrap — hand-written C entry point
-// Fix: cast away const for Lexer_new
+// amc_bootstrap — C entry point
+// Compiles .am files to .c — does NOT bundle bootstrap internals with user code
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,9 +8,9 @@
 #include "Amalgame_String.h"
 #include "Amalgame_Collections.h"
 #include "Amalgame_IO.h"
+#include "Amalgame_Console.h"
 
-void Amalgame_Compiler_Console_WriteLine(code_string s) { printf("%s\n", s ? s : ""); }
-void Amalgame_Compiler_Console_WriteError(code_string s) { fprintf(stderr, "%s\n", s ? s : ""); }
+// Console functions defined in amc_bootstrap_lib.c via Amalgame_Console.h
 
 typedef struct _Amalgame_Compiler_CGen    Amalgame_Compiler_CGen;
 typedef struct _Amalgame_Compiler_Lexer   Amalgame_Compiler_Lexer;
@@ -40,9 +40,32 @@ static Amalgame_Compiler_AstNode* parse_file(const char* path) {
     return Amalgame_Compiler_Parser_Parse(par);
 }
 
+// Namespace detection - read first line of first .am file
+static code_string detect_namespace(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (!f) return "App";
+    char line[256] = {0};
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "namespace ", 10) == 0) {
+            fclose(f);
+            char* ns = line + 10;
+            int len = strlen(ns);
+            while (len > 0 && (ns[len-1] == 10 || ns[len-1] == 13 || ns[len-1] == 32)) ns[--len] = 0;
+            char* r = (char*)GC_MALLOC(len+1);
+            for (int i = 0; i < len; i++) r[i] = (ns[i] == 46) ? 95 : ns[i];
+            r[len] = 0;
+            return r;
+        }
+    }
+    fclose(f);
+    return "App";
+}
 int main(int argc, char** argv) {
     GC_INIT();
-    if (argc < 2) { fprintf(stderr, "Usage: amc_bootstrap file.am ... -o output\n"); return 1; }
+    if (argc < 2) {
+        fprintf(stderr, "Usage: amc_bootstrap file.am [file2.am ...] -o output\n");
+        return 1;
+    }
 
     AmalgameList* inputFiles = AmalgameList_new();
     const char* outputName = "a.out";
@@ -55,20 +78,33 @@ int main(int argc, char** argv) {
     if (n == 0) { fprintf(stderr, "amc: no input .am files\n"); return 1; }
     printf("Compiling: %d file(s)\n", n);
 
-    Amalgame_Compiler_CGen* gen = Amalgame_Compiler_CGen_new();
-    Amalgame_Compiler_CGen_BeginMulti(gen, "Amalgame.Compiler");
+    // Parse all files first to detect namespace
+    AmalgameList* progs = AmalgameList_new();
     for (int i = 0; i < n; i++) {
-        Amalgame_Compiler_AstNode* p = parse_file((char*)AmalgameList_get(inputFiles,i));
+        Amalgame_Compiler_AstNode* p = parse_file((char*)AmalgameList_get(inputFiles, i));
         if (!p) return 1;
-        Amalgame_Compiler_CGen_AddFilePass1(gen, p);
-    }
-    Amalgame_Compiler_CGen_EmitSeparator(gen);
-    for (int i = 0; i < n; i++) {
-        Amalgame_Compiler_AstNode* p = parse_file((char*)AmalgameList_get(inputFiles,i));
-        if (!p) return 1;
-        Amalgame_Compiler_CGen_AddFilePass2(gen, p);
+        AmalgameList_add(progs, p);
     }
 
+    // Detect namespace from first file
+    code_string ns = detect_namespace((const char*)AmalgameList_get(inputFiles, 0));
+
+    // Generate C
+    Amalgame_Compiler_CGen* gen = Amalgame_Compiler_CGen_new();
+    Amalgame_Compiler_CGen_BeginMulti(gen, ns);
+
+    // Pass 1: forward declarations
+    for (int i = 0; i < n; i++) {
+        Amalgame_Compiler_CGen_AddFilePass1(gen, (Amalgame_Compiler_AstNode*)AmalgameList_get(progs, i));
+    }
+    Amalgame_Compiler_CGen_EmitSeparator(gen);
+
+    // Pass 2: definitions
+    for (int i = 0; i < n; i++) {
+        Amalgame_Compiler_CGen_AddFilePass2(gen, (Amalgame_Compiler_AstNode*)AmalgameList_get(progs, i));
+    }
+
+    // Write output line by line
     char outPath[512];
     snprintf(outPath, sizeof(outPath), "%s.c", outputName);
     FILE* out = fopen(outPath, "w");
