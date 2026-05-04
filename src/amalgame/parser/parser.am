@@ -186,6 +186,18 @@ public class Parser {
         if (this.CheckKw("class")) {
                 return this.ParseClass(isPublic)
         }
+        // data class: "data class Point(float X, float Y)" → class with fields + constructor
+        if (this.CheckKw("data")) {
+            this.Advance()
+            if (this.CheckKw("class")) {
+                return this.ParseDataClass(isPublic)
+            }
+        }
+        // record: "record Point(float X, float Y)" → same as data class
+        if (this.CheckKw("record")) {
+            this.Advance()
+            return this.ParseDataClass(isPublic)
+        }
         if (this.CheckKw("enum")) {
             return this.ParseEnum(isPublic)
         }
@@ -218,8 +230,13 @@ public class Parser {
             cls.Str = this.ParseQualifiedName()
         }
 
-        this.SkipNewlines()
-        this.Expect("{")
+        // implements Interface1, Interface2 — skip for now (just consume tokens)
+        if (this.CheckKw("implements")) {
+            this.Advance()
+            while (!this.IsEnd() && !this.CheckValue("{") && !this.CheckType(TokenType.NEWLINE)) {
+                this.Advance()
+            }
+        }
         this.SkipNewlines()
 
         var classLastPos = 0
@@ -243,7 +260,52 @@ public class Parser {
         return cls
     }
 
-    // ── Member ────────────────────────────────────────
+    // Parse "data class Name(type field, ...)" → CLASS_DECL with fields + constructor
+    private AstNode ParseDataClass(bool isPublic) {
+        this.Advance() // consume 'class'
+        let nameTok = this.ExpectIdent()
+        let cls = Ast.Class(nameTok.Value, nameTok.Line, nameTok.Column)
+        cls.Flag = isPublic
+        // Parse constructor params as fields: (type Name, type Name, ...)
+        if (this.CheckValue("(")) {
+            this.Advance()
+            var ctor = Ast.Method(nameTok.Value, "void", nameTok.Line, nameTok.Column)
+            ctor.Flag = true
+            while (!this.IsEnd() && !this.CheckValue(")")) {
+                this.SkipNewlines()
+                if (this.CheckValue(")")) { break }
+                if (this.CheckValue(",")) { this.Advance() }
+                this.SkipNewlines()
+                if (this.CheckValue(")")) { break }
+                let ftype = this.ParseTypeName()
+                let fname = this.ExpectIdent()
+                // Add as public field
+                let field = Ast.VarDecl(fname.Value, true, fname.Line, fname.Column)
+                field.Str = ftype
+                field.Flag = true
+                cls.Children.Add(field)
+                // Add as constructor param
+                let param = Ast.Param(fname.Value, ftype, fname.Line, fname.Column)
+                ctor.Params.Add(param)
+                if (this.CheckValue(",")) { this.Advance() }
+            }
+            if (this.CheckValue(")")) { this.Advance() }
+            cls.Children.Add(ctor)
+        }
+        // Skip optional body
+        if (this.CheckValue("{")) {
+            var depth2 = 0
+            while (!this.IsEnd()) {
+                if (this.CheckValue("{")) { depth2 = depth2 + 1 }
+                if (this.CheckValue("}")) {
+                    depth2 = depth2 - 1
+                    if (depth2 == 0) { this.Advance() break }
+                }
+                this.Advance()
+            }
+        }
+        return cls
+    }
 
     private AstNode ParseMember() {
         this.SkipNewlines()
@@ -624,19 +686,46 @@ public class Parser {
         while (!this.IsEnd() && !this.CheckValue("}")) {
             this.SkipNewlines()
             if (this.CheckValue("}")) { break }
-            let typeName = this.ParseTypeName()
-            let mnameTok = this.ExpectIdent()
-            let m = Ast.Method(mnameTok.Value, typeName, mnameTok.Line, mnameTok.Column)
+            // Two syntaxes:
+            //   RetType MethodName(params)      (classic)
+            //   MethodName(params) -> RetType   (arrow)
+            var typeName = "void"
+            var methodName = "_unknown_"
+            var mline = this.Current().Line
+            var mcol  = this.Current().Column
+            // Check if next token is an identifier followed by ( → arrow syntax
+            if (this.CheckType(TokenType.IDENTIFIER)) {
+                let peek1 = this.Peek(1)
+                if (peek1.Value == "(") {
+                    // Arrow syntax: Name(params) -> RetType
+                    let mnameTok2 = this.ExpectIdent()
+                    methodName = mnameTok2.Value
+                    mline = mnameTok2.Line
+                    mcol  = mnameTok2.Column
+                } else {
+                    // Classic: RetType Name(params)
+                    typeName = this.ParseTypeName()
+                    let mnameTok3 = this.ExpectIdent()
+                    methodName = mnameTok3.Value
+                    mline = mnameTok3.Line
+                    mcol  = mnameTok3.Column
+                }
+            }
+            let m = Ast.Method(methodName, typeName, mline, mcol)
             this.Expect("(")
             while (!this.IsEnd() && !this.CheckValue(")")) {
-                if (this.CheckValue(",")) {
-                    this.Advance()
-                    continue
-                }
+                if (this.CheckValue(",")) { this.Advance() }
+                if (this.CheckValue(")")) { break }
                 let p = this.ParseParam()
                 m.Params.Add(p)
             }
             this.Expect(")")
+            // Handle arrow syntax: -> RetType
+            if (this.CheckValue("->")) {
+                this.Advance()
+                let retType2 = this.ParseTypeName()
+                m.Str = retType2
+            }
             iface.Children.Add(m)
             this.SkipNewlines()
         }
