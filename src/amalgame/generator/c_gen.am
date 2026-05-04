@@ -292,11 +292,16 @@ public class CGen {
                     return this.FieldTypeGet(this.CurrentClass, expr.Name)
                 }
                 if (lk == NodeKind.IDENTIFIER) {
-                    let varCType = this.LocalTypeGet(expr.Left.Name)
+                    let lname = expr.Left.Name
+                    let varCType = this.LocalTypeGet(lname)
                     let bare = String_Replace(varCType, "*", "")
                     if (String_Length(bare) > 0) {
                         return this.FieldTypeGet(bare, expr.Name)
                     }
+                    // Not a local var — check if it's an enum type (Direction.North → Tests_Direction)
+                    let symT = this.SymName(lname)
+                    if (this.IsEnum(symT)) { return symT }
+                    if (this.IsEnum(lname)) { return this.SymName(lname) }
                 }
                 // CALL.Field — e.g. this.Current().Value → infer type from call return
                 if (lk == NodeKind.CALL) {
@@ -432,6 +437,15 @@ public class CGen {
                                 let retT2  = this.MethodRetGet(symCls, mname2)
                                 if (String_Length(retT2) > 0) { return retT2 }
                             }
+                            // Instance method call: obj.Method() → look up via obj's type
+                            if (!isUpp) {
+                                let objType = this.LocalTypeGet(cname2)
+                                let bareCls = String_Replace(objType, "*", "")
+                                if (String_Length(bareCls) > 0) {
+                                    let retT3 = this.MethodRetGet(bareCls, mname2)
+                                    if (String_Length(retT3) > 0) { return retT3 }
+                                }
+                            }
                         }
                     }
                 }
@@ -524,14 +538,29 @@ public class CGen {
 
     // Convert a simple interpolation expression to a C string expression
     private string InterpExprToC(string expr) {
-        // this.Field → self->Field with String_FromInt/etc wrapping
+        // this.Field → self->Field
         if (String_StartsWith(expr, "this.")) {
             let field = String_Substring(expr, 5, String_Length(expr) - 5)
             let ft = this.FieldTypeGet(this.CurrentClass, field)
             if (ft == "i64") { return "String_FromInt(self->" + field + ")" }
             if (ft == "double") { return "String_FromFloat(self->" + field + ")" }
-            if (ft == "code_bool") { return "(self->" + field + " ? \"true\" : \"false\")" }
+            if (ft == "code_bool") { return "((self->" + field + ") ? \"true\" : \"false\")" }
             return "(self->" + field + " ? self->" + field + " : \"\")"
+        }
+        // obj.field → obj->field (obj is a pointer variable)
+        let dotIdx = String_IndexOf(expr, ".")
+        if (dotIdx > 0) {
+            let objName = String_Substring(expr, 0, dotIdx)
+            let field2  = String_Substring(expr, dotIdx + 1, String_Length(expr) - dotIdx - 1)
+            let objType = this.LocalTypeGet(objName)
+            let bareT   = String_Replace(objType, "*", "")
+            if (String_Length(bareT) > 0) {
+                let ft2 = this.FieldTypeGet(bareT, field2)
+                if (ft2 == "i64") { return "String_FromInt(" + objName + "->" + field2 + ")" }
+                if (ft2 == "double") { return "String_FromFloat(" + objName + "->" + field2 + ")" }
+                if (ft2 == "code_bool") { return "((" + objName + "->" + field2 + ") ? \"true\" : \"false\")" }
+                return "(" + objName + "->" + field2 + " ? " + objName + "->" + field2 + " : \"\")"
+            }
         }
         // Simple variable
         let varC = this.LocalTypeGet(expr)
@@ -541,7 +570,7 @@ public class CGen {
         if (String_Length(varC) > 0) {
             return "(" + expr + " ? " + expr + " : \"\")"
         }
-        // Fallback: try String_FromInt
+        // Fallback: treat as int
         return "String_FromInt(" + expr + ")"
     }
 
@@ -642,6 +671,24 @@ public class CGen {
         // Struct fields
         this.Out.EmitLine("struct _" + name + " {")
         this.Out.Indent_()
+        // Embed parent fields directly if this class extends another
+        let parentName = cls.Str
+        if (String_Length(parentName) > 0) {
+            let parentC = this.SymName(parentName)
+            // Copy parent field declarations into child struct
+            let pfc = this.FieldNames.Count()
+            let pfPrefix = parentC + "."
+            for pfi in 0..pfc {
+                let pfkey = this.FieldNames.Get(pfi)
+                if (String_StartsWith(pfkey, pfPrefix)) {
+                    let pfname = String_Substring(pfkey, String_Length(pfPrefix), String_Length(pfkey) - String_Length(pfPrefix))
+                    let pftype = this.FieldCTypes.Get(pfi)
+                    this.Out.EmitLine(pftype + " " + pfname + ";")
+                    // Register in child's field table for method lookup
+                    this.FieldTypeSet(name, pfname, pftype)
+                }
+            }
+        }
         for i in 0..members {
             let m  = cls.Children.Get(i)
             let mk = m.Kind
