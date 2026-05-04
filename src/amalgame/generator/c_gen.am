@@ -137,6 +137,10 @@ public class CGen {
         return this.Out.GetOutput()
     }
 
+    public List<string> GetLines() {
+        return this.Out.Lines
+    }
+
     private string SymName(string name) {
         let ns = this.NsPrefix
         if (String_Length(ns) > 0) {
@@ -303,13 +307,59 @@ public class CGen {
                         if (String_Length(ft) > 0) { return ft }
                     }
                 }
-                // MEMBER.Field — e.g. expr.Left.Kind → recurse
+                // MEMBER.Field — limit to avoid deep recursion / stack overflow
+                // handles: this.Field.Prop, var.Field.Prop, var.Field.Field.Prop
                 if (lk == NodeKind.MEMBER) {
-                    let parentT = this.InferTypeFromExpr(expr.Left)
-                    let bareP = String_Replace(parentT, "*", "")
-                    if (String_Length(bareP) > 0) {
-                        let ft2 = this.FieldTypeGet(bareP, expr.Name)
-                        if (String_Length(ft2) > 0) { return ft2 }
+                    if (expr.Left.Left != null) {
+                        let llk2 = expr.Left.Left.Kind
+                        if (llk2 == NodeKind.THIS_EXPR) {
+                            let fname2 = expr.Left.Name
+                            let parentT = this.FieldTypeGet(this.CurrentClass, fname2)
+                            let bareP = String_Replace(parentT, "*", "")
+                            if (String_Length(bareP) > 0) {
+                                let ft2 = this.FieldTypeGet(bareP, expr.Name)
+                                if (String_Length(ft2) > 0) { return ft2 }
+                            }
+                        }
+                        if (llk2 == NodeKind.IDENTIFIER) {
+                            let vname3 = expr.Left.Left.Name
+                            let vtype3 = this.LocalTypeGet(vname3)
+                            let bareV  = String_Replace(vtype3, "*", "")
+                            if (String_Length(bareV) > 0) {
+                                let fname3   = expr.Left.Name
+                                let parentT3 = this.FieldTypeGet(bareV, fname3)
+                                let bareP3   = String_Replace(parentT3, "*", "")
+                                if (String_Length(bareP3) > 0) {
+                                    let ft3 = this.FieldTypeGet(bareP3, expr.Name)
+                                    if (String_Length(ft3) > 0) { return ft3 }
+                                }
+                            }
+                        }
+                        // var.Field.Field.Prop — 3-level chain
+                        if (llk2 == NodeKind.MEMBER) {
+                            if (expr.Left.Left.Left != null) {
+                                let lll = expr.Left.Left.Left
+                                if (lll.Kind == NodeKind.IDENTIFIER) {
+                                    let vn4   = lll.Name
+                                    let vt4   = this.LocalTypeGet(vn4)
+                                    let bare4 = String_Replace(vt4, "*", "")
+                                    if (String_Length(bare4) > 0) {
+                                        let fn4   = expr.Left.Left.Name
+                                        let pt4   = this.FieldTypeGet(bare4, fn4)
+                                        let bp4   = String_Replace(pt4, "*", "")
+                                        if (String_Length(bp4) > 0) {
+                                            let fn5 = expr.Left.Name
+                                            let pt5 = this.FieldTypeGet(bp4, fn5)
+                                            let bp5 = String_Replace(pt5, "*", "")
+                                            if (String_Length(bp5) > 0) {
+                                                let ft5 = this.FieldTypeGet(bp5, expr.Name)
+                                                if (String_Length(ft5) > 0) { return ft5 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -412,6 +462,7 @@ public class CGen {
         this.Out.EmitLine("#include \"_runtime.h\"")
         this.Out.EmitLine("#include \"Amalgame_String.h\"")
         this.Out.EmitLine("#include \"Amalgame_Collections.h\"")
+        this.Out.EmitLine("#include \"Amalgame_IO.h\"")
         this.Out.EmitBlank()
     }
 

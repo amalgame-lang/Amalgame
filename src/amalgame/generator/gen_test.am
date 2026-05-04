@@ -26,7 +26,7 @@ public class Program {
             Console.WriteLine("{path}: {clen} chars → {outName}")
         }
 
-        // --- Parse all files ---
+        // --- Parse all files once ---
         let tokPath = "./src/amalgame/lexer/token.am"
         let tokSrc  = File.ReadAll(tokPath)
         let tokLex  = new Lexer(tokSrc, tokPath)
@@ -62,7 +62,10 @@ public class Program {
         let cgenPar  = new Parser(cgenToks)
         let cgenProg = cgenPar.Parse()
 
-        Console.WriteLine("--- lexer bundle ---")
+        // --- Bundles: use a helper that avoids large string accumulation ---
+        // We generate to a CGen, get lines count, write line by line
+
+        // Lexer bundle
         let gen2 = new CGen()
         gen2.BeginMulti("Amalgame.Compiler")
         gen2.AddFilePass1(tokProg)
@@ -70,11 +73,17 @@ public class Program {
         gen2.EmitSeparator()
         gen2.AddFilePass2(tokProg)
         gen2.AddFilePass2(lexProg)
-        let code2 = gen2.FinishMulti()
-        File.WriteAll("./src/amalgame/lexer/lexer_bundle_bootstrap.c", code2)
-        Console.WriteLine("lexer bundle OK")
+        let lines2 = gen2.GetLines()
+        let lc2    = lines2.Count()
+        let out2   = "./src/amalgame/lexer/lexer_bundle_bootstrap.c"
+        File.WriteAll(out2, "")
+        for wi in 0..lc2 {
+            let wline = lines2.Get(wi)
+            File.AppendAll(out2, wline + "\n")
+        }
+        Console.WriteLine("lexer bundle: {lc2} lines → {out2}")
 
-        Console.WriteLine("--- parser bundle ---")
+        // Parser bundle
         let gen3 = new CGen()
         gen3.BeginMulti("Amalgame.Compiler")
         gen3.AddFilePass1(tokProg)
@@ -86,11 +95,17 @@ public class Program {
         gen3.AddFilePass2(astProg)
         gen3.AddFilePass2(lexProg)
         gen3.AddFilePass2(parProg)
-        let code3 = gen3.FinishMulti()
-        File.WriteAll("./src/amalgame/parser/parser_bundle_bootstrap.c", code3)
-        Console.WriteLine("parser bundle OK")
+        let lines3 = gen3.GetLines()
+        let lc3    = lines3.Count()
+        let out3   = "./src/amalgame/parser/parser_bundle_bootstrap.c"
+        File.WriteAll(out3, "")
+        for wi in 0..lc3 {
+            let wline = lines3.Get(wi)
+            File.AppendAll(out3, wline + "\n")
+        }
+        Console.WriteLine("parser bundle: {lc3} lines → {out3}")
 
-        Console.WriteLine("--- cgen bundle ---")
+        // CGen bundle
         let gen4 = new CGen()
         gen4.BeginMulti("Amalgame.Compiler")
         gen4.AddFilePass1(tokProg)
@@ -104,20 +119,17 @@ public class Program {
         gen4.AddFilePass2(lexProg)
         gen4.AddFilePass2(parProg)
         gen4.AddFilePass2(cgenProg)
-        let code4 = gen4.FinishMulti()
-        File.WriteAll("./src/amalgame/generator/cgen_bundle_bootstrap.c", code4)
-        Console.WriteLine("cgen bundle OK")
+        let lines4 = gen4.GetLines()
+        let lc4    = lines4.Count()
+        let out4   = "./src/amalgame/generator/cgen_bundle_bootstrap.c"
+        File.WriteAll(out4, "")
+        for wi in 0..lc4 {
+            let wline = lines4.Get(wi)
+            File.AppendAll(out4, wline + "\n")
+        }
+        Console.WriteLine("cgen bundle: {lc4} lines → {out4}")
 
-        Console.WriteLine("--- parsing diagnostics ---")
-        let diagPath = "./src/amalgame/diagnostics.am"
-        let diagSrc  = File.ReadAll(diagPath)
-        let diagLex  = new Lexer(diagSrc, diagPath)
-        let diagToks = diagLex.Tokenize()
-        let diagPar  = new Parser(diagToks)
-        let diagProg = diagPar.Parse()
-        Console.WriteLine("diagnostics OK")
-
-        Console.WriteLine("--- full lib bundle ---")
+        // Full lib bundle
         let gen5 = new CGen()
         gen5.BeginMulti("Amalgame.Compiler")
         gen5.AddFilePass1(tokProg)
@@ -125,17 +137,21 @@ public class Program {
         gen5.AddFilePass1(lexProg)
         gen5.AddFilePass1(parProg)
         gen5.AddFilePass1(cgenProg)
-        gen5.AddFilePass1(diagProg)
         gen5.EmitSeparator()
         gen5.AddFilePass2(tokProg)
         gen5.AddFilePass2(astProg)
         gen5.AddFilePass2(lexProg)
         gen5.AddFilePass2(parProg)
         gen5.AddFilePass2(cgenProg)
-        gen5.AddFilePass2(diagProg)
-        let code5 = gen5.FinishMulti()
-        File.WriteAll("./src/amalgame/amc_bootstrap_lib.c", code5)
-        Console.WriteLine("amc_bootstrap_lib OK: {String_Length(code5)} chars")
+        let lines5 = gen5.GetLines()
+        let lc5    = lines5.Count()
+        let out5   = "./src/amalgame/amc_bootstrap_lib.c"
+        File.WriteAll(out5, "")
+        for wi in 0..lc5 {
+            let wline = lines5.Get(wi)
+            File.AppendAll(out5, wline + "\n")
+        }
+        Console.WriteLine("amc_bootstrap_lib: {lc5} lines → {out5}")
         Console.WriteLine("Done!")
     }
 }
