@@ -381,8 +381,9 @@ public class CGen {
         }
         if (k == NodeKind.NEW_EXPR) {
             let tname = expr.Name
-            if (String_StartsWith(tname, "List<")) { return "AmalgameList*" }
-            if (tname == "List") { return "AmalgameList*" }
+            if (String_StartsWith(tname, "List<") || tname == "List") { return "AmalgameList*" }
+            if (String_StartsWith(tname, "Map<")  || tname == "Map")  { return "AmalgameMap*" }
+            if (String_StartsWith(tname, "Set<")  || tname == "Set")  { return "AmalgameSet*" }
             if (this.IsEnum(tname)) { return this.SymName(tname) }
             return this.SymName(tname) + "*"
         }
@@ -390,6 +391,9 @@ public class CGen {
         if (k == NodeKind.CALL) {
             if (expr.Left != null) {
                 let calleeStr = this.EmitCalleeStr(expr.Left)
+                if (calleeStr == "AmalgameMap_has" || calleeStr == "AmalgameMap_remove" || calleeStr == "AmalgameSet_contains" || calleeStr == "AmalgameSet_remove" || calleeStr == "AmalgameSet_add") { return "code_bool" }
+                if (calleeStr == "AmalgameMap_size" || calleeStr == "AmalgameSet_size") { return "i64" }
+                if (calleeStr == "AmalgameList_isEmpty" || calleeStr == "AmalgameList_remove") { return "code_bool" }
                 // Known return types for stdlib functions
                 if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf") { return "i64" }
                 if (calleeStr == "String_Contains" || calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_IsEmpty") { return "code_bool" }
@@ -415,8 +419,19 @@ public class CGen {
                 if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp") { return "i64" }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
-                    // List method return types
-                    if (mname2 == "Count") { return "i64" }
+                    // Collection method return types based on method name
+                    if (mname2 == "Count" || mname2 == "Size") { return "i64" }
+                    if (mname2 == "IsEmpty" || mname2 == "Has" || mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add") {
+                        // Check object type to determine correct return
+                        if (expr.Left.Left != null && expr.Left.Left.Kind == NodeKind.IDENTIFIER) {
+                            let objN = expr.Left.Left.Name
+                            let objT = this.LocalTypeGet(objN)
+                            if (objT == "AmalgameList*" && mname2 == "IsEmpty") { return "code_bool" }
+                            if (objT == "AmalgameList*" && mname2 == "Remove") { return "code_bool" }
+                            if (objT == "AmalgameMap*" && (mname2 == "Has" || mname2 == "Remove")) { return "code_bool" }
+                            if (objT == "AmalgameSet*" && (mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add")) { return "code_bool" }
+                        }
+                    }
                     if (mname2 == "Get") {
                         // Try to find element type from list field
                         if (expr.Left.Left != null) {
@@ -1231,14 +1246,22 @@ public class CGen {
             if (String_StartsWith(tname, "List<") || tname == "List") {
                 newCall = "AmalgameList_new()"
             } else {
-                newCall = this.SymName(tname) + "_new("
-                let argc = expr.Args.Count()
-                for i in 0..argc {
-                    let arg = expr.Args.Get(i)
-                    if (i > 0) { newCall = newCall + ", " }
-                    newCall = newCall + this.EmitExprStr(arg)
+                if (String_StartsWith(tname, "Map<") || tname == "Map") {
+                    newCall = "AmalgameMap_new()"
+                } else {
+                    if (String_StartsWith(tname, "Set<") || tname == "Set") {
+                        newCall = "AmalgameSet_new()"
+                    } else {
+                        newCall = this.SymName(tname) + "_new("
+                        let argc = expr.Args.Count()
+                        for i in 0..argc {
+                            let arg = expr.Args.Get(i)
+                            if (i > 0) { newCall = newCall + ", " }
+                            newCall = newCall + this.EmitExprStr(arg)
+                        }
+                        newCall = newCall + ")"
+                    }
                 }
-                newCall = newCall + ")"
             }
             return newCall
         }
@@ -1264,7 +1287,65 @@ public class CGen {
         if (callExpr.Left.Kind != NodeKind.MEMBER) { return "" }
         let callee = callExpr.Left
         let mname  = callee.Name
-        if (mname != "Add" && mname != "Count" && mname != "Get") { return "" }
+
+        // Map methods
+        if (mname == "Set" || mname == "Has" || mname == "Size" || mname == "Remove") {
+            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameMap*") {
+                    let args = callExpr.Args
+                    let ac = args.Count()
+                    if (mname == "Set" && ac >= 2) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        let v2 = this.EmitExprStr(args.Get(1))
+                        return "AmalgameMap_set(" + vname + ", " + k2 + ", (void*)(intptr_t)(" + v2 + "))"
+                    }
+                    if (mname == "Has" && ac >= 1) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        return "AmalgameMap_has(" + vname + ", " + k2 + ")"
+                    }
+                    if (mname == "Size") { return "AmalgameMap_size(" + vname + ")" }
+                    if (mname == "Remove" && ac >= 1) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        return "AmalgameMap_remove(" + vname + ", " + k2 + ")"
+                    }
+                }
+            }
+        }
+        // Set methods
+        if (mname == "Contains" || mname == "Size") {
+            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameSet*") {
+                    let args = callExpr.Args
+                    let ac = args.Count()
+                    if (mname == "Contains" && ac >= 1) {
+                        let v2 = this.EmitExprStr(args.Get(0))
+                        return "AmalgameSet_contains(" + vname + ", " + v2 + ")"
+                    }
+                    if (mname == "Size") { return "AmalgameSet_size(" + vname + ")" }
+                }
+            }
+        }
+        if (mname == "Add" || mname == "Remove") {
+            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameSet*") {
+                    let args = callExpr.Args
+                    let ac = args.Count()
+                    if (ac >= 1) {
+                        let v2 = this.EmitExprStr(args.Get(0))
+                        if (mname == "Add") { return "AmalgameSet_add(" + vname + ", " + v2 + ")" }
+                        return "AmalgameSet_remove(" + vname + ", " + v2 + ")"
+                    }
+                }
+            }
+        }
+
+        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -1367,6 +1448,16 @@ public class CGen {
             }
             return "(void*)AmalgameList_get(" + listExpr + ", " + idx0 + ")"
         }
+        if (mname == "IsEmpty") {
+            return "AmalgameList_isEmpty(" + listExpr + ")"
+        }
+        if (mname == "Remove") {
+            let argc = callExpr.Args.Count()
+            if (argc > 0) {
+                let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
+                return "AmalgameList_remove(" + listExpr + ", (void*)(intptr_t)(" + arg0 + "))"
+            }
+        }
         return ""
     }
 
@@ -1455,9 +1546,15 @@ public class CGen {
         if (String_StartsWith(t, "List<")) {
             return "AmalgameList*"
         }
-        if (t == "List") {
-            return "AmalgameList*"
+        if (String_StartsWith(t, "Map<")) {
+            return "AmalgameMap*"
         }
+        if (String_StartsWith(t, "Set<")) {
+            return "AmalgameSet*"
+        }
+        if (t == "List") { return "AmalgameList*" }
+        if (t == "Map")  { return "AmalgameMap*" }
+        if (t == "Set")  { return "AmalgameSet*" }
         if (this.IsEnum(t)) {
             return this.SymName(t)
         }
