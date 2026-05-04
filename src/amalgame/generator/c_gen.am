@@ -389,6 +389,12 @@ public class CGen {
                 if (calleeStr == "code_string_concat") { return "code_string" }
                 if (calleeStr == "AmalgameList_count") { return "i64" }
                 if (String_StartsWith(calleeStr, "AmalgameList_count")) { return "i64" }
+                // File stdlib return types
+                if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete") { return "code_bool" }
+                if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
+                // Math stdlib return types
+                if (calleeStr == "Math_Sqrt" || calleeStr == "Math_Abs" || calleeStr == "Math_Floor" || calleeStr == "Math_Ceil" || calleeStr == "Math_Round" || calleeStr == "Math_Pow" || calleeStr == "Math_Log") { return "double" }
+                if (calleeStr == "Math_Max" || calleeStr == "Math_Min") { return "i64" }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
                     // List method return types
