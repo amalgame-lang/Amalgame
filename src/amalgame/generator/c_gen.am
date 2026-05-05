@@ -1559,6 +1559,12 @@ public class CGen {
             return this.SymName(t)
         }
         let sym = this.SymName(t)
+        // Single uppercase letter = generic type parameter → use void*
+        if (String_Length(t) == 1) {
+            let fc = String_Substring(t, 0, 1)
+            let isUp = fc == String_ToUpper(fc)
+            if (isUp) { return "void*" }
+        }
         if (this.IsEnum(sym)) {
             return sym
         }
