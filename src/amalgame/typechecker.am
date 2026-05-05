@@ -1,0 +1,783 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  typechecker.am  —  Type inference & validation pass
+//
+//  Runs after the Resolver. Walks the AST, infers a type
+//  for every expression, and validates compatibility at
+//  assignments, calls, returns, operators, and conditions.
+//
+//  Limitations (deferred to a future Hindley-Milner pass):
+//    - Full generic type unification
+//    - Variance / covariance checks
+//    - Flow-sensitive smart casts
+// ═══════════════════════════════════════════════════════
+
+// ── Type error ────────────────────────────────────────
+public class TypeError {
+    public Message:  string
+    public Filename: string
+    public Line:     int
+    public Column:   int
+
+    public TypeError(string msg, string file, int line, int col) {
+        this.Message  = msg
+        this.Filename = file
+        this.Line     = line
+        this.Column   = col
+    }
+
+    public string ToString() {
+        let ln  = String_FromInt(this.Line)
+        let col = String_FromInt(this.Column)
+        return "\n┌── [typechecker] " + this.Filename + ":" + ln + ":" + col + "\n│\n│  " + this.Message + "\n│\n└──\n"
+    }
+}
+
+// ── Type check result ─────────────────────────────────
+public class TypeCheckResult {
+    public Success: bool
+    public Errors:  List<TypeError>
+
+    public TypeCheckResult() {
+        this.Success = true
+        this.Errors  = new List<TypeError>()
+    }
+}
+
+// ── TypeNode kind constants (mirrored from Vala) ──────
+// We use string TypeKeys throughout, e.g. "int", "string",
+// "Player", "List<int>", "?" (unknown).
+
+// ── TypeChecker ───────────────────────────────────────
+public class TypeChecker {
+    // Parallel map: AstNode pointer (as string key) → TypeKey
+    // We use AstNode.Line + AstNode.Column + AstNode.Name as a
+    // lightweight identity key (good enough for a single-file pass).
+    private ExprTypeKeys:  List<string>   // keys  (node identity)
+    private ExprTypeVals:  List<string>   // values (TypeKey)
+
+    // Current method return type
+    private CurrentReturn: string
+    // Current class name
+    private CurrentClass:  string
+    // Errors collected
+    private Errors:        List<TypeError>
+    // Filename for error messages
+    private Filename:      string
+    // Symbol table (from Resolver)
+    private Symbols:       SymbolTable
+
+    public TypeChecker(SymbolTable symbols, string filename) {
+        this.ExprTypeKeys  = new List<string>()
+        this.ExprTypeVals  = new List<string>()
+        this.CurrentReturn = "void"
+        this.CurrentClass  = ""
+        this.Errors        = new List<TypeError>()
+        this.Filename      = filename
+        this.Symbols       = symbols
+    }
+
+    // ── Public entry point ────────────────────────────
+
+    public TypeCheckResult Check(AstNode program) {
+        this.CheckProgram(program)
+        let result = new TypeCheckResult()
+        let ec = this.Errors.Count()
+        result.Success = ec == 0
+        for i in 0..ec {
+            result.Errors.Add(this.Errors.Get(i))
+        }
+        return result
+    }
+
+    // ── Type map helpers ──────────────────────────────
+
+    private string NodeKey(AstNode node) {
+        let ln  = String_FromInt(node.Line)
+        let col = String_FromInt(node.Column)
+        return ln + ":" + col + ":" + node.Name + ":" + node.Str
+    }
+
+    private void SetType(AstNode node, string typeKey) {
+        let key = this.NodeKey(node)
+        let count = this.ExprTypeKeys.Count()
+        for i in 0..count {
+            if (this.ExprTypeKeys.Get(i) == key) {
+                // Update existing
+                // (List doesn't support Set, so we rebuild — use a marker)
+                this.ExprTypeVals.Add(typeKey)   // last one wins in GetType
+                return
+            }
+        }
+        this.ExprTypeKeys.Add(key)
+        this.ExprTypeVals.Add(typeKey)
+    }
+
+    private string GetType(AstNode node) {
+        let key = this.NodeKey(node)
+        let count = this.ExprTypeKeys.Count()
+        // Walk backwards — last write wins
+        var result = "?"
+        for i in 0..count {
+            if (this.ExprTypeKeys.Get(i) == key) {
+                result = this.ExprTypeVals.Get(i)
+            }
+        }
+        return result
+    }
+
+    // ── Compatibility helpers ─────────────────────────
+
+    private bool IsAssignable(string expected, string actual) {
+        if (expected == "?" || actual == "?") { return true }
+        if (expected == actual)               { return true }
+        if (expected == "object")             { return true }
+        // Strip nullable "?"
+        var eBase = expected
+        var aBase = actual
+        if (String_EndsWith(expected, "?")) {
+            eBase = String_Substring(expected, 0, String_Length(expected) - 1)
+        }
+        if (String_EndsWith(actual, "?")) {
+            aBase = String_Substring(actual, 0, String_Length(actual) - 1)
+        }
+        if (eBase == aBase) { return true }
+        // null → any nullable
+        if (actual == "null" && String_EndsWith(expected, "?")) { return true }
+        // numeric widening
+        if (this.IsNumericWiden(eBase, aBase)) { return true }
+        return false
+    }
+
+    private bool IsNumericWiden(string to, string from) {
+        if (to == "double") {
+            if (from == "float" || from == "int" || from == "i64" || from == "i32" || from == "f32") {
+                return true
+            }
+        }
+        if (to == "float") {
+            if (from == "int" || from == "i32" || from == "f32") {
+                return true
+            }
+        }
+        return false
+    }
+
+    private bool IsBool(string t) {
+        return t == "bool" || t == "?"
+    }
+
+    private bool IsNumeric(string t) {
+        if (t == "int")    { return true }
+        if (t == "float")  { return true }
+        if (t == "double") { return true }
+        if (t == "i8")     { return true }
+        if (t == "i16")    { return true }
+        if (t == "i32")    { return true }
+        if (t == "i64")    { return true }
+        if (t == "u8")     { return true }
+        if (t == "u16")    { return true }
+        if (t == "u32")    { return true }
+        if (t == "u64")    { return true }
+        if (t == "f32")    { return true }
+        if (t == "f64")    { return true }
+        return false
+    }
+
+    private bool IsNullable(string t) {
+        return String_EndsWith(t, "?")
+    }
+
+    private string BinaryResultType(string op, string left, string right) {
+        // Comparison → bool
+        if (op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=") {
+            return "bool"
+        }
+        // Logical → bool
+        if (op == "&&" || op == "||") { return "bool" }
+        // Null coalescing → base type of left
+        if (op == "??") {
+            if (String_EndsWith(left, "?")) {
+                return String_Substring(left, 0, String_Length(left) - 1)
+            }
+            return left
+        }
+        // Range
+        if (op == ".." || op == "...") { return "range" }
+        // Pipeline
+        if (op == "|>") { return right }
+        // Arithmetic
+        if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%" || op == "^") {
+            if (left == "double" || right == "double") { return "double" }
+            if (left == "float"  || right == "float")  { return "float" }
+            if (left == "string" || right == "string")  { return "string" }
+            return left
+        }
+        return "?"
+    }
+
+    private string CollectionElementType(string typeKey) {
+        if (typeKey == "?" || typeKey == "") { return "?" }
+        // List<T>
+        if (String_StartsWith(typeKey, "List<") && String_EndsWith(typeKey, ">")) {
+            let inner = String_Substring(typeKey, 5, String_Length(typeKey) - 6)
+            return inner
+        }
+        // Set<T>
+        if (String_StartsWith(typeKey, "Set<") && String_EndsWith(typeKey, ">")) {
+            let inner = String_Substring(typeKey, 4, String_Length(typeKey) - 5)
+            return inner
+        }
+        // Map<K,V> → V
+        if (String_StartsWith(typeKey, "Map<") && String_EndsWith(typeKey, ">")) {
+            let inner  = String_Substring(typeKey, 4, String_Length(typeKey) - 5)
+            let comma  = String_IndexOf(inner, ",")
+            if (comma >= 0) {
+                let vt = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1)
+                return String_Trim(vt)
+            }
+        }
+        // T[]
+        if (String_EndsWith(typeKey, "[]")) {
+            return String_Substring(typeKey, 0, String_Length(typeKey) - 2)
+        }
+        return "?"
+    }
+
+    // ── Symbol access helpers ────────────────────────
+    // These wrappers prevent the CGen from having to dereference
+    // a void* Symbol pointer — Lookup() return type is not tracked
+    // across compilation units by the current Resolver.
+
+    private bool SymbolFound(string name) {
+        return this.Symbols.HasSymbol(name)
+    }
+
+    private string SymbolTypeName(string name) {
+        return this.Symbols.GetTypeName(name)
+    }
+
+    private void SymbolSetType(string name, string typeName) {
+        this.Symbols.SetTypeName(name, typeName)
+    }
+
+    // ── Error reporting ───────────────────────────────
+
+    private void Error(string msg, AstNode node) {
+        var file = this.Filename
+        var line = 0
+        var col  = 0
+        if (node != null) {
+            line = node.Line
+            col  = node.Column
+        }
+        let err = new TypeError(msg, file, line, col)
+        this.Errors.Add(err)
+    }
+
+    private void CheckBool(AstNode node, string context) {
+        let t = this.GetType(node)
+        if (!this.IsBool(t)) {
+            this.Error("'" + context + "' must be bool, got '" + t + "'", node)
+        }
+    }
+
+    // ── Symbol lookup helpers ─────────────────────────
+
+    private string SymbolType(string name) {
+        return this.SymbolTypeName(name)
+    }
+
+    // Look up member type in a class's Children list
+    private string MemberTypeOf(AstNode classDecl, string memberName) {
+        if (classDecl == null) { return "?" }
+        let k = classDecl.Kind
+        // Enum: member access → type is the enum name itself
+        if (k == NodeKind.ENUM_DECL) {
+            let members = classDecl.Children.Count()
+            for i in 0..members {
+                let m = classDecl.Children.Get(i)
+                if (m.Name == memberName) { return classDecl.Name }
+            }
+            return classDecl.Name  // enum method or unknown → enum name
+        }
+        // Class / data class
+        if (k == NodeKind.CLASS_DECL) {
+            let members = classDecl.Children.Count()
+            for i in 0..members {
+                let m  = classDecl.Children.Get(i)
+                let mk = m.Kind
+                if (m.Name == memberName) {
+                    if (mk == NodeKind.VAR_DECL)    { return m.Str }
+                    if (mk == NodeKind.METHOD_DECL) { return m.Str }
+                }
+            }
+        }
+        return "?"
+    }
+
+    // ── Program & top-level ───────────────────────────
+
+    private void CheckProgram(AstNode prog) {
+        let count = prog.Children.Count()
+        for i in 0..count {
+            this.CheckDecl(prog.Children.Get(i))
+        }
+    }
+
+    private void CheckDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            this.CheckClass(decl)
+        }
+        if (k == NodeKind.ENUM_DECL) {
+            // Enums: check any methods inside
+            let methods = decl.Children.Count()
+            for i in 0..methods {
+                let m = decl.Children.Get(i)
+                if (m.Kind == NodeKind.METHOD_DECL) {
+                    this.CheckMethod(m)
+                }
+            }
+        }
+    }
+
+    // ── Class ─────────────────────────────────────────
+
+    private void CheckClass(AstNode cls) {
+        let prevClass      = this.CurrentClass
+        this.CurrentClass  = cls.Name
+        let members        = cls.Children.Count()
+        // Check field initialisers and methods
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.VAR_DECL) {
+                this.CheckFieldDecl(m)
+            }
+            if (mk == NodeKind.METHOD_DECL) {
+                this.CheckMethod(m)
+            }
+        }
+        this.CurrentClass = prevClass
+    }
+
+    private void CheckFieldDecl(AstNode field) {
+        let fieldType = field.Str
+        if (field.Left != null) {
+            this.CheckExpr(field.Left)
+            let initType = this.GetType(field.Left)
+            if (!this.IsAssignable(fieldType, initType)) {
+                this.Error("Field '" + field.Name + "' declared as '" + fieldType + "' but initialised with '" + initType + "'", field.Left)
+            }
+        }
+    }
+
+    // ── Method ───────────────────────────────────────
+
+    private void CheckMethod(AstNode method) {
+        let retType        = method.Str   // return type stored in Str by parser
+        let prevReturn     = this.CurrentReturn
+        this.CurrentReturn = retType
+
+        // Check params (default values)
+        let params = method.Params.Count()
+        for i in 0..params {
+            let p = method.Params.Get(i)
+            if (p.Left != null) {
+                this.CheckExpr(p.Left)
+                let defType = this.GetType(p.Left)
+                if (!this.IsAssignable(p.Str, defType)) {
+                    this.Error("Parameter '" + p.Name + "' is '" + p.Str + "' but default is '" + defType + "'", p.Left)
+                }
+            }
+        }
+
+        // Check body
+        if (method.Body != null) {
+            this.CheckBlock(method.Body)
+        }
+
+        this.CurrentReturn = prevReturn
+    }
+
+    // ── Statements ───────────────────────────────────
+
+    private void CheckBlock(AstNode block) {
+        let stmts = block.Children.Count()
+        for i in 0..stmts {
+            this.CheckStmt(block.Children.Get(i))
+        }
+    }
+
+    private void CheckStmt(AstNode stmt) {
+        let k = stmt.Kind
+        if (k == NodeKind.VAR_DECL) {
+            this.CheckVarDecl(stmt)
+            return
+        }
+        if (k == NodeKind.RETURN_STMT) {
+            this.CheckReturn(stmt)
+            return
+        }
+        if (k == NodeKind.IF_STMT) {
+            this.CheckIf(stmt)
+            return
+        }
+        if (k == NodeKind.WHILE_STMT) {
+            if (stmt.Cond != null) {
+                this.CheckExpr(stmt.Cond)
+                this.CheckBool(stmt.Cond, "while condition")
+            }
+            if (stmt.Body != null) { this.CheckBlock(stmt.Body) }
+            return
+        }
+        if (k == NodeKind.FOR_IN_STMT) {
+            this.CheckForIn(stmt)
+            return
+        }
+        if (k == NodeKind.BREAK_STMT || k == NodeKind.CONTINUE_STMT) { return }
+        // Expression statement (call, assign, binary, etc.)
+        if (k == NodeKind.ASSIGN) {
+            this.CheckAssign(stmt)
+            return
+        }
+        // Match
+        if (stmt.Name == "__match__") {
+            this.CheckMatch(stmt)
+            return
+        }
+        // Fallback: treat as expression
+        this.CheckExpr(stmt)
+    }
+
+    private void CheckVarDecl(AstNode stmt) {
+        let declaredType = stmt.Str    // "" if inferred
+        var inferredType = "?"
+        if (stmt.Left != null) {
+            this.CheckExpr(stmt.Left)
+            inferredType = this.GetType(stmt.Left)
+        }
+        let finalType = if (String_Length(declaredType) > 0) { declaredType } else { inferredType }
+        if (String_Length(declaredType) > 0 && inferredType != "?") {
+            if (!this.IsAssignable(declaredType, inferredType)) {
+                this.Error("Cannot assign '" + inferredType + "' to '" + stmt.Name + "' of type '" + declaredType + "'", stmt)
+            }
+        }
+        // Annotate symbol
+        this.SymbolSetType(stmt.Name, finalType)
+    }
+
+    private void CheckReturn(AstNode stmt) {
+        if (stmt.Left == null) {
+            // void return
+            if (this.CurrentReturn != "void" && this.CurrentReturn != "?") {
+                this.Error("Empty return in method expecting '" + this.CurrentReturn + "'", stmt)
+            }
+            return
+        }
+        this.CheckExpr(stmt.Left)
+        let valType = this.GetType(stmt.Left)
+        if (this.CurrentReturn == "void") {
+            this.Error("Cannot return a value from a void method", stmt)
+        } else if (!this.IsAssignable(this.CurrentReturn, valType)) {
+            this.Error("Return type mismatch: expected '" + this.CurrentReturn + "', got '" + valType + "'", stmt)
+        }
+    }
+
+    private void CheckIf(AstNode stmt) {
+        if (stmt.Cond != null) {
+            this.CheckExpr(stmt.Cond)
+            this.CheckBool(stmt.Cond, "if condition")
+        }
+        if (stmt.Body != null) { this.CheckBlock(stmt.Body) }
+        if (stmt.Else != null) {
+            this.CheckElseBranch(stmt.Else)
+        }
+    }
+
+    private void CheckElseBranch(AstNode branch) {
+        if (branch == null) { return }
+        let bk = branch.Kind
+        if (bk == NodeKind.IF_STMT) {
+            this.CheckIf(branch)
+        } else {
+            this.CheckBlock(branch)
+        }
+    }
+
+    private void CheckForIn(AstNode stmt) {
+        // stmt.Left = iterator expression (range or collection)
+        // stmt.Name = loop variable name
+        if (stmt.Left != null) {
+            this.CheckExpr(stmt.Left)
+            let colType  = this.GetType(stmt.Left)
+            let elemType = this.CollectionElementType(colType)
+            // Annotate loop variable
+            this.SymbolSetType(stmt.Name, elemType)
+        }
+        if (stmt.Body != null) { this.CheckBlock(stmt.Body) }
+    }
+
+    private void CheckAssign(AstNode stmt) {
+        if (stmt.Left != null)  { this.CheckExpr(stmt.Left) }
+        if (stmt.Right != null) { this.CheckExpr(stmt.Right) }
+        if (stmt.Left != null && stmt.Right != null) {
+            let targetType = this.GetType(stmt.Left)
+            let valueType  = this.GetType(stmt.Right)
+            if (!this.IsAssignable(targetType, valueType)) {
+                this.Error("Cannot assign '" + valueType + "' to '" + targetType + "'", stmt)
+            }
+        }
+    }
+
+    private void CheckMatch(AstNode stmt) {
+        // stmt.Left = subject expression, stmt.Children = arms
+        if (stmt.Left != null) {
+            this.CheckExpr(stmt.Left)
+        }
+        let armCount = stmt.Children.Count()
+        for i in 0..armCount {
+            this.CheckMatchArm(stmt.Children.Get(i))
+        }
+    }
+
+    // ── Expressions ──────────────────────────────────
+
+    private void CheckMatchArm(AstNode arm) {
+        if (arm == null) { return }
+        let body = arm.Right
+        if (body == null) { return }
+        let bk = body.Kind
+        if (bk == NodeKind.BLOCK) {
+            this.CheckBlock(body)
+        } else {
+            this.CheckStmt(body)
+        }
+    }
+
+    private void CheckExpr(AstNode expr) {
+        if (expr == null) { return }
+        let k = expr.Kind
+
+        if (k == NodeKind.LITERAL_INT) {
+            this.SetType(expr, "int")
+            return
+        }
+        if (k == NodeKind.LITERAL_FLOAT) {
+            this.SetType(expr, "float")
+            return
+        }
+        if (k == NodeKind.LITERAL_STRING) {
+            this.SetType(expr, "string")
+            return
+        }
+        if (k == NodeKind.LITERAL_BOOL) {
+            this.SetType(expr, "bool")
+            return
+        }
+        if (k == NodeKind.LITERAL_NULL) {
+            this.SetType(expr, "null")
+            return
+        }
+        if (k == NodeKind.THIS_EXPR) {
+            this.SetType(expr, this.CurrentClass)
+            return
+        }
+        if (k == NodeKind.IDENTIFIER) {
+            let t = this.SymbolTypeName(expr.Name)
+            this.SetType(expr, t)
+            return
+        }
+        if (k == NodeKind.BINARY) {
+            this.CheckBinaryExpr(expr)
+            return
+        }
+        if (k == NodeKind.UNARY) {
+            this.CheckUnaryExpr(expr)
+            return
+        }
+        if (k == NodeKind.MEMBER) {
+            this.CheckMemberExpr(expr)
+            return
+        }
+        if (k == NodeKind.CALL) {
+            this.CheckCallExpr(expr)
+            return
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            this.CheckNewExpr(expr)
+            return
+        }
+        if (k == NodeKind.INDEX_EXPR) {
+            this.CheckIndexExpr(expr)
+            return
+        }
+        if (k == NodeKind.ASSIGN) {
+            this.CheckAssign(expr)
+            return
+        }
+        if (k == NodeKind.IF_STMT) {
+            // if-expression — use helper to avoid chained-access type inference bug
+            if (expr.Cond != null) {
+                this.CheckExpr(expr.Cond)
+                this.CheckBool(expr.Cond, "if condition")
+            }
+            let thenType = this.CheckIfBranch(expr.Body)
+            let elseType = this.CheckIfBranch(expr.Else)
+            let ifType   = if (thenType != "?") { thenType } else { elseType }
+            this.SetType(expr, ifType)
+            return
+        }
+        // Unknown/unhandled — mark as ?
+        this.SetType(expr, "?")
+    }
+
+    // Extract and check a single expression from an if-expr branch block.
+    // Uses explicit AstNode parameter so the Resolver can track types correctly.
+    private string CheckIfBranch(AstNode block) {
+        if (block == null) { return "?" }
+        if (block.Kind == NodeKind.BLOCK) {
+            let kids = block.Children
+            if (kids.Count() > 0) {
+                let first = kids.Get(0)
+                this.CheckExpr(first)
+                return this.GetType(first)
+            }
+            return "?"
+        }
+        this.CheckExpr(block)
+        return this.GetType(block)
+    }
+
+    private void CheckBinaryExpr(AstNode expr) {
+        let op = expr.Str
+        if (expr.Left  != null) { this.CheckExpr(expr.Left) }
+        if (expr.Right != null) { this.CheckExpr(expr.Right) }
+        let lt = if (expr.Left  != null) { this.GetType(expr.Left)  } else { "?" }
+        let rt = if (expr.Right != null) { this.GetType(expr.Right) } else { "?" }
+
+        // Logical operators require bool operands
+        if (op == "&&" || op == "||") {
+            if (!this.IsBool(lt)) {
+                this.Error("Left operand of '" + op + "' must be bool, got '" + lt + "'", expr.Left)
+            }
+            if (!this.IsBool(rt)) {
+                this.Error("Right operand of '" + op + "' must be bool, got '" + rt + "'", expr.Right)
+            }
+        }
+        // Arithmetic (non-string) requires numeric operands
+        if (op == "-" || op == "*" || op == "/" || op == "%" || op == "^") {
+            if (!this.IsNumeric(lt) && lt != "?") {
+                this.Error("Operator '" + op + "' requires numeric operands, got '" + lt + "'", expr.Left)
+            }
+            if (!this.IsNumeric(rt) && rt != "?") {
+                this.Error("Operator '" + op + "' requires numeric operands, got '" + rt + "'", expr.Right)
+            }
+        }
+        // Null coalescing: left must be nullable
+        if (op == "??") {
+            if (!this.IsNullable(lt) && lt != "?") {
+                let qqOp = "?"
+                let qqOp2 = "?"
+                this.Error("Left operand of '" + qqOp + qqOp2 + "' must be nullable, got '" + lt + "'", expr.Left)
+            }
+        }
+        let result = this.BinaryResultType(op, lt, rt)
+        this.SetType(expr, result)
+    }
+
+    private void CheckUnaryExpr(AstNode expr) {
+        let op = expr.Str
+        if (expr.Left != null) { this.CheckExpr(expr.Left) }
+        let ot = if (expr.Left != null) { this.GetType(expr.Left) } else { "?" }
+        if (op == "!") {
+            if (!this.IsBool(ot)) {
+                this.Error("Operator '!' requires bool, got '" + ot + "'", expr.Left)
+            }
+            this.SetType(expr, "bool")
+            return
+        }
+        if (op == "-") {
+            if (!this.IsNumeric(ot) && ot != "?") {
+                this.Error("Unary '-' requires numeric, got '" + ot + "'", expr.Left)
+            }
+            this.SetType(expr, ot)
+            return
+        }
+        this.SetType(expr, ot)
+    }
+
+    private void CheckMemberExpr(AstNode expr) {
+        // expr.Left = target, expr.Name = member name
+        if (expr.Left != null) { this.CheckExpr(expr.Left) }
+        let targetType = if (expr.Left != null) { this.GetType(expr.Left) } else { "?" }
+        var baseType   = targetType
+        if (String_EndsWith(targetType, "?")) {
+            baseType = String_Substring(targetType, 0, String_Length(targetType) - 1)
+        }
+        // Look up the class in global scope to find member type
+        // Member type resolution deferred to Resolver port (Phase 4)
+        // For now all member accesses return "?" — no false positives
+        var memberType = "?"
+        this.SetType(expr, memberType)
+    }
+
+    private void CheckCallExpr(AstNode expr) {
+        // expr.Left = callee, expr.Args = arguments
+        if (expr.Left != null) { this.CheckExpr(expr.Left) }
+        let argc = expr.Args.Count()
+        for i in 0..argc {
+            this.CheckExpr(expr.Args.Get(i))
+        }
+        // Return type: look up callee symbol if it's a simple identifier
+        var calleeType = "?"
+        let callee = expr.Left
+        if (callee != null) {
+            let calleeKind = callee.Kind
+            if (calleeKind == NodeKind.IDENTIFIER) {
+                calleeType = this.SymbolTypeName(callee.Name)
+            } else if (calleeKind == NodeKind.MEMBER) {
+                calleeType = this.GetType(callee)
+            }
+        }
+        this.SetType(expr, calleeType)
+    }
+
+    private void CheckNewExpr(AstNode expr) {
+        // expr.Name = type name, expr.Args = constructor args
+        let argc = expr.Args.Count()
+        for i in 0..argc {
+            this.CheckExpr(expr.Args.Get(i))
+        }
+        this.SetType(expr, expr.Name)
+    }
+
+    private void CheckIndexExpr(AstNode expr) {
+        if (expr.Left  != null) { this.CheckExpr(expr.Left) }
+        if (expr.Right != null) { this.CheckExpr(expr.Right) }
+        let targetType = if (expr.Left != null) { this.GetType(expr.Left) } else { "?" }
+        let elemType   = this.CollectionElementType(targetType)
+        this.SetType(expr, elemType)
+    }
+
+    // ── Summary ───────────────────────────────────────
+
+    public bool HasErrors() {
+        return this.Errors.Count() > 0
+    }
+
+    public string FormatErrors() {
+        var result = ""
+        let count = this.Errors.Count()
+        for i in 0..count {
+            let e = this.Errors.Get(i)
+            result = result + e.ToString()
+        }
+        return result
+    }
+}
