@@ -13,6 +13,7 @@
 
 /* ── Forward Declarations ── */
 typedef struct _MyApp_Config MyApp_Config;
+static code_string MyApp_Config_Address(MyApp_Config*);
 typedef struct _MyApp_Program MyApp_Program;
 static void MyApp_Program_Main(int, char**);
 

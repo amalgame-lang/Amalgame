@@ -107,7 +107,7 @@ static void Tests_Program_Main(int argc, char** argv) {
     Console_WriteLine(code_string_format("or: %s", ((or) ? "true" : "false")));
 
 #line 33 "./tests/samples/operators.am"
-    Console_WriteLine(code_string_format("not: %s", not));
+    Console_WriteLine(code_string_format("not: %s", code_int_to_string((i64)(intptr_t)(not))));
 
 #line 35 "./tests/samples/operators.am"
     i64 x = 10;

@@ -1,0 +1,19 @@
+namespace Test
+import Amalgame.Collections
+
+public class Foo {
+    public List<int> GetList() {
+        let l = new List<int>()
+        l.Add(1)
+        return l
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let f = new Foo()
+        let l = f.GetList()
+        let c = l.Count()
+        Console.WriteLine("count: {c}")
+    }
+}
