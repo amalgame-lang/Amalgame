@@ -135,6 +135,7 @@ int main(int argc, char** argv) {
         // Actually emit as comment since curl may not be available
     }
     fclose(out);  // Must close before reopening for read
+
     // Emit main() only if there's a Program class with Main method
     char mainFuncName[256];
     snprintf(mainFuncName, sizeof(mainFuncName), "%s_Program_Main", ns);
