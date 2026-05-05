@@ -1,0 +1,370 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── Symbol kinds ──────────────────────────────────────
+public enum SymKind {
+    CLASS
+    ENUM
+    METHOD
+    FIELD
+    PARAM
+    LOCAL
+    BUILTIN
+}
+
+// ── A single symbol ───────────────────────────────────
+public class Symbol {
+    public Name:     string
+    public Kind:     SymKind
+    public TypeName: string
+    public IsPublic: bool
+    public IsStatic: bool
+
+    public Symbol(string name, SymKind kind) {
+        this.Name     = name
+        this.Kind     = kind
+        this.TypeName = ""
+        this.IsPublic = false
+        this.IsStatic = false
+    }
+}
+
+// ── Symbol table (scope) ──────────────────────────────
+public class SymbolTable {
+    public Symbols: List<Symbol>
+    public Parent:  SymbolTable?
+
+    public SymbolTable() {
+        this.Symbols = new List<Symbol>()
+    }
+
+    public void Declare(Symbol sym) {
+        this.Symbols.Add(sym)
+    }
+
+    public bool Has(string name) {
+        let count = this.Symbols.Count()
+        for i in 0..count {
+            let sym = this.Symbols.Get(i)
+            if (sym.Name == name) { return true }
+        }
+        return false
+    }
+
+    public Symbol Lookup(string name) {
+        let count = this.Symbols.Count()
+        for i in 0..count {
+            let sym = this.Symbols.Get(i)
+            if (sym.Name == name) { return sym }
+        }
+        return new Symbol("_not_found_", SymKind.BUILTIN)
+    }
+}
+
+// ── Resolver ──────────────────────────────────────────
+public class Resolver {
+    private Global:   SymbolTable
+    private Errors:   List<string>
+    private Current:  SymbolTable
+    public  Programs: List<AstNode>
+
+    public Resolver() {
+        this.Global    = new SymbolTable()
+        this.Errors    = new List<string>()
+        this.Current   = this.Global
+        this.Programs  = new List<AstNode>()
+        this.RegisterBuiltins()
+    }
+
+    private void RegisterBuiltins() {
+        let builtins = new List<string>()
+        // Builtin classes
+        builtins.Add("Console")
+        builtins.Add("File")
+        builtins.Add("Path")
+        builtins.Add("Math")
+        builtins.Add("String")
+        builtins.Add("Http")
+        // Primitive types
+        builtins.Add("int")
+        builtins.Add("string")
+        builtins.Add("bool")
+        builtins.Add("float")
+        builtins.Add("void")
+        // String stdlib functions
+        builtins.Add("String_Length")
+        builtins.Add("String_Contains")
+        builtins.Add("String_StartsWith")
+        builtins.Add("String_EndsWith")
+        builtins.Add("String_Substring")
+        builtins.Add("String_ToUpper")
+        builtins.Add("String_ToLower")
+        builtins.Add("String_Trim")
+        builtins.Add("String_Replace")
+        builtins.Add("String_IndexOf")
+        builtins.Add("String_FromInt")
+        builtins.Add("String_ToInt")
+        builtins.Add("String_IsEmpty")
+        builtins.Add("String_From")
+        // File stdlib
+        builtins.Add("File_ReadAll")
+        builtins.Add("File_WriteAll")
+        builtins.Add("File_Exists")
+        builtins.Add("File_Delete")
+        builtins.Add("File_Size")
+        // Math stdlib
+        builtins.Add("Math_Sqrt")
+        builtins.Add("Math_Abs")
+        builtins.Add("Math_Max")
+        builtins.Add("Math_Min")
+        // Special
+        builtins.Add("null")
+        builtins.Add("true")
+        builtins.Add("false")
+        builtins.Add("this")
+        builtins.Add("args")
+        let count = builtins.Count()
+        for i in 0..count {
+            let name = builtins.Get(i)
+            let sym  = new Symbol(name, SymKind.BUILTIN)
+            this.Global.Declare(sym)
+        }
+    }
+
+    public void Resolve(AstNode prog) {
+        // Pass 1: collect all top-level declarations
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            this.CollectDecl(decl)
+        }
+        // Pass 2: resolve bodies
+        for j in 0..decls {
+            let decl = prog.Children.Get(j)
+            this.ResolveDecl(decl)
+        }
+    }
+
+    public void ResolvePrograms() {
+        let progCount = this.Programs.Count()
+        // Pass 1: collect
+        for p in 0..progCount {
+            let prog  = this.Programs.Get(p)
+            let decls = prog.Children.Count()
+            for i in 0..decls {
+                let decl = prog.Children.Get(i)
+                this.CollectDecl(decl)
+            }
+        }
+        // Pass 2: resolve
+        for p2 in 0..progCount {
+            let prog2  = this.Programs.Get(p2)
+            let decls2 = prog2.Children.Count()
+            for j in 0..decls2 {
+                let decl = prog2.Children.Get(j)
+                this.ResolveDecl(decl)
+            }
+        }
+    }
+
+    public bool HasErrors() {
+        return this.Errors.Count() > 0
+    }
+
+    public string GetErrors() {
+        var result = ""
+        let count = this.Errors.Count()
+        for i in 0..count {
+            let e = this.Errors.Get(i)
+            result = result + e + "\n"
+        }
+        return result
+    }
+
+    // ── Pass 1: collect declarations ──────────────────
+
+    private void CollectDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            let sym    = new Symbol(decl.Name, SymKind.CLASS)
+            sym.IsPublic = decl.Flag
+            this.Global.Declare(sym)
+        }
+        if (k == NodeKind.ENUM_DECL) {
+            let esym   = new Symbol(decl.Name, SymKind.ENUM)
+            esym.IsPublic = decl.Flag
+            this.Global.Declare(esym)
+        }
+    }
+
+    // ── Pass 2: resolve bodies ────────────────────────
+
+    private void ResolveDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            this.ResolveClass(decl)
+        }
+    }
+
+    private void ResolveClass(AstNode cls) {
+        // Create class scope
+        let classScope = new SymbolTable()
+        classScope.Parent = this.Global
+        let prev   = this.Current
+        this.Current = classScope
+
+        // Collect fields and methods first
+        let members = cls.Children.Count()
+        for i in 0..members {
+            let m = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.VAR_DECL) {
+                let fsym = new Symbol(m.Name, SymKind.FIELD)
+                fsym.TypeName = m.Str
+                fsym.IsPublic = m.Flag
+                classScope.Declare(fsym)
+            }
+            if (mk == NodeKind.METHOD_DECL) {
+                let msym = new Symbol(m.Name, SymKind.METHOD)
+                msym.TypeName = m.Str
+                msym.IsPublic = m.Flag
+                msym.IsStatic = m.Flag2
+                classScope.Declare(msym)
+            }
+        }
+
+        // Resolve method bodies
+        for j in 0..members {
+            let m  = cls.Children.Get(j)
+            let mk = m.Kind
+            if (mk == NodeKind.METHOD_DECL) {
+                this.ResolveMethod(m, classScope)
+            }
+        }
+
+        this.Current = prev
+    }
+
+    private void ResolveMethod(AstNode method, SymbolTable classScope) {
+        let methodScope = new SymbolTable()
+        methodScope.Parent = classScope
+        let prev    = this.Current
+        this.Current = methodScope
+
+        // Register params
+        let params = method.Params.Count()
+        for i in 0..params {
+            let p    = method.Params.Get(i)
+            let psym = new Symbol(p.Name, SymKind.PARAM)
+            psym.TypeName = p.Str
+            methodScope.Declare(psym)
+        }
+
+        // Resolve body
+        if (method.Body != null) {
+            this.ResolveBlock(method.Body)
+        }
+
+        this.Current = prev
+    }
+
+    private void ResolveBlock(AstNode block) {
+        let stmts = block.Children.Count()
+        for i in 0..stmts {
+            let stmt = block.Children.Get(i)
+            this.ResolveStmt(stmt)
+        }
+    }
+
+    private void ResolveStmt(AstNode stmt) {
+        let k = stmt.Kind
+        if (k == NodeKind.VAR_DECL) {
+            if (stmt.Left != null) {
+                this.ResolveExpr(stmt.Left)
+            }
+            let vsym = new Symbol(stmt.Name, SymKind.LOCAL)
+            vsym.TypeName = stmt.Str
+            this.Current.Declare(vsym)
+        }
+        if (k == NodeKind.RETURN_STMT) {
+            if (stmt.Left != null) {
+                this.ResolveExpr(stmt.Left)
+            }
+        }
+        if (k == NodeKind.IF_STMT) {
+            if (stmt.Cond != null) { this.ResolveExpr(stmt.Cond) }
+            if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+            if (stmt.Else != null) { this.ResolveBlock(stmt.Else) }
+        }
+        if (k == NodeKind.WHILE_STMT) {
+            if (stmt.Cond != null) { this.ResolveExpr(stmt.Cond) }
+            if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+        }
+        if (k == NodeKind.BINARY) {
+            this.ResolveExpr(stmt)
+        }
+        if (k == NodeKind.CALL) {
+            this.ResolveExpr(stmt)
+        }
+        if (k == NodeKind.MEMBER) {
+            this.ResolveExpr(stmt)
+        }
+    }
+
+    private void ResolveExpr(AstNode expr) {
+        if (expr == null) { return }
+        let k = expr.Kind
+        if (k == NodeKind.IDENTIFIER) {
+            let name = expr.Name
+            if (!this.LookupInScopes(name)) {
+                let line = expr.Line
+                let ln   = String_FromInt(line)
+                this.Errors.Add("Unknown symbol '" + name + "' at line " + ln)
+            }
+        }
+        if (k == NodeKind.BINARY) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            if (expr.Right != null) { this.ResolveExpr(expr.Right) }
+        }
+        if (k == NodeKind.CALL) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                this.ResolveExpr(expr.Args.Get(i))
+            }
+        }
+        if (k == NodeKind.MEMBER) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            let argc2 = expr.Args.Count()
+            for i in 0..argc2 {
+                this.ResolveExpr(expr.Args.Get(i))
+            }
+        }
+        if (k == NodeKind.UNARY) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+        }
+        if (k == NodeKind.INDEX_EXPR) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            if (expr.Right != null) { this.ResolveExpr(expr.Right) }
+        }
+    }
+
+    private bool LookupInScopes(string name) {
+        var scope = this.Current
+        var found = false
+        var safety = 0
+        while (scope != null && !found) {
+            safety = safety + 1
+            if (safety > 100) { break }
+            if (scope.Has(name)) { found = true }
+            if (!found) {
+                scope = scope.Parent
+            }
+        }
+        return found
+    }
+}

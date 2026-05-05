@@ -13,7 +13,9 @@
 
 /* ── Forward Declarations ── */
 typedef struct _MyApp_Models_Player MyApp_Models_Player;
+static code_string MyApp_Models_Player_Info(MyApp_Models_Player*);
 typedef struct _MyApp_Models_Guild MyApp_Models_Guild;
+static code_string MyApp_Models_Guild_Describe(MyApp_Models_Guild*);
 typedef struct _MyApp_Models_Program MyApp_Models_Program;
 static void MyApp_Models_Program_Main(int, char**);
 

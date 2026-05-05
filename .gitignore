@@ -42,3 +42,47 @@ tests/samples/bootstrap_probe
 
 # Bootstrap binaries tracked via Git LFS (not ignored)
 # bootstrap/amc-* → tracked
+# Generated compiler libs - tracked for bootstrap
+amc
+amc_bootstrap
+gen_test
+tests/samples/bootstrap_probe
+tests/samples/classes
+# Compiled sample binaries
+tests/samples/bootstrap_probe
+tests/samples/classes
+tests/samples/closures
+tests/samples/control_flow
+tests/samples/data_classes
+tests/samples/enums
+tests/samples/forced_lib
+tests/samples/foreach
+tests/samples/generics
+tests/samples/hello
+tests/samples/if_expr
+tests/samples/inheritance
+tests/samples/interfaces
+tests/samples/loops
+tests/samples/match
+tests/samples/math
+tests/samples/multi_class
+tests/samples/multiline_string
+tests/samples/namespace
+tests/samples/null_safety
+tests/samples/operators
+tests/samples/pattern_advanced
+tests/samples/record
+tests/samples/recursion
+tests/samples/static_class
+tests/samples/stdlib_collections
+tests/samples/stdlib_io
+tests/samples/stdlib_math
+tests/samples/stdlib_net
+tests/samples/stdlib_string
+tests/samples/strings
+tests/samples/try_catch
+tests/samples/tuples
+tests/samples/type_explicit
+tests/samples/variables
+gen_test
+CLEANUP.sh

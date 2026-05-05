@@ -1,0 +1,1578 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── C Code Emitter ────────────────────────────────────
+public class Emitter {
+    private Lines:  List<string>
+    private Indent: int
+
+    public Emitter() {
+        this.Lines  = new List<string>()
+        this.Indent = 0
+    }
+
+    public void Emit(string text) {
+        this.Lines.Add(text)
+    }
+
+    public void EmitLine(string text) {
+        var line = ""
+        let i = this.Indent
+        for k in 0..i {
+            line = line + "    "
+        }
+        line = line + text
+        this.Lines.Add(line)
+    }
+
+    public void EmitBlank() {
+        this.Lines.Add("")
+    }
+
+    public void Indent_() {
+        this.Indent = this.Indent + 1
+    }
+
+    public void Dedent() {
+        this.Indent = this.Indent - 1
+    }
+
+    public string GetOutput() {
+        var result = ""
+        let count = this.Lines.Count()
+        for i in 0..count {
+            let line = this.Lines.Get(i)
+            result = result + line + "\n"
+        }
+        return result
+    }
+}
+
+// ── C Generator ───────────────────────────────────────
+public class CGen {
+    private Out:            Emitter
+    private NsPrefix:       string
+    // Type inference: two parallel lists — var name → C type
+    private LocalTypeNames: List<string>
+    private LocalTypeCType: List<string>
+    // Current class being emitted (for this.Field list element type lookup)
+    private CurrentClass:   string
+    // Field types: two parallel lists — "ClassName.FieldName" → C type
+    private FieldNames:     List<string>
+    private FieldCTypes:    List<string>
+    // List element types: "ClassName.FieldName" → element C type (for List<T> fields)
+    private ListElemNames:  List<string>
+    private ListElemCTypes: List<string>
+    // Enum names registered at forward-decl time (to avoid TypeToC adding *)
+    private EnumNames:      List<string>
+    // Method return types: "ClassName_MethodName" → C return type
+    private MethodRetNames: List<string>
+    private MethodRetTypes: List<string>
+
+    public CGen() {
+        this.Out            = new Emitter()
+        this.NsPrefix       = ""
+        this.LocalTypeNames = new List<string>()
+        this.LocalTypeCType = new List<string>()
+        this.CurrentClass   = ""
+        this.FieldNames     = new List<string>()
+        this.FieldCTypes    = new List<string>()
+        this.ListElemNames  = new List<string>()
+        this.ListElemCTypes = new List<string>()
+        this.EnumNames      = new List<string>()
+        this.MethodRetNames = new List<string>()
+        this.MethodRetTypes = new List<string>()
+        // Pre-register stdlib struct fields
+        this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
+        this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
+        this.FieldTypeSet("AmalgameHttpResponse", "Error",  "code_string")
+        this.FieldTypeSet("AmalgameHttpResponse", "Ok",     "code_bool")
+        this.FieldTypeSet("AmalgameTcpConn",      "RemoteIp", "code_string")
+        this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Port",     "i64")
+    }
+
+    public string Generate(AstNode prog) {
+        let ns = prog.Str
+        if (String_Length(ns) > 0) {
+            this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+        this.EmitHeader()
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            this.EmitForwardDecl(decl)
+        }
+        this.Out.EmitBlank()
+        for j in 0..decls {
+            let decl = prog.Children.Get(j)
+            this.EmitDecl(decl)
+        }
+        return this.Out.GetOutput()
+    }
+
+    // Multi-file support: call BeginMulti() once, then AddFile() per file, then FinishMulti()
+    public void BeginMulti(string ns) {
+        if (String_Length(ns) > 0) {
+            this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+        this.EmitHeader()
+    }
+
+    public void AddFilePass1(AstNode prog) {
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            this.EmitForwardDecl(decl)
+        }
+    }
+
+    public void EmitSeparator() {
+        this.Out.EmitBlank()
+    }
+
+    public void AddFilePass2(AstNode prog) {
+        let decls = prog.Children.Count()
+        for j in 0..decls {
+            let decl = prog.Children.Get(j)
+            this.EmitDecl(decl)
+        }
+    }
+
+    public string FinishMulti() {
+        return this.Out.GetOutput()
+    }
+
+    public List<string> GetLines() {
+        return this.Out.Lines
+    }
+
+    private string SymName(string name) {
+        let ns = this.NsPrefix
+        if (String_Length(ns) > 0) {
+            return ns + "_" + name
+        }
+        return name
+    }
+
+    // ── Local type table ──────────────────────────────
+    // Since Amalgame has no Map<string,string> in bootstrap,
+    // we use two parallel lists as a poor-man's dictionary.
+
+    private void LocalTypeSet(string varName, string ctype) {
+        let n = this.LocalTypeNames.Count()
+        for i in 0..n {
+            let k = this.LocalTypeNames.Get(i)
+            if (k == varName) {
+                // update in place — replace by removing and re-adding at same index is not possible,
+                // so we overwrite using the Add trick: mark old as "" then add new pair
+                // Simplest: just append — lookup finds the last match
+                this.LocalTypeNames.Add(varName)
+                this.LocalTypeCType.Add(ctype)
+                return
+            }
+        }
+        this.LocalTypeNames.Add(varName)
+        this.LocalTypeCType.Add(ctype)
+    }
+
+    private string LocalTypeGet(string varName) {
+        // Search from end so later writes shadow earlier ones
+        let n = this.LocalTypeNames.Count()
+        var result = ""
+        for i in 0..n {
+            let k = this.LocalTypeNames.Get(i)
+            if (k == varName) {
+                result = this.LocalTypeCType.Get(i)
+            }
+        }
+        return result
+    }
+
+    private void LocalTypeClear() {
+        this.LocalTypeNames = new List<string>()
+        this.LocalTypeCType = new List<string>()
+    }
+
+    private void FieldTypeSet(string className, string fieldName, string ctype) {
+        let key = className + "." + fieldName
+        this.FieldNames.Add(key)
+        this.FieldCTypes.Add(ctype)
+    }
+
+    private string FieldTypeGet(string className, string fieldName) {
+        let key = className + "." + fieldName
+        let n = this.FieldNames.Count()
+        var result = ""
+        for i in 0..n {
+            let k = this.FieldNames.Get(i)
+            if (k == key) {
+                result = this.FieldCTypes.Get(i)
+            }
+        }
+        return result
+    }
+
+    private void ListElemSet(string className, string fieldName, string elemCType) {
+        let key = className + "." + fieldName
+        this.ListElemNames.Add(key)
+        this.ListElemCTypes.Add(elemCType)
+    }
+
+    private string ListElemGet(string className, string fieldName) {
+        let key = className + "." + fieldName
+        let n = this.ListElemNames.Count()
+        var result = ""
+        for i in 0..n {
+            let k = this.ListElemNames.Get(i)
+            if (k == key) {
+                result = this.ListElemCTypes.Get(i)
+            }
+        }
+        return result
+    }
+
+    private void MethodRetSet(string className, string methodName, string ctype) {
+        let key = className + "::" + methodName
+        this.MethodRetNames.Add(key)
+        this.MethodRetTypes.Add(ctype)
+    }
+
+    private string MethodRetGet(string className, string methodName) {
+        let key = className + "::" + methodName
+        let n = this.MethodRetNames.Count()
+        var result = ""
+        for i in 0..n {
+            let k = this.MethodRetNames.Get(i)
+            if (k == key) {
+                result = this.MethodRetTypes.Get(i)
+            }
+        }
+        return result
+    }
+
+    // ── Infer C type from RHS expression ─────────────
+    private string InferTypeFromExpr(AstNode expr) {
+        if (expr == null) { return "" }
+        let k = expr.Kind
+        if (k == NodeKind.LITERAL_INT)    { return "i64" }
+        if (k == NodeKind.LITERAL_FLOAT)  { return "double" }
+        if (k == NodeKind.LITERAL_STRING) { return "code_string" }
+        if (k == NodeKind.LITERAL_BOOL)   { return "code_bool" }
+        if (k == NodeKind.BINARY) {
+            let bop = expr.Str
+            let isCmpOp = (bop == "&&" || bop == "||" || bop == "==" || bop == "!=")
+            let isRelOp = (bop == "<" || bop == ">" || bop == "<=" || bop == ">=")
+            if (isCmpOp || isRelOp) {
+                return "code_bool"
+            }
+            // Arithmetic: propagate numeric/string types
+            if (bop == "+" || bop == "-" || bop == "*" || bop == "/" || bop == "%") {
+                let lt = this.InferTypeFromExpr(expr.Left)
+                let rt = this.InferTypeFromExpr(expr.Right)
+                if (lt == "code_string" || rt == "code_string") { return "code_string" }
+                if (expr.Left != null) {
+                    if (expr.Left.Kind == NodeKind.LITERAL_STRING) { return "code_string" }
+                    if (expr.Left.Kind == NodeKind.LITERAL_INT)    { return "i64" }
+                }
+                if (expr.Right != null) {
+                    if (expr.Right.Kind == NodeKind.LITERAL_STRING) { return "code_string" }
+                    if (expr.Right.Kind == NodeKind.LITERAL_INT)    { return "i64" }
+                }
+                if (lt == "i64" || rt == "i64") { return "i64" }
+                if (lt == "double" || rt == "double") { return "double" }
+            }
+        }
+        if (k == NodeKind.UNARY) {
+            if (expr.Str == "!") { return "code_bool" }
+        }
+        if (k == NodeKind.IDENTIFIER) {
+            // Could be a local var — look it up
+            return this.LocalTypeGet(expr.Name)
+        }
+        if (k == NodeKind.MEMBER) {
+            // this.Field → look up field type
+            if (expr.Left != null) {
+                let lk = expr.Left.Kind
+                if (lk == NodeKind.THIS_EXPR) {
+                    return this.FieldTypeGet(this.CurrentClass, expr.Name)
+                }
+                if (lk == NodeKind.IDENTIFIER) {
+                    let lname = expr.Left.Name
+                    let varCType = this.LocalTypeGet(lname)
+                    let bare = String_Replace(varCType, "*", "")
+                    if (String_Length(bare) > 0) {
+                        return this.FieldTypeGet(bare, expr.Name)
+                    }
+                    // Not a local var — check if it's an enum type (Direction.North → Tests_Direction)
+                    let symT = this.SymName(lname)
+                    if (this.IsEnum(symT)) { return symT }
+                    if (this.IsEnum(lname)) { return this.SymName(lname) }
+                }
+                // CALL.Field — e.g. this.Current().Value → infer type from call return
+                if (lk == NodeKind.CALL) {
+                    let callRetT = this.InferTypeFromExpr(expr.Left)
+                    let bareCall = String_Replace(callRetT, "*", "")
+                    if (String_Length(bareCall) > 0) {
+                        let ft = this.FieldTypeGet(bareCall, expr.Name)
+                        if (String_Length(ft) > 0) { return ft }
+                    }
+                }
+                // MEMBER.Field — limit to avoid deep recursion / stack overflow
+                // handles: this.Field.Prop, var.Field.Prop, var.Field.Field.Prop
+                if (lk == NodeKind.MEMBER) {
+                    if (expr.Left.Left != null) {
+                        let llk2 = expr.Left.Left.Kind
+                        if (llk2 == NodeKind.THIS_EXPR) {
+                            let fname2 = expr.Left.Name
+                            let parentT = this.FieldTypeGet(this.CurrentClass, fname2)
+                            let bareP = String_Replace(parentT, "*", "")
+                            if (String_Length(bareP) > 0) {
+                                let ft2 = this.FieldTypeGet(bareP, expr.Name)
+                                if (String_Length(ft2) > 0) { return ft2 }
+                            }
+                        }
+                        if (llk2 == NodeKind.IDENTIFIER) {
+                            let vname3 = expr.Left.Left.Name
+                            let vtype3 = this.LocalTypeGet(vname3)
+                            let bareV  = String_Replace(vtype3, "*", "")
+                            if (String_Length(bareV) > 0) {
+                                let fname3   = expr.Left.Name
+                                let parentT3 = this.FieldTypeGet(bareV, fname3)
+                                let bareP3   = String_Replace(parentT3, "*", "")
+                                if (String_Length(bareP3) > 0) {
+                                    let ft3 = this.FieldTypeGet(bareP3, expr.Name)
+                                    if (String_Length(ft3) > 0) { return ft3 }
+                                }
+                            }
+                        }
+                        // var.Field.Field.Prop — 3-level chain
+                        if (llk2 == NodeKind.MEMBER) {
+                            if (expr.Left.Left.Left != null) {
+                                let lll = expr.Left.Left.Left
+                                if (lll.Kind == NodeKind.IDENTIFIER) {
+                                    let vn4   = lll.Name
+                                    let vt4   = this.LocalTypeGet(vn4)
+                                    let bare4 = String_Replace(vt4, "*", "")
+                                    if (String_Length(bare4) > 0) {
+                                        let fn4   = expr.Left.Left.Name
+                                        let pt4   = this.FieldTypeGet(bare4, fn4)
+                                        let bp4   = String_Replace(pt4, "*", "")
+                                        if (String_Length(bp4) > 0) {
+                                            let fn5 = expr.Left.Name
+                                            let pt5 = this.FieldTypeGet(bp4, fn5)
+                                            let bp5 = String_Replace(pt5, "*", "")
+                                            if (String_Length(bp5) > 0) {
+                                                let ft5 = this.FieldTypeGet(bp5, expr.Name)
+                                                if (String_Length(ft5) > 0) { return ft5 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return ""
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            let tname = expr.Name
+            if (String_StartsWith(tname, "List<") || tname == "List") { return "AmalgameList*" }
+            if (String_StartsWith(tname, "Map<")  || tname == "Map")  { return "AmalgameMap*" }
+            if (String_StartsWith(tname, "Set<")  || tname == "Set")  { return "AmalgameSet*" }
+            if (this.IsEnum(tname)) { return this.SymName(tname) }
+            return this.SymName(tname) + "*"
+        }
+        // method call returning a known type — check callee
+        if (k == NodeKind.CALL) {
+            if (expr.Left != null) {
+                let calleeStr = this.EmitCalleeStr(expr.Left)
+                if (calleeStr == "AmalgameMap_has" || calleeStr == "AmalgameMap_remove" || calleeStr == "AmalgameSet_contains" || calleeStr == "AmalgameSet_remove" || calleeStr == "AmalgameSet_add") { return "code_bool" }
+                if (calleeStr == "AmalgameMap_size" || calleeStr == "AmalgameSet_size") { return "i64" }
+                if (calleeStr == "AmalgameList_isEmpty" || calleeStr == "AmalgameList_remove") { return "code_bool" }
+                // Known return types for stdlib functions
+                if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf") { return "i64" }
+                if (calleeStr == "String_Contains" || calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_IsEmpty") { return "code_bool" }
+                if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
+                if (String_EndsWith(calleeStr, "_CharAt")) { return "code_string" }
+                if (calleeStr == "code_string_concat") { return "code_string" }
+                if (calleeStr == "AmalgameList_count") { return "i64" }
+                if (String_StartsWith(calleeStr, "AmalgameList_count")) { return "i64" }
+                // File stdlib return types
+                if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete") { return "code_bool" }
+                if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
+                // Net stdlib return types
+                if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }
+                if (calleeStr == "TcpServer_Listen") { return "AmalgameTcpServer*" }
+                if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
+                if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
+                if (calleeStr == "TcpConn_Receive") { return "code_string" }
+                // Math stdlib return types
+                if (calleeStr == "Math_Sqrt" || calleeStr == "Math_Abs" || calleeStr == "Math_Floor" || calleeStr == "Math_Ceil" || calleeStr == "Math_Round" || calleeStr == "Math_Pow" || calleeStr == "Math_Log") { return "double" }
+                if (calleeStr == "Math_Max" || calleeStr == "Math_Min") { return "i64" }
+                if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
+                if (calleeStr == "Math_Random") { return "double" }
+                if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp") { return "i64" }
+                if (expr.Left.Kind == NodeKind.MEMBER) {
+                    let mname2 = expr.Left.Name
+                    // Collection method return types based on method name
+                    if (mname2 == "Count" || mname2 == "Size") { return "i64" }
+                    if (mname2 == "IsEmpty" || mname2 == "Has" || mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add") {
+                        // Check object type to determine correct return
+                        if (expr.Left.Left != null && expr.Left.Left.Kind == NodeKind.IDENTIFIER) {
+                            let objN = expr.Left.Left.Name
+                            let objT = this.LocalTypeGet(objN)
+                            if (objT == "AmalgameList*" && mname2 == "IsEmpty") { return "code_bool" }
+                            if (objT == "AmalgameList*" && mname2 == "Remove") { return "code_bool" }
+                            if (objT == "AmalgameMap*" && (mname2 == "Has" || mname2 == "Remove")) { return "code_bool" }
+                            if (objT == "AmalgameSet*" && (mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add")) { return "code_bool" }
+                        }
+                    }
+                    if (mname2 == "Get") {
+                        // Try to find element type from list field
+                        if (expr.Left.Left != null) {
+                            let ll = expr.Left.Left
+                            if (ll.Kind == NodeKind.THIS_EXPR) {
+                                // this.Field.Get(i) — can't determine field name here easily
+                                // Fall through to void*
+                            }
+                            if (ll.Kind == NodeKind.MEMBER) {
+                                if (ll.Left != null) {
+                                    if (ll.Left.Kind == NodeKind.THIS_EXPR) {
+                                        let fn3 = ll.Name
+                                        let et = this.ListElemGet(this.CurrentClass, fn3)
+                                        if (String_Length(et) > 0) { return et }
+                                    }
+                                }
+                            }
+                            if (ll.Kind == NodeKind.IDENTIFIER) {
+                                let vn3   = ll.Name
+                                let vtype = this.LocalTypeGet(vn3)
+                                let bare3 = String_Replace(vtype, "*", "")
+                                // Check local list elem type — not yet tracked per variable
+                                // Return void* as fallback
+                            }
+                        }
+                        return "void*"
+                    }
+                    if (expr.Left.Left != null) {
+                        let llk2 = expr.Left.Left.Kind
+                        // this.Method() → look up in MethodRetTypes using CurrentClass
+                        if (llk2 == NodeKind.THIS_EXPR) {
+                            let retT = this.MethodRetGet(this.CurrentClass, mname2)
+                            if (String_Length(retT) > 0) { return retT }
+                        }
+                        // ClassName.Method() → static call, look up SymName(ClassName)
+                        if (llk2 == NodeKind.IDENTIFIER) {
+                            let cname2 = expr.Left.Left.Name
+                            let firstC = String_Substring(cname2, 0, 1)
+                            let isUpp  = firstC == String_ToUpper(firstC)
+                            if (isUpp) {
+                                let symCls = this.SymName(cname2)
+                                let retT2  = this.MethodRetGet(symCls, mname2)
+                                if (String_Length(retT2) > 0) { return retT2 }
+                            }
+                            // Instance method call: obj.Method() → look up via obj's type
+                            if (!isUpp) {
+                                let objType = this.LocalTypeGet(cname2)
+                                let bareCls = String_Replace(objType, "*", "")
+                                if (String_Length(bareCls) > 0) {
+                                    let retT3 = this.MethodRetGet(bareCls, mname2)
+                                    if (String_Length(retT3) > 0) { return retT3 }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return ""
+    }
+
+    // Re-escape a string value (which may contain real newlines, tabs, quotes)
+    // into valid C string literal content.
+    // Emit a string literal, expanding {varName} interpolations
+    // Only applies to valid {identifier} patterns — not C braces like "{" or "} else {"
+    private string EmitInterpolatedString(string raw) {
+        let hasInterp = String_IndexOf(raw, "{")
+        if (hasInterp < 0) {
+            let escaped = this.EscapeStringForC(raw)
+            return "\"" + escaped + "\""
+        }
+        let len = String_Length(raw)
+        // Check for at least one valid {identifier} pattern
+        var hasValid = false
+        var ci = 0
+        while (ci < len) {
+            let cch = String_Substring(raw, ci, 1)
+            if (cch == "{") {
+                let rest = String_Substring(raw, ci + 1, len - ci - 1)
+                let close = String_IndexOf(rest, "}")
+                if (close > 0) {
+                    let inner = String_Substring(raw, ci + 1, close)
+                    let fc = String_Substring(inner, 0, 1)
+                    // Valid if starts with a letter or "this."
+                    let isAlpha = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", fc)
+                    if (isAlpha || String_StartsWith(inner, "this.")) {
+                        hasValid = true
+                        ci = len
+                    } else {
+                        ci = ci + 1
+                    }
+                } else {
+                    ci = ci + 1
+                }
+            } else {
+                ci = ci + 1
+            }
+        }
+        if (!hasValid) {
+            let escaped = this.EscapeStringForC(raw)
+            return "\"" + escaped + "\""
+        }
+        // Build interpolated expression
+        var result = "\"\""
+        var i = 0
+        var segStart = 0
+        while (i < len) {
+            let ch = String_Substring(raw, i, 1)
+            if (ch == "{") {
+                let rest2 = String_Substring(raw, i + 1, len - i - 1)
+                let close2 = String_IndexOf(rest2, "}")
+                if (close2 > 0) {
+                    let expr = String_Substring(raw, i + 1, close2)
+                    let fc2 = String_Substring(expr, 0, 1)
+                    let isId = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", fc2)
+                    if (isId || String_StartsWith(expr, "this.")) {
+                        if (i > segStart) {
+                            let seg = String_Substring(raw, segStart, i - segStart)
+                            let esc = this.EscapeStringForC(seg)
+                            result = "code_string_concat(" + result + ", \"" + esc + "\")"
+                        }
+                        let cExpr = this.InterpExprToC(expr)
+                        result = "code_string_concat(" + result + ", " + cExpr + ")"
+                        segStart = i + 1 + close2 + 1
+                        i = segStart
+                    } else {
+                        i = i + 1
+                    }
+                } else {
+                    i = i + 1
+                }
+            } else {
+                i = i + 1
+            }
+        }
+        if (segStart < len) {
+            let seg = String_Substring(raw, segStart, len - segStart)
+            let esc = this.EscapeStringForC(seg)
+            result = "code_string_concat(" + result + ", \"" + esc + "\")"
+        }
+        return result
+    }
+
+    // Convert a simple interpolation expression to a C string expression
+    private string InterpExprToC(string expr) {
+        // this.Field → self->Field
+        if (String_StartsWith(expr, "this.")) {
+            let field = String_Substring(expr, 5, String_Length(expr) - 5)
+            let ft = this.FieldTypeGet(this.CurrentClass, field)
+            if (ft == "i64") { return "String_FromInt(self->" + field + ")" }
+            if (ft == "double") { return "String_FromFloat(self->" + field + ")" }
+            if (ft == "code_bool") { return "((self->" + field + ") ? \"true\" : \"false\")" }
+            return "(self->" + field + " ? self->" + field + " : \"\")"
+        }
+        // obj.field → obj->field (obj is a pointer variable)
+        let dotIdx = String_IndexOf(expr, ".")
+        if (dotIdx > 0) {
+            let objName = String_Substring(expr, 0, dotIdx)
+            let field2  = String_Substring(expr, dotIdx + 1, String_Length(expr) - dotIdx - 1)
+            let objType = this.LocalTypeGet(objName)
+            let bareT   = String_Replace(objType, "*", "")
+            if (String_Length(bareT) > 0) {
+                let ft2 = this.FieldTypeGet(bareT, field2)
+                if (ft2 == "i64") { return "String_FromInt(" + objName + "->" + field2 + ")" }
+                if (ft2 == "double") { return "String_FromFloat(" + objName + "->" + field2 + ")" }
+                if (ft2 == "code_bool") { return "((" + objName + "->" + field2 + ") ? \"true\" : \"false\")" }
+                return "(" + objName + "->" + field2 + " ? " + objName + "->" + field2 + " : \"\")"
+            }
+        }
+        // Simple variable
+        let varC = this.LocalTypeGet(expr)
+        if (varC == "i64") { return "String_FromInt(" + expr + ")" }
+        if (varC == "double") { return "String_FromFloat(" + expr + ")" }
+        if (varC == "code_bool") { return "(" + expr + " ? \"true\" : \"false\")" }
+        if (String_Length(varC) > 0) {
+            return "(" + expr + " ? " + expr + " : \"\")"
+        }
+        // Fallback: treat as int
+        return "String_FromInt(" + expr + ")"
+    }
+
+    private string EscapeStringForC(string raw) {
+        // The Amalgame lexer converts escape sequences to real bytes.
+        // We must reverse that for C string literal emission.
+        // Order matters: escape backslash first to avoid double-escaping.
+        var s = String_Replace(raw, "\\", "\\\\")
+        s = String_Replace(s, "\"", "\\\"")
+        s = String_Replace(s, "\n", "\\n")
+        s = String_Replace(s, "\t", "\\t")
+        s = String_Replace(s, "\r", "\\r")
+        // ESC character (0x1B) used in ANSI color codes
+        s = String_Replace(s, "\x1b", "\\x1b")
+        return s
+    }
+
+    private void EmitHeader() {
+        this.Out.EmitLine("#include <stdio.h>")
+        this.Out.EmitLine("#include <stdlib.h>")
+        this.Out.EmitLine("#include <string.h>")
+        this.Out.EmitLine("#include \"_runtime.h\"")
+        this.Out.EmitLine("#include \"Amalgame_String.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Collections.h\"")
+        this.Out.EmitLine("#include \"Amalgame_IO.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Math.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Net.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Console.h\"")
+        this.Out.EmitBlank()
+    }
+
+    public void EmitNetHeader() {
+        this.Out.EmitLine("#include \"Amalgame_Net.h\"")
+    }
+
+    private void EmitForwardDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.ENUM_DECL) {
+            let name = this.SymName(decl.Name)
+            // Register as enum so TypeToC won't add * for this type
+            this.EnumNames.Add(decl.Name)
+            this.EnumNames.Add(name)
+            this.Out.EmitLine("typedef enum _" + name + " " + name + ";")
+        }
+        if (k == NodeKind.CLASS_DECL) {
+            let name = this.SymName(decl.Name)
+            this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+        }
+    }
+
+    private void EmitDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.ENUM_DECL) { this.EmitEnum(decl) }
+        if (k == NodeKind.CLASS_DECL) { this.EmitClass(decl) }
+    }
+
+    private void EmitEnum(AstNode en) {
+        let name  = this.SymName(en.Name)
+        let count = en.Children.Count()
+        this.Out.EmitLine("enum _" + name + " {")
+        this.Out.Indent_()
+        for i in 0..count {
+            let member = en.Children.Get(i)
+            // Prefix value with enum name to avoid conflicts in multi-file bundles
+            // e.g. NodeKind.IDENTIFIER → Amalgame_Compiler_NodeKind_IDENTIFIER
+            let mname  = name + "_" + member.Name
+            let last   = i == count - 1
+            if (last) {
+                this.Out.EmitLine(mname)
+            } else {
+                this.Out.EmitLine(mname + ",")
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("};")
+        this.Out.EmitBlank()
+    }
+
+    private void EmitClass(AstNode cls) {
+        let name    = this.SymName(cls.Name)
+        let members = cls.Children.Count()
+
+        // Track current class for field-type lookups inside methods
+        this.CurrentClass = name
+
+        // Record field C types for later method emission
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.VAR_DECL) {
+                let rawType = m.Str
+                let ftype = this.TypeToC(rawType)
+                this.FieldTypeSet(name, m.Name, ftype)
+                // Track element type for List<T> fields
+                if (String_StartsWith(rawType, "List<")) {
+                    // Extract T from "List<T>"
+                    let inner = String_Substring(rawType, 5, String_Length(rawType) - 6)
+                    let elemC = this.TypeToC(inner)
+                    this.ListElemSet(name, m.Name, elemC)
+                }
+            }
+        }
+
+        // Struct fields
+        this.Out.EmitLine("struct _" + name + " {")
+        this.Out.Indent_()
+        // Embed parent fields directly if this class extends another
+        let parentName = cls.Str
+        if (String_Length(parentName) > 0) {
+            let parentC = this.SymName(parentName)
+            // Copy parent field declarations into child struct
+            let pfc = this.FieldNames.Count()
+            let pfPrefix = parentC + "."
+            for pfi in 0..pfc {
+                let pfkey = this.FieldNames.Get(pfi)
+                if (String_StartsWith(pfkey, pfPrefix)) {
+                    let pfname = String_Substring(pfkey, String_Length(pfPrefix), String_Length(pfkey) - String_Length(pfPrefix))
+                    let pftype = this.FieldCTypes.Get(pfi)
+                    this.Out.EmitLine(pftype + " " + pfname + ";")
+                    // Register in child's field table for method lookup
+                    this.FieldTypeSet(name, pfname, pftype)
+                }
+            }
+        }
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.VAR_DECL) {
+                let ftype = this.TypeToC(m.Str)
+                this.Out.EmitLine(ftype + " " + m.Name + ";")
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("};")
+        this.Out.EmitBlank()
+
+        // Forward declare non-constructor methods only
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.METHOD_DECL) {
+                if (m.Name != cls.Name) {
+                    let sig     = this.MethodSig(m, name)
+                    let isPublic = m.Flag
+                    // Register return type for inference
+                    let retC = this.TypeToC(m.Str)
+                    this.MethodRetSet(name, m.Name, retC)
+                    if (isPublic) {
+                        this.Out.EmitLine(sig + ";")
+                    } else {
+                        this.Out.EmitLine("static " + sig + ";")
+                    }
+                }
+            }
+        }
+        this.Out.EmitBlank()
+
+        // Constructor — find the constructor method (Name == class name)
+        // Build _new() signature with constructor params
+        var ctorFound = false
+        for i in 0..members {
+            let m  = cls.Children.Get(i)
+            let mk = m.Kind
+            if (mk == NodeKind.METHOD_DECL) {
+                if (m.Name == cls.Name) {
+                    ctorFound = true
+                    // Build _new(params...) signature
+                    var ctorSig = name + "* " + name + "_new("
+                    let pcount  = m.Params.Count()
+                    var first   = true
+                    for pi in 0..pcount {
+                        let p = m.Params.Get(pi)
+                        if (!first) { ctorSig = ctorSig + ", " }
+                        ctorSig = ctorSig + this.TypeToC(p.Str) + " " + p.Name
+                        first = false
+                    }
+                    ctorSig = ctorSig + ")"
+                    this.Out.EmitLine(ctorSig + " {")
+                    this.Out.Indent_()
+                    this.Out.EmitLine(name + "* self = (" + name + "*) GC_MALLOC(sizeof(" + name + "));")
+                    // Emit constructor body with param types tracked
+                    this.LocalTypeClear()
+                    this.LocalTypeSet("self", name + "*")
+                    for pi in 0..pcount {
+                        let p = m.Params.Get(pi)
+                        this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
+                    }
+                    if (m.Body != null) { this.EmitBlock(m.Body) }
+                    this.LocalTypeClear()
+                    this.Out.EmitLine("return self;")
+                    this.Out.Dedent()
+                    this.Out.EmitLine("}")
+                    this.Out.EmitBlank()
+                }
+            }
+        }
+        // No-args _new() if no constructor defined
+        if (!ctorFound) {
+            this.Out.EmitLine(name + "* " + name + "_new() {")
+            this.Out.Indent_()
+            this.Out.EmitLine(name + "* self = (" + name + "*) GC_MALLOC(sizeof(" + name + "));")
+            this.Out.EmitLine("return self;")
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            this.Out.EmitBlank()
+        }
+
+        // Non-constructor methods
+        for j in 0..members {
+            let m2  = cls.Children.Get(j)
+            let mk2 = m2.Kind
+            if (mk2 == NodeKind.METHOD_DECL) {
+                if (m2.Name != cls.Name) {
+                    this.EmitMethod(m2, name)
+                }
+            }
+        }
+    }
+
+    private string MethodSig(AstNode method, string className) {
+        let retType  = this.TypeToC(method.Str)
+        let isStatic = method.Flag2
+        var sig      = retType + " " + className + "_" + method.Name + "("
+        var first    = true
+        if (!isStatic) {
+            sig   = sig + className + "* self"
+            first = false
+        }
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p  = method.Params.Get(i)
+            if (!first) { sig = sig + ", " }
+            sig   = sig + this.TypeToC(p.Str) + " " + p.Name
+            first = false
+        }
+        sig = sig + ")"
+        return sig
+    }
+
+    private void EmitMethod(AstNode method, string className) {
+        let sig      = this.MethodSig(method, className)
+        let isPublic = method.Flag
+        var prefix   = ""
+        if (!isPublic) { prefix = "static " }
+        this.Out.EmitLine(prefix + sig + " {")
+        this.Out.Indent_()
+        // Reset local type table for this method scope
+        this.LocalTypeClear()
+        // Seed with 'self' if instance method
+        let isStatic = method.Flag2
+        if (!isStatic) {
+            this.LocalTypeSet("self", className + "*")
+            // Suppress -Wunused-parameter if self is not referenced
+            this.Out.EmitLine("(void)self;")
+        }
+        // Seed with parameters and suppress unused warnings
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
+            this.Out.EmitLine("(void)" + p.Name + ";")
+        }
+        if (method.Body != null) {
+            this.EmitBlock(method.Body)
+        }
+        this.LocalTypeClear()
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+    }
+
+    // ── Block & Statements ────────────────────────────
+
+    // Recursive if/else-if/else emitter — produces clean "} else if (...) {" chains
+    private void EmitIf(AstNode stmt) {
+        this.Out.EmitLine("if (" + this.EmitExprStr(stmt.Cond) + ") {")
+        this.Out.Indent_()
+        if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+        this.Out.Dedent()
+        if (stmt.Else != null) {
+            let elseKind = stmt.Else.Kind
+            if (elseKind == NodeKind.IF_STMT) {
+                // Fuse "} else if (...) {" on one line
+                let innerCond = this.EmitExprStr(stmt.Else.Cond)
+                this.Out.EmitLine("} else if (" + innerCond + ") {")
+                this.Out.Indent_()
+                if (stmt.Else.Body != null) { this.EmitBlock(stmt.Else.Body) }
+                this.Out.Dedent()
+                // Recurse for further else-if / else chains
+                this.EmitIfTail(stmt.Else)
+            } else {
+                this.Out.EmitLine("} else {")
+                this.Out.Indent_()
+                this.EmitBlock(stmt.Else)
+                this.Out.Dedent()
+                this.Out.EmitLine("}")
+            }
+        } else {
+            this.Out.EmitLine("}")
+        }
+    }
+
+    // Emit the tail of an else-if chain (after body already emitted)
+    private void EmitIfTail(AstNode stmt) {
+        if (stmt.Else == null) {
+            this.Out.EmitLine("}")
+            return
+        }
+        let elseKind = stmt.Else.Kind
+        if (elseKind == NodeKind.IF_STMT) {
+            let innerCond = this.EmitExprStr(stmt.Else.Cond)
+            this.Out.EmitLine("} else if (" + innerCond + ") {")
+            this.Out.Indent_()
+            if (stmt.Else.Body != null) { this.EmitBlock(stmt.Else.Body) }
+            this.Out.Dedent()
+            this.EmitIfTail(stmt.Else)
+        } else {
+            this.Out.EmitLine("} else {")
+            this.Out.Indent_()
+            this.EmitBlock(stmt.Else)
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+        }
+    }
+
+    private void EmitBlock(AstNode block) {
+        let count = block.Children.Count()
+        for i in 0..count {
+            let stmt = block.Children.Get(i)
+            this.EmitStmt(stmt)
+        }
+    }
+
+    private void EmitStmt(AstNode stmt) {
+        let k = stmt.Kind
+        if (k == NodeKind.VAR_DECL) {
+            var t = this.TypeToC(stmt.Str)
+            // If no explicit type annotation, infer from RHS
+            if (String_Length(t) == 0 || t == "void") {
+                t = this.InferTypeFromExpr(stmt.Left)
+            }
+            // Fall back to void* only if we truly can't infer
+            if (String_Length(t) == 0) { t = "void*" }
+            // Record in local type table for later use
+            this.LocalTypeSet(stmt.Name, t)
+            // Emit the declaration — for void* from List.Get(), emit a typed cast
+            let rhs = this.EmitExprStr(stmt.Left)
+            var decl = t + " __attribute__((unused)) " + stmt.Name + " = " + rhs + ";"
+            // If inferred void* but we have a typed cast available, upgrade the variable type
+            if (t == "void*") {
+                // Check if rhs already contains a typed cast like "(SomeType*)AmalgameList_get"
+                // but NOT a ternary expression like "(cond ? a : b)"
+                if (String_StartsWith(rhs, "(") && !String_StartsWith(rhs, "(void*)") && !String_Contains(rhs, "?")) {
+                    // Extract cast type from "(Type*)expr" → strip outer parens up to first )
+                    let closeP = String_IndexOf(rhs, ")")
+                    if (closeP > 1) {
+                        let castT = String_Substring(rhs, 1, closeP - 1)
+                        if (String_Length(castT) > 0) {
+                            t = castT
+                            this.LocalTypeSet(stmt.Name, t)
+                            decl = t + " __attribute__((unused)) " + stmt.Name + " = " + rhs + ";"
+                        }
+                    }
+                }
+            }
+            this.Out.EmitLine(decl)
+        }
+        if (k == NodeKind.RETURN_STMT) {
+            if (stmt.Left == null) {
+                this.Out.EmitLine("return;")
+            } else {
+                let retExpr = this.EmitExprStr(stmt.Left)
+                if (retExpr == "_unknown_") {
+                    this.Out.EmitLine("return;")
+                } else {
+                    this.Out.EmitLine("return " + retExpr + ";")
+                }
+            }
+        }
+        if (k == NodeKind.IF_STMT) {
+            this.EmitIf(stmt)
+        }
+        if (k == NodeKind.WHILE_STMT) {
+            this.Out.EmitLine("while (" + this.EmitExprStr(stmt.Cond) + ") {")
+            this.Out.Indent_()
+            if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+        }
+        if (k == NodeKind.FOR_IN_STMT) {
+            let vn = stmt.Name
+            // iter is the range expression: BINARY("..", start, end) or a collection
+            if (stmt.Left != null) {
+                let iterKind = stmt.Left.Kind
+                if (iterKind == NodeKind.BINARY) {
+                    let iterOp = stmt.Left.Str
+                    if (iterOp == "..") {
+                        // Range for: for i in start..end → for (i64 i = start; i < end; i++)
+                        let startExpr = this.EmitExprStr(stmt.Left.Left)
+                        let endExpr   = this.EmitExprStr(stmt.Left.Right)
+                        this.Out.EmitLine("for (i64 " + vn + " = " + startExpr + "; " + vn + " < " + endExpr + "; " + vn + "++) {")
+                        this.LocalTypeSet(vn, "i64")
+                        this.Out.Indent_()
+                        if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+                        this.Out.Dedent()
+                        this.Out.EmitLine("}")
+                        this.LocalTypeSet(vn, "")
+                        return
+                    }
+                }
+            }
+            // Fallback: collection for (emit comment — not yet supported)
+            let iter = this.EmitExprStr(stmt.Left)
+            this.Out.EmitLine("/* for " + vn + " in " + iter + " — collection iteration not yet supported */")
+        }
+        if (k == NodeKind.BREAK_STMT) {
+            this.Out.EmitLine("break;")
+        }
+        if (k == NodeKind.CONTINUE_STMT) {
+            this.Out.EmitLine("continue;")
+        }
+        if (k == NodeKind.BINARY) {
+            this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+        if (k == NodeKind.CALL) {
+            this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+        if (k == NodeKind.MEMBER) {
+            this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+    }
+
+    // ── Expression emission ───────────────────────────
+
+    private string EmitExprStr(AstNode expr) {
+        if (expr == null) { return "NULL" }
+        let k = expr.Kind
+        // if expression: emit as ternary (cond ? then_val : else_val)
+        // Note: full block extraction requires typed List.Get - emit placeholder
+        if (k == NodeKind.IF_STMT) {
+            let condStr = this.EmitExprStr(expr.Cond)
+            return "(" + condStr + " ? 0 : 0) /* if-expr */"
+        }
+        if (k == NodeKind.LITERAL_INT)    { return expr.Str }
+        if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }
+        if (k == NodeKind.LITERAL_STRING) {
+            let raw = expr.Str
+            return this.EmitInterpolatedString(raw)
+        }
+        if (k == NodeKind.LITERAL_BOOL) {
+            if (expr.Flag) { return "1" }
+            return "0"
+        }
+        if (k == NodeKind.LITERAL_NULL) { return "NULL" }
+        if (k == NodeKind.THIS_EXPR)    { return "self" }
+        if (k == NodeKind.IDENTIFIER)   { return expr.Name }
+        if (k == NodeKind.MEMBER) {
+            if (expr.Left != null) {
+                let lk = expr.Left.Kind
+                if (lk == NodeKind.THIS_EXPR) {
+                    return "self->" + expr.Name
+                }
+                if (lk == NodeKind.IDENTIFIER) {
+                    let tname = expr.Left.Name
+                    let firstChar = String_Substring(tname, 0, 1)
+                    let isUpper = firstChar == String_ToUpper(firstChar)
+                    if (isUpper) {
+                        // Enum or static class access: TokenType.NEWLINE → Ns_TokenType_NEWLINE
+                        return this.SymName(tname) + "_" + expr.Name
+                    }
+                    return tname + "->" + expr.Name
+                }
+            }
+            let target = this.EmitExprStr(expr.Left)
+            return target + "->" + expr.Name
+        }
+        if (k == NodeKind.BINARY) {
+            let left  = this.EmitExprStr(expr.Left)
+            let op    = expr.Str
+            let right = this.EmitExprStr(expr.Right)
+            if (op == "==" || op == "!=") {
+                // Infer LHS type to decide: string → code_string_equals, else → C == / !=
+                let ltype = this.InferTypeFromExpr(expr.Left)
+                var useStrEq = false
+                if (ltype == "code_string") { useStrEq = true }
+                // If LHS is a CALL to a known string-returning method, treat as string
+                if (String_Length(ltype) == 0) {
+                    if (expr.Left != null) {
+                        let lk2 = expr.Left.Kind
+                        if (lk2 == NodeKind.LITERAL_STRING) { useStrEq = true }
+                        // CALL to CharAt / String_* → code_string
+                        if (lk2 == NodeKind.CALL) {
+                            if (expr.Left.Left != null) {
+                                let calleeStr = this.EmitCalleeStr(expr.Left.Left)
+                                if (String_StartsWith(calleeStr, "String_") || String_EndsWith(calleeStr, "_CharAt")) {
+                                    useStrEq = true
+                                }
+                            }
+                        }
+                        // IDENTIFIER whose local type is code_string
+                        if (lk2 == NodeKind.IDENTIFIER) {
+                            let lt2 = this.LocalTypeGet(expr.Left.Name)
+                            if (lt2 == "code_string") { useStrEq = true }
+                        }
+                        // MEMBER → this.Field or var.Field
+                        if (lk2 == NodeKind.MEMBER) {
+                            let ft = this.InferTypeFromExpr(expr.Left)
+                            if (ft == "code_string") { useStrEq = true }
+                        }
+                    }
+                }
+                // Also: if RHS is a string literal, LHS must be string
+                if (!useStrEq) {
+                    if (expr.Right != null) {
+                        if (expr.Right.Kind == NodeKind.LITERAL_STRING) { useStrEq = true }
+                    }
+                }
+                if (useStrEq) {
+                    if (op == "==") { return "code_string_equals(" + left + ", " + right + ")" }
+                    return "!code_string_equals(" + left + ", " + right + ")"
+                }
+                // Non-string (int, bool, enum, pointer): use C == / !=
+                return left + " " + op + " " + right
+            }
+            // String concatenation: a + b where either side is a string
+            if (op == "+") {
+                let ltype2 = this.InferTypeFromExpr(expr.Left)
+                var useConcat = false
+                if (ltype2 == "code_string") { useConcat = true }
+                if (!useConcat) {
+                    if (expr.Left != null) {
+                        let lk3 = expr.Left.Kind
+                        if (lk3 == NodeKind.LITERAL_STRING) { useConcat = true }
+                        if (lk3 == NodeKind.IDENTIFIER) {
+                            let lt3 = this.LocalTypeGet(expr.Left.Name)
+                            if (lt3 == "code_string") { useConcat = true }
+                        }
+                        // CALL that returns code_string (including nested code_string_concat)
+                        if (lk3 == NodeKind.CALL) {
+                            let ltype3 = this.InferTypeFromExpr(expr.Left)
+                            if (ltype3 == "code_string") { useConcat = true }
+                            // Also detect code_string_concat directly by callee name
+                            if (expr.Left.Left != null) {
+                                let calleeL = this.EmitCalleeStr(expr.Left.Left)
+                                if (String_StartsWith(calleeL, "String_") || calleeL == "code_string_concat") {
+                                    useConcat = true
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!useConcat) {
+                    if (expr.Right != null) {
+                        let rk3 = expr.Right.Kind
+                        if (rk3 == NodeKind.LITERAL_STRING) { useConcat = true }
+                        if (rk3 == NodeKind.CALL) {
+                            if (expr.Right.Left != null) {
+                                let calleeR = this.EmitCalleeStr(expr.Right.Left)
+                                if (String_StartsWith(calleeR, "String_") || calleeR == "code_string_concat") {
+                                    useConcat = true
+                                }
+                            }
+                        }
+                    }
+                }
+                if (useConcat) {
+                    var lcast = left
+                    var rcast = right
+                    let ltype4 = this.InferTypeFromExpr(expr.Left)
+                    let rtype4 = this.InferTypeFromExpr(expr.Right)
+                    if (ltype4 == "void*") { lcast = "(code_string)(" + left + ")" }
+                    if (rtype4 == "void*") { rcast = "(code_string)(" + right + ")" }
+                    return "code_string_concat(" + lcast + ", " + rcast + ")"
+                }
+            }
+            return left + " " + op + " " + right
+        }
+        if (k == NodeKind.UNARY) {
+            let operand = this.EmitExprStr(expr.Left)
+            return expr.Str + operand
+        }
+        if (k == NodeKind.CALL) {
+            // Check for AmalgameList method dispatch before generic emit
+            let listCall = this.TryEmitListCall(expr)
+            if (String_Length(listCall) > 0) { return listCall }
+            // Detect this.Method() or this.Field.Method() → inject self / self->Field as first arg
+            var isSelfCall = false
+            var selfExpr   = "self"
+            if (expr.Left != null) {
+                if (expr.Left.Kind == NodeKind.MEMBER) {
+                    if (expr.Left.Left != null) {
+                        let ll = expr.Left.Left
+                        // this.Method(...)
+                        if (ll.Kind == NodeKind.THIS_EXPR) {
+                            isSelfCall = true
+                            selfExpr   = "self"
+                        }
+                        // this.Field.Method(...) — field is itself a struct
+                        if (ll.Kind == NodeKind.MEMBER) {
+                            if (ll.Left != null) {
+                                if (ll.Left.Kind == NodeKind.THIS_EXPR) {
+                                    isSelfCall = true
+                                    selfExpr   = "self->" + ll.Name
+                                }
+                            }
+                        }
+                        // varName.Method(...) where varName is a known instance type
+                        if (ll.Kind == NodeKind.IDENTIFIER) {
+                            let vt = this.LocalTypeGet(ll.Name)
+                            let bare = String_Replace(vt, "*", "")
+                            if (String_Length(bare) > 0 && !this.IsEnum(bare)) {
+                                isSelfCall = true
+                                selfExpr   = ll.Name
+                            }
+                        }
+                    }
+                }
+            }
+            let callee = this.EmitCalleeStr(expr.Left)
+            var callStr = callee + "("
+            var first = true
+            if (isSelfCall) {
+                callStr = callStr + selfExpr
+                first = false
+            }
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                let arg = expr.Args.Get(i)
+                if (!first) { callStr = callStr + ", " }
+                callStr = callStr + this.EmitExprStr(arg)
+                first = false
+            }
+            callStr = callStr + ")"
+            return callStr
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            let tname = expr.Name
+            var newCall = ""
+            if (String_StartsWith(tname, "List<") || tname == "List") {
+                newCall = "AmalgameList_new()"
+            } else {
+                if (String_StartsWith(tname, "Map<") || tname == "Map") {
+                    newCall = "AmalgameMap_new()"
+                } else {
+                    if (String_StartsWith(tname, "Set<") || tname == "Set") {
+                        newCall = "AmalgameSet_new()"
+                    } else {
+                        newCall = this.SymName(tname) + "_new("
+                        let argc = expr.Args.Count()
+                        for i in 0..argc {
+                            let arg = expr.Args.Get(i)
+                            if (i > 0) { newCall = newCall + ", " }
+                            newCall = newCall + this.EmitExprStr(arg)
+                        }
+                        newCall = newCall + ")"
+                    }
+                }
+            }
+            return newCall
+        }
+        if (k == NodeKind.INDEX_EXPR) {
+            let base = this.EmitExprStr(expr.Left)
+            let idx  = this.EmitExprStr(expr.Right)
+            return base + "[" + idx + "]"
+        }
+        return "/* unknown expr */"
+    }
+
+    // ── AmalgameList method dispatch ──────────────────
+    // Returns "" if not a list call, otherwise returns the C call string.
+    // Handles:
+    //   varName.Add(x)     → AmalgameList_add(varName, (void*)(intptr_t)(x))
+    //   varName.Count()    → AmalgameList_count(varName)
+    //   varName.Get(i)     → (<ElemType>)(intptr_t)AmalgameList_get(varName, i)
+    //   this.Field.Add(x)  → AmalgameList_add(self->Field, ...)
+    //   this.Field.Count() → AmalgameList_count(self->Field)
+    //   this.Field.Get(i)  → AmalgameList_get(self->Field, i)
+    private string TryEmitListCall(AstNode callExpr) {
+        if (callExpr.Left == null) { return "" }
+        if (callExpr.Left.Kind != NodeKind.MEMBER) { return "" }
+        let callee = callExpr.Left
+        let mname  = callee.Name
+
+        // Map methods
+        if (mname == "Set" || mname == "Has" || mname == "Size" || mname == "Remove") {
+            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameMap*") {
+                    let args = callExpr.Args
+                    let ac = args.Count()
+                    if (mname == "Set" && ac >= 2) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        let v2 = this.EmitExprStr(args.Get(1))
+                        return "AmalgameMap_set(" + vname + ", " + k2 + ", (void*)(intptr_t)(" + v2 + "))"
+                    }
+                    if (mname == "Has" && ac >= 1) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        return "AmalgameMap_has(" + vname + ", " + k2 + ")"
+                    }
+                    if (mname == "Size") { return "AmalgameMap_size(" + vname + ")" }
+                    if (mname == "Remove" && ac >= 1) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        return "AmalgameMap_remove(" + vname + ", " + k2 + ")"
+                    }
+                }
+            }
+        }
+        // Set methods
+        if (mname == "Contains" || mname == "Size") {
+            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameSet*") {
+                    let args = callExpr.Args
+                    let ac = args.Count()
+                    if (mname == "Contains" && ac >= 1) {
+                        let v2 = this.EmitExprStr(args.Get(0))
+                        return "AmalgameSet_contains(" + vname + ", " + v2 + ")"
+                    }
+                    if (mname == "Size") { return "AmalgameSet_size(" + vname + ")" }
+                }
+            }
+        }
+        if (mname == "Add" || mname == "Remove") {
+            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameSet*") {
+                    let args = callExpr.Args
+                    let ac = args.Count()
+                    if (ac >= 1) {
+                        let v2 = this.EmitExprStr(args.Get(0))
+                        if (mname == "Add") { return "AmalgameSet_add(" + vname + ", " + v2 + ")" }
+                        return "AmalgameSet_remove(" + vname + ", " + v2 + ")"
+                    }
+                }
+            }
+        }
+
+        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove") { return "" }
+
+        // Determine the list object expression and its C type
+        var listExpr = ""
+        var listCType = ""
+
+        if (callee.Left != null) {
+            let lk = callee.Left.Kind
+
+            // Case 1: varName.Method()
+            if (lk == NodeKind.IDENTIFIER) {
+                let vname = callee.Left.Name
+                let vtype = this.LocalTypeGet(vname)
+                if (vtype == "AmalgameList*") {
+                    listExpr  = vname
+                    listCType = "AmalgameList*"
+                }
+            }
+
+            // Case 2: this.Field.Method()
+            if (lk == NodeKind.MEMBER) {
+                if (callee.Left.Left != null) {
+                    let llk = callee.Left.Left.Kind
+                    if (llk == NodeKind.THIS_EXPR) {
+                        let fname = callee.Left.Name
+                        let ftype = this.FieldTypeGet(this.CurrentClass, fname)
+                        if (ftype == "AmalgameList*") {
+                            listExpr  = "self->" + fname
+                            listCType = "AmalgameList*"
+                        }
+                    }
+                    // Case 3: varName.Field.Method() where varName is a known struct type
+                    if (llk == NodeKind.IDENTIFIER) {
+                        let vname2  = callee.Left.Left.Name
+                        let vtype2  = this.LocalTypeGet(vname2)
+                        let fname2  = callee.Left.Name
+                        // Strip trailing * to get class name for field lookup
+                        let vbare   = String_Replace(vtype2, "*", "")
+                        let ftype2  = this.FieldTypeGet(vbare, fname2)
+                        if (ftype2 == "AmalgameList*") {
+                            listExpr  = vname2 + "->" + fname2
+                            listCType = "AmalgameList*"
+                        }
+                    }
+                }
+            }
+        }
+
+        if (String_Length(listExpr) == 0) { return "" }
+
+        // Emit the appropriate C call
+        if (mname == "Count") {
+            return "AmalgameList_count(" + listExpr + ")"
+        }
+        if (mname == "Add") {
+            let argc = callExpr.Args.Count()
+            if (argc == 0) { return "AmalgameList_add(" + listExpr + ", NULL)" }
+            let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
+            return "AmalgameList_add(" + listExpr + ", (void*)(intptr_t)(" + arg0 + "))"
+        }
+        if (mname == "Get") {
+            let argc = callExpr.Args.Count()
+            var idx0 = "0"
+            if (argc > 0) { idx0 = this.EmitExprStr(callExpr.Args.Get(0)) }
+            // Try to find element type from the list field's owning class
+            var elemType = ""
+            if (callee.Left != null) {
+                let lkG = callee.Left.Kind
+                // Case: this.Field.Get(i)
+                if (lkG == NodeKind.THIS_EXPR) {
+                    // listExpr is just the list var — field name is callee.Name of the outer
+                }
+                // Case: varName.Field.Get(i) — lkG == MEMBER(IDENTIFIER(varName), Field)
+                if (lkG == NodeKind.MEMBER) {
+                    if (callee.Left.Left != null) {
+                        let lll = callee.Left.Left
+                        // this.Field.Get(i)
+                        if (lll.Kind == NodeKind.THIS_EXPR) {
+                            let fn4 = callee.Left.Name
+                            elemType = this.ListElemGet(this.CurrentClass, fn4)
+                        }
+                        // var.Field.Get(i) — look up var type → class → field elem type
+                        if (lll.Kind == NodeKind.IDENTIFIER) {
+                            let vn4   = lll.Name
+                            let vt4   = this.LocalTypeGet(vn4)
+                            let bare4 = String_Replace(vt4, "*", "")
+                            let fn4b  = callee.Left.Name
+                            elemType = this.ListElemGet(bare4, fn4b)
+                        }
+                    }
+                }
+                // Case: varName.Get(i) — listExpr is varName itself (Case 1)
+                if (lkG == NodeKind.IDENTIFIER) {
+                    let vn5 = callee.Left.Name
+                    // Check local elem type hint — not tracked yet; fall through
+                    let _ = vn5
+                }
+            }
+            if (String_Length(elemType) > 0) {
+                return "(" + elemType + ")AmalgameList_get(" + listExpr + ", " + idx0 + ")"
+            }
+            return "(void*)AmalgameList_get(" + listExpr + ", " + idx0 + ")"
+        }
+        if (mname == "IsEmpty") {
+            return "AmalgameList_isEmpty(" + listExpr + ")"
+        }
+        if (mname == "Remove") {
+            let argc = callExpr.Args.Count()
+            if (argc > 0) {
+                let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
+                return "AmalgameList_remove(" + listExpr + ", (void*)(intptr_t)(" + arg0 + "))"
+            }
+        }
+        return ""
+    }
+
+    private string EmitCalleeStr(AstNode callee) {
+        if (callee == null) { return "NULL" }
+        let k = callee.Kind
+        if (k == NodeKind.IDENTIFIER) { return callee.Name }
+        if (k == NodeKind.MEMBER) {
+            let mname = callee.Name
+            if (callee.Left != null) {
+                let lk = callee.Left.Kind
+                if (lk == NodeKind.THIS_EXPR) {
+                    // this.Method() → CurrentClass_Method (includes class name)
+                    return this.CurrentClass + "_" + mname
+                }
+                if (lk == NodeKind.IDENTIFIER) {
+                    let tname = callee.Left.Name
+                    let firstChar = String_Substring(tname, 0, 1)
+                    let isUpper = firstChar == String_ToUpper(firstChar)
+                    if (isUpper) {
+                        // Stdlib classes are never namespace-prefixed
+                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env"
+                        if (isStdlib) {
+                            return tname + "_" + mname
+                        }
+                        // Static call: ClassName.Method → Ns_ClassName_Method
+                        return this.SymName(tname) + "_" + mname
+                    }
+                    // Instance call on known-type variable: look up field type of obj
+                    let varType = this.LocalTypeGet(tname)
+                    let bareType = String_Replace(varType, "*", "")
+                    if (String_Length(bareType) > 0) {
+                        return bareType + "_" + mname
+                    }
+                    // Fallback: obj_Method (simplified)
+                    return tname + "_" + mname
+                }
+                // this.Field.Method() → detect field type → FieldType_Method
+                if (lk == NodeKind.MEMBER) {
+                    if (callee.Left.Left != null) {
+                        let llk = callee.Left.Left.Kind
+                        if (llk == NodeKind.THIS_EXPR) {
+                            let fname = callee.Left.Name
+                            let ftype = this.FieldTypeGet(this.CurrentClass, fname)
+                            let bare  = String_Replace(ftype, "*", "")
+                            if (String_Length(bare) > 0) {
+                                return bare + "_" + mname
+                            }
+                        }
+                    }
+                }
+            }
+            let target = this.EmitExprStr(callee.Left)
+            return target + "_" + mname
+        }
+        return this.EmitExprStr(callee)
+    }
+
+    // ── Type mapping ──────────────────────────────────
+
+    private bool IsEnum(string t) {
+        let n = this.EnumNames.Count()
+        for i in 0..n {
+            let e = this.EnumNames.Get(i)
+            if (e == t) { return true }
+        }
+        return false
+    }
+
+    private string TypeToC(string t) {
+        if (t == "int")    { return "i64" }
+        if (t == "float")  { return "double" }
+        if (t == "bool")   { return "code_bool" }
+        if (t == "string") { return "code_string" }
+        if (t == "void")   { return "void" }
+        if (t == "")       { return "void" }
+        // Array types: string[] → code_string*, int[] → i64*, etc.
+        if (String_EndsWith(t, "[]")) {
+            let inner = String_Substring(t, 0, String_Length(t) - 2)
+            return this.TypeToC(inner) + "*"
+        }
+        if (String_EndsWith(t, "?")) {
+            let inner = String_Substring(t, 0, String_Length(t) - 1)
+            return this.TypeToC(inner) + "*"
+        }
+        if (String_StartsWith(t, "List<")) {
+            return "AmalgameList*"
+        }
+        if (String_StartsWith(t, "Map<")) {
+            return "AmalgameMap*"
+        }
+        if (String_StartsWith(t, "Set<")) {
+            return "AmalgameSet*"
+        }
+        if (t == "List") { return "AmalgameList*" }
+        if (t == "Map")  { return "AmalgameMap*" }
+        if (t == "Set")  { return "AmalgameSet*" }
+        if (this.IsEnum(t)) {
+            return this.SymName(t)
+        }
+        let sym = this.SymName(t)
+        // Single uppercase letter = generic type parameter → use void*
+        if (String_Length(t) == 1) {
+            let fc = String_Substring(t, 0, 1)
+            let isUp = fc == String_ToUpper(fc)
+            if (isUp) { return "void*" }
+        }
+        if (this.IsEnum(sym)) {
+            return sym
+        }
+        return sym + "*"
+    }
+}

@@ -206,19 +206,25 @@ static inline code_string String_Join(AmalgameList* parts,
     if (!parts || parts->size == 0) return "";
     size_t lsep = sep ? strlen(sep) : 0;
     size_t total = 0;
-    for (int i = 0; i < parts->size; i++)
-        total += strlen((code_string) parts->data[i]);
+    for (int i = 0; i < parts->size; i++) {
+        code_string p = (code_string) parts->data[i];
+        if (p) total += strlen(p);
+    }
     total += lsep * (size_t)(parts->size > 0 ? parts->size - 1 : 0);
 
-    char* r = (char*) GC_MALLOC(total + 1);
+    // Use GC_MALLOC (not ATOMIC) so the GC keeps a reference to this block
+    // even when the only reference is in a temporary register
+    char* r = (char*) GC_MALLOC(total + 2);
     char* w = r;
     for (int i = 0; i < parts->size; i++) {
         if (i > 0 && sep) {
             memcpy(w, sep, lsep); w += lsep;
         }
         code_string part = (code_string) parts->data[i];
-        size_t len = strlen(part);
-        memcpy(w, part, len); w += len;
+        if (part) {
+            size_t len = strlen(part);
+            memcpy(w, part, len); w += len;
+        }
     }
     *w = '\0';
     return r;
