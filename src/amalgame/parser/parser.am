@@ -354,6 +354,33 @@ public class Parser {
             if (this.CheckType(TokenType.IDENTIFIER)) {
                 return this.ParseMethod(typeName, isPublic, isStatic, tok.Line, tok.Column)
             }
+        } else if (tok.Value == "(") {
+            // Tuple return type: (int, string) Foo() { ... } — skip whole method
+            var depth3 = 0
+            while (!this.IsEnd()) {
+                if (this.CheckValue("(")) { depth3 = depth3 + 1 }
+                if (this.CheckValue(")")) {
+                    depth3 = depth3 - 1
+                    if (depth3 == 0) { this.Advance() break }
+                }
+                this.Advance()
+            }
+            // Skip method name, params, and body
+            while (!this.IsEnd() && !this.CheckValue("{") && !this.CheckType(TokenType.NEWLINE)) {
+                this.Advance()
+            }
+            if (this.CheckValue("{")) {
+                var depth4 = 0
+                while (!this.IsEnd()) {
+                    if (this.CheckValue("{")) { depth4 = depth4 + 1 }
+                    if (this.CheckValue("}")) {
+                        depth4 = depth4 - 1
+                        if (depth4 == 0) { this.Advance() break }
+                    }
+                    this.Advance()
+                }
+            }
+            return this.Unknown()
         }
 
         while (!this.IsEnd() && !this.CheckType(TokenType.NEWLINE) && !this.CheckValue("}")) {
