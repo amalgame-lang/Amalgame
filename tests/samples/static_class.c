@@ -13,6 +13,10 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_Counter Tests_Counter;
+static void Tests_Counter_Inc(Tests_Counter*);
+static void Tests_Counter_Dec(Tests_Counter*);
+static void Tests_Counter_Reset(Tests_Counter*);
+static code_bool Tests_Counter_IsZero(Tests_Counter*);
 typedef struct _Tests_Calculator Tests_Calculator;
 static i64 Tests_Calculator_Add(i64, i64);
 static i64 Tests_Calculator_Sub(i64, i64);

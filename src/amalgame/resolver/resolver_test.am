@@ -1,0 +1,61 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+public class BootstrapTest {
+    private Paths: List<string>
+
+    public BootstrapTest() {
+        this.Paths = new List<string>()
+    }
+
+    public void AddFile(string path) {
+        this.Paths.Add(path)
+    }
+
+    public void Run() {
+        let res   = new Resolver()
+        let count = this.Paths.Count()
+
+        for i in 0..count {
+            let path = this.Paths.Get(i)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            res.Programs.Add(prog)
+        }
+
+        res.ResolvePrograms()
+
+        let hasErr = res.HasErrors()
+        Console.WriteLine("resolve errors: {hasErr}")
+        if (hasErr) {
+            let errs = res.GetErrors()
+            Console.WriteLine(errs)
+        }
+
+        let pcount = res.Programs.Count()
+        for j in 0..pcount {
+            let prog2 = res.Programs.Get(j)
+            let path2 = this.Paths.Get(j)
+            let dc    = prog2.Children.Count()
+            Console.WriteLine("{path2}: {dc} decls")
+        }
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let test = new BootstrapTest()
+        test.AddFile("./src/amalgame/lexer/token.am")
+        test.AddFile("./src/amalgame/lexer/lexer.am")
+        test.AddFile("./src/amalgame/parser/ast.am")
+        test.AddFile("./src/amalgame/parser/parser.am")
+        test.AddFile("./src/amalgame/resolver/symbol.am")
+        test.Run()
+    }
+}

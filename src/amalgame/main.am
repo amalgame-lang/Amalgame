@@ -1,0 +1,97 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+// Bootstrap compiler — AmalgameCompiler class used by amc_main.c
+public class AmalgameCompiler {
+    private Diag: DiagnosticFormatter
+
+    public AmalgameCompiler() {
+        this.Diag = new DiagnosticFormatter()
+    }
+
+    // Compile a list of .am files to outputName.c
+    public void Run(List<string> inputFiles, string outputName) {
+        let inputCount = inputFiles.Count()
+        if (inputCount == 0) {
+            Console.WriteError("amc: no input .am files")
+            return
+        }
+        Console.WriteLine("Compiling: " + String_FromInt(inputCount) + " file(s)")
+
+        // Detect namespace from first file
+        let firstPath = inputFiles.Get(0)
+        let firstSrc  = File.ReadAll(firstPath)
+        var nsPrefix  = "App"
+        let nlIdx = String_IndexOf(firstSrc, "namespace ")
+        if (nlIdx >= 0) {
+            let nlRest = String_Substring(firstSrc, nlIdx + 10, 200)
+            let nlEnd  = String_IndexOf(nlRest, "\n")
+            if (nlEnd > 0) {
+                let rawNs = String_Substring(nlRest, 0, nlEnd)
+                nsPrefix = String_Replace(rawNs, ".", "_")
+            }
+        }
+
+        let gen = new CGen()
+        gen.BeginMulti(nsPrefix)
+
+        // Parse all files and do Pass 1
+        let progs = new List<AstNode>()
+        for i in 0..inputCount {
+            let path = inputFiles.Get(i)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            progs.Add(prog)
+            gen.AddFilePass1(prog)
+        }
+
+        gen.EmitSeparator()
+
+        // Pass 2
+        for j in 0..inputCount {
+            let prog2 = progs.Get(j)
+            gen.AddFilePass2(prog2)
+        }
+
+        // Write output line by line (avoids large string GC issues)
+        let lines     = gen.GetLines()
+        let lineCount = lines.Count()
+        let outC      = outputName + ".c"
+        File.WriteAll(outC, "")
+        for k in 0..lineCount {
+            let line = lines.Get(k)
+            File.AppendAll(outC, line + "\n")
+        }
+        // Check if Program.Main exists and emit C main()
+        let mainFunc = nsPrefix + "_Program_Main"
+        let genSrc   = File.ReadAll(outC)
+        if (String_Contains(genSrc, mainFunc)) {
+            File.AppendAll(outC, "
+int main(int argc, char** argv) {
+")
+            File.AppendAll(outC, "    GC_INIT();
+")
+            File.AppendAll(outC, "    " + mainFunc + "((code_string*)argv);
+")
+            File.AppendAll(outC, "    return 0;
+")
+            File.AppendAll(outC, "}
+")
+        }
+        Console.WriteLine("Generated: " + outC + " (" + String_FromInt(lineCount) + " lines)")
+        this.Diag.PrintCompileOk("Build")
+    }
+}
+
+public class AmcEntry {
+    public static void AmcStart() {
+        // Entry point for testing — real CLI parsing is in amc_main.c
+        Console.WriteError("Use amc_bootstrap binary directly")
+    }
+}

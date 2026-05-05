@@ -64,10 +64,18 @@ static inline code_string File_ReadAll(code_string path) {
 
 static inline code_bool File_WriteAll(code_string path,
                                        code_string content) {
+    // Pin content against GC collection during file write
+    if (!content) content = "";
+    GC_add_roots((void*)content, (void*)(content + strlen(content) + 1));
     FILE* f = fopen(path, "w");
-    if (!f) return false;
-    fputs(content, f);
+    if (!f) {
+        GC_remove_roots((void*)content, (void*)(content + strlen(content) + 1));
+        return false;
+    }
+    size_t len = strlen(content);
+    fwrite(content, 1, len, f);
     fclose(f);
+    GC_remove_roots((void*)content, (void*)(content + strlen(content) + 1));
     return true;
 }
 
