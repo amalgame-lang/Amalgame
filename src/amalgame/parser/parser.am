@@ -561,6 +561,7 @@ public class Parser {
             let n = new AstNode(NodeKind.CONTINUE_STMT, tok.Line, tok.Column)
             return n
         }
+        if (v == "match") { return this.ParseMatch() }
         if (v == "{") { return this.ParseBlock() }
         return this.ParseExpr()
     }
@@ -704,24 +705,25 @@ public class Parser {
         this.Expect("{")
         this.SkipNewlines()
         while (!this.IsEnd() && !this.CheckValue("}")) {
-            if (this.CheckType(TokenType.NEWLINE)) {
-                this.Advance()
-                continue
-            }
-            if (this.CheckValue(",")) {
-                this.Advance()
-                continue
-            }
-            if (!this.CheckType(TokenType.IDENTIFIER)) {
-                this.Advance()
-                continue
-            }
+            if (this.CheckType(TokenType.NEWLINE)) { this.Advance() continue }
+            if (this.CheckValue(",")) { this.Advance() continue }
+            if (!this.CheckType(TokenType.IDENTIFIER)) { this.Advance() continue }
             let memberTok = this.ExpectIdent()
             let member = Ast.Ident(memberTok.Value, memberTok.Line, memberTok.Column)
+            // Parse payload types: Circle(int) or Rectangle(int, int)
             if (this.CheckValue("(")) {
                 this.Advance()
-                while (!this.IsEnd() && !this.CheckValue(")")) { this.Advance() }
+                var typeList = ""
+                var typeCount = 0
+                while (!this.IsEnd() && !this.CheckValue(")")) {
+                    if (this.CheckValue(",")) { this.Advance() continue }
+                    let tname = this.ParseTypeName()
+                    if (typeCount > 0) { typeList = typeList + "," }
+                    typeList = typeList + tname
+                    typeCount = typeCount + 1
+                }
                 this.Expect(")")
+                member.Str = typeList // store payload types as comma-separated
             }
             en.Children.Add(member)
             this.SkipNewlines()
@@ -795,6 +797,17 @@ public class Parser {
     // ── Expressions ────────────────────────────────────
 
     private AstNode ParseExpr() {
+        // Lambda: identifier => expr
+        if (this.CheckType(TokenType.IDENTIFIER) && this.Peek(1).Value == "=>") {
+            let paramTok = this.Advance() // param name
+            this.Advance() // =>
+            let body = this.ParseExpr()
+            let lam = new AstNode(NodeKind.METHOD_DECL, paramTok.Line, paramTok.Column)
+            lam.Name = "__lambda__"
+            lam.Str  = paramTok.Value
+            lam.Left = body
+            return lam
+        }
         return this.ParseAssign()
     }
 
@@ -1029,6 +1042,93 @@ public class Parser {
             return ident
         }
 
+        this.Advance()
+        return this.Unknown()
+    }
+
+    // ── Match ─────────────────────────────────────────
+    // match expr {
+    //   Pattern => stmt,
+    //   Variant(a, b) => stmt,
+    //   _ => stmt
+    // }
+    private AstNode ParseMatch() {
+        let tok = this.Advance() // consume 'match'
+        let subject = this.ParseExpr()
+        this.SkipNewlines()
+        this.Expect("{")
+        this.SkipNewlines()
+        let matchNode = new AstNode(NodeKind.IF_STMT, tok.Line, tok.Column)
+        matchNode.Left  = subject
+        matchNode.Name  = "__match__"
+        // Each arm stored as a child: BINARY node with Left=pattern, Right=body
+        while (!this.IsEnd() && !this.CheckValue("}")) {
+            this.SkipNewlines()
+            if (this.CheckValue("}")) { break }
+            if (this.CheckValue(",")) { this.Advance() continue }
+            // Parse pattern
+            let patNode = this.ParseMatchPattern()
+            this.SkipNewlines()
+            // Expect =>
+            if (this.CheckValue("=>")) { this.Advance() }
+            this.SkipNewlines()
+            // Parse arm body
+            var armBody = this.ParseExpr()
+            if (this.CheckValue("{")) {
+                armBody = this.ParseBlock()
+            }
+            // Skip trailing comma
+            if (this.CheckValue(",")) { this.Advance() }
+            let arm = Ast.Binary(patNode, "=>", armBody, tok.Line, tok.Column)
+            matchNode.Children.Add(arm)
+            this.SkipNewlines()
+        }
+        this.Expect("}")
+        return matchNode
+    }
+
+    private AstNode ParseMatchPattern() {
+        let tok = this.Current()
+        // Wildcard: _
+        if (tok.Value == "_") {
+            this.Advance()
+            let wc = new AstNode(NodeKind.IDENTIFIER, tok.Line, tok.Column)
+            wc.Name = "_"
+            return wc
+        }
+        // Range: 75..99
+        if (this.CheckType(TokenType.INTEGER)) {
+            let num = this.Advance()
+            let lit = Ast.IntLit(num.Value, num.Line, num.Column)
+            if (this.CheckValue("..")) {
+                this.Advance()
+                let right = this.ParsePrimary()
+                return Ast.Binary(lit, "..", right, num.Line, num.Column)
+            }
+            return lit
+        }
+        // Variant or identifier: Circle(r) or Monday
+        if (this.CheckType(TokenType.IDENTIFIER)) {
+            let nameTok = this.Advance()
+            let patIdent = Ast.Ident(nameTok.Value, nameTok.Line, nameTok.Column)
+            // Algebraic variant with capture: Circle(r)
+            if (this.CheckValue("(")) {
+                this.Advance()
+                let captures = new AstNode(NodeKind.CALL, nameTok.Line, nameTok.Column)
+                captures.Name = nameTok.Value
+                while (!this.IsEnd() && !this.CheckValue(")")) {
+                    if (this.CheckValue(",")) { this.Advance() continue }
+                    if (this.CheckType(TokenType.IDENTIFIER)) {
+                        let cap = this.Advance()
+                        let capNode = Ast.Ident(cap.Value, cap.Line, cap.Column)
+                        captures.Args.Add(capNode)
+                    } else { this.Advance() }
+                }
+                this.Expect(")")
+                return captures
+            }
+            return patIdent
+        }
         this.Advance()
         return this.Unknown()
     }

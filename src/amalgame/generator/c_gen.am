@@ -396,7 +396,25 @@ public class CGen {
                 if (calleeStr == "AmalgameMap_has" || calleeStr == "AmalgameMap_remove" || calleeStr == "AmalgameSet_contains" || calleeStr == "AmalgameSet_remove" || calleeStr == "AmalgameSet_add") { return "code_bool" }
                 if (calleeStr == "AmalgameMap_size" || calleeStr == "AmalgameSet_size") { return "i64" }
                 if (calleeStr == "AmalgameList_isEmpty" || calleeStr == "AmalgameList_remove") { return "code_bool" }
+                // Algebraic enum constructors: Shape.Circle(5) → Amalgame_Shape
+                // Detect if calleeStr matches a registered algebraic enum constructor
+                let algPrefix = "__alg__"
+                let enCount2  = this.EnumNames.Count()
+                for eni in 0..enCount2 {
+                    let ename = this.EnumNames.Get(eni)
+                    if (String_StartsWith(ename, algPrefix)) {
+                        let enumType = String_Substring(ename, String_Length(algPrefix), String_Length(ename) - String_Length(algPrefix))
+                        if (String_StartsWith(calleeStr, enumType + "_")) {
+                            return enumType
+                        }
+                    }
+                }
                 // Known return types for stdlib functions
+                // First check if callee is a lambda macro - infer i64 as default
+                if (expr.Left != null && expr.Left.Kind == NodeKind.IDENTIFIER) {
+                    let calleeLocalType = this.LocalTypeGet(expr.Left.Name)
+                    if (calleeLocalType == "__macro__") { return "i64" }
+                }
                 if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf") { return "i64" }
                 if (calleeStr == "String_Contains" || calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_IsEmpty") { return "code_bool" }
                 if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
@@ -651,10 +669,24 @@ public class CGen {
         let k = decl.Kind
         if (k == NodeKind.ENUM_DECL) {
             let name = this.SymName(decl.Name)
-            // Register as enum so TypeToC won't add * for this type
-            this.EnumNames.Add(decl.Name)
-            this.EnumNames.Add(name)
-            this.Out.EmitLine("typedef enum _" + name + " " + name + ";")
+            // Check if algebraic enum
+            var isAlg = false
+            let vc = decl.Children.Count()
+            for vi in 0..vc {
+                let vm = decl.Children.Get(vi)
+                if (String_Length(vm.Str) > 0) { isAlg = true }
+            }
+            if (isAlg) {
+                // Register as algebraic enum (value type, not pointer)
+                this.EnumNames.Add("__alg__" + name)
+                // Emit forward declaration as opaque struct
+                this.Out.EmitLine("typedef struct _" + name + " " + name + "; /* alg-enum fwd */")
+            } else {
+                // Register as simple enum so TypeToC won't add * for this type
+                this.EnumNames.Add(decl.Name)
+                this.EnumNames.Add(name)
+                this.Out.EmitLine("typedef enum _" + name + " " + name + ";")
+            }
         }
         if (k == NodeKind.CLASS_DECL) {
             let name = this.SymName(decl.Name)
@@ -671,23 +703,152 @@ public class CGen {
     private void EmitEnum(AstNode en) {
         let name  = this.SymName(en.Name)
         let count = en.Children.Count()
-        this.Out.EmitLine("enum _" + name + " {")
-        this.Out.Indent_()
+
+        // Check if this is an algebraic enum (any variant has payload types)
+        var isAlgebraic = false
         for i in 0..count {
             let member = en.Children.Get(i)
-            // Prefix value with enum name to avoid conflicts in multi-file bundles
-            // e.g. NodeKind.IDENTIFIER → Amalgame_Compiler_NodeKind_IDENTIFIER
-            let mname  = name + "_" + member.Name
-            let last   = i == count - 1
-            if (last) {
-                this.Out.EmitLine(mname)
-            } else {
-                this.Out.EmitLine(mname + ",")
-            }
+            if (String_Length(member.Str) > 0) { isAlgebraic = true }
         }
-        this.Out.Dedent()
-        this.Out.EmitLine("};")
-        this.Out.EmitBlank()
+
+        if (isAlgebraic) {
+            // Emit as tagged union
+            // 1. Tag enum
+            this.Out.EmitLine("typedef enum {")
+            this.Out.Indent_()
+            for i in 0..count {
+                let member = en.Children.Get(i)
+                let mname  = name + "_TAG_" + member.Name
+                if (i < count - 1) {
+                    this.Out.EmitLine(mname + ",")
+                } else {
+                    this.Out.EmitLine(mname)
+                }
+            }
+            this.Out.Dedent()
+            this.Out.EmitLine("} " + name + "_Tag;")
+            this.Out.EmitBlank()
+
+            // 2. Union struct
+            this.Out.EmitLine("struct _" + name + " {")
+            this.Out.Indent_()
+            this.Out.EmitLine(name + "_Tag tag;")
+            this.Out.EmitLine("union {")
+            this.Out.Indent_()
+            for i in 0..count {
+                let member = en.Children.Get(i)
+                let payloads = member.Str
+                if (String_Length(payloads) > 0) {
+                    this.Out.EmitLine("struct {")
+                    this.Out.Indent_()
+                    // Split payload types by comma
+                    var pi = 0
+                    var pcur = ""
+                    var pci  = 0
+                    let plen = String_Length(payloads)
+                    while (pci <= plen) {
+                        var pch = ""
+                        if (pci < plen) { pch = String_Substring(payloads, pci, 1) }
+                        if (pch == "," || pci == plen) {
+                            if (String_Length(pcur) > 0) {
+                                this.Out.EmitLine(this.TypeToC(pcur) + " _" + String_FromInt(pi) + ";")
+                                pi = pi + 1
+                                pcur = ""
+                            }
+                        } else { pcur = pcur + pch }
+                        pci = pci + 1
+                    }
+                    this.Out.Dedent()
+                    this.Out.EmitLine("} " + member.Name + ";")
+                } else {
+                    this.Out.EmitLine("int " + member.Name + "_dummy;")
+                }
+            }
+            this.Out.Dedent()
+            this.Out.EmitLine("};")
+            this.Out.Dedent()
+            this.Out.EmitLine("};")
+            this.Out.EmitBlank()
+
+            // 3. Constructor functions
+            for i in 0..count {
+                let member = en.Children.Get(i)
+                let payloads = member.Str
+                var params = ""
+                var fields = ""
+                if (String_Length(payloads) > 0) {
+                    var pi2 = 0
+                    var pcur2 = ""
+                    var pci2  = 0
+                    let plen2 = String_Length(payloads)
+                    while (pci2 <= plen2) {
+                        var pch2 = ""
+                        if (pci2 < plen2) { pch2 = String_Substring(payloads, pci2, 1) }
+                        if (pch2 == "," || pci2 == plen2) {
+                            if (String_Length(pcur2) > 0) {
+                                let ct = this.TypeToC(pcur2)
+                                let pname = "_" + String_FromInt(pi2)
+                                if (pi2 > 0) { params = params + ", " fields = fields + ", " }
+                                params = params + ct + " " + pname
+                                fields = fields + pname
+                                pi2 = pi2 + 1
+                                pcur2 = ""
+                            }
+                        } else { pcur2 = pcur2 + pch2 }
+                        pci2 = pci2 + 1
+                    }
+                }
+                let ctorSig = "static inline " + name + " " + name + "_" + member.Name + "(" + params + ")"
+                this.Out.EmitLine(ctorSig + " {")
+                this.Out.Indent_()
+                this.Out.EmitLine(name + " __v;")
+                this.Out.EmitLine("__v.tag = " + name + "_TAG_" + member.Name + ";")
+                if (String_Length(fields) > 0) {
+                    // Set fields
+                    var pi3 = 0
+                    var pcur3 = ""
+                    var pci3  = 0
+                    let payloads3 = member.Str
+                    let plen3 = String_Length(payloads3)
+                    while (pci3 <= plen3) {
+                        var pch3 = ""
+                        if (pci3 < plen3) { pch3 = String_Substring(payloads3, pci3, 1) }
+                        if (pch3 == "," || pci3 == plen3) {
+                            if (pi3 >= 0) {
+                                let fidx = String_FromInt(pi3)
+                                this.Out.EmitLine("__v." + member.Name + "._" + fidx + " = _" + fidx + ";")
+                                pi3 = pi3 + 1
+                            }
+                            pcur3 = ""
+                        } else { pcur3 = pcur3 + pch3 }
+                        pci3 = pci3 + 1
+                    }
+                }
+                this.Out.EmitLine("return __v;")
+                this.Out.Dedent()
+                this.Out.EmitLine("}")
+                this.Out.EmitBlank()
+            }
+
+            // Register as algebraic enum for type lookups
+            this.EnumNames.Add("__alg__" + name)
+        } else {
+            // Simple enum — original C enum
+            this.Out.EmitLine("enum _" + name + " {")
+            this.Out.Indent_()
+            for i in 0..count {
+                let member = en.Children.Get(i)
+                let mname  = name + "_" + member.Name
+                if (i < count - 1) {
+                    this.Out.EmitLine(mname + ",")
+                } else {
+                    this.Out.EmitLine(mname)
+                }
+            }
+            this.Out.Dedent()
+            this.Out.EmitLine("};")
+            this.Out.EmitBlank()
+        }
     }
 
     private void EmitClass(AstNode cls) {
@@ -961,6 +1122,117 @@ public class CGen {
     // ── Block & Statements ────────────────────────────
 
     // Recursive if/else-if/else emitter — produces clean "} else if (...) {" chains
+    private void EmitMatch(AstNode stmt) {
+        let subject = stmt.Left
+        let subjectStr = this.EmitExprStr(subject)
+        // Determine if subject is an algebraic enum
+        var subjectType = ""
+        if (subject != null && subject.Kind == NodeKind.IDENTIFIER) {
+            subjectType = this.LocalTypeGet(subject.Name)
+        }
+        // isAlg: true only if the type is a registered algebraic enum (has __alg__ marker)
+        var isAlg = false
+        if (String_Length(subjectType) > 0) {
+            let algKey2 = "__alg__" + subjectType
+            let enCount3 = this.EnumNames.Count()
+            for eni3 in 0..enCount3 {
+                if (this.EnumNames.Get(eni3) == algKey2) { isAlg = true }
+            }
+        }
+        let armCount = stmt.Children.Count()
+        if (isAlg) {
+            // Emit as switch on tag
+            this.Out.EmitLine("switch (" + subjectStr + ".tag) {")
+        } else {
+            // Emit as if-else chain for simple value matching
+            this.Out.EmitLine("{ /* match " + subjectStr + " */")
+        }
+        this.Out.Indent_()
+        for i in 0..armCount {
+            let arm = stmt.Children.Get(i)
+            let pat = arm.Left
+            let body = arm.Right
+            if (pat == null) { continue }
+            let pk = pat.Kind
+            // Wildcard
+            if (pk == NodeKind.IDENTIFIER && pat.Name == "_") {
+                if (isAlg) {
+                    this.Out.EmitLine("default: {")
+                    this.Out.Indent_()
+                    this.EmitMatchBody(body)
+                    this.Out.EmitLine("break;")
+                    this.Out.Dedent()
+                    this.Out.EmitLine("}")
+                } else {
+                    this.Out.EmitLine("/* default */ {")
+                    this.Out.Indent_()
+                    this.EmitMatchBody(body)
+                    this.Out.Dedent()
+                    this.Out.EmitLine("}")
+                }
+            } else {
+                if (isAlg && pk == NodeKind.CALL) {
+                    // Algebraic variant: Circle(r)
+                    let variantName = pat.Name
+                    let tagConst = subjectType + "_TAG_" + variantName
+                    this.Out.EmitLine("case " + tagConst + ": {")
+                    this.Out.Indent_()
+                    // Bind capture variables
+                    let capCount = pat.Args.Count()
+                    for ci in 0..capCount {
+                        let capNode = pat.Args.Get(ci)
+                        let capName = capNode.Name
+                        let fidx = String_FromInt(ci)
+                        this.Out.EmitLine("__auto_type " + capName + " = " + subjectStr + "." + variantName + "._" + fidx + ";")
+                        this.LocalTypeSet(capName, "i64") // assume numeric for now
+                    }
+                    this.EmitMatchBody(body)
+                    this.Out.EmitLine("break;")
+                    this.Out.Dedent()
+                    this.Out.EmitLine("}")
+                } else {
+                    // Simple value or range — no break needed (if/else chain)
+                    if (pk == NodeKind.BINARY && pat.Str == "..") {
+                        let lo = this.EmitExprStr(pat.Left)
+                        let hi = this.EmitExprStr(pat.Right)
+                        this.Out.EmitLine("if (" + subjectStr + " >= " + lo + " && " + subjectStr + " <= " + hi + ") {")
+                    } else {
+                        let patStr = this.EmitExprStr(pat)
+                        this.Out.EmitLine("if (" + subjectStr + " == " + patStr + ") {")
+                    }
+                    this.Out.Indent_()
+                    this.EmitMatchBody(body)
+                    this.Out.Dedent()
+                    this.Out.EmitLine("}")
+                }
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+    }
+
+    private void EmitMatchBody(AstNode body) {
+        if (body == null) { return }
+        let bk = body.Kind
+        if (bk == NodeKind.BLOCK) {
+            let stmts = body.Children.Count()
+            for si in 0..stmts {
+                this.EmitStmt(body.Children.Get(si))
+            }
+        } else {
+            // Expression arm — emit as return statement (match arms are in return position)
+            let exprStr = this.EmitExprStr(body)
+            if (String_Length(exprStr) > 0 && exprStr != "_unknown_") {
+                if (bk == NodeKind.CALL || bk == NodeKind.IDENTIFIER) {
+                    // Void call (like Console.WriteLine)
+                    this.Out.EmitLine(exprStr + ";")
+                } else {
+                    this.Out.EmitLine("return " + exprStr + ";")
+                }
+            }
+        }
+    }
+
     private void EmitIf(AstNode stmt) {
         this.Out.EmitLine("if (" + this.EmitExprStr(stmt.Cond) + ") {")
         this.Out.Indent_()
@@ -1072,6 +1344,25 @@ public class CGen {
                 }
                 return
             }
+            // Lambda assignment: let doubler = x => x * 2
+            if (stmt.Left != null && stmt.Left.Kind == NodeKind.METHOD_DECL && stmt.Left.Name == "__lambda__") {
+                let lam = stmt.Left
+                let paramName = lam.Str
+                let bodyStr   = this.EmitExprStr(lam.Left)
+                let fnName    = this.CurrentClass + "_lam_" + stmt.Name
+                // Emit using GCC nested function syntax (supported by GCC as extension)
+                // auto keyword doesn't work for nested functions, use __auto_type workaround
+                // Best approach: just inline the call site
+                // Store lambda as a simple C macro-style via function pointer trick
+                // Since we can't easily do nested functions, emit a global-scope helper before
+                // For now: emit a simple typedef'd function via static at file scope
+                // We'll use a hack: emit before closing brace by buffering
+                // Simple approach: wrap call in a macro
+                this.Out.EmitLine("/* lambda " + stmt.Name + " = " + paramName + " => " + bodyStr + " */")
+                this.Out.EmitLine("#define " + stmt.Name + "(" + paramName + ") (" + bodyStr + ")")
+                this.LocalTypeSet(stmt.Name, "__macro__")
+                return
+            }
             var t = this.TypeToC(stmt.Str)
             // If no explicit type annotation, infer from RHS
             if (String_Length(t) == 0 || t == "void") {
@@ -1121,6 +1412,11 @@ public class CGen {
             }
         }
         if (k == NodeKind.IF_STMT) {
+            // Check if this is a match statement
+            if (stmt.Name == "__match__") {
+                this.EmitMatch(stmt)
+                return
+            }
             this.EmitIf(stmt)
         }
         if (k == NodeKind.WHILE_STMT) {
@@ -1178,6 +1474,14 @@ public class CGen {
     private string EmitExprStr(AstNode expr) {
         if (expr == null) { return "NULL" }
         let k = expr.Kind
+        // Lambda: x => expr — emit as a C compound statement expression (GCC extension)
+        if (k == NodeKind.METHOD_DECL && expr.Name == "__lambda__") {
+            let paramName = expr.Str
+            let bodyStr   = this.EmitExprStr(expr.Left)
+            // Can't easily emit a lambda in C without closures
+            // Store as a tagged placeholder — callers must handle
+            return "__lambda_" + paramName + "_" + bodyStr + "__"
+        }
         // Tuple literal: (val1, val2, ...)
         if (k == NodeKind.CALL && expr.Name == "__tuple_literal__") {
             // We don't know the struct name here without context,
@@ -1714,6 +2018,12 @@ public class CGen {
         }
         if (this.IsEnum(sym)) {
             return sym
+        }
+        // Check if algebraic enum (tagged union) — value type, no pointer
+        let algKey = "__alg__" + sym
+        let en2 = this.EnumNames.Count()
+        for ei2 in 0..en2 {
+            if (this.EnumNames.Get(ei2) == algKey) { return sym }
         }
         return sym + "*"
     }
