@@ -604,6 +604,9 @@ public class CGen {
             if (ft == "i64") { return "String_FromInt(self->" + field + ")" }
             if (ft == "double") { return "String_FromFloat(self->" + field + ")" }
             if (ft == "code_bool") { return "((self->" + field + ") ? \"true\" : \"false\")" }
+            if (ft == "code_string") { return "(self->" + field + " ? self->" + field + " : \"\")" }
+            // Enum or other non-pointer type → treat as integer
+            if (String_Length(ft) > 0 && !String_Contains(ft, "*")) { return "String_FromInt((i64)self->" + field + ")" }
             return "(self->" + field + " ? self->" + field + " : \"\")"
         }
         // obj.field → obj->field (obj is a pointer variable)
@@ -618,6 +621,9 @@ public class CGen {
                 if (ft2 == "i64") { return "String_FromInt(" + objName + "->" + field2 + ")" }
                 if (ft2 == "double") { return "String_FromFloat(" + objName + "->" + field2 + ")" }
                 if (ft2 == "code_bool") { return "((" + objName + "->" + field2 + ") ? \"true\" : \"false\")" }
+                if (ft2 == "code_string") { return "(" + objName + "->" + field2 + " ? " + objName + "->" + field2 + " : \"\")" }
+                // Enum or other non-pointer type → treat as integer
+                if (String_Length(ft2) > 0 && !String_Contains(ft2, "*")) { return "String_FromInt((i64)" + objName + "->" + field2 + ")" }
                 return "(" + objName + "->" + field2 + " ? " + objName + "->" + field2 + " : \"\")"
             }
         }
@@ -1122,6 +1128,19 @@ public class CGen {
     // ── Block & Statements ────────────────────────────
 
     // Recursive if/else-if/else emitter — produces clean "} else if (...) {" chains
+    // Extract a single expression string from an if-expr branch block
+    private string EmitIfBranch(AstNode block) {
+        if (block == null) { return "0" }
+        if (block.Kind == NodeKind.BLOCK) {
+            let kids = block.Children
+            if (kids.Count() > 0) {
+                return this.EmitExprStr(kids.Get(0))
+            }
+            return "0"
+        }
+        return this.EmitExprStr(block)
+    }
+
     private void EmitMatch(AstNode stmt) {
         let subject = stmt.Left
         let subjectStr = this.EmitExprStr(subject)
@@ -1148,6 +1167,8 @@ public class CGen {
             this.Out.EmitLine("{ /* match " + subjectStr + " */")
         }
         this.Out.Indent_()
+        var firstArm = true
+        var needsClose = false   // true when the last non-alg arm left an open "if" brace
         for i in 0..armCount {
             let arm = stmt.Children.Get(i)
             let pat = arm.Left
@@ -1163,13 +1184,18 @@ public class CGen {
                     this.Out.EmitLine("break;")
                     this.Out.Dedent()
                     this.Out.EmitLine("}")
+                    needsClose = false
                 } else {
-                    this.Out.EmitLine("/* default */ {")
+                    // Wildcard arm: close previous arm (if any) and emit trailing "else"
+                    let elsePrefix = if (firstArm) { "" } else { "} else " }
+                    this.Out.EmitLine(elsePrefix + "{")
                     this.Out.Indent_()
                     this.EmitMatchBody(body)
                     this.Out.Dedent()
                     this.Out.EmitLine("}")
+                    needsClose = false
                 }
+                firstArm = false
             } else {
                 if (isAlg && pk == NodeKind.CALL) {
                     // Algebraic variant: Circle(r)
@@ -1190,22 +1216,33 @@ public class CGen {
                     this.Out.EmitLine("break;")
                     this.Out.Dedent()
                     this.Out.EmitLine("}")
+                    needsClose = false
                 } else {
-                    // Simple value or range — no break needed (if/else chain)
+                    // Simple value or range — emit as if/else-if chain
+                    let elsePrefix = if (firstArm) { "" } else { "} else " }
                     if (pk == NodeKind.BINARY && pat.Str == "..") {
                         let lo = this.EmitExprStr(pat.Left)
                         let hi = this.EmitExprStr(pat.Right)
-                        this.Out.EmitLine("if (" + subjectStr + " >= " + lo + " && " + subjectStr + " <= " + hi + ") {")
+                        this.Out.EmitLine(elsePrefix + "if (" + subjectStr + " >= " + lo + " && " + subjectStr + " <= " + hi + ") {")
+                    } else if (pk == NodeKind.LITERAL_STRING) {
+                        // String pattern: use strcmp instead of ==
+                        let patStr = this.EmitExprStr(pat)
+                        this.Out.EmitLine(elsePrefix + "if (strcmp(" + subjectStr + ", " + patStr + ") == 0) {")
                     } else {
                         let patStr = this.EmitExprStr(pat)
-                        this.Out.EmitLine("if (" + subjectStr + " == " + patStr + ") {")
+                        this.Out.EmitLine(elsePrefix + "if (" + subjectStr + " == " + patStr + ") {")
                     }
                     this.Out.Indent_()
                     this.EmitMatchBody(body)
                     this.Out.Dedent()
-                    this.Out.EmitLine("}")
+                    needsClose = true
                 }
+                firstArm = false
             }
+        }
+        // Close the last open "if" brace if the chain ended without a wildcard
+        if (needsClose) {
+            this.Out.EmitLine("}")
         }
         this.Out.Dedent()
         this.Out.EmitLine("}")
@@ -1497,7 +1534,9 @@ public class CGen {
         }
         if (k == NodeKind.IF_STMT) {
             let condStr = this.EmitExprStr(expr.Cond)
-            return "(" + condStr + " ? 0 : 0) /* if-expr */"
+            let thenStr = this.EmitIfBranch(expr.Body)
+            let elseStr = this.EmitIfBranch(expr.Else)
+            return "(" + condStr + " ? " + thenStr + " : " + elseStr + ")"
         }
         if (k == NodeKind.LITERAL_INT)    { return expr.Str }
         if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }

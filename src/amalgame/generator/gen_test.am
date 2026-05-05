@@ -169,6 +169,13 @@ public class Program {
         let diagPar  = new Parser(diagToks)
         let diagProg = diagPar.Parse()
 
+        let tcPath = "./src/amalgame/typechecker.am"
+        let tcSrc  = File.ReadAll(tcPath)
+        let tcLex  = new Lexer(tcSrc, tcPath)
+        let tcToks = tcLex.Tokenize()
+        let tcPar  = new Parser(tcToks)
+        let tcProg = tcPar.Parse()
+
         let mainPath = "./src/amalgame/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
@@ -185,6 +192,7 @@ public class Program {
         gen6.AddFilePass1(cgenProg)
         gen6.AddFilePass1(symProg)
         gen6.AddFilePass1(diagProg)
+        gen6.AddFilePass1(tcProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         gen6.AddFilePass2(tokProg)
@@ -194,6 +202,7 @@ public class Program {
         gen6.AddFilePass2(cgenProg)
         gen6.AddFilePass2(symProg)
         gen6.AddFilePass2(diagProg)
+        gen6.AddFilePass2(tcProg)
         gen6.AddFilePass2(mainProg)
         let lines6 = gen6.GetLines()
         let lc6    = lines6.Count()

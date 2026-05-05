@@ -61,6 +61,39 @@ public class SymbolTable {
         }
         return new Symbol("_not_found_", SymKind.BUILTIN)
     }
+
+    // ── String-returning helpers (avoid void* dereference in CGen) ──
+
+    public bool HasSymbol(string name) {
+        let count = this.Symbols.Count()
+        for i in 0..count {
+            let sym = this.Symbols.Get(i)
+            if (sym.Name == name) { return true }
+        }
+        return false
+    }
+
+    public string GetTypeName(string name) {
+        let count = this.Symbols.Count()
+        for i in 0..count {
+            let sym = this.Symbols.Get(i)
+            if (sym.Name == name) { return sym.TypeName }
+        }
+        return "?"
+    }
+
+    public void SetTypeName(string name, string typeName) {
+        let count = this.Symbols.Count()
+        for i in 0..count {
+            let sym = this.Symbols.Get(i)
+            if (sym.Name == name) {
+                if (String_Length(sym.TypeName) == 0) {
+                    sym.TypeName = typeName
+                }
+                return
+            }
+        }
+    }
 }
 
 // ── Resolver ──────────────────────────────────────────

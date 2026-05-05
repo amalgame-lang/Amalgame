@@ -1,6 +1,9 @@
 #!/bin/bash
 # Nettoyage des artefacts de debug à la racine du projet
-cd ~/Développement/Amalgame
+# Usage: ./CLEANUP.sh (depuis la racine du repo)
+
+REPO="$(cd "$(dirname "$0")" && pwd)"
+cd "$REPO"
 
 echo "=== Nettoyage des artefacts ==="
 
@@ -20,14 +23,11 @@ rm -f token_bootstrap.c token_bootstrap.o
 rm -f lexer_test lexer_test.c
 rm -f file_lex2 file_lex2.c
 
-# Fichiers bootstrap générés
-rm -f src/amalgame/lexer/token.am_bootstrap.c
-rm -f src/amalgame/parser/ast.am_bootstrap.c
+# .o orphelins à la racine
+rm -f *.o
 
-# Fichiers de debug dans parser/
+# Fichiers debug dans parser/
 rm -f src/amalgame/parser/debug_eq.am
-
-# Fichier de test temporaire
 rm -f src/amalgame/parser/test_input.txt
 
 echo "=== Nettoyage terminé ==="
