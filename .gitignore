@@ -1,54 +1,21 @@
-# Build
+# ── Build system ──
 build/
 _build/
 *.o
 *.so
 *.a
 
-# Binaires compilés
-codec
-codec-lsp
-codec-dap
-
-# C généré (intermédiaire)
+# ── Generated C intermediates ──
+# (amc_lib.c, amc_bootstrap_lib.c, *_bundle_bootstrap.c, *.am_bootstrap.c are tracked)
 *.c.gen
+gen_test.c
 
-# VSCode extension
-editors/vscode/node_modules/
-editors/vscode/out/
-editors/vscode/*.vsix
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/settings.json
-.idea/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# Build artifacts
-build/
-*.c
-*.o
-
-# Test binaries
-tests/samples/*.am.bin
-tests/samples/bootstrap_probe
-
-# Bootstrap binaries tracked via Git LFS (not ignored)
-# bootstrap/amc-* → tracked
-# Generated compiler libs - tracked for bootstrap
+# ── Compiled binaries ──
 amc
 amc_bootstrap
 gen_test
-tests/samples/bootstrap_probe
-tests/samples/classes
-# Compiled sample binaries
+
+# ── Test sample binaries (compiled from .am) ──
 tests/samples/bootstrap_probe
 tests/samples/classes
 tests/samples/closures
@@ -84,5 +51,17 @@ tests/samples/try_catch
 tests/samples/tuples
 tests/samples/type_explicit
 tests/samples/variables
-gen_test
-CLEANUP.sh
+
+# ── OS / IDE ──
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*.log
+
+# ── VSCode extension ──
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
