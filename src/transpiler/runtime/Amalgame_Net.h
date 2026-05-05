@@ -145,7 +145,7 @@ static AmalgameHttpResponse* _amnet_curl(
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK)
-        return _amnet_resp_new(0, NULL, curl_easy_strerror(res));
+        return _amnet_resp_new(0, NULL, (code_string)curl_easy_strerror(res));
     return _amnet_resp_new(statusCode, buf.data, NULL);
 }
 
