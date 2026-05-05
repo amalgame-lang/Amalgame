@@ -59,6 +59,7 @@ public class CGen {
     private LocalTypeCType: List<string>
     // Current class being emitted (for this.Field list element type lookup)
     private CurrentClass:   string
+    private CurrentRetType: string
     // Field types: two parallel lists — "ClassName.FieldName" → C type
     private FieldNames:     List<string>
     private FieldCTypes:    List<string>
@@ -77,6 +78,7 @@ public class CGen {
         this.LocalTypeNames = new List<string>()
         this.LocalTypeCType = new List<string>()
         this.CurrentClass   = ""
+        this.CurrentRetType = ""
         this.FieldNames     = new List<string>()
         this.FieldCTypes    = new List<string>()
         this.ListElemNames  = new List<string>()
@@ -829,8 +831,75 @@ public class CGen {
         }
     }
 
+    // Generate a C struct name for a tuple type like "(int,string)"
+    private string TupleStructName(string tupleType) {
+        // "(int,string)" → "Tuple2_i64_code_string"
+        let inner = String_Substring(tupleType, 1, String_Length(tupleType) - 2)
+        let parts = String_Replace(inner, " ", "")
+        var result = ""
+        var count  = 0
+        var i2     = 0
+        let len2   = String_Length(parts)
+        var cur    = ""
+        while (i2 <= len2) {
+            var ch = ""
+            if (i2 < len2) { ch = String_Substring(parts, i2, 1) }
+            if (ch == "," || i2 == len2) {
+                if (String_Length(cur) > 0) {
+                    count = count + 1
+                    result = result + "_" + this.TypeToC(cur)
+                    cur = ""
+                }
+            } else {
+                cur = cur + ch
+            }
+            i2 = i2 + 1
+        }
+        return "Tuple" + String_FromInt(count) + result
+    }
+
+    // Emit a struct typedef for a tuple type if not already emitted
+    private void EnsureTupleStruct(string tupleType) {
+        let sname = this.TupleStructName(tupleType)
+        // Check if already emitted (simple: check if in enum names list as marker)
+        let n = this.EnumNames.Count()
+        for i in 0..n {
+            if (this.EnumNames.Get(i) == "__tuple__" + sname) { return }
+        }
+        this.EnumNames.Add("__tuple__" + sname)
+        // Parse types from "(t1,t2,...)"
+        let inner = String_Substring(tupleType, 1, String_Length(tupleType) - 2)
+        let parts = String_Replace(inner, " ", "")
+        this.Out.EmitLine("typedef struct {")
+        var idx = 0
+        var cur = ""
+        var i2  = 0
+        let len2 = String_Length(parts)
+        while (i2 <= len2) {
+            var ch = ""
+            if (i2 < len2) { ch = String_Substring(parts, i2, 1) }
+            if (ch == "," || i2 == len2) {
+                if (String_Length(cur) > 0) {
+                    this.Out.EmitLine("    " + this.TypeToC(cur) + " _" + String_FromInt(idx) + ";")
+                    idx = idx + 1
+                    cur = ""
+                }
+            } else { cur = cur + ch }
+            i2 = i2 + 1
+        }
+        this.Out.EmitLine("} " + sname + ";")
+    }
+
     private string MethodSig(AstNode method, string className) {
-        let retType  = this.TypeToC(method.Str)
+        let retTypeRaw = method.Str
+        var retType    = ""
+        // Tuple return type: "(int,string)"
+        if (String_StartsWith(retTypeRaw, "(")) {
+            this.EnsureTupleStruct(retTypeRaw)
+            retType = this.TupleStructName(retTypeRaw)
+        } else {
+            retType = this.TypeToC(retTypeRaw)
+        }
         let isStatic = method.Flag2
         var sig      = retType + " " + className + "_" + method.Name + "("
         var first    = true
@@ -854,6 +923,14 @@ public class CGen {
         let isPublic = method.Flag
         var prefix   = ""
         if (!isPublic) { prefix = "static " }
+        // Track current return type for tuple returns
+        if (String_StartsWith(method.Str, "(")) {
+            this.CurrentRetType = this.TupleStructName(method.Str)
+            // Register method return type for later lookup in tuple destructuring
+            this.MethodRetSet(className, method.Name, method.Str)
+        } else {
+            this.CurrentRetType = ""
+        }
         this.Out.EmitLine(prefix + sig + " {")
         this.Out.Indent_()
         // Reset local type table for this method scope
@@ -946,6 +1023,55 @@ public class CGen {
     private void EmitStmt(AstNode stmt) {
         let k = stmt.Kind
         if (k == NodeKind.VAR_DECL) {
+            // Tuple destructuring: let (a, b) = expr
+            if (stmt.Str == "__tuple_destructure__") {
+                let rhs = this.EmitExprStr(stmt.Left)
+                let tmpName = "__tup_" + String_FromInt(stmt.Line)
+                this.Out.EmitLine("__auto_type " + tmpName + " = " + rhs + ";")
+                // Try to infer element types from the called function's return tuple type
+                var tupleRetType = ""
+                if (stmt.Left != null && stmt.Left.Kind == NodeKind.CALL) {
+                    let calleeStr2 = this.EmitCalleeStr(stmt.Left.Left)
+                    // calleeStr2 = "ClassName_MethodName" — split at last _
+                    let lastUs = String_LastIndexOf(calleeStr2, "_")
+                    if (lastUs > 0) {
+                        let cls2 = String_Substring(calleeStr2, 0, lastUs)
+                        let mth2 = String_Substring(calleeStr2, lastUs + 1, String_Length(calleeStr2) - lastUs - 1)
+                        tupleRetType = this.MethodRetGet(cls2, mth2)
+                    }
+                }
+                let nc = stmt.Children.Count()
+                for i in 0..nc {
+                    let vnode = stmt.Children.Get(i)
+                    let vname = vnode.Name
+                    let idxStr = String_FromInt(i)
+                    this.Out.EmitLine("__auto_type __attribute__((unused)) " + vname + " = " + tmpName + "._" + idxStr + ";")
+                    // Infer element type from tuple type string "(int,string,bool)"
+                    var elemType = "void*"
+                    if (String_Length(tupleRetType) > 2 && String_StartsWith(tupleRetType, "(")) {
+                        let inner2 = String_Substring(tupleRetType, 1, String_Length(tupleRetType) - 2)
+                        // Split by comma and get i-th element
+                        var ei = 0
+                        var cur2 = ""
+                        var ci2  = 0
+                        let ilen = String_Length(inner2)
+                        while (ci2 <= ilen) {
+                            var ch2 = ""
+                            if (ci2 < ilen) { ch2 = String_Substring(inner2, ci2, 1) }
+                            if (ch2 == "," || ci2 == ilen) {
+                                if (ei == i && String_Length(cur2) > 0) {
+                                    elemType = this.TypeToC(cur2)
+                                }
+                                ei = ei + 1
+                                cur2 = ""
+                            } else { cur2 = cur2 + ch2 }
+                            ci2 = ci2 + 1
+                        }
+                    }
+                    this.LocalTypeSet(vname, elemType)
+                }
+                return
+            }
             var t = this.TypeToC(stmt.Str)
             // If no explicit type annotation, infer from RHS
             if (String_Length(t) == 0 || t == "void") {
@@ -985,7 +1111,12 @@ public class CGen {
                 if (retExpr == "_unknown_") {
                     this.Out.EmitLine("return;")
                 } else {
-                    this.Out.EmitLine("return " + retExpr + ";")
+                    // If returning a tuple literal {a,b,...}, cast with current return type
+                    if (String_StartsWith(retExpr, "{") && String_Length(this.CurrentRetType) > 0) {
+                        this.Out.EmitLine("return (" + this.CurrentRetType + ")" + retExpr + ";")
+                    } else {
+                        this.Out.EmitLine("return " + retExpr + ";")
+                    }
                 }
             }
         }
@@ -1047,8 +1178,19 @@ public class CGen {
     private string EmitExprStr(AstNode expr) {
         if (expr == null) { return "NULL" }
         let k = expr.Kind
-        // if expression: emit as ternary (cond ? then_val : else_val)
-        // Note: full block extraction requires typed List.Get - emit placeholder
+        // Tuple literal: (val1, val2, ...)
+        if (k == NodeKind.CALL && expr.Name == "__tuple_literal__") {
+            // We don't know the struct name here without context,
+            // use compound literal with positional initializers
+            let argc = expr.Args.Count()
+            var result = "{"
+            for i in 0..argc {
+                if (i > 0) { result = result + ", " }
+                result = result + this.EmitExprStr(expr.Args.Get(i))
+            }
+            result = result + "}"
+            return result
+        }
         if (k == NodeKind.IF_STMT) {
             let condStr = this.EmitExprStr(expr.Cond)
             return "(" + condStr + " ? 0 : 0) /* if-expr */"
