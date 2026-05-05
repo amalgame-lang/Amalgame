@@ -355,30 +355,26 @@ public class Parser {
                 return this.ParseMethod(typeName, isPublic, isStatic, tok.Line, tok.Column)
             }
         } else if (tok.Value == "(") {
-            // Tuple return type: (int, string) Foo() { ... } — skip whole method
-            var depth3 = 0
-            while (!this.IsEnd()) {
-                if (this.CheckValue("(")) { depth3 = depth3 + 1 }
-                if (this.CheckValue(")")) {
-                    depth3 = depth3 - 1
-                    if (depth3 == 0) { this.Advance() break }
-                }
-                this.Advance()
+            // Tuple return type: (int, string) Foo() { ... }
+            // Collect tuple type names
+            this.Advance() // consume '('
+            var tupleTypes = ""
+            var tupleCount = 0
+            while (!this.IsEnd() && !this.CheckValue(")")) {
+                this.SkipNewlines()
+                if (this.CheckValue(",")) { this.Advance() continue }
+                let tname = this.ParseTypeName()
+                if (tupleCount > 0) { tupleTypes = tupleTypes + "," }
+                tupleTypes = tupleTypes + tname
+                tupleCount = tupleCount + 1
             }
-            // Skip method name, params, and body
-            while (!this.IsEnd() && !this.CheckValue("{") && !this.CheckType(TokenType.NEWLINE)) {
-                this.Advance()
-            }
-            if (this.CheckValue("{")) {
-                var depth4 = 0
-                while (!this.IsEnd()) {
-                    if (this.CheckValue("{")) { depth4 = depth4 + 1 }
-                    if (this.CheckValue("}")) {
-                        depth4 = depth4 - 1
-                        if (depth4 == 0) { this.Advance() break }
-                    }
-                    this.Advance()
-                }
+            if (this.CheckValue(")")) { this.Advance() } // consume ')'
+            this.SkipNewlines()
+            // Now expect method name
+            if (this.CheckType(TokenType.IDENTIFIER)) {
+                let retType = "(" + tupleTypes + ")"
+                let method = this.ParseMethod(retType, isPublic, isStatic, tok.Line, tok.Column)
+                return method
             }
             return this.Unknown()
         }
@@ -574,6 +570,36 @@ public class Parser {
     private AstNode ParseVarDecl() {
         let kwTok = this.Advance()
         let isMut = kwTok.Value == "var"
+
+        // Tuple destructuring: let (a, b) = expr
+        if (this.CheckValue("(")) {
+            this.Advance() // consume '('
+            let names = new List<string>()
+            while (!this.IsEnd() && !this.CheckValue(")")) {
+                this.SkipNewlines()
+                if (this.CheckValue(",")) { this.Advance() continue }
+                if (this.CheckType(TokenType.IDENTIFIER)) {
+                    let n = this.Advance()
+                    names.Add(n.Value)
+                }
+            }
+            if (this.CheckValue(")")) { this.Advance() } // consume ')'
+            // Expect '='
+            if (this.CheckValue("=")) { this.Advance() }
+            let rhs = this.ParseExpr()
+            // Build a TUPLE_DESTRUCTURE node — store names in Children as IDENTIFIER nodes
+            let td = Ast.VarDecl("__tuple__", isMut, kwTok.Line, kwTok.Column)
+            td.Left = rhs
+            let nc = names.Count()
+            for i in 0..nc {
+                let vname = names.Get(i)
+                let vnode = Ast.Ident(vname, kwTok.Line, kwTok.Column)
+                td.Children.Add(vnode)
+            }
+            td.Str = "__tuple_destructure__"
+            return td
+        }
+
         let nameTok = this.ExpectIdent()
         let decl = Ast.VarDecl(nameTok.Value, isMut, nameTok.Line, nameTok.Column)
         if (this.CheckValue(":")) {
@@ -969,9 +995,27 @@ public class Parser {
         }
         if (v == "(") {
             this.Advance()
-            let inner = this.ParseExpr()
+            this.ParenDepth = this.ParenDepth + 1
+            let first2 = this.ParseExpr()
+            // Check if this is a tuple literal: (expr, expr, ...)
+            if (this.CheckValue(",")) {
+                // Tuple literal
+                let tupleNode = new AstNode(NodeKind.CALL, tok.Line, tok.Column)
+                tupleNode.Name = "__tuple_literal__"
+                tupleNode.Args.Add(first2)
+                while (this.CheckValue(",")) {
+                    this.Advance()
+                    if (this.CheckValue(")")) { break }
+                    let elem = this.ParseExpr()
+                    tupleNode.Args.Add(elem)
+                }
+                this.ParenDepth = this.ParenDepth - 1
+                this.Expect(")")
+                return tupleNode
+            }
+            this.ParenDepth = this.ParenDepth - 1
             this.Expect(")")
-            return inner
+            return first2
         }
         if (this.CheckType(TokenType.IDENTIFIER)) {
             this.Advance()
