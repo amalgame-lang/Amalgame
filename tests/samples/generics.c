@@ -13,7 +13,10 @@
 
 /* ── Forward Declarations ── */
 typedef struct _Tests_Stack Tests_Stack;
+static void Tests_Stack_Push(Tests_Stack*, i64);
+static i64 Tests_Stack_Size(Tests_Stack*);
 typedef struct _Tests_Pair Tests_Pair;
+static code_string Tests_Pair_ToString(Tests_Pair*);
 typedef struct _Tests_Program Tests_Program;
 static i64 Tests_Program_Max(i64, i64);
 static code_string Tests_Program_Repeat(code_string, i64);

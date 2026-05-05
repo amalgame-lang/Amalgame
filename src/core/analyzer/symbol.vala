@@ -419,6 +419,30 @@ namespace CodeTranspiler.Analyzer {
             math.TypeKey     = "Math";
             math.Location    = "<builtin>";
             Global.Declare(math);
+
+            // Built-in File namespace stub
+            var file         = new Symbol("File", SymbolKind.SYM_CLASS);
+            file.TypeKey     = "File";
+            file.Location    = "<builtin>";
+            Global.Declare(file);
+
+            // Built-in Path namespace stub
+            var path         = new Symbol("Path", SymbolKind.SYM_CLASS);
+            path.TypeKey     = "Path";
+            path.Location    = "<builtin>";
+            Global.Declare(path);
+
+            // Built-in String namespace stub
+            var strClass     = new Symbol("String", SymbolKind.SYM_CLASS);
+            strClass.TypeKey = "String";
+            strClass.Location = "<builtin>";
+            Global.Declare(strClass);
+
+            // Built-in Http namespace stub
+            var http         = new Symbol("Http", SymbolKind.SYM_CLASS);
+            http.TypeKey     = "Http";
+            http.Location    = "<builtin>";
+            Global.Declare(http);
         }
 
         /**

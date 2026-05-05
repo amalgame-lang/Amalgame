@@ -15,8 +15,8 @@
 typedef enum { Tests_Direction_North, Tests_Direction_South, Tests_Direction_East, Tests_Direction_West } Tests_Direction;
 typedef enum { Tests_Season_Spring, Tests_Season_Summer, Tests_Season_Autumn, Tests_Season_Winter } Tests_Season;
 typedef struct _Tests_Program Tests_Program;
-static code_string Tests_Program_DirectionName(Tests_Direction*);
-static code_bool Tests_Program_IsWarm(Tests_Season*);
+static code_string Tests_Program_DirectionName(Tests_Direction);
+static code_bool Tests_Program_IsWarm(Tests_Season);
 static void Tests_Program_Main(int, char**);
 
 
@@ -43,7 +43,7 @@ Tests_Program* Tests_Program_new() {
 
 
 #line 12 "./tests/samples/enums.am"
-static code_string Tests_Program_DirectionName(Tests_Direction* d) {
+static code_string Tests_Program_DirectionName(Tests_Direction d) {
 
 #line 13 "./tests/samples/enums.am"
     /* match */
@@ -72,7 +72,7 @@ static code_string Tests_Program_DirectionName(Tests_Direction* d) {
 
 
 #line 23 "./tests/samples/enums.am"
-static code_bool Tests_Program_IsWarm(Tests_Season* s) {
+static code_bool Tests_Program_IsWarm(Tests_Season s) {
 
 #line 24 "./tests/samples/enums.am"
     /* match */
@@ -98,7 +98,7 @@ static code_bool Tests_Program_IsWarm(Tests_Season* s) {
 static void Tests_Program_Main(int argc, char** argv) {
 
 #line 33 "./tests/samples/enums.am"
-    void* d = Tests_Direction_North;
+    Tests_Direction d = Tests_Direction_North;
 
 #line 34 "./tests/samples/enums.am"
     code_string name = Tests_Program_DirectionName(d);
@@ -107,10 +107,10 @@ static void Tests_Program_Main(int argc, char** argv) {
     Console_WriteLine(code_string_format("Direction: %s", name));
 
 #line 37 "./tests/samples/enums.am"
-    void* s1 = Tests_Season_Summer;
+    Tests_Season s1 = Tests_Season_Summer;
 
 #line 38 "./tests/samples/enums.am"
-    void* s2 = Tests_Season_Winter;
+    Tests_Season s2 = Tests_Season_Winter;
 
 #line 39 "./tests/samples/enums.am"
     code_bool w1 = Tests_Program_IsWarm(s1);

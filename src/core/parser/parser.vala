@@ -64,6 +64,7 @@ namespace CodeTranspiler.Parser {
         private int                       _pos;
         private string                    _filename;
         private Gee.ArrayList<ParseError> _errors;
+        private int                       _parenDepth; // track () nesting — newlines ignored inside
 
 
         // ── Résultat du parsing ────────────────────────
@@ -83,6 +84,7 @@ namespace CodeTranspiler.Parser {
             _tokens   = tokens;
             _pos      = 0;
             _filename = filename;
+            _parenDepth = 0;
             _errors   = new Gee.ArrayList<ParseError>();
         }
 
@@ -623,7 +625,49 @@ namespace CodeTranspiler.Parser {
 
             var nameTok = ExpectIdentifierOrKeyword();
 
-            if (!Check(CodeTranspiler.Lexer.TokenType.LPAREN) &&
+            // Check if this is a generic return type: List<Token> MethodName(...)
+            // Detected by: IDENTIFIER < ... > IDENTIFIER (
+            bool isGenericReturnType = false;
+            if (Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
+                // Lookahead: find matching > then check if followed by IDENTIFIER (
+                int depth = 0;
+                int probe = _pos;
+                while (probe < _tokens.size) {
+                    var tt = _tokens[probe].Type;
+                    if (tt == CodeTranspiler.Lexer.TokenType.OP_LT) depth++;
+                    else if (tt == CodeTranspiler.Lexer.TokenType.OP_GT) {
+                        depth--;
+                        if (depth == 0) {
+                            // After the >, is there an IDENTIFIER?
+                            if (probe + 1 < _tokens.size &&
+                                _tokens[probe+1].Type ==
+                                    CodeTranspiler.Lexer.TokenType.IDENTIFIER) {
+                                isGenericReturnType = true;
+                            }
+                            break;
+                        }
+                    } else if (tt == CodeTranspiler.Lexer.TokenType.NEWLINE ||
+                               tt == CodeTranspiler.Lexer.TokenType.LBRACE  ||
+                               tt == CodeTranspiler.Lexer.TokenType.EOF) {
+                        break;
+                    }
+                    probe++;
+                }
+            }
+
+            if (isGenericReturnType) {
+                // Parse generic return type: List<Token>
+                var genType = new GenericTypeNode(nameTok.Value);
+                genType.SetPosition(nameTok);
+                Advance(); // consume <
+                while (!Check(CodeTranspiler.Lexer.TokenType.OP_GT) && !IsEnd()) {
+                    genType.TypeArgs.add(ParseTypeRef());
+                    if (Check(CodeTranspiler.Lexer.TokenType.COMMA)) Advance();
+                }
+                Expect(CodeTranspiler.Lexer.TokenType.OP_GT);
+                returnType = genType;
+                nameTok = ExpectIdentifierOrKeyword();
+            } else if (!Check(CodeTranspiler.Lexer.TokenType.LPAREN) &&
                 !Check(CodeTranspiler.Lexer.TokenType.OP_LT)) {
                 // The token we just consumed is the return type.
                 // Build a SimpleTypeNode from it.
@@ -1165,9 +1209,9 @@ namespace CodeTranspiler.Parser {
 
             // Optional parens around condition (legacy: if (x > 5) or modern: if x > 5)
             bool hasParen = Check(CodeTranspiler.Lexer.TokenType.LPAREN);
-            if (hasParen) Advance();
+            if (hasParen) { Advance(); _parenDepth++; SkipNewlines(); }
             var condition = ParseExpression();
-            if (hasParen) Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+            if (hasParen) { SkipNewlines(); _parenDepth--; Expect(CodeTranspiler.Lexer.TokenType.RPAREN); }
 
             var thenBlock = ParseBlock();
             var node      = new IfNode(condition, thenBlock);
@@ -1183,9 +1227,9 @@ namespace CodeTranspiler.Parser {
                 if (Check(CodeTranspiler.Lexer.TokenType.KW_IF)) {
                     Advance();
                     bool hasParen2 = Check(CodeTranspiler.Lexer.TokenType.LPAREN);
-                    if (hasParen2) Advance();
+                    if (hasParen2) { Advance(); _parenDepth++; SkipNewlines(); }
                     var cond2  = ParseExpression();
-                    if (hasParen2) Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
+                    if (hasParen2) { SkipNewlines(); _parenDepth--; Expect(CodeTranspiler.Lexer.TokenType.RPAREN); }
                     var block2 = ParseBlock();
                     var elseIf = new ElseIfNode(cond2, block2);
                     node.ElseIfs.add(elseIf);
@@ -1349,7 +1393,11 @@ namespace CodeTranspiler.Parser {
         private WhileNode ParseWhile() {
             var tok = Expect(CodeTranspiler.Lexer.TokenType.KW_WHILE);
             Expect(CodeTranspiler.Lexer.TokenType.LPAREN);
+            _parenDepth++;
+            SkipNewlines();
             var condition = ParseExpression();
+            SkipNewlines();
+            _parenDepth--;
             Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
             var body = ParseBlock();
             var node = new WhileNode(condition, body);
@@ -1607,12 +1655,15 @@ namespace CodeTranspiler.Parser {
         private AstNode ParseOr() {
             var left = ParseAnd();
 
+            SkipNewlinesInParen();
             while (Check(CodeTranspiler.Lexer.TokenType.OP_OR)) {
                 var op    = Advance();
+                SkipNewlinesInParen();
                 var right = ParseAnd();
                 var node  = new BinaryExprNode(left, "||", right);
                 node.SetPosition(op);
                 left = node;
+                SkipNewlinesInParen();
             }
 
             return left;
@@ -1622,12 +1673,15 @@ namespace CodeTranspiler.Parser {
         private AstNode ParseAnd() {
             var left = ParseEquality();
 
+            SkipNewlinesInParen();
             while (Check(CodeTranspiler.Lexer.TokenType.OP_AND)) {
                 var op    = Advance();
+                SkipNewlinesInParen();
                 var right = ParseEquality();
                 var node  = new BinaryExprNode(left, "&&", right);
                 node.SetPosition(op);
                 left = node;
+                SkipNewlinesInParen();
             }
 
             return left;
@@ -1917,6 +1971,8 @@ namespace CodeTranspiler.Parser {
             // Groupe : (expr)
             if (Check(CodeTranspiler.Lexer.TokenType.LPAREN)) {
                 var lpTok = Advance(); // consume (
+                _parenDepth++;
+                SkipNewlines();
                 var first = ParseExpression();
 
                 // Tuple: (a, b, ...) — detected by comma after first expr
@@ -1926,13 +1982,18 @@ namespace CodeTranspiler.Parser {
                     tuple.Elements.add(first);
                     while (Check(CodeTranspiler.Lexer.TokenType.COMMA)) {
                         Advance();
+                        SkipNewlines();
                         tuple.Elements.add(ParseExpression());
                     }
+                    SkipNewlines();
+                    _parenDepth--;
                     Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
                     return tuple;
                 }
 
                 // Grouped expression: (expr)
+                SkipNewlines();
+                _parenDepth--;
                 Expect(CodeTranspiler.Lexer.TokenType.RPAREN);
                 return first;
             }
@@ -2324,6 +2385,11 @@ namespace CodeTranspiler.Parser {
             }
         }
 
+        // Skip newlines if inside parentheses (for multiline conditions/expressions)
+        private void SkipNewlinesInParen() {
+            if (_parenDepth > 0) SkipNewlines();
+        }
+
         private void AddError(string msg, Token tok) {
             _errors.add(new ParseError(msg, tok));
         }
@@ -2333,17 +2399,20 @@ namespace CodeTranspiler.Parser {
 
         private bool CheckMethodStart() {
             var t = Current().Type;
-            return t == CodeTranspiler.Lexer.TokenType.IDENTIFIER  ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_ASYNC    ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_PURE     ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_STATIC   ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_VOID     ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_INT      ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_STRING   ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_BOOL     ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_FLOAT    ||
-                   t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE   ||
-                   t == CodeTranspiler.Lexer.TokenType.LPAREN;  // tuple return: (int, string)
+            // Direct keyword/type matches
+            if (t == CodeTranspiler.Lexer.TokenType.IDENTIFIER  ||
+                t == CodeTranspiler.Lexer.TokenType.KW_ASYNC    ||
+                t == CodeTranspiler.Lexer.TokenType.KW_PURE     ||
+                t == CodeTranspiler.Lexer.TokenType.KW_STATIC   ||
+                t == CodeTranspiler.Lexer.TokenType.KW_VOID     ||
+                t == CodeTranspiler.Lexer.TokenType.KW_INT      ||
+                t == CodeTranspiler.Lexer.TokenType.KW_STRING   ||
+                t == CodeTranspiler.Lexer.TokenType.KW_BOOL     ||
+                t == CodeTranspiler.Lexer.TokenType.KW_FLOAT    ||
+                t == CodeTranspiler.Lexer.TokenType.KW_DOUBLE   ||
+                t == CodeTranspiler.Lexer.TokenType.LPAREN)     // tuple return
+                return true;
+            return false;
         }
 
         private bool IsLambdaStart() {
