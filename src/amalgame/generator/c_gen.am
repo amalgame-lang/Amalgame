@@ -424,6 +424,7 @@ public class CGen {
                 if (String_StartsWith(calleeStr, "AmalgameList_count")) { return "i64" }
                 // File stdlib return types
                 if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete") { return "code_bool" }
+                if (calleeStr == "File_WriteLines") { return "void" }
                 if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
                 // Net stdlib return types
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }

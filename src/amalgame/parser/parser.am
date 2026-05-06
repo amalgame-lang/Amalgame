@@ -517,19 +517,22 @@ public class Parser {
         let block = Ast.Block(tok.Line, tok.Column)
         this.SkipNewlines()
         var lastPos = 0
+        var hadProgress = true
         while (!this.IsEnd() && !this.CheckValue("}")) {
             this.SkipNewlines()
             if (this.CheckValue("}")) { break }
             let curPos = this.Pos
-            if (curPos == lastPos && lastPos > 0) {
+            if (!hadProgress) {
                 this.Advance()
                 this.SkipNewlines()
                 if (this.CheckValue("}")) { break }
                 if (this.IsEnd()) { break }
             }
             lastPos = this.Pos
+            hadProgress = false
             let stmt = this.ParseStmt()
             block.Children.Add(stmt)
+            hadProgress = true
             this.SkipNewlines()
         }
         this.Expect("}")
@@ -813,20 +816,52 @@ public class Parser {
 
     private AstNode ParseAssign() {
         let left = this.ParseOr()
-        if (this.CheckValue("=")) {
+        let isAssign = this.CheckValue("=") || this.CheckValue("+=") || this.CheckValue("-=") || this.CheckValue("*=") || this.CheckValue("/=") || this.CheckValue("%=")
+        let isBitAssign = this.CheckValue("&=") || this.CheckValue("|=") || this.CheckValue("^=") || this.CheckValue("<<=") || this.CheckValue(">>=")
+        if (isAssign || isBitAssign) {
             let tok = this.Advance()
             let right = this.ParseAssign()
-            return Ast.Binary(left, "=", right, tok.Line, tok.Column)
+            return Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
         }
         return left
     }
 
     private AstNode ParseOr() {
-        var left = this.ParseAnd()
+        var left = this.ParseBitwiseOr()
         while (this.CheckValue("||")) {
             let tok = this.Advance()
-            let right = this.ParseAnd()
+            let right = this.ParseBitwiseOr()
             left = Ast.Binary(left, "||", right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseBitwiseOr() {
+        var left = this.ParseBitwiseXor()
+        while (this.CheckValue("|") && !this.CheckValue("||")) {
+            let tok = this.Advance()
+            let right = this.ParseBitwiseXor()
+            left = Ast.Binary(left, "|", right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseBitwiseXor() {
+        var left = this.ParseBitwiseAnd()
+        while (this.CheckValue("^")) {
+            let tok = this.Advance()
+            let right = this.ParseBitwiseAnd()
+            left = Ast.Binary(left, "^", right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseBitwiseAnd() {
+        var left = this.ParseAnd()
+        while (this.CheckValue("&") && !this.CheckValue("&&")) {
+            let tok = this.Advance()
+            let right = this.ParseAnd()
+            left = Ast.Binary(left, "&", right, tok.Line, tok.Column)
         }
         return left
     }
@@ -854,6 +889,16 @@ public class Parser {
     private AstNode ParseRelational() {
         var left = this.ParseAdd()
         while (this.CheckValue("<") || this.CheckValue(">") || this.CheckValue("<=") || this.CheckValue(">=")) {
+            let tok = this.Advance()
+            let right = this.ParseShift()
+            left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    private AstNode ParseShift() {
+        var left = this.ParseAdd()
+        while (this.CheckValue("<<") || this.CheckValue(">>")) {
             let tok = this.Advance()
             let right = this.ParseAdd()
             left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
@@ -885,7 +930,8 @@ public class Parser {
         // Only treat as unary if the token is actually an operator, not a STRING literal
         let isUnaryNot   = this.CheckValue("!") && !this.CheckType(TokenType.STRING)
         let isUnaryMinus = this.CheckValue("-") && !this.CheckType(TokenType.STRING)
-        if (isUnaryNot || isUnaryMinus) {
+        let isUnaryTilde = this.CheckValue("~")
+        if (isUnaryNot || isUnaryMinus || isUnaryTilde) {
             let tok = this.Advance()
             let operand = this.ParseUnary()
             let node = new AstNode(NodeKind.UNARY, tok.Line, tok.Column)

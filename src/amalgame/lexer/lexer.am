@@ -198,8 +198,15 @@ public class Lexer {
         let c        = this.Advance()
         let c2       = this.CharAt(this.Pos)
 
-        if (c == "+") { this.AddToken(TokenType.OP_PLUS,    "+") }
-        else if (c == "%") { this.AddToken(TokenType.OP_PERCENT, "%") }
+        if (c == "+") {
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_PLUS_EQ, "+=") }
+            else { this.AddToken(TokenType.OP_PLUS, "+") }
+        } else if (c == "%") {
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_PERCENT_EQ, "%=") }
+            else { this.AddToken(TokenType.OP_PERCENT, "%") }
+        }
         else if (c == "@") { this.AddToken(TokenType.AT,         "@") }
         else if (c == "(") { this.AddToken(TokenType.LPAREN,     "(") }
         else if (c == ")") { this.AddToken(TokenType.RPAREN,     ")") }
@@ -209,13 +216,21 @@ public class Lexer {
         else if (c == "]") { this.AddToken(TokenType.RBRACKET,   "]") }
         else if (c == ",") { this.AddToken(TokenType.COMMA,      ",") }
         else if (c == ";") { this.AddToken(TokenType.SEMICOLON,  ";") }
-        else if (c == "/") { this.AddToken(TokenType.OP_SLASH,   "/") }
+        else if (c == "/") {
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_SLASH_EQ, "/=") }
+            else { this.AddToken(TokenType.OP_SLASH, "/") }
+        }
         else if (c == "-") {
             if (c2 == ">") { this.Advance()
                 this.AddToken(TokenType.OP_THIN_ARROW, "->") }
+            else if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_MINUS_EQ, "-=") }
             else { this.AddToken(TokenType.OP_MINUS, "-") }
         } else if (c == "*") {
-            this.AddToken(TokenType.OP_STAR, "*")
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_STAR_EQ, "*=") }
+            else { this.AddToken(TokenType.OP_STAR, "*") }
         } else if (c == "=") {
             if (c2 == "=") { this.Advance()
                 this.AddToken(TokenType.OP_EQEQ, "==") }
@@ -229,17 +244,33 @@ public class Lexer {
         } else if (c == "<") {
             if (c2 == "=") { this.Advance()
                 this.AddToken(TokenType.OP_LTE, "<=") }
-            else { this.AddToken(TokenType.OP_LT, "<") }
+            else if (c2 == "<") { this.Advance()
+                let c3 = this.CharAt(this.Pos)
+                if (c3 == "=") { this.Advance()
+                    this.AddToken(TokenType.OP_SHL_EQ, "<<=") }
+                else { this.AddToken(TokenType.OP_SHL, "<<") }
+            } else { this.AddToken(TokenType.OP_LT, "<") }
         } else if (c == ">") {
             if (c2 == "=") { this.Advance()
                 this.AddToken(TokenType.OP_GTE, ">=") }
-            else { this.AddToken(TokenType.OP_GT, ">") }
+            else if (c2 == ">") { this.Advance()
+                let c3 = this.CharAt(this.Pos)
+                if (c3 == "=") { this.Advance()
+                    this.AddToken(TokenType.OP_SHR_EQ, ">>=") }
+                else { this.AddToken(TokenType.OP_SHR, ">>") }
+            } else { this.AddToken(TokenType.OP_GT, ">") }
         } else if (c == "&") {
             if (c2 == "&") { this.Advance()
                 this.AddToken(TokenType.OP_AND, "&&") }
+            else if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_AMP_EQ, "&=") }
+            else { this.AddToken(TokenType.OP_AMP, "&") }
         } else if (c == "|") {
             if (c2 == "|") { this.Advance()
                 this.AddToken(TokenType.OP_OR, "||") }
+            else if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_PIPE_EQ, "|=") }
+            else { this.AddToken(TokenType.OP_PIPE, "|") }
         } else if (c == ".") {
             if (c2 == ".") { this.Advance()
                 this.AddToken(TokenType.OP_DOTDOT, "..") }
@@ -251,6 +282,12 @@ public class Lexer {
         } else if (c == "?") {
             if (c2 == "?") { this.Advance()
                 this.AddToken(TokenType.OP_COALESCE, "??") }
+        } else if (c == "~") {
+            this.AddToken(TokenType.OP_TILDE, "~")
+        } else if (c == "^") {
+            if (c2 == "=") { this.Advance()
+                this.AddToken(TokenType.OP_CARET_EQ, "^=") }
+            else { this.AddToken(TokenType.OP_CARET, "^") }
         } else {
             this.AddToken(TokenType.UNKNOWN, c)
         }

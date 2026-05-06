@@ -1,57 +1,150 @@
 namespace Amalgame.Compiler
 
 import Amalgame.String
+import Amalgame.IO
 
+// ═══════════════════════════════════════════════════════
+//  diagnostics.am  —  Error formatting
+//
+//  ANSI colors disabled until lexer supports \x escapes.
+//  Colors will be re-enabled once bootstrap is stable.
+// ═══════════════════════════════════════════════════════
+
+// ── ANSI color stubs (disabled) ───────────────────────
 public class Ansi {
-    public static string Reset() { return " " }
+    public static string Reset()      { return " " }
+    public static string Bold()       { return " " }
+    public static string Dim()        { return " " }
+    public static string Red()        { return " " }
+    public static string Yellow()     { return " " }
+    public static string Cyan()       { return " " }
+    public static string Green()      { return " " }
+    public static string Blue()       { return " " }
+    public static string BoldRed()    { return " " }
+    public static string BoldYellow() { return " " }
+    public static string BoldCyan()   { return " " }
+    public static string BoldGreen()  { return " " }
+    public static string BoldBlue()   { return " " }
 }
 
+// ── Diagnostic severity ───────────────────────────────
 public enum DiagSeverity {
     ERROR
     WARNING
+    NOTE
+    HINT
 }
 
+// ── Single diagnostic ─────────────────────────────────
+public class Diagnostic {
+    public Severity:  DiagSeverity
+    public Kind:      string
+    public Message:   string
+    public Filename:  string
+    public Line:      int
+    public Column:    int
+
+    public Diagnostic(DiagSeverity sev, string kind, string msg,
+                      string file, int line, int col) {
+        this.Severity  = sev
+        this.Kind      = kind
+        this.Message   = msg
+        this.Filename  = file
+        this.Line      = line
+        this.Column    = col
+    }
+}
+
+// ── DiagnosticFormatter ───────────────────────────────
 public class DiagnosticFormatter {
     private UseColor: bool
+    private Quiet:    bool
 
     public DiagnosticFormatter() {
         this.UseColor = false
+        this.Quiet    = false
     }
 
     public void EnableColor(bool v) { this.UseColor = v }
+    public void SetQuiet(bool v)    { this.Quiet    = v }
 
-    public string FormatError(string kind, string message, string filename, int line, int col) {
-        let lineStr = String_FromInt(line)
-        return "error[" + kind + "]: " + message
+    public void LoadSource(string path, string text) {
+        this.UseColor = this.UseColor
     }
 
+    // ── Format helpers ────────────────────────────────
+
+    private string SevLabel(DiagSeverity sev) {
+        if (sev == DiagSeverity.ERROR)   { return "error" }
+        if (sev == DiagSeverity.WARNING) { return "warning" }
+        if (sev == DiagSeverity.NOTE)    { return "note" }
+        return "hint"
+    }
+
+    // ── Main format ───────────────────────────────────
+
+    public string FormatDiag(Diagnostic d) {
+        let lineStr  = String_FromInt(d.Line)
+        let colStr   = String_FromInt(d.Column)
+        let label    = this.SevLabel(d.Severity)
+        let header   = label + "[" + d.Kind + "]: " + d.Message
+        let location = "  --> " + d.Filename + ":" + lineStr + ":" + colStr
+        return "\n" + header + "\n" + location + "\n |\n"
+    }
+
+    public string FormatError(string kind, string message,
+                              string filename, int line, int col) {
+        let d = new Diagnostic(DiagSeverity.ERROR, kind, message, filename, line, col)
+        return this.FormatDiag(d)
+    }
+
+    public string FormatWarning(string kind, string message,
+                                string filename, int line, int col) {
+        let d = new Diagnostic(DiagSeverity.WARNING, kind, message, filename, line, col)
+        return this.FormatDiag(d)
+    }
+
+    public string FormatNote(string kind, string message,
+                             string filename, int line, int col) {
+        let d = new Diagnostic(DiagSeverity.NOTE, kind, message, filename, line, col)
+        return this.FormatDiag(d)
+    }
+
+    // ── Phase reporting ───────────────────────────────
+
     public void PrintPhaseOk(string phase) {
+        if (this.Quiet) { return }
         Console.WriteLine(phase + " OK")
     }
 
     public void PrintPhaseError(string phase, string detail) {
         Console.WriteError(phase + " ERROR")
+        if (String_Length(detail) > 0) { Console.WriteError(detail) }
     }
 
-    public void PrintCompileOk(string phase) { this.PrintPhaseOk(phase) }
-    public void PrintCompileError(string phase, string detail) { this.PrintPhaseError(phase, detail) }
-
-    public string FormatWarning(string kind, string message, string filename, int line, int col) {
-        return "warning[" + kind + "]: " + message
+    // Backward compat aliases
+    public void PrintCompileOk(string phase) {
+        this.PrintPhaseOk(phase)
     }
 
-    public string FormatNote(string kind, string message, string filename, int line, int col) {
-        return "note[" + kind + "]: " + message
+    public void PrintCompileError(string phase, string detail) {
+        this.PrintPhaseError(phase, detail)
     }
 
-    public void LoadSource(string path, string text) { this.UseColor = this.UseColor }
-    public void SetQuiet(bool v) { this.UseColor = this.UseColor }
+    // ── Summary ───────────────────────────────────────
 
     public string FormatSummary(int errorCount, int warningCount) {
-        return " "
+        var result = " "
+        if (errorCount > 0) {
+            let ec  = String_FromInt(errorCount)
+            let sfx = if (errorCount > 1) { "s" } else { " " }
+            result = "aborting due to " + ec + " error" + sfx
+        }
+        return result
     }
 
-    public string FormatCompact(string severity, string kind, string message, string filename, int line, int col) {
+    public string FormatCompact(string severity, string kind, string message,
+                                string filename, int line, int col) {
         let loc = filename + ":" + String_FromInt(line) + ":" + String_FromInt(col)
         return loc + ": " + severity + "[" + kind + "]: " + message
     }
