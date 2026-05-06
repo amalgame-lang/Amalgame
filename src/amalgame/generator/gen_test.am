@@ -162,6 +162,13 @@ public class Program {
         let symPar  = new Parser(symToks)
         let symProg = symPar.Parse()
 
+        let resPath = "./src/amalgame/resolver/resolver.am"
+        let resSrc  = File.ReadAll(resPath)
+        let resLex  = new Lexer(resSrc, resPath)
+        let resToks = resLex.Tokenize()
+        let resPar  = new Parser(resToks)
+        let resProg = resPar.Parse()
+
         let diagPath = "./src/amalgame/diagnostics.am"
         let diagSrc  = File.ReadAll(diagPath)
         let diagLex  = new Lexer(diagSrc, diagPath)
@@ -191,6 +198,7 @@ public class Program {
         gen6.AddFilePass1(parProg)
         gen6.AddFilePass1(cgenProg)
         gen6.AddFilePass1(symProg)
+        gen6.AddFilePass1(resProg)
         gen6.AddFilePass1(diagProg)
         gen6.AddFilePass1(tcProg)
         gen6.AddFilePass1(mainProg)
@@ -201,6 +209,7 @@ public class Program {
         gen6.AddFilePass2(parProg)
         gen6.AddFilePass2(cgenProg)
         gen6.AddFilePass2(symProg)
+        gen6.AddFilePass2(resProg)
         gen6.AddFilePass2(diagProg)
         gen6.AddFilePass2(tcProg)
         gen6.AddFilePass2(mainProg)
