@@ -441,6 +441,7 @@ public class CGen {
                     let mname2 = expr.Left.Name
                     // Collection method return types based on method name
                     if (mname2 == "Count" || mname2 == "Size") { return "i64" }
+                    if (mname2 == "Clear") { return "void" }
                     if (mname2 == "IsEmpty" || mname2 == "Has" || mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add") {
                         // Check object type to determine correct return
                         if (expr.Left.Left != null && expr.Left.Left.Kind == NodeKind.IDENTIFIER) {
@@ -1835,7 +1836,7 @@ public class CGen {
             }
         }
 
-        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove") { return "" }
+        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "Clear") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -1886,6 +1887,9 @@ public class CGen {
         if (String_Length(listExpr) == 0) { return "" }
 
         // Emit the appropriate C call
+        if (mname == "Clear") {
+            return "AmalgameList_clear(" + listExpr + ")"
+        }
         if (mname == "Count") {
             return "AmalgameList_count(" + listExpr + ")"
         }
