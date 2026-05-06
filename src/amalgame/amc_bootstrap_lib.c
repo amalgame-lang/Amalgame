@@ -432,7 +432,10 @@ Amalgame_Compiler_Lexer* Amalgame_Compiler_Lexer_new(code_string source, code_st
 static code_bool Amalgame_Compiler_Lexer_IsSpace(Amalgame_Compiler_Lexer* self, code_string c) {
     (void)self;
     (void)c;
-    return code_string_equals(c, " ") || code_string_equals(c, "\t") || code_string_equals(c, "");
+    if (String_Length(c) == 0) {
+        return 0;
+    }
+    return code_string_equals(c, " ") || code_string_equals(c, "\t") || code_string_equals(c, "\\r");
 }
 
 static code_bool Amalgame_Compiler_Lexer_IsDigit(Amalgame_Compiler_Lexer* self, code_string c) {
@@ -537,11 +540,18 @@ static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
             if (code_string_equals(esc, "t")) {
                 value = code_string_concat(value, "\t");
             }
+            if (code_string_equals(esc, "r")) {
+                value = code_string_concat(value, "\\r");
+            }
             if (code_string_equals(esc, "\"")) {
                 value = code_string_concat(value, "\"");
             }
             if (code_string_equals(esc, "\\")) {
                 value = code_string_concat(value, "\\");
+            }
+            if (code_string_equals(esc, "x")) {
+                Amalgame_Compiler_Lexer_Advance(self);
+                Amalgame_Compiler_Lexer_Advance(self);
             }
         } else {
             value = code_string_concat(value, c);
@@ -2684,6 +2694,9 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                 if (code_string_equals(mname2, "Count") || code_string_equals(mname2, "Size")) {
                     return "i64";
                 }
+                if (code_string_equals(mname2, "Clear")) {
+                    return "void";
+                }
                 if (code_string_equals(mname2, "IsEmpty") || code_string_equals(mname2, "Has") || code_string_equals(mname2, "Contains") || code_string_equals(mname2, "Remove") || code_string_equals(mname2, "Add")) {
                     if (expr->Left->Left != NULL && expr->Left->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
                         code_string __attribute__((unused)) objN = expr->Left->Left->Name;
@@ -2912,8 +2925,8 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\"", "\\\"");
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
-    s = String_Replace(s, "", "\\r");
-    s = String_Replace(s, "1b", "\\x1b");
+    s = String_Replace(s, "\\r", "\\r");
+    s = String_Replace(s, "", "\\x1b");
     return s;
 }
 
@@ -4122,7 +4135,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "Clear")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -4164,6 +4177,9 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
     }
     if (String_Length(listExpr) == 0) {
         return "";
+    }
+    if (code_string_equals(mname, "Clear")) {
+        return code_string_concat(code_string_concat("AmalgameList_clear(", listExpr), ")");
     }
     if (code_string_equals(mname, "Count")) {
         return code_string_concat(code_string_concat("AmalgameList_count(", listExpr), ")");

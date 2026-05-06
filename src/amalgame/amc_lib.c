@@ -23,8 +23,9 @@ typedef struct _Amalgame_Compiler_Symbol Amalgame_Compiler_Symbol;
 typedef struct _Amalgame_Compiler_SymbolTable Amalgame_Compiler_SymbolTable;
 typedef struct _Amalgame_Compiler_Resolver Amalgame_Compiler_Resolver;
 typedef struct _Amalgame_Compiler_MemberTable Amalgame_Compiler_MemberTable;
-typedef struct _Amalgame_Compiler_Scope Amalgame_Compiler_Scope;
 typedef struct _Amalgame_Compiler_FullResolver Amalgame_Compiler_FullResolver;
+typedef struct _Amalgame_Compiler_Ansi Amalgame_Compiler_Ansi;
+typedef enum _Amalgame_Compiler_DiagSeverity Amalgame_Compiler_DiagSeverity;
 typedef struct _Amalgame_Compiler_DiagnosticFormatter Amalgame_Compiler_DiagnosticFormatter;
 typedef struct _Amalgame_Compiler_TypeError Amalgame_Compiler_TypeError;
 typedef struct _Amalgame_Compiler_TypeCheckResult Amalgame_Compiler_TypeCheckResult;
@@ -445,7 +446,10 @@ Amalgame_Compiler_Lexer* Amalgame_Compiler_Lexer_new(code_string source, code_st
 static code_bool Amalgame_Compiler_Lexer_IsSpace(Amalgame_Compiler_Lexer* self, code_string c) {
     (void)self;
     (void)c;
-    return code_string_equals(c, " ") || code_string_equals(c, "\t") || code_string_equals(c, "");
+    if (String_Length(c) == 0) {
+        return 0;
+    }
+    return code_string_equals(c, " ") || code_string_equals(c, "\t") || code_string_equals(c, "\\r");
 }
 
 static code_bool Amalgame_Compiler_Lexer_IsDigit(Amalgame_Compiler_Lexer* self, code_string c) {
@@ -550,11 +554,18 @@ static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
             if (code_string_equals(esc, "t")) {
                 value = code_string_concat(value, "\t");
             }
+            if (code_string_equals(esc, "r")) {
+                value = code_string_concat(value, "\\r");
+            }
             if (code_string_equals(esc, "\"")) {
                 value = code_string_concat(value, "\"");
             }
             if (code_string_equals(esc, "\\")) {
                 value = code_string_concat(value, "\\");
+            }
+            if (code_string_equals(esc, "x")) {
+                Amalgame_Compiler_Lexer_Advance(self);
+                Amalgame_Compiler_Lexer_Advance(self);
             }
         } else {
             value = code_string_concat(value, c);
@@ -2697,6 +2708,9 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                 if (code_string_equals(mname2, "Count") || code_string_equals(mname2, "Size")) {
                     return "i64";
                 }
+                if (code_string_equals(mname2, "Clear")) {
+                    return "void";
+                }
                 if (code_string_equals(mname2, "IsEmpty") || code_string_equals(mname2, "Has") || code_string_equals(mname2, "Contains") || code_string_equals(mname2, "Remove") || code_string_equals(mname2, "Add")) {
                     if (expr->Left->Left != NULL && expr->Left->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
                         code_string __attribute__((unused)) objN = expr->Left->Left->Name;
@@ -2925,8 +2939,8 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\"", "\\\"");
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
-    s = String_Replace(s, "", "\\r");
-    s = String_Replace(s, "1b", "\\x1b");
+    s = String_Replace(s, "\\r", "\\r");
+    s = String_Replace(s, "", "\\x1b");
     return s;
 }
 
@@ -4135,7 +4149,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "Clear")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -4177,6 +4191,9 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
     }
     if (String_Length(listExpr) == 0) {
         return "";
+    }
+    if (code_string_equals(mname, "Clear")) {
+        return code_string_concat(code_string_concat("AmalgameList_clear(", listExpr), ")");
     }
     if (code_string_equals(mname, "Count")) {
         return code_string_concat(code_string_concat("AmalgameList_count(", listExpr), ")");
@@ -4910,85 +4927,12 @@ code_bool Amalgame_Compiler_MemberTable_Has(Amalgame_Compiler_MemberTable* self,
     return 0;
 }
 
-struct _Amalgame_Compiler_Scope {
-    AmalgameList* Names;
-    AmalgameList* Types;
-    AmalgameList* IsLets;
-    code_string Label;
-    Amalgame_Compiler_Scope* Parent;
-};
-
-code_bool Amalgame_Compiler_Scope_Declare(Amalgame_Compiler_Scope* self, code_string name, code_string typeName, code_bool isLet);
-code_bool Amalgame_Compiler_Scope_Has(Amalgame_Compiler_Scope* self, code_string name);
-code_string Amalgame_Compiler_Scope_GetType(Amalgame_Compiler_Scope* self, code_string name);
-code_bool Amalgame_Compiler_Scope_IsLet(Amalgame_Compiler_Scope* self, code_string name);
-
-Amalgame_Compiler_Scope* Amalgame_Compiler_Scope_new(code_string label) {
-    Amalgame_Compiler_Scope* self = (Amalgame_Compiler_Scope*) GC_MALLOC(sizeof(Amalgame_Compiler_Scope));
-    self->Names = AmalgameList_new();
-    self->Types = AmalgameList_new();
-    self->IsLets = AmalgameList_new();
-    self->Label = label;
-    self->Parent = NULL;
-    return self;
-}
-
-code_bool Amalgame_Compiler_Scope_Declare(Amalgame_Compiler_Scope* self, code_string name, code_string typeName, code_bool isLet) {
-    (void)self;
-    (void)name;
-    (void)typeName;
-    (void)isLet;
-    i64 __attribute__((unused)) count = AmalgameList_count(self->Names);
-    for (i64 i = 0; i < count; i++) {
-        if (code_string_equals((code_string)AmalgameList_get(self->Names, i), name)) {
-            return 0;
-        }
-    }
-    AmalgameList_add(self->Names, (void*)(intptr_t)(name));
-    AmalgameList_add(self->Types, (void*)(intptr_t)(typeName));
-    AmalgameList_add(self->IsLets, (void*)(intptr_t)(isLet));
-    return 1;
-}
-
-code_bool Amalgame_Compiler_Scope_Has(Amalgame_Compiler_Scope* self, code_string name) {
-    (void)self;
-    (void)name;
-    i64 __attribute__((unused)) count = AmalgameList_count(self->Names);
-    for (i64 i = 0; i < count; i++) {
-        if (code_string_equals((code_string)AmalgameList_get(self->Names, i), name)) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-code_string Amalgame_Compiler_Scope_GetType(Amalgame_Compiler_Scope* self, code_string name) {
-    (void)self;
-    (void)name;
-    i64 __attribute__((unused)) count = AmalgameList_count(self->Names);
-    for (i64 i = 0; i < count; i++) {
-        if (code_string_equals((code_string)AmalgameList_get(self->Names, i), name)) {
-            return (code_string)AmalgameList_get(self->Types, i);
-        }
-    }
-    return "?";
-}
-
-code_bool Amalgame_Compiler_Scope_IsLet(Amalgame_Compiler_Scope* self, code_string name) {
-    (void)self;
-    (void)name;
-    i64 __attribute__((unused)) count = AmalgameList_count(self->Names);
-    for (i64 i = 0; i < count; i++) {
-        if (code_string_equals((code_string)AmalgameList_get(self->Names, i), name)) {
-            return (code_bool)AmalgameList_get(self->IsLets, i);
-        }
-    }
-    return 0;
-}
-
 struct _Amalgame_Compiler_FullResolver {
-    Amalgame_Compiler_Scope* Global;
-    Amalgame_Compiler_Scope* Current;
+    AmalgameList* GlobalNames;
+    AmalgameList* GlobalTypes;
+    AmalgameList* LocalNames;
+    AmalgameList* LocalTypes;
+    AmalgameList* LocalIsLets;
     Amalgame_Compiler_MemberTable* Members;
     AmalgameList* Errors;
     AmalgameList* Programs;
@@ -5044,8 +4988,11 @@ void Amalgame_Compiler_FullResolver_SetTypeName(Amalgame_Compiler_FullResolver* 
 
 Amalgame_Compiler_FullResolver* Amalgame_Compiler_FullResolver_new() {
     Amalgame_Compiler_FullResolver* self = (Amalgame_Compiler_FullResolver*) GC_MALLOC(sizeof(Amalgame_Compiler_FullResolver));
-    self->Global = Amalgame_Compiler_Scope_new("global");
-    self->Current = self->Global;
+    self->GlobalNames = AmalgameList_new();
+    self->GlobalTypes = AmalgameList_new();
+    self->LocalNames = AmalgameList_new();
+    self->LocalTypes = AmalgameList_new();
+    self->LocalIsLets = AmalgameList_new();
     self->Members = Amalgame_Compiler_MemberTable_new();
     self->Errors = AmalgameList_new();
     self->Programs = AmalgameList_new();
@@ -5147,16 +5094,13 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
 static void Amalgame_Compiler_FullResolver_PushScope(Amalgame_Compiler_FullResolver* self, code_string label) {
     (void)self;
     (void)label;
-    Amalgame_Compiler_Scope* __attribute__((unused)) s = Amalgame_Compiler_Scope_new(label);
-    s->Parent = self->Current;
-    self->Current = s;
+    AmalgameList_clear(self->LocalNames);
+    AmalgameList_clear(self->LocalTypes);
+    AmalgameList_clear(self->LocalIsLets);
 }
 
 static void Amalgame_Compiler_FullResolver_PopScope(Amalgame_Compiler_FullResolver* self) {
     (void)self;
-    if (self->Current->Parent != NULL) {
-        self->Current = self->Current->Parent;
-    }
 }
 
 static void Amalgame_Compiler_FullResolver_DeclareGlobal(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet) {
@@ -5164,7 +5108,14 @@ static void Amalgame_Compiler_FullResolver_DeclareGlobal(Amalgame_Compiler_FullR
     (void)name;
     (void)typeName;
     (void)isLet;
-    Amalgame_Compiler_Scope_Declare(self->Global, name, typeName, isLet);
+    i64 __attribute__((unused)) count = AmalgameList_count(self->GlobalNames);
+    for (i64 i = 0; i < count; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, i), name)) {
+            return;
+        }
+    }
+    AmalgameList_add(self->GlobalNames, (void*)(intptr_t)(name));
+    AmalgameList_add(self->GlobalTypes, (void*)(intptr_t)(typeName));
 }
 
 static code_bool Amalgame_Compiler_FullResolver_DeclareCurrent(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet) {
@@ -5172,23 +5123,32 @@ static code_bool Amalgame_Compiler_FullResolver_DeclareCurrent(Amalgame_Compiler
     (void)name;
     (void)typeName;
     (void)isLet;
-    return Amalgame_Compiler_Scope_Declare(self->Current, name, typeName, isLet);
+    i64 __attribute__((unused)) count = AmalgameList_count(self->LocalNames);
+    for (i64 i = 0; i < count; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
+            return 0;
+        }
+    }
+    AmalgameList_add(self->LocalNames, (void*)(intptr_t)(name));
+    AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
+    AmalgameList_add(self->LocalIsLets, (void*)(intptr_t)(isLet));
+    return 1;
 }
 
 static code_bool Amalgame_Compiler_FullResolver_LookupInScopes(Amalgame_Compiler_FullResolver* self, code_string name) {
     (void)self;
     (void)name;
-    Amalgame_Compiler_Scope* __attribute__((unused)) scope = self->Current;
-    i64 __attribute__((unused)) safety = 0;
-    while (scope != NULL) {
-        safety = safety + 1;
-        if (safety > 200) {
-            break;
-        }
-        if (Amalgame_Compiler_Scope_Has(scope, name)) {
+    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
+    for (i64 i = 0; i < lc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return 1;
         }
-        scope = scope->Parent;
+    }
+    i64 __attribute__((unused)) gc = AmalgameList_count(self->GlobalNames);
+    for (i64 i = 0; i < gc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, i), name)) {
+            return 1;
+        }
     }
     return 0;
 }
@@ -5196,17 +5156,17 @@ static code_bool Amalgame_Compiler_FullResolver_LookupInScopes(Amalgame_Compiler
 static code_string Amalgame_Compiler_FullResolver_LookupType(Amalgame_Compiler_FullResolver* self, code_string name) {
     (void)self;
     (void)name;
-    Amalgame_Compiler_Scope* __attribute__((unused)) scope = self->Current;
-    i64 __attribute__((unused)) safety = 0;
-    while (scope != NULL) {
-        safety = safety + 1;
-        if (safety > 200) {
-            break;
+    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
+    for (i64 i = 0; i < lc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
+            return (code_string)AmalgameList_get(self->LocalTypes, i);
         }
-        if (Amalgame_Compiler_Scope_Has(scope, name)) {
-            return Amalgame_Compiler_Scope_GetType(scope, name);
+    }
+    i64 __attribute__((unused)) gc = AmalgameList_count(self->GlobalNames);
+    for (i64 i = 0; i < gc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, i), name)) {
+            return (code_string)AmalgameList_get(self->GlobalTypes, i);
         }
-        scope = scope->Parent;
     }
     return "?";
 }
@@ -5214,17 +5174,11 @@ static code_string Amalgame_Compiler_FullResolver_LookupType(Amalgame_Compiler_F
 static code_bool Amalgame_Compiler_FullResolver_LookupIsLet(Amalgame_Compiler_FullResolver* self, code_string name) {
     (void)self;
     (void)name;
-    Amalgame_Compiler_Scope* __attribute__((unused)) scope = self->Current;
-    i64 __attribute__((unused)) safety = 0;
-    while (scope != NULL) {
-        safety = safety + 1;
-        if (safety > 200) {
-            break;
+    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
+    for (i64 i = 0; i < lc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
+            return (code_bool)AmalgameList_get(self->LocalIsLets, i);
         }
-        if (Amalgame_Compiler_Scope_Has(scope, name)) {
-            return Amalgame_Compiler_Scope_IsLet(scope, name);
-        }
-        scope = scope->Parent;
     }
     return 0;
 }
@@ -5793,31 +5747,57 @@ void Amalgame_Compiler_FullResolver_SetTypeName(Amalgame_Compiler_FullResolver* 
     (void)self;
     (void)name;
     (void)typeName;
-    Amalgame_Compiler_Scope* __attribute__((unused)) scope = self->Current;
-    i64 __attribute__((unused)) safety = 0;
-    while (scope != NULL) {
-        safety = safety + 1;
-        if (safety > 200) {
-            break;
-        }
-        if (Amalgame_Compiler_Scope_Has(scope, name)) {
-            Amalgame_Compiler_Scope_Declare(scope, name, typeName, Amalgame_Compiler_Scope_IsLet(scope, name));
+    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
+    for (i64 i = 0; i < lc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
+            AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
             return;
         }
-        scope = scope->Parent;
+    }
+    i64 __attribute__((unused)) gc = AmalgameList_count(self->GlobalNames);
+    for (i64 i = 0; i < gc; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, i), name)) {
+            AmalgameList_add(self->GlobalTypes, (void*)(intptr_t)(typeName));
+            return;
+        }
     }
 }
+
+struct _Amalgame_Compiler_Ansi {
+};
+
+code_string Amalgame_Compiler_Ansi_Reset();
+
+Amalgame_Compiler_Ansi* Amalgame_Compiler_Ansi_new() {
+    Amalgame_Compiler_Ansi* self = (Amalgame_Compiler_Ansi*) GC_MALLOC(sizeof(Amalgame_Compiler_Ansi));
+    return self;
+}
+
+code_string Amalgame_Compiler_Ansi_Reset() {
+    return " ";
+}
+
+enum _Amalgame_Compiler_DiagSeverity {
+    Amalgame_Compiler_DiagSeverity_ERROR,
+    Amalgame_Compiler_DiagSeverity_WARNING
+};
 
 struct _Amalgame_Compiler_DiagnosticFormatter {
     code_bool UseColor;
 };
 
 void Amalgame_Compiler_DiagnosticFormatter_EnableColor(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
-static code_string Amalgame_Compiler_DiagnosticFormatter_Colored(Amalgame_Compiler_DiagnosticFormatter* self, code_string code, code_string s);
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatError(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
-code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
+void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase);
+void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail);
 void Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase);
 void Amalgame_Compiler_DiagnosticFormatter_PrintCompileError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatNote(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
+void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_DiagnosticFormatter* self, code_string path, code_string text);
+void Amalgame_Compiler_DiagnosticFormatter_SetQuiet(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatSummary(Amalgame_Compiler_DiagnosticFormatter* self, i64 errorCount, i64 warningCount);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatCompact(Amalgame_Compiler_DiagnosticFormatter* self, code_string severity, code_string kind, code_string message, code_string filename, i64 line, i64 col);
 
 Amalgame_Compiler_DiagnosticFormatter* Amalgame_Compiler_DiagnosticFormatter_new() {
     Amalgame_Compiler_DiagnosticFormatter* self = (Amalgame_Compiler_DiagnosticFormatter*) GC_MALLOC(sizeof(Amalgame_Compiler_DiagnosticFormatter));
@@ -5831,16 +5811,6 @@ void Amalgame_Compiler_DiagnosticFormatter_EnableColor(Amalgame_Compiler_Diagnos
     self->UseColor = v;
 }
 
-static code_string Amalgame_Compiler_DiagnosticFormatter_Colored(Amalgame_Compiler_DiagnosticFormatter* self, code_string code, code_string s) {
-    (void)self;
-    (void)code;
-    (void)s;
-    if (!self->UseColor) {
-        return s;
-    }
-    return code_string_concat(code_string_concat(code_string_concat(code_string_concat("1b[", code), "m"), s), "1b[0m");
-}
-
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatError(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
     (void)self;
     (void)kind;
@@ -5849,11 +5819,33 @@ code_string Amalgame_Compiler_DiagnosticFormatter_FormatError(Amalgame_Compiler_
     (void)line;
     (void)col;
     code_string __attribute__((unused)) lineStr = String_FromInt(line);
-    code_string __attribute__((unused)) colStr = String_FromInt(col);
-    code_string __attribute__((unused)) result = code_string_concat(code_string_concat(code_string_concat(code_string_concat("error[", kind), "]: "), message), "\n");
-    result = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(result, "  --> "), filename), ":"), lineStr), ":"), colStr), "\n");
-    result = code_string_concat(result, " |\n");
-    return result;
+    return code_string_concat(code_string_concat(code_string_concat("error[", kind), "]: "), message);
+}
+
+void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase) {
+    (void)self;
+    (void)phase;
+    Console_WriteLine(code_string_concat(phase, " OK"));
+}
+
+void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail) {
+    (void)self;
+    (void)phase;
+    (void)detail;
+    Console_WriteError(code_string_concat(phase, " ERROR"));
+}
+
+void Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase) {
+    (void)self;
+    (void)phase;
+    Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(self, phase);
+}
+
+void Amalgame_Compiler_DiagnosticFormatter_PrintCompileError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail) {
+    (void)self;
+    (void)phase;
+    (void)detail;
+    Amalgame_Compiler_DiagnosticFormatter_PrintPhaseError(self, phase, detail);
 }
 
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
@@ -5863,26 +5855,49 @@ code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compile
     (void)filename;
     (void)line;
     (void)col;
-    code_string __attribute__((unused)) lineStr = String_FromInt(line);
-    code_string __attribute__((unused)) colStr = String_FromInt(col);
-    code_string __attribute__((unused)) result = code_string_concat(code_string_concat(code_string_concat(code_string_concat("warning[", kind), "]: "), message), "\n");
-    result = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(result, "  --> "), filename), ":"), lineStr), ":"), colStr), "\n");
-    result = code_string_concat(result, " |\n");
-    return result;
+    return code_string_concat(code_string_concat(code_string_concat("warning[", kind), "]: "), message);
 }
 
-void Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase) {
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatNote(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
     (void)self;
-    (void)phase;
-    Console_WriteLine(code_string_concat(phase, " OK"));
+    (void)kind;
+    (void)message;
+    (void)filename;
+    (void)line;
+    (void)col;
+    return code_string_concat(code_string_concat(code_string_concat("note[", kind), "]: "), message);
 }
 
-void Amalgame_Compiler_DiagnosticFormatter_PrintCompileError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail) {
+void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_DiagnosticFormatter* self, code_string path, code_string text) {
     (void)self;
-    (void)phase;
-    (void)detail;
-    Console_WriteError(code_string_concat(phase, " ERROR"));
-    Console_WriteError(detail);
+    (void)path;
+    (void)text;
+    self->UseColor = self->UseColor;
+}
+
+void Amalgame_Compiler_DiagnosticFormatter_SetQuiet(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->UseColor = self->UseColor;
+}
+
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatSummary(Amalgame_Compiler_DiagnosticFormatter* self, i64 errorCount, i64 warningCount) {
+    (void)self;
+    (void)errorCount;
+    (void)warningCount;
+    return " ";
+}
+
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatCompact(Amalgame_Compiler_DiagnosticFormatter* self, code_string severity, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
+    (void)self;
+    (void)severity;
+    (void)kind;
+    (void)message;
+    (void)filename;
+    (void)line;
+    (void)col;
+    code_string __attribute__((unused)) loc = code_string_concat(code_string_concat(code_string_concat(code_string_concat(filename, ":"), String_FromInt(line)), ":"), String_FromInt(col));
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(loc, ": "), severity), "["), kind), "]: "), message);
 }
 
 struct _Amalgame_Compiler_TypeError {
@@ -6802,14 +6817,56 @@ code_string Amalgame_Compiler_TypeChecker_FormatErrors(Amalgame_Compiler_TypeChe
 
 struct _Amalgame_Compiler_AmalgameCompiler {
     Amalgame_Compiler_DiagnosticFormatter* Diag;
+    code_bool IsLib;
+    code_bool CheckOnly;
+    code_bool Verbose;
+    i64 ExitCode;
 };
 
+void Amalgame_Compiler_AmalgameCompiler_SetLib(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
+void Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
+void Amalgame_Compiler_AmalgameCompiler_SetVerbose(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
+void Amalgame_Compiler_AmalgameCompiler_SetColor(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
+i64 Amalgame_Compiler_AmalgameCompiler_GetExitCode(Amalgame_Compiler_AmalgameCompiler* self);
 void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* self, AmalgameList* inputFiles, code_string outputName);
 
 Amalgame_Compiler_AmalgameCompiler* Amalgame_Compiler_AmalgameCompiler_new() {
     Amalgame_Compiler_AmalgameCompiler* self = (Amalgame_Compiler_AmalgameCompiler*) GC_MALLOC(sizeof(Amalgame_Compiler_AmalgameCompiler));
     self->Diag = Amalgame_Compiler_DiagnosticFormatter_new();
+    self->IsLib = 0;
+    self->CheckOnly = 0;
+    self->Verbose = 0;
+    self->ExitCode = 0;
     return self;
+}
+
+void Amalgame_Compiler_AmalgameCompiler_SetLib(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->IsLib = v;
+}
+
+void Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->CheckOnly = v;
+}
+
+void Amalgame_Compiler_AmalgameCompiler_SetVerbose(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->Verbose = v;
+}
+
+void Amalgame_Compiler_AmalgameCompiler_SetColor(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
+    (void)self;
+    (void)v;
+    Amalgame_Compiler_DiagnosticFormatter_EnableColor(self->Diag, v);
+}
+
+i64 Amalgame_Compiler_AmalgameCompiler_GetExitCode(Amalgame_Compiler_AmalgameCompiler* self) {
+    (void)self;
+    return self->ExitCode;
 }
 
 void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* self, AmalgameList* inputFiles, code_string outputName) {
@@ -6819,9 +6876,12 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     i64 __attribute__((unused)) inputCount = AmalgameList_count(inputFiles);
     if (inputCount == 0) {
         Console_WriteError("amc: no input .am files");
+        self->ExitCode = 1;
         return;
     }
-    Console_WriteLine(code_string_concat(code_string_concat("Compiling: ", String_FromInt(inputCount)), " file(s)"));
+    if (self->Verbose) {
+        Console_WriteLine(code_string_concat(code_string_concat("Compiling: ", String_FromInt(inputCount)), " file(s)"));
+    }
     void* __attribute__((unused)) firstPath = (void*)AmalgameList_get(inputFiles, 0);
     code_string __attribute__((unused)) firstSrc = File_ReadAll(firstPath);
     code_string __attribute__((unused)) nsPrefix = "App";
@@ -6831,15 +6891,17 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         i64 __attribute__((unused)) nlEnd = String_IndexOf(nlRest, "\n");
         if (nlEnd > 0) {
             code_string __attribute__((unused)) rawNs = String_Substring(nlRest, 0, nlEnd);
-            nsPrefix = String_Replace(rawNs, ".", "_");
+            nsPrefix = String_Replace(String_Trim(rawNs), ".", "_");
         }
     }
     Amalgame_Compiler_CGen* __attribute__((unused)) gen = Amalgame_Compiler_CGen_new();
     Amalgame_Compiler_CGen_BeginMulti(gen, nsPrefix);
     AmalgameList* __attribute__((unused)) progs = AmalgameList_new();
+    code_bool __attribute__((unused)) parseOk = 1;
     for (i64 i = 0; i < inputCount; i++) {
         void* __attribute__((unused)) path = (void*)AmalgameList_get(inputFiles, i);
         code_string __attribute__((unused)) src = File_ReadAll(path);
+        Amalgame_Compiler_DiagnosticFormatter_LoadSource(self->Diag, path, src);
         Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(src, path);
         AmalgameList* __attribute__((unused)) toks = Amalgame_Compiler_Lexer_Tokenize(lex);
         Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
@@ -6848,36 +6910,44 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         Amalgame_Compiler_CGen_AddFilePass1(gen, prog);
     }
     Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
-    i64 __attribute__((unused)) rprogCount = AmalgameList_count(progs);
-    for (i64 ri = 0; ri < rprogCount; ri++) {
+    i64 __attribute__((unused)) progCount = AmalgameList_count(progs);
+    for (i64 ri = 0; ri < progCount; ri++) {
         AmalgameList_add(resolver->Programs, (void*)(intptr_t)((void*)AmalgameList_get(progs, ri)));
     }
     Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
     if (Amalgame_Compiler_FullResolver_HasErrors(resolver)) {
         Console_WriteError(Amalgame_Compiler_FullResolver_GetErrors(resolver));
+        self->ExitCode = 1;
+        if (!self->CheckOnly) {
+        }
     }
     Amalgame_Compiler_TypeChecker* __attribute__((unused)) tc = Amalgame_Compiler_TypeChecker_new(resolver, firstPath);
     void* __attribute__((unused)) tcProg = (void*)AmalgameList_get(progs, 0);
     Amalgame_Compiler_TypeChecker_Check(tc, tcProg);
     if (Amalgame_Compiler_TypeChecker_HasErrors(tc)) {
         Console_WriteError(Amalgame_Compiler_TypeChecker_FormatErrors(tc));
+        self->ExitCode = 1;
+    }
+    if (self->CheckOnly) {
+        if (self->ExitCode == 0) {
+            Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(self->Diag, "Check");
+        }
+        return;
     }
     Amalgame_Compiler_CGen_EmitSeparator(gen);
     for (i64 j = 0; j < inputCount; j++) {
-        void* __attribute__((unused)) prog2 = (void*)AmalgameList_get(progs, j);
-        Amalgame_Compiler_CGen_AddFilePass2(gen, prog2);
+        Amalgame_Compiler_CGen_AddFilePass2(gen, (void*)AmalgameList_get(progs, j));
     }
     AmalgameList* __attribute__((unused)) lines = Amalgame_Compiler_CGen_GetLines(gen);
     i64 __attribute__((unused)) lineCount = AmalgameList_count(lines);
     code_string __attribute__((unused)) outC = code_string_concat(outputName, ".c");
     File_WriteAll(outC, "");
     for (i64 k = 0; k < lineCount; k++) {
-        void* __attribute__((unused)) line = (void*)AmalgameList_get(lines, k);
-        File_AppendAll(outC, code_string_concat((code_string)(line), "\n"));
+        File_AppendAll(outC, code_string_concat((code_string)((void*)AmalgameList_get(lines, k)), "\n"));
     }
     code_string __attribute__((unused)) mainFunc = code_string_concat(nsPrefix, "_Program_Main");
     code_string __attribute__((unused)) genSrc = File_ReadAll(outC);
-    if (String_Contains(genSrc, mainFunc)) {
+    if (!self->IsLib && String_Contains(genSrc, mainFunc)) {
         File_AppendAll(outC, "\nint main(int argc, char** argv) {\n");
         File_AppendAll(outC, "    GC_INIT();\n");
         File_AppendAll(outC, code_string_concat(code_string_concat("    ", mainFunc), "((code_string*)argv);\n"));
@@ -6899,6 +6969,6 @@ Amalgame_Compiler_AmcEntry* Amalgame_Compiler_AmcEntry_new() {
 }
 
 void Amalgame_Compiler_AmcEntry_AmcStart() {
-    Console_WriteError("Use amc_bootstrap binary directly");
+    Console_WriteError("Use amc binary directly");
 }
 

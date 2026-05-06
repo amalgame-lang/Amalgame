@@ -21,6 +21,7 @@ public class Lexer {
     }
 
     private bool IsSpace(string c) {
+        if (String_Length(c) == 0) { return false }
         return c == " " || c == "\t" || c == "\r"
     }
 
@@ -103,8 +104,14 @@ public class Lexer {
                 let esc = this.Advance()
                 if (esc == "n")  { value = value + "\n" }
                 if (esc == "t")  { value = value + "\t" }
+                if (esc == "r")  { value = value + "\r" }
                 if (esc == "\"") { value = value + "\"" }
                 if (esc == "\\") { value = value + "\\" }
+                // \x escape: skip 2 hex chars (not yet implemented — needs bootstrap)
+                if (esc == "x") {
+                    this.Advance()
+                    this.Advance()
+                }
             } else {
                 value = value + c
             }

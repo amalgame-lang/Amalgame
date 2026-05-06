@@ -68,64 +68,15 @@ public class MemberTable {
     }
 }
 
-// ── Scope (linked list of scopes) ─────────────────────
-public class Scope {
-    public Names:  List<string>
-    public Types:  List<string>
-    public IsLets: List<bool>
-    public Label:  string
-    public Parent: Scope?
-
-    public Scope(string label) {
-        this.Names  = new List<string>()
-        this.Types  = new List<string>()
-        this.IsLets = new List<bool>()
-        this.Label  = label
-        this.Parent = null
-    }
-
-    public bool Declare(string name, string typeName, bool isLet) {
-        let count = this.Names.Count()
-        for i in 0..count {
-            if (this.Names.Get(i) == name) { return false }  // duplicate
-        }
-        this.Names.Add(name)
-        this.Types.Add(typeName)
-        this.IsLets.Add(isLet)
-        return true
-    }
-
-    public bool Has(string name) {
-        let count = this.Names.Count()
-        for i in 0..count {
-            if (this.Names.Get(i) == name) { return true }
-        }
-        return false
-    }
-
-    public string GetType(string name) {
-        let count = this.Names.Count()
-        for i in 0..count {
-            if (this.Names.Get(i) == name) { return this.Types.Get(i) }
-        }
-        return "?"
-    }
-
-    public bool IsLet(string name) {
-        let count = this.Names.Count()
-        for i in 0..count {
-            if (this.Names.Get(i) == name) { return this.IsLets.Get(i) }
-        }
-        return false
-    }
-}
-
 // ── FullResolver ──────────────────────────────────────
 public class FullResolver {
-    // Global scope (always present)
-    private Global:        Scope
-    // Current innermost scope
-    private Current:       Scope
+    // Flat scope: global names + local (method-level) names
+    // Using parallel lists to avoid void* dereference on List.Get()
+    private GlobalNames:   List<string>
+    private GlobalTypes:   List<string>
+    private LocalNames:    List<string>
+    private LocalTypes:    List<string>
+    private LocalIsLets:   List<bool>
     // Member table: class → member → type
     public  Members:       MemberTable
     // Errors collected
@@ -140,8 +91,11 @@ public class FullResolver {
     private LoopDepth:     int
 
     public FullResolver() {
-        this.Global        = new Scope("global")
-        this.Current       = this.Global
+        this.GlobalNames   = new List<string>()
+        this.GlobalTypes   = new List<string>()
+        this.LocalNames    = new List<string>()
+        this.LocalTypes    = new List<string>()
+        this.LocalIsLets   = new List<bool>()
         this.Members       = new MemberTable()
         this.Errors        = new List<string>()
         this.Programs      = new List<AstNode>()
@@ -245,60 +199,68 @@ public class FullResolver {
         this.DeclareGlobal("TcpConn_Close",     "void",   false)
     }
 
-    // ── Scope management ──────────────────────────────
+    // ── Scope management (flat 2-level: global + local) ──
 
     private void PushScope(string label) {
-        let s    = new Scope(label)
-        s.Parent = this.Current
-        this.Current = s
+        // Clear local scope for new block
+        this.LocalNames.Clear()
+        this.LocalTypes.Clear()
+        this.LocalIsLets.Clear()
     }
 
     private void PopScope() {
-        if (this.Current.Parent != null) {
-            this.Current = this.Current.Parent
-        }
+        // Nested scopes not needed for name resolution — no-op
     }
 
     private void DeclareGlobal(string name, string typeName, bool isLet) {
-        this.Global.Declare(name, typeName, isLet)
+        let count = this.GlobalNames.Count()
+        for i in 0..count {
+            if (this.GlobalNames.Get(i) == name) { return }
+        }
+        this.GlobalNames.Add(name)
+        this.GlobalTypes.Add(typeName)
     }
 
     private bool DeclareCurrent(string name, string typeName, bool isLet) {
-        return this.Current.Declare(name, typeName, isLet)
+        let count = this.LocalNames.Count()
+        for i in 0..count {
+            if (this.LocalNames.Get(i) == name) { return false }
+        }
+        this.LocalNames.Add(name)
+        this.LocalTypes.Add(typeName)
+        this.LocalIsLets.Add(isLet)
+        return true
     }
 
     private bool LookupInScopes(string name) {
-        var scope   = this.Current
-        var safety  = 0
-        while (scope != null) {
-            safety = safety + 1
-            if (safety > 200) { break }
-            if (scope.Has(name)) { return true }
-            scope = scope.Parent
+        // Check local scope first, then global
+        let lc = this.LocalNames.Count()
+        for i in 0..lc {
+            if (this.LocalNames.Get(i) == name) { return true }
+        }
+        let gc = this.GlobalNames.Count()
+        for i in 0..gc {
+            if (this.GlobalNames.Get(i) == name) { return true }
         }
         return false
     }
 
     private string LookupType(string name) {
-        var scope  = this.Current
-        var safety = 0
-        while (scope != null) {
-            safety = safety + 1
-            if (safety > 200) { break }
-            if (scope.Has(name)) { return scope.GetType(name) }
-            scope = scope.Parent
+        let lc = this.LocalNames.Count()
+        for i in 0..lc {
+            if (this.LocalNames.Get(i) == name) { return this.LocalTypes.Get(i) }
+        }
+        let gc = this.GlobalNames.Count()
+        for i in 0..gc {
+            if (this.GlobalNames.Get(i) == name) { return this.GlobalTypes.Get(i) }
         }
         return "?"
     }
 
     private bool LookupIsLet(string name) {
-        var scope  = this.Current
-        var safety = 0
-        while (scope != null) {
-            safety = safety + 1
-            if (safety > 200) { break }
-            if (scope.Has(name)) { return scope.IsLet(name) }
-            scope = scope.Parent
+        let lc = this.LocalNames.Count()
+        for i in 0..lc {
+            if (this.LocalNames.Get(i) == name) { return this.LocalIsLets.Get(i) }
         }
         return false
     }
@@ -761,17 +723,19 @@ public class FullResolver {
     }
 
     public void SetTypeName(string name, string typeName) {
-        // Walk scopes and update the first match
-        var scope  = this.Current
-        var safety = 0
-        while (scope != null) {
-            safety = safety + 1
-            if (safety > 200) { break }
-            if (scope.Has(name)) {
-                scope.Declare(name, typeName, scope.IsLet(name))
+        let lc = this.LocalNames.Count()
+        for i in 0..lc {
+            if (this.LocalNames.Get(i) == name) {
+                this.LocalTypes.Add(typeName)
                 return
             }
-            scope = scope.Parent
+        }
+        let gc = this.GlobalNames.Count()
+        for i in 0..gc {
+            if (this.GlobalNames.Get(i) == name) {
+                this.GlobalTypes.Add(typeName)
+                return
+            }
         }
     }
 }

@@ -2,7 +2,15 @@ namespace Amalgame.Compiler
 
 import Amalgame.String
 
-// Diagnostic formatter — produces readable error messages
+public class Ansi {
+    public static string Reset() { return " " }
+}
+
+public enum DiagSeverity {
+    ERROR
+    WARNING
+}
+
 public class DiagnosticFormatter {
     private UseColor: bool
 
@@ -10,39 +18,41 @@ public class DiagnosticFormatter {
         this.UseColor = false
     }
 
-    public void EnableColor(bool v) {
-        this.UseColor = v
-    }
-
-    private string Colored(string code, string s) {
-        if (!this.UseColor) { return s }
-        return "\x1b[" + code + "m" + s + "\x1b[0m"
-    }
+    public void EnableColor(bool v) { this.UseColor = v }
 
     public string FormatError(string kind, string message, string filename, int line, int col) {
         let lineStr = String_FromInt(line)
-        let colStr  = String_FromInt(col)
-        var result  = "error[" + kind + "]: " + message + "\n"
-        result = result + "  --> " + filename + ":" + lineStr + ":" + colStr + "\n"
-        result = result + " |\n"
-        return result
+        return "error[" + kind + "]: " + message
     }
 
-    public string FormatWarning(string kind, string message, string filename, int line, int col) {
-        let lineStr = String_FromInt(line)
-        let colStr  = String_FromInt(col)
-        var result  = "warning[" + kind + "]: " + message + "\n"
-        result = result + "  --> " + filename + ":" + lineStr + ":" + colStr + "\n"
-        result = result + " |\n"
-        return result
-    }
-
-    public void PrintCompileOk(string phase) {
+    public void PrintPhaseOk(string phase) {
         Console.WriteLine(phase + " OK")
     }
 
-    public void PrintCompileError(string phase, string detail) {
+    public void PrintPhaseError(string phase, string detail) {
         Console.WriteError(phase + " ERROR")
-        Console.WriteError(detail)
+    }
+
+    public void PrintCompileOk(string phase) { this.PrintPhaseOk(phase) }
+    public void PrintCompileError(string phase, string detail) { this.PrintPhaseError(phase, detail) }
+
+    public string FormatWarning(string kind, string message, string filename, int line, int col) {
+        return "warning[" + kind + "]: " + message
+    }
+
+    public string FormatNote(string kind, string message, string filename, int line, int col) {
+        return "note[" + kind + "]: " + message
+    }
+
+    public void LoadSource(string path, string text) { this.UseColor = this.UseColor }
+    public void SetQuiet(bool v) { this.UseColor = this.UseColor }
+
+    public string FormatSummary(int errorCount, int warningCount) {
+        return " "
+    }
+
+    public string FormatCompact(string severity, string kind, string message, string filename, int line, int col) {
+        let loc = filename + ":" + String_FromInt(line) + ":" + String_FromInt(col)
+        return loc + ": " + severity + "[" + kind + "]: " + message
     }
 }
