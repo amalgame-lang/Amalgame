@@ -82,6 +82,13 @@ static inline code_string String_Substring(code_string s,
     if (start < 0) start = 0;
     if (start >= slen) return "";
     if (len < 0 || start + len > slen) len = slen - start;
+    /* Fast path: single-char substring — use pre-allocated table, zero GC */
+    if (len == 1) {
+        extern char* __amc_char_table[256];
+        extern void __amc_init_char_table();
+        __amc_init_char_table();
+        return __amc_char_table[(unsigned char)s[start]];
+    }
     char* r = (char*) GC_MALLOC(len + 1);
     memcpy(r, s + start, len);
     r[len] = '\0';

@@ -65,26 +65,25 @@ public class Program {
         // --- Bundles: use a helper that avoids large string accumulation ---
         // We generate to a CGen, get lines count, write line by line
 
-        // Lexer bundle
+        // Lexer bundle — streaming
+        let out2 = "./src/amalgame/lexer/lexer_bundle_bootstrap.c"
+        File.OpenWrite(out2)
         let gen2 = new CGen()
+        gen2.SetStreaming(true)
         gen2.BeginMulti("Amalgame.Compiler")
         gen2.AddFilePass1(tokProg)
         gen2.AddFilePass1(lexProg)
         gen2.EmitSeparator()
         gen2.AddFilePass2(tokProg)
         gen2.AddFilePass2(lexProg)
-        let lines2 = gen2.GetLines()
-        let lc2    = lines2.Count()
-        let out2   = "./src/amalgame/lexer/lexer_bundle_bootstrap.c"
-        File.WriteAll(out2, "")
-        for wi in 0..lc2 {
-            let wline = lines2.Get(wi)
-            File.AppendAll(out2, wline + "\n")
-        }
-        Console.WriteLine("lexer bundle: {lc2} lines → {out2}")
+        File.CloseWrite()
+        Console.WriteLine("lexer bundle: → {out2}")
 
-        // Parser bundle
+        // Parser bundle — streaming
+        let out3 = "./src/amalgame/parser/parser_bundle_bootstrap.c"
+        File.OpenWrite(out3)
         let gen3 = new CGen()
+        gen3.SetStreaming(true)
         gen3.BeginMulti("Amalgame.Compiler")
         gen3.AddFilePass1(tokProg)
         gen3.AddFilePass1(astProg)
@@ -95,18 +94,14 @@ public class Program {
         gen3.AddFilePass2(astProg)
         gen3.AddFilePass2(lexProg)
         gen3.AddFilePass2(parProg)
-        let lines3 = gen3.GetLines()
-        let lc3    = lines3.Count()
-        let out3   = "./src/amalgame/parser/parser_bundle_bootstrap.c"
-        File.WriteAll(out3, "")
-        for wi in 0..lc3 {
-            let wline = lines3.Get(wi)
-            File.AppendAll(out3, wline + "\n")
-        }
-        Console.WriteLine("parser bundle: {lc3} lines → {out3}")
+        File.CloseWrite()
+        Console.WriteLine("parser bundle: → {out3}")
 
-        // CGen bundle
+        // CGen bundle — streaming
+        let out4 = "./src/amalgame/generator/cgen_bundle_bootstrap.c"
+        File.OpenWrite(out4)
         let gen4 = new CGen()
+        gen4.SetStreaming(true)
         gen4.BeginMulti("Amalgame.Compiler")
         gen4.AddFilePass1(tokProg)
         gen4.AddFilePass1(astProg)
@@ -119,18 +114,14 @@ public class Program {
         gen4.AddFilePass2(lexProg)
         gen4.AddFilePass2(parProg)
         gen4.AddFilePass2(cgenProg)
-        let lines4 = gen4.GetLines()
-        let lc4    = lines4.Count()
-        let out4   = "./src/amalgame/generator/cgen_bundle_bootstrap.c"
-        File.WriteAll(out4, "")
-        for wi in 0..lc4 {
-            let wline = lines4.Get(wi)
-            File.AppendAll(out4, wline + "\n")
-        }
-        Console.WriteLine("cgen bundle: {lc4} lines → {out4}")
+        File.CloseWrite()
+        Console.WriteLine("cgen bundle: → {out4}")
 
-        // Full lib bundle
+        // Full lib bundle — streaming
+        let out5 = "./src/amalgame/amc_bootstrap_lib.c"
+        File.OpenWrite(out5)
         let gen5 = new CGen()
+        gen5.SetStreaming(true)
         gen5.BeginMulti("Amalgame.Compiler")
         gen5.AddFilePass1(tokProg)
         gen5.AddFilePass1(astProg)
@@ -143,109 +134,13 @@ public class Program {
         gen5.AddFilePass2(lexProg)
         gen5.AddFilePass2(parProg)
         gen5.AddFilePass2(cgenProg)
-        let lines5 = gen5.GetLines()
-        let lc5    = lines5.Count()
-        let out5   = "./src/amalgame/amc_bootstrap_lib.c"
-        File.WriteAll(out5, "")
-        for wi in 0..lc5 {
-            let wline = lines5.Get(wi)
-            File.AppendAll(out5, wline + "\n")
-        }
-        Console.WriteLine("amc_bootstrap_lib: {lc5} lines → {out5}")
+        File.CloseWrite()
+        Console.WriteLine("amc_bootstrap_lib: → {out5}")
 
         // --- Full amc lib (bootstrap + resolver + diagnostics + main) ---
         // Parse resolver and main files
-        let symPath = "./src/amalgame/resolver/symbol.am"
-        let symSrc  = File.ReadAll(symPath)
-        let symLex  = new Lexer(symSrc, symPath)
-        let symToks = symLex.Tokenize()
-        let symPar  = new Parser(symToks)
-        let symProg = symPar.Parse()
 
-        let resPath = "./src/amalgame/resolver/resolver.am"
-        let resSrc  = File.ReadAll(resPath)
-        let resLex  = new Lexer(resSrc, resPath)
-        let resToks = resLex.Tokenize()
-        let resPar  = new Parser(resToks)
-        let resProg = resPar.Parse()
 
-        let diagPath = "./src/amalgame/diagnostics.am"
-        let diagSrc  = File.ReadAll(diagPath)
-        let diagLex  = new Lexer(diagSrc, diagPath)
-        let diagToks = diagLex.Tokenize()
-        let diagPar  = new Parser(diagToks)
-        let diagProg = diagPar.Parse()
-
-        let tcPath = "./src/amalgame/typechecker.am"
-        let tcSrc  = File.ReadAll(tcPath)
-        let tcLex  = new Lexer(tcSrc, tcPath)
-        let tcToks = tcLex.Tokenize()
-        let tcPar  = new Parser(tcToks)
-        let tcProg = tcPar.Parse()
-
-        let mainPath = "./src/amalgame/main.am"
-        let mainSrc  = File.ReadAll(mainPath)
-        let mainLex  = new Lexer(mainSrc, mainPath)
-        let mainToks = mainLex.Tokenize()
-        let mainPar  = new Parser(mainToks)
-        let mainProg = mainPar.Parse()
-
-        let gen6 = new CGen()
-        gen6.BeginMulti("Amalgame.Compiler")
-        gen6.AddFilePass1(tokProg)
-        gen6.AddFilePass1(astProg)
-        gen6.AddFilePass1(lexProg)
-        gen6.AddFilePass1(parProg)
-        gen6.AddFilePass1(cgenProg)
-        gen6.AddFilePass1(symProg)
-        gen6.AddFilePass1(resProg)
-        gen6.AddFilePass1(diagProg)
-        gen6.AddFilePass1(tcProg)
-        gen6.AddFilePass1(mainProg)
-        gen6.EmitSeparator()
-        Console.WriteLine("pass2: tok")
-        gen6.AddFilePass2(tokProg)
-        Console.WriteLine("pass2: ast")
-        gen6.AddFilePass2(astProg)
-        Console.WriteLine("pass2: lex")
-        gen6.AddFilePass2(lexProg)
-        Console.WriteLine("pass2: par")
-        gen6.AddFilePass2(parProg)
-        Console.WriteLine("pass2: cgen")
-        gen6.AddFilePass2(cgenProg)
-        Console.WriteLine("pass2: sym")
-        gen6.AddFilePass2(symProg)
-        Console.WriteLine("pass2: res")
-        gen6.AddFilePass2(resProg)
-        Console.WriteLine("pass2: diag")
-        gen6.AddFilePass2(diagProg)
-        Console.WriteLine("pass2: tc")
-        gen6.AddFilePass2(tcProg)
-        Console.WriteLine("pass2: main")
-        gen6.AddFilePass2(mainProg)
-        Console.WriteLine("pass2: all done, getting lines")
-        let lines6 = gen6.GetLines()
-        let lc6    = lines6.Count()
-        let out6   = "./src/amalgame/amc_lib.c"
-        // Batch write: accumulate 200 lines at a time to reduce syscalls
-        var batch6 = ""
-        var bcount = 0
-        File.WriteAll(out6, "")
-        for wi in 0..lc6 {
-            let wline = lines6.Get(wi)
-            batch6 = batch6 + wline + "
-"
-            bcount = bcount + 1
-            if (bcount >= 200) {
-                File.AppendAll(out6, batch6)
-                batch6 = ""
-                bcount = 0
-            }
-        }
-        if (bcount > 0) {
-            File.AppendAll(out6, batch6)
-        }
-        Console.WriteLine("amc_lib: {lc6} lines → {out6}")
         Console.WriteLine("Done!")
     }
 }

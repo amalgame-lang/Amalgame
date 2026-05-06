@@ -105,10 +105,27 @@ typedef struct {
 
 static inline AmalgameList* AmalgameList_new() {
     AmalgameList* l = (AmalgameList*) GC_MALLOC(sizeof(AmalgameList));
-    l->capacity = 8;
+    l->capacity = 64;
     l->size     = 0;
-    l->data     = (void**) GC_MALLOC(sizeof(void*) * 8);
+    l->data     = (void**) GC_MALLOC(sizeof(void*) * 64);
     return l;
+}
+
+static inline AmalgameList* AmalgameList_newWithCapacity(int cap) {
+    AmalgameList* l = (AmalgameList*) GC_MALLOC(sizeof(AmalgameList));
+    if (cap < 8) cap = 8;
+    l->capacity = cap;
+    l->size     = 0;
+    l->data     = (void**) GC_MALLOC(sizeof(void*) * cap);
+    return l;
+}
+
+static inline void AmalgameList_reserve(AmalgameList* l, int cap) {
+    if (cap <= l->capacity) return;
+    void** nd = (void**) GC_MALLOC(sizeof(void*) * cap);
+    memcpy(nd, l->data, sizeof(void*) * l->size);
+    l->data     = nd;
+    l->capacity = cap;
 }
 
 static inline void AmalgameList_add(AmalgameList* l, void* item) {
@@ -129,6 +146,62 @@ static inline void* AmalgameList_get(AmalgameList* l, int i) {
 
 static inline int AmalgameList_count(AmalgameList* l) {
     return l->size;
+}
+
+/* ── Fast single-char string lookup (no GC allocation) ── */
+/* Pre-allocated table of all 256 single-char strings */
+static char* __amc_char_table[256] = {0};
+
+static inline void __amc_init_char_table() {
+    if (__amc_char_table[(unsigned char)'a']) return;
+    for (int i = 0; i < 256; i++) {
+        char* s = (char*) GC_MALLOC_ATOMIC(2);
+        s[0] = (char)i;
+        s[1] = 0;
+        __amc_char_table[i] = s;
+    }
+}
+
+static inline code_string String_CharAt1(code_string s, int i) {
+    if (!s || i < 0) return "";
+    int len = (int)strlen(s);
+    if (i >= len) return "";
+    __amc_init_char_table();
+    return __amc_char_table[(unsigned char)s[i]];
+}
+
+/* ── Streaming file output (for fast CGen output) ── */
+static FILE* __amc_stream_file = NULL;
+
+static inline void File_OpenWrite(const char* path) {
+    if (__amc_stream_file) { fclose(__amc_stream_file); }
+    __amc_stream_file = fopen(path, "w");
+}
+
+static inline void File_StreamLine(const char* line) {
+    if (!__amc_stream_file) return;
+    if (line) { fputs(line, __amc_stream_file); }
+    fputc('\n', __amc_stream_file);
+}
+
+static inline void File_CloseWrite() {
+    if (__amc_stream_file) {
+        fclose(__amc_stream_file);
+        __amc_stream_file = NULL;
+    }
+}
+
+/* ── File write helpers ── */
+static inline void File_WriteLines(const char* path, AmalgameList* lines) {
+    FILE* f = fopen(path, "w");
+    if (!f) return;
+    int count = (int)AmalgameList_count(lines);
+    for (int i = 0; i < count; i++) {
+        const char* line = (const char*)AmalgameList_get(lines, i);
+        if (line) { fputs(line, f); }
+        fputc('\n', f);
+    }
+    fclose(f);
 }
 
 /* ── Collection helpers (lambda-compatible) ── */
