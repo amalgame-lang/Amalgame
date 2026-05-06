@@ -203,24 +203,47 @@ public class Program {
         gen6.AddFilePass1(tcProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
+        Console.WriteLine("pass2: tok")
         gen6.AddFilePass2(tokProg)
+        Console.WriteLine("pass2: ast")
         gen6.AddFilePass2(astProg)
+        Console.WriteLine("pass2: lex")
         gen6.AddFilePass2(lexProg)
+        Console.WriteLine("pass2: par")
         gen6.AddFilePass2(parProg)
+        Console.WriteLine("pass2: cgen")
         gen6.AddFilePass2(cgenProg)
+        Console.WriteLine("pass2: sym")
         gen6.AddFilePass2(symProg)
+        Console.WriteLine("pass2: res")
         gen6.AddFilePass2(resProg)
+        Console.WriteLine("pass2: diag")
         gen6.AddFilePass2(diagProg)
+        Console.WriteLine("pass2: tc")
         gen6.AddFilePass2(tcProg)
+        Console.WriteLine("pass2: main")
         gen6.AddFilePass2(mainProg)
+        Console.WriteLine("pass2: all done, getting lines")
         let lines6 = gen6.GetLines()
         let lc6    = lines6.Count()
         let out6   = "./src/amalgame/amc_lib.c"
+        // Batch write: accumulate 200 lines at a time to reduce syscalls
+        var batch6 = ""
+        var bcount = 0
         File.WriteAll(out6, "")
         for wi in 0..lc6 {
             let wline = lines6.Get(wi)
-            File.AppendAll(out6, wline + "
-")
+            batch6 = batch6 + wline + "
+"
+            bcount = bcount + 1
+            if (bcount >= 200) {
+                File.AppendAll(out6, batch6)
+                batch6 = ""
+                bcount = 0
+            }
+        }
+        if (bcount > 0) {
+            File.AppendAll(out6, batch6)
         }
         Console.WriteLine("amc_lib: {lc6} lines → {out6}")
         Console.WriteLine("Done!")

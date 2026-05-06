@@ -4,24 +4,43 @@ import Amalgame.Collections
 import Amalgame.IO
 import Amalgame.String
 
-// Bootstrap compiler — AmalgameCompiler class used by amc_main.c
+// Bootstrap compiler entry point
 public class AmalgameCompiler {
-    private Diag: DiagnosticFormatter
+    private Diag:    DiagnosticFormatter
+    private IsLib:   bool
+    private CheckOnly: bool
+    private Verbose: bool
+    private ExitCode: int
 
     public AmalgameCompiler() {
-        this.Diag = new DiagnosticFormatter()
+        this.Diag      = new DiagnosticFormatter()
+        this.IsLib     = false
+        this.CheckOnly = false
+        this.Verbose   = false
+        this.ExitCode  = 0
     }
 
-    // Compile a list of .am files to outputName.c
+    public void SetLib(bool v)       { this.IsLib     = v }
+    public void SetCheckOnly(bool v) { this.CheckOnly = v }
+    public void SetVerbose(bool v)   { this.Verbose   = v }
+    public void SetColor(bool v)     { this.Diag.EnableColor(v) }
+    public int  GetExitCode()        { return this.ExitCode }
+
+    // ── Main compile pipeline ─────────────────────────
+
     public void Run(List<string> inputFiles, string outputName) {
         let inputCount = inputFiles.Count()
         if (inputCount == 0) {
             Console.WriteError("amc: no input .am files")
+            this.ExitCode = 1
             return
         }
-        Console.WriteLine("Compiling: " + String_FromInt(inputCount) + " file(s)")
 
-        // Detect namespace from first file
+        if (this.Verbose) {
+            Console.WriteLine("Compiling: " + String_FromInt(inputCount) + " file(s)")
+        }
+
+        // ── Detect namespace from first file ──────────
         let firstPath = inputFiles.Get(0)
         let firstSrc  = File.ReadAll(firstPath)
         var nsPrefix  = "App"
@@ -31,18 +50,21 @@ public class AmalgameCompiler {
             let nlEnd  = String_IndexOf(nlRest, "\n")
             if (nlEnd > 0) {
                 let rawNs = String_Substring(nlRest, 0, nlEnd)
-                nsPrefix = String_Replace(rawNs, ".", "_")
+                nsPrefix  = String_Replace(String_Trim(rawNs), ".", "_")
             }
         }
 
+        // ── CGen init ─────────────────────────────────
         let gen = new CGen()
         gen.BeginMulti(nsPrefix)
 
-        // Parse all files and do Pass 1
+        // ── Parse all files & Pass 1 ──────────────────
         let progs = new List<AstNode>()
+        var parseOk = true
         for i in 0..inputCount {
             let path = inputFiles.Get(i)
             let src  = File.ReadAll(path)
+            this.Diag.LoadSource(path, src)
             let lex  = new Lexer(src, path)
             let toks = lex.Tokenize()
             let par  = new Parser(toks)
@@ -51,57 +73,64 @@ public class AmalgameCompiler {
             gen.AddFilePass1(prog)
         }
 
-        // Resolver pass (full: collects members + resolves scopes)
-        let resolver = new FullResolver()
-        let rprogCount = progs.Count()
-        for ri in 0..rprogCount {
+        // ── Resolver pass ─────────────────────────────
+        let resolver   = new FullResolver()
+        let progCount  = progs.Count()
+        for ri in 0..progCount {
             resolver.Programs.Add(progs.Get(ri))
         }
         resolver.ResolvePrograms()
         if (resolver.HasErrors()) {
             Console.WriteError(resolver.GetErrors())
+            this.ExitCode = 1
+            if (!this.CheckOnly) {
+                // Non-fatal: continue to catch more errors
+            }
         }
-        // TypeChecker pass
+
+        // ── TypeChecker pass ──────────────────────────
         let tc     = new TypeChecker(resolver, firstPath)
         let tcProg = progs.Get(0)
         tc.Check(tcProg)
         if (tc.HasErrors()) {
             Console.WriteError(tc.FormatErrors())
+            this.ExitCode = 1
         }
 
+        // ── Check-only mode: stop here ────────────────
+        if (this.CheckOnly) {
+            if (this.ExitCode == 0) {
+                this.Diag.PrintPhaseOk("Check")
+            }
+            return
+        }
+
+        // ── Codegen pass ──────────────────────────────
         gen.EmitSeparator()
-
-        // Pass 2
         for j in 0..inputCount {
-            let prog2 = progs.Get(j)
-            gen.AddFilePass2(prog2)
+            gen.AddFilePass2(progs.Get(j))
         }
 
-        // Write output line by line (avoids large string GC issues)
+        // ── Write output .c ───────────────────────────
         let lines     = gen.GetLines()
         let lineCount = lines.Count()
         let outC      = outputName + ".c"
         File.WriteAll(outC, "")
         for k in 0..lineCount {
-            let line = lines.Get(k)
-            File.AppendAll(outC, line + "\n")
+            File.AppendAll(outC, lines.Get(k) + "\n")
         }
-        // Check if Program.Main exists and emit C main()
+
+        // ── Emit C main() unless --lib ─────────────────
         let mainFunc = nsPrefix + "_Program_Main"
         let genSrc   = File.ReadAll(outC)
-        if (String_Contains(genSrc, mainFunc)) {
-            File.AppendAll(outC, "
-int main(int argc, char** argv) {
-")
-            File.AppendAll(outC, "    GC_INIT();
-")
-            File.AppendAll(outC, "    " + mainFunc + "((code_string*)argv);
-")
-            File.AppendAll(outC, "    return 0;
-")
-            File.AppendAll(outC, "}
-")
+        if (!this.IsLib && String_Contains(genSrc, mainFunc)) {
+            File.AppendAll(outC, "\nint main(int argc, char** argv) {\n")
+            File.AppendAll(outC, "    GC_INIT();\n")
+            File.AppendAll(outC, "    " + mainFunc + "((code_string*)argv);\n")
+            File.AppendAll(outC, "    return 0;\n")
+            File.AppendAll(outC, "}\n")
         }
+
         Console.WriteLine("Generated: " + outC + " (" + String_FromInt(lineCount) + " lines)")
         this.Diag.PrintCompileOk("Build")
     }
@@ -109,7 +138,6 @@ int main(int argc, char** argv) {
 
 public class AmcEntry {
     public static void AmcStart() {
-        // Entry point for testing — real CLI parsing is in amc_main.c
-        Console.WriteError("Use amc_bootstrap binary directly")
+        Console.WriteError("Use amc binary directly")
     }
 }
