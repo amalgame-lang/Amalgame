@@ -68,6 +68,24 @@ public enum TokenType {
     OP_DOT
     OP_DOTDOT
     OP_COALESCE
+    // Bitwise
+    OP_AMP
+    OP_PIPE
+    OP_CARET
+    OP_TILDE
+    OP_SHL
+    OP_SHR
+    // Compound assign
+    OP_PLUS_EQ
+    OP_MINUS_EQ
+    OP_STAR_EQ
+    OP_SLASH_EQ
+    OP_PERCENT_EQ
+    OP_AMP_EQ
+    OP_PIPE_EQ
+    OP_CARET_EQ
+    OP_SHL_EQ
+    OP_SHR_EQ
 
     // Delimiters
     LPAREN
