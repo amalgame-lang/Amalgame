@@ -51,8 +51,8 @@ public class AmalgameCompiler {
             gen.AddFilePass1(prog)
         }
 
-        // Resolver pass
-        let resolver = new Resolver()
+        // Resolver pass (full: collects members + resolves scopes)
+        let resolver = new FullResolver()
         let rprogCount = progs.Count()
         for ri in 0..rprogCount {
             resolver.Programs.Add(progs.Get(ri))
@@ -62,7 +62,7 @@ public class AmalgameCompiler {
             Console.WriteError(resolver.GetErrors())
         }
         // TypeChecker pass
-        let tc     = new TypeChecker(resolver.Global, firstPath)
+        let tc     = new TypeChecker(resolver, firstPath)
         let tcProg = progs.Get(0)
         tc.Check(tcProg)
         if (tc.HasErrors()) {

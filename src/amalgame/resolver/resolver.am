@@ -1,0 +1,777 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  resolver.am  —  Name resolution pass
+//
+//  Two sequential passes over the AST:
+//
+//  Pass 1 — CollectDecl
+//    Register every top-level type name (class, enum)
+//    into the global scope so forward references work.
+//    Also build the member table: className → field/method → typeName.
+//
+//  Pass 2 — ResolveDecl
+//    Walk the entire AST. Open/close scopes around each
+//    declaration and block. Validate every identifier and
+//    type reference. Register local variables.
+//
+//  The MemberTable built in Pass 1 is used by the
+//  TypeChecker to resolve member access types.
+// ═══════════════════════════════════════════════════════
+
+// ── MemberTable ───────────────────────────────────────
+// Flat parallel lists: className + "." + memberName → typeName
+public class MemberTable {
+    private Keys:   List<string>
+    private Values: List<string>
+
+    public MemberTable() {
+        this.Keys   = new List<string>()
+        this.Values = new List<string>()
+    }
+
+    public void Set(string className, string memberName, string typeName) {
+        let key   = className + "." + memberName
+        let count = this.Keys.Count()
+        for i in 0..count {
+            if (this.Keys.Get(i) == key) {
+                this.Values.Add(typeName)   // last write wins
+                return
+            }
+        }
+        this.Keys.Add(key)
+        this.Values.Add(typeName)
+    }
+
+    public string Get(string className, string memberName) {
+        let key   = className + "." + memberName
+        let count = this.Keys.Count()
+        var result = "?"
+        for i in 0..count {
+            if (this.Keys.Get(i) == key) {
+                result = this.Values.Get(i)
+            }
+        }
+        return result
+    }
+
+    public bool Has(string className, string memberName) {
+        let key   = className + "." + memberName
+        let count = this.Keys.Count()
+        for i in 0..count {
+            if (this.Keys.Get(i) == key) { return true }
+        }
+        return false
+    }
+}
+
+// ── Scope (linked list of scopes) ─────────────────────
+public class Scope {
+    public Names:  List<string>
+    public Types:  List<string>
+    public IsLets: List<bool>
+    public Label:  string
+    public Parent: Scope?
+
+    public Scope(string label) {
+        this.Names  = new List<string>()
+        this.Types  = new List<string>()
+        this.IsLets = new List<bool>()
+        this.Label  = label
+        this.Parent = null
+    }
+
+    public bool Declare(string name, string typeName, bool isLet) {
+        let count = this.Names.Count()
+        for i in 0..count {
+            if (this.Names.Get(i) == name) { return false }  // duplicate
+        }
+        this.Names.Add(name)
+        this.Types.Add(typeName)
+        this.IsLets.Add(isLet)
+        return true
+    }
+
+    public bool Has(string name) {
+        let count = this.Names.Count()
+        for i in 0..count {
+            if (this.Names.Get(i) == name) { return true }
+        }
+        return false
+    }
+
+    public string GetType(string name) {
+        let count = this.Names.Count()
+        for i in 0..count {
+            if (this.Names.Get(i) == name) { return this.Types.Get(i) }
+        }
+        return "?"
+    }
+
+    public bool IsLet(string name) {
+        let count = this.Names.Count()
+        for i in 0..count {
+            if (this.Names.Get(i) == name) { return this.IsLets.Get(i) }
+        }
+        return false
+    }
+}
+
+// ── FullResolver ──────────────────────────────────────
+public class FullResolver {
+    // Global scope (always present)
+    private Global:        Scope
+    // Current innermost scope
+    private Current:       Scope
+    // Member table: class → member → type
+    public  Members:       MemberTable
+    // Errors collected
+    private Errors:        List<string>
+    // Multiple programs to resolve together
+    public  Programs:      List<AstNode>
+    // Current class being visited
+    private CurrentClass:  string
+    // Current method return type
+    private CurrentReturn: string
+    // Loop nesting depth
+    private LoopDepth:     int
+
+    public FullResolver() {
+        this.Global        = new Scope("global")
+        this.Current       = this.Global
+        this.Members       = new MemberTable()
+        this.Errors        = new List<string>()
+        this.Programs      = new List<AstNode>()
+        this.CurrentClass  = ""
+        this.CurrentReturn = "void"
+        this.LoopDepth     = 0
+        this.RegisterBuiltins()
+    }
+
+    // ── Builtin registration ──────────────────────────
+
+    private void RegisterBuiltins() {
+        this.DeclareGlobal("int",    "type", false)
+        this.DeclareGlobal("float",  "type", false)
+        this.DeclareGlobal("double", "type", false)
+        this.DeclareGlobal("bool",   "type", false)
+        this.DeclareGlobal("string", "type", false)
+        this.DeclareGlobal("void",   "type", false)
+        this.DeclareGlobal("null",   "null", false)
+        this.DeclareGlobal("true",   "bool", false)
+        this.DeclareGlobal("false",  "bool", false)
+        this.DeclareGlobal("this",   "?",    false)
+        this.DeclareGlobal("args",   "string[]", false)
+        // Console
+        this.DeclareGlobal("Console",        "type", false)
+        this.DeclareGlobal("Console_WriteLine",  "void", false)
+        this.DeclareGlobal("Console_WriteError", "void", false)
+        this.DeclareGlobal("Console_Clear",      "void", false)
+        // File / Path
+        this.DeclareGlobal("File",           "type", false)
+        this.DeclareGlobal("Path",           "type", false)
+        this.DeclareGlobal("File_ReadAll",   "string", false)
+        this.DeclareGlobal("File_WriteAll",  "void",   false)
+        this.DeclareGlobal("File_AppendAll", "void",   false)
+        this.DeclareGlobal("File_Exists",    "bool",   false)
+        this.DeclareGlobal("File_Delete",    "bool",   false)
+        this.DeclareGlobal("File_Size",      "int",    false)
+        this.DeclareGlobal("Path_Combine",        "string", false)
+        this.DeclareGlobal("Path_GetExtension",   "string", false)
+        this.DeclareGlobal("Path_GetFilename",    "string", false)
+        this.DeclareGlobal("Path_GetDirectory",   "string", false)
+        // Math
+        this.DeclareGlobal("Math",           "type",   false)
+        this.DeclareGlobal("Math_Sqrt",      "float",  false)
+        this.DeclareGlobal("Math_Abs",       "float",  false)
+        this.DeclareGlobal("Math_AbsI",      "int",    false)
+        this.DeclareGlobal("Math_PowI",      "int",    false)
+        this.DeclareGlobal("Math_Pow",       "float",  false)
+        this.DeclareGlobal("Math_Floor",     "float",  false)
+        this.DeclareGlobal("Math_Ceil",      "float",  false)
+        this.DeclareGlobal("Math_Round",     "float",  false)
+        this.DeclareGlobal("Math_MaxI",      "int",    false)
+        this.DeclareGlobal("Math_MinI",      "int",    false)
+        this.DeclareGlobal("Math_MaxF",      "float",  false)
+        this.DeclareGlobal("Math_MinF",      "float",  false)
+        this.DeclareGlobal("Math_ClampI",    "int",    false)
+        this.DeclareGlobal("Math_Gcd",       "int",    false)
+        this.DeclareGlobal("Math_IsPrime",   "bool",   false)
+        this.DeclareGlobal("Math_IsFinite",  "bool",   false)
+        this.DeclareGlobal("Math_IsNaN",     "bool",   false)
+        this.DeclareGlobal("Math_SeedRandom","void",   false)
+        this.DeclareGlobal("Math_Random",    "float",  false)
+        this.DeclareGlobal("Math_RandomInt", "int",    false)
+        // String
+        this.DeclareGlobal("String_Length",     "int",    false)
+        this.DeclareGlobal("String_IsEmpty",    "bool",   false)
+        this.DeclareGlobal("String_Contains",   "bool",   false)
+        this.DeclareGlobal("String_StartsWith", "bool",   false)
+        this.DeclareGlobal("String_EndsWith",   "bool",   false)
+        this.DeclareGlobal("String_IndexOf",    "int",    false)
+        this.DeclareGlobal("String_Substring",  "string", false)
+        this.DeclareGlobal("String_ToUpper",    "string", false)
+        this.DeclareGlobal("String_ToLower",    "string", false)
+        this.DeclareGlobal("String_Trim",       "string", false)
+        this.DeclareGlobal("String_TrimStart",  "string", false)
+        this.DeclareGlobal("String_TrimEnd",    "string", false)
+        this.DeclareGlobal("String_Replace",    "string", false)
+        this.DeclareGlobal("String_Split",      "List<string>", false)
+        this.DeclareGlobal("String_Join",       "string", false)
+        this.DeclareGlobal("String_Repeat",     "string", false)
+        this.DeclareGlobal("String_ToInt",      "int",    false)
+        this.DeclareGlobal("String_ToFloat",    "float",  false)
+        this.DeclareGlobal("String_FromInt",    "string", false)
+        this.DeclareGlobal("String_FromFloat",  "string", false)
+        this.DeclareGlobal("String_From",       "string", false)
+        this.DeclareGlobal("String_CharAt",     "string", false)
+        // Http/Net
+        this.DeclareGlobal("Http",              "type",   false)
+        this.DeclareGlobal("Http_Get",          "?",      false)
+        this.DeclareGlobal("Http_Post",         "?",      false)
+        this.DeclareGlobal("Http_GetWithHeaders","?",     false)
+        this.DeclareGlobal("TcpServer_Listen",  "?",      false)
+        this.DeclareGlobal("TcpServer_Accept",  "?",      false)
+        this.DeclareGlobal("TcpServer_Close",   "void",   false)
+        this.DeclareGlobal("TcpClient_Connect", "?",      false)
+        this.DeclareGlobal("TcpClient_Send",    "void",   false)
+        this.DeclareGlobal("TcpClient_Receive", "string", false)
+        this.DeclareGlobal("TcpClient_Close",   "void",   false)
+        this.DeclareGlobal("TcpConn_Send",      "void",   false)
+        this.DeclareGlobal("TcpConn_Receive",   "string", false)
+        this.DeclareGlobal("TcpConn_Close",     "void",   false)
+    }
+
+    // ── Scope management ──────────────────────────────
+
+    private void PushScope(string label) {
+        let s    = new Scope(label)
+        s.Parent = this.Current
+        this.Current = s
+    }
+
+    private void PopScope() {
+        if (this.Current.Parent != null) {
+            this.Current = this.Current.Parent
+        }
+    }
+
+    private void DeclareGlobal(string name, string typeName, bool isLet) {
+        this.Global.Declare(name, typeName, isLet)
+    }
+
+    private bool DeclareCurrent(string name, string typeName, bool isLet) {
+        return this.Current.Declare(name, typeName, isLet)
+    }
+
+    private bool LookupInScopes(string name) {
+        var scope   = this.Current
+        var safety  = 0
+        while (scope != null) {
+            safety = safety + 1
+            if (safety > 200) { break }
+            if (scope.Has(name)) { return true }
+            scope = scope.Parent
+        }
+        return false
+    }
+
+    private string LookupType(string name) {
+        var scope  = this.Current
+        var safety = 0
+        while (scope != null) {
+            safety = safety + 1
+            if (safety > 200) { break }
+            if (scope.Has(name)) { return scope.GetType(name) }
+            scope = scope.Parent
+        }
+        return "?"
+    }
+
+    private bool LookupIsLet(string name) {
+        var scope  = this.Current
+        var safety = 0
+        while (scope != null) {
+            safety = safety + 1
+            if (safety > 200) { break }
+            if (scope.Has(name)) { return scope.IsLet(name) }
+            scope = scope.Parent
+        }
+        return false
+    }
+
+    // ── Error reporting ───────────────────────────────
+
+    private void Error(string msg, AstNode node) {
+        let ln  = String_FromInt(node.Line)
+        let col = String_FromInt(node.Column)
+        let err = "\nerror[resolver]: " + msg + "\n  --> " + node.Name + ":" + ln + ":" + col + "\n |\n"
+        this.Errors.Add(err)
+    }
+
+    private void ErrorMsg(string msg) {
+        this.Errors.Add("error[resolver]: " + msg + "\n")
+    }
+
+    public bool HasErrors() {
+        return this.Errors.Count() > 0
+    }
+
+    public string GetErrors() {
+        var result = ""
+        let count  = this.Errors.Count()
+        for i in 0..count {
+            result = result + this.Errors.Get(i)
+        }
+        return result
+    }
+
+    // ── Public entry points ───────────────────────────
+
+    public void ResolvePrograms() {
+        let progCount = this.Programs.Count()
+        // Pass 1: collect all top-level declarations from all files
+        for p in 0..progCount {
+            let prog = this.Programs.Get(p)
+            this.CollectProgram(prog)
+        }
+        // Pass 2: resolve bodies in all files
+        for p2 in 0..progCount {
+            let prog2 = this.Programs.Get(p2)
+            this.ResolveProgram(prog2)
+        }
+    }
+
+    // ── Pass 1: Collect ───────────────────────────────
+
+    private void CollectProgram(AstNode prog) {
+        let count = prog.Children.Count()
+        for i in 0..count {
+            this.CollectDecl(prog.Children.Get(i))
+        }
+    }
+
+    private void CollectDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            this.DeclareGlobal(decl.Name, decl.Name, false)
+            this.CollectClassMembers(decl)
+        }
+        if (k == NodeKind.ENUM_DECL) {
+            this.DeclareGlobal(decl.Name, decl.Name, false)
+            this.CollectEnumMembers(decl)
+        }
+    }
+
+    private void CollectClassMembers(AstNode cls) {
+        let name    = cls.Name
+        let kids    = cls.Children
+        let members = kids.Count()
+        for i in 0..members {
+            this.CollectClassMember(name, kids.Get(i))
+        }
+    }
+
+    private void CollectClassMember(string className, AstNode m) {
+        let mk = m.Kind
+        if (mk == NodeKind.VAR_DECL) {
+            this.Members.Set(className, m.Name, m.Str)
+        }
+        if (mk == NodeKind.METHOD_DECL) {
+            this.Members.Set(className, m.Name, m.Str)
+        }
+    }
+
+    private void CollectEnumMembers(AstNode en) {
+        let name = en.Name
+        let kids = en.Children
+        let count = kids.Count()
+        for i in 0..count {
+            this.CollectEnumMember(name, kids.Get(i))
+        }
+    }
+
+    private void CollectEnumMember(string enumName, AstNode m) {
+        this.Members.Set(enumName, m.Name, enumName)
+        let qualName = enumName + "_" + m.Name
+        this.DeclareGlobal(qualName, enumName, false)
+    }
+
+    // ── Pass 2: Resolve ───────────────────────────────
+
+    private void ResolveEnumChild(AstNode m) {
+        if (m.Kind == NodeKind.METHOD_DECL) {
+            this.ResolveMethod(m)
+        }
+    }
+
+    private void ResolveProgram(AstNode prog) {
+        let count = prog.Children.Count()
+        for i in 0..count {
+            this.ResolveDecl(prog.Children.Get(i))
+        }
+    }
+
+    private void ResolveDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            this.ResolveClass(decl)
+        }
+        if (k == NodeKind.ENUM_DECL) {
+            let enumKids = decl.Children
+            let methods  = enumKids.Count()
+            for i in 0..methods {
+                this.ResolveEnumChild(enumKids.Get(i))
+            }
+        }
+    }
+
+    private void ResolveClass(AstNode cls) {
+        let prevClass     = this.CurrentClass
+        this.CurrentClass = cls.Name
+        this.PushScope("class:" + cls.Name)
+
+        // Register "this" in class scope
+        this.DeclareCurrent("this", cls.Name, false)
+
+        // Pre-register all fields and methods in class scope
+        let classKids = cls.Children
+        let members   = classKids.Count()
+        for i in 0..members {
+            this.PreRegisterMember(classKids.Get(i))
+        }
+
+        // Resolve method bodies
+        for j in 0..members {
+            this.ResolveMember(classKids.Get(j))
+        }
+
+        this.PopScope()
+        this.CurrentClass = prevClass
+    }
+
+    private void PreRegisterMember(AstNode m) {
+        let mk = m.Kind
+        if (mk == NodeKind.VAR_DECL) {
+            this.DeclareCurrent(m.Name, m.Str, false)
+        }
+        if (mk == NodeKind.METHOD_DECL) {
+            this.DeclareCurrent(m.Name, m.Str, false)
+        }
+    }
+
+    private void ResolveMember(AstNode m) {
+        let mk = m.Kind
+        if (mk == NodeKind.METHOD_DECL) {
+            this.ResolveMethod(m)
+        }
+        if (mk == NodeKind.VAR_DECL) {
+            if (m.Left != null) { this.ResolveExpr(m.Left) }
+        }
+    }
+
+    private void ResolveMethod(AstNode method) {
+        let prevReturn     = this.CurrentReturn
+        this.CurrentReturn = method.Str
+        this.PushScope("method:" + method.Name)
+
+        // Register params
+        let params = method.Params.Count()
+        for i in 0..params {
+            let p = method.Params.Get(i)
+            this.DeclareCurrent(p.Name, p.Str, true)
+        }
+
+        // Resolve body
+        if (method.Body != null) {
+            this.ResolveBlock(method.Body)
+        }
+
+        this.PopScope()
+        this.CurrentReturn = prevReturn
+    }
+
+    private void ResolveBlock(AstNode block) {
+        this.PushScope("block")
+        let stmts = block.Children.Count()
+        for i in 0..stmts {
+            this.ResolveStmt(block.Children.Get(i))
+        }
+        this.PopScope()
+    }
+
+    private void ResolveStmt(AstNode stmt) {
+        if (stmt == null) { return }
+        let k = stmt.Kind
+
+        if (k == NodeKind.VAR_DECL) {
+            // Resolve RHS first (can't see variable being declared)
+            if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+            let isLet = stmt.Flag == false   // Flag = isMut; let = not mutable
+            this.DeclareCurrent(stmt.Name, stmt.Str, isLet)
+            return
+        }
+        if (k == NodeKind.RETURN_STMT) {
+            if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+            return
+        }
+        if (k == NodeKind.IF_STMT) {
+            this.ResolveIf(stmt)
+            return
+        }
+        if (k == NodeKind.WHILE_STMT) {
+            if (stmt.Cond != null) { this.ResolveExpr(stmt.Cond) }
+            this.LoopDepth = this.LoopDepth + 1
+            if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+            this.LoopDepth = this.LoopDepth - 1
+            return
+        }
+        if (k == NodeKind.FOR_IN_STMT) {
+            this.ResolveForIn(stmt)
+            return
+        }
+        if (k == NodeKind.BREAK_STMT) {
+            if (this.LoopDepth == 0) { this.ErrorMsg("'break' outside loop") }
+            return
+        }
+        if (k == NodeKind.CONTINUE_STMT) {
+            if (this.LoopDepth == 0) { this.ErrorMsg("'continue' outside loop") }
+            return
+        }
+        if (k == NodeKind.ASSIGN) {
+            this.ResolveAssign(stmt)
+            return
+        }
+        // Match
+        if (stmt.Name == "__match__") {
+            this.ResolveMatch(stmt)
+            return
+        }
+        // Block (e.g. try/catch emitted as nested block)
+        if (k == NodeKind.BLOCK) {
+            this.ResolveBlock(stmt)
+            return
+        }
+        // Expression statement
+        this.ResolveExpr(stmt)
+    }
+
+    private void ResolveIf(AstNode stmt) {
+        if (stmt.Cond != null) { this.ResolveExpr(stmt.Cond) }
+        if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+        if (stmt.Else != null) {
+            this.ResolveElseBranch(stmt.Else)
+        }
+    }
+
+    private void ResolveElseBranch(AstNode branch) {
+        if (branch == null) { return }
+        let bk = branch.Kind
+        if (bk == NodeKind.IF_STMT) {
+            this.ResolveIf(branch)
+        } else {
+            this.ResolveBlock(branch)
+        }
+    }
+
+    private void ResolveForIn(AstNode stmt) {
+        // stmt.Left = iterable, stmt.Name = loop var
+        if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+        this.PushScope("for-in")
+        // Infer element type from iterable
+        var elemType = "?"
+        if (stmt.Left != null) {
+            let colType = this.InferExprType(stmt.Left)
+            elemType    = this.CollectionElemType(colType)
+        }
+        this.DeclareCurrent(stmt.Name, elemType, true)
+        this.LoopDepth = this.LoopDepth + 1
+        if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+        this.LoopDepth = this.LoopDepth - 1
+        this.PopScope()
+    }
+
+    private void ResolveAssign(AstNode stmt) {
+        if (stmt.Left  != null) { this.ResolveExpr(stmt.Left) }
+        if (stmt.Right != null) { this.ResolveExpr(stmt.Right) }
+        // Immutability check
+        if (stmt.Left != null && stmt.Left.Kind == NodeKind.IDENTIFIER) {
+            let varName = stmt.Left.Name
+            if (this.LookupIsLet(varName)) {
+                this.ErrorMsg("Cannot assign to immutable binding '" + varName + "'")
+            }
+        }
+    }
+
+    private void ResolveMatch(AstNode stmt) {
+        if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+        let armCount = stmt.Children.Count()
+        for i in 0..armCount {
+            this.ResolveMatchArm(stmt.Children.Get(i))
+        }
+    }
+
+    private void ResolveMatchArm(AstNode arm) {
+        if (arm == null) { return }
+        this.PushScope("match-arm")
+        // arm.Left = pattern, arm.Right = body
+        if (arm.Left  != null) { this.ResolveExpr(arm.Left) }
+        let armBody = arm.Right
+        if (armBody != null) {
+            this.ResolveArmBody(armBody)
+        }
+        this.PopScope()
+    }
+
+    private void ResolveArmBody(AstNode body) {
+        let bk = body.Kind
+        if (bk == NodeKind.BLOCK) {
+            let kids  = body.Children
+            let count = kids.Count()
+            for i in 0..count {
+                this.ResolveStmt(kids.Get(i))
+            }
+        } else {
+            this.ResolveStmt(body)
+        }
+    }
+
+    // ── Expression resolver ───────────────────────────
+
+    private void ResolveExpr(AstNode expr) {
+        if (expr == null) { return }
+        let k = expr.Kind
+
+        if (k == NodeKind.IDENTIFIER) {
+            if (!this.LookupInScopes(expr.Name)) {
+                this.ErrorMsg("Unknown symbol '" + expr.Name + "'")
+            }
+            return
+        }
+        if (k == NodeKind.BINARY) {
+            if (expr.Left  != null) { this.ResolveExpr(expr.Left) }
+            if (expr.Right != null) { this.ResolveExpr(expr.Right) }
+            return
+        }
+        if (k == NodeKind.UNARY) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            return
+        }
+        if (k == NodeKind.MEMBER) {
+            // Only resolve the target; member name validated by TypeChecker
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            return
+        }
+        if (k == NodeKind.CALL) {
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                this.ResolveExpr(expr.Args.Get(i))
+            }
+            return
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                this.ResolveExpr(expr.Args.Get(i))
+            }
+            return
+        }
+        if (k == NodeKind.INDEX_EXPR) {
+            if (expr.Left  != null) { this.ResolveExpr(expr.Left) }
+            if (expr.Right != null) { this.ResolveExpr(expr.Right) }
+            return
+        }
+        if (k == NodeKind.ASSIGN) {
+            this.ResolveAssign(expr)
+            return
+        }
+        if (k == NodeKind.IF_STMT) {
+            // if-expression
+            if (expr.Cond != null) { this.ResolveExpr(expr.Cond) }
+            if (expr.Body != null) { this.ResolveBlock(expr.Body) }
+            if (expr.Else != null) { this.ResolveElseBranch(expr.Else) }
+            return
+        }
+        // Literals, this, null — always valid
+    }
+
+    // ── Type inference (lightweight, for for-in) ──────
+
+    private string InferExprType(AstNode expr) {
+        if (expr == null) { return "?" }
+        let k = expr.Kind
+        if (k == NodeKind.IDENTIFIER) { return this.LookupType(expr.Name) }
+        if (k == NodeKind.LITERAL_INT)    { return "int" }
+        if (k == NodeKind.LITERAL_FLOAT)  { return "float" }
+        if (k == NodeKind.LITERAL_STRING) { return "string" }
+        if (k == NodeKind.LITERAL_BOOL)   { return "bool" }
+        if (k == NodeKind.BINARY && expr.Str == "..") { return "range" }
+        if (k == NodeKind.NEW_EXPR) { return expr.Name }
+        if (k == NodeKind.MEMBER) {
+            if (expr.Left != null) {
+                let targetType = this.InferExprType(expr.Left)
+                return this.Members.Get(targetType, expr.Name)
+            }
+        }
+        return "?"
+    }
+
+    private string CollectionElemType(string typeKey) {
+        if (typeKey == "range" || typeKey == "int") { return "int" }
+        if (String_StartsWith(typeKey, "List<") && String_EndsWith(typeKey, ">")) {
+            return String_Substring(typeKey, 5, String_Length(typeKey) - 6)
+        }
+        if (String_StartsWith(typeKey, "Set<") && String_EndsWith(typeKey, ">")) {
+            return String_Substring(typeKey, 4, String_Length(typeKey) - 5)
+        }
+        if (String_EndsWith(typeKey, "[]")) {
+            return String_Substring(typeKey, 0, String_Length(typeKey) - 2)
+        }
+        return "?"
+    }
+
+    // ── Public query API (used by TypeChecker) ────────
+
+    public string GetMemberType(string className, string memberName) {
+        return this.Members.Get(className, memberName)
+    }
+
+    public bool HasMember(string className, string memberName) {
+        return this.Members.Has(className, memberName)
+    }
+
+    public string GetVarType(string name) {
+        return this.LookupType(name)
+    }
+
+    // ── SymbolTable-compatible API for TypeChecker ────
+    // Allows TypeChecker to call resolver.Global-style methods
+    // without needing a separate SymbolTable object.
+
+    public bool HasSymbol(string name) {
+        return this.LookupInScopes(name)
+    }
+
+    public string GetTypeName(string name) {
+        return this.LookupType(name)
+    }
+
+    public void SetTypeName(string name, string typeName) {
+        // Walk scopes and update the first match
+        var scope  = this.Current
+        var safety = 0
+        while (scope != null) {
+            safety = safety + 1
+            if (safety > 200) { break }
+            if (scope.Has(name)) {
+                scope.Declare(name, typeName, scope.IsLet(name))
+                return
+            }
+            scope = scope.Parent
+        }
+    }
+}

@@ -69,9 +69,9 @@ public class TypeChecker {
     // Filename for error messages
     private Filename:      string
     // Symbol table (from Resolver)
-    private Symbols:       SymbolTable
+    private Symbols:       FullResolver
 
-    public TypeChecker(SymbolTable symbols, string filename) {
+    public TypeChecker(FullResolver symbols, string filename) {
         this.ExprTypeKeys  = new List<string>()
         this.ExprTypeVals  = new List<string>()
         this.CurrentReturn = "void"
