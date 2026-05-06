@@ -6,15 +6,17 @@ import Amalgame.String
 // Sentinel node for "no result"
 public class Parser {
     private Tokens:     List<Token>
+    private TokenCount: int
     private Pos:        int
     private Errors:     List<string>
     private ParenDepth: int
 
     public Parser(List<Token> tokens) {
-        this.Tokens     = tokens
-        this.Pos        = 0
-        this.Errors     = new List<string>()
-        this.ParenDepth = 0
+        this.Tokens      = tokens
+        this.TokenCount  = tokens.Count()
+        this.Pos         = 0
+        this.Errors      = new List<string>()
+        this.ParenDepth  = 0
     }
 
     // ── Public API ────────────────────────────────────
@@ -73,7 +75,7 @@ public class Parser {
     // ── Token navigation ──────────────────────────────
 
     private Token Current() {
-        let count = this.Tokens.Count()
+        let count = this.TokenCount
         if (this.Pos >= count) {
             return this.Tokens.Get(count - 1)
         }
@@ -82,7 +84,7 @@ public class Parser {
 
     private Token Peek(int offset) {
         let i = this.Pos + offset
-        let count = this.Tokens.Count()
+        let count = this.TokenCount
         if (i >= count) { return this.Tokens.Get(count - 1) }
         return this.Tokens.Get(i)
     }
@@ -94,12 +96,14 @@ public class Parser {
     }
 
     private bool IsEnd() {
-        let tok = this.Current()
+        if (this.Pos >= this.TokenCount) { return true }
+        let tok = this.Tokens.Get(this.Pos)
         return tok.Type == TokenType.EOF
     }
 
     private bool CheckType(TokenType t) {
-        let tok = this.Current()
+        if (this.Pos >= this.TokenCount) { return false }
+        let tok = this.Tokens.Get(this.Pos)
         return tok.Type == t
     }
 
@@ -109,7 +113,8 @@ public class Parser {
     }
 
     private bool CheckValue(string v) {
-        let tok = this.Current()
+        if (this.Pos >= this.TokenCount) { return false }
+        let tok = this.Tokens.Get(this.Pos)
         return tok.Value == v
     }
 

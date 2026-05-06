@@ -5,16 +5,24 @@ import Amalgame.String
 
 // ── C Code Emitter ────────────────────────────────────
 public class Emitter {
-    private Lines:  List<string>
-    private Indent: int
+    private Lines:    List<string>
+    private Indent:   int
+    private Streaming: bool   // write directly to file via File_StreamLine
 
     public Emitter() {
-        this.Lines  = new List<string>()
-        this.Indent = 0
+        this.Lines     = new List<string>()
+        this.Indent    = 0
+        this.Streaming = false
     }
 
+    public void SetStreaming(bool v) { this.Streaming = v }
+
     public void Emit(string text) {
-        this.Lines.Add(text)
+        if (this.Streaming) {
+            File.StreamLine(text)
+        } else {
+            this.Lines.Add(text)
+        }
     }
 
     public void EmitLine(string text) {
@@ -24,11 +32,19 @@ public class Emitter {
             line = line + "    "
         }
         line = line + text
-        this.Lines.Add(line)
+        if (this.Streaming) {
+            File.StreamLine(line)
+        } else {
+            this.Lines.Add(line)
+        }
     }
 
     public void EmitBlank() {
-        this.Lines.Add("")
+        if (this.Streaming) {
+            File.StreamLine("")
+        } else {
+            this.Lines.Add("")
+        }
     }
 
     public void Indent_() {
@@ -52,7 +68,7 @@ public class Emitter {
 
 // ── C Generator ───────────────────────────────────────
 public class CGen {
-    private Out:            Emitter
+    public  Out:            Emitter
     private NsPrefix:       string
     // Type inference: two parallel lists — var name → C type
     private LocalTypeNames: List<string>
@@ -117,6 +133,10 @@ public class CGen {
     }
 
     // Multi-file support: call BeginMulti() once, then AddFile() per file, then FinishMulti()
+    public void SetStreaming(bool v) {
+        this.Out.SetStreaming(v)
+    }
+
     public void BeginMulti(string ns) {
         if (String_Length(ns) > 0) {
             this.NsPrefix = String_Replace(ns, ".", "_")
@@ -424,6 +444,7 @@ public class CGen {
                 if (String_StartsWith(calleeStr, "AmalgameList_count")) { return "i64" }
                 // File stdlib return types
                 if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete") { return "code_bool" }
+                if (calleeStr == "File_WriteLines" || calleeStr == "File_OpenWrite" || calleeStr == "File_StreamLine" || calleeStr == "File_CloseWrite") { return "void" }
                 if (calleeStr == "File_WriteLines") { return "void" }
                 if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
                 // Net stdlib return types
@@ -443,6 +464,7 @@ public class CGen {
                     // Collection method return types based on method name
                     if (mname2 == "Count" || mname2 == "Size") { return "i64" }
                     if (mname2 == "Clear") { return "void" }
+                    if (mname2 == "Reserve") { return "void" }
                     if (mname2 == "IsEmpty" || mname2 == "Has" || mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add") {
                         // Check object type to determine correct return
                         if (expr.Left.Left != null && expr.Left.Left.Kind == NodeKind.IDENTIFIER) {
@@ -1837,7 +1859,7 @@ public class CGen {
             }
         }
 
-        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "Clear") { return "" }
+        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "Clear" && mname != "Reserve") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -1890,6 +1912,10 @@ public class CGen {
         // Emit the appropriate C call
         if (mname == "Clear") {
             return "AmalgameList_clear(" + listExpr + ")"
+        }
+        if (mname == "Reserve") {
+            let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
+            return "AmalgameList_reserve(" + listExpr + ", " + arg0 + ")"
         }
         if (mname == "Count") {
             return "AmalgameList_count(" + listExpr + ")"
