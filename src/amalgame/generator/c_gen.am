@@ -998,10 +998,18 @@ public class CGen {
                     // Register return type for inference
                     let retC = this.TypeToC(m.Str)
                     this.MethodRetSet(name, m.Name, retC)
+                    // Decorators (Str2) → C attributes on the prototype.
+                    var attrs = ""
+                    let decos = m.Str2
+                    if (String_Length(decos) > 0) {
+                        if (String_Contains("," + decos + ",", ",deprecated,")) {
+                            attrs = " __attribute__((deprecated))"
+                        }
+                    }
                     if (isPublic) {
-                        this.Out.EmitLine(sig + ";")
+                        this.Out.EmitLine(sig + attrs + ";")
                     } else {
-                        this.Out.EmitLine("static " + sig + ";")
+                        this.Out.EmitLine("static " + sig + attrs + ";")
                     }
                 }
             }
@@ -1162,6 +1170,13 @@ public class CGen {
         let isPublic = method.Flag
         var prefix   = ""
         if (!isPublic) { prefix = "static " }
+        // Decorators (comma-separated in Str2) → C attributes / inlining hints.
+        let decos = method.Str2
+        if (String_Length(decos) > 0) {
+            if (String_Contains("," + decos + ",", ",inline,")) {
+                prefix = prefix + "inline "
+            }
+        }
         // Track current return type for tuple returns
         if (String_StartsWith(method.Str, "(")) {
             this.CurrentRetType = this.TupleStructName(method.Str)

@@ -10,13 +10,39 @@ public class Parser {
     private Pos:        int
     private Errors:     List<string>
     private ParenDepth: int
+    // Comma-separated decorator names (`@inline @deprecated`) parsed before
+    // the next method/class. Consumed (and cleared) when that decl is built.
+    private PendingDecorators: string
 
     public Parser(List<Token> tokens) {
-        this.Tokens      = tokens
-        this.TokenCount  = tokens.Count()
-        this.Pos         = 0
-        this.Errors      = new List<string>()
-        this.ParenDepth  = 0
+        this.Tokens             = tokens
+        this.TokenCount         = tokens.Count()
+        this.Pos                = 0
+        this.Errors             = new List<string>()
+        this.ParenDepth         = 0
+        this.PendingDecorators  = ""
+    }
+
+    // Parse zero-or-more `@<name>` annotations into a comma-separated list
+    // (no parentheses for now — flag-style decorators only).
+    private void ParseDecoratorList() {
+        while (this.CheckValue("@")) {
+            this.Advance()
+            if (this.CheckType(TokenType.IDENTIFIER)) {
+                let nameTok = this.Advance()
+                if (String_Length(this.PendingDecorators) > 0) {
+                    this.PendingDecorators = this.PendingDecorators + ","
+                }
+                this.PendingDecorators = this.PendingDecorators + nameTok.Value
+            }
+            this.SkipNewlines()
+        }
+    }
+
+    private string TakeDecorators() {
+        let d = this.PendingDecorators
+        this.PendingDecorators = ""
+        return d
     }
 
     // ── Public API ────────────────────────────────────
@@ -328,6 +354,10 @@ public class Parser {
         if (this.IsEnd() || this.CheckValue("}")) {
             return this.Unknown()
         }
+        // Optional decorators: `@inline @deprecated public string Foo() {...}`.
+        // The names are stashed in PendingDecorators and the actual decl
+        // (ParseMethod / ParseField) consumes them via TakeDecorators().
+        this.ParseDecoratorList()
         var isPublic = false
         var isStatic = false
 
@@ -418,6 +448,8 @@ public class Parser {
         let method = Ast.Method(nameTok.Value, retType, line, col)
         method.Flag  = isPublic
         method.Flag2 = isStatic
+        // Decorators stashed by ParseMember/ParseDecoratorList — store on Str2.
+        method.Str2  = this.TakeDecorators()
         let mname = nameTok.Value
 
         if (this.CheckValue("<")) {
