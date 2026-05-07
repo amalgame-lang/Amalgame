@@ -422,9 +422,11 @@ public class Parser {
         }
 
         this.Expect("(")
+        this.SkipNewlines()
         while (!this.IsEnd() && !this.CheckValue(")")) {
             if (this.CheckValue(",")) {
                 this.Advance()
+                this.SkipNewlines()
                 continue
             }
             let p = this.ParseParam()
@@ -432,6 +434,7 @@ public class Parser {
             if (pk != NodeKind.IDENTIFIER) {
                 method.Params.Add(p)
             }
+            this.SkipNewlines()
         }
         this.Expect(")")
 
@@ -935,7 +938,7 @@ public class Parser {
         // Only treat as unary if the token is actually an operator, not a STRING literal
         let isUnaryNot   = this.CheckValue("!") && !this.CheckType(TokenType.STRING)
         let isUnaryMinus = this.CheckValue("-") && !this.CheckType(TokenType.STRING)
-        let isUnaryTilde = this.CheckValue("~")
+        let isUnaryTilde = this.CheckValue("~") && !this.CheckType(TokenType.STRING)
         if (isUnaryNot || isUnaryMinus || isUnaryTilde) {
             let tok = this.Advance()
             let operand = this.ParseUnary()

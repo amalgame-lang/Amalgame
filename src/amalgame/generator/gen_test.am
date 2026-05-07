@@ -137,9 +137,80 @@ public class Program {
         File.CloseWrite()
         Console.WriteLine("amc_bootstrap_lib: → {out5}")
 
-        // --- Full amc lib (bootstrap + resolver + diagnostics + main) ---
-        // Parse resolver and main files
+        // --- Full amc lib (streaming) ---
+        Console.WriteError("parsing extra files...")
+        let symPath  = "./src/amalgame/resolver/symbol.am"
+        let symSrc   = File.ReadAll(symPath)
+        let symLex   = new Lexer(symSrc, symPath)
+        let symToks  = symLex.Tokenize()
+        let symPar   = new Parser(symToks)
+        let symProg  = symPar.Parse()
+        Console.WriteError("parsed: symbol.am")
 
+        let rvrPath  = "./src/amalgame/resolver/resolver.am"
+        let rvrSrc   = File.ReadAll(rvrPath)
+        let rvrLex   = new Lexer(rvrSrc, rvrPath)
+        let rvrToks  = rvrLex.Tokenize()
+        let rvrPar   = new Parser(rvrToks)
+        let rvrProg  = rvrPar.Parse()
+        Console.WriteError("parsed: resolver.am")
+
+        let diagPath = "./src/amalgame/diagnostics.am"
+        let diagSrc  = File.ReadAll(diagPath)
+        let diagLex  = new Lexer(diagSrc, diagPath)
+        let diagToks = diagLex.Tokenize()
+        let diagPar  = new Parser(diagToks)
+        let diagProg = diagPar.Parse()
+        Console.WriteError("parsed: diagnostics.am")
+
+        let tckPath  = "./src/amalgame/typechecker.am"
+        let tckSrc   = File.ReadAll(tckPath)
+        let tckLex   = new Lexer(tckSrc, tckPath)
+        let tckToks  = tckLex.Tokenize()
+        let tckPar   = new Parser(tckToks)
+        let tckProg  = tckPar.Parse()
+        Console.WriteError("parsed: typechecker.am")
+
+        let mainPath = "./src/amalgame/main.am"
+        let mainSrc  = File.ReadAll(mainPath)
+        let mainLex  = new Lexer(mainSrc, mainPath)
+        let mainToks = mainLex.Tokenize()
+        let mainPar  = new Parser(mainToks)
+        let mainProg = mainPar.Parse()
+        Console.WriteError("parsed: main.am")
+
+        Console.WriteError("gen6: starting")
+        Console.WriteError("parsing done, generating...")
+        let out6 = "./src/amalgame/amc_lib.c"
+        File.OpenWrite(out6)
+        let gen6 = new CGen()
+        gen6.SetStreaming(true)
+        gen6.BeginMulti("Amalgame.Compiler")
+        gen6.AddFilePass1(tokProg)
+        gen6.AddFilePass1(astProg)
+        gen6.AddFilePass1(lexProg)
+        gen6.AddFilePass1(parProg)
+        gen6.AddFilePass1(cgenProg)
+        gen6.AddFilePass1(symProg)
+        gen6.AddFilePass1(rvrProg)
+        gen6.AddFilePass1(diagProg)
+        gen6.AddFilePass1(tckProg)
+        gen6.AddFilePass1(mainProg)
+        gen6.EmitSeparator()
+        Console.WriteError("gen6: pass1 done, starting pass2")
+        gen6.AddFilePass2(tokProg)
+        gen6.AddFilePass2(astProg)
+        gen6.AddFilePass2(lexProg)
+        gen6.AddFilePass2(parProg)
+        gen6.AddFilePass2(cgenProg)
+        gen6.AddFilePass2(symProg)
+        gen6.AddFilePass2(rvrProg)
+        gen6.AddFilePass2(diagProg)
+        gen6.AddFilePass2(tckProg)
+        gen6.AddFilePass2(mainProg)
+        Console.WriteError("gen6: pass2 done")
+        File.CloseWrite()
+        Console.WriteLine("amc_lib: → {out6}")
 
         Console.WriteLine("Done!")
     }

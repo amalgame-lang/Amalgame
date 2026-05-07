@@ -26,6 +26,7 @@ typedef struct _Amalgame_Compiler_MemberTable Amalgame_Compiler_MemberTable;
 typedef struct _Amalgame_Compiler_FullResolver Amalgame_Compiler_FullResolver;
 typedef struct _Amalgame_Compiler_Ansi Amalgame_Compiler_Ansi;
 typedef enum _Amalgame_Compiler_DiagSeverity Amalgame_Compiler_DiagSeverity;
+typedef struct _Amalgame_Compiler_Diagnostic Amalgame_Compiler_Diagnostic;
 typedef struct _Amalgame_Compiler_DiagnosticFormatter Amalgame_Compiler_DiagnosticFormatter;
 typedef struct _Amalgame_Compiler_TypeError Amalgame_Compiler_TypeError;
 typedef struct _Amalgame_Compiler_TypeCheckResult Amalgame_Compiler_TypeCheckResult;
@@ -95,6 +96,22 @@ enum _Amalgame_Compiler_TokenType {
     Amalgame_Compiler_TokenType_OP_DOT,
     Amalgame_Compiler_TokenType_OP_DOTDOT,
     Amalgame_Compiler_TokenType_OP_COALESCE,
+    Amalgame_Compiler_TokenType_OP_AMP,
+    Amalgame_Compiler_TokenType_OP_PIPE,
+    Amalgame_Compiler_TokenType_OP_CARET,
+    Amalgame_Compiler_TokenType_OP_TILDE,
+    Amalgame_Compiler_TokenType_OP_SHL,
+    Amalgame_Compiler_TokenType_OP_SHR,
+    Amalgame_Compiler_TokenType_OP_PLUS_EQ,
+    Amalgame_Compiler_TokenType_OP_MINUS_EQ,
+    Amalgame_Compiler_TokenType_OP_STAR_EQ,
+    Amalgame_Compiler_TokenType_OP_SLASH_EQ,
+    Amalgame_Compiler_TokenType_OP_PERCENT_EQ,
+    Amalgame_Compiler_TokenType_OP_AMP_EQ,
+    Amalgame_Compiler_TokenType_OP_PIPE_EQ,
+    Amalgame_Compiler_TokenType_OP_CARET_EQ,
+    Amalgame_Compiler_TokenType_OP_SHL_EQ,
+    Amalgame_Compiler_TokenType_OP_SHR_EQ,
     Amalgame_Compiler_TokenType_LPAREN,
     Amalgame_Compiler_TokenType_RPAREN,
     Amalgame_Compiler_TokenType_LBRACE,
@@ -730,9 +747,19 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
     code_string __attribute__((unused)) c = Amalgame_Compiler_Lexer_Advance(self);
     code_string __attribute__((unused)) c2 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
     if (code_string_equals(c, "+")) {
-        Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PLUS, "+");
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PLUS_EQ, "+=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PLUS, "+");
+        }
     } else if (code_string_equals(c, "%")) {
-        Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PERCENT, "%");
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PERCENT_EQ, "%=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PERCENT, "%");
+        }
     } else if (code_string_equals(c, "@")) {
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_AT, "@");
     } else if (code_string_equals(c, "(")) {
@@ -752,16 +779,29 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
     } else if (code_string_equals(c, ";")) {
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_SEMICOLON, ";");
     } else if (code_string_equals(c, "/")) {
-        Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SLASH, "/");
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SLASH_EQ, "/=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SLASH, "/");
+        }
     } else if (code_string_equals(c, "-")) {
         if (code_string_equals(c2, ">")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_THIN_ARROW, "->");
+        } else if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_MINUS_EQ, "-=");
         } else {
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_MINUS, "-");
         }
     } else if (code_string_equals(c, "*")) {
-        Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR, "*");
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR_EQ, "*=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR, "*");
+        }
     } else if (code_string_equals(c, "=")) {
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
@@ -783,6 +823,15 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_LTE, "<=");
+        } else if (code_string_equals(c2, "<")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            code_string __attribute__((unused)) c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
+            if (code_string_equals(c3, "=")) {
+                Amalgame_Compiler_Lexer_Advance(self);
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHL_EQ, "<<=");
+            } else {
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHL, "<<");
+            }
         } else {
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_LT, "<");
         }
@@ -790,6 +839,15 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_GTE, ">=");
+        } else if (code_string_equals(c2, ">")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            code_string __attribute__((unused)) c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
+            if (code_string_equals(c3, "=")) {
+                Amalgame_Compiler_Lexer_Advance(self);
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHR_EQ, ">>=");
+            } else {
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHR, ">>");
+            }
         } else {
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_GT, ">");
         }
@@ -797,11 +855,21 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
         if (code_string_equals(c2, "&")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AND, "&&");
+        } else if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AMP_EQ, "&=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AMP, "&");
         }
     } else if (code_string_equals(c, "|")) {
         if (code_string_equals(c2, "|")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_OR, "||");
+        } else if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PIPE_EQ, "|=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PIPE, "|");
         }
     } else if (code_string_equals(c, ".")) {
         if (code_string_equals(c2, ".")) {
@@ -822,6 +890,15 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_COALESCE, "??");
         }
+    } else if (code_string_equals(c, "~")) {
+        Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_TILDE, "~");
+    } else if (code_string_equals(c, "^")) {
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_CARET_EQ, "^=");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_CARET, "^");
+        }
     } else {
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_UNKNOWN, c);
     }
@@ -829,6 +906,7 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
 
 struct _Amalgame_Compiler_Parser {
     AmalgameList* Tokens;
+    i64 TokenCount;
     i64 Pos;
     AmalgameList* Errors;
     i64 ParenDepth;
@@ -869,9 +947,13 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseInterface(Amalga
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseExpr(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseAssign(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseOr(Amalgame_Compiler_Parser* self);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBitwiseOr(Amalgame_Compiler_Parser* self);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBitwiseXor(Amalgame_Compiler_Parser* self);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBitwiseAnd(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseAnd(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseEquality(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseRelational(Amalgame_Compiler_Parser* self);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseShift(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseAdd(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMul(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseUnary(Amalgame_Compiler_Parser* self);
@@ -885,6 +967,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseNew(Amalgame_Com
 Amalgame_Compiler_Parser* Amalgame_Compiler_Parser_new(AmalgameList* tokens) {
     Amalgame_Compiler_Parser* self = (Amalgame_Compiler_Parser*) GC_MALLOC(sizeof(Amalgame_Compiler_Parser));
     self->Tokens = tokens;
+    self->TokenCount = AmalgameList_count(tokens);
     self->Pos = 0;
     self->Errors = AmalgameList_new();
     self->ParenDepth = 0;
@@ -948,7 +1031,7 @@ code_string Amalgame_Compiler_Parser_GetErrors(Amalgame_Compiler_Parser* self) {
 
 static Amalgame_Compiler_Token* Amalgame_Compiler_Parser_Current(Amalgame_Compiler_Parser* self) {
     (void)self;
-    i64 __attribute__((unused)) count = AmalgameList_count(self->Tokens);
+    i64 __attribute__((unused)) count = self->TokenCount;
     if (self->Pos >= count) {
         return (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, count - 1);
     }
@@ -959,7 +1042,7 @@ static Amalgame_Compiler_Token* Amalgame_Compiler_Parser_Peek(Amalgame_Compiler_
     (void)self;
     (void)offset;
     i64 __attribute__((unused)) i = self->Pos + offset;
-    i64 __attribute__((unused)) count = AmalgameList_count(self->Tokens);
+    i64 __attribute__((unused)) count = self->TokenCount;
     if (i >= count) {
         return (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, count - 1);
     }
@@ -975,14 +1058,20 @@ static Amalgame_Compiler_Token* Amalgame_Compiler_Parser_Advance(Amalgame_Compil
 
 static code_bool Amalgame_Compiler_Parser_IsEnd(Amalgame_Compiler_Parser* self) {
     (void)self;
-    Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Current(self);
+    if (self->Pos >= self->TokenCount) {
+        return 1;
+    }
+    Amalgame_Compiler_Token* __attribute__((unused)) tok = (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, self->Pos);
     return tok->Type == Amalgame_Compiler_TokenType_EOF;
 }
 
 static code_bool Amalgame_Compiler_Parser_CheckType(Amalgame_Compiler_Parser* self, Amalgame_Compiler_TokenType t) {
     (void)self;
     (void)t;
-    Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Current(self);
+    if (self->Pos >= self->TokenCount) {
+        return 0;
+    }
+    Amalgame_Compiler_Token* __attribute__((unused)) tok = (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, self->Pos);
     return tok->Type == t;
 }
 
@@ -996,7 +1085,10 @@ static code_bool Amalgame_Compiler_Parser_CheckKw(Amalgame_Compiler_Parser* self
 static code_bool Amalgame_Compiler_Parser_CheckValue(Amalgame_Compiler_Parser* self, code_string v) {
     (void)self;
     (void)v;
-    Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Current(self);
+    if (self->Pos >= self->TokenCount) {
+        return 0;
+    }
+    Amalgame_Compiler_Token* __attribute__((unused)) tok = (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, self->Pos);
     return code_string_equals(tok->Value, v);
 }
 
@@ -1317,9 +1409,11 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMethod(Amalgame_
         }
     }
     Amalgame_Compiler_Parser_Expect(self, "(");
+    Amalgame_Compiler_Parser_SkipNewlines(self);
     while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, ")")) {
         if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
             Amalgame_Compiler_Parser_Advance(self);
+            Amalgame_Compiler_Parser_SkipNewlines(self);
             continue;
         }
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_ParseParam(self);
@@ -1327,6 +1421,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMethod(Amalgame_
         if (pk != Amalgame_Compiler_NodeKind_IDENTIFIER) {
             AmalgameList_add(method->Params, (void*)(intptr_t)(p));
         }
+        Amalgame_Compiler_Parser_SkipNewlines(self);
     }
     Amalgame_Compiler_Parser_Expect(self, ")");
     if (Amalgame_Compiler_Parser_CheckValue(self, "=>")) {
@@ -1417,13 +1512,14 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBlock(Amalgame_C
     Amalgame_Compiler_AstNode* __attribute__((unused)) block = Amalgame_Compiler_Ast_Block(tok->Line, tok->Column);
     Amalgame_Compiler_Parser_SkipNewlines(self);
     i64 __attribute__((unused)) lastPos = 0;
+    code_bool __attribute__((unused)) hadProgress = 1;
     while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, "}")) {
         Amalgame_Compiler_Parser_SkipNewlines(self);
         if (Amalgame_Compiler_Parser_CheckValue(self, "}")) {
             break;
         }
         i64 __attribute__((unused)) curPos = self->Pos;
-        if (curPos == lastPos && lastPos > 0) {
+        if (!hadProgress) {
             Amalgame_Compiler_Parser_Advance(self);
             Amalgame_Compiler_Parser_SkipNewlines(self);
             if (Amalgame_Compiler_Parser_CheckValue(self, "}")) {
@@ -1434,8 +1530,10 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBlock(Amalgame_C
             }
         }
         lastPos = self->Pos;
+        hadProgress = 0;
         Amalgame_Compiler_AstNode* __attribute__((unused)) stmt = Amalgame_Compiler_Parser_ParseStmt(self);
         AmalgameList_add(block->Children, (void*)(intptr_t)(stmt));
+        hadProgress = 1;
         Amalgame_Compiler_Parser_SkipNewlines(self);
     }
     Amalgame_Compiler_Parser_Expect(self, "}");
@@ -1739,21 +1837,56 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseExpr(Amalgame_Co
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseAssign(Amalgame_Compiler_Parser* self) {
     (void)self;
     Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseOr(self);
-    if (Amalgame_Compiler_Parser_CheckValue(self, "=")) {
+    code_bool __attribute__((unused)) isAssign = Amalgame_Compiler_Parser_CheckValue(self, "=") || Amalgame_Compiler_Parser_CheckValue(self, "+=") || Amalgame_Compiler_Parser_CheckValue(self, "-=") || Amalgame_Compiler_Parser_CheckValue(self, "*=") || Amalgame_Compiler_Parser_CheckValue(self, "/=") || Amalgame_Compiler_Parser_CheckValue(self, "%=");
+    code_bool __attribute__((unused)) isBitAssign = Amalgame_Compiler_Parser_CheckValue(self, "&=") || Amalgame_Compiler_Parser_CheckValue(self, "|=") || Amalgame_Compiler_Parser_CheckValue(self, "^=") || Amalgame_Compiler_Parser_CheckValue(self, "<<=") || Amalgame_Compiler_Parser_CheckValue(self, ">>=");
+    if (isAssign || isBitAssign) {
         Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseAssign(self);
-        return Amalgame_Compiler_Ast_Binary(left, "=", right, tok->Line, tok->Column);
+        return Amalgame_Compiler_Ast_Binary(left, tok->Value, right, tok->Line, tok->Column);
     }
     return left;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseOr(Amalgame_Compiler_Parser* self) {
     (void)self;
-    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseAnd(self);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseBitwiseOr(self);
     while (Amalgame_Compiler_Parser_CheckValue(self, "||")) {
         Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
-        Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseAnd(self);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseBitwiseOr(self);
         left = Amalgame_Compiler_Ast_Binary(left, "||", right, tok->Line, tok->Column);
+    }
+    return left;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBitwiseOr(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseBitwiseXor(self);
+    while (Amalgame_Compiler_Parser_CheckValue(self, "|") && !Amalgame_Compiler_Parser_CheckValue(self, "||")) {
+        Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseBitwiseXor(self);
+        left = Amalgame_Compiler_Ast_Binary(left, "|", right, tok->Line, tok->Column);
+    }
+    return left;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBitwiseXor(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseBitwiseAnd(self);
+    while (Amalgame_Compiler_Parser_CheckValue(self, "^")) {
+        Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseBitwiseAnd(self);
+        left = Amalgame_Compiler_Ast_Binary(left, "^", right, tok->Line, tok->Column);
+    }
+    return left;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseBitwiseAnd(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseAnd(self);
+    while (Amalgame_Compiler_Parser_CheckValue(self, "&") && !Amalgame_Compiler_Parser_CheckValue(self, "&&")) {
+        Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseAnd(self);
+        left = Amalgame_Compiler_Ast_Binary(left, "&", right, tok->Line, tok->Column);
     }
     return left;
 }
@@ -1784,6 +1917,17 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseRelational(Amalg
     (void)self;
     Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseAdd(self);
     while (Amalgame_Compiler_Parser_CheckValue(self, "<") || Amalgame_Compiler_Parser_CheckValue(self, ">") || Amalgame_Compiler_Parser_CheckValue(self, "<=") || Amalgame_Compiler_Parser_CheckValue(self, ">=")) {
+        Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseShift(self);
+        left = Amalgame_Compiler_Ast_Binary(left, tok->Value, right, tok->Line, tok->Column);
+    }
+    return left;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseShift(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseAdd(self);
+    while (Amalgame_Compiler_Parser_CheckValue(self, "<<") || Amalgame_Compiler_Parser_CheckValue(self, ">>")) {
         Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseAdd(self);
         left = Amalgame_Compiler_Ast_Binary(left, tok->Value, right, tok->Line, tok->Column);
@@ -1817,7 +1961,8 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseUnary(Amalgame_C
     (void)self;
     code_bool __attribute__((unused)) isUnaryNot = Amalgame_Compiler_Parser_CheckValue(self, "!") && !Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_STRING);
     code_bool __attribute__((unused)) isUnaryMinus = Amalgame_Compiler_Parser_CheckValue(self, "-") && !Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_STRING);
-    if (isUnaryNot || isUnaryMinus) {
+    code_bool __attribute__((unused)) isUnaryTilde = Amalgame_Compiler_Parser_CheckValue(self, "~") && !Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_STRING);
+    if (isUnaryNot || isUnaryMinus || isUnaryTilde) {
         Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) operand = Amalgame_Compiler_Parser_ParseUnary(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) node = Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind_UNARY, tok->Line, tok->Column);
@@ -2109,8 +2254,10 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseNew(Amalgame_Com
 struct _Amalgame_Compiler_Emitter {
     AmalgameList* Lines;
     i64 Indent;
+    code_bool Streaming;
 };
 
+void Amalgame_Compiler_Emitter_SetStreaming(Amalgame_Compiler_Emitter* self, code_bool v);
 void Amalgame_Compiler_Emitter_Emit(Amalgame_Compiler_Emitter* self, code_string text);
 void Amalgame_Compiler_Emitter_EmitLine(Amalgame_Compiler_Emitter* self, code_string text);
 void Amalgame_Compiler_Emitter_EmitBlank(Amalgame_Compiler_Emitter* self);
@@ -2122,13 +2269,24 @@ Amalgame_Compiler_Emitter* Amalgame_Compiler_Emitter_new() {
     Amalgame_Compiler_Emitter* self = (Amalgame_Compiler_Emitter*) GC_MALLOC(sizeof(Amalgame_Compiler_Emitter));
     self->Lines = AmalgameList_new();
     self->Indent = 0;
+    self->Streaming = 0;
     return self;
+}
+
+void Amalgame_Compiler_Emitter_SetStreaming(Amalgame_Compiler_Emitter* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->Streaming = v;
 }
 
 void Amalgame_Compiler_Emitter_Emit(Amalgame_Compiler_Emitter* self, code_string text) {
     (void)self;
     (void)text;
-    AmalgameList_add(self->Lines, (void*)(intptr_t)(text));
+    if (self->Streaming) {
+        File_StreamLine(text);
+    } else {
+        AmalgameList_add(self->Lines, (void*)(intptr_t)(text));
+    }
 }
 
 void Amalgame_Compiler_Emitter_EmitLine(Amalgame_Compiler_Emitter* self, code_string text) {
@@ -2140,12 +2298,20 @@ void Amalgame_Compiler_Emitter_EmitLine(Amalgame_Compiler_Emitter* self, code_st
         line = code_string_concat(line, "    ");
     }
     line = code_string_concat(line, text);
-    AmalgameList_add(self->Lines, (void*)(intptr_t)(line));
+    if (self->Streaming) {
+        File_StreamLine(line);
+    } else {
+        AmalgameList_add(self->Lines, (void*)(intptr_t)(line));
+    }
 }
 
 void Amalgame_Compiler_Emitter_EmitBlank(Amalgame_Compiler_Emitter* self) {
     (void)self;
-    AmalgameList_add(self->Lines, (void*)(intptr_t)(""));
+    if (self->Streaming) {
+        File_StreamLine("");
+    } else {
+        AmalgameList_add(self->Lines, (void*)(intptr_t)(""));
+    }
 }
 
 void Amalgame_Compiler_Emitter_Indent_(Amalgame_Compiler_Emitter* self) {
@@ -2186,6 +2352,7 @@ struct _Amalgame_Compiler_CGen {
 };
 
 code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
+void Amalgame_Compiler_CGen_SetStreaming(Amalgame_Compiler_CGen* self, code_bool v);
 void Amalgame_Compiler_CGen_BeginMulti(Amalgame_Compiler_CGen* self, code_string ns);
 void Amalgame_Compiler_CGen_AddFilePass1(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
 void Amalgame_Compiler_CGen_EmitSeparator(Amalgame_Compiler_CGen* self);
@@ -2274,6 +2441,12 @@ code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalga
         Amalgame_Compiler_CGen_EmitDecl(self, decl);
     }
     return Amalgame_Compiler_Emitter_GetOutput(self->Out);
+}
+
+void Amalgame_Compiler_CGen_SetStreaming(Amalgame_Compiler_CGen* self, code_bool v) {
+    (void)self;
+    (void)v;
+    Amalgame_Compiler_Emitter_SetStreaming(self->Out, v);
 }
 
 void Amalgame_Compiler_CGen_BeginMulti(Amalgame_Compiler_CGen* self, code_string ns) {
@@ -2670,6 +2843,12 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "File_Exists") || code_string_equals(calleeStr, "File_WriteAll") || code_string_equals(calleeStr, "File_AppendAll") || code_string_equals(calleeStr, "File_Delete")) {
                 return "code_bool";
             }
+            if (code_string_equals(calleeStr, "File_WriteLines") || code_string_equals(calleeStr, "File_OpenWrite") || code_string_equals(calleeStr, "File_StreamLine") || code_string_equals(calleeStr, "File_CloseWrite")) {
+                return "void";
+            }
+            if (code_string_equals(calleeStr, "File_WriteLines")) {
+                return "void";
+            }
             if (code_string_equals(calleeStr, "File_ReadAll") || code_string_equals(calleeStr, "File_ReadLine")) {
                 return "code_string";
             }
@@ -2709,6 +2888,9 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                     return "i64";
                 }
                 if (code_string_equals(mname2, "Clear")) {
+                    return "void";
+                }
+                if (code_string_equals(mname2, "Reserve")) {
                     return "void";
                 }
                 if (code_string_equals(mname2, "IsEmpty") || code_string_equals(mname2, "Has") || code_string_equals(mname2, "Contains") || code_string_equals(mname2, "Remove") || code_string_equals(mname2, "Add")) {
@@ -4149,7 +4331,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "Clear")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -4194,6 +4376,10 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
     }
     if (code_string_equals(mname, "Clear")) {
         return code_string_concat(code_string_concat("AmalgameList_clear(", listExpr), ")");
+    }
+    if (code_string_equals(mname, "Reserve")) {
+        code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_reserve(", listExpr), ", "), arg0), ")");
     }
     if (code_string_equals(mname, "Count")) {
         return code_string_concat(code_string_concat("AmalgameList_count(", listExpr), ")");
@@ -5022,9 +5208,14 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console_Clear", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_CharAt1", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_ReadAll", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_WriteAll", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_AppendAll", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_WriteLines", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_OpenWrite", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_StreamLine", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_CloseWrite", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_Exists", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_Delete", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_Size", "int", 0);
@@ -5767,6 +5958,18 @@ struct _Amalgame_Compiler_Ansi {
 };
 
 code_string Amalgame_Compiler_Ansi_Reset();
+code_string Amalgame_Compiler_Ansi_Bold();
+code_string Amalgame_Compiler_Ansi_Dim();
+code_string Amalgame_Compiler_Ansi_Red();
+code_string Amalgame_Compiler_Ansi_Yellow();
+code_string Amalgame_Compiler_Ansi_Cyan();
+code_string Amalgame_Compiler_Ansi_Green();
+code_string Amalgame_Compiler_Ansi_Blue();
+code_string Amalgame_Compiler_Ansi_BoldRed();
+code_string Amalgame_Compiler_Ansi_BoldYellow();
+code_string Amalgame_Compiler_Ansi_BoldCyan();
+code_string Amalgame_Compiler_Ansi_BoldGreen();
+code_string Amalgame_Compiler_Ansi_BoldBlue();
 
 Amalgame_Compiler_Ansi* Amalgame_Compiler_Ansi_new() {
     Amalgame_Compiler_Ansi* self = (Amalgame_Compiler_Ansi*) GC_MALLOC(sizeof(Amalgame_Compiler_Ansi));
@@ -5777,31 +5980,106 @@ code_string Amalgame_Compiler_Ansi_Reset() {
     return " ";
 }
 
+code_string Amalgame_Compiler_Ansi_Bold() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_Dim() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_Red() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_Yellow() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_Cyan() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_Green() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_Blue() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_BoldRed() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_BoldYellow() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_BoldCyan() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_BoldGreen() {
+    return " ";
+}
+
+code_string Amalgame_Compiler_Ansi_BoldBlue() {
+    return " ";
+}
+
 enum _Amalgame_Compiler_DiagSeverity {
     Amalgame_Compiler_DiagSeverity_ERROR,
-    Amalgame_Compiler_DiagSeverity_WARNING
+    Amalgame_Compiler_DiagSeverity_WARNING,
+    Amalgame_Compiler_DiagSeverity_NOTE,
+    Amalgame_Compiler_DiagSeverity_HINT
 };
+
+struct _Amalgame_Compiler_Diagnostic {
+    Amalgame_Compiler_DiagSeverity Severity;
+    code_string Kind;
+    code_string Message;
+    code_string Filename;
+    i64 Line;
+    i64 Column;
+};
+
+
+Amalgame_Compiler_Diagnostic* Amalgame_Compiler_Diagnostic_new(Amalgame_Compiler_DiagSeverity sev, code_string kind, code_string msg, code_string file, i64 line, i64 col) {
+    Amalgame_Compiler_Diagnostic* self = (Amalgame_Compiler_Diagnostic*) GC_MALLOC(sizeof(Amalgame_Compiler_Diagnostic));
+    self->Severity = sev;
+    self->Kind = kind;
+    self->Message = msg;
+    self->Filename = file;
+    self->Line = line;
+    self->Column = col;
+    return self;
+}
 
 struct _Amalgame_Compiler_DiagnosticFormatter {
     code_bool UseColor;
+    code_bool Quiet;
 };
 
 void Amalgame_Compiler_DiagnosticFormatter_EnableColor(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
+void Amalgame_Compiler_DiagnosticFormatter_SetQuiet(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
+void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_DiagnosticFormatter* self, code_string path, code_string text);
+static code_string Amalgame_Compiler_DiagnosticFormatter_SevLabel(Amalgame_Compiler_DiagnosticFormatter* self, Amalgame_Compiler_DiagSeverity sev);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatDiag(Amalgame_Compiler_DiagnosticFormatter* self, Amalgame_Compiler_Diagnostic* d);
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatError(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatNote(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
 void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase);
 void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail);
 void Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase);
 void Amalgame_Compiler_DiagnosticFormatter_PrintCompileError(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase, code_string detail);
-code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
-code_string Amalgame_Compiler_DiagnosticFormatter_FormatNote(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col);
-void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_DiagnosticFormatter* self, code_string path, code_string text);
-void Amalgame_Compiler_DiagnosticFormatter_SetQuiet(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatSummary(Amalgame_Compiler_DiagnosticFormatter* self, i64 errorCount, i64 warningCount);
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatCompact(Amalgame_Compiler_DiagnosticFormatter* self, code_string severity, code_string kind, code_string message, code_string filename, i64 line, i64 col);
 
 Amalgame_Compiler_DiagnosticFormatter* Amalgame_Compiler_DiagnosticFormatter_new() {
     Amalgame_Compiler_DiagnosticFormatter* self = (Amalgame_Compiler_DiagnosticFormatter*) GC_MALLOC(sizeof(Amalgame_Compiler_DiagnosticFormatter));
     self->UseColor = 0;
+    self->Quiet = 0;
     return self;
 }
 
@@ -5811,6 +6089,45 @@ void Amalgame_Compiler_DiagnosticFormatter_EnableColor(Amalgame_Compiler_Diagnos
     self->UseColor = v;
 }
 
+void Amalgame_Compiler_DiagnosticFormatter_SetQuiet(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->Quiet = v;
+}
+
+void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_DiagnosticFormatter* self, code_string path, code_string text) {
+    (void)self;
+    (void)path;
+    (void)text;
+    self->UseColor = self->UseColor;
+}
+
+static code_string Amalgame_Compiler_DiagnosticFormatter_SevLabel(Amalgame_Compiler_DiagnosticFormatter* self, Amalgame_Compiler_DiagSeverity sev) {
+    (void)self;
+    (void)sev;
+    if (sev == Amalgame_Compiler_DiagSeverity_ERROR) {
+        return "error";
+    }
+    if (sev == Amalgame_Compiler_DiagSeverity_WARNING) {
+        return "warning";
+    }
+    if (sev == Amalgame_Compiler_DiagSeverity_NOTE) {
+        return "note";
+    }
+    return "hint";
+}
+
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatDiag(Amalgame_Compiler_DiagnosticFormatter* self, Amalgame_Compiler_Diagnostic* d) {
+    (void)self;
+    (void)d;
+    code_string __attribute__((unused)) lineStr = String_FromInt(d->Line);
+    code_string __attribute__((unused)) colStr = String_FromInt(d->Column);
+    code_string __attribute__((unused)) label = Amalgame_Compiler_DiagnosticFormatter_SevLabel(self, d->Severity);
+    code_string __attribute__((unused)) header = code_string_concat(code_string_concat(code_string_concat(code_string_concat(label, "["), d->Kind), "]: "), d->Message);
+    code_string __attribute__((unused)) location = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  --> ", d->Filename), ":"), lineStr), ":"), colStr);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat("\n", header), "\n"), location), "\n |\n");
+}
+
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatError(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
     (void)self;
     (void)kind;
@@ -5818,13 +6135,38 @@ code_string Amalgame_Compiler_DiagnosticFormatter_FormatError(Amalgame_Compiler_
     (void)filename;
     (void)line;
     (void)col;
-    code_string __attribute__((unused)) lineStr = String_FromInt(line);
-    return code_string_concat(code_string_concat(code_string_concat("error[", kind), "]: "), message);
+    Amalgame_Compiler_Diagnostic* __attribute__((unused)) d = Amalgame_Compiler_Diagnostic_new(Amalgame_Compiler_DiagSeverity_ERROR, kind, message, filename, line, col);
+    return Amalgame_Compiler_DiagnosticFormatter_FormatDiag(self, d);
+}
+
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
+    (void)self;
+    (void)kind;
+    (void)message;
+    (void)filename;
+    (void)line;
+    (void)col;
+    Amalgame_Compiler_Diagnostic* __attribute__((unused)) d = Amalgame_Compiler_Diagnostic_new(Amalgame_Compiler_DiagSeverity_WARNING, kind, message, filename, line, col);
+    return Amalgame_Compiler_DiagnosticFormatter_FormatDiag(self, d);
+}
+
+code_string Amalgame_Compiler_DiagnosticFormatter_FormatNote(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
+    (void)self;
+    (void)kind;
+    (void)message;
+    (void)filename;
+    (void)line;
+    (void)col;
+    Amalgame_Compiler_Diagnostic* __attribute__((unused)) d = Amalgame_Compiler_Diagnostic_new(Amalgame_Compiler_DiagSeverity_NOTE, kind, message, filename, line, col);
+    return Amalgame_Compiler_DiagnosticFormatter_FormatDiag(self, d);
 }
 
 void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase) {
     (void)self;
     (void)phase;
+    if (self->Quiet) {
+        return;
+    }
     Console_WriteLine(code_string_concat(phase, " OK"));
 }
 
@@ -5833,6 +6175,9 @@ void Amalgame_Compiler_DiagnosticFormatter_PrintPhaseError(Amalgame_Compiler_Dia
     (void)phase;
     (void)detail;
     Console_WriteError(code_string_concat(phase, " ERROR"));
+    if (String_Length(detail) > 0) {
+        Console_WriteError(detail);
+    }
 }
 
 void Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(Amalgame_Compiler_DiagnosticFormatter* self, code_string phase) {
@@ -5848,44 +6193,17 @@ void Amalgame_Compiler_DiagnosticFormatter_PrintCompileError(Amalgame_Compiler_D
     Amalgame_Compiler_DiagnosticFormatter_PrintPhaseError(self, phase, detail);
 }
 
-code_string Amalgame_Compiler_DiagnosticFormatter_FormatWarning(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
-    (void)self;
-    (void)kind;
-    (void)message;
-    (void)filename;
-    (void)line;
-    (void)col;
-    return code_string_concat(code_string_concat(code_string_concat("warning[", kind), "]: "), message);
-}
-
-code_string Amalgame_Compiler_DiagnosticFormatter_FormatNote(Amalgame_Compiler_DiagnosticFormatter* self, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
-    (void)self;
-    (void)kind;
-    (void)message;
-    (void)filename;
-    (void)line;
-    (void)col;
-    return code_string_concat(code_string_concat(code_string_concat("note[", kind), "]: "), message);
-}
-
-void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_DiagnosticFormatter* self, code_string path, code_string text) {
-    (void)self;
-    (void)path;
-    (void)text;
-    self->UseColor = self->UseColor;
-}
-
-void Amalgame_Compiler_DiagnosticFormatter_SetQuiet(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v) {
-    (void)self;
-    (void)v;
-    self->UseColor = self->UseColor;
-}
-
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatSummary(Amalgame_Compiler_DiagnosticFormatter* self, i64 errorCount, i64 warningCount) {
     (void)self;
     (void)errorCount;
     (void)warningCount;
-    return " ";
+    code_string __attribute__((unused)) result = " ";
+    if (errorCount > 0) {
+        code_string __attribute__((unused)) ec = String_FromInt(errorCount);
+        void* __attribute__((unused)) sfx = (errorCount > 1 ? "s" : " ");
+        result = code_string_concat(code_string_concat(code_string_concat("aborting due to ", ec), " error"), (code_string)(sfx));
+    }
+    return result;
 }
 
 code_string Amalgame_Compiler_DiagnosticFormatter_FormatCompact(Amalgame_Compiler_DiagnosticFormatter* self, code_string severity, code_string kind, code_string message, code_string filename, i64 line, i64 col) {
