@@ -1019,6 +1019,10 @@ Amalgame_Compiler_Parser* Amalgame_Compiler_Parser_new(AmalgameList* tokens) {
 Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_Parse(Amalgame_Compiler_Parser* self) {
     (void)self;
     Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Ast_Program(1, 1);
+    if (AmalgameList_count(self->Tokens) > 0) {
+        Amalgame_Compiler_Token* __attribute__((unused)) firstTok = (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, 0);
+        prog->Str2 = firstTok->Filename;
+    }
     Amalgame_Compiler_Parser_SkipNewlines(self);
     if (Amalgame_Compiler_Parser_CheckKw(self, "namespace")) {
         Amalgame_Compiler_Parser_Advance(self);
