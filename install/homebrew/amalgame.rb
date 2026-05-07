@@ -49,7 +49,7 @@ class Amalgame < Formula
 
     # Install runtime header (needed by compiled programs)
     (lib/"amalgame").mkpath
-    (lib/"amalgame").install "src/transpiler/runtime/_runtime.h"
+    (lib/"amalgame").install "runtime/_runtime.h"
 
     # Install documentation
     doc.install "docs/DEVELOPER_GUIDE.md"

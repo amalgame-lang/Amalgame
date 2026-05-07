@@ -20,7 +20,7 @@
 ### Phase 2 — Bootstrap Amalgame-en-Amalgame ✅
 **Le compilateur `amc` est écrit en Amalgame et se compile lui-même.**
 
-Sources compilateur (`src/amalgame/`) :
+Sources compilateur (`src/`) :
 
 | Fichier | Lignes | Rôle |
 |---------|--------|------|
@@ -98,7 +98,7 @@ Sources compilateur (`src/amalgame/`) :
 **Contournement actuel :**
 ```bash
 ./build/amc [sources] -o gen_test
-gcc -O2 -Isrc/transpiler/runtime gen_test.c -lgc -lm -o gen_test
+gcc -O2 -Iruntime gen_test.c -lgc -lm -o gen_test
 ./gen_test   # ~1min au lieu de 2m30
 ```
 
@@ -266,19 +266,19 @@ Amalgame/
 
 ```bash
 # Rebuild complet
-./build/amc src/amalgame/lexer/token.am src/amalgame/lexer/lexer.am \
-            src/amalgame/parser/ast.am src/amalgame/parser/parser.am \
-            src/amalgame/generator/c_gen.am src/amalgame/resolver/symbol.am \
-            src/amalgame/resolver/resolver.am \
-            src/amalgame/diagnostics.am src/amalgame/typechecker.am \
-            src/amalgame/main.am src/amalgame/generator/gen_test.am \
+./build/amc src/lexer/token.am src/lexer/lexer.am \
+            src/parser/ast.am src/parser/parser.am \
+            src/generator/c_gen.am src/resolver/symbol.am \
+            src/resolver/resolver.am \
+            src/diagnostics.am src/typechecker.am \
+            src/main.am src/generator/gen_test.am \
             -o gen_test
 
 # Recompiler gen_test en -O2 (IMPORTANT — réduit le temps de génération)
-gcc -O2 -Isrc/transpiler/runtime gen_test.c -lgc -lm -o gen_test
+gcc -O2 -Iruntime gen_test.c -lgc -lm -o gen_test
 ./gen_test
 
-gcc -Isrc/transpiler/runtime src/amalgame/amc_lib.c src/amalgame/amc_main.c \
+gcc -Iruntime src/amc_lib.c src/amc_main.c \
     -lgc -lm -lcurl -o amc
 
 ./tests/run_tests.sh 2>&1 | tail -3   # doit afficher PASS: 76 | FAIL: 0
