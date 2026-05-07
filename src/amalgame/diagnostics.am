@@ -27,6 +27,93 @@ public class Ansi {
     public static string BoldBlue()   { return " " }
 }
 
+// ── Source map ────────────────────────────────────────
+// Holds the original source text of every loaded file so error formatters
+// can quote the offending line and underline the column with a caret.
+public class SourceMap {
+    private Paths: List<string>
+    private Texts: List<string>
+
+    public SourceMap() {
+        this.Paths = new List<string>()
+        this.Texts = new List<string>()
+    }
+
+    public void Add(string path, string text) {
+        let count = this.Paths.Count()
+        for i in 0..count {
+            if (this.Paths.Get(i) == path) { return }
+        }
+        this.Paths.Add(path)
+        this.Texts.Add(text)
+    }
+
+    // Returns the Nth line (1-indexed) of the given file, or "" if not found.
+    public string GetLine(string path, int line) {
+        let count = this.Paths.Count()
+        for i in 0..count {
+            if (this.Paths.Get(i) == path) {
+                return this.NthLine(this.Texts.Get(i), line)
+            }
+        }
+        return ""
+    }
+
+    private string NthLine(string text, int line) {
+        let len = String_Length(text)
+        var current = 1
+        var start = 0
+        var i = 0
+        while (i < len) {
+            let ch = String_Substring(text, i, 1)
+            if (ch == "\n") {
+                if (current == line) {
+                    return String_Substring(text, start, i - start)
+                }
+                current = current + 1
+                start = i + 1
+            }
+            i = i + 1
+        }
+        if (current == line && start < len) {
+            return String_Substring(text, start, len - start)
+        }
+        return ""
+    }
+}
+
+// Build a source snippet rendered with a caret under the offending column.
+// Used by both Resolver and TypeChecker error formatters. Layout (rustc-like):
+//
+//    |
+// 19 |         let n: int = p.Name
+//    |             ^
+//
+public class SourceSnippet {
+    public static string Format(string lineText, int line, int col) {
+        if (String_Length(lineText) == 0) { return "" }
+        let lineNum = String_FromInt(line)
+        let pad     = SourceSnippet.Spaces(String_Length(lineNum))
+        var caret = ""
+        var c = 0
+        while (c < col - 1) {
+            caret = caret + " "
+            c = c + 1
+        }
+        return pad + " |\n" + lineNum + " | " + lineText + "\n" + pad + " | " + caret + "^\n"
+    }
+
+    private static string Spaces(int n) {
+        var s = ""
+        var i = 0
+        while (i < n) {
+            s = s + " "
+            i = i + 1
+        }
+        return s
+    }
+}
+
 // ── Diagnostic severity ───────────────────────────────
 public enum DiagSeverity {
     ERROR
@@ -59,17 +146,19 @@ public class Diagnostic {
 public class DiagnosticFormatter {
     private UseColor: bool
     private Quiet:    bool
+    public  Sources:  SourceMap   // Public so other passes can render snippets
 
     public DiagnosticFormatter() {
         this.UseColor = false
         this.Quiet    = false
+        this.Sources  = new SourceMap()
     }
 
     public void EnableColor(bool v) { this.UseColor = v }
     public void SetQuiet(bool v)    { this.Quiet    = v }
 
     public void LoadSource(string path, string text) {
-        this.UseColor = this.UseColor
+        this.Sources.Add(path, text)
     }
 
     // ── Format helpers ────────────────────────────────
