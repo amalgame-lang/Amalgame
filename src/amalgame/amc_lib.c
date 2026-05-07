@@ -7359,14 +7359,19 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     }
     code_string __attribute__((unused)) mainFunc = code_string_concat(nsPrefix, "_Program_Main");
     code_string __attribute__((unused)) genSrc = File_ReadAll(outC);
-    if (!self->IsLib && String_Contains(genSrc, mainFunc)) {
+    code_bool __attribute__((unused)) hasMain = String_Contains(genSrc, mainFunc);
+    code_bool __attribute__((unused)) isLibrary = self->IsLib || !hasMain;
+    if (!isLibrary) {
         File_AppendAll(outC, "\nint main(int argc, char** argv) {\n");
         File_AppendAll(outC, "    GC_INIT();\n");
         File_AppendAll(outC, code_string_concat(code_string_concat("    ", mainFunc), "((code_string*)argv);\n"));
         File_AppendAll(outC, "    return 0;\n");
         File_AppendAll(outC, "}\n");
+    } else {
+        File_AppendAll(outC, "\n/* Library — no entry point */\n");
     }
-    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Generated: ", outC), " ("), String_FromInt(lineCount)), " lines)"));
+    void* __attribute__((unused)) mode = (isLibrary ? "Library" : "Executable");
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Generated: ", outC), " ("), String_FromInt(lineCount)), " lines) ["), (code_string)(mode)), "]"));
     Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(self->Diag, "Build");
 }
 
