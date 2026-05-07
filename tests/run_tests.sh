@@ -7,6 +7,11 @@
 AMC="./amc"
 SAMPLES="./tests/samples"
 
+# Build artifacts go to a temp directory so the source tree stays clean.
+# Auto-removed on script exit (success or failure).
+BUILD_DIR=$(mktemp -d -t amc-tests-XXXXXX)
+trap 'rm -rf "$BUILD_DIR"' EXIT
+
 # Samples that the self-hosted ./amc can't yet compile due to bugs tracked
 # separately (algebraic enum methods, tuple destructure typing, try/catch
 # binder scoping, advanced pattern matching, null-safety inference). They
@@ -41,7 +46,7 @@ run_test() {
         SKIP=$((SKIP + 1)); return
     fi
 
-    local out_base="${file%.am}"
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
     output=$("$AMC" $flags -o "$out_base" "$file" 2>&1)
     amc_exit=$?
 
@@ -110,7 +115,7 @@ run_lib_test() {
         SKIP=$((SKIP + 1)); return
     fi
 
-    local out_base="${file%.am}"
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
     output=$("$AMC" $flags -o "$out_base" "$file" 2>&1)
     amc_exit=$?
 
@@ -142,7 +147,7 @@ run_c_check() {
         SKIP=$((SKIP + 1)); return
     fi
 
-    local out_base="${file%.am}"
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
     "$AMC" $flags -o "$out_base" "$file" >/dev/null 2>&1
     c_file="${out_base}.c"
 

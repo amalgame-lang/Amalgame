@@ -16,6 +16,10 @@ SKIP=0
 # Same skip mechanism as run_tests.sh — see that file for the rationale.
 SKIP_SELFHOST=" "
 
+# Build artifacts go to a temp directory so the source tree stays clean.
+BUILD_DIR=$(mktemp -d -t amc-stdlib-XXXXXX)
+trap 'rm -rf "$BUILD_DIR"' EXIT
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -42,7 +46,7 @@ run_test() {
         SKIP=$((SKIP + 1)); return
     fi
 
-    local out_base="${file%.am}"
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
     output=$("$AMC" $flags -o "$out_base" "$file" 2>&1)
     amc_exit=$?
 
