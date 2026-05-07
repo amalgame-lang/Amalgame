@@ -17,11 +17,34 @@
 
 #include "_runtime.h"
 #include "Amalgame_Collections.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
+
+/* Cross-platform socket layer. POSIX hosts use the BSD sockets API
+ * directly; Windows pulls in Winsock2 and aliases the few calls that
+ * differ (close → closesocket) plus a one-shot WSAStartup. Link with
+ * -lws2_32 on Windows; -lc is enough on POSIX. */
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+typedef SSIZE_T ssize_t;
+static void _amnet_init_once(void) {
+    static int done = 0;
+    if (!done) {
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+        done = 1;
+    }
+}
+static int _amnet_close_socket(int fd) { return closesocket(fd); }
+#else
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <netdb.h>
+#  include <unistd.h>
+static inline void _amnet_init_once(void) {}
+static inline int _amnet_close_socket(int fd) { return close(fd); }
+#endif
+
 #include <errno.h>
 #include <string.h>
 
@@ -229,6 +252,7 @@ typedef struct {
 
 static inline AmalgameTcpClient* TcpClient_Connect(
         code_string host, i64 port) {
+    _amnet_init_once();
     AmalgameTcpClient* c =
         (AmalgameTcpClient*) GC_MALLOC(sizeof(AmalgameTcpClient));
     c->Connected  = false;
@@ -246,12 +270,12 @@ static inline AmalgameTcpClient* TcpClient_Connect(
     struct addrinfo* res = NULL;
     if (getaddrinfo(host, portStr, &hints, &res) != 0) return c;
 
-    int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (fd >= 0 && connect(fd, res->ai_addr, res->ai_addrlen) == 0) {
+    int fd = (int) socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (fd >= 0 && connect(fd, res->ai_addr, (int) res->ai_addrlen) == 0) {
         c->_fd       = fd;
         c->Connected = true;
     } else if (fd >= 0) {
-        close(fd);
+        _amnet_close_socket(fd);
     }
     freeaddrinfo(res);
     return c;
@@ -276,7 +300,7 @@ static inline code_string TcpClient_Receive(AmalgameTcpClient* c,
 
 static inline void TcpClient_Close(AmalgameTcpClient* c) {
     if (!c || c->_fd < 0) return;
-    close(c->_fd);
+    _amnet_close_socket(c->_fd);
     c->_fd = -1;
     c->Connected = false;
 }
@@ -303,15 +327,16 @@ typedef struct {
 } AmalgameTcpConn;
 
 static inline AmalgameTcpServer* TcpServer_Listen(i64 port, i64 backlog) {
+    _amnet_init_once();
     AmalgameTcpServer* s =
         (AmalgameTcpServer*) GC_MALLOC(sizeof(AmalgameTcpServer));
     s->Port = port; s->Listening = false; s->_fd = -1;
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    int fd = (int) socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return s;
 
     int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
 
     struct sockaddr_in addr = {0};
     addr.sin_family      = AF_INET;
@@ -320,7 +345,7 @@ static inline AmalgameTcpServer* TcpServer_Listen(i64 port, i64 backlog) {
 
     if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0 ||
         listen(fd, (int)(backlog > 0 ? backlog : 10)) < 0) {
-        close(fd); return s;
+        _amnet_close_socket(fd); return s;
     }
     s->_fd = fd; s->Listening = true;
     return s;
@@ -336,7 +361,7 @@ static inline AmalgameTcpConn* TcpServer_Accept(AmalgameTcpServer* s) {
 
     struct sockaddr_in addr = {0};
     socklen_t len = sizeof(addr);
-    int cfd = accept(s->_fd, (struct sockaddr*)&addr, &len);
+    int cfd = (int) accept(s->_fd, (struct sockaddr*)&addr, &len);
     if (cfd < 0) return c;
 
     char ip[INET_ADDRSTRLEN];
@@ -352,7 +377,7 @@ static inline AmalgameTcpConn* TcpServer_Accept(AmalgameTcpServer* s) {
 
 static inline void TcpServer_Close(AmalgameTcpServer* s) {
     if (!s || s->_fd < 0) return;
-    close(s->_fd); s->_fd = -1; s->Listening = false;
+    _amnet_close_socket(s->_fd); s->_fd = -1; s->Listening = false;
 }
 static inline code_bool TcpServer_IsListening(AmalgameTcpServer* s) {
     return s && s->Listening;
@@ -371,7 +396,7 @@ static inline code_string TcpConn_Receive(AmalgameTcpConn* c, i64 maxBytes) {
 }
 static inline void TcpConn_Close(AmalgameTcpConn* c) {
     if (!c || c->_fd < 0) return;
-    close(c->_fd); c->_fd = -1; c->Connected = false;
+    _amnet_close_socket(c->_fd); c->_fd = -1; c->Connected = false;
 }
 static inline code_bool TcpConn_IsConnected(AmalgameTcpConn* c) {
     return c && c->Connected;
@@ -388,9 +413,10 @@ typedef struct {
 } AmalgameUdpSocket;
 
 static inline AmalgameUdpSocket* UdpSocket_New() {
+    _amnet_init_once();
     AmalgameUdpSocket* s =
         (AmalgameUdpSocket*) GC_MALLOC(sizeof(AmalgameUdpSocket));
-    s->_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    s->_fd = (int) socket(AF_INET, SOCK_DGRAM, 0);
     s->Bound = false; s->BoundPort = 0;
     return s;
 }
@@ -426,7 +452,7 @@ static inline code_string UdpSocket_Receive(AmalgameUdpSocket* s,
 }
 static inline void UdpSocket_Close(AmalgameUdpSocket* s) {
     if (!s || s->_fd < 0) return;
-    close(s->_fd); s->_fd = -1;
+    _amnet_close_socket(s->_fd); s->_fd = -1;
 }
 
 #endif /* AMALGAME_NET_H */
