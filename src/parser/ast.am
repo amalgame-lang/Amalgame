@@ -32,6 +32,7 @@ public enum NodeKind {
     NEW_EXPR
     THIS_EXPR
     INDEX_EXPR
+    LIST_COMP
 }
 
 // ── Single AstNode type — all fields, used by kind ───
