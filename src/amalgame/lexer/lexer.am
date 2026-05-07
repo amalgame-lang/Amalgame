@@ -97,6 +97,14 @@ public class Lexer {
 
     private void ReadString() {
         this.Advance()
+        // Triple-quoted strings: """...""" — preserve raw newlines, no escape processing.
+        // Detected when the first quote is followed by two more quotes.
+        if (this.CharAt(this.Pos) == "\"" && this.CharAt(this.Pos + 1) == "\"") {
+            this.Advance()
+            this.Advance()
+            this.ReadTripleQuoted()
+            return
+        }
         var value = ""
         while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\"") {
             let c = this.Advance()
@@ -128,6 +136,33 @@ public class Lexer {
             }
         }
         if (this.Pos < String_Length(this.Source)) { this.Advance() }
+        this.AddToken(TokenType.STRING, value)
+    }
+
+    // Read body of a """..."""  string. Newlines are preserved as-is, no escape
+    // processing. The closing delimiter is exactly three consecutive quotes; a
+    // run of one or two quotes in the body is content, not a delimiter.
+    private void ReadTripleQuoted() {
+        var value = ""
+        let len = String_Length(this.Source)
+        while (this.Pos < len) {
+            // Detect closing """
+            if (this.CharAt(this.Pos) == "\"" && this.CharAt(this.Pos + 1) == "\"" && this.CharAt(this.Pos + 2) == "\"") {
+                this.Advance()
+                this.Advance()
+                this.Advance()
+                this.AddToken(TokenType.STRING, value)
+                return
+            }
+            let c = this.Advance()
+            // Track line numbers so error messages remain accurate inside the literal.
+            if (c == "\n") {
+                this.Line   = this.Line + 1
+                this.Column = 1
+            }
+            value = value + c
+        }
+        // Unterminated triple-quoted string — emit what we have to avoid a parser hang.
         this.AddToken(TokenType.STRING, value)
     }
 

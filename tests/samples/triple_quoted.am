@@ -1,0 +1,19 @@
+namespace App
+import Amalgame.IO
+
+public class Program {
+    public static void Main(string[] args) {
+        // Multi-line literal — newlines preserved as-is
+        let html = """<html>
+  <body>Hi</body>
+</html>"""
+        Console.WriteLine(html)
+
+        // Single-line triple-quote works
+        let s = """one-liner"""
+        Console.WriteLine(s)
+
+        // 1 or 2 consecutive quotes inside the body are content
+        Console.WriteLine("""has "single" and "" double""")
+    }
+}
