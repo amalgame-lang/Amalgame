@@ -90,6 +90,7 @@ public class AmalgameCompiler {
 
         // ── TypeChecker pass ──────────────────────────
         let tc     = new TypeChecker(resolver, firstPath)
+        tc.Sources = this.Diag.Sources
         let tcProg = progs.Get(0)
         tc.Check(tcProg)
         if (tc.HasErrors()) {
@@ -123,15 +124,20 @@ public class AmalgameCompiler {
         // ── Emit C main() unless --lib ─────────────────
         let mainFunc = nsPrefix + "_Program_Main"
         let genSrc   = File.ReadAll(outC)
-        if (!this.IsLib && String_Contains(genSrc, mainFunc)) {
+        let hasMain  = String_Contains(genSrc, mainFunc)
+        let isLibrary = this.IsLib || !hasMain
+        if (!isLibrary) {
             File.AppendAll(outC, "\nint main(int argc, char** argv) {\n")
             File.AppendAll(outC, "    GC_INIT();\n")
             File.AppendAll(outC, "    " + mainFunc + "((code_string*)argv);\n")
             File.AppendAll(outC, "    return 0;\n")
             File.AppendAll(outC, "}\n")
+        } else {
+            File.AppendAll(outC, "\n/* Library — no entry point */\n")
         }
 
-        Console.WriteLine("Generated: " + outC + " (" + String_FromInt(lineCount) + " lines)")
+        let mode = if (isLibrary) { "Library" } else { "Executable" }
+        Console.WriteLine("Generated: " + outC + " (" + String_FromInt(lineCount) + " lines) [" + mode + "]")
         this.Diag.PrintCompileOk("Build")
     }
 }

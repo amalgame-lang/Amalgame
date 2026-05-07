@@ -1,0 +1,17 @@
+namespace E2ELib
+
+public class Calc {
+    public Base: int
+
+    public Calc(int b) {
+        this.Base = b
+    }
+
+    public int Add(int x) {
+        return this.Base + x
+    }
+
+    public int Mul(int x) {
+        return this.Base * x
+    }
+}

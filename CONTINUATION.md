@@ -13,7 +13,7 @@
 
 ### Ce qui existe
 
-#### Compilateur Vala (src/core/ + src/transpiler/)
+#### Compilateur Vala (archive/vala-bootstrap/src/core/ + src/transpiler/)
 Le compilateur `amc` (Amalgame → C → binaire) est complet et fonctionnel.
 Pipeline : source.am → Lexer → Parser → Resolver → TypeChecker → CGenerator → GCC
 Build : `./compile.sh` (meson + ninja)
@@ -110,7 +110,7 @@ Je travaille sur le langage Amalgame (transpiler Amalgame → C).
 Branche feature/bootstrap, version v0.9.5, 126/126 tests.
 
 Context :
-- Compilateur Vala fonctionnel (amc) : ./build/amc (src/core/ + src/transpiler/)
+- Compilateur Vala fonctionnel (amc) : ./build/amc (archive/vala-bootstrap/src/core/ + src/transpiler/)
 - Bootstrap en cours : src/amalgame/ (lexer, parser, resolver, generator)
 - token.am et ast.am → C sans warnings GCC ✅
 - Prochaine étape : v0.9.6 — lexer.am → C sans erreurs

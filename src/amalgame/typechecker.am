@@ -22,18 +22,22 @@ public class TypeError {
     public Filename: string
     public Line:     int
     public Column:   int
+    public Snippet:  string   // Source line text — empty if no SourceMap available
 
     public TypeError(string msg, string file, int line, int col) {
         this.Message  = msg
         this.Filename = file
         this.Line     = line
         this.Column   = col
+        this.Snippet  = ""
     }
 
     public string ToString() {
-        let ln  = String_FromInt(this.Line)
-        let col = String_FromInt(this.Column)
-        return "\n┌── [typechecker] " + this.Filename + ":" + ln + ":" + col + "\n│\n│  " + this.Message + "\n│\n└──\n"
+        let ln    = String_FromInt(this.Line)
+        let col   = String_FromInt(this.Column)
+        let head  = "\nerror[typechecker]: " + this.Message + "\n  --> " + this.Filename + ":" + ln + ":" + col + "\n"
+        let snip  = SourceSnippet.Format(this.Snippet, this.Line, this.Column)
+        return head + snip
     }
 }
 
@@ -70,6 +74,12 @@ public class TypeChecker {
     private Filename:      string
     // Symbol table (from Resolver)
     private Symbols:       FullResolver
+    // Local symbol stack — owned by the TypeChecker (Resolver scopes are popped after resolution)
+    private LocalNames:    List<string>
+    private LocalTypes:    List<string>
+    private ScopeStarts:   List<int>
+    // Source map for snippet rendering in error messages — optional, set by main
+    public  Sources:       SourceMap
 
     public TypeChecker(FullResolver symbols, string filename) {
         this.ExprTypeKeys  = new List<string>()
@@ -79,6 +89,42 @@ public class TypeChecker {
         this.Errors        = new List<TypeError>()
         this.Filename      = filename
         this.Symbols       = symbols
+        this.LocalNames    = new List<string>()
+        this.LocalTypes    = new List<string>()
+        this.ScopeStarts   = new List<int>()
+        this.Sources       = new SourceMap()
+    }
+
+    // ── Local scope stack (mirrors Resolver) ──────────
+
+    private void PushScope() {
+        this.ScopeStarts.Add(this.LocalNames.Count())
+    }
+
+    private void PopScope() {
+        let depth = this.ScopeStarts.Count()
+        if (depth == 0) { return }
+        let mark = this.ScopeStarts.Get(depth - 1)
+        this.ScopeStarts.RemoveAt(depth - 1)
+        while (this.LocalNames.Count() > mark) {
+            let last = this.LocalNames.Count() - 1
+            this.LocalNames.RemoveAt(last)
+            this.LocalTypes.RemoveAt(last)
+        }
+    }
+
+    private void DeclareLocal(string name, string typeName) {
+        this.LocalNames.Add(name)
+        this.LocalTypes.Add(typeName)
+    }
+
+    private string LookupLocal(string name) {
+        var i = this.LocalNames.Count() - 1
+        while (i >= 0) {
+            if (this.LocalNames.Get(i) == name) { return this.LocalTypes.Get(i) }
+            i = i - 1
+        }
+        return ""
     }
 
     // ── Public entry point ────────────────────────────
@@ -261,10 +307,6 @@ public class TypeChecker {
         return this.Symbols.GetTypeName(name)
     }
 
-    private void SymbolSetType(string name, string typeName) {
-        this.Symbols.SetTypeName(name, typeName)
-    }
-
     // ── Error reporting ───────────────────────────────
 
     private void Error(string msg, AstNode node) {
@@ -276,6 +318,7 @@ public class TypeChecker {
             col  = node.Column
         }
         let err = new TypeError(msg, file, line, col)
+        err.Snippet = this.Sources.GetLine(file, line)
         this.Errors.Add(err)
     }
 
@@ -384,7 +427,9 @@ public class TypeChecker {
         let prevReturn     = this.CurrentReturn
         this.CurrentReturn = retType
 
-        // Check params (default values)
+        this.PushScope()
+
+        // Check params (default values) and register them in the local scope
         let params = method.Params.Count()
         for i in 0..params {
             let p = method.Params.Get(i)
@@ -395,6 +440,7 @@ public class TypeChecker {
                     this.Error("Parameter '" + p.Name + "' is '" + p.Str + "' but default is '" + defType + "'", p.Left)
                 }
             }
+            this.DeclareLocal(p.Name, p.Str)
         }
 
         // Check body
@@ -402,6 +448,7 @@ public class TypeChecker {
             this.CheckBlock(method.Body)
         }
 
+        this.PopScope()
         this.CurrentReturn = prevReturn
     }
 
@@ -468,8 +515,8 @@ public class TypeChecker {
                 this.Error("Cannot assign '" + inferredType + "' to '" + stmt.Name + "' of type '" + declaredType + "'", stmt)
             }
         }
-        // Annotate symbol
-        this.SymbolSetType(stmt.Name, finalType)
+        // Register in local scope
+        this.DeclareLocal(stmt.Name, finalType)
     }
 
     private void CheckReturn(AstNode stmt) {
@@ -513,14 +560,15 @@ public class TypeChecker {
     private void CheckForIn(AstNode stmt) {
         // stmt.Left = iterator expression (range or collection)
         // stmt.Name = loop variable name
+        this.PushScope()
         if (stmt.Left != null) {
             this.CheckExpr(stmt.Left)
             let colType  = this.GetType(stmt.Left)
             let elemType = this.CollectionElementType(colType)
-            // Annotate loop variable
-            this.SymbolSetType(stmt.Name, elemType)
+            this.DeclareLocal(stmt.Name, elemType)
         }
         if (stmt.Body != null) { this.CheckBlock(stmt.Body) }
+        this.PopScope()
     }
 
     private void CheckAssign(AstNode stmt) {
@@ -589,7 +637,11 @@ public class TypeChecker {
             return
         }
         if (k == NodeKind.IDENTIFIER) {
-            let t = this.SymbolTypeName(expr.Name)
+            // Local scope first (params + let/var bindings), then resolver globals
+            var t = this.LookupLocal(expr.Name)
+            if (String_Length(t) == 0) {
+                t = this.SymbolTypeName(expr.Name)
+            }
             this.SetType(expr, t)
             return
         }
@@ -716,14 +768,19 @@ public class TypeChecker {
         // expr.Left = target, expr.Name = member name
         if (expr.Left != null) { this.CheckExpr(expr.Left) }
         let targetType = if (expr.Left != null) { this.GetType(expr.Left) } else { "?" }
-        var baseType   = targetType
-        if (String_EndsWith(targetType, "?")) {
-            baseType = String_Substring(targetType, 0, String_Length(targetType) - 1)
+        var baseType = targetType
+        // Strip trailing nullable '?'
+        if (String_EndsWith(baseType, "?")) {
+            baseType = String_Substring(baseType, 0, String_Length(baseType) - 1)
         }
-        // Look up the class in global scope to find member type
-        // Member type resolution deferred to Resolver port (Phase 4)
-        // For now all member accesses return "?" — no false positives
+        // Strip trailing pointer '*' (MemberTable keys are bare class names)
+        if (String_EndsWith(baseType, "*")) {
+            baseType = String_Substring(baseType, 0, String_Length(baseType) - 1)
+        }
         var memberType = "?"
+        if (String_Length(baseType) > 0 && baseType != "?") {
+            memberType = this.Symbols.GetMemberType(baseType, expr.Name)
+        }
         this.SetType(expr, memberType)
     }
 

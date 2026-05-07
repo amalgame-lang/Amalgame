@@ -1,8 +1,8 @@
 # Lexer CODE
 
 > **Version** : 0.1.0
-> **Fichiers** : `src/core/lexer/token.vala`,
->                `src/core/lexer/lexer.vala`
+> **Fichiers** : `archive/vala-bootstrap/src/core/lexer/token.vala`,
+>                `archive/vala-bootstrap/src/core/lexer/lexer.vala`
 > **Statut**   : ✅ Complet et fonctionnel
 
 ---

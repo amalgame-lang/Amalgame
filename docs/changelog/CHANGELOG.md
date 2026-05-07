@@ -320,7 +320,7 @@ error[syntax]: Attendu un identifiant, trouvé ','
    |
 ```
 
-- `src/transpiler/diagnostics.vala` — new `DiagnosticFormatter` class
+- `archive/vala-bootstrap/src/transpiler/diagnostics.vala` — new `DiagnosticFormatter` class
 - Color auto-detection via `NO_COLOR` / `FORCE_COLOR` / `TERM` env vars
 - Phases: `error[syntax]`, `error[resolver]`, `error[typechecker]`
 - Source line + `^` caret at error column
@@ -588,7 +588,7 @@ the amalgam of the best features from every programming language.
 
 ### ✅ Added
 
-#### Analyzer (`src/core/analyzer/`)
+#### Analyzer (`archive/vala-bootstrap/src/core/analyzer/`)
 - `symbol.vala` — SymbolKind, Symbol, Scope, SymbolTable, Levenshtein
 - `resolver.vala` — two-pass name resolver, ResolveError/Result
 - `typechecker.vala` — type inference & validation, TypeError/Result
@@ -636,7 +636,7 @@ amc pkg build                    # Compile project from amalgame.json
 }
 ```
 
-- `src/pkg/package_manager.vala` — dedicated `PackageManager` class
+- `archive/vala-bootstrap/src/pkg/package_manager.vala` — dedicated `PackageManager` class
 - `amc pkg init` — creates manifest + starter `src/main.am` with namespace
 - `amc pkg add` — clones from GitHub into `packages/user/repo/`
 - `amc pkg build` — globs sources, calls `amc` with all `.am` files
