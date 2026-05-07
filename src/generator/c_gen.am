@@ -1077,7 +1077,30 @@ public class CGen {
                         let p = m.Params.Get(pi)
                         this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
                     }
-                    if (m.Body != null) { this.EmitBlock(m.Body) }
+                    if (m.Body != null) {
+                        this.EmitBlock(m.Body)
+                    } else {
+                        // Body-less constructor (data class / record): auto-assign
+                        // every param that matches a declared field. ParseDataClass
+                        // adds fields and ctor params with the same names, so this
+                        // produces `self->X = X` lines without needing the user to
+                        // write them. Plain user-written constructors normally
+                        // come with a body and skip this path.
+                        for pi in 0..pcount {
+                            let p = m.Params.Get(pi)
+                            // Confirm there's a field with the same name to assign to
+                            var hasField = false
+                            for fi in 0..members {
+                                let f = cls.Children.Get(fi)
+                                if (f.Kind == NodeKind.VAR_DECL && f.Name == p.Name) {
+                                    hasField = true
+                                }
+                            }
+                            if (hasField) {
+                                this.Out.EmitLine("self->" + p.Name + " = " + p.Name + ";")
+                            }
+                        }
+                    }
                     this.LocalTypeClear()
                     this.Out.EmitLine("return self;")
                     this.Out.Dedent()
