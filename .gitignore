@@ -9,6 +9,12 @@ _build/
 # (amc_lib.c, amc_bootstrap_lib.c, *_bundle_bootstrap.c, *.am_bootstrap.c are tracked)
 *.c.gen
 gen_test.c
+# Sample .c files are emitted by amc when compiling tests; the runner
+# now puts them in /tmp, but keep this rule so manual `amc tests/samples/*.am`
+# runs from the repo don't dirty the tree. lib_e2e_consumer.c is a hand-
+# written test fixture and must stay tracked.
+tests/samples/*.c
+!tests/samples/lib_e2e_consumer.c
 
 # ── Compiled binaries ──
 amc
