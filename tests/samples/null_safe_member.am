@@ -1,0 +1,35 @@
+namespace App
+import Amalgame.IO
+
+public class Box {
+    public Value: int
+    public Label: string
+
+    public Box(int v, string l) {
+        this.Value = v
+        this.Label = l
+    }
+
+    public string Describe() {
+        return "Box(" + String.FromInt(this.Value) + ", " + this.Label + ")"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let b1 = new Box(42, "answer")
+        let b2: Box? = null
+
+        // Null-safe field access — short-circuits to null when receiver is null
+        let l1 = b1?.Label
+        let l2 = b2?.Label
+        Console.WriteLine(l1)
+        if (l2 == null) { Console.WriteLine("l2 is null") }
+
+        // Null-safe method call — same semantics
+        let d1 = b1?.Describe()
+        let d2 = b2?.Describe()
+        Console.WriteLine(d1)
+        if (d2 == null) { Console.WriteLine("d2 is null") }
+    }
+}

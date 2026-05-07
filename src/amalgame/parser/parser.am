@@ -1000,6 +1000,17 @@ public class Parser {
                 if (this.CheckValue("(")) {
                     expr = this.ParseCallArgs(expr)
                 }
+            } else if (this.CheckValue("?.")) {
+                // Null-safe member access: obj?.field → MEMBER with Flag=true.
+                // The CGen wraps the access in a `(obj ? ... : NULL)` ternary.
+                let tok = this.Advance()
+                let memberTok = this.ExpectIdent()
+                let m = Ast.Member(expr, memberTok.Value, tok.Line, tok.Column)
+                m.Flag = true
+                expr = m
+                if (this.CheckValue("(")) {
+                    expr = this.ParseCallArgs(expr)
+                }
             } else if (this.CheckValue("(")) {
                 expr = this.ParseCallArgs(expr)
             } else if (this.CheckValue("[")) {
