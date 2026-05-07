@@ -2434,6 +2434,8 @@ static void Amalgame_Compiler_CGen_MethodRetSet(Amalgame_Compiler_CGen* self, co
 static code_string Amalgame_Compiler_CGen_MethodRetGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName);
 static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* expr);
 static code_string Amalgame_Compiler_CGen_EmitInterpolatedString(Amalgame_Compiler_CGen* self, code_string raw);
+static code_string Amalgame_Compiler_CGen_WrapForInterp(Amalgame_Compiler_CGen* self, code_string cExpr, code_string cType);
+static code_string Amalgame_Compiler_CGen_BuiltinCallReturnType(Amalgame_Compiler_CGen* self, code_string cName);
 static code_string Amalgame_Compiler_CGen_InterpExprToC(Amalgame_Compiler_CGen* self, code_string expr);
 static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGen* self, code_string raw);
 static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self);
@@ -3121,9 +3123,79 @@ static code_string Amalgame_Compiler_CGen_EmitInterpolatedString(Amalgame_Compil
     return result;
 }
 
+static code_string Amalgame_Compiler_CGen_WrapForInterp(Amalgame_Compiler_CGen* self, code_string cExpr, code_string cType) {
+    (void)self;
+    (void)cExpr;
+    (void)cType;
+    if (code_string_equals(cType, "code_string")) {
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("(", cExpr), " ? "), cExpr), " : \"\")");
+    }
+    if (code_string_equals(cType, "i64")) {
+        return code_string_concat(code_string_concat("String_FromInt(", cExpr), ")");
+    }
+    if (code_string_equals(cType, "double")) {
+        return code_string_concat(code_string_concat("String_FromFloat(", cExpr), ")");
+    }
+    if (code_string_equals(cType, "code_bool")) {
+        return code_string_concat(code_string_concat("((", cExpr), ") ? \"true\" : \"false\")");
+    }
+    return code_string_concat(code_string_concat("String_FromInt((i64)(", cExpr), "))");
+}
+
+static code_string Amalgame_Compiler_CGen_BuiltinCallReturnType(Amalgame_Compiler_CGen* self, code_string cName) {
+    (void)self;
+    (void)cName;
+    if (code_string_equals(cName, "String_Length") || code_string_equals(cName, "String_IndexOf") || code_string_equals(cName, "String_LastIndexOf") || code_string_equals(cName, "String_ToInt")) {
+        return "i64";
+    }
+    if (code_string_equals(cName, "String_ToFloat")) {
+        return "double";
+    }
+    if (code_string_equals(cName, "String_IsEmpty") || code_string_equals(cName, "String_Contains") || code_string_equals(cName, "String_StartsWith") || code_string_equals(cName, "String_EndsWith") || code_string_equals(cName, "String_ToBool")) {
+        return "code_bool";
+    }
+    if (String_StartsWith(cName, "String_")) {
+        return "code_string";
+    }
+    if (code_string_equals(cName, "Math_Sqrt") || code_string_equals(cName, "Math_Abs") || code_string_equals(cName, "Math_Pow") || code_string_equals(cName, "Math_Floor") || code_string_equals(cName, "Math_Ceil") || code_string_equals(cName, "Math_Round") || code_string_equals(cName, "Math_Random")) {
+        return "double";
+    }
+    if (code_string_equals(cName, "Math_AbsI") || code_string_equals(cName, "Math_PowI") || code_string_equals(cName, "Math_RandomInt") || code_string_equals(cName, "Math_Gcd") || code_string_equals(cName, "Math_MaxI") || code_string_equals(cName, "Math_MinI") || code_string_equals(cName, "Math_ClampI")) {
+        return "i64";
+    }
+    if (code_string_equals(cName, "Math_IsPrime") || code_string_equals(cName, "Math_IsNaN") || code_string_equals(cName, "Math_IsFinite")) {
+        return "code_bool";
+    }
+    if (code_string_equals(cName, "File_ReadAll")) {
+        return "code_string";
+    }
+    if (code_string_equals(cName, "File_Exists") || code_string_equals(cName, "File_WriteAll") || code_string_equals(cName, "File_AppendAll") || code_string_equals(cName, "File_Delete")) {
+        return "code_bool";
+    }
+    if (code_string_equals(cName, "File_Size") || code_string_equals(cName, "Args_Count") || code_string_equals(cName, "Exit_Get")) {
+        return "i64";
+    }
+    if (code_string_equals(cName, "Args_Get")) {
+        return "code_string";
+    }
+    return "";
+}
+
 static code_string Amalgame_Compiler_CGen_InterpExprToC(Amalgame_Compiler_CGen* self, code_string expr) {
     (void)self;
     (void)expr;
+    i64 __attribute__((unused)) parenIdx = String_IndexOf(expr, "(");
+    if (parenIdx > 0) {
+        code_string __attribute__((unused)) callee = String_Substring(expr, 0, parenIdx);
+        code_string __attribute__((unused)) rest = String_Substring(expr, parenIdx, String_Length(expr) - parenIdx);
+        code_string __attribute__((unused)) cCallee = String_Replace(callee, ".", "_");
+        code_string __attribute__((unused)) cCall = code_string_concat(cCallee, rest);
+        code_string __attribute__((unused)) retT = Amalgame_Compiler_CGen_BuiltinCallReturnType(self, cCallee);
+        if (String_Length(retT) > 0) {
+            return Amalgame_Compiler_CGen_WrapForInterp(self, cCall, retT);
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("(", cCall), " ? "), cCall), " : \"\")");
+    }
     if (String_StartsWith(expr, "this.")) {
         code_string __attribute__((unused)) field = String_Substring(expr, 5, String_Length(expr) - 5);
         code_string __attribute__((unused)) ft = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, field);
