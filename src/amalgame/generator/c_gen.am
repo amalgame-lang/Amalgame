@@ -1290,21 +1290,50 @@ public class CGen {
                     this.Out.EmitLine("}")
                     needsClose = false
                 } else {
-                    // Simple value or range — emit as if/else-if chain
+                    // Simple value or range — emit as if/else-if chain.
+                    // Optional guard `if <expr>` is AND-ed with the pattern condition.
                     let elsePrefix = if (firstArm) { "" } else { "} else " }
+                    let isBinder = pk == NodeKind.IDENTIFIER && pat.Name != "_"
+                    var cond = ""
                     if (pk == NodeKind.BINARY && pat.Str == "..") {
                         let lo = this.EmitExprStr(pat.Left)
                         let hi = this.EmitExprStr(pat.Right)
-                        this.Out.EmitLine(elsePrefix + "if (" + subjectStr + " >= " + lo + " && " + subjectStr + " <= " + hi + ") {")
+                        cond = subjectStr + " >= " + lo + " && " + subjectStr + " <= " + hi
                     } else if (pk == NodeKind.LITERAL_STRING) {
-                        // String pattern: use strcmp instead of ==
                         let patStr = this.EmitExprStr(pat)
-                        this.Out.EmitLine(elsePrefix + "if (strcmp(" + subjectStr + ", " + patStr + ") == 0) {")
+                        cond = "strcmp(" + subjectStr + ", " + patStr + ") == 0"
+                    } else if (isBinder) {
+                        // Bare identifier acts as a binder + always-match (Rust-like).
+                        // Only meaningful when paired with a guard (`n if n > 0`).
+                        cond = "1"
                     } else {
                         let patStr = this.EmitExprStr(pat)
-                        this.Out.EmitLine(elsePrefix + "if (" + subjectStr + " == " + patStr + ") {")
+                        cond = subjectStr + " == " + patStr
                     }
+                    if (arm.Cond != null) {
+                        // Pre-declare the binder so it's in scope for the guard expression.
+                        // Register it locally so EmitExprStr renders it as the bare name.
+                        if (isBinder) {
+                            this.LocalTypeSet(pat.Name, "i64")
+                        }
+                        let guardStr = this.EmitExprStr(arm.Cond)
+                        if (isBinder) {
+                            // GCC statement expression: introduces the binder in the
+                            // condition's scope so `n if n > 0` evaluates the guard
+                            // with `n = subject` visible.
+                            cond = "(({ __auto_type " + pat.Name + " = " + subjectStr + "; " + guardStr + "; }))"
+                        } else {
+                            cond = "(" + cond + ") && (" + guardStr + ")"
+                        }
+                    }
+                    this.Out.EmitLine(elsePrefix + "if (" + cond + ") {")
                     this.Out.Indent_()
+                    // Bare-id binder: also declare inside the body so it's visible
+                    // there (in addition to the guard's compound expression).
+                    if (isBinder) {
+                        this.Out.EmitLine("__auto_type " + pat.Name + " = " + subjectStr + ";")
+                        this.LocalTypeSet(pat.Name, "i64")
+                    }
                     this.EmitMatchBody(body)
                     this.Out.Dedent()
                     needsClose = true

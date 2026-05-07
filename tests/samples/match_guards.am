@@ -1,0 +1,22 @@
+namespace App
+import Amalgame.IO
+
+public class Program {
+    public static void Classify(int x) {
+        match x {
+            n if n < 0   => Console.WriteLine("negative"),
+            0            => Console.WriteLine("zero"),
+            n if n < 10  => Console.WriteLine("small"),
+            n if n < 100 => Console.WriteLine("medium"),
+            _            => Console.WriteLine("large")
+        }
+    }
+
+    public static void Main(string[] args) {
+        Program.Classify(0 - 5)
+        Program.Classify(0)
+        Program.Classify(7)
+        Program.Classify(50)
+        Program.Classify(500)
+    }
+}
