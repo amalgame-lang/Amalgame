@@ -280,6 +280,7 @@ public class CGen {
     private string InferTypeFromExpr(AstNode expr) {
         if (expr == null) { return "" }
         let k = expr.Kind
+        if (k == NodeKind.LIST_COMP)      { return "AmalgameList*" }
         if (k == NodeKind.LITERAL_INT)    { return "i64" }
         if (k == NodeKind.LITERAL_FLOAT)  { return "double" }
         if (k == NodeKind.LITERAL_STRING) { return "code_string" }
@@ -1532,7 +1533,7 @@ public class CGen {
             if (t == "void*") {
                 // Check if rhs already contains a typed cast like "(SomeType*)AmalgameList_get"
                 // but NOT a ternary expression like "(cond ? a : b)"
-                if (String_StartsWith(rhs, "(") && !String_StartsWith(rhs, "(void*)") && !String_Contains(rhs, "?")) {
+                if (String_StartsWith(rhs, "(") && !String_StartsWith(rhs, "(void*)") && !String_StartsWith(rhs, "({") && !String_Contains(rhs, "?")) {
                     // Extract cast type from "(Type*)expr" → strip outer parens up to first )
                     let closeP = String_IndexOf(rhs, ")")
                     if (closeP > 1) {
@@ -1601,9 +1602,27 @@ public class CGen {
                     }
                 }
             }
-            // Fallback: collection for (emit comment — not yet supported)
+            // Collection for: for x in <list-expr>. Emit a wrapper block so
+            // the synthetic iterator + length stay scoped to the loop. The
+            // element type is erased to void* (generics erase to void*); the
+            // user casts explicitly when treating the element as a primitive.
+            // The synthetic names use vn as a suffix so nested for-in over
+            // different lists don't shadow each other.
             let iter = this.EmitExprStr(stmt.Left)
-            this.Out.EmitLine("/* for " + vn + " in " + iter + " — collection iteration not yet supported */")
+            this.Out.EmitLine("{")
+            this.Out.Indent_()
+            this.Out.EmitLine("AmalgameList* __it_" + vn + " = " + iter + ";")
+            this.Out.EmitLine("i64 __len_" + vn + " = AmalgameList_size(__it_" + vn + ");")
+            this.Out.EmitLine("for (i64 __idx_" + vn + " = 0; __idx_" + vn + " < __len_" + vn + "; __idx_" + vn + "++) {")
+            this.Out.Indent_()
+            this.Out.EmitLine("void* " + vn + " = __it_" + vn + "->data[__idx_" + vn + "];")
+            this.LocalTypeSet(vn, "void*")
+            if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            this.LocalTypeSet(vn, "")
         }
         if (k == NodeKind.BREAK_STMT) {
             this.Out.EmitLine("break;")
@@ -1895,7 +1914,57 @@ public class CGen {
             let idx  = this.EmitExprStr(expr.Right)
             return base + "[" + idx + "]"
         }
+        if (k == NodeKind.LIST_COMP) {
+            return this.EmitListComp(expr)
+        }
         return "/* unknown expr */"
+    }
+
+    // ── List comprehension ────────────────────────────
+    // [proj for vn in iter (if guard)?] becomes a GCC compound statement
+    // expression that builds and returns an AmalgameList*. Two iteration
+    // shapes: range (BINARY "..") emits a counted i64 loop; everything
+    // else is treated as a List* and iterated by index. Elements are
+    // boxed via (void*)(intptr_t)(...) — same convention as user code
+    // does when calling .Add() directly. Unique names are suffixed with
+    // the iteration variable so nested comps over distinct vars don't
+    // collide; same-var nesting is unsupported (rare in practice).
+    private string EmitListComp(AstNode n) {
+        let vn = n.Str
+        let iter = n.Right
+        var isRange = false
+        if (iter != null && iter.Kind == NodeKind.BINARY && iter.Str == "..") {
+            isRange = true
+        }
+        // Emit the iterable BEFORE setting the local type, so its sub-expressions
+        // see the outer scope (e.g. an outer variable named `vn` keeps its type).
+        var loopHeader = ""
+        if (isRange) {
+            let startStr = this.EmitExprStr(iter.Left)
+            let endStr   = this.EmitExprStr(iter.Right)
+            loopHeader = "for (i64 " + vn + " = " + startStr + "; " + vn + " < " + endStr + "; " + vn + "++) { "
+            this.LocalTypeSet(vn, "i64")
+        } else {
+            let iterStr = this.EmitExprStr(iter)
+            loopHeader = "AmalgameList* __it_" + vn + " = " + iterStr + "; "
+            loopHeader = loopHeader + "i64 __n_" + vn + " = AmalgameList_size(__it_" + vn + "); "
+            loopHeader = loopHeader + "for (i64 __i_" + vn + " = 0; __i_" + vn + " < __n_" + vn + "; __i_" + vn + "++) { "
+            loopHeader = loopHeader + "void* " + vn + " = __it_" + vn + "->data[__i_" + vn + "]; "
+            this.LocalTypeSet(vn, "void*")
+        }
+        // Now emit the projection and guard with vn visible.
+        let projStr = this.EmitExprStr(n.Left)
+        var guardStr = ""
+        if (n.Cond != null) {
+            guardStr = "if (" + this.EmitExprStr(n.Cond) + ") "
+        }
+        this.LocalTypeSet(vn, "")
+        var s = "({ AmalgameList* __lc_" + vn + " = AmalgameList_new(); "
+        s = s + loopHeader
+        s = s + guardStr
+        s = s + "AmalgameList_add(__lc_" + vn + ", (void*)(intptr_t)(" + projStr + ")); "
+        s = s + "} __lc_" + vn + "; })"
+        return s
     }
 
     // ── AmalgameList method dispatch ──────────────────

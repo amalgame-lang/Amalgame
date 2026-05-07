@@ -576,6 +576,13 @@ public class Formatter {
         if (k == NodeKind.IF_STMT && n.Name != "__match__") {
             return this.EmitIfExpr(n)
         }
+        if (k == NodeKind.LIST_COMP) {
+            var s = "[" + this.EmitExpr(n.Left) + " for " + n.Str + " in " + this.EmitExpr(n.Right)
+            if (n.Cond != null) {
+                s = s + " if " + this.EmitExpr(n.Cond)
+            }
+            return s + "]"
+        }
         // Expression contexts can't host a `//` comment, so emit a
         // syntactically valid placeholder identifier instead. Round-trip
         // is lossy but the surrounding code remains parseable.
@@ -734,6 +741,7 @@ public class Formatter {
         if (k == NodeKind.NEW_EXPR)       { return "NEW_EXPR" }
         if (k == NodeKind.THIS_EXPR)      { return "THIS_EXPR" }
         if (k == NodeKind.INDEX_EXPR)     { return "INDEX_EXPR" }
+        if (k == NodeKind.LIST_COMP)      { return "LIST_COMP" }
         return "?"
     }
 }

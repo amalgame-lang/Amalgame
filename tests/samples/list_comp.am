@@ -1,0 +1,23 @@
+namespace Tests
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        // Map a range
+        let squares = [i * i for i in 0..5]
+        Console.WriteLine(String.FromInt(squares.Count()))   // 5
+
+        // Filter on range
+        let bigs = [i for i in 0..20 if i > 15]
+        Console.WriteLine(String.FromInt(bigs.Count()))      // 4: 16,17,18,19
+
+        // Iterate a list
+        let xs = new List<int>()
+        xs.Add(1)
+        xs.Add(2)
+        xs.Add(3)
+        let copy = [x for x in xs]
+        Console.WriteLine(String.FromInt(copy.Count()))      // 3
+    }
+}
