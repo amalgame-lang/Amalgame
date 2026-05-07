@@ -1859,7 +1859,7 @@ public class CGen {
             }
         }
 
-        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "Clear" && mname != "Reserve") { return "" }
+        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -1977,6 +1977,13 @@ public class CGen {
             if (argc > 0) {
                 let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
                 return "AmalgameList_remove(" + listExpr + ", (void*)(intptr_t)(" + arg0 + "))"
+            }
+        }
+        if (mname == "RemoveAt") {
+            let argc = callExpr.Args.Count()
+            if (argc > 0) {
+                let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
+                return "AmalgameList_removeAt(" + listExpr + ", " + arg0 + ")"
             }
         }
         return ""
