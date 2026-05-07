@@ -7,11 +7,18 @@
 #  Some tests may require filesystem access (/tmp).
 # ─────────────────────────────────────────────────────
 
-AMC="./build/amc"
+AMC="./amc"
 SAMPLES="./tests/samples"
 PASS=0
 FAIL=0
 SKIP=0
+
+# Same skip mechanism as run_tests.sh — see that file for the rationale.
+SKIP_SELFHOST=" "
+
+# Build artifacts go to a temp directory so the source tree stays clean.
+BUILD_DIR=$(mktemp -d -t amc-stdlib-XXXXXX)
+trap 'rm -rf "$BUILD_DIR"' EXIT
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -33,7 +40,14 @@ run_test() {
         SKIP=$((SKIP + 1)); return
     fi
 
-    output=$("$AMC" $flags "$file" 2>&1)
+    local base=" $(basename "$file") "
+    if [ "$AMC" = "./amc" ] && [[ "$SKIP_SELFHOST" == *"$base"* ]]; then
+        echo -e "${YELLOW}SKIP${NC} (self-host: pending compiler fix)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
+    output=$("$AMC" $flags -o "$out_base" "$file" 2>&1)
     amc_exit=$?
 
     if [ $amc_exit -ne 0 ]; then
@@ -43,9 +57,16 @@ run_test() {
         FAIL=$((FAIL + 1)); return
     fi
 
-    exe="${file/.am/}"
+    local c_file="${out_base}.c"
+    if [ ! -f "$c_file" ]; then
+        echo -e "${RED}FAIL${NC} (no .c emitted)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+
+    exe="$out_base"
     if [ ! -x "$exe" ]; then
-        echo -e "${RED}FAIL${NC} (executable not found)"
+        echo -e "${RED}FAIL${NC} (gcc failed)"
         FAIL=$((FAIL + 1)); return
     fi
 

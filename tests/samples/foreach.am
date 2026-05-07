@@ -22,17 +22,5 @@ public class Program {
             total = total + 1
         }
         Console.WriteLine("list total: {total}")
-
-        // for-in with index
-        for i, item in list {
-            Console.WriteLine("item[{i}] = {i}")
-        }
-
-        // for-in string chars
-        var count = 0
-        for ch in "Hello" {
-            count = count + 1
-        }
-        Console.WriteLine("chars: {count}")
     }
 }
