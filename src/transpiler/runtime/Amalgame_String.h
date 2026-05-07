@@ -296,6 +296,15 @@ static inline code_string String_FromInt(i64 n) {
     return code_int_to_string(n);
 }
 
+/* Build a 1-character string from a byte value (0-255).
+ * Used by the lexer to decode \xHH escapes into real bytes. */
+static inline code_string String_FromByte(i64 b) {
+    char* s = (char*) GC_MALLOC(2);
+    s[0] = (char)(b & 0xFF);
+    s[1] = '\0';
+    return s;
+}
+
 static inline code_string String_FromFloat(f64 n) {
     return code_float_to_string(n);
 }

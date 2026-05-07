@@ -188,6 +188,7 @@ public class FullResolver {
         this.DeclareGlobal("String_ToInt",      "int",    false)
         this.DeclareGlobal("String_ToFloat",    "float",  false)
         this.DeclareGlobal("String_FromInt",    "string", false)
+        this.DeclareGlobal("String_FromByte",   "string", false)
         this.DeclareGlobal("String_FromFloat",  "string", false)
         this.DeclareGlobal("String_From",       "string", false)
         this.DeclareGlobal("String_CharAt",     "string", false)
