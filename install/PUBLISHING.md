@@ -75,7 +75,7 @@ build() {
 package() {
     cd "Amalgame-$pkgver"
     DESTDIR="$pkgdir" ninja -C build install
-    install -Dm644 src/transpiler/runtime/_runtime.h \
+    install -Dm644 runtime/_runtime.h \
         "$pkgdir/usr/lib/amalgame/_runtime.h"
 }
 PKGEOF
@@ -176,7 +176,7 @@ languages into a single, modern, statically-typed language.
 
 %install
 %meson_install
-install -Dm644 src/transpiler/runtime/_runtime.h \
+install -Dm644 runtime/_runtime.h \
     %{buildroot}%{_libdir}/amalgame/_runtime.h
 
 %files
@@ -219,7 +219,7 @@ stdenv.mkDerivation rec {
 
   postInstall = ''
     mkdir -p $out/lib/amalgame
-    cp src/transpiler/runtime/_runtime.h $out/lib/amalgame/
+    cp runtime/_runtime.h $out/lib/amalgame/
   '';
 
   meta = with lib; {

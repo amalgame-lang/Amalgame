@@ -5,10 +5,10 @@
 **A modern, self-hosted programming language that transpiles to C.**
 
 [![CI](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml/badge.svg)](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml)
-[![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-success)](src/amalgame/)
+[![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-success)](src/)
 [![Tests](https://img.shields.io/badge/tests-127%2F127-brightgreen)](tests/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue)]()
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
 
 ```amalgame
 public class Greeter {
@@ -30,7 +30,7 @@ public class Greeter {
 
 - **🚀 Compile to C, run anywhere** — no VM, no GC pause hell, just fast native binaries via gcc.
 - **🪶 Zero hidden cost** — what you write is what runs. Strings are `char*`, lists are arrays, GC is bdwgc.
-- **🧬 Self-hosted compiler** — `amc` is written in Amalgame and compiles itself. The whole pipeline (lexer, parser, resolver, type-checker, code-gen) lives in [src/amalgame/](src/amalgame/).
+- **🧬 Self-hosted compiler** — `amc` is written in Amalgame and compiles itself. The whole pipeline (lexer, parser, resolver, type-checker, code-gen) lives in [src/](src/).
 - **✨ Modern syntax you actually want to use** — pattern matching with guards, null-safety with `?.`, string interpolation, decorators, generics, tuples, lambdas.
 - **⚡ ~5s build** — full self-host rebuild including the bootstrap, in five seconds.
 - **📦 Multi-OS** — Linux, macOS, Windows binaries built on every release tag.
@@ -44,7 +44,7 @@ namespace App
 import Amalgame.IO
 
 public class Calc {
-    // Decorators map to GCC attributes / hints.
+    // @inline maps to GCC's `inline` hint.
     @inline
     public static int Square(int x) { return x * x }
 
@@ -53,17 +53,6 @@ public class Calc {
         guard x > lo else { return lo }
         guard x < hi else { return hi }
         return x
-    }
-
-    // Pattern matching with arm guards + range patterns + binders.
-    public static string Classify(int n) {
-        match n {
-            0           => return "zero",
-            x if x < 0  => return "negative",
-            1..9        => return "small",
-            10..99      => return "medium",
-            _           => return "large"
-        }
     }
 }
 
@@ -76,26 +65,55 @@ public class User {
     }
 }
 
+public enum Shape {
+    Circle(int)
+    Rect(int, int)
+}
+
 public class Program {
     public static void Main(string[] args) {
-        // Named arguments + string interpolation.
+        // Named arguments + interpolation of object fields.
         let u = new User(name: "Bastien", age: 31)
-        Console.WriteLine("Hello, {u.Name}! You are {String.FromInt(u.Age)}.")
+        Console.WriteLine("Hello, {u.Name}!")
+        let age = u.Age
+        Console.WriteLine("You are {String.FromInt(age)}.")
 
         // Null-safe member access — no NPE, ever.
         let maybe: User? = null
         let label = maybe?.Name
         if (label == null) { Console.WriteLine("nobody") }
 
+        // Pattern matching with arm guards, ranges, and binders.
+        let n = 42
+        match n {
+            0           => Console.WriteLine("zero"),
+            x if x < 0  => Console.WriteLine("negative"),
+            1..9        => Console.WriteLine("small"),
+            10..99      => Console.WriteLine("medium"),
+            _           => Console.WriteLine("large")
+        }
+
         // Triple-quoted multiline strings preserve newlines as-is.
         Console.WriteLine("""
-        ┌────────────────┐
-        │  Amalgame v0.x │
-        └────────────────┘
+        ┌──────────────────────┐
+        │  Amalgame demo       │
+        └──────────────────────┘
         """)
+
+        // Algebraic enums + match destructuring.
+        let s = Shape.Circle(5)
+        match s {
+            Circle(r)  => Console.WriteLine("circle r={String.FromInt(r)}"),
+            Rect(w, h) => Console.WriteLine("rect")
+        }
     }
 }
 ```
+
+> **Note** — match arms run statements; the language doesn't yet have
+> match-as-expression. Use `Console.WriteLine` / early-return inside
+> arms, or assign in each arm body. Tracked in
+> [ROADMAP_COMPLET.md](ROADMAP_COMPLET.md).
 
 ---
 
@@ -117,7 +135,7 @@ git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
 ```bash
 brew install bdw-gc curl
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
-gcc -O2 -Isrc/transpiler/runtime src/amalgame/amc_lib.c -lgc -lm -lcurl -o amc
+gcc -O2 -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc
 ./amc --version
 ```
 
@@ -126,7 +144,7 @@ gcc -O2 -Isrc/transpiler/runtime src/amalgame/amc_lib.c -lgc -lm -lcurl -o amc
 ```bash
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
-gcc -O2 -Isrc/transpiler/runtime src/amalgame/amc_lib.c -lgc -lm -lcurl -o amc.exe
+gcc -O2 -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc.exe
 ./amc.exe --version
 ```
 
@@ -146,7 +164,7 @@ public class Program {
 
 ```bash
 ./amc hello.am -o hello
-gcc -Isrc/transpiler/runtime hello.c -lgc -lm -lcurl -o hello
+gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
 ./hello
 # → Hello, Amalgame!
 ```
@@ -162,12 +180,13 @@ gcc -Isrc/transpiler/runtime hello.c -lgc -lm -lcurl -o hello
 **Pattern matching with guards**
 
 ```amalgame
-match status {
-    n if n < 200 => "info",
-    n if n < 300 => "success",
-    n if n < 400 => "redirect",
-    n if n < 500 => "client error",
-    _            => "server error"
+let n = 42
+match n {
+    0           => doZero(),
+    x if x < 0  => doNeg(x),
+    1..9        => doSmall(),
+    10..99      => doMedium(),
+    _           => doLarge()
 }
 ```
 
@@ -177,11 +196,11 @@ match status {
 **Null-safety baked in**
 
 ```amalgame
-let user: User? = repo.Find(id)
+let user: User? = null
 let name = user?.Name
 let age  = user?.GetAge()
 if (name == null) {
-    return "anonymous"
+    Console.WriteLine("anonymous")
 }
 ```
 
@@ -193,10 +212,11 @@ if (name == null) {
 **String interpolation + multiline**
 
 ```amalgame
+let title = "Hello"
 let html = """
 <article>
-  <h1>{post.Title}</h1>
-  <p>by {post.Author}</p>
+  <h1>{title}</h1>
+  <p>by Amalgame</p>
 </article>
 """
 ```
@@ -204,17 +224,17 @@ let html = """
 </td>
 <td valign="top">
 
-**Algebraic enums + match**
+**Algebraic enums + destructuring**
 
 ```amalgame
 public enum Shape {
-    Circle(float r)
-    Rect(float w, float h)
+    Circle(int)
+    Rect(int, int)
 }
 
-let area = match s {
-    Circle(r)  => 3.14 * r * r,
-    Rect(w, h) => w * h
+match s {
+    Circle(r)  => useRadius(r),
+    Rect(w, h) => useDims(w, h)
 }
 ```
 
@@ -240,11 +260,14 @@ let (q, r) = Math2.DivMod(17, 5)
 
 ```amalgame
 @inline
-public static int Hot(int x) { return x*x }
+public static int Hot(int x) {
+    return x * x
+}
 
 @deprecated
-public static void Old() { ... }
-// → C compiler warns at every callsite
+public static void Old() {
+    /* GCC warns at every callsite */
+}
 ```
 
 </td>
@@ -260,7 +283,7 @@ data classes, records, interfaces, generics, lambdas, try/catch,
 ## Project Layout
 
 ```
-src/amalgame/             ← The compiler — written in Amalgame
+src/             ← The compiler — written in Amalgame
 ├── lexer/                  token.am, lexer.am
 ├── parser/                 ast.am, parser.am
 ├── resolver/               symbol.am, resolver.am  (scope + member table)
@@ -270,7 +293,7 @@ src/amalgame/             ← The compiler — written in Amalgame
 ├── main.am                 (CLI entry: parses argv, drives the pipeline)
 └── amc_lib.c               (generated — 7000+ lines of self-hosted C)
 
-src/transpiler/runtime/   ← Tiny C runtime (collections, strings, GC, IO)
+runtime/   ← Tiny C runtime (collections, strings, GC, IO)
 stdlib/                   ← Amalgame stdlib reference (.am declarations)
 tests/                    ← 127 sample programs + integration tests
 archive/vala-bootstrap/   ← Original Vala compiler — kept as recovery path
@@ -281,7 +304,7 @@ editors/vscode/           ← VS Code syntax highlighting extension
 The build flow:
 
 ```
-src/amalgame/*.am  ──[ ./amc ]──▶  amc_lib.c  ──[ gcc ]──▶  amc binary
+src/*.am  ──[ ./amc ]──▶  amc_lib.c  ──[ gcc ]──▶  amc binary
                            ▲                                   │
                            └───────────────────────────────────┘
                               compiles itself, in ~5 seconds
@@ -369,4 +392,4 @@ CI runs on every push and PR. Releases are cut by pushing a `v*` tag.
 
 ## License
 
-[MIT](LICENSE) © Bastien Mouget
+[Apache License 2.0](LICENSE) © Bastien Mouget

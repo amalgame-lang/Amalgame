@@ -50,7 +50,7 @@ jobs:
           path: |
             amc
             gen_test
-            src/amalgame/amc_lib.c
+            src/amc_lib.c
           retention-days: 3
 
   # ── macOS: skip Vala (no native Vala on macOS runners by default). Build amc
@@ -70,8 +70,8 @@ jobs:
 
       - name: Compile amc from tracked amc_lib.c
         run: |
-          gcc -O2 -Isrc/transpiler/runtime \
-              src/amalgame/amc_lib.c \
+          gcc -O2 -Iruntime \
+              src/amc_lib.c \
               -lgc -lm -lcurl -o amc
 
       - name: Verify amc reports its version
@@ -80,7 +80,7 @@ jobs:
       - name: Smoke compile a sample
         run: |
           ./amc tests/samples/hello.am -o /tmp/hello
-          gcc -Isrc/transpiler/runtime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello
+          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello
           /tmp/hello
 
       - name: Upload generated artifacts on failure
@@ -90,7 +90,7 @@ jobs:
           name: amc-debug-macos
           path: |
             amc
-            src/amalgame/amc_lib.c
+            src/amc_lib.c
           retention-days: 3
 
   # ── Windows: build via MSYS2 (gcc + libgc + libcurl available). Skips Vala
@@ -120,8 +120,8 @@ jobs:
 
       - name: Compile amc from tracked amc_lib.c
         run: |
-          gcc -O2 -Isrc/transpiler/runtime \
-              src/amalgame/amc_lib.c \
+          gcc -O2 -Iruntime \
+              src/amc_lib.c \
               -lgc -lm -lcurl -o amc.exe
 
       - name: Verify amc reports its version
@@ -130,7 +130,7 @@ jobs:
       - name: Smoke compile a sample
         run: |
           ./amc.exe tests/samples/hello.am -o /tmp/hello
-          gcc -Isrc/transpiler/runtime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello.exe
+          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello.exe
           /tmp/hello.exe
 
       - name: Upload generated artifacts on failure
@@ -140,5 +140,5 @@ jobs:
           name: amc-debug-windows
           path: |
             amc.exe
-            src/amalgame/amc_lib.c
+            src/amc_lib.c
           retention-days: 3

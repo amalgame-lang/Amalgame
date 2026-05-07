@@ -12,15 +12,15 @@ cd "$(dirname "$0")"
 # when bundled into the gen_test binary. main.am is only needed for the
 # final amc binary (Step 3), and gen_test.am injects it into amc_lib.c
 # via gen6 anyway.
-AMC_SOURCES="src/amalgame/lexer/token.am \
-             src/amalgame/lexer/lexer.am \
-             src/amalgame/parser/ast.am \
-             src/amalgame/parser/parser.am \
-             src/amalgame/generator/c_gen.am \
-             src/amalgame/diagnostics.am \
-             src/amalgame/resolver/symbol.am \
-             src/amalgame/resolver/resolver.am \
-             src/amalgame/typechecker.am"
+AMC_SOURCES="src/lexer/token.am \
+             src/lexer/lexer.am \
+             src/parser/ast.am \
+             src/parser/parser.am \
+             src/generator/c_gen.am \
+             src/diagnostics.am \
+             src/resolver/symbol.am \
+             src/resolver/resolver.am \
+             src/typechecker.am"
 
 # Self-host: use ./amc if available, fall back to ./build/amc (Vala) for cold start
 if [ -x ./amc ]; then
@@ -35,20 +35,20 @@ fi
 # that as long as the .c file was produced, then proceed to GCC which is
 # the real correctness gate.
 $AMC $AMC_SOURCES \
-     src/amalgame/generator/gen_test.am \
+     src/generator/gen_test.am \
      -o gen_test || true
 if [ ! -f gen_test.c ]; then
     echo "Step 1 failed: gen_test.c was not produced" >&2
     exit 1
 fi
-gcc -O2 -Isrc/transpiler/runtime gen_test.c -lgc -lm -o gen_test
+gcc -O2 -Iruntime gen_test.c -lgc -lm -o gen_test
 
 echo "=== Step 2: Generate all bundles + amc_lib.c ==="
 time ./gen_test
 
 echo "=== Step 3: Compile amc ==="
 # main.am now emits its own int main() — no more amc_main.c wrapper needed.
-gcc -Isrc/transpiler/runtime \
-    src/amalgame/amc_lib.c \
+gcc -Iruntime \
+    src/amc_lib.c \
     -lgc -lm -lcurl -o amc
 echo "✅ amc built $(date)"

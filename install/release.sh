@@ -45,7 +45,7 @@ ninja -C build
 # Assemble archive directory
 mkdir -p "$ARCHIVE_DIR/runtime"
 cp build/amc                              "$ARCHIVE_DIR/"
-cp src/transpiler/runtime/_runtime.h     "$ARCHIVE_DIR/runtime/"
+cp runtime/_runtime.h     "$ARCHIVE_DIR/runtime/"
 cp README.md                             "$ARCHIVE_DIR/"
 cp docs/DEVELOPER_GUIDE.md               "$ARCHIVE_DIR/"
 
