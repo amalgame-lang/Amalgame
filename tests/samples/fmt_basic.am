@@ -1,0 +1,52 @@
+namespace App
+
+import Amalgame.Collections
+
+// Simple data class used by Main below.
+public class Point {
+    public X: int
+    public Y: int
+
+    public Point(int x, int y) {
+        this.X = x
+        this.Y = y
+    }
+
+    // Manhattan distance to the origin.
+    public int Distance() {
+        var d = this.X
+        if (d < 0) {
+            d = -d
+        }
+        var dy = this.Y
+        if (dy < 0) {
+            dy = -dy
+        }
+        return d + dy
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let p = new Point(3, 4)
+        let n = p.Distance()
+        Console.WriteLine("distance = {n}")
+
+        // Loop over a range and print categories.
+        for i in 0..3 {
+            if (i == 0) {
+                Console.WriteLine("zero")
+            } else if (i == 1) {
+                Console.WriteLine("one")
+            } else {
+                Console.WriteLine("other")
+            }
+        }
+
+        match n {
+            0 => Console.WriteLine("origin")
+            1..9 => Console.WriteLine("near")
+            _ => Console.WriteLine("far")
+        }
+    }
+}
