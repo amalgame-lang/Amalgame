@@ -446,6 +446,7 @@ static code_string Amalgame_Compiler_Lexer_Advance(Amalgame_Compiler_Lexer* self
 static void Amalgame_Compiler_Lexer_SkipWhitespace(Amalgame_Compiler_Lexer* self);
 AmalgameList* Amalgame_Compiler_Lexer_Tokenize(Amalgame_Compiler_Lexer* self);
 static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self);
+static void Amalgame_Compiler_Lexer_ReadTripleQuoted(Amalgame_Compiler_Lexer* self);
 static i64 Amalgame_Compiler_Lexer_HexNibble(Amalgame_Compiler_Lexer* self, code_string ch);
 static void Amalgame_Compiler_Lexer_ReadNumber(Amalgame_Compiler_Lexer* self);
 static void Amalgame_Compiler_Lexer_ReadIdentifier(Amalgame_Compiler_Lexer* self);
@@ -563,6 +564,12 @@ AmalgameList* Amalgame_Compiler_Lexer_Tokenize(Amalgame_Compiler_Lexer* self) {
 static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
     (void)self;
     Amalgame_Compiler_Lexer_Advance(self);
+    if (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\"") && code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "\"")) {
+        Amalgame_Compiler_Lexer_Advance(self);
+        Amalgame_Compiler_Lexer_Advance(self);
+        Amalgame_Compiler_Lexer_ReadTripleQuoted(self);
+        return;
+    }
     code_string __attribute__((unused)) value = "";
     while (self->Pos < String_Length(self->Source) && !code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\"")) {
         code_string __attribute__((unused)) c = Amalgame_Compiler_Lexer_Advance(self);
@@ -603,6 +610,28 @@ static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
     }
     if (self->Pos < String_Length(self->Source)) {
         Amalgame_Compiler_Lexer_Advance(self);
+    }
+    Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
+}
+
+static void Amalgame_Compiler_Lexer_ReadTripleQuoted(Amalgame_Compiler_Lexer* self) {
+    (void)self;
+    code_string __attribute__((unused)) value = "";
+    i64 __attribute__((unused)) len = String_Length(self->Source);
+    while (self->Pos < len) {
+        if (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\"") && code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "\"") && code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 2), "\"")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
+            return;
+        }
+        code_string __attribute__((unused)) c = Amalgame_Compiler_Lexer_Advance(self);
+        if (code_string_equals(c, "\n")) {
+            self->Line = self->Line + 1;
+            self->Column = 1;
+        }
+        value = code_string_concat(value, c);
     }
     Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
 }
