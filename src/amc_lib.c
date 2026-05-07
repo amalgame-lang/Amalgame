@@ -3853,6 +3853,20 @@ static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalg
                 }
                 if (m->Body != NULL) {
                     Amalgame_Compiler_CGen_EmitBlock(self, m->Body);
+                } else {
+                    for (i64 pi = 0; pi < pcount; pi++) {
+                        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
+                        code_bool __attribute__((unused)) hasField = 0;
+                        for (i64 fi = 0; fi < members; fi++) {
+                            Amalgame_Compiler_AstNode* __attribute__((unused)) f = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, fi);
+                            if (f->Kind == Amalgame_Compiler_NodeKind_VAR_DECL && code_string_equals(f->Name, p->Name)) {
+                                hasField = 1;
+                            }
+                        }
+                        if (hasField) {
+                            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("self->", p->Name), " = "), p->Name), ";"));
+                        }
+                    }
                 }
                 Amalgame_Compiler_CGen_LocalTypeClear(self);
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return self;");
