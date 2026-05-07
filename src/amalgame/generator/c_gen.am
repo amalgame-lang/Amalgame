@@ -438,6 +438,10 @@ public class CGen {
                 if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf") { return "i64" }
                 if (calleeStr == "String_Contains" || calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_IsEmpty") { return "code_bool" }
                 if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
+                // Process args + exit code (runtime globals)
+                if (calleeStr == "Args_Count" || calleeStr == "Exit_Get") { return "i64" }
+                if (calleeStr == "Args_Get") { return "code_string" }
+                if (calleeStr == "Exit_Set") { return "void" }
                 if (String_EndsWith(calleeStr, "_CharAt")) { return "code_string" }
                 if (calleeStr == "code_string_concat") { return "code_string" }
                 if (calleeStr == "AmalgameList_count") { return "i64" }
