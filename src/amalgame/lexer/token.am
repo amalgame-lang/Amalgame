@@ -67,6 +67,7 @@ public enum TokenType {
     OP_ARROW
     OP_THIN_ARROW
     OP_DOT
+    OP_QDOT
     OP_DOTDOT
     OP_COALESCE
     // Bitwise
