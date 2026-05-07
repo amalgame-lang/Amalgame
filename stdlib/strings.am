@@ -1,0 +1,59 @@
+// ═══════════════════════════════════════════════════════
+//  stdlib/strings.am — String API reference
+//
+//  Declarations only. The actual implementations live in the C runtime
+//  (`src/transpiler/runtime/Amalgame_String.h`); the compiler maps
+//  `String.Method(s, ...)` calls to `String_Method(s, ...)` via the
+//  isStdlib path in CGen. The bodies below are illustrative stubs that
+//  document the contract — DO NOT compile this file, and DO NOT import
+//  it as a regular module. Treat it as the canonical specification of
+//  the string API your code is allowed to use.
+//
+//  Use in your code:
+//
+//    let n = String.Length(s)
+//    if (String.Contains(s, "hello")) { ... }
+//    let upper = String.ToUpper(s)
+//
+// ═══════════════════════════════════════════════════════
+
+namespace Amalgame.String
+
+public class String {
+    // ── Inspection ────────────────────────────────────
+    public static int  Length(string s)
+    public static bool IsEmpty(string s)
+
+    // ── Search ────────────────────────────────────────
+    public static bool Contains(string s, string sub)
+    public static bool StartsWith(string s, string prefix)
+    public static bool EndsWith(string s, string suffix)
+    public static int  IndexOf(string s, string sub)
+    public static int  LastIndexOf(string s, string sub)
+
+    // ── Slicing ───────────────────────────────────────
+    public static string Substring(string s, int start, int len)
+    public static string CharAt(string s, int i)
+
+    // ── Transformation ────────────────────────────────
+    public static string ToUpper(string s)
+    public static string ToLower(string s)
+    public static string Trim(string s)
+    public static string TrimStart(string s)
+    public static string TrimEnd(string s)
+    public static string Replace(string s, string old, string newStr)
+    public static string Repeat(string s, int n)
+
+    // ── Splitting / joining ───────────────────────────
+    public static List<string> Split(string s, string sep)
+    public static string       Join(List<string> parts, string sep)
+
+    // ── Conversion ────────────────────────────────────
+    public static int    ToInt(string s)
+    public static float  ToFloat(string s)
+    public static bool   ToBool(string s)
+    public static string FromInt(int n)
+    public static string FromFloat(float n)
+    public static string FromBool(bool b)
+    public static string FromByte(int b)
+}
