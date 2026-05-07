@@ -130,6 +130,61 @@ run_c_check() {
     fi
 }
 
+# Compile a lib with --lib, archive into .o, link a consumer C, run, check stdout.
+# Uses the bootstrap ./amc because the legacy Vala compiler still emits public methods
+# with `static` forward declarations, which gives them internal linkage.
+run_lib_link_test() {
+    local name="$1"
+    local lib_file="$2"
+    local consumer_c="$3"
+    local expected="$4"
+
+    printf "  %-34s" "$name"
+
+    if [ ! -f "$lib_file" ] || [ ! -f "$consumer_c" ]; then
+        echo -e "${YELLOW}SKIP${NC} (missing input)"
+        SKIP=$((SKIP + 1)); return
+    fi
+    if [ ! -x ./amc ]; then
+        echo -e "${YELLOW}SKIP${NC} (./amc not built)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local tmpdir="$(mktemp -d)"
+    ./amc --lib "$lib_file" -o "$tmpdir/lib" >/dev/null 2>&1
+    if [ ! -f "$tmpdir/lib.c" ]; then
+        echo -e "${RED}FAIL${NC} (no .c generated)"
+        FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
+    fi
+    if grep -q "^int main" "$tmpdir/lib.c"; then
+        echo -e "${RED}FAIL${NC} (lib has int main)"
+        FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
+    fi
+    local runtime_dir="$(dirname "$0")/../src/transpiler/runtime"
+    if ! gcc -I"$runtime_dir" -c "$tmpdir/lib.c" -o "$tmpdir/lib.o" 2>"$tmpdir/err"; then
+        echo -e "${RED}FAIL${NC} (gcc -c)"
+        sed 's/^/    /' "$tmpdir/err" | head -5
+        FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
+    fi
+    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lcurl -o "$tmpdir/app" 2>"$tmpdir/err"; then
+        echo -e "${RED}FAIL${NC} (link)"
+        sed 's/^/    /' "$tmpdir/err" | head -5
+        FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
+    fi
+    local out
+    out="$("$tmpdir/app" 2>&1)"
+    if echo "$out" | grep -qF "$expected"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (output mismatch)"
+        echo "    expected : $expected"
+        echo "    got      : $out"
+        FAIL=$((FAIL + 1))
+    fi
+    rm -rf "$tmpdir"
+}
+
 # ── Banner ─────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════"
@@ -178,6 +233,10 @@ run_c_check   "lib: symbols prefixed" "$SAMPLES/library.am"     "Amalgame_Utils_
 run_lib_test  "forced lib (--lib)"    "$SAMPLES/forced_lib.am"  "--lib"
 run_c_check   "forced: no int main"   "$SAMPLES/forced_lib.am"  "Library — no entry point" "--lib"
 run_test      "forced: normal mode"   "$SAMPLES/forced_lib.am"  "localhost:8080"
+run_lib_link_test "lib end-to-end (link + run)" \
+                  "$SAMPLES/lib_e2e.am" \
+                  "$SAMPLES/lib_e2e_consumer.c" \
+                  "add=15 mul=30"
 
 # ── Interfaces ──────────────────────────────────────────
 echo ""
