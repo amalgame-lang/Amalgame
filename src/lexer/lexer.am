@@ -59,14 +59,22 @@ public class Lexer {
             let c = this.CharAt(this.Pos)
             if (this.IsSpace(c)) {
                 this.Advance()
-            } else if (c == "/" && this.CharAt(this.Pos + 1) == "/") {
-                while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\n") {
-                    this.Advance()
-                }
             } else {
                 break
             }
         }
+    }
+
+    private void ReadLineComment() {
+        let startLine = this.Line
+        let startCol  = this.Column
+        let start     = this.Pos
+        while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\n") {
+            this.Advance()
+        }
+        let raw = String_Substring(this.Source, start, this.Pos - start)
+        let tok = new Token(TokenType.COMMENT, raw, startLine, startCol, this.Filename)
+        this.Tokens.Add(tok)
     }
 
     public List<Token> Tokenize() {
@@ -74,7 +82,9 @@ public class Lexer {
             this.SkipWhitespace()
             if (this.Pos >= String_Length(this.Source)) { break }
             let ch = this.CharAt(this.Pos)
-            if (ch == "\n") {
+            if (ch == "/" && this.CharAt(this.Pos + 1) == "/") {
+                this.ReadLineComment()
+            } else if (ch == "\n") {
                 this.AddToken(TokenType.NEWLINE, "\\n")
                 this.Pos    = this.Pos + 1
                 this.Line   = this.Line + 1
