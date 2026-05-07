@@ -91,6 +91,11 @@ public class FullResolver {
     private CurrentReturn: string
     // Loop nesting depth
     private LoopDepth:     int
+    // Current file being resolved — used by error formatters to render source snippets.
+    private CurrentFile:   string
+    // Source map (path → text) — set by main; defaults to an empty SourceMap so
+    // standalone uses (resolver tests) keep working without configuration.
+    public  Sources:       SourceMap
 
     public FullResolver() {
         this.GlobalNames   = new List<string>()
@@ -105,6 +110,8 @@ public class FullResolver {
         this.CurrentClass  = ""
         this.CurrentReturn = "void"
         this.LoopDepth     = 0
+        this.CurrentFile   = ""
+        this.Sources       = new SourceMap()
         this.RegisterBuiltins()
     }
 
@@ -188,6 +195,12 @@ public class FullResolver {
         this.DeclareGlobal("String_ToInt",      "int",    false)
         this.DeclareGlobal("String_ToFloat",    "float",  false)
         this.DeclareGlobal("String_FromInt",    "string", false)
+        this.DeclareGlobal("String_FromByte",   "string", false)
+        // Process args + exit code — backed by globals set in main()
+        this.DeclareGlobal("Args_Count",        "int",    false)
+        this.DeclareGlobal("Args_Get",          "string", false)
+        this.DeclareGlobal("Exit_Set",          "void",   false)
+        this.DeclareGlobal("Exit_Get",          "int",    false)
         this.DeclareGlobal("String_FromFloat",  "string", false)
         this.DeclareGlobal("String_From",       "string", false)
         this.DeclareGlobal("String_CharAt",     "string", false)
@@ -298,14 +311,24 @@ public class FullResolver {
     // ── Error reporting ───────────────────────────────
 
     private void Error(string msg, AstNode node) {
-        let ln  = String_FromInt(node.Line)
-        let col = String_FromInt(node.Column)
-        let err = "\nerror[resolver]: " + msg + "\n  --> " + node.Name + ":" + ln + ":" + col + "\n |\n"
-        this.Errors.Add(err)
+        this.EmitError(msg, node.Line, node.Column)
     }
 
     private void ErrorMsg(string msg) {
-        this.Errors.Add("error[resolver]: " + msg + "\n")
+        this.EmitError(msg, 0, 0)
+    }
+
+    private void EmitError(string msg, int line, int col) {
+        let file = this.CurrentFile
+        let ln   = String_FromInt(line)
+        let cl   = String_FromInt(col)
+        var head = "\nerror[resolver]: " + msg + "\n"
+        if (String_Length(file) > 0 && line > 0) {
+            head = head + "  --> " + file + ":" + ln + ":" + cl + "\n"
+            let snip = this.Sources.GetLine(file, line)
+            head = head + SourceSnippet.Format(snip, line, col)
+        }
+        this.Errors.Add(head)
     }
 
     public bool HasErrors() {
@@ -401,6 +424,9 @@ public class FullResolver {
     }
 
     private void ResolveProgram(AstNode prog) {
+        // Filename is stashed by the parser in Str2 so error messages can
+        // resolve to the right source for snippet rendering.
+        this.CurrentFile = prog.Str2
         let count = prog.Children.Count()
         for i in 0..count {
             this.ResolveDecl(prog.Children.Get(i))
@@ -526,11 +552,11 @@ public class FullResolver {
             return
         }
         if (k == NodeKind.BREAK_STMT) {
-            if (this.LoopDepth == 0) { this.ErrorMsg("'break' outside loop") }
+            if (this.LoopDepth == 0) { this.Error("'break' outside loop", stmt) }
             return
         }
         if (k == NodeKind.CONTINUE_STMT) {
-            if (this.LoopDepth == 0) { this.ErrorMsg("'continue' outside loop") }
+            if (this.LoopDepth == 0) { this.Error("'continue' outside loop", stmt) }
             return
         }
         if (k == NodeKind.ASSIGN) {
@@ -593,7 +619,7 @@ public class FullResolver {
         if (stmt.Left != null && stmt.Left.Kind == NodeKind.IDENTIFIER) {
             let varName = stmt.Left.Name
             if (this.LookupIsLet(varName)) {
-                this.ErrorMsg("Cannot assign to immutable binding '" + varName + "'")
+                this.Error("Cannot assign to immutable binding '" + varName + "'", stmt.Left)
             }
         }
     }
@@ -641,7 +667,7 @@ public class FullResolver {
             // Skip parser error-recovery placeholders — they already represent a parse error
             if (expr.Name == "_unknown_") { return }
             if (!this.LookupInScopes(expr.Name)) {
-                this.ErrorMsg("Unknown symbol '" + expr.Name + "'")
+                this.Error("Unknown symbol '" + expr.Name + "'", expr)
             }
             return
         }

@@ -186,14 +186,18 @@ public class Program {
         let gen6 = new CGen()
         gen6.SetStreaming(true)
         gen6.BeginMulti("Amalgame.Compiler")
+        // diagnostics.am defines SourceMap/SourceSnippet, used by resolver+typechecker.
+        // The bootstrap CGen only emits struct typedefs in Pass 1; method forward
+        // decls and bodies are emitted file-by-file in Pass 2, so dependents must
+        // come AFTER diagnostics in this list.
         gen6.AddFilePass1(tokProg)
         gen6.AddFilePass1(astProg)
         gen6.AddFilePass1(lexProg)
         gen6.AddFilePass1(parProg)
         gen6.AddFilePass1(cgenProg)
+        gen6.AddFilePass1(diagProg)
         gen6.AddFilePass1(symProg)
         gen6.AddFilePass1(rvrProg)
-        gen6.AddFilePass1(diagProg)
         gen6.AddFilePass1(tckProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
@@ -203,12 +207,21 @@ public class Program {
         gen6.AddFilePass2(lexProg)
         gen6.AddFilePass2(parProg)
         gen6.AddFilePass2(cgenProg)
+        gen6.AddFilePass2(diagProg)
         gen6.AddFilePass2(symProg)
         gen6.AddFilePass2(rvrProg)
-        gen6.AddFilePass2(diagProg)
         gen6.AddFilePass2(tckProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
+        // Emit the C entry point that boots Amalgame's Program.Main.
+        // Mirrors the wrapper main.am writes for user programs (compiler.Run).
+        File.StreamLine("")
+        File.StreamLine("int main(int argc, char** argv) {")
+        File.StreamLine("    GC_INIT();")
+        File.StreamLine("    code_runtime_init_args(argc, argv);")
+        File.StreamLine("    Amalgame_Compiler_Program_Main((code_string*)argv);")
+        File.StreamLine("    return code_exit_code;")
+        File.StreamLine("}")
         File.CloseWrite()
         Console.WriteLine("amc_lib: → {out6}")
 
