@@ -130,8 +130,9 @@ public class AmalgameCompiler {
         if (!isLibrary) {
             File.AppendAll(outC, "\nint main(int argc, char** argv) {\n")
             File.AppendAll(outC, "    GC_INIT();\n")
+            File.AppendAll(outC, "    code_runtime_init_args(argc, argv);\n")
             File.AppendAll(outC, "    " + mainFunc + "((code_string*)argv);\n")
-            File.AppendAll(outC, "    return 0;\n")
+            File.AppendAll(outC, "    return code_exit_code;\n")
             File.AppendAll(outC, "}\n")
         } else {
             File.AppendAll(outC, "\n/* Library — no entry point */\n")
@@ -143,8 +144,87 @@ public class AmalgameCompiler {
     }
 }
 
-public class AmcEntry {
-    public static void AmcStart() {
-        Console.WriteError("Use amc binary directly")
+// ── CLI entry point — replaces the old amc_main.c ──────────
+public class Program {
+    public static void PrintUsage() {
+        Console.WriteError("Usage: amc [options] file1.am [file2.am ...] -o <output>")
+        Console.WriteError("")
+        Console.WriteError("Options:")
+        Console.WriteError("  -o <output>   Output file (default: a.out)")
+        Console.WriteError("  --lib         Compile as library (no main() emitted)")
+        Console.WriteError("  --check       Type-check only, no code generation")
+        Console.WriteError("  --color       Force ANSI color output")
+        Console.WriteError("  --no-color    Disable ANSI color output")
+        Console.WriteError("  --quiet       Suppress progress messages")
+        Console.WriteError("  --verbose     Print extra build info")
+        Console.WriteError("  --version     Print version and exit")
+        Console.WriteError("  --help        Print this help")
+    }
+
+    public static void Main(string[] args) {
+        let argc = Args_Count()
+        if (argc < 2) {
+            Program.PrintUsage()
+            Exit_Set(1)
+            return
+        }
+
+        let inputFiles = new List<string>()
+        var outputName = "a.out"
+        var isLib      = false
+        var checkOnly  = false
+        var useColor   = false
+        var verbose    = true
+
+        var i = 1
+        while (i < argc) {
+            let a = Args_Get(i)
+            if (a == "-o" && i + 1 < argc) {
+                i = i + 1
+                outputName = Args_Get(i)
+            } else if (a == "--lib") {
+                isLib = true
+            } else if (a == "--check") {
+                checkOnly = true
+            } else if (a == "--color") {
+                useColor = true
+            } else if (a == "--no-color") {
+                useColor = false
+            } else if (a == "--quiet") {
+                verbose = false
+            } else if (a == "--verbose") {
+                verbose = true
+            } else if (a == "--version") {
+                Console.WriteLine("amc 0.1.0 (self-hosted Amalgame compiler)")
+                Exit_Set(0)
+                return
+            } else if (a == "--help" || a == "-h") {
+                Program.PrintUsage()
+                Exit_Set(0)
+                return
+            } else if (String_EndsWith(a, ".am")) {
+                inputFiles.Add(a)
+            } else {
+                Console.WriteError("amc: unknown option '" + a + "'")
+                Program.PrintUsage()
+                Exit_Set(1)
+                return
+            }
+            i = i + 1
+        }
+
+        if (inputFiles.Count() == 0) {
+            Console.WriteError("amc: no input .am files")
+            Exit_Set(1)
+            return
+        }
+
+        let compiler = new AmalgameCompiler()
+        compiler.SetLib(isLib)
+        compiler.SetCheckOnly(checkOnly)
+        compiler.SetColor(useColor)
+        compiler.SetVerbose(verbose)
+        compiler.Run(inputFiles, outputName)
+        Exit_Set(compiler.GetExitCode())
     }
 }

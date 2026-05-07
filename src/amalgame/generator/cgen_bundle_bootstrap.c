@@ -2874,6 +2874,15 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (String_StartsWith(calleeStr, "String_")) {
                 return "code_string";
             }
+            if (code_string_equals(calleeStr, "Args_Count") || code_string_equals(calleeStr, "Exit_Get")) {
+                return "i64";
+            }
+            if (code_string_equals(calleeStr, "Args_Get")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Exit_Set")) {
+                return "void";
+            }
             if (String_EndsWith(calleeStr, "_CharAt")) {
                 return "code_string";
             }
@@ -3168,7 +3177,7 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
     s = String_Replace(s, "\\r", "\\r");
-    s = String_Replace(s, "\x1b", "\\x1b");
+    s = String_Replace(s, "140367026837680", "\\x1b");
     return s;
 }
 
