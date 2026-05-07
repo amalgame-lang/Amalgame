@@ -4316,7 +4316,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "RemoveAt") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -4422,6 +4422,13 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
         if (argc > 0) {
             code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
             return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_remove(", listExpr), ", (void*)(intptr_t)("), arg0), "))");
+        }
+    }
+    if (code_string_equals(mname, "RemoveAt")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc > 0) {
+            code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+            return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_removeAt(", listExpr), ", "), arg0), ")");
         }
     }
     return "";

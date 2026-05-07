@@ -4331,7 +4331,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "RemoveAt") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -4437,6 +4437,13 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
         if (argc > 0) {
             code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
             return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_remove(", listExpr), ", (void*)(intptr_t)("), arg0), "))");
+        }
+    }
+    if (code_string_equals(mname, "RemoveAt")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc > 0) {
+            code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+            return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_removeAt(", listExpr), ", "), arg0), ")");
         }
     }
     return "";
@@ -5119,6 +5126,7 @@ struct _Amalgame_Compiler_FullResolver {
     AmalgameList* LocalNames;
     AmalgameList* LocalTypes;
     AmalgameList* LocalIsLets;
+    AmalgameList* ScopeStarts;
     Amalgame_Compiler_MemberTable* Members;
     AmalgameList* Errors;
     AmalgameList* Programs;
@@ -5130,6 +5138,7 @@ struct _Amalgame_Compiler_FullResolver {
 static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_FullResolver* self);
 static void Amalgame_Compiler_FullResolver_PushScope(Amalgame_Compiler_FullResolver* self, code_string label);
 static void Amalgame_Compiler_FullResolver_PopScope(Amalgame_Compiler_FullResolver* self);
+static i64 Amalgame_Compiler_FullResolver_CurrentScopeStart(Amalgame_Compiler_FullResolver* self);
 static void Amalgame_Compiler_FullResolver_DeclareGlobal(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet);
 static code_bool Amalgame_Compiler_FullResolver_DeclareCurrent(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet);
 static code_bool Amalgame_Compiler_FullResolver_LookupInScopes(Amalgame_Compiler_FullResolver* self, code_string name);
@@ -5179,6 +5188,7 @@ Amalgame_Compiler_FullResolver* Amalgame_Compiler_FullResolver_new() {
     self->LocalNames = AmalgameList_new();
     self->LocalTypes = AmalgameList_new();
     self->LocalIsLets = AmalgameList_new();
+    self->ScopeStarts = AmalgameList_new();
     self->Members = Amalgame_Compiler_MemberTable_new();
     self->Errors = AmalgameList_new();
     self->Programs = AmalgameList_new();
@@ -5250,6 +5260,7 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_StartsWith", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_EndsWith", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IndexOf", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_LastIndexOf", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Substring", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToUpper", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToLower", "string", 0);
@@ -5285,13 +5296,32 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
 static void Amalgame_Compiler_FullResolver_PushScope(Amalgame_Compiler_FullResolver* self, code_string label) {
     (void)self;
     (void)label;
-    AmalgameList_clear(self->LocalNames);
-    AmalgameList_clear(self->LocalTypes);
-    AmalgameList_clear(self->LocalIsLets);
+    AmalgameList_add(self->ScopeStarts, (void*)(intptr_t)(AmalgameList_count(self->LocalNames)));
 }
 
 static void Amalgame_Compiler_FullResolver_PopScope(Amalgame_Compiler_FullResolver* self) {
     (void)self;
+    i64 __attribute__((unused)) depth = AmalgameList_count(self->ScopeStarts);
+    if (depth == 0) {
+        return;
+    }
+    i64 __attribute__((unused)) mark = (i64)AmalgameList_get(self->ScopeStarts, depth - 1);
+    AmalgameList_removeAt(self->ScopeStarts, depth - 1);
+    while (AmalgameList_count(self->LocalNames) > mark) {
+        i64 __attribute__((unused)) last = AmalgameList_count(self->LocalNames) - 1;
+        AmalgameList_removeAt(self->LocalNames, last);
+        AmalgameList_removeAt(self->LocalTypes, last);
+        AmalgameList_removeAt(self->LocalIsLets, last);
+    }
+}
+
+static i64 Amalgame_Compiler_FullResolver_CurrentScopeStart(Amalgame_Compiler_FullResolver* self) {
+    (void)self;
+    i64 __attribute__((unused)) depth = AmalgameList_count(self->ScopeStarts);
+    if (depth == 0) {
+        return 0;
+    }
+    return (i64)AmalgameList_get(self->ScopeStarts, depth - 1);
 }
 
 static void Amalgame_Compiler_FullResolver_DeclareGlobal(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet) {
@@ -5314,8 +5344,9 @@ static code_bool Amalgame_Compiler_FullResolver_DeclareCurrent(Amalgame_Compiler
     (void)name;
     (void)typeName;
     (void)isLet;
+    i64 __attribute__((unused)) start = Amalgame_Compiler_FullResolver_CurrentScopeStart(self);
     i64 __attribute__((unused)) count = AmalgameList_count(self->LocalNames);
-    for (i64 i = 0; i < count; i++) {
+    for (i64 i = start; i < count; i++) {
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return 0;
         }
@@ -5329,15 +5360,16 @@ static code_bool Amalgame_Compiler_FullResolver_DeclareCurrent(Amalgame_Compiler
 static code_bool Amalgame_Compiler_FullResolver_LookupInScopes(Amalgame_Compiler_FullResolver* self, code_string name) {
     (void)self;
     (void)name;
-    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
-    for (i64 i = 0; i < lc; i++) {
+    i64 __attribute__((unused)) i = AmalgameList_count(self->LocalNames) - 1;
+    while (i >= 0) {
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return 1;
         }
+        i = i - 1;
     }
     i64 __attribute__((unused)) gc = AmalgameList_count(self->GlobalNames);
-    for (i64 i = 0; i < gc; i++) {
-        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, i), name)) {
+    for (i64 j = 0; j < gc; j++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, j), name)) {
             return 1;
         }
     }
@@ -5347,16 +5379,17 @@ static code_bool Amalgame_Compiler_FullResolver_LookupInScopes(Amalgame_Compiler
 static code_string Amalgame_Compiler_FullResolver_LookupType(Amalgame_Compiler_FullResolver* self, code_string name) {
     (void)self;
     (void)name;
-    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
-    for (i64 i = 0; i < lc; i++) {
+    i64 __attribute__((unused)) i = AmalgameList_count(self->LocalNames) - 1;
+    while (i >= 0) {
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return (code_string)AmalgameList_get(self->LocalTypes, i);
         }
+        i = i - 1;
     }
     i64 __attribute__((unused)) gc = AmalgameList_count(self->GlobalNames);
-    for (i64 i = 0; i < gc; i++) {
-        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, i), name)) {
-            return (code_string)AmalgameList_get(self->GlobalTypes, i);
+    for (i64 j = 0; j < gc; j++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->GlobalNames, j), name)) {
+            return (code_string)AmalgameList_get(self->GlobalTypes, j);
         }
     }
     return "?";
@@ -5365,11 +5398,12 @@ static code_string Amalgame_Compiler_FullResolver_LookupType(Amalgame_Compiler_F
 static code_bool Amalgame_Compiler_FullResolver_LookupIsLet(Amalgame_Compiler_FullResolver* self, code_string name) {
     (void)self;
     (void)name;
-    i64 __attribute__((unused)) lc = AmalgameList_count(self->LocalNames);
-    for (i64 i = 0; i < lc; i++) {
+    i64 __attribute__((unused)) i = AmalgameList_count(self->LocalNames) - 1;
+    while (i >= 0) {
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return (code_bool)AmalgameList_get(self->LocalIsLets, i);
         }
+        i = i - 1;
     }
     return 0;
 }
@@ -5777,6 +5811,9 @@ static void Amalgame_Compiler_FullResolver_ResolveExpr(Amalgame_Compiler_FullRes
     }
     Amalgame_Compiler_NodeKind __attribute__((unused)) k = expr->Kind;
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+        if (code_string_equals(expr->Name, "_unknown_")) {
+            return;
+        }
         if (!Amalgame_Compiler_FullResolver_LookupInScopes(self, expr->Name)) {
             Amalgame_Compiler_FullResolver_ErrorMsg(self, code_string_concat(code_string_concat("Unknown symbol '", expr->Name), "'"));
         }
