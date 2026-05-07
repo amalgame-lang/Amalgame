@@ -589,6 +589,14 @@ static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
                 i64 __attribute__((unused)) byte = Amalgame_Compiler_Lexer_HexNibble(self, h1) * 16 + Amalgame_Compiler_Lexer_HexNibble(self, h2);
                 value = code_string_concat(value, String_FromByte(byte));
             }
+            if (code_string_equals(esc, "u")) {
+                code_string __attribute__((unused)) u1 = Amalgame_Compiler_Lexer_Advance(self);
+                code_string __attribute__((unused)) u2 = Amalgame_Compiler_Lexer_Advance(self);
+                code_string __attribute__((unused)) u3 = Amalgame_Compiler_Lexer_Advance(self);
+                code_string __attribute__((unused)) u4 = Amalgame_Compiler_Lexer_Advance(self);
+                i64 __attribute__((unused)) cp = Amalgame_Compiler_Lexer_HexNibble(self, u1) * 4096 + Amalgame_Compiler_Lexer_HexNibble(self, u2) * 256 + Amalgame_Compiler_Lexer_HexNibble(self, u3) * 16 + Amalgame_Compiler_Lexer_HexNibble(self, u4);
+                value = code_string_concat(value, String_FromCodepoint(cp));
+            }
         } else {
             value = code_string_concat(value, c);
         }
@@ -5804,6 +5812,7 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToFloat", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromInt", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromByte", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromCodepoint", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Count", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Get", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Set", "void", 0);

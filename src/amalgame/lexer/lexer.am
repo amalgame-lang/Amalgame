@@ -114,6 +114,15 @@ public class Lexer {
                     let byte = this.HexNibble(h1) * 16 + this.HexNibble(h2)
                     value = value + String_FromByte(byte)
                 }
+                // \uHHHH — four hex digits → Unicode codepoint, UTF-8 encoded
+                if (esc == "u") {
+                    let u1 = this.Advance()
+                    let u2 = this.Advance()
+                    let u3 = this.Advance()
+                    let u4 = this.Advance()
+                    let cp = this.HexNibble(u1) * 4096 + this.HexNibble(u2) * 256 + this.HexNibble(u3) * 16 + this.HexNibble(u4)
+                    value = value + String_FromCodepoint(cp)
+                }
             } else {
                 value = value + c
             }
