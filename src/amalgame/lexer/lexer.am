@@ -256,6 +256,7 @@ public class Lexer {
         if (word == "interface") { return TokenType.KW_INTERFACE }
         if (word == "record")    { return TokenType.KW_RECORD }
         if (word == "func")      { return TokenType.KW_FUNC }
+        if (word == "guard")     { return TokenType.KW_GUARD }
         return TokenType.IDENTIFIER
     }
 
