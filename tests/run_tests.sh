@@ -160,7 +160,7 @@ run_lib_link_test() {
         echo -e "${RED}FAIL${NC} (lib has int main)"
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
     fi
-    local runtime_dir="$(dirname "$0")/../src/transpiler/runtime"
+    local runtime_dir="$(dirname "$0")/../runtime"
     if ! gcc -I"$runtime_dir" -c "$tmpdir/lib.c" -o "$tmpdir/lib.o" 2>"$tmpdir/err"; then
         echo -e "${RED}FAIL${NC} (gcc -c)"
         sed 's/^/    /' "$tmpdir/err" | head -5

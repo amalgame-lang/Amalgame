@@ -2,7 +2,7 @@
 //  stdlib/strings.am — String API reference
 //
 //  Declarations only. The actual implementations live in the C runtime
-//  (`src/transpiler/runtime/Amalgame_String.h`); the compiler maps
+//  (`runtime/Amalgame_String.h`); the compiler maps
 //  `String.Method(s, ...)` calls to `String_Method(s, ...)` via the
 //  isStdlib path in CGen. The bodies below are illustrative stubs that
 //  document the contract — DO NOT compile this file, and DO NOT import

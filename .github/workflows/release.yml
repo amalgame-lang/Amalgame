@@ -52,7 +52,7 @@ jobs:
           NAME="amc-${{ steps.ver.outputs.version }}-linux-x86_64"
           mkdir -p "dist/$NAME/runtime"
           cp amc                                "dist/$NAME/"
-          cp src/transpiler/runtime/*.h         "dist/$NAME/runtime/"
+          cp runtime/*.h         "dist/$NAME/runtime/"
           cp README.md LICENSE                  "dist/$NAME/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
           (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
@@ -78,8 +78,8 @@ jobs:
 
       - name: Build amc from tracked amc_lib.c
         run: |
-          gcc -O2 -Isrc/transpiler/runtime \
-              src/amalgame/amc_lib.c \
+          gcc -O2 -Iruntime \
+              src/amc_lib.c \
               -lgc -lm -lcurl -o amc
 
       - name: Determine version
@@ -97,7 +97,7 @@ jobs:
           NAME="amc-${{ steps.ver.outputs.version }}-macos-arm64"
           mkdir -p "dist/$NAME/runtime"
           cp amc                                "dist/$NAME/"
-          cp src/transpiler/runtime/*.h         "dist/$NAME/runtime/"
+          cp runtime/*.h         "dist/$NAME/runtime/"
           cp README.md LICENSE                  "dist/$NAME/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
           (cd dist && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
@@ -133,8 +133,8 @@ jobs:
 
       - name: Build amc.exe from tracked amc_lib.c
         run: |
-          gcc -O2 -Isrc/transpiler/runtime \
-              src/amalgame/amc_lib.c \
+          gcc -O2 -Iruntime \
+              src/amc_lib.c \
               -lgc -lm -lcurl -o amc.exe
 
       - name: Determine version
@@ -152,7 +152,7 @@ jobs:
           NAME="amc-${{ steps.ver.outputs.version }}-windows-x86_64"
           mkdir -p "dist/$NAME/runtime"
           cp amc.exe                            "dist/$NAME/"
-          cp src/transpiler/runtime/*.h         "dist/$NAME/runtime/"
+          cp runtime/*.h         "dist/$NAME/runtime/"
           cp README.md LICENSE                  "dist/$NAME/"
           # Bundle the MinGW DLLs the binary actually links against, so users
           # can run amc.exe without a separate MSYS2 install.

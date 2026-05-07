@@ -47,7 +47,7 @@ jobs:
           DIRNAME="amc-${VERSION}-${TARGET}"
           mkdir -p "dist/${DIRNAME}/runtime"
           cp build/amc                          "dist/${DIRNAME}/"
-          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
           cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
           cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
 
@@ -81,7 +81,7 @@ jobs:
           DIRNAME="amc-${VERSION}-${TARGET}"
           mkdir -p "dist/${DIRNAME}/runtime"
           cp build/amc                          "dist/${DIRNAME}/"
-          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
           cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
           cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
 
@@ -112,7 +112,7 @@ jobs:
           DIRNAME="amc-${VERSION}-${TARGET}"
           mkdir -p "dist/${DIRNAME}/runtime"
           cp build/amc                          "dist/${DIRNAME}/"
-          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
           cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
           cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
 
@@ -143,7 +143,7 @@ jobs:
           DIRNAME="amc-${VERSION}-${TARGET}"
           mkdir -p "dist/${DIRNAME}/runtime"
           cp build/amc                          "dist/${DIRNAME}/"
-          cp src/transpiler/runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
+          cp runtime/_runtime.h  "dist/${DIRNAME}/runtime/"
           cp README.md docs/DEVELOPER_GUIDE.md  "dist/${DIRNAME}/"
           cd dist && tar -czf "${DIRNAME}.tar.gz" "${DIRNAME}"
 
