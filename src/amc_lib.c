@@ -8629,6 +8629,9 @@ static void Amalgame_Compiler_TypeChecker_CheckVarDecl(Amalgame_Compiler_TypeChe
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
         inferredType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
     }
+    if (code_string_equals(declaredType, "__tuple_destructure__")) {
+        return;
+    }
     code_string __attribute__((unused)) finalType = (String_Length(declaredType) > 0 ? declaredType : inferredType);
     if (String_Length(declaredType) > 0 && !code_string_equals(inferredType, "?")) {
         if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, declaredType, inferredType)) {
