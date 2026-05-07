@@ -128,14 +128,14 @@ Porter le scope chaîné du Resolver Vala.
 
 ### P6 — Diagnostics enrichis
 - Affichage de la ligne source avec curseur `^`
-- Couleurs ANSI (après fix `\x` dans le lexer — bootstrap circulaire à résoudre)
+- Couleurs ANSI restaurées (Ansi.* renvoie les codes `\x1b[...]` réels)
 - `DiagnosticFormatter.LoadSource()` déjà en place
 
 ### P7 — Bugs langage connus
 | Bug | Impact | Fix |
 |-----|--------|-----|
-| `return ""` fait boucler le parser | Moyen | Fixer `ParseReturn` pour `""` |
-| `\x` bootstrap circulaire | Moyen | Deux passes de compilation ou escape différent |
+| ~~`return ""` fait boucler le parser~~ | ✅ | Plus reproductible, résolu lors d'un commit antérieur |
+| ~~`\x` bootstrap circulaire~~ | ✅ | Lexer décode `\xHH` via `String_FromByte()` (runtime) |
 | `obj.Field.Method()` type inference | Faible | Variable intermédiaire (contournement OK) |
 | `while(ptr != null)` GC | Critique | Déjà contourné par `for i in 0..N` |
 | Génériques — pas de vrai type checking | Moyen | TypeChecker P2 |
@@ -146,7 +146,8 @@ Porter le scope chaîné du Resolver Vala.
 ## 🟡 PRIORITÉS LANGAGE
 
 ### Features manquantes prioritaires
-- [ ] **`\x` `\u` escape sequences** dans le lexer (sans bootstrap circulaire)
+- [x] **`\x` escape sequences** dans le lexer ✅ (P7)
+- [ ] **`\u` unicode escape** dans le lexer
 - [ ] **`obj.Method()` syntax** pour strings : `.Length`, `.Contains`, `.Split`, `.Trim`...
 - [ ] **Guard clauses** : `guard x != null else { return }`
 - [ ] **Is-guards dans match** : `x if x > 0 => ...`

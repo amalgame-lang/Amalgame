@@ -4,16 +4,23 @@
 set -e
 cd "$(dirname "$0")"
 
+# diagnostics.am defines SourceMap/SourceSnippet, used by resolver+typechecker.
+# Order matters: dependents come AFTER diagnostics in the source list.
+#
+# main.am is intentionally excluded: it defines its own Program.Main (the
+# amc CLI entry point), which would clash with gen_test.am's Program.Main
+# when bundled into the gen_test binary. main.am is only needed for the
+# final amc binary (Step 3), and gen_test.am injects it into amc_lib.c
+# via gen6 anyway.
 AMC_SOURCES="src/amalgame/lexer/token.am \
              src/amalgame/lexer/lexer.am \
              src/amalgame/parser/ast.am \
              src/amalgame/parser/parser.am \
              src/amalgame/generator/c_gen.am \
+             src/amalgame/diagnostics.am \
              src/amalgame/resolver/symbol.am \
              src/amalgame/resolver/resolver.am \
-             src/amalgame/diagnostics.am \
-             src/amalgame/typechecker.am \
-             src/amalgame/main.am"
+             src/amalgame/typechecker.am"
 
 # Self-host: use ./amc if available, fall back to ./build/amc (Vala) for cold start
 if [ -x ./amc ]; then
@@ -32,8 +39,8 @@ echo "=== Step 2: Generate all bundles + amc_lib.c ==="
 time ./gen_test
 
 echo "=== Step 3: Compile amc ==="
+# main.am now emits its own int main() — no more amc_main.c wrapper needed.
 gcc -Isrc/transpiler/runtime \
     src/amalgame/amc_lib.c \
-    src/amalgame/amc_main.c \
     -lgc -lm -lcurl -o amc
 echo "✅ amc built $(date)"
