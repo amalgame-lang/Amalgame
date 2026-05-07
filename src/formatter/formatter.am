@@ -1,0 +1,739 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  formatter.am  —  amc fmt: AST → canonical Amalgame
+// ═══════════════════════════════════════════════════════
+//
+// Reconstructs Amalgame source from a parsed AST. The lexer emits
+// COMMENT tokens; the parser strips them into Parser.Comments before
+// producing the AST. The Formatter consumes both: it walks the AST
+// for structure and re-injects comments by their original line so
+// nothing is lost on round-trip.
+//
+// MVP coverage: the constructs used in tests/samples/fmt_basic.am
+// (class, method, var, if/else, while, for-in, match, return, calls,
+// member, binary, literals, comments). Other constructs fall back to
+// a "// TODO: <kind>" marker so the formatter never panics.
+
+public class Formatter {
+    private Out:        List<string>
+    private Buf:        string
+    private Indent:     int
+    private Comments:   List<Token>
+    private CommentPos: int
+    private CommentCnt: int
+    // Source line of the last thing emitted (statement, decl, or comment).
+    // Drives blank-line preservation in Sync().
+    private LastLine:   int
+
+    public Formatter(List<Token> comments) {
+        this.Out        = new List<string>()
+        this.Buf        = ""
+        this.Indent     = 0
+        this.Comments   = comments
+        this.CommentPos = 0
+        this.CommentCnt = comments.Count()
+        this.LastLine   = 0
+    }
+
+    // ── Top-level entry ───────────────────────────────
+    public string Format(AstNode prog) {
+        this.EmitProgram(prog)
+        this.FlushTrailingComments()
+        var result = ""
+        let n = this.Out.Count()
+        for i in 0..n {
+            let line: string = this.Out.Get(i)
+            result = result + line + "\n"
+        }
+        return result
+    }
+
+    // ── Output primitives ─────────────────────────────
+    private string IndentStr() {
+        var s = ""
+        var i = 0
+        while (i < this.Indent) {
+            s = s + "    "
+            i = i + 1
+        }
+        return s
+    }
+
+    private void Begin() { this.Buf = this.IndentStr() }
+    private void Write(string s) { this.Buf = this.Buf + s }
+    private void End() {
+        this.Out.Add(this.Buf)
+        this.Buf = ""
+    }
+    private void Line(string s) {
+        this.Begin()
+        this.Write(s)
+        this.End()
+    }
+    // Emit a closing line (typically "}"). LastLine has already been
+    // advanced past the inner block by EmitBlockStmts/EmitInline (which
+    // set it to MaxLineInTree(body)+1, i.e. the brace's line), so we
+    // must NOT bump it again here — doing so over-counts and erases
+    // legitimate blank-line separators on a second pass.
+    private void Close(string s) {
+        this.Line(s)
+    }
+    private void Blank() { this.Out.Add("") }
+    private void In_()   { this.Indent = this.Indent + 1 }
+    private void De_()   { this.Indent = this.Indent - 1 }
+
+    // ── Comment injection / blank-line preservation ──
+    // Sync(line): flush every pending comment whose source line < `line`,
+    // then mark `line` as the next thing to be emitted. Inserts a blank
+    // whenever the gap between two consecutive emissions in the source
+    // was ≥ 2 lines, so visual paragraph breaks survive a round-trip.
+    private void Sync(int line) {
+        while (this.CommentPos < this.CommentCnt) {
+            let c: Token = this.Comments.Get(this.CommentPos)
+            if (c.Line >= line) { break }
+            if (this.LastLine > 0 && c.Line - this.LastLine >= 2) {
+                this.Blank()
+            }
+            this.Line(c.Value)
+            this.LastLine   = c.Line
+            this.CommentPos = this.CommentPos + 1
+        }
+        if (this.LastLine > 0 && line - this.LastLine >= 2) {
+            this.Blank()
+        }
+        if (line > 0) { this.LastLine = line }
+    }
+
+    private void FlushTrailingComments() {
+        while (this.CommentPos < this.CommentCnt) {
+            let c: Token = this.Comments.Get(this.CommentPos)
+            if (this.LastLine > 0 && c.Line - this.LastLine >= 2) {
+                this.Blank()
+            }
+            this.Line(c.Value)
+            this.LastLine = c.Line
+            this.CommentPos = this.CommentPos + 1
+        }
+    }
+
+    // ── Program ───────────────────────────────────────
+    private void EmitProgram(AstNode prog) {
+        // Namespace / imports — namespace is in prog.Str; imports were
+        // consumed by the parser without being stored. Always emit a
+        // namespace if we have one.
+        if (String_Length(prog.Str) > 0) {
+            this.Sync(1)
+            this.Line("namespace " + prog.Str)
+        }
+        let n = prog.Children.Count()
+        for i in 0..n {
+            let decl: AstNode = prog.Children.Get(i)
+            this.Sync(decl.Line)
+            this.EmitTopDecl(decl)
+        }
+    }
+
+    private void EmitTopDecl(AstNode n) {
+        let k = n.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            this.EmitClass(n)
+        } else if (k == NodeKind.METHOD_DECL) {
+            this.EmitMethod(n, "")
+        } else if (k == NodeKind.ENUM_DECL) {
+            this.EmitEnum(n)
+        } else if (k == NodeKind.VAR_DECL) {
+            this.EmitVarDecl(n, true)
+        } else {
+            this.Line("// TODO: top-level kind " + this.KindName(k) + "")
+        }
+    }
+
+    // ── Class ─────────────────────────────────────────
+    private void EmitClass(AstNode n) {
+        var head = ""
+        if (n.Flag) { head = head + "public " }
+        if (n.Flag2) {
+            head = head + "interface " + n.Name
+        } else {
+            head = head + "class " + n.Name
+            if (String_Length(n.Str) > 0) {
+                head = head + " : " + n.Str
+            }
+        }
+        head = head + " {"
+        this.Line(head)
+        this.In_()
+        this.LastLine = n.Line
+        let count = n.Children.Count()
+        let className = n.Name
+        for i in 0..count {
+            let m: AstNode = n.Children.Get(i)
+            this.Sync(m.Line)
+            this.EmitClassMember(m, className)
+        }
+        if (String_Length(n.Str2) > 0) {
+            this.LastLine = String_ToInt(n.Str2)
+        } else if (count > 0) {
+            let last: AstNode = n.Children.Get(count - 1)
+            this.LastLine = this.MaxLineInTree(last) + 1
+        }
+        this.De_()
+        this.Close("}")
+    }
+
+    private void EmitClassMember(AstNode m, string className) {
+        let k = m.Kind
+        if (k == NodeKind.METHOD_DECL) {
+            this.EmitMethod(m, className)
+        } else if (k == NodeKind.VAR_DECL) {
+            this.EmitField(m)
+        } else {
+            this.Line("// TODO: member kind " + this.KindName(k) + "")
+        }
+    }
+
+    // ── Method ────────────────────────────────────────
+    // className: empty string for top-level methods, the enclosing
+    // class name when nested. A method whose name matches className
+    // is a constructor — we omit the (synthetic) "void" return type.
+    private void EmitMethod(AstNode n, string className) {
+        // Decorators (Str2 = comma-separated names).
+        if (String_Length(n.Str2) > 0) {
+            let decos = n.Str2
+            var i = 0
+            let len = String_Length(decos)
+            var cur = ""
+            while (i < len) {
+                let ch = String_Substring(decos, i, 1)
+                if (ch == ",") {
+                    if (String_Length(cur) > 0) { this.Line("@" + cur) }
+                    cur = ""
+                } else {
+                    cur = cur + ch
+                }
+                i = i + 1
+            }
+            if (String_Length(cur) > 0) { this.Line("@" + cur) }
+        }
+        var head = ""
+        if (n.Flag)  { head = head + "public " }
+        if (n.Flag2) { head = head + "static " }
+        let isCtor = String_Length(className) > 0 && n.Name == className
+        if (isCtor) {
+            head = head + n.Name + "("
+        } else {
+            head = head + n.Str + " " + n.Name + "("
+        }
+        head = head + this.EmitParams(n.Params)
+        head = head + ")"
+        if (n.Body == null) {
+            // Interface-style declaration with no body.
+            this.Line(head)
+            return
+        }
+        head = head + " {"
+        this.Line(head)
+        this.In_()
+        let body: AstNode = n.Body
+        this.EmitBlockStmts(body)
+        this.De_()
+        this.Close("}")
+    }
+
+    private string EmitParams(List<AstNode> params) {
+        var s = ""
+        let count = params.Count()
+        for i in 0..count {
+            let p: AstNode = params.Get(i)
+            if (i > 0) { s = s + ", " }
+            s = s + p.Str + " " + p.Name
+        }
+        return s
+    }
+
+    // ── Field (VAR_DECL inside a class) ───────────────
+    private void EmitField(AstNode n) {
+        var s = ""
+        if (n.Flag) { s = s + "public " }
+        s = s + n.Name
+        if (String_Length(n.Str) > 0) {
+            s = s + ": " + n.Str
+        }
+        if (n.Left != null) {
+            let init: AstNode = n.Left
+            s = s + " = " + this.EmitExpr(init)
+        }
+        this.Line(s)
+    }
+
+    // ── Enum ──────────────────────────────────────────
+    private void EmitEnum(AstNode n) {
+        var head = ""
+        if (n.Flag) { head = head + "public " }
+        head = head + "enum " + n.Name + " {"
+        this.Line(head)
+        this.In_()
+        this.LastLine = n.Line
+        let c = n.Children.Count()
+        for i in 0..c {
+            let v: AstNode = n.Children.Get(i)
+            this.Sync(v.Line)
+            if (String_Length(v.Str) > 0) {
+                this.Line(v.Name + "(" + v.Str + ")")
+            } else {
+                this.Line(v.Name)
+            }
+        }
+        if (c > 0) {
+            let last: AstNode = n.Children.Get(c - 1)
+            this.LastLine = last.Line + 1
+        }
+        this.De_()
+        this.Close("}")
+    }
+
+    // ── Block helpers ────────────────────────────────
+    // Recursively walk an AST node to find the largest source line
+    // contained anywhere in its subtree. Used to approximate the line
+    // of a block's closing brace: max(stmt subtree) + 1.
+    private int MaxLineInTree(AstNode n) {
+        if (n == null) { return 0 }
+        var m = n.Line
+        let lm = this.MaxLineInTree(n.Left);  if (lm > m) { m = lm }
+        let rm = this.MaxLineInTree(n.Right); if (rm > m) { m = rm }
+        let cm = this.MaxLineInTree(n.Cond);  if (cm > m) { m = cm }
+        let bm = this.MaxLineInTree(n.Body);  if (bm > m) { m = bm }
+        let em = this.MaxLineInTree(n.Else);  if (em > m) { m = em }
+        let cc = n.Children.Count()
+        for i in 0..cc {
+            let chi: AstNode = n.Children.Get(i)
+            let cmm = this.MaxLineInTree(chi)
+            if (cmm > m) { m = cmm }
+        }
+        let pc = n.Params.Count()
+        for j in 0..pc {
+            let pj: AstNode = n.Params.Get(j)
+            let pmm = this.MaxLineInTree(pj)
+            if (pmm > m) { m = pmm }
+        }
+        let ac = n.Args.Count()
+        for k in 0..ac {
+            let ak: AstNode = n.Args.Get(k)
+            let amm = this.MaxLineInTree(ak)
+            if (amm > m) { m = amm }
+        }
+        return m
+    }
+
+    // Recover the line of the closing `}` token that the parser stored
+    // in body.Str2. Falls back to MaxLineInTree+1 for synthetic blocks
+    // that were not produced by ParseBlock (e.g. lambda bodies built
+    // ad hoc in ParseMethod).
+    private int BlockEndLine(AstNode body) {
+        if (String_Length(body.Str2) > 0) {
+            return String_ToInt(body.Str2)
+        }
+        return this.MaxLineInTree(body) + 1
+    }
+
+    // Emit the children of a BLOCK. Resets LastLine to the line of the
+    // opening `{` on entry, and to the line of the closing `}` on exit
+    // so the next Sync() measures the gap from the brace, not from the
+    // last inner statement.
+    private void EmitBlockStmts(AstNode body) {
+        this.LastLine = body.Line
+        let count = body.Children.Count()
+        for i in 0..count {
+            let s: AstNode = body.Children.Get(i)
+            this.Sync(s.Line)
+            this.EmitStmt(s)
+        }
+        this.LastLine = this.BlockEndLine(body)
+    }
+
+    // EmitInline takes a node that may be a BLOCK or a single stmt.
+    // For a BLOCK, emit each child via EmitBlockStmts. Otherwise emit
+    // the lone stmt at the current indent.
+    private void EmitInline(AstNode body) {
+        if (body.Kind == NodeKind.BLOCK) {
+            this.EmitBlockStmts(body)
+        } else {
+            this.LastLine = body.Line
+            this.EmitStmt(body)
+            this.LastLine = this.MaxLineInTree(body) + 1
+        }
+    }
+
+    // ── Statements ────────────────────────────────────
+    private void EmitStmt(AstNode n) {
+        let k = n.Kind
+        if (k == NodeKind.IF_STMT) {
+            if (n.Name == "__match__") { this.EmitMatch(n) } else { this.EmitIf(n) }
+        } else if (k == NodeKind.WHILE_STMT) {
+            this.EmitWhile(n)
+        } else if (k == NodeKind.FOR_IN_STMT) {
+            this.EmitForIn(n)
+        } else if (k == NodeKind.VAR_DECL) {
+            this.EmitVarDecl(n, false)
+        } else if (k == NodeKind.RETURN_STMT) {
+            this.EmitReturn(n)
+        } else if (k == NodeKind.BREAK_STMT) {
+            this.Line("break")
+        } else if (k == NodeKind.CONTINUE_STMT) {
+            this.Line("continue")
+        } else if (k == NodeKind.BLOCK) {
+            this.EmitBlock(n)
+        } else {
+            // Expression statement (assignment, call, etc.)
+            this.Line(this.EmitExpr(n))
+        }
+    }
+
+    private void EmitBlock(AstNode n) {
+        this.Line("{")
+        this.In_()
+        this.EmitBlockStmts(n)
+        this.De_()
+        this.Close("}")
+    }
+
+    private void EmitIf(AstNode n) {
+        let condStr = this.EmitExpr(n.Cond)
+        this.Line("if (" + condStr + ") {")
+        this.In_()
+        this.EmitInline(n.Body)
+        this.De_()
+        if (n.Else != null) {
+            let elseN: AstNode = n.Else
+            if (elseN.Kind == NodeKind.IF_STMT && elseN.Name != "__match__") {
+                let inner = this.EmitExpr(elseN.Cond)
+                this.Line("} else if (" + inner + ") {")
+                this.In_()
+                this.EmitInline(elseN.Body)
+                this.De_()
+                if (elseN.Else != null) {
+                    // Re-enter for nested chains by emitting a synthetic else.
+                    this.EmitElseTail(elseN.Else)
+                } else {
+                    this.Close("}")
+                }
+            } else {
+                this.Line("} else {")
+                this.In_()
+                this.EmitInline(elseN)
+                this.De_()
+                this.Close("}")
+            }
+        } else {
+            this.Close("}")
+        }
+    }
+
+    private void EmitElseTail(AstNode n) {
+        // n is non-null, called from inside an `else if` chain.
+        if (n.Kind == NodeKind.IF_STMT && n.Name != "__match__") {
+            let inner = this.EmitExpr(n.Cond)
+            this.Line("} else if (" + inner + ") {")
+            this.In_()
+            this.EmitInline(n.Body)
+            this.De_()
+            if (n.Else != null) {
+                this.EmitElseTail(n.Else)
+            } else {
+                this.Close("}")
+            }
+        } else {
+            this.Line("} else {")
+            this.In_()
+            this.EmitInline(n)
+            this.De_()
+            this.Close("}")
+        }
+    }
+
+    private void EmitMatch(AstNode n) {
+        let subj = this.EmitExpr(n.Left)
+        this.Line("match " + subj + " {")
+        this.In_()
+        let arms = n.Children.Count()
+        for i in 0..arms {
+            let arm: AstNode = n.Children.Get(i)
+            // arm is BINARY: Left=pattern, Right=body, Cond=guard?
+            let pat = this.EmitPattern(arm.Left)
+            var head = pat
+            if (arm.Cond != null) {
+                head = head + " if " + this.EmitExpr(arm.Cond)
+            }
+            head = head + " => "
+            let bodyN: AstNode = arm.Right
+            if (bodyN.Kind == NodeKind.BLOCK) {
+                this.Line(head + "{")
+                this.In_()
+                this.EmitBlockStmts(bodyN)
+                this.De_()
+                this.Close("}")
+            } else {
+                this.Line(head + this.EmitExpr(bodyN))
+            }
+        }
+        this.De_()
+        this.Close("}")
+    }
+
+    private string EmitPattern(AstNode n) {
+        let k = n.Kind
+        if (k == NodeKind.IDENTIFIER) { return n.Name }
+        if (k == NodeKind.LITERAL_INT) { return n.Str }
+        if (k == NodeKind.BINARY && n.Str == "..") {
+            return this.EmitExpr(n.Left) + ".." + this.EmitExpr(n.Right)
+        }
+        if (k == NodeKind.CALL) {
+            // Variant capture: Name(arg1, arg2, ...)
+            var s = n.Name + "("
+            let c = n.Args.Count()
+            for i in 0..c {
+                let a: AstNode = n.Args.Get(i)
+                if (i > 0) { s = s + ", " }
+                s = s + a.Name
+            }
+            return s + ")"
+        }
+        return this.EmitExpr(n)
+    }
+
+    private void EmitWhile(AstNode n) {
+        let c = this.EmitExpr(n.Cond)
+        this.Line("while (" + c + ") {")
+        this.In_()
+        this.EmitInline(n.Body)
+        this.De_()
+        this.Close("}")
+    }
+
+    private void EmitForIn(AstNode n) {
+        let it = this.EmitExpr(n.Left)
+        this.Line("for " + n.Name + " in " + it + " {")
+        this.In_()
+        this.EmitInline(n.Body)
+        this.De_()
+        this.Close("}")
+    }
+
+    private void EmitVarDecl(AstNode n, bool topLevel) {
+        var kw = "let"
+        if (n.Flag) { kw = "var" }
+        var s = kw + " " + n.Name
+        if (String_Length(n.Str) > 0) {
+            s = s + ": " + n.Str
+        }
+        if (n.Left != null) {
+            let init: AstNode = n.Left
+            s = s + " = " + this.EmitExpr(init)
+        }
+        this.Line(s)
+    }
+
+    private void EmitReturn(AstNode n) {
+        if (n.Left == null) {
+            this.Line("return")
+            return
+        }
+        let v: AstNode = n.Left
+        if (v.Kind == NodeKind.IDENTIFIER && v.Name == "_unknown_") {
+            this.Line("return")
+            return
+        }
+        this.Line("return " + this.EmitExpr(v))
+    }
+
+    // ── Expressions ───────────────────────────────────
+    private string EmitExpr(AstNode n) {
+        if (n == null) { return "" }
+        let k = n.Kind
+        if (k == NodeKind.IDENTIFIER) { return n.Name }
+        if (k == NodeKind.LITERAL_INT) { return n.Str }
+        if (k == NodeKind.LITERAL_FLOAT) { return n.Str }
+        if (k == NodeKind.LITERAL_STRING) { return this.QuoteString(n.Str) }
+        if (k == NodeKind.LITERAL_BOOL) {
+            if (n.Flag) { return "true" }
+            return "false"
+        }
+        if (k == NodeKind.LITERAL_NULL) { return "null" }
+        if (k == NodeKind.THIS_EXPR)    { return "this" }
+        if (k == NodeKind.BINARY)       { return this.EmitBinary(n) }
+        if (k == NodeKind.UNARY)        { return this.EmitUnary(n) }
+        if (k == NodeKind.CALL)         { return this.EmitCall(n) }
+        if (k == NodeKind.MEMBER)       { return this.EmitMember(n) }
+        if (k == NodeKind.INDEX_EXPR)   { return this.EmitIndex(n) }
+        if (k == NodeKind.NEW_EXPR)     { return this.EmitNew(n) }
+        if (k == NodeKind.METHOD_DECL && n.Name == "__lambda__") {
+            return n.Str + " => " + this.EmitExpr(n.Left)
+        }
+        if (k == NodeKind.IF_STMT && n.Name != "__match__") {
+            return this.EmitIfExpr(n)
+        }
+        // Expression contexts can't host a `//` comment, so emit a
+        // syntactically valid placeholder identifier instead. Round-trip
+        // is lossy but the surrounding code remains parseable.
+        return "_TODO_" + this.KindName(k) + ""
+    }
+
+    private string EmitBinary(AstNode n) {
+        let l = this.EmitExpr(n.Left)
+        let r = this.EmitExpr(n.Right)
+        if (n.Str == "..") { return l + ".." + r }
+        return l + " " + n.Str + " " + r
+    }
+
+    private string EmitUnary(AstNode n) {
+        return n.Str + this.EmitExpr(n.Left)
+    }
+
+    private string EmitCall(AstNode n) {
+        // Tuple literal: Name="__tuple_literal__"
+        if (n.Name == "__tuple_literal__") {
+            var t = "("
+            let c = n.Args.Count()
+            for i in 0..c {
+                if (i > 0) { t = t + ", " }
+                let a: AstNode = n.Args.Get(i)
+                t = t + this.EmitExpr(a)
+            }
+            return t + ")"
+        }
+        let callee = this.EmitExpr(n.Left)
+        var s = callee + "("
+        let c = n.Args.Count()
+        for i in 0..c {
+            if (i > 0) { s = s + ", " }
+            let a: AstNode = n.Args.Get(i)
+            if (String_Length(a.Str2) > 0) {
+                s = s + a.Str2 + ": " + this.EmitExpr(a)
+            } else {
+                s = s + this.EmitExpr(a)
+            }
+        }
+        return s + ")"
+    }
+
+    private string EmitMember(AstNode n) {
+        let base = this.EmitExpr(n.Left)
+        let sep = if (n.Flag) { "?." } else { "." }
+        return base + sep + n.Name
+    }
+
+    private string EmitIndex(AstNode n) {
+        return this.EmitExpr(n.Left) + "[" + this.EmitExpr(n.Right) + "]"
+    }
+
+    // Render an IF_STMT as an expression: `if (c) { x } else { y }`.
+    // Caller has already verified n.Name != "__match__". The body and
+    // else-block are expected to evaluate to a single expression — if
+    // they contain more, we concatenate via `;` (lossy but parseable).
+    private string EmitIfExpr(AstNode n) {
+        let cond = this.EmitExpr(n.Cond)
+        var s = "if (" + cond + ") { " + this.EmitBlockAsExpr(n.Body) + " }"
+        if (n.Else != null) {
+            let elseN: AstNode = n.Else
+            if (elseN.Kind == NodeKind.IF_STMT && elseN.Name != "__match__") {
+                s = s + " else " + this.EmitIfExpr(elseN)
+            } else {
+                s = s + " else { " + this.EmitBlockAsExpr(elseN) + " }"
+            }
+        }
+        return s
+    }
+
+    private string EmitBlockAsExpr(AstNode body) {
+        if (body.Kind != NodeKind.BLOCK) { return this.EmitExpr(body) }
+        let cnt = body.Children.Count()
+        if (cnt == 0) { return "" }
+        if (cnt == 1) {
+            let s: AstNode = body.Children.Get(0)
+            return this.EmitExpr(s)
+        }
+        var out = ""
+        for i in 0..cnt {
+            if (i > 0) { out = out + "; " }
+            let s: AstNode = body.Children.Get(i)
+            out = out + this.EmitExpr(s)
+        }
+        return out
+    }
+
+    private string EmitNew(AstNode n) {
+        var s = "new " + n.Name + "("
+        let c = n.Args.Count()
+        for i in 0..c {
+            if (i > 0) { s = s + ", " }
+            let a: AstNode = n.Args.Get(i)
+            if (String_Length(a.Str2) > 0) {
+                s = s + a.Str2 + ": " + this.EmitExpr(a)
+            } else {
+                s = s + this.EmitExpr(a)
+            }
+        }
+        return s + ")"
+    }
+
+    // ── String escape ──────────────────────────────────
+    // The lexer strips quotes and applies escapes, so STRING tokens
+    // hold raw content. To re-emit valid source we wrap in quotes and
+    // re-escape characters that would otherwise terminate the literal
+    // or break the line. Triple-quoted source is lossy here — we fall
+    // back to a regular double-quoted string with \n escapes, which is
+    // semantically equivalent but loses the original layout.
+    private string QuoteString(string content) {
+        let len = String_Length(content)
+        var out = "\""
+        var i = 0
+        while (i < len) {
+            let ch = String_Substring(content, i, 1)
+            if (ch == "\\")     { out = out + "\\\\" }
+            else if (ch == "\"") { out = out + "\\\"" }
+            else if (ch == "\n") { out = out + "\\n" }
+            else if (ch == "\r") { out = out + "\\r" }
+            else if (ch == "\t") { out = out + "\\t" }
+            else                 { out = out + ch }
+            i = i + 1
+        }
+        return out + "\""
+    }
+
+    // ── Diagnostics helper ─────────────────────────────
+    private string KindName(NodeKind k) {
+        if (k == NodeKind.PROGRAM)        { return "PROGRAM" }
+        if (k == NodeKind.CLASS_DECL)     { return "CLASS_DECL" }
+        if (k == NodeKind.METHOD_DECL)    { return "METHOD_DECL" }
+        if (k == NodeKind.FIELD_DECL)     { return "FIELD_DECL" }
+        if (k == NodeKind.PARAM)          { return "PARAM" }
+        if (k == NodeKind.ENUM_DECL)      { return "ENUM_DECL" }
+        if (k == NodeKind.BLOCK)          { return "BLOCK" }
+        if (k == NodeKind.VAR_DECL)       { return "VAR_DECL" }
+        if (k == NodeKind.ASSIGN)         { return "ASSIGN" }
+        if (k == NodeKind.RETURN_STMT)    { return "RETURN_STMT" }
+        if (k == NodeKind.IF_STMT)        { return "IF_STMT" }
+        if (k == NodeKind.WHILE_STMT)     { return "WHILE_STMT" }
+        if (k == NodeKind.FOR_IN_STMT)    { return "FOR_IN_STMT" }
+        if (k == NodeKind.BREAK_STMT)     { return "BREAK_STMT" }
+        if (k == NodeKind.CONTINUE_STMT)  { return "CONTINUE_STMT" }
+        if (k == NodeKind.BINARY)         { return "BINARY" }
+        if (k == NodeKind.UNARY)          { return "UNARY" }
+        if (k == NodeKind.CALL)           { return "CALL" }
+        if (k == NodeKind.MEMBER)         { return "MEMBER" }
+        if (k == NodeKind.IDENTIFIER)     { return "IDENTIFIER" }
+        if (k == NodeKind.LITERAL_INT)    { return "LITERAL_INT" }
+        if (k == NodeKind.LITERAL_FLOAT)  { return "LITERAL_FLOAT" }
+        if (k == NodeKind.LITERAL_STRING) { return "LITERAL_STRING" }
+        if (k == NodeKind.LITERAL_BOOL)   { return "LITERAL_BOOL" }
+        if (k == NodeKind.LITERAL_NULL)   { return "LITERAL_NULL" }
+        if (k == NodeKind.NEW_EXPR)       { return "NEW_EXPR" }
+        if (k == NodeKind.THIS_EXPR)      { return "THIS_EXPR" }
+        if (k == NodeKind.INDEX_EXPR)     { return "INDEX_EXPR" }
+        return "?"
+    }
+}

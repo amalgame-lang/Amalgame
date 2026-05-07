@@ -43,6 +43,13 @@ public class Program {
         let cgenPar  = new Parser(cgenToks)
         let cgenProg = cgenPar.Parse()
 
+        let fmtPath  = "./src/formatter/formatter.am"
+        let fmtSrc   = File.ReadAll(fmtPath)
+        let fmtLex   = new Lexer(fmtSrc, fmtPath)
+        let fmtToks  = fmtLex.Tokenize()
+        let fmtPar   = new Parser(fmtToks)
+        let fmtProg  = fmtPar.Parse()
+
         // --- Full amc lib (streaming) ---
         Console.WriteError("parsing extra files...")
         let symPath  = "./src/resolver/symbol.am"
@@ -101,6 +108,7 @@ public class Program {
         gen6.AddFilePass1(lexProg)
         gen6.AddFilePass1(parProg)
         gen6.AddFilePass1(cgenProg)
+        gen6.AddFilePass1(fmtProg)
         gen6.AddFilePass1(diagProg)
         gen6.AddFilePass1(symProg)
         gen6.AddFilePass1(rvrProg)
@@ -113,6 +121,7 @@ public class Program {
         gen6.AddFilePass2(lexProg)
         gen6.AddFilePass2(parProg)
         gen6.AddFilePass2(cgenProg)
+        gen6.AddFilePass2(fmtProg)
         gen6.AddFilePass2(diagProg)
         gen6.AddFilePass2(symProg)
         gen6.AddFilePass2(rvrProg)
