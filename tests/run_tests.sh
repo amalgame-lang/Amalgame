@@ -365,7 +365,8 @@ run_multifile_test() {
 
     printf "  %-34s" "$name"
 
-    output=$("$AMC" "${files[@]}" -o /tmp/amalgame_multi_test.c 2>&1)
+    local out_base="$BUILD_DIR/multi_$$"
+    output=$("$AMC" "${files[@]}" -o "$out_base" 2>&1)
     amc_exit=$?
 
     if [ $amc_exit -ne 0 ]; then
@@ -375,9 +376,12 @@ run_multifile_test() {
         FAIL=$((FAIL + 1)); return
     fi
 
-    exe="/tmp/amalgame_multi_test"
+    # Self-hosted amc only emits the .c — link explicitly.
+    gcc -O2 -Iruntime "$out_base.c" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+
+    exe="$out_base"
     if [ ! -x "$exe" ]; then
-        echo -e "${RED}FAIL${NC} (executable not found)"
+        echo -e "${RED}FAIL${NC} (gcc failed)"
         FAIL=$((FAIL + 1)); return
     fi
 
