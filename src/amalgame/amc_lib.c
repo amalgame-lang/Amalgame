@@ -1014,8 +1014,11 @@ struct _Amalgame_Compiler_Parser {
     i64 Pos;
     AmalgameList* Errors;
     i64 ParenDepth;
+    code_string PendingDecorators;
 };
 
+static void Amalgame_Compiler_Parser_ParseDecoratorList(Amalgame_Compiler_Parser* self);
+static code_string Amalgame_Compiler_Parser_TakeDecorators(Amalgame_Compiler_Parser* self);
 Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_Parse(Amalgame_Compiler_Parser* self);
 code_bool Amalgame_Compiler_Parser_HasErrors(Amalgame_Compiler_Parser* self);
 code_string Amalgame_Compiler_Parser_GetErrors(Amalgame_Compiler_Parser* self);
@@ -1076,7 +1079,30 @@ Amalgame_Compiler_Parser* Amalgame_Compiler_Parser_new(AmalgameList* tokens) {
     self->Pos = 0;
     self->Errors = AmalgameList_new();
     self->ParenDepth = 0;
+    self->PendingDecorators = "";
     return self;
+}
+
+static void Amalgame_Compiler_Parser_ParseDecoratorList(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    while (Amalgame_Compiler_Parser_CheckValue(self, "@")) {
+        Amalgame_Compiler_Parser_Advance(self);
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
+            Amalgame_Compiler_Token* __attribute__((unused)) nameTok = Amalgame_Compiler_Parser_Advance(self);
+            if (String_Length(self->PendingDecorators) > 0) {
+                self->PendingDecorators = code_string_concat(self->PendingDecorators, ",");
+            }
+            self->PendingDecorators = code_string_concat(self->PendingDecorators, nameTok->Value);
+        }
+        Amalgame_Compiler_Parser_SkipNewlines(self);
+    }
+}
+
+static code_string Amalgame_Compiler_Parser_TakeDecorators(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    code_string __attribute__((unused)) d = self->PendingDecorators;
+    self->PendingDecorators = "";
+    return d;
 }
 
 Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_Parse(Amalgame_Compiler_Parser* self) {
@@ -1414,6 +1440,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMember(Amalgame_
     if (Amalgame_Compiler_Parser_IsEnd(self) || Amalgame_Compiler_Parser_CheckValue(self, "}")) {
         return Amalgame_Compiler_Parser_Unknown(self);
     }
+    Amalgame_Compiler_Parser_ParseDecoratorList(self);
     code_bool __attribute__((unused)) isPublic = 0;
     code_bool __attribute__((unused)) isStatic = 0;
     if (Amalgame_Compiler_Parser_CheckKw(self, "public")) {
@@ -1507,6 +1534,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMethod(Amalgame_
     Amalgame_Compiler_AstNode* __attribute__((unused)) method = Amalgame_Compiler_Ast_Method(nameTok->Value, retType, line, col);
     method->Flag = isPublic;
     method->Flag2 = isStatic;
+    method->Str2 = Amalgame_Compiler_Parser_TakeDecorators(self);
     code_string __attribute__((unused)) mname = nameTok->Value;
     if (Amalgame_Compiler_Parser_CheckValue(self, "<")) {
         Amalgame_Compiler_Parser_Advance(self);
@@ -3634,10 +3662,17 @@ static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalg
                 code_bool __attribute__((unused)) isPublic = m->Flag;
                 code_string __attribute__((unused)) retC = Amalgame_Compiler_CGen_TypeToC(self, m->Str);
                 Amalgame_Compiler_CGen_MethodRetSet(self, name, m->Name, retC);
+                code_string __attribute__((unused)) attrs = "";
+                code_string __attribute__((unused)) decos = m->Str2;
+                if (String_Length(decos) > 0) {
+                    if (String_Contains(code_string_concat(code_string_concat(",", decos), ","), ",deprecated,")) {
+                        attrs = " __attribute__((deprecated))";
+                    }
+                }
                 if (isPublic) {
-                    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(sig, ";"));
+                    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(sig, attrs), ";"));
                 } else {
-                    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("static ", sig), ";"));
+                    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat("static ", sig), attrs), ";"));
                 }
             }
         }
@@ -3809,6 +3844,12 @@ static void Amalgame_Compiler_CGen_EmitMethod(Amalgame_Compiler_CGen* self, Amal
     code_string __attribute__((unused)) prefix = "";
     if (!isPublic) {
         prefix = "static ";
+    }
+    code_string __attribute__((unused)) decos = method->Str2;
+    if (String_Length(decos) > 0) {
+        if (String_Contains(code_string_concat(code_string_concat(",", decos), ","), ",inline,")) {
+            prefix = code_string_concat(prefix, "inline ");
+        }
     }
     if (String_StartsWith(method->Str, "(")) {
         self->CurrentRetType = Amalgame_Compiler_CGen_TupleStructName(self, method->Str);

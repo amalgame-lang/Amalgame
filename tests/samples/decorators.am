@@ -1,0 +1,22 @@
+namespace App
+import Amalgame.IO
+
+public class Math2 {
+    // @inline is emitted as `static inline` (or `inline` for public) in C —
+    // the C compiler is free to inline the call site.
+    @inline
+    public static int Square(int x) { return x * x }
+
+    // @deprecated triggers a GCC warning at every call site that uses this method.
+    @deprecated
+    public static int OldSquare(int x) { return x * x }
+
+    public static int Cube(int x) { return x * x * x }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        Console.WriteLine(String.FromInt(Math2.Square(5)))
+        Console.WriteLine(String.FromInt(Math2.Cube(3)))
+    }
+}
