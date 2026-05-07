@@ -22,7 +22,7 @@ public class Program {
         }
 
         // for
-        for (var j = 0; j < 3; j = j + 1) {
+        for j in 0..3 {
             Console.WriteLine("for: {j}")
         }
     }

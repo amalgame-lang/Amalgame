@@ -7,11 +7,10 @@ on:
     branches: [main, develop]
 
 jobs:
-  # ── Linux: bootstrap from the tracked snapshot/amc_lib.c, then run the
-  #    full self-host pipeline + tests. The Vala bootstrap (./build/amc)
-  #    is no longer exercised here — it has fallen behind the language
-  #    and the snapshot rung supersedes it (see build_amc.sh fallback
-  #    chain). To recover the Vala path, run ./compile.sh locally. ──
+  # ── Linux: full self-hosted pipeline. The snapshot bootstraps amc, the
+  #    self-host build then re-bootstraps from src/, and the test runner
+  #    exercises the freshly-built ./amc. Vala isn't installed here at
+  #    all — to use the Vala recovery path, run ./compile.sh locally. ──
   linux:
     name: Build & test (Ubuntu)
     runs-on: ubuntu-latest
@@ -25,21 +24,9 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            valac \
-            meson \
-            ninja-build \
             gcc \
-            libglib2.0-dev \
-            libgee-0.8-dev \
             libgc-dev \
             libcurl4-openssl-dev
-
-      - name: Build Vala bootstrap (./build/amc — used by the test runner)
-        # The self-hosted ./amc rejects some legacy syntax that older
-        # tests/samples/*.am still use (C-style `for(;;)`, etc.). Until
-        # those samples are modernised, the test runner sticks with the
-        # Vala-built amc to keep coverage. Bootstrap itself uses snapshot.
-        run: ./compile.sh
 
       - name: Compile snapshot/amc from tracked snapshot/amc_lib.c
         run: |
