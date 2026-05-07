@@ -77,6 +77,8 @@ public class FullResolver {
     private LocalNames:    List<string>
     private LocalTypes:    List<string>
     private LocalIsLets:   List<bool>
+    // Stack of scope start indices into LocalNames/Types/IsLets
+    private ScopeStarts:   List<int>
     // Member table: class → member → type
     public  Members:       MemberTable
     // Errors collected
@@ -96,6 +98,7 @@ public class FullResolver {
         this.LocalNames    = new List<string>()
         this.LocalTypes    = new List<string>()
         this.LocalIsLets   = new List<bool>()
+        this.ScopeStarts   = new List<int>()
         this.Members       = new MemberTable()
         this.Errors        = new List<string>()
         this.Programs      = new List<AstNode>()
@@ -171,6 +174,7 @@ public class FullResolver {
         this.DeclareGlobal("String_StartsWith", "bool",   false)
         this.DeclareGlobal("String_EndsWith",   "bool",   false)
         this.DeclareGlobal("String_IndexOf",    "int",    false)
+        this.DeclareGlobal("String_LastIndexOf","int",    false)
         this.DeclareGlobal("String_Substring",  "string", false)
         this.DeclareGlobal("String_ToUpper",    "string", false)
         this.DeclareGlobal("String_ToLower",    "string", false)
@@ -204,17 +208,33 @@ public class FullResolver {
         this.DeclareGlobal("TcpConn_Close",     "void",   false)
     }
 
-    // ── Scope management (flat 2-level: global + local) ──
+    // ── Scope management (nested stack) ───────────────
+    // LocalNames/Types/IsLets is a flat array of all live entries across nested scopes.
+    // ScopeStarts is a stack of start indices: the current scope owns indices [top..count).
+    // Lookups walk LocalNames backwards so inner scopes shadow outer ones.
 
     private void PushScope(string label) {
-        // Clear local scope for new block
-        this.LocalNames.Clear()
-        this.LocalTypes.Clear()
-        this.LocalIsLets.Clear()
+        this.ScopeStarts.Add(this.LocalNames.Count())
     }
 
     private void PopScope() {
-        // Nested scopes not needed for name resolution — no-op
+        let depth = this.ScopeStarts.Count()
+        if (depth == 0) { return }
+        let mark = this.ScopeStarts.Get(depth - 1)
+        this.ScopeStarts.RemoveAt(depth - 1)
+        // Truncate LocalNames/Types/IsLets back to mark (drop entries declared in this scope)
+        while (this.LocalNames.Count() > mark) {
+            let last = this.LocalNames.Count() - 1
+            this.LocalNames.RemoveAt(last)
+            this.LocalTypes.RemoveAt(last)
+            this.LocalIsLets.RemoveAt(last)
+        }
+    }
+
+    private int CurrentScopeStart() {
+        let depth = this.ScopeStarts.Count()
+        if (depth == 0) { return 0 }
+        return this.ScopeStarts.Get(depth - 1)
     }
 
     private void DeclareGlobal(string name, string typeName, bool isLet) {
@@ -227,8 +247,10 @@ public class FullResolver {
     }
 
     private bool DeclareCurrent(string name, string typeName, bool isLet) {
+        // Duplicate check: only within the current scope (allow shadowing outer scopes)
+        let start = this.CurrentScopeStart()
         let count = this.LocalNames.Count()
-        for i in 0..count {
+        for i in start..count {
             if (this.LocalNames.Get(i) == name) { return false }
         }
         this.LocalNames.Add(name)
@@ -238,34 +260,37 @@ public class FullResolver {
     }
 
     private bool LookupInScopes(string name) {
-        // Check local scope first, then global
-        let lc = this.LocalNames.Count()
-        for i in 0..lc {
+        // Walk LocalNames backwards so inner (most recently pushed) scopes shadow outer ones
+        var i = this.LocalNames.Count() - 1
+        while (i >= 0) {
             if (this.LocalNames.Get(i) == name) { return true }
+            i = i - 1
         }
         let gc = this.GlobalNames.Count()
-        for i in 0..gc {
-            if (this.GlobalNames.Get(i) == name) { return true }
+        for j in 0..gc {
+            if (this.GlobalNames.Get(j) == name) { return true }
         }
         return false
     }
 
     private string LookupType(string name) {
-        let lc = this.LocalNames.Count()
-        for i in 0..lc {
+        var i = this.LocalNames.Count() - 1
+        while (i >= 0) {
             if (this.LocalNames.Get(i) == name) { return this.LocalTypes.Get(i) }
+            i = i - 1
         }
         let gc = this.GlobalNames.Count()
-        for i in 0..gc {
-            if (this.GlobalNames.Get(i) == name) { return this.GlobalTypes.Get(i) }
+        for j in 0..gc {
+            if (this.GlobalNames.Get(j) == name) { return this.GlobalTypes.Get(j) }
         }
         return "?"
     }
 
     private bool LookupIsLet(string name) {
-        let lc = this.LocalNames.Count()
-        for i in 0..lc {
+        var i = this.LocalNames.Count() - 1
+        while (i >= 0) {
             if (this.LocalNames.Get(i) == name) { return this.LocalIsLets.Get(i) }
+            i = i - 1
         }
         return false
     }
@@ -613,6 +638,8 @@ public class FullResolver {
         let k = expr.Kind
 
         if (k == NodeKind.IDENTIFIER) {
+            // Skip parser error-recovery placeholders — they already represent a parse error
+            if (expr.Name == "_unknown_") { return }
             if (!this.LookupInScopes(expr.Name)) {
                 this.ErrorMsg("Unknown symbol '" + expr.Name + "'")
             }

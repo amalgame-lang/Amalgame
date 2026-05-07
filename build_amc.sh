@@ -15,10 +15,17 @@ AMC_SOURCES="src/amalgame/lexer/token.am \
              src/amalgame/typechecker.am \
              src/amalgame/main.am"
 
-echo "=== Step 1: Build gen_test ==="
-./build/amc $AMC_SOURCES \
-            src/amalgame/generator/gen_test.am \
-            -o gen_test
+# Self-host: use ./amc if available, fall back to ./build/amc (Vala) for cold start
+if [ -x ./amc ]; then
+    AMC=./amc
+    echo "=== Step 1: Build gen_test (self-hosted via ./amc) ==="
+else
+    AMC=./build/amc
+    echo "=== Step 1: Build gen_test (cold start via Vala ./build/amc) ==="
+fi
+$AMC $AMC_SOURCES \
+     src/amalgame/generator/gen_test.am \
+     -o gen_test
 gcc -O2 -Isrc/transpiler/runtime gen_test.c -lgc -lm -o gen_test
 
 echo "=== Step 2: Generate all bundles + amc_lib.c ==="
