@@ -623,8 +623,52 @@ public class CGen {
         return result
     }
 
+    // Wrap a C expression in the right ToString conversion based on its
+    // C return type. Used by the interpolation handler below.
+    private string WrapForInterp(string cExpr, string cType) {
+        if (cType == "code_string") { return "(" + cExpr + " ? " + cExpr + " : \"\")" }
+        if (cType == "i64")         { return "String_FromInt(" + cExpr + ")" }
+        if (cType == "double")      { return "String_FromFloat(" + cExpr + ")" }
+        if (cType == "code_bool")   { return "((" + cExpr + ") ? \"true\" : \"false\")" }
+        // Fallback — assume int for unknown / void
+        return "String_FromInt((i64)(" + cExpr + "))"
+    }
+
+    // Best-effort C return type for a stdlib-style call name (e.g. "String_Length").
+    // Returns "" when unknown so the caller can pick a fallback.
+    private string BuiltinCallReturnType(string cName) {
+        if (cName == "String_Length" || cName == "String_IndexOf" || cName == "String_LastIndexOf" || cName == "String_ToInt") { return "i64" }
+        if (cName == "String_ToFloat") { return "double" }
+        if (cName == "String_IsEmpty" || cName == "String_Contains" || cName == "String_StartsWith" || cName == "String_EndsWith" || cName == "String_ToBool") { return "code_bool" }
+        if (String_StartsWith(cName, "String_")) { return "code_string" }
+        if (cName == "Math_Sqrt" || cName == "Math_Abs" || cName == "Math_Pow" || cName == "Math_Floor" || cName == "Math_Ceil" || cName == "Math_Round" || cName == "Math_Random") { return "double" }
+        if (cName == "Math_AbsI" || cName == "Math_PowI" || cName == "Math_RandomInt" || cName == "Math_Gcd" || cName == "Math_MaxI" || cName == "Math_MinI" || cName == "Math_ClampI") { return "i64" }
+        if (cName == "Math_IsPrime" || cName == "Math_IsNaN" || cName == "Math_IsFinite") { return "code_bool" }
+        if (cName == "File_ReadAll") { return "code_string" }
+        if (cName == "File_Exists" || cName == "File_WriteAll" || cName == "File_AppendAll" || cName == "File_Delete") { return "code_bool" }
+        if (cName == "File_Size" || cName == "Args_Count" || cName == "Exit_Get") { return "i64" }
+        if (cName == "Args_Get") { return "code_string" }
+        return ""
+    }
+
     // Convert a simple interpolation expression to a C string expression
     private string InterpExprToC(string expr) {
+        // Method/function call: "Class.Method(args)" or "func(args)".
+        // Convert dot-separated qualifiers to underscore (C name scheme),
+        // then pick a ToString wrapper from the inferred return type.
+        let parenIdx = String_IndexOf(expr, "(")
+        if (parenIdx > 0) {
+            let callee = String_Substring(expr, 0, parenIdx)
+            let rest   = String_Substring(expr, parenIdx, String_Length(expr) - parenIdx)
+            let cCallee = String_Replace(callee, ".", "_")
+            let cCall  = cCallee + rest
+            let retT   = this.BuiltinCallReturnType(cCallee)
+            if (String_Length(retT) > 0) {
+                return this.WrapForInterp(cCall, retT)
+            }
+            // Unknown callee → assume string (most user methods returning text).
+            return "(" + cCall + " ? " + cCall + " : \"\")"
+        }
         // this.Field → self->Field
         if (String_StartsWith(expr, "this.")) {
             let field = String_Substring(expr, 5, String_Length(expr) - 5)
