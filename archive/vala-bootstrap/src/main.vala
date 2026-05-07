@@ -359,7 +359,7 @@ int main(string[] args) {
         // Try relative to first input file
         string firstDir = GLib.Path.get_dirname(inputFiles[0]);
         string candidate = GLib.Path.build_filename(
-            firstDir, "..", "..", "..", "src", "transpiler", "runtime");
+            firstDir, "..", "..", "..", "runtime");
         if (FileUtils.test(
                 GLib.Path.build_filename(candidate, "_runtime.h"),
                 FileTest.EXISTS)) {
@@ -372,7 +372,7 @@ int main(string[] args) {
         runtimeH = GLib.Path.get_dirname(
                        GLib.Path.get_dirname(
                            GLib.Path.get_dirname(outputFile)))
-                   + "/src/transpiler/runtime";
+                   + "/runtime";
     }
 
     // Add -lcurl if Amalgame.Net is used

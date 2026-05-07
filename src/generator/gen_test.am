@@ -8,35 +8,35 @@ public class Program {
     public static void Main(string[] args) {
         // Parse each compiler source once — gen6 produces the single bundle
         // amc_lib.c that becomes the amc binary in build_amc.sh Step 3.
-        let tokPath = "./src/amalgame/lexer/token.am"
+        let tokPath = "./src/lexer/token.am"
         let tokSrc  = File.ReadAll(tokPath)
         let tokLex  = new Lexer(tokSrc, tokPath)
         let tokToks = tokLex.Tokenize()
         let tokPar  = new Parser(tokToks)
         let tokProg = tokPar.Parse()
 
-        let astPath = "./src/amalgame/parser/ast.am"
+        let astPath = "./src/parser/ast.am"
         let astSrc  = File.ReadAll(astPath)
         let astLex  = new Lexer(astSrc, astPath)
         let astToks = astLex.Tokenize()
         let astPar  = new Parser(astToks)
         let astProg = astPar.Parse()
 
-        let lexPath = "./src/amalgame/lexer/lexer.am"
+        let lexPath = "./src/lexer/lexer.am"
         let lexSrc  = File.ReadAll(lexPath)
         let lexLex  = new Lexer(lexSrc, lexPath)
         let lexToks = lexLex.Tokenize()
         let lexPar  = new Parser(lexToks)
         let lexProg = lexPar.Parse()
 
-        let parPath = "./src/amalgame/parser/parser.am"
+        let parPath = "./src/parser/parser.am"
         let parSrc  = File.ReadAll(parPath)
         let parLex  = new Lexer(parSrc, parPath)
         let parToks = parLex.Tokenize()
         let parPar  = new Parser(parToks)
         let parProg = parPar.Parse()
 
-        let cgenPath = "./src/amalgame/generator/c_gen.am"
+        let cgenPath = "./src/generator/c_gen.am"
         let cgenSrc  = File.ReadAll(cgenPath)
         let cgenLex  = new Lexer(cgenSrc, cgenPath)
         let cgenToks = cgenLex.Tokenize()
@@ -45,7 +45,7 @@ public class Program {
 
         // --- Full amc lib (streaming) ---
         Console.WriteError("parsing extra files...")
-        let symPath  = "./src/amalgame/resolver/symbol.am"
+        let symPath  = "./src/resolver/symbol.am"
         let symSrc   = File.ReadAll(symPath)
         let symLex   = new Lexer(symSrc, symPath)
         let symToks  = symLex.Tokenize()
@@ -53,7 +53,7 @@ public class Program {
         let symProg  = symPar.Parse()
         Console.WriteError("parsed: symbol.am")
 
-        let rvrPath  = "./src/amalgame/resolver/resolver.am"
+        let rvrPath  = "./src/resolver/resolver.am"
         let rvrSrc   = File.ReadAll(rvrPath)
         let rvrLex   = new Lexer(rvrSrc, rvrPath)
         let rvrToks  = rvrLex.Tokenize()
@@ -61,7 +61,7 @@ public class Program {
         let rvrProg  = rvrPar.Parse()
         Console.WriteError("parsed: resolver.am")
 
-        let diagPath = "./src/amalgame/diagnostics.am"
+        let diagPath = "./src/diagnostics.am"
         let diagSrc  = File.ReadAll(diagPath)
         let diagLex  = new Lexer(diagSrc, diagPath)
         let diagToks = diagLex.Tokenize()
@@ -69,7 +69,7 @@ public class Program {
         let diagProg = diagPar.Parse()
         Console.WriteError("parsed: diagnostics.am")
 
-        let tckPath  = "./src/amalgame/typechecker.am"
+        let tckPath  = "./src/typechecker.am"
         let tckSrc   = File.ReadAll(tckPath)
         let tckLex   = new Lexer(tckSrc, tckPath)
         let tckToks  = tckLex.Tokenize()
@@ -77,7 +77,7 @@ public class Program {
         let tckProg  = tckPar.Parse()
         Console.WriteError("parsed: typechecker.am")
 
-        let mainPath = "./src/amalgame/main.am"
+        let mainPath = "./src/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
         let mainToks = mainLex.Tokenize()
@@ -87,7 +87,7 @@ public class Program {
 
         Console.WriteError("gen6: starting")
         Console.WriteError("parsing done, generating...")
-        let out6 = "./src/amalgame/amc_lib.c"
+        let out6 = "./src/amc_lib.c"
         File.OpenWrite(out6)
         let gen6 = new CGen()
         gen6.SetStreaming(true)

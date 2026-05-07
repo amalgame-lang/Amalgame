@@ -18,11 +18,11 @@ Le compilateur `amc` (Amalgame → C → binaire) est complet et fonctionnel.
 Pipeline : source.am → Lexer → Parser → Resolver → TypeChecker → CGenerator → GCC
 Build : `./compile.sh` (meson + ninja)
 
-#### Bootstrap Amalgame (src/amalgame/)
+#### Bootstrap Amalgame (src/)
 Le compilateur écrit en Amalgame lui-même — objectif final du bootstrap.
 
 ```
-src/amalgame/
+src/
 ├── lexer/
 │   ├── token.am      — TokenType enum + Token class ✅ → C sans warnings ✅
 │   ├── lexer.am      — Lexer complet ✅
@@ -111,7 +111,7 @@ Branche feature/bootstrap, version v0.9.5, 126/126 tests.
 
 Context :
 - Compilateur Vala fonctionnel (amc) : ./build/amc (archive/vala-bootstrap/src/core/ + src/transpiler/)
-- Bootstrap en cours : src/amalgame/ (lexer, parser, resolver, generator)
+- Bootstrap en cours : src/ (lexer, parser, resolver, generator)
 - token.am et ast.am → C sans warnings GCC ✅
 - Prochaine étape : v0.9.6 — lexer.am → C sans erreurs
 
@@ -146,21 +146,21 @@ Commencer par : ./tests/run_all_tests.sh puis coller le résultat.
 ./tests/run_all_tests.sh
 
 # Pipeline bootstrap (compile + génère les .c)
-./build/amc src/amalgame/lexer/token.am \
-            src/amalgame/lexer/lexer.am \
-            src/amalgame/parser/ast.am \
-            src/amalgame/parser/parser.am \
-            src/amalgame/generator/c_gen.am \
-            src/amalgame/generator/gen_test.am \
+./build/amc src/lexer/token.am \
+            src/lexer/lexer.am \
+            src/parser/ast.am \
+            src/parser/parser.am \
+            src/generator/c_gen.am \
+            src/generator/gen_test.am \
             -o gen_test && ./gen_test
 
 # Vérifier le C généré
-gcc -Wall -Wextra -Isrc/transpiler/runtime \
-    src/amalgame/lexer/token.am_bootstrap.c -lgc -c 2>&1
-gcc -Wall -Wextra -Isrc/transpiler/runtime \
-    src/amalgame/parser/ast.am_bootstrap.c -lgc -c 2>&1
-gcc -Wall -Wextra -Isrc/transpiler/runtime \
-    src/amalgame/lexer/lexer.am_bootstrap.c -lgc -c 2>&1
+gcc -Wall -Wextra -Iruntime \
+    src/lexer/token.am_bootstrap.c -lgc -c 2>&1
+gcc -Wall -Wextra -Iruntime \
+    src/parser/ast.am_bootstrap.c -lgc -c 2>&1
+gcc -Wall -Wextra -Iruntime \
+    src/lexer/lexer.am_bootstrap.c -lgc -c 2>&1
 ```
 
 ---
