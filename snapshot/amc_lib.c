@@ -2424,10 +2424,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMatch(Amalgame_C
             Amalgame_Compiler_Parser_Advance(self);
         }
         Amalgame_Compiler_Parser_SkipNewlines(self);
-        Amalgame_Compiler_AstNode* __attribute__((unused)) armBody = Amalgame_Compiler_Parser_ParseExpr(self);
-        if (Amalgame_Compiler_Parser_CheckValue(self, "{")) {
-            armBody = Amalgame_Compiler_Parser_ParseBlock(self);
-        }
+        Amalgame_Compiler_AstNode* __attribute__((unused)) armBody = Amalgame_Compiler_Parser_ParseStmt(self);
         if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
             Amalgame_Compiler_Parser_Advance(self);
         }
@@ -2927,6 +2924,17 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         }
         return "";
     }
+    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
+        if (expr->Body != NULL) {
+            Amalgame_Compiler_AstNode* __attribute__((unused)) body = expr->Body;
+            if (body->Kind == Amalgame_Compiler_NodeKind_BLOCK && AmalgameList_count(body->Children) > 0) {
+                Amalgame_Compiler_AstNode* __attribute__((unused)) last = (Amalgame_Compiler_AstNode*)AmalgameList_get(body->Children, AmalgameList_count(body->Children) - 1);
+                return Amalgame_Compiler_CGen_InferTypeFromExpr(self, last);
+            }
+            return Amalgame_Compiler_CGen_InferTypeFromExpr(self, body);
+        }
+        return "";
+    }
     if (k == Amalgame_Compiler_NodeKind_LITERAL_INT) {
         return "i64";
     }
@@ -3121,8 +3129,14 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                     return "i64";
                 }
             }
-            if (code_string_equals(calleeStr, "String_Length") || code_string_equals(calleeStr, "String_IndexOf") || code_string_equals(calleeStr, "String_LastIndexOf")) {
+            if (code_string_equals(calleeStr, "String_Length") || code_string_equals(calleeStr, "String_IndexOf") || code_string_equals(calleeStr, "String_LastIndexOf") || code_string_equals(calleeStr, "String_ToInt")) {
                 return "i64";
+            }
+            if (code_string_equals(calleeStr, "String_ToFloat")) {
+                return "double";
+            }
+            if (code_string_equals(calleeStr, "String_ToBool")) {
+                return "code_bool";
             }
             if (code_string_equals(calleeStr, "String_Contains") || code_string_equals(calleeStr, "String_StartsWith") || code_string_equals(calleeStr, "String_EndsWith") || code_string_equals(calleeStr, "String_IsEmpty")) {
                 return "code_bool";
@@ -3163,6 +3177,12 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "File_ReadAll") || code_string_equals(calleeStr, "File_ReadLine")) {
                 return "code_string";
             }
+            if (code_string_equals(calleeStr, "File_Size")) {
+                return "i64";
+            }
+            if (code_string_equals(calleeStr, "Path_Combine") || code_string_equals(calleeStr, "Path_GetExtension") || code_string_equals(calleeStr, "Path_GetFilename") || code_string_equals(calleeStr, "Path_GetDirectory")) {
+                return "code_string";
+            }
             if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson")) {
                 return "AmalgameHttpResponse*";
             }
@@ -3190,8 +3210,11 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Math_Random")) {
                 return "double";
             }
-            if (code_string_equals(calleeStr, "Math_RandomInt") || code_string_equals(calleeStr, "Math_AbsI") || code_string_equals(calleeStr, "Math_PowI") || code_string_equals(calleeStr, "Math_Gcd") || code_string_equals(calleeStr, "Math_Lcm") || code_string_equals(calleeStr, "Math_Clamp")) {
+            if (code_string_equals(calleeStr, "Math_RandomInt") || code_string_equals(calleeStr, "Math_AbsI") || code_string_equals(calleeStr, "Math_PowI") || code_string_equals(calleeStr, "Math_Gcd") || code_string_equals(calleeStr, "Math_Lcm") || code_string_equals(calleeStr, "Math_Clamp") || code_string_equals(calleeStr, "Math_MaxI") || code_string_equals(calleeStr, "Math_MinI") || code_string_equals(calleeStr, "Math_ClampI")) {
                 return "i64";
+            }
+            if (code_string_equals(calleeStr, "Math_SeedRandom")) {
+                return "void";
             }
             if (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
                 code_string __attribute__((unused)) mname2 = expr->Left->Name;
@@ -3827,6 +3850,20 @@ static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalg
                 }
                 if (m->Body != NULL) {
                     Amalgame_Compiler_CGen_EmitBlock(self, m->Body);
+                } else {
+                    for (i64 pi = 0; pi < pcount; pi++) {
+                        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
+                        code_bool __attribute__((unused)) hasField = 0;
+                        for (i64 fi = 0; fi < members; fi++) {
+                            Amalgame_Compiler_AstNode* __attribute__((unused)) f = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, fi);
+                            if (f->Kind == Amalgame_Compiler_NodeKind_VAR_DECL && code_string_equals(f->Name, p->Name)) {
+                                hasField = 1;
+                            }
+                        }
+                        if (hasField) {
+                            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("self->", p->Name), " = "), p->Name), ";"));
+                        }
+                    }
                 }
                 Amalgame_Compiler_CGen_LocalTypeClear(self);
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return self;");
@@ -4061,8 +4098,8 @@ static void Amalgame_Compiler_CGen_EmitMatch(Amalgame_Compiler_CGen* self, Amalg
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
                 needsClose = 0;
             } else {
-                void* __attribute__((unused)) elsePrefix = (firstArm ? "" : "} else ");
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string)(elsePrefix), "{"));
+                code_string __attribute__((unused)) elsePrefix = (firstArm ? "" : "} else ");
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(elsePrefix, "{"));
                 Amalgame_Compiler_Emitter_Indent_(self->Out);
                 Amalgame_Compiler_CGen_EmitMatchBody(self, body);
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
@@ -4090,7 +4127,7 @@ static void Amalgame_Compiler_CGen_EmitMatch(Amalgame_Compiler_CGen* self, Amalg
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
                 needsClose = 0;
             } else {
-                void* __attribute__((unused)) elsePrefix = (firstArm ? "" : "} else ");
+                code_string __attribute__((unused)) elsePrefix = (firstArm ? "" : "} else ");
                 code_bool __attribute__((unused)) isBinder = pk == Amalgame_Compiler_NodeKind_IDENTIFIER && !code_string_equals(pat->Name, "_");
                 code_string __attribute__((unused)) cond = "";
                 if (pk == Amalgame_Compiler_NodeKind_BINARY && code_string_equals(pat->Str, "..")) {
@@ -4117,7 +4154,7 @@ static void Amalgame_Compiler_CGen_EmitMatch(Amalgame_Compiler_CGen* self, Amalg
                         cond = code_string_concat(code_string_concat(code_string_concat(code_string_concat("(", cond), ") && ("), guardStr), ")");
                     }
                 }
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat((code_string)(elsePrefix), "if ("), cond), ") {"));
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(elsePrefix, "if ("), cond), ") {"));
                 Amalgame_Compiler_Emitter_Indent_(self->Out);
                 if (isBinder) {
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("__auto_type ", pat->Name), " = "), subjectStr), ";"));
@@ -4149,6 +4186,8 @@ static void Amalgame_Compiler_CGen_EmitMatchBody(Amalgame_Compiler_CGen* self, A
         for (i64 si = 0; si < stmts; si++) {
             Amalgame_Compiler_CGen_EmitStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(body->Children, si));
         }
+    } else if (bk == Amalgame_Compiler_NodeKind_RETURN_STMT || bk == Amalgame_Compiler_NodeKind_BREAK_STMT || bk == Amalgame_Compiler_NodeKind_CONTINUE_STMT) {
+        Amalgame_Compiler_CGen_EmitStmt(self, body);
     } else {
         code_string __attribute__((unused)) exprStr = Amalgame_Compiler_CGen_EmitExprStr(self, body);
         if (String_Length(exprStr) > 0 && !code_string_equals(exprStr, "_unknown_")) {
@@ -4739,8 +4778,8 @@ static code_string Amalgame_Compiler_CGen_EmitMatchExpr(Amalgame_Compiler_CGen* 
         Amalgame_Compiler_NodeKind __attribute__((unused)) pk = pat->Kind;
         code_string __attribute__((unused)) bodyStr = Amalgame_Compiler_CGen_EmitExprStr(self, body);
         if (pk == Amalgame_Compiler_NodeKind_IDENTIFIER && code_string_equals(pat->Name, "_")) {
-            void* __attribute__((unused)) prefix = (firstArmFlag ? "" : " else ");
-            s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, (code_string)(prefix)), "{ __mr = ("), bodyStr), "); }");
+            code_string __attribute__((unused)) prefix = (firstArmFlag ? "" : " else ");
+            s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, prefix), "{ __mr = ("), bodyStr), "); }");
             firstArmFlag = 0;
             continue;
         }
@@ -4756,8 +4795,8 @@ static code_string Amalgame_Compiler_CGen_EmitMatchExpr(Amalgame_Compiler_CGen* 
             code_string __attribute__((unused)) patStr = Amalgame_Compiler_CGen_EmitExprStr(self, pat);
             cond = code_string_concat(code_string_concat(subjectStr, " == "), patStr);
         }
-        void* __attribute__((unused)) prefix = (firstArmFlag ? "" : " else ");
-        s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, (code_string)(prefix)), "if ("), cond), ") { __mr = ("), bodyStr), "); }");
+        code_string __attribute__((unused)) prefix = (firstArmFlag ? "" : " else ");
+        s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, prefix), "if ("), cond), ") { __mr = ("), bodyStr), "); }");
         firstArmFlag = 0;
     }
     s = code_string_concat(s, " __mr; })");
@@ -5920,8 +5959,8 @@ static code_string Amalgame_Compiler_Formatter_EmitMember(Amalgame_Compiler_Form
     (void)self;
     (void)n;
     code_string __attribute__((unused)) base = Amalgame_Compiler_Formatter_EmitExpr(self, n->Left);
-    void* __attribute__((unused)) sep = (n->Flag ? "?." : ".");
-    return code_string_concat(code_string_concat(base, (code_string)(sep)), n->Name);
+    code_string __attribute__((unused)) sep = (n->Flag ? "?." : ".");
+    return code_string_concat(code_string_concat(base, sep), n->Name);
 }
 
 static code_string Amalgame_Compiler_Formatter_EmitIndex(Amalgame_Compiler_Formatter* self, Amalgame_Compiler_AstNode* n) {
@@ -6484,8 +6523,8 @@ code_string Amalgame_Compiler_DiagnosticFormatter_FormatSummary(Amalgame_Compile
     code_string __attribute__((unused)) result = " ";
     if (errorCount > 0) {
         code_string __attribute__((unused)) ec = String_FromInt(errorCount);
-        void* __attribute__((unused)) sfx = (errorCount > 1 ? "s" : " ");
-        result = code_string_concat(code_string_concat(code_string_concat("aborting due to ", ec), " error"), (code_string)(sfx));
+        code_string __attribute__((unused)) sfx = (errorCount > 1 ? "s" : " ");
+        result = code_string_concat(code_string_concat(code_string_concat("aborting due to ", ec), " error"), sfx);
     }
     return result;
 }
@@ -7212,16 +7251,30 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_Get", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_Post", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_GetWithHeaders", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_GetTimeout", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_PostJson", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_PostWithHeaders", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_Put", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_Delete", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Http_Patch", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Listen", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Accept", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_IsListening", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Connect", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Send", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Receive", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_IsConnected", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Send", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Receive", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_IsConnected", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_New", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Bind", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Send", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Receive", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Close", "void", 0);
 }
 
 static void Amalgame_Compiler_FullResolver_PushScope(Amalgame_Compiler_FullResolver* self, code_string label) {
@@ -7758,6 +7811,9 @@ static void Amalgame_Compiler_FullResolver_ResolveExpr(Amalgame_Compiler_FullRes
     Amalgame_Compiler_NodeKind __attribute__((unused)) k = expr->Kind;
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
         if (code_string_equals(expr->Name, "_unknown_")) {
+            return;
+        }
+        if (code_string_equals(expr->Name, "_")) {
             return;
         }
         if (!Amalgame_Compiler_FullResolver_LookupInScopes(self, expr->Name)) {
@@ -8572,7 +8628,10 @@ static void Amalgame_Compiler_TypeChecker_CheckVarDecl(Amalgame_Compiler_TypeChe
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
         inferredType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
     }
-    void* __attribute__((unused)) finalType = (String_Length(declaredType) > 0 ? declaredType : inferredType);
+    if (code_string_equals(declaredType, "__tuple_destructure__")) {
+        return;
+    }
+    code_string __attribute__((unused)) finalType = (String_Length(declaredType) > 0 ? declaredType : inferredType);
     if (String_Length(declaredType) > 0 && !code_string_equals(inferredType, "?")) {
         if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, declaredType, inferredType)) {
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Cannot assign '", inferredType), "' to '"), stmt->Name), "' of type '"), declaredType), "'"), stmt);
@@ -8766,7 +8825,7 @@ static void Amalgame_Compiler_TypeChecker_CheckExpr(Amalgame_Compiler_TypeChecke
         }
         code_string __attribute__((unused)) thenType = Amalgame_Compiler_TypeChecker_CheckIfBranch(self, expr->Body);
         code_string __attribute__((unused)) elseType = Amalgame_Compiler_TypeChecker_CheckIfBranch(self, expr->Else);
-        void* __attribute__((unused)) ifType = (!code_string_equals(thenType, "?") ? thenType : elseType);
+        code_string __attribute__((unused)) ifType = (!code_string_equals(thenType, "?") ? thenType : elseType);
         Amalgame_Compiler_TypeChecker_SetType(self, expr, ifType);
         return;
     }
@@ -8802,29 +8861,29 @@ static void Amalgame_Compiler_TypeChecker_CheckBinaryExpr(Amalgame_Compiler_Type
     if (expr->Right != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Right);
     }
-    void* __attribute__((unused)) lt = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
-    void* __attribute__((unused)) rt = (expr->Right != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Right) : "?");
+    code_string __attribute__((unused)) lt = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
+    code_string __attribute__((unused)) rt = (expr->Right != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Right) : "?");
     if (code_string_equals(op, "&&") || code_string_equals(op, "||")) {
         if (!Amalgame_Compiler_TypeChecker_IsBool(self, lt)) {
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Left operand of '", op), "' must be bool, got '"), (code_string)(lt)), "'"), expr->Left);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Left operand of '", op), "' must be bool, got '"), lt), "'"), expr->Left);
         }
         if (!Amalgame_Compiler_TypeChecker_IsBool(self, rt)) {
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Right operand of '", op), "' must be bool, got '"), (code_string)(rt)), "'"), expr->Right);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Right operand of '", op), "' must be bool, got '"), rt), "'"), expr->Right);
         }
     }
     if (code_string_equals(op, "-") || code_string_equals(op, "*") || code_string_equals(op, "/") || code_string_equals(op, "%") || code_string_equals(op, "^")) {
         if (!Amalgame_Compiler_TypeChecker_IsNumeric(self, lt) && !code_string_equals(lt, "?")) {
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Operator '", op), "' requires numeric operands, got '"), (code_string)(lt)), "'"), expr->Left);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Operator '", op), "' requires numeric operands, got '"), lt), "'"), expr->Left);
         }
         if (!Amalgame_Compiler_TypeChecker_IsNumeric(self, rt) && !code_string_equals(rt, "?")) {
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Operator '", op), "' requires numeric operands, got '"), (code_string)(rt)), "'"), expr->Right);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("Operator '", op), "' requires numeric operands, got '"), rt), "'"), expr->Right);
         }
     }
     if (code_string_equals(op, "??")) {
         if (!Amalgame_Compiler_TypeChecker_IsNullable(self, lt) && !code_string_equals(lt, "?")) {
             code_string __attribute__((unused)) qqOp = "?";
             code_string __attribute__((unused)) qqOp2 = "?";
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Left operand of '", qqOp), qqOp2), "' must be nullable, got '"), (code_string)(lt)), "'"), expr->Left);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Left operand of '", qqOp), qqOp2), "' must be nullable, got '"), lt), "'"), expr->Left);
         }
     }
     code_string __attribute__((unused)) result = Amalgame_Compiler_TypeChecker_BinaryResultType(self, op, lt, rt);
@@ -8838,17 +8897,17 @@ static void Amalgame_Compiler_TypeChecker_CheckUnaryExpr(Amalgame_Compiler_TypeC
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    void* __attribute__((unused)) ot = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
+    code_string __attribute__((unused)) ot = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
     if (code_string_equals(op, "!")) {
         if (!Amalgame_Compiler_TypeChecker_IsBool(self, ot)) {
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat("Operator '!' requires bool, got '", (code_string)(ot)), "'"), expr->Left);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat("Operator '!' requires bool, got '", ot), "'"), expr->Left);
         }
         Amalgame_Compiler_TypeChecker_SetType(self, expr, "bool");
         return;
     }
     if (code_string_equals(op, "-")) {
         if (!Amalgame_Compiler_TypeChecker_IsNumeric(self, ot) && !code_string_equals(ot, "?")) {
-            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat("Unary '-' requires numeric, got '", (code_string)(ot)), "'"), expr->Left);
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat("Unary '-' requires numeric, got '", ot), "'"), expr->Left);
         }
         Amalgame_Compiler_TypeChecker_SetType(self, expr, ot);
         return;
@@ -8862,8 +8921,8 @@ static void Amalgame_Compiler_TypeChecker_CheckMemberExpr(Amalgame_Compiler_Type
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    void* __attribute__((unused)) targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
-    void* __attribute__((unused)) baseType = targetType;
+    code_string __attribute__((unused)) targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
+    code_string __attribute__((unused)) baseType = targetType;
     if (String_EndsWith(baseType, "?")) {
         baseType = String_Substring(baseType, 0, String_Length(baseType) - 1);
     }
@@ -8919,7 +8978,7 @@ static void Amalgame_Compiler_TypeChecker_CheckIndexExpr(Amalgame_Compiler_TypeC
     if (expr->Right != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Right);
     }
-    void* __attribute__((unused)) targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
+    code_string __attribute__((unused)) targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
     code_string __attribute__((unused)) elemType = Amalgame_Compiler_TypeChecker_CollectionElementType(self, targetType);
     Amalgame_Compiler_TypeChecker_SetType(self, expr, elemType);
 }
@@ -9086,8 +9145,8 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     } else {
         File_AppendAll(outC, "\n/* Library — no entry point */\n");
     }
-    void* __attribute__((unused)) mode = (isLibrary ? "Library" : "Executable");
-    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Generated: ", outC), " ("), String_FromInt(lineCount)), " lines) ["), (code_string)(mode)), "]"));
+    code_string __attribute__((unused)) mode = (isLibrary ? "Library" : "Executable");
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Generated: ", outC), " ("), String_FromInt(lineCount)), " lines) ["), mode), "]"));
     Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(self->Diag, "Build");
 }
 
@@ -9205,7 +9264,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.3.0 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.3.1 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {
