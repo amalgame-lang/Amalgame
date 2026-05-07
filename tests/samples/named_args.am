@@ -1,0 +1,35 @@
+namespace App
+import Amalgame.IO
+
+public class Math2 {
+    public static int Clamp(int x, int lo, int hi) {
+        if (x < lo) { return lo }
+        if (x > hi) { return hi }
+        return x
+    }
+}
+
+public class Person {
+    public Name: string
+    public Age: int
+
+    public Person(string name, int age) {
+        this.Name = name
+        this.Age = age
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        // Named args at call-site — currently documentation-only:
+        // names are accepted but values are still passed in source order.
+        // (i.e. don't reorder them — the C code uses positional order.)
+        Console.WriteLine(String.FromInt(Math2.Clamp(x: 50, lo: 0, hi: 10)))
+        // Mixed positional + named — still in source order
+        Console.WriteLine(String.FromInt(Math2.Clamp(99, lo: 0, hi: 10)))
+        // new with named args
+        let p = new Person(name: "Alice", age: 30)
+        Console.WriteLine(p.Name)
+        Console.WriteLine(String.FromInt(p.Age))
+    }
+}

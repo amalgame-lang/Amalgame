@@ -160,7 +160,7 @@ Porter le scope chaîné du Resolver Vala.
 - [ ] **Compréhensions de liste** : `[x * 2 for x in xs if x > 0]`
 - [x] **`?.` null-safe member access** ✅ field + method call, ternary `(obj ? ... : NULL)`
 - [ ] **Spread operator** `...args`
-- [ ] **Named arguments** `f(x: 1, y: 2)`
+- [x] **Named arguments** `f(x: 1, y: 2)` ✅ documentation-only (no reorder yet)
 
 ---
 
