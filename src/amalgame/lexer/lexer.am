@@ -349,6 +349,8 @@ public class Lexer {
         } else if (c == "?") {
             if (c2 == "?") { this.Advance()
                 this.AddToken(TokenType.OP_COALESCE, "??") }
+            else if (c2 == ".") { this.Advance()
+                this.AddToken(TokenType.OP_QDOT, "?.") }
         } else if (c == "~") {
             this.AddToken(TokenType.OP_TILDE, "~")
         } else if (c == "^") {
