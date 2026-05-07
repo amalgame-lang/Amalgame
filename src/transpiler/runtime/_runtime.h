@@ -269,6 +269,37 @@ static inline void code_runtime_init() {
     GC_INIT();
 }
 
+/* Process argv/argc + exit code — set by the generated `int main()` entry,
+ * read from Amalgame via the Args_* / Exit_* builtins below. */
+static int    code_argc      = 0;
+static char** code_argv      = NULL;
+static int    code_exit_code = 0;
+
+static inline void code_runtime_init_args(int argc, char** argv) {
+    code_argc = argc;
+    code_argv = argv;
+}
+
+/* Args (zero-indexed; index 0 is the program name like in C). */
+static inline i64 Args_Count(void) {
+    return (i64)code_argc;
+}
+
+static inline code_string Args_Get(i64 i) {
+    if (i < 0 || i >= (i64)code_argc) return "";
+    return (code_string)code_argv[i];
+}
+
+/* Exit code — Amalgame programs call Exit_Set(n) to set the process
+ * exit status; the generated int main() returns it. */
+static inline void Exit_Set(i64 n) {
+    code_exit_code = (int)n;
+}
+
+static inline i64 Exit_Get(void) {
+    return (i64)code_exit_code;
+}
+
 
 /* ================================================================
    Exception support — setjmp/longjmp based
