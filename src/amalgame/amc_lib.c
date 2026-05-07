@@ -446,6 +446,7 @@ static code_string Amalgame_Compiler_Lexer_Advance(Amalgame_Compiler_Lexer* self
 static void Amalgame_Compiler_Lexer_SkipWhitespace(Amalgame_Compiler_Lexer* self);
 AmalgameList* Amalgame_Compiler_Lexer_Tokenize(Amalgame_Compiler_Lexer* self);
 static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self);
+static i64 Amalgame_Compiler_Lexer_HexNibble(Amalgame_Compiler_Lexer* self, code_string ch);
 static void Amalgame_Compiler_Lexer_ReadNumber(Amalgame_Compiler_Lexer* self);
 static void Amalgame_Compiler_Lexer_ReadIdentifier(Amalgame_Compiler_Lexer* self);
 static Amalgame_Compiler_TokenType Amalgame_Compiler_Lexer_LookupKeyword(Amalgame_Compiler_Lexer* self, code_string word);
@@ -583,8 +584,10 @@ static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
                 value = code_string_concat(value, "\\");
             }
             if (code_string_equals(esc, "x")) {
-                Amalgame_Compiler_Lexer_Advance(self);
-                Amalgame_Compiler_Lexer_Advance(self);
+                code_string __attribute__((unused)) h1 = Amalgame_Compiler_Lexer_Advance(self);
+                code_string __attribute__((unused)) h2 = Amalgame_Compiler_Lexer_Advance(self);
+                i64 __attribute__((unused)) byte = Amalgame_Compiler_Lexer_HexNibble(self, h1) * 16 + Amalgame_Compiler_Lexer_HexNibble(self, h2);
+                value = code_string_concat(value, String_FromByte(byte));
             }
         } else {
             value = code_string_concat(value, c);
@@ -594,6 +597,60 @@ static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
         Amalgame_Compiler_Lexer_Advance(self);
     }
     Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
+}
+
+static i64 Amalgame_Compiler_Lexer_HexNibble(Amalgame_Compiler_Lexer* self, code_string ch) {
+    (void)self;
+    (void)ch;
+    if (code_string_equals(ch, "0")) {
+        return 0;
+    }
+    if (code_string_equals(ch, "1")) {
+        return 1;
+    }
+    if (code_string_equals(ch, "2")) {
+        return 2;
+    }
+    if (code_string_equals(ch, "3")) {
+        return 3;
+    }
+    if (code_string_equals(ch, "4")) {
+        return 4;
+    }
+    if (code_string_equals(ch, "5")) {
+        return 5;
+    }
+    if (code_string_equals(ch, "6")) {
+        return 6;
+    }
+    if (code_string_equals(ch, "7")) {
+        return 7;
+    }
+    if (code_string_equals(ch, "8")) {
+        return 8;
+    }
+    if (code_string_equals(ch, "9")) {
+        return 9;
+    }
+    if (code_string_equals(ch, "a") || code_string_equals(ch, "A")) {
+        return 10;
+    }
+    if (code_string_equals(ch, "b") || code_string_equals(ch, "B")) {
+        return 11;
+    }
+    if (code_string_equals(ch, "c") || code_string_equals(ch, "C")) {
+        return 12;
+    }
+    if (code_string_equals(ch, "d") || code_string_equals(ch, "D")) {
+        return 13;
+    }
+    if (code_string_equals(ch, "e") || code_string_equals(ch, "E")) {
+        return 14;
+    }
+    if (code_string_equals(ch, "f") || code_string_equals(ch, "F")) {
+        return 15;
+    }
+    return 0;
 }
 
 static void Amalgame_Compiler_Lexer_ReadNumber(Amalgame_Compiler_Lexer* self) {
@@ -3124,7 +3181,7 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
     s = String_Replace(s, "\\r", "\\r");
-    s = String_Replace(s, "", "\\x1b");
+    s = String_Replace(s, "\x1b", "\\x1b");
     return s;
 }
 
@@ -5276,6 +5333,7 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToInt", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToFloat", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromInt", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromByte", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromFloat", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_From", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_CharAt", "string", 0);
@@ -6016,55 +6074,55 @@ Amalgame_Compiler_Ansi* Amalgame_Compiler_Ansi_new() {
 }
 
 code_string Amalgame_Compiler_Ansi_Reset() {
-    return " ";
+    return "\x1b[0m";
 }
 
 code_string Amalgame_Compiler_Ansi_Bold() {
-    return " ";
+    return "\x1b[1m";
 }
 
 code_string Amalgame_Compiler_Ansi_Dim() {
-    return " ";
+    return "\x1b[2m";
 }
 
 code_string Amalgame_Compiler_Ansi_Red() {
-    return " ";
+    return "\x1b[31m";
 }
 
 code_string Amalgame_Compiler_Ansi_Yellow() {
-    return " ";
+    return "\x1b[33m";
 }
 
 code_string Amalgame_Compiler_Ansi_Cyan() {
-    return " ";
+    return "\x1b[36m";
 }
 
 code_string Amalgame_Compiler_Ansi_Green() {
-    return " ";
+    return "\x1b[32m";
 }
 
 code_string Amalgame_Compiler_Ansi_Blue() {
-    return " ";
+    return "\x1b[34m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldRed() {
-    return " ";
+    return "\x1b[1;31m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldYellow() {
-    return " ";
+    return "\x1b[1;33m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldCyan() {
-    return " ";
+    return "\x1b[1;36m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldGreen() {
-    return " ";
+    return "\x1b[1;32m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldBlue() {
-    return " ";
+    return "\x1b[1;34m";
 }
 
 struct _Amalgame_Compiler_SourceMap {
