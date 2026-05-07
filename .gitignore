@@ -14,6 +14,8 @@ gen_test.c
 amc
 amc_bootstrap
 gen_test
+a.out
+a.out.c
 
 # ── Test sample binaries (compiled from .am) ──
 tests/samples/bootstrap_probe
