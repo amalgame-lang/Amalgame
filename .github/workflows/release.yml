@@ -202,8 +202,14 @@ jobs:
         run: ls -lhR dist/
 
       - name: Aggregate checksums
+        # Build checksums.sha256 in /tmp first, then move into dist/, so the
+        # output file can never appear in the *.sha256 input glob (which
+        # would make `cat` refuse with "input file is output file" — happens
+        # on workflow re-runs that find an aggregate already in place).
         run: |
-          (cd dist && cat *.sha256 > checksums.sha256)
+          rm -f dist/checksums.sha256
+          cat dist/*.sha256 > /tmp/checksums.sha256
+          mv /tmp/checksums.sha256 dist/checksums.sha256
           cat dist/checksums.sha256
 
       - name: Create GitHub Release
