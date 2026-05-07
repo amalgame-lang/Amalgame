@@ -1,0 +1,24 @@
+namespace App
+import Amalgame.IO
+
+public class Program {
+    // guard <cond> else { exit }   — cond must be true to continue.
+    public static int Clamp(int x, int lo, int hi) {
+        guard x > lo else { return lo }
+        guard x < hi else { return hi }
+        return x
+    }
+
+    public static string Greet(string name) {
+        guard String.Length(name) > 0 else { return "Hello, stranger!" }
+        return "Hello, " + name + "!"
+    }
+
+    public static void Main(string[] args) {
+        Console.WriteLine(String.FromInt(Program.Clamp(5, 0, 10)))
+        Console.WriteLine(String.FromInt(Program.Clamp(0 - 3, 0, 10)))
+        Console.WriteLine(String.FromInt(Program.Clamp(99, 0, 10)))
+        Console.WriteLine(Program.Greet("Bastien"))
+        Console.WriteLine(Program.Greet(""))
+    }
+}

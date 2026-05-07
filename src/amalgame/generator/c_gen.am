@@ -1746,6 +1746,12 @@ public class CGen {
         }
         if (k == NodeKind.UNARY) {
             let operand = this.EmitExprStr(expr.Left)
+            // Wrap binary/ternary operands in parens so C precedence matches
+            // the source (e.g. `!(x > 0)`, not `!x > 0`).
+            if (expr.Left != null) {
+                let lk = expr.Left.Kind
+                if (lk == NodeKind.BINARY) { return expr.Str + "(" + operand + ")" }
+            }
             return expr.Str + operand
         }
         if (k == NodeKind.CALL) {
