@@ -1624,6 +1624,13 @@ public class CGen {
         if (k == NodeKind.THIS_EXPR)    { return "self" }
         if (k == NodeKind.IDENTIFIER)   { return expr.Name }
         if (k == NodeKind.MEMBER) {
+            // Null-safe access: `obj?.field` → `(obj ? obj->field : NULL)`.
+            // Note: assumes `obj` has no side effects (we evaluate it twice).
+            // Use a let-binding for complex receivers.
+            if (expr.Flag) {
+                let target = this.EmitExprStr(expr.Left)
+                return "(" + target + " ? " + target + "->" + expr.Name + " : NULL)"
+            }
             if (expr.Left != null) {
                 let lk = expr.Left.Kind
                 if (lk == NodeKind.THIS_EXPR) {
@@ -1806,6 +1813,12 @@ public class CGen {
                 first = false
             }
             callStr = callStr + ")"
+            // Null-safe call `obj?.method(...)`: wrap as `(obj ? call : NULL)`
+            // — receiver is evaluated twice, so callers should keep it side-effect-free.
+            if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER && expr.Left.Flag) {
+                let recv = this.EmitExprStr(expr.Left.Left)
+                return "(" + recv + " ? " + callStr + " : NULL)"
+            }
             return callStr
         }
         if (k == NodeKind.NEW_EXPR) {
