@@ -134,6 +134,56 @@ Adding a feature in CGen:
    (e.g. a binder declaration that needs to be in scope for a guard),
    reach for GCC compound expressions: `({ stmt; expr; })`.
 
+## Formatter (`src/formatter/formatter.am`)
+
+`amc fmt file.am` re-emits source from the AST. The formatter walks
+the same `AstNode` tree the rest of the compiler builds, so anything
+expressible by the parser round-trips. Comments survive because the
+lexer emits them as `COMMENT` tokens (rather than skipping them as
+whitespace), and the parser collects them into `Parser.Comments`
+without putting them in the AST. `Formatter.Sync(line)` re-injects
+them at their original source line.
+
+A few pieces collaborate to keep round-tripping idempotent:
+
+- `Block.Str2` and `CLASS_DECL.Str2` carry the source line of the
+  closing `}`, so the formatter knows where one block ends and the
+  next thing begins (used to preserve blank-line gaps).
+- `EmitInline` decides whether a body is a single statement or a
+  block, mirroring the parser's flexibility.
+- Expression contexts that don't have a source representation yet
+  (see `EmitExpr` fallthrough) emit a `_TODO_<KIND>` placeholder so
+  the result still parses; idempotence is preserved at the cost of
+  meaning. This is meant to be temporary and is rare in practice.
+
+`tests/run_fmt_tests.sh` checks idempotence + semantic equivalence
+on a small fixture; the regression sweep that runs `amc fmt` on every
+compiler source must stay green.
+
+## Snapshot bootstrap (`snapshot/`, `tools/save-snapshot.sh`)
+
+`build_amc.sh` has a 3-rung bootstrap chain:
+
+1. `./amc` — the freshly-built self-hosted compiler.
+2. `./snapshot/amc` — last known-good amc, captured by
+   `tools/save-snapshot.sh` after a green test run. The portable
+   `snapshot/amc_lib.c` is committed; the binary is rebuilt by `gcc`
+   on each platform that needs it.
+3. `./build/amc` — the original Vala bootstrap in
+   `archive/vala-bootstrap/`. CI no longer exercises it; it stays
+   for cold-start recovery from a clean checkout (`./compile.sh`).
+
+The snapshot rung exists so we can introduce new syntax without
+losing the bootstrap. If `./amc` breaks mid-development, `build_amc.sh`
+falls through to `./snapshot/amc`, which still understands every
+syntax shipped at the time of the last `tools/save-snapshot.sh` run.
+The Vala bootstrap can no longer parse most of `src/`, so the
+snapshot is the working safety net in practice.
+
+When introducing new syntax, take a snapshot *before* using the
+new construct in `src/*.am`. That way, if the implementation has a
+regression, the snapshot still works.
+
 ## main.am
 
 Glue:
@@ -180,11 +230,14 @@ sample minimal — one feature, one observable.
 - **Generic types erase to `void*`** — boxing of primitives uses
   `(void*)(intptr_t)`. The CGen emits this automatically for
   collection element types.
-- **Match arms are statements** — the language doesn't have
-  match-as-expression. Don't try to write
-  `let x = match y { ... }` — use early-returns or assign in arms.
+- **Match arms can be statements OR expressions** — `1 => return "x"`
+  and `1 => "x"` both parse. `let x = match y { ... }` also works
+  since v0.3.0 — the codegen wraps it in a GCC compound statement
+  expression. Algebraic-enum patterns and arm guards in expression
+  position aren't supported yet, though.
 - **Imports are informational** — the resolver's stdlib is global.
-  Don't rely on `import` for visibility.
+  Don't rely on `import` for visibility, and `amc fmt` drops them
+  (they're not stored in the AST).
 
 ## Where to ask
 

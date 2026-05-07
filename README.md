@@ -2,18 +2,26 @@
 
 # Amalgame
 
-**A modern, self-hosted programming language that transpiles to C.**
+A self-hosted programming language that compiles to C.
 
 [![CI](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml/badge.svg)](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml)
 [![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-success)](src/)
-[![Tests](https://img.shields.io/badge/tests-127%2F127-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-121%2F121-brightgreen)](tests/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
 
+</div>
+
 ```amalgame
+namespace App
+import Amalgame.IO
+
 public class Greeter {
     public Name: string
-    public Greeter(string name) { this.Name = name }
+
+    public Greeter(string name) {
+        this.Name = name
+    }
 
     public string Hello() {
         guard String.Length(this.Name) > 0 else { return "Hello, stranger!" }
@@ -22,48 +30,31 @@ public class Greeter {
 }
 ```
 
-</div>
+## Overview
 
----
+Amalgame is a small, statically-typed language whose compiler (`amc`)
+is written in Amalgame and emits portable C. The runtime is a thin
+header-only layer over libc, libgc (Boehm GC) and libcurl.
 
-## Why Amalgame?
+- **Self-hosted.** The compiler bootstraps itself in about five
+  seconds. The original Vala bootstrap is preserved in
+  `archive/vala-bootstrap/` for cold-start recovery; day-to-day work
+  uses a tracked `snapshot/` of a known-good `amc_lib.c`.
+- **Predictable output.** Source maps cleanly to C. Strings are
+  `char*`, lists are `void**` arrays, integers are `i64`. No VM, no
+  hidden allocations beyond the GC. Generated C is `gcc`-buildable
+  with `-O2`.
+- **Multi-platform.** Linux, macOS, and Windows binaries are produced
+  on every `v*` tag. Windows is supported via MinGW (Winsock under
+  `#ifdef _WIN32` in the runtime).
 
-- **🚀 Compile to C, run anywhere** — no VM, no GC pause hell, just fast native binaries via gcc.
-- **🪶 Zero hidden cost** — what you write is what runs. Strings are `char*`, lists are arrays, GC is bdwgc.
-- **🧬 Self-hosted compiler** — `amc` is written in Amalgame and compiles itself. The whole pipeline (lexer, parser, resolver, type-checker, code-gen) lives in [src/](src/).
-- **✨ Modern syntax you actually want to use** — pattern matching with guards, null-safety with `?.`, string interpolation, decorators, generics, tuples, lambdas.
-- **⚡ ~5s build** — full self-host rebuild including the bootstrap, in five seconds.
-- **📦 Multi-OS** — Linux, macOS, Windows binaries built on every release tag.
+Current version: **v0.3.1**.
 
----
-
-## A Taste
+## Language at a glance
 
 ```amalgame
 namespace App
 import Amalgame.IO
-
-public class Calc {
-    // @inline maps to GCC's `inline` hint.
-    @inline
-    public static int Square(int x) { return x * x }
-
-    // Guard clauses: read top-to-bottom instead of nesting `if`.
-    public static int Clamp(int x, int lo, int hi) {
-        guard x > lo else { return lo }
-        guard x < hi else { return hi }
-        return x
-    }
-}
-
-public class User {
-    public Name: string
-    public Age:  int
-    public User(string name, int age) {
-        this.Name = name
-        this.Age  = age
-    }
-}
 
 public enum Shape {
     Circle(int)
@@ -72,61 +63,56 @@ public enum Shape {
 
 public class Program {
     public static void Main(string[] args) {
-        // Named arguments + interpolation of object fields.
-        let u = new User(name: "Bastien", age: 31)
-        Console.WriteLine("Hello, {u.Name}!")
-        let age = u.Age
-        Console.WriteLine("You are {String.FromInt(age)}.")
-
-        // Null-safe member access — no NPE, ever.
-        let maybe: User? = null
-        let label = maybe?.Name
-        if (label == null) { Console.WriteLine("nobody") }
-
-        // Pattern matching with arm guards, ranges, and binders.
+        // Match as expression with arm guards and ranges
         let n = 42
-        match n {
-            0           => Console.WriteLine("zero"),
-            x if x < 0  => Console.WriteLine("negative"),
-            1..9        => Console.WriteLine("small"),
-            10..99      => Console.WriteLine("medium"),
-            _           => Console.WriteLine("large")
+        let bucket = match n {
+            0           => "zero"
+            x if x < 0  => "negative"
+            1..9        => "small"
+            10..99      => "medium"
+            _           => "large"
         }
+        Console.WriteLine(bucket)
 
-        // Triple-quoted multiline strings preserve newlines as-is.
-        Console.WriteLine("""
-        ┌──────────────────────┐
-        │  Amalgame demo       │
-        └──────────────────────┘
-        """)
+        // List comprehension
+        let squares = [i * i for i in 0..10 if i % 2 == 0]
+        Console.WriteLine(String.FromInt(squares.Count()))
 
-        // Algebraic enums + match destructuring.
+        // Tuple destructuring
+        let (q, r) = Program.DivMod(17, 5)
+        Console.WriteLine("{String.FromInt(q)} rem {String.FromInt(r)}")
+
+        // Algebraic enum + destructuring
         let s = Shape.Circle(5)
         match s {
-            Circle(r)  => Console.WriteLine("circle r={String.FromInt(r)}"),
+            Circle(r)  => Console.WriteLine("r={String.FromInt(r)}")
             Rect(w, h) => Console.WriteLine("rect")
         }
+
+        // Null-safe member access
+        let maybe: Greeter? = null
+        let label = maybe?.Hello()
+        if (label == null) { Console.WriteLine("no greeter") }
+    }
+
+    public static (int, int) DivMod(int a, int b) {
+        return (a / b, a % b)
     }
 }
 ```
 
-> **Note** — match arms run statements; the language doesn't yet have
-> match-as-expression. Use `Console.WriteLine` / early-return inside
-> arms, or assign in each arm body. Tracked in
-> [ROADMAP_COMPLET.md](ROADMAP_COMPLET.md).
+A more thorough tour is in [docs/guide/02-language-tour.md](docs/guide/02-language-tour.md).
 
----
-
-## Get Started in 60 Seconds
+## Getting started
 
 ### Linux
 
 ```bash
-sudo apt install valac meson ninja-build gcc \
-    libglib2.0-dev libgee-0.8-dev libgc-dev libcurl4-openssl-dev
+sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
-./compile.sh         # build the Vala bootstrap (one-time)
-./build_amc.sh       # build the self-hosted amc (~5s)
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+./build_amc.sh           # builds ./amc from src/ via the snapshot
+./amc --version          # amc 0.3.1
 ./tests/run_all_tests.sh
 ```
 
@@ -135,7 +121,11 @@ git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
 ```bash
 brew install bdw-gc curl
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
-gcc -O2 -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc
+GC_PREFIX=$(brew --prefix bdw-gc)
+CURL_PREFIX=$(brew --prefix curl)
+gcc -O2 -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
+    -L"$GC_PREFIX/lib" -L"$CURL_PREFIX/lib" \
+    snapshot/amc_lib.c -lgc -lm -lcurl -o amc
 ./amc --version
 ```
 
@@ -144,11 +134,11 @@ gcc -O2 -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc
 ```bash
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
-gcc -O2 -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc.exe
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -lws2_32 -o amc.exe
 ./amc.exe --version
 ```
 
-### Hello, World
+### Hello, world
 
 ```amalgame
 // hello.am
@@ -169,152 +159,33 @@ gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
 # → Hello, Amalgame!
 ```
 
----
+## What's in the language
 
-## Language Highlights
+- Variables (`let` / `var`) with optional type annotation
+- Primitives: `int`, `float`, `double`, `bool`, `string`, `void`
+- Classes with inheritance, interfaces, data classes, records
+- Enums (simple) and algebraic enums with destructuring
+- Generics (erased to `void*` at the C level)
+- Null-safety: `T?`, `??` coalescing, `?.` safe member access
+- Tuples and destructuring: `let (a, b) = f()`
+- Pattern matching with guards, ranges, binders, statement-shaped
+  arms (`return`, `break`, `continue`)
+- `match` and `if` as expressions
+- List comprehensions: `[x*2 for x in xs if x > 0]`
+- String interpolation: `"hello {x}"`
+- Triple-quoted multiline strings: `"""…"""`
+- `\xHH` and `\uHHHH` escape sequences
+- Bitwise operators, compound assignments, pipeline `|>`, range `0..n`
+- Guard clauses: `guard cond else { return }`
+- Decorators (`@inline`, `@deprecated`) mapped to GCC attributes
+- Lambdas (non-capturing for now)
 
-<table>
-<tr>
-<td valign="top" width="50%">
+Detailed reference: [docs/guide/](docs/guide/).
 
-**Pattern matching with guards**
+## Diagnostics
 
-```amalgame
-let n = 42
-match n {
-    0           => doZero(),
-    x if x < 0  => doNeg(x),
-    1..9        => doSmall(),
-    10..99      => doMedium(),
-    _           => doLarge()
-}
-```
-
-</td>
-<td valign="top" width="50%">
-
-**Null-safety baked in**
-
-```amalgame
-let user: User? = null
-let name = user?.Name
-let age  = user?.GetAge()
-if (name == null) {
-    Console.WriteLine("anonymous")
-}
-```
-
-</td>
-</tr>
-<tr>
-<td valign="top">
-
-**String interpolation + multiline**
-
-```amalgame
-let title = "Hello"
-let html = """
-<article>
-  <h1>{title}</h1>
-  <p>by Amalgame</p>
-</article>
-"""
-```
-
-</td>
-<td valign="top">
-
-**Algebraic enums + destructuring**
-
-```amalgame
-public enum Shape {
-    Circle(int)
-    Rect(int, int)
-}
-
-match s {
-    Circle(r)  => useRadius(r),
-    Rect(w, h) => useDims(w, h)
-}
-```
-
-</td>
-</tr>
-<tr>
-<td valign="top">
-
-**Tuples & destructuring**
-
-```amalgame
-public (int, int) DivMod(int a, int b) {
-    return (a / b, a % b)
-}
-
-let (q, r) = Math2.DivMod(17, 5)
-```
-
-</td>
-<td valign="top">
-
-**Decorators with real C semantics**
-
-```amalgame
-@inline
-public static int Hot(int x) {
-    return x * x
-}
-
-@deprecated
-public static void Old() {
-    /* GCC warns at every callsite */
-}
-```
-
-</td>
-</tr>
-</table>
-
-Plus: bitwise ops, compound assigns, pipeline `|>`, range `0..n`,
-data classes, records, interfaces, generics, lambdas, try/catch,
-`\x` and `\u` escapes, named arguments, guard clauses…
-
----
-
-## Project Layout
-
-```
-src/             ← The compiler — written in Amalgame
-├── lexer/                  token.am, lexer.am
-├── parser/                 ast.am, parser.am
-├── resolver/               symbol.am, resolver.am  (scope + member table)
-├── typechecker.am          (type inference + assignability)
-├── generator/c_gen.am      (Amalgame → C)
-├── diagnostics.am          (rustc-style errors with source snippets)
-├── main.am                 (CLI entry: parses argv, drives the pipeline)
-└── amc_lib.c               (generated — 7000+ lines of self-hosted C)
-
-runtime/   ← Tiny C runtime (collections, strings, GC, IO)
-stdlib/                   ← Amalgame stdlib reference (.am declarations)
-tests/                    ← 127 sample programs + integration tests
-archive/vala-bootstrap/   ← Original Vala compiler — kept as recovery path
-editors/vscode/           ← VS Code syntax highlighting extension
-.github/workflows/        ← CI (Linux/macOS/Windows) + tag-driven Release
-```
-
-The build flow:
-
-```
-src/*.am  ──[ ./amc ]──▶  amc_lib.c  ──[ gcc ]──▶  amc binary
-                           ▲                                   │
-                           └───────────────────────────────────┘
-                              compiles itself, in ~5 seconds
-```
-
----
-
-## Show Me the Diagnostics
-
-Type errors come with a source snippet and a caret, just like rustc:
+Resolver and type-checker errors come with a source snippet and a
+caret pointing at the offending token:
 
 ```
 error[typechecker]: Cannot assign 'string' to 'n' of type 'int'
@@ -324,71 +195,98 @@ error[typechecker]: Cannot assign 'string' to 'n' of type 'int'
    |             ^
 ```
 
-Resolver errors get the same treatment:
-
 ```
 error[resolver]: Unknown symbol 'someUndefinedThing'
   --> file.am:4:9
-  |
-4 |         someUndefinedThing.x()
-  |         ^
+   |
+ 4 |         someUndefinedThing.x()
+   |         ^
 ```
 
----
+## Tooling
 
-## Editor Support
+- **`amc fmt`** — formatter that re-emits a parsed AST canonically
+  while preserving comments. Idempotent on every source in this
+  repository. Run it as `amc fmt file.am` (stdout) or
+  `amc fmt -w file.am` (rewrite in place).
+- **VS Code syntax highlighting** is in [editors/vscode/](editors/vscode/).
+  Install with:
+  ```bash
+  ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.3.1
+  ```
+- An LSP server (`amc lsp`) is on the roadmap; today there is no
+  language server.
 
-Drop-in VS Code syntax highlighting lives in [editors/vscode/](editors/vscode/):
+## Project layout
 
-```bash
-ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.1.0
-# Reload VS Code (Ctrl+Shift+P → Developer: Reload Window)
+```
+src/                  Compiler, written in Amalgame
+├── lexer/              token.am, lexer.am
+├── parser/             ast.am, parser.am
+├── resolver/           symbol.am, resolver.am
+├── generator/          c_gen.am, gen_test.am
+├── formatter/          formatter.am
+├── typechecker.am
+├── diagnostics.am
+├── main.am             CLI: amc <files> | amc fmt <files>
+└── amc_lib.c           Self-hosted bundle (generated)
+
+runtime/              C runtime (bdwgc, strings, IO, collections, net)
+stdlib/               Stdlib API reference (.am declarations)
+snapshot/             Tracked amc_lib.c known-good bootstrap
+tools/                save-snapshot.sh
+tests/                Sample programs + run_*.sh runners
+docs/guide/           User guide chapters 1–7
+archive/              Original Vala compiler (recovery path)
+editors/vscode/       Syntax highlighting extension
+.github/workflows/    CI + tag-driven Release automation
 ```
 
-Or for a sandboxed dev session:
+The build pipeline:
 
-```bash
-code --extensionDevelopmentPath="$(pwd)/editors/vscode" .
+```
+src/*.am ─[ ./amc ]─▶ amc_lib.c ─[ gcc ]─▶ amc binary
+              ▲                              │
+              └──────────────────────────────┘
+                  five-second self-rebuild
 ```
 
-LSP (completion, hover, go-to-def) is on the roadmap.
-
----
+When `./amc` is missing or broken, `build_amc.sh` falls back to
+`./snapshot/amc`, then to `./build/amc` (Vala). See
+`tools/save-snapshot.sh` for capturing a new snapshot.
 
 ## Roadmap
 
-See [ROADMAP_COMPLET.md](ROADMAP_COMPLET.md) for the full picture.
+The full board is in [ROADMAP_COMPLET.md](ROADMAP_COMPLET.md). The
+short version, ordered by unlocked-value per day of work:
 
-**Done** — full self-host, multi-OS CI/release, rich diagnostics,
-match guards, null-safe `?.`, decorators, named args, guard clauses,
-triple-quoted strings, `\x`/`\u` escapes, P2 (member resolution),
-P5 (resolver scopes), P6 (snippets), P7 (lexer bugs).
-
-**On deck** — `amc fmt`, `amc test`, LSP, list comprehensions,
-capturing closures, generic inference, async/await.
-
----
+1. **Fix the SKIPped samples** — `Type.Variant` patterns in match,
+   `try / catch`, null-safety inference. Restores feature parity
+   with the original Vala bootstrap.
+2. **Minimal LSP** — completion + hover via stdio JSON-RPC, reusing
+   the existing parser, resolver, and type-checker.
+3. **Capturing closures.**
+4. **Generic type inference.**
 
 ## Contributing
 
-Workflow is gitflow:
+Workflow is a simplified gitflow:
 
-- `main` is stable (release tags only)
-- `develop` is the integration branch
-- Features land via `feature/<name>` branches → PR → merge into `develop`
+- `main` carries release tags only.
+- `develop` is the integration branch; PRs target it.
+- Features land via `feature/<name>` branches.
 
 ```bash
 git checkout develop
 git checkout -b feature/my-thing
-# … hack hack hack …
+# ...
 ./build_amc.sh && ./tests/run_all_tests.sh
 git push -u origin feature/my-thing
 gh pr create --base develop
 ```
 
-CI runs on every push and PR. Releases are cut by pushing a `v*` tag.
-
----
+CI runs on every push and pull request. Releases are produced by
+pushing a `v*` tag — see `.github/workflows/release.yml`.
 
 ## License
 
