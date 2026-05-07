@@ -28,12 +28,12 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            valac meson ninja-build gcc \
-            libglib2.0-dev libgee-0.8-dev libgc-dev libcurl4-openssl-dev
+            gcc libgc-dev libcurl4-openssl-dev
 
-      - name: Build amc (full bootstrap)
+      - name: Build amc (snapshot-driven bootstrap)
         run: |
-          ./compile.sh
+          gcc -O2 -Iruntime snapshot/amc_lib.c \
+              -lgc -lm -lcurl -o snapshot/amc
           ./build_amc.sh
 
       - name: Determine version
@@ -78,7 +78,10 @@ jobs:
 
       - name: Build amc from tracked amc_lib.c
         run: |
-          gcc -O2 -Iruntime \
+          GC_PREFIX=$(brew --prefix bdw-gc)
+          CURL_PREFIX=$(brew --prefix curl)
+          gcc -O2 -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
+              -L"$GC_PREFIX/lib" -L"$CURL_PREFIX/lib" \
               src/amc_lib.c \
               -lgc -lm -lcurl -o amc
 
@@ -135,7 +138,7 @@ jobs:
         run: |
           gcc -O2 -Iruntime \
               src/amc_lib.c \
-              -lgc -lm -lcurl -o amc.exe
+              -lgc -lm -lcurl -lws2_32 -o amc.exe
 
       - name: Determine version
         id: ver
