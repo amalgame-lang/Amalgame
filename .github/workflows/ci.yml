@@ -25,9 +25,21 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
+            valac \
+            meson \
+            ninja-build \
             gcc \
+            libglib2.0-dev \
+            libgee-0.8-dev \
             libgc-dev \
             libcurl4-openssl-dev
+
+      - name: Build Vala bootstrap (./build/amc — used by the test runner)
+        # The self-hosted ./amc rejects some legacy syntax that older
+        # tests/samples/*.am still use (C-style `for(;;)`, etc.). Until
+        # those samples are modernised, the test runner sticks with the
+        # Vala-built amc to keep coverage. Bootstrap itself uses snapshot.
+        run: ./compile.sh
 
       - name: Compile snapshot/amc from tracked snapshot/amc_lib.c
         run: |
