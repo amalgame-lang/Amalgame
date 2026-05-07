@@ -1,7 +1,7 @@
 # Parser CODE
 
 > **Version** : 0.1.0
-> **Fichier**  : `src/core/parser/parser.vala`
+> **Fichier**  : `archive/vala-bootstrap/src/core/parser/parser.vala`
 > **Statut**   : ✅ Complet et fonctionnel
 
 ---

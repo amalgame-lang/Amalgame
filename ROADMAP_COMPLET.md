@@ -115,11 +115,11 @@ gcc -O2 -Isrc/transpiler/runtime gen_test.c -lgc -lm -o gen_test
 Infrastructure prête (`IsLib` flag, `amc_main.c`).
 Tester : `./amc --lib mylib.am -o mylib` → `.c` compilable en `.o` sans `main()`.
 
-### P4 — Archiver `src/core/` Vala
-```bash
-git mv src/core/ archive/vala-bootstrap/src/core/
-```
-Garder `build/amc` binaire comme filet de sécurité.
+### P4 — ✅ Archiver `src/core/` Vala (fait)
+Sources Vala déplacées dans `archive/vala-bootstrap/src/`.
+`./compile.sh` + `./build/amc` toujours rebuildables comme filet de sécurité
+(meson lit désormais les sources depuis `archive/vala-bootstrap/`).
+`./build_amc.sh` utilise `./amc` (self-host) avec fallback Vala automatique.
 
 ### P5 — Améliorer le Resolver (`resolver.am`)
 Scope actuel = 2 niveaux plats (global + local).

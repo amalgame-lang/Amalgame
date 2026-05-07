@@ -6,12 +6,12 @@
 
 | Step                    | Status | Files                                        |
 |-------------------------|--------|----------------------------------------------|
-| Token + Lexer           | ✅     | `src/core/lexer/`                            |
-| AST                     | ✅     | `src/core/parser/ast.vala`                   |
-| Parser                  | ✅     | `src/core/parser/parser.vala`                |
-| Resolver                | ✅     | `src/core/analyzer/resolver.vala`            |
-| Type Checker            | ✅     | `src/core/analyzer/typechecker.vala`         |
-| C Generator             | ✅     | `src/transpiler/generator/c_generator.vala`  |
+| Token + Lexer           | ✅     | `archive/vala-bootstrap/src/core/lexer/`                            |
+| AST                     | ✅     | `archive/vala-bootstrap/src/core/parser/ast.vala`                   |
+| Parser                  | ✅     | `archive/vala-bootstrap/src/core/parser/parser.vala`                |
+| Resolver                | ✅     | `archive/vala-bootstrap/src/core/analyzer/resolver.vala`            |
+| Type Checker            | ✅     | `archive/vala-bootstrap/src/core/analyzer/typechecker.vala`         |
+| C Generator             | ✅     | `archive/vala-bootstrap/src/transpiler/generator/c_generator.vala`  |
 | Hello World             | ✅     | First program running                        |
 | Test suite (42/42)      | ✅     | `tests/`                                     |
 | Namespace prefixing     | ✅     | `namespace MyApp` → `MyApp_Symbol`           |
