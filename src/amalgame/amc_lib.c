@@ -3194,7 +3194,7 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
     s = String_Replace(s, "\\r", "\\r");
-    s = String_Replace(s, "140367026837680", "\\x1b");
+    s = String_Replace(s, "\x1b", "\\x1b");
     return s;
 }
 
@@ -4683,55 +4683,55 @@ Amalgame_Compiler_Ansi* Amalgame_Compiler_Ansi_new() {
 }
 
 code_string Amalgame_Compiler_Ansi_Reset() {
-    return "140367039149584[0m";
+    return "\x1b[0m";
 }
 
 code_string Amalgame_Compiler_Ansi_Bold() {
-    return "140367039148784[1m";
+    return "\x1b[1m";
 }
 
 code_string Amalgame_Compiler_Ansi_Dim() {
-    return "140367039160240[2m";
+    return "\x1b[2m";
 }
 
 code_string Amalgame_Compiler_Ansi_Red() {
-    return "140367039159392[31m";
+    return "\x1b[31m";
 }
 
 code_string Amalgame_Compiler_Ansi_Yellow() {
-    return "140367039158464[33m";
+    return "\x1b[33m";
 }
 
 code_string Amalgame_Compiler_Ansi_Cyan() {
-    return "140367039157536[36m";
+    return "\x1b[36m";
 }
 
 code_string Amalgame_Compiler_Ansi_Green() {
-    return "140367039156640[32m";
+    return "\x1b[32m";
 }
 
 code_string Amalgame_Compiler_Ansi_Blue() {
-    return "140367039426032[34m";
+    return "\x1b[34m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldRed() {
-    return "140367039424624[1;31m";
+    return "\x1b[1;31m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldYellow() {
-    return "140367039423616[1;33m";
+    return "\x1b[1;33m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldCyan() {
-    return "140367039422800[1;36m";
+    return "\x1b[1;36m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldGreen() {
-    return "140367039671600[1;32m";
+    return "\x1b[1;32m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldBlue() {
-    return "140367039670624[1;34m";
+    return "\x1b[1;34m";
 }
 
 struct _Amalgame_Compiler_SourceMap {
@@ -5663,6 +5663,12 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "false", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "this", "?", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "args", "string[]", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "List", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Map", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Set", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console_WriteLine", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console_WriteError", "void", 0);

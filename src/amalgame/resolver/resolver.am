@@ -129,6 +129,16 @@ public class FullResolver {
         this.DeclareGlobal("false",  "bool", false)
         this.DeclareGlobal("this",   "?",    false)
         this.DeclareGlobal("args",   "string[]", false)
+        // Stdlib namespaces / static classes — declared as types so calls like
+        // String.Method(s) or List.<Util>(...) don't raise "Unknown symbol".
+        // The CGen maps `Foo.Method(...)` to `Foo_Method(...)` via the isStdlib
+        // path; the builtin function names are declared individually below.
+        this.DeclareGlobal("String",         "type", false)
+        this.DeclareGlobal("List",           "type", false)
+        this.DeclareGlobal("Map",            "type", false)
+        this.DeclareGlobal("Set",            "type", false)
+        this.DeclareGlobal("Path",           "type", false)
+        this.DeclareGlobal("Env",            "type", false)
         // Console
         this.DeclareGlobal("Console",        "type", false)
         this.DeclareGlobal("Console_WriteLine",  "void", false)
