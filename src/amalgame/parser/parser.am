@@ -1087,7 +1087,21 @@ public class Parser {
             let isRparen2 = this.CheckValue(")") && !this.CheckType(TokenType.STRING)
             if (isRparen2 && this.ParenDepth == myDepth) { break }
             if (this.IsEnd()) { break }
+            // Optional named-argument syntax: `name: value`. The name is
+            // documentation-only at the call site for now (no reordering or
+            // validation against the callee's signature). The name is stashed
+            // on arg.Str2 in case future passes want to consult it.
+            var namedKey = ""
+            if (this.CheckType(TokenType.IDENTIFIER)) {
+                let peek = this.Peek(1)
+                if (peek.Value == ":") {
+                    let nameTok = this.Advance()
+                    this.Advance()  // consume ':'
+                    namedKey = nameTok.Value
+                }
+            }
             let arg = this.ParseExpr()
+            if (String_Length(namedKey) > 0) { arg.Str2 = namedKey }
             call.Args.Add(arg)
             this.SkipNewlines()
         }
@@ -1294,13 +1308,28 @@ public class Parser {
         let node = Ast.NewExpr(typeName, tok.Line, tok.Column)
         if (this.CheckValue("(")) {
             this.Advance()
+            this.SkipNewlines()
             while (!this.IsEnd() && !this.CheckValue(")")) {
                 if (this.CheckValue(",")) {
                     this.Advance()
+                    this.SkipNewlines()
                     continue
                 }
+                // Named-arg syntax: `name: value` (documentation-only at the
+                // call site for now — same handling as ParseCallArgs).
+                var namedKey = ""
+                if (this.CheckType(TokenType.IDENTIFIER)) {
+                    let peek = this.Peek(1)
+                    if (peek.Value == ":") {
+                        let nameTok = this.Advance()
+                        this.Advance()
+                        namedKey = nameTok.Value
+                    }
+                }
                 let arg = this.ParseExpr()
+                if (String_Length(namedKey) > 0) { arg.Str2 = namedKey }
                 node.Args.Add(arg)
+                this.SkipNewlines()
             }
             this.Expect(")")
         }

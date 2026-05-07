@@ -2211,7 +2211,19 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseCallArgs(Amalgam
         if (Amalgame_Compiler_Parser_IsEnd(self)) {
             break;
         }
+        code_string __attribute__((unused)) namedKey = "";
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
+            Amalgame_Compiler_Token* __attribute__((unused)) peek = Amalgame_Compiler_Parser_Peek(self, 1);
+            if (code_string_equals(peek->Value, ":")) {
+                Amalgame_Compiler_Token* __attribute__((unused)) nameTok = Amalgame_Compiler_Parser_Advance(self);
+                Amalgame_Compiler_Parser_Advance(self);
+                namedKey = nameTok->Value;
+            }
+        }
         Amalgame_Compiler_AstNode* __attribute__((unused)) arg = Amalgame_Compiler_Parser_ParseExpr(self);
+        if (String_Length(namedKey) > 0) {
+            arg->Str2 = namedKey;
+        }
         AmalgameList_add(call->Args, (void*)(intptr_t)(arg));
         Amalgame_Compiler_Parser_SkipNewlines(self);
     }
@@ -2419,13 +2431,28 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseNew(Amalgame_Com
     Amalgame_Compiler_AstNode* __attribute__((unused)) node = Amalgame_Compiler_Ast_NewExpr(typeName, tok->Line, tok->Column);
     if (Amalgame_Compiler_Parser_CheckValue(self, "(")) {
         Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_Parser_SkipNewlines(self);
         while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, ")")) {
             if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
                 Amalgame_Compiler_Parser_Advance(self);
+                Amalgame_Compiler_Parser_SkipNewlines(self);
                 continue;
             }
+            code_string __attribute__((unused)) namedKey = "";
+            if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
+                Amalgame_Compiler_Token* __attribute__((unused)) peek = Amalgame_Compiler_Parser_Peek(self, 1);
+                if (code_string_equals(peek->Value, ":")) {
+                    Amalgame_Compiler_Token* __attribute__((unused)) nameTok = Amalgame_Compiler_Parser_Advance(self);
+                    Amalgame_Compiler_Parser_Advance(self);
+                    namedKey = nameTok->Value;
+                }
+            }
             Amalgame_Compiler_AstNode* __attribute__((unused)) arg = Amalgame_Compiler_Parser_ParseExpr(self);
+            if (String_Length(namedKey) > 0) {
+                arg->Str2 = namedKey;
+            }
             AmalgameList_add(node->Args, (void*)(intptr_t)(arg));
+            Amalgame_Compiler_Parser_SkipNewlines(self);
         }
         Amalgame_Compiler_Parser_Expect(self, ")");
     }
