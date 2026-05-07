@@ -147,7 +147,7 @@ Porter le scope chaîné du Resolver Vala.
 
 ### Features manquantes prioritaires
 - [x] **`\x` escape sequences** dans le lexer ✅ (P7)
-- [ ] **`\u` unicode escape** dans le lexer
+- [x] **`\u` unicode escape** dans le lexer ✅ (UTF-8 encoded via String_FromCodepoint)
 - [ ] **`obj.Method()` syntax** pour strings : `.Length`, `.Contains`, `.Split`, `.Trim`...
 - [ ] **Guard clauses** : `guard x != null else { return }`
 - [ ] **Is-guards dans match** : `x if x > 0 => ...`
