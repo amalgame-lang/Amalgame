@@ -1426,6 +1426,10 @@ public class CGen {
             for si in 0..stmts {
                 this.EmitStmt(body.Children.Get(si))
             }
+        } else if (bk == NodeKind.RETURN_STMT || bk == NodeKind.BREAK_STMT || bk == NodeKind.CONTINUE_STMT) {
+            // Statement-form arm body: parser accepts `1 => return "X"` etc.
+            // Delegate to EmitStmt which already knows how to render these.
+            this.EmitStmt(body)
         } else {
             // Expression arm — emit as return statement (match arms are in return position)
             let exprStr = this.EmitExprStr(body)
