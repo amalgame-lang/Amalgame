@@ -152,7 +152,7 @@ Porter le scope chaîné du Resolver Vala.
 - [ ] **Guard clauses** : `guard x != null else { return }`
 - [ ] **Is-guards dans match** : `x if x > 0 => ...`
 - [ ] **Closures capturantes** (actuellement lambdas simples)
-- [ ] **String multiline `"""`** (triple-quoted)
+- [x] **String multiline `"""`** (triple-quoted) ✅ raw newlines, no escape processing
 - [ ] **Décorateurs `@`** : parsing présent, sémantique non implémentée
 - [ ] **Inférence générique** : `let xs = List<int>()` → `xs.Add(42)` typé `int`
 - [ ] **Interfaces avec génériques** : `IComparable<T>`
