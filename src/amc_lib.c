@@ -2424,10 +2424,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMatch(Amalgame_C
             Amalgame_Compiler_Parser_Advance(self);
         }
         Amalgame_Compiler_Parser_SkipNewlines(self);
-        Amalgame_Compiler_AstNode* __attribute__((unused)) armBody = Amalgame_Compiler_Parser_ParseExpr(self);
-        if (Amalgame_Compiler_Parser_CheckValue(self, "{")) {
-            armBody = Amalgame_Compiler_Parser_ParseBlock(self);
-        }
+        Amalgame_Compiler_AstNode* __attribute__((unused)) armBody = Amalgame_Compiler_Parser_ParseStmt(self);
         if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
             Amalgame_Compiler_Parser_Advance(self);
         }
@@ -4189,6 +4186,8 @@ static void Amalgame_Compiler_CGen_EmitMatchBody(Amalgame_Compiler_CGen* self, A
         for (i64 si = 0; si < stmts; si++) {
             Amalgame_Compiler_CGen_EmitStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(body->Children, si));
         }
+    } else if (bk == Amalgame_Compiler_NodeKind_RETURN_STMT || bk == Amalgame_Compiler_NodeKind_BREAK_STMT || bk == Amalgame_Compiler_NodeKind_CONTINUE_STMT) {
+        Amalgame_Compiler_CGen_EmitStmt(self, body);
     } else {
         code_string __attribute__((unused)) exprStr = Amalgame_Compiler_CGen_EmitExprStr(self, body);
         if (String_Length(exprStr) > 0 && !code_string_equals(exprStr, "_unknown_")) {
