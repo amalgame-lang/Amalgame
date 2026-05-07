@@ -6,7 +6,7 @@ import Amalgame.String
 
 public class Program {
     public static void Main(string[] args) {
-        let src1 = File.ReadAll("./src/amalgame/lexer/token.am")
+        let src1 = File.ReadAll("./src/lexer/token.am")
         let lex1  = new Lexer(src1, "token.am")
         let tok1  = lex1.Tokenize()
         let par1  = new Parser(tok1)
@@ -15,7 +15,7 @@ public class Program {
         let err1  = par1.HasErrors()
         Console.WriteLine("token.am: decls={dc1} errors={err1}")
 
-        let src2 = File.ReadAll("./src/amalgame/lexer/lexer.am")
+        let src2 = File.ReadAll("./src/lexer/lexer.am")
         let lex2  = new Lexer(src2, "lexer.am")
         let tok2  = lex2.Tokenize()
         let par2  = new Parser(tok2)
@@ -24,7 +24,7 @@ public class Program {
         let err2  = par2.HasErrors()
         Console.WriteLine("lexer.am: decls={dc2} errors={err2}")
 
-        let src3 = File.ReadAll("./src/amalgame/parser/ast.am")
+        let src3 = File.ReadAll("./src/parser/ast.am")
         let lex3  = new Lexer(src3, "ast.am")
         let tok3  = lex3.Tokenize()
         let par3  = new Parser(tok3)
@@ -33,7 +33,7 @@ public class Program {
         let err3  = par3.HasErrors()
         Console.WriteLine("ast.am: decls={dc3} errors={err3}")
 
-        let src4 = File.ReadAll("./src/amalgame/parser/parser.am")
+        let src4 = File.ReadAll("./src/parser/parser.am")
         let lex4  = new Lexer(src4, "parser.am")
         let tok4  = lex4.Tokenize()
         let par4  = new Parser(tok4)

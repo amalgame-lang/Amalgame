@@ -27,8 +27,8 @@ rm -f file_lex2 file_lex2.c
 rm -f *.o
 
 # Fichiers debug dans parser/
-rm -f src/amalgame/parser/debug_eq.am
-rm -f src/amalgame/parser/test_input.txt
+rm -f src/parser/debug_eq.am
+rm -f src/parser/test_input.txt
 
 echo "=== Nettoyage terminé ==="
 echo ""
