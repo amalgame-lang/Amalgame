@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Manual trigger for testing the workflow without cutting a real release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.4.0)'
+        required: true
+        default: 'v0.0.0-test'
+
+jobs:
+  # Each platform builds its own amc binary, packages it with the runtime
+  # header + docs, and uploads the resulting archive as a workflow artifact.
+  # The final job downloads everything and creates the GitHub Release.
+
+  build-linux:
+    name: Build (Linux x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            valac meson ninja-build gcc \
+            libglib2.0-dev libgee-0.8-dev libgc-dev libcurl4-openssl-dev
+
+      - name: Build amc (full bootstrap)
+        run: |
+          ./compile.sh
+          ./build_amc.sh
+
+      - name: Determine version
+        id: ver
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          if [ -z "${REF#refs/*}" ] || [ "$REF" = "$GITHUB_REF" ]; then
+            REF="${{ github.event.inputs.tag }}"
+          fi
+          VERSION="${REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building amc-$VERSION-linux-x86_64"
+
+      - name: Stage release artifacts
+        run: |
+          NAME="amc-${{ steps.ver.outputs.version }}-linux-x86_64"
+          mkdir -p "dist/$NAME/runtime"
+          cp amc                                "dist/$NAME/"
+          cp src/transpiler/runtime/*.h         "dist/$NAME/runtime/"
+          cp README.md LICENSE                  "dist/$NAME/"
+          tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
+          (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          retention-days: 7
+
+  build-macos:
+    name: Build (macOS arm64)
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: brew install bdw-gc curl
+
+      - name: Build amc from tracked amc_lib.c
+        run: |
+          gcc -O2 -Isrc/transpiler/runtime \
+              src/amalgame/amc_lib.c \
+              -lgc -lm -lcurl -o amc
+
+      - name: Determine version
+        id: ver
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          if [ "$REF" = "$GITHUB_REF" ]; then
+            REF="${{ github.event.inputs.tag }}"
+          fi
+          VERSION="${REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stage release artifacts
+        run: |
+          NAME="amc-${{ steps.ver.outputs.version }}-macos-arm64"
+          mkdir -p "dist/$NAME/runtime"
+          cp amc                                "dist/$NAME/"
+          cp src/transpiler/runtime/*.h         "dist/$NAME/runtime/"
+          cp README.md LICENSE                  "dist/$NAME/"
+          tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
+          (cd dist && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-arm64
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          retention-days: 7
+
+  build-windows:
+    name: Build (Windows x86_64)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-gc
+            mingw-w64-x86_64-curl
+            zip
+
+      - name: Build amc.exe from tracked amc_lib.c
+        run: |
+          gcc -O2 -Isrc/transpiler/runtime \
+              src/amalgame/amc_lib.c \
+              -lgc -lm -lcurl -o amc.exe
+
+      - name: Determine version
+        id: ver
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          if [ "$REF" = "$GITHUB_REF" ]; then
+            REF="${{ github.event.inputs.tag }}"
+          fi
+          VERSION="${REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stage release artifacts
+        run: |
+          NAME="amc-${{ steps.ver.outputs.version }}-windows-x86_64"
+          mkdir -p "dist/$NAME/runtime"
+          cp amc.exe                            "dist/$NAME/"
+          cp src/transpiler/runtime/*.h         "dist/$NAME/runtime/"
+          cp README.md LICENSE                  "dist/$NAME/"
+          # Bundle the MinGW DLLs the binary actually links against, so users
+          # can run amc.exe without a separate MSYS2 install.
+          for dll in libgc-1.dll libcurl-4.dll libwinpthread-1.dll \
+                     libgcc_s_seh-1.dll libstdc++-6.dll \
+                     zlib1.dll libssl-3-x64.dll libcrypto-3-x64.dll \
+                     libbrotlicommon.dll libbrotlidec.dll \
+                     libidn2-0.dll libpsl-5.dll libssh2-1.dll \
+                     libnghttp2-14.dll libnghttp3-9.dll libngtcp2-16.dll \
+                     libngtcp2_crypto_quictls.dll \
+                     libiconv-2.dll libintl-8.dll libunistring-5.dll \
+                     libzstd.dll; do
+            if [ -f "/mingw64/bin/$dll" ]; then
+              cp "/mingw64/bin/$dll" "dist/$NAME/"
+            fi
+          done
+          (cd dist && zip -r "$NAME.zip" "$NAME")
+          (cd dist && sha256sum "$NAME.zip" > "$NAME.zip.sha256")
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lhR dist/
+
+      - name: Aggregate checksums
+        run: |
+          (cd dist && cat *.sha256 > checksums.sha256)
+          cat dist/checksums.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Amalgame ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.sha256
