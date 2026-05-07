@@ -1,0 +1,182 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Amalgame",
+  "scopeName": "source.amalgame",
+  "fileTypes": ["am"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#decorators" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#operators" },
+    { "include": "#functions" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.amalgame",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.amalgame",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.amalgame",
+          "begin": "\"\"\"",
+          "end": "\"\"\""
+        },
+        {
+          "name": "string.quoted.double.amalgame",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.amalgame",
+              "match": "\\\\(n|t|r|\"|\\\\|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4})"
+            },
+            {
+              "name": "meta.embedded.expression.amalgame",
+              "begin": "\\{",
+              "end": "\\}",
+              "patterns": [
+                { "include": "#identifiers" },
+                { "include": "#operators" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.amalgame",
+          "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.amalgame",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "decorators": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.decorator.amalgame",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.amalgame",
+          "match": "\\b(if|else|for|while|return|match|in|is|as|break|continue|try|catch|throw|finally|guard)\\b"
+        },
+        {
+          "name": "keyword.declaration.amalgame",
+          "match": "\\b(let|var|class|interface|enum|record|data|func|extends|implements|namespace|import)\\b"
+        },
+        {
+          "name": "storage.modifier.amalgame",
+          "match": "\\b(public|private|static)\\b"
+        },
+        {
+          "name": "constant.language.amalgame",
+          "match": "\\b(true|false|null|this)\\b"
+        },
+        {
+          "name": "keyword.other.new.amalgame",
+          "match": "\\b(new)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.amalgame",
+          "match": "\\b(int|string|bool|float|double|void|i32|i64|f32|f64|u8|u32)\\b"
+        },
+        {
+          "name": "support.class.collection.amalgame",
+          "match": "\\b(List|Map|Set)\\b"
+        },
+        {
+          "name": "support.class.stdlib.amalgame",
+          "match": "\\b(Console|File|Path|Math|String|Env|Http|TcpServer|TcpConn)\\b"
+        },
+        {
+          "comment": "User-defined type names start with uppercase letter",
+          "name": "entity.name.type.amalgame",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arrow.amalgame",
+          "match": "(=>|->|\\|>)"
+        },
+        {
+          "name": "keyword.operator.range.amalgame",
+          "match": "\\.\\."
+        },
+        {
+          "name": "keyword.operator.null-safe.amalgame",
+          "match": "\\?\\.|\\?\\?"
+        },
+        {
+          "name": "keyword.operator.assignment.amalgame",
+          "match": "(\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=|=)"
+        },
+        {
+          "name": "keyword.operator.comparison.amalgame",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.logical.amalgame",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "name": "keyword.operator.bitwise.amalgame",
+          "match": "(<<|>>|&|\\||\\^|~)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.amalgame",
+          "match": "(\\+|-|\\*|/|%)"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "comment": "Function/method call: identifier followed by (",
+          "name": "meta.function-call.amalgame",
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.amalgame" }
+          }
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.amalgame",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}
