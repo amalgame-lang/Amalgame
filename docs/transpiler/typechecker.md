@@ -46,7 +46,7 @@ It does **not** generate code — that is the Generator's job.
 
 | File                                  | Description                              |
 |---------------------------------------|------------------------------------------|
-| `src/core/analyzer/typechecker.vala`  | Type inference, annotation, validation   |
+| `archive/vala-bootstrap/src/core/analyzer/typechecker.vala`  | Type inference, annotation, validation   |
 
 ---
 

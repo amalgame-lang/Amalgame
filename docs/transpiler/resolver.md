@@ -45,8 +45,8 @@ It does **not** generate code — that is the Generator's job.
 
 | File                              | Description                              |
 |-----------------------------------|------------------------------------------|
-| `src/core/analyzer/symbol.vala`   | SymbolKind, Symbol, Scope, SymbolTable   |
-| `src/core/analyzer/resolver.vala` | Two-pass resolver, ResolveError/Result   |
+| `archive/vala-bootstrap/src/core/analyzer/symbol.vala`   | SymbolKind, Symbol, Scope, SymbolTable   |
+| `archive/vala-bootstrap/src/core/analyzer/resolver.vala` | Two-pass resolver, ResolveError/Result   |
 
 ---
 

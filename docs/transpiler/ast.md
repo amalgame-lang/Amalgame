@@ -2,9 +2,9 @@
 
 > **Version** : 0.1.0
 > **Fichiers** :
->   - `src/core/parser/ast.vala`
->   - `src/core/parser/ast_visitor.vala`
->   - `src/core/parser/ast_printer.vala`
+>   - `archive/vala-bootstrap/src/core/parser/ast.vala`
+>   - `archive/vala-bootstrap/src/core/parser/ast_visitor.vala`
+>   - `archive/vala-bootstrap/src/core/parser/ast_printer.vala`
 > **Statut**   : ✅ Implémenté
 
 ---

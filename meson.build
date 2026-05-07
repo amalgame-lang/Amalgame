@@ -11,34 +11,36 @@ gee_dep  = dependency('gee-0.8')
 gc_dep = cc.find_library('gc', required : true)
 m_dep  = cc.find_library('m',  required : true)
 
-# Vala sources
+# Vala sources — archived bootstrap compiler.
+# The active compiler is the self-hosted ./amc (built via ./build_amc.sh).
+# This Vala build is kept as a recovery path for cold-start bootstrapping.
 vala_sources = files(
     # Lexer
-    'src/core/lexer/token.vala',
-    'src/core/lexer/lexer.vala',
+    'archive/vala-bootstrap/src/core/lexer/token.vala',
+    'archive/vala-bootstrap/src/core/lexer/lexer.vala',
 
     # Parser
-    'src/core/parser/ast.vala',
-    'src/core/parser/ast_visitor.vala',
-    'src/core/parser/ast_printer.vala',
-    'src/core/parser/parser.vala',
+    'archive/vala-bootstrap/src/core/parser/ast.vala',
+    'archive/vala-bootstrap/src/core/parser/ast_visitor.vala',
+    'archive/vala-bootstrap/src/core/parser/ast_printer.vala',
+    'archive/vala-bootstrap/src/core/parser/parser.vala',
 
     # Analyzer
-    'src/core/analyzer/symbol.vala',
-    'src/core/analyzer/resolver.vala',
-    'src/core/analyzer/typechecker.vala',
+    'archive/vala-bootstrap/src/core/analyzer/symbol.vala',
+    'archive/vala-bootstrap/src/core/analyzer/resolver.vala',
+    'archive/vala-bootstrap/src/core/analyzer/typechecker.vala',
 
     # Generator
-    'src/transpiler/generator/c_generator.vala',
+    'archive/vala-bootstrap/src/transpiler/generator/c_generator.vala',
 
     # Diagnostics
-    'src/transpiler/diagnostics.vala',
+    'archive/vala-bootstrap/src/transpiler/diagnostics.vala',
 
     # Package manager
-    'src/pkg/package_manager.vala',
+    'archive/vala-bootstrap/src/pkg/package_manager.vala',
 
     # Entry point
-    'src/main.vala'
+    'archive/vala-bootstrap/src/main.vala'
 )
 
 executable('amc',
