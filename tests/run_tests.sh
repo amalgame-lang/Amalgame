@@ -12,7 +12,7 @@ SAMPLES="./tests/samples"
 # binder scoping, advanced pattern matching, null-safety inference). They
 # pass under the Vala bootstrap (./build/amc) — see run_tests_vala.sh if
 # you need full coverage during recovery work. PRs welcome.
-SKIP_SELFHOST=" enums.am tuples.am try_catch.am null_safety.am null_safe_member.am pattern_advanced.am record.am "
+SKIP_SELFHOST=" enums.am try_catch.am null_safety.am null_safe_member.am pattern_advanced.am "
 PASS=0
 FAIL=0
 SKIP=0
