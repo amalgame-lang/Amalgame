@@ -74,8 +74,9 @@ public class AmalgameCompiler {
         }
 
         // ── Resolver pass ─────────────────────────────
-        let resolver   = new FullResolver()
-        let progCount  = progs.Count()
+        let resolver = new FullResolver()
+        resolver.Sources = this.Diag.Sources
+        let progCount = progs.Count()
         for ri in 0..progCount {
             resolver.Programs.Add(progs.Get(ri))
         }
