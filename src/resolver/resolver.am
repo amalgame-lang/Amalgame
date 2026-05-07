@@ -220,16 +220,30 @@ public class FullResolver {
         this.DeclareGlobal("Http_Get",          "?",      false)
         this.DeclareGlobal("Http_Post",         "?",      false)
         this.DeclareGlobal("Http_GetWithHeaders","?",     false)
+        this.DeclareGlobal("Http_GetTimeout",   "?",      false)
+        this.DeclareGlobal("Http_PostJson",     "?",      false)
+        this.DeclareGlobal("Http_PostWithHeaders","?",    false)
+        this.DeclareGlobal("Http_Put",          "?",      false)
+        this.DeclareGlobal("Http_Delete",       "?",      false)
+        this.DeclareGlobal("Http_Patch",        "?",      false)
         this.DeclareGlobal("TcpServer_Listen",  "?",      false)
         this.DeclareGlobal("TcpServer_Accept",  "?",      false)
         this.DeclareGlobal("TcpServer_Close",   "void",   false)
+        this.DeclareGlobal("TcpServer_IsListening", "bool", false)
         this.DeclareGlobal("TcpClient_Connect", "?",      false)
         this.DeclareGlobal("TcpClient_Send",    "void",   false)
         this.DeclareGlobal("TcpClient_Receive", "string", false)
         this.DeclareGlobal("TcpClient_Close",   "void",   false)
+        this.DeclareGlobal("TcpClient_IsConnected", "bool", false)
         this.DeclareGlobal("TcpConn_Send",      "void",   false)
         this.DeclareGlobal("TcpConn_Receive",   "string", false)
         this.DeclareGlobal("TcpConn_Close",     "void",   false)
+        this.DeclareGlobal("TcpConn_IsConnected", "bool", false)
+        this.DeclareGlobal("UdpSocket_New",     "?",      false)
+        this.DeclareGlobal("UdpSocket_Bind",    "bool",   false)
+        this.DeclareGlobal("UdpSocket_Send",    "bool",   false)
+        this.DeclareGlobal("UdpSocket_Receive", "string", false)
+        this.DeclareGlobal("UdpSocket_Close",   "void",   false)
     }
 
     // ── Scope management (nested stack) ───────────────
@@ -677,6 +691,10 @@ public class FullResolver {
         if (k == NodeKind.IDENTIFIER) {
             // Skip parser error-recovery placeholders — they already represent a parse error
             if (expr.Name == "_unknown_") { return }
+            // Wildcard placeholder used in match patterns. Treated as "matches
+            // anything" by the codegen; the resolver shouldn't insist on a
+            // declared binding for it.
+            if (expr.Name == "_") { return }
             if (!this.LookupInScopes(expr.Name)) {
                 this.Error("Unknown symbol '" + expr.Name + "'", expr)
             }

@@ -292,6 +292,19 @@ public class CGen {
             }
             return ""
         }
+        // if-as-expression: the type is the type of the then-branch.
+        // The body is a BLOCK whose last child is the result expression.
+        if (k == NodeKind.IF_STMT) {
+            if (expr.Body != null) {
+                let body: AstNode = expr.Body
+                if (body.Kind == NodeKind.BLOCK && body.Children.Count() > 0) {
+                    let last: AstNode = body.Children.Get(body.Children.Count() - 1)
+                    return this.InferTypeFromExpr(last)
+                }
+                return this.InferTypeFromExpr(body)
+            }
+            return ""
+        }
         if (k == NodeKind.LITERAL_INT)    { return "i64" }
         if (k == NodeKind.LITERAL_FLOAT)  { return "double" }
         if (k == NodeKind.LITERAL_STRING) { return "code_string" }
@@ -447,7 +460,9 @@ public class CGen {
                     let calleeLocalType = this.LocalTypeGet(expr.Left.Name)
                     if (calleeLocalType == "__macro__") { return "i64" }
                 }
-                if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf") { return "i64" }
+                if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf" || calleeStr == "String_ToInt") { return "i64" }
+                if (calleeStr == "String_ToFloat") { return "double" }
+                if (calleeStr == "String_ToBool") { return "code_bool" }
                 if (calleeStr == "String_Contains" || calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_IsEmpty") { return "code_bool" }
                 if (String_StartsWith(calleeStr, "String_")) { return "code_string" }
                 // Process args + exit code (runtime globals)
@@ -463,6 +478,9 @@ public class CGen {
                 if (calleeStr == "File_WriteLines" || calleeStr == "File_OpenWrite" || calleeStr == "File_StreamLine" || calleeStr == "File_CloseWrite") { return "void" }
                 if (calleeStr == "File_WriteLines") { return "void" }
                 if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
+                if (calleeStr == "File_Size") { return "i64" }
+                // Path stdlib return types
+                if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory") { return "code_string" }
                 // Net stdlib return types
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }
                 if (calleeStr == "TcpServer_Listen") { return "AmalgameTcpServer*" }
@@ -474,7 +492,8 @@ public class CGen {
                 if (calleeStr == "Math_Max" || calleeStr == "Math_Min") { return "i64" }
                 if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
                 if (calleeStr == "Math_Random") { return "double" }
-                if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp") { return "i64" }
+                if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
+                if (calleeStr == "Math_SeedRandom") { return "void" }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
                     // Collection method return types based on method name
