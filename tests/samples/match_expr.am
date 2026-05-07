@@ -1,0 +1,32 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        // Simple value matching
+        let n = 7
+        let label = match n {
+            0 => "zero"
+            1..5 => "small"
+            _ => "big"
+        }
+        Console.WriteLine(label)   // big
+
+        // Different result types per call site
+        let m = 2
+        let cat = match m {
+            0 => "none"
+            1 => "one"
+            2 => "two"
+            _ => "many"
+        }
+        Console.WriteLine(cat)     // two
+
+        // Nested in an int context: no string fallback
+        let priority = match m {
+            0 => 100
+            1..3 => 50
+            _ => 1
+        }
+        Console.WriteLine(String.FromInt(priority))   // 50
+    }
+}
