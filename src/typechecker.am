@@ -509,6 +509,13 @@ public class TypeChecker {
             this.CheckExpr(stmt.Left)
             inferredType = this.GetType(stmt.Left)
         }
+        // Tuple destructuring (`let (a, b) = expr`): the parser stores
+        // "__tuple_destructure__" as the type marker. Skip the assignability
+        // check — the RHS is a tuple call whose type doesn't match the
+        // marker and the codegen handles unpacking via __auto_type.
+        if (declaredType == "__tuple_destructure__") {
+            return
+        }
         let finalType = if (String_Length(declaredType) > 0) { declaredType } else { inferredType }
         if (String_Length(declaredType) > 0 && inferredType != "?") {
             if (!this.IsAssignable(declaredType, inferredType)) {

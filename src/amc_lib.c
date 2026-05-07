@@ -3853,6 +3853,20 @@ static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalg
                 }
                 if (m->Body != NULL) {
                     Amalgame_Compiler_CGen_EmitBlock(self, m->Body);
+                } else {
+                    for (i64 pi = 0; pi < pcount; pi++) {
+                        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
+                        code_bool __attribute__((unused)) hasField = 0;
+                        for (i64 fi = 0; fi < members; fi++) {
+                            Amalgame_Compiler_AstNode* __attribute__((unused)) f = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, fi);
+                            if (f->Kind == Amalgame_Compiler_NodeKind_VAR_DECL && code_string_equals(f->Name, p->Name)) {
+                                hasField = 1;
+                            }
+                        }
+                        if (hasField) {
+                            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("self->", p->Name), " = "), p->Name), ";"));
+                        }
+                    }
                 }
                 Amalgame_Compiler_CGen_LocalTypeClear(self);
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return self;");
@@ -8614,6 +8628,9 @@ static void Amalgame_Compiler_TypeChecker_CheckVarDecl(Amalgame_Compiler_TypeChe
     if (stmt->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
         inferredType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
+    }
+    if (code_string_equals(declaredType, "__tuple_destructure__")) {
+        return;
     }
     code_string __attribute__((unused)) finalType = (String_Length(declaredType) > 0 ? declaredType : inferredType);
     if (String_Length(declaredType) > 0 && !code_string_equals(inferredType, "?")) {
