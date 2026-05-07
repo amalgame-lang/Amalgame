@@ -305,6 +305,38 @@ static inline code_string String_FromByte(i64 b) {
     return s;
 }
 
+/* Encode a Unicode codepoint as UTF-8. Used by the lexer to decode
+ * \uHHHH escapes (4 hex digits → BMP), and by user code via String.FromCodepoint.
+ * Codepoints in the surrogate range [0xD800..0xDFFF] are passed through
+ * to keep the encoder symmetric; callers are expected to validate. */
+static inline code_string String_FromCodepoint(i64 cp) {
+    char* s;
+    if (cp < 0x80) {
+        s = (char*) GC_MALLOC(2);
+        s[0] = (char)cp;
+        s[1] = '\0';
+    } else if (cp < 0x800) {
+        s = (char*) GC_MALLOC(3);
+        s[0] = (char)(0xC0 | (cp >> 6));
+        s[1] = (char)(0x80 | (cp & 0x3F));
+        s[2] = '\0';
+    } else if (cp < 0x10000) {
+        s = (char*) GC_MALLOC(4);
+        s[0] = (char)(0xE0 | (cp >> 12));
+        s[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        s[2] = (char)(0x80 | (cp & 0x3F));
+        s[3] = '\0';
+    } else {
+        s = (char*) GC_MALLOC(5);
+        s[0] = (char)(0xF0 | (cp >> 18));
+        s[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        s[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        s[3] = (char)(0x80 | (cp & 0x3F));
+        s[4] = '\0';
+    }
+    return s;
+}
+
 static inline code_string String_FromFloat(f64 n) {
     return code_float_to_string(n);
 }

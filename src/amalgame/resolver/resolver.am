@@ -206,6 +206,7 @@ public class FullResolver {
         this.DeclareGlobal("String_ToFloat",    "float",  false)
         this.DeclareGlobal("String_FromInt",    "string", false)
         this.DeclareGlobal("String_FromByte",   "string", false)
+        this.DeclareGlobal("String_FromCodepoint", "string", false)
         // Process args + exit code — backed by globals set in main()
         this.DeclareGlobal("Args_Count",        "int",    false)
         this.DeclareGlobal("Args_Get",          "string", false)
