@@ -1,0 +1,176 @@
+# 6 · Build & tooling
+
+This chapter walks through every script and workflow that builds,
+tests, and ships Amalgame.
+
+## The two compilers
+
+Amalgame keeps **two** working compilers in tree:
+
+- **`./amc`** — self-hosted, written in Amalgame. The everyday
+  compiler. Source in `src/`, output of `./build_amc.sh`.
+- **`./build/amc`** — Vala bootstrap, kept as a recovery path.
+  Sources in `archive/vala-bootstrap/`, output of `./compile.sh`.
+
+The Vala compiler exists because at any point in time, a bug in
+`./amc` can break self-compilation. `./build/amc` is the escape hatch.
+
+## `./compile.sh` — Vala bootstrap
+
+Builds `./build/amc` (Vala) via meson + ninja.
+
+```bash
+./compile.sh
+# → meson setup build (first time)
+# → ninja -C build
+# → ./build/amc --version
+```
+
+Dependencies:
+
+- valac
+- meson, ninja
+- libglib2.0-dev, libgee-0.8-dev
+- libgc-dev
+- libcurl4-openssl-dev (for the Amalgame stdlib's Net module)
+
+You only need this on Linux (the supported platform for Vala in CI).
+macOS and Windows users compile `amc` directly from the tracked
+`src/amc_lib.c` and skip Vala entirely.
+
+`meson.build` points at `archive/vala-bootstrap/src/`.
+
+## `./build_amc.sh` — self-host build
+
+The five-second loop:
+
+```
+Step 1   ./amc src/lexer/*.am src/parser/*.am … src/generator/gen_test.am -o gen_test
+         gcc -O2 -Iruntime gen_test.c -o gen_test
+Step 2   ./gen_test                 # generates src/amc_lib.c (and inspection bundles)
+Step 3   gcc -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc
+```
+
+Notes:
+
+- Step 1 uses `./amc` if it exists, otherwise falls back to `./build/amc`
+  (Vala). That makes the very first build on a fresh clone work even
+  if you only ran `./compile.sh`.
+- Step 1 tolerates non-zero exit from `amc` as long as the `.c`
+  output was produced. This is the recurring "I just added a builtin
+  and the running amc doesn't know it yet" case — gcc remains the
+  real correctness gate.
+- `main.am` is intentionally **excluded** from the gen_test source
+  list. It declares its own `Program.Main` (the CLI entry), which
+  would clash with `gen_test.am`'s `Program.Main` in the bundled
+  binary. `main.am` is only compiled into `amc_lib.c` via gen6 in
+  step 2.
+- File order in `AMC_SOURCES` matters for the bootstrap CGen: classes
+  must appear before their dependents (since pass-2 emits forward
+  decls + bodies file-by-file). `diagnostics.am` is listed before
+  `resolver.am` for that reason — `SourceMap` and `SourceSnippet`
+  have to be visible.
+
+The build is hermetic — no environment variables, no global state.
+Re-running `./build_amc.sh` is always safe.
+
+## `./tests/run_all_tests.sh` — test suite
+
+Two suites, ~127 tests in total:
+
+- **Core / advanced / namespace / interfaces / enums / match / lib /
+  stdlib basics** (`tests/run_tests.sh`) — runs each `tests/samples/*.am`
+  through `./build/amc` and grep-checks the output.
+- **Stdlib** (`tests/run_stdlib_tests.sh`) — focused on
+  String/Collections/Net runtime.
+
+The lib end-to-end test (`run_lib_link_test`) uses `./amc` rather
+than `./build/amc` because the Vala CGen still emits public methods
+with `static` forward decls (internal linkage), which would prevent
+linking from a separate translation unit.
+
+```bash
+./tests/run_all_tests.sh
+# Core (76)  Stdlib (50)  + 1 e2e lib   →  127/127 PASS
+```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` — runs on every push and PR to `main` /
+`develop`:
+
+| Job     | Runs on                | What it does                                           |
+| ------- | ---------------------- | ------------------------------------------------------ |
+| linux   | ubuntu-latest          | apt deps · `./compile.sh` · `./build_amc.sh` · tests   |
+| macos   | macos-latest (arm64)   | brew deps · gcc `src/amc_lib.c` · smoke compile hello  |
+| windows | windows-latest (MSYS2) | pacman deps · gcc `src/amc_lib.c` · smoke compile hello|
+
+macOS and Windows skip Vala — they validate that the tracked
+`amc_lib.c` is portable and produces a working binary.
+
+## Releases
+
+`.github/workflows/release.yml` — runs on every push of a `v*` tag:
+
+| Job           | What it produces                                         |
+| ------------- | -------------------------------------------------------- |
+| build-linux   | `amc-X.Y.Z-linux-x86_64.tar.gz` + `.sha256`              |
+| build-macos   | `amc-X.Y.Z-macos-arm64.tar.gz` + `.sha256`               |
+| build-windows | `amc-X.Y.Z-windows-x86_64.zip` (DLLs bundled) + `.sha256`|
+| publish       | aggregates checksums, creates a GitHub Release           |
+
+The Windows zip bundles the MinGW DLLs the binary actually links
+against (libgc, libcurl, libgcc_s_seh, libwinpthread, etc.) — users
+install the zip and run `amc.exe` without any external dependency.
+
+Trigger a release:
+
+```bash
+git tag v0.4.0
+git push origin v0.4.0
+# CI takes ~10 minutes, the release shows up on GitHub when done.
+```
+
+`workflow_dispatch` is also enabled for testing the workflow without
+cutting a real release.
+
+## Inno Setup installer (Windows)
+
+`install/windows/amalgame.iss` produces a `.exe` installer for
+Windows users via [Inno Setup 6+](https://jrsoftware.org/isinfo.php):
+
+```bash
+# Drop a portable MinGW64 (e.g. from winlibs.com) into install/windows/gcc-bundle/
+iscc install/windows/amalgame.iss
+# → Output/amalgame-X.Y.Z-setup.exe
+```
+
+The installer ships `amc.exe`, `runtime/_runtime.h`, the docs, and
+the bundled MinGW64 toolchain so users get a working `amc` + `gcc`
+out of the box.
+
+## Homebrew formula
+
+`install/homebrew/amalgame.rb` — for `brew tap` distribution. Update
+the version and SHA256 every release; `install/release.sh`'s tail
+prints the SHA to copy.
+
+## Local hygiene
+
+- `git clean -fdx` will remove generated `.c` and binaries in the
+  working tree. Be careful — it also removes `gen_test`, `amc`, and
+  `src/amc_lib.c`. Use `./build_amc.sh` afterwards to regenerate.
+- `./CLEANUP.sh` is a legacy helper that removed older debug
+  artefacts. It's mostly a no-op today.
+
+## Editor support
+
+`editors/vscode/` is a complete VS Code extension (TextMate grammar,
+language configuration, README). Install for development:
+
+```bash
+ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.1.0
+# Reload window: Ctrl+Shift+P → Developer: Reload Window
+```
+
+LSP is on the roadmap (chapter 7).
