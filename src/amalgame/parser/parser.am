@@ -578,6 +578,7 @@ public class Parser {
             return n
         }
         if (v == "match") { return this.ParseMatch() }
+        if (v == "guard") { return this.ParseGuard() }
         if (v == "{") { return this.ParseBlock() }
         return this.ParseExpr()
     }
@@ -669,6 +670,39 @@ public class Parser {
             }
         }
         return node
+    }
+
+    // ── Guard ─────────────────────────────────────────
+    // `guard <expr> else { ... }` desugars to `if (!<expr>) { ... }`.
+    // The else-block is mandatory and is expected to exit the current scope
+    // (return / throw / break / continue) — but enforcement is left to the
+    // user for now. Emit as a regular IF_STMT with a UNARY-NOT condition.
+
+    private AstNode ParseGuard() {
+        let tok = this.Advance()
+        let hasParen = this.CheckValue("(")
+        if (hasParen) {
+            this.Advance()
+            this.ParenDepth = this.ParenDepth + 1
+        }
+        let cond = this.ParseExpr()
+        if (hasParen) {
+            this.ParenDepth = this.ParenDepth - 1
+            this.Expect(")")
+        }
+        this.SkipNewlines()
+        // `else` is mandatory after the condition
+        if (this.CheckKw("else")) {
+            this.Advance()
+        }
+        this.SkipNewlines()
+        let body = this.ParseBlock()
+        // Build the negated condition: UNARY '!' applied to cond
+        let neg = new AstNode(NodeKind.UNARY, tok.Line, tok.Column)
+        neg.Str  = "!"
+        neg.Left = cond
+        // Wrap as a normal if-stmt — body runs only when guard fails.
+        return Ast.If(neg, body, tok.Line, tok.Column)
     }
 
     // ── While ─────────────────────────────────────────

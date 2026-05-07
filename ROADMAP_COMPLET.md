@@ -149,7 +149,7 @@ Porter le scope chaîné du Resolver Vala.
 - [x] **`\x` escape sequences** dans le lexer ✅ (P7)
 - [x] **`\u` unicode escape** dans le lexer ✅ (UTF-8 encoded via String_FromCodepoint)
 - [ ] **`obj.Method()` syntax** pour strings : `.Length`, `.Contains`, `.Split`, `.Trim`...
-- [ ] **Guard clauses** : `guard x != null else { return }`
+- [x] **Guard clauses** : `guard x != null else { return }` ✅ desugars en if-not
 - [ ] **Is-guards dans match** : `x if x > 0 => ...`
 - [ ] **Closures capturantes** (actuellement lambdas simples)
 - [x] **String multiline `"""`** (triple-quoted) ✅ raw newlines, no escape processing
