@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ── Linux: full path. Builds the Vala bootstrap + self-hosted amc + runs tests. ──
+  linux:
+    name: Build & test (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            valac \
+            meson \
+            ninja-build \
+            gcc \
+            libglib2.0-dev \
+            libgee-0.8-dev \
+            libgc-dev \
+            libcurl4-openssl-dev
+
+      - name: Build Vala bootstrap (./build/amc — recovery path)
+        run: ./compile.sh
+
+      - name: Build self-hosted amc via build_amc.sh
+        run: ./build_amc.sh
+
+      - name: Verify amc reports its version
+        run: ./amc --version
+
+      - name: Run full test suite
+        run: ./tests/run_all_tests.sh
+
+      - name: Upload generated artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amc-debug-linux
+          path: |
+            amc
+            gen_test
+            src/amalgame/amc_lib.c
+          retention-days: 3
+
+  # ── macOS: skip Vala (no native Vala on macOS runners by default). Build amc
+  #    directly from the tracked amc_lib.c — proves the snapshot is portable. ──
+  macos:
+    name: Build & test (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          brew install bdw-gc curl
+
+      - name: Compile amc from tracked amc_lib.c
+        run: |
+          gcc -O2 -Isrc/transpiler/runtime \
+              src/amalgame/amc_lib.c \
+              -lgc -lm -lcurl -o amc
+
+      - name: Verify amc reports its version
+        run: ./amc --version
+
+      - name: Smoke compile a sample
+        run: |
+          ./amc tests/samples/hello.am -o /tmp/hello
+          gcc -Isrc/transpiler/runtime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello
+          /tmp/hello
+
+      - name: Upload generated artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amc-debug-macos
+          path: |
+            amc
+            src/amalgame/amc_lib.c
+          retention-days: 3
+
+  # ── Windows: build via MSYS2 (gcc + libgc + libcurl available). Skips Vala
+  #    for the same reason as macOS — the tracked amc_lib.c is the canonical
+  #    cross-platform snapshot. ──
+  windows:
+    name: Build & test (Windows / MSYS2)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-gc
+            mingw-w64-x86_64-curl
+
+      - name: Compile amc from tracked amc_lib.c
+        run: |
+          gcc -O2 -Isrc/transpiler/runtime \
+              src/amalgame/amc_lib.c \
+              -lgc -lm -lcurl -o amc.exe
+
+      - name: Verify amc reports its version
+        run: ./amc.exe --version
+
+      - name: Smoke compile a sample
+        run: |
+          ./amc.exe tests/samples/hello.am -o /tmp/hello
+          gcc -Isrc/transpiler/runtime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello.exe
+          /tmp/hello.exe
+
+      - name: Upload generated artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amc-debug-windows
+          path: |
+            amc.exe
+            src/amalgame/amc_lib.c
+          retention-days: 3
