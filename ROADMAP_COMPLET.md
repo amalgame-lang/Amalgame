@@ -158,7 +158,7 @@ Porter le scope chaîné du Resolver Vala.
 - [ ] **Interfaces avec génériques** : `IComparable<T>`
 - [ ] **`async`/`await`** → coroutines ucontext ou setjmp
 - [ ] **Compréhensions de liste** : `[x * 2 for x in xs if x > 0]`
-- [ ] **`?.` null-safe member access** (parsing présent, CGen partiel)
+- [x] **`?.` null-safe member access** ✅ field + method call, ternary `(obj ? ... : NULL)`
 - [ ] **Spread operator** `...args`
 - [ ] **Named arguments** `f(x: 1, y: 2)`
 

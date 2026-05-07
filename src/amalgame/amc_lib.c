@@ -97,6 +97,7 @@ enum _Amalgame_Compiler_TokenType {
     Amalgame_Compiler_TokenType_OP_ARROW,
     Amalgame_Compiler_TokenType_OP_THIN_ARROW,
     Amalgame_Compiler_TokenType_OP_DOT,
+    Amalgame_Compiler_TokenType_OP_QDOT,
     Amalgame_Compiler_TokenType_OP_DOTDOT,
     Amalgame_Compiler_TokenType_OP_COALESCE,
     Amalgame_Compiler_TokenType_OP_AMP,
@@ -989,6 +990,9 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
         if (code_string_equals(c2, "?")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_COALESCE, "??");
+        } else if (code_string_equals(c2, ".")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_QDOT, "?.");
         }
     } else if (code_string_equals(c, "~")) {
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_TILDE, "~");
@@ -2115,6 +2119,15 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame
             Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
             Amalgame_Compiler_Token* __attribute__((unused)) memberTok = Amalgame_Compiler_Parser_ExpectIdent(self);
             expr = Amalgame_Compiler_Ast_Member(expr, memberTok->Value, tok->Line, tok->Column);
+            if (Amalgame_Compiler_Parser_CheckValue(self, "(")) {
+                expr = Amalgame_Compiler_Parser_ParseCallArgs(self, expr);
+            }
+        } else if (Amalgame_Compiler_Parser_CheckValue(self, "?.")) {
+            Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
+            Amalgame_Compiler_Token* __attribute__((unused)) memberTok = Amalgame_Compiler_Parser_ExpectIdent(self);
+            Amalgame_Compiler_AstNode* __attribute__((unused)) m = Amalgame_Compiler_Ast_Member(expr, memberTok->Value, tok->Line, tok->Column);
+            m->Flag = 1;
+            expr = m;
             if (Amalgame_Compiler_Parser_CheckValue(self, "(")) {
                 expr = Amalgame_Compiler_Parser_ParseCallArgs(self, expr);
             }
@@ -4247,6 +4260,10 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
         return expr->Name;
     }
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
+        if (expr->Flag) {
+            code_string __attribute__((unused)) target = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
+            return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("(", target), " ? "), target), "->"), expr->Name), " : NULL)");
+        }
         if (expr->Left != NULL) {
             Amalgame_Compiler_NodeKind __attribute__((unused)) lk = expr->Left->Kind;
             if (lk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
@@ -4443,6 +4460,10 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
             first = 0;
         }
         callStr = code_string_concat(callStr, ")");
+        if (expr->Left != NULL && expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER && expr->Left->Flag) {
+            code_string __attribute__((unused)) recv = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left->Left);
+            return code_string_concat(code_string_concat(code_string_concat(code_string_concat("(", recv), " ? "), callStr), " : NULL)");
+        }
         return callStr;
     }
     if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
