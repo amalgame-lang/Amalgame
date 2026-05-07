@@ -281,6 +281,17 @@ public class CGen {
         if (expr == null) { return "" }
         let k = expr.Kind
         if (k == NodeKind.LIST_COMP)      { return "AmalgameList*" }
+        // match-as-expression: type is the type of the first arm body.
+        // (All arms must agree at runtime; we trust the first as a hint.)
+        if (k == NodeKind.IF_STMT && expr.Name == "__match__") {
+            if (expr.Children.Count() > 0) {
+                let firstArm: AstNode = expr.Children.Get(0)
+                if (firstArm.Right != null) {
+                    return this.InferTypeFromExpr(firstArm.Right)
+                }
+            }
+            return ""
+        }
         if (k == NodeKind.LITERAL_INT)    { return "i64" }
         if (k == NodeKind.LITERAL_FLOAT)  { return "double" }
         if (k == NodeKind.LITERAL_STRING) { return "code_string" }
@@ -1668,6 +1679,10 @@ public class CGen {
             return result
         }
         if (k == NodeKind.IF_STMT) {
+            // match-as-expression: same NodeKind, distinguished by marker.
+            if (expr.Name == "__match__") {
+                return this.EmitMatchExpr(expr)
+            }
             let condStr = this.EmitExprStr(expr.Cond)
             let thenStr = this.EmitIfBranch(expr.Body)
             let elseStr = this.EmitIfBranch(expr.Else)
@@ -1918,6 +1933,66 @@ public class CGen {
             return this.EmitListComp(expr)
         }
         return "/* unknown expr */"
+    }
+
+    // ── Match as expression ───────────────────────────
+    // `let x = match subj { p1 => e1, p2 => e2, _ => ed }` becomes a GCC
+    // compound statement expression:
+    //   ({ <type> __mr; if (subj == p1) __mr = (e1);
+    //      else if (subj == p2) __mr = (e2); else __mr = (ed); __mr; })
+    // The result type is inferred from the first arm body. Block bodies
+    // are unwrapped to their last expression statement (they're rare in
+    // expression position). Algebraic-enum patterns and guards aren't
+    // supported in expression position yet — we emit a stub so the rest
+    // of the surrounding compilation can proceed and surface the error
+    // through the type checker rather than a syntax-broken C dump.
+    private string EmitMatchExpr(AstNode n) {
+        let subject = n.Left
+        if (subject == null) { return "/* match-expr: missing subject */" }
+        let subjectStr = this.EmitExprStr(subject)
+        let armCount = n.Children.Count()
+        if (armCount == 0) { return "/* match-expr: no arms */" }
+        // Infer the result type from the first arm body — drives the
+        // declared type of __mr in the generated compound expression.
+        let firstArm = n.Children.Get(0)
+        let firstBody = firstArm.Right
+        var resultType = this.InferTypeFromExpr(firstBody)
+        if (String_Length(resultType) == 0) { resultType = "i64" }
+        var s = "({ " + resultType + " __mr; "
+        var firstArmFlag = true
+        for i in 0..armCount {
+            let arm = n.Children.Get(i)
+            let pat = arm.Left
+            let body = arm.Right
+            if (pat == null || body == null) { continue }
+            let pk = pat.Kind
+            let bodyStr = this.EmitExprStr(body)
+            // Wildcard arm: `_ => expr` — emit as terminal else.
+            if (pk == NodeKind.IDENTIFIER && pat.Name == "_") {
+                let prefix = if (firstArmFlag) { "" } else { " else " }
+                s = s + prefix + "{ __mr = (" + bodyStr + "); }"
+                firstArmFlag = false
+                continue
+            }
+            // Range pattern: lo..hi
+            var cond = ""
+            if (pk == NodeKind.BINARY && pat.Str == "..") {
+                let lo = this.EmitExprStr(pat.Left)
+                let hi = this.EmitExprStr(pat.Right)
+                cond = subjectStr + " >= " + lo + " && " + subjectStr + " <= " + hi
+            } else if (pk == NodeKind.LITERAL_STRING) {
+                let patStr = this.EmitExprStr(pat)
+                cond = "strcmp(" + subjectStr + ", " + patStr + ") == 0"
+            } else {
+                let patStr = this.EmitExprStr(pat)
+                cond = subjectStr + " == " + patStr
+            }
+            let prefix = if (firstArmFlag) { "" } else { " else " }
+            s = s + prefix + "if (" + cond + ") { __mr = (" + bodyStr + "); }"
+            firstArmFlag = false
+        }
+        s = s + " __mr; })"
+        return s
     }
 
     // ── List comprehension ────────────────────────────

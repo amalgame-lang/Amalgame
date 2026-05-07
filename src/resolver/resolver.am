@@ -739,6 +739,13 @@ public class FullResolver {
             return
         }
         if (k == NodeKind.IF_STMT) {
+            // match-as-expression: parser reuses IF_STMT with Name=__match__,
+            // arms in Children. Delegate to the existing match resolver so
+            // the arm bodies see the correct binders.
+            if (expr.Name == "__match__") {
+                this.ResolveMatch(expr)
+                return
+            }
             // if-expression
             if (expr.Cond != null) { this.ResolveExpr(expr.Cond) }
             if (expr.Body != null) { this.ResolveBlock(expr.Body) }
