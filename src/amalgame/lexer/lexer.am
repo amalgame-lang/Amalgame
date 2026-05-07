@@ -107,10 +107,12 @@ public class Lexer {
                 if (esc == "r")  { value = value + "\r" }
                 if (esc == "\"") { value = value + "\"" }
                 if (esc == "\\") { value = value + "\\" }
-                // \x escape: skip 2 hex chars (not yet implemented — needs bootstrap)
+                // \xHH — two hex digits → single byte
                 if (esc == "x") {
-                    this.Advance()
-                    this.Advance()
+                    let h1 = this.Advance()
+                    let h2 = this.Advance()
+                    let byte = this.HexNibble(h1) * 16 + this.HexNibble(h2)
+                    value = value + String_FromByte(byte)
                 }
             } else {
                 value = value + c
@@ -118,6 +120,26 @@ public class Lexer {
         }
         if (this.Pos < String_Length(this.Source)) { this.Advance() }
         this.AddToken(TokenType.STRING, value)
+    }
+
+    private int HexNibble(string ch) {
+        if (ch == "0") { return 0 }
+        if (ch == "1") { return 1 }
+        if (ch == "2") { return 2 }
+        if (ch == "3") { return 3 }
+        if (ch == "4") { return 4 }
+        if (ch == "5") { return 5 }
+        if (ch == "6") { return 6 }
+        if (ch == "7") { return 7 }
+        if (ch == "8") { return 8 }
+        if (ch == "9") { return 9 }
+        if (ch == "a" || ch == "A") { return 10 }
+        if (ch == "b" || ch == "B") { return 11 }
+        if (ch == "c" || ch == "C") { return 12 }
+        if (ch == "d" || ch == "D") { return 13 }
+        if (ch == "e" || ch == "E") { return 14 }
+        if (ch == "f" || ch == "F") { return 15 }
+        return 0
     }
 
     private void ReadNumber() {
