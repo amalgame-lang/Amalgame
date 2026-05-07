@@ -576,6 +576,9 @@ public class Formatter {
         if (k == NodeKind.IF_STMT && n.Name != "__match__") {
             return this.EmitIfExpr(n)
         }
+        if (k == NodeKind.IF_STMT && n.Name == "__match__") {
+            return this.EmitMatchExpr(n)
+        }
         if (k == NodeKind.LIST_COMP) {
             var s = "[" + this.EmitExpr(n.Left) + " for " + n.Str + " in " + this.EmitExpr(n.Right)
             if (n.Cond != null) {
@@ -635,6 +638,26 @@ public class Formatter {
 
     private string EmitIndex(AstNode n) {
         return this.EmitExpr(n.Left) + "[" + this.EmitExpr(n.Right) + "]"
+    }
+
+    // Render a match in expression position as a single line:
+    //   match subj { p1 => e1, p2 => e2, _ => ed }
+    // Multi-line match exists only as a statement in EmitMatch; an
+    // expression-position match has to flatten because EmitExpr returns
+    // a string and can't inject newlines into the surrounding context.
+    private string EmitMatchExpr(AstNode n) {
+        var s = "match " + this.EmitExpr(n.Left) + " { "
+        let arms = n.Children.Count()
+        for i in 0..arms {
+            let arm: AstNode = n.Children.Get(i)
+            if (i > 0) { s = s + ", " }
+            s = s + this.EmitPattern(arm.Left)
+            if (arm.Cond != null) {
+                s = s + " if " + this.EmitExpr(arm.Cond)
+            }
+            s = s + " => " + this.EmitExpr(arm.Right)
+        }
+        return s + " }"
     }
 
     // Render an IF_STMT as an expression: `if (c) { x } else { y }`.

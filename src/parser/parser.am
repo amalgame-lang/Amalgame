@@ -1181,6 +1181,10 @@ public class Parser {
         if (v == "if") {
             return this.ParseIf()
         }
+        // match expression: match subj { pat => expr, ... }
+        if (v == "match") {
+            return this.ParseMatch()
+        }
         if (v == "(") {
             this.Advance()
             this.ParenDepth = this.ParenDepth + 1
