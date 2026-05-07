@@ -6,27 +6,8 @@ import Amalgame.String
 
 public class Program {
     public static void Main(string[] args) {
-        // --- Single-file generation ---
-        let singles = new List<string>()
-        singles.Add("./src/amalgame/lexer/token.am")
-        singles.Add("./src/amalgame/parser/ast.am")
-        let sc = singles.Count()
-        for i in 0..sc {
-            let path = singles.Get(i)
-            let src  = File.ReadAll(path)
-            let lex  = new Lexer(src, path)
-            let toks = lex.Tokenize()
-            let par  = new Parser(toks)
-            let prog = par.Parse()
-            let gen  = new CGen()
-            let code = gen.Generate(prog)
-            let outName = path + "_bootstrap.c"
-            File.WriteAll(outName, code)
-            let clen = String_Length(code)
-            Console.WriteLine("{path}: {clen} chars → {outName}")
-        }
-
-        // --- Parse all files once ---
+        // Parse each compiler source once — gen6 produces the single bundle
+        // amc_lib.c that becomes the amc binary in build_amc.sh Step 3.
         let tokPath = "./src/amalgame/lexer/token.am"
         let tokSrc  = File.ReadAll(tokPath)
         let tokLex  = new Lexer(tokSrc, tokPath)
@@ -61,81 +42,6 @@ public class Program {
         let cgenToks = cgenLex.Tokenize()
         let cgenPar  = new Parser(cgenToks)
         let cgenProg = cgenPar.Parse()
-
-        // --- Bundles: use a helper that avoids large string accumulation ---
-        // We generate to a CGen, get lines count, write line by line
-
-        // Lexer bundle — streaming
-        let out2 = "./src/amalgame/lexer/lexer_bundle_bootstrap.c"
-        File.OpenWrite(out2)
-        let gen2 = new CGen()
-        gen2.SetStreaming(true)
-        gen2.BeginMulti("Amalgame.Compiler")
-        gen2.AddFilePass1(tokProg)
-        gen2.AddFilePass1(lexProg)
-        gen2.EmitSeparator()
-        gen2.AddFilePass2(tokProg)
-        gen2.AddFilePass2(lexProg)
-        File.CloseWrite()
-        Console.WriteLine("lexer bundle: → {out2}")
-
-        // Parser bundle — streaming
-        let out3 = "./src/amalgame/parser/parser_bundle_bootstrap.c"
-        File.OpenWrite(out3)
-        let gen3 = new CGen()
-        gen3.SetStreaming(true)
-        gen3.BeginMulti("Amalgame.Compiler")
-        gen3.AddFilePass1(tokProg)
-        gen3.AddFilePass1(astProg)
-        gen3.AddFilePass1(lexProg)
-        gen3.AddFilePass1(parProg)
-        gen3.EmitSeparator()
-        gen3.AddFilePass2(tokProg)
-        gen3.AddFilePass2(astProg)
-        gen3.AddFilePass2(lexProg)
-        gen3.AddFilePass2(parProg)
-        File.CloseWrite()
-        Console.WriteLine("parser bundle: → {out3}")
-
-        // CGen bundle — streaming
-        let out4 = "./src/amalgame/generator/cgen_bundle_bootstrap.c"
-        File.OpenWrite(out4)
-        let gen4 = new CGen()
-        gen4.SetStreaming(true)
-        gen4.BeginMulti("Amalgame.Compiler")
-        gen4.AddFilePass1(tokProg)
-        gen4.AddFilePass1(astProg)
-        gen4.AddFilePass1(lexProg)
-        gen4.AddFilePass1(parProg)
-        gen4.AddFilePass1(cgenProg)
-        gen4.EmitSeparator()
-        gen4.AddFilePass2(tokProg)
-        gen4.AddFilePass2(astProg)
-        gen4.AddFilePass2(lexProg)
-        gen4.AddFilePass2(parProg)
-        gen4.AddFilePass2(cgenProg)
-        File.CloseWrite()
-        Console.WriteLine("cgen bundle: → {out4}")
-
-        // Full lib bundle — streaming
-        let out5 = "./src/amalgame/amc_bootstrap_lib.c"
-        File.OpenWrite(out5)
-        let gen5 = new CGen()
-        gen5.SetStreaming(true)
-        gen5.BeginMulti("Amalgame.Compiler")
-        gen5.AddFilePass1(tokProg)
-        gen5.AddFilePass1(astProg)
-        gen5.AddFilePass1(lexProg)
-        gen5.AddFilePass1(parProg)
-        gen5.AddFilePass1(cgenProg)
-        gen5.EmitSeparator()
-        gen5.AddFilePass2(tokProg)
-        gen5.AddFilePass2(astProg)
-        gen5.AddFilePass2(lexProg)
-        gen5.AddFilePass2(parProg)
-        gen5.AddFilePass2(cgenProg)
-        File.CloseWrite()
-        Console.WriteLine("amc_bootstrap_lib: → {out5}")
 
         // --- Full amc lib (streaming) ---
         Console.WriteError("parsing extra files...")
