@@ -716,6 +716,24 @@ public class FullResolver {
             if (expr.Right != null) { this.ResolveExpr(expr.Right) }
             return
         }
+        if (k == NodeKind.LIST_COMP) {
+            // [proj for var in iter (if guard)?]: resolve iter in the
+            // outer scope, then push a scope so var shadows whatever
+            // outer binding has the same name while resolving the
+            // projection and guard.
+            if (expr.Right != null) { this.ResolveExpr(expr.Right) }
+            this.PushScope("list-comp")
+            var elemType = "?"
+            if (expr.Right != null) {
+                let colType = this.InferExprType(expr.Right)
+                elemType    = this.CollectionElemType(colType)
+            }
+            this.DeclareCurrent(expr.Str, elemType, true)
+            if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            if (expr.Cond != null) { this.ResolveExpr(expr.Cond) }
+            this.PopScope()
+            return
+        }
         if (k == NodeKind.ASSIGN) {
             this.ResolveAssign(expr)
             return
