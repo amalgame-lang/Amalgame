@@ -102,6 +102,11 @@ run_semantic() {
 run_idempotence "fmt_basic.am — idempotent"  "$SAMPLES/fmt_basic.am"
 run_semantic    "fmt_basic.am — semantic OK" "$SAMPLES/fmt_basic.am"
 
+# list_comp.am exercises features the Vala bootstrap doesn't understand
+# (NodeKind.LIST_COMP), so it goes here rather than run_tests.sh.
+run_idempotence "list_comp.am — idempotent"  "$SAMPLES/list_comp.am"
+run_semantic    "list_comp.am — semantic OK" "$SAMPLES/list_comp.am"
+
 echo ""
 echo "────────────────────────────────────────────"
 echo -e "  ${GREEN}PASS: $PASS${NC}  |  ${RED}FAIL: $FAIL${NC}"
