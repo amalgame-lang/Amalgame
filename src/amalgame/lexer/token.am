@@ -46,6 +46,7 @@ public enum TokenType {
     KW_INTERFACE
     KW_RECORD
     KW_FUNC
+    KW_GUARD
 
     // Operators
     OP_PLUS

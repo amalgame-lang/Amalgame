@@ -78,6 +78,7 @@ enum _Amalgame_Compiler_TokenType {
     Amalgame_Compiler_TokenType_KW_INTERFACE,
     Amalgame_Compiler_TokenType_KW_RECORD,
     Amalgame_Compiler_TokenType_KW_FUNC,
+    Amalgame_Compiler_TokenType_KW_GUARD,
     Amalgame_Compiler_TokenType_OP_PLUS,
     Amalgame_Compiler_TokenType_OP_MINUS,
     Amalgame_Compiler_TokenType_OP_STAR,
@@ -834,6 +835,9 @@ static Amalgame_Compiler_TokenType Amalgame_Compiler_Lexer_LookupKeyword(Amalgam
     if (code_string_equals(word, "func")) {
         return Amalgame_Compiler_TokenType_KW_FUNC;
     }
+    if (code_string_equals(word, "guard")) {
+        return Amalgame_Compiler_TokenType_KW_GUARD;
+    }
     return Amalgame_Compiler_TokenType_IDENTIFIER;
 }
 
@@ -1036,6 +1040,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseStmt(Amalgame_Co
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseVarDecl(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseReturn(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseIf(Amalgame_Compiler_Parser* self);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseGuard(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseWhile(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseForIn(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseEnum(Amalgame_Compiler_Parser* self, code_bool isPublic);
@@ -1676,6 +1681,9 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseStmt(Amalgame_Co
     if (code_string_equals(v, "match")) {
         return Amalgame_Compiler_Parser_ParseMatch(self);
     }
+    if (code_string_equals(v, "guard")) {
+        return Amalgame_Compiler_Parser_ParseGuard(self);
+    }
     if (code_string_equals(v, "{")) {
         return Amalgame_Compiler_Parser_ParseBlock(self);
     }
@@ -1768,6 +1776,31 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseIf(Amalgame_Comp
         }
     }
     return node;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseGuard(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
+    code_bool __attribute__((unused)) hasParen = Amalgame_Compiler_Parser_CheckValue(self, "(");
+    if (hasParen) {
+        Amalgame_Compiler_Parser_Advance(self);
+        self->ParenDepth = self->ParenDepth + 1;
+    }
+    Amalgame_Compiler_AstNode* __attribute__((unused)) cond = Amalgame_Compiler_Parser_ParseExpr(self);
+    if (hasParen) {
+        self->ParenDepth = self->ParenDepth - 1;
+        Amalgame_Compiler_Parser_Expect(self, ")");
+    }
+    Amalgame_Compiler_Parser_SkipNewlines(self);
+    if (Amalgame_Compiler_Parser_CheckKw(self, "else")) {
+        Amalgame_Compiler_Parser_Advance(self);
+    }
+    Amalgame_Compiler_Parser_SkipNewlines(self);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) body = Amalgame_Compiler_Parser_ParseBlock(self);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) neg = Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind_UNARY, tok->Line, tok->Column);
+    neg->Str = "!";
+    neg->Left = cond;
+    return Amalgame_Compiler_Ast_If(neg, body, tok->Line, tok->Column);
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseWhile(Amalgame_Compiler_Parser* self) {
@@ -4351,6 +4384,12 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
     }
     if (k == Amalgame_Compiler_NodeKind_UNARY) {
         code_string __attribute__((unused)) operand = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
+        if (expr->Left != NULL) {
+            Amalgame_Compiler_NodeKind __attribute__((unused)) lk = expr->Left->Kind;
+            if (lk == Amalgame_Compiler_NodeKind_BINARY) {
+                return code_string_concat(code_string_concat(code_string_concat(expr->Str, "("), operand), ")");
+            }
+        }
         return code_string_concat(expr->Str, operand);
     }
     if (k == Amalgame_Compiler_NodeKind_CALL) {
