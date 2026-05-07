@@ -103,6 +103,7 @@ public enum TokenType {
 
     // Special
     NEWLINE
+    COMMENT
     EOF
     UNKNOWN
 }

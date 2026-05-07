@@ -148,6 +148,7 @@ public class AmalgameCompiler {
 public class Program {
     public static void PrintUsage() {
         Console.WriteError("Usage: amc [options] file1.am [file2.am ...] -o <output>")
+        Console.WriteError("       amc fmt [-w] file.am [file.am ...]")
         Console.WriteError("")
         Console.WriteError("Options:")
         Console.WriteError("  -o <output>   Output file (default: a.out)")
@@ -159,6 +160,55 @@ public class Program {
         Console.WriteError("  --verbose     Print extra build info")
         Console.WriteError("  --version     Print version and exit")
         Console.WriteError("  --help        Print this help")
+        Console.WriteError("")
+        Console.WriteError("Subcommands:")
+        Console.WriteError("  fmt           Format Amalgame source. Default: print to stdout.")
+        Console.WriteError("                With -w, rewrite files in place.")
+    }
+
+    // ── fmt subcommand ─────────────────────────────────
+    public static int RunFmt(int argc) {
+        var write = false
+        let files = new List<string>()
+        var i = 2
+        while (i < argc) {
+            let a = Args_Get(i)
+            if (a == "-w" || a == "--write") {
+                write = true
+            } else if (String_EndsWith(a, ".am")) {
+                files.Add(a)
+            } else {
+                Console.WriteError("amc fmt: unknown argument '" + a + "'")
+                return 1
+            }
+            i = i + 1
+        }
+        if (files.Count() == 0) {
+            Console.WriteError("amc fmt: no input .am files")
+            return 1
+        }
+        let n = files.Count()
+        for j in 0..n {
+            let path = files.Get(j)
+            let src  = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            if (par.HasErrors()) {
+                Console.WriteError("amc fmt: parse errors in " + path)
+                Console.WriteError(par.GetErrors())
+                return 1
+            }
+            let fmt = new Formatter(par.Comments)
+            let out = fmt.Format(prog)
+            if (write) {
+                File.WriteAll(path, out)
+            } else {
+                Console.Write(out)
+            }
+        }
+        return 0
     }
 
     public static void Main(string[] args) {
@@ -166,6 +216,10 @@ public class Program {
         if (argc < 2) {
             Program.PrintUsage()
             Exit_Set(1)
+            return
+        }
+        if (Args_Get(1) == "fmt") {
+            Exit_Set(Program.RunFmt(argc))
             return
         }
 
