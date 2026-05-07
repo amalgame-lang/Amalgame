@@ -13,14 +13,31 @@ public class Parser {
     // Comma-separated decorator names (`@inline @deprecated`) parsed before
     // the next method/class. Consumed (and cleared) when that decl is built.
     private PendingDecorators: string
+    // COMMENT tokens, stripped from the main stream so the rest of the parser
+    // never has to know they exist. The formatter reads them back via Comments.
+    public Comments: List<Token>
 
     public Parser(List<Token> tokens) {
-        this.Tokens             = tokens
-        this.TokenCount         = tokens.Count()
+        let filtered = new List<Token>()
+        let comments = new List<Token>()
+        let total    = tokens.Count()
+        var i = 0
+        while (i < total) {
+            let t: Token = tokens.Get(i)
+            if (t.Type == TokenType.COMMENT) {
+                comments.Add(t)
+            } else {
+                filtered.Add(t)
+            }
+            i = i + 1
+        }
+        this.Tokens             = filtered
+        this.TokenCount         = filtered.Count()
         this.Pos                = 0
         this.Errors             = new List<string>()
         this.ParenDepth         = 0
         this.PendingDecorators  = ""
+        this.Comments           = comments
     }
 
     // Parse zero-or-more `@<name>` annotations into a comma-separated list
@@ -292,6 +309,9 @@ public class Parser {
             }
             this.SkipNewlines()
         }
+        // Record the line of the closing `}` for amc fmt (see ParseBlock).
+        let clsClose = this.Current()
+        cls.Str2 = String_FromInt(clsClose.Line)
         this.Expect("}")
         return cls
     }
@@ -580,6 +600,11 @@ public class Parser {
             hadProgress = true
             this.SkipNewlines()
         }
+        // Record the line of the closing `}` so amc fmt can preserve
+        // blank-line spacing across block boundaries. Used only by the
+        // formatter; other passes ignore Str2 on BLOCK nodes.
+        let closeTok = this.Current()
+        block.Str2 = String_FromInt(closeTok.Line)
         this.Expect("}")
         return block
     }
