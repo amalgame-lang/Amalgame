@@ -20,7 +20,7 @@ sudo apt install libgc-dev libcurl4-openssl-dev valac
 ## 2. Structure du projet
 
 ```
-src/amalgame/          ← Code source du compilateur en Amalgame
+src/          ← Code source du compilateur en Amalgame
   lexer/
     token.am           ← Définition des 132 TokenTypes (enum)
     lexer.am           ← Tokenizer : ReadString, ReadNumber, ReadSymbol
@@ -39,7 +39,7 @@ src/amalgame/          ← Code source du compilateur en Amalgame
   main.am              ← AmalgameCompiler.Run() : pipeline complet
   amc_main.c           ← Entry point C : parse CLI, appelle Run()
 
-src/transpiler/runtime/   ← Headers C du runtime
+runtime/   ← Headers C du runtime
   _runtime.h             ← AmalgameList, types de base, File_StreamLine
   Amalgame_String.h      ← String_* functions
   Amalgame_Collections.h ← List/Map/Set helpers
@@ -81,7 +81,7 @@ hello.am
   ▼ amc (Lexer → Parser → Resolver → TypeChecker → CGen)
 hello.c
   │
-  ▼ gcc -Isrc/transpiler/runtime hello.c -lgc -lm
+  ▼ gcc -Iruntime hello.c -lgc -lm
 hello (binaire)
 ```
 
@@ -92,24 +92,24 @@ hello (binaire)
 ### Modifier le compilateur
 
 ```bash
-# 1. Éditer un .am dans src/amalgame/
+# 1. Éditer un .am dans src/
 # 2. Rebuild :
-./build/amc src/amalgame/lexer/token.am src/amalgame/lexer/lexer.am \
-            src/amalgame/parser/ast.am src/amalgame/parser/parser.am \
-            src/amalgame/generator/c_gen.am src/amalgame/resolver/symbol.am \
-            src/amalgame/resolver/resolver.am \
-            src/amalgame/diagnostics.am src/amalgame/typechecker.am \
-            src/amalgame/main.am src/amalgame/generator/gen_test.am \
+./build/amc src/lexer/token.am src/lexer/lexer.am \
+            src/parser/ast.am src/parser/parser.am \
+            src/generator/c_gen.am src/resolver/symbol.am \
+            src/resolver/resolver.am \
+            src/diagnostics.am src/typechecker.am \
+            src/main.am src/generator/gen_test.am \
             -o gen_test
 
 # 3. Recompiler gen_test en -O2 (IMPORTANT pour la vitesse)
-gcc -O2 -Isrc/transpiler/runtime gen_test.c -lgc -lm -o gen_test
+gcc -O2 -Iruntime gen_test.c -lgc -lm -o gen_test
 
 # 4. Générer amc_lib.c
 ./gen_test
 
 # 5. Compiler amc
-gcc -Isrc/transpiler/runtime src/amalgame/amc_lib.c src/amalgame/amc_main.c \
+gcc -Iruntime src/amc_lib.c src/amc_main.c \
     -lgc -lm -lcurl -o amc
 
 # 6. Tester
@@ -118,7 +118,7 @@ gcc -Isrc/transpiler/runtime src/amalgame/amc_lib.c src/amalgame/amc_main.c \
 
 ### Ajouter un nouveau fichier .am au compilateur
 
-1. Créer `src/amalgame/monmodule.am`
+1. Créer `src/monmodule.am`
 2. L'ajouter dans la commande build (liste des `.am`)
 3. L'ajouter dans `gen_test.am` :
    - Parse block (copier le pattern `resPath/resSrc/resLex/...`)
@@ -269,7 +269,7 @@ run_test "ma feature" "$SAMPLES/montest.am" "sortie attendue"
 ### Tester un sample manuellement
 ```bash
 ./amc tests/samples/hello.am -o /tmp/hello
-gcc -Isrc/transpiler/runtime /tmp/hello.c -lgc -lm -o /tmp/hello_bin
+gcc -Iruntime /tmp/hello.c -lgc -lm -o /tmp/hello_bin
 /tmp/hello_bin
 ```
 
@@ -282,7 +282,7 @@ gcc -Isrc/transpiler/runtime /tmp/hello.c -lgc -lm -o /tmp/hello_bin
 git checkout -b feat/ma-feature
 
 # Après développement + tests verts
-git add src/amalgame/ tests/
+git add src/ tests/
 git commit -m "feat: description courte
 
 - détail 1
@@ -295,11 +295,11 @@ git push origin main
 ```
 
 ### Fichiers générés à committer
-- `src/amalgame/amc_lib.c` ✅ (représente l'état du compilateur)
-- `src/amalgame/amc_bootstrap_lib.c` ✅
-- `src/amalgame/lexer/*_bootstrap.c` ✅
-- `src/amalgame/parser/*_bootstrap.c` ✅
-- `src/amalgame/generator/cgen_bundle_bootstrap.c` ✅
+- `src/amc_lib.c` ✅ (représente l'état du compilateur)
+- `src/amc_bootstrap_lib.c` ✅
+- `src/lexer/*_bootstrap.c` ✅
+- `src/parser/*_bootstrap.c` ✅
+- `src/generator/cgen_bundle_bootstrap.c` ✅
 
 ### Fichiers à ne PAS committer
 - `gen_test`, `gen_test.c`, `gen_bootstrap`, `gen_bootstrap.c`

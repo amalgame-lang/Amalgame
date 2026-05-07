@@ -51,11 +51,11 @@ public class BootstrapTest {
 public class Program {
     public static void Main(string[] args) {
         let test = new BootstrapTest()
-        test.AddFile("./src/amalgame/lexer/token.am")
-        test.AddFile("./src/amalgame/lexer/lexer.am")
-        test.AddFile("./src/amalgame/parser/ast.am")
-        test.AddFile("./src/amalgame/parser/parser.am")
-        test.AddFile("./src/amalgame/resolver/symbol.am")
+        test.AddFile("./src/lexer/token.am")
+        test.AddFile("./src/lexer/lexer.am")
+        test.AddFile("./src/parser/ast.am")
+        test.AddFile("./src/parser/parser.am")
+        test.AddFile("./src/resolver/symbol.am")
         test.Run()
     }
 }

@@ -1,189 +1,142 @@
-# Amalgame — Continuation Guide
-## Pour reprendre le travail dans une nouvelle conversation
+# Continuation prompt — start a new chat with this
+
+> Last refreshed 2026-05-07 after merging `feature/docs-user-guide`.
+> The block below is a self-contained prompt designed to bootstrap a
+> new Claude session with full context. Copy-paste it as your first
+> message in a fresh conversation.
 
 ---
 
-## État actuel du projet (mai 2026)
-
-### Repository
-- **GitHub** : https://github.com/BastienMOUGET/Amalgame
-- **Branche active** : `feature/bootstrap`
-- **Version** : v0.9.5
-- **Tests** : 126/126 PASS (76 core + 50 stdlib)
-
-### Ce qui existe
-
-#### Compilateur Vala (archive/vala-bootstrap/src/core/ + src/transpiler/)
-Le compilateur `amc` (Amalgame → C → binaire) est complet et fonctionnel.
-Pipeline : source.am → Lexer → Parser → Resolver → TypeChecker → CGenerator → GCC
-Build : `./compile.sh` (meson + ninja)
-
-#### Bootstrap Amalgame (src/amalgame/)
-Le compilateur écrit en Amalgame lui-même — objectif final du bootstrap.
-
 ```
-src/amalgame/
-├── lexer/
-│   ├── token.am      — TokenType enum + Token class ✅ → C sans warnings ✅
-│   ├── lexer.am      — Lexer complet ✅
-│   └── lexer_test.am — Test
-├── parser/
-│   ├── ast.am        — AstNode flat + Ast factory ✅ → C sans warnings ✅
-│   ├── parser.am     — Parser récursif descendant ✅
-│   └── parser_test_real.am — Test
-├── resolver/
-│   ├── symbol.am     — SymbolTable + Resolver ✅
-│   └── resolver_test.am — Test cross-fichiers ✅
-├── generator/
-│   ├── c_gen.am      — Générateur C ✅ (v0.9.5)
-│   └── gen_test.am   — Test : génère token.am + ast.am → C → GCC OK ✅
-├── diagnostics.am    — DiagnosticFormatter ✅
-└── main.am           — Point d'entrée compilateur bootstrap ✅
-```
+I'm working on Amalgame, a self-hosted programming language that
+transpiles to C. I keep the project in
+/home/neitsab/Développement/Amalgame.
 
-#### Pipeline bootstrap fonctionnel (v0.9.5)
-```
-token.am → CGen → token.am_bootstrap.c → GCC sans warnings ✅
-ast.am   → CGen → ast.am_bootstrap.c   → GCC sans warnings ✅
-lexer.am → CGen → lexer.am_bootstrap.c → GCC ← PROCHAINE ÉTAPE (v0.9.6)
-```
+Current state (May 2026):
 
----
+- The compiler `amc` is written in Amalgame in src/ and compiles
+  itself in ~5 seconds via ./build_amc.sh. The Vala bootstrap that
+  originally created it lives in archive/vala-bootstrap/ as a
+  recovery path; ./compile.sh rebuilds it on demand.
+- The runtime headers are at runtime/. The two compilers and the
+  compile.sh / build_amc.sh scripts already know the layout.
+- 127/127 tests pass (76 core via tests/run_tests.sh + 50 stdlib via
+  tests/run_stdlib_tests.sh + 1 lib end-to-end). Run them with
+  ./tests/run_all_tests.sh.
+- Multi-OS CI is wired (.github/workflows/ci.yml) — Linux + macOS +
+  Windows MSYS2.
+- Releases are automated on `v*` tag (.github/workflows/release.yml)
+  with bundled DLLs on Windows.
+- VS Code syntax highlighting lives in editors/vscode/ — install via
+  `ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.1.0`.
+- Comprehensive user guide at docs/guide/README.md (chapters 1–7).
+- Project README at the repo root sells the language with tested
+  code samples.
 
-## Ce qui a été fait en v0.9.5 (session mai 2026)
+Workflow rules I've already established:
 
-### Changements dans c_gen.am
-1. **Type inference** : `let n = new AstNode(...)` → `Amalgame_Compiler_AstNode* n` (plus de `void*`)
-2. **`new List<T>()`** : parser bootstrap strip les génériques → `node.Name = "List"` → géré dans `TypeToC` et `EmitExprStr`
-3. **Constructeurs avec params** : `_new()` prend les params du constructeur Amalgame et exécute le body
-4. **Enums sans pointeur** : `TypeToC("NodeKind")` → `Amalgame_Compiler_NodeKind` (pas de `*`)
-   - `EnumNames` list alimentée dans `EmitForwardDecl`
-   - `IsEnum()` consulté dans `TypeToC` et `InferTypeFromExpr`
-5. **`== / !=` type-aware** : string → `code_string_equals()`, enum/int/bool → `==`/`!=` C direct
-6. **Inférence de champs** : `let v = this.Type` → inféré comme `Amalgame_Compiler_TokenType` via `FieldTypeGet`
-7. **`(void)self; (void)param;`** : suppression des `-Wunused-parameter`
-8. **`public` vs `private`** : méthodes `public` émises sans `static` en C
-9. **Args dans `_new()`** : `new AstNode(kind, line, col)` → `AstNode_new(kind, line, col)` avec args
+- gitflow: never commit directly to main or develop. Every change
+  goes through a feature/<name> branch → PR → merge into develop.
+- Push feature branches to origin without asking for confirmation.
+  Don't push develop or main automatically — I handle those merges.
+- Use TodoWrite for multi-step plans, but don't be precious about it
+  for one-shot changes.
+- The Vala compiler in archive/ is intentionally on the cold path:
+  most builds use ./amc, falling back to ./build/amc only when ./amc
+  is missing. Both are kept working.
 
-### Changements dans _runtime.h
-- `static AmalgameException _am_ex = { {{0}}, ... }` → `static AmalgameException _am_ex;`
-  (zero-init garanti par C99 §6.7.8/10 pour les variables statiques — plus de `-Wmissing-braces`)
+Where I'd like to head next (from ROADMAP_COMPLET.md, ordered by
+unlocked-value per days-of-work):
 
----
+  1. amc fmt — formatter that re-emits a parsed AST canonically.
+  2. List comprehensions [x*2 for x in xs if x > 0] via GCC compound
+     stmt expressions.
+  3. Match as expression `let x = match y { … }`.
+  4. Minimal LSP (amc lsp mode, stdio JSON-RPC).
+  5. Capturing closures.
+  6. Generic type inference.
 
-## Prochaines étapes
+Pick whichever fits the time we have, ask if you need direction.
+Read docs/guide/07-internals.md for compiler architecture before
+making non-trivial changes.
 
-### v0.9.6 — lexer.am → C sans erreurs/warnings
+Quick checks I always want you to run before claiming a feature is
+done:
 
-Problèmes identifiés à corriger dans c_gen.am :
+  ./build_amc.sh
+  ./tests/run_all_tests.sh
 
-**1. `else if` chaîné**
-- Parser bootstrap : `else if` stocké comme `node.Else = IF_STMT`
-- CGen actuel : `stmt.Else != null` → `EmitBlock(stmt.Else)` → émet IF comme statement dans un bloc else
-- Fix : détecter `stmt.Else.Kind == IF_STMT` → émettre `} else if (...) {` récursivement
-
-**2. `for i in 0..count` → émet juste un commentaire**
-- CGen émet `/* for i in count */` — non compilable
-- Fix : `for (i64 i = START; i < END; i++) { ... }`
-- Parser : `FOR_IN_STMT` avec `stmt.Name = "i"`, `stmt.Left = début`, `stmt.Right = fin` (à vérifier)
-
-**3. `this.Field.Method()` en statement**
-- `this.Tokens.Add(tok)` → CALL avec callee = MEMBER(MEMBER(THIS,"Tokens"),"Add")
-- `TryEmitListCall` Case 2 doit matcher ce pattern — à valider
-
-**4. Méthodes retournant `List<Token>`**
-- `TypeToC` gère `List<` → `AmalgameList*` ✅
-- Mais le parser bootstrap stocke le return type tel quel : `"List<Token>"` → vérifier
-
-### v0.9.7 — parser.am + symbol.am → C compilable
-
-### v0.9.8 — Linker tout + amc_bootstrap binaire
-
----
-
-## Comment reprendre dans une nouvelle conversation
-
-Dis à Claude :
-
-```
-Je travaille sur le langage Amalgame (transpiler Amalgame → C).
-Branche feature/bootstrap, version v0.9.5, 126/126 tests.
-
-Context :
-- Compilateur Vala fonctionnel (amc) : ./build/amc (archive/vala-bootstrap/src/core/ + src/transpiler/)
-- Bootstrap en cours : src/amalgame/ (lexer, parser, resolver, generator)
-- token.am et ast.am → C sans warnings GCC ✅
-- Prochaine étape : v0.9.6 — lexer.am → C sans erreurs
-
-Lire CONTINUATION.md pour le détail.
-Commencer par : ./tests/run_all_tests.sh puis coller le résultat.
+If a sample I write doesn't compile, narrow it down with --check
+before suspecting the language. The biggest known limitation is
+that match arms are statements (no match-as-expression).
 ```
 
 ---
 
-## Architecture technique
+## What's actually in the repo right now
 
-### Pipeline Vala (actuel, stable)
+For quick recall when reopening the project:
+
 ```
-*.am → Lexer.vala → Parser.vala → Resolver.vala → TypeChecker.vala
-     → CGenerator.vala → GCC → binaire
-```
+src/                    ← Amalgame compiler in Amalgame
+├── lexer/                token.am, lexer.am
+├── parser/               ast.am, parser.am
+├── resolver/             symbol.am, resolver.am
+├── generator/            c_gen.am, gen_test.am
+├── typechecker.am
+├── diagnostics.am
+├── main.am               (CLI entry — replaces the old amc_main.c)
+└── amc_lib.c             (generated)
 
-### Pipeline Bootstrap (objectif)
-```
-*.am → amc_bootstrap (écrit en Amalgame) → C → GCC → binaire
-```
-
----
-
-## Commandes utiles
-
-```bash
-# Build compilateur Vala
-./compile.sh
-
-# Tests complets
-./tests/run_all_tests.sh
-
-# Pipeline bootstrap (compile + génère les .c)
-./build/amc src/amalgame/lexer/token.am \
-            src/amalgame/lexer/lexer.am \
-            src/amalgame/parser/ast.am \
-            src/amalgame/parser/parser.am \
-            src/amalgame/generator/c_gen.am \
-            src/amalgame/generator/gen_test.am \
-            -o gen_test && ./gen_test
-
-# Vérifier le C généré
-gcc -Wall -Wextra -Isrc/transpiler/runtime \
-    src/amalgame/lexer/token.am_bootstrap.c -lgc -c 2>&1
-gcc -Wall -Wextra -Isrc/transpiler/runtime \
-    src/amalgame/parser/ast.am_bootstrap.c -lgc -c 2>&1
-gcc -Wall -Wextra -Isrc/transpiler/runtime \
-    src/amalgame/lexer/lexer.am_bootstrap.c -lgc -c 2>&1
+runtime/                ← C runtime (bdwgc, strings, IO, collections, net)
+stdlib/strings.am       ← stdlib API reference (declarations only)
+tests/                  ← 127 sample programs + integration suites
+docs/guide/             ← user guide chapters 1–7
+archive/vala-bootstrap/ ← original Vala compiler (recovery)
+editors/vscode/         ← VS Code syntax highlighting extension
+.github/workflows/      ← CI + Release automation
+install/                ← Homebrew / Inno Setup / install.sh
+README.md               ← elevator pitch + tested samples
+ROADMAP_COMPLET.md      ← canonical "what's next" board
 ```
 
----
+## Memory the assistant has about this project
 
-## Limitations Amalgame documentées (pour le bootstrap)
+The session-persistent memory store at
+`~/.claude/projects/-home-neitsab-D-veloppement-Amalgame/memory/`
+already holds:
 
-1. Pas de `char` literals → utiliser strings à 1 char
-2. `while (cond)` → parenthèses requises
-3. `&&`/`||` multilignes → seulement dans `(...)`
-4. `AstNode?` comme return type → utiliser sentinel/null check manuel
-5. `super()` → non supporté (héritage limité)
-6. `return null` dans méthode non-nullable → erreur TypeChecker
-7. `;` non supporté pour multiple stmts sur une ligne
-8. `for x in 0..n` → syntaxe standard Amalgame
-9. String interpolation `{expr}` → non générée par CGen bootstrap (émise telle quelle)
-10. Parser bootstrap strip les génériques : `new List<T>()` → `node.Name = "List"` (sans `<T>`)
+- `project_amalgame.md` — project overview
+- `reference_build.md` — build/test commands, file roles
+- `feedback_gitflow.md` — features always on develop, never on main directly
+- `feedback_push.md` — push feature branches without asking
 
----
+A new session reads these automatically and can apply them.
 
-## Ce qui manque encore dans CGen pour compiler main.am
+## Common pitfalls when resuming
 
-- `args.Length()` → méthode sur `string[]`
-- `args.Get(i)` → accès indexé sur tableau
-- `Console.WriteError()` → stderr output
-- Variables globales / static fields
-- String interpolation `{expr}` → `code_string_format(...)`
+1. **Bootstrap circularity** — when you add a runtime helper or
+   builtin, the running `amc` doesn't know about it until you rebuild.
+   `build_amc.sh` step 1 tolerates non-zero exit from `amc` if the
+   `.c` file was produced; gcc remains the real correctness gate.
+
+2. **File order in `AMC_SOURCES`** — `diagnostics.am` must come
+   before files that reference `SourceMap` / `SourceSnippet`.
+   `main.am` is intentionally **excluded** from the gen_test build
+   list because it carries a `Program.Main` that conflicts with
+   `gen_test.am`'s own.
+
+3. **Match arms are statements**, not expressions. Don't write
+   `let x = match y { … }`. Use early-returns inside arms or assign
+   in each branch.
+
+4. **Generics erase to `void*`** — primitive collection elements are
+   boxed via `(void*)(intptr_t)` and unboxed on `Get`. Don't expect
+   `xs.Get(i)` to return a typed value through generic boundaries.
+
+5. **`?.` evaluates the receiver twice** — keep the receiver
+   side-effect-free, or extract it to a `let` first.
+
+6. **`.github/workflow/` (no `s`)** is a leftover typo dir alongside
+   `.github/workflows/`. GitHub ignores the typoed one. Cleanup
+   pending.
