@@ -17,6 +17,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/parser/ast.am \
              src/parser/parser.am \
              src/generator/c_gen.am \
+             src/formatter/formatter.am \
              src/diagnostics.am \
              src/resolver/symbol.am \
              src/resolver/resolver.am \
