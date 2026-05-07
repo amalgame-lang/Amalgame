@@ -107,6 +107,10 @@ run_semantic    "fmt_basic.am — semantic OK" "$SAMPLES/fmt_basic.am"
 run_idempotence "list_comp.am — idempotent"  "$SAMPLES/list_comp.am"
 run_semantic    "list_comp.am — semantic OK" "$SAMPLES/list_comp.am"
 
+# match-as-expression (let x = match y { ... }) — also self-host only.
+run_idempotence "match_expr.am — idempotent"  "$SAMPLES/match_expr.am"
+run_semantic    "match_expr.am — semantic OK" "$SAMPLES/match_expr.am"
+
 echo ""
 echo "────────────────────────────────────────────"
 echo -e "  ${GREEN}PASS: $PASS${NC}  |  ${RED}FAIL: $FAIL${NC}"
