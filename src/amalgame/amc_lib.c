@@ -34,7 +34,7 @@ typedef struct _Amalgame_Compiler_TypeError Amalgame_Compiler_TypeError;
 typedef struct _Amalgame_Compiler_TypeCheckResult Amalgame_Compiler_TypeCheckResult;
 typedef struct _Amalgame_Compiler_TypeChecker Amalgame_Compiler_TypeChecker;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
-typedef struct _Amalgame_Compiler_AmcEntry Amalgame_Compiler_AmcEntry;
+typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
 enum _Amalgame_Compiler_TokenType {
     Amalgame_Compiler_TokenType_INTEGER,
@@ -2891,6 +2891,15 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (String_StartsWith(calleeStr, "String_")) {
                 return "code_string";
             }
+            if (code_string_equals(calleeStr, "Args_Count") || code_string_equals(calleeStr, "Exit_Get")) {
+                return "i64";
+            }
+            if (code_string_equals(calleeStr, "Args_Get")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Exit_Set")) {
+                return "void";
+            }
             if (String_EndsWith(calleeStr, "_CharAt")) {
                 return "code_string";
             }
@@ -3185,7 +3194,7 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
     s = String_Replace(s, "\\r", "\\r");
-    s = String_Replace(s, "\x1b", "\\x1b");
+    s = String_Replace(s, "140367026837680", "\\x1b");
     return s;
 }
 
@@ -4674,55 +4683,55 @@ Amalgame_Compiler_Ansi* Amalgame_Compiler_Ansi_new() {
 }
 
 code_string Amalgame_Compiler_Ansi_Reset() {
-    return "\x1b[0m";
+    return "140367039149584[0m";
 }
 
 code_string Amalgame_Compiler_Ansi_Bold() {
-    return "\x1b[1m";
+    return "140367039148784[1m";
 }
 
 code_string Amalgame_Compiler_Ansi_Dim() {
-    return "\x1b[2m";
+    return "140367039160240[2m";
 }
 
 code_string Amalgame_Compiler_Ansi_Red() {
-    return "\x1b[31m";
+    return "140367039159392[31m";
 }
 
 code_string Amalgame_Compiler_Ansi_Yellow() {
-    return "\x1b[33m";
+    return "140367039158464[33m";
 }
 
 code_string Amalgame_Compiler_Ansi_Cyan() {
-    return "\x1b[36m";
+    return "140367039157536[36m";
 }
 
 code_string Amalgame_Compiler_Ansi_Green() {
-    return "\x1b[32m";
+    return "140367039156640[32m";
 }
 
 code_string Amalgame_Compiler_Ansi_Blue() {
-    return "\x1b[34m";
+    return "140367039426032[34m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldRed() {
-    return "\x1b[1;31m";
+    return "140367039424624[1;31m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldYellow() {
-    return "\x1b[1;33m";
+    return "140367039423616[1;33m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldCyan() {
-    return "\x1b[1;36m";
+    return "140367039422800[1;36m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldGreen() {
-    return "\x1b[1;32m";
+    return "140367039671600[1;32m";
 }
 
 code_string Amalgame_Compiler_Ansi_BoldBlue() {
-    return "\x1b[1;34m";
+    return "140367039670624[1;34m";
 }
 
 struct _Amalgame_Compiler_SourceMap {
@@ -5717,6 +5726,10 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToFloat", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromInt", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromByte", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Count", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Get", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Set", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Get", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromFloat", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_From", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_CharAt", "string", 0);
@@ -7567,8 +7580,9 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     if (!isLibrary) {
         File_AppendAll(outC, "\nint main(int argc, char** argv) {\n");
         File_AppendAll(outC, "    GC_INIT();\n");
+        File_AppendAll(outC, "    code_runtime_init_args(argc, argv);\n");
         File_AppendAll(outC, code_string_concat(code_string_concat("    ", mainFunc), "((code_string*)argv);\n"));
-        File_AppendAll(outC, "    return 0;\n");
+        File_AppendAll(outC, "    return code_exit_code;\n");
         File_AppendAll(outC, "}\n");
     } else {
         File_AppendAll(outC, "\n/* Library — no entry point */\n");
@@ -7578,17 +7592,100 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     Amalgame_Compiler_DiagnosticFormatter_PrintCompileOk(self->Diag, "Build");
 }
 
-struct _Amalgame_Compiler_AmcEntry {
+struct _Amalgame_Compiler_Program {
 };
 
-void Amalgame_Compiler_AmcEntry_AmcStart();
+void Amalgame_Compiler_Program_PrintUsage();
+void Amalgame_Compiler_Program_Main(code_string* args);
 
-Amalgame_Compiler_AmcEntry* Amalgame_Compiler_AmcEntry_new() {
-    Amalgame_Compiler_AmcEntry* self = (Amalgame_Compiler_AmcEntry*) GC_MALLOC(sizeof(Amalgame_Compiler_AmcEntry));
+Amalgame_Compiler_Program* Amalgame_Compiler_Program_new() {
+    Amalgame_Compiler_Program* self = (Amalgame_Compiler_Program*) GC_MALLOC(sizeof(Amalgame_Compiler_Program));
     return self;
 }
 
-void Amalgame_Compiler_AmcEntry_AmcStart() {
-    Console_WriteError("Use amc binary directly");
+void Amalgame_Compiler_Program_PrintUsage() {
+    Console_WriteError("Usage: amc [options] file1.am [file2.am ...] -o <output>");
+    Console_WriteError("");
+    Console_WriteError("Options:");
+    Console_WriteError("  -o <output>   Output file (default: a.out)");
+    Console_WriteError("  --lib         Compile as library (no main() emitted)");
+    Console_WriteError("  --check       Type-check only, no code generation");
+    Console_WriteError("  --color       Force ANSI color output");
+    Console_WriteError("  --no-color    Disable ANSI color output");
+    Console_WriteError("  --quiet       Suppress progress messages");
+    Console_WriteError("  --verbose     Print extra build info");
+    Console_WriteError("  --version     Print version and exit");
+    Console_WriteError("  --help        Print this help");
 }
 
+void Amalgame_Compiler_Program_Main(code_string* args) {
+    (void)args;
+    i64 __attribute__((unused)) argc = Args_Count();
+    if (argc < 2) {
+        Amalgame_Compiler_Program_PrintUsage();
+        Exit_Set(1);
+        return;
+    }
+    AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
+    code_string __attribute__((unused)) outputName = "a.out";
+    code_bool __attribute__((unused)) isLib = 0;
+    code_bool __attribute__((unused)) checkOnly = 0;
+    code_bool __attribute__((unused)) useColor = 0;
+    code_bool __attribute__((unused)) verbose = 1;
+    i64 __attribute__((unused)) i = 1;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-o") && i + 1 < argc) {
+            i = i + 1;
+            outputName = Args_Get(i);
+        } else if (code_string_equals(a, "--lib")) {
+            isLib = 1;
+        } else if (code_string_equals(a, "--check")) {
+            checkOnly = 1;
+        } else if (code_string_equals(a, "--color")) {
+            useColor = 1;
+        } else if (code_string_equals(a, "--no-color")) {
+            useColor = 0;
+        } else if (code_string_equals(a, "--quiet")) {
+            verbose = 0;
+        } else if (code_string_equals(a, "--verbose")) {
+            verbose = 1;
+        } else if (code_string_equals(a, "--version")) {
+            Console_WriteLine("amc 0.1.0 (self-hosted Amalgame compiler)");
+            Exit_Set(0);
+            return;
+        } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {
+            Amalgame_Compiler_Program_PrintUsage();
+            Exit_Set(0);
+            return;
+        } else if (String_EndsWith(a, ".am")) {
+            AmalgameList_add(inputFiles, (void*)(intptr_t)(a));
+        } else {
+            Console_WriteError(code_string_concat(code_string_concat("amc: unknown option '", a), "'"));
+            Amalgame_Compiler_Program_PrintUsage();
+            Exit_Set(1);
+            return;
+        }
+        i = i + 1;
+    }
+    if (AmalgameList_count(inputFiles) == 0) {
+        Console_WriteError("amc: no input .am files");
+        Exit_Set(1);
+        return;
+    }
+    Amalgame_Compiler_AmalgameCompiler* __attribute__((unused)) compiler = Amalgame_Compiler_AmalgameCompiler_new();
+    Amalgame_Compiler_AmalgameCompiler_SetLib(compiler, isLib);
+    Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(compiler, checkOnly);
+    Amalgame_Compiler_AmalgameCompiler_SetColor(compiler, useColor);
+    Amalgame_Compiler_AmalgameCompiler_SetVerbose(compiler, verbose);
+    Amalgame_Compiler_AmalgameCompiler_Run(compiler, inputFiles, outputName);
+    Exit_Set(Amalgame_Compiler_AmalgameCompiler_GetExitCode(compiler));
+}
+
+
+int main(int argc, char** argv) {
+    GC_INIT();
+    code_runtime_init_args(argc, argv);
+    Amalgame_Compiler_Program_Main((code_string*)argv);
+    return code_exit_code;
+}

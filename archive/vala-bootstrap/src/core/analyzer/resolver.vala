@@ -347,6 +347,7 @@ namespace CodeTranspiler.Analyzer {
                         "String_PadRight",
                         "String_ToInt", "String_ToFloat",
                         "String_ToBool", "String_FromInt",
+                        "String_FromByte",
                         "String_FromFloat", "String_FromBool",
                         "String_CharAt", "String_IsDigit",
                         "String_IsAlpha", "String_IsAlnum"
