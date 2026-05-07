@@ -25,6 +25,8 @@ typedef struct _Amalgame_Compiler_Resolver Amalgame_Compiler_Resolver;
 typedef struct _Amalgame_Compiler_MemberTable Amalgame_Compiler_MemberTable;
 typedef struct _Amalgame_Compiler_FullResolver Amalgame_Compiler_FullResolver;
 typedef struct _Amalgame_Compiler_Ansi Amalgame_Compiler_Ansi;
+typedef struct _Amalgame_Compiler_SourceMap Amalgame_Compiler_SourceMap;
+typedef struct _Amalgame_Compiler_SourceSnippet Amalgame_Compiler_SourceSnippet;
 typedef enum _Amalgame_Compiler_DiagSeverity Amalgame_Compiler_DiagSeverity;
 typedef struct _Amalgame_Compiler_Diagnostic Amalgame_Compiler_Diagnostic;
 typedef struct _Amalgame_Compiler_DiagnosticFormatter Amalgame_Compiler_DiagnosticFormatter;
@@ -6065,6 +6067,114 @@ code_string Amalgame_Compiler_Ansi_BoldBlue() {
     return " ";
 }
 
+struct _Amalgame_Compiler_SourceMap {
+    AmalgameList* Paths;
+    AmalgameList* Texts;
+};
+
+void Amalgame_Compiler_SourceMap_Add(Amalgame_Compiler_SourceMap* self, code_string path, code_string text);
+code_string Amalgame_Compiler_SourceMap_GetLine(Amalgame_Compiler_SourceMap* self, code_string path, i64 line);
+static code_string Amalgame_Compiler_SourceMap_NthLine(Amalgame_Compiler_SourceMap* self, code_string text, i64 line);
+
+Amalgame_Compiler_SourceMap* Amalgame_Compiler_SourceMap_new() {
+    Amalgame_Compiler_SourceMap* self = (Amalgame_Compiler_SourceMap*) GC_MALLOC(sizeof(Amalgame_Compiler_SourceMap));
+    self->Paths = AmalgameList_new();
+    self->Texts = AmalgameList_new();
+    return self;
+}
+
+void Amalgame_Compiler_SourceMap_Add(Amalgame_Compiler_SourceMap* self, code_string path, code_string text) {
+    (void)self;
+    (void)path;
+    (void)text;
+    i64 __attribute__((unused)) count = AmalgameList_count(self->Paths);
+    for (i64 i = 0; i < count; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->Paths, i), path)) {
+            return;
+        }
+    }
+    AmalgameList_add(self->Paths, (void*)(intptr_t)(path));
+    AmalgameList_add(self->Texts, (void*)(intptr_t)(text));
+}
+
+code_string Amalgame_Compiler_SourceMap_GetLine(Amalgame_Compiler_SourceMap* self, code_string path, i64 line) {
+    (void)self;
+    (void)path;
+    (void)line;
+    i64 __attribute__((unused)) count = AmalgameList_count(self->Paths);
+    for (i64 i = 0; i < count; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->Paths, i), path)) {
+            return Amalgame_Compiler_SourceMap_NthLine(self, (code_string)AmalgameList_get(self->Texts, i), line);
+        }
+    }
+    return "";
+}
+
+static code_string Amalgame_Compiler_SourceMap_NthLine(Amalgame_Compiler_SourceMap* self, code_string text, i64 line) {
+    (void)self;
+    (void)text;
+    (void)line;
+    i64 __attribute__((unused)) len = String_Length(text);
+    i64 __attribute__((unused)) current = 1;
+    i64 __attribute__((unused)) start = 0;
+    i64 __attribute__((unused)) i = 0;
+    while (i < len) {
+        code_string __attribute__((unused)) ch = String_Substring(text, i, 1);
+        if (code_string_equals(ch, "\n")) {
+            if (current == line) {
+                return String_Substring(text, start, i - start);
+            }
+            current = current + 1;
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    if (current == line && start < len) {
+        return String_Substring(text, start, len - start);
+    }
+    return "";
+}
+
+struct _Amalgame_Compiler_SourceSnippet {
+};
+
+code_string Amalgame_Compiler_SourceSnippet_Format(code_string lineText, i64 line, i64 col);
+static code_string Amalgame_Compiler_SourceSnippet_Spaces(i64 n);
+
+Amalgame_Compiler_SourceSnippet* Amalgame_Compiler_SourceSnippet_new() {
+    Amalgame_Compiler_SourceSnippet* self = (Amalgame_Compiler_SourceSnippet*) GC_MALLOC(sizeof(Amalgame_Compiler_SourceSnippet));
+    return self;
+}
+
+code_string Amalgame_Compiler_SourceSnippet_Format(code_string lineText, i64 line, i64 col) {
+    (void)lineText;
+    (void)line;
+    (void)col;
+    if (String_Length(lineText) == 0) {
+        return "";
+    }
+    code_string __attribute__((unused)) lineNum = String_FromInt(line);
+    code_string __attribute__((unused)) pad = Amalgame_Compiler_SourceSnippet_Spaces(String_Length(lineNum));
+    code_string __attribute__((unused)) caret = "";
+    i64 __attribute__((unused)) c = 0;
+    while (c < col - 1) {
+        caret = code_string_concat(caret, " ");
+        c = c + 1;
+    }
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(pad, " |\n"), lineNum), " | "), lineText), "\n"), pad), " | "), caret), "^\n");
+}
+
+static code_string Amalgame_Compiler_SourceSnippet_Spaces(i64 n) {
+    (void)n;
+    code_string __attribute__((unused)) s = "";
+    i64 __attribute__((unused)) i = 0;
+    while (i < n) {
+        s = code_string_concat(s, " ");
+        i = i + 1;
+    }
+    return s;
+}
+
 enum _Amalgame_Compiler_DiagSeverity {
     Amalgame_Compiler_DiagSeverity_ERROR,
     Amalgame_Compiler_DiagSeverity_WARNING,
@@ -6096,6 +6206,7 @@ Amalgame_Compiler_Diagnostic* Amalgame_Compiler_Diagnostic_new(Amalgame_Compiler
 struct _Amalgame_Compiler_DiagnosticFormatter {
     code_bool UseColor;
     code_bool Quiet;
+    Amalgame_Compiler_SourceMap* Sources;
 };
 
 void Amalgame_Compiler_DiagnosticFormatter_EnableColor(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
@@ -6117,6 +6228,7 @@ Amalgame_Compiler_DiagnosticFormatter* Amalgame_Compiler_DiagnosticFormatter_new
     Amalgame_Compiler_DiagnosticFormatter* self = (Amalgame_Compiler_DiagnosticFormatter*) GC_MALLOC(sizeof(Amalgame_Compiler_DiagnosticFormatter));
     self->UseColor = 0;
     self->Quiet = 0;
+    self->Sources = Amalgame_Compiler_SourceMap_new();
     return self;
 }
 
@@ -6136,7 +6248,7 @@ void Amalgame_Compiler_DiagnosticFormatter_LoadSource(Amalgame_Compiler_Diagnost
     (void)self;
     (void)path;
     (void)text;
-    self->UseColor = self->UseColor;
+    Amalgame_Compiler_SourceMap_Add(self->Sources, path, text);
 }
 
 static code_string Amalgame_Compiler_DiagnosticFormatter_SevLabel(Amalgame_Compiler_DiagnosticFormatter* self, Amalgame_Compiler_DiagSeverity sev) {
@@ -6260,6 +6372,7 @@ struct _Amalgame_Compiler_TypeError {
     code_string Filename;
     i64 Line;
     i64 Column;
+    code_string Snippet;
 };
 
 code_string Amalgame_Compiler_TypeError_ToString(Amalgame_Compiler_TypeError* self);
@@ -6270,6 +6383,7 @@ Amalgame_Compiler_TypeError* Amalgame_Compiler_TypeError_new(code_string msg, co
     self->Filename = file;
     self->Line = line;
     self->Column = col;
+    self->Snippet = "";
     return self;
 }
 
@@ -6277,7 +6391,9 @@ code_string Amalgame_Compiler_TypeError_ToString(Amalgame_Compiler_TypeError* se
     (void)self;
     code_string __attribute__((unused)) ln = String_FromInt(self->Line);
     code_string __attribute__((unused)) col = String_FromInt(self->Column);
-    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("\n┌── [typechecker] ", self->Filename), ":"), ln), ":"), col), "\n│\n│  "), self->Message), "\n│\n└──\n");
+    code_string __attribute__((unused)) head = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("\nerror[typechecker]: ", self->Message), "\n  --> "), self->Filename), ":"), ln), ":"), col), "\n");
+    code_string __attribute__((unused)) snip = Amalgame_Compiler_SourceSnippet_Format(self->Snippet, self->Line, self->Column);
+    return code_string_concat(head, snip);
 }
 
 struct _Amalgame_Compiler_TypeCheckResult {
@@ -6304,6 +6420,7 @@ struct _Amalgame_Compiler_TypeChecker {
     AmalgameList* LocalNames;
     AmalgameList* LocalTypes;
     AmalgameList* ScopeStarts;
+    Amalgame_Compiler_SourceMap* Sources;
 };
 
 static void Amalgame_Compiler_TypeChecker_PushScope(Amalgame_Compiler_TypeChecker* self);
@@ -6365,6 +6482,7 @@ Amalgame_Compiler_TypeChecker* Amalgame_Compiler_TypeChecker_new(Amalgame_Compil
     self->LocalNames = AmalgameList_new();
     self->LocalTypes = AmalgameList_new();
     self->ScopeStarts = AmalgameList_new();
+    self->Sources = Amalgame_Compiler_SourceMap_new();
     return self;
 }
 
@@ -6657,6 +6775,7 @@ static void Amalgame_Compiler_TypeChecker_Error(Amalgame_Compiler_TypeChecker* s
         col = node->Column;
     }
     Amalgame_Compiler_TypeError* __attribute__((unused)) err = Amalgame_Compiler_TypeError_new(msg, file, line, col);
+    err->Snippet = Amalgame_Compiler_SourceMap_GetLine(self->Sources, file, line);
     AmalgameList_add(self->Errors, (void*)(intptr_t)(err));
 }
 
@@ -7334,6 +7453,7 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         }
     }
     Amalgame_Compiler_TypeChecker* __attribute__((unused)) tc = Amalgame_Compiler_TypeChecker_new(resolver, firstPath);
+    tc->Sources = self->Diag->Sources;
     void* __attribute__((unused)) tcProg = (void*)AmalgameList_get(progs, 0);
     Amalgame_Compiler_TypeChecker_Check(tc, tcProg);
     if (Amalgame_Compiler_TypeChecker_HasErrors(tc)) {
