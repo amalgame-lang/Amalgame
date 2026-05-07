@@ -23,6 +23,11 @@ public class Parser {
 
     public AstNode Parse() {
         let prog = Ast.Program(1, 1)
+        // Carry the filename on the Program node so later passes can quote source.
+        if (this.Tokens.Count() > 0) {
+            let firstTok = this.Tokens.Get(0)
+            prog.Str2 = firstTok.Filename
+        }
         this.SkipNewlines()
 
         if (this.CheckKw("namespace")) {

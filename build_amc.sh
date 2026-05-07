@@ -4,14 +4,16 @@
 set -e
 cd "$(dirname "$0")"
 
+# diagnostics.am defines SourceMap/SourceSnippet, used by resolver+typechecker.
+# Order matters: dependents come AFTER diagnostics in the source list.
 AMC_SOURCES="src/amalgame/lexer/token.am \
              src/amalgame/lexer/lexer.am \
              src/amalgame/parser/ast.am \
              src/amalgame/parser/parser.am \
              src/amalgame/generator/c_gen.am \
+             src/amalgame/diagnostics.am \
              src/amalgame/resolver/symbol.am \
              src/amalgame/resolver/resolver.am \
-             src/amalgame/diagnostics.am \
              src/amalgame/typechecker.am \
              src/amalgame/main.am"
 
