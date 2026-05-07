@@ -7,7 +7,11 @@ on:
     branches: [main, develop]
 
 jobs:
-  # ── Linux: full path. Builds the Vala bootstrap + self-hosted amc + runs tests. ──
+  # ── Linux: bootstrap from the tracked snapshot/amc_lib.c, then run the
+  #    full self-host pipeline + tests. The Vala bootstrap (./build/amc)
+  #    is no longer exercised here — it has fallen behind the language
+  #    and the snapshot rung supersedes it (see build_amc.sh fallback
+  #    chain). To recover the Vala path, run ./compile.sh locally. ──
   linux:
     name: Build & test (Ubuntu)
     runs-on: ubuntu-latest
@@ -21,19 +25,17 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            valac \
-            meson \
-            ninja-build \
             gcc \
-            libglib2.0-dev \
-            libgee-0.8-dev \
             libgc-dev \
             libcurl4-openssl-dev
 
-      - name: Build Vala bootstrap (./build/amc — recovery path)
-        run: ./compile.sh
+      - name: Compile snapshot/amc from tracked snapshot/amc_lib.c
+        run: |
+          gcc -O2 -Iruntime \
+              snapshot/amc_lib.c \
+              -lgc -lm -lcurl -o snapshot/amc
 
-      - name: Build self-hosted amc via build_amc.sh
+      - name: Build self-hosted amc via build_amc.sh (uses snapshot)
         run: ./build_amc.sh
 
       - name: Verify amc reports its version
@@ -70,7 +72,10 @@ jobs:
 
       - name: Compile amc from tracked amc_lib.c
         run: |
-          gcc -O2 -Iruntime \
+          GC_PREFIX=$(brew --prefix bdw-gc)
+          CURL_PREFIX=$(brew --prefix curl)
+          gcc -O2 -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
+              -L"$GC_PREFIX/lib" -L"$CURL_PREFIX/lib" \
               src/amc_lib.c \
               -lgc -lm -lcurl -o amc
 
@@ -79,8 +84,12 @@ jobs:
 
       - name: Smoke compile a sample
         run: |
+          GC_PREFIX=$(brew --prefix bdw-gc)
+          CURL_PREFIX=$(brew --prefix curl)
           ./amc tests/samples/hello.am -o /tmp/hello
-          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello
+          gcc -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
+              -L"$GC_PREFIX/lib" -L"$CURL_PREFIX/lib" \
+              /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello
           /tmp/hello
 
       - name: Upload generated artifacts on failure
@@ -122,7 +131,7 @@ jobs:
         run: |
           gcc -O2 -Iruntime \
               src/amc_lib.c \
-              -lgc -lm -lcurl -o amc.exe
+              -lgc -lm -lcurl -lws2_32 -o amc.exe
 
       - name: Verify amc reports its version
         run: ./amc.exe --version
@@ -130,7 +139,7 @@ jobs:
       - name: Smoke compile a sample
         run: |
           ./amc.exe tests/samples/hello.am -o /tmp/hello
-          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -o /tmp/hello.exe
+          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -lws2_32 -o /tmp/hello.exe
           /tmp/hello.exe
 
       - name: Upload generated artifacts on failure
