@@ -22,18 +22,22 @@ public class TypeError {
     public Filename: string
     public Line:     int
     public Column:   int
+    public Snippet:  string   // Source line text — empty if no SourceMap available
 
     public TypeError(string msg, string file, int line, int col) {
         this.Message  = msg
         this.Filename = file
         this.Line     = line
         this.Column   = col
+        this.Snippet  = ""
     }
 
     public string ToString() {
-        let ln  = String_FromInt(this.Line)
-        let col = String_FromInt(this.Column)
-        return "\n┌── [typechecker] " + this.Filename + ":" + ln + ":" + col + "\n│\n│  " + this.Message + "\n│\n└──\n"
+        let ln    = String_FromInt(this.Line)
+        let col   = String_FromInt(this.Column)
+        let head  = "\nerror[typechecker]: " + this.Message + "\n  --> " + this.Filename + ":" + ln + ":" + col + "\n"
+        let snip  = SourceSnippet.Format(this.Snippet, this.Line, this.Column)
+        return head + snip
     }
 }
 
@@ -74,6 +78,8 @@ public class TypeChecker {
     private LocalNames:    List<string>
     private LocalTypes:    List<string>
     private ScopeStarts:   List<int>
+    // Source map for snippet rendering in error messages — optional, set by main
+    public  Sources:       SourceMap
 
     public TypeChecker(FullResolver symbols, string filename) {
         this.ExprTypeKeys  = new List<string>()
@@ -86,6 +92,7 @@ public class TypeChecker {
         this.LocalNames    = new List<string>()
         this.LocalTypes    = new List<string>()
         this.ScopeStarts   = new List<int>()
+        this.Sources       = new SourceMap()
     }
 
     // ── Local scope stack (mirrors Resolver) ──────────
@@ -311,6 +318,7 @@ public class TypeChecker {
             col  = node.Column
         }
         let err = new TypeError(msg, file, line, col)
+        err.Snippet = this.Sources.GetLine(file, line)
         this.Errors.Add(err)
     }
 

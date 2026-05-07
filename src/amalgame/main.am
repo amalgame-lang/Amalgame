@@ -90,6 +90,7 @@ public class AmalgameCompiler {
 
         // ── TypeChecker pass ──────────────────────────
         let tc     = new TypeChecker(resolver, firstPath)
+        tc.Sources = this.Diag.Sources
         let tcProg = progs.Get(0)
         tc.Check(tcProg)
         if (tc.HasErrors()) {
