@@ -6301,8 +6301,15 @@ struct _Amalgame_Compiler_TypeChecker {
     AmalgameList* Errors;
     code_string Filename;
     Amalgame_Compiler_FullResolver* Symbols;
+    AmalgameList* LocalNames;
+    AmalgameList* LocalTypes;
+    AmalgameList* ScopeStarts;
 };
 
+static void Amalgame_Compiler_TypeChecker_PushScope(Amalgame_Compiler_TypeChecker* self);
+static void Amalgame_Compiler_TypeChecker_PopScope(Amalgame_Compiler_TypeChecker* self);
+static void Amalgame_Compiler_TypeChecker_DeclareLocal(Amalgame_Compiler_TypeChecker* self, code_string name, code_string typeName);
+static code_string Amalgame_Compiler_TypeChecker_LookupLocal(Amalgame_Compiler_TypeChecker* self, code_string name);
 Amalgame_Compiler_TypeCheckResult* Amalgame_Compiler_TypeChecker_Check(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* program);
 static code_string Amalgame_Compiler_TypeChecker_NodeKey(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node);
 static void Amalgame_Compiler_TypeChecker_SetType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node, code_string typeKey);
@@ -6316,7 +6323,6 @@ static code_string Amalgame_Compiler_TypeChecker_BinaryResultType(Amalgame_Compi
 static code_string Amalgame_Compiler_TypeChecker_CollectionElementType(Amalgame_Compiler_TypeChecker* self, code_string typeKey);
 static code_bool Amalgame_Compiler_TypeChecker_SymbolFound(Amalgame_Compiler_TypeChecker* self, code_string name);
 static code_string Amalgame_Compiler_TypeChecker_SymbolTypeName(Amalgame_Compiler_TypeChecker* self, code_string name);
-static void Amalgame_Compiler_TypeChecker_SymbolSetType(Amalgame_Compiler_TypeChecker* self, code_string name, code_string typeName);
 static void Amalgame_Compiler_TypeChecker_Error(Amalgame_Compiler_TypeChecker* self, code_string msg, Amalgame_Compiler_AstNode* node);
 static void Amalgame_Compiler_TypeChecker_CheckBool(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node, code_string context);
 static code_string Amalgame_Compiler_TypeChecker_SymbolType(Amalgame_Compiler_TypeChecker* self, code_string name);
@@ -6356,7 +6362,51 @@ Amalgame_Compiler_TypeChecker* Amalgame_Compiler_TypeChecker_new(Amalgame_Compil
     self->Errors = AmalgameList_new();
     self->Filename = filename;
     self->Symbols = symbols;
+    self->LocalNames = AmalgameList_new();
+    self->LocalTypes = AmalgameList_new();
+    self->ScopeStarts = AmalgameList_new();
     return self;
+}
+
+static void Amalgame_Compiler_TypeChecker_PushScope(Amalgame_Compiler_TypeChecker* self) {
+    (void)self;
+    AmalgameList_add(self->ScopeStarts, (void*)(intptr_t)(AmalgameList_count(self->LocalNames)));
+}
+
+static void Amalgame_Compiler_TypeChecker_PopScope(Amalgame_Compiler_TypeChecker* self) {
+    (void)self;
+    i64 __attribute__((unused)) depth = AmalgameList_count(self->ScopeStarts);
+    if (depth == 0) {
+        return;
+    }
+    i64 __attribute__((unused)) mark = (i64)AmalgameList_get(self->ScopeStarts, depth - 1);
+    AmalgameList_removeAt(self->ScopeStarts, depth - 1);
+    while (AmalgameList_count(self->LocalNames) > mark) {
+        i64 __attribute__((unused)) last = AmalgameList_count(self->LocalNames) - 1;
+        AmalgameList_removeAt(self->LocalNames, last);
+        AmalgameList_removeAt(self->LocalTypes, last);
+    }
+}
+
+static void Amalgame_Compiler_TypeChecker_DeclareLocal(Amalgame_Compiler_TypeChecker* self, code_string name, code_string typeName) {
+    (void)self;
+    (void)name;
+    (void)typeName;
+    AmalgameList_add(self->LocalNames, (void*)(intptr_t)(name));
+    AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
+}
+
+static code_string Amalgame_Compiler_TypeChecker_LookupLocal(Amalgame_Compiler_TypeChecker* self, code_string name) {
+    (void)self;
+    (void)name;
+    i64 __attribute__((unused)) i = AmalgameList_count(self->LocalNames) - 1;
+    while (i >= 0) {
+        if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
+            return (code_string)AmalgameList_get(self->LocalTypes, i);
+        }
+        i = i - 1;
+    }
+    return "";
 }
 
 Amalgame_Compiler_TypeCheckResult* Amalgame_Compiler_TypeChecker_Check(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* program) {
@@ -6595,13 +6645,6 @@ static code_string Amalgame_Compiler_TypeChecker_SymbolTypeName(Amalgame_Compile
     return Amalgame_Compiler_FullResolver_GetTypeName(self->Symbols, name);
 }
 
-static void Amalgame_Compiler_TypeChecker_SymbolSetType(Amalgame_Compiler_TypeChecker* self, code_string name, code_string typeName) {
-    (void)self;
-    (void)name;
-    (void)typeName;
-    Amalgame_Compiler_FullResolver_SetTypeName(self->Symbols, name, typeName);
-}
-
 static void Amalgame_Compiler_TypeChecker_Error(Amalgame_Compiler_TypeChecker* self, code_string msg, Amalgame_Compiler_AstNode* node) {
     (void)self;
     (void)msg;
@@ -6734,6 +6777,7 @@ static void Amalgame_Compiler_TypeChecker_CheckMethod(Amalgame_Compiler_TypeChec
     code_string __attribute__((unused)) retType = method->Str;
     code_string __attribute__((unused)) prevReturn = self->CurrentReturn;
     self->CurrentReturn = retType;
+    Amalgame_Compiler_TypeChecker_PushScope(self);
     i64 __attribute__((unused)) params = AmalgameList_count(method->Params);
     for (i64 i = 0; i < params; i++) {
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
@@ -6744,10 +6788,12 @@ static void Amalgame_Compiler_TypeChecker_CheckMethod(Amalgame_Compiler_TypeChec
                 Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Parameter '", p->Name), "' is '"), p->Str), "' but default is '"), defType), "'"), p->Left);
             }
         }
+        Amalgame_Compiler_TypeChecker_DeclareLocal(self, p->Name, p->Str);
     }
     if (method->Body != NULL) {
         Amalgame_Compiler_TypeChecker_CheckBlock(self, method->Body);
     }
+    Amalgame_Compiler_TypeChecker_PopScope(self);
     self->CurrentReturn = prevReturn;
 }
 
@@ -6819,7 +6865,7 @@ static void Amalgame_Compiler_TypeChecker_CheckVarDecl(Amalgame_Compiler_TypeChe
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Cannot assign '", inferredType), "' to '"), stmt->Name), "' of type '"), declaredType), "'"), stmt);
         }
     }
-    Amalgame_Compiler_TypeChecker_SymbolSetType(self, stmt->Name, finalType);
+    Amalgame_Compiler_TypeChecker_DeclareLocal(self, stmt->Name, finalType);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckReturn(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
@@ -6872,15 +6918,17 @@ static void Amalgame_Compiler_TypeChecker_CheckElseBranch(Amalgame_Compiler_Type
 static void Amalgame_Compiler_TypeChecker_CheckForIn(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
     (void)self;
     (void)stmt;
+    Amalgame_Compiler_TypeChecker_PushScope(self);
     if (stmt->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
         code_string __attribute__((unused)) colType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
         code_string __attribute__((unused)) elemType = Amalgame_Compiler_TypeChecker_CollectionElementType(self, colType);
-        Amalgame_Compiler_TypeChecker_SymbolSetType(self, stmt->Name, elemType);
+        Amalgame_Compiler_TypeChecker_DeclareLocal(self, stmt->Name, elemType);
     }
     if (stmt->Body != NULL) {
         Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Body);
     }
+    Amalgame_Compiler_TypeChecker_PopScope(self);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckAssign(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
@@ -6963,7 +7011,10 @@ static void Amalgame_Compiler_TypeChecker_CheckExpr(Amalgame_Compiler_TypeChecke
         return;
     }
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        code_string __attribute__((unused)) t = Amalgame_Compiler_TypeChecker_SymbolTypeName(self, expr->Name);
+        code_string __attribute__((unused)) t = Amalgame_Compiler_TypeChecker_LookupLocal(self, expr->Name);
+        if (String_Length(t) == 0) {
+            t = Amalgame_Compiler_TypeChecker_SymbolTypeName(self, expr->Name);
+        }
         Amalgame_Compiler_TypeChecker_SetType(self, expr, t);
         return;
     }
@@ -7100,10 +7151,16 @@ static void Amalgame_Compiler_TypeChecker_CheckMemberExpr(Amalgame_Compiler_Type
     }
     void* __attribute__((unused)) targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
     void* __attribute__((unused)) baseType = targetType;
-    if (String_EndsWith(targetType, "?")) {
-        baseType = String_Substring(targetType, 0, String_Length(targetType) - 1);
+    if (String_EndsWith(baseType, "?")) {
+        baseType = String_Substring(baseType, 0, String_Length(baseType) - 1);
+    }
+    if (String_EndsWith(baseType, "*")) {
+        baseType = String_Substring(baseType, 0, String_Length(baseType) - 1);
     }
     code_string __attribute__((unused)) memberType = "?";
+    if (String_Length(baseType) > 0 && !code_string_equals(baseType, "?")) {
+        memberType = Amalgame_Compiler_FullResolver_GetMemberType(self->Symbols, baseType, expr->Name);
+    }
     Amalgame_Compiler_TypeChecker_SetType(self, expr, memberType);
 }
 
