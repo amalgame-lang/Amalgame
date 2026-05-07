@@ -1,0 +1,33 @@
+{
+  "name": "amalgame",
+  "displayName": "Amalgame",
+  "description": "Syntax highlighting for the Amalgame programming language (.am files).",
+  "version": "0.1.0",
+  "publisher": "BastienMOUGET",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BastienMOUGET/Amalgame.git"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "amalgame",
+        "aliases": ["Amalgame", "amalgame"],
+        "extensions": [".am"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "amalgame",
+        "scopeName": "source.amalgame",
+        "path": "./syntaxes/amalgame.tmLanguage.json"
+      }
+    ]
+  }
+}
