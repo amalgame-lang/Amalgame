@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-07 · `amc` self-hosted · 127/127 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 121/121 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -12,27 +12,36 @@ For architecture and contribution guidance see
 
 ### Self-hosted compiler
 The compiler is written in Amalgame in [src/](src/) and compiles
-itself in ~5 seconds (`./build_amc.sh`). The Vala bootstrap remains
-in `archive/vala-bootstrap/` as a recovery path; `./compile.sh`
-rebuilds it on demand.
+itself in ~5 seconds (`./build_amc.sh`). A 3-rung bootstrap chain
+keeps recovery easy:
 
-| Component        | File                              |
-|------------------|-----------------------------------|
-| Lexer            | `src/lexer/{token,lexer}.am`      |
-| Parser           | `src/parser/{ast,parser}.am`     |
-| Resolver         | `src/resolver/{symbol,resolver}.am`|
-| TypeChecker      | `src/typechecker.am`             |
-| CGen             | `src/generator/c_gen.am`         |
-| Diagnostics      | `src/diagnostics.am`             |
-| CLI entry        | `src/main.am`                    |
-| Generated bundle | `src/amc_lib.c` (~7 000 lines)   |
-| Runtime (C)      | `runtime/*.h`                    |
+1. **`./amc`** — current self-hosted compiler.
+2. **`./snapshot/amc`** — last known-good amc, captured by
+   `tools/save-snapshot.sh` after a green test run. The portable
+   `snapshot/amc_lib.c` is committed; the binary regenerates with one
+   `gcc`. Used as fallback whenever `./amc` is broken mid-development.
+3. **`./build/amc`** — Vala bootstrap in `archive/vala-bootstrap/`,
+   no longer exercised by CI but kept locally for cold-start recovery
+   (`./compile.sh`).
+
+| Component        | File                                |
+|------------------|-------------------------------------|
+| Lexer            | `src/lexer/{token,lexer}.am`        |
+| Parser           | `src/parser/{ast,parser}.am`        |
+| Resolver         | `src/resolver/{symbol,resolver}.am` |
+| TypeChecker      | `src/typechecker.am`                |
+| CGen             | `src/generator/c_gen.am`            |
+| Formatter        | `src/formatter/formatter.am`        |
+| Diagnostics      | `src/diagnostics.am`                |
+| CLI entry        | `src/main.am`                       |
+| Generated bundle | `src/amc_lib.c` (~9 300 lines)      |
+| Runtime (C)      | `runtime/*.h`                       |
 
 ### Language features
 - Variables: `let` / `var` with optional type annotation
 - Primitives: int / float / double / bool / string / void
 - Classes, inheritance (single), interfaces (basic)
-- Data classes, records
+- Data classes, records (params auto-assign to fields since v0.3.1)
 - Enums (simple) + algebraic enums (tagged unions) with destructuring
 - Generics (erased to `void*` at C level)
 - Null-safety: `T?` types, `??` coalescing, `?.` safe access (field + method)
@@ -42,33 +51,35 @@ rebuilds it on demand.
 - `\xHH` and `\uHHHH` escape sequences
 - Bitwise ops, compound assigns, pipeline `|>`, range `0..n`
 - Pattern matching with **arm guards** (`n if n > 0 => …`), ranges, binders
+- **List comprehensions** `[x*2 for x in xs if x > 0]` (v0.3.0)
+- **`match` as expression** `let x = match y { … }` (v0.3.0)
+- Match arm bodies can be statements (`return`, `break`, `continue`, blocks)
+- `for x in <list>` (collection iteration, v0.3.0)
 - Guard clauses: `guard cond else { return }`
 - Decorators: `@inline`, `@deprecated` → C attributes
 - Named arguments (documentation-only at call site)
 - Lambdas (non-capturing)
-- try / catch / throw / finally (setjmp-based, non-stack-unwinding)
+- try / catch / throw / finally — Vala bootstrap only;
+  not yet implemented in self-hosted parser
+
+### Tooling
+- **`amc fmt`** — formatter that re-emits the AST canonically with
+  comment preservation. Idempotent on every compiler source.
+- **VS Code syntax highlighting** (`editors/vscode/`)
 
 ### Stdlib
 Console, File, Path, Math, String, List/Map/Set, Http, TcpServer/TcpConn,
-Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
+TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
 
 ### Compiler quality
 - Rustc-style diagnostics with source snippet + caret (Resolver + TypeChecker)
-- Multi-OS CI (Linux + macOS + Windows MSYS2)
-- Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows .zip with bundled MinGW DLLs)
-- VS Code syntax highlighting extension (`editors/vscode/`)
-- 127/127 tests in CI
-
-### Recent commits resolving named priorities
-| Old code | What landed |
-|----------|-------------|
-| P1       | Streaming gen_test brought the build down from ~2m30 to ~5s |
-| P2       | TypeChecker member resolution via the resolver's MemberTable |
-| P3       | `--lib` mode is type-checked and tested end-to-end (`tests/samples/lib_e2e.am`) |
-| P4       | Vala sources moved to `archive/vala-bootstrap/` (recovery path) |
-| P5       | Resolver gained a real scope stack (push/pop/RemoveAt) |
-| P6       | Diagnostics enriched with source snippets + caret |
-| P7       | `\x` and `\u` escapes parsed properly; ANSI colors restored |
+- Multi-OS CI (Linux + macOS + Windows MSYS2). Linux runs on the
+  self-hosted amc directly — Vala is no longer in the CI dependency
+  graph.
+- Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
+  .zip with bundled MinGW DLLs)
+- 121/121 tests in CI under `./amc`, with a SKIP list for samples
+  hitting open compiler bugs (see below).
 
 ---
 
@@ -76,14 +87,12 @@ Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
 
 In rough order of usefulness × effort:
 
-- [ ] **List comprehensions** `[x*2 for x in xs if x > 0]`
-      — desugar via GCC compound statement expression. Small, high impact.
 - [ ] **Capturing closures** — `let counter = make_counter()`. Requires
       capture analysis at parse time + heap-allocated env structs.
       Touches Parser + CGen; medium-large.
-- [ ] **`obj.Method()` instance syntax for strings** —
-      sugar for `String.Method(obj)`. Tracked since stdlib was made
-      explicit. Small CGen extension.
+- [ ] **`obj.Method()` instance syntax for strings** — sugar for
+      `String.Method(obj)`. Tracked since stdlib was made explicit.
+      Small CGen extension.
 - [ ] **Generic type inference** — `let xs = new List<int>()` should
       let `xs.Get(i)` return `int`, not `void*`. Touches TypeChecker
       + CGen's collection method dispatch. Largest item in the lot.
@@ -92,25 +101,45 @@ In rough order of usefulness × effort:
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
       literal syntax `[...]` first and a clear semantics for variadic
       calls. Larger than it looks.
-- [ ] **Match as expression** — `let x = match y { … }`. Currently arms
-      are statements only. Implement via GCC compound expressions, like
-      arm guards already do. Medium.
 - [ ] **`async` / `await`** — coroutines via ucontext or setjmp.
       Substantial: runtime + AST + CGen. Defer until there's a concrete
       use case.
 
 ---
 
-## 🟠 Compiler — polish
+## 🟠 Compiler — open bugs (samples currently SKIPped)
 
-- [ ] **Ban `match` as expression at parse time** with a clear error
-      pointing at the workaround (early-return arms / let-then-match).
-      Currently produces broken C — confusing.
+These samples pass under the Vala bootstrap but trigger bugs in the
+self-hosted compiler. They're marked SKIP in `tests/run_tests.sh`
+(`SKIP_SELFHOST`) so the suite stays green; each one needs its own
+fix.
+
+- [ ] **`Type.Variant` patterns in match** — `Direction.North => ...`
+      isn't recognised as a pattern; `ParseMatchPattern` only handles
+      bare identifiers, not member access. Affects `enums.am`.
+- [ ] **try / catch / throw** — the self-hosted parser doesn't have
+      ParseTry yet, so `try { ... } catch e { ... }` is rejected as
+      unknown identifiers. Affects `try_catch.am`. Vala had this;
+      it's a regression to fix.
+- [ ] **null safety / null-safe member typing** — typechecker reports
+      `Unary '-' requires numeric, got 'Program'` on `Program.foo(-1)`
+      (some path treats the class name as an operand type) and
+      `'if condition' must be bool, got 'null'` for `?.`-chained
+      conditions. Affects `null_safety.am`, `null_safe_member.am`.
+
+### Compiler — polish
+
 - [ ] **Multi-file type checking** — TypeChecker only walks
       `programs[0]`. Walk all programs.
 - [ ] **Better error recovery** — the parser is okay but produces
       `_unknown_` placeholder ASTs that cascade into noisy resolver
       errors. Skip them more aggressively.
+- [ ] **Comments-on-same-line in `amc fmt`** — `let x = 1  // foo`
+      gets re-emitted with the comment on its own line. Cosmetic,
+      not a correctness issue.
+- [ ] **Imports preserved by `amc fmt`** — the parser drops
+      `import` directives without storing them, so the formatter
+      can't print them back.
 - [ ] **`while(ptr != null)` GC issue** — existing workaround uses
       `for i in 0..N`. Investigate whether it's a real GC bug or
       just a CGen mis-detection.
@@ -119,18 +148,18 @@ In rough order of usefulness × effort:
 
 ## 🟢 Ecosystem — outillage et docs
 
-- [ ] **`amc fmt`** — formatter. Re-emits a parsed AST with canonical
-      indentation, spacing, and trailing-comma rules. Foundational for
-      LSP and contributor flow.
+- [x] **`amc fmt`** — formatter (v0.2.0). Idempotent on every
+      compiler source. Re-emits comments by source line.
 - [ ] **`amc test`** — discover `*_test.am`, compile, run, aggregate.
       Replace `tests/run_*.sh` with a self-hosted runner.
-- [ ] **`amc lint`** — basic linter (unused vars, dead code, suspicious
-      patterns). Cheap once `amc fmt` is in.
+- [ ] **`amc lint`** — basic linter (unused vars, dead code,
+      suspicious patterns). Cheap now that `amc fmt` is in.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
 - [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
       Vala one in `archive/vala-bootstrap/src/pkg/`).
 - [ ] **LSP** — `amc lsp` mode: stdio JSON-RPC over the existing
-      Lexer/Parser/Resolver/TypeChecker. Wire to VS Code, Neovim, Emacs.
+      Lexer/Parser/Resolver/TypeChecker. Wire to VS Code, Neovim,
+      Emacs.
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
 - [ ] **Inlay hints + code actions** — once LSP is in.
 
@@ -141,13 +170,17 @@ In rough order of usefulness × effort:
 - [ ] Homebrew core (after public adoption)
 - [ ] AUR / `.deb` / `.rpm` / Nix flake / winget / Scoop
 - [ ] `install.sh` universal one-liner
+- [ ] Windows packaged installer (.msi or .exe with bundled MinGW
+      gcc + libgc + libcurl, so end users don't need MSYS2). Sketched
+      in conversation; no script yet.
 
 ### Documentation
-- [x] User guide (`docs/guide/`, this PR)
+- [x] User guide (`docs/guide/`)
 - [x] README that doesn't lie about features
 - [ ] Static site (docs.amalgame-lang.org)
 - [ ] Tour interactif à la go.dev/tour
-- [ ] EBNF grammar (file exists at `docs/language/grammar.ebnf` — to be re-validated)
+- [ ] EBNF grammar (file exists at `docs/language/grammar.ebnf` — to
+      be re-validated against the current self-hosted parser)
 - [ ] Cookbook of idiomatic snippets
 
 ---
@@ -163,9 +196,10 @@ In rough order of usefulness × effort:
 - **Module/import system** — imports are informational today. A real
   module system needs interface files (`.ami`?) and a resolver that
   uses them rather than scanning the global stdlib.
-- **Error vs. exception model** — `try/catch/throw` works but isn't
-  idiomatic. Consider a Rust-like `Result<T, E>` plus `?` operator
-  for short-circuiting.
+- **Error vs. exception model** — `try/catch/throw` works under Vala
+  but is missing in self-host. Worth replacing with a Rust-like
+  `Result<T, E>` plus `?` operator for short-circuiting before
+  re-implementing the setjmp version.
 - **Single-threaded** — bdwgc is configured for the main thread. If
   Amalgame ever wants concurrency, the GC config and runtime helpers
   need a pass.
@@ -176,13 +210,13 @@ In rough order of usefulness × effort:
 
 Top of the list, ordered by *unlocked-value* per *days-of-work*:
 
-1. **`amc fmt`** — paves the way for everything else IDE-ish, and gives
-   contributors a tool they'd use immediately.
-2. **List comprehensions** — small, idiomatic, immediate user delight.
-3. **Match as expression** — completes the matching story.
-4. **LSP minimal** — re-uses existing passes; the smallest LSP that
+1. **Solder the open bugs** above (especially try/catch and
+   `Type.Variant` patterns) — drops the SKIP list, restores feature
+   parity with the Vala bootstrap, and makes future LSP/lint work
+   easier because the compiler doesn't lie about what's accepted.
+2. **Minimal LSP** — re-uses existing passes; the smallest LSP that
    does completion + hover is a few hundred lines.
-5. **Capturing closures** — bigger but expected by anyone reading
+3. **Capturing closures** — bigger but expected by anyone reading
    "modern".
-6. **Generic inference** — biggest of the bunch; do it after fmt/LSP
-   are in so the diagnostic story is solid first.
+4. **Generic inference** — biggest of the bunch; do it after LSP is
+   in so the diagnostic story is solid first.
