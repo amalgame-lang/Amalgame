@@ -7,6 +7,73 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.3.6] — 2026-05-08
+
+The "lambdas in the wild" release. Higher-order `List<T>`
+methods now take a lambda directly: `xs.Filter / .Map / .Reduce
+/ .ForEach / .Any / .All / .CountIf`. Suite goes from 180/180
+to **187/187** under `./amc`.
+
+### Stdlib
+
+- **Higher-order List methods** — Filter, Map, Reduce (with a
+  `(acc, x) → acc` reducer dispatched through `Closure_call2`),
+  ForEach, Any, All, CountIf. Each takes an `AmalgameClosure*`
+  so the captured environment travels with the lambda.
+  Implemented as static-inlines in `runtime/_runtime.h` and
+  `runtime/Amalgame_Collections.h`. The closure struct +
+  `_callN` wrappers are hoisted to the top of `_runtime.h` so
+  the helpers a few lines down can use them; the
+  `AmalgamePredicate` / `AmalgameAction` typedefs from v0.3.4
+  are gone (no caller left). *(PR #133)*
+
+### Compiler
+
+- **CGen — closure-as-argument lowering** — `TryEmitListCall`
+  recognises the seven new method names and lowers each via a
+  new `EmitClosureArg` helper. The lambda is passed inline as a
+  GCC compound-statement-expression that allocates the env,
+  copies captured locals in, and yields a fresh
+  `AmalgameClosure_new(...)`. `EmitLambdaCaptureCopy` is a tiny
+  helper around the per-capture line so the self-host codegen
+  sees `cap.Name` through a typed parameter (chained
+  `.Get(i).Name` would erase to `void*` at the call boundary).
+- **CGen — type inference for higher-order returns** —
+  `InferTypeFromExpr` knows that a CALL whose member name is
+  Filter / Map returns `AmalgameList*`, Any / All return
+  `code_bool`, CountIf returns `i64`. So
+  `let big = xs.Filter(...)` typechecks without an explicit
+  annotation, and `EmitVarDecl` propagates the receiver's
+  list-element type to the result so `big.Get(0)` lowers with
+  the right cast. *(PR #133)*
+
+### Documentation
+
+- `docs/guide/02-language-tour.md` — Lambdas section gains a
+  higher-order `Filter / Map / Reduce` example and a rewritten
+  limitations note around the i64 boundary.
+- `docs/guide/04-stdlib.md` — List section gains the table of
+  higher-order methods.
+- `docs/guide/05-runtime-and-interop.md` — new "Closures and
+  higher-order calls" section with the AmalgameClosure struct,
+  the three `_callN` wrappers, and the GCC compound-statement-
+  expression idiom the CGen emits.
+- `ROADMAP_COMPLET.md` — Lambda v2.5 split into a `[x]` partial
+  (this release) + a `[ ]` non-int signatures pending. *(PR #134)*
+
+### Known limitations (deferred to v2.5 final)
+
+- Lambda arguments and results are still `(i64) → i64` at the
+  C level. `xs.Map(x => x.Name)` over a `List<Class>` doesn't
+  yet work — needs a TypeChecker layer that infers the lambda
+  signature from the formal param at the call site, plus CGen
+  to emit non-int `lam_N_fn` signatures.
+- String interpolation `"x: {coll.Count()}"` doesn't yet
+  propagate the inferred `AmalgameList*` to the embedded call.
+  Workaround: stage in named locals before printing.
+- ForEach mutating an enclosing `var` doesn't accumulate
+  (closures capture by value). Reduce is the right tool.
+
 ## [v0.3.5] — 2026-05-08
 
 The "developer experience" release. Three coordinated pieces:
@@ -315,6 +382,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.3.6]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.6
 [v0.3.5]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.5
 [v0.3.4]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.3

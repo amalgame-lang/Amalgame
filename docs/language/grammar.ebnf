@@ -1,6 +1,6 @@
 (* ═══════════════════════════════════════════════════════ *)
 (*  Grammaire EBNF du langage Amalgame                    *)
-(*  Version : 0.3.5                                       *)
+(*  Version : 0.3.6                                       *)
 (*                                                        *)
 (*  Cette grammaire reflète exactement le parser          *)
 (*  self-hosted (src/parser/parser.am). Elle décrit la    *)
@@ -514,7 +514,7 @@ BlockComment
 (*  RÉSERVÉ POUR PLUS TARD                                *)
 (* ═══════════════════════════════════════════════════════ *)
 (* Constructions présentes dans la grammaire v0.1.0 (CODE)
-   mais NON reconnues par le parser v0.3.5 :
+   mais NON reconnues par le parser v0.3.6 :
 
    - Properties avec get/set accessors
    - Constructors syntaxe explicite (`init(...)`)
