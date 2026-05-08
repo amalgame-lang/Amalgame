@@ -7,6 +7,83 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.3.5] — 2026-05-08
+
+The "developer experience" release. Three coordinated pieces:
+**generic interfaces** with static contract verification,
+**LSP hover + global completion** on top of the v0.3.4 diagnostics,
+and **lambda v2** (multi-param + block body) on top of v0.3.4
+single-param closures. Suite goes from **170/170 to 180/180**
+under `./amc`.
+
+### Language
+
+- **Generic interfaces** — `interface IComparable<T> { Compare(T) -> int }`
+  now type-parameterise. Classes declared `class Box implements
+  IComparable<int>` go through a new `CheckImplementsContract`
+  pass in the TypeChecker that walks every implemented interface,
+  substitutes its generic params by the concrete args (recursing
+  into nested generics like `List<T>` → `List<int>`, preserving
+  trailing `?` nullability), and asserts every interface method
+  exists on the class with the matching signature. Diagnostics
+  point at the offending method/param with expected vs got
+  types. Two new fields on `AstNode` (`Str3` for generic params
+  CSV, `Str4` for the implements list CSV). No vtable / dynamic
+  dispatch yet — duck-typed dispatch as before. *(PR #120)*
+
+- **Lambda v2: multi-param + block body** — `(x, y) => x + y`
+  and `x => { let d = x * 2; return d + 1 }` now parse and
+  compile. Multi-param routes through new `AmalgameClosure_call2`
+  / `_call3` runtime helpers; block bodies emit through `EmitBlock`
+  with an `InLambdaBody` flag that boxes `RETURN_STMT` values as
+  `void*`. The lambda AST node migrates from `Str=name` to
+  `Params: List<PARAM>` to support N parameters. v1 closures
+  (capturing single-param expression-bodied) keep their existing
+  semantics. Lambdas in argument position with non-int signatures
+  (e.g. `xs.Filter(x => x > 0)`) need a lambda-typing layer in
+  the TypeChecker — that lands in v2.5. *(PR #129)*
+
+### Tooling
+
+- **`amc lsp` hover + global completion** — the LSP server
+  shipped in v0.3.4 (diagnostics-only) now responds to
+  `textDocument/hover` and `textDocument/completion` too. Hover
+  walks the AST via a new `FindNodeAtPosition` helper to find
+  the deepest named node covering the cursor, then returns its
+  inferred type as Markdown via the new `TypeChecker.LookupNodeType`.
+  Completion lists every global the resolver knows about
+  (builtins + user classes / enums / functions), mapped to LSP
+  `CompletionItemKind` (Class / Function / Variable). The VS
+  Code client picks up the new capabilities automatically via
+  the initialize handshake — no client changes. Member completion
+  (`obj.<cursor>` narrowed to the receiver's type) and
+  goto-definition / signature help remain follow-ups. *(PR #126)*
+
+### Documentation
+
+- **Stdlib expansion roadmap** — `ROADMAP_COMPLET.md` gains a
+  "Core stdlib expansion" backlog entry listing eight modules
+  everyday Amalgame code currently has to fake or shell out for:
+  `DateTime`, `Json`, `Regex`, `Random`, `Encoding`, `Compress`,
+  `Crypto`, `Threading`. Plus a new "Stdlib delivery model"
+  open design question that lays out five alternatives to the
+  current header-only-inline approach. *(PR #121)*
+
+### Internal
+
+- **Typed accessors on FullResolver** — `ProgramCount` /
+  `ProgramAt` (used by the contract verifier), then `GlobalCount`
+  / `GlobalNameAt` / `GlobalTypeAt` (used by the completion
+  provider). Both batches work around the same self-host quirk
+  where chained member access through a `List<T>` field emits
+  `Programs_Count(...)` instead of `Programs->Count(...)`.
+- **`-Wint-conversion` hotfix** — `let pn = ...ProgramCount()`
+  in `FindInterface` lost its int type to `void*` erasure across
+  the method call boundary. Pinned via explicit `let pn: int`,
+  matching the precedent in `src/lsp.am` for `String_Length`
+  results. Local builds had ignored the warning; CI on Linux
+  and macOS treats it as an error. *(PR #124)*
+
 ## [v0.3.4] — 2026-05-08
 
 The "tooling" release. Five new pieces ship together: capturing
@@ -238,6 +315,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.3.5]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.5
 [v0.3.4]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.2
