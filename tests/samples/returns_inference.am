@@ -1,0 +1,37 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Generic inference now propagates through method *return types* and
+// explicit annotations, closing the third missing edge of generic
+// inference. Combined with NEW_EXPR + params (already shipped), every
+// reasonable shape now carries the type argument.
+public class Program {
+    public static List<int> Range(int n) {
+        let xs = new List<int>()
+        for i in 0..n {
+            xs.Add(i)
+        }
+        return xs
+    }
+
+    public static Map<string, int> Counts() {
+        let m = new Map<string, int>()
+        m.Set("a", 1)
+        m.Set("b", 2)
+        m.Set("c", 3)
+        return m
+    }
+
+    public static void Main(string[] args) {
+        // Case 1 — inferred from return type.
+        let xs = Program.Range(5)
+        let total = xs.Get(0) + xs.Get(1) + xs.Get(2) + xs.Get(3) + xs.Get(4)
+        Console.WriteLine("range total: {total}")
+
+        // Case 2 — explicit annotation, RHS is a method call.
+        let m: Map<string, int> = Program.Counts()
+        let sum = m.Get("a") + m.Get("b") + m.Get("c")
+        Console.WriteLine("counts sum: {sum}")
+    }
+}

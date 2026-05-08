@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 147/147 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.2` · self-hosted · 149/149 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -78,7 +78,7 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 147/147 tests in CI under `./amc` (85 core + 50 stdlib + 12 fmt),
+- 149/149 tests in CI under `./amc` (87 core + 50 stdlib + 12 fmt),
   with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
@@ -98,20 +98,18 @@ In rough order of usefulness × effort:
       was called "code"); the CALL emit branch treats both
       `IDENTIFIER` and `LITERAL_STRING` receivers as `isSelfCall` so
       the receiver is passed as the first argument.
-- [~] **Generic type inference** — partial. `ParseNew` captures
-      the type-arg list on `NEW_EXPR.Str2`. CGen records:
-      `let xs = new List<T>()` via `ListElemSet("__local__", xs, T)`
-      → `xs.Get(i)` lowers to `(T)AmalgameList_get(xs, i)`.
-      `let m = new Map<K,V>()` via `ListElemSet("__local_map__", m, V)`
-      → `m.Get(k)` lowers to `(V)AmalgameMap_get(m, k)`. `Map.Get` is
-      now wired in the dispatch (it wasn't before).
-      Method params `List<T>` / `Map<K,V>` also seed the elem-type
-      table on entry, so `xs.Get(i)` inside the body of a function
-      taking `List<int>` returns `int`.
-      Still missing: propagation through return values
-      (`let xs = MakeList()` doesn't yet know `xs`'s elem type), and
-      TypeChecker awareness of element types (the inference happens
-      at codegen via the cast-extraction heuristic in VAR_DECL).
+- [x] **Generic type inference** (locals + params + returns) —
+      `ParseNew` captures the type-arg list on `NEW_EXPR.Str2`. CGen
+      threads the elem (List<T>) / value (Map<K,V>) type through three
+      sources at every `let`: (1) the explicit annotation on the var,
+      (2) the NEW_EXPR RHS, and (3) the raw return type of the callee
+      (looked up via `MethodRetRawSet`/`Get`). Method params do the
+      same on entry, so `xs.Get(i)` / `m.Get(k)` in any reasonable
+      shape lowers to `(T)AmalgameList_get(...)` / `(V)AmalgameMap_get(...)`
+      with the correct cast. The TypeChecker's `IsAssignable` now
+      treats `List` ↔ `List<int>` (and similar generic erasures) as
+      compatible so a `return xs` from a `List<int>`-returning method
+      type-checks even when the local is recorded as the bare `List`.
 - [ ] **Generic interfaces** (`IComparable<T>`) — follows from generic
       inference. Modest extra work once that's in.
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list

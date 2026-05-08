@@ -255,6 +255,8 @@ run_test "map infer int"      "$SAMPLES/map_inference.am"      "total: 141"
 run_test "map infer str"      "$SAMPLES/map_inference.am"      "combined: bonjour / hello"
 run_test "param infer list"   "$SAMPLES/params_inference.am"   "sum: 10"
 run_test "param infer map"    "$SAMPLES/params_inference.am"   "greet: bonjour !"
+run_test "return infer list"  "$SAMPLES/returns_inference.am"  "range total: 10"
+run_test "return infer map"   "$SAMPLES/returns_inference.am"  "counts sum: 6"
 run_test "closures"          "$SAMPLES/closures.am"     "Counter = 10"
 
 # ── Namespace ──────────────────────────────────────────
