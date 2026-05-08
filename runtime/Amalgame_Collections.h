@@ -110,25 +110,25 @@ static inline AmalgameList* AmalgameList_slice(AmalgameList* l,
     return r;
 }
 
-static inline code_bool AmalgameList_any(AmalgameList* l, AmalgamePredicate fn) {
+static inline code_bool AmalgameList_any(AmalgameList* l, AmalgameClosure* fn) {
     if (!l) return false;
     for (int i = 0; i < l->size; i++)
-        if (fn(l->data[i])) return true;
+        if ((intptr_t)AmalgameClosure_call1(fn, l->data[i])) return true;
     return false;
 }
 
-static inline code_bool AmalgameList_all(AmalgameList* l, AmalgamePredicate fn) {
+static inline code_bool AmalgameList_all(AmalgameList* l, AmalgameClosure* fn) {
     if (!l) return true;
     for (int i = 0; i < l->size; i++)
-        if (!fn(l->data[i])) return false;
+        if (!(intptr_t)AmalgameClosure_call1(fn, l->data[i])) return false;
     return true;
 }
 
-static inline i64 AmalgameList_countIf(AmalgameList* l, AmalgamePredicate fn) {
+static inline i64 AmalgameList_countIf(AmalgameList* l, AmalgameClosure* fn) {
     if (!l) return 0;
     i64 count = 0;
     for (int i = 0; i < l->size; i++)
-        if (fn(l->data[i])) count++;
+        if ((intptr_t)AmalgameClosure_call1(fn, l->data[i])) count++;
     return count;
 }
 
