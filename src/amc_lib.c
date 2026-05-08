@@ -34,6 +34,8 @@ typedef struct _Amalgame_Compiler_FullResolver Amalgame_Compiler_FullResolver;
 typedef struct _Amalgame_Compiler_TypeError Amalgame_Compiler_TypeError;
 typedef struct _Amalgame_Compiler_TypeCheckResult Amalgame_Compiler_TypeCheckResult;
 typedef struct _Amalgame_Compiler_TypeChecker Amalgame_Compiler_TypeChecker;
+typedef struct _Amalgame_Compiler_LintWarning Amalgame_Compiler_LintWarning;
+typedef struct _Amalgame_Compiler_Linter Amalgame_Compiler_Linter;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -9389,16 +9391,231 @@ code_string Amalgame_Compiler_TypeChecker_FormatErrors(Amalgame_Compiler_TypeChe
     return result;
 }
 
+struct _Amalgame_Compiler_LintWarning {
+    code_string Message;
+    code_string Filename;
+    i64 Line;
+    i64 Column;
+};
+
+code_string Amalgame_Compiler_LintWarning_Format(Amalgame_Compiler_LintWarning* self);
+
+Amalgame_Compiler_LintWarning* Amalgame_Compiler_LintWarning_new(code_string msg, code_string file, i64 line, i64 col) {
+    Amalgame_Compiler_LintWarning* self = (Amalgame_Compiler_LintWarning*) GC_MALLOC(sizeof(Amalgame_Compiler_LintWarning));
+    self->Message = msg;
+    self->Filename = file;
+    self->Line = line;
+    self->Column = col;
+    return self;
+}
+
+code_string Amalgame_Compiler_LintWarning_Format(Amalgame_Compiler_LintWarning* self) {
+    (void)self;
+    code_string __attribute__((unused)) ln = String_FromInt(self->Line);
+    code_string __attribute__((unused)) col = String_FromInt(self->Column);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("warning[lint]: ", self->Message), "\n  --> "), self->Filename), ":"), ln), ":"), col), "\n");
+}
+
+struct _Amalgame_Compiler_Linter {
+    AmalgameList* Warnings;
+    code_string Filename;
+};
+
+void Amalgame_Compiler_Linter_Lint(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* prog);
+code_bool Amalgame_Compiler_Linter_HasWarnings(Amalgame_Compiler_Linter* self);
+code_string Amalgame_Compiler_Linter_FormatWarnings(Amalgame_Compiler_Linter* self);
+static void Amalgame_Compiler_Linter_LintDecl(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* decl);
+static void Amalgame_Compiler_Linter_LintBlock(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* block);
+static code_bool Amalgame_Compiler_Linter_IsTerminator(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* stmt);
+static void Amalgame_Compiler_Linter_LintStmt(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* stmt);
+static void Amalgame_Compiler_Linter_LintBlockOrStmt(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* n);
+static void Amalgame_Compiler_Linter_Warn(Amalgame_Compiler_Linter* self, code_string msg, Amalgame_Compiler_AstNode* node);
+
+Amalgame_Compiler_Linter* Amalgame_Compiler_Linter_new() {
+    Amalgame_Compiler_Linter* self = (Amalgame_Compiler_Linter*) GC_MALLOC(sizeof(Amalgame_Compiler_Linter));
+    self->Warnings = AmalgameList_new();
+    self->Filename = "";
+    return self;
+}
+
+void Amalgame_Compiler_Linter_Lint(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* prog) {
+    (void)self;
+    (void)prog;
+    if (String_Length(prog->Str2) > 0) {
+        self->Filename = prog->Str2;
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(prog->Children);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_Linter_LintDecl(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i));
+    }
+}
+
+code_bool Amalgame_Compiler_Linter_HasWarnings(Amalgame_Compiler_Linter* self) {
+    (void)self;
+    return AmalgameList_count(self->Warnings) > 0;
+}
+
+code_string Amalgame_Compiler_Linter_FormatWarnings(Amalgame_Compiler_Linter* self) {
+    (void)self;
+    code_string __attribute__((unused)) s = "";
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Warnings);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LintWarning* __attribute__((unused)) w = (Amalgame_Compiler_LintWarning*)AmalgameList_get(self->Warnings, i);
+        s = code_string_concat(s, Amalgame_Compiler_LintWarning_Format(w));
+    }
+    return s;
+}
+
+static void Amalgame_Compiler_Linter_LintDecl(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* decl) {
+    (void)self;
+    (void)decl;
+    Amalgame_Compiler_NodeKind __attribute__((unused)) k = decl->Kind;
+    if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
+        i64 __attribute__((unused)) members = AmalgameList_count(decl->Children);
+        for (i64 i = 0; i < members; i++) {
+            Amalgame_Compiler_AstNode* __attribute__((unused)) m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, i);
+            if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+                if (m->Body != NULL) {
+                    Amalgame_Compiler_Linter_LintBlock(self, m->Body);
+                }
+            }
+        }
+        return;
+    }
+    if (k == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+        if (decl->Body != NULL) {
+            Amalgame_Compiler_Linter_LintBlock(self, decl->Body);
+        }
+        return;
+    }
+    if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
+        i64 __attribute__((unused)) methods = AmalgameList_count(decl->Children);
+        for (i64 i = 0; i < methods; i++) {
+            Amalgame_Compiler_AstNode* __attribute__((unused)) m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, i);
+            if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+                if (m->Body != NULL) {
+                    Amalgame_Compiler_Linter_LintBlock(self, m->Body);
+                }
+            }
+        }
+    }
+}
+
+static void Amalgame_Compiler_Linter_LintBlock(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* block) {
+    (void)self;
+    (void)block;
+    if (block == NULL) {
+        return;
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(block->Children);
+    code_bool __attribute__((unused)) dead = 0;
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) stmt = (Amalgame_Compiler_AstNode*)AmalgameList_get(block->Children, i);
+        if (dead) {
+            Amalgame_Compiler_Linter_Warn(self, "unreachable code after `return` / `throw` / `break` / `continue`", stmt);
+            return;
+        }
+        Amalgame_Compiler_Linter_LintStmt(self, stmt);
+        if (Amalgame_Compiler_Linter_IsTerminator(self, stmt)) {
+            dead = 1;
+        }
+    }
+}
+
+static code_bool Amalgame_Compiler_Linter_IsTerminator(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* stmt) {
+    (void)self;
+    (void)stmt;
+    Amalgame_Compiler_NodeKind __attribute__((unused)) k = stmt->Kind;
+    if (k == Amalgame_Compiler_NodeKind_RETURN_STMT) {
+        return 1;
+    }
+    if (k == Amalgame_Compiler_NodeKind_BREAK_STMT) {
+        return 1;
+    }
+    if (k == Amalgame_Compiler_NodeKind_CONTINUE_STMT) {
+        return 1;
+    }
+    if (k == Amalgame_Compiler_NodeKind_THROW_STMT) {
+        return 1;
+    }
+    return 0;
+}
+
+static void Amalgame_Compiler_Linter_LintStmt(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* stmt) {
+    (void)self;
+    (void)stmt;
+    if (stmt == NULL) {
+        return;
+    }
+    Amalgame_Compiler_NodeKind __attribute__((unused)) k = stmt->Kind;
+    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
+        if (stmt->Body != NULL) {
+            Amalgame_Compiler_Linter_LintBlockOrStmt(self, stmt->Body);
+        }
+        if (stmt->Else != NULL) {
+            Amalgame_Compiler_Linter_LintBlockOrStmt(self, stmt->Else);
+        }
+        return;
+    }
+    if (k == Amalgame_Compiler_NodeKind_WHILE_STMT || k == Amalgame_Compiler_NodeKind_FOR_IN_STMT) {
+        if (stmt->Body != NULL) {
+            Amalgame_Compiler_Linter_LintBlockOrStmt(self, stmt->Body);
+        }
+        return;
+    }
+    if (k == Amalgame_Compiler_NodeKind_TRY_STMT) {
+        if (stmt->Body != NULL) {
+            Amalgame_Compiler_Linter_LintBlockOrStmt(self, stmt->Body);
+        }
+        if (stmt->Else != NULL) {
+            Amalgame_Compiler_Linter_LintBlockOrStmt(self, stmt->Else);
+        }
+        if (stmt->Cond != NULL) {
+            Amalgame_Compiler_Linter_LintBlockOrStmt(self, stmt->Cond);
+        }
+        return;
+    }
+    if (k == Amalgame_Compiler_NodeKind_BLOCK) {
+        Amalgame_Compiler_Linter_LintBlock(self, stmt);
+    }
+}
+
+static void Amalgame_Compiler_Linter_LintBlockOrStmt(Amalgame_Compiler_Linter* self, Amalgame_Compiler_AstNode* n) {
+    (void)self;
+    (void)n;
+    if (n->Kind == Amalgame_Compiler_NodeKind_BLOCK) {
+        Amalgame_Compiler_Linter_LintBlock(self, n);
+    } else {
+        Amalgame_Compiler_Linter_LintStmt(self, n);
+    }
+}
+
+static void Amalgame_Compiler_Linter_Warn(Amalgame_Compiler_Linter* self, code_string msg, Amalgame_Compiler_AstNode* node) {
+    (void)self;
+    (void)msg;
+    (void)node;
+    i64 __attribute__((unused)) line = 0;
+    i64 __attribute__((unused)) col = 0;
+    if (node != NULL) {
+        line = node->Line;
+        col = node->Column;
+    }
+    Amalgame_Compiler_LintWarning* __attribute__((unused)) w = Amalgame_Compiler_LintWarning_new(msg, self->Filename, line, col);
+    AmalgameList_add(self->Warnings, (void*)(intptr_t)(w));
+}
+
 struct _Amalgame_Compiler_AmalgameCompiler {
     Amalgame_Compiler_DiagnosticFormatter* Diag;
     code_bool IsLib;
     code_bool CheckOnly;
+    code_bool LintMode;
     code_bool Verbose;
     i64 ExitCode;
 };
 
 void Amalgame_Compiler_AmalgameCompiler_SetLib(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
 void Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
+void Amalgame_Compiler_AmalgameCompiler_SetLintMode(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
 void Amalgame_Compiler_AmalgameCompiler_SetVerbose(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
 void Amalgame_Compiler_AmalgameCompiler_SetColor(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
 i64 Amalgame_Compiler_AmalgameCompiler_GetExitCode(Amalgame_Compiler_AmalgameCompiler* self);
@@ -9409,6 +9626,7 @@ Amalgame_Compiler_AmalgameCompiler* Amalgame_Compiler_AmalgameCompiler_new() {
     self->Diag = Amalgame_Compiler_DiagnosticFormatter_new();
     self->IsLib = 0;
     self->CheckOnly = 0;
+    self->LintMode = 0;
     self->Verbose = 0;
     self->ExitCode = 0;
     return self;
@@ -9424,6 +9642,12 @@ void Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(Amalgame_Compiler_AmalgameC
     (void)self;
     (void)v;
     self->CheckOnly = v;
+}
+
+void Amalgame_Compiler_AmalgameCompiler_SetLintMode(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->LintMode = v;
 }
 
 void Amalgame_Compiler_AmalgameCompiler_SetVerbose(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
@@ -9505,6 +9729,15 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         Console_WriteError(Amalgame_Compiler_TypeChecker_FormatErrors(tc));
         self->ExitCode = 1;
     }
+    if (self->LintMode) {
+        Amalgame_Compiler_Linter* __attribute__((unused)) linter = Amalgame_Compiler_Linter_new();
+        for (i64 li = 0; li < progCount; li++) {
+            Amalgame_Compiler_Linter_Lint(linter, (Amalgame_Compiler_AstNode*)AmalgameList_get(progs, li));
+        }
+        if (Amalgame_Compiler_Linter_HasWarnings(linter)) {
+            Console_WriteError(Amalgame_Compiler_Linter_FormatWarnings(linter));
+        }
+    }
     if (self->CheckOnly) {
         if (self->ExitCode == 0) {
             Amalgame_Compiler_DiagnosticFormatter_PrintPhaseOk(self->Diag, "Check");
@@ -9561,6 +9794,7 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("  -o <output>   Output file (default: a.out)");
     Console_WriteError("  --lib         Compile as library (no main() emitted)");
     Console_WriteError("  --check       Type-check only, no code generation");
+    Console_WriteError("  --lint        Run static-analysis warnings (in addition to compile)");
     Console_WriteError("  --color       Force ANSI color output");
     Console_WriteError("  --no-color    Disable ANSI color output");
     Console_WriteError("  --quiet       Suppress progress messages");
@@ -9634,6 +9868,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     code_string __attribute__((unused)) outputName = "a.out";
     code_bool __attribute__((unused)) isLib = 0;
     code_bool __attribute__((unused)) checkOnly = 0;
+    code_bool __attribute__((unused)) lintMode = 0;
     code_bool __attribute__((unused)) useColor = 0;
     code_bool __attribute__((unused)) verbose = 1;
     i64 __attribute__((unused)) i = 1;
@@ -9646,6 +9881,8 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
             isLib = 1;
         } else if (code_string_equals(a, "--check")) {
             checkOnly = 1;
+        } else if (code_string_equals(a, "--lint")) {
+            lintMode = 1;
         } else if (code_string_equals(a, "--color")) {
             useColor = 1;
         } else if (code_string_equals(a, "--no-color")) {
@@ -9680,6 +9917,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     Amalgame_Compiler_AmalgameCompiler* __attribute__((unused)) compiler = Amalgame_Compiler_AmalgameCompiler_new();
     Amalgame_Compiler_AmalgameCompiler_SetLib(compiler, isLib);
     Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(compiler, checkOnly);
+    Amalgame_Compiler_AmalgameCompiler_SetLintMode(compiler, lintMode);
     Amalgame_Compiler_AmalgameCompiler_SetColor(compiler, useColor);
     Amalgame_Compiler_AmalgameCompiler_SetVerbose(compiler, verbose);
     Amalgame_Compiler_AmalgameCompiler_Run(compiler, inputFiles, outputName);

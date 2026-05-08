@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.2` · self-hosted · 149/149 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.2` · self-hosted · 150/150 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -78,7 +78,7 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 149/149 tests in CI under `./amc` (87 core + 50 stdlib + 12 fmt),
+- 150/150 tests in CI under `./amc` (88 core + 50 stdlib + 12 fmt),
   with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
@@ -190,8 +190,12 @@ fix.
       compiler source. Re-emits comments by source line.
 - [ ] **`amc test`** — discover `*_test.am`, compile, run, aggregate.
       Replace `tests/run_*.sh` with a self-hosted runner.
-- [ ] **`amc lint`** — basic linter (unused vars, dead code,
-      suspicious patterns). Cheap now that `amc fmt` is in.
+- [~] **`amc --lint`** — partial. New `src/linter.am` walks the AST
+      and flags unreachable code after `return` / `throw` / `break` /
+      `continue`, including inside nested `if` / `while` / `for-in` /
+      `try` bodies. Wired in as a flag on the existing `amc` CLI
+      (not a sub-command — keeps it usable alongside `-o`).
+      Still TBD: unused locals, shadowed names, suspicious patterns.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
 - [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
       Vala one in `archive/vala-bootstrap/src/pkg/`).
