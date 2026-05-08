@@ -1,6 +1,6 @@
 # Grammaire formelle d'Amalgame
 
-> **Version** : 0.3.5
+> **Version** : 0.3.6
 > **Format**  : EBNF (Extended Backus-Naur Form)
 > **Fichier** : [`docs/language/grammar.ebnf`](grammar.ebnf)
 > **Statut**  : ✅ Synchronisée avec `src/parser/parser.am`
