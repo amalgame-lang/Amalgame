@@ -1505,6 +1505,79 @@ public class CGen {
 
     private void EmitStmt(AstNode stmt) {
         let k = stmt.Kind
+        if (k == NodeKind.TRY_STMT) {
+            // try { … } catch e { … } [finally { … }] — setjmp/longjmp pattern
+            // (matches the Vala bootstrap's c_generator).
+            //   {
+            //     jmp_buf _am_prev_env_NN;
+            //     memcpy(&_am_prev_env_NN, &_am_ex.env, sizeof(jmp_buf));
+            //     int _am_caught_NN = setjmp(_am_ex.env);
+            //     if (_am_caught_NN == 0) { try…; _am_ex.active = 0; }
+            //     else { void* e = _am_ex.value; _am_ex.active = 0; catch…; }
+            //     memcpy(&_am_ex.env, &_am_prev_env_NN, sizeof(jmp_buf));
+            //     finally…;
+            //   }
+            // Suffix uses the source line of the `try` token so nested try/catch
+            // blocks get distinct local names.
+            let suffix = String_FromInt(stmt.Line)
+            this.Out.EmitLine("{")
+            this.Out.Indent_()
+            this.Out.EmitLine("jmp_buf _am_prev_env_" + suffix + ";")
+            this.Out.EmitLine("memcpy(&_am_prev_env_" + suffix + ", &_am_ex.env, sizeof(jmp_buf));")
+            this.Out.EmitLine("int _am_caught_" + suffix + " = setjmp(_am_ex.env);")
+            this.Out.EmitLine("if (_am_caught_" + suffix + " == 0) {")
+            this.Out.Indent_()
+            if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
+            this.Out.EmitLine("_am_ex.active = 0;")
+            this.Out.Dedent()
+            this.Out.EmitLine("} else {")
+            this.Out.Indent_()
+            if (String_Length(stmt.Name) > 0) {
+                this.Out.EmitLine("void* __attribute__((unused)) " + stmt.Name + " = _am_ex.value;")
+                this.LocalTypeSet(stmt.Name, "void*")
+            }
+            this.Out.EmitLine("_am_ex.active = 0;")
+            if (stmt.Else != null) { this.EmitBlock(stmt.Else) }
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            this.Out.EmitLine("memcpy(&_am_ex.env, &_am_prev_env_" + suffix + ", sizeof(jmp_buf));")
+            if (stmt.Cond != null) { this.EmitBlock(stmt.Cond) }
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            return
+        }
+        if (k == NodeKind.THROW_STMT) {
+            // `throw new SomeError(args)` → `_am_throw((void*)(SomeError_new(args)),
+            //   "SomeError", first_string_arg_or_empty)`.
+            // Falls back to a generic throw for other shapes.
+            if (stmt.Left == null) {
+                this.Out.EmitLine("_am_throw(NULL, \"Error\", \"\");")
+                return
+            }
+            let v = stmt.Left
+            if (v.Kind == NodeKind.NEW_EXPR) {
+                let typeName = v.Name
+                var argsStr = ""
+                let ac = v.Args.Count()
+                for ai in 0..ac {
+                    if (ai > 0) { argsStr = argsStr + ", " }
+                    argsStr = argsStr + this.EmitExprStr(v.Args.Get(ai))
+                }
+                var msgStr = "\"\""
+                if (ac > 0) {
+                    let firstArg = v.Args.Get(0)
+                    if (firstArg.Kind == NodeKind.LITERAL_STRING) {
+                        msgStr = this.EmitExprStr(firstArg)
+                    }
+                }
+                let symName = this.SymName(typeName)
+                this.Out.EmitLine("_am_throw((void*)(" + symName + "_new(" + argsStr + ")), \"" + typeName + "\", " + msgStr + ");")
+                return
+            }
+            let valStr = this.EmitExprStr(v)
+            this.Out.EmitLine("_am_throw((void*)" + valStr + ", \"Error\", \"\");")
+            return
+        }
         if (k == NodeKind.VAR_DECL) {
             // Tuple destructuring: let (a, b) = expr
             if (stmt.Str == "__tuple_destructure__") {
