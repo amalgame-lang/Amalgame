@@ -19,6 +19,8 @@ public enum NodeKind {
     FOR_IN_STMT
     BREAK_STMT
     CONTINUE_STMT
+    TRY_STMT
+    THROW_STMT
     BINARY
     UNARY
     CALL

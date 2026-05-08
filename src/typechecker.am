@@ -488,6 +488,23 @@ public class TypeChecker {
             return
         }
         if (k == NodeKind.BREAK_STMT || k == NodeKind.CONTINUE_STMT) { return }
+        if (k == NodeKind.TRY_STMT) {
+            if (stmt.Body != null) { this.CheckBlock(stmt.Body) }
+            if (stmt.Else != null) {
+                this.PushScope()
+                if (String_Length(stmt.Name) > 0) {
+                    this.DeclareLocal(stmt.Name, "void*")
+                }
+                this.CheckBlock(stmt.Else)
+                this.PopScope()
+            }
+            if (stmt.Cond != null) { this.CheckBlock(stmt.Cond) }
+            return
+        }
+        if (k == NodeKind.THROW_STMT) {
+            if (stmt.Left != null) { this.CheckExpr(stmt.Left) }
+            return
+        }
         // Expression statement (call, assign, binary, etc.)
         if (k == NodeKind.ASSIGN) {
             this.CheckAssign(stmt)

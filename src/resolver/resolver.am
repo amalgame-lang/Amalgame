@@ -584,6 +584,23 @@ public class FullResolver {
             if (this.LoopDepth == 0) { this.Error("'continue' outside loop", stmt) }
             return
         }
+        if (k == NodeKind.TRY_STMT) {
+            if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+            if (stmt.Else != null) {
+                this.PushScope("catch")
+                if (String_Length(stmt.Name) > 0) {
+                    this.DeclareCurrent(stmt.Name, "void*", true)
+                }
+                this.ResolveBlock(stmt.Else)
+                this.PopScope()
+            }
+            if (stmt.Cond != null) { this.ResolveBlock(stmt.Cond) }
+            return
+        }
+        if (k == NodeKind.THROW_STMT) {
+            if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+            return
+        }
         if (k == NodeKind.ASSIGN) {
             this.ResolveAssign(stmt)
             return
