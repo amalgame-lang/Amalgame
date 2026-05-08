@@ -7,20 +7,61 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.3.3] — 2026-05-08
+
+Quality-of-life follow-up to v0.3.2. Cleans up cosmetic typechecker
+noise during multi-file compilation, ships a first `amc --lint`
+flag (basic static analysis), and stops the workflow from leaking
+a stale v0.3.0 artefact into every release. Suite goes from
+149/149 to **150/150**.
+
+### Compiler
+
+- **Multi-file false-positive cleanup** — `build_amc.sh` step 1
+  invokes `amc` on ten compiler sources at once, and the
+  typechecker was emitting ~93 spurious errors on that path
+  (build still went through, but the noise drowned out anything
+  real). Three small fixes in `CheckProgram` / `CheckReturn`:
+  the per-program filename is now read from `prog.Str2` rather
+  than the constructor argument; `ExprType*`, `LocalNames`/
+  `Types` and `ScopeStarts` reset between programs; and bare
+  `return` (parsed as `Return(_unknown_, …)`) is recognised as
+  such instead of being treated as a value-return.
+  `build_amc.sh` is now silent.
+
+### Tooling
+
+- **`amc --lint`** — new flag that runs a static-analysis pass on
+  top of the parsed AST and emits non-fatal warnings. MVP catches
+  unreachable code after `return` / `throw` / `break` / `continue`,
+  including inside nested `if` / `while` / `for-in` / `try` bodies.
+  The skeleton (`src/linter.am`) is set up to grow more checks
+  (unused locals, shadowed names, …) without touching anywhere
+  else.
+
+### CI
+
+- **Drop stale v0.3.0 artefact, stop tracking `dist/`** — a
+  `dist/amc-0.3.0-linux-x86_64.tar.gz` had been committed during
+  v0.3.0 and was being uploaded on top of every later release by
+  the workflow's `dist/*.tar.gz` glob. Removed, and `dist/` is now
+  in `.gitignore` so future stagings don't sneak back in.
+
+### Tests / infra
+
+- Suite is now **150/150** (88 core + 50 stdlib + 12 fmt) under
+  `./amc`. New samples: `tests/samples/lint_test.am`. New helper:
+  `run_lint_check` in `run_tests.sh`.
+
+---
+
 ## [v0.3.2] — 2026-05-08
 
-This release closes every open compiler bug tracked in v0.3.1's
-`SKIP_SELFHOST` list, restores `try` / `catch` / `throw` / `finally`
-end-to-end in the self-hosted parser, ships the first round of
-generic type inference for `List<T>` and `Map<K,V>`, and introduces
-`amc --lint` (basic static analysis). The full test suite is now
-**150/150 green with zero SKIPs**.
-
-> **Re-tagged note**: an earlier v0.3.2 release went out before two
-> follow-up changes (typechecker false positives during multi-file
-> compilation; `amc --lint` MVP). The v0.3.2 tag and GitHub release
-> were re-cut to include them. Binary checksums therefore differ
-> from the original v0.3.2 artefacts.
+Closes every open compiler bug tracked in v0.3.1's `SKIP_SELFHOST`
+list, restores `try` / `catch` / `throw` / `finally` end-to-end in
+the self-hosted parser, and ships the first round of generic type
+inference for `List<T>` and `Map<K,V>`. The full test suite is
+**149/149 green with zero SKIPs**.
 
 ### Language
 
@@ -43,26 +84,10 @@ generic type inference for `List<T>` and `Map<K,V>`, and introduces
 
 - **Multi-file type checking** — TypeChecker now walks every parsed
   program (was hard-coded to `programs[0]`).
-- **Multi-file false-positive cleanup** — the typechecker's
-  per-node type map and local-scope state now reset between
-  programs, the per-program filename is read from `prog.Str2`
-  rather than the constructor argument, and bare `return` (parsed
-  as `Return(_unknown_, …)`) is recognised as such instead of
-  being treated as a value-return. `build_amc.sh` is now silent.
 - **Null-safety** — three independent bugs fixed: NodeKey collision
   in the typechecker (Kind is now part of the key), bare `?` was
   dropped by the lexer (added `OP_QMARK`), and `TypeToC("T?")` no
   longer doubles up the C pointer.
-
-### Tooling
-
-- **`amc --lint`** — new flag that runs a static-analysis pass on
-  top of the parsed AST and emits non-fatal warnings. MVP catches
-  unreachable code after `return` / `throw` / `break` / `continue`,
-  including inside nested `if` / `while` / `for-in` / `try` bodies.
-  The skeleton (`src/linter.am`) is set up to grow more checks
-  (unused locals, shadowed names, …) without touching anywhere
-  else.
 
 ### Formatter
 
@@ -81,4 +106,5 @@ generic type inference for `List<T>` and `Map<K,V>`, and introduces
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.3.3]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.2
