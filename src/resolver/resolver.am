@@ -331,8 +331,14 @@ public class FullResolver {
     // PARAM AstNode through a typed parameter — chained `.Get(i).Name`
     // erases to void* across the call boundary and breaks the
     // declaration. Used by the lambda resolver branch.
+    //
+    // v2.5: respect the param's annotated type when it has been
+    // pre-patched by PatchLambdaParamTypes from a higher-order method
+    // callsite. Falls back to "?" (capture by-value as int) otherwise.
     private void DeclareLambdaParam(AstNode p) {
-        this.DeclareCurrent(p.Name, "?", true)
+        var t: string = p.Str
+        if (String_Length(t) == 0) { t = "?" }
+        this.DeclareCurrent(p.Name, t, true)
     }
 
     private bool DeclareCurrent(string name, string typeName, bool isLet) {
@@ -664,7 +670,15 @@ public class FullResolver {
             // Resolve RHS first (can't see variable being declared)
             if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
             let isLet = stmt.Flag == false   // Flag = isMut; let = not mutable
-            this.DeclareCurrent(stmt.Name, stmt.Str, isLet)
+            // v2.5: when no annotation is given, infer the variable's
+            // type from the RHS so PatchLambdaParamTypes can later see
+            // it as `List<User>` (rather than ""). Falls back to the
+            // explicit annotation otherwise.
+            var declType: string = stmt.Str
+            if (String_Length(declType) == 0 && stmt.Left != null) {
+                declType = this.InferExprType(stmt.Left)
+            }
+            this.DeclareCurrent(stmt.Name, declType, isLet)
             return
         }
         if (k == NodeKind.RETURN_STMT) {
@@ -809,6 +823,54 @@ public class FullResolver {
         }
     }
 
+    // ── Lambda param-type inference (v2.5) ────────────
+    //
+    // When the call is a higher-order list method like
+    // xs.Map(x => x.Name), the lambda's PARAM is created with type "?"
+    // by the parser. The CGen emits the lambda top-level BEFORE seeing
+    // the callsite, so without this patch the body would resolve `x` as
+    // an untyped local and `x.Name` would fail. We mutate p.Str on the
+    // PARAM AstNode here, before descending into the lambda body, so
+    // that DeclareLambdaParam (and later the typechecker / cgen) see
+    // the inferred element type.
+    //
+    // Single-T methods (Map, Filter, ForEach, Any, All, CountIf) take a
+    // (T) → ? lambda where T is the element type of the receiver.
+    // Reduce takes (Acc, T) → Acc and is deferred to a follow-up
+    // because the Acc type depends on the init argument, not the
+    // receiver alone.
+    private void PatchLambdaParamTypes(AstNode call) {
+        if (call.Left == null) { return }
+        if (call.Left.Kind != NodeKind.MEMBER) { return }
+        let methodName = call.Left.Name
+        var isSingleT = false
+        if (methodName == "Map") { isSingleT = true }
+        else if (methodName == "Filter") { isSingleT = true }
+        else if (methodName == "ForEach") { isSingleT = true }
+        else if (methodName == "Any") { isSingleT = true }
+        else if (methodName == "All") { isSingleT = true }
+        else if (methodName == "CountIf") { isSingleT = true }
+        if (!isSingleT) { return }
+        if (call.Left.Left == null) { return }
+        let recvType = this.InferExprType(call.Left.Left)
+        let elem: string = this.CollectionElemType(recvType)
+        if (String_Length(elem) == 0) { return }
+        if (elem == "?") { return }
+        let argc: int = call.Args.Count()
+        for i in 0..argc {
+            let arg = call.Args.Get(i)
+            if (arg.Kind == NodeKind.METHOD_DECL && arg.Name == "__lambda__") {
+                let pn: int = arg.Params.Count()
+                if (pn >= 1) {
+                    let p = arg.Params.Get(0)
+                    if (String_Length(p.Str) == 0 || p.Str == "?") {
+                        p.Str = elem
+                    }
+                }
+            }
+        }
+    }
+
     // ── Expression resolver ───────────────────────────
 
     private void ResolveExpr(AstNode expr) {
@@ -860,6 +922,11 @@ public class FullResolver {
         }
         if (k == NodeKind.CALL) {
             if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            // v2.5: when the call is a higher-order list method
+            // (xs.Map/Filter/...), patch the lambda arg's PARAM types
+            // from the receiver's element type so the body can resolve
+            // member access like `x.Name` instead of failing on `?`.
+            this.PatchLambdaParamTypes(expr)
             let argc = expr.Args.Count()
             for i in 0..argc {
                 this.ResolveExpr(expr.Args.Get(i))
@@ -956,7 +1023,15 @@ public class FullResolver {
         if (k == NodeKind.LITERAL_STRING) { return "string" }
         if (k == NodeKind.LITERAL_BOOL)   { return "bool" }
         if (k == NodeKind.BINARY && expr.Str == "..") { return "range" }
-        if (k == NodeKind.NEW_EXPR) { return expr.Name }
+        if (k == NodeKind.NEW_EXPR) {
+            // v2.5: include the generic type-arg so List<User> is
+            // returned as "List<User>" — needed by
+            // PatchLambdaParamTypes via CollectionElemType.
+            if (String_Length(expr.Str2) > 0) {
+                return expr.Name + "<" + expr.Str2 + ">"
+            }
+            return expr.Name
+        }
         if (k == NodeKind.MEMBER) {
             if (expr.Left != null) {
                 let targetType = this.InferExprType(expr.Left)

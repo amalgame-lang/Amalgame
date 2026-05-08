@@ -1,0 +1,64 @@
+namespace Tests
+
+// Lambda v2.5 — non-int signatures.
+//
+// Up through v0.3.6, lambdas were locked to (i64) → i64 at the C
+// level. Higher-order calls like `users.Map(u => u.Name)` over a
+// `List<User>` couldn't dereference the param. v2.5 patches the
+// PARAM type at the higher-order callsite so the body resolves
+// correctly, and the CGen emits a typed unbox + propagates the
+// lambda's return type as the result list's element type.
+//
+// Coverage:
+//   - Map: List<User> → List<string>            (pointer → pointer)
+//   - Map: List<User> → List<int>               (pointer → scalar)
+//   - Filter: List<User> → List<User>           (pointer predicate)
+//   - Any/All/CountIf: predicates on a class    (pointer → bool)
+//
+// String interpolation doesn't yet propagate inferred types into
+// embedded calls (known v2.5 limitation), so we stage results in
+// named locals before printing.
+
+public data class User(string Name, int Age)
+
+public class Program {
+    public static void Main(string[] args) {
+        let users = new List<User>()
+        users.Add(new User("Alice", 30))
+        users.Add(new User("Bob",   25))
+        users.Add(new User("Carol", 17))
+
+        // 1. Map a class projection onto a string. The lambda's param
+        // `u` resolves to `User` so `u.Name` lowers to `u->Name` and
+        // the result list's element type is `string`.
+        let names: List<string> = users.Map(u => u.Name)
+        let firstName: string   = names.Get(0)
+        let lastName: string    = names.Get(2)
+        Console.WriteLine("first name: {firstName}")
+        Console.WriteLine("last name: {lastName}")
+
+        // 2. Map a class projection onto an int.
+        let ages: List<int> = users.Map(u => u.Age)
+        let firstAge: int   = ages.Get(0)
+        let lastAge: int    = ages.Get(2)
+        Console.WriteLine("first age: {firstAge}")
+        Console.WriteLine("last age: {lastAge}")
+
+        // 3. Filter on a class predicate. Result preserves the
+        // receiver's element type (`List<User>`).
+        let adults: List<User> = users.Filter(u => u.Age >= 18)
+        let adultCount: int    = adults.Count()
+        let adult0: User       = adults.Get(0)
+        let adult0Name: string = adult0.Name
+        Console.WriteLine("adults: {adultCount}")
+        Console.WriteLine("adult0: {adult0Name}")
+
+        // 4. Any / All / CountIf — predicates over a class.
+        let anyMinor   = users.Any(u => u.Age < 18)
+        let allAdults  = users.All(u => u.Age >= 18)
+        let underAge   = users.CountIf(u => u.Age < 18)
+        Console.WriteLine("anyMinor: {anyMinor}")
+        Console.WriteLine("allAdults: {allAdults}")
+        Console.WriteLine("underAge: {underAge}")
+    }
+}

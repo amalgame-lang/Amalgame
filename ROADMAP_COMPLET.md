@@ -247,6 +247,26 @@ fix.
       get warned-on as unused. Still TBD: suspicious patterns,
       catch-binder unused detection (parser puts them at a node
       we don't yet walk).
+- [ ] **`amc new <name> [--template <kind>]`** — scaffolding command,
+      à la `cargo new` / `dotnet new`. Creates a `<name>/` directory
+      with the right starter files for the chosen template:
+        - `exe` (default) — `src/main.am` with a `Program.Main` skeleton
+          + a `tests/hello_test.am`. Minimal "compiles and runs"
+          starting point.
+        - `lib` — `src/<name>.am` with a `public class` skeleton, a
+          README pointing at the `--lib` flag, no `Program.Main`.
+        - `test` — pure test bundle (`tests/<name>_test.am` with a
+          PASS/FAIL example), useful when starting from an existing
+          codebase to add a test layer.
+        - Future: `cli` (with arg parsing skeleton), `web` (HTTP
+          server skeleton tied to the `Http` stdlib), `fmt-plugin`,
+          etc.
+      All templates ship a `.gitignore`, a `README.md` stub, and a
+      `build.sh` calling `amc` directly. Implementation: a small set
+      of file templates in `src/templates/` (or hard-coded strings
+      in `src/main.am` to stay self-contained), a CLI dispatcher
+      branch in `main.am`, and a sample roundtrip test that
+      scaffolds + compiles a fresh project under `/tmp`.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
 - [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
       Vala one in `archive/vala-bootstrap/src/pkg/`).
