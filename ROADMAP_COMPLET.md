@@ -168,6 +168,16 @@ fix.
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
 - [ ] **Inlay hints + code actions** — once LSP is in.
 
+### Stdlib — backlog
+
+- [ ] **GUI / Forms toolkit** — bindings SDL2 dans la stdlib
+      (`Amalgame.UI` ou similaire) avec une couche "Forms" au-dessus
+      pour les widgets courants (Window, Button, TextField, Layout).
+      Permettrait d'écrire des apps graphiques en Amalgame sans
+      descendre au C. Choix de design ouverts : retained vs immediate
+      mode, theming, accessibilité, packaging du runtime SDL2 dans
+      les releases.
+
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
 - [x] GitHub Releases automation (tag-triggered)
