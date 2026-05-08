@@ -134,14 +134,28 @@ In rough order of usefulness × effort:
       Lambdas in argument position with non-int signatures
       (e.g. `xs.Filter(x => x > 0)`) need a lambda-typing layer
       in the TypeChecker — that lands in v2.5.
-- [ ] **Lambda v2.5 — args + non-int sigs** — make
-      `xs.Select(x => x.Name)` and `xs.Filter(x => x > 0)` work.
-      Needs (1) the TypeChecker to infer the lambda's expected
-      signature from the formal parameter at the call site, (2)
-      CGen to emit non-int signatures (real C types instead of
-      `i64` everywhere) once the signature is known, (3) stdlib
-      methods on List/Map/Set typed to take a closure with a
-      known signature.
+- [x] **Lambda v2.5 (partial) — higher-order List methods** —
+      `xs.Filter / .Map / .Reduce / .ForEach / .Any / .All /
+      .CountIf` all take a lambda. Lowered to runtime helpers
+      that dispatch through `AmalgameClosure_callN`, so captured
+      env follows. CGen learned an `EmitClosureArg` helper that
+      emits a GCC compound-statement-expression at the call site
+      (env alloc + capture copies + `Closure_new(...)`).
+      InferTypeFromExpr returns `AmalgameList*` for Filter/Map
+      so `let big = xs.Filter(...)` typechecks without an
+      explicit annotation, and the receiver's element type is
+      propagated to the result (so `big.Get(0)` lowers with the
+      right cast).
+- [ ] **Lambda v2.5 — non-int signatures (still pending)** —
+      `xs.Map(x => x.Name)` over a `List<Class>` doesn't yet
+      work because the lambda is still `(i64) → i64` at the C
+      level. Needs (1) the TypeChecker to infer the lambda's
+      expected signature from the formal parameter at the call
+      site, (2) CGen to emit non-int `lam_N_fn` signatures
+      based on the inferred shape, (3) string interpolation
+      `"x: {coll.Count()}"` to propagate the inferred
+      `AmalgameList*` to the embedded call (current workaround:
+      stage in named locals).
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
       literal syntax `[...]` first and a clear semantics for variadic
       calls. Larger than it looks.
@@ -349,13 +363,12 @@ fix.
 
 Top of the list, ordered by *unlocked-value* per *days-of-work*:
 
-1. **Lambda v2.5 — args + non-int sigs** — `xs.Select(x => x.Name)`
-   and `xs.Filter(x => x > 0)` need (a) the TypeChecker to infer
-   the lambda's expected signature from the formal param at the
-   call site, (b) CGen to emit non-int signatures (real C types
-   instead of `i64` everywhere) once the signature is known, (c)
-   stdlib methods on List/Map/Set typed to take a closure with a
-   known signature. Unlocks the bulk of real-world lambda usage.
+1. **Lambda v2.5 — non-int signatures** — i64-shaped Filter /
+   Map / Reduce / ForEach are in (List), but `xs.Map(x => x.Name)`
+   over a `List<Class>` still needs (a) TypeChecker to infer the
+   lambda's expected signature from the formal param at the call
+   site, (b) CGen to emit non-int `lam_N_fn` signatures based on
+   the inferred shape. Unlocks the rest of real-world lambda usage.
 2. **Stdlib expansion** — pick one or two modules from the stdlib
    backlog (`DateTime`, `Json`, `Regex` are the most missed).
    Independent of compiler/tooling work, so can run in parallel

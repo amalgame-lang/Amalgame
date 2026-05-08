@@ -363,11 +363,23 @@ snapshotted into a heap-allocated env at the creation site,
 not by textual substitution. The runtime exposes
 `Closure_call1` / `_call2` / `_call3` for arities 1–3.
 
-**Limitations of v0.3.5.** All lambda arguments and results
-are still typed `i64` at the C level. Lambdas in argument
-position with non-int signatures (e.g. `xs.Filter(x => x > 0)`,
-`xs.Select(x => x.Name)`) need a lambda-typing layer in the
-TypeChecker — that lands in v2.5.
+Higher-order `List<T>` methods accept a lambda directly (since
+v0.3.6 — see [04-stdlib.md](04-stdlib.md#listt) for the full
+list):
+
+```amalgame
+let nums = new List<int>()
+nums.Add(1) ; nums.Add(2) ; nums.Add(3) ; nums.Add(4)
+let big   = nums.Filter(x => x > 2)              // [3, 4]
+let times = nums.Map(x => x * 10)                // [10, 20, 30, 40]
+let total = nums.Reduce(0, (acc, x) => acc + x)  // 10
+```
+
+**Current limitations.** Lambda arguments and results are still
+typed `i64` at the C level. `xs.Filter(x => x > 0)` works
+because `bool` round-trips through int; `xs.Map(x => x.Name)`
+over a `List<Class>` doesn't yet — it needs the lambda-typing
+layer that's tracked for the next release.
 
 ## Null safety
 
