@@ -237,6 +237,49 @@ compile; otherwise zero. The convention deliberately stays
 framework-free for v1 — a richer `Assert` module + `test_<name>`
 auto-discovery is a possible v2.
 
+## LSP server (`amc lsp`, `src/lsp.am`)
+
+`amc lsp` runs a minimal LSP 3.x server speaking JSON-RPC 2.0
+over stdio with the standard `Content-Length: N\r\n\r\n<N bytes>`
+framing. v1 implements:
+
+- `initialize` / `shutdown` / `exit` — lifecycle
+- `textDocument/didOpen` / `didChange` / `didClose` — document
+  state, advertised as Full sync (`textDocumentSync = 1`) so each
+  `didChange` carries the entire updated text
+- `textDocument/publishDiagnostics` — pushed back on every
+  `did{Open,Change}`. Diagnostics merge resolver `RawErrors` and
+  typechecker `Errors`, mapped from 1-based `(line, column)` to
+  the 0-based LSP `Position` shape and underlined as a single
+  character at the error column.
+
+Hover, completion, and goto-definition are out of scope for v1
+and will land in a follow-up.
+
+JSON handling is **ad-hoc** rather than a real parser: the
+`JsonStr(body, key)` and `JsonInt(body, key)` static helpers find
+`"<key>"`, skip to the value, and read until the appropriate
+terminator (handling backslash escapes for strings). LSP
+messages don't have ambiguous keys at the depth we extract
+(`method`, `id`, `uri`, `text`), so this trades correctness on
+arbitrary JSON for ~50 lines of code instead of a full tagged
+union + recursive-descent parser. If hover or completion need
+deeper extraction, promote the codec to a proper `stdlib/Json`
+module.
+
+Two new runtime helpers shipped to support the framing:
+`Console_ReadBytes(n)` reads exactly `n` bytes from stdin (the
+LSP body after parsing `Content-Length`), and `Console_Flush()`
+drains the stdout buffer so the client doesn't block waiting on
+buffered replies.
+
+The resolver gained a parallel `RawErrors: List<ResolverError>`
+that's kept in lock-step with the formatted `Errors: List<string>`.
+`ResolverError` is a tiny local mirror of `TypeError` — they
+duplicate fields rather than share, because resolver.am is
+compiled before typechecker.am in the bundle and we want the
+source-file dependency graph to stay one-way.
+
 ## Snapshot bootstrap (`snapshot/`, `tools/save-snapshot.sh`)
 
 `build_amc.sh` has a 3-rung bootstrap chain:

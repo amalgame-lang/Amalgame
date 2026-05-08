@@ -651,6 +651,14 @@ public class CGen {
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }
                 if (calleeStr == "Process_RunCapture") { return "AmalgameProcessResult*" }
                 if (calleeStr == "Process_Run") { return "i64" }
+                if (calleeStr == "Console_ReadLine" || calleeStr == "Console_ReadBytes") { return "code_string" }
+                if (calleeStr == "Console_Flush" || calleeStr == "Console_Write") { return "void" }
+                // String stdlib: int / bool returns. The CGen previously
+                // didn't track these, so an unannotated `let n = String_IndexOf(...)`
+                // would default to `code_string`, breaking arithmetic
+                // on the result. Listing them here fixes generic users.
+                if (calleeStr == "String_Length" || calleeStr == "String_IndexOf" || calleeStr == "String_LastIndexOf" || calleeStr == "String_ToInt") { return "i64" }
+                if (calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_Contains" || calleeStr == "String_IsEmpty") { return "code_bool" }
                 if (calleeStr == "TcpServer_Listen") { return "AmalgameTcpServer*" }
                 if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
                 if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
@@ -918,9 +926,15 @@ public class CGen {
         s = String_Replace(s, "\"", "\\\"")
         s = String_Replace(s, "\n", "\\n")
         s = String_Replace(s, "\t", "\\t")
-        s = String_Replace(s, "\r", "\\r")
+        // CR (0x0d) is built via String_FromByte(13) rather than
+        // "\r" — the ancient amc that bootstraps this file lexed
+        // both `"\r"` and `"\x0d"` incorrectly (no escape applied),
+        // so the previous `String_Replace(s, "\r", ...)` never
+        // matched a real CR. Going through a builtin int→byte
+        // bypasses the lexer entirely.
+        s = String_Replace(s, String_FromByte(13), "\\r")
         // ESC character (0x1B) used in ANSI color codes
-        s = String_Replace(s, "\x1b", "\\x1b")
+        s = String_Replace(s, String_FromByte(27), "\\x1b")
         return s
     }
 

@@ -1,0 +1,379 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  lsp.am  —  amc lsp: minimal LSP server (diagnostics-only)
+// ═══════════════════════════════════════════════════════
+//
+// Speaks JSON-RPC 2.0 over stdio with the standard
+// `Content-Length: N\r\n\r\n<N bytes>` framing. v1 implements:
+//
+//   - initialize / shutdown / exit       (lifecycle)
+//   - textDocument/didOpen / didChange   (document state, full sync)
+//   - textDocument/didClose
+//   - textDocument/publishDiagnostics    (push, on every did{Open,Change})
+//
+// `textDocumentSync` is advertised as Full (1), so each didChange
+// carries the entire updated text — no incremental edits to apply.
+// Hover / completion / goto-definition are out of scope for v1
+// and will land in a follow-up.
+//
+// JSON handling is ad-hoc: extractors look up `"key"` substrings.
+// LSP messages don't have ambiguous key names at the depth we
+// extract (method, id, uri, text), so a real parser would be
+// over-engineering for this PR. Promotion to a proper Json
+// stdlib module can come later if hover/completion need it.
+
+public class LspServer {
+    // Parallel arrays: DocUris[i] is the URI of the open document
+    // whose latest text is in Docs[i]. Small N expected (one or
+    // two open files in an editor session).
+    private DocUris: List<string>
+    private Docs:    List<string>
+
+    public LspServer() {
+        this.DocUris = new List<string>()
+        this.Docs    = new List<string>()
+    }
+
+    // ── Main loop ─────────────────────────────────────
+    public int Run() {
+        while (true) {
+            let body = this.ReadMessage()
+            if (String_Length(body) == 0) { return 0 }
+            let method = LspServer.JsonStr(body, "method")
+            if (method == "initialize") {
+                let id = LspServer.JsonInt(body, "id")
+                this.SendInit(id)
+            } else if (method == "shutdown") {
+                let id = LspServer.JsonInt(body, "id")
+                this.SendShutdown(id)
+            } else if (method == "exit") {
+                return 0
+            } else if (method == "textDocument/didOpen") {
+                let uri = LspServer.JsonStr(body, "uri")
+                let txt = LspServer.JsonStr(body, "text")
+                this.UpsertDoc(uri, txt)
+                this.PublishDiagnostics(uri, txt)
+            } else if (method == "textDocument/didChange") {
+                let uri = LspServer.JsonStr(body, "uri")
+                let txt = LspServer.JsonStr(body, "text")
+                this.UpsertDoc(uri, txt)
+                this.PublishDiagnostics(uri, txt)
+            } else if (method == "textDocument/didClose") {
+                let uri = LspServer.JsonStr(body, "uri")
+                this.RemoveDoc(uri)
+            }
+            // Unknown method: ignore. LSP allows the server to skip
+            // unhandled notifications, and we don't want to crash on
+            // optional capability negotiation messages.
+        }
+        return 0
+    }
+
+    // ── Document storage ──────────────────────────────
+    // Replace-or-insert. List<T> has no Set(idx, val) op, so we
+    // remove + append on update. N is small (open file count) so
+    // the linear scan is fine.
+    private void UpsertDoc(string uri, string text) {
+        let n = this.DocUris.Count()
+        for i in 0..n {
+            let u = this.DocUris.Get(i)
+            if (u == uri) {
+                this.DocUris.RemoveAt(i)
+                this.Docs.RemoveAt(i)
+                this.DocUris.Add(uri)
+                this.Docs.Add(text)
+                return
+            }
+        }
+        this.DocUris.Add(uri)
+        this.Docs.Add(text)
+    }
+
+    private void RemoveDoc(string uri) {
+        let n = this.DocUris.Count()
+        for i in 0..n {
+            let u = this.DocUris.Get(i)
+            if (u == uri) {
+                this.DocUris.RemoveAt(i)
+                this.Docs.RemoveAt(i)
+                return
+            }
+        }
+    }
+
+    // ── Framing ───────────────────────────────────────
+    // Read headers line-by-line until blank line, then read
+    // exactly Content-Length bytes from stdin. Returns "" on EOF.
+    private string ReadMessage() {
+        var contentLen = 0
+        var sawAnyHeader = false
+        while (true) {
+            let raw  = Console_ReadLine()
+            let line = String_TrimEnd(raw)
+            if (String_Length(line) == 0) {
+                // EOF *before* any header: stdin closed.
+                if (String_Length(raw) == 0 && !sawAnyHeader) {
+                    return ""
+                }
+                // Blank line ends the header block.
+                break
+            }
+            sawAnyHeader = true
+            if (String_StartsWith(line, "Content-Length:")) {
+                let lineLen: int = String_Length(line)
+                let rest         = String_Substring(line, 15, lineLen - 15)
+                contentLen       = String_ToInt(String_Trim(rest))
+            }
+        }
+        if (contentLen <= 0) { return "" }
+        return Console_ReadBytes(contentLen)
+    }
+
+    // Build a single CR byte (0x0d). `"\r"` and `"\x0d"` are both
+    // mis-lexed by the bootstrapping amc, so we route through
+    // String_FromByte which is just an int→byte builtin and has
+    // no escape-table dependency.
+    public static string Cr() { return String_FromByte(13) }
+
+    // Write a framed JSON-RPC message. fflush so the client
+    // doesn't block waiting for buffered output. CRLF is built
+    // explicitly from bytes — see Cr() above.
+    private void Send(string body) {
+        let n: int  = String_Length(body)
+        let crlf    = LspServer.Cr() + "\n"
+        Console.Write("Content-Length: " + String_FromInt(n) + crlf + crlf)
+        Console.Write(body)
+        Console_Flush()
+    }
+
+    // ── Responses ─────────────────────────────────────
+    private void SendInit(int id) {
+        // textDocumentSync = 1 (Full): client sends the whole text
+        // on every didChange. Simpler than incremental, fine for v1.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1}}}"
+        this.Send(body)
+    }
+
+    private void SendShutdown(int id) {
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":null}"
+        this.Send(body)
+    }
+
+    private void PublishDiagnostics(string uri, string source) {
+        let diags = this.Compile(uri, source)
+        let body  = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" + LspServer.EscapeJsonStr(uri) + "\",\"diagnostics\":" + diags + "}}"
+        this.Send(body)
+    }
+
+    // Run the same lex+parse+resolve+typecheck pipeline `main.am`
+    // does for one file, then turn the collected errors into a
+    // JSON array of LSP Diagnostic objects.
+    private string Compile(string uri, string source) {
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+
+        let resolver = new FullResolver()
+        resolver.Programs.Add(prog)
+        resolver.ResolvePrograms()
+
+        let tc = new TypeChecker(resolver, path)
+        tc.Check(prog)
+
+        var arr   = "["
+        var first = true
+        let rn = resolver.RawErrors.Count()
+        for ri in 0..rn {
+            let e: ResolverError = resolver.RawErrors.Get(ri)
+            if (!first) { arr = arr + "," }
+            arr = arr + LspServer.DiagnosticFromResolver(source, e)
+            first = false
+        }
+        let tn = tc.Errors.Count()
+        for ti in 0..tn {
+            let te: TypeError = tc.Errors.Get(ti)
+            if (!first) { arr = arr + "," }
+            arr = arr + LspServer.DiagnosticFromTc(source, te)
+            first = false
+        }
+        arr = arr + "]"
+        return arr
+    }
+
+    // ── Helpers ───────────────────────────────────────
+    // LSP positions are 0-based; our errors carry 1-based
+    // (line, column) from the lexer. Underline a single character
+    // at the error column — good enough for v1; richer ranges
+    // (token width) can come later.
+    // Two adapters: the resolver and the typechecker carry the same
+    // info but in different classes (ResolverError vs TypeError) so
+    // the source-file dependency graph stays one-way.
+    public static string DiagnosticFromResolver(string source, ResolverError e) {
+        return LspServer.DiagnosticBody(source, e.Line, e.Column, e.Message)
+    }
+
+    public static string DiagnosticFromTc(string source, TypeError e) {
+        return LspServer.DiagnosticBody(source, e.Line, e.Column, e.Message)
+    }
+
+    // Build one LSP Diagnostic. The range underlines the token at
+    // (line, col) — scanning forward in `source` for word chars
+    // (letters/digits/underscore). Single-char fallback when the
+    // char at the error column isn't word-y (operators, brackets, …).
+    private static string DiagnosticBody(string source, int line, int col, string msg) {
+        var l = line - 1
+        var cStart = col - 1
+        if (l < 0) { l = 0 }
+        if (cStart < 0) { cStart = 0 }
+        let endCol: int = LspServer.TokenEndCol(source, line, col)
+        var cEnd: int = endCol - 1
+        if (cEnd <= cStart) { cEnd = cStart + 1 }
+        let lStr = String_FromInt(l)
+        let cStartStr = String_FromInt(cStart)
+        let cEndStr = String_FromInt(cEnd)
+        return "{\"severity\":1,\"range\":{\"start\":{\"line\":" + lStr + ",\"character\":" + cStartStr + "},\"end\":{\"line\":" + lStr + ",\"character\":" + cEndStr + "}},\"message\":\"" + LspServer.EscapeJsonStr(msg) + "\"}"
+    }
+
+    // Find the 1-indexed column where the token starting at
+    // (line, col) ends. "Token" here is a maximal run of word
+    // chars; if (line, col) doesn't point at a word char, returns
+    // col (the caller widens to col+1 to avoid empty ranges).
+    private static int TokenEndCol(string source, int line, int col) {
+        let n: int = String_Length(source)
+        var off: int = 0
+        var ln:  int = 1
+        while (ln < line && off < n) {
+            let ch = String_CharAt1(source, off)
+            if (ch == "\n") { ln = ln + 1 }
+            off = off + 1
+        }
+        var colIdx: int = 0
+        while (colIdx < col - 1 && off < n) {
+            let ch = String_CharAt1(source, off)
+            if (ch == "\n") { break }
+            off = off + 1
+            colIdx = colIdx + 1
+        }
+        var endCol: int = col
+        while (off < n) {
+            let ch = String_CharAt1(source, off)
+            if (LspServer.IsWordChar(ch)) {
+                off = off + 1
+                endCol = endCol + 1
+            } else { break }
+        }
+        return endCol
+    }
+
+    private static bool IsWordChar(string ch) {
+        if (String_Length(ch) == 0) { return false }
+        if (ch == "_") { return true }
+        if (String_IndexOf("0123456789", ch) >= 0) { return true }
+        if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", ch) >= 0) { return true }
+        if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0) { return true }
+        return false
+    }
+
+    // Minimal JSON string escape — covers what error messages
+    // contain in practice (quotes, backslashes, newlines).
+    // CR uses Cr() not "\r" (see Send() comment about lexer bootstrap).
+    public static string EscapeJsonStr(string s) {
+        let n: int = String_Length(s)
+        let cr     = LspServer.Cr()
+        var r = ""
+        for i in 0..n {
+            let ch = String_CharAt1(s, i)
+            if (ch == "\"")      { r = r + "\\\"" }
+            else if (ch == "\\") { r = r + "\\\\" }
+            else if (ch == "\n") { r = r + "\\n" }
+            else if (ch == cr)   { r = r + "\\r" }
+            else if (ch == "\t") { r = r + "\\t" }
+            else                  { r = r + ch }
+        }
+        return r
+    }
+
+    // file:///abs/path → /abs/path. Doesn't decode percent-encoding;
+    // editors don't send it for plain ASCII paths in practice.
+    public static string UriToPath(string uri) {
+        if (String_StartsWith(uri, "file://")) {
+            let n: int = String_Length(uri)
+            return String_Substring(uri, 7, n - 7)
+        }
+        return uri
+    }
+
+    // ── JSON ad-hoc extractors ────────────────────────
+    // Find `"<key>"`, skip to the next `"`, then read until the
+    // closing `"` — handling backslash escapes. Returns "" if
+    // the key isn't found.
+    public static string JsonStr(string body, string key) {
+        let needle = "\"" + key + "\""
+        let kIdx: int = String_IndexOf(body, needle)
+        if (kIdx < 0) { return "" }
+        let bn: int = String_Length(body)
+        let needleLen: int = String_Length(needle)
+        var i: int = kIdx + needleLen
+        // Skip whitespace and `:` to the opening quote.
+        while (i < bn) {
+            let ch = String_CharAt1(body, i)
+            if (ch == "\"") { i = i + 1; break }
+            i = i + 1
+        }
+        var result = ""
+        while (i < bn) {
+            let ch = String_CharAt1(body, i)
+            if (ch == "\"") { break }
+            if (ch == "\\") {
+                if (i + 1 >= bn) { break }
+                let nx = String_CharAt1(body, i + 1)
+                if (nx == "n")       { result = result + "\n" }
+                else if (nx == "r")  { result = result + "\r" }
+                else if (nx == "t")  { result = result + "\t" }
+                else if (nx == "\"") { result = result + "\"" }
+                else if (nx == "\\") { result = result + "\\" }
+                else if (nx == "/")  { result = result + "/" }
+                else                  { result = result + nx }
+                i = i + 2
+            } else {
+                result = result + ch
+                i = i + 1
+            }
+        }
+        return result
+    }
+
+    // Find `"<key>"`, skip to the first digit (or `-`), and parse.
+    public static int JsonInt(string body, string key) {
+        let needle = "\"" + key + "\""
+        let kIdx: int = String_IndexOf(body, needle)
+        if (kIdx < 0) { return 0 }
+        let bn: int   = String_Length(body)
+        let dig       = "0123456789"
+        let needleLen: int = String_Length(needle)
+        var i: int    = kIdx + needleLen
+        while (i < bn) {
+            let ch = String_CharAt1(body, i)
+            if (ch == "-") { break }
+            if (String_IndexOf(dig, ch) >= 0) { break }
+            i = i + 1
+        }
+        var numStr = ""
+        while (i < bn) {
+            let ch = String_CharAt1(body, i)
+            if (ch == "-" || String_IndexOf(dig, ch) >= 0) {
+                numStr = numStr + ch
+                i = i + 1
+            } else { break }
+        }
+        return String_ToInt(numStr)
+    }
+}
