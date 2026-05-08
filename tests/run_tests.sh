@@ -134,6 +134,41 @@ run_lib_test() {
     fi
 }
 
+# Run `amc --check <file>` and assert it FAILS (non-zero exit) AND that
+# the output contains the given diagnostic substring. Used for negative
+# typecheck tests where the file is intentionally malformed.
+run_check_fail() {
+    local name="$1"
+    local file="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+
+    if [ ! -f "$file" ]; then
+        echo -e "${YELLOW}SKIP${NC} (file not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local out
+    out=$("$AMC" --check "$file" 2>&1)
+    local rc=$?
+
+    if [ $rc -eq 0 ]; then
+        echo -e "${RED}FAIL${NC} (expected non-zero exit, got 0)"
+        FAIL=$((FAIL + 1)); return
+    fi
+
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (diagnostic pattern not found)"
+        echo "    expected substring : $pattern"
+        echo "$out" | head -3 | sed 's/^/    /'
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # Run `amc test <dir>` and grep its merged stdout/stderr for a pattern.
 # Exit code is ignored: the runner returns 1 when any test FAILs by
 # design, but the suite cell still wants to assert a specific tally.
@@ -419,6 +454,10 @@ run_test "interface basic"   "$SAMPLES/interfaces.am"   "Circle(r=5)"
 run_test "interface method"  "$SAMPLES/interfaces.am"   "Rect(4x3)"
 run_test "interface scale"   "$SAMPLES/interfaces.am"   "Circle(r=10)"
 run_test "interface dispatch" "$SAMPLES/interfaces.am"  "Circle(r=10)"
+run_test "generic iface T"   "$SAMPLES/generic_interfaces.am" "compare: 4"
+run_test "generic iface K,V" "$SAMPLES/generic_interfaces.am" "pair: answer=42"
+run_check_fail "generic iface bad sig" "$SAMPLES/generic_interfaces_bad.am" \
+    "expected type 'int' (from interface 'IComparable<int>'), got 'string'"
 
 # ── Enums ──────────────────────────────────────────────
 echo ""
