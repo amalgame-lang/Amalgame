@@ -1,0 +1,28 @@
+namespace Tests
+
+import Amalgame.String
+
+// Demonstrates obj.Method() instance syntax on string variables.
+// `s.Length()` lowers to `String_Length(s)` (not `code_string_Length`).
+public class Program {
+    public static void Main(string[] args) {
+        let s = "Hello, world"
+        let n = s.Length()
+        Console.WriteLine("len: {n}")
+
+        let upper = s.ToUpper()
+        Console.WriteLine("upper: {upper}")
+
+        let trimmed = "   spaced   ".Trim()
+        Console.WriteLine("trimmed: '{trimmed}'")
+
+        let containsHello = s.Contains("Hello")
+        Console.WriteLine("contains Hello: {containsHello}")
+
+        let starts = s.StartsWith("Hello")
+        Console.WriteLine("starts: {starts}")
+
+        let replaced = s.Replace("world", "Amalgame")
+        Console.WriteLine("replaced: {replaced}")
+    }
+}
