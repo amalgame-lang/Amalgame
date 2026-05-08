@@ -88,12 +88,7 @@ paired with a VS Code client. Suite goes from **150/150 to
   framing and stayed in Starting forever. Fixed by routing CR
   through `String_FromByte(13)`, which is just an int→byte builtin
   and has no escape-table dependency; same idea for `\x1b` (ESC).
-<<<<<<< Updated upstream
-  Snapshot refreshed so future rebuilds inherit the corrected
-  emission. *(PR #110)*
-=======
   *(PR #110)*
->>>>>>> Stashed changes
 
 - **CGen return-type table extended** — `Console_{Read,Flush,Write}`,
   `Process_{Run,RunCapture}`, and the `String_*` int/bool returns
@@ -113,11 +108,6 @@ paired with a VS Code client. Suite goes from **150/150 to
 
 - **`Console_ReadBytes(n)`** — reads exactly `n` bytes from stdin.
   Used by the LSP framing reader after parsing `Content-Length`.
-<<<<<<< Updated upstream
-  Existing `Console_ReadLine` is line-based + 4096-byte capped
-  and isn't enough.
-=======
->>>>>>> Stashed changes
 - **`Console_Flush()`** — drains stdout. Required by the LSP
   server so the client doesn't block on buffered replies.
 - **`AmalgameClosure { fn, env }`** + `AmalgameClosure_new` /
@@ -132,18 +122,6 @@ paired with a VS Code client. Suite goes from **150/150 to
   `lint_unused_shadow.am`, `process_api.am`,
   `test_runner/{arith,mixed}_test.am`. New helpers in
   `run_tests.sh`: `run_amc_test_check`, `run_lsp_check`.
-<<<<<<< Updated upstream
-- `tools/save-snapshot.sh` runs cleanly to roll the bootstrap
-  forward through the closure-feature-set additions and through
-  the CR-escape fix.
-
-### Docs
-
-- `docs/guide/07-internals.md` gets new sections on the **test
-  runner** (`amc test`) and the **LSP server** (`amc lsp`,
-  `src/lsp.am`). The Linter section is rewritten to cover the
-  new unused / shadow checks.
-=======
 
 ### Docs
 
@@ -157,7 +135,6 @@ paired with a VS Code client. Suite goes from **150/150 to
   missing everything added since (try/catch, match-as-expression,
   closures, list comp, null-safety, decorators, generics, …). The
   new EBNF mirrors `src/parser/parser.am` exactly.
->>>>>>> Stashed changes
 - README adds bullets for `--lint`, `amc test`, and `amc lsp`.
 
 ---
@@ -261,5 +238,6 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.3.4]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.2

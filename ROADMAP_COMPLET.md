@@ -81,7 +81,7 @@ Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 150/150 tests in CI under `./amc` (88 core + 50 stdlib + 12 fmt),
+- 170/170 tests in CI under `./amc` (108 core + 50 stdlib + 12 fmt),
   with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
