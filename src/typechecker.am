@@ -542,7 +542,11 @@ public class TypeChecker {
     }
 
     private AstNode? FindInterface(string name) {
-        let pn = this.Symbols.ProgramCount()
+        // Explicit `: int` annotation: ProgramCount() returns int but the
+        // self-host codegen erases through the call boundary, leaving `pn`
+        // typed as `void*` in the emitted C unless we pin it down here.
+        // GitHub CI compiles with -Wint-conversion as an error.
+        let pn: int = this.Symbols.ProgramCount()
         for ip in 0..pn {
             let prog = this.Symbols.ProgramAt(ip)
             let hit  = this.FindInterfaceInProgram(prog, name)
