@@ -8,6 +8,7 @@
 #include "Amalgame_Math.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
+#include "Amalgame_Process.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -2784,6 +2785,9 @@ Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpConn", "Fd", "i64");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Fd", "i64");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Port", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Exit", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Stdout", "code_string");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Stderr", "code_string");
     return self;
 }
 
@@ -3407,6 +3411,12 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson")) {
                 return "AmalgameHttpResponse*";
             }
+            if (code_string_equals(calleeStr, "Process_RunCapture")) {
+                return "AmalgameProcessResult*";
+            }
+            if (code_string_equals(calleeStr, "Process_Run")) {
+                return "i64";
+            }
             if (code_string_equals(calleeStr, "TcpServer_Listen")) {
                 return "AmalgameTcpServer*";
             }
@@ -3763,6 +3773,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -5392,7 +5403,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
-                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env");
+                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process");
                     if (isStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -7613,6 +7624,9 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Set", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Process", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Process_Run", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Process_RunCapture", "AmalgameProcessResult", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console_WriteLine", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Console_WriteError", "void", 0);

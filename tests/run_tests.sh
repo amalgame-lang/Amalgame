@@ -290,6 +290,15 @@ run_test "closure: 1 cap"    "$SAMPLES/closures_capture.am"  "addN(5) = 105"
 run_test "closure: 2 caps"   "$SAMPLES/closures_capture.am"  "combine(10) = 25"
 run_test "closure: snap val" "$SAMPLES/closures_capture.am"  "snap(0) = 1"
 
+# ── Process module ─────────────────────────────────────
+echo ""
+echo "── Process ─────────────────────────────"
+run_test "process: run exit"      "$SAMPLES/process_api.am"  "exit=0"
+run_test "process: cap exit"      "$SAMPLES/process_api.am"  "cap.exit=0"
+run_test "process: cap stdout"    "$SAMPLES/process_api.am"  "cap.out=captured-line"
+run_test "process: nonzero exit"  "$SAMPLES/process_api.am"  "bad.exit=1"
+run_test "process: stderr merge"  "$SAMPLES/process_api.am"  "merged.out=stderr-bytes"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
