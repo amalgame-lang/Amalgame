@@ -9,6 +9,7 @@ public class AmalgameCompiler {
     private Diag:    DiagnosticFormatter
     private IsLib:   bool
     private CheckOnly: bool
+    private LintMode: bool
     private Verbose: bool
     private ExitCode: int
 
@@ -16,12 +17,14 @@ public class AmalgameCompiler {
         this.Diag      = new DiagnosticFormatter()
         this.IsLib     = false
         this.CheckOnly = false
+        this.LintMode  = false
         this.Verbose   = false
         this.ExitCode  = 0
     }
 
     public void SetLib(bool v)       { this.IsLib     = v }
     public void SetCheckOnly(bool v) { this.CheckOnly = v }
+    public void SetLintMode(bool v)  { this.LintMode  = v }
     public void SetVerbose(bool v)   { this.Verbose   = v }
     public void SetColor(bool v)     { this.Diag.EnableColor(v) }
     public int  GetExitCode()        { return this.ExitCode }
@@ -104,6 +107,20 @@ public class AmalgameCompiler {
             this.ExitCode = 1
         }
 
+        // ── Linter pass (optional) ────────────────────
+        // Static analysis layered on top of the AST. Warnings are
+        // non-fatal — they don't bump ExitCode — so the build still
+        // produces output even with lint complaints.
+        if (this.LintMode) {
+            let linter = new Linter()
+            for li in 0..progCount {
+                linter.Lint(progs.Get(li))
+            }
+            if (linter.HasWarnings()) {
+                Console.WriteError(linter.FormatWarnings())
+            }
+        }
+
         // ── Check-only mode: stop here ────────────────
         if (this.CheckOnly) {
             if (this.ExitCode == 0) {
@@ -159,6 +176,7 @@ public class Program {
         Console.WriteError("  -o <output>   Output file (default: a.out)")
         Console.WriteError("  --lib         Compile as library (no main() emitted)")
         Console.WriteError("  --check       Type-check only, no code generation")
+        Console.WriteError("  --lint        Run static-analysis warnings (in addition to compile)")
         Console.WriteError("  --color       Force ANSI color output")
         Console.WriteError("  --no-color    Disable ANSI color output")
         Console.WriteError("  --quiet       Suppress progress messages")
@@ -232,6 +250,7 @@ public class Program {
         var outputName = "a.out"
         var isLib      = false
         var checkOnly  = false
+        var lintMode   = false
         var useColor   = false
         var verbose    = true
 
@@ -245,6 +264,8 @@ public class Program {
                 isLib = true
             } else if (a == "--check") {
                 checkOnly = true
+            } else if (a == "--lint") {
+                lintMode = true
             } else if (a == "--color") {
                 useColor = true
             } else if (a == "--no-color") {
@@ -281,6 +302,7 @@ public class Program {
         let compiler = new AmalgameCompiler()
         compiler.SetLib(isLib)
         compiler.SetCheckOnly(checkOnly)
+        compiler.SetLintMode(lintMode)
         compiler.SetColor(useColor)
         compiler.SetVerbose(verbose)
         compiler.Run(inputFiles, outputName)

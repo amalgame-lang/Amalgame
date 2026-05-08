@@ -21,7 +21,8 @@ AMC_SOURCES="src/lexer/token.am \
              src/diagnostics.am \
              src/resolver/symbol.am \
              src/resolver/resolver.am \
-             src/typechecker.am"
+             src/typechecker.am \
+             src/linter.am"
 
 # Self-host: 3-rung fallback chain.
 #   ./amc                ← current self-hosted (may be broken mid-development)
