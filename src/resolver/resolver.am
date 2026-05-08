@@ -327,6 +327,14 @@ public class FullResolver {
         this.GlobalTypes.Add(typeName)
     }
 
+    // Helper exists separately so the self-host codegen sees the
+    // PARAM AstNode through a typed parameter — chained `.Get(i).Name`
+    // erases to void* across the call boundary and breaks the
+    // declaration. Used by the lambda resolver branch.
+    private void DeclareLambdaParam(AstNode p) {
+        this.DeclareCurrent(p.Name, "?", true)
+    }
+
     private bool DeclareCurrent(string name, string typeName, bool isLet) {
         // Duplicate check: only within the current scope (allow shadowing outer scopes)
         let start = this.CurrentScopeStart()
@@ -907,21 +915,28 @@ public class FullResolver {
             return
         }
         if (k == NodeKind.METHOD_DECL && expr.Name == "__lambda__") {
-            // Lambda body: open a fresh scope, declare the param at the
-            // boundary, and resolve the body with capture tracking on.
-            // Saving/restoring the previous LambdaInProgress lets nested
-            // lambdas work; the inner lambda captures into itself, and
-            // any of those captures that came from outside the outer
-            // lambda will also re-trigger capture on the outer when
-            // the inner is being resolved (handled by the caller's own
-            // body walk, not by this branch).
+            // Lambda body: open a fresh scope, declare every param at
+            // the boundary, and resolve the body with capture tracking
+            // on. Saving/restoring the previous LambdaInProgress lets
+            // nested lambdas work; the inner lambda captures into
+            // itself, and any of those captures that came from outside
+            // the outer lambda will also re-trigger capture on the
+            // outer when the inner is being resolved.
+            //
+            // v2: Params is a List<AstNode> of PARAMs (was Str=name in
+            // v1). Body is either an expression in Left, or a BLOCK in
+            // Body — exclusive, set by the parser.
             let prevLam      = this.LambdaInProgress
             let prevBoundary = this.LambdaBoundary
             this.PushScope("lambda")
             this.LambdaInProgress = expr
             this.LambdaBoundary   = this.LocalNames.Count()
-            this.DeclareCurrent(expr.Str, "?", true)
+            let pn: int = expr.Params.Count()
+            for pi in 0..pn {
+                this.DeclareLambdaParam(expr.Params.Get(pi))
+            }
             if (expr.Left != null) { this.ResolveExpr(expr.Left) }
+            if (expr.Body != null) { this.ResolveBlock(expr.Body) }
             this.PopScope()
             this.LambdaInProgress = prevLam
             this.LambdaBoundary   = prevBoundary

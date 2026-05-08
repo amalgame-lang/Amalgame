@@ -643,7 +643,7 @@ public class Formatter {
         if (k == NodeKind.INDEX_EXPR)   { return this.EmitIndex(n) }
         if (k == NodeKind.NEW_EXPR)     { return this.EmitNew(n) }
         if (k == NodeKind.METHOD_DECL && n.Name == "__lambda__") {
-            return n.Str + " => " + this.EmitExpr(n.Left)
+            return this.EmitLambda(n)
         }
         if (k == NodeKind.IF_STMT && n.Name != "__match__") {
             return this.EmitIfExpr(n)
@@ -748,6 +748,35 @@ public class Formatter {
             }
         }
         return s
+    }
+
+    // Lambda emission as expression. Helper exists separately so the
+    // self-host codegen sees `param: AstNode` and doesn't lose the
+    // type to void* erasure on `n.Params.Get(i).Name` chained access.
+    private string EmitLambda(AstNode n) {
+        let pn: int = n.Params.Count()
+        var head = ""
+        if (pn == 1) {
+            head = this.LambdaParamName(n.Params.Get(0))
+        } else {
+            head = "("
+            for pi in 0..pn {
+                if (pi > 0) { head = head + ", " }
+                head = head + this.LambdaParamName(n.Params.Get(pi))
+            }
+            head = head + ")"
+        }
+        if (n.Body != null) {
+            return head + " => { " + this.EmitBlockAsExpr(n.Body) + " }"
+        }
+        if (n.Left != null) {
+            return head + " => " + this.EmitExpr(n.Left)
+        }
+        return head + " => 0"
+    }
+
+    private string LambdaParamName(AstNode p) {
+        return p.Name
     }
 
     private string EmitBlockAsExpr(AstNode body) {
