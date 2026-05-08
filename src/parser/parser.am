@@ -80,9 +80,14 @@ public class Parser {
         }
 
         while (this.CheckKw("import")) {
-            this.Advance()
-            this.ParseQualifiedName()
-                this.SkipNewlines()
+            let importTok = this.Advance()
+            let qname = this.ParseQualifiedName()
+            // Imports are informational — the resolver's stdlib is global.
+            // We store them on prog.Args (unused for Program nodes by every
+            // other pass) so `amc fmt` can re-emit them on round-trip.
+            let imp = Ast.Ident(qname, importTok.Line, importTok.Column)
+            prog.Args.Add(imp)
+            this.SkipNewlines()
         }
 
         var parseLastPos = 0
@@ -636,8 +641,51 @@ public class Parser {
         }
         if (v == "match") { return this.ParseMatch() }
         if (v == "guard") { return this.ParseGuard() }
+        if (v == "try")   { return this.ParseTry() }
+        if (v == "throw") { return this.ParseThrow() }
         if (v == "{") { return this.ParseBlock() }
         return this.ParseExpr()
+    }
+
+    // ── Try / Throw ──────────────────────────────────
+    // try { ... } catch e { ... } [finally { ... }]
+    //   TRY_STMT { Body=try-block, Else=catch-block, Cond=finally?, Name=binder }
+    // The catch binder is typed `void*` everywhere — it lands in the scope
+    // of the catch block as `void* e = _am_ex.value;` at codegen.
+    private AstNode ParseTry() {
+        let tok = this.Advance()  // consume 'try'
+        this.SkipNewlines()
+        let tryBlock = this.ParseBlock()
+        this.SkipNewlines()
+        let node = new AstNode(NodeKind.TRY_STMT, tok.Line, tok.Column)
+        node.Body = tryBlock
+        if (this.CheckKw("catch")) {
+            this.Advance()
+            // Optional binder identifier: `catch e { … }` or `catch { … }`
+            if (this.CheckType(TokenType.IDENTIFIER)) {
+                let bind = this.Advance()
+                node.Name = bind.Value
+            }
+            this.SkipNewlines()
+            node.Else = this.ParseBlock()
+            this.SkipNewlines()
+        }
+        if (this.CheckKw("finally")) {
+            this.Advance()
+            this.SkipNewlines()
+            node.Cond = this.ParseBlock()
+        }
+        return node
+    }
+
+    // throw <expr>  — typically `throw new SomeError("msg")`.
+    private AstNode ParseThrow() {
+        let tok = this.Advance()  // consume 'throw'
+        let n = new AstNode(NodeKind.THROW_STMT, tok.Line, tok.Column)
+        if (!this.CheckType(TokenType.NEWLINE) && !this.CheckValue("}") && !this.IsEnd()) {
+            n.Left = this.ParseExpr()
+        }
+        return n
     }
 
     // ── VarDecl ───────────────────────────────────────

@@ -118,10 +118,16 @@ fix.
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
       which the existing CGen MEMBER branch lowers to `Type_Variant`.
       Unblocks `enums.am`.
-- [ ] **try / catch / throw** — the self-hosted parser doesn't have
-      ParseTry yet, so `try { ... } catch e { ... }` is rejected as
-      unknown identifiers. Affects `try_catch.am`. Vala had this;
-      it's a regression to fix.
+- [x] **try / catch / throw** — `ParseTry` and `ParseThrow` build
+      `TRY_STMT { Body=try, Else=catch, Cond=finally?, Name=binder }`
+      and `THROW_STMT { Left=expr }`. Resolver/typechecker open a
+      `catch` scope and declare the binder as `void*`. CGen emits the
+      same `setjmp`/`longjmp` pattern the Vala bootstrap used (saves
+      `_am_ex.env` into a `_am_prev_env_<line>` slot, restores it
+      after the handler) and lowers `throw new T(args)` to
+      `_am_throw((void*)(T_new(args)), "T", first_string_arg)`. The
+      formatter learned `EmitTry` / `EmitThrow` so round-trip stays
+      lossless. Drops `try_catch.am` from `SKIP_SELFHOST`.
 - [ ] **null safety / null-safe member typing** — typechecker reports
       `Unary '-' requires numeric, got 'Program'` on `Program.foo(-1)`
       (some path treats the class name as an operand type) and
@@ -142,9 +148,10 @@ fix.
       round-trip on their original line. `EmitBlockStmts`/`EmitInline`
       drain once more before bumping `LastLine` to the closing brace,
       catching trailing comments on the *last* stmt of a block.
-- [ ] **Imports preserved by `amc fmt`** — the parser drops
-      `import` directives without storing them, so the formatter
-      can't print them back.
+- [x] **Imports preserved by `amc fmt`** — parser stores each
+      `import X.Y` as an `Ast.Ident` on `prog.Args` (a slot the
+      Program node didn't otherwise use), and `EmitProgram` re-emits
+      them between `namespace` and the first top-level decl.
 - [ ] **`while(ptr != null)` GC issue** — existing workaround uses
       `for i in 0..N`. Investigate whether it's a real GC bug or
       just a CGen mis-detection.
@@ -167,6 +174,16 @@ fix.
       Emacs.
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
 - [ ] **Inlay hints + code actions** — once LSP is in.
+
+### Stdlib — backlog
+
+- [ ] **GUI / Forms toolkit** — bindings SDL2 dans la stdlib
+      (`Amalgame.UI` ou similaire) avec une couche "Forms" au-dessus
+      pour les widgets courants (Window, Button, TextField, Layout).
+      Permettrait d'écrire des apps graphiques en Amalgame sans
+      descendre au C. Choix de design ouverts : retained vs immediate
+      mode, theming, accessibilité, packaging du runtime SDL2 dans
+      les releases.
 
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
