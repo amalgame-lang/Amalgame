@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 137/137 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 143/143 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -78,7 +78,7 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 137/137 tests in CI under `./amc` (75 core + 50 stdlib + 12 fmt),
+- 143/143 tests in CI under `./amc` (81 core + 50 stdlib + 12 fmt),
   with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
@@ -90,12 +90,23 @@ In rough order of usefulness × effort:
 - [ ] **Capturing closures** — `let counter = make_counter()`. Requires
       capture analysis at parse time + heap-allocated env structs.
       Touches Parser + CGen; medium-large.
-- [ ] **`obj.Method()` instance syntax for strings** — sugar for
-      `String.Method(obj)`. Tracked since stdlib was made explicit.
-      Small CGen extension.
-- [ ] **Generic type inference** — `let xs = new List<int>()` should
-      let `xs.Get(i)` return `int`, not `void*`. Touches TypeChecker
-      + CGen's collection method dispatch. Largest item in the lot.
+- [x] **`obj.Method()` instance syntax for strings** — `s.Length()`,
+      `"foo".Trim()`, `s.Replace(a, b)` etc. now lower to
+      `String_Method(receiver, args)`. `EmitCalleeStr` maps
+      `code_string`-typed receivers to the `String_` runtime prefix
+      (the bare type is the legacy C typedef from when the language
+      was called "code"); the CALL emit branch treats both
+      `IDENTIFIER` and `LITERAL_STRING` receivers as `isSelfCall` so
+      the receiver is passed as the first argument.
+- [~] **Generic type inference** — partial. `ParseNew` now captures
+      the type-arg list on `NEW_EXPR.Str2`; CGen records the elem
+      type of `let xs = new List<T>()` via
+      `ListElemSet("__local__", xs, T)`, and `xs.Get(i)` lowers to
+      `(T)AmalgameList_get(xs, i)` with the typed cast.
+      Still missing: `Map<K,V>`/`Set<T>` analogues, generic propagation
+      through assignments, and TypeChecker awareness of element types
+      (today the inference happens at codegen via the cast-extraction
+      heuristic in VAR_DECL).
 - [ ] **Generic interfaces** (`IComparable<T>`) — follows from generic
       inference. Modest extra work once that's in.
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
