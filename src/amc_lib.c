@@ -4090,6 +4090,24 @@ static void Amalgame_Compiler_CGen_EmitMethod(Amalgame_Compiler_CGen* self, Amal
     for (i64 i = 0; i < pcount; i++) {
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, Amalgame_Compiler_CGen_TypeToC(self, p->Str));
+        code_string __attribute__((unused)) praw = p->Str;
+        if (String_StartsWith(praw, "List<") && String_EndsWith(praw, ">")) {
+            code_string __attribute__((unused)) inner = String_Substring(praw, 5, String_Length(praw) - 6);
+            if (String_Length(inner) > 0) {
+                Amalgame_Compiler_CGen_ListElemSet(self, "__local__", p->Name, Amalgame_Compiler_CGen_TypeToC(self, inner));
+            }
+        }
+        if (String_StartsWith(praw, "Map<") && String_EndsWith(praw, ">")) {
+            code_string __attribute__((unused)) inner = String_Substring(praw, 4, String_Length(praw) - 5);
+            i64 __attribute__((unused)) comma = String_IndexOf(inner, ",");
+            if (comma > 0) {
+                code_string __attribute__((unused)) vRaw = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1);
+                code_string __attribute__((unused)) vTrim = String_Trim(vRaw);
+                if (String_Length(vTrim) > 0) {
+                    Amalgame_Compiler_CGen_ListElemSet(self, "__local_map__", p->Name, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
+                }
+            }
+        }
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("(void)", p->Name), ";"));
     }
     if (method->Body != NULL) {
@@ -5686,7 +5704,7 @@ static code_string Amalgame_Compiler_Formatter_EmitParams(Amalgame_Compiler_Form
     code_string __attribute__((unused)) s = "";
     i64 __attribute__((unused)) count = AmalgameList_count(params);
     for (i64 i = 0; i < count; i++) {
-        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (void*)AmalgameList_get(params, i);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(params, i);
         if (i > 0) {
             s = code_string_concat(s, ", ");
         }
@@ -9365,7 +9383,7 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     if (self->Verbose) {
         Console_WriteLine(code_string_concat(code_string_concat("Compiling: ", String_FromInt(inputCount)), " file(s)"));
     }
-    void* __attribute__((unused)) firstPath = (void*)AmalgameList_get(inputFiles, 0);
+    code_string __attribute__((unused)) firstPath = (code_string)AmalgameList_get(inputFiles, 0);
     code_string __attribute__((unused)) firstSrc = File_ReadAll(firstPath);
     code_string __attribute__((unused)) nsPrefix = "App";
     i64 __attribute__((unused)) nlIdx = String_IndexOf(firstSrc, "namespace ");
@@ -9382,7 +9400,7 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     AmalgameList* __attribute__((unused)) progs = AmalgameList_new();
     code_bool __attribute__((unused)) parseOk = 1;
     for (i64 i = 0; i < inputCount; i++) {
-        void* __attribute__((unused)) path = (void*)AmalgameList_get(inputFiles, i);
+        code_string __attribute__((unused)) path = (code_string)AmalgameList_get(inputFiles, i);
         code_string __attribute__((unused)) src = File_ReadAll(path);
         Amalgame_Compiler_DiagnosticFormatter_LoadSource(self->Diag, path, src);
         Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(src, path);
