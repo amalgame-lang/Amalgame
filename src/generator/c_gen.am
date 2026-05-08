@@ -2002,6 +2002,12 @@ public class CGen {
                                 selfExpr   = ll.Name
                             }
                         }
+                        // "literal".Method(...) — pass the literal as the
+                        // first argument to String_Method.
+                        if (ll.Kind == NodeKind.LITERAL_STRING) {
+                            isSelfCall = true
+                            selfExpr   = this.EmitExprStr(ll)
+                        }
                     }
                 }
             }
@@ -2385,6 +2391,10 @@ public class CGen {
                     // this.Method() → CurrentClass_Method (includes class name)
                     return this.CurrentClass + "_" + mname
                 }
+                // String literal receiver: `"foo".Trim()` → String_Trim("foo")
+                if (lk == NodeKind.LITERAL_STRING) {
+                    return "String_" + mname
+                }
                 if (lk == NodeKind.IDENTIFIER) {
                     let tname = callee.Left.Name
                     let firstChar = String_Substring(tname, 0, 1)
@@ -2402,6 +2412,15 @@ public class CGen {
                     let varType = this.LocalTypeGet(tname)
                     let bareType = String_Replace(varType, "*", "")
                     if (String_Length(bareType) > 0) {
+                        // `s.Length()` on a string variable should call
+                        // `String_Length(s)`, not `code_string_Length(s)`.
+                        // `code_string` is the legacy C typedef (the
+                        // language used to be called "code" before it was
+                        // renamed Amalgame); the runtime helpers are under
+                        // the `String_` prefix.
+                        if (bareType == "code_string") {
+                            return "String_" + mname
+                        }
                         return bareType + "_" + mname
                     }
                     // Fallback: obj_Method (simplified)

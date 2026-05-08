@@ -4820,6 +4820,10 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                             selfExpr = ll->Name;
                         }
                     }
+                    if (ll->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
+                        isSelfCall = 1;
+                        selfExpr = Amalgame_Compiler_CGen_EmitExprStr(self, ll);
+                    }
                 }
             }
         }
@@ -5182,6 +5186,9 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
             if (lk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
                 return code_string_concat(code_string_concat(self->CurrentClass, "_"), mname);
             }
+            if (lk == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
+                return code_string_concat("String_", mname);
+            }
             if (lk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
                 code_string __attribute__((unused)) tname = callee->Left->Name;
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
@@ -5196,6 +5203,9 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) varType = Amalgame_Compiler_CGen_LocalTypeGet(self, tname);
                 code_string __attribute__((unused)) bareType = String_Replace(varType, "*", "");
                 if (String_Length(bareType) > 0) {
+                    if (code_string_equals(bareType, "code_string")) {
+                        return code_string_concat("String_", mname);
+                    }
                     return code_string_concat(code_string_concat(bareType, "_"), mname);
                 }
                 return code_string_concat(code_string_concat(tname, "_"), mname);
