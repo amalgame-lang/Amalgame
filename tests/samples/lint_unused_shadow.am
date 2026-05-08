@@ -1,0 +1,30 @@
+namespace Tests
+
+// Used by amc --lint to verify the unused-local and shadowed-name
+// MVP checks. The program also has to compile cleanly so the
+// linter is reached — warnings are non-fatal.
+
+public class Program {
+    public static int Compute(int seed) {
+        let kept    = seed * 2     // used below — no warning
+        let dropped = seed + 1     // never read — should warn (unused)
+        let _quiet  = seed - 1     // underscore prefix silences the unused warning
+
+        let n = 10                 // outer binding
+        if (kept > 0) {
+            let n = 999            // shadows outer n
+            return kept + n
+        }
+        return n
+    }
+
+    public static void Main(string[] args) {
+        let r = Program.Compute(5)
+        Console.WriteLine("r: {r}")
+
+        // Loop binder unused on purpose — should warn.
+        for tick in 0..3 {
+            Console.WriteLine("tick")
+        }
+    }
+}

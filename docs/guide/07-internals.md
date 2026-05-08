@@ -167,18 +167,38 @@ parsed AST and emits non-fatal warnings. The Linter shares no state
 with the typechecker — it walks the AST top-down and collects
 `LintWarning` records into `linter.Warnings`.
 
-MVP coverage (since v0.3.3):
+Coverage today:
 
 - **Unreachable code** after `return` / `throw` / `break` /
   `continue`, including inside nested `if` / `while` / `for-in` /
-  `try` bodies.
+  `try` bodies. *(since v0.3.3)*
+- **Unused locals** — a `let` or `var` whose name is never read
+  in the rest of the scope. Prefix the name with `_` to silence
+  intentionally (mirrors the resolver's `_` wildcard treatment).
+  *(since lint-extensions PR)*
+- **Shadowed names** — a `let` / `var` / `for-in` binder reuses
+  a name visible in an enclosing scope, including method params.
+  *(since lint-extensions PR)*
 
-The skeleton is set up to grow more checks (unused locals,
-shadowed names, suspicious patterns) by extending `LintStmt` /
-`LintExpr` and `LintBlock` without touching the rest of the
-pipeline. Warnings always carry the per-program filename
-(populated from `prog.Str2`) so multi-file invocations report
-the right paths.
+The unused/shadow checks rely on a small in-linter scope stack
+(parallel `LocalNames` / `ScopeStarts` arrays, same shape as the
+resolver). Use marking is recorded into an append-only
+`UsedNames` list; each local stores a `UsedNames.Count()`
+snapshot at declaration so `PopScope` can answer "did this name
+appear in `UsedNames` after I was declared?" without needing
+`List<T>.Set`. `UsedNames` is reset to a fresh list at each
+method entry to keep the snapshot indices meaningful per-method
+and bound memory.
+
+Method and lambda params are tracked in scope so they participate
+in shadow detection, but they're never warned about as unused
+(`_param` would be unergonomic).
+
+The skeleton is set up to grow more checks (suspicious patterns,
+implicit fallthrough in match, etc.) by extending `LintStmt` /
+`LintExpr` without touching the rest of the pipeline. Warnings
+always carry the per-program filename (populated from `prog.Str2`)
+so multi-file invocations report the right paths.
 
 The CLI flag (`--lint`) is wired in `main.am`, after the
 typechecker pass and before code generation. Warnings don't bump
