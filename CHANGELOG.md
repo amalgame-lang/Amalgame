@@ -88,8 +88,12 @@ paired with a VS Code client. Suite goes from **150/150 to
   framing and stayed in Starting forever. Fixed by routing CR
   through `String_FromByte(13)`, which is just an int→byte builtin
   and has no escape-table dependency; same idea for `\x1b` (ESC).
+<<<<<<< Updated upstream
   Snapshot refreshed so future rebuilds inherit the corrected
   emission. *(PR #110)*
+=======
+  *(PR #110)*
+>>>>>>> Stashed changes
 
 - **CGen return-type table extended** — `Console_{Read,Flush,Write}`,
   `Process_{Run,RunCapture}`, and the `String_*` int/bool returns
@@ -109,8 +113,11 @@ paired with a VS Code client. Suite goes from **150/150 to
 
 - **`Console_ReadBytes(n)`** — reads exactly `n` bytes from stdin.
   Used by the LSP framing reader after parsing `Content-Length`.
+<<<<<<< Updated upstream
   Existing `Console_ReadLine` is line-based + 4096-byte capped
   and isn't enough.
+=======
+>>>>>>> Stashed changes
 - **`Console_Flush()`** — drains stdout. Required by the LSP
   server so the client doesn't block on buffered replies.
 - **`AmalgameClosure { fn, env }`** + `AmalgameClosure_new` /
@@ -125,6 +132,7 @@ paired with a VS Code client. Suite goes from **150/150 to
   `lint_unused_shadow.am`, `process_api.am`,
   `test_runner/{arith,mixed}_test.am`. New helpers in
   `run_tests.sh`: `run_amc_test_check`, `run_lsp_check`.
+<<<<<<< Updated upstream
 - `tools/save-snapshot.sh` runs cleanly to roll the bootstrap
   forward through the closure-feature-set additions and through
   the CR-escape fix.
@@ -135,6 +143,21 @@ paired with a VS Code client. Suite goes from **150/150 to
   runner** (`amc test`) and the **LSP server** (`amc lsp`,
   `src/lsp.am`). The Linter section is rewritten to cover the
   new unused / shadow checks.
+=======
+
+### Docs
+
+- `docs/guide/07-internals.md` gains sections on the **test runner**
+  (`amc test`) and the **LSP server** (`amc lsp`, `src/lsp.am`).
+  The Linter section is rewritten to cover the new unused / shadow
+  checks.
+- `docs/language/grammar.{ebnf,md}` — full rewrite. The previous
+  files dated from v0.1.0 (back when the language was called *CODE*)
+  and described constructs the parser never implemented while
+  missing everything added since (try/catch, match-as-expression,
+  closures, list comp, null-safety, decorators, generics, …). The
+  new EBNF mirrors `src/parser/parser.am` exactly.
+>>>>>>> Stashed changes
 - README adds bullets for `--lint`, `amc test`, and `amc lsp`.
 
 ---
