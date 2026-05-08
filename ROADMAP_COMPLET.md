@@ -128,11 +128,17 @@ fix.
       `_am_throw((void*)(T_new(args)), "T", first_string_arg)`. The
       formatter learned `EmitTry` / `EmitThrow` so round-trip stays
       lossless. Drops `try_catch.am` from `SKIP_SELFHOST`.
-- [ ] **null safety / null-safe member typing** — typechecker reports
-      `Unary '-' requires numeric, got 'Program'` on `Program.foo(-1)`
-      (some path treats the class name as an operand type) and
-      `'if condition' must be bool, got 'null'` for `?.`-chained
-      conditions. Affects `null_safety.am`, `null_safe_member.am`.
+- [x] **null safety / null-safe member typing** — three independent
+      bugs fixed: (1) `NodeKey` in the typechecker hashed nodes by
+      `line:col:name:str`, so two unrelated nodes with the same
+      coordinates shared a type slot — `Kind` is now part of the key;
+      (2) the lexer dropped a bare `?` token (only `??` and `?.` were
+      recognised), so `Box?` parsed as `Box`; an `OP_QMARK` token was
+      added; (3) `TypeToC` lowered `T?` to `Type**`, so any
+      `Body: AstNode?` field generated incompatible `**`-pointer
+      shapes — `T?` now lowers to `TypeToC(T)`, leaving the C pointer
+      unchanged. Drops `null_safety.am` and `null_safe_member.am`
+      from `SKIP_SELFHOST`. **`SKIP_SELFHOST` is now empty.**
 
 ### Compiler — polish
 

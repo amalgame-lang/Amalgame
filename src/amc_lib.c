@@ -99,6 +99,7 @@ enum _Amalgame_Compiler_TokenType {
     Amalgame_Compiler_TokenType_OP_THIN_ARROW,
     Amalgame_Compiler_TokenType_OP_DOT,
     Amalgame_Compiler_TokenType_OP_QDOT,
+    Amalgame_Compiler_TokenType_OP_QMARK,
     Amalgame_Compiler_TokenType_OP_DOTDOT,
     Amalgame_Compiler_TokenType_OP_COALESCE,
     Amalgame_Compiler_TokenType_OP_AMP,
@@ -1010,6 +1011,8 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
         } else if (code_string_equals(c2, ".")) {
             Amalgame_Compiler_Lexer_Advance(self);
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_QDOT, "?.");
+        } else {
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_QMARK, "?");
         }
     } else if (code_string_equals(c, "~")) {
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_TILDE, "~");
@@ -5244,7 +5247,7 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (String_EndsWith(t, "?")) {
         code_string __attribute__((unused)) inner = String_Substring(t, 0, String_Length(t) - 1);
-        return code_string_concat(Amalgame_Compiler_CGen_TypeToC(self, inner), "*");
+        return Amalgame_Compiler_CGen_TypeToC(self, inner);
     }
     if (String_StartsWith(t, "List<")) {
         return "AmalgameList*";
@@ -8425,7 +8428,8 @@ static code_string Amalgame_Compiler_TypeChecker_NodeKey(Amalgame_Compiler_TypeC
     (void)node;
     code_string __attribute__((unused)) ln = String_FromInt(node->Line);
     code_string __attribute__((unused)) col = String_FromInt(node->Column);
-    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(ln, ":"), col), ":"), node->Name), ":"), node->Str);
+    code_string __attribute__((unused)) knd = String_FromInt(node->Kind);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(knd, ":"), ln), ":"), col), ":"), node->Name), ":"), node->Str);
 }
 
 static void Amalgame_Compiler_TypeChecker_SetType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node, code_string typeKey) {
