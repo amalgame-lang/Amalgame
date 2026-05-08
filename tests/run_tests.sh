@@ -386,7 +386,10 @@ run_test "try: done"          "$SAMPLES/try_catch.am"  "done"
 # ── Linter ────────────────────────────────────────────
 echo ""
 echo "── Linter (amc --lint) ─────────────────"
-run_lint_check "lint: dead code"  "$SAMPLES/lint_test.am"  "unreachable code after"
+run_lint_check "lint: dead code"     "$SAMPLES/lint_test.am"           "unreachable code after"
+run_lint_check "lint: unused local"  "$SAMPLES/lint_unused_shadow.am"  "unused local 'dropped'"
+run_lint_check "lint: shadow"        "$SAMPLES/lint_unused_shadow.am"  "'n' shadows an enclosing binding"
+run_lint_check "lint: loop binder"   "$SAMPLES/lint_unused_shadow.am"  "unused local 'tick'"
 
 # ── If expression ─────────────────────────────────────
 echo ""
