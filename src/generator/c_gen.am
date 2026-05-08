@@ -87,6 +87,11 @@ public class CGen {
     // Method return types: "ClassName_MethodName" → C return type
     private MethodRetNames: List<string>
     private MethodRetTypes: List<string>
+    // Same key, but storing the *raw* Amalgame return type ("List<int>",
+    // "Map<string,int>", …) so VAR_DECL can recover the generic type
+    // arguments and propagate them to local elem-type tracking.
+    private MethodRetRawNames: List<string>
+    private MethodRetRawTypes: List<string>
 
     public CGen() {
         this.Out            = new Emitter()
@@ -102,6 +107,8 @@ public class CGen {
         this.EnumNames      = new List<string>()
         this.MethodRetNames = new List<string>()
         this.MethodRetTypes = new List<string>()
+        this.MethodRetRawNames = new List<string>()
+        this.MethodRetRawTypes = new List<string>()
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -238,6 +245,32 @@ public class CGen {
         return result
     }
 
+    // Record the elem (List<T>) or value (Map<K,V>) type for a local
+    // variable, given the raw Amalgame type annotation. No-op when the
+    // type isn't generic. Used at VAR_DECL emission for both NEW_EXPR
+    // RHS, explicit `: List<int>` annotations, and inferred return types
+    // from method calls.
+    private void TrackGenericLocal(string varName, string rawType) {
+        if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
+            let inner = String_Substring(rawType, 5, String_Length(rawType) - 6)
+            if (String_Length(inner) > 0) {
+                this.ListElemSet("__local__", varName, this.TypeToC(inner))
+            }
+            return
+        }
+        if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
+            let inner = String_Substring(rawType, 4, String_Length(rawType) - 5)
+            let comma = String_IndexOf(inner, ",")
+            if (comma > 0) {
+                let vRaw  = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1)
+                let vTrim = String_Trim(vRaw)
+                if (String_Length(vTrim) > 0) {
+                    this.ListElemSet("__local_map__", varName, this.TypeToC(vTrim))
+                }
+            }
+        }
+    }
+
     private void ListElemSet(string className, string fieldName, string elemCType) {
         let key = className + "." + fieldName
         this.ListElemNames.Add(key)
@@ -261,6 +294,25 @@ public class CGen {
         let key = className + "::" + methodName
         this.MethodRetNames.Add(key)
         this.MethodRetTypes.Add(ctype)
+    }
+
+    private void MethodRetRawSet(string className, string methodName, string rawType) {
+        let key = className + "::" + methodName
+        this.MethodRetRawNames.Add(key)
+        this.MethodRetRawTypes.Add(rawType)
+    }
+
+    private string MethodRetRawGet(string className, string methodName) {
+        let key = className + "::" + methodName
+        let n = this.MethodRetRawNames.Count()
+        var result = ""
+        for i in 0..n {
+            let k = this.MethodRetRawNames.Get(i)
+            if (k == key) {
+                result = this.MethodRetRawTypes.Get(i)
+            }
+        }
+        return result
     }
 
     private string MethodRetGet(string className, string methodName) {
@@ -1026,9 +1078,13 @@ public class CGen {
                 if (m.Name != cls.Name) {
                     let sig     = this.MethodSig(m, name)
                     let isPublic = m.Flag
-                    // Register return type for inference
+                    // Register return type for inference (both the C
+                    // type and the raw Amalgame type — the raw form
+                    // preserves `List<int>` / `Map<K,V>` so callers can
+                    // propagate the generic argument).
                     let retC = this.TypeToC(m.Str)
                     this.MethodRetSet(name, m.Name, retC)
+                    this.MethodRetRawSet(name, m.Name, m.Str)
                     // Decorators (Str2) → C attributes on the prototype.
                     var attrs = ""
                     let decos = m.Str2
@@ -1236,6 +1292,7 @@ public class CGen {
             this.CurrentRetType = this.TupleStructName(method.Str)
             // Register method return type for later lookup in tuple destructuring
             this.MethodRetSet(className, method.Name, method.Str)
+            this.MethodRetRawSet(className, method.Name, method.Str)
         } else {
             this.CurrentRetType = ""
         }
@@ -1258,24 +1315,7 @@ public class CGen {
         for i in 0..pcount {
             let p = method.Params.Get(i)
             this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
-            let praw = p.Str
-            if (String_StartsWith(praw, "List<") && String_EndsWith(praw, ">")) {
-                let inner = String_Substring(praw, 5, String_Length(praw) - 6)
-                if (String_Length(inner) > 0) {
-                    this.ListElemSet("__local__", p.Name, this.TypeToC(inner))
-                }
-            }
-            if (String_StartsWith(praw, "Map<") && String_EndsWith(praw, ">")) {
-                let inner = String_Substring(praw, 4, String_Length(praw) - 5)
-                let comma = String_IndexOf(inner, ",")
-                if (comma > 0) {
-                    let vRaw  = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1)
-                    let vTrim = String_Trim(vRaw)
-                    if (String_Length(vTrim) > 0) {
-                        this.ListElemSet("__local_map__", p.Name, this.TypeToC(vTrim))
-                    }
-                }
-            }
+            this.TrackGenericLocal(p.Name, p.Str)
             this.Out.EmitLine("(void)" + p.Name + ";")
         }
         if (method.Body != null) {
@@ -1677,25 +1717,31 @@ public class CGen {
             if (String_Length(t) == 0) { t = "void*" }
             // Record in local type table for later use
             this.LocalTypeSet(stmt.Name, t)
-            // Track the element type of `let xs = new List<T>()` so a later
-            // `xs.Get(i)` can emit a typed cast to T instead of falling
-            // back to void*. ListElemSet's "className" slot is repurposed
-            // for locals via "__local__" (List<T>) and "__local_map__"
-            // (Map<K,V> — value type only; the key is always code_string).
+            // Track the elem (List<T>) / value (Map<K,V>) type so a later
+            // `xs.Get(i)` / `m.Get(k)` can emit a typed cast instead of
+            // void*. Three sources, in order of confidence:
+            //   1. Explicit annotation: `let xs: List<int> = ...`
+            //   2. NEW_EXPR RHS: `let xs = new List<int>()`
+            //   3. Method-call return type: `let xs = Program.MakeList()`
+            //      where MakeList is declared `List<int>`.
+            if (String_Length(stmt.Str) > 0) {
+                this.TrackGenericLocal(stmt.Name, stmt.Str)
+            }
             if (stmt.Left != null && stmt.Left.Kind == NodeKind.NEW_EXPR) {
-                if (stmt.Left.Name == "List" && String_Length(stmt.Left.Str2) > 0) {
-                    let elemC = this.TypeToC(stmt.Left.Str2)
-                    this.ListElemSet("__local__", stmt.Name, elemC)
+                if (String_Length(stmt.Left.Str2) > 0) {
+                    let synth = stmt.Left.Name + "<" + stmt.Left.Str2 + ">"
+                    this.TrackGenericLocal(stmt.Name, synth)
                 }
-                if (stmt.Left.Name == "Map" && String_Length(stmt.Left.Str2) > 0) {
-                    // "K,V" — split on the first comma, take V.
-                    let raw = stmt.Left.Str2
-                    let comma = String_IndexOf(raw, ",")
-                    if (comma > 0) {
-                        let vRaw = String_Substring(raw, comma + 1, String_Length(raw) - comma - 1)
-                        let vTrim = String_Trim(vRaw)
-                        if (String_Length(vTrim) > 0) {
-                            this.ListElemSet("__local_map__", stmt.Name, this.TypeToC(vTrim))
+            }
+            if (stmt.Left != null && stmt.Left.Kind == NodeKind.CALL) {
+                // Recover ClassName + MethodName for `obj.Method()` and
+                // `Program.Method()` so we can read the raw return type.
+                let callee = stmt.Left.Left
+                if (callee != null && callee.Kind == NodeKind.MEMBER) {
+                    if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                        let retRaw = this.MethodRetRawGet(callee.Left.Name, callee.Name)
+                        if (String_Length(retRaw) > 0) {
+                            this.TrackGenericLocal(stmt.Name, retRaw)
                         }
                     }
                 }
