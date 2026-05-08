@@ -1656,6 +1656,16 @@ public class CGen {
             if (String_Length(t) == 0) { t = "void*" }
             // Record in local type table for later use
             this.LocalTypeSet(stmt.Name, t)
+            // Track the element type of `let xs = new List<T>()` so a later
+            // `xs.Get(i)` can emit a typed cast to T instead of falling
+            // back to void*. ListElemSet's "className" slot is repurposed
+            // for locals via the "__local__" prefix.
+            if (stmt.Left != null && stmt.Left.Kind == NodeKind.NEW_EXPR) {
+                if (stmt.Left.Name == "List" && String_Length(stmt.Left.Str2) > 0) {
+                    let elemC = this.TypeToC(stmt.Left.Str2)
+                    this.ListElemSet("__local__", stmt.Name, elemC)
+                }
+            }
             // Emit the declaration — for void* from List.Get(), emit a typed cast
             let rhs = this.EmitExprStr(stmt.Left)
             var decl = t + " __attribute__((unused)) " + stmt.Name + " = " + rhs + ";"
@@ -2331,11 +2341,11 @@ public class CGen {
                         }
                     }
                 }
-                // Case: varName.Get(i) — listExpr is varName itself (Case 1)
+                // Case: varName.Get(i) — listExpr is varName itself (Case 1).
+                // Look up the local elem type recorded at `let xs = new List<T>()`.
                 if (lkG == NodeKind.IDENTIFIER) {
                     let vn5 = callee.Left.Name
-                    // Check local elem type hint — not tracked yet; fall through
-                    let _ = vn5
+                    elemType = this.ListElemGet("__local__", vn5)
                 }
             }
             if (String_Length(elemType) > 0) {
