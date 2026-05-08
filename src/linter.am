@@ -1,0 +1,160 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  linter.am  —  amc --lint: static analysis on the AST
+// ═══════════════════════════════════════════════════════
+//
+// MVP scope: warnings for statements that come after a terminator
+// (`return`, `throw`, `break`, `continue`) in the same block — i.e.
+// unreachable code. Future passes can layer unused-locals, shadowed
+// names, etc. on top of the same skeleton.
+
+public class LintWarning {
+    public Message:  string
+    public Filename: string
+    public Line:     int
+    public Column:   int
+
+    public LintWarning(string msg, string file, int line, int col) {
+        this.Message  = msg
+        this.Filename = file
+        this.Line     = line
+        this.Column   = col
+    }
+
+    public string Format() {
+        let ln  = String_FromInt(this.Line)
+        let col = String_FromInt(this.Column)
+        return "warning[lint]: " + this.Message + "\n  --> " + this.Filename + ":" + ln + ":" + col + "\n"
+    }
+}
+
+public class Linter {
+    public  Warnings: List<LintWarning>
+    private Filename: string
+
+    public Linter() {
+        this.Warnings = new List<LintWarning>()
+        this.Filename = ""
+    }
+
+    public void Lint(AstNode prog) {
+        // Pick up the per-program filename so warnings carry the right
+        // path even when a single Linter instance walks several programs.
+        if (String_Length(prog.Str2) > 0) { this.Filename = prog.Str2 }
+        let n = prog.Children.Count()
+        for i in 0..n {
+            this.LintDecl(prog.Children.Get(i))
+        }
+    }
+
+    public bool HasWarnings() { return this.Warnings.Count() > 0 }
+
+    public string FormatWarnings() {
+        var s = ""
+        let n = this.Warnings.Count()
+        for i in 0..n {
+            // Explicit annotation: List<T>.Get(i) returns void* in the
+            // current cgen and `(Type*)expr.Method()` doesn't lower
+            // cleanly yet. Binding to a typed local works around it.
+            let w: LintWarning = this.Warnings.Get(i)
+            s = s + w.Format()
+        }
+        return s
+    }
+
+    private void LintDecl(AstNode decl) {
+        let k = decl.Kind
+        if (k == NodeKind.CLASS_DECL) {
+            let members = decl.Children.Count()
+            for i in 0..members {
+                let m = decl.Children.Get(i)
+                if (m.Kind == NodeKind.METHOD_DECL) {
+                    if (m.Body != null) { this.LintBlock(m.Body) }
+                }
+            }
+            return
+        }
+        if (k == NodeKind.METHOD_DECL) {
+            if (decl.Body != null) { this.LintBlock(decl.Body) }
+            return
+        }
+        if (k == NodeKind.ENUM_DECL) {
+            let methods = decl.Children.Count()
+            for i in 0..methods {
+                let m = decl.Children.Get(i)
+                if (m.Kind == NodeKind.METHOD_DECL) {
+                    if (m.Body != null) { this.LintBlock(m.Body) }
+                }
+            }
+        }
+    }
+
+    private void LintBlock(AstNode block) {
+        if (block == null) { return }
+        let n = block.Children.Count()
+        var dead = false
+        for i in 0..n {
+            let stmt = block.Children.Get(i)
+            if (dead) {
+                // Only warn on the first dead stmt to avoid noise.
+                this.Warn("unreachable code after `return` / `throw` / `break` / `continue`", stmt)
+                return
+            }
+            this.LintStmt(stmt)
+            if (this.IsTerminator(stmt)) { dead = true }
+        }
+    }
+
+    private bool IsTerminator(AstNode stmt) {
+        let k = stmt.Kind
+        if (k == NodeKind.RETURN_STMT)   { return true }
+        if (k == NodeKind.BREAK_STMT)    { return true }
+        if (k == NodeKind.CONTINUE_STMT) { return true }
+        if (k == NodeKind.THROW_STMT)    { return true }
+        return false
+    }
+
+    // Recurse into nested blocks so we catch unreachable code in
+    // inner if / while / for / try bodies too.
+    private void LintStmt(AstNode stmt) {
+        if (stmt == null) { return }
+        let k = stmt.Kind
+        if (k == NodeKind.IF_STMT) {
+            if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
+            if (stmt.Else != null) { this.LintBlockOrStmt(stmt.Else) }
+            return
+        }
+        if (k == NodeKind.WHILE_STMT || k == NodeKind.FOR_IN_STMT) {
+            if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
+            return
+        }
+        if (k == NodeKind.TRY_STMT) {
+            if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
+            if (stmt.Else != null) { this.LintBlockOrStmt(stmt.Else) }
+            if (stmt.Cond != null) { this.LintBlockOrStmt(stmt.Cond) }
+            return
+        }
+        if (k == NodeKind.BLOCK) {
+            this.LintBlock(stmt)
+        }
+    }
+
+    private void LintBlockOrStmt(AstNode n) {
+        if (n.Kind == NodeKind.BLOCK) { this.LintBlock(n) } else { this.LintStmt(n) }
+    }
+
+    private void Warn(string msg, AstNode node) {
+        var line = 0
+        var col  = 0
+        if (node != null) {
+            line = node.Line
+            col  = node.Column
+        }
+        let w = new LintWarning(msg, this.Filename, line, col)
+        this.Warnings.Add(w)
+    }
+}

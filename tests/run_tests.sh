@@ -134,6 +134,33 @@ run_lib_test() {
     fi
 }
 
+# Run amc --lint <file> and grep for an expected warning fragment in its stderr.
+run_lint_check() {
+    local name="$1"
+    local file="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+
+    if [ ! -f "$file" ]; then
+        echo -e "${YELLOW}SKIP${NC} (file not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
+    local out
+    out=$("$AMC" --lint -o "$out_base" "$file" 2>&1)
+
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (lint pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 run_c_check() {
     local name="$1"
     local file="$2"
@@ -351,6 +378,11 @@ run_test "try: normal flow"   "$SAMPLES/try_catch.am"  "result: 5"
 run_test "try: catch throw"   "$SAMPLES/try_catch.am"  "caught: division by zero"
 run_test "try: finally"       "$SAMPLES/try_catch.am"  "finally runs"
 run_test "try: done"          "$SAMPLES/try_catch.am"  "done"
+
+# ── Linter ────────────────────────────────────────────
+echo ""
+echo "── Linter (amc --lint) ─────────────────"
+run_lint_check "lint: dead code"  "$SAMPLES/lint_test.am"  "unreachable code after"
 
 # ── If expression ─────────────────────────────────────
 echo ""
