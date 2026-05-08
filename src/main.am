@@ -187,6 +187,126 @@ public class Program {
         Console.WriteError("Subcommands:")
         Console.WriteError("  fmt           Format Amalgame source. Default: print to stdout.")
         Console.WriteError("                With -w, rewrite files in place.")
+        Console.WriteError("  test [<dir>]  Discover *_test.am, compile + run each, aggregate")
+        Console.WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.")
+    }
+
+    // ── test subcommand ────────────────────────────────
+    // Discovers *_test.am under <dir> (default `.`), compiles each
+    // with the running amc binary + gcc, runs the result, and parses
+    // its stdout for `[PASS] <name>`, `[FAIL] <name>: <msg>`, and
+    // `[SKIP] <name>` lines. The runner expects to be invoked from
+    // a directory with a sibling `runtime/` so gcc can find the
+    // headers — true for the Amalgame repo itself; downstream users
+    // will need a richer install story (--runtime, AMC_RUNTIME env
+    // var) which is left for a follow-up.
+    public static int RunTest(int argc) {
+        var dir = "."
+        var i = 2
+        while (i < argc) {
+            let a = Args_Get(i)
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc test: unknown option '" + a + "'")
+                return 1
+            }
+            dir = a
+            i = i + 1
+        }
+
+        // Discovery: shell out to `find`. Works on POSIX and on
+        // Windows MSYS2 (the only Windows path the repo CI exercises).
+        let findCmd = "find " + dir + " -name '*_test.am' -type f"
+        let discovered = Process.RunCapture(findCmd)
+        if (discovered.Exit != 0) {
+            Console.WriteError("amc test: failed to enumerate tests in " + dir)
+            Console.WriteError(discovered.Stdout)
+            return 1
+        }
+        let lines: List<string> = String_Split(String_Trim(discovered.Stdout), "\n")
+        let nLines = lines.Count()
+        if (nLines == 0) {
+            Console.WriteLine("No *_test.am files found under " + dir)
+            return 0
+        }
+        // String_Split on "" returns a single empty entry; treat
+        // that as "no files" too.
+        if (nLines == 1) {
+            let only = String_Trim(lines.Get(0))
+            if (String_Length(only) == 0) {
+                Console.WriteLine("No *_test.am files found under " + dir)
+                return 0
+            }
+        }
+
+        let amcPath = Args_Get(0)
+        var pass        = 0
+        var fail        = 0
+        var skip        = 0
+        var compileFail = 0
+
+        for li in 0..nLines {
+            let path = String_Trim(lines.Get(li))
+            if (String_Length(path) == 0) { continue }
+            Console.WriteLine("── " + path)
+
+            // Step 1 — amc <test>.am -o <tmp>  → produces <tmp>.c
+            let outBin = "/tmp/amc_test_" + String_FromInt(li)
+            let outC   = outBin + ".c"
+            let amcCmd = amcPath + " " + path + " -o " + outBin + " --quiet"
+            let cr = Process.RunCapture(amcCmd)
+            if (cr.Exit != 0) {
+                Console.WriteLine("  [COMPILE-FAIL]")
+                Console.Write(cr.Stdout)
+                compileFail = compileFail + 1
+                continue
+            }
+            // Step 2 — gcc on the emitted .c. Same flags as
+            // tests/run_tests.sh so behavior matches the canonical
+            // runner.
+            let gccCmd = "gcc -O2 -Iruntime " + outC + " -lgc -lm -lcurl -o " + outBin + " 2>&1"
+            let gcc = Process.RunCapture(gccCmd)
+            if (gcc.Exit != 0) {
+                Console.WriteLine("  [LINK-FAIL]")
+                Console.Write(gcc.Stdout)
+                compileFail = compileFail + 1
+                continue
+            }
+            // Step 3 — run and parse stdout for tag lines. Anything
+            // not matching a tag is preserved as test stdout (for
+            // debugging), printed indented under the tag lines.
+            let rr = Process.RunCapture(outBin)
+            let outLines: List<string> = String_Split(rr.Stdout, "\n")
+            let on = outLines.Count()
+            for ln in 0..on {
+                let lineStr = outLines.Get(ln)
+                if (String_StartsWith(lineStr, "[PASS]")) {
+                    Console.WriteLine("  " + lineStr)
+                    pass = pass + 1
+                } else if (String_StartsWith(lineStr, "[FAIL]")) {
+                    Console.WriteLine("  " + lineStr)
+                    fail = fail + 1
+                } else if (String_StartsWith(lineStr, "[SKIP]")) {
+                    Console.WriteLine("  " + lineStr)
+                    skip = skip + 1
+                }
+            }
+            // Surface a non-zero exit even if no tag lines were
+            // emitted — covers tests that crash before printing.
+            if (rr.Exit != 0 && pass == 0 && fail == 0 && skip == 0) {
+                Console.WriteLine("  [FAIL] <crash> exit=" + String_FromInt(rr.Exit))
+                fail = fail + 1
+            }
+        }
+
+        Console.WriteLine("")
+        Console.WriteLine("──────────────────────────────────")
+        Console.WriteLine("PASS: " + String_FromInt(pass) + "  FAIL: " + String_FromInt(fail) + "  SKIP: " + String_FromInt(skip))
+        if (compileFail > 0) {
+            Console.WriteLine("COMPILE-FAIL: " + String_FromInt(compileFail))
+            return 1
+        }
+        if (fail > 0) { return 1 }
+        return 0
     }
 
     // ── fmt subcommand ─────────────────────────────────
@@ -243,6 +363,10 @@ public class Program {
         }
         if (Args_Get(1) == "fmt") {
             Exit_Set(Program.RunFmt(argc))
+            return
+        }
+        if (Args_Get(1) == "test") {
+            Exit_Set(Program.RunTest(argc))
             return
         }
 

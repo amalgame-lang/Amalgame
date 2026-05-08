@@ -204,6 +204,39 @@ The CLI flag (`--lint`) is wired in `main.am`, after the
 typechecker pass and before code generation. Warnings don't bump
 `ExitCode` — `amc --lint -o foo file.am` still produces output.
 
+## Test runner (`amc test`)
+
+`amc test [<dir>]` discovers `*_test.am` under `<dir>` (default `.`),
+compiles + runs each, and aggregates `[PASS] <name>`,
+`[FAIL] <name>: <msg>`, and `[SKIP] <name>` lines from each child's
+stdout. The runner lives in `Program.RunTest` in `main.am`; the
+subcommand is dispatched from `Program.Main` next to the `fmt`
+subcommand.
+
+Pipeline per test file:
+
+1. **Discover** — shells out to `find <dir> -name '*_test.am' -type f`
+   via `Process.RunCapture`. Cross-platform on POSIX and Windows
+   MSYS2 (the CI's Windows path).
+2. **Compile to C** — invokes the running `amc` binary on the file
+   (path from `Args_Get(0)`) with `-o /tmp/amc_test_<idx>` and
+   `--quiet`. Emits `<tmp>.c`.
+3. **Compile to native** — `gcc -O2 -Iruntime <tmp>.c -lgc -lm -lcurl
+   -o <tmp>`. Same flags as `tests/run_tests.sh` so behavior matches
+   the canonical shell runner. Assumes the cwd has a sibling
+   `runtime/` directory; downstream users will need a richer install
+   story (`--runtime`, `AMC_RUNTIME` env var) which is left for a
+   follow-up.
+4. **Run + parse** — runs the test binary via `Process.RunCapture`
+   and scans its stdout for tag-prefixed lines. Anything else is
+   ignored. A non-zero exit with no tag lines is reported as
+   `[FAIL] <crash> exit=N` so silent crashes still register.
+
+The runner exits non-zero if any case FAILs or any file fails to
+compile; otherwise zero. The convention deliberately stays
+framework-free for v1 — a richer `Assert` module + `test_<name>`
+auto-discovery is a possible v2.
+
 ## Snapshot bootstrap (`snapshot/`, `tools/save-snapshot.sh`)
 
 `build_amc.sh` has a 3-rung bootstrap chain:
