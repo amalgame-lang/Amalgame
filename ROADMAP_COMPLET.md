@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.3` · self-hosted · 150/150 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.4` · self-hosted · 170/170 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -58,7 +58,9 @@ keeps recovery easy:
 - Guard clauses: `guard cond else { return }`
 - Decorators: `@inline`, `@deprecated` → C attributes
 - Named arguments (documentation-only at call site)
-- Lambdas (non-capturing)
+- **Capturing closures** (since v0.3.4) — single-param expression-bodied
+  lambdas snapshot enclosing locals into a heap-allocated env struct;
+  callable as values, dispatched through `AmalgameClosure_call1`.
 - try / catch / throw / finally — Vala bootstrap only;
   not yet implemented in self-hosted parser
 
@@ -69,7 +71,8 @@ keeps recovery easy:
 
 ### Stdlib
 Console, File, Path, Math, String, List/Map/Set, Http, TcpServer/TcpConn,
-TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
+TcpClient, UdpSocket, Args, Exit, Process (v0.3.4: Run + RunCapture).
+Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
 
 ### Compiler quality
 - Rustc-style diagnostics with source snippet + caret (Resolver + TypeChecker)
@@ -87,9 +90,14 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
 
 In rough order of usefulness × effort:
 
-- [ ] **Capturing closures** — `let counter = make_counter()`. Requires
-      capture analysis at parse time + heap-allocated env structs.
-      Touches Parser + CGen; medium-large.
+- [x] **Capturing closures** (v0.3.4) — single-param expression-bodied
+      lambdas (`x => expr`) now capture enclosing locals by value at
+      creation time. Resolver computes the free identifiers below
+      `LambdaBoundary`; CGen emits a `LamEnv_N` struct + `lam_N_fn`
+      top-level fn per lambda; runtime ships `AmalgameClosure { fn,
+      env }` with `Closure_new` / `Closure_call1`. v1 is arity-1
+      `(i64) -> i64`. Multi-param, block bodies, lambdas in argument
+      position, and non-int signatures are tracked for v2.
 - [x] **`obj.Method()` instance syntax for strings** — `s.Length()`,
       `"foo".Trim()`, `s.Replace(a, b)` etc. now lower to
       `String_Method(receiver, args)`. `EmitCalleeStr` maps
@@ -188,22 +196,46 @@ fix.
 
 - [x] **`amc fmt`** — formatter (v0.2.0). Idempotent on every
       compiler source. Re-emits comments by source line.
-- [ ] **`amc test`** — discover `*_test.am`, compile, run, aggregate.
-      Replace `tests/run_*.sh` with a self-hosted runner.
-- [~] **`amc --lint`** — partial. New `src/linter.am` walks the AST
-      and flags unreachable code after `return` / `throw` / `break` /
-      `continue`, including inside nested `if` / `while` / `for-in` /
-      `try` bodies. Wired in as a flag on the existing `amc` CLI
-      (not a sub-command — keeps it usable alongside `-o`).
-      Still TBD: unused locals, shadowed names, suspicious patterns.
+- [x] **`amc test [<dir>]`** (v0.3.4) — discovers `*_test.am`,
+      compiles + runs each via `Process.RunCapture`, aggregates
+      `[PASS]`/`[FAIL]`/`[SKIP]` lines from stdout. Crash with
+      no tags surfaces as `[FAIL] <crash> exit=N`. Convention is
+      framework-free for v1; a richer Assert module + `test_*`
+      auto-discovery is a possible v2.
+- [x] **`amc --lint`** (v0.3.3 unreachable, v0.3.4 unused/shadow)
+      — `src/linter.am` walks the AST and flags:
+      unreachable code after `return` / `throw` / `break` /
+      `continue` (incl. nested blocks); unused locals (`let x = …`
+      never read; `_` prefix silences); shadowed names. Method/
+      lambda params participate in shadow detection but never
+      get warned-on as unused. Still TBD: suspicious patterns,
+      catch-binder unused detection (parser puts them at a node
+      we don't yet walk).
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
 - [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
       Vala one in `archive/vala-bootstrap/src/pkg/`).
-- [ ] **LSP** — `amc lsp` mode: stdio JSON-RPC over the existing
-      Lexer/Parser/Resolver/TypeChecker. Wire to VS Code, Neovim,
-      Emacs.
+- [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
+<<<<<<< Updated upstream
+      over stdio JSON-RPC. Implements lifecycle (`initialize` /
+      `shutdown` / `exit`), document state (didOpen / didChange /
+      didClose, Full sync), and `publishDiagnostics` push on every
+      did{Open,Change}. Diagnostics merge resolver + typechecker
+      errors, range covers the whole token. Hover / completion /
+      goto-def are out of scope for v1.
+=======
+      over stdio JSON-RPC. Implements lifecycle, document state
+      (didOpen / didChange / didClose, Full sync), and
+      `publishDiagnostics` push. Diagnostics merge resolver +
+      typechecker errors, range covers the whole token. Hover /
+      completion / goto-def out of scope for v1.
+>>>>>>> Stashed changes
+- [x] **VS Code LSP client** (v0.3.4) — `editors/vscode/extension.js`
+      spawns `amc lsp` via `vscode-languageclient`. Configurable
+      via `amalgame.serverPath` and `amalgame.enableLsp`.
+- [ ] **`amc lsp` hover / completion** — follow-up on top of v0.3.4
+      diagnostics. Needs pos→symbol lookup on the AST.
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
-- [ ] **Inlay hints + code actions** — once LSP is in.
+- [ ] **Inlay hints + code actions** — once hover/completion is in.
 
 ### Stdlib — backlog
 
@@ -262,13 +294,19 @@ fix.
 
 Top of the list, ordered by *unlocked-value* per *days-of-work*:
 
-1. **Solder the open bugs** above (especially try/catch and
-   `Type.Variant` patterns) — drops the SKIP list, restores feature
-   parity with the Vala bootstrap, and makes future LSP/lint work
-   easier because the compiler doesn't lie about what's accepted.
-2. **Minimal LSP** — re-uses existing passes; the smallest LSP that
-   does completion + hover is a few hundred lines.
-3. **Capturing closures** — bigger but expected by anyone reading
-   "modern".
-4. **Generic inference** — biggest of the bunch; do it after LSP is
-   in so the diagnostic story is solid first.
+1. **Generic interfaces** (`IComparable<T>`) — last item from the
+   v0.3.4 run-up; modest extra work on top of the generic inference
+   that's already in. Unlocks `sort`, custom comparators, and the
+   shape any serious collections API will eventually need.
+2. **`amc lsp` hover + completion** — biggest DX win once you've
+   tried diagnostics in the editor. Needs a position→symbol lookup
+   on the AST plus a small TypeChecker query API. A few hundred
+   lines.
+3. **Lambda v2** — multi-param `(x, y) => …`, block bodies, and
+   lambdas in argument position (so `xs.Select(x => x + 1)` works).
+   Needs a small lambda-typing layer in the TypeChecker so non-int
+   signatures lower correctly.
+4. **`amc test` polish** — `--runtime <path>` flag (don't assume
+   cwd has `runtime/`), per-file timeouts, parallel execution.
+5. **Process v2** — split stderr from stdout via real pipes,
+   add timeouts, async streaming output for long-running children.
