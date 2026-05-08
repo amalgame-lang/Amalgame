@@ -239,6 +239,24 @@ fix.
 
 ### Stdlib — backlog
 
+- [ ] **Core stdlib expansion** — fill in the gaps that everyday
+      Amalgame code currently has to fake or shell out for:
+      - `Amalgame.DateTime` — wall-clock, monotonic, parsing,
+        formatting, durations.
+      - `Amalgame.Json` — parse + serialize, schemaless
+        `JsonValue` tree first, typed binding later.
+      - `Amalgame.Regex` — PCRE-style or RE2 binding, capture
+        groups exposed as `Match` records.
+      - `Amalgame.Random` — seeded PRNG + crypto-grade source
+        for tokens / IDs.
+      - `Amalgame.Encoding` — Base64, hex, URL encode/decode.
+      - `Amalgame.Compress` — gzip, deflate (zip later).
+      - `Amalgame.Crypto` — SHA-256, HMAC, constant-time compare.
+      - `Amalgame.Threading` — at minimum a thread pool +
+        Mutex/Channel; needs runtime-side care around libgc.
+      Each is a small project on its own; ship as separate PRs
+      and add docs/guide entries in lockstep. Tied to the open
+      "Stdlib delivery model" design question below.
 - [ ] **GUI / Forms toolkit** — bindings SDL2 dans la stdlib
       (`Amalgame.UI` ou similaire) avec une couche "Forms" au-dessus
       pour les widgets courants (Window, Button, TextField, Layout).
@@ -280,6 +298,29 @@ fix.
 - **Module/import system** — imports are informational today. A real
   module system needs interface files (`.ami`?) and a resolver that
   uses them rather than scanning the global stdlib.
+- **Stdlib delivery model** — runtime is currently header-only
+  (`runtime/*.h`, all `static inline`, `-Iruntime` at link).
+  Simple and bootstrap-friendly, but compile time grows with the
+  stdlib and every external dep (`-lcurl`, `-lpcre`, `-lcrypto`…)
+  is passed by hand at link time. Alternatives to weigh:
+    - **A. Status quo — header-only inline.** Simplest; linker
+      dead-code-elims; deps stay explicit per program.
+    - **B. Static `libamalgame.a`.** Pre-compiled; users get
+      faster compiles. Cost: ship per OS/arch, harder bootstrap.
+    - **C. Shared `libamalgame.so/.dylib/.dll`.** Runtime
+      upgradable. Cost: rpath/loader fragility, ABI versioning,
+      messy distribution.
+    - **D. Per-module dead-code stripping in `amc`.** Keep
+      header-only but emit only runtime symbols actually used
+      (transitively). Smallest binaries; narrow deps. Cost:
+      symbol catalogue + a symbol-graph pass in the compiler.
+    - **E. Hybrid — primitives inline, modules in Amalgame.**
+      Keep `String_Length` & co. header-only. Write Json /
+      Regex / DateTime in `.am` under `stdlib/`, imported via
+      a real (not informational) module system. Lands well
+      with the "Module/import system" question above.
+  Bootstrap-curiosity → A is fine. Daily driver → D or E
+  (likely E once imports are physical).
 - **Error vs. exception model** — `try/catch/throw` works under Vala
   but is missing in self-host. Worth replacing with a Rust-like
   `Result<T, E>` plus `?` operator for short-circuiting before
@@ -306,7 +347,14 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    lambdas in argument position (so `xs.Select(x => x + 1)` works).
    Needs a small lambda-typing layer in the TypeChecker so non-int
    signatures lower correctly.
-4. **`amc test` polish** — `--runtime <path>` flag (don't assume
+4. **Stdlib expansion** — pick one or two modules from the stdlib
+   backlog (`DateTime`, `Json`, `Regex` are the most missed).
+   Independent of compiler/tooling work, so can run in parallel
+   with the language items. Each is a 200-400 LoC PR. Tied to the
+   open "Stdlib delivery model" question — the early modules will
+   be done header-only, but reaching ~10 modules is when options
+   D/E start paying off.
+5. **`amc test` polish** — `--runtime <path>` flag (don't assume
    cwd has `runtime/`), per-file timeouts, parallel execution.
-5. **Process v2** — split stderr from stdout via real pipes,
+6. **Process v2** — split stderr from stdout via real pipes,
    add timeouts, async streaming output for long-running children.
