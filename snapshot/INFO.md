@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-08T23:40:13+02:00
-Git rev:  ce887cf4b077517f524435ceb8e81253d303f750
+Captured: 2026-05-08T23:58:14+02:00
+Git rev:  f527dafebfe9bfb385fc54c8f950de36269b104c
 Branch:   feature/lsp-grammar-fixes
 Tests:    191 passed
 
