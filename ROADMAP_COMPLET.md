@@ -135,9 +135,13 @@ fix.
 - [ ] **Better error recovery** — the parser is okay but produces
       `_unknown_` placeholder ASTs that cascade into noisy resolver
       errors. Skip them more aggressively.
-- [ ] **Comments-on-same-line in `amc fmt`** — `let x = 1  // foo`
-      gets re-emitted with the comment on its own line. Cosmetic,
-      not a correctness issue.
+- [x] **Comments-on-same-line in `amc fmt`** — `Sync` and
+      `FlushTrailingComments` now drain pending comments whose source
+      line == `LastLine` by appending them to the previously emitted
+      output line, so `let x = 1  // foo` and `if (x) {  // foo`
+      round-trip on their original line. `EmitBlockStmts`/`EmitInline`
+      drain once more before bumping `LastLine` to the closing brace,
+      catching trailing comments on the *last* stmt of a block.
 - [ ] **Imports preserved by `amc fmt`** — the parser drops
       `import` directives without storing them, so the formatter
       can't print them back.
