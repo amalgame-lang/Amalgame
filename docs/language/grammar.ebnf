@@ -1,14 +1,21 @@
 (* ═══════════════════════════════════════════════════════ *)
-(*  Grammaire EBNF du langage CODE                        *)
-(*  Version : 0.1.0                                       *)
+(*  Grammaire EBNF du langage Amalgame                    *)
+(*  Version : 0.3.4                                       *)
+(*                                                        *)
+(*  Cette grammaire reflète exactement le parser          *)
+(*  self-hosted (src/parser/parser.am). Elle décrit la    *)
+(*  syntaxe acceptée aujourd'hui — les sucres syntaxiques *)
+(*  rejetés ou réservés pour plus tard sont absents.      *)
 (* ═══════════════════════════════════════════════════════ *)
 
+
 (* ── Conventions ────────────────────────────────────────
-   [  x  ]  = optionnel
+   [  x  ]  = optionnel (0 ou 1 occurrence)
    {  x  }  = zéro ou plusieurs
    (  x  )  = groupement
-   x | y    = x ou y
-   "x"      = terminal littéral
+   x | y    = alternative
+   "x"      = terminal littéral (mot-clé ou ponctuation)
+   IDENT    = règle lexicale (token)
    ──────────────────────────────────────────────────── *)
 
 
@@ -17,7 +24,7 @@
 (* ═══════════════════════════════════════════════════════ *)
 
 Program
-    = NamespaceDecl
+    = [ NamespaceDecl ]
       { ImportDecl }
       { TopLevelDecl }
     ;
@@ -31,391 +38,281 @@ ImportDecl
     ;
 
 QualifiedName
-    = IDENTIFIER { "." IDENTIFIER }
+    = IDENT { "." IDENT }
     ;
 
 TopLevelDecl
     = { Decorator }
+      [ "public" ]
+      [ "static" ]
       ( ClassDecl
-      | InterfaceDecl
-      | EnumDecl
-      | RecordDecl
       | DataClassDecl
-      | TraitDecl
-      | FunctionDecl
-      )
+      | EnumDecl
+      | InterfaceDecl )
     ;
 
 
 (* ═══════════════════════════════════════════════════════ *)
-(*  DÉCORATEURS                                           *)
+(*  DÉCLARATIONS DE TYPES                                 *)
 (* ═══════════════════════════════════════════════════════ *)
 
-Decorator
-    = "@" IDENTIFIER [ "(" DecoratorArgList ")" ]
-    ;
-
-DecoratorArgList
-    = DecoratorArg { "," DecoratorArg }
-    ;
-
-DecoratorArg
-    = [ IDENTIFIER "=" ] Expression
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  CLASSES                                               *)
-(* ═══════════════════════════════════════════════════════ *)
+(* ── Classe ─────────────────────────────────────────── *)
 
 ClassDecl
-    = AccessModifier "class" IDENTIFIER
-      [ GenericParams ]
-      [ "extends"    TypeRef ]
-      [ "implements" TypeRef { "," TypeRef } ]
+    = "class" IDENT [ GenericParams ]
+      [ ":" QualifiedName ]               (* extends *)
+      [ "implements" QualifiedName { "," QualifiedName } ]
       "{" { ClassMember } "}"
+    ;
+
+GenericParams
+    = "<" IDENT { "," IDENT } ">"
     ;
 
 ClassMember
     = { Decorator }
+      [ "public" ]
+      [ "static" ]
       ( FieldDecl
-      | PropertyDecl
-      | MethodDecl
-      | ConstructorDecl
-      )
+      | MethodDecl )
     ;
 
 FieldDecl
-    = AccessModifier
-      [ "static" ]
-      [ "weak" ]
-      IDENTIFIER ":" TypeRef
-      [ "=" Expression ]
-    ;
-
-PropertyDecl
-    = AccessModifier
-      [ "static" ]
-      IDENTIFIER ":" TypeRef
-      "{" PropertyAccessors "}"
-    ;
-
-PropertyAccessors
-    = GetAccessor [ SetAccessor ]
-    | SetAccessor [ GetAccessor ]
-    ;
-
-GetAccessor
-    = "get" ( "=>" Expression | Block )
-    ;
-
-SetAccessor
-    = "set" ( "=>" Expression | Block )
-    ;
-
-ConstructorDecl
-    = AccessModifier IDENTIFIER
-      "(" [ ParamList ] ")"
-      Block
+    = IDENT ":" Type [ "=" Expression ] NEWLINE
     ;
 
 MethodDecl
-    = AccessModifier
-      [ "static"   ]
-      [ "abstract" ]
-      [ "override" ]
-      [ "async"    ]
-      [ "pure"     ]
-      IDENTIFIER
-      [ GenericParams ]
+    = Type IDENT [ GenericParams ]
       "(" [ ParamList ] ")"
-      [ "->" TypeRef ]
-      ( Block | "=>" Expression )
+      ( "{" { Statement } "}"
+      | "=>" Expression NEWLINE )
     ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  INTERFACES                                            *)
-(* ═══════════════════════════════════════════════════════ *)
-
-InterfaceDecl
-    = AccessModifier "interface" IDENTIFIER
-      [ GenericParams ]
-      [ "extends" TypeRef { "," TypeRef } ]
-      "{" { InterfaceMember } "}"
-    ;
-
-InterfaceMember
-    = { Decorator }
-      ( InterfaceMethodDecl
-      | InterfacePropertyDecl
-      )
-    ;
-
-InterfaceMethodDecl
-    = [ "async" ] [ "pure" ]
-      IDENTIFIER
-      "(" [ ParamList ] ")"
-      "->" TypeRef
-      [ "default" Block ]
-    ;
-
-InterfacePropertyDecl
-    = IDENTIFIER ":" TypeRef
-      "{" ( "get" | "set" ) { ";" ( "get" | "set" ) } "}"
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  ENUMS                                                 *)
-(* ═══════════════════════════════════════════════════════ *)
-
-EnumDecl
-    = AccessModifier "enum" IDENTIFIER
-      "{" EnumMember { "," EnumMember }
-          { MethodDecl }
-      "}"
-    ;
-
-EnumMember
-    = IDENTIFIER [ "(" TypeRef { "," TypeRef } ")" ]
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  RECORDS & DATA CLASSES                                *)
-(* ═══════════════════════════════════════════════════════ *)
-
-RecordDecl
-    = AccessModifier "record" IDENTIFIER
-      "(" RecordParamList ")"
-      [ "{" { MethodDecl } "}" ]
-    ;
-
-DataClassDecl
-    = AccessModifier "data" "class" IDENTIFIER
-      "(" RecordParamList ")"
-      [ "{" { ClassMember } "}" ]
-    ;
-
-RecordParamList
-    = RecordParam { "," RecordParam }
-    ;
-
-RecordParam
-    = TypeRef IDENTIFIER [ "=" Expression ]
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  TRAITS                                                *)
-(* ═══════════════════════════════════════════════════════ *)
-
-TraitDecl
-    = AccessModifier "trait" IDENTIFIER
-      [ GenericParams ]
-      "{" { TraitMember } "}"
-    ;
-
-TraitMember
-    = InterfaceMethodDecl
-    | MethodDecl
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  FONCTIONS TOP-LEVEL                                   *)
-(* ═══════════════════════════════════════════════════════ *)
-
-FunctionDecl
-    = AccessModifier
-      [ "static" ]
-      [ "async"  ]
-      [ "pure"   ]
-      IDENTIFIER
-      [ GenericParams ]
-      "(" [ ParamList ] ")"
-      [ "->" TypeRef ]
-      ( Block | "=>" Expression )
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-(*  PARAMÈTRES & TYPES                                    *)
-(* ═══════════════════════════════════════════════════════ *)
 
 ParamList
     = Param { "," Param }
     ;
 
 Param
-    = [ "weak" ]
-      IDENTIFIER ":" TypeRef
-      [ "=" Expression ]
+    = IDENT ":" Type
     ;
 
-GenericParams
-    = "<" GenericParam { "," GenericParam } ">"
+(* ── Data class / record ────────────────────────────── *)
+(* `data class Foo(int x, string y) { ... }` et `record`
+   sont équivalents : ils auto-génèrent les champs publics
+   et un constructeur affectant chaque param au champ. *)
+
+DataClassDecl
+    = ( "data" "class" | "record" ) IDENT
+      "(" [ DataParamList ] ")"
+      [ "{" { ClassMember } "}" ]
     ;
 
-GenericParam
-    = IDENTIFIER
-      [ ":" TypeRef { "," TypeRef } ]
+DataParamList
+    = DataParam { "," DataParam }
     ;
 
-TypeRef
-    = SimpleType
-    | GenericType
-    | NullableType
-    | FuncType
+DataParam
+    = Type IDENT
+    ;
+
+(* ── Enum (simple ou algébrique) ────────────────────── *)
+(* Les variantes peuvent porter une liste de types
+   (algébriques) : `enum Shape { Circle(float), Square(int, int), None }`. *)
+
+EnumDecl
+    = "enum" IDENT
+      "{" EnumMember { ( "," | NEWLINE ) EnumMember } "}"
+    ;
+
+EnumMember
+    = IDENT [ "(" Type { "," Type } ")" ]
+    ;
+
+(* ── Interface ──────────────────────────────────────── *)
+(* Pas de champs ; uniquement des signatures de méthode.
+   Deux syntaxes admises : classique `Type Name(params)`
+   ou flèche `Name(params) -> Type`. *)
+
+InterfaceDecl
+    = "interface" IDENT
+      "{" { InterfaceMethod } "}"
+    ;
+
+InterfaceMethod
+    = ( Type IDENT "(" [ ParamList ] ")"
+      | IDENT "(" [ ParamList ] ")" "->" Type )
+      NEWLINE
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  TYPES                                                 *)
+(* ═══════════════════════════════════════════════════════ *)
+
+Type
+    = BaseType { TypeSuffix }
+    ;
+
+BaseType
+    = PrimitiveType
+    | QualifiedName [ GenericArgs ]
     | TupleType
     ;
 
-SimpleType
-    = QualifiedName
-    | PrimitiveType
-    ;
-
 PrimitiveType
-    = "int"    | "float"  | "double"
-    | "string" | "bool"   | "void"
-    | "byte"   | "char"
+    = "int" | "float" | "double" | "bool" | "string" | "void"
     ;
 
-GenericType
-    = QualifiedName "<" TypeRef { "," TypeRef } ">"
-    ;
-
-NullableType
-    = TypeRef "?"
-    ;
-
-FuncType
-    = "Func" "<" [ TypeRef { "," TypeRef } "->" ] TypeRef ">"
+GenericArgs
+    = "<" Type { "," Type } ">"
     ;
 
 TupleType
-    = "(" TypeRef { "," TypeRef } ")"
+    = "(" Type { "," Type } ")"
+    ;
+
+TypeSuffix
+    = "?"            (* nullable T?  *)
+    | "[" "]"        (* array T[]    *)
     ;
 
 
 (* ═══════════════════════════════════════════════════════ *)
-(*  INSTRUCTIONS (Statements)                             *)
+(*  STATEMENTS                                            *)
 (* ═══════════════════════════════════════════════════════ *)
-
-Block
-    = "{" { Statement } "}"
-    ;
 
 Statement
     = VarDecl
-    | IfStmt
-    | MatchStmt
-    | WhileStmt
-    | ForStmt
-    | ForeachStmt
+    | AssignStmt
     | ReturnStmt
+    | IfStmt
     | GuardStmt
+    | WhileStmt
+    | ForInStmt
     | BreakStmt
     | ContinueStmt
-    | TryCatchStmt
-    | GoStmt
-    | SelectStmt
-    | ExpressionStmt
+    | MatchStmt
+    | TryStmt
+    | ThrowStmt
     | Block
+    | ExprStmt
     ;
+
+(* ── Déclarations locales ───────────────────────────── *)
 
 VarDecl
     = ( "let" | "var" )
-      [ "@" IDENTIFIER ]
-      IDENTIFIER
-      [ ":" TypeRef ]
-      [ "=" Expression ]
+      ( IDENT [ ":" Type ] [ "=" Expression ]
+      | "(" IDENT { "," IDENT } ")" "=" Expression )    (* tuple destructure *)
+      NEWLINE
+    ;
+
+(* ── Affectation ────────────────────────────────────── *)
+(* Au niveau syntaxique, `x = e` et les compounds passent
+   par ParseAssign en position d'expression et sont
+   utilisables aussi comme statement (statement-position
+   expression). *)
+
+AssignStmt
+    = LValue AssignOp Expression NEWLINE
+    ;
+
+LValue
+    = Postfix                       (* ident, member, index *)
+    ;
+
+AssignOp
+    = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+    | "&=" | "|=" | "^=" | "<<=" | ">>="
+    ;
+
+(* ── Contrôle ──────────────────────────────────────── *)
+
+ReturnStmt
+    = "return" [ Expression ] NEWLINE
     ;
 
 IfStmt
-    = "if" "(" Expression ")" Block
-      { "else" "if" "(" Expression ")" Block }
+    = "if" [ "(" ] Expression [ ")" ] Block
+      { "else" "if" [ "(" ] Expression [ ")" ] Block }
       [ "else" Block ]
-    ;
-
-MatchStmt
-    = "match" Expression
-      "{" { MatchArm } "}"
-    ;
-
-MatchArm
-    = MatchPattern "=>" ( Expression | Block ) ","
-    ;
-
-MatchPattern
-    = "_"
-    | "null"
-    | Literal
-    | RangePattern
-    | TypePattern
-    | DestructurePattern
-    | GuardPattern
-    | QualifiedName [ "(" MatchPattern { "," MatchPattern } ")" ]
-    ;
-
-RangePattern
-    = Literal ".." Literal
-    ;
-
-TypePattern
-    = TypeRef IDENTIFIER
-    ;
-
-DestructurePattern
-    = QualifiedName "(" IDENTIFIER { "," IDENTIFIER } ")"
-    ;
-
-GuardPattern
-    = MatchPattern "if" Expression
-    ;
-
-WhileStmt
-    = "while" "(" Expression ")" Block
-    ;
-
-ForStmt
-    = "for" "(" VarDecl ";" Expression ";" Expression ")" Block
-    ;
-
-ForeachStmt
-    = "foreach" "(" [ "let" | "var" ] IDENTIFIER "in" Expression ")" Block
-    ;
-
-ReturnStmt
-    = "return" [ Expression ]
     ;
 
 GuardStmt
     = "guard" Expression "else" Block
     ;
 
-BreakStmt    = "break"    ;
-ContinueStmt = "continue" ;
+WhileStmt
+    = "while" [ "(" ] Expression [ ")" ] Block
+    ;
 
-TryCatchStmt
+ForInStmt
+    = "for" IDENT "in" Expression Block
+    ;
+
+BreakStmt
+    = "break" NEWLINE
+    ;
+
+ContinueStmt
+    = "continue" NEWLINE
+    ;
+
+(* ── Match ──────────────────────────────────────────── *)
+(* Match est utilisable comme statement et comme expression.
+   Les arms peuvent porter une garde `if cond` après le
+   pattern et avant la flèche. *)
+
+MatchStmt
+    = "match" Expression
+      "{" MatchArm { ( "," | NEWLINE ) MatchArm } "}"
+    ;
+
+MatchArm
+    = Pattern [ "if" Expression ] "=>" ArmBody
+    ;
+
+ArmBody
+    = Statement
+    | Expression
+    ;
+
+Pattern
+    = "_"                                       (* wildcard *)
+    | Literal                                   (* int, float, string, bool, null *)
+    | IDENT                                     (* binder OR enum-tag *)
+    | QualifiedName [ "(" PatternList ")" ]     (* algebraic enum: Variant(x, _) *)
+    | Range                                     (* 1..5 *)
+    ;
+
+PatternList
+    = Pattern { "," Pattern }
+    ;
+
+Range
+    = Expression ".." Expression
+    ;
+
+(* ── Exceptions ─────────────────────────────────────── *)
+
+TryStmt
     = "try" Block
-      "catch" "(" IDENTIFIER IDENTIFIER ")" Block
+      [ "catch" [ "(" IDENT [ ":" Type ] ")" ] Block ]
+      [ "finally" Block ]
     ;
 
-GoStmt
-    = "go" Expression
+ThrowStmt
+    = "throw" Expression NEWLINE
     ;
 
-SelectStmt
-    = "select" "{"
-      { "case" Expression "=>" ( Expression | Block ) "," }
-      [ "case" "timeout" "(" Expression ")" "=>" Block ]
-      "}"
+(* ── Bloc et statement-expression ───────────────────── *)
+
+Block
+    = "{" { Statement } "}"
     ;
 
-ExpressionStmt
-    = Expression
+ExprStmt
+    = Expression NEWLINE
     ;
 
 
@@ -423,105 +320,94 @@ ExpressionStmt
 (*  EXPRESSIONS                                           *)
 (* ═══════════════════════════════════════════════════════ *)
 
+(* Le parser est Pratt-style à grimpe de précédence.
+   Du plus faible (en bas) au plus fort (en haut), les
+   niveaux sont :
+
+     0. Lambda  (intercepte avant Assign : `IDENT "=>" Expr`)
+     1. Assign     `=` `+=` … `>>=`           (right-assoc)
+     2. LogicalOr  `||`                        (left-assoc)
+     3. BitOr      `|`
+     4. BitXor     `^`
+     5. BitAnd     `&`
+     6. LogicalAnd `&&`
+     7. Equality   `==` `!=`
+     8. Relational `<` `>` `<=` `>=`
+     9. Shift      `<<` `>>`
+    10. Additive   `+` `-`
+    11. Multiplic. `*` `/` `%`
+    12. Unary      `-` `!` `~`                  (right-assoc)
+    13. Postfix    `f(args)` `obj.field` `obj?.field` `obj[i]`
+    14. Primary    literals, `this`, `null`, `(expr)`,
+                   `new T(args)`, list-comp, lambda, tuple. *)
+
 Expression
-    = AssignmentExpr
+    = Lambda
+    | Assignment
     ;
 
-AssignmentExpr
-    = PipelineExpr
-      [ ( "=" | "+=" | "-=" | "*=" | "/=" ) AssignmentExpr ]
+Lambda
+    = IDENT "=>" Expression
     ;
 
-PipelineExpr
-    = NullCoalExpr { "|>" NullCoalExpr }
+Assignment
+    = LogicalOr [ AssignOp Assignment ]
     ;
 
-NullCoalExpr
-    = OrExpr { "??" OrExpr }
+LogicalOr
+    = BitOr   { "||"  BitOr }
     ;
 
-OrExpr
-    = AndExpr { "||" AndExpr }
+BitOr
+    = BitXor  { "|"   BitXor }
     ;
 
-AndExpr
-    = EqualityExpr { "&&" EqualityExpr }
+BitXor
+    = BitAnd  { "^"   BitAnd }
     ;
 
-EqualityExpr
-    = RelationalExpr { ( "==" | "!=" ) RelationalExpr }
+BitAnd
+    = LogicalAnd { "&" LogicalAnd }
     ;
 
-RelationalExpr
-    = RangeExpr { ( "<" | ">" | "<=" | ">=" | "is" ) RangeExpr }
+LogicalAnd
+    = Equality { "&&" Equality }
     ;
 
-RangeExpr
-    = AddExpr [ ".." AddExpr ]
+Equality
+    = Relational { ( "==" | "!=" ) Relational }
     ;
 
-AddExpr
-    = MulExpr { ( "+" | "-" ) MulExpr }
+Relational
+    = Shift { ( "<" | ">" | "<=" | ">=" ) Shift }
     ;
 
-MulExpr
-    = UnaryExpr { ( "*" | "/" | "%" ) UnaryExpr }
+Shift
+    = Additive { ( "<<" | ">>" ) Additive }
     ;
 
-UnaryExpr
-    = ( "!" | "-" | "+" ) UnaryExpr
-    | PowerExpr
+Additive
+    = Multiplicative { ( "+" | "-" ) Multiplicative }
     ;
 
-PowerExpr
-    = PostfixExpr [ "^" UnaryExpr ]
+Multiplicative
+    = Unary { ( "*" | "/" | "%" ) Unary }
     ;
 
-PostfixExpr
-    = PrimaryExpr
-      { MemberAccess
-      | NullSafeAccess
-      | IndexAccess
-      | CallAccess
-      | WithExpr
-      }
+Unary
+    = ( "-" | "!" | "~" ) Unary
+    | Postfix
     ;
 
-MemberAccess
-    = "." IDENTIFIER
+Postfix
+    = Primary { PostfixOp }
     ;
 
-NullSafeAccess
-    = "?." IDENTIFIER
-    ;
-
-IndexAccess
-    = "[" Expression "]"
-    ;
-
-CallAccess
-    = "(" [ ArgList ] ")"
-    ;
-
-WithExpr
-    = "with" "{" IDENTIFIER "=" Expression
-      { "," IDENTIFIER "=" Expression } "}"
-    ;
-
-PrimaryExpr
-    = Literal
-    | IDENTIFIER
-    | "this"
-    | "null"
-    | "new" TypeRef "(" [ ArgList ] ")"
-    | "new" TypeRef "[" Expression "]"
-    | ListLiteral
-    | MapLiteral
-    | LambdaExpr
-    | TupleExpr
-    | AwaitExpr
-    | MatchExpr
-    | "(" Expression ")"
+PostfixOp
+    = "."  IDENT                      (* member access      *)
+    | "?." IDENT                      (* null-safe member   *)
+    | "["  Expression "]"             (* index              *)
+    | "("  [ ArgList ] ")"            (* call               *)
     ;
 
 ArgList
@@ -529,94 +415,191 @@ ArgList
     ;
 
 Arg
-    = [ IDENTIFIER ":" ] Expression
+    = [ IDENT ":" ] Expression        (* named argument is documentation-only *)
     ;
 
-ListLiteral
-    = "[" [ Expression { "," Expression } ] "]"
-    | "[" Expression "for" IDENTIFIER "in" Expression
-          [ "if" Expression ] "]"
+Primary
+    = Literal
+    | "this"
+    | "null"
+    | IDENT
+    | QualifiedName                   (* for `Foo.bar` paths *)
+    | "(" TupleOrParen
+    | NewExpr
+    | IfExpr
+    | MatchExpr
+    | ListComp
+    | StringInterp
     ;
 
-MapLiteral
-    = "{" [ MapEntry { "," MapEntry } ] "}"
+TupleOrParen
+    = Expression ( ")" | "," Expression { "," Expression } ")" )
+      (* Single expression  → parenthesized expression
+         Multiple expressions → tuple literal               *)
     ;
 
-MapEntry
-    = Expression ":" Expression
+NewExpr
+    = "new" QualifiedName [ GenericArgs ] "(" [ ArgList ] ")"
     ;
 
-LambdaExpr
-    = "(" [ ParamList ] ")" "=>" ( Expression | Block )
-    | IDENTIFIER "=>" ( Expression | Block )
-    ;
-
-TupleExpr
-    = "(" Expression { "," Expression } ")"
-    ;
-
-AwaitExpr
-    = "await" Expression
+IfExpr
+    = "if" Expression Block [ "else" "if" Expression Block ]
+      [ "else" Block ]
     ;
 
 MatchExpr
-    = "match" Expression
-      "{" { MatchArm } "}"
+    = MatchStmt              (* same shape; usable as expression *)
     ;
+
+ListComp
+    = "[" Expression "for" IDENT "in" Expression
+      [ "if" Expression ] "]"
+    ;
+
+(* ── Pipeline `|>` ──────────────────────────────────── *)
+(* Le pipeline `x |> f` se desugar en `f(x)` au moment
+   du parse (réutilisé dans Postfix). Conservé ici à
+   titre informatif — pas une production séparée. *)
 
 
 (* ═══════════════════════════════════════════════════════ *)
-(*  LITTÉRAUX                                             *)
+(*  LITTÉRAUX & STRINGS                                   *)
 (* ═══════════════════════════════════════════════════════ *)
 
 Literal
     = INTEGER
     | FLOAT
-    | STRING
-    | BOOL_TRUE
-    | BOOL_FALSE
-    | "null"
+    | StringLit
+    | BoolLit
+    ;
+
+BoolLit
+    = "true" | "false"
+    ;
+
+(* ── Strings ───────────────────────────────────────── *)
+
+StringLit
+    = SimpleString          (* "..."      avec escapes *)
+    | TripleString          (* """..."""  raw, multiline *)
+    ;
+
+SimpleString
+    = '"' { StringChar } '"'
+    ;
+
+StringChar
+    = ANY_CHAR_EXCEPT_QUOTE_OR_BACKSLASH
+    | EscapeSeq
+    ;
+
+EscapeSeq
+    = '\' ( 'n' | 't' | 'r' | '"' | '\' | '/'
+          | 'x' HEX HEX
+          | 'u' HEX HEX HEX HEX )
+    ;
+
+TripleString
+    = '"""' { ANY_CHAR } '"""'
+    ;
+
+(* L'interpolation `"hello {x}"` est reconnue post-parse
+   par le CGen, qui détecte `{ident}` à l'intérieur d'un
+   StringLit et le remplace par une concaténation. Pas
+   une production grammaticale formelle. *)
+
+StringInterp
+    = SimpleString          (* contient au moins un `{IDENT [.IDENT]* [(args)]}` *)
+    ;
+
+INTEGER = DIGIT { DIGIT } ;
+FLOAT   = DIGIT { DIGIT } "." DIGIT { DIGIT } ;
+
+DIGIT   = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+HEX     = DIGIT | "a" | "b" | "c" | "d" | "e" | "f"
+                | "A" | "B" | "C" | "D" | "E" | "F" ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  DÉCORATEURS                                           *)
+(* ═══════════════════════════════════════════════════════ *)
+(* Forme drapeau uniquement : `@inline`, `@deprecated`.
+   Le parser stashe le nom dans `PendingDecorators` ; le
+   décorateur s'applique à la déclaration suivante. *)
+
+Decorator
+    = "@" IDENT
     ;
 
 
 (* ═══════════════════════════════════════════════════════ *)
-(*  MODIFICATEURS D'ACCÈS                                 *)
+(*  IDENTIFIANTS & MOTS-CLÉS                              *)
 (* ═══════════════════════════════════════════════════════ *)
 
-AccessModifier
-    = "public"
-    | "private"
-    | "protected"
-    | "internal"
-    |  (* vide = internal par défaut *)
+IDENT
+    = ( LETTER | "_" ) { LETTER | DIGIT | "_" }
+      (* exclut les Keyword *)
+    ;
+
+LETTER
+    = "a" | "b" | "c" | … | "z"
+    | "A" | "B" | "C" | … | "Z"
+    ;
+
+Keyword
+    = "let"      | "var"      | "if"       | "else"
+    | "for"      | "while"    | "return"   | "break"
+    | "continue" | "class"    | "public"   | "private"
+    | "static"   | "new"      | "this"     | "null"
+    | "true"     | "false"    | "import"   | "namespace"
+    | "enum"     | "match"    | "in"       | "is"
+    | "as"       | "void"     | "int"      | "string"
+    | "bool"     | "float"    | "double"   | "try"
+    | "catch"    | "throw"    | "finally"  | "interface"
+    | "record"   | "data"     | "guard"
+    ;
+
+(* `func` est réservé par le lexer mais n'est pas encore
+   utilisé par le parser ; à introduire pour les
+   fonctions top-level hors classe. *)
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  COMMENTAIRES                                          *)
+(* ═══════════════════════════════════════════════════════ *)
+(* Préservés par le lexer (token COMMENT) plutôt que jetés
+   comme whitespace, pour que `amc fmt` puisse les
+   réinjecter à leur ligne d'origine. *)
+
+LineComment
+    = "//" { ANY_CHAR_EXCEPT_NEWLINE } NEWLINE
+    ;
+
+BlockComment
+    = "/*" { ANY_CHAR } "*/"
     ;
 
 
 (* ═══════════════════════════════════════════════════════ *)
-(*  TERMINAUX                                             *)
+(*  RÉSERVÉ POUR PLUS TARD                                *)
 (* ═══════════════════════════════════════════════════════ *)
+(* Ces constructions étaient présentes dans la grammaire
+   v0.1.0 (langage CODE) mais NE SONT PAS reconnues par
+   le parser actuel. Conservées ici comme rappel pour les
+   futures évolutions :
 
-IDENTIFIER
-    = LETTER { LETTER | DIGIT | "_" }
-    ;
+   - Properties avec get/set accessors
+   - Constructors syntaxe explicite (`init(...) { ... }`)
+   - `async` / `await` / coroutines
+   - `with { ... }` expression
+   - Traits (au-delà des interfaces)
+   - Modificateurs `protected`, `internal`, `abstract`,
+     `override`, `weak`, `pure`
+   - Lambdas multi-param `(a, b) => …` et à corps de bloc
+     `x => { … }`
+   - Function types `(int) -> string` comme types nommés
+   - Spread `...args` et `[...a, ...b]`
+   - Foreach C-style `foreach (var x in xs) { … }`
+   - `func` keyword pour fonctions top-level
 
-INTEGER
-    = DIGIT { DIGIT | "_" }
-    ;
-
-FLOAT
-    = DIGIT { DIGIT } "." DIGIT { DIGIT }
-      [ ( "e" | "E" ) [ "+" | "-" ] DIGIT { DIGIT } ]
-    ;
-
-STRING
-    = '"' { CHAR | Interpolation } '"'
-    | '"""' { ANY } '"""'
-    ;
-
-Interpolation
-    = "{" Expression "}"
-    ;
-
-LETTER = "a".."z" | "A".."Z" | "_" ;
-DIGIT  = "0".."9" ;
+   Voir ROADMAP_COMPLET.md pour le tracking détaillé. *)
