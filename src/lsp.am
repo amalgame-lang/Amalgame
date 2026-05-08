@@ -2,6 +2,7 @@ namespace Amalgame.Compiler
 
 import Amalgame.Collections
 import Amalgame.IO
+import Amalgame.Process
 import Amalgame.String
 
 // ═══════════════════════════════════════════════════════
@@ -195,9 +196,92 @@ public class LspServer {
         this.Send(body)
     }
 
+    // Build a FullResolver populated with ALL *.am files reachable
+    // from the workspace root (detected by walking up from `path`
+    // until a marker dir/file like .git or build_amc.sh is found).
+    // The open document is the first program added; sibling files
+    // follow. Two passes run as in main.am — CollectDecl across all
+    // programs (so cross-file types like NodeKind from
+    // src/parser/ast.am are visible everywhere), then ResolveDecl.
+    //
+    // This is what un-breaks the IDE: before this, opening any file
+    // that referenced a type defined in another file produced a
+    // forest of red "Unknown symbol" squiggles even though the build
+    // was green. Diagnostics for sibling files are filtered out by
+    // the caller (see Compile) so the editor only sees errors for
+    // the document it's actually showing.
+    private FullResolver BuildWorkspaceResolver(string path, AstNode prog) {
+        let resolver = new FullResolver()
+        resolver.Programs.Add(prog)
+        this.LoadWorkspaceFiles(resolver, path)
+        resolver.ResolvePrograms()
+        return resolver
+    }
+
+    // Scan the workspace for sibling *.am files (any path other than
+    // `currentPath`), parse each, and add the resulting AstNode to
+    // `resolver.Programs`. Skips silently on read or scan failure —
+    // the LSP can degrade to single-file mode rather than refuse to
+    // serve diagnostics.
+    private void LoadWorkspaceFiles(FullResolver resolver, string currentPath) {
+        let root: string = LspServer.FindWorkspaceRoot(currentPath)
+        if (String_Length(root) == 0) { return }
+        // 2>/dev/null swallows "permission denied" noise from any
+        // unrelated subtrees; on MSYS2 / POSIX `find` is universally
+        // available (already used by `amc test` discovery).
+        let findCmd: string = "find " + root + " -name '*.am' -type f 2>/dev/null"
+        let result = Process.RunCapture(findCmd)
+        if (result.Exit != 0) { return }
+        let lines: List<string> = String_Split(String_Trim(result.Stdout), "\n")
+        let n: int = lines.Count()
+        for i in 0..n {
+            let path: string = String_Trim(lines.Get(i))
+            if (String_Length(path) == 0) { continue }
+            if (path == currentPath) { continue }
+            if (!File.Exists(path)) { continue }
+            let src: string = File.ReadAll(path)
+            let lex  = new Lexer(src, path)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let p    = par.Parse()
+            p.Str2   = path
+            resolver.Programs.Add(p)
+        }
+    }
+
+    // Walk up from `startPath`'s directory until we find a marker
+    // file (`.git`, `build_amc.sh`, or `package.json`) or run out
+    // of parents. Returns the marker's parent directory, or the
+    // start directory as a fallback. 8 levels is enough for sane
+    // project layouts; anything deeper falls back to the file's
+    // own directory and works file-locally.
+    public static string FindWorkspaceRoot(string startPath) {
+        var dir: string = LspServer.Dirname(startPath)
+        let initialDir: string = dir
+        for i in 0..8 {
+            if (String_Length(dir) == 0) { return initialDir }
+            if (File.Exists(dir + "/.git")) { return dir }
+            if (File.Exists(dir + "/build_amc.sh")) { return dir }
+            if (File.Exists(dir + "/package.json")) { return dir }
+            let parent: string = LspServer.Dirname(dir)
+            if (parent == dir) { return initialDir }
+            dir = parent
+        }
+        return initialDir
+    }
+
+    public static string Dirname(string path) {
+        let last: int = String_LastIndexOf(path, "/")
+        if (last <= 0) { return "" }
+        return String_Substring(path, 0, last)
+    }
+
     // Run the same lex+parse+resolve+typecheck pipeline `main.am`
     // does for one file, then turn the collected errors into a
-    // JSON array of LSP Diagnostic objects.
+    // JSON array of LSP Diagnostic objects. Sibling files are loaded
+    // by BuildWorkspaceResolver so cross-file type references resolve;
+    // diagnostics are filtered to the open document so the editor
+    // only sees errors for the file it's showing.
     private string Compile(string uri, string source) {
         let path = LspServer.UriToPath(uri)
         let lex  = new Lexer(source, path)
@@ -206,9 +290,7 @@ public class LspServer {
         let prog = par.Parse()
         prog.Str2 = path
 
-        let resolver = new FullResolver()
-        resolver.Programs.Add(prog)
-        resolver.ResolvePrograms()
+        let resolver = this.BuildWorkspaceResolver(path, prog)
 
         let tc = new TypeChecker(resolver, path)
         tc.Check(prog)
@@ -218,6 +300,7 @@ public class LspServer {
         let rn = resolver.RawErrors.Count()
         for ri in 0..rn {
             let e: ResolverError = resolver.RawErrors.Get(ri)
+            if (e.Filename != path) { continue }
             if (!first) { arr = arr + "," }
             arr = arr + LspServer.DiagnosticFromResolver(source, e)
             first = false
@@ -225,6 +308,7 @@ public class LspServer {
         let tn = tc.Errors.Count()
         for ti in 0..tn {
             let te: TypeError = tc.Errors.Get(ti)
+            if (te.Filename != path) { continue }
             if (!first) { arr = arr + "," }
             arr = arr + LspServer.DiagnosticFromTc(source, te)
             first = false
@@ -247,9 +331,7 @@ public class LspServer {
         let par  = new Parser(toks)
         let prog = par.Parse()
         prog.Str2 = path
-        let resolver = new FullResolver()
-        resolver.Programs.Add(prog)
-        resolver.ResolvePrograms()
+        let resolver = this.BuildWorkspaceResolver(path, prog)
         let tc = new TypeChecker(resolver, path)
         tc.Check(prog)
 
@@ -293,13 +375,13 @@ public class LspServer {
         let par  = new Parser(toks)
         let prog = par.Parse()
         prog.Str2 = path
-        let resolver = new FullResolver()
-        resolver.Programs.Add(prog)
-        resolver.ResolvePrograms()
+        let resolver = this.BuildWorkspaceResolver(path, prog)
 
         // Walk all global names known to the resolver: builtins +
-        // user-declared classes / enums / functions. The LSP client
-        // filters by prefix on its side, so we don't need to here.
+        // user-declared classes / enums / functions, including those
+        // defined in sibling files (loaded by BuildWorkspaceResolver).
+        // The LSP client filters by prefix on its side, so we don't
+        // need to here.
         var items = ""
         var first = true
         let gn: int = resolver.GlobalCount()
