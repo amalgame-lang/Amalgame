@@ -365,7 +365,12 @@ run_multifile_test() {
 
     printf "  %-34s" "$name"
 
-    output=$("$AMC" "${files[@]}" -o /tmp/amalgame_multi_test.c 2>&1)
+    # Match the single-file convention: pass `-o <base>` (no .c) and let amc
+    # emit `<base>.c`, then call gcc manually. The previous version passed
+    # `-o foo.c` (which amc dutifully expanded to foo.c.c) and expected an
+    # executable amc never produces.
+    local out_base="/tmp/amalgame_multi_test"
+    output=$("$AMC" "${files[@]}" -o "$out_base" 2>&1)
     amc_exit=$?
 
     if [ $amc_exit -ne 0 ]; then
@@ -375,9 +380,16 @@ run_multifile_test() {
         FAIL=$((FAIL + 1)); return
     fi
 
-    exe="/tmp/amalgame_multi_test"
+    local c_file="${out_base}.c"
+    if [ ! -f "$c_file" ]; then
+        echo -e "${RED}FAIL${NC} (no .c emitted)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+
+    exe="$out_base"
     if [ ! -x "$exe" ]; then
-        echo -e "${RED}FAIL${NC} (executable not found)"
+        echo -e "${RED}FAIL${NC} (gcc failed)"
         FAIL=$((FAIL + 1)); return
     fi
 
