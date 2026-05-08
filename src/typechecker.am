@@ -145,7 +145,8 @@ public class TypeChecker {
     private string NodeKey(AstNode node) {
         let ln  = String_FromInt(node.Line)
         let col = String_FromInt(node.Column)
-        return ln + ":" + col + ":" + node.Name + ":" + node.Str
+        let knd = String_FromInt(node.Kind)
+        return knd + ":" + ln + ":" + col + ":" + node.Name + ":" + node.Str
     }
 
     private void SetType(AstNode node, string typeKey) {
