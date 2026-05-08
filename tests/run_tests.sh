@@ -366,6 +366,13 @@ run_test "ho: reduce block"    "$SAMPLES/list_higher_order.am"  "countGT2: 3"
 run_test "ho: any/all/countIf" "$SAMPLES/list_higher_order.am"  "evens: 2"
 run_test "ho: forEach"         "$SAMPLES/list_higher_order.am"  "foreach: 5"
 run_test "ho: chain filter+map" "$SAMPLES/list_higher_order.am" "chain first: 30"
+run_test "lambda v2.5: Map<string>"  "$SAMPLES/lambda_v25_typed.am"  "first name: Alice"
+run_test "lambda v2.5: Map<int>"     "$SAMPLES/lambda_v25_typed.am"  "first age: 30"
+run_test "lambda v2.5: Filter class" "$SAMPLES/lambda_v25_typed.am"  "adults: 2"
+run_test "lambda v2.5: Filter mem"   "$SAMPLES/lambda_v25_typed.am"  "adult0: Alice"
+run_test "lambda v2.5: Any"          "$SAMPLES/lambda_v25_typed.am"  "anyMinor: true"
+run_test "lambda v2.5: All"          "$SAMPLES/lambda_v25_typed.am"  "allAdults: false"
+run_test "lambda v2.5: CountIf"      "$SAMPLES/lambda_v25_typed.am"  "underAge: 1"
 
 # ── Process module ─────────────────────────────────────
 echo ""
