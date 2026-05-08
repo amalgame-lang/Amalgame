@@ -285,6 +285,10 @@ run_test "param infer map"    "$SAMPLES/params_inference.am"   "greet: bonjour !
 run_test "return infer list"  "$SAMPLES/returns_inference.am"  "range total: 10"
 run_test "return infer map"   "$SAMPLES/returns_inference.am"  "counts sum: 6"
 run_test "closures"          "$SAMPLES/closures.am"     "Counter = 10"
+run_test "closure: no cap"   "$SAMPLES/closures_capture.am"  "triple(7) = 21"
+run_test "closure: 1 cap"    "$SAMPLES/closures_capture.am"  "addN(5) = 105"
+run_test "closure: 2 caps"   "$SAMPLES/closures_capture.am"  "combine(10) = 25"
+run_test "closure: snap val" "$SAMPLES/closures_capture.am"  "snap(0) = 1"
 
 # ── Namespace ──────────────────────────────────────────
 echo ""
