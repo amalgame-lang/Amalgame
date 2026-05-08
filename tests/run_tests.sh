@@ -354,6 +354,11 @@ run_test "closure: no cap"   "$SAMPLES/closures_capture.am"  "triple(7) = 21"
 run_test "closure: 1 cap"    "$SAMPLES/closures_capture.am"  "addN(5) = 105"
 run_test "closure: 2 caps"   "$SAMPLES/closures_capture.am"  "combine(10) = 25"
 run_test "closure: snap val" "$SAMPLES/closures_capture.am"  "snap(0) = 1"
+run_test "lambda v2: 2-arg"   "$SAMPLES/lambdas_v2.am"  "add: 12"
+run_test "lambda v2: block"   "$SAMPLES/lambdas_v2.am"  "plus3: 23"
+run_test "lambda v2: 2+block" "$SAMPLES/lambdas_v2.am"  "mix: 17"
+run_test "lambda v2: capture" "$SAMPLES/lambdas_v2.am"  "shift: 107"
+run_test "lambda v2: 3-arg"   "$SAMPLES/lambdas_v2.am"  "pick: 6"
 
 # ── Process module ─────────────────────────────────────
 echo ""

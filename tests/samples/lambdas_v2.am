@@ -1,0 +1,53 @@
+namespace Tests
+
+// Lambda v2 — exercise the new shapes:
+//
+//   1. Multi-param lambdas       (x, y) => x + y
+//   2. Block body lambdas        x => { let y = x * 2; return y + 1 }
+//   3. Multi-param + block body  (a, b) => { let c = a * 2; return c + b }
+//   4. Multi-param with capture  (x, y) => x + y + offset
+//   5. Three-param lambda        (a, b, c) => a + b + c
+//
+// All under the (i64) shape v2 still hardcodes — non-int signatures
+// arrive in a follow-up.
+//
+// Let-bindings are inferred to AmalgameClosure*; an explicit
+// `: AmalgameClosure*` annotation is _not_ supported (the type-name
+// parser would treat it as a user class). The inference path is the
+// canonical way to bind a lambda.
+
+public class Program {
+    public static void Main(string[] args) {
+        // 1. Two-param lambda, no captures.
+        let add = (x, y) => x + y
+        let s = add(7, 5)
+        Console.WriteLine("add: {s}")
+
+        // 2. Block body, single param.
+        let plus3 = x => {
+            let doubled = x * 2
+            return doubled + 3
+        }
+        let p = plus3(10)
+        Console.WriteLine("plus3: {p}")
+
+        // 3. Multi-param + block body.
+        let mix = (a, b) => {
+            let c = a * 2
+            return c + b
+        }
+        let m = mix(4, 9)
+        Console.WriteLine("mix: {m}")
+
+        // 4. Multi-param with capture.
+        let offset = 100
+        let shift = (x, y) => x + y + offset
+        let r = shift(3, 4)
+        Console.WriteLine("shift: {r}")
+
+        // 5. Three-param lambda — checks Closure_call3 wiring.
+        let pick = (a, b, c) => a + b + c
+        let q = pick(1, 2, 3)
+        Console.WriteLine("pick: {q}")
+    }
+}
