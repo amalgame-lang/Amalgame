@@ -4474,6 +4474,17 @@ static void Amalgame_Compiler_CGen_EmitStmt(Amalgame_Compiler_CGen* self, Amalga
                 code_string __attribute__((unused)) elemC = Amalgame_Compiler_CGen_TypeToC(self, stmt->Left->Str2);
                 Amalgame_Compiler_CGen_ListElemSet(self, "__local__", stmt->Name, elemC);
             }
+            if (code_string_equals(stmt->Left->Name, "Map") && String_Length(stmt->Left->Str2) > 0) {
+                code_string __attribute__((unused)) raw = stmt->Left->Str2;
+                i64 __attribute__((unused)) comma = String_IndexOf(raw, ",");
+                if (comma > 0) {
+                    code_string __attribute__((unused)) vRaw = String_Substring(raw, comma + 1, String_Length(raw) - comma - 1);
+                    code_string __attribute__((unused)) vTrim = String_Trim(vRaw);
+                    if (String_Length(vTrim) > 0) {
+                        Amalgame_Compiler_CGen_ListElemSet(self, "__local_map__", stmt->Name, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
+                    }
+                }
+            }
         }
         code_string __attribute__((unused)) rhs = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
         code_string __attribute__((unused)) decl = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(t, " __attribute__((unused)) "), stmt->Name), " = "), rhs), ";");
@@ -4991,7 +5002,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
     }
     Amalgame_Compiler_AstNode* __attribute__((unused)) callee = callExpr->Left;
     code_string __attribute__((unused)) mname = callee->Name;
-    if (code_string_equals(mname, "Set") || code_string_equals(mname, "Has") || code_string_equals(mname, "Size") || code_string_equals(mname, "Remove")) {
+    if (code_string_equals(mname, "Set") || code_string_equals(mname, "Has") || code_string_equals(mname, "Size") || code_string_equals(mname, "Remove") || code_string_equals(mname, "Get")) {
         if (callee->Left != NULL && callee->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
             code_string __attribute__((unused)) vname = callee->Left->Name;
             code_string __attribute__((unused)) vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vname);
@@ -5013,6 +5024,14 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
                 if (code_string_equals(mname, "Remove") && ac >= 1) {
                     code_string __attribute__((unused)) k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
                     return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameMap_remove(", vname), ", "), k2), ")");
+                }
+                if (code_string_equals(mname, "Get") && ac >= 1) {
+                    code_string __attribute__((unused)) k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
+                    code_string __attribute__((unused)) castT = Amalgame_Compiler_CGen_ListElemGet(self, "__local_map__", vname);
+                    if (String_Length(castT) == 0) {
+                        castT = "void*";
+                    }
+                    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("(", castT), ")AmalgameMap_get("), vname), ", "), k2), ")");
                 }
             }
         }
