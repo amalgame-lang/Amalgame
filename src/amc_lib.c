@@ -1150,8 +1150,10 @@ Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_Parse(Amalgame_Compiler_Pars
         Amalgame_Compiler_Parser_SkipNewlines(self);
     }
     while (Amalgame_Compiler_Parser_CheckKw(self, "import")) {
-        Amalgame_Compiler_Parser_Advance(self);
-        Amalgame_Compiler_Parser_ParseQualifiedName(self);
+        Amalgame_Compiler_Token* __attribute__((unused)) importTok = Amalgame_Compiler_Parser_Advance(self);
+        code_string __attribute__((unused)) qname = Amalgame_Compiler_Parser_ParseQualifiedName(self);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) imp = Amalgame_Compiler_Ast_Ident(qname, importTok->Line, importTok->Column);
+        AmalgameList_add(prog->Args, (void*)(intptr_t)(imp));
         Amalgame_Compiler_Parser_SkipNewlines(self);
     }
     i64 __attribute__((unused)) parseLastPos = 0;
@@ -5385,6 +5387,12 @@ static void Amalgame_Compiler_Formatter_EmitProgram(Amalgame_Compiler_Formatter*
     if (String_Length(prog->Str) > 0) {
         Amalgame_Compiler_Formatter_Sync(self, 1);
         Amalgame_Compiler_Formatter_Line(self, code_string_concat("namespace ", prog->Str));
+    }
+    i64 __attribute__((unused)) importCount = AmalgameList_count(prog->Args);
+    for (i64 ii = 0; ii < importCount; ii++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) imp = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Args, ii);
+        Amalgame_Compiler_Formatter_Sync(self, imp->Line);
+        Amalgame_Compiler_Formatter_Line(self, code_string_concat("import ", imp->Name));
     }
     i64 __attribute__((unused)) n = AmalgameList_count(prog->Children);
     for (i64 i = 0; i < n; i++) {
