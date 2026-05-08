@@ -8837,6 +8837,14 @@ static code_string Amalgame_Compiler_TypeChecker_MemberTypeOf(Amalgame_Compiler_
 static void Amalgame_Compiler_TypeChecker_CheckProgram(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* prog) {
     (void)self;
     (void)prog;
+    if (String_Length(prog->Str2) > 0) {
+        self->Filename = prog->Str2;
+    }
+    self->ExprTypeKeys = AmalgameList_new();
+    self->ExprTypeVals = AmalgameList_new();
+    self->LocalNames = AmalgameList_new();
+    self->LocalTypes = AmalgameList_new();
+    self->ScopeStarts = AmalgameList_new();
     i64 __attribute__((unused)) count = AmalgameList_count(prog->Children);
     for (i64 i = 0; i < count; i++) {
         Amalgame_Compiler_TypeChecker_CheckDecl(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i));
@@ -9019,7 +9027,13 @@ static void Amalgame_Compiler_TypeChecker_CheckVarDecl(Amalgame_Compiler_TypeChe
 static void Amalgame_Compiler_TypeChecker_CheckReturn(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
     (void)self;
     (void)stmt;
-    if (stmt->Left == NULL) {
+    code_bool __attribute__((unused)) isBare = stmt->Left == NULL;
+    if (!isBare && stmt->Left != NULL) {
+        if (stmt->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER && code_string_equals(stmt->Left->Name, "_unknown_")) {
+            isBare = 1;
+        }
+    }
+    if (isBare) {
         if (!code_string_equals(self->CurrentReturn, "void") && !code_string_equals(self->CurrentReturn, "?")) {
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat("Empty return in method expecting '", self->CurrentReturn), "'"), stmt);
         }
