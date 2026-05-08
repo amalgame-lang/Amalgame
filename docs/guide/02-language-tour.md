@@ -217,9 +217,29 @@ public class Square implements Shape {
 }
 ```
 
-Generics are stripped at the C level (`T → void*`), so today
-`IComparable<T>` and similar are best avoided until generic
-inference lands.
+Since v0.3.5, interfaces support generic params and the
+TypeChecker enforces the contract:
+
+```amalgame
+public interface IComparable<T> {
+    Compare(T other) -> int
+}
+
+public class IntBox implements IComparable<int> {
+    public Value: int
+    public IntBox(int v) { this.Value = v }
+    public int Compare(int other) { return this.Value - other }
+}
+```
+
+The check substitutes `T → int` at the `implements` site, then
+verifies that `IntBox` has a `Compare(int) -> int` method. A
+mismatch produces a precise diagnostic naming the offending
+method/parameter and its expected vs got type.
+
+Generics are still stripped at the C level (`T → void*`); the
+new check is a *static contract* layered on top of the existing
+duck-typed dispatch — there's no vtable yet.
 
 ## Control flow
 
@@ -319,15 +339,35 @@ let (q, r) = Math2.DivMod(17, 5)   // q = 3, r = 2
 ## Lambdas
 
 ```amalgame
+// Single-param, expression body
 let double = x => x * 2
-let nums = new List<int>()
-nums.Add(1) ; nums.Add(2) ; nums.Add(3)
-// Pass to higher-order helpers (per stdlib)
+
+// Multi-param (v0.3.5)
+let add  = (x, y) => x + y
+let pick = (a, b, c) => a + b + c
+
+// Block body (v0.3.5) — let-bindings + explicit return
+let plus3 = x => {
+    let doubled = x * 2
+    return doubled + 3
+}
+
+// Closures capture enclosing locals by value (v0.3.4)
+let n = 100
+let shift = x => x + n           // captures n
 ```
 
-Lambdas are simple — they don't capture surrounding variables yet.
-Use static helpers or pass state explicitly when you need closure
-behaviour.
+Lambdas compile to a top-level C function plus an
+`AmalgameClosure { fn, env }` value; captured locals are
+snapshotted into a heap-allocated env at the creation site,
+not by textual substitution. The runtime exposes
+`Closure_call1` / `_call2` / `_call3` for arities 1–3.
+
+**Limitations of v0.3.5.** All lambda arguments and results
+are still typed `i64` at the C level. Lambdas in argument
+position with non-int signatures (e.g. `xs.Filter(x => x > 0)`,
+`xs.Select(x => x.Name)`) need a lambda-typing layer in the
+TypeChecker — that lands in v2.5.
 
 ## Null safety
 

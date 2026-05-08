@@ -1,6 +1,6 @@
 (* ═══════════════════════════════════════════════════════ *)
 (*  Grammaire EBNF du langage Amalgame                    *)
-(*  Version : 0.3.4                                       *)
+(*  Version : 0.3.5                                       *)
 (*                                                        *)
 (*  Cette grammaire reflète exactement le parser          *)
 (*  self-hosted (src/parser/parser.am). Elle décrit la    *)
@@ -118,8 +118,16 @@ EnumMember
     ;
 
 InterfaceDecl
-    = "interface" IDENT
+    = "interface" IDENT [ GenericParams ]
       "{" { InterfaceMethod } "}"
+    ;
+
+(* Generic params on interfaces and classes (v0.3.5).         *)
+(* `interface IComparable<T>` and `class Box<T>` parse and    *)
+(* round-trip; the typechecker substitutes T at the           *)
+(* `implements I<args>` site.                                 *)
+GenericParams
+    = "<" IDENT { "," IDENT } ">"
     ;
 
 InterfaceMethod
@@ -288,7 +296,9 @@ ExprStmt
 (* Pratt-style precedence climbing.
    Du plus faible (en bas) au plus fort (en haut) :
 
-     0. Lambda     `IDENT "=>" Expr`            (intercepte avant Assign)
+     0. Lambda     single-param `IDENT "=>" Body`
+                   multi-param  `"(" [ IDENT { "," IDENT } ] ")" "=>" Body`
+                   (interceptes avant Assign)
      1. Assign     `=` `+=` … `>>=`             (right-assoc)
      2. LogicalOr  `||`
      3. BitOr      `|`
@@ -310,8 +320,18 @@ Expression
     | Assignment
     ;
 
+(* Lambda v2 (v0.3.5) — multi-param via parens, body is either an
+   expression or a brace block. Parser disambiguates the multi-param
+   form via lookahead through the ident-list to a `") =>"` end.       *)
 Lambda
-    = IDENT "=>" Expression
+    = ( IDENT
+      | "(" [ IDENT { "," IDENT } ] ")" )
+      "=>" LambdaBody
+    ;
+
+LambdaBody
+    = Expression
+    | Block
     ;
 
 Assignment
@@ -494,7 +514,7 @@ BlockComment
 (*  RÉSERVÉ POUR PLUS TARD                                *)
 (* ═══════════════════════════════════════════════════════ *)
 (* Constructions présentes dans la grammaire v0.1.0 (CODE)
-   mais NON reconnues par le parser v0.3.4 :
+   mais NON reconnues par le parser v0.3.5 :
 
    - Properties avec get/set accessors
    - Constructors syntaxe explicite (`init(...)`)
@@ -503,8 +523,9 @@ BlockComment
    - Traits (au-delà des interfaces)
    - Modificateurs `protected`, `internal`, `abstract`,
      `override`, `weak`, `pure`
-   - Lambdas multi-param `(a, b) => …` et corps de bloc
    - Function types `(int) -> string` comme types nommés
+     (les lambdas en argument avec signatures non-int sont
+     prévues pour v2.5)
    - Spread `...args` et `[...a, ...b]`
    - Foreach C-style
    - `func` keyword pour fonctions top-level
