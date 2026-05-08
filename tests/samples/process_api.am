@@ -1,0 +1,26 @@
+// Process module — basic shell-out via popen/_popen.
+// `Run` streams the child's output to the parent stdio and
+// returns its exit code. `RunCapture` captures merged
+// stdout+stderr into result.Stdout (Stderr is currently
+// always "" — bytes are merged via `2>&1`).
+
+class Program {
+    public static void Main() {
+        // Run: streams to parent stdout + returns exit code.
+        let r = Process.Run("echo hello world")
+        Console.WriteLine("exit=" + String_FromInt(r))
+
+        // RunCapture: collects output into a string.
+        let cap = Process.RunCapture("echo captured-line")
+        Console.WriteLine("cap.exit=" + String_FromInt(cap.Exit))
+        Console.WriteLine("cap.out=" + String_Trim(cap.Stdout))
+
+        // Non-zero exit propagates.
+        let bad = Process.RunCapture("false")
+        Console.WriteLine("bad.exit=" + String_FromInt(bad.Exit))
+
+        // Stderr is merged into Stdout via 2>&1.
+        let merged = Process.RunCapture("echo stderr-bytes 1>&2")
+        Console.WriteLine("merged.out=" + String_Trim(merged.Stdout))
+    }
+}

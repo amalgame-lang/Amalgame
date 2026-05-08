@@ -149,6 +149,10 @@ public class FullResolver {
         this.DeclareGlobal("Set",            "type", false)
         this.DeclareGlobal("Path",           "type", false)
         this.DeclareGlobal("Env",            "type", false)
+        // Process
+        this.DeclareGlobal("Process",            "type", false)
+        this.DeclareGlobal("Process_Run",        "int",                   false)
+        this.DeclareGlobal("Process_RunCapture", "AmalgameProcessResult", false)
         // Console
         this.DeclareGlobal("Console",        "type", false)
         this.DeclareGlobal("Console_WriteLine",  "void", false)
