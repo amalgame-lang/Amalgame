@@ -359,6 +359,13 @@ run_test "lambda v2: block"   "$SAMPLES/lambdas_v2.am"  "plus3: 23"
 run_test "lambda v2: 2+block" "$SAMPLES/lambdas_v2.am"  "mix: 17"
 run_test "lambda v2: capture" "$SAMPLES/lambdas_v2.am"  "shift: 107"
 run_test "lambda v2: 3-arg"   "$SAMPLES/lambdas_v2.am"  "pick: 6"
+run_test "ho: filter"          "$SAMPLES/list_higher_order.am"  "filter count: 3"
+run_test "ho: map"             "$SAMPLES/list_higher_order.am"  "map last: 10"
+run_test "ho: reduce sum"      "$SAMPLES/list_higher_order.am"  "sum: 15"
+run_test "ho: reduce block"    "$SAMPLES/list_higher_order.am"  "countGT2: 3"
+run_test "ho: any/all/countIf" "$SAMPLES/list_higher_order.am"  "evens: 2"
+run_test "ho: forEach"         "$SAMPLES/list_higher_order.am"  "foreach: 5"
+run_test "ho: chain filter+map" "$SAMPLES/list_higher_order.am" "chain first: 30"
 
 # ── Process module ─────────────────────────────────────
 echo ""
