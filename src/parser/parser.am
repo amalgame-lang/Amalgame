@@ -1421,6 +1421,10 @@ public class Parser {
     private AstNode ParseNew() {
         let tok = this.Advance()
         let typeName = this.ParseQualifiedName()
+        // Capture the type-argument list (e.g. `<int>`) so the codegen can
+        // remember the element type of `new List<int>()` and lower
+        // subsequent `xs.Get(i)` calls with a typed cast instead of `void*`.
+        var generic = ""
         if (this.CheckValue("<")) {
             this.Advance()
             var depth = 1
@@ -1429,10 +1433,12 @@ public class Parser {
                 let iv = inner.Value
                 if (iv == "<") { depth = depth + 1 }
                 if (iv == ">") { depth = depth - 1 }
+                if (depth > 0) { generic = generic + iv }
                 this.Advance()
             }
         }
         let node = Ast.NewExpr(typeName, tok.Line, tok.Column)
+        if (String_Length(generic) > 0) { node.Str2 = generic }
         if (this.CheckValue("(")) {
             this.Advance()
             this.SkipNewlines()

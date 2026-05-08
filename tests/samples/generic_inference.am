@@ -1,0 +1,24 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Demonstrates generic type inference for local List<T>:
+// `xs.Get(i)` now lowers to `(T)AmalgameList_get(xs, i)` instead of
+// `(void*)AmalgameList_get(...)`, so arithmetic and string ops work
+// on the result without a manual cast.
+public class Program {
+    public static void Main(string[] args) {
+        let nums = new List<int>()
+        nums.Add(10)
+        nums.Add(20)
+        nums.Add(30)
+        let total = nums.Get(0) + nums.Get(1) + nums.Get(2)
+        Console.WriteLine("total: {total}")
+
+        let names = new List<string>()
+        names.Add("Arthus")
+        names.Add("Bastien")
+        let combined = names.Get(0) + " et " + names.Get(1)
+        Console.WriteLine("combined: {combined}")
+    }
+}
