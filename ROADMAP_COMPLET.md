@@ -118,10 +118,16 @@ fix.
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
       which the existing CGen MEMBER branch lowers to `Type_Variant`.
       Unblocks `enums.am`.
-- [ ] **try / catch / throw** — the self-hosted parser doesn't have
-      ParseTry yet, so `try { ... } catch e { ... }` is rejected as
-      unknown identifiers. Affects `try_catch.am`. Vala had this;
-      it's a regression to fix.
+- [x] **try / catch / throw** — `ParseTry` and `ParseThrow` build
+      `TRY_STMT { Body=try, Else=catch, Cond=finally?, Name=binder }`
+      and `THROW_STMT { Left=expr }`. Resolver/typechecker open a
+      `catch` scope and declare the binder as `void*`. CGen emits the
+      same `setjmp`/`longjmp` pattern the Vala bootstrap used (saves
+      `_am_ex.env` into a `_am_prev_env_<line>` slot, restores it
+      after the handler) and lowers `throw new T(args)` to
+      `_am_throw((void*)(T_new(args)), "T", first_string_arg)`. The
+      formatter learned `EmitTry` / `EmitThrow` so round-trip stays
+      lossless. Drops `try_catch.am` from `SKIP_SELFHOST`.
 - [ ] **null safety / null-safe member typing** — typechecker reports
       `Unary '-' requires numeric, got 'Program'` on `Program.foo(-1)`
       (some path treats the class name as an operand type) and
