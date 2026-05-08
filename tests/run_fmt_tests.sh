@@ -111,6 +111,11 @@ run_semantic    "list_comp.am — semantic OK" "$SAMPLES/list_comp.am"
 run_idempotence "match_expr.am — idempotent"  "$SAMPLES/match_expr.am"
 run_semantic    "match_expr.am — semantic OK" "$SAMPLES/match_expr.am"
 
+# Trailing same-line comments — `let x = 1  // foo` must round-trip with
+# the comment on its source line (rather than being bumped to the next).
+run_idempotence "fmt_comments.am — idempotent"  "$SAMPLES/fmt_comments.am"
+run_semantic    "fmt_comments.am — semantic OK" "$SAMPLES/fmt_comments.am"
+
 echo ""
 echo "────────────────────────────────────────────"
 echo -e "  ${GREEN}PASS: $PASS${NC}  |  ${RED}FAIL: $FAIL${NC}"
