@@ -458,6 +458,21 @@ public class FullResolver {
         return this.Programs.Get(i)
     }
 
+    // Read-only enumeration of declared global names. Used by the LSP
+    // server to populate completion lists. Names + types are kept in
+    // lockstep, so the indices match.
+    public int GlobalCount() {
+        return this.GlobalNames.Count()
+    }
+
+    public string GlobalNameAt(int i) {
+        return this.GlobalNames.Get(i)
+    }
+
+    public string GlobalTypeAt(int i) {
+        return this.GlobalTypes.Get(i)
+    }
+
     public void ResolvePrograms() {
         let progCount = this.Programs.Count()
         // Pass 1: collect all top-level declarations from all files
