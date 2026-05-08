@@ -9365,8 +9365,9 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     }
     Amalgame_Compiler_TypeChecker* __attribute__((unused)) tc = Amalgame_Compiler_TypeChecker_new(resolver, firstPath);
     tc->Sources = self->Diag->Sources;
-    void* __attribute__((unused)) tcProg = (void*)AmalgameList_get(progs, 0);
-    Amalgame_Compiler_TypeChecker_Check(tc, tcProg);
+    for (i64 ti = 0; ti < progCount; ti++) {
+        Amalgame_Compiler_TypeChecker_Check(tc, (void*)AmalgameList_get(progs, ti));
+    }
     if (Amalgame_Compiler_TypeChecker_HasErrors(tc)) {
         Console_WriteError(Amalgame_Compiler_TypeChecker_FormatErrors(tc));
         self->ExitCode = 1;

@@ -365,7 +365,11 @@ run_multifile_test() {
 
     printf "  %-34s" "$name"
 
-    local out_base="$BUILD_DIR/multi_$$"
+    # Match the single-file convention: pass `-o <base>` (no .c) and let amc
+    # emit `<base>.c`, then call gcc manually. The previous version passed
+    # `-o foo.c` (which amc dutifully expanded to foo.c.c) and expected an
+    # executable amc never produces.
+    local out_base="/tmp/amalgame_multi_test"
     output=$("$AMC" "${files[@]}" -o "$out_base" 2>&1)
     amc_exit=$?
 
@@ -376,8 +380,12 @@ run_multifile_test() {
         FAIL=$((FAIL + 1)); return
     fi
 
-    # Self-hosted amc only emits the .c — link explicitly.
-    gcc -O2 -Iruntime "$out_base.c" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+    local c_file="${out_base}.c"
+    if [ ! -f "$c_file" ]; then
+        echo -e "${RED}FAIL${NC} (no .c emitted)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
