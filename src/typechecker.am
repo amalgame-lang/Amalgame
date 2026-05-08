@@ -380,6 +380,25 @@ public class TypeChecker {
     // ── Program & top-level ───────────────────────────
 
     private void CheckProgram(AstNode prog) {
+        // Pick up the per-program filename so errors are reported with
+        // the right path. `this.Filename` was set once at construction
+        // (to the first input file), so multi-file invocations were
+        // mis-attributing every error to that first path.
+        if (String_Length(prog.Str2) > 0) {
+            this.Filename = prog.Str2
+        }
+        // Reset all per-program mutable state so that compiling
+        // multiple files in one `amc` invocation (`build_amc.sh`,
+        // `tests/run_multifile_test`, …) doesn't leak types from the
+        // previous program. NodeKey is `(Kind, Line, Col, Name, Str)`
+        // and is not file-qualified, so distinct files can collide on
+        // ExprType. Local scopes can also leak when a method body
+        // exits via `return` / `throw` without a balancing `PopScope`.
+        this.ExprTypeKeys = new List<string>()
+        this.ExprTypeVals = new List<string>()
+        this.LocalNames   = new List<string>()
+        this.LocalTypes   = new List<string>()
+        this.ScopeStarts  = new List<int>()
         let count = prog.Children.Count()
         for i in 0..count {
             this.CheckDecl(prog.Children.Get(i))
@@ -558,7 +577,16 @@ public class TypeChecker {
     }
 
     private void CheckReturn(AstNode stmt) {
-        if (stmt.Left == null) {
+        // ParseReturn synthesises an `_unknown_` IDENTIFIER for a bare
+        // `return` (so EmitReturn can detect it without a nullable Left).
+        // Treat it the same as `stmt.Left == null` here.
+        var isBare = stmt.Left == null
+        if (!isBare && stmt.Left != null) {
+            if (stmt.Left.Kind == NodeKind.IDENTIFIER && stmt.Left.Name == "_unknown_") {
+                isBare = true
+            }
+        }
+        if (isBare) {
             // void return
             if (this.CurrentReturn != "void" && this.CurrentReturn != "?") {
                 this.Error("Empty return in method expecting '" + this.CurrentReturn + "'", stmt)
