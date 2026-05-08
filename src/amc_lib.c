@@ -9299,7 +9299,7 @@ static void Amalgame_Compiler_TypeChecker_CheckOneInterfaceMethod(Amalgame_Compi
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterface(Amalgame_Compiler_TypeChecker* self, code_string name) {
     (void)self;
     (void)name;
-    void* __attribute__((unused)) pn = Amalgame_Compiler_FullResolver_ProgramCount(self->Symbols);
+    i64 __attribute__((unused)) pn = Amalgame_Compiler_FullResolver_ProgramCount(self->Symbols);
     for (i64 ip = 0; ip < pn; ip++) {
         void* __attribute__((unused)) prog = Amalgame_Compiler_FullResolver_ProgramAt(self->Symbols, ip);
         Amalgame_Compiler_AstNode* __attribute__((unused)) hit = Amalgame_Compiler_TypeChecker_FindInterfaceInProgram(self, prog, name);
