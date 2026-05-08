@@ -10968,6 +10968,10 @@ static void Amalgame_Compiler_LspServer_Send(Amalgame_Compiler_LspServer* self, 
 static void Amalgame_Compiler_LspServer_SendInit(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_SendShutdown(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_PublishDiagnostics(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
+static Amalgame_Compiler_FullResolver* Amalgame_Compiler_LspServer_BuildWorkspaceResolver(Amalgame_Compiler_LspServer* self, code_string path, Amalgame_Compiler_AstNode* prog);
+static void Amalgame_Compiler_LspServer_LoadWorkspaceFiles(Amalgame_Compiler_LspServer* self, Amalgame_Compiler_FullResolver* resolver, code_string currentPath);
+code_string Amalgame_Compiler_LspServer_FindWorkspaceRoot(code_string startPath);
+code_string Amalgame_Compiler_LspServer_Dirname(code_string path);
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
 static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
 static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServer* self, i64 id);
@@ -11146,6 +11150,88 @@ static void Amalgame_Compiler_LspServer_PublishDiagnostics(Amalgame_Compiler_Lsp
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
+static Amalgame_Compiler_FullResolver* Amalgame_Compiler_LspServer_BuildWorkspaceResolver(Amalgame_Compiler_LspServer* self, code_string path, Amalgame_Compiler_AstNode* prog) {
+    (void)self;
+    (void)path;
+    (void)prog;
+    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
+    AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
+    Amalgame_Compiler_LspServer_LoadWorkspaceFiles(self, resolver, path);
+    Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
+    return resolver;
+}
+
+static void Amalgame_Compiler_LspServer_LoadWorkspaceFiles(Amalgame_Compiler_LspServer* self, Amalgame_Compiler_FullResolver* resolver, code_string currentPath) {
+    (void)self;
+    (void)resolver;
+    (void)currentPath;
+    code_string __attribute__((unused)) root = Amalgame_Compiler_LspServer_FindWorkspaceRoot(currentPath);
+    if (String_Length(root) == 0) {
+        return;
+    }
+    code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", root), " -name '*.am' -type f 2>/dev/null");
+    AmalgameProcessResult* __attribute__((unused)) result = Process_RunCapture(findCmd);
+    if (result->Exit != 0) {
+        return;
+    }
+    AmalgameList* __attribute__((unused)) lines = String_Split(String_Trim(result->Stdout), "\n");
+    i64 __attribute__((unused)) n = AmalgameList_count(lines);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) path = String_Trim((code_string)AmalgameList_get(lines, i));
+        if (String_Length(path) == 0) {
+            continue;
+        }
+        if (code_string_equals(path, currentPath)) {
+            continue;
+        }
+        if (!File_Exists(path)) {
+            continue;
+        }
+        code_string __attribute__((unused)) src = File_ReadAll(path);
+        Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(src, path);
+        AmalgameList* __attribute__((unused)) toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+        Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_Parse(par);
+        p->Str2 = path;
+        AmalgameList_add(resolver->Programs, (void*)(intptr_t)(p));
+    }
+}
+
+code_string Amalgame_Compiler_LspServer_FindWorkspaceRoot(code_string startPath) {
+    (void)startPath;
+    code_string __attribute__((unused)) dir = Amalgame_Compiler_LspServer_Dirname(startPath);
+    code_string __attribute__((unused)) initialDir = dir;
+    for (i64 i = 0; i < 8; i++) {
+        if (String_Length(dir) == 0) {
+            return initialDir;
+        }
+        if (File_Exists(code_string_concat(dir, "/.git"))) {
+            return dir;
+        }
+        if (File_Exists(code_string_concat(dir, "/build_amc.sh"))) {
+            return dir;
+        }
+        if (File_Exists(code_string_concat(dir, "/package.json"))) {
+            return dir;
+        }
+        code_string __attribute__((unused)) parent = Amalgame_Compiler_LspServer_Dirname(dir);
+        if (code_string_equals(parent, dir)) {
+            return initialDir;
+        }
+        dir = parent;
+    }
+    return initialDir;
+}
+
+code_string Amalgame_Compiler_LspServer_Dirname(code_string path) {
+    (void)path;
+    i64 __attribute__((unused)) last = String_LastIndexOf(path, "/");
+    if (last <= 0) {
+        return "";
+    }
+    return String_Substring(path, 0, last);
+}
+
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source) {
     (void)self;
     (void)uri;
@@ -11156,9 +11242,7 @@ static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServ
     Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
     Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
     prog->Str2 = path;
-    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
-    AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
-    Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
+    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
     Amalgame_Compiler_TypeChecker* __attribute__((unused)) tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
     Amalgame_Compiler_TypeChecker_Check(tc, prog);
     code_string __attribute__((unused)) arr = "[";
@@ -11166,6 +11250,9 @@ static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServ
     i64 __attribute__((unused)) rn = AmalgameList_count(resolver->RawErrors);
     for (i64 ri = 0; ri < rn; ri++) {
         Amalgame_Compiler_ResolverError* __attribute__((unused)) e = (Amalgame_Compiler_ResolverError*)AmalgameList_get(resolver->RawErrors, ri);
+        if (!code_string_equals(e->Filename, path)) {
+            continue;
+        }
         if (!first) {
             arr = code_string_concat(arr, ",");
         }
@@ -11175,6 +11262,9 @@ static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServ
     i64 __attribute__((unused)) tn = AmalgameList_count(tc->Errors);
     for (i64 ti = 0; ti < tn; ti++) {
         Amalgame_Compiler_TypeError* __attribute__((unused)) te = (Amalgame_Compiler_TypeError*)AmalgameList_get(tc->Errors, ti);
+        if (!code_string_equals(te->Filename, path)) {
+            continue;
+        }
         if (!first) {
             arr = code_string_concat(arr, ",");
         }
@@ -11723,7 +11813,7 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     code_string __attribute__((unused)) outC = code_string_concat(outputName, ".c");
     File_WriteAll(outC, "");
     for (i64 k = 0; k < lineCount; k++) {
-        File_AppendAll(outC, code_string_concat((code_string)((void*)AmalgameList_get(lines, k)), "\n"));
+        File_AppendAll(outC, code_string_concat((code_string)((code_string)AmalgameList_get(lines, k)), "\n"));
     }
     code_string __attribute__((unused)) mainFunc = code_string_concat(nsPrefix, "_Program_Main");
     code_string __attribute__((unused)) genSrc = File_ReadAll(outC);
