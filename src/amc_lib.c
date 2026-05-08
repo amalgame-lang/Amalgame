@@ -212,6 +212,8 @@ struct _Amalgame_Compiler_AstNode {
     code_string Name;
     code_string Str;
     code_string Str2;
+    code_string Str3;
+    code_string Str4;
     code_bool Flag;
     code_bool Flag2;
     Amalgame_Compiler_AstNode* Left;
@@ -233,6 +235,8 @@ Amalgame_Compiler_AstNode* Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeK
     self->Name = "";
     self->Str = "";
     self->Str2 = "";
+    self->Str3 = "";
+    self->Str4 = "";
     self->Flag = 0;
     self->Flag2 = 0;
     self->Left = NULL;
@@ -1375,12 +1379,26 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseClass(Amalgame_C
     cls->Flag = isPublic;
     if (Amalgame_Compiler_Parser_CheckValue(self, "<")) {
         Amalgame_Compiler_Parser_Advance(self);
+        code_string __attribute__((unused)) gparams = "";
         while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, ">")) {
-            Amalgame_Compiler_Parser_Advance(self);
+            if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
+                Amalgame_Compiler_Parser_Advance(self);
+                continue;
+            }
+            if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
+                Amalgame_Compiler_Token* __attribute__((unused)) pTok = Amalgame_Compiler_Parser_Advance(self);
+                if (String_Length(gparams) > 0) {
+                    gparams = code_string_concat(gparams, ",");
+                }
+                gparams = code_string_concat(gparams, pTok->Value);
+            } else {
+                Amalgame_Compiler_Parser_Advance(self);
+            }
         }
         if (Amalgame_Compiler_Parser_CheckValue(self, ">")) {
             Amalgame_Compiler_Parser_Advance(self);
         }
+        cls->Str3 = gparams;
     }
     if (Amalgame_Compiler_Parser_CheckKw(self, "extends")) {
         Amalgame_Compiler_Parser_Advance(self);
@@ -1388,9 +1406,21 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseClass(Amalgame_C
     }
     if (Amalgame_Compiler_Parser_CheckKw(self, "implements")) {
         Amalgame_Compiler_Parser_Advance(self);
+        code_string __attribute__((unused)) impl = "";
         while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, "{") && !Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_NEWLINE)) {
-            Amalgame_Compiler_Parser_Advance(self);
+            if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
+                Amalgame_Compiler_Parser_Advance(self);
+                continue;
+            }
+            code_string __attribute__((unused)) iname = Amalgame_Compiler_Parser_ParseTypeName(self);
+            if (String_Length(iname) > 0) {
+                if (String_Length(impl) > 0) {
+                    impl = code_string_concat(impl, ",");
+                }
+                impl = code_string_concat(impl, iname);
+            }
         }
+        cls->Str4 = impl;
     }
     Amalgame_Compiler_Parser_SkipNewlines(self);
     i64 __attribute__((unused)) classLastPos = 0;
@@ -2023,6 +2053,29 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseInterface(Amalga
     iface->Name = nameTok->Value;
     iface->Flag = isPublic;
     iface->Flag2 = 1;
+    if (Amalgame_Compiler_Parser_CheckValue(self, "<")) {
+        Amalgame_Compiler_Parser_Advance(self);
+        code_string __attribute__((unused)) gparams = "";
+        while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, ">")) {
+            if (Amalgame_Compiler_Parser_CheckValue(self, ",")) {
+                Amalgame_Compiler_Parser_Advance(self);
+                continue;
+            }
+            if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
+                Amalgame_Compiler_Token* __attribute__((unused)) pTok = Amalgame_Compiler_Parser_Advance(self);
+                if (String_Length(gparams) > 0) {
+                    gparams = code_string_concat(gparams, ",");
+                }
+                gparams = code_string_concat(gparams, pTok->Value);
+            } else {
+                Amalgame_Compiler_Parser_Advance(self);
+            }
+        }
+        if (Amalgame_Compiler_Parser_CheckValue(self, ">")) {
+            Amalgame_Compiler_Parser_Advance(self);
+        }
+        iface->Str3 = gparams;
+    }
     Amalgame_Compiler_Parser_SkipNewlines(self);
     Amalgame_Compiler_Parser_Expect(self, "{");
     Amalgame_Compiler_Parser_SkipNewlines(self);
@@ -7582,6 +7635,8 @@ static void Amalgame_Compiler_FullResolver_ErrorMsg(Amalgame_Compiler_FullResolv
 static void Amalgame_Compiler_FullResolver_EmitError(Amalgame_Compiler_FullResolver* self, code_string msg, i64 line, i64 col);
 code_bool Amalgame_Compiler_FullResolver_HasErrors(Amalgame_Compiler_FullResolver* self);
 code_string Amalgame_Compiler_FullResolver_GetErrors(Amalgame_Compiler_FullResolver* self);
+i64 Amalgame_Compiler_FullResolver_ProgramCount(Amalgame_Compiler_FullResolver* self);
+Amalgame_Compiler_AstNode* Amalgame_Compiler_FullResolver_ProgramAt(Amalgame_Compiler_FullResolver* self, i64 i);
 void Amalgame_Compiler_FullResolver_ResolvePrograms(Amalgame_Compiler_FullResolver* self);
 static void Amalgame_Compiler_FullResolver_CollectProgram(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* prog);
 static void Amalgame_Compiler_FullResolver_CollectDecl(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* decl);
@@ -7958,6 +8013,17 @@ code_string Amalgame_Compiler_FullResolver_GetErrors(Amalgame_Compiler_FullResol
         result = code_string_concat(result, (code_string)AmalgameList_get(self->Errors, i));
     }
     return result;
+}
+
+i64 Amalgame_Compiler_FullResolver_ProgramCount(Amalgame_Compiler_FullResolver* self) {
+    (void)self;
+    return AmalgameList_count(self->Programs);
+}
+
+Amalgame_Compiler_AstNode* Amalgame_Compiler_FullResolver_ProgramAt(Amalgame_Compiler_FullResolver* self, i64 i) {
+    (void)self;
+    (void)i;
+    return (Amalgame_Compiler_AstNode*)AmalgameList_get(self->Programs, i);
 }
 
 void Amalgame_Compiler_FullResolver_ResolvePrograms(Amalgame_Compiler_FullResolver* self) {
@@ -8642,6 +8708,8 @@ struct _Amalgame_Compiler_TypeChecker {
     AmalgameList* LocalNames;
     AmalgameList* LocalTypes;
     AmalgameList* ScopeStarts;
+    AmalgameList* SubstParams;
+    AmalgameList* SubstArgs;
     Amalgame_Compiler_SourceMap* Sources;
 };
 
@@ -8670,6 +8738,14 @@ static code_string Amalgame_Compiler_TypeChecker_MemberTypeOf(Amalgame_Compiler_
 static void Amalgame_Compiler_TypeChecker_CheckProgram(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* prog);
 static void Amalgame_Compiler_TypeChecker_CheckDecl(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* decl);
 static void Amalgame_Compiler_TypeChecker_CheckClass(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls);
+static void Amalgame_Compiler_TypeChecker_CheckImplementsContract(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls);
+static void Amalgame_Compiler_TypeChecker_CheckOneInterface(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls, code_string iref);
+static void Amalgame_Compiler_TypeChecker_CheckOneInterfaceMethod(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls, code_string ifaceLabel, Amalgame_Compiler_AstNode* imethod);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterface(Amalgame_Compiler_TypeChecker* self, code_string name);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterfaceInProgram(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* prog, code_string name);
+static AmalgameList* Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(Amalgame_Compiler_TypeChecker* self, code_string s);
+static code_string Amalgame_Compiler_TypeChecker_SubstType(Amalgame_Compiler_TypeChecker* self, code_string t);
+static code_string Amalgame_Compiler_TypeChecker_LookupParam(Amalgame_Compiler_TypeChecker* self, code_string t);
 static void Amalgame_Compiler_TypeChecker_CheckFieldDecl(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* field);
 static void Amalgame_Compiler_TypeChecker_CheckMethod(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* method);
 static void Amalgame_Compiler_TypeChecker_CheckBlock(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* block);
@@ -8705,6 +8781,8 @@ Amalgame_Compiler_TypeChecker* Amalgame_Compiler_TypeChecker_new(Amalgame_Compil
     self->LocalNames = AmalgameList_new();
     self->LocalTypes = AmalgameList_new();
     self->ScopeStarts = AmalgameList_new();
+    self->SubstParams = AmalgameList_new();
+    self->SubstArgs = AmalgameList_new();
     self->Sources = Amalgame_Compiler_SourceMap_new();
     return self;
 }
@@ -9119,7 +9197,212 @@ static void Amalgame_Compiler_TypeChecker_CheckClass(Amalgame_Compiler_TypeCheck
             Amalgame_Compiler_TypeChecker_CheckMethod(self, m);
         }
     }
+    if (!cls->Flag2 && String_Length(cls->Str4) > 0) {
+        Amalgame_Compiler_TypeChecker_CheckImplementsContract(self, cls);
+    }
     self->CurrentClass = prevClass;
+}
+
+static void Amalgame_Compiler_TypeChecker_CheckImplementsContract(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls) {
+    (void)self;
+    (void)cls;
+    AmalgameList* __attribute__((unused)) entries = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, cls->Str4);
+    i64 __attribute__((unused)) nEntries = AmalgameList_count(entries);
+    for (i64 ie = 0; ie < nEntries; ie++) {
+        void* __attribute__((unused)) iref = (void*)AmalgameList_get(entries, ie);
+        Amalgame_Compiler_TypeChecker_CheckOneInterface(self, cls, iref);
+    }
+}
+
+static void Amalgame_Compiler_TypeChecker_CheckOneInterface(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls, code_string iref) {
+    (void)self;
+    (void)cls;
+    (void)iref;
+    code_string __attribute__((unused)) ibase = iref;
+    self->SubstParams = AmalgameList_new();
+    self->SubstArgs = AmalgameList_new();
+    i64 __attribute__((unused)) lt = String_IndexOf(iref, "<");
+    if (lt > 0) {
+        ibase = String_Substring(iref, 0, lt);
+        code_string __attribute__((unused)) inner = String_Substring(iref, lt + 1, String_Length(iref) - lt - 2);
+        AmalgameList* __attribute__((unused)) parts = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, inner);
+        i64 __attribute__((unused)) np = AmalgameList_count(parts);
+        for (i64 ia = 0; ia < np; ia++) {
+            AmalgameList_add(self->SubstArgs, (void*)(intptr_t)((void*)AmalgameList_get(parts, ia)));
+        }
+    }
+    Amalgame_Compiler_AstNode* __attribute__((unused)) iface = Amalgame_Compiler_TypeChecker_FindInterface(self, ibase);
+    if (iface == NULL) {
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat("class '", cls->Name), "' implements unknown interface '"), ibase), "'"), cls);
+        return;
+    }
+    if (String_Length(iface->Str3) > 0) {
+        AmalgameList* __attribute__((unused)) pp = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, iface->Str3);
+        i64 __attribute__((unused)) pn = AmalgameList_count(pp);
+        for (i64 ip = 0; ip < pn; ip++) {
+            AmalgameList_add(self->SubstParams, (void*)(intptr_t)((void*)AmalgameList_get(pp, ip)));
+        }
+    }
+    if (AmalgameList_count(self->SubstParams) != AmalgameList_count(self->SubstArgs)) {
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("interface '", ibase), "' expects "), String_FromInt(AmalgameList_count(self->SubstParams))), " type argument(s), got "), String_FromInt(AmalgameList_count(self->SubstArgs))), cls);
+        return;
+    }
+    i64 __attribute__((unused)) imethods = AmalgameList_count(iface->Children);
+    for (i64 im = 0; im < imethods; im++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) imethod = (Amalgame_Compiler_AstNode*)AmalgameList_get(iface->Children, im);
+        if (imethod->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+            Amalgame_Compiler_TypeChecker_CheckOneInterfaceMethod(self, cls, iref, imethod);
+        }
+    }
+}
+
+static void Amalgame_Compiler_TypeChecker_CheckOneInterfaceMethod(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls, code_string ifaceLabel, Amalgame_Compiler_AstNode* imethod) {
+    (void)self;
+    (void)cls;
+    (void)ifaceLabel;
+    (void)imethod;
+    i64 __attribute__((unused)) cmems = AmalgameList_count(cls->Children);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) found = NULL;
+    for (i64 ic = 0; ic < cmems; ic++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, ic);
+        if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL && code_string_equals(m->Name, imethod->Name)) {
+            found = m;
+        }
+    }
+    if (found == NULL) {
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("class '", cls->Name), "' does not implement interface '"), ifaceLabel), "': missing method '"), imethod->Name), "'"), cls);
+        return;
+    }
+    Amalgame_Compiler_AstNode* __attribute__((unused)) cmethod = found;
+    code_string __attribute__((unused)) expectedRet = Amalgame_Compiler_TypeChecker_SubstType(self, imethod->Str);
+    if (!code_string_equals(cmethod->Str, expectedRet)) {
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("class '", cls->Name), "' method '"), imethod->Name), "': expected return type '"), expectedRet), "' (from interface '"), ifaceLabel), "'), got '"), cmethod->Str), "'"), cmethod);
+        return;
+    }
+    i64 __attribute__((unused)) iN = AmalgameList_count(imethod->Params);
+    i64 __attribute__((unused)) cN = AmalgameList_count(cmethod->Params);
+    if (iN != cN) {
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("class '", cls->Name), "' method '"), imethod->Name), "': expected "), String_FromInt(iN)), " param(s), got "), String_FromInt(cN)), cmethod);
+        return;
+    }
+    for (i64 ip = 0; ip < iN; ip++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) ipar = (Amalgame_Compiler_AstNode*)AmalgameList_get(imethod->Params, ip);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) cpar = (Amalgame_Compiler_AstNode*)AmalgameList_get(cmethod->Params, ip);
+        code_string __attribute__((unused)) expectedType = Amalgame_Compiler_TypeChecker_SubstType(self, ipar->Str);
+        if (!code_string_equals(cpar->Str, expectedType)) {
+            Amalgame_Compiler_TypeChecker_Error(self, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("class '", cls->Name), "' method '"), imethod->Name), "' param '"), cpar->Name), "': expected type '"), expectedType), "' (from interface '"), ifaceLabel), "'), got '"), cpar->Str), "'"), cpar);
+            return;
+        }
+    }
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterface(Amalgame_Compiler_TypeChecker* self, code_string name) {
+    (void)self;
+    (void)name;
+    void* __attribute__((unused)) pn = Amalgame_Compiler_FullResolver_ProgramCount(self->Symbols);
+    for (i64 ip = 0; ip < pn; ip++) {
+        void* __attribute__((unused)) prog = Amalgame_Compiler_FullResolver_ProgramAt(self->Symbols, ip);
+        Amalgame_Compiler_AstNode* __attribute__((unused)) hit = Amalgame_Compiler_TypeChecker_FindInterfaceInProgram(self, prog, name);
+        if (hit != NULL) {
+            return hit;
+        }
+    }
+    return NULL;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterfaceInProgram(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* prog, code_string name) {
+    (void)self;
+    (void)prog;
+    (void)name;
+    i64 __attribute__((unused)) cn = AmalgameList_count(prog->Children);
+    for (i64 ic = 0; ic < cn; ic++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) d = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, ic);
+        if (d->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL && d->Flag2 && code_string_equals(d->Name, name)) {
+            return d;
+        }
+    }
+    return NULL;
+}
+
+static AmalgameList* Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(Amalgame_Compiler_TypeChecker* self, code_string s) {
+    (void)self;
+    (void)s;
+    AmalgameList* __attribute__((unused)) result = AmalgameList_new();
+    i64 __attribute__((unused)) len = String_Length(s);
+    if (len == 0) {
+        return result;
+    }
+    i64 __attribute__((unused)) depth = 0;
+    i64 __attribute__((unused)) start = 0;
+    for (i64 i = 0; i < len; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "<")) {
+            depth = depth + 1;
+        } else if (code_string_equals(c, ">")) {
+            depth = depth - 1;
+        } else if (code_string_equals(c, ",") && depth == 0) {
+            code_string __attribute__((unused)) part = String_Trim(String_Substring(s, start, i - start));
+            if (String_Length(part) > 0) {
+                AmalgameList_add(result, (void*)(intptr_t)(part));
+            }
+            start = i + 1;
+        }
+    }
+    code_string __attribute__((unused)) last = String_Trim(String_Substring(s, start, len - start));
+    if (String_Length(last) > 0) {
+        AmalgameList_add(result, (void*)(intptr_t)(last));
+    }
+    return result;
+}
+
+static code_string Amalgame_Compiler_TypeChecker_SubstType(Amalgame_Compiler_TypeChecker* self, code_string t) {
+    (void)self;
+    (void)t;
+    if (String_Length(t) == 0) {
+        return t;
+    }
+    code_bool __attribute__((unused)) nullable = 0;
+    code_string __attribute__((unused)) core = t;
+    if (String_EndsWith(t, "?")) {
+        nullable = 1;
+        core = String_Substring(t, 0, String_Length(t) - 1);
+    }
+    i64 __attribute__((unused)) lt = String_IndexOf(core, "<");
+    if (lt < 0) {
+        code_string __attribute__((unused)) resolved = Amalgame_Compiler_TypeChecker_LookupParam(self, core);
+        if (nullable) {
+            return code_string_concat(resolved, "?");
+        }
+        return resolved;
+    }
+    code_string __attribute__((unused)) base = String_Substring(core, 0, lt);
+    code_string __attribute__((unused)) inner = String_Substring(core, lt + 1, String_Length(core) - lt - 2);
+    AmalgameList* __attribute__((unused)) parts = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, inner);
+    code_string __attribute__((unused)) newInner = "";
+    i64 __attribute__((unused)) n = AmalgameList_count(parts);
+    for (i64 i = 0; i < n; i++) {
+        if (i > 0) {
+            newInner = code_string_concat(newInner, ",");
+        }
+        newInner = code_string_concat(newInner, Amalgame_Compiler_TypeChecker_SubstType(self, (void*)AmalgameList_get(parts, i)));
+    }
+    code_string __attribute__((unused)) result = code_string_concat(code_string_concat(code_string_concat(base, "<"), newInner), ">");
+    if (nullable) {
+        return code_string_concat(result, "?");
+    }
+    return result;
+}
+
+static code_string Amalgame_Compiler_TypeChecker_LookupParam(Amalgame_Compiler_TypeChecker* self, code_string t) {
+    (void)self;
+    (void)t;
+    i64 __attribute__((unused)) n = AmalgameList_count(self->SubstParams);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->SubstParams, i), t)) {
+            return (code_string)AmalgameList_get(self->SubstArgs, i);
+        }
+    }
+    return t;
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckFieldDecl(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* field) {

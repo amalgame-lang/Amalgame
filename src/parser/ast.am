@@ -49,6 +49,10 @@ public class AstNode {
     // String values (literal raw, op, type name, namespace)
     public Str:    string
     public Str2:   string
+    // CLASS_DECL: generic params CSV ("T", "K,V"); empty if non-generic
+    public Str3:   string
+    // CLASS_DECL (non-interface): implements list CSV ("IComparable<int>,IDescribable")
+    public Str4:   string
 
     // Bool flags
     public Flag:   bool
@@ -73,6 +77,8 @@ public class AstNode {
         this.Name     = ""
         this.Str      = ""
         this.Str2     = ""
+        this.Str3     = ""
+        this.Str4     = ""
         this.Flag     = false
         this.Flag2    = false
         this.Left     = null

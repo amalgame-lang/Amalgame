@@ -78,6 +78,14 @@ public class TypeChecker {
     private LocalNames:    List<string>
     private LocalTypes:    List<string>
     private ScopeStarts:   List<int>
+    // Generic substitution context for CheckImplementsContract — holds the
+    // current interface's type-param names and the concrete args bound at
+    // the `implements` site. Cleared between interfaces; treated as a tiny
+    // single-frame stack (no nesting needed). Stored as fields rather than
+    // passed as parameters because the codegen erases List<string> across
+    // call boundaries to void*, breaking string equality on Get(i).
+    private SubstParams:   List<string>
+    private SubstArgs:     List<string>
     // Source map for snippet rendering in error messages — optional, set by main
     public  Sources:       SourceMap
 
@@ -92,6 +100,8 @@ public class TypeChecker {
         this.LocalNames    = new List<string>()
         this.LocalTypes    = new List<string>()
         this.ScopeStarts   = new List<int>()
+        this.SubstParams   = new List<string>()
+        this.SubstArgs     = new List<string>()
         this.Sources       = new SourceMap()
     }
 
@@ -439,7 +449,182 @@ public class TypeChecker {
                 this.CheckMethod(m)
             }
         }
+        // Verify `implements` contract: every method declared on each
+        // implemented interface must exist on the class with a matching
+        // signature (after substituting the interface's generic params).
+        if (!cls.Flag2 && String_Length(cls.Str4) > 0) {
+            this.CheckImplementsContract(cls)
+        }
         this.CurrentClass = prevClass
+    }
+
+    // ── Interface contract verification ───────────────
+
+    private void CheckImplementsContract(AstNode cls) {
+        let entries = this.SplitTopLevelCommas(cls.Str4)
+        let nEntries = entries.Count()
+        for ie in 0..nEntries {
+            let iref = entries.Get(ie)
+            this.CheckOneInterface(cls, iref)
+        }
+    }
+
+    private void CheckOneInterface(AstNode cls, string iref) {
+        var ibase = iref
+        // Reset substitution context for this interface frame
+        this.SubstParams = new List<string>()
+        this.SubstArgs   = new List<string>()
+        let lt = String_IndexOf(iref, "<")
+        if (lt > 0) {
+            ibase = String_Substring(iref, 0, lt)
+            let inner = String_Substring(iref, lt + 1, String_Length(iref) - lt - 2)
+            let parts = this.SplitTopLevelCommas(inner)
+            let np = parts.Count()
+            for ia in 0..np { this.SubstArgs.Add(parts.Get(ia)) }
+        }
+        let iface = this.FindInterface(ibase)
+        if (iface == null) {
+            this.Error("class '" + cls.Name + "' implements unknown interface '" + ibase + "'", cls)
+            return
+        }
+        if (String_Length(iface.Str3) > 0) {
+            let pp = this.SplitTopLevelCommas(iface.Str3)
+            let pn = pp.Count()
+            for ip in 0..pn { this.SubstParams.Add(pp.Get(ip)) }
+        }
+        if (this.SubstParams.Count() != this.SubstArgs.Count()) {
+            this.Error("interface '" + ibase + "' expects " + String_FromInt(this.SubstParams.Count()) + " type argument(s), got " + String_FromInt(this.SubstArgs.Count()), cls)
+            return
+        }
+        let imethods = iface.Children.Count()
+        for im in 0..imethods {
+            let imethod = iface.Children.Get(im)
+            if (imethod.Kind == NodeKind.METHOD_DECL) {
+                this.CheckOneInterfaceMethod(cls, iref, imethod)
+            }
+        }
+    }
+
+    private void CheckOneInterfaceMethod(AstNode cls, string ifaceLabel, AstNode imethod) {
+        let cmems = cls.Children.Count()
+        var found: AstNode? = null
+        for ic in 0..cmems {
+            let m = cls.Children.Get(ic)
+            if (m.Kind == NodeKind.METHOD_DECL && m.Name == imethod.Name) {
+                found = m
+            }
+        }
+        if (found == null) {
+            this.Error("class '" + cls.Name + "' does not implement interface '" + ifaceLabel + "': missing method '" + imethod.Name + "'", cls)
+            return
+        }
+        let cmethod = found
+        let expectedRet = this.SubstType(imethod.Str)
+        if (cmethod.Str != expectedRet) {
+            this.Error("class '" + cls.Name + "' method '" + imethod.Name + "': expected return type '" + expectedRet + "' (from interface '" + ifaceLabel + "'), got '" + cmethod.Str + "'", cmethod)
+            return
+        }
+        let iN = imethod.Params.Count()
+        let cN = cmethod.Params.Count()
+        if (iN != cN) {
+            this.Error("class '" + cls.Name + "' method '" + imethod.Name + "': expected " + String_FromInt(iN) + " param(s), got " + String_FromInt(cN), cmethod)
+            return
+        }
+        for ip in 0..iN {
+            let ipar = imethod.Params.Get(ip)
+            let cpar = cmethod.Params.Get(ip)
+            let expectedType = this.SubstType(ipar.Str)
+            if (cpar.Str != expectedType) {
+                this.Error("class '" + cls.Name + "' method '" + imethod.Name + "' param '" + cpar.Name + "': expected type '" + expectedType + "' (from interface '" + ifaceLabel + "'), got '" + cpar.Str + "'", cpar)
+                return
+            }
+        }
+    }
+
+    private AstNode? FindInterface(string name) {
+        let pn = this.Symbols.ProgramCount()
+        for ip in 0..pn {
+            let prog = this.Symbols.ProgramAt(ip)
+            let hit  = this.FindInterfaceInProgram(prog, name)
+            if (hit != null) { return hit }
+        }
+        return null
+    }
+
+    private AstNode? FindInterfaceInProgram(AstNode prog, string name) {
+        let cn = prog.Children.Count()
+        for ic in 0..cn {
+            let d = prog.Children.Get(ic)
+            if (d.Kind == NodeKind.CLASS_DECL && d.Flag2 && d.Name == name) {
+                return d
+            }
+        }
+        return null
+    }
+
+    // Split a CSV at top level only — commas inside <...> stay grouped.
+    // Used for both implements lists and generic type arg lists.
+    private List<string> SplitTopLevelCommas(string s) {
+        let result = new List<string>()
+        let len = String_Length(s)
+        if (len == 0) { return result }
+        var depth = 0
+        var start = 0
+        for i in 0..len {
+            let c = String_CharAt1(s, i)
+            if (c == "<") {
+                depth = depth + 1
+            } else if (c == ">") {
+                depth = depth - 1
+            } else if (c == "," && depth == 0) {
+                let part = String_Trim(String_Substring(s, start, i - start))
+                if (String_Length(part) > 0) { result.Add(part) }
+                start = i + 1
+            }
+        }
+        let last = String_Trim(String_Substring(s, start, len - start))
+        if (String_Length(last) > 0) { result.Add(last) }
+        return result
+    }
+
+    // Substitute interface generic params by concrete args in a type string.
+    // Reads from this.SubstParams / this.SubstArgs (set by CheckOneInterface).
+    // Recurses into nested generics: "List<T>" + (T → int) → "List<int>".
+    // Preserves trailing "?" nullability marker.
+    private string SubstType(string t) {
+        if (String_Length(t) == 0) { return t }
+        var nullable = false
+        var core = t
+        if (String_EndsWith(t, "?")) {
+            nullable = true
+            core = String_Substring(t, 0, String_Length(t) - 1)
+        }
+        let lt = String_IndexOf(core, "<")
+        if (lt < 0) {
+            let resolved = this.LookupParam(core)
+            if (nullable) { return resolved + "?" }
+            return resolved
+        }
+        let base = String_Substring(core, 0, lt)
+        let inner = String_Substring(core, lt + 1, String_Length(core) - lt - 2)
+        let parts = this.SplitTopLevelCommas(inner)
+        var newInner = ""
+        let n = parts.Count()
+        for i in 0..n {
+            if (i > 0) { newInner = newInner + "," }
+            newInner = newInner + this.SubstType(parts.Get(i))
+        }
+        let result = base + "<" + newInner + ">"
+        if (nullable) { return result + "?" }
+        return result
+    }
+
+    private string LookupParam(string t) {
+        let n = this.SubstParams.Count()
+        for i in 0..n {
+            if (this.SubstParams.Get(i) == t) { return this.SubstArgs.Get(i) }
+        }
+        return t
     }
 
     private void CheckFieldDecl(AstNode field) {

@@ -1,0 +1,29 @@
+namespace Tests
+
+// Negative-test sample: the typechecker MUST reject this file because
+// Bad implements IComparable<int> but its Compare method takes a string
+// where the contract requires int. Driven by tests/run_tests.sh under
+// `run_check_fail` — looks for the diagnostic substring.
+
+public interface IComparable<T> {
+    Compare(T other) -> int
+}
+
+public class Bad implements IComparable<int> {
+    public Value: int
+
+    public Bad(int v) {
+        this.Value = v
+    }
+
+    // Wrong param type — should be int per IComparable<int>, but is string.
+    public int Compare(string other) {
+        return 0
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let b = new Bad(0)
+    }
+}
