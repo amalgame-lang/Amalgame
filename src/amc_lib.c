@@ -2697,6 +2697,8 @@ struct _Amalgame_Compiler_CGen {
     AmalgameList* EnumNames;
     AmalgameList* MethodRetNames;
     AmalgameList* MethodRetTypes;
+    AmalgameList* MethodRetRawNames;
+    AmalgameList* MethodRetRawTypes;
 };
 
 code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
@@ -2713,9 +2715,12 @@ static code_string Amalgame_Compiler_CGen_LocalTypeGet(Amalgame_Compiler_CGen* s
 static void Amalgame_Compiler_CGen_LocalTypeClear(Amalgame_Compiler_CGen* self);
 static void Amalgame_Compiler_CGen_FieldTypeSet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName, code_string ctype);
 static code_string Amalgame_Compiler_CGen_FieldTypeGet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName);
+static void Amalgame_Compiler_CGen_TrackGenericLocal(Amalgame_Compiler_CGen* self, code_string varName, code_string rawType);
 static void Amalgame_Compiler_CGen_ListElemSet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName, code_string elemCType);
 static code_string Amalgame_Compiler_CGen_ListElemGet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName);
 static void Amalgame_Compiler_CGen_MethodRetSet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName, code_string ctype);
+static void Amalgame_Compiler_CGen_MethodRetRawSet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName, code_string rawType);
+static code_string Amalgame_Compiler_CGen_MethodRetRawGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName);
 static code_string Amalgame_Compiler_CGen_MethodRetGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName);
 static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* expr);
 static code_string Amalgame_Compiler_CGen_EmitInterpolatedString(Amalgame_Compiler_CGen* self, code_string raw);
@@ -2763,6 +2768,8 @@ Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
     self->EnumNames = AmalgameList_new();
     self->MethodRetNames = AmalgameList_new();
     self->MethodRetTypes = AmalgameList_new();
+    self->MethodRetRawNames = AmalgameList_new();
+    self->MethodRetRawTypes = AmalgameList_new();
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Status", "i64");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Body", "code_string");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Error", "code_string");
@@ -2918,6 +2925,30 @@ static code_string Amalgame_Compiler_CGen_FieldTypeGet(Amalgame_Compiler_CGen* s
     return result;
 }
 
+static void Amalgame_Compiler_CGen_TrackGenericLocal(Amalgame_Compiler_CGen* self, code_string varName, code_string rawType) {
+    (void)self;
+    (void)varName;
+    (void)rawType;
+    if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
+        code_string __attribute__((unused)) inner = String_Substring(rawType, 5, String_Length(rawType) - 6);
+        if (String_Length(inner) > 0) {
+            Amalgame_Compiler_CGen_ListElemSet(self, "__local__", varName, Amalgame_Compiler_CGen_TypeToC(self, inner));
+        }
+        return;
+    }
+    if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
+        code_string __attribute__((unused)) inner = String_Substring(rawType, 4, String_Length(rawType) - 5);
+        i64 __attribute__((unused)) comma = String_IndexOf(inner, ",");
+        if (comma > 0) {
+            code_string __attribute__((unused)) vRaw = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1);
+            code_string __attribute__((unused)) vTrim = String_Trim(vRaw);
+            if (String_Length(vTrim) > 0) {
+                Amalgame_Compiler_CGen_ListElemSet(self, "__local_map__", varName, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
+            }
+        }
+    }
+}
+
 static void Amalgame_Compiler_CGen_ListElemSet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName, code_string elemCType) {
     (void)self;
     (void)className;
@@ -2952,6 +2983,32 @@ static void Amalgame_Compiler_CGen_MethodRetSet(Amalgame_Compiler_CGen* self, co
     code_string __attribute__((unused)) key = code_string_concat(code_string_concat(className, "::"), methodName);
     AmalgameList_add(self->MethodRetNames, (void*)(intptr_t)(key));
     AmalgameList_add(self->MethodRetTypes, (void*)(intptr_t)(ctype));
+}
+
+static void Amalgame_Compiler_CGen_MethodRetRawSet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName, code_string rawType) {
+    (void)self;
+    (void)className;
+    (void)methodName;
+    (void)rawType;
+    code_string __attribute__((unused)) key = code_string_concat(code_string_concat(className, "::"), methodName);
+    AmalgameList_add(self->MethodRetRawNames, (void*)(intptr_t)(key));
+    AmalgameList_add(self->MethodRetRawTypes, (void*)(intptr_t)(rawType));
+}
+
+static code_string Amalgame_Compiler_CGen_MethodRetRawGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName) {
+    (void)self;
+    (void)className;
+    (void)methodName;
+    code_string __attribute__((unused)) key = code_string_concat(code_string_concat(className, "::"), methodName);
+    i64 __attribute__((unused)) n = AmalgameList_count(self->MethodRetRawNames);
+    code_string __attribute__((unused)) result = "";
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) k = (code_string)AmalgameList_get(self->MethodRetRawNames, i);
+        if (code_string_equals(k, key)) {
+            result = (code_string)AmalgameList_get(self->MethodRetRawTypes, i);
+        }
+    }
+    return result;
 }
 
 static code_string Amalgame_Compiler_CGen_MethodRetGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName) {
@@ -3869,6 +3926,7 @@ static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalg
                 code_bool __attribute__((unused)) isPublic = m->Flag;
                 code_string __attribute__((unused)) retC = Amalgame_Compiler_CGen_TypeToC(self, m->Str);
                 Amalgame_Compiler_CGen_MethodRetSet(self, name, m->Name, retC);
+                Amalgame_Compiler_CGen_MethodRetRawSet(self, name, m->Name, m->Str);
                 code_string __attribute__((unused)) attrs = "";
                 code_string __attribute__((unused)) decos = m->Str2;
                 if (String_Length(decos) > 0) {
@@ -4075,6 +4133,7 @@ static void Amalgame_Compiler_CGen_EmitMethod(Amalgame_Compiler_CGen* self, Amal
     if (String_StartsWith(method->Str, "(")) {
         self->CurrentRetType = Amalgame_Compiler_CGen_TupleStructName(self, method->Str);
         Amalgame_Compiler_CGen_MethodRetSet(self, className, method->Name, method->Str);
+        Amalgame_Compiler_CGen_MethodRetRawSet(self, className, method->Name, method->Str);
     } else {
         self->CurrentRetType = "";
     }
@@ -4090,24 +4149,7 @@ static void Amalgame_Compiler_CGen_EmitMethod(Amalgame_Compiler_CGen* self, Amal
     for (i64 i = 0; i < pcount; i++) {
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, Amalgame_Compiler_CGen_TypeToC(self, p->Str));
-        code_string __attribute__((unused)) praw = p->Str;
-        if (String_StartsWith(praw, "List<") && String_EndsWith(praw, ">")) {
-            code_string __attribute__((unused)) inner = String_Substring(praw, 5, String_Length(praw) - 6);
-            if (String_Length(inner) > 0) {
-                Amalgame_Compiler_CGen_ListElemSet(self, "__local__", p->Name, Amalgame_Compiler_CGen_TypeToC(self, inner));
-            }
-        }
-        if (String_StartsWith(praw, "Map<") && String_EndsWith(praw, ">")) {
-            code_string __attribute__((unused)) inner = String_Substring(praw, 4, String_Length(praw) - 5);
-            i64 __attribute__((unused)) comma = String_IndexOf(inner, ",");
-            if (comma > 0) {
-                code_string __attribute__((unused)) vRaw = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1);
-                code_string __attribute__((unused)) vTrim = String_Trim(vRaw);
-                if (String_Length(vTrim) > 0) {
-                    Amalgame_Compiler_CGen_ListElemSet(self, "__local_map__", p->Name, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
-                }
-            }
-        }
+        Amalgame_Compiler_CGen_TrackGenericLocal(self, p->Name, p->Str);
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("(void)", p->Name), ";"));
     }
     if (method->Body != NULL) {
@@ -4487,19 +4529,22 @@ static void Amalgame_Compiler_CGen_EmitStmt(Amalgame_Compiler_CGen* self, Amalga
             t = "void*";
         }
         Amalgame_Compiler_CGen_LocalTypeSet(self, stmt->Name, t);
+        if (String_Length(stmt->Str) > 0) {
+            Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, stmt->Str);
+        }
         if (stmt->Left != NULL && stmt->Left->Kind == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-            if (code_string_equals(stmt->Left->Name, "List") && String_Length(stmt->Left->Str2) > 0) {
-                code_string __attribute__((unused)) elemC = Amalgame_Compiler_CGen_TypeToC(self, stmt->Left->Str2);
-                Amalgame_Compiler_CGen_ListElemSet(self, "__local__", stmt->Name, elemC);
+            if (String_Length(stmt->Left->Str2) > 0) {
+                code_string __attribute__((unused)) synth = code_string_concat(code_string_concat(code_string_concat(stmt->Left->Name, "<"), stmt->Left->Str2), ">");
+                Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, synth);
             }
-            if (code_string_equals(stmt->Left->Name, "Map") && String_Length(stmt->Left->Str2) > 0) {
-                code_string __attribute__((unused)) raw = stmt->Left->Str2;
-                i64 __attribute__((unused)) comma = String_IndexOf(raw, ",");
-                if (comma > 0) {
-                    code_string __attribute__((unused)) vRaw = String_Substring(raw, comma + 1, String_Length(raw) - comma - 1);
-                    code_string __attribute__((unused)) vTrim = String_Trim(vRaw);
-                    if (String_Length(vTrim) > 0) {
-                        Amalgame_Compiler_CGen_ListElemSet(self, "__local_map__", stmt->Name, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
+        }
+        if (stmt->Left != NULL && stmt->Left->Kind == Amalgame_Compiler_NodeKind_CALL) {
+            Amalgame_Compiler_AstNode* __attribute__((unused)) callee = stmt->Left->Left;
+            if (callee != NULL && callee->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
+                if (callee->Left != NULL && callee->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+                    code_string __attribute__((unused)) retRaw = Amalgame_Compiler_CGen_MethodRetRawGet(self, callee->Left->Name, callee->Name);
+                    if (String_Length(retRaw) > 0) {
+                        Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, retRaw);
                     }
                 }
             }
@@ -8375,6 +8420,7 @@ static code_string Amalgame_Compiler_TypeChecker_NodeKey(Amalgame_Compiler_TypeC
 static void Amalgame_Compiler_TypeChecker_SetType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node, code_string typeKey);
 static code_string Amalgame_Compiler_TypeChecker_GetType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node);
 static code_bool Amalgame_Compiler_TypeChecker_IsAssignable(Amalgame_Compiler_TypeChecker* self, code_string expected, code_string actual);
+static code_string Amalgame_Compiler_TypeChecker_GenericBase(Amalgame_Compiler_TypeChecker* self, code_string t);
 static code_bool Amalgame_Compiler_TypeChecker_IsNumericWiden(Amalgame_Compiler_TypeChecker* self, code_string to, code_string from);
 static code_bool Amalgame_Compiler_TypeChecker_IsBool(Amalgame_Compiler_TypeChecker* self, code_string t);
 static code_bool Amalgame_Compiler_TypeChecker_IsNumeric(Amalgame_Compiler_TypeChecker* self, code_string t);
@@ -8546,6 +8592,9 @@ static code_bool Amalgame_Compiler_TypeChecker_IsAssignable(Amalgame_Compiler_Ty
     if (code_string_equals(eBase, aBase)) {
         return 1;
     }
+    if (code_string_equals(Amalgame_Compiler_TypeChecker_GenericBase(self, eBase), Amalgame_Compiler_TypeChecker_GenericBase(self, aBase))) {
+        return 1;
+    }
     if (code_string_equals(actual, "null") && String_EndsWith(expected, "?")) {
         return 1;
     }
@@ -8553,6 +8602,16 @@ static code_bool Amalgame_Compiler_TypeChecker_IsAssignable(Amalgame_Compiler_Ty
         return 1;
     }
     return 0;
+}
+
+static code_string Amalgame_Compiler_TypeChecker_GenericBase(Amalgame_Compiler_TypeChecker* self, code_string t) {
+    (void)self;
+    (void)t;
+    i64 __attribute__((unused)) lt = String_IndexOf(t, "<");
+    if (lt > 0) {
+        return String_Substring(t, 0, lt);
+    }
+    return t;
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsNumericWiden(Amalgame_Compiler_TypeChecker* self, code_string to, code_string from) {
@@ -9582,7 +9641,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.3.1 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.3.2 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {

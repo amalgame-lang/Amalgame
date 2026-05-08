@@ -48,7 +48,7 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.3.1**.
+Current version: **v0.3.2**.
 
 ## Language at a glance
 
@@ -112,7 +112,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.3.1
+./amc --version          # amc 0.3.2
 ./tests/run_all_tests.sh
 ```
 
@@ -212,7 +212,7 @@ error[resolver]: Unknown symbol 'someUndefinedThing'
 - **VS Code syntax highlighting** is in [editors/vscode/](editors/vscode/).
   Install with:
   ```bash
-  ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.3.1
+  ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.3.2
   ```
 - An LSP server (`amc lsp`) is on the roadmap; today there is no
   language server.

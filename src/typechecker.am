@@ -193,11 +193,24 @@ public class TypeChecker {
             aBase = String_Substring(actual, 0, String_Length(actual) - 1)
         }
         if (eBase == aBase) { return true }
+        // Generic erasure — `List<int>` and `List` are interchangeable
+        // at this stage of the typechecker (it doesn't track type args
+        // on locals yet; cgen handles concrete elem types via its own
+        // ListElem table). Same for `Map<K,V>` ↔ `Map`, `Set<T>` ↔ `Set`.
+        if (this.GenericBase(eBase) == this.GenericBase(aBase)) { return true }
         // null → any nullable
         if (actual == "null" && String_EndsWith(expected, "?")) { return true }
         // numeric widening
         if (this.IsNumericWiden(eBase, aBase)) { return true }
         return false
+    }
+
+    private string GenericBase(string t) {
+        let lt = String_IndexOf(t, "<")
+        if (lt > 0) {
+            return String_Substring(t, 0, lt)
+        }
+        return t
     }
 
     private bool IsNumericWiden(string to, string from) {
