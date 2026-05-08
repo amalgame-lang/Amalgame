@@ -204,6 +204,82 @@ The CLI flag (`--lint`) is wired in `main.am`, after the
 typechecker pass and before code generation. Warnings don't bump
 `ExitCode` — `amc --lint -o foo file.am` still produces output.
 
+## Test runner (`amc test`)
+
+`amc test [<dir>]` discovers `*_test.am` under `<dir>` (default `.`),
+compiles + runs each, and aggregates `[PASS] <name>`,
+`[FAIL] <name>: <msg>`, and `[SKIP] <name>` lines from each child's
+stdout. The runner lives in `Program.RunTest` in `main.am`; the
+subcommand is dispatched from `Program.Main` next to the `fmt`
+subcommand.
+
+Pipeline per test file:
+
+1. **Discover** — shells out to `find <dir> -name '*_test.am' -type f`
+   via `Process.RunCapture`. Cross-platform on POSIX and Windows
+   MSYS2 (the CI's Windows path).
+2. **Compile to C** — invokes the running `amc` binary on the file
+   (path from `Args_Get(0)`) with `-o /tmp/amc_test_<idx>` and
+   `--quiet`. Emits `<tmp>.c`.
+3. **Compile to native** — `gcc -O2 -Iruntime <tmp>.c -lgc -lm -lcurl
+   -o <tmp>`. Same flags as `tests/run_tests.sh` so behavior matches
+   the canonical shell runner. Assumes the cwd has a sibling
+   `runtime/` directory; downstream users will need a richer install
+   story (`--runtime`, `AMC_RUNTIME` env var) which is left for a
+   follow-up.
+4. **Run + parse** — runs the test binary via `Process.RunCapture`
+   and scans its stdout for tag-prefixed lines. Anything else is
+   ignored. A non-zero exit with no tag lines is reported as
+   `[FAIL] <crash> exit=N` so silent crashes still register.
+
+The runner exits non-zero if any case FAILs or any file fails to
+compile; otherwise zero. The convention deliberately stays
+framework-free for v1 — a richer `Assert` module + `test_<name>`
+auto-discovery is a possible v2.
+
+## LSP server (`amc lsp`, `src/lsp.am`)
+
+`amc lsp` runs a minimal LSP 3.x server speaking JSON-RPC 2.0
+over stdio with the standard `Content-Length: N\r\n\r\n<N bytes>`
+framing. v1 implements:
+
+- `initialize` / `shutdown` / `exit` — lifecycle
+- `textDocument/didOpen` / `didChange` / `didClose` — document
+  state, advertised as Full sync (`textDocumentSync = 1`) so each
+  `didChange` carries the entire updated text
+- `textDocument/publishDiagnostics` — pushed back on every
+  `did{Open,Change}`. Diagnostics merge resolver `RawErrors` and
+  typechecker `Errors`, mapped from 1-based `(line, column)` to
+  the 0-based LSP `Position` shape and underlined as a single
+  character at the error column.
+
+Hover, completion, and goto-definition are out of scope for v1
+and will land in a follow-up.
+
+JSON handling is **ad-hoc** rather than a real parser: the
+`JsonStr(body, key)` and `JsonInt(body, key)` static helpers find
+`"<key>"`, skip to the value, and read until the appropriate
+terminator (handling backslash escapes for strings). LSP
+messages don't have ambiguous keys at the depth we extract
+(`method`, `id`, `uri`, `text`), so this trades correctness on
+arbitrary JSON for ~50 lines of code instead of a full tagged
+union + recursive-descent parser. If hover or completion need
+deeper extraction, promote the codec to a proper `stdlib/Json`
+module.
+
+Two new runtime helpers shipped to support the framing:
+`Console_ReadBytes(n)` reads exactly `n` bytes from stdin (the
+LSP body after parsing `Content-Length`), and `Console_Flush()`
+drains the stdout buffer so the client doesn't block waiting on
+buffered replies.
+
+The resolver gained a parallel `RawErrors: List<ResolverError>`
+that's kept in lock-step with the formatted `Errors: List<string>`.
+`ResolverError` is a tiny local mirror of `TypeError` — they
+duplicate fields rather than share, because resolver.am is
+compiled before typechecker.am in the bundle and we want the
+source-file dependency graph to stay one-way.
+
 ## Snapshot bootstrap (`snapshot/`, `tools/save-snapshot.sh`)
 
 `build_amc.sh` has a 3-rung bootstrap chain:

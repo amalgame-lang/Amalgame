@@ -209,13 +209,25 @@ error[resolver]: Unknown symbol 'someUndefinedThing'
   while preserving comments. Idempotent on every source in this
   repository. Run it as `amc fmt file.am` (stdout) or
   `amc fmt -w file.am` (rewrite in place).
+- **`amc --lint file.am`** — static analysis: unreachable code,
+  unused locals (prefix `_` to silence), and shadowed names.
+  Warnings are non-fatal and don't bump the exit code.
+- **`amc test [<dir>]`** — discovers `*_test.am` under `<dir>`
+  (default `.`), compiles + runs each, and aggregates `[PASS]`,
+  `[FAIL]`, `[SKIP]` lines from their stdout. Each test file is a
+  normal Amalgame program with a `Main` that prints tag lines per
+  case; no framework required. Exits non-zero if any case FAILs
+  or any file fails to compile.
+- **`amc lsp`** — minimal language server speaking JSON-RPC 2.0 on
+  stdio. v1 publishes diagnostics (resolver + typechecker errors)
+  on `textDocument/didOpen` and `textDocument/didChange`. Pair it
+  with the VS Code extension below. Hover and completion are
+  follow-ups.
 - **VS Code syntax highlighting** is in [editors/vscode/](editors/vscode/).
   Install with:
   ```bash
   ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.3.3
   ```
-- An LSP server (`amc lsp`) is on the roadmap; today there is no
-  language server.
 
 ## Project layout
 
@@ -228,7 +240,8 @@ src/                  Compiler, written in Amalgame
 ├── formatter/          formatter.am
 ├── typechecker.am
 ├── diagnostics.am
-├── main.am             CLI: amc <files> | amc fmt <files>
+├── lsp.am              LSP server (amc lsp)
+├── main.am             CLI: amc <files> | amc fmt | amc test | amc lsp
 └── amc_lib.c           Self-hosted bundle (generated)
 
 runtime/              C runtime (bdwgc, strings, IO, collections, net)
