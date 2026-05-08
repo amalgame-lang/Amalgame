@@ -174,13 +174,37 @@ let h = Math.Sqrt(3.0 * 3.0 + 4.0 * 4.0)
 | `xs.Clear()`                         | empty the list                   |
 | `xs.Reserve(n)`                      | grow capacity                    |
 
+Higher-order methods (since v0.3.6, take a lambda):
+
+| `xs.Filter(pred) : List<T>`          | keep items where `pred(x)` true  |
+| `xs.Map(fn) : List<T>`               | apply `fn` to each item          |
+| `xs.Reduce(init, fn) : U`            | left-fold `fn(acc, x) → acc`     |
+| `xs.ForEach(action)`                 | run `action(x)` for each item    |
+| `xs.Any(pred) : bool`                | true if any item satisfies pred  |
+| `xs.All(pred) : bool`                | true if all items satisfy pred   |
+| `xs.CountIf(pred) : int`             | count of items satisfying pred   |
+
 ```amalgame
 let xs = new List<string>()
 xs.Add("a") ; xs.Add("b") ; xs.Add("c")
 for i in 0..xs.Count() {
     Console.WriteLine(xs.Get(i))
 }
+
+// Higher-order
+let nums = new List<int>()
+nums.Add(1) ; nums.Add(2) ; nums.Add(3) ; nums.Add(4)
+let big   = nums.Filter(x => x > 2)              // [3, 4]
+let times = nums.Map(x => x * 10)                // [10, 20, 30, 40]
+let total = nums.Reduce(0, (acc, x) => acc + x)  // 10
 ```
+
+Lambda values are still `(i64) → i64` at the C boundary in v0.3.6
+— the closure boxes through `intptr_t`. Predicates that return
+`bool` work because `false`/`true` round-trip through int (0 / 1).
+Non-int signatures (e.g. `xs.Map(x => x.Name)` where the result
+is `List<string>`) need the lambda-typing layer that's tracked
+for a later release.
 
 ### Map<K,V>
 

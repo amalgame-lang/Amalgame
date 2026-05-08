@@ -1,0 +1,73 @@
+namespace Tests
+
+// Lambda v2.5 — higher-order List methods. Each takes an inline
+// lambda; the CGen lowers them through AmalgameList_filter / _map /
+// _reduce / _forEach / _any / _all / _countIf in the runtime.
+//
+// All values are i64 at the C boundary; the closure boxes via
+// intptr_t. Non-int signatures (string predicates etc.) need the
+// lambda-typing layer, deferred to a later release.
+//
+// Note: string interpolation `"x: {coll.Count()}"` doesn't yet
+// propagate the inferred AmalgameList* type to the embedded call,
+// so we stage values in named locals before printing.
+
+public class Program {
+    public static void Main(string[] args) {
+        let xs = new List<int>()
+        xs.Add(1)
+        xs.Add(2)
+        xs.Add(3)
+        xs.Add(4)
+        xs.Add(5)
+
+        // Filter: keep elements > 2 → [3, 4, 5]
+        let big = xs.Filter(x => x > 2)
+        let bigCount: int = big.Count()
+        let bigFirst: int = big.Get(0)
+        Console.WriteLine("filter count: " + String.FromInt(bigCount))
+        Console.WriteLine("filter first: " + String.FromInt(bigFirst))
+
+        // Map: double every element → [2, 4, 6, 8, 10]
+        let doubled = xs.Map(x => x * 2)
+        let dCount: int = doubled.Count()
+        let dLast:  int = doubled.Get(4)
+        Console.WriteLine("map count: " + String.FromInt(dCount))
+        Console.WriteLine("map last: "  + String.FromInt(dLast))
+
+        // Reduce: sum
+        let total = xs.Reduce(0, (acc, x) => acc + x)
+        Console.WriteLine("sum: " + String.FromInt(total))
+
+        // Reduce with block body: count of items > 2
+        let cnt = xs.Reduce(0, (acc, x) => {
+            if (x > 2) { return acc + 1 }
+            return acc
+        })
+        Console.WriteLine("countGT2: " + String.FromInt(cnt))
+
+        // Any / All / CountIf
+        let hasOdd = xs.Any(x => x % 2 == 1)
+        if (hasOdd) { Console.WriteLine("any odd: true") }
+        let allPositive = xs.All(x => x > 0)
+        if (allPositive) { Console.WriteLine("all positive: true") }
+        let evens = xs.CountIf(x => x % 2 == 0)
+        Console.WriteLine("evens: " + String.FromInt(evens))
+
+        // ForEach for side effects. Closures capture by value, so a
+        // `var sum` accumulator wouldn't see the writes — use Reduce
+        // for accumulation. Block body lets the void Console.WriteLine
+        // sit as a statement instead of a return-value.
+        xs.ForEach(x => {
+            Console.WriteLine("foreach: " + String.FromInt(x))
+        })
+
+        // Two-step Filter then Map
+        let big3 = xs.Filter(x => x > 2)
+        let bigDoubled = big3.Map(x => x * 10)
+        let chainCount: int = bigDoubled.Count()
+        let chainFirst: int = bigDoubled.Get(0)
+        Console.WriteLine("chain count: " + String.FromInt(chainCount))
+        Console.WriteLine("chain first: " + String.FromInt(chainFirst))
+    }
+}

@@ -2875,6 +2875,9 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
 static code_string Amalgame_Compiler_CGen_EmitMatchExpr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* n);
 static code_string Amalgame_Compiler_CGen_EmitListComp(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* n);
 static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* callExpr);
+static code_string Amalgame_Compiler_CGen_EmitClosureArg(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* arg);
+static code_string Amalgame_Compiler_CGen_EmitLambdaAsClosure(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* lam);
+static code_string Amalgame_Compiler_CGen_EmitLambdaCaptureCopy(Amalgame_Compiler_CGen* self, code_string envVar, Amalgame_Compiler_AstNode* cap);
 static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* callee);
 static code_bool Amalgame_Compiler_CGen_IsEnum(Amalgame_Compiler_CGen* self, code_string t);
 static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, code_string t);
@@ -3472,6 +3475,18 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         return code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "*");
     }
     if (k == Amalgame_Compiler_NodeKind_CALL) {
+        if (expr->Left != NULL && expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
+            code_string __attribute__((unused)) mname = expr->Left->Name;
+            if (code_string_equals(mname, "Filter") || code_string_equals(mname, "Map")) {
+                return "AmalgameList*";
+            }
+            if (code_string_equals(mname, "Any") || code_string_equals(mname, "All")) {
+                return "code_bool";
+            }
+            if (code_string_equals(mname, "CountIf")) {
+                return "i64";
+            }
+        }
         if (expr->Left != NULL) {
             code_string __attribute__((unused)) calleeStr = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Left);
             if (code_string_equals(calleeStr, "AmalgameMap_has") || code_string_equals(calleeStr, "AmalgameMap_remove") || code_string_equals(calleeStr, "AmalgameSet_contains") || code_string_equals(calleeStr, "AmalgameSet_remove") || code_string_equals(calleeStr, "AmalgameSet_add")) {
@@ -4821,6 +4836,16 @@ static void Amalgame_Compiler_CGen_EmitStmt(Amalgame_Compiler_CGen* self, Amalga
                         Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, retRaw);
                     }
                 }
+                code_string __attribute__((unused)) mname = callee->Name;
+                if (code_string_equals(mname, "Filter") || code_string_equals(mname, "Map")) {
+                    if (callee->Left != NULL && callee->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+                        code_string __attribute__((unused)) recvName = callee->Left->Name;
+                        code_string __attribute__((unused)) recvElem = Amalgame_Compiler_CGen_ListElemGet(self, "__local__", recvName);
+                        if (String_Length(recvElem) > 0) {
+                            Amalgame_Compiler_CGen_ListElemSet(self, "__local__", stmt->Name, recvElem);
+                        }
+                    }
+                }
             }
         }
         code_string __attribute__((unused)) rhs = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
@@ -5433,7 +5458,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "RemoveAt") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "RemoveAt") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve") && !code_string_equals(mname, "Filter") && !code_string_equals(mname, "Map") && !code_string_equals(mname, "Reduce") && !code_string_equals(mname, "ForEach") && !code_string_equals(mname, "Any") && !code_string_equals(mname, "All") && !code_string_equals(mname, "CountIf")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -5548,7 +5573,126 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_removeAt(", listExpr), ", "), arg0), ")");
         }
     }
+    if (code_string_equals(mname, "Filter")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 1) {
+            return "";
+        }
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_filter(", listExpr), ", "), lamStr), ")");
+    }
+    if (code_string_equals(mname, "Map")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 1) {
+            return "";
+        }
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_map(", listExpr), ", "), lamStr), ")");
+    }
+    if (code_string_equals(mname, "ForEach")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 1) {
+            return "";
+        }
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_forEach(", listExpr), ", "), lamStr), ")");
+    }
+    if (code_string_equals(mname, "Reduce")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 2) {
+            return "";
+        }
+        code_string __attribute__((unused)) initStr = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 1));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("(i64)(intptr_t)AmalgameList_reduce(", listExpr), ", (void*)(intptr_t)("), initStr), "), "), lamStr), ")");
+    }
+    if (code_string_equals(mname, "Any")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 1) {
+            return "";
+        }
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_any(", listExpr), ", "), lamStr), ")");
+    }
+    if (code_string_equals(mname, "All")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 1) {
+            return "";
+        }
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_all(", listExpr), ", "), lamStr), ")");
+    }
+    if (code_string_equals(mname, "CountIf")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc != 1) {
+            return "";
+        }
+        code_string __attribute__((unused)) lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_countIf(", listExpr), ", "), lamStr), ")");
+    }
     return "";
+}
+
+static code_string Amalgame_Compiler_CGen_EmitClosureArg(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* arg) {
+    (void)self;
+    (void)arg;
+    if (arg == NULL) {
+        return "";
+    }
+    if (arg->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL && code_string_equals(arg->Name, "__lambda__")) {
+        return Amalgame_Compiler_CGen_EmitLambdaAsClosure(self, arg);
+    }
+    if (arg->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+        code_string __attribute__((unused)) t = Amalgame_Compiler_CGen_LocalTypeGet(self, arg->Name);
+        if (code_string_equals(t, "AmalgameClosure*")) {
+            return arg->Name;
+        }
+    }
+    return "";
+}
+
+static code_string Amalgame_Compiler_CGen_EmitLambdaAsClosure(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* lam) {
+    (void)self;
+    (void)lam;
+    code_string __attribute__((unused)) id = lam->Str2;
+    code_string __attribute__((unused)) envName = code_string_concat("LamEnv_", id);
+    code_string __attribute__((unused)) fnName = code_string_concat(code_string_concat("lam_", id), "_fn");
+    code_string __attribute__((unused)) envVar = code_string_concat("__env_", id);
+    i64 __attribute__((unused)) cn = AmalgameList_count(lam->Args);
+    code_string __attribute__((unused)) s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("({ ", envName), "* "), envVar), " = ("), envName), "*)code_alloc(sizeof("), envName), ")); ");
+    for (i64 i = 0; i < cn; i++) {
+        s = code_string_concat(s, Amalgame_Compiler_CGen_EmitLambdaCaptureCopy(self, envVar, (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i)));
+    }
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "AmalgameClosure_new((void*)"), fnName), ", "), envVar), "); })");
+    return s;
+}
+
+static code_string Amalgame_Compiler_CGen_EmitLambdaCaptureCopy(Amalgame_Compiler_CGen* self, code_string envVar, Amalgame_Compiler_AstNode* cap) {
+    (void)self;
+    (void)envVar;
+    (void)cap;
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(envVar, "->_"), cap->Name), " = "), cap->Name), "; ");
 }
 
 static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* callee) {
