@@ -1,6 +1,6 @@
 # Grammaire formelle d'Amalgame
 
-> **Version** : 0.3.4
+> **Version** : 0.3.5
 > **Format**  : EBNF (Extended Backus-Naur Form)
 > **Fichier** : [`docs/language/grammar.ebnf`](grammar.ebnf)
 > **Statut**  : ✅ Synchronisée avec `src/parser/parser.am`
@@ -24,8 +24,9 @@ le compilateur actuel.
 | **Pattern matching** | `match`, gardes `if cond`, variantes algébriques `Some(x)`, ranges `1..5`, wildcard `_` | `MatchStmt`, `Pattern` |
 | **Exceptions**    | `try` / `catch` / `finally`, `throw`    | `TryStmt`, `ThrowStmt`  |
 | **Expressions**   | Pratt-style precedence climbing (15 niveaux) | `Expression`       |
-| **Lambdas**       | single-param expression-bodied `x => expr` | `Lambda`             |
-| **Closures**      | capture par valeur des locaux englobants (v0.3.4) | (sémantique, pas grammaticale) |
+| **Lambdas**       | single ou multi-param, corps expression ou bloc (`x => expr`, `(x,y) => x+y`, `x => { … }`) | `Lambda`, `LambdaBody`, `GenericParams` |
+| **Closures**      | capture par valeur des locaux englobants (v0.3.4 single-param, v0.3.5 multi-param + bloc) | (sémantique, pas grammaticale) |
+| **Generic interfaces** | `interface IComparable<T>` + check `implements I<args>` (v0.3.5) | `InterfaceDecl`, `GenericParams` |
 | **Member access** | `.`, null-safe `?.`, indexation `[i]`, appel `()` | `PostfixOp`     |
 | **Strings**       | `"..."` avec escapes `\n \t \r \xHH \uHHHH`, `"""..."""` raw, interpolation `"hi {x}"` | `StringLit`, `StringInterp` |
 | **Décorateurs**   | `@inline`, `@deprecated` (forme drapeau) | `Decorator`            |
@@ -36,15 +37,15 @@ le compilateur actuel.
 
 La version v0.1.0 décrivait un langage plus large (encore appelé
 *CODE*) qui visait `async`/`await`, properties, traits, foreach
-C-style, etc. La v0.3.4 capture **le sous-ensemble réellement
+C-style, etc. La v0.3.5 capture **le sous-ensemble réellement
 implémenté** par le parser self-hosted, plus les ajouts arrivés
 entre-temps :
 
-**Présent dans v0.3.4, absent de v0.1.0 :**
+**Présent dans v0.3.5, absent de v0.1.0 :**
 - `try` / `catch` / `throw` / `finally`
 - `guard cond else { … }`
 - `match` comme expression (pas seulement statement)
-- Lambdas single-param `x => expr` (capturantes depuis v0.3.4)
+- Lambdas multi-param et à corps de bloc (capturantes depuis v0.3.4 single-param ; multi-param + bloc depuis v0.3.5)
 - List comprehensions `[expr for x in iter if cond]`
 - Null-safe `obj?.field` et coalescence `a ?? b`
 - `for x in collection` (boucle d'itération)
@@ -60,15 +61,15 @@ entre-temps :
 - Compound assigns complets (`+=` à `>>=`)
 - Bitwise (`& | ^ ~ << >>`)
 
-**Présent dans v0.1.0, absent de v0.3.4** (réservé pour plus tard) :
+**Présent dans v0.1.0, absent de v0.3.5** (réservé pour plus tard) :
 - Properties avec `get` / `set` accessors
 - Constructeurs explicites (`init(...) { ... }`)
 - `async` / `await` / coroutines
 - `with { … }` expression
 - Traits au-delà des interfaces
 - Modificateurs `protected`, `internal`, `abstract`, `override`, `weak`, `pure`
-- Lambdas multi-param et à corps de bloc
-- Function types nommés `(int) -> string`
+- Function types nommés `(int) -> string` (les lambdas
+  en argument avec signatures non-int sont prévues pour v2.5)
 - Spread `...args`
 - `foreach` C-style
 - Mot-clé `func` pour fonctions top-level (token réservé, parser ne l'utilise pas)

@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.4` · self-hosted · 170/170 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.5` · self-hosted · 180/180 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -118,8 +118,30 @@ In rough order of usefulness × effort:
       treats `List` ↔ `List<int>` (and similar generic erasures) as
       compatible so a `return xs` from a `List<int>`-returning method
       type-checks even when the local is recorded as the bare `List`.
-- [ ] **Generic interfaces** (`IComparable<T>`) — follows from generic
-      inference. Modest extra work once that's in.
+- [x] **Generic interfaces** (v0.3.5) — `interface IComparable<T>`
+      now type-parameterise. `class Box implements IComparable<int>`
+      goes through a new `CheckImplementsContract` pass that
+      substitutes the interface's generic params by the concrete
+      args (recursing into nested generics, preserving `?` markers)
+      and asserts every method exists on the class with the
+      substituted signature. Static contract check only — no
+      vtable / dynamic dispatch.
+- [x] **Lambda v2 — multi-param + block body** (v0.3.5) —
+      `(x, y) => x + y`, `x => { let d = x*2; return d+1 }`,
+      `(a, b, c) => a + b + c`. Routes through new `Closure_call2`
+      / `_call3` runtime helpers; block bodies emit through
+      `EmitBlock` with an `InLambdaBody` flag that boxes returns.
+      Lambdas in argument position with non-int signatures
+      (e.g. `xs.Filter(x => x > 0)`) need a lambda-typing layer
+      in the TypeChecker — that lands in v2.5.
+- [ ] **Lambda v2.5 — args + non-int sigs** — make
+      `xs.Select(x => x.Name)` and `xs.Filter(x => x > 0)` work.
+      Needs (1) the TypeChecker to infer the lambda's expected
+      signature from the formal parameter at the call site, (2)
+      CGen to emit non-int signatures (real C types instead of
+      `i64` everywhere) once the signature is known, (3) stdlib
+      methods on List/Map/Set typed to take a closure with a
+      known signature.
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
       literal syntax `[...]` first and a clear semantics for variadic
       calls. Larger than it looks.
@@ -215,24 +237,16 @@ fix.
 - [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
       Vala one in `archive/vala-bootstrap/src/pkg/`).
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
-<<<<<<< Updated upstream
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
       didClose, Full sync), and `publishDiagnostics` push on every
       did{Open,Change}. Diagnostics merge resolver + typechecker
-      errors, range covers the whole token. Hover / completion /
-      goto-def are out of scope for v1.
-=======
-      over stdio JSON-RPC. Implements lifecycle, document state
-      (didOpen / didChange / didClose, Full sync), and
-      `publishDiagnostics` push. Diagnostics merge resolver +
-      typechecker errors, range covers the whole token. Hover /
-      completion / goto-def out of scope for v1.
->>>>>>> Stashed changes
+      errors, range covers the whole token. Hover and completion
+      land in v0.3.5; goto-def remains out of scope.
 - [x] **VS Code LSP client** (v0.3.4) — `editors/vscode/extension.js`
       spawns `amc lsp` via `vscode-languageclient`. Configurable
       via `amalgame.serverPath` and `amalgame.enableLsp`.
-- [ ] **`amc lsp` hover / completion** — follow-up on top of v0.3.4
+- [x] **`amc lsp` hover + global completion** (v0.3.5) — follow-up on top of v0.3.4
       diagnostics. Needs pos→symbol lookup on the AST.
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
 - [ ] **Inlay hints + code actions** — once hover/completion is in.
@@ -335,26 +349,27 @@ fix.
 
 Top of the list, ordered by *unlocked-value* per *days-of-work*:
 
-1. **Generic interfaces** (`IComparable<T>`) — last item from the
-   v0.3.4 run-up; modest extra work on top of the generic inference
-   that's already in. Unlocks `sort`, custom comparators, and the
-   shape any serious collections API will eventually need.
-2. **`amc lsp` hover + completion** — biggest DX win once you've
-   tried diagnostics in the editor. Needs a position→symbol lookup
-   on the AST plus a small TypeChecker query API. A few hundred
-   lines.
-3. **Lambda v2** — multi-param `(x, y) => …`, block bodies, and
-   lambdas in argument position (so `xs.Select(x => x + 1)` works).
-   Needs a small lambda-typing layer in the TypeChecker so non-int
-   signatures lower correctly.
-4. **Stdlib expansion** — pick one or two modules from the stdlib
+1. **Lambda v2.5 — args + non-int sigs** — `xs.Select(x => x.Name)`
+   and `xs.Filter(x => x > 0)` need (a) the TypeChecker to infer
+   the lambda's expected signature from the formal param at the
+   call site, (b) CGen to emit non-int signatures (real C types
+   instead of `i64` everywhere) once the signature is known, (c)
+   stdlib methods on List/Map/Set typed to take a closure with a
+   known signature. Unlocks the bulk of real-world lambda usage.
+2. **Stdlib expansion** — pick one or two modules from the stdlib
    backlog (`DateTime`, `Json`, `Regex` are the most missed).
    Independent of compiler/tooling work, so can run in parallel
    with the language items. Each is a 200-400 LoC PR. Tied to the
    open "Stdlib delivery model" question — the early modules will
    be done header-only, but reaching ~10 modules is when options
    D/E start paying off.
-5. **`amc test` polish** — `--runtime <path>` flag (don't assume
+3. **LSP member completion** — `obj.<cursor>` narrowed to the
+   methods/fields of `obj`'s type. Needs a position→receiver→type
+   →members chain on top of v0.3.5's global completion. Probably
+   ~150 LoC once the receiver-resolution helper is in place.
+4. **`amc test` polish** — `--runtime <path>` flag (don't assume
    cwd has `runtime/`), per-file timeouts, parallel execution.
-6. **Process v2** — split stderr from stdout via real pipes,
+5. **Process v2** — split stderr from stdout via real pipes,
    add timeouts, async streaming output for long-running children.
+6. **Spread operator** — `f(...args)` and `[...a, ...b]`. Needs
+   list literal syntax `[...]` first.

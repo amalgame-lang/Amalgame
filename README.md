@@ -48,7 +48,7 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.3.4**.
+Current version: **v0.3.5**.
 
 ## Language at a glance
 
@@ -112,7 +112,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.3.4
+./amc --version          # amc 0.3.5
 ./tests/run_all_tests.sh
 ```
 
@@ -178,7 +178,10 @@ gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
 - Bitwise operators, compound assignments, pipeline `|>`, range `0..n`
 - Guard clauses: `guard cond else { return }`
 - Decorators (`@inline`, `@deprecated`) mapped to GCC attributes
-- Capturing closures (single-param expression-bodied lambdas, since v0.3.4)
+- Capturing closures (since v0.3.4) — multi-param `(x,y) => …` and
+  block bodies `x => { … }` since v0.3.5
+- Generic interfaces with static contract verification
+  (`class Box implements IComparable<int>`, since v0.3.5)
 
 Detailed reference: [docs/guide/](docs/guide/).
 
