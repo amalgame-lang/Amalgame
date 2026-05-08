@@ -68,6 +68,26 @@ public class MemberTable {
     }
 }
 
+// ── ResolverError ────────────────────────────────────
+// Structured form of a resolver error, kept in parallel with
+// `Errors: List<string>` (the formatted strings used by CLI
+// output). Mirrors `TypeError` from typechecker.am — we don't
+// reuse TypeError directly to keep the source-file dependency
+// graph one-way (resolver ← typechecker, not the other way).
+public class ResolverError {
+    public Message:  string
+    public Filename: string
+    public Line:     int
+    public Column:   int
+
+    public ResolverError(string msg, string file, int line, int col) {
+        this.Message  = msg
+        this.Filename = file
+        this.Line     = line
+        this.Column   = col
+    }
+}
+
 // ── FullResolver ──────────────────────────────────────
 public class FullResolver {
     // Flat scope: global names + local (method-level) names
@@ -81,8 +101,12 @@ public class FullResolver {
     private ScopeStarts:   List<int>
     // Member table: class → member → type
     public  Members:       MemberTable
-    // Errors collected
+    // Errors collected — formatted for CLI output
     private Errors:        List<string>
+    // Same errors in structured form, for tools that need to map
+    // back to (file, line, col) — LSP, future IDE features. Kept
+    // in lock-step with Errors via EmitError.
+    public  RawErrors:     List<ResolverError>
     // Multiple programs to resolve together
     public  Programs:      List<AstNode>
     // Current class being visited
@@ -114,6 +138,7 @@ public class FullResolver {
         this.ScopeStarts   = new List<int>()
         this.Members       = new MemberTable()
         this.Errors        = new List<string>()
+        this.RawErrors     = new List<ResolverError>()
         this.Programs      = new List<AstNode>()
         this.CurrentClass  = ""
         this.CurrentReturn = "void"
@@ -155,9 +180,13 @@ public class FullResolver {
         this.DeclareGlobal("Process_RunCapture", "AmalgameProcessResult", false)
         // Console
         this.DeclareGlobal("Console",        "type", false)
-        this.DeclareGlobal("Console_WriteLine",  "void", false)
-        this.DeclareGlobal("Console_WriteError", "void", false)
-        this.DeclareGlobal("Console_Clear",      "void", false)
+        this.DeclareGlobal("Console_WriteLine",  "void",   false)
+        this.DeclareGlobal("Console_WriteError", "void",   false)
+        this.DeclareGlobal("Console_Clear",      "void",   false)
+        this.DeclareGlobal("Console_Write",      "void",   false)
+        this.DeclareGlobal("Console_ReadLine",   "string", false)
+        this.DeclareGlobal("Console_ReadBytes",  "string", false)
+        this.DeclareGlobal("Console_Flush",      "void",   false)
         // File / Path
         this.DeclareGlobal("File",           "type", false)
         this.DeclareGlobal("Path",           "type", false)
@@ -396,6 +425,11 @@ public class FullResolver {
             head = head + SourceSnippet.Format(snip, line, col)
         }
         this.Errors.Add(head)
+        // Structured copy for downstream consumers (LSP). The
+        // formatted string in `Errors` stays untouched so existing
+        // CLI output paths are unaffected.
+        let raw = new ResolverError(msg, file, line, col)
+        this.RawErrors.Add(raw)
     }
 
     public bool HasErrors() {
