@@ -400,9 +400,14 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    methods/fields of `obj`'s type. Needs a position→receiver→type
    →members chain on top of v0.3.5's global completion. Probably
    ~150 LoC once the receiver-resolution helper is in place.
-4. **`amc test` polish** — `--runtime <path>` flag (don't assume
+4. **`amc new <name> [--template …]`** — scaffolding command à la
+   `cargo new` / `dotnet new`. File templates (exe/lib/test) +
+   a dispatcher branch in `main.am`. ~200-400 LoC. Big onboarding
+   win — turns "clone the repo and stare at src/" into "amc new
+   hello && cd hello && ./build.sh".
+5. **`amc test` polish** — `--runtime <path>` flag (don't assume
    cwd has `runtime/`), per-file timeouts, parallel execution.
-5. **Process v2** — split stderr from stdout via real pipes,
+6. **Process v2** — split stderr from stdout via real pipes,
    add timeouts, async streaming output for long-running children.
-6. **Spread operator** — `f(...args)` and `[...a, ...b]`. Needs
+7. **Spread operator** — `f(...args)` and `[...a, ...b]`. Needs
    list literal syntax `[...]` first.

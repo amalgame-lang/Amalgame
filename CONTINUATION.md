@@ -137,9 +137,14 @@ days-of-work):
   3. LSP member completion: `obj.<cursor>` narrowed to the
      receiver's type. ~150 LoC on top of the v0.3.5 global
      completion.
-  4. amc test polish: --runtime <path> flag, per-file timeouts,
+  4. amc new <name> [--template exe|lib|test]: scaffolding
+     command à la cargo new / dotnet new. File templates +
+     dispatcher branch in main.am + a roundtrip test that
+     scaffolds + compiles under /tmp. ~200-400 LoC. Strong
+     onboarding win.
+  5. amc test polish: --runtime <path> flag, per-file timeouts,
      parallel execution.
-  5. Process v2: split stderr from stdout via real pipes, add
+  6. Process v2: split stderr from stdout via real pipes, add
      timeouts, async streaming.
 
 Quick checks before claiming a feature is done:
