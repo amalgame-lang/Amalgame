@@ -180,6 +180,8 @@ gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
 - Decorators (`@inline`, `@deprecated`) mapped to GCC attributes
 - Capturing closures (since v0.3.4) — multi-param `(x,y) => …` and
   block bodies `x => { … }` since v0.3.5
+- Higher-order list methods — `xs.Filter / .Map / .Reduce /
+  .ForEach / .Any / .All / .CountIf` (since v0.3.6, takes a lambda)
 - Generic interfaces with static contract verification
   (`class Box implements IComparable<int>`, since v0.3.5)
 
