@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 121/121 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 137/137 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -78,8 +78,8 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 121/121 tests in CI under `./amc`, with a SKIP list for samples
-  hitting open compiler bugs (see below).
+- 137/137 tests in CI under `./amc` (75 core + 50 stdlib + 12 fmt),
+  with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
 
@@ -142,8 +142,14 @@ fix.
 
 ### Compiler — polish
 
-- [ ] **Multi-file type checking** — TypeChecker only walks
-      `programs[0]`. Walk all programs.
+- [x] **Multi-file type checking** — `main.am` now loops over every
+      parsed program and runs `tc.Check` on each, sharing a single
+      TypeChecker instance so cross-file uses get type-checked too.
+      Also fixed the `run_multifile_test` shell helper, which passed
+      `-o foo.c` (which amc dutifully expanded to `foo.c.c`) and
+      expected an executable amc never produces — now follows the
+      single-file convention (`-o base` + manual gcc), so the four
+      multifile tests pass.
 - [ ] **Better error recovery** — the parser is okay but produces
       `_unknown_` placeholder ASTs that cascade into noisy resolver
       errors. Skip them more aggressively.
