@@ -56,11 +56,9 @@ TopLevelDecl
 (*  DÉCLARATIONS DE TYPES                                 *)
 (* ═══════════════════════════════════════════════════════ *)
 
-(* ── Classe ─────────────────────────────────────────── *)
-
 ClassDecl
     = "class" IDENT [ GenericParams ]
-      [ ":" QualifiedName ]               (* extends *)
+      [ ":" QualifiedName ]
       [ "implements" QualifiedName { "," QualifiedName } ]
       "{" { ClassMember } "}"
     ;
@@ -96,11 +94,6 @@ Param
     = IDENT ":" Type
     ;
 
-(* ── Data class / record ────────────────────────────── *)
-(* `data class Foo(int x, string y) { ... }` et `record`
-   sont équivalents : ils auto-génèrent les champs publics
-   et un constructeur affectant chaque param au champ. *)
-
 DataClassDecl
     = ( "data" "class" | "record" ) IDENT
       "(" [ DataParamList ] ")"
@@ -115,10 +108,6 @@ DataParam
     = Type IDENT
     ;
 
-(* ── Enum (simple ou algébrique) ────────────────────── *)
-(* Les variantes peuvent porter une liste de types
-   (algébriques) : `enum Shape { Circle(float), Square(int, int), None }`. *)
-
 EnumDecl
     = "enum" IDENT
       "{" EnumMember { ( "," | NEWLINE ) EnumMember } "}"
@@ -127,11 +116,6 @@ EnumDecl
 EnumMember
     = IDENT [ "(" Type { "," Type } ")" ]
     ;
-
-(* ── Interface ──────────────────────────────────────── *)
-(* Pas de champs ; uniquement des signatures de méthode.
-   Deux syntaxes admises : classique `Type Name(params)`
-   ou flèche `Name(params) -> Type`. *)
 
 InterfaceDecl
     = "interface" IDENT
@@ -172,8 +156,8 @@ TupleType
     ;
 
 TypeSuffix
-    = "?"            (* nullable T?  *)
-    | "[" "]"        (* array T[]    *)
+    = "?"
+    | "[" "]"
     ;
 
 
@@ -198,48 +182,9 @@ Statement
     | ExprStmt
     ;
 
-(* ── Déclarations locales ───────────────────────────── *)
-
 VarDecl
     = ( "let" | "var" )
       ( IDENT [ ":" Type ] [ "=" Expression ]
-<<<<<<< Updated upstream
-      | "(" IDENT { "," IDENT } ")" "=" Expression )    (* tuple destructure *)
-      NEWLINE
-    ;
-
-(* ── Affectation ────────────────────────────────────── *)
-(* Au niveau syntaxique, `x = e` et les compounds passent
-   par ParseAssign en position d'expression et sont
-   utilisables aussi comme statement (statement-position
-   expression). *)
-
-AssignStmt
-    = LValue AssignOp Expression NEWLINE
-    ;
-
-LValue
-    = Postfix                       (* ident, member, index *)
-    ;
-
-AssignOp
-    = "=" | "+=" | "-=" | "*=" | "/=" | "%="
-    | "&=" | "|=" | "^=" | "<<=" | ">>="
-    ;
-
-(* ── Contrôle ──────────────────────────────────────── *)
-
-ReturnStmt
-    = "return" [ Expression ] NEWLINE
-    ;
-
-IfStmt
-    = "if" [ "(" ] Expression [ ")" ] Block
-      { "else" "if" [ "(" ] Expression [ ")" ] Block }
-      [ "else" Block ]
-    ;
-
-=======
       | "(" IDENT { "," IDENT } ")" "=" Expression )
       NEWLINE
     ;
@@ -267,7 +212,6 @@ IfStmt
       [ "else" Block ]
     ;
 
->>>>>>> Stashed changes
 GuardStmt
     = "guard" Expression "else" Block
     ;
@@ -288,14 +232,6 @@ ContinueStmt
     = "continue" NEWLINE
     ;
 
-<<<<<<< Updated upstream
-(* ── Match ──────────────────────────────────────────── *)
-(* Match est utilisable comme statement et comme expression.
-   Les arms peuvent porter une garde `if cond` après le
-   pattern et avant la flèche. *)
-
-=======
->>>>>>> Stashed changes
 MatchStmt
     = "match" Expression
       "{" MatchArm { ( "," | NEWLINE ) MatchArm } "}"
@@ -311,19 +247,11 @@ ArmBody
     ;
 
 Pattern
-<<<<<<< Updated upstream
-    = "_"                                       (* wildcard *)
-    | Literal                                   (* int, float, string, bool, null *)
-    | IDENT                                     (* binder OR enum-tag *)
-    | QualifiedName [ "(" PatternList ")" ]     (* algebraic enum: Variant(x, _) *)
-    | Range                                     (* 1..5 *)
-=======
     = "_"
     | Literal
     | IDENT
     | QualifiedName [ "(" PatternList ")" ]
     | Range
->>>>>>> Stashed changes
     ;
 
 PatternList
@@ -334,11 +262,6 @@ Range
     = Expression ".." Expression
     ;
 
-<<<<<<< Updated upstream
-(* ── Exceptions ─────────────────────────────────────── *)
-
-=======
->>>>>>> Stashed changes
 TryStmt
     = "try" Block
       [ "catch" [ "(" IDENT [ ":" Type ] ")" ] Block ]
@@ -349,11 +272,6 @@ ThrowStmt
     = "throw" Expression NEWLINE
     ;
 
-<<<<<<< Updated upstream
-(* ── Bloc et statement-expression ───────────────────── *)
-
-=======
->>>>>>> Stashed changes
 Block
     = "{" { Statement } "}"
     ;
@@ -367,13 +285,12 @@ ExprStmt
 (*  EXPRESSIONS                                           *)
 (* ═══════════════════════════════════════════════════════ *)
 
-(* Le parser est Pratt-style à grimpe de précédence.
-   Du plus faible (en bas) au plus fort (en haut), les
-   niveaux sont :
+(* Pratt-style precedence climbing.
+   Du plus faible (en bas) au plus fort (en haut) :
 
-     0. Lambda  (intercepte avant Assign : `IDENT "=>" Expr`)
-     1. Assign     `=` `+=` … `>>=`           (right-assoc)
-     2. LogicalOr  `||`                        (left-assoc)
+     0. Lambda     `IDENT "=>" Expr`            (intercepte avant Assign)
+     1. Assign     `=` `+=` … `>>=`             (right-assoc)
+     2. LogicalOr  `||`
      3. BitOr      `|`
      4. BitXor     `^`
      5. BitAnd     `&`
@@ -385,8 +302,8 @@ ExprStmt
     11. Multiplic. `*` `/` `%`
     12. Unary      `-` `!` `~`                  (right-assoc)
     13. Postfix    `f(args)` `obj.field` `obj?.field` `obj[i]`
-    14. Primary    literals, `this`, `null`, `(expr)`,
-                   `new T(args)`, list-comp, lambda, tuple. *)
+    14. Primary    literals, this, null, parens, new, list-comp,
+                   lambda, tuple                                *)
 
 Expression
     = Lambda
@@ -401,45 +318,16 @@ Assignment
     = LogicalOr [ AssignOp Assignment ]
     ;
 
-LogicalOr
-    = BitOr   { "||"  BitOr }
-    ;
-
-BitOr
-    = BitXor  { "|"   BitXor }
-    ;
-
-BitXor
-    = BitAnd  { "^"   BitAnd }
-    ;
-
-BitAnd
-    = LogicalAnd { "&" LogicalAnd }
-    ;
-
-LogicalAnd
-    = Equality { "&&" Equality }
-    ;
-
-Equality
-    = Relational { ( "==" | "!=" ) Relational }
-    ;
-
-Relational
-    = Shift { ( "<" | ">" | "<=" | ">=" ) Shift }
-    ;
-
-Shift
-    = Additive { ( "<<" | ">>" ) Additive }
-    ;
-
-Additive
-    = Multiplicative { ( "+" | "-" ) Multiplicative }
-    ;
-
-Multiplicative
-    = Unary { ( "*" | "/" | "%" ) Unary }
-    ;
+LogicalOr     = BitOr      { "||" BitOr } ;
+BitOr         = BitXor     { "|"  BitXor } ;
+BitXor        = BitAnd     { "^"  BitAnd } ;
+BitAnd        = LogicalAnd { "&"  LogicalAnd } ;
+LogicalAnd    = Equality   { "&&" Equality } ;
+Equality      = Relational { ( "==" | "!=" ) Relational } ;
+Relational    = Shift      { ( "<" | ">" | "<=" | ">=" ) Shift } ;
+Shift         = Additive   { ( "<<" | ">>" ) Additive } ;
+Additive      = Multiplicative { ( "+" | "-" ) Multiplicative } ;
+Multiplicative = Unary { ( "*" | "/" | "%" ) Unary } ;
 
 Unary
     = ( "-" | "!" | "~" ) Unary
@@ -451,10 +339,10 @@ Postfix
     ;
 
 PostfixOp
-    = "."  IDENT                      (* member access      *)
-    | "?." IDENT                      (* null-safe member   *)
-    | "["  Expression "]"             (* index              *)
-    | "("  [ ArgList ] ")"            (* call               *)
+    = "."  IDENT
+    | "?." IDENT
+    | "["  Expression "]"
+    | "("  [ ArgList ] ")"
     ;
 
 ArgList
@@ -462,11 +350,7 @@ ArgList
     ;
 
 Arg
-<<<<<<< Updated upstream
-    = [ IDENT ":" ] Expression        (* named argument is documentation-only *)
-=======
     = [ IDENT ":" ] Expression
->>>>>>> Stashed changes
     ;
 
 Primary
@@ -474,11 +358,7 @@ Primary
     | "this"
     | "null"
     | IDENT
-<<<<<<< Updated upstream
-    | QualifiedName                   (* for `Foo.bar` paths *)
-=======
     | QualifiedName
->>>>>>> Stashed changes
     | "(" TupleOrParen
     | NewExpr
     | IfExpr
@@ -489,11 +369,6 @@ Primary
 
 TupleOrParen
     = Expression ( ")" | "," Expression { "," Expression } ")" )
-<<<<<<< Updated upstream
-      (* Single expression  → parenthesized expression
-         Multiple expressions → tuple literal               *)
-=======
->>>>>>> Stashed changes
     ;
 
 NewExpr
@@ -506,27 +381,13 @@ IfExpr
     ;
 
 MatchExpr
-<<<<<<< Updated upstream
-    = MatchStmt              (* same shape; usable as expression *)
-=======
     = MatchStmt
     ;
 
 ListComp
     = "[" Expression "for" IDENT "in" Expression
       [ "if" Expression ] "]"
->>>>>>> Stashed changes
     ;
-
-ListComp
-    = "[" Expression "for" IDENT "in" Expression
-      [ "if" Expression ] "]"
-    ;
-
-(* ── Pipeline `|>` ──────────────────────────────────── *)
-(* Le pipeline `x |> f` se desugar en `f(x)` au moment
-   du parse (réutilisé dans Postfix). Conservé ici à
-   titre informatif — pas une production séparée. *)
 
 
 (* ═══════════════════════════════════════════════════════ *)
@@ -544,17 +405,9 @@ BoolLit
     = "true" | "false"
     ;
 
-<<<<<<< Updated upstream
-(* ── Strings ───────────────────────────────────────── *)
-
-StringLit
-    = SimpleString          (* "..."      avec escapes *)
-    | TripleString          (* """..."""  raw, multiline *)
-=======
 StringLit
     = SimpleString
     | TripleString
->>>>>>> Stashed changes
     ;
 
 SimpleString
@@ -576,16 +429,8 @@ TripleString
     = '"""' { ANY_CHAR } '"""'
     ;
 
-<<<<<<< Updated upstream
-(* L'interpolation `"hello {x}"` est reconnue post-parse
-   par le CGen, qui détecte `{ident}` à l'intérieur d'un
-   StringLit et le remplace par une concaténation. Pas
-   une production grammaticale formelle. *)
-
-=======
->>>>>>> Stashed changes
 StringInterp
-    = SimpleString          (* contient au moins un `{IDENT [.IDENT]* [(args)]}` *)
+    = SimpleString          (* contenant au moins un `{IDENT [.IDENT]* [(args)]}` *)
     ;
 
 INTEGER = DIGIT { DIGIT } ;
@@ -599,12 +444,6 @@ HEX     = DIGIT | "a" | "b" | "c" | "d" | "e" | "f"
 (* ═══════════════════════════════════════════════════════ *)
 (*  DÉCORATEURS                                           *)
 (* ═══════════════════════════════════════════════════════ *)
-<<<<<<< Updated upstream
-(* Forme drapeau uniquement : `@inline`, `@deprecated`.
-   Le parser stashe le nom dans `PendingDecorators` ; le
-   décorateur s'applique à la déclaration suivante. *)
-=======
->>>>>>> Stashed changes
 
 Decorator
     = "@" IDENT
@@ -617,10 +456,6 @@ Decorator
 
 IDENT
     = ( LETTER | "_" ) { LETTER | DIGIT | "_" }
-<<<<<<< Updated upstream
-      (* exclut les Keyword *)
-=======
->>>>>>> Stashed changes
     ;
 
 LETTER
@@ -639,60 +474,13 @@ Keyword
     | "bool"     | "float"    | "double"   | "try"
     | "catch"    | "throw"    | "finally"  | "interface"
     | "record"   | "data"     | "guard"
-<<<<<<< Updated upstream
     ;
-
-(* `func` est réservé par le lexer mais n'est pas encore
-   utilisé par le parser ; à introduire pour les
-   fonctions top-level hors classe. *)
 
 
 (* ═══════════════════════════════════════════════════════ *)
 (*  COMMENTAIRES                                          *)
 (* ═══════════════════════════════════════════════════════ *)
-(* Préservés par le lexer (token COMMENT) plutôt que jetés
-   comme whitespace, pour que `amc fmt` puisse les
-   réinjecter à leur ligne d'origine. *)
 
-LineComment
-    = "//" { ANY_CHAR_EXCEPT_NEWLINE } NEWLINE
-    ;
-
-BlockComment
-    = "/*" { ANY_CHAR } "*/"
-=======
->>>>>>> Stashed changes
-    ;
-
-
-(* ═══════════════════════════════════════════════════════ *)
-<<<<<<< Updated upstream
-(*  RÉSERVÉ POUR PLUS TARD                                *)
-=======
-(*  COMMENTAIRES                                          *)
->>>>>>> Stashed changes
-(* ═══════════════════════════════════════════════════════ *)
-(* Ces constructions étaient présentes dans la grammaire
-   v0.1.0 (langage CODE) mais NE SONT PAS reconnues par
-   le parser actuel. Conservées ici comme rappel pour les
-   futures évolutions :
-
-<<<<<<< Updated upstream
-   - Properties avec get/set accessors
-   - Constructors syntaxe explicite (`init(...) { ... }`)
-   - `async` / `await` / coroutines
-   - `with { ... }` expression
-   - Traits (au-delà des interfaces)
-   - Modificateurs `protected`, `internal`, `abstract`,
-     `override`, `weak`, `pure`
-   - Lambdas multi-param `(a, b) => …` et à corps de bloc
-     `x => { … }`
-   - Function types `(int) -> string` comme types nommés
-   - Spread `...args` et `[...a, ...b]`
-   - Foreach C-style `foreach (var x in xs) { … }`
-   - `func` keyword pour fonctions top-level
-
-=======
 LineComment
     = "//" { ANY_CHAR_EXCEPT_NEWLINE } NEWLINE
     ;
@@ -721,5 +509,4 @@ BlockComment
    - Foreach C-style
    - `func` keyword pour fonctions top-level
 
->>>>>>> Stashed changes
    Voir ROADMAP_COMPLET.md pour le tracking détaillé. *)
