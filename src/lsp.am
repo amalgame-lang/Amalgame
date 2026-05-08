@@ -134,11 +134,19 @@ public class LspServer {
         return Console_ReadBytes(contentLen)
     }
 
+    // Build a single CR byte (0x0d). `"\r"` and `"\x0d"` are both
+    // mis-lexed by the bootstrapping amc, so we route through
+    // String_FromByte which is just an int→byte builtin and has
+    // no escape-table dependency.
+    public static string Cr() { return String_FromByte(13) }
+
     // Write a framed JSON-RPC message. fflush so the client
-    // doesn't block waiting for buffered output.
+    // doesn't block waiting for buffered output. CRLF is built
+    // explicitly from bytes — see Cr() above.
     private void Send(string body) {
-        let n: int = String_Length(body)
-        Console.Write("Content-Length: " + String_FromInt(n) + "\r\n\r\n")
+        let n: int  = String_Length(body)
+        let crlf    = LspServer.Cr() + "\n"
+        Console.Write("Content-Length: " + String_FromInt(n) + crlf + crlf)
         Console.Write(body)
         Console_Flush()
     }
@@ -186,14 +194,14 @@ public class LspServer {
         for ri in 0..rn {
             let e: ResolverError = resolver.RawErrors.Get(ri)
             if (!first) { arr = arr + "," }
-            arr = arr + LspServer.DiagnosticFromResolver(e)
+            arr = arr + LspServer.DiagnosticFromResolver(source, e)
             first = false
         }
         let tn = tc.Errors.Count()
         for ti in 0..tn {
             let te: TypeError = tc.Errors.Get(ti)
             if (!first) { arr = arr + "," }
-            arr = arr + LspServer.DiagnosticFromTc(te)
+            arr = arr + LspServer.DiagnosticFromTc(source, te)
             first = false
         }
         arr = arr + "]"
@@ -208,36 +216,85 @@ public class LspServer {
     // Two adapters: the resolver and the typechecker carry the same
     // info but in different classes (ResolverError vs TypeError) so
     // the source-file dependency graph stays one-way.
-    public static string DiagnosticFromResolver(ResolverError e) {
-        return LspServer.DiagnosticBody(e.Line, e.Column, e.Message)
+    public static string DiagnosticFromResolver(string source, ResolverError e) {
+        return LspServer.DiagnosticBody(source, e.Line, e.Column, e.Message)
     }
 
-    public static string DiagnosticFromTc(TypeError e) {
-        return LspServer.DiagnosticBody(e.Line, e.Column, e.Message)
+    public static string DiagnosticFromTc(string source, TypeError e) {
+        return LspServer.DiagnosticBody(source, e.Line, e.Column, e.Message)
     }
 
-    private static string DiagnosticBody(int line, int col, string msg) {
+    // Build one LSP Diagnostic. The range underlines the token at
+    // (line, col) — scanning forward in `source` for word chars
+    // (letters/digits/underscore). Single-char fallback when the
+    // char at the error column isn't word-y (operators, brackets, …).
+    private static string DiagnosticBody(string source, int line, int col, string msg) {
         var l = line - 1
-        var c = col  - 1
+        var cStart = col - 1
         if (l < 0) { l = 0 }
-        if (c < 0) { c = 0 }
+        if (cStart < 0) { cStart = 0 }
+        let endCol: int = LspServer.TokenEndCol(source, line, col)
+        var cEnd: int = endCol - 1
+        if (cEnd <= cStart) { cEnd = cStart + 1 }
         let lStr = String_FromInt(l)
-        let cStr = String_FromInt(c)
-        let cEnd = String_FromInt(c + 1)
-        return "{\"severity\":1,\"range\":{\"start\":{\"line\":" + lStr + ",\"character\":" + cStr + "},\"end\":{\"line\":" + lStr + ",\"character\":" + cEnd + "}},\"message\":\"" + LspServer.EscapeJsonStr(msg) + "\"}"
+        let cStartStr = String_FromInt(cStart)
+        let cEndStr = String_FromInt(cEnd)
+        return "{\"severity\":1,\"range\":{\"start\":{\"line\":" + lStr + ",\"character\":" + cStartStr + "},\"end\":{\"line\":" + lStr + ",\"character\":" + cEndStr + "}},\"message\":\"" + LspServer.EscapeJsonStr(msg) + "\"}"
+    }
+
+    // Find the 1-indexed column where the token starting at
+    // (line, col) ends. "Token" here is a maximal run of word
+    // chars; if (line, col) doesn't point at a word char, returns
+    // col (the caller widens to col+1 to avoid empty ranges).
+    private static int TokenEndCol(string source, int line, int col) {
+        let n: int = String_Length(source)
+        var off: int = 0
+        var ln:  int = 1
+        while (ln < line && off < n) {
+            let ch = String_CharAt1(source, off)
+            if (ch == "\n") { ln = ln + 1 }
+            off = off + 1
+        }
+        var colIdx: int = 0
+        while (colIdx < col - 1 && off < n) {
+            let ch = String_CharAt1(source, off)
+            if (ch == "\n") { break }
+            off = off + 1
+            colIdx = colIdx + 1
+        }
+        var endCol: int = col
+        while (off < n) {
+            let ch = String_CharAt1(source, off)
+            if (LspServer.IsWordChar(ch)) {
+                off = off + 1
+                endCol = endCol + 1
+            } else { break }
+        }
+        return endCol
+    }
+
+    private static bool IsWordChar(string ch) {
+        if (String_Length(ch) == 0) { return false }
+        if (ch == "_") { return true }
+        if (String_IndexOf("0123456789", ch) >= 0) { return true }
+        if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", ch) >= 0) { return true }
+        if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0) { return true }
+        return false
     }
 
     // Minimal JSON string escape — covers what error messages
     // contain in practice (quotes, backslashes, newlines).
+    // CR uses Cr() not "\r" (see Send() comment about lexer bootstrap).
     public static string EscapeJsonStr(string s) {
         let n: int = String_Length(s)
+        let cr     = LspServer.Cr()
         var r = ""
         for i in 0..n {
             let ch = String_CharAt1(s, i)
             if (ch == "\"")      { r = r + "\\\"" }
             else if (ch == "\\") { r = r + "\\\\" }
             else if (ch == "\n") { r = r + "\\n" }
-            else if (ch == "\r") { r = r + "\\r" }
+            else if (ch == cr)   { r = r + "\\r" }
             else if (ch == "\t") { r = r + "\\t" }
             else                  { r = r + ch }
         }

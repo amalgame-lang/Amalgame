@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-08T12:20:57+02:00
-Git rev:  6536375516c95b09bb26b1139c7b206b90b4a13e
+Captured: 2026-05-08T14:29:05+02:00
+Git rev:  5a5bd008f3895fd0a8f412e6ce4577b312e874c3
 Branch:   feature/lsp-diagnostics
 Tests:    173 passed
 
