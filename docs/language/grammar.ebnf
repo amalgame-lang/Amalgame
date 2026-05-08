@@ -203,6 +203,7 @@ Statement
 VarDecl
     = ( "let" | "var" )
       ( IDENT [ ":" Type ] [ "=" Expression ]
+<<<<<<< Updated upstream
       | "(" IDENT { "," IDENT } ")" "=" Expression )    (* tuple destructure *)
       NEWLINE
     ;
@@ -238,6 +239,35 @@ IfStmt
       [ "else" Block ]
     ;
 
+=======
+      | "(" IDENT { "," IDENT } ")" "=" Expression )
+      NEWLINE
+    ;
+
+AssignStmt
+    = LValue AssignOp Expression NEWLINE
+    ;
+
+LValue
+    = Postfix
+    ;
+
+AssignOp
+    = "=" | "+=" | "-=" | "*=" | "/=" | "%="
+    | "&=" | "|=" | "^=" | "<<=" | ">>="
+    ;
+
+ReturnStmt
+    = "return" [ Expression ] NEWLINE
+    ;
+
+IfStmt
+    = "if" [ "(" ] Expression [ ")" ] Block
+      { "else" "if" [ "(" ] Expression [ ")" ] Block }
+      [ "else" Block ]
+    ;
+
+>>>>>>> Stashed changes
 GuardStmt
     = "guard" Expression "else" Block
     ;
@@ -258,11 +288,14 @@ ContinueStmt
     = "continue" NEWLINE
     ;
 
+<<<<<<< Updated upstream
 (* ── Match ──────────────────────────────────────────── *)
 (* Match est utilisable comme statement et comme expression.
    Les arms peuvent porter une garde `if cond` après le
    pattern et avant la flèche. *)
 
+=======
+>>>>>>> Stashed changes
 MatchStmt
     = "match" Expression
       "{" MatchArm { ( "," | NEWLINE ) MatchArm } "}"
@@ -278,11 +311,19 @@ ArmBody
     ;
 
 Pattern
+<<<<<<< Updated upstream
     = "_"                                       (* wildcard *)
     | Literal                                   (* int, float, string, bool, null *)
     | IDENT                                     (* binder OR enum-tag *)
     | QualifiedName [ "(" PatternList ")" ]     (* algebraic enum: Variant(x, _) *)
     | Range                                     (* 1..5 *)
+=======
+    = "_"
+    | Literal
+    | IDENT
+    | QualifiedName [ "(" PatternList ")" ]
+    | Range
+>>>>>>> Stashed changes
     ;
 
 PatternList
@@ -293,8 +334,11 @@ Range
     = Expression ".." Expression
     ;
 
+<<<<<<< Updated upstream
 (* ── Exceptions ─────────────────────────────────────── *)
 
+=======
+>>>>>>> Stashed changes
 TryStmt
     = "try" Block
       [ "catch" [ "(" IDENT [ ":" Type ] ")" ] Block ]
@@ -305,8 +349,11 @@ ThrowStmt
     = "throw" Expression NEWLINE
     ;
 
+<<<<<<< Updated upstream
 (* ── Bloc et statement-expression ───────────────────── *)
 
+=======
+>>>>>>> Stashed changes
 Block
     = "{" { Statement } "}"
     ;
@@ -415,7 +462,11 @@ ArgList
     ;
 
 Arg
+<<<<<<< Updated upstream
     = [ IDENT ":" ] Expression        (* named argument is documentation-only *)
+=======
+    = [ IDENT ":" ] Expression
+>>>>>>> Stashed changes
     ;
 
 Primary
@@ -423,7 +474,11 @@ Primary
     | "this"
     | "null"
     | IDENT
+<<<<<<< Updated upstream
     | QualifiedName                   (* for `Foo.bar` paths *)
+=======
+    | QualifiedName
+>>>>>>> Stashed changes
     | "(" TupleOrParen
     | NewExpr
     | IfExpr
@@ -434,8 +489,11 @@ Primary
 
 TupleOrParen
     = Expression ( ")" | "," Expression { "," Expression } ")" )
+<<<<<<< Updated upstream
       (* Single expression  → parenthesized expression
          Multiple expressions → tuple literal               *)
+=======
+>>>>>>> Stashed changes
     ;
 
 NewExpr
@@ -448,7 +506,16 @@ IfExpr
     ;
 
 MatchExpr
+<<<<<<< Updated upstream
     = MatchStmt              (* same shape; usable as expression *)
+=======
+    = MatchStmt
+    ;
+
+ListComp
+    = "[" Expression "for" IDENT "in" Expression
+      [ "if" Expression ] "]"
+>>>>>>> Stashed changes
     ;
 
 ListComp
@@ -477,11 +544,17 @@ BoolLit
     = "true" | "false"
     ;
 
+<<<<<<< Updated upstream
 (* ── Strings ───────────────────────────────────────── *)
 
 StringLit
     = SimpleString          (* "..."      avec escapes *)
     | TripleString          (* """..."""  raw, multiline *)
+=======
+StringLit
+    = SimpleString
+    | TripleString
+>>>>>>> Stashed changes
     ;
 
 SimpleString
@@ -503,11 +576,14 @@ TripleString
     = '"""' { ANY_CHAR } '"""'
     ;
 
+<<<<<<< Updated upstream
 (* L'interpolation `"hello {x}"` est reconnue post-parse
    par le CGen, qui détecte `{ident}` à l'intérieur d'un
    StringLit et le remplace par une concaténation. Pas
    une production grammaticale formelle. *)
 
+=======
+>>>>>>> Stashed changes
 StringInterp
     = SimpleString          (* contient au moins un `{IDENT [.IDENT]* [(args)]}` *)
     ;
@@ -523,9 +599,12 @@ HEX     = DIGIT | "a" | "b" | "c" | "d" | "e" | "f"
 (* ═══════════════════════════════════════════════════════ *)
 (*  DÉCORATEURS                                           *)
 (* ═══════════════════════════════════════════════════════ *)
+<<<<<<< Updated upstream
 (* Forme drapeau uniquement : `@inline`, `@deprecated`.
    Le parser stashe le nom dans `PendingDecorators` ; le
    décorateur s'applique à la déclaration suivante. *)
+=======
+>>>>>>> Stashed changes
 
 Decorator
     = "@" IDENT
@@ -538,7 +617,10 @@ Decorator
 
 IDENT
     = ( LETTER | "_" ) { LETTER | DIGIT | "_" }
+<<<<<<< Updated upstream
       (* exclut les Keyword *)
+=======
+>>>>>>> Stashed changes
     ;
 
 LETTER
@@ -557,6 +639,7 @@ Keyword
     | "bool"     | "float"    | "double"   | "try"
     | "catch"    | "throw"    | "finally"  | "interface"
     | "record"   | "data"     | "guard"
+<<<<<<< Updated upstream
     ;
 
 (* `func` est réservé par le lexer mais n'est pas encore
@@ -577,17 +660,24 @@ LineComment
 
 BlockComment
     = "/*" { ANY_CHAR } "*/"
+=======
+>>>>>>> Stashed changes
     ;
 
 
 (* ═══════════════════════════════════════════════════════ *)
+<<<<<<< Updated upstream
 (*  RÉSERVÉ POUR PLUS TARD                                *)
+=======
+(*  COMMENTAIRES                                          *)
+>>>>>>> Stashed changes
 (* ═══════════════════════════════════════════════════════ *)
 (* Ces constructions étaient présentes dans la grammaire
    v0.1.0 (langage CODE) mais NE SONT PAS reconnues par
    le parser actuel. Conservées ici comme rappel pour les
    futures évolutions :
 
+<<<<<<< Updated upstream
    - Properties avec get/set accessors
    - Constructors syntaxe explicite (`init(...) { ... }`)
    - `async` / `await` / coroutines
@@ -602,4 +692,34 @@ BlockComment
    - Foreach C-style `foreach (var x in xs) { … }`
    - `func` keyword pour fonctions top-level
 
+=======
+LineComment
+    = "//" { ANY_CHAR_EXCEPT_NEWLINE } NEWLINE
+    ;
+
+BlockComment
+    = "/*" { ANY_CHAR } "*/"
+    ;
+
+
+(* ═══════════════════════════════════════════════════════ *)
+(*  RÉSERVÉ POUR PLUS TARD                                *)
+(* ═══════════════════════════════════════════════════════ *)
+(* Constructions présentes dans la grammaire v0.1.0 (CODE)
+   mais NON reconnues par le parser v0.3.4 :
+
+   - Properties avec get/set accessors
+   - Constructors syntaxe explicite (`init(...)`)
+   - `async` / `await` / coroutines
+   - `with { ... }` expression
+   - Traits (au-delà des interfaces)
+   - Modificateurs `protected`, `internal`, `abstract`,
+     `override`, `weak`, `pure`
+   - Lambdas multi-param `(a, b) => …` et corps de bloc
+   - Function types `(int) -> string` comme types nommés
+   - Spread `...args` et `[...a, ...b]`
+   - Foreach C-style
+   - `func` keyword pour fonctions top-level
+
+>>>>>>> Stashed changes
    Voir ROADMAP_COMPLET.md pour le tracking détaillé. *)
