@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 143/143 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 145/145 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -78,7 +78,7 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 143/143 tests in CI under `./amc` (81 core + 50 stdlib + 12 fmt),
+- 145/145 tests in CI under `./amc` (83 core + 50 stdlib + 12 fmt),
   with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
@@ -98,13 +98,15 @@ In rough order of usefulness × effort:
       was called "code"); the CALL emit branch treats both
       `IDENTIFIER` and `LITERAL_STRING` receivers as `isSelfCall` so
       the receiver is passed as the first argument.
-- [~] **Generic type inference** — partial. `ParseNew` now captures
-      the type-arg list on `NEW_EXPR.Str2`; CGen records the elem
-      type of `let xs = new List<T>()` via
-      `ListElemSet("__local__", xs, T)`, and `xs.Get(i)` lowers to
-      `(T)AmalgameList_get(xs, i)` with the typed cast.
-      Still missing: `Map<K,V>`/`Set<T>` analogues, generic propagation
-      through assignments, and TypeChecker awareness of element types
+- [~] **Generic type inference** — partial. `ParseNew` captures
+      the type-arg list on `NEW_EXPR.Str2`. CGen records:
+      `let xs = new List<T>()` via `ListElemSet("__local__", xs, T)`
+      → `xs.Get(i)` lowers to `(T)AmalgameList_get(xs, i)`.
+      `let m = new Map<K,V>()` via `ListElemSet("__local_map__", m, V)`
+      → `m.Get(k)` lowers to `(V)AmalgameMap_get(m, k)`. `Map.Get` is
+      now wired in the dispatch (it wasn't before).
+      Still missing: `Set<T>`, generic propagation through method
+      params/returns, and TypeChecker awareness of element types
       (today the inference happens at codegen via the cast-extraction
       heuristic in VAR_DECL).
 - [ ] **Generic interfaces** (`IComparable<T>`) — follows from generic

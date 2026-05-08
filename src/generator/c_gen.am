@@ -1659,11 +1659,24 @@ public class CGen {
             // Track the element type of `let xs = new List<T>()` so a later
             // `xs.Get(i)` can emit a typed cast to T instead of falling
             // back to void*. ListElemSet's "className" slot is repurposed
-            // for locals via the "__local__" prefix.
+            // for locals via "__local__" (List<T>) and "__local_map__"
+            // (Map<K,V> — value type only; the key is always code_string).
             if (stmt.Left != null && stmt.Left.Kind == NodeKind.NEW_EXPR) {
                 if (stmt.Left.Name == "List" && String_Length(stmt.Left.Str2) > 0) {
                     let elemC = this.TypeToC(stmt.Left.Str2)
                     this.ListElemSet("__local__", stmt.Name, elemC)
+                }
+                if (stmt.Left.Name == "Map" && String_Length(stmt.Left.Str2) > 0) {
+                    // "K,V" — split on the first comma, take V.
+                    let raw = stmt.Left.Str2
+                    let comma = String_IndexOf(raw, ",")
+                    if (comma > 0) {
+                        let vRaw = String_Substring(raw, comma + 1, String_Length(raw) - comma - 1)
+                        let vTrim = String_Trim(vRaw)
+                        if (String_Length(vTrim) > 0) {
+                            this.ListElemSet("__local_map__", stmt.Name, this.TypeToC(vTrim))
+                        }
+                    }
                 }
             }
             // Emit the declaration — for void* from List.Get(), emit a typed cast
@@ -2193,7 +2206,7 @@ public class CGen {
         let mname  = callee.Name
 
         // Map methods
-        if (mname == "Set" || mname == "Has" || mname == "Size" || mname == "Remove") {
+        if (mname == "Set" || mname == "Has" || mname == "Size" || mname == "Remove" || mname == "Get") {
             if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
                 let vname = callee.Left.Name
                 let vtype = this.LocalTypeGet(vname)
@@ -2213,6 +2226,16 @@ public class CGen {
                     if (mname == "Remove" && ac >= 1) {
                         let k2 = this.EmitExprStr(args.Get(0))
                         return "AmalgameMap_remove(" + vname + ", " + k2 + ")"
+                    }
+                    if (mname == "Get" && ac >= 1) {
+                        let k2 = this.EmitExprStr(args.Get(0))
+                        // Use the recorded value type for `new Map<K,V>()` so
+                        // `m.Get(k)` lowers to `(V)AmalgameMap_get(m, k)`
+                        // instead of `(void*)…`. Falls back to void* when V
+                        // wasn't tracked (e.g. param-passed map).
+                        var castT = this.ListElemGet("__local_map__", vname)
+                        if (String_Length(castT) == 0) { castT = "void*" }
+                        return "(" + castT + ")AmalgameMap_get(" + vname + ", " + k2 + ")"
                     }
                 }
             }
