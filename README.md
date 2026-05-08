@@ -6,7 +6,7 @@ A self-hosted programming language that compiles to C.
 
 [![CI](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml/badge.svg)](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml)
 [![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-success)](src/)
-[![Tests](https://img.shields.io/badge/tests-121%2F121-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-170%2F170-brightgreen)](tests/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
 
@@ -48,7 +48,7 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.3.3**.
+Current version: **v0.3.4**.
 
 ## Language at a glance
 
@@ -112,7 +112,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.3.3
+./amc --version          # amc 0.3.4
 ./tests/run_all_tests.sh
 ```
 
@@ -178,7 +178,7 @@ gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
 - Bitwise operators, compound assignments, pipeline `|>`, range `0..n`
 - Guard clauses: `guard cond else { return }`
 - Decorators (`@inline`, `@deprecated`) mapped to GCC attributes
-- Lambdas (non-capturing for now)
+- Capturing closures (single-param expression-bodied lambdas, since v0.3.4)
 
 Detailed reference: [docs/guide/](docs/guide/).
 
@@ -226,7 +226,7 @@ error[resolver]: Unknown symbol 'someUndefinedThing'
 - **VS Code syntax highlighting** is in [editors/vscode/](editors/vscode/).
   Install with:
   ```bash
-  ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.3.3
+  ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.2.0
   ```
 
 ## Project layout
