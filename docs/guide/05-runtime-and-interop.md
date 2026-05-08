@@ -55,6 +55,40 @@ C symbol names are derived from `Namespace.Class.Method` →
 the same naming scheme; instance methods take `self` as the first
 parameter.
 
+## Closures and higher-order calls
+
+A lambda compiles to a top-level C function plus an
+`AmalgameClosure { fn, env }` value. `_runtime.h` exposes the
+struct and three call wrappers:
+
+```c
+AmalgameClosure_call1(c, arg)
+AmalgameClosure_call2(c, a, b)
+AmalgameClosure_call3(c, a, b, d)
+```
+
+Higher-order `List<T>` methods (`Filter`, `Map`, `Reduce`,
+`ForEach`, `Any`, `All`, `CountIf`) are implemented as static
+inlines in `_runtime.h` that dispatch through `_call1` (or
+`_call2` for `Reduce`'s `(acc, x) → acc` reducer). At the
+Amalgame call site, the CGen emits a GCC compound-statement-
+expression that allocates the env, copies captured locals in,
+and yields a fresh closure:
+
+```c
+AmalgameList_filter(xs, ({
+    LamEnv_0* __env_0 = (LamEnv_0*)code_alloc(sizeof(LamEnv_0));
+    __env_0->_n = n;             /* one line per capture */
+    AmalgameClosure_new((void*)lam_0_fn, __env_0);
+}))
+```
+
+Lambda items / args / results are all `void*` boxed at the C
+ABI boundary; the call site unboxes via `(i64)(intptr_t)…` for
+the i64 shape. Non-int signatures (e.g. a lambda returning a
+`code_string`) need the lambda-typing layer that's tracked for
+the next release.
+
 ## Calling Amalgame from C
 
 Compile your library with `--lib` and link the `.o`:
