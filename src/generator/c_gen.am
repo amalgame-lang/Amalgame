@@ -2442,8 +2442,13 @@ public class CGen {
             return this.TypeToC(inner) + "*"
         }
         if (String_EndsWith(t, "?")) {
+            // The `?` is purely a typechecker concern (the pointer can be
+            // NULL). All non-primitive Amalgame types lower to a C pointer
+            // already, so `Box?` stays `Box*` rather than becoming `Box**`.
+            // Primitives lose their nullability at the C level — accepted
+            // limitation, matches the pre-`?`-token behaviour.
             let inner = String_Substring(t, 0, String_Length(t) - 1)
-            return this.TypeToC(inner) + "*"
+            return this.TypeToC(inner)
         }
         if (String_StartsWith(t, "List<")) {
             return "AmalgameList*"
