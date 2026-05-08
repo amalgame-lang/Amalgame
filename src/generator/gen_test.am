@@ -92,6 +92,14 @@ public class Program {
         let lintProg = lintPar.Parse()
         Console.WriteError("parsed: linter.am")
 
+        let lspPath  = "./src/lsp.am"
+        let lspSrc   = File.ReadAll(lspPath)
+        let lspLex   = new Lexer(lspSrc, lspPath)
+        let lspToks  = lspLex.Tokenize()
+        let lspPar   = new Parser(lspToks)
+        let lspProg  = lspPar.Parse()
+        Console.WriteError("parsed: lsp.am")
+
         let mainPath = "./src/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
@@ -122,6 +130,7 @@ public class Program {
         gen6.AddFilePass1(rvrProg)
         gen6.AddFilePass1(tckProg)
         gen6.AddFilePass1(lintProg)
+        gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         Console.WriteError("gen6: pass1 done, starting pass2")
@@ -136,6 +145,7 @@ public class Program {
         gen6.AddFilePass2(rvrProg)
         gen6.AddFilePass2(tckProg)
         gen6.AddFilePass2(lintProg)
+        gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
         // Emit the C entry point that boots Amalgame's Program.Main.
