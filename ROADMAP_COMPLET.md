@@ -215,12 +215,20 @@ fix.
 - [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
       Vala one in `archive/vala-bootstrap/src/pkg/`).
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
+<<<<<<< Updated upstream
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
       didClose, Full sync), and `publishDiagnostics` push on every
       did{Open,Change}. Diagnostics merge resolver + typechecker
       errors, range covers the whole token. Hover / completion /
       goto-def are out of scope for v1.
+=======
+      over stdio JSON-RPC. Implements lifecycle, document state
+      (didOpen / didChange / didClose, Full sync), and
+      `publishDiagnostics` push. Diagnostics merge resolver +
+      typechecker errors, range covers the whole token. Hover /
+      completion / goto-def out of scope for v1.
+>>>>>>> Stashed changes
 - [x] **VS Code LSP client** (v0.3.4) — `editors/vscode/extension.js`
       spawns `amc lsp` via `vscode-languageclient`. Configurable
       via `amalgame.serverPath` and `amalgame.enableLsp`.
