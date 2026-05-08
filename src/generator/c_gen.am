@@ -635,6 +635,16 @@ public class CGen {
         }
         // method call returning a known type — check callee
         if (k == NodeKind.CALL) {
+            // Higher-order list calls (Filter/Map return AmalgameList*).
+            // Detect via the receiver method name on the MEMBER node so
+            // we don't have to round-trip through EmitCalleeStr (which
+            // builds a String for non-stdlib calls).
+            if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER) {
+                let mname = expr.Left.Name
+                if (mname == "Filter" || mname == "Map") { return "AmalgameList*" }
+                if (mname == "Any" || mname == "All")     { return "code_bool" }
+                if (mname == "CountIf")                   { return "i64" }
+            }
             if (expr.Left != null) {
                 let calleeStr = this.EmitCalleeStr(expr.Left)
                 if (calleeStr == "AmalgameMap_has" || calleeStr == "AmalgameMap_remove" || calleeStr == "AmalgameSet_contains" || calleeStr == "AmalgameSet_remove" || calleeStr == "AmalgameSet_add") { return "code_bool" }
@@ -1910,6 +1920,21 @@ public class CGen {
                             this.TrackGenericLocal(stmt.Name, retRaw)
                         }
                     }
+                    // Higher-order list methods (lambda v2.5): the
+                    // returned list inherits the element type of the
+                    // receiver. `xs: List<int>` → `xs.Filter(...)` is
+                    // also `List<int>`, so `.Get(i)` lowers to a
+                    // `(i64)…` cast instead of `(void*)…`.
+                    let mname = callee.Name
+                    if (mname == "Filter" || mname == "Map") {
+                        if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+                            let recvName = callee.Left.Name
+                            let recvElem = this.ListElemGet("__local__", recvName)
+                            if (String_Length(recvElem) > 0) {
+                                this.ListElemSet("__local__", stmt.Name, recvElem)
+                            }
+                        }
+                    }
                 }
             }
             // Emit the declaration — for void* from List.Get(), emit a typed cast
@@ -2539,7 +2564,7 @@ public class CGen {
             }
         }
 
-        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve") { return "" }
+        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve" && mname != "Filter" && mname != "Map" && mname != "Reduce" && mname != "ForEach" && mname != "Any" && mname != "All" && mname != "CountIf") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -2666,7 +2691,106 @@ public class CGen {
                 return "AmalgameList_removeAt(" + listExpr + ", " + arg0 + ")"
             }
         }
+        // ── Higher-order methods (lambda v2.5) ──────────
+        // Each lambda argument is emitted as an inline GCC compound
+        // statement expression that allocates the env, copies captures
+        // in, and yields a fresh AmalgameClosure*. The runtime helpers
+        // (AmalgameList_filter / _map / _reduce / _forEach) expect the
+        // closure as their last argument.
+        if (mname == "Filter") {
+            let argc = callExpr.Args.Count()
+            if (argc != 1) { return "" }
+            let lamStr = this.EmitClosureArg(callExpr.Args.Get(0))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "AmalgameList_filter(" + listExpr + ", " + lamStr + ")"
+        }
+        if (mname == "Map") {
+            let argc = callExpr.Args.Count()
+            if (argc != 1) { return "" }
+            let lamStr = this.EmitClosureArg(callExpr.Args.Get(0))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "AmalgameList_map(" + listExpr + ", " + lamStr + ")"
+        }
+        if (mname == "ForEach") {
+            let argc = callExpr.Args.Count()
+            if (argc != 1) { return "" }
+            let lamStr = this.EmitClosureArg(callExpr.Args.Get(0))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "AmalgameList_forEach(" + listExpr + ", " + lamStr + ")"
+        }
+        if (mname == "Reduce") {
+            // Two-arg form: xs.Reduce(init, (acc, x) => …)
+            let argc = callExpr.Args.Count()
+            if (argc != 2) { return "" }
+            let initStr = this.EmitExprStr(callExpr.Args.Get(0))
+            let lamStr  = this.EmitClosureArg(callExpr.Args.Get(1))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "(i64)(intptr_t)AmalgameList_reduce(" + listExpr + ", (void*)(intptr_t)(" + initStr + "), " + lamStr + ")"
+        }
+        if (mname == "Any") {
+            let argc = callExpr.Args.Count()
+            if (argc != 1) { return "" }
+            let lamStr = this.EmitClosureArg(callExpr.Args.Get(0))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "AmalgameList_any(" + listExpr + ", " + lamStr + ")"
+        }
+        if (mname == "All") {
+            let argc = callExpr.Args.Count()
+            if (argc != 1) { return "" }
+            let lamStr = this.EmitClosureArg(callExpr.Args.Get(0))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "AmalgameList_all(" + listExpr + ", " + lamStr + ")"
+        }
+        if (mname == "CountIf") {
+            let argc = callExpr.Args.Count()
+            if (argc != 1) { return "" }
+            let lamStr = this.EmitClosureArg(callExpr.Args.Get(0))
+            if (String_Length(lamStr) == 0) { return "" }
+            return "AmalgameList_countIf(" + listExpr + ", " + lamStr + ")"
+        }
         return ""
+    }
+
+    // ── Closure-argument emission (lambda v2.5) ──────
+    // Higher-order calls accept either an inline lambda (METHOD_DECL
+    // tagged "__lambda__"), already assigned an id by EmitLambdaTopLevels,
+    // or a local variable already typed AmalgameClosure*. Returns "" when
+    // we can't produce a closure (caller bails out and emits the call
+    // through the regular path).
+    private string EmitClosureArg(AstNode arg) {
+        if (arg == null) { return "" }
+        if (arg.Kind == NodeKind.METHOD_DECL && arg.Name == "__lambda__") {
+            return this.EmitLambdaAsClosure(arg)
+        }
+        if (arg.Kind == NodeKind.IDENTIFIER) {
+            let t = this.LocalTypeGet(arg.Name)
+            if (t == "AmalgameClosure*") { return arg.Name }
+        }
+        return ""
+    }
+
+    // GCC compound statement expression: allocate the env, copy each
+    // captured local in, then yield AmalgameClosure_new(...). Single-line
+    // emission so the parent call site can drop it as one C expression.
+    private string EmitLambdaAsClosure(AstNode lam) {
+        let id      = lam.Str2
+        let envName = "LamEnv_" + id
+        let fnName  = "lam_" + id + "_fn"
+        let envVar  = "__env_" + id
+        let cn: int = lam.Args.Count()
+        var s = "({ " + envName + "* " + envVar + " = (" + envName + "*)code_alloc(sizeof(" + envName + ")); "
+        for i in 0..cn {
+            s = s + this.EmitLambdaCaptureCopy(envVar, lam.Args.Get(i))
+        }
+        s = s + "AmalgameClosure_new((void*)" + fnName + ", " + envVar + "); })"
+        return s
+    }
+
+    // Helper exists separately so `cap.Name` is read through a typed
+    // parameter — chained `.Get(i).Name` erases to void* in the
+    // emitted C and breaks the access otherwise.
+    private string EmitLambdaCaptureCopy(string envVar, AstNode cap) {
+        return envVar + "->_" + cap.Name + " = " + cap.Name + "; "
     }
 
     private string EmitCalleeStr(AstNode callee) {

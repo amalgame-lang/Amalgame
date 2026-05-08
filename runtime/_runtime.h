@@ -233,28 +233,77 @@ static inline void File_WriteLines(const char* path, AmalgameList* lines) {
     fclose(f);
 }
 
+/* ── Capturing closures (forward — full helpers below) ──
+   The collection higher-order helpers a few lines down dispatch
+   through AmalgameClosure_callN, so the closure type and the
+   `_call1` / `_call2` wrappers must be in scope here. The full
+   commentary block lives further down with the rest of the
+   closure runtime. */
+
+typedef struct AmalgameClosure {
+    void* fn;
+    void* env;
+} AmalgameClosure;
+
+typedef void* (*AmalgameClosure1Fn)(void*, void*);
+typedef void* (*AmalgameClosure2Fn)(void*, void*, void*);
+typedef void* (*AmalgameClosure3Fn)(void*, void*, void*, void*);
+
+static inline AmalgameClosure* AmalgameClosure_new(void* fn, void* env) {
+    AmalgameClosure* c = (AmalgameClosure*) code_alloc(sizeof(AmalgameClosure));
+    c->fn  = fn;
+    c->env = env;
+    return c;
+}
+
+static inline void* AmalgameClosure_call1(AmalgameClosure* c, void* arg) {
+    return ((AmalgameClosure1Fn)c->fn)(c->env, arg);
+}
+
+static inline void* AmalgameClosure_call2(AmalgameClosure* c, void* a, void* b) {
+    return ((AmalgameClosure2Fn)c->fn)(c->env, a, b);
+}
+
+static inline void* AmalgameClosure_call3(AmalgameClosure* c, void* a, void* b, void* d) {
+    return ((AmalgameClosure3Fn)c->fn)(c->env, a, b, d);
+}
+
 /* ── Collection helpers (lambda-compatible) ── */
 
-typedef void* (*AmalgamePredicate)(void*);
-typedef void  (*AmalgameAction)(void*);
+/* Closure-aware higher-order helpers (since v0.3.6).
+   These all dispatch through AmalgameClosure_callN so the captured
+   environment of a lambda is threaded through. Items / accumulator /
+   result are all `void*` boxed; the caller's CGen unbox via
+   `(i64)(intptr_t)…` at the call site. */
 
-static inline void AmalgameList_forEach(AmalgameList* l, AmalgameAction fn) {
+static inline void AmalgameList_forEach(AmalgameList* l, AmalgameClosure* fn) {
     for (int i = 0; i < l->size; i++)
-        fn(l->data[i]);
+        AmalgameClosure_call1(fn, l->data[i]);
 }
 
-static inline AmalgameList* AmalgameList_where(AmalgameList* l, AmalgamePredicate fn) {
+static inline AmalgameList* AmalgameList_filter(AmalgameList* l, AmalgameClosure* fn) {
     AmalgameList* result = AmalgameList_new();
     for (int i = 0; i < l->size; i++)
-        if (fn(l->data[i])) AmalgameList_add(result, l->data[i]);
+        if ((intptr_t)AmalgameClosure_call1(fn, l->data[i]))
+            AmalgameList_add(result, l->data[i]);
     return result;
 }
 
-static inline AmalgameList* AmalgameList_select(AmalgameList* l, AmalgamePredicate fn) {
+static inline AmalgameList* AmalgameList_map(AmalgameList* l, AmalgameClosure* fn) {
     AmalgameList* result = AmalgameList_new();
     for (int i = 0; i < l->size; i++)
-        AmalgameList_add(result, fn(l->data[i]));
+        AmalgameList_add(result, AmalgameClosure_call1(fn, l->data[i]));
     return result;
+}
+
+/* Two-arg reducer: acc, item → new acc. Initial accumulator is
+   passed boxed (void*); the caller unboxes the return at the call
+   site. */
+static inline void* AmalgameList_reduce(AmalgameList* l, void* init, AmalgameClosure* fn) {
+    void* acc = init;
+    for (int i = 0; i < l->size; i++)
+        acc = AmalgameClosure_call2(fn, acc, l->data[i]);
+    return acc;
 }
 
 static inline void* AmalgameList_first(AmalgameList* l) {
@@ -370,35 +419,9 @@ static inline void _am_throw(void* val, code_string type,
    v2 supports arities 1, 2, 3 — covers single-param, predicate-style
    ((acc,x) => …, (a,b) => …), and reducer/sorter-style lambdas. arg
    and result are all void* (boxed); the call site casts back to the
-   right type.
+   right type. The struct, typedefs, and `_callN` wrappers are
+   declared up at the top of the file so the collection higher-order
+   helpers (`AmalgameList_filter` & co.) can use them.
 */
-
-typedef struct AmalgameClosure {
-    void* fn;
-    void* env;
-} AmalgameClosure;
-
-typedef void* (*AmalgameClosure1Fn)(void*, void*);
-typedef void* (*AmalgameClosure2Fn)(void*, void*, void*);
-typedef void* (*AmalgameClosure3Fn)(void*, void*, void*, void*);
-
-static inline AmalgameClosure* AmalgameClosure_new(void* fn, void* env) {
-    AmalgameClosure* c = (AmalgameClosure*) code_alloc(sizeof(AmalgameClosure));
-    c->fn  = fn;
-    c->env = env;
-    return c;
-}
-
-static inline void* AmalgameClosure_call1(AmalgameClosure* c, void* arg) {
-    return ((AmalgameClosure1Fn)c->fn)(c->env, arg);
-}
-
-static inline void* AmalgameClosure_call2(AmalgameClosure* c, void* a, void* b) {
-    return ((AmalgameClosure2Fn)c->fn)(c->env, a, b);
-}
-
-static inline void* AmalgameClosure_call3(AmalgameClosure* c, void* a, void* b, void* d) {
-    return ((AmalgameClosure3Fn)c->fn)(c->env, a, b, d);
-}
 
 #endif /* CODE_RUNTIME_H */
