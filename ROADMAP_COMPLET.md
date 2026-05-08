@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 145/145 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 147/147 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -78,7 +78,7 @@ TcpClient, UdpSocket, Args, Exit. Documented in [docs/guide/04-stdlib.md](docs/g
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 145/145 tests in CI under `./amc` (83 core + 50 stdlib + 12 fmt),
+- 147/147 tests in CI under `./amc` (85 core + 50 stdlib + 12 fmt),
   with no SKIPs — every sample compiles under the self-hosted compiler.
 
 ---
@@ -105,10 +105,13 @@ In rough order of usefulness × effort:
       `let m = new Map<K,V>()` via `ListElemSet("__local_map__", m, V)`
       → `m.Get(k)` lowers to `(V)AmalgameMap_get(m, k)`. `Map.Get` is
       now wired in the dispatch (it wasn't before).
-      Still missing: `Set<T>`, generic propagation through method
-      params/returns, and TypeChecker awareness of element types
-      (today the inference happens at codegen via the cast-extraction
-      heuristic in VAR_DECL).
+      Method params `List<T>` / `Map<K,V>` also seed the elem-type
+      table on entry, so `xs.Get(i)` inside the body of a function
+      taking `List<int>` returns `int`.
+      Still missing: propagation through return values
+      (`let xs = MakeList()` doesn't yet know `xs`'s elem type), and
+      TypeChecker awareness of element types (the inference happens
+      at codegen via the cast-extraction heuristic in VAR_DECL).
 - [ ] **Generic interfaces** (`IComparable<T>`) — follows from generic
       inference. Modest extra work once that's in.
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
