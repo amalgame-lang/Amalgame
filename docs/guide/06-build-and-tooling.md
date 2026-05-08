@@ -166,11 +166,37 @@ prints the SHA to copy.
 ## Editor support
 
 `editors/vscode/` is a complete VS Code extension (TextMate grammar,
-language configuration, README). Install for development:
+language configuration, LSP client, README). Install for development:
 
 ```bash
 ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.1.0
 # Reload window: Ctrl+Shift+P → Developer: Reload Window
 ```
 
-LSP is on the roadmap (chapter 7).
+The extension spawns `amc lsp` on `.am` files via stdio JSON-RPC.
+Point it at your local build by setting in your VS Code settings:
+
+```json
+"amalgame.serverPath": "/abs/path/to/Amalgame/amc"
+```
+
+The LSP server (since v0.3.4 for diagnostics, v0.3.5 for hover +
+completion) currently provides:
+
+- **Diagnostics** — resolver + typechecker errors published on
+  every `didOpen` / `didChange`, with the offending token
+  underlined.
+- **Hover** — Markdown tooltip showing the inferred type of the
+  identifier under the cursor (`name: type`). `null` when the
+  cursor isn't on a typed expression.
+- **Completion** — global symbol list (built-in types,
+  functions, user classes / enums) with `CompletionItemKind`
+  hints. The `.` trigger is reserved for v2.5 member completion
+  (`obj.<cursor>` narrowed to the receiver's type).
+
+`amc lsp` runs in stdio mode by default. Manually drive it for
+debugging via:
+
+```bash
+echo -e 'Content-Length: 41\r\n\r\n{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./amc lsp
+```
