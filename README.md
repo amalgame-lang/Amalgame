@@ -209,6 +209,15 @@ error[resolver]: Unknown symbol 'someUndefinedThing'
   while preserving comments. Idempotent on every source in this
   repository. Run it as `amc fmt file.am` (stdout) or
   `amc fmt -w file.am` (rewrite in place).
+- **`amc --lint file.am`** — static analysis: unreachable code,
+  unused locals (prefix `_` to silence), and shadowed names.
+  Warnings are non-fatal and don't bump the exit code.
+- **`amc test [<dir>]`** — discovers `*_test.am` under `<dir>`
+  (default `.`), compiles + runs each, and aggregates `[PASS]`,
+  `[FAIL]`, `[SKIP]` lines from their stdout. Each test file is a
+  normal Amalgame program with a `Main` that prints tag lines per
+  case; no framework required. Exits non-zero if any case FAILs
+  or any file fails to compile.
 - **VS Code syntax highlighting** is in [editors/vscode/](editors/vscode/).
   Install with:
   ```bash
@@ -228,7 +237,7 @@ src/                  Compiler, written in Amalgame
 ├── formatter/          formatter.am
 ├── typechecker.am
 ├── diagnostics.am
-├── main.am             CLI: amc <files> | amc fmt <files>
+├── main.am             CLI: amc <files> | amc fmt | amc test
 └── amc_lib.c           Self-hosted bundle (generated)
 
 runtime/              C runtime (bdwgc, strings, IO, collections, net)
