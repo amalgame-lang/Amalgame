@@ -1,0 +1,20 @@
+namespace App
+
+// Exercises trailing-comment preservation in `amc fmt`. Every commented
+// line below is a single-line construct followed by `// …`; the
+// formatter must keep each comment on its source line round-trip.
+public class Program {
+    public static int Pick(int n) {
+        let threshold = 10  // arbitrary cutoff
+        if (n > threshold) {  // big bucket
+            return 2
+        }
+        return 1  // small bucket
+    }
+
+    public static void Main(string[] args) {
+        let x = Program.Pick(5)
+        let y = Program.Pick(42)
+        Console.WriteLine("x={x} y={y}")  // expect: x=1 y=2
+    }
+}
