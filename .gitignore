@@ -5,6 +5,13 @@ _build/
 *.so
 *.a
 
+# ── Release artefacts ──
+# release.yml stages binaries here at tag time; nothing in this folder
+# should ever be committed (a stray amc-0.3.0-linux-x86_64.tar.gz used
+# to be tracked here and was bleeding into newer releases via the
+# `dist/*.tar.gz` upload glob).
+dist/
+
 # ── Generated C intermediates ──
 # (amc_lib.c, amc_bootstrap_lib.c, *_bundle_bootstrap.c, *.am_bootstrap.c are tracked)
 *.c.gen
