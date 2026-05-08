@@ -1,0 +1,37 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Generic inference now propagates through method parameters: a function
+// that takes `List<T>` or `Map<K,V>` can call `.Get(...)` on the param
+// and the result is typed T / V — no manual cast needed.
+public class Program {
+    public static int SumList(List<int> xs) {
+        let n = xs.Count()
+        var total = 0
+        for i in 0..n {
+            total = total + xs.Get(i)
+        }
+        return total
+    }
+
+    public static string Greet(Map<string, string> labels, string lang) {
+        return labels.Get(lang) + " !"
+    }
+
+    public static void Main(string[] args) {
+        let xs = new List<int>()
+        xs.Add(1)
+        xs.Add(2)
+        xs.Add(3)
+        xs.Add(4)
+        let total = Program.SumList(xs)
+        Console.WriteLine("sum: {total}")
+
+        let labels = new Map<string, string>()
+        labels.Set("fr", "bonjour")
+        labels.Set("en", "hello")
+        let g = Program.Greet(labels, "fr")
+        Console.WriteLine("greet: {g}")
+    }
+}

@@ -253,6 +253,8 @@ run_test "generic infer int"  "$SAMPLES/generic_inference.am"  "total: 60"
 run_test "generic infer str"  "$SAMPLES/generic_inference.am"  "combined: Arthus et Bastien"
 run_test "map infer int"      "$SAMPLES/map_inference.am"      "total: 141"
 run_test "map infer str"      "$SAMPLES/map_inference.am"      "combined: bonjour / hello"
+run_test "param infer list"   "$SAMPLES/params_inference.am"   "sum: 10"
+run_test "param infer map"    "$SAMPLES/params_inference.am"   "greet: bonjour !"
 run_test "closures"          "$SAMPLES/closures.am"     "Counter = 10"
 
 # ── Namespace ──────────────────────────────────────────

@@ -1250,11 +1250,32 @@ public class CGen {
             // Suppress -Wunused-parameter if self is not referenced
             this.Out.EmitLine("(void)self;")
         }
-        // Seed with parameters and suppress unused warnings
+        // Seed with parameters and suppress unused warnings.
+        // Generic params (List<T>, Map<K,V>) also seed the elem-type
+        // table so `xs.Get(i)` / `m.Get(k)` inside the body lower with
+        // a typed cast instead of falling back to void*.
         let pcount = method.Params.Count()
         for i in 0..pcount {
             let p = method.Params.Get(i)
             this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
+            let praw = p.Str
+            if (String_StartsWith(praw, "List<") && String_EndsWith(praw, ">")) {
+                let inner = String_Substring(praw, 5, String_Length(praw) - 6)
+                if (String_Length(inner) > 0) {
+                    this.ListElemSet("__local__", p.Name, this.TypeToC(inner))
+                }
+            }
+            if (String_StartsWith(praw, "Map<") && String_EndsWith(praw, ">")) {
+                let inner = String_Substring(praw, 4, String_Length(praw) - 5)
+                let comma = String_IndexOf(inner, ",")
+                if (comma > 0) {
+                    let vRaw  = String_Substring(inner, comma + 1, String_Length(inner) - comma - 1)
+                    let vTrim = String_Trim(vRaw)
+                    if (String_Length(vTrim) > 0) {
+                        this.ListElemSet("__local_map__", p.Name, this.TypeToC(vTrim))
+                    }
+                }
+            }
             this.Out.EmitLine("(void)" + p.Name + ";")
         }
         if (method.Body != null) {
