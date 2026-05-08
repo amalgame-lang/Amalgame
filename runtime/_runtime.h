@@ -330,4 +330,35 @@ static inline void _am_throw(void* val, code_string type,
 /* Get message from thrown object — tries .Message field */
 #define _AM_EX_MSG() (_am_ex.message)
 
+/* ================================================================
+   Capturing closures
+   ================================================================
+   A lambda value is a pair (fn, env): a function pointer and a
+   heap-allocated env struct holding captured locals. The CGen emits
+   one struct + one top-level function per lambda, then allocates
+   the env at the creation site and bundles them in an AmalgameClosure.
+
+   Arity 1 is enough for v1 — single-param lambdas are the only form
+   the parser produces today. arg and result are both void* (boxed);
+   the call site casts back to the right type.
+*/
+
+typedef struct AmalgameClosure {
+    void* fn;
+    void* env;
+} AmalgameClosure;
+
+typedef void* (*AmalgameClosure1Fn)(void*, void*);
+
+static inline AmalgameClosure* AmalgameClosure_new(void* fn, void* env) {
+    AmalgameClosure* c = (AmalgameClosure*) code_alloc(sizeof(AmalgameClosure));
+    c->fn  = fn;
+    c->env = env;
+    return c;
+}
+
+static inline void* AmalgameClosure_call1(AmalgameClosure* c, void* arg) {
+    return ((AmalgameClosure1Fn)c->fn)(c->env, arg);
+}
+
 #endif /* CODE_RUNTIME_H */

@@ -1,0 +1,36 @@
+// Capturing closures (v1): single-param `x => expr` lambdas, called
+// as values. The lambda captures locals from the enclosing scope by
+// value; the runtime allocates a per-lambda env struct (LamEnv_N)
+// and bundles it with the generated function pointer in an
+// AmalgameClosure { fn, env } pair.
+//
+// v1 boxes both the argument and the result via (intptr_t), so the
+// effective signature is (i64) -> i64. Other shapes will need
+// lambda-typing (future work).
+
+class Program {
+    public static void Main() {
+        // Plain lambda — no capture.
+        let triple = x => x * 3
+        Console.WriteLine("triple(7) = " + String_FromInt(triple(7)))
+
+        // Single capture by value: `n` is snapshotted at the point
+        // where `addN` is created, not at call time.
+        let n   = 100
+        let addN = x => x + n
+        Console.WriteLine("addN(5) = " + String_FromInt(addN(5)))
+
+        // Multi-capture: the env struct holds two slots.
+        let a = 2
+        let b = 5
+        let combine = x => (x * a) + b
+        Console.WriteLine("combine(10) = " + String_FromInt(combine(10)))
+
+        // Capture-by-value semantics: rebinding `m` after creating
+        // the closure does NOT affect what the closure sees.
+        var m = 1
+        let snap = x => x + m
+        m = 999
+        Console.WriteLine("snap(0) = " + String_FromInt(snap(0)))
+    }
+}
