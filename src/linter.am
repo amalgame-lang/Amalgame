@@ -7,10 +7,23 @@ import Amalgame.String
 //  linter.am  —  amc --lint: static analysis on the AST
 // ═══════════════════════════════════════════════════════
 //
-// MVP scope: warnings for statements that come after a terminator
-// (`return`, `throw`, `break`, `continue`) in the same block — i.e.
-// unreachable code. Future passes can layer unused-locals, shadowed
-// names, etc. on top of the same skeleton.
+// Coverage:
+//   - unreachable code after `return` / `throw` / `break` / `continue`
+//   - unused locals (`let x = …` never read; prefix `_` silences)
+//   - shadowed bindings (a `let` reuses a name visible in an
+//     enclosing scope, including a method param)
+//
+// Scope model: a flat `LocalNames` array with a stack of start
+// indices in `ScopeStarts` (same layout the resolver/typechecker
+// use). Use marking is recorded into an append-only `UsedNames`
+// list; each local stores the `UsedNames.Count()` snapshot taken
+// at its declaration so `PopScope` can ask "did this name appear
+// in UsedNames after I was declared?". This sidesteps the lack of
+// a `List<T>.Set` op without paying for per-marker mutation.
+//
+// Method params and lambda params are tracked in scope so they
+// participate in shadow detection, but we never warn that they
+// are unused — `_param` would be unergonomic for the common case.
 
 public class LintWarning {
     public Message:  string
@@ -35,10 +48,33 @@ public class LintWarning {
 public class Linter {
     public  Warnings: List<LintWarning>
     private Filename: string
+    // ── Scope state ──────────────────────────────────────
+    // Parallel lists, one entry per live local. Popped in
+    // LIFO order at PopScope.
+    private LocalNames:    List<string>
+    private LocalLines:    List<int>
+    private LocalCols:     List<int>
+    private LocalIsParam:  List<bool>
+    // For each local, the UsedNames count at its declaration
+    // — anything appended after this index is a candidate use.
+    private LocalUseSnap:  List<int>
+    // Stack of LocalNames sizes captured at each PushScope.
+    private ScopeStarts:   List<int>
+    // Append-only list of identifier names seen as reads. Reset
+    // to a fresh list at the start of every method we lint, to
+    // bound memory and keep snapshots meaningful per-method.
+    private UsedNames:     List<string>
 
     public Linter() {
-        this.Warnings = new List<LintWarning>()
-        this.Filename = ""
+        this.Warnings    = new List<LintWarning>()
+        this.Filename    = ""
+        this.LocalNames    = new List<string>()
+        this.LocalLines    = new List<int>()
+        this.LocalCols     = new List<int>()
+        this.LocalIsParam  = new List<bool>()
+        this.LocalUseSnap  = new List<int>()
+        this.ScopeStarts   = new List<int>()
+        this.UsedNames     = new List<string>()
     }
 
     public void Lint(AstNode prog) {
@@ -72,29 +108,39 @@ public class Linter {
             let members = decl.Children.Count()
             for i in 0..members {
                 let m = decl.Children.Get(i)
-                if (m.Kind == NodeKind.METHOD_DECL) {
-                    if (m.Body != null) { this.LintBlock(m.Body) }
-                }
+                if (m.Kind == NodeKind.METHOD_DECL) { this.LintMethod(m) }
             }
             return
         }
         if (k == NodeKind.METHOD_DECL) {
-            if (decl.Body != null) { this.LintBlock(decl.Body) }
+            this.LintMethod(decl)
             return
         }
         if (k == NodeKind.ENUM_DECL) {
             let methods = decl.Children.Count()
             for i in 0..methods {
                 let m = decl.Children.Get(i)
-                if (m.Kind == NodeKind.METHOD_DECL) {
-                    if (m.Body != null) { this.LintBlock(m.Body) }
-                }
+                if (m.Kind == NodeKind.METHOD_DECL) { this.LintMethod(m) }
             }
         }
     }
 
+    private void LintMethod(AstNode method) {
+        // Reset usage state per method so snapshots are local.
+        this.UsedNames = new List<string>()
+        this.PushScope()
+        let pn = method.Params.Count()
+        for i in 0..pn {
+            let p = method.Params.Get(i)
+            this.DeclareLocal(p.Name, p.Line, p.Column, true)
+        }
+        if (method.Body != null) { this.LintBlock(method.Body) }
+        this.PopScope()
+    }
+
     private void LintBlock(AstNode block) {
         if (block == null) { return }
+        this.PushScope()
         let n = block.Children.Count()
         var dead = false
         for i in 0..n {
@@ -102,11 +148,13 @@ public class Linter {
             if (dead) {
                 // Only warn on the first dead stmt to avoid noise.
                 this.Warn("unreachable code after `return` / `throw` / `break` / `continue`", stmt)
+                this.PopScope()
                 return
             }
             this.LintStmt(stmt)
             if (this.IsTerminator(stmt)) { dead = true }
         }
+        this.PopScope()
     }
 
     private bool IsTerminator(AstNode stmt) {
@@ -118,18 +166,65 @@ public class Linter {
         return false
     }
 
-    // Recurse into nested blocks so we catch unreachable code in
-    // inner if / while / for / try bodies too.
+    // ── Statement visitor ────────────────────────────────
+    // For each statement kind we (a) walk the contained
+    // expressions through LintExpr (so identifier reads mark
+    // their target), and (b) recurse into nested blocks so
+    // both unreachable-code and unused/shadow warnings cover
+    // inner control flow.
     private void LintStmt(AstNode stmt) {
         if (stmt == null) { return }
         let k = stmt.Kind
+        if (k == NodeKind.VAR_DECL) {
+            // Resolve RHS first so `let x = x + 1` doesn't see itself.
+            if (stmt.Left != null) { this.LintExpr(stmt.Left) }
+            this.DeclareLocal(stmt.Name, stmt.Line, stmt.Column, false)
+            return
+        }
+        if (k == NodeKind.ASSIGN) {
+            // Treat both sides as reads — keeps MVP simple and
+            // avoids false positives for var-only counters.
+            if (stmt.Left  != null) { this.LintExpr(stmt.Left) }
+            if (stmt.Right != null) { this.LintExpr(stmt.Right) }
+            return
+        }
+        if (k == NodeKind.RETURN_STMT) {
+            if (stmt.Left != null) { this.LintExpr(stmt.Left) }
+            return
+        }
+        if (k == NodeKind.THROW_STMT) {
+            if (stmt.Left != null) { this.LintExpr(stmt.Left) }
+            return
+        }
         if (k == NodeKind.IF_STMT) {
+            // match-as-statement reuses IF_STMT with Name="__match__".
+            if (stmt.Name == "__match__") {
+                if (stmt.Left != null) { this.LintExpr(stmt.Left) }
+                let an = stmt.Children.Count()
+                for ai in 0..an {
+                    let arm = stmt.Children.Get(ai)
+                    if (arm.Body != null) { this.LintBlockOrStmt(arm.Body) }
+                }
+                return
+            }
+            if (stmt.Cond != null) { this.LintExpr(stmt.Cond) }
             if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
             if (stmt.Else != null) { this.LintBlockOrStmt(stmt.Else) }
             return
         }
-        if (k == NodeKind.WHILE_STMT || k == NodeKind.FOR_IN_STMT) {
+        if (k == NodeKind.WHILE_STMT) {
+            if (stmt.Cond != null) { this.LintExpr(stmt.Cond) }
             if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
+            return
+        }
+        if (k == NodeKind.FOR_IN_STMT) {
+            // Iterable in outer scope; binder lives in a fresh
+            // child scope for the body.
+            if (stmt.Left != null) { this.LintExpr(stmt.Left) }
+            this.PushScope()
+            this.DeclareLocal(stmt.Name, stmt.Line, stmt.Column, false)
+            if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
+            this.PopScope()
             return
         }
         if (k == NodeKind.TRY_STMT) {
@@ -140,11 +235,184 @@ public class Linter {
         }
         if (k == NodeKind.BLOCK) {
             this.LintBlock(stmt)
+            return
+        }
+        // Statement-position expression (e.g. a bare call): walk
+        // it so identifier reads still mark used.
+        if (k == NodeKind.CALL || k == NodeKind.MEMBER || k == NodeKind.BINARY || k == NodeKind.UNARY || k == NodeKind.IDENTIFIER) {
+            this.LintExpr(stmt)
         }
     }
 
     private void LintBlockOrStmt(AstNode n) {
         if (n.Kind == NodeKind.BLOCK) { this.LintBlock(n) } else { this.LintStmt(n) }
+    }
+
+    // ── Expression visitor ───────────────────────────────
+    private void LintExpr(AstNode expr) {
+        if (expr == null) { return }
+        let k = expr.Kind
+        if (k == NodeKind.IDENTIFIER) {
+            // Skip parser placeholders and the wildcard, but mark
+            // every other name — including globals; the snapshot
+            // check at PopScope only fires for known locals.
+            if (expr.Name == "_unknown_") { return }
+            if (expr.Name == "_") { return }
+            this.MarkUsed(expr.Name)
+            return
+        }
+        if (k == NodeKind.BINARY) {
+            if (expr.Left  != null) { this.LintExpr(expr.Left) }
+            if (expr.Right != null) { this.LintExpr(expr.Right) }
+            return
+        }
+        if (k == NodeKind.UNARY) {
+            if (expr.Left != null) { this.LintExpr(expr.Left) }
+            return
+        }
+        if (k == NodeKind.MEMBER) {
+            if (expr.Left != null) { this.LintExpr(expr.Left) }
+            return
+        }
+        if (k == NodeKind.CALL) {
+            if (expr.Left != null) { this.LintExpr(expr.Left) }
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                this.LintExpr(expr.Args.Get(i))
+            }
+            return
+        }
+        if (k == NodeKind.NEW_EXPR) {
+            let argc = expr.Args.Count()
+            for i in 0..argc {
+                this.LintExpr(expr.Args.Get(i))
+            }
+            return
+        }
+        if (k == NodeKind.INDEX_EXPR) {
+            if (expr.Left  != null) { this.LintExpr(expr.Left) }
+            if (expr.Right != null) { this.LintExpr(expr.Right) }
+            return
+        }
+        if (k == NodeKind.LIST_COMP) {
+            // [proj for x in iter (if guard)?]: x is a fresh local
+            // visible to proj and guard only.
+            if (expr.Right != null) { this.LintExpr(expr.Right) }
+            this.PushScope()
+            this.DeclareLocal(expr.Str, expr.Line, expr.Column, false)
+            if (expr.Left != null) { this.LintExpr(expr.Left) }
+            if (expr.Cond != null) { this.LintExpr(expr.Cond) }
+            this.PopScope()
+            return
+        }
+        if (k == NodeKind.ASSIGN) {
+            if (expr.Left  != null) { this.LintExpr(expr.Left) }
+            if (expr.Right != null) { this.LintExpr(expr.Right) }
+            return
+        }
+        if (k == NodeKind.IF_STMT) {
+            // match-as-expression has Name="__match__".
+            if (expr.Name == "__match__") {
+                if (expr.Left != null) { this.LintExpr(expr.Left) }
+                let an = expr.Children.Count()
+                for ai in 0..an {
+                    let arm = expr.Children.Get(ai)
+                    if (arm.Body != null) { this.LintBlockOrStmt(arm.Body) }
+                }
+                return
+            }
+            if (expr.Cond != null) { this.LintExpr(expr.Cond) }
+            if (expr.Body != null) { this.LintBlockOrStmt(expr.Body) }
+            if (expr.Else != null) { this.LintBlockOrStmt(expr.Else) }
+            return
+        }
+        if (k == NodeKind.METHOD_DECL && expr.Name == "__lambda__") {
+            // Lambda body in a fresh scope; param is marked as
+            // a "param" so it's never warned unused, and shadow
+            // detection still fires against enclosing locals.
+            this.PushScope()
+            this.DeclareLocal(expr.Str, expr.Line, expr.Column, true)
+            if (expr.Left != null) { this.LintExpr(expr.Left) }
+            this.PopScope()
+            return
+        }
+        // Literals, this, null — nothing to walk.
+    }
+
+    // ── Scope helpers ────────────────────────────────────
+    private void PushScope() {
+        this.ScopeStarts.Add(this.LocalNames.Count())
+    }
+
+    private void PopScope() {
+        let depth = this.ScopeStarts.Count()
+        if (depth == 0) { return }
+        let mark = this.ScopeStarts.Get(depth - 1)
+        this.ScopeStarts.RemoveAt(depth - 1)
+        // For each local declared in this scope, check whether
+        // its name was read (appeared in UsedNames) at any point
+        // after its declaration. Pop back to `mark` afterwards.
+        while (this.LocalNames.Count() > mark) {
+            let last    = this.LocalNames.Count() - 1
+            let name    = this.LocalNames.Get(last)
+            let line    = this.LocalLines.Get(last)
+            let col     = this.LocalCols.Get(last)
+            let isParam = this.LocalIsParam.Get(last)
+            let snap    = this.LocalUseSnap.Get(last)
+            if (!isParam && !String_StartsWith(name, "_")) {
+                if (!this.UsedAfter(name, snap)) {
+                    let w = new LintWarning("unused local '" + name + "' (prefix with '_' to silence)", this.Filename, line, col)
+                    this.Warnings.Add(w)
+                }
+            }
+            this.LocalNames.RemoveAt(last)
+            this.LocalLines.RemoveAt(last)
+            this.LocalCols.RemoveAt(last)
+            this.LocalIsParam.RemoveAt(last)
+            this.LocalUseSnap.RemoveAt(last)
+        }
+    }
+
+    private void DeclareLocal(string name, int line, int col, bool isParam) {
+        if (this.IsShadowing(name)) {
+            let w = new LintWarning("'" + name + "' shadows an enclosing binding", this.Filename, line, col)
+            this.Warnings.Add(w)
+        }
+        this.LocalNames.Add(name)
+        this.LocalLines.Add(line)
+        this.LocalCols.Add(col)
+        this.LocalIsParam.Add(isParam)
+        this.LocalUseSnap.Add(this.UsedNames.Count())
+    }
+
+    // True iff `name` is declared in any scope strictly outside
+    // the current one.
+    private bool IsShadowing(string name) {
+        let depth = this.ScopeStarts.Count()
+        if (depth == 0) { return false }
+        let curStart = this.ScopeStarts.Get(depth - 1)
+        var i = curStart - 1
+        while (i >= 0) {
+            if (this.LocalNames.Get(i) == name) { return true }
+            i = i - 1
+        }
+        return false
+    }
+
+    private void MarkUsed(string name) {
+        this.UsedNames.Add(name)
+    }
+
+    // True iff `name` appears in UsedNames at any index >= fromIdx.
+    private bool UsedAfter(string name, int fromIdx) {
+        let n = this.UsedNames.Count()
+        var i = fromIdx
+        while (i < n) {
+            let u = this.UsedNames.Get(i)
+            if (u == name) { return true }
+            i = i + 1
+        }
+        return false
     }
 
     private void Warn(string msg, AstNode node) {
