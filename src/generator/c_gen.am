@@ -92,6 +92,11 @@ public class CGen {
     // arguments and propagate them to local elem-type tracking.
     private MethodRetRawNames: List<string>
     private MethodRetRawTypes: List<string>
+    // Lambda numbering — each lambda gets a unique id used to name the
+    // generated env struct (LamEnv_N) and top-level function (lam_N_fn).
+    // Phase A of pass 2 walks the AST, assigns ids, and emits the
+    // top-level definitions before the regular decl loop.
+    private LambdaCounter: int
 
     public CGen() {
         this.Out            = new Emitter()
@@ -109,6 +114,7 @@ public class CGen {
         this.MethodRetTypes = new List<string>()
         this.MethodRetRawNames = new List<string>()
         this.MethodRetRawTypes = new List<string>()
+        this.LambdaCounter     = 0
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -164,11 +170,116 @@ public class CGen {
     }
 
     public void AddFilePass2(AstNode prog) {
+        // Phase A — assign ids and emit env struct + top-level fn for
+        // every lambda in this file, BEFORE any decl bodies that may
+        // reference them. The walker descends into all child/list
+        // fields generically so any lambda position the parser
+        // produces is covered.
+        this.EmitLambdaTopLevels(prog)
+        // Phase B — regular decl emission.
         let decls = prog.Children.Count()
         for j in 0..decls {
             let decl = prog.Children.Get(j)
             this.EmitDecl(decl)
         }
+    }
+
+    // ── Lambda discovery & top-level emission ─────────
+    private void EmitLambdaTopLevels(AstNode node) {
+        if (node == null) { return }
+        // A lambda is a METHOD_DECL with the marker name set by the
+        // parser. Emit its struct + fn now; ids stick on Str2.
+        if (node.Kind == NodeKind.METHOD_DECL && node.Name == "__lambda__") {
+            this.EmitOneLambda(node)
+        }
+        // Recurse into every nullable child and every list. Lambdas
+        // can appear anywhere an expression can — RHS of let, args
+        // of CALL/NEW, branches of if-expr, etc.
+        if (node.Left  != null) { this.EmitLambdaTopLevels(node.Left) }
+        if (node.Right != null) { this.EmitLambdaTopLevels(node.Right) }
+        if (node.Cond  != null) { this.EmitLambdaTopLevels(node.Cond) }
+        if (node.Body  != null) { this.EmitLambdaTopLevels(node.Body) }
+        if (node.Else  != null) { this.EmitLambdaTopLevels(node.Else) }
+        let cn = node.Children.Count()
+        for i in 0..cn {
+            this.EmitLambdaTopLevels(node.Children.Get(i))
+        }
+        let pn = node.Params.Count()
+        for j in 0..pn {
+            this.EmitLambdaTopLevels(node.Params.Get(j))
+        }
+        let an = node.Args.Count()
+        for k in 0..an {
+            this.EmitLambdaTopLevels(node.Args.Get(k))
+        }
+    }
+
+    private void EmitOneLambda(AstNode lam) {
+        // Allocate id and tag the node so the call site finds the same name.
+        let id      = this.LambdaCounter
+        this.LambdaCounter = id + 1
+        let idStr   = String_FromInt(id)
+        lam.Str2    = idStr
+        let envName = "LamEnv_" + idStr
+        let fnName  = "lam_" + idStr + "_fn"
+        // Captures populated by the resolver: each Args entry is an
+        // IDENTIFIER node with Name=captured var, Str=Amalgame type.
+        let cn = lam.Args.Count()
+        // Emit env struct (always, even when empty — keeps the
+        // allocation site uniform).
+        this.Out.EmitLine("typedef struct " + envName + " {")
+        this.Out.Indent_()
+        if (cn == 0) {
+            this.Out.EmitLine("char _empty;")
+        } else {
+            for i in 0..cn {
+                let cap = lam.Args.Get(i)
+                let ct  = this.TypeToC(cap.Str)
+                if (String_Length(ct) == 0 || ct == "void") {
+                    this.Out.EmitLine("void* _" + cap.Name + ";")
+                } else {
+                    this.Out.EmitLine(ct + " _" + cap.Name + ";")
+                }
+            }
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("} " + envName + ";")
+        // Emit top-level fn. Param/result are boxed via void*; v1
+        // assumes (i64) -> i64 — the only shape exercised by tests
+        // today. Extending to other shapes needs lambda-typing.
+        this.Out.EmitLine("static void* " + fnName + "(void* __envRaw, void* __arg) {")
+        this.Out.Indent_()
+        this.Out.EmitLine(envName + "* __env = (" + envName + "*)__envRaw;")
+        this.Out.EmitLine("(void)__env;")
+        this.Out.EmitLine("i64 " + lam.Str + " = (i64)(intptr_t)__arg;")
+        // Unpack captures into local C vars so the body emits naturally.
+        for i in 0..cn {
+            let cap = lam.Args.Get(i)
+            let ct  = this.TypeToC(cap.Str)
+            if (String_Length(ct) == 0 || ct == "void") {
+                this.Out.EmitLine("void* " + cap.Name + " = __env->_" + cap.Name + ";")
+            } else {
+                this.Out.EmitLine(ct + " " + cap.Name + " = __env->_" + cap.Name + ";")
+            }
+            // Make the capture visible to the local-type table while we
+            // emit the body, so identifier lookups inside it pick up
+            // the right C type. We restore "" after.
+            this.LocalTypeSet(cap.Name, ct)
+        }
+        // Param too — the local-type table is consulted by identifier
+        // emission. v1 hardcodes i64 for the param.
+        this.LocalTypeSet(lam.Str, "i64")
+        // Body — emit as a return of the boxed expression.
+        let bodyStr = this.EmitExprStr(lam.Left)
+        this.Out.EmitLine("return (void*)(intptr_t)(" + bodyStr + ");")
+        // Reset local-type entries so subsequent emission isn't polluted.
+        this.LocalTypeSet(lam.Str, "")
+        for i in 0..cn {
+            let cap = lam.Args.Get(i)
+            this.LocalTypeSet(cap.Name, "")
+        }
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
     }
 
     public string FinishMulti() {
@@ -1690,22 +1801,24 @@ public class CGen {
                 return
             }
             // Lambda assignment: let doubler = x => x * 2
+            // The lambda's struct + top-level fn were already emitted
+            // by Phase A (EmitLambdaTopLevels); here we just allocate
+            // the env, copy captured locals into it, and bundle them
+            // into an AmalgameClosure value.
             if (stmt.Left != null && stmt.Left.Kind == NodeKind.METHOD_DECL && stmt.Left.Name == "__lambda__") {
-                let lam = stmt.Left
-                let paramName = lam.Str
-                let bodyStr   = this.EmitExprStr(lam.Left)
-                let fnName    = this.CurrentClass + "_lam_" + stmt.Name
-                // Emit using GCC nested function syntax (supported by GCC as extension)
-                // auto keyword doesn't work for nested functions, use __auto_type workaround
-                // Best approach: just inline the call site
-                // Store lambda as a simple C macro-style via function pointer trick
-                // Since we can't easily do nested functions, emit a global-scope helper before
-                // For now: emit a simple typedef'd function via static at file scope
-                // We'll use a hack: emit before closing brace by buffering
-                // Simple approach: wrap call in a macro
-                this.Out.EmitLine("/* lambda " + stmt.Name + " = " + paramName + " => " + bodyStr + " */")
-                this.Out.EmitLine("#define " + stmt.Name + "(" + paramName + ") (" + bodyStr + ")")
-                this.LocalTypeSet(stmt.Name, "__macro__")
+                let lam     = stmt.Left
+                let id      = lam.Str2
+                let envName = "LamEnv_" + id
+                let fnName  = "lam_" + id + "_fn"
+                let envVar  = "__env_" + id
+                this.Out.EmitLine(envName + "* " + envVar + " = (" + envName + "*) code_alloc(sizeof(" + envName + "));")
+                let cn = lam.Args.Count()
+                for i in 0..cn {
+                    let cap = lam.Args.Get(i)
+                    this.Out.EmitLine(envVar + "->_" + cap.Name + " = " + cap.Name + ";")
+                }
+                this.Out.EmitLine("AmalgameClosure* " + stmt.Name + " = AmalgameClosure_new((void*)" + fnName + ", " + envVar + ");")
+                this.LocalTypeSet(stmt.Name, "AmalgameClosure*")
                 return
             }
             var t = this.TypeToC(stmt.Str)
@@ -2049,6 +2162,20 @@ public class CGen {
             return expr.Str + operand
         }
         if (k == NodeKind.CALL) {
+            // Closure call: callee is a local of type AmalgameClosure*.
+            // v1 expects single-arg, (i64)→i64 — arg is boxed via
+            // intptr_t at the call site, result is unboxed back to i64.
+            if (expr.Left != null && expr.Left.Kind == NodeKind.IDENTIFIER) {
+                let calleeName = expr.Left.Name
+                let calleeType = this.LocalTypeGet(calleeName)
+                if (calleeType == "AmalgameClosure*") {
+                    let argc = expr.Args.Count()
+                    if (argc == 1) {
+                        let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                        return "(i64)(intptr_t)AmalgameClosure_call1(" + calleeName + ", (void*)(intptr_t)(" + arg0 + "))"
+                    }
+                }
+            }
             // Check for AmalgameList method dispatch before generic emit
             let listCall = this.TryEmitListCall(expr)
             if (String_Length(listCall) > 0) { return listCall }
