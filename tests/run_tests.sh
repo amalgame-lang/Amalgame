@@ -419,10 +419,23 @@ lsp_exit='{"jsonrpc":"2.0","method":"exit"}'
 
 lsp_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
 
-run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1}' "$lsp_seq"
+run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1,"hoverProvider":true,"completionProvider":{"triggerCharacters":["."]}}' "$lsp_seq"
 run_lsp_check "lsp: publishDiagnostics" '"method":"textDocument/publishDiagnostics"' "$lsp_seq"
 run_lsp_check "lsp: error in diag"      'thisDoesNotExist'                          "$lsp_seq"
 run_lsp_check "lsp: shutdown reply"     '"id":2,"result":null'                      "$lsp_seq"
+
+# Hover + completion sequence — a well-typed file with a Console
+# call so the typechecker has something to report on. The hover
+# request targets `Console` at line 3, char 8 (0-based, LSP coords).
+lsp_open_ok='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_hover.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let x = 42\n        Console.WriteLine(x)\n    }\n}"}}}'
+lsp_hover='{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"file:///tmp/lsp_hover.am"},"position":{"line":3,"character":8}}}'
+lsp_complete='{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///tmp/lsp_hover.am"},"position":{"line":3,"character":0}}}'
+
+lsp_query_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_ok"; lsp_frame "$lsp_hover"; lsp_frame "$lsp_complete"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+run_lsp_check "lsp: hover has contents"   '"id":3,"result":{"contents"'                  "$lsp_query_seq"
+run_lsp_check "lsp: completion has items" '"id":4,"result":{"isIncomplete":false,"items"' "$lsp_query_seq"
+run_lsp_check "lsp: completion lists Console" '"label":"Console"'                        "$lsp_query_seq"
 
 # ── Namespace ──────────────────────────────────────────
 echo ""

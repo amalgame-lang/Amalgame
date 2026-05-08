@@ -66,6 +66,16 @@ public class LspServer {
             } else if (method == "textDocument/didClose") {
                 let uri = LspServer.JsonStr(body, "uri")
                 this.RemoveDoc(uri)
+            } else if (method == "textDocument/hover") {
+                let id   = LspServer.JsonInt(body, "id")
+                let uri  = LspServer.JsonStr(body, "uri")
+                let line = LspServer.JsonInt(body, "line")
+                let chr  = LspServer.JsonInt(body, "character")
+                this.HandleHover(id, uri, line, chr)
+            } else if (method == "textDocument/completion") {
+                let id  = LspServer.JsonInt(body, "id")
+                let uri = LspServer.JsonStr(body, "uri")
+                this.HandleCompletion(id, uri)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -104,6 +114,18 @@ public class LspServer {
                 return
             }
         }
+    }
+
+    // Return the latest text for a tracked URI. Empty string if unknown
+    // (the client should have sent didOpen first; we don't error here
+    // because LSP allows hover/completion on closed buffers in theory).
+    private string LookupDoc(string uri) {
+        let n = this.DocUris.Count()
+        for i in 0..n {
+            let u = this.DocUris.Get(i)
+            if (u == uri) { return this.Docs.Get(i) }
+        }
+        return ""
     }
 
     // ── Framing ───────────────────────────────────────
@@ -155,7 +177,10 @@ public class LspServer {
     private void SendInit(int id) {
         // textDocumentSync = 1 (Full): client sends the whole text
         // on every didChange. Simpler than incremental, fine for v1.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1}}}"
+        // hoverProvider:  true  → client may send textDocument/hover
+        // completionProvider: { triggerCharacters: ["."] } → client
+        // requests completion lists on demand or when typing a dot.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -206,6 +231,101 @@ public class LspServer {
         }
         arr = arr + "]"
         return arr
+    }
+
+    // ── Hover ─────────────────────────────────────────
+
+    private void HandleHover(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = new FullResolver()
+        resolver.Programs.Add(prog)
+        resolver.ResolvePrograms()
+        let tc = new TypeChecker(resolver, path)
+        tc.Check(prog)
+
+        // LSP positions are 0-based; AST is 1-based.
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.SendNullResult(id)
+            return
+        }
+        let typeStr = tc.LookupNodeType(node)
+        if (typeStr == "?" || String_Length(typeStr) == 0) {
+            // No inferred type for this node — common for declarations,
+            // statements, keywords, etc. Return null so the editor
+            // shows "no info" instead of an empty popup.
+            this.SendNullResult(id)
+            return
+        }
+        let content = "**" + node.Name + "**: `" + typeStr + "`"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + LspServer.EscapeJsonStr(content) + "\"}}}"
+        this.Send(body)
+    }
+
+    private void SendNullResult(int id) {
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":null}"
+        this.Send(body)
+    }
+
+    // ── Completion ────────────────────────────────────
+
+    private void HandleCompletion(int id, string uri) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendEmptyCompletion(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = new FullResolver()
+        resolver.Programs.Add(prog)
+        resolver.ResolvePrograms()
+
+        // Walk all global names known to the resolver: builtins +
+        // user-declared classes / enums / functions. The LSP client
+        // filters by prefix on its side, so we don't need to here.
+        var items = ""
+        var first = true
+        let gn: int = resolver.GlobalCount()
+        for gi in 0..gn {
+            let name  = resolver.GlobalNameAt(gi)
+            if (String_Length(name) == 0) { continue }
+            let typeS = resolver.GlobalTypeAt(gi)
+            // CompletionItemKind: 7 = Class, 6 = Variable, 3 = Function.
+            // We guess from the type-marker the resolver stores:
+            //   "type" → Class      (e.g. List, Map, Math, user classes)
+            //   "void" → Function   (e.g. Console_WriteLine, File_WriteAll)
+            //   else   → Variable   (typed values: int, string, etc.)
+            var kind = 6
+            if (typeS == "type") { kind = 7 }
+            else if (typeS == "void") { kind = 3 }
+            if (!first) { items = items + "," }
+            items = items + "{\"label\":\"" + LspServer.EscapeJsonStr(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"detail\":\"" + LspServer.EscapeJsonStr(typeS) + "\"}"
+            first = false
+        }
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
+        this.Send(body)
+    }
+
+    private void SendEmptyCompletion(int id) {
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[]}}"
+        this.Send(body)
     }
 
     // ── Helpers ───────────────────────────────────────
@@ -309,6 +429,72 @@ public class LspServer {
             return String_Substring(uri, 7, n - 7)
         }
         return uri
+    }
+
+    // ── AST positional lookup ─────────────────────────
+
+    // Find the deepest AST node whose token covers the 1-based
+    // (line, col). Returns null if no node has a Name field
+    // matching the cursor word range. Walks Children/Params/Args
+    // plus the four single-child slots (Left, Right, Cond, Body, Else).
+    //
+    // Coverage rule: the node "covers" (l, c) when its Line == l
+    // and node.Column ≤ c ≤ node.Column + len(node.Name). The
+    // open upper bound matches what an editor sees as "the cursor
+    // is on this identifier" (the column past the last char still
+    // counts).
+    public static AstNode? FindNodeAtPosition(AstNode root, int line, int col) {
+        if (root == null) { return null }
+        var best: AstNode? = null
+        best = LspServer.FindNodeWalk(root, line, col, best)
+        return best
+    }
+
+    private static AstNode? FindNodeWalk(AstNode node, int line, int col, AstNode? best) {
+        var current = best
+        if (LspServer.NodeCovers(node, line, col)) {
+            // Prefer the more deeply-nested match (which we'll
+            // discover later in the walk), but also prefer named
+            // nodes over unnamed structural nodes at the same depth.
+            if (String_Length(node.Name) > 0) {
+                current = node
+            } else if (current == null) {
+                current = node
+            }
+        }
+        // Recurse into single-child slots
+        if (node.Left  != null) { current = LspServer.FindNodeWalk(node.Left,  line, col, current) }
+        if (node.Right != null) { current = LspServer.FindNodeWalk(node.Right, line, col, current) }
+        if (node.Cond  != null) { current = LspServer.FindNodeWalk(node.Cond,  line, col, current) }
+        if (node.Body  != null) { current = LspServer.FindNodeWalk(node.Body,  line, col, current) }
+        if (node.Else  != null) { current = LspServer.FindNodeWalk(node.Else,  line, col, current) }
+        // Recurse into child lists
+        let cn: int = node.Children.Count()
+        for ci in 0..cn {
+            let c = node.Children.Get(ci)
+            current = LspServer.FindNodeWalk(c, line, col, current)
+        }
+        let pn: int = node.Params.Count()
+        for pi in 0..pn {
+            let p = node.Params.Get(pi)
+            current = LspServer.FindNodeWalk(p, line, col, current)
+        }
+        let an: int = node.Args.Count()
+        for ai in 0..an {
+            let a = node.Args.Get(ai)
+            current = LspServer.FindNodeWalk(a, line, col, current)
+        }
+        return current
+    }
+
+    private static bool NodeCovers(AstNode node, int line, int col) {
+        if (node.Line != line)  { return false }
+        let nameLen: int = String_Length(node.Name)
+        if (nameLen == 0)       { return false }
+        let endCol: int = node.Column + nameLen
+        if (col < node.Column)  { return false }
+        if (col > endCol)       { return false }
+        return true
     }
 
     // ── JSON ad-hoc extractors ────────────────────────
