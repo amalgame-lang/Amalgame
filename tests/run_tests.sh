@@ -251,6 +251,8 @@ run_test "data classes"      "$SAMPLES/data_classes.am" "Arthus"
 run_test "generics/utils"    "$SAMPLES/generics.am"     "Max: 99"
 run_test "generic infer int"  "$SAMPLES/generic_inference.am"  "total: 60"
 run_test "generic infer str"  "$SAMPLES/generic_inference.am"  "combined: Arthus et Bastien"
+run_test "map infer int"      "$SAMPLES/map_inference.am"      "total: 141"
+run_test "map infer str"      "$SAMPLES/map_inference.am"      "combined: bonjour / hello"
 run_test "closures"          "$SAMPLES/closures.am"     "Counter = 10"
 
 # ── Namespace ──────────────────────────────────────────
