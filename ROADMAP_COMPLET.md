@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.1` · self-hosted · 149/149 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-08 · `amc 0.3.2` · self-hosted · 149/149 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
