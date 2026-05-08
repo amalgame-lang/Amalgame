@@ -17,7 +17,7 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 # binder scoping, advanced pattern matching, null-safety inference). They
 # pass under the Vala bootstrap (./build/amc) — see run_tests_vala.sh if
 # you need full coverage during recovery work. PRs welcome.
-SKIP_SELFHOST=" enums.am try_catch.am null_safety.am null_safe_member.am "
+SKIP_SELFHOST=" try_catch.am null_safety.am null_safe_member.am "
 PASS=0
 FAIL=0
 SKIP=0
