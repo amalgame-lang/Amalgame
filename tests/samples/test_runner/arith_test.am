@@ -1,0 +1,32 @@
+// Sample test file consumed by `amc test`. The runner picks this
+// up via its `*_test.am` glob, compiles + runs it, and counts the
+// PASS/FAIL/SKIP tags it emits to stdout.
+//
+// All cases here are written to PASS so this file is a safe
+// regression sentinel — if the runner ever stops counting these,
+// something broke in discovery, dispatch, or output parsing.
+
+class Program {
+    public static void Main() {
+        let a = 2 + 3
+        if (a == 5) {
+            Console.WriteLine("[PASS] add: 2 + 3 == 5")
+        } else {
+            Console.WriteLine("[FAIL] add: expected 5, got " + String_FromInt(a))
+        }
+
+        let b = 7 * 6
+        if (b == 42) {
+            Console.WriteLine("[PASS] mul: 7 * 6 == 42")
+        } else {
+            Console.WriteLine("[FAIL] mul: expected 42, got " + String_FromInt(b))
+        }
+
+        let c = 10 % 3
+        if (c == 1) {
+            Console.WriteLine("[PASS] mod: 10 % 3 == 1")
+        } else {
+            Console.WriteLine("[FAIL] mod: expected 1, got " + String_FromInt(c))
+        }
+    }
+}

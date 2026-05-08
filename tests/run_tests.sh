@@ -134,6 +134,36 @@ run_lib_test() {
     fi
 }
 
+# Run `amc test <dir>` and grep its merged stdout/stderr for a pattern.
+# Exit code is ignored: the runner returns 1 when any test FAILs by
+# design, but the suite cell still wants to assert a specific tally.
+run_amc_test_check() {
+    local name="$1"
+    local dir="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+
+    if [ ! -d "$dir" ]; then
+        echo -e "${YELLOW}SKIP${NC} (dir not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local out
+    out=$("$AMC" test "$dir" 2>&1)
+
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        echo "    got:"
+        echo "$out" | sed 's/^/      /'
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # Run amc --lint <file> and grep for an expected warning fragment in its stderr.
 run_lint_check() {
     local name="$1"
@@ -298,6 +328,66 @@ run_test "process: cap exit"      "$SAMPLES/process_api.am"  "cap.exit=0"
 run_test "process: cap stdout"    "$SAMPLES/process_api.am"  "cap.out=captured-line"
 run_test "process: nonzero exit"  "$SAMPLES/process_api.am"  "bad.exit=1"
 run_test "process: stderr merge"  "$SAMPLES/process_api.am"  "merged.out=stderr-bytes"
+
+# ── amc test runner ────────────────────────────────────
+echo ""
+echo "── amc test ────────────────────────────"
+run_amc_test_check "amc test: discovers"  "$SAMPLES/test_runner"  "arith_test.am"
+run_amc_test_check "amc test: pass tally" "$SAMPLES/test_runner"  "PASS: 4"
+run_amc_test_check "amc test: fail tally" "$SAMPLES/test_runner"  "FAIL: 1"
+run_amc_test_check "amc test: skip tally" "$SAMPLES/test_runner"  "SKIP: 1"
+
+# ── amc lsp ────────────────────────────────────────────
+echo ""
+echo "── amc lsp ─────────────────────────────"
+
+# Pipe LSP messages into `amc lsp` and grep its stdout for an
+# expected substring. The runner exits 0 on `exit` notification.
+run_lsp_check() {
+    local name="$1"
+    local pattern="$2"
+    local input="$3"
+
+    printf "  %-34s" "$name"
+    local out
+    out=$(printf '%s' "$input" | "$AMC" lsp 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        echo "    got:"
+        echo "$out" | sed 's/^/      /'
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# Helper: emit `Content-Length: N\r\n\r\n<body>` for a JSON body.
+lsp_frame() {
+    local body="$1"
+    local n=${#body}
+    printf 'Content-Length: %d\r\n\r\n%s' "$n" "$body"
+}
+
+# Build a fixture sequence: initialize → didOpen with a buggy
+# file → shutdown → exit. The buggy file references an
+# undeclared symbol so the resolver produces a diagnostic.
+lsp_init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+# `\n` here is the two-char sequence backslash-n, decoded by the
+# server's JSON extractor into a real newline. The parser needs
+# multi-line class bodies so embedding actual newlines via the
+# JSON escape is the simplest way.
+lsp_open='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_test.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let x = thisDoesNotExist\n    }\n}"}}}'
+lsp_shut='{"jsonrpc":"2.0","id":2,"method":"shutdown"}'
+lsp_exit='{"jsonrpc":"2.0","method":"exit"}'
+
+lsp_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1}' "$lsp_seq"
+run_lsp_check "lsp: publishDiagnostics" '"method":"textDocument/publishDiagnostics"' "$lsp_seq"
+run_lsp_check "lsp: error in diag"      'thisDoesNotExist'                          "$lsp_seq"
+run_lsp_check "lsp: shutdown reply"     '"id":2,"result":null'                      "$lsp_seq"
 
 # ── Namespace ──────────────────────────────────────────
 echo ""

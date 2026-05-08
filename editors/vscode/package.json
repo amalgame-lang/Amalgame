@@ -1,8 +1,8 @@
 {
   "name": "amalgame",
   "displayName": "Amalgame",
-  "description": "Syntax highlighting for the Amalgame programming language (.am files).",
-  "version": "0.1.0",
+  "description": "Syntax highlighting + LSP client for the Amalgame programming language (.am files).",
+  "version": "0.2.0",
   "publisher": "BastienMOUGET",
   "license": "MIT",
   "repository": {
@@ -13,6 +13,7 @@
     "vscode": "^1.75.0"
   },
   "categories": ["Programming Languages"],
+  "main": "./extension.js",
   "contributes": {
     "languages": [
       {
@@ -28,6 +29,24 @@
         "scopeName": "source.amalgame",
         "path": "./syntaxes/amalgame.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Amalgame",
+      "properties": {
+        "amalgame.serverPath": {
+          "type": "string",
+          "default": "amc",
+          "description": "Path to the amc binary used as the LSP server. Defaults to `amc` (must be on PATH). Set this to an absolute path or to ${workspaceFolder}/amc to point at a local build."
+        },
+        "amalgame.enableLsp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the LSP client. Disable to fall back to syntax-only highlighting."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }

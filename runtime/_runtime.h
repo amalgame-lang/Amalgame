@@ -89,6 +89,35 @@ static inline code_string Console_ReadLine() {
     return buf;
 }
 
+/* Read exactly `n` bytes from stdin, returning a freshly-allocated
+ * NUL-terminated string. Used by `amc lsp` to read the body of a
+ * JSON-RPC message after parsing its `Content-Length` header.
+ * Returns "" on EOF or n < 0.
+ *
+ * NOTE: this assumes the bytes are valid UTF-8 (or at least don't
+ * contain embedded NULs the caller cares about). LSP messages are
+ * always UTF-8 JSON, so that's fine in practice.
+ */
+static inline code_string Console_ReadBytes(i64 n) {
+    if (n < 0) return "";
+    if (n == 0) return code_strdup("");
+    char* buf = (char*) GC_MALLOC((size_t)n + 1);
+    size_t got = 0;
+    while (got < (size_t)n) {
+        size_t r = fread(buf + got, 1, (size_t)n - got, stdin);
+        if (r == 0) break;
+        got += r;
+    }
+    buf[got] = 0;
+    return buf;
+}
+
+/* Flush stdout. LSP server must flush after each response so the
+ * client doesn't block forever waiting for a buffered reply. */
+static inline void Console_Flush(void) {
+    fflush(stdout);
+}
+
 /* Math constants — only if Amalgame_Math.h not included */
 #ifndef AMALGAME_MATH_H
 #define Math_PI    3.14159265358979323846
