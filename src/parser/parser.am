@@ -277,10 +277,19 @@ public class Parser {
 
         if (this.CheckValue("<")) {
             this.Advance()
+            var gparams = ""
             while (!this.IsEnd() && !this.CheckValue(">")) {
-                this.Advance()
+                if (this.CheckValue(",")) { this.Advance(); continue }
+                if (this.CheckType(TokenType.IDENTIFIER)) {
+                    let pTok = this.Advance()
+                    if (String_Length(gparams) > 0) { gparams = gparams + "," }
+                    gparams = gparams + pTok.Value
+                } else {
+                    this.Advance()
+                }
             }
             if (this.CheckValue(">")) { this.Advance() }
+            cls.Str3 = gparams
         }
 
         if (this.CheckKw("extends")) {
@@ -288,12 +297,19 @@ public class Parser {
             cls.Str = this.ParseQualifiedName()
         }
 
-        // implements Interface1, Interface2 — skip for now (just consume tokens)
+        // implements Interface1, Interface2 — capture as CSV in Str4
         if (this.CheckKw("implements")) {
             this.Advance()
+            var impl = ""
             while (!this.IsEnd() && !this.CheckValue("{") && !this.CheckType(TokenType.NEWLINE)) {
-                this.Advance()
+                if (this.CheckValue(",")) { this.Advance(); continue }
+                let iname = this.ParseTypeName()
+                if (String_Length(iname) > 0) {
+                    if (String_Length(impl) > 0) { impl = impl + "," }
+                    impl = impl + iname
+                }
             }
+            cls.Str4 = impl
         }
         this.SkipNewlines()
 
@@ -896,6 +912,23 @@ public class Parser {
         iface.Name  = nameTok.Value
         iface.Flag  = isPublic
         iface.Flag2 = true
+        // Generic params <T,U> — captured into Str3 as CSV
+        if (this.CheckValue("<")) {
+            this.Advance()
+            var gparams = ""
+            while (!this.IsEnd() && !this.CheckValue(">")) {
+                if (this.CheckValue(",")) { this.Advance(); continue }
+                if (this.CheckType(TokenType.IDENTIFIER)) {
+                    let pTok = this.Advance()
+                    if (String_Length(gparams) > 0) { gparams = gparams + "," }
+                    gparams = gparams + pTok.Value
+                } else {
+                    this.Advance()
+                }
+            }
+            if (this.CheckValue(">")) { this.Advance() }
+            iface.Str3 = gparams
+        }
         this.SkipNewlines()
         this.Expect("{")
         this.SkipNewlines()

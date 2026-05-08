@@ -1,0 +1,46 @@
+namespace Tests
+
+// Generic interface — declares a contract parameterised by T.
+public interface IComparable<T> {
+    Compare(T other) -> int
+}
+
+// Class that satisfies IComparable<int>:
+//   Compare(T other) -> int   with T → int
+//   becomes Compare(int other) -> int.
+public class IntBox implements IComparable<int> {
+    public Value: int
+
+    public IntBox(int v) {
+        this.Value = v
+    }
+
+    public int Compare(int other) {
+        return this.Value - other
+    }
+}
+
+// Multi-param interface — IPair<K, V> with one method using both.
+public interface IPair<K, V> {
+    Make(K k, V v) -> string
+}
+
+public class StrIntPair implements IPair<string, int> {
+    public int Build() { return 0 }
+
+    public string Make(string k, int v) {
+        return k + "=" + String_FromInt(v)
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let a = new IntBox(7)
+        let cmp = a.Compare(3)
+        Console.WriteLine("compare: {cmp}")
+
+        let p = new StrIntPair()
+        let s = p.Make("answer", 42)
+        Console.WriteLine("pair: {s}")
+    }
+}

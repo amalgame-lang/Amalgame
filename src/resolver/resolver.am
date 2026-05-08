@@ -447,6 +447,17 @@ public class FullResolver {
 
     // ── Public entry points ───────────────────────────
 
+    // Typed accessors over Programs for callers (TypeChecker) — chained
+    // access like `this.Symbols.Programs.Get(i)` confuses the self-host
+    // codegen, which emits `Programs_Get` instead of `Programs->Get`.
+    public int ProgramCount() {
+        return this.Programs.Count()
+    }
+
+    public AstNode ProgramAt(int i) {
+        return this.Programs.Get(i)
+    }
+
     public void ResolvePrograms() {
         let progCount = this.Programs.Count()
         // Pass 1: collect all top-level declarations from all files
