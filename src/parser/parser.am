@@ -985,18 +985,78 @@ public class Parser {
     // ── Expressions ────────────────────────────────────
 
     private AstNode ParseExpr() {
-        // Lambda: identifier => expr
+        // Lambda single-param: x => expr  or  x => { stmts }
         if (this.CheckType(TokenType.IDENTIFIER) && this.Peek(1).Value == "=>") {
-            let paramTok = this.Advance() // param name
-            this.Advance() // =>
-            let body = this.ParseExpr()
-            let lam = new AstNode(NodeKind.METHOD_DECL, paramTok.Line, paramTok.Column)
-            lam.Name = "__lambda__"
-            lam.Str  = paramTok.Value
-            lam.Left = body
-            return lam
+            return this.ParseLambdaSingle()
+        }
+        // Lambda multi-param: (x, y, ...) => expr  or  ... => { stmts }
+        // Also (x) => is accepted for symmetry with multi-param syntax.
+        // Looks ahead through the identifier list to disambiguate from
+        // a regular parenthesised expression starting with an ident.
+        if (this.CheckValue("(") && this.IsLambdaParenStart()) {
+            return this.ParseLambdaMulti()
         }
         return this.ParseAssign()
+    }
+
+    // True if the current "(" opens a lambda param list — i.e. a comma
+    // list of bare identifiers (or empty) followed by ")" "=>".
+    // Anything else (typed param, expression) means it's not a lambda.
+    private bool IsLambdaParenStart() {
+        var i: int = 1
+        // Empty parens: () =>
+        if (this.Peek(i).Value == ")") {
+            return this.Peek(i + 1).Value == "=>"
+        }
+        // (ident ("," ident)*) =>
+        while (true) {
+            if (this.Peek(i).Type != TokenType.IDENTIFIER) { return false }
+            i = i + 1
+            if (this.Peek(i).Value == ")") {
+                return this.Peek(i + 1).Value == "=>"
+            }
+            if (this.Peek(i).Value != ",") { return false }
+            i = i + 1
+        }
+        return false
+    }
+
+    private AstNode ParseLambdaSingle() {
+        let paramTok = this.Advance()  // param name
+        this.Advance()                 // =>
+        let lam = new AstNode(NodeKind.METHOD_DECL, paramTok.Line, paramTok.Column)
+        lam.Name = "__lambda__"
+        let p = Ast.Param(paramTok.Value, "?", paramTok.Line, paramTok.Column)
+        lam.Params.Add(p)
+        this.ParseLambdaBody(lam)
+        return lam
+    }
+
+    private AstNode ParseLambdaMulti() {
+        let openTok = this.Advance()   // "("
+        let lam = new AstNode(NodeKind.METHOD_DECL, openTok.Line, openTok.Column)
+        lam.Name = "__lambda__"
+        while (!this.IsEnd() && !this.CheckValue(")")) {
+            if (this.CheckValue(",")) { this.Advance(); continue }
+            let pTok = this.ExpectIdent()
+            let p = Ast.Param(pTok.Value, "?", pTok.Line, pTok.Column)
+            lam.Params.Add(p)
+        }
+        this.Expect(")")
+        this.Advance()                 // =>
+        this.ParseLambdaBody(lam)
+        return lam
+    }
+
+    // Body shape: either an expression (stored in Left) or a brace
+    // block (stored in Body). The two are mutually exclusive — the
+    // resolver and CGen test which one is non-null.
+    private void ParseLambdaBody(AstNode lam) {
+        if (this.CheckValue("{")) {
+            lam.Body = this.ParseBlock()
+        } else {
+            lam.Left = this.ParseExpr()
+        }
     }
 
     private AstNode ParseAssign() {
