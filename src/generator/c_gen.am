@@ -181,52 +181,84 @@ public class CGen {
     }
 
     public void AddFilePass2(AstNode prog) {
-        // Phase A — assign ids and emit env struct + top-level fn for
+        // Phase A — assign ids and emit env struct + forward decl for
         // every lambda in this file, BEFORE any decl bodies that may
-        // reference them. The walker descends into all child/list
-        // fields generically so any lambda position the parser
-        // produces is covered.
-        this.EmitLambdaTopLevels(prog)
-        // Phase B — regular decl emission.
+        // reference them. The fn bodies themselves come last so they
+        // can dereference fields on class structs (like u->Name) whose
+        // bodies are emitted in Phase B. The walker descends into all
+        // child/list fields generically so any lambda position the
+        // parser produces is covered.
+        this.EmitLambdaForwards(prog)
+        // Phase B — regular decl emission (class struct bodies + method bodies).
         let decls = prog.Children.Count()
         for j in 0..decls {
             let decl = prog.Children.Get(j)
             this.EmitDecl(decl)
         }
+        // Phase C — emit each lambda fn body. Class struct bodies are
+        // now visible, so typed param unboxing (e.g. `Probe_User* u =
+        // (Probe_User*)__arg0;` followed by `u->Name`) lowers cleanly.
+        this.EmitLambdaBodies(prog)
     }
 
     // ── Lambda discovery & top-level emission ─────────
-    private void EmitLambdaTopLevels(AstNode node) {
+    //
+    // v2.5 splits emission in two: forwards (env struct + fn forward
+    // decl) before class struct bodies, and bodies (fn definition)
+    // after them. This lets typed param unboxing dereference fields
+    // on user classes (`u->Name` where u is `Probe_User*`).
+    private void EmitLambdaForwards(AstNode node) {
         if (node == null) { return }
-        // A lambda is a METHOD_DECL with the marker name set by the
-        // parser. Emit its struct + fn now; ids stick on Str2.
         if (node.Kind == NodeKind.METHOD_DECL && node.Name == "__lambda__") {
-            this.EmitOneLambda(node)
+            this.EmitOneLambdaForward(node)
         }
-        // Recurse into every nullable child and every list. Lambdas
-        // can appear anywhere an expression can — RHS of let, args
-        // of CALL/NEW, branches of if-expr, etc.
-        if (node.Left  != null) { this.EmitLambdaTopLevels(node.Left) }
-        if (node.Right != null) { this.EmitLambdaTopLevels(node.Right) }
-        if (node.Cond  != null) { this.EmitLambdaTopLevels(node.Cond) }
-        if (node.Body  != null) { this.EmitLambdaTopLevels(node.Body) }
-        if (node.Else  != null) { this.EmitLambdaTopLevels(node.Else) }
+        if (node.Left  != null) { this.EmitLambdaForwards(node.Left) }
+        if (node.Right != null) { this.EmitLambdaForwards(node.Right) }
+        if (node.Cond  != null) { this.EmitLambdaForwards(node.Cond) }
+        if (node.Body  != null) { this.EmitLambdaForwards(node.Body) }
+        if (node.Else  != null) { this.EmitLambdaForwards(node.Else) }
         let cn = node.Children.Count()
         for i in 0..cn {
-            this.EmitLambdaTopLevels(node.Children.Get(i))
+            this.EmitLambdaForwards(node.Children.Get(i))
         }
         let pn = node.Params.Count()
         for j in 0..pn {
-            this.EmitLambdaTopLevels(node.Params.Get(j))
+            this.EmitLambdaForwards(node.Params.Get(j))
         }
         let an = node.Args.Count()
         for k in 0..an {
-            this.EmitLambdaTopLevels(node.Args.Get(k))
+            this.EmitLambdaForwards(node.Args.Get(k))
         }
     }
 
-    private void EmitOneLambda(AstNode lam) {
-        // Allocate id and tag the node so the call site finds the same name.
+    private void EmitLambdaBodies(AstNode node) {
+        if (node == null) { return }
+        if (node.Kind == NodeKind.METHOD_DECL && node.Name == "__lambda__") {
+            this.EmitOneLambdaBody(node)
+        }
+        if (node.Left  != null) { this.EmitLambdaBodies(node.Left) }
+        if (node.Right != null) { this.EmitLambdaBodies(node.Right) }
+        if (node.Cond  != null) { this.EmitLambdaBodies(node.Cond) }
+        if (node.Body  != null) { this.EmitLambdaBodies(node.Body) }
+        if (node.Else  != null) { this.EmitLambdaBodies(node.Else) }
+        let cn = node.Children.Count()
+        for i in 0..cn {
+            this.EmitLambdaBodies(node.Children.Get(i))
+        }
+        let pn = node.Params.Count()
+        for j in 0..pn {
+            this.EmitLambdaBodies(node.Params.Get(j))
+        }
+        let an = node.Args.Count()
+        for k in 0..an {
+            this.EmitLambdaBodies(node.Args.Get(k))
+        }
+    }
+
+    // Phase A — assign id, emit env struct + fn forward decl. The id
+    // (lam.Str2) is set here so call sites in Phase B can reference
+    // lam_N_fn by name.
+    private void EmitOneLambdaForward(AstNode lam) {
         let id      = this.LambdaCounter
         this.LambdaCounter = id + 1
         let idStr   = String_FromInt(id)
@@ -254,10 +286,32 @@ public class CGen {
         }
         this.Out.Dedent()
         this.Out.EmitLine("} " + envName + ";")
-        // Emit top-level fn. Signature is `void* lam_N_fn(void* env,
-        // void* arg0, void* arg1, ...)` — args and result are boxed
-        // via intptr_t; v2 hardcodes i64 for the unboxed value, same
-        // as v1. Lambda-typing for non-int signatures is a follow-up.
+        // Forward decl of the fn — body comes in Phase C after class
+        // struct bodies are emitted.
+        var fwdLine = "static void* " + fnName + "(void* __envRaw"
+        for pi in 0..pn {
+            fwdLine = fwdLine + ", void* __arg" + String_FromInt(pi)
+        }
+        fwdLine = fwdLine + ");"
+        this.Out.EmitLine(fwdLine)
+    }
+
+    // Phase C — emit the fn body. The id (lam.Str2) was set in Phase A.
+    private void EmitOneLambdaBody(AstNode lam) {
+        let idStr   = lam.Str2
+        let envName = "LamEnv_" + idStr
+        let fnName  = "lam_" + idStr + "_fn"
+        let cn: int = lam.Args.Count()
+        let pn: int = lam.Params.Count()
+        // Emit top-level fn definition. Signature is `void*
+        // lam_N_fn(void* env, void* arg0, void* arg1, ...)` — args and
+        // result are passed as void*, matching the AmalgameClosure
+        // ABI. v2.5 honours each PARAM's annotated type (set by the
+        // resolver from the higher-order callsite, e.g.
+        // List<User>.Map's lambda gets its first param typed `User`)
+        // so member access like x.Name lowers correctly. Pointer-typed
+        // params cast directly from void*; scalar-typed params still
+        // go through intptr_t.
         var sigLine = "static void* " + fnName + "(void* __envRaw"
         for pi in 0..pn {
             sigLine = sigLine + ", void* __arg" + String_FromInt(pi)
@@ -267,10 +321,20 @@ public class CGen {
         this.Out.Indent_()
         this.Out.EmitLine(envName + "* __env = (" + envName + "*)__envRaw;")
         this.Out.EmitLine("(void)__env;")
-        // Unpack params: i64 paramName = (i64)(intptr_t)__argN
+        // Unpack params using their annotated type when available.
         for pi in 0..pn {
             let p = lam.Params.Get(pi)
-            this.Out.EmitLine("i64 " + p.Name + " = (i64)(intptr_t)__arg" + String_FromInt(pi) + ";")
+            let pTypeRaw = p.Str
+            var pTypeC: string = "i64"
+            if (String_Length(pTypeRaw) > 0 && pTypeRaw != "?") {
+                pTypeC = this.TypeToC(pTypeRaw)
+            }
+            let argName = "__arg" + String_FromInt(pi)
+            if (this.IsCPointerType(pTypeC)) {
+                this.Out.EmitLine(pTypeC + " " + p.Name + " = (" + pTypeC + ")" + argName + ";")
+            } else {
+                this.Out.EmitLine(pTypeC + " " + p.Name + " = (" + pTypeC + ")(intptr_t)" + argName + ";")
+            }
         }
         // Unpack captures into local C vars so the body emits naturally.
         for i in 0..cn {
@@ -283,11 +347,17 @@ public class CGen {
             }
             this.LocalTypeSet(cap.Name, ct)
         }
-        // Param types too — the local-type table is consulted by identifier
-        // emission. v2 still hardcodes i64 (lambda-typing follow-up).
+        // Param types too — the local-type table is consulted by
+        // identifier emission so x.Field lookups work. v2.5 honours
+        // p.Str (set by the resolver) instead of always pinning to i64.
         for pi in 0..pn {
             let p = lam.Params.Get(pi)
-            this.LocalTypeSet(p.Name, "i64")
+            let pTypeRaw = p.Str
+            var pTypeC: string = "i64"
+            if (String_Length(pTypeRaw) > 0 && pTypeRaw != "?") {
+                pTypeC = this.TypeToC(pTypeRaw)
+            }
+            this.LocalTypeSet(p.Name, pTypeC)
         }
         // Body — either an expression in Left, or a block in Body.
         // Block bodies push InLambdaBody so any RETURN_STMT inside
@@ -390,6 +460,42 @@ public class CGen {
             }
         }
         return result
+    }
+
+    // For `let names = users.Map(u => u.Name)`, the result list's
+    // element type is the lambda's return type — NOT the receiver's
+    // element type. We push the lambda params into LocalTypes so
+    // InferTypeFromExpr can resolve `u.Name` against the param's
+    // annotated type, then pop them. Lives as its own helper so the
+    // self-host CGen sees PARAM access through typed AstNode locals
+    // (avoids void* erasure across chained `.Get(i)` calls).
+    private void TrackMapResultElem(AstNode stmt) {
+        let call: AstNode = stmt.Left
+        if (call == null) { return }
+        if (call.Args.Count() == 0) { return }
+        let lam: AstNode = call.Args.Get(0)
+        if (lam == null) { return }
+        if (lam.Kind != NodeKind.METHOD_DECL) { return }
+        if (lam.Name != "__lambda__") { return }
+        if (lam.Left == null) { return }
+        let pn: int = lam.Params.Count()
+        for pi in 0..pn {
+            let p: AstNode = lam.Params.Get(pi)
+            let pTypeRaw: string = p.Str
+            var pTypeC: string = "i64"
+            if (String_Length(pTypeRaw) > 0 && pTypeRaw != "?") {
+                pTypeC = this.TypeToC(pTypeRaw)
+            }
+            this.LocalTypeSet(p.Name, pTypeC)
+        }
+        let retC: string = this.InferTypeFromExpr(lam.Left)
+        for pi in 0..pn {
+            let p: AstNode = lam.Params.Get(pi)
+            this.LocalTypeSet(p.Name, "")
+        }
+        if (String_Length(retC) > 0 && retC != "void*") {
+            this.ListElemSet("__local__", stmt.Name, retC)
+        }
     }
 
     // Record the elem (List<T>) or value (Map<K,V>) type for a local
@@ -1864,8 +1970,8 @@ public class CGen {
                 return
             }
             // Lambda assignment: let doubler = x => x * 2
-            // The lambda's struct + top-level fn were already emitted
-            // by Phase A (EmitLambdaTopLevels); here we just allocate
+            // The lambda's env struct + fn forward decl were already
+            // emitted by Phase A (EmitLambdaForwards); here we just allocate
             // the env, copy captured locals into it, and bundle them
             // into an AmalgameClosure value.
             if (stmt.Left != null && stmt.Left.Kind == NodeKind.METHOD_DECL && stmt.Left.Name == "__lambda__") {
@@ -1920,13 +2026,16 @@ public class CGen {
                             this.TrackGenericLocal(stmt.Name, retRaw)
                         }
                     }
-                    // Higher-order list methods (lambda v2.5): the
-                    // returned list inherits the element type of the
-                    // receiver. `xs: List<int>` → `xs.Filter(...)` is
-                    // also `List<int>`, so `.Get(i)` lowers to a
-                    // `(i64)…` cast instead of `(void*)…`.
+                    // Higher-order list methods (lambda v2.5):
+                    // - Filter conserves the receiver's element type
+                    //   (List<int>.Filter → List<int>).
+                    // - Map's result element type is the lambda's
+                    //   return type, NOT the receiver's element type.
+                    //   We push the lambda params into LocalTypes so
+                    //   InferTypeFromExpr can resolve `u.Name` against
+                    //   the param's annotated type, then pop them.
                     let mname = callee.Name
-                    if (mname == "Filter" || mname == "Map") {
+                    if (mname == "Filter") {
                         if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
                             let recvName = callee.Left.Name
                             let recvElem = this.ListElemGet("__local__", recvName)
@@ -1934,6 +2043,8 @@ public class CGen {
                                 this.ListElemSet("__local__", stmt.Name, recvElem)
                             }
                         }
+                    } else if (mname == "Map") {
+                        this.TrackMapResultElem(stmt)
                     }
                 }
             }
@@ -2753,7 +2864,7 @@ public class CGen {
 
     // ── Closure-argument emission (lambda v2.5) ──────
     // Higher-order calls accept either an inline lambda (METHOD_DECL
-    // tagged "__lambda__"), already assigned an id by EmitLambdaTopLevels,
+    // tagged "__lambda__"), already assigned an id by EmitLambdaForwards,
     // or a local variable already typed AmalgameClosure*. Returns "" when
     // we can't produce a closure (caller bails out and emits the call
     // through the regular path).
@@ -2869,6 +2980,16 @@ public class CGen {
             let e = this.EnumNames.Get(i)
             if (e == t) { return true }
         }
+        return false
+    }
+
+    // True for C types passed as a pointer at the ABI level: anything
+    // ending in `*` plus `code_string` (typedef'd to `char*`). Used by
+    // EmitOneLambda to decide whether to unbox a void* arg via a
+    // direct cast or via intptr_t.
+    private bool IsCPointerType(string ct) {
+        if (ct == "code_string") { return true }
+        if (String_EndsWith(ct, "*")) { return true }
         return false
     }
 
