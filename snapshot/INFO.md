@@ -1,9 +1,9 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-08T14:29:05+02:00
-Git rev:  5a5bd008f3895fd0a8f412e6ce4577b312e874c3
-Branch:   feature/lsp-diagnostics
-Tests:    173 passed
+Captured: 2026-05-08T23:40:13+02:00
+Git rev:  ce887cf4b077517f524435ceb8e81253d303f750
+Branch:   feature/lsp-grammar-fixes
+Tests:    191 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
 mid-development. `build_amc.sh` falls back to `snapshot/amc` before
