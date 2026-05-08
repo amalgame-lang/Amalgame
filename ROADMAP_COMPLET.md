@@ -142,9 +142,10 @@ fix.
       round-trip on their original line. `EmitBlockStmts`/`EmitInline`
       drain once more before bumping `LastLine` to the closing brace,
       catching trailing comments on the *last* stmt of a block.
-- [ ] **Imports preserved by `amc fmt`** — the parser drops
-      `import` directives without storing them, so the formatter
-      can't print them back.
+- [x] **Imports preserved by `amc fmt`** — parser stores each
+      `import X.Y` as an `Ast.Ident` on `prog.Args` (a slot the
+      Program node didn't otherwise use), and `EmitProgram` re-emits
+      them between `namespace` and the first top-level decl.
 - [ ] **`while(ptr != null)` GC issue** — existing workaround uses
       `for i in 0..N`. Investigate whether it's a real GC bug or
       just a CGen mis-detection.

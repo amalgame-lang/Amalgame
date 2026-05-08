@@ -1,0 +1,18 @@
+namespace App
+
+import Amalgame.Collections
+import Amalgame.String
+
+// Imports above must survive `amc fmt` round-trip — the parser stores
+// them on prog.Args; the formatter re-emits them between namespace
+// and the first top-level decl.
+public class Program {
+    public static void Main(string[] args) {
+        let xs = new List<int>()
+        xs.Add(1)
+        xs.Add(2)
+        xs.Add(3)
+        let total = xs.Count()
+        Console.WriteLine("count: {total}")
+    }
+}

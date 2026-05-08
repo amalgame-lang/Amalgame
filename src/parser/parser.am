@@ -80,9 +80,14 @@ public class Parser {
         }
 
         while (this.CheckKw("import")) {
-            this.Advance()
-            this.ParseQualifiedName()
-                this.SkipNewlines()
+            let importTok = this.Advance()
+            let qname = this.ParseQualifiedName()
+            // Imports are informational — the resolver's stdlib is global.
+            // We store them on prog.Args (unused for Program nodes by every
+            // other pass) so `amc fmt` can re-emit them on round-trip.
+            let imp = Ast.Ident(qname, importTok.Line, importTok.Column)
+            prog.Args.Add(imp)
+            this.SkipNewlines()
         }
 
         var parseLastPos = 0

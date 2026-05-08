@@ -116,6 +116,11 @@ run_semantic    "match_expr.am — semantic OK" "$SAMPLES/match_expr.am"
 run_idempotence "fmt_comments.am — idempotent"  "$SAMPLES/fmt_comments.am"
 run_semantic    "fmt_comments.am — semantic OK" "$SAMPLES/fmt_comments.am"
 
+# Import directives — the parser used to drop them; they must now
+# survive a fmt round-trip on prog.Args.
+run_idempotence "fmt_imports.am — idempotent"  "$SAMPLES/fmt_imports.am"
+run_semantic    "fmt_imports.am — semantic OK" "$SAMPLES/fmt_imports.am"
+
 echo ""
 echo "────────────────────────────────────────────"
 echo -e "  ${GREEN}PASS: $PASS${NC}  |  ${RED}FAIL: $FAIL${NC}"
