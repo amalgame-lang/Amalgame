@@ -160,6 +160,30 @@ A few pieces collaborate to keep round-tripping idempotent:
 on a small fixture; the regression sweep that runs `amc fmt` on every
 compiler source must stay green.
 
+## Linter (`src/linter.am`)
+
+`amc --lint file.am` runs a static-analysis pass on top of the
+parsed AST and emits non-fatal warnings. The Linter shares no state
+with the typechecker — it walks the AST top-down and collects
+`LintWarning` records into `linter.Warnings`.
+
+MVP coverage (since v0.3.3):
+
+- **Unreachable code** after `return` / `throw` / `break` /
+  `continue`, including inside nested `if` / `while` / `for-in` /
+  `try` bodies.
+
+The skeleton is set up to grow more checks (unused locals,
+shadowed names, suspicious patterns) by extending `LintStmt` /
+`LintExpr` and `LintBlock` without touching the rest of the
+pipeline. Warnings always carry the per-program filename
+(populated from `prog.Str2`) so multi-file invocations report
+the right paths.
+
+The CLI flag (`--lint`) is wired in `main.am`, after the
+typechecker pass and before code generation. Warnings don't bump
+`ExitCode` — `amc --lint -o foo file.am` still produces output.
+
 ## Snapshot bootstrap (`snapshot/`, `tools/save-snapshot.sh`)
 
 `build_amc.sh` has a 3-rung bootstrap chain:
@@ -227,17 +251,21 @@ sample minimal — one feature, one observable.
 - **File order in AMC_SOURCES** — see CGen Pass 2 above. If you see
   `error: implicit declaration of function 'Foo_Bar'` followed by
   `error: conflicting types`, swap the file order.
-- **Generic types erase to `void*`** — boxing of primitives uses
-  `(void*)(intptr_t)`. The CGen emits this automatically for
-  collection element types.
+- **Generic types erase to `void*` at the C level** — boxing of
+  primitives uses `(void*)(intptr_t)`. Since v0.3.3, the CGen
+  tracks the elem type of `List<T>` / `Map<K,V>` for locals,
+  parameters, return values, and explicit annotations; `xs.Get(i)`
+  lowers with the right cast (`(int)AmalgameList_get(...)` etc.)
+  so the result is typed at the call site without a manual cast.
+  The underlying C representation hasn't changed.
 - **Match arms can be statements OR expressions** — `1 => return "x"`
   and `1 => "x"` both parse. `let x = match y { ... }` also works
   since v0.3.0 — the codegen wraps it in a GCC compound statement
   expression. Algebraic-enum patterns and arm guards in expression
   position aren't supported yet, though.
 - **Imports are informational** — the resolver's stdlib is global.
-  Don't rely on `import` for visibility, and `amc fmt` drops them
-  (they're not stored in the AST).
+  Don't rely on `import` for visibility. Since v0.3.2, `amc fmt`
+  preserves them on round-trip (parser stores each on `prog.Args`).
 
 ## Where to ask
 
