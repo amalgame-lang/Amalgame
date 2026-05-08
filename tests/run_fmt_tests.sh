@@ -121,6 +121,11 @@ run_semantic    "fmt_comments.am — semantic OK" "$SAMPLES/fmt_comments.am"
 run_idempotence "fmt_imports.am — idempotent"  "$SAMPLES/fmt_imports.am"
 run_semantic    "fmt_imports.am — semantic OK" "$SAMPLES/fmt_imports.am"
 
+# try / catch / throw — round-trip through the formatter (TRY_STMT
+# and THROW_STMT branches in EmitStmt + EmitTry / EmitThrow).
+run_idempotence "try_catch.am — idempotent"  "$SAMPLES/try_catch.am"
+run_semantic    "try_catch.am — semantic OK" "$SAMPLES/try_catch.am"
+
 echo ""
 echo "────────────────────────────────────────────"
 echo -e "  ${GREEN}PASS: $PASS${NC}  |  ${RED}FAIL: $FAIL${NC}"
