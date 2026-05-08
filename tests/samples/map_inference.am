@@ -1,0 +1,24 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Demonstrates generic value-type inference for local Map<K,V>:
+// `m.Get(k)` now lowers to `(V)AmalgameMap_get(m, k)` instead of
+// `(void*)AmalgameMap_get(...)`, so we can use the result directly
+// in arithmetic / string ops without a manual cast. Map.Get itself
+// is also new — it didn't dispatch before this change.
+public class Program {
+    public static void Main(string[] args) {
+        let scores = new Map<string, int>()
+        scores.Set("Arthus", 42)
+        scores.Set("Bastien", 99)
+        let total = scores.Get("Arthus") + scores.Get("Bastien")
+        Console.WriteLine("total: {total}")
+
+        let labels = new Map<string, string>()
+        labels.Set("fr", "bonjour")
+        labels.Set("en", "hello")
+        let combined = labels.Get("fr") + " / " + labels.Get("en")
+        Console.WriteLine("combined: {combined}")
+    }
+}
