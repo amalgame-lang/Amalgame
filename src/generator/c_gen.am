@@ -124,6 +124,9 @@ public class CGen {
         this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
         this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
         this.FieldTypeSet("AmalgameTcpServer",    "Port",     "i64")
+        this.FieldTypeSet("AmalgameProcessResult", "Exit",   "i64")
+        this.FieldTypeSet("AmalgameProcessResult", "Stdout", "code_string")
+        this.FieldTypeSet("AmalgameProcessResult", "Stderr", "code_string")
     }
 
     public string Generate(AstNode prog) {
@@ -646,6 +649,8 @@ public class CGen {
                 if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory") { return "code_string" }
                 // Net stdlib return types
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }
+                if (calleeStr == "Process_RunCapture") { return "AmalgameProcessResult*" }
+                if (calleeStr == "Process_Run") { return "i64" }
                 if (calleeStr == "TcpServer_Listen") { return "AmalgameTcpServer*" }
                 if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
                 if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
@@ -930,6 +935,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Math.h\"")
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Process.h\"")
         this.Out.EmitBlank()
     }
 
@@ -2618,7 +2624,7 @@ public class CGen {
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
                         // Stdlib classes are never namespace-prefixed
-                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env"
+                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process"
                         if (isStdlib) {
                             return tname + "_" + mname
                         }
