@@ -425,12 +425,44 @@ public class Formatter {
             this.Line("break")
         } else if (k == NodeKind.CONTINUE_STMT) {
             this.Line("continue")
+        } else if (k == NodeKind.TRY_STMT) {
+            this.EmitTry(n)
+        } else if (k == NodeKind.THROW_STMT) {
+            this.EmitThrow(n)
         } else if (k == NodeKind.BLOCK) {
             this.EmitBlock(n)
         } else {
             // Expression statement (assignment, call, etc.)
             this.Line(this.EmitExpr(n))
         }
+    }
+
+    private void EmitTry(AstNode n) {
+        this.Line("try {")
+        this.In_()
+        if (n.Body != null) { this.EmitInline(n.Body) }
+        this.De_()
+        if (n.Else != null) {
+            var head = "} catch"
+            if (String_Length(n.Name) > 0) { head = head + " " + n.Name }
+            head = head + " {"
+            this.Line(head)
+            this.In_()
+            this.EmitInline(n.Else)
+            this.De_()
+        }
+        if (n.Cond != null) {
+            this.Line("} finally {")
+            this.In_()
+            this.EmitInline(n.Cond)
+            this.De_()
+        }
+        this.Close("}")
+    }
+
+    private void EmitThrow(AstNode n) {
+        if (n.Left == null) { this.Line("throw"); return }
+        this.Line("throw " + this.EmitExpr(n.Left))
     }
 
     private void EmitBlock(AstNode n) {
@@ -791,6 +823,8 @@ public class Formatter {
         if (k == NodeKind.FOR_IN_STMT)    { return "FOR_IN_STMT" }
         if (k == NodeKind.BREAK_STMT)     { return "BREAK_STMT" }
         if (k == NodeKind.CONTINUE_STMT)  { return "CONTINUE_STMT" }
+        if (k == NodeKind.TRY_STMT)       { return "TRY_STMT" }
+        if (k == NodeKind.THROW_STMT)     { return "THROW_STMT" }
         if (k == NodeKind.BINARY)         { return "BINARY" }
         if (k == NodeKind.UNARY)          { return "UNARY" }
         if (k == NodeKind.CALL)           { return "CALL" }
