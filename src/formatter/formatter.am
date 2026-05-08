@@ -87,11 +87,38 @@ public class Formatter {
     private void De_()   { this.Indent = this.Indent - 1 }
 
     // ── Comment injection / blank-line preservation ──
+    // Append a trailing `  // …` to the last emitted output line. Used
+    // by Sync/FlushTrailingComments when a pending COMMENT shares its
+    // source line with the most recently emitted thing — preserves
+    // round-trip on `let x = 1  // foo` and `if (x) {  // cond`.
+    private void AttachToLastEmitted(Token c) {
+        let last = this.Out.Count() - 1
+        if (last < 0) { return }
+        let prev: string = this.Out.Get(last)
+        this.Out.RemoveAt(last)
+        this.Out.Add(prev + "  " + c.Value)
+    }
+
+    // Pop pending comments whose source line == LastLine, appending each
+    // to the last emitted output line. EmitBlockStmts/EmitInline set
+    // LastLine to the source line of the opening `{` (or of the last
+    // child stmt) before the next Sync, so this attaches trailing
+    // comments on `if (x) {  // …` and `let x = 1  // …` alike.
+    private void DrainTrailingForLastLine() {
+        while (this.CommentPos < this.CommentCnt && this.LastLine > 0) {
+            let c: Token = this.Comments.Get(this.CommentPos)
+            if (c.Line != this.LastLine) { break }
+            this.AttachToLastEmitted(c)
+            this.CommentPos = this.CommentPos + 1
+        }
+    }
+
     // Sync(line): flush every pending comment whose source line < `line`,
     // then mark `line` as the next thing to be emitted. Inserts a blank
     // whenever the gap between two consecutive emissions in the source
     // was ≥ 2 lines, so visual paragraph breaks survive a round-trip.
     private void Sync(int line) {
+        this.DrainTrailingForLastLine()
         while (this.CommentPos < this.CommentCnt) {
             let c: Token = this.Comments.Get(this.CommentPos)
             if (c.Line >= line) { break }
@@ -109,6 +136,7 @@ public class Formatter {
     }
 
     private void FlushTrailingComments() {
+        this.DrainTrailingForLastLine()
         while (this.CommentPos < this.CommentCnt) {
             let c: Token = this.Comments.Get(this.CommentPos)
             if (this.LastLine > 0 && c.Line - this.LastLine >= 2) {
@@ -352,6 +380,11 @@ public class Formatter {
             this.Sync(s.Line)
             this.EmitStmt(s)
         }
+        // Drain trailing comments attached to the *last* stmt before
+        // we bump LastLine to the block's closing brace — otherwise
+        // their source line no longer matches LastLine and they'd be
+        // emitted on their own line at the next Sync.
+        this.DrainTrailingForLastLine()
         this.LastLine = this.BlockEndLine(body)
     }
 
@@ -364,6 +397,7 @@ public class Formatter {
         } else {
             this.LastLine = body.Line
             this.EmitStmt(body)
+            this.DrainTrailingForLastLine()
             this.LastLine = this.MaxLineInTree(body) + 1
         }
     }

@@ -5195,6 +5195,8 @@ static void Amalgame_Compiler_Formatter_Close(Amalgame_Compiler_Formatter* self,
 static void Amalgame_Compiler_Formatter_Blank(Amalgame_Compiler_Formatter* self);
 static void Amalgame_Compiler_Formatter_In_(Amalgame_Compiler_Formatter* self);
 static void Amalgame_Compiler_Formatter_De_(Amalgame_Compiler_Formatter* self);
+static void Amalgame_Compiler_Formatter_AttachToLastEmitted(Amalgame_Compiler_Formatter* self, Amalgame_Compiler_Token* c);
+static void Amalgame_Compiler_Formatter_DrainTrailingForLastLine(Amalgame_Compiler_Formatter* self);
 static void Amalgame_Compiler_Formatter_Sync(Amalgame_Compiler_Formatter* self, i64 line);
 static void Amalgame_Compiler_Formatter_FlushTrailingComments(Amalgame_Compiler_Formatter* self);
 static void Amalgame_Compiler_Formatter_EmitProgram(Amalgame_Compiler_Formatter* self, Amalgame_Compiler_AstNode* prog);
@@ -5315,9 +5317,34 @@ static void Amalgame_Compiler_Formatter_De_(Amalgame_Compiler_Formatter* self) {
     self->Indent = self->Indent - 1;
 }
 
+static void Amalgame_Compiler_Formatter_AttachToLastEmitted(Amalgame_Compiler_Formatter* self, Amalgame_Compiler_Token* c) {
+    (void)self;
+    (void)c;
+    i64 __attribute__((unused)) last = AmalgameList_count(self->Out) - 1;
+    if (last < 0) {
+        return;
+    }
+    code_string __attribute__((unused)) prev = (code_string)AmalgameList_get(self->Out, last);
+    AmalgameList_removeAt(self->Out, last);
+    AmalgameList_add(self->Out, (void*)(intptr_t)(code_string_concat(code_string_concat(prev, "  "), c->Value)));
+}
+
+static void Amalgame_Compiler_Formatter_DrainTrailingForLastLine(Amalgame_Compiler_Formatter* self) {
+    (void)self;
+    while (self->CommentPos < self->CommentCnt && self->LastLine > 0) {
+        Amalgame_Compiler_Token* __attribute__((unused)) c = (Amalgame_Compiler_Token*)AmalgameList_get(self->Comments, self->CommentPos);
+        if (c->Line != self->LastLine) {
+            break;
+        }
+        Amalgame_Compiler_Formatter_AttachToLastEmitted(self, c);
+        self->CommentPos = self->CommentPos + 1;
+    }
+}
+
 static void Amalgame_Compiler_Formatter_Sync(Amalgame_Compiler_Formatter* self, i64 line) {
     (void)self;
     (void)line;
+    Amalgame_Compiler_Formatter_DrainTrailingForLastLine(self);
     while (self->CommentPos < self->CommentCnt) {
         Amalgame_Compiler_Token* __attribute__((unused)) c = (Amalgame_Compiler_Token*)AmalgameList_get(self->Comments, self->CommentPos);
         if (c->Line >= line) {
@@ -5340,6 +5367,7 @@ static void Amalgame_Compiler_Formatter_Sync(Amalgame_Compiler_Formatter* self, 
 
 static void Amalgame_Compiler_Formatter_FlushTrailingComments(Amalgame_Compiler_Formatter* self) {
     (void)self;
+    Amalgame_Compiler_Formatter_DrainTrailingForLastLine(self);
     while (self->CommentPos < self->CommentCnt) {
         Amalgame_Compiler_Token* __attribute__((unused)) c = (Amalgame_Compiler_Token*)AmalgameList_get(self->Comments, self->CommentPos);
         if (self->LastLine > 0 && c->Line - self->LastLine >= 2) {
@@ -5621,6 +5649,7 @@ static void Amalgame_Compiler_Formatter_EmitBlockStmts(Amalgame_Compiler_Formatt
         Amalgame_Compiler_Formatter_Sync(self, s->Line);
         Amalgame_Compiler_Formatter_EmitStmt(self, s);
     }
+    Amalgame_Compiler_Formatter_DrainTrailingForLastLine(self);
     self->LastLine = Amalgame_Compiler_Formatter_BlockEndLine(self, body);
 }
 
@@ -5632,6 +5661,7 @@ static void Amalgame_Compiler_Formatter_EmitInline(Amalgame_Compiler_Formatter* 
     } else {
         self->LastLine = body->Line;
         Amalgame_Compiler_Formatter_EmitStmt(self, body);
+        Amalgame_Compiler_Formatter_DrainTrailingForLastLine(self);
         self->LastLine = Amalgame_Compiler_Formatter_MaxLineInTree(self, body) + 1;
     }
 }
