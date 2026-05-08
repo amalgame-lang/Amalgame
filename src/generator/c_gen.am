@@ -926,9 +926,15 @@ public class CGen {
         s = String_Replace(s, "\"", "\\\"")
         s = String_Replace(s, "\n", "\\n")
         s = String_Replace(s, "\t", "\\t")
-        s = String_Replace(s, "\r", "\\r")
+        // CR (0x0d) is built via String_FromByte(13) rather than
+        // "\r" — the ancient amc that bootstraps this file lexed
+        // both `"\r"` and `"\x0d"` incorrectly (no escape applied),
+        // so the previous `String_Replace(s, "\r", ...)` never
+        // matched a real CR. Going through a builtin int→byte
+        // bypasses the lexer entirely.
+        s = String_Replace(s, String_FromByte(13), "\\r")
         // ESC character (0x1B) used in ANSI color codes
-        s = String_Replace(s, "\x1b", "\\x1b")
+        s = String_Replace(s, String_FromByte(27), "\\x1b")
         return s
     }
 

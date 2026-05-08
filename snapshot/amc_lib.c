@@ -3770,8 +3770,8 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
     s = String_Replace(s, "\"", "\\\"");
     s = String_Replace(s, "\n", "\\n");
     s = String_Replace(s, "\t", "\\t");
-    s = String_Replace(s, "\\r", "\\r");
-    s = String_Replace(s, "\x1b", "\\x1b");
+    s = String_Replace(s, String_FromByte(13), "\\r");
+    s = String_Replace(s, String_FromByte(27), "\\x1b");
     return s;
 }
 
@@ -10158,14 +10158,17 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self);
 static void Amalgame_Compiler_LspServer_UpsertDoc(Amalgame_Compiler_LspServer* self, code_string uri, code_string text);
 static void Amalgame_Compiler_LspServer_RemoveDoc(Amalgame_Compiler_LspServer* self, code_string uri);
 static code_string Amalgame_Compiler_LspServer_ReadMessage(Amalgame_Compiler_LspServer* self);
+code_string Amalgame_Compiler_LspServer_Cr();
 static void Amalgame_Compiler_LspServer_Send(Amalgame_Compiler_LspServer* self, code_string body);
 static void Amalgame_Compiler_LspServer_SendInit(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_SendShutdown(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_PublishDiagnostics(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
-code_string Amalgame_Compiler_LspServer_DiagnosticFromResolver(Amalgame_Compiler_ResolverError* e);
-code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(Amalgame_Compiler_TypeError* e);
-static code_string Amalgame_Compiler_LspServer_DiagnosticBody(i64 line, i64 col, code_string msg);
+code_string Amalgame_Compiler_LspServer_DiagnosticFromResolver(code_string source, Amalgame_Compiler_ResolverError* e);
+code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(code_string source, Amalgame_Compiler_TypeError* e);
+static code_string Amalgame_Compiler_LspServer_DiagnosticBody(code_string source, i64 line, i64 col, code_string msg);
+static i64 Amalgame_Compiler_LspServer_TokenEndCol(code_string source, i64 line, i64 col);
+static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch);
 code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s);
 code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri);
 code_string Amalgame_Compiler_LspServer_JsonStr(code_string body, code_string key);
@@ -10271,11 +10274,16 @@ static code_string Amalgame_Compiler_LspServer_ReadMessage(Amalgame_Compiler_Lsp
     return Console_ReadBytes(contentLen);
 }
 
+code_string Amalgame_Compiler_LspServer_Cr() {
+    return String_FromByte(13);
+}
+
 static void Amalgame_Compiler_LspServer_Send(Amalgame_Compiler_LspServer* self, code_string body) {
     (void)self;
     (void)body;
     i64 __attribute__((unused)) n = String_Length(body);
-    Console_Write(code_string_concat(code_string_concat("Content-Length: ", String_FromInt(n)), "\\r\n\\r\n"));
+    code_string __attribute__((unused)) crlf = code_string_concat(Amalgame_Compiler_LspServer_Cr(), "\n");
+    Console_Write(code_string_concat(code_string_concat(code_string_concat("Content-Length: ", String_FromInt(n)), crlf), crlf));
     Console_Write(body);
     Console_Flush();
 }
@@ -10326,7 +10334,7 @@ static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServ
         if (!first) {
             arr = code_string_concat(arr, ",");
         }
-        arr = code_string_concat(arr, Amalgame_Compiler_LspServer_DiagnosticFromResolver(e));
+        arr = code_string_concat(arr, Amalgame_Compiler_LspServer_DiagnosticFromResolver(source, e));
         first = 0;
     }
     i64 __attribute__((unused)) tn = AmalgameList_count(tc->Errors);
@@ -10335,44 +10343,109 @@ static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServ
         if (!first) {
             arr = code_string_concat(arr, ",");
         }
-        arr = code_string_concat(arr, Amalgame_Compiler_LspServer_DiagnosticFromTc(te));
+        arr = code_string_concat(arr, Amalgame_Compiler_LspServer_DiagnosticFromTc(source, te));
         first = 0;
     }
     arr = code_string_concat(arr, "]");
     return arr;
 }
 
-code_string Amalgame_Compiler_LspServer_DiagnosticFromResolver(Amalgame_Compiler_ResolverError* e) {
+code_string Amalgame_Compiler_LspServer_DiagnosticFromResolver(code_string source, Amalgame_Compiler_ResolverError* e) {
+    (void)source;
     (void)e;
-    return Amalgame_Compiler_LspServer_DiagnosticBody(e->Line, e->Column, e->Message);
+    return Amalgame_Compiler_LspServer_DiagnosticBody(source, e->Line, e->Column, e->Message);
 }
 
-code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(Amalgame_Compiler_TypeError* e) {
+code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(code_string source, Amalgame_Compiler_TypeError* e) {
+    (void)source;
     (void)e;
-    return Amalgame_Compiler_LspServer_DiagnosticBody(e->Line, e->Column, e->Message);
+    return Amalgame_Compiler_LspServer_DiagnosticBody(source, e->Line, e->Column, e->Message);
 }
 
-static code_string Amalgame_Compiler_LspServer_DiagnosticBody(i64 line, i64 col, code_string msg) {
+static code_string Amalgame_Compiler_LspServer_DiagnosticBody(code_string source, i64 line, i64 col, code_string msg) {
+    (void)source;
     (void)line;
     (void)col;
     (void)msg;
     i64 __attribute__((unused)) l = line - 1;
-    i64 __attribute__((unused)) c = col - 1;
+    i64 __attribute__((unused)) cStart = col - 1;
     if (l < 0) {
         l = 0;
     }
-    if (c < 0) {
-        c = 0;
+    if (cStart < 0) {
+        cStart = 0;
+    }
+    i64 __attribute__((unused)) endCol = Amalgame_Compiler_LspServer_TokenEndCol(source, line, col);
+    i64 __attribute__((unused)) cEnd = endCol - 1;
+    if (cEnd <= cStart) {
+        cEnd = cStart + 1;
     }
     code_string __attribute__((unused)) lStr = String_FromInt(l);
-    code_string __attribute__((unused)) cStr = String_FromInt(c);
-    code_string __attribute__((unused)) cEnd = String_FromInt(c + 1);
-    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"severity\":1,\"range\":{\"start\":{\"line\":", lStr), ",\"character\":"), cStr), "},\"end\":{\"line\":"), lStr), ",\"character\":"), cEnd), "}},\"message\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(msg)), "\"}");
+    code_string __attribute__((unused)) cStartStr = String_FromInt(cStart);
+    code_string __attribute__((unused)) cEndStr = String_FromInt(cEnd);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"severity\":1,\"range\":{\"start\":{\"line\":", lStr), ",\"character\":"), cStartStr), "},\"end\":{\"line\":"), lStr), ",\"character\":"), cEndStr), "}},\"message\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(msg)), "\"}");
+}
+
+static i64 Amalgame_Compiler_LspServer_TokenEndCol(code_string source, i64 line, i64 col) {
+    (void)source;
+    (void)line;
+    (void)col;
+    i64 __attribute__((unused)) n = String_Length(source);
+    i64 __attribute__((unused)) off = 0;
+    i64 __attribute__((unused)) ln = 1;
+    while (ln < line && off < n) {
+        code_string __attribute__((unused)) ch = String_CharAt1(source, off);
+        if (code_string_equals(ch, "\n")) {
+            ln = ln + 1;
+        }
+        off = off + 1;
+    }
+    i64 __attribute__((unused)) colIdx = 0;
+    while (colIdx < col - 1 && off < n) {
+        code_string __attribute__((unused)) ch = String_CharAt1(source, off);
+        if (code_string_equals(ch, "\n")) {
+            break;
+        }
+        off = off + 1;
+        colIdx = colIdx + 1;
+    }
+    i64 __attribute__((unused)) endCol = col;
+    while (off < n) {
+        code_string __attribute__((unused)) ch = String_CharAt1(source, off);
+        if (Amalgame_Compiler_LspServer_IsWordChar(ch)) {
+            off = off + 1;
+            endCol = endCol + 1;
+        } else {
+            break;
+        }
+    }
+    return endCol;
+}
+
+static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch) {
+    (void)ch;
+    if (String_Length(ch) == 0) {
+        return 0;
+    }
+    if (code_string_equals(ch, "_")) {
+        return 1;
+    }
+    if (String_IndexOf("0123456789", ch) >= 0) {
+        return 1;
+    }
+    if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", ch) >= 0) {
+        return 1;
+    }
+    if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0) {
+        return 1;
+    }
+    return 0;
 }
 
 code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s) {
     (void)s;
     i64 __attribute__((unused)) n = String_Length(s);
+    code_string __attribute__((unused)) cr = Amalgame_Compiler_LspServer_Cr();
     code_string __attribute__((unused)) r = "";
     for (i64 i = 0; i < n; i++) {
         code_string __attribute__((unused)) ch = String_CharAt1(s, i);
@@ -10382,7 +10455,7 @@ code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s) {
             r = code_string_concat(r, "\\\\");
         } else if (code_string_equals(ch, "\n")) {
             r = code_string_concat(r, "\\n");
-        } else if (code_string_equals(ch, "\\r")) {
+        } else if (code_string_equals(ch, cr)) {
             r = code_string_concat(r, "\\r");
         } else if (code_string_equals(ch, "\t")) {
             r = code_string_concat(r, "\\t");
