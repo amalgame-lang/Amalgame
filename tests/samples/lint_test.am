@@ -1,0 +1,18 @@
+namespace Tests
+
+// Used by amc --lint to verify dead-code detection.
+public class Program {
+    public static int Decide(int n) {
+        if (n > 0) {
+            return 1
+            // unreachable from here on; the linter should warn once.
+            Console.WriteLine("never")
+        }
+        return 0
+    }
+
+    public static void Main(string[] args) {
+        let r = Program.Decide(5)
+        Console.WriteLine("r: {r}")
+    }
+}

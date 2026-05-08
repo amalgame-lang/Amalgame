@@ -11,9 +11,16 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 This release closes every open compiler bug tracked in v0.3.1's
 `SKIP_SELFHOST` list, restores `try` / `catch` / `throw` / `finally`
-end-to-end in the self-hosted parser, and ships the first round of
-generic type inference for `List<T>` and `Map<K,V>`. The full test
-suite is now **149/149 green with zero SKIPs**.
+end-to-end in the self-hosted parser, ships the first round of
+generic type inference for `List<T>` and `Map<K,V>`, and introduces
+`amc --lint` (basic static analysis). The full test suite is now
+**150/150 green with zero SKIPs**.
+
+> **Re-tagged note**: an earlier v0.3.2 release went out before two
+> follow-up changes (typechecker false positives during multi-file
+> compilation; `amc --lint` MVP). The v0.3.2 tag and GitHub release
+> were re-cut to include them. Binary checksums therefore differ
+> from the original v0.3.2 artefacts.
 
 ### Language
 
@@ -36,10 +43,26 @@ suite is now **149/149 green with zero SKIPs**.
 
 - **Multi-file type checking** — TypeChecker now walks every parsed
   program (was hard-coded to `programs[0]`).
+- **Multi-file false-positive cleanup** — the typechecker's
+  per-node type map and local-scope state now reset between
+  programs, the per-program filename is read from `prog.Str2`
+  rather than the constructor argument, and bare `return` (parsed
+  as `Return(_unknown_, …)`) is recognised as such instead of
+  being treated as a value-return. `build_amc.sh` is now silent.
 - **Null-safety** — three independent bugs fixed: NodeKey collision
   in the typechecker (Kind is now part of the key), bare `?` was
   dropped by the lexer (added `OP_QMARK`), and `TypeToC("T?")` no
   longer doubles up the C pointer.
+
+### Tooling
+
+- **`amc --lint`** — new flag that runs a static-analysis pass on
+  top of the parsed AST and emits non-fatal warnings. MVP catches
+  unreachable code after `return` / `throw` / `break` / `continue`,
+  including inside nested `if` / `while` / `for-in` / `try` bodies.
+  The skeleton (`src/linter.am`) is set up to grow more checks
+  (unused locals, shadowed names, …) without touching anywhere
+  else.
 
 ### Formatter
 
