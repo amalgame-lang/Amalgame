@@ -367,9 +367,10 @@ static inline void _am_throw(void* val, code_string type,
    one struct + one top-level function per lambda, then allocates
    the env at the creation site and bundles them in an AmalgameClosure.
 
-   Arity 1 is enough for v1 — single-param lambdas are the only form
-   the parser produces today. arg and result are both void* (boxed);
-   the call site casts back to the right type.
+   v2 supports arities 1, 2, 3 — covers single-param, predicate-style
+   ((acc,x) => …, (a,b) => …), and reducer/sorter-style lambdas. arg
+   and result are all void* (boxed); the call site casts back to the
+   right type.
 */
 
 typedef struct AmalgameClosure {
@@ -378,6 +379,8 @@ typedef struct AmalgameClosure {
 } AmalgameClosure;
 
 typedef void* (*AmalgameClosure1Fn)(void*, void*);
+typedef void* (*AmalgameClosure2Fn)(void*, void*, void*);
+typedef void* (*AmalgameClosure3Fn)(void*, void*, void*, void*);
 
 static inline AmalgameClosure* AmalgameClosure_new(void* fn, void* env) {
     AmalgameClosure* c = (AmalgameClosure*) code_alloc(sizeof(AmalgameClosure));
@@ -388,6 +391,14 @@ static inline AmalgameClosure* AmalgameClosure_new(void* fn, void* env) {
 
 static inline void* AmalgameClosure_call1(AmalgameClosure* c, void* arg) {
     return ((AmalgameClosure1Fn)c->fn)(c->env, arg);
+}
+
+static inline void* AmalgameClosure_call2(AmalgameClosure* c, void* a, void* b) {
+    return ((AmalgameClosure2Fn)c->fn)(c->env, a, b);
+}
+
+static inline void* AmalgameClosure_call3(AmalgameClosure* c, void* a, void* b, void* d) {
+    return ((AmalgameClosure3Fn)c->fn)(c->env, a, b, d);
 }
 
 #endif /* CODE_RUNTIME_H */
