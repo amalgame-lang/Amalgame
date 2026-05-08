@@ -90,10 +90,15 @@ public class AmalgameCompiler {
         }
 
         // ── TypeChecker pass ──────────────────────────
+        // Walk every parsed program so cross-file uses (e.g. a class in
+        // utils.am referenced from main.am) are checked too. The
+        // TypeChecker keeps its own state across calls and accumulates
+        // errors in `this.Errors`, so a single `tc` instance is fine.
         let tc     = new TypeChecker(resolver, firstPath)
         tc.Sources = this.Diag.Sources
-        let tcProg = progs.Get(0)
-        tc.Check(tcProg)
+        for ti in 0..progCount {
+            tc.Check(progs.Get(ti))
+        }
         if (tc.HasErrors()) {
             Console.WriteError(tc.FormatErrors())
             this.ExitCode = 1
