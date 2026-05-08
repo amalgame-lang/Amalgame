@@ -150,12 +150,18 @@ public class Formatter {
 
     // ── Program ───────────────────────────────────────
     private void EmitProgram(AstNode prog) {
-        // Namespace / imports — namespace is in prog.Str; imports were
-        // consumed by the parser without being stored. Always emit a
-        // namespace if we have one.
+        // Namespace / imports — namespace is in prog.Str; imports are
+        // stored by the parser on prog.Args as IDENTIFIER nodes (Name
+        // = qualified path, Line = source line of the `import` token).
         if (String_Length(prog.Str) > 0) {
             this.Sync(1)
             this.Line("namespace " + prog.Str)
+        }
+        let importCount = prog.Args.Count()
+        for ii in 0..importCount {
+            let imp: AstNode = prog.Args.Get(ii)
+            this.Sync(imp.Line)
+            this.Line("import " + imp.Name)
         }
         let n = prog.Children.Count()
         for i in 0..n {
