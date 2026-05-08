@@ -2458,6 +2458,13 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMatchPattern(Ama
     if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
         Amalgame_Compiler_Token* __attribute__((unused)) nameTok = Amalgame_Compiler_Parser_Advance(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) patIdent = Amalgame_Compiler_Ast_Ident(nameTok->Value, nameTok->Line, nameTok->Column);
+        if (Amalgame_Compiler_Parser_CheckValue(self, ".")) {
+            Amalgame_Compiler_Parser_Advance(self);
+            if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
+                Amalgame_Compiler_Token* __attribute__((unused)) memberTok = Amalgame_Compiler_Parser_Advance(self);
+                patIdent = Amalgame_Compiler_Ast_Member(patIdent, memberTok->Value, nameTok->Line, nameTok->Column);
+            }
+        }
         if (Amalgame_Compiler_Parser_CheckValue(self, "(")) {
             Amalgame_Compiler_Parser_Advance(self);
             Amalgame_Compiler_AstNode* __attribute__((unused)) captures = Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind_CALL, nameTok->Line, nameTok->Column);

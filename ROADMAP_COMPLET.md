@@ -114,9 +114,10 @@ self-hosted compiler. They're marked SKIP in `tests/run_tests.sh`
 (`SKIP_SELFHOST`) so the suite stays green; each one needs its own
 fix.
 
-- [ ] **`Type.Variant` patterns in match** — `Direction.North => ...`
-      isn't recognised as a pattern; `ParseMatchPattern` only handles
-      bare identifiers, not member access. Affects `enums.am`.
+- [x] **`Type.Variant` patterns in match** — `ParseMatchPattern`
+      now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
+      which the existing CGen MEMBER branch lowers to `Type_Variant`.
+      Unblocks `enums.am`.
 - [ ] **try / catch / throw** — the self-hosted parser doesn't have
       ParseTry yet, so `try { ... } catch e { ... }` is rejected as
       unknown identifiers. Affects `try_catch.am`. Vala had this;
