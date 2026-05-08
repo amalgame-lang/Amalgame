@@ -134,6 +134,36 @@ run_lib_test() {
     fi
 }
 
+# Run `amc test <dir>` and grep its merged stdout/stderr for a pattern.
+# Exit code is ignored: the runner returns 1 when any test FAILs by
+# design, but the suite cell still wants to assert a specific tally.
+run_amc_test_check() {
+    local name="$1"
+    local dir="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+
+    if [ ! -d "$dir" ]; then
+        echo -e "${YELLOW}SKIP${NC} (dir not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local out
+    out=$("$AMC" test "$dir" 2>&1)
+
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        echo "    got:"
+        echo "$out" | sed 's/^/      /'
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # Run amc --lint <file> and grep for an expected warning fragment in its stderr.
 run_lint_check() {
     local name="$1"
@@ -298,6 +328,14 @@ run_test "process: cap exit"      "$SAMPLES/process_api.am"  "cap.exit=0"
 run_test "process: cap stdout"    "$SAMPLES/process_api.am"  "cap.out=captured-line"
 run_test "process: nonzero exit"  "$SAMPLES/process_api.am"  "bad.exit=1"
 run_test "process: stderr merge"  "$SAMPLES/process_api.am"  "merged.out=stderr-bytes"
+
+# ── amc test runner ────────────────────────────────────
+echo ""
+echo "── amc test ────────────────────────────"
+run_amc_test_check "amc test: discovers"  "$SAMPLES/test_runner"  "arith_test.am"
+run_amc_test_check "amc test: pass tally" "$SAMPLES/test_runner"  "PASS: 4"
+run_amc_test_check "amc test: fail tally" "$SAMPLES/test_runner"  "FAIL: 1"
+run_amc_test_check "amc test: skip tally" "$SAMPLES/test_runner"  "SKIP: 1"
 
 # ── Namespace ──────────────────────────────────────────
 echo ""

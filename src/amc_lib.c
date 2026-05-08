@@ -10284,6 +10284,7 @@ struct _Amalgame_Compiler_Program {
 };
 
 void Amalgame_Compiler_Program_PrintUsage();
+i64 Amalgame_Compiler_Program_RunTest(i64 argc);
 i64 Amalgame_Compiler_Program_RunFmt(i64 argc);
 void Amalgame_Compiler_Program_Main(code_string* args);
 
@@ -10311,6 +10312,104 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("Subcommands:");
     Console_WriteError("  fmt           Format Amalgame source. Default: print to stdout.");
     Console_WriteError("                With -w, rewrite files in place.");
+    Console_WriteError("  test [<dir>]  Discover *_test.am, compile + run each, aggregate");
+    Console_WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.");
+}
+
+i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) dir = ".";
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc test: unknown option '", a), "'"));
+            return 1;
+        }
+        dir = a;
+        i = i + 1;
+    }
+    code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", dir), " -name '*_test.am' -type f");
+    AmalgameProcessResult* __attribute__((unused)) discovered = Process_RunCapture(findCmd);
+    if (discovered->Exit != 0) {
+        Console_WriteError(code_string_concat("amc test: failed to enumerate tests in ", dir));
+        Console_WriteError(discovered->Stdout);
+        return 1;
+    }
+    AmalgameList* __attribute__((unused)) lines = String_Split(String_Trim(discovered->Stdout), "\n");
+    i64 __attribute__((unused)) nLines = AmalgameList_count(lines);
+    if (nLines == 0) {
+        Console_WriteLine(code_string_concat("No *_test.am files found under ", dir));
+        return 0;
+    }
+    if (nLines == 1) {
+        code_string __attribute__((unused)) only = String_Trim((code_string)AmalgameList_get(lines, 0));
+        if (String_Length(only) == 0) {
+            Console_WriteLine(code_string_concat("No *_test.am files found under ", dir));
+            return 0;
+        }
+    }
+    code_string __attribute__((unused)) amcPath = Args_Get(0);
+    i64 __attribute__((unused)) pass = 0;
+    i64 __attribute__((unused)) fail = 0;
+    i64 __attribute__((unused)) skip = 0;
+    i64 __attribute__((unused)) compileFail = 0;
+    for (i64 li = 0; li < nLines; li++) {
+        code_string __attribute__((unused)) path = String_Trim((code_string)AmalgameList_get(lines, li));
+        if (String_Length(path) == 0) {
+            continue;
+        }
+        Console_WriteLine(code_string_concat("── ", path));
+        code_string __attribute__((unused)) outBin = code_string_concat("/tmp/amc_test_", String_FromInt(li));
+        code_string __attribute__((unused)) outC = code_string_concat(outBin, ".c");
+        code_string __attribute__((unused)) amcCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(amcPath, " "), path), " -o "), outBin), " --quiet");
+        AmalgameProcessResult* __attribute__((unused)) cr = Process_RunCapture(amcCmd);
+        if (cr->Exit != 0) {
+            Console_WriteLine("  [COMPILE-FAIL]");
+            Console_Write(cr->Stdout);
+            compileFail = compileFail + 1;
+            continue;
+        }
+        code_string __attribute__((unused)) gccCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat("gcc -O2 -Iruntime ", outC), " -lgc -lm -lcurl -o "), outBin), " 2>&1");
+        AmalgameProcessResult* __attribute__((unused)) gcc = Process_RunCapture(gccCmd);
+        if (gcc->Exit != 0) {
+            Console_WriteLine("  [LINK-FAIL]");
+            Console_Write(gcc->Stdout);
+            compileFail = compileFail + 1;
+            continue;
+        }
+        AmalgameProcessResult* __attribute__((unused)) rr = Process_RunCapture(outBin);
+        AmalgameList* __attribute__((unused)) outLines = String_Split(rr->Stdout, "\n");
+        i64 __attribute__((unused)) on = AmalgameList_count(outLines);
+        for (i64 ln = 0; ln < on; ln++) {
+            code_string __attribute__((unused)) lineStr = (code_string)AmalgameList_get(outLines, ln);
+            if (String_StartsWith(lineStr, "[PASS]")) {
+                Console_WriteLine(code_string_concat("  ", lineStr));
+                pass = pass + 1;
+            } else if (String_StartsWith(lineStr, "[FAIL]")) {
+                Console_WriteLine(code_string_concat("  ", lineStr));
+                fail = fail + 1;
+            } else if (String_StartsWith(lineStr, "[SKIP]")) {
+                Console_WriteLine(code_string_concat("  ", lineStr));
+                skip = skip + 1;
+            }
+        }
+        if (rr->Exit != 0 && pass == 0 && fail == 0 && skip == 0) {
+            Console_WriteLine(code_string_concat("  [FAIL] <crash> exit=", String_FromInt(rr->Exit)));
+            fail = fail + 1;
+        }
+    }
+    Console_WriteLine("");
+    Console_WriteLine("──────────────────────────────────");
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("PASS: ", String_FromInt(pass)), "  FAIL: "), String_FromInt(fail)), "  SKIP: "), String_FromInt(skip)));
+    if (compileFail > 0) {
+        Console_WriteLine(code_string_concat("COMPILE-FAIL: ", String_FromInt(compileFail)));
+        return 1;
+    }
+    if (fail > 0) {
+        return 1;
+    }
+    return 0;
 }
 
 i64 Amalgame_Compiler_Program_RunFmt(i64 argc) {
@@ -10368,6 +10467,10 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "fmt")) {
         Exit_Set(Amalgame_Compiler_Program_RunFmt(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "test")) {
+        Exit_Set(Amalgame_Compiler_Program_RunTest(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
