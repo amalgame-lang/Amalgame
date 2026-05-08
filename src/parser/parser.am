@@ -1336,10 +1336,18 @@ public class Parser {
             }
             return lit
         }
-        // Variant or identifier: Circle(r) or Monday
+        // Variant or identifier: Circle(r), Monday, or Direction.North
         if (this.CheckType(TokenType.IDENTIFIER)) {
             let nameTok = this.Advance()
-            let patIdent = Ast.Ident(nameTok.Value, nameTok.Line, nameTok.Column)
+            var patIdent = Ast.Ident(nameTok.Value, nameTok.Line, nameTok.Column)
+            // Qualified variant: Direction.North, Season.Spring
+            if (this.CheckValue(".")) {
+                this.Advance()
+                if (this.CheckType(TokenType.IDENTIFIER)) {
+                    let memberTok = this.Advance()
+                    patIdent = Ast.Member(patIdent, memberTok.Value, nameTok.Line, nameTok.Column)
+                }
+            }
             // Algebraic variant with capture: Circle(r)
             if (this.CheckValue("(")) {
                 this.Advance()
