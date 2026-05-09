@@ -162,4 +162,14 @@ static inline code_bool Environment_HasVar(code_string name) {
     return getenv(name) != NULL;
 }
 
+/* Short aliases exposed to Amalgame as `Env.Get(...)` / `Env.Has(...)`.
+   The resolver declares the prefixed names; CGen maps `Env.Get` to
+   `Env_Get` via the isStdlib branch. */
+static inline code_string Env_Get(code_string name) {
+    return Environment_GetVar(name);
+}
+static inline code_bool Env_Has(code_string name) {
+    return Environment_HasVar(name);
+}
+
 #endif /* AMALGAME_IO_H */

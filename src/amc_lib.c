@@ -3730,8 +3730,14 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Path_Combine") || code_string_equals(calleeStr, "Path_GetExtension") || code_string_equals(calleeStr, "Path_GetFilename") || code_string_equals(calleeStr, "Path_GetDirectory")) {
                 return "code_string";
             }
-            if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson")) {
+            if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson") || code_string_equals(calleeStr, "Http_PostWithHeaders") || code_string_equals(calleeStr, "Http_Put") || code_string_equals(calleeStr, "Http_Delete") || code_string_equals(calleeStr, "Http_Patch")) {
                 return "AmalgameHttpResponse*";
+            }
+            if (code_string_equals(calleeStr, "Env_Get")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Env_Has")) {
+                return "code_bool";
             }
             if (code_string_equals(calleeStr, "Process_RunCapture")) {
                 return "AmalgameProcessResult*";
@@ -8221,6 +8227,8 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetExtension", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetFilename", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetDirectory", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Get", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Has", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Sqrt", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Abs", "float", 0);
@@ -11751,6 +11759,9 @@ struct _Amalgame_Compiler_MigrateCommand {
 
 void Amalgame_Compiler_MigrateCommand_PrintUsage();
 i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc);
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, code_string output, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines);
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines);
+static code_bool Amalgame_Compiler_MigrateCommand_IsDirectory(code_string path);
 static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path);
 static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input);
 static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s);
@@ -11874,9 +11885,30 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
         return 1;
     }
     if (!File_Exists(input)) {
-        Console_WriteError(code_string_concat("amc migrate: file not found: ", input));
+        Console_WriteError(code_string_concat("amc migrate: path not found: ", input));
         return 1;
     }
+    if (Amalgame_Compiler_MigrateCommand_IsDirectory(input)) {
+        if (String_Length(output) > 0) {
+            Console_WriteError("amc migrate: --output cannot be used with directory input (writes are in-place next to each source).");
+            return 1;
+        }
+        return Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(input, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines);
+    }
+    return Amalgame_Compiler_MigrateCommand_RunMigrateOne(input, output, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines);
+}
+
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, code_string output, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines) {
+    (void)input;
+    (void)output;
+    (void)langHint;
+    (void)provider;
+    (void)model;
+    (void)force;
+    (void)dryRun;
+    (void)promptOnly;
+    (void)noCheck;
+    (void)maxLines;
     code_string __attribute__((unused)) lang = langHint;
     if (String_Length(lang) == 0) {
         lang = Amalgame_Compiler_MigrateCommand_DetectLanguage(input);
@@ -11942,6 +11974,79 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
         Console_WriteLine("[migrate] check passed");
     }
     return 0;
+}
+
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines) {
+    (void)dir;
+    (void)langHint;
+    (void)provider;
+    (void)model;
+    (void)force;
+    (void)dryRun;
+    (void)promptOnly;
+    (void)noCheck;
+    (void)maxLines;
+    Console_WriteError(code_string_concat(code_string_concat("[migrate] discovering source files in ", dir), "..."));
+    code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", dir), " -type f 2>/dev/null");
+    AmalgameProcessResult* __attribute__((unused)) result = Process_RunCapture(findCmd);
+    if (result->Exit != 0) {
+        Console_WriteError(code_string_concat("amc migrate: failed to enumerate ", dir));
+        return 1;
+    }
+    AmalgameList* __attribute__((unused)) lines = String_Split(String_Trim(result->Stdout), "\n");
+    i64 __attribute__((unused)) n = AmalgameList_count(lines);
+    AmalgameList* __attribute__((unused)) candidates = AmalgameList_new();
+    AmalgameList* __attribute__((unused)) langs = AmalgameList_new();
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) path = String_Trim((code_string)AmalgameList_get(lines, i));
+        if (String_Length(path) == 0) {
+            continue;
+        }
+        if (String_EndsWith(path, ".am")) {
+            continue;
+        }
+        code_string __attribute__((unused)) lang = Amalgame_Compiler_MigrateCommand_DetectLanguage(path);
+        if (String_Length(lang) == 0) {
+            continue;
+        }
+        AmalgameList_add(candidates, (void*)(intptr_t)(path));
+        AmalgameList_add(langs, (void*)(intptr_t)(lang));
+    }
+    i64 __attribute__((unused)) total = AmalgameList_count(candidates);
+    if (total == 0) {
+        Console_WriteError(code_string_concat("[migrate] no recognized source files found in ", dir));
+        return 0;
+    }
+    Console_WriteError(code_string_concat(code_string_concat("[migrate] found ", String_FromInt(total)), " file(s) to migrate"));
+    i64 __attribute__((unused)) ok = 0;
+    i64 __attribute__((unused)) failed = 0;
+    for (i64 j = 0; j < total; j++) {
+        code_string __attribute__((unused)) path = (code_string)AmalgameList_get(candidates, j);
+        code_string __attribute__((unused)) perFileLang = langHint;
+        if (String_Length(perFileLang) == 0) {
+            perFileLang = (code_string)AmalgameList_get(langs, j);
+        }
+        i64 __attribute__((unused)) r = Amalgame_Compiler_MigrateCommand_RunMigrateOne(path, "", perFileLang, provider, model, force, dryRun, promptOnly, noCheck, maxLines);
+        if (r == 0) {
+            ok = ok + 1;
+        } else {
+            failed = failed + 1;
+        }
+    }
+    Console_WriteLine("");
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] summary: ", String_FromInt(ok)), "/"), String_FromInt(total)), " succeeded, "), String_FromInt(failed)), " failed"));
+    if (failed > 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static code_bool Amalgame_Compiler_MigrateCommand_IsDirectory(code_string path) {
+    (void)path;
+    code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat("[ -d \"", path), "\" ] && echo y || echo n");
+    AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(cmd);
+    code_string __attribute__((unused)) answer = String_Trim(res->Stdout);
+    return code_string_equals(answer, "y");
 }
 
 static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path) {

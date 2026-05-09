@@ -797,7 +797,9 @@ public class CGen {
                 // Path stdlib return types
                 if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory") { return "code_string" }
                 // Net stdlib return types
-                if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson") { return "AmalgameHttpResponse*" }
+                if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson" || calleeStr == "Http_PostWithHeaders" || calleeStr == "Http_Put" || calleeStr == "Http_Delete" || calleeStr == "Http_Patch") { return "AmalgameHttpResponse*" }
+                if (calleeStr == "Env_Get") { return "code_string" }
+                if (calleeStr == "Env_Has") { return "code_bool" }
                 if (calleeStr == "Process_RunCapture") { return "AmalgameProcessResult*" }
                 if (calleeStr == "Process_Run") { return "i64" }
                 if (calleeStr == "Console_ReadLine" || calleeStr == "Console_ReadBytes") { return "code_string" }
