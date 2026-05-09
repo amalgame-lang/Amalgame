@@ -730,6 +730,28 @@ run_explain_check "explain: prompt-only src"  "Amalgame source: "       "$explai
 run_explain_check "explain: file not found"   "file not found"          "/nonexistent/file.am"
 run_explain_check "explain: no input"         "no input file"
 
+# v2 providers (chatgpt / gemini / custom): hermetic — no real
+# API call. Just exercise the dispatch table + missing-key paths.
+unset ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY AMC_CUSTOM_PROVIDER_CMD
+
+run_generate_check "v2: chatgpt no key"   "OPENAI_API_KEY not set"      "test"  --provider chatgpt
+run_generate_check "v2: gemini no key"    "GEMINI_API_KEY not set"      "test"  --provider gemini
+run_generate_check "v2: custom no cmd"    "AMC_CUSTOM_PROVIDER_CMD"     "test"  --provider custom
+
+# Auto-selection: when OPENAI_API_KEY is set, chatgpt becomes the
+# default. Same shape for gemini.
+export OPENAI_API_KEY=fake
+run_generate_check "v2: auto-select chatgpt" "provider:      chatgpt" "test"  --dry-run
+unset OPENAI_API_KEY
+export GEMINI_API_KEY=fake
+run_generate_check "v2: auto-select gemini"  "provider:      gemini"  "test"  --dry-run
+unset GEMINI_API_KEY
+
+# --help advertises the new providers.
+run_generate_check "v2: --help mentions chatgpt" "chatgpt"  --help
+run_generate_check "v2: --help mentions gemini"  "gemini"   --help
+run_generate_check "v2: --help mentions custom"  "custom"   --help
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
