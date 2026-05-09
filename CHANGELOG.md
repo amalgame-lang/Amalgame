@@ -106,6 +106,26 @@ along the way. Suite goes from **187/187** to **263/263**.
   rationale, kept up-to-date with what shipped.
 - CONTINUATION.md and ROADMAP_COMPLET.md refreshed.
 
+### Refactor & contributor DX
+
+- **`merge=ours` + `linguist-generated` for generated artefacts**
+  *(PR #173)*. `.gitattributes` declares `merge=ours` for
+  `snapshot/amc_lib.c`, `snapshot/INFO.md`, and `src/amc_lib.c`
+  — the canonical resolution on conflict is "rebuild from
+  sources", not three-way merge. Eliminates the manual `--theirs`
+  → rebuild → re-snapshot → amend dance that ate ~6 PRs in the
+  v0.4 cycle. One-time post-clone setup:
+  `git config merge.ours.driver true`. Documented as pitfall #12
+  in CONTINUATION.md.
+- **CGen: `BoxAsVoid` / `UnboxScalar` helpers extracted** *(PR #174)*.
+  The `(void*)(intptr_t)X` boxing dance and symmetric unbox were
+  duplicated across ~17 sites; consolidated into two helpers so
+  intent reads at a glance. Behavior unchanged — emitted C is
+  byte-identical pre / post.
+- **Parser-loop audit** *(PR #175)*. Verified that every `while`
+  loop calling a sub-parser already has a `lastPos` watchdog
+  (added preventively in PR #152). No new hazard found.
+
 ### Cleanup
 
 - `use.sh` (pre-self-hosted doc snippet) removed.
