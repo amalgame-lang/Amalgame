@@ -1,0 +1,312 @@
+namespace Amalgame.DateTime
+
+import Amalgame.Collections
+
+// ── DateTime ──────────────────────────────────────────
+//
+// Three small classes, all UTC-only in v1:
+//   - Duration   — i64 nanoseconds, signed (negatives valid).
+//   - Instant    — i64 nanoseconds since 1970-01-01T00:00:00Z.
+//                  ±292 years from epoch, fitting comfortably for
+//                  anything from 1678 through 2262.
+//   - Stopwatch  — convenience wrapper over the monotonic clock
+//                  for measuring elapsed time. Immune to wall-clock
+//                  adjustments (NTP, manual changes).
+//   - InstantResult — return shape for parse, mirroring JsonResult.
+//
+// Local time, named timezones, DST, and explicit `+HH:MM` offsets
+// in parse are deliberately deferred. The roadmap tracks them as
+// follow-ups; the API here is small enough that adding a parallel
+// `LocalTime` later won't churn existing call sites.
+
+// ── Duration ──────────────────────────────────────────
+
+public class Duration {
+    private nanos: int
+
+    public Duration(nanos: int) {
+        this.nanos = nanos
+    }
+
+    public static Duration FromSeconds(s: int) {
+        return new Duration(s * 1000000000)
+    }
+
+    public static Duration FromMillis(ms: int) {
+        return new Duration(ms * 1000000)
+    }
+
+    public static Duration FromMinutes(m: int) {
+        return new Duration(m * 60 * 1000000000)
+    }
+
+    public static Duration FromHours(h: int) {
+        return new Duration(h * 3600 * 1000000000)
+    }
+
+    public static Duration FromDays(d: int) {
+        return new Duration(d * 86400 * 1000000000)
+    }
+
+    // ── Accessors ────────────────────────────────────
+
+    public int Nanos() {
+        return this.nanos
+    }
+
+    public int Millis() {
+        return this.nanos / 1000000
+    }
+
+    public int Seconds() {
+        return this.nanos / 1000000000
+    }
+
+    public float SecondsFloat() {
+        return this.nanos / 1000000000.0
+    }
+
+    // ── Arithmetic ───────────────────────────────────
+
+    public Duration Plus(other: Duration) {
+        let n: int = this.nanos + other.nanos
+        return new Duration(n)
+    }
+
+    public Duration Minus(other: Duration) {
+        let n: int = this.nanos - other.nanos
+        return new Duration(n)
+    }
+
+    public Duration Times(k: int) {
+        let n: int = this.nanos * k
+        return new Duration(n)
+    }
+
+    public Duration Negate() {
+        let n: int = 0 - this.nanos
+        return new Duration(n)
+    }
+
+    public bool IsZero() {
+        return this.nanos == 0
+    }
+
+    public bool IsNegative() {
+        return this.nanos < 0
+    }
+
+    // Format: short Go-style. "0s" for zero, "Xns/us/ms" for
+    // sub-second, "Xs" / "XmYs" / "XhYmZs" otherwise. Negative
+    // durations are emitted with a leading `-`.
+    public string Format() {
+        if (this.nanos == 0) { return "0s" }
+        var n: int = this.nanos
+        var prefix: string = ""
+        if (n < 0) {
+            prefix = "-"
+            n = 0 - n
+        }
+        if (n < 1000) {
+            return prefix + String_FromInt(n) + "ns"
+        }
+        if (n < 1000000) {
+            let us: int = n / 1000
+            return prefix + String_FromInt(us) + "us"
+        }
+        if (n < 1000000000) {
+            let ms: int = n / 1000000
+            return prefix + String_FromInt(ms) + "ms"
+        }
+        let totalSec: int = n / 1000000000
+        if (totalSec < 60) {
+            // Compose "Xs" or "X.Ys" if there's a fractional part
+            // worth showing. Trailing zeros of the fraction are
+            // trimmed by relying on the integer-millis remainder.
+            let ms: int = (n / 1000000) % 1000
+            if (ms == 0) {
+                return prefix + String_FromInt(totalSec) + "s"
+            }
+            // Pad ms to 3 digits for stable sort order.
+            var msStr: string = String_FromInt(ms)
+            if (ms < 100) { msStr = "0" + msStr }
+            if (ms < 10)  { msStr = "0" + msStr }
+            return prefix + String_FromInt(totalSec) + "." + msStr + "s"
+        }
+        let totalMin: int = totalSec / 60
+        let secPart:  int = totalSec % 60
+        if (totalMin < 60) {
+            return prefix + String_FromInt(totalMin) + "m" + String_FromInt(secPart) + "s"
+        }
+        let totalHr:  int = totalMin / 60
+        let minPart:  int = totalMin % 60
+        return prefix + String_FromInt(totalHr) + "h" + String_FromInt(minPart) + "m" + String_FromInt(secPart) + "s"
+    }
+}
+
+// ── InstantResult ─────────────────────────────────────
+// Mirrors the shape JsonResult uses so callers familiar with one
+// can read the other. `Ok` flags success; on failure `Value` is a
+// zeroed Instant and `Error` carries a human-readable message.
+//
+// Declared before Instant because Instant.Parse instantiates one,
+// and the constructor takes the initial Instant as a parameter:
+// otherwise a default `new Instant(0)` inside this constructor
+// would forward-reference Instant_new before its body emits.
+// (CGen forward-declares struct types in pass1 but constructors
+// in source order during pass2.)
+
+public class InstantResult {
+    public Ok:    bool
+    public Value: Instant
+    public Error: string
+
+    public InstantResult(initial: Instant) {
+        this.Ok    = false
+        this.Value = initial
+        this.Error = ""
+    }
+}
+
+// ── Instant ───────────────────────────────────────────
+
+public class Instant {
+    private nanos: int
+
+    public Instant(nanos: int) {
+        this.nanos = nanos
+    }
+
+    // Wall-clock now. Subject to NTP adjustments and manual clock
+    // changes; for measuring elapsed time prefer Stopwatch (below)
+    // which uses the monotonic clock.
+    public static Instant Now() {
+        let n: int = DateTime_NowNanos()
+        return new Instant(n)
+    }
+
+    public static Instant FromUnixSeconds(s: int) {
+        return new Instant(s * 1000000000)
+    }
+
+    public static Instant FromUnixMillis(ms: int) {
+        return new Instant(ms * 1000000)
+    }
+
+    public static Instant FromUnixNanos(ns: int) {
+        return new Instant(ns)
+    }
+
+    // Parse RFC 3339 / ISO 8601 in the UTC subset:
+    //   YYYY-MM-DDTHH:MM:SS[.frac]Z
+    // Explicit offsets ('+02:00') are rejected in v1 — the
+    // returned InstantResult.Ok will be false.
+    public static InstantResult Parse(s: string) {
+        let zero: Instant      = new Instant(0)
+        let res:  InstantResult = new InstantResult(zero)
+        let n:    int           = DateTime_ParseIsoNanos(s)
+        let bad:  bool          = DateTime_IsParseError(n)
+        if (bad) {
+            res.Ok    = false
+            res.Error = "invalid ISO 8601 / RFC 3339 timestamp (UTC subset only — must end with Z)"
+            return res
+        }
+        res.Ok    = true
+        res.Value = new Instant(n)
+        res.Error = ""
+        return res
+    }
+
+    // ── Accessors ────────────────────────────────────
+
+    public int UnixNanos() {
+        return this.nanos
+    }
+
+    public int UnixMillis() {
+        return this.nanos / 1000000
+    }
+
+    public int UnixSeconds() {
+        return this.nanos / 1000000000
+    }
+
+    // RFC 3339 / ISO 8601 with fixed 9-digit fraction — sorts
+    // lexically by time.
+    public string Format() {
+        return DateTime_FormatIso(this.nanos)
+    }
+
+    // ── Arithmetic ───────────────────────────────────
+
+    public Instant Add(d: Duration) {
+        let dn: int = d.Nanos()
+        let total: int = this.nanos + dn
+        return new Instant(total)
+    }
+
+    public Instant Subtract(d: Duration) {
+        let dn: int = d.Nanos()
+        let total: int = this.nanos - dn
+        return new Instant(total)
+    }
+
+    // Duration from `other` to `this`. Positive when `this` is
+    // later than `other`, negative when earlier.
+    public Duration Since(other: Instant) {
+        let on: int = other.UnixNanos()
+        let diff: int = this.nanos - on
+        return new Duration(diff)
+    }
+
+    // ── Comparison ───────────────────────────────────
+
+    public bool IsBefore(other: Instant) {
+        let on: int = other.UnixNanos()
+        return this.nanos < on
+    }
+
+    public bool IsAfter(other: Instant) {
+        let on: int = other.UnixNanos()
+        return this.nanos > on
+    }
+
+    public bool Equals(other: Instant) {
+        let on: int = other.UnixNanos()
+        return this.nanos == on
+    }
+}
+
+// ── Stopwatch ─────────────────────────────────────────
+//
+// Captures the monotonic clock at construction and reports a
+// Duration since. Pattern:
+//
+//   let sw = new Stopwatch()
+//   doSomeWork()
+//   Console.WriteLine("took " + sw.Elapsed().Format())
+//
+// Reset() rewinds the start point to "now" and returns the
+// elapsed time before the rewind, useful for sub-phase timing
+// inside a loop.
+
+public class Stopwatch {
+    private startNanos: int
+
+    public Stopwatch() {
+        this.startNanos = DateTime_NowMonotonicNanos()
+    }
+
+    public Duration Elapsed() {
+        let now: int = DateTime_NowMonotonicNanos()
+        let diff: int = now - this.startNanos
+        return new Duration(diff)
+    }
+
+    public Duration Reset() {
+        let now: int = DateTime_NowMonotonicNanos()
+        let diff: int = now - this.startNanos
+        this.startNanos = now
+        return new Duration(diff)
+    }
+}

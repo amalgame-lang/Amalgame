@@ -9,6 +9,8 @@
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
+#include "Amalgame_Random.h"
+#include "Amalgame_DateTime.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -44,6 +46,14 @@ typedef struct _Amalgame_Compiler_JsonError Amalgame_Compiler_JsonError;
 typedef struct _Amalgame_Compiler_JsonResult Amalgame_Compiler_JsonResult;
 typedef struct _Amalgame_Compiler_JsonParser Amalgame_Compiler_JsonParser;
 typedef struct _Amalgame_Compiler_Json Amalgame_Compiler_Json;
+typedef struct _Amalgame_Compiler_Random Amalgame_Compiler_Random;
+typedef struct _Amalgame_Compiler_Base64 Amalgame_Compiler_Base64;
+typedef struct _Amalgame_Compiler_Hex Amalgame_Compiler_Hex;
+typedef struct _Amalgame_Compiler_Url Amalgame_Compiler_Url;
+typedef struct _Amalgame_Compiler_Duration Amalgame_Compiler_Duration;
+typedef struct _Amalgame_Compiler_InstantResult Amalgame_Compiler_InstantResult;
+typedef struct _Amalgame_Compiler_Instant Amalgame_Compiler_Instant;
+typedef struct _Amalgame_Compiler_Stopwatch Amalgame_Compiler_Stopwatch;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -4125,6 +4135,8 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Random.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_DateTime.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -8336,6 +8348,18 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgOutput", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgAdvance", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_CombineHiLo", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PrepInc", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_BytesToI64", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_TimeSeedNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_SystemBytes", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_NowNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_NowMonotonicNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_FormatIso", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_ParseIsoNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_IsParseError", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
@@ -12099,6 +12123,920 @@ Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfArray(AmalgameList* xs) {
     return v;
 }
 
+struct _Amalgame_Compiler_Random {
+    i64 state;
+    i64 inc;
+};
+
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_FromSystem();
+AmalgameList* Amalgame_Compiler_Random_SystemBytes(i64 n);
+i64 Amalgame_Compiler_Random_NextUInt32(Amalgame_Compiler_Random* self);
+i64 Amalgame_Compiler_Random_NextInt(Amalgame_Compiler_Random* self);
+i64 Amalgame_Compiler_Random_IntRange(Amalgame_Compiler_Random* self, i64 min, i64 max);
+double Amalgame_Compiler_Random_Float(Amalgame_Compiler_Random* self);
+code_bool Amalgame_Compiler_Random_Bool(Amalgame_Compiler_Random* self);
+AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64 n);
+
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_new(i64 seed) {
+    Amalgame_Compiler_Random* self = (Amalgame_Compiler_Random*) GC_MALLOC(sizeof(Amalgame_Compiler_Random));
+    self->state = 0;
+    self->inc = Random_PrepInc(seed);
+    self->state = Random_PcgAdvance(self->state, self->inc);
+    self->state = self->state + seed;
+    self->state = Random_PcgAdvance(self->state, self->inc);
+    return self;
+}
+
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_FromSystem() {
+    AmalgameList* __attribute__((unused)) bytes = Amalgame_Compiler_Random_SystemBytes(16);
+    i64 __attribute__((unused)) seedA = Random_BytesToI64(bytes, 0);
+    i64 __attribute__((unused)) seedB = Random_BytesToI64(bytes, 8);
+    Amalgame_Compiler_Random* __attribute__((unused)) r = Amalgame_Compiler_Random_new(seedA);
+    r->state = r->state ^ seedB;
+    return r;
+}
+
+AmalgameList* Amalgame_Compiler_Random_SystemBytes(i64 n) {
+    (void)n;
+    return Random_SystemBytes(n);
+}
+
+i64 Amalgame_Compiler_Random_NextUInt32(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) out = Random_PcgOutput(self->state);
+    self->state = Random_PcgAdvance(self->state, self->inc);
+    return out;
+}
+
+i64 Amalgame_Compiler_Random_NextInt(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) hi = Amalgame_Compiler_Random_NextUInt32(self);
+    i64 __attribute__((unused)) lo = Amalgame_Compiler_Random_NextUInt32(self);
+    return Random_CombineHiLo(hi, lo);
+}
+
+i64 Amalgame_Compiler_Random_IntRange(Amalgame_Compiler_Random* self, i64 min, i64 max) {
+    (void)self;
+    (void)min;
+    (void)max;
+    if (min >= max) {
+        return min;
+    }
+    i64 __attribute__((unused)) span = max - min;
+    i64 __attribute__((unused)) r = Amalgame_Compiler_Random_NextUInt32(self);
+    i64 __attribute__((unused)) off = r % span;
+    return min + off;
+}
+
+double Amalgame_Compiler_Random_Float(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) raw = Amalgame_Compiler_Random_NextUInt32(self);
+    return raw / 4294967296.0;
+}
+
+code_bool Amalgame_Compiler_Random_Bool(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) raw = Amalgame_Compiler_Random_NextUInt32(self);
+    i64 __attribute__((unused)) parity = raw & 1;
+    return parity == 1;
+}
+
+AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64 n) {
+    (void)self;
+    (void)n;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    if (n <= 0) {
+        return out;
+    }
+    i64 __attribute__((unused)) produced = 0;
+    while (produced < n) {
+        i64 __attribute__((unused)) r = Amalgame_Compiler_Random_NextUInt32(self);
+        i64 __attribute__((unused)) avail = n - produced;
+        i64 __attribute__((unused)) b0 = r & 255;
+        AmalgameList_add(out, (void*)(intptr_t)(b0));
+        if (avail >= 2) {
+            i64 __attribute__((unused)) r1 = r / 256;
+            i64 __attribute__((unused)) b1 = r1 & 255;
+            AmalgameList_add(out, (void*)(intptr_t)(b1));
+        }
+        if (avail >= 3) {
+            i64 __attribute__((unused)) r2 = r / 65536;
+            i64 __attribute__((unused)) b2 = r2 & 255;
+            AmalgameList_add(out, (void*)(intptr_t)(b2));
+        }
+        if (avail >= 4) {
+            i64 __attribute__((unused)) r3 = r / 16777216;
+            i64 __attribute__((unused)) b3 = r3 & 255;
+            AmalgameList_add(out, (void*)(intptr_t)(b3));
+        }
+        produced = produced + 4;
+    }
+    return out;
+}
+
+struct _Amalgame_Compiler_Base64 {
+};
+
+static code_string Amalgame_Compiler_Base64_Alphabet();
+static code_string Amalgame_Compiler_Base64_AlphabetUrl();
+code_string Amalgame_Compiler_Base64_Encode(AmalgameList* bytes);
+AmalgameList* Amalgame_Compiler_Base64_Decode(code_string s);
+code_string Amalgame_Compiler_Base64_EncodeUrl(AmalgameList* bytes);
+AmalgameList* Amalgame_Compiler_Base64_DecodeUrl(code_string s);
+code_bool Amalgame_Compiler_Base64_IsValid(code_string s);
+static code_string Amalgame_Compiler_Base64_EncodeWith(AmalgameList* bytes, code_string alpha, code_bool pad);
+static AmalgameList* Amalgame_Compiler_Base64_DecodeWith(code_string s, code_string alpha);
+
+Amalgame_Compiler_Base64* Amalgame_Compiler_Base64_new() {
+    Amalgame_Compiler_Base64* self = (Amalgame_Compiler_Base64*) GC_MALLOC(sizeof(Amalgame_Compiler_Base64));
+    return self;
+}
+
+static code_string Amalgame_Compiler_Base64_Alphabet() {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+}
+
+static code_string Amalgame_Compiler_Base64_AlphabetUrl() {
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+}
+
+code_string Amalgame_Compiler_Base64_Encode(AmalgameList* bytes) {
+    (void)bytes;
+    return Amalgame_Compiler_Base64_EncodeWith(bytes, Amalgame_Compiler_Base64_Alphabet(), 1);
+}
+
+AmalgameList* Amalgame_Compiler_Base64_Decode(code_string s) {
+    (void)s;
+    return Amalgame_Compiler_Base64_DecodeWith(s, Amalgame_Compiler_Base64_Alphabet());
+}
+
+code_string Amalgame_Compiler_Base64_EncodeUrl(AmalgameList* bytes) {
+    (void)bytes;
+    return Amalgame_Compiler_Base64_EncodeWith(bytes, Amalgame_Compiler_Base64_AlphabetUrl(), 1);
+}
+
+AmalgameList* Amalgame_Compiler_Base64_DecodeUrl(code_string s) {
+    (void)s;
+    return Amalgame_Compiler_Base64_DecodeWith(s, Amalgame_Compiler_Base64_AlphabetUrl());
+}
+
+code_bool Amalgame_Compiler_Base64_IsValid(code_string s) {
+    (void)s;
+    i64 __attribute__((unused)) n = String_Length(s);
+    if (n == 0) {
+        return 1;
+    }
+    code_string __attribute__((unused)) alpha = Amalgame_Compiler_Base64_Alphabet();
+    i64 __attribute__((unused)) pos = 0;
+    code_bool __attribute__((unused)) sawEqual = 0;
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "=")) {
+            sawEqual = 1;
+        } else {
+            if (sawEqual) {
+                return 0;
+            }
+            i64 __attribute__((unused)) v = String_IndexOf(alpha, c);
+            if (v < 0) {
+                return 0;
+            }
+        }
+        pos = pos + 1;
+    }
+    return 1;
+}
+
+static code_string Amalgame_Compiler_Base64_EncodeWith(AmalgameList* bytes, code_string alpha, code_bool pad) {
+    (void)bytes;
+    (void)alpha;
+    (void)pad;
+    i64 __attribute__((unused)) n = AmalgameList_count(bytes);
+    if (n == 0) {
+        return "";
+    }
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) i = 0;
+    while (i + 3 <= n) {
+        i64 __attribute__((unused)) b0 = (i64)AmalgameList_get(bytes, i) & 255;
+        i64 __attribute__((unused)) b1 = (i64)AmalgameList_get(bytes, i + 1) & 255;
+        i64 __attribute__((unused)) b2 = (i64)AmalgameList_get(bytes, i + 2) & 255;
+        i64 __attribute__((unused)) v0 = b0 / 4;
+        i64 __attribute__((unused)) lo0 = b0 & 3;
+        i64 __attribute__((unused)) v1 = lo0 * 16 + b1 / 16;
+        i64 __attribute__((unused)) lo1 = b1 & 15;
+        i64 __attribute__((unused)) v2 = lo1 * 4 + b2 / 64;
+        i64 __attribute__((unused)) v3 = b2 & 63;
+        out = code_string_concat(out, String_CharAt1(alpha, v0));
+        out = code_string_concat(out, String_CharAt1(alpha, v1));
+        out = code_string_concat(out, String_CharAt1(alpha, v2));
+        out = code_string_concat(out, String_CharAt1(alpha, v3));
+        i = i + 3;
+    }
+    i64 __attribute__((unused)) remaining = n - i;
+    if (remaining == 1) {
+        i64 __attribute__((unused)) b0 = (i64)AmalgameList_get(bytes, i) & 255;
+        i64 __attribute__((unused)) v0 = b0 / 4;
+        i64 __attribute__((unused)) lo0 = b0 & 3;
+        i64 __attribute__((unused)) v1 = lo0 * 16;
+        out = code_string_concat(out, String_CharAt1(alpha, v0));
+        out = code_string_concat(out, String_CharAt1(alpha, v1));
+        if (pad) {
+            out = code_string_concat(out, "==");
+        }
+    }
+    if (remaining == 2) {
+        i64 __attribute__((unused)) b0 = (i64)AmalgameList_get(bytes, i) & 255;
+        i64 __attribute__((unused)) b1 = (i64)AmalgameList_get(bytes, i + 1) & 255;
+        i64 __attribute__((unused)) v0 = b0 / 4;
+        i64 __attribute__((unused)) lo0 = b0 & 3;
+        i64 __attribute__((unused)) v1 = lo0 * 16 + b1 / 16;
+        i64 __attribute__((unused)) lo1 = b1 & 15;
+        i64 __attribute__((unused)) v2 = lo1 * 4;
+        out = code_string_concat(out, String_CharAt1(alpha, v0));
+        out = code_string_concat(out, String_CharAt1(alpha, v1));
+        out = code_string_concat(out, String_CharAt1(alpha, v2));
+        if (pad) {
+            out = code_string_concat(out, "=");
+        }
+    }
+    return out;
+}
+
+static AmalgameList* Amalgame_Compiler_Base64_DecodeWith(code_string s, code_string alpha) {
+    (void)s;
+    (void)alpha;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) n = String_Length(s);
+    if (n == 0) {
+        return out;
+    }
+    i64 __attribute__((unused)) end = n;
+    code_bool __attribute__((unused)) stripping = 1;
+    while (stripping && end > 0) {
+        i64 __attribute__((unused)) lastIdx = end - 1;
+        code_string __attribute__((unused)) last = String_CharAt1(s, lastIdx);
+        if (code_string_equals(last, "=")) {
+            end = end - 1;
+        } else {
+            stripping = 0;
+        }
+    }
+    i64 __attribute__((unused)) i = 0;
+    while (i + 4 <= end) {
+        code_string __attribute__((unused)) c0 = String_CharAt1(s, i);
+        code_string __attribute__((unused)) c1 = String_CharAt1(s, i + 1);
+        code_string __attribute__((unused)) c2 = String_CharAt1(s, i + 2);
+        code_string __attribute__((unused)) c3 = String_CharAt1(s, i + 3);
+        i64 __attribute__((unused)) v0 = String_IndexOf(alpha, c0);
+        i64 __attribute__((unused)) v1 = String_IndexOf(alpha, c1);
+        i64 __attribute__((unused)) v2 = String_IndexOf(alpha, c2);
+        i64 __attribute__((unused)) v3 = String_IndexOf(alpha, c3);
+        if (v0 < 0 || v1 < 0 || v2 < 0 || v3 < 0) {
+            return AmalgameList_new();
+        }
+        i64 __attribute__((unused)) b0 = v0 * 4 + v1 / 16;
+        i64 __attribute__((unused)) lo1 = v1 & 15;
+        i64 __attribute__((unused)) b1 = lo1 * 16 + v2 / 4;
+        i64 __attribute__((unused)) lo2 = v2 & 3;
+        i64 __attribute__((unused)) b2 = lo2 * 64 + v3;
+        AmalgameList_add(out, (void*)(intptr_t)(b0 & 255));
+        AmalgameList_add(out, (void*)(intptr_t)(b1 & 255));
+        AmalgameList_add(out, (void*)(intptr_t)(b2 & 255));
+        i = i + 4;
+    }
+    i64 __attribute__((unused)) leftover = end - i;
+    if (leftover == 2) {
+        code_string __attribute__((unused)) c0 = String_CharAt1(s, i);
+        code_string __attribute__((unused)) c1 = String_CharAt1(s, i + 1);
+        i64 __attribute__((unused)) v0 = String_IndexOf(alpha, c0);
+        i64 __attribute__((unused)) v1 = String_IndexOf(alpha, c1);
+        if (v0 < 0 || v1 < 0) {
+            return AmalgameList_new();
+        }
+        i64 __attribute__((unused)) b0 = v0 * 4 + v1 / 16;
+        AmalgameList_add(out, (void*)(intptr_t)(b0 & 255));
+    }
+    if (leftover == 3) {
+        code_string __attribute__((unused)) c0 = String_CharAt1(s, i);
+        code_string __attribute__((unused)) c1 = String_CharAt1(s, i + 1);
+        code_string __attribute__((unused)) c2 = String_CharAt1(s, i + 2);
+        i64 __attribute__((unused)) v0 = String_IndexOf(alpha, c0);
+        i64 __attribute__((unused)) v1 = String_IndexOf(alpha, c1);
+        i64 __attribute__((unused)) v2 = String_IndexOf(alpha, c2);
+        if (v0 < 0 || v1 < 0 || v2 < 0) {
+            return AmalgameList_new();
+        }
+        i64 __attribute__((unused)) b0 = v0 * 4 + v1 / 16;
+        i64 __attribute__((unused)) lo1 = v1 & 15;
+        i64 __attribute__((unused)) b1 = lo1 * 16 + v2 / 4;
+        AmalgameList_add(out, (void*)(intptr_t)(b0 & 255));
+        AmalgameList_add(out, (void*)(intptr_t)(b1 & 255));
+    }
+    return out;
+}
+
+struct _Amalgame_Compiler_Hex {
+};
+
+static code_string Amalgame_Compiler_Hex_AlphaLower();
+static code_string Amalgame_Compiler_Hex_AlphaUpper();
+code_string Amalgame_Compiler_Hex_Encode(AmalgameList* bytes);
+code_string Amalgame_Compiler_Hex_EncodeUpper(AmalgameList* bytes);
+AmalgameList* Amalgame_Compiler_Hex_Decode(code_string s);
+code_bool Amalgame_Compiler_Hex_IsValid(code_string s);
+static code_string Amalgame_Compiler_Hex_EncodeWith(AmalgameList* bytes, code_string alpha);
+static i64 Amalgame_Compiler_Hex_HexValue(code_string c);
+
+Amalgame_Compiler_Hex* Amalgame_Compiler_Hex_new() {
+    Amalgame_Compiler_Hex* self = (Amalgame_Compiler_Hex*) GC_MALLOC(sizeof(Amalgame_Compiler_Hex));
+    return self;
+}
+
+static code_string Amalgame_Compiler_Hex_AlphaLower() {
+    return "0123456789abcdef";
+}
+
+static code_string Amalgame_Compiler_Hex_AlphaUpper() {
+    return "0123456789ABCDEF";
+}
+
+code_string Amalgame_Compiler_Hex_Encode(AmalgameList* bytes) {
+    (void)bytes;
+    return Amalgame_Compiler_Hex_EncodeWith(bytes, Amalgame_Compiler_Hex_AlphaLower());
+}
+
+code_string Amalgame_Compiler_Hex_EncodeUpper(AmalgameList* bytes) {
+    (void)bytes;
+    return Amalgame_Compiler_Hex_EncodeWith(bytes, Amalgame_Compiler_Hex_AlphaUpper());
+}
+
+AmalgameList* Amalgame_Compiler_Hex_Decode(code_string s) {
+    (void)s;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) n = String_Length(s);
+    if (n == 0) {
+        return out;
+    }
+    i64 __attribute__((unused)) half = n / 2;
+    i64 __attribute__((unused)) half2 = half * 2;
+    if (half2 != n) {
+        return AmalgameList_new();
+    }
+    i64 __attribute__((unused)) i = 0;
+    while (i < n) {
+        code_string __attribute__((unused)) c0 = String_CharAt1(s, i);
+        code_string __attribute__((unused)) c1 = String_CharAt1(s, i + 1);
+        i64 __attribute__((unused)) v0 = Amalgame_Compiler_Hex_HexValue(c0);
+        i64 __attribute__((unused)) v1 = Amalgame_Compiler_Hex_HexValue(c1);
+        if (v0 < 0 || v1 < 0) {
+            return AmalgameList_new();
+        }
+        i64 __attribute__((unused)) b = v0 * 16 + v1;
+        AmalgameList_add(out, (void*)(intptr_t)(b));
+        i = i + 2;
+    }
+    return out;
+}
+
+code_bool Amalgame_Compiler_Hex_IsValid(code_string s) {
+    (void)s;
+    i64 __attribute__((unused)) n = String_Length(s);
+    i64 __attribute__((unused)) half = n / 2;
+    i64 __attribute__((unused)) half2 = half * 2;
+    if (half2 != n) {
+        return 0;
+    }
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        i64 __attribute__((unused)) v = Amalgame_Compiler_Hex_HexValue(c);
+        if (v < 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static code_string Amalgame_Compiler_Hex_EncodeWith(AmalgameList* bytes, code_string alpha) {
+    (void)bytes;
+    (void)alpha;
+    i64 __attribute__((unused)) n = AmalgameList_count(bytes);
+    code_string __attribute__((unused)) out = "";
+    for (i64 i = 0; i < n; i++) {
+        i64 __attribute__((unused)) b = (i64)AmalgameList_get(bytes, i) & 255;
+        i64 __attribute__((unused)) hi = b / 16;
+        i64 __attribute__((unused)) lo = b & 15;
+        out = code_string_concat(out, String_CharAt1(alpha, hi));
+        out = code_string_concat(out, String_CharAt1(alpha, lo));
+    }
+    return out;
+}
+
+static i64 Amalgame_Compiler_Hex_HexValue(code_string c) {
+    (void)c;
+    i64 __attribute__((unused)) lower = String_IndexOf("0123456789abcdef", c);
+    if (lower >= 0) {
+        return lower;
+    }
+    i64 __attribute__((unused)) upper = String_IndexOf("0123456789ABCDEF", c);
+    if (upper >= 0) {
+        return upper;
+    }
+    return -1;
+}
+
+struct _Amalgame_Compiler_Url {
+};
+
+code_string Amalgame_Compiler_Url_Encode(code_string s);
+code_string Amalgame_Compiler_Url_EncodeComponent(code_string s);
+code_string Amalgame_Compiler_Url_Decode(code_string s);
+static code_string Amalgame_Compiler_Url_EncodeImpl(code_string s, code_bool component);
+static code_bool Amalgame_Compiler_Url_IsUnreserved(code_string c);
+static code_bool Amalgame_Compiler_Url_IsPathSafe(code_string c);
+static i64 Amalgame_Compiler_Url_ByteOf(code_string c);
+static i64 Amalgame_Compiler_Url_HexValue(code_string c);
+
+Amalgame_Compiler_Url* Amalgame_Compiler_Url_new() {
+    Amalgame_Compiler_Url* self = (Amalgame_Compiler_Url*) GC_MALLOC(sizeof(Amalgame_Compiler_Url));
+    return self;
+}
+
+code_string Amalgame_Compiler_Url_Encode(code_string s) {
+    (void)s;
+    return Amalgame_Compiler_Url_EncodeImpl(s, 0);
+}
+
+code_string Amalgame_Compiler_Url_EncodeComponent(code_string s) {
+    (void)s;
+    return Amalgame_Compiler_Url_EncodeImpl(s, 1);
+}
+
+code_string Amalgame_Compiler_Url_Decode(code_string s) {
+    (void)s;
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) n = String_Length(s);
+    i64 __attribute__((unused)) i = 0;
+    while (i < n) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "%")) {
+            if (i + 2 >= n) {
+                out = code_string_concat(out, c);
+                i = i + 1;
+            } else {
+                code_string __attribute__((unused)) h0 = String_CharAt1(s, i + 1);
+                code_string __attribute__((unused)) h1 = String_CharAt1(s, i + 2);
+                i64 __attribute__((unused)) v0 = Amalgame_Compiler_Url_HexValue(h0);
+                i64 __attribute__((unused)) v1 = Amalgame_Compiler_Url_HexValue(h1);
+                if (v0 < 0 || v1 < 0) {
+                    out = code_string_concat(out, c);
+                    i = i + 1;
+                } else {
+                    i64 __attribute__((unused)) b = v0 * 16 + v1;
+                    out = code_string_concat(out, String_FromByte(b));
+                    i = i + 3;
+                }
+            }
+        } else {
+            out = code_string_concat(out, c);
+            i = i + 1;
+        }
+    }
+    return out;
+}
+
+static code_string Amalgame_Compiler_Url_EncodeImpl(code_string s, code_bool component) {
+    (void)s;
+    (void)component;
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) n = String_Length(s);
+    code_string __attribute__((unused)) upper = "0123456789ABCDEF";
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (Amalgame_Compiler_Url_IsUnreserved(c)) {
+            out = code_string_concat(out, c);
+        } else {
+            if (!component && Amalgame_Compiler_Url_IsPathSafe(c)) {
+                out = code_string_concat(out, c);
+            } else {
+                i64 __attribute__((unused)) b = Amalgame_Compiler_Url_ByteOf(c);
+                i64 __attribute__((unused)) hi = b / 16;
+                i64 __attribute__((unused)) lo = b & 15;
+                out = code_string_concat(out, "%");
+                out = code_string_concat(out, String_CharAt1(upper, hi));
+                out = code_string_concat(out, String_CharAt1(upper, lo));
+            }
+        }
+    }
+    return out;
+}
+
+static code_bool Amalgame_Compiler_Url_IsUnreserved(code_string c) {
+    (void)c;
+    if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", c) >= 0) {
+        return 1;
+    }
+    if (code_string_equals(c, "-")) {
+        return 1;
+    }
+    if (code_string_equals(c, "_")) {
+        return 1;
+    }
+    if (code_string_equals(c, ".")) {
+        return 1;
+    }
+    if (code_string_equals(c, "~")) {
+        return 1;
+    }
+    return 0;
+}
+
+static code_bool Amalgame_Compiler_Url_IsPathSafe(code_string c) {
+    (void)c;
+    if (code_string_equals(c, "/")) {
+        return 1;
+    }
+    if (code_string_equals(c, "?")) {
+        return 1;
+    }
+    if (code_string_equals(c, "#")) {
+        return 1;
+    }
+    if (code_string_equals(c, "&")) {
+        return 1;
+    }
+    if (code_string_equals(c, "=")) {
+        return 1;
+    }
+    if (code_string_equals(c, "+")) {
+        return 1;
+    }
+    if (code_string_equals(c, ":")) {
+        return 1;
+    }
+    if (code_string_equals(c, "@")) {
+        return 1;
+    }
+    if (code_string_equals(c, ",")) {
+        return 1;
+    }
+    if (code_string_equals(c, ";")) {
+        return 1;
+    }
+    return 0;
+}
+
+static i64 Amalgame_Compiler_Url_ByteOf(code_string c) {
+    (void)c;
+    for (i64 i = 1; i < 256; i++) {
+        code_string __attribute__((unused)) candidate = String_FromByte(i);
+        if (code_string_equals(candidate, c)) {
+            return i;
+        }
+    }
+    return 63;
+}
+
+static i64 Amalgame_Compiler_Url_HexValue(code_string c) {
+    (void)c;
+    i64 __attribute__((unused)) lower = String_IndexOf("0123456789abcdef", c);
+    if (lower >= 0) {
+        return lower;
+    }
+    i64 __attribute__((unused)) upper = String_IndexOf("0123456789ABCDEF", c);
+    if (upper >= 0) {
+        return upper;
+    }
+    return -1;
+}
+
+struct _Amalgame_Compiler_Duration {
+    i64 nanos;
+};
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromSeconds(i64 s);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMillis(i64 ms);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMinutes(i64 m);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromHours(i64 h);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromDays(i64 d);
+i64 Amalgame_Compiler_Duration_Nanos(Amalgame_Compiler_Duration* self);
+i64 Amalgame_Compiler_Duration_Millis(Amalgame_Compiler_Duration* self);
+i64 Amalgame_Compiler_Duration_Seconds(Amalgame_Compiler_Duration* self);
+double Amalgame_Compiler_Duration_SecondsFloat(Amalgame_Compiler_Duration* self);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Plus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Minus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Times(Amalgame_Compiler_Duration* self, i64 k);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Negate(Amalgame_Compiler_Duration* self);
+code_bool Amalgame_Compiler_Duration_IsZero(Amalgame_Compiler_Duration* self);
+code_bool Amalgame_Compiler_Duration_IsNegative(Amalgame_Compiler_Duration* self);
+code_string Amalgame_Compiler_Duration_Format(Amalgame_Compiler_Duration* self);
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_new(i64 nanos) {
+    Amalgame_Compiler_Duration* self = (Amalgame_Compiler_Duration*) GC_MALLOC(sizeof(Amalgame_Compiler_Duration));
+    self->nanos = nanos;
+    return self;
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromSeconds(i64 s) {
+    (void)s;
+    return Amalgame_Compiler_Duration_new(s * 1000000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMillis(i64 ms) {
+    (void)ms;
+    return Amalgame_Compiler_Duration_new(ms * 1000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMinutes(i64 m) {
+    (void)m;
+    return Amalgame_Compiler_Duration_new(m * 60 * 1000000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromHours(i64 h) {
+    (void)h;
+    return Amalgame_Compiler_Duration_new(h * 3600 * 1000000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromDays(i64 d) {
+    (void)d;
+    return Amalgame_Compiler_Duration_new(d * 86400 * 1000000000);
+}
+
+i64 Amalgame_Compiler_Duration_Nanos(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos;
+}
+
+i64 Amalgame_Compiler_Duration_Millis(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos / 1000000;
+}
+
+i64 Amalgame_Compiler_Duration_Seconds(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos / 1000000000;
+}
+
+double Amalgame_Compiler_Duration_SecondsFloat(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos / 1000000000.0;
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Plus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) n = self->nanos + other->nanos;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Minus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) n = self->nanos - other->nanos;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Times(Amalgame_Compiler_Duration* self, i64 k) {
+    (void)self;
+    (void)k;
+    i64 __attribute__((unused)) n = self->nanos * k;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Negate(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    i64 __attribute__((unused)) n = 0 - self->nanos;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+code_bool Amalgame_Compiler_Duration_IsZero(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos == 0;
+}
+
+code_bool Amalgame_Compiler_Duration_IsNegative(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos < 0;
+}
+
+code_string Amalgame_Compiler_Duration_Format(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    if (self->nanos == 0) {
+        return "0s";
+    }
+    i64 __attribute__((unused)) n = self->nanos;
+    code_string __attribute__((unused)) prefix = "";
+    if (n < 0) {
+        prefix = "-";
+        n = 0 - n;
+    }
+    if (n < 1000) {
+        return code_string_concat(code_string_concat(prefix, String_FromInt(n)), "ns");
+    }
+    if (n < 1000000) {
+        i64 __attribute__((unused)) us = n / 1000;
+        return code_string_concat(code_string_concat(prefix, String_FromInt(us)), "us");
+    }
+    if (n < 1000000000) {
+        i64 __attribute__((unused)) ms = n / 1000000;
+        return code_string_concat(code_string_concat(prefix, String_FromInt(ms)), "ms");
+    }
+    i64 __attribute__((unused)) totalSec = n / 1000000000;
+    if (totalSec < 60) {
+        i64 __attribute__((unused)) ms = n / 1000000 % 1000;
+        if (ms == 0) {
+            return code_string_concat(code_string_concat(prefix, String_FromInt(totalSec)), "s");
+        }
+        code_string __attribute__((unused)) msStr = String_FromInt(ms);
+        if (ms < 100) {
+            msStr = code_string_concat("0", msStr);
+        }
+        if (ms < 10) {
+            msStr = code_string_concat("0", msStr);
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(prefix, String_FromInt(totalSec)), "."), msStr), "s");
+    }
+    i64 __attribute__((unused)) totalMin = totalSec / 60;
+    i64 __attribute__((unused)) secPart = totalSec % 60;
+    if (totalMin < 60) {
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(prefix, String_FromInt(totalMin)), "m"), String_FromInt(secPart)), "s");
+    }
+    i64 __attribute__((unused)) totalHr = totalMin / 60;
+    i64 __attribute__((unused)) minPart = totalMin % 60;
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(prefix, String_FromInt(totalHr)), "h"), String_FromInt(minPart)), "m"), String_FromInt(secPart)), "s");
+}
+
+struct _Amalgame_Compiler_InstantResult {
+    code_bool Ok;
+    Amalgame_Compiler_Instant* Value;
+    code_string Error;
+};
+
+
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new(Amalgame_Compiler_Instant* initial) {
+    Amalgame_Compiler_InstantResult* self = (Amalgame_Compiler_InstantResult*) GC_MALLOC(sizeof(Amalgame_Compiler_InstantResult));
+    self->Ok = 0;
+    self->Value = initial;
+    self->Error = "";
+    return self;
+}
+
+struct _Amalgame_Compiler_Instant {
+    i64 nanos;
+};
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Now();
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixSeconds(i64 s);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixMillis(i64 ms);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixNanos(i64 ns);
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_Instant_Parse(code_string s);
+i64 Amalgame_Compiler_Instant_UnixNanos(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_UnixMillis(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self);
+code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Subtract(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Instant_Since(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+code_bool Amalgame_Compiler_Instant_IsBefore(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+code_bool Amalgame_Compiler_Instant_IsAfter(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+code_bool Amalgame_Compiler_Instant_Equals(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_new(i64 nanos) {
+    Amalgame_Compiler_Instant* self = (Amalgame_Compiler_Instant*) GC_MALLOC(sizeof(Amalgame_Compiler_Instant));
+    self->nanos = nanos;
+    return self;
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Now() {
+    i64 __attribute__((unused)) n = DateTime_NowNanos();
+    return Amalgame_Compiler_Instant_new(n);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixSeconds(i64 s) {
+    (void)s;
+    return Amalgame_Compiler_Instant_new(s * 1000000000);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixMillis(i64 ms) {
+    (void)ms;
+    return Amalgame_Compiler_Instant_new(ms * 1000000);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixNanos(i64 ns) {
+    (void)ns;
+    return Amalgame_Compiler_Instant_new(ns);
+}
+
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_Instant_Parse(code_string s) {
+    (void)s;
+    Amalgame_Compiler_Instant* __attribute__((unused)) zero = Amalgame_Compiler_Instant_new(0);
+    Amalgame_Compiler_InstantResult* __attribute__((unused)) res = Amalgame_Compiler_InstantResult_new(zero);
+    i64 __attribute__((unused)) n = DateTime_ParseIsoNanos(s);
+    code_bool __attribute__((unused)) bad = DateTime_IsParseError(n);
+    if (bad) {
+        res->Ok = 0;
+        res->Error = "invalid ISO 8601 / RFC 3339 timestamp (UTC subset only — must end with Z)";
+        return res;
+    }
+    res->Ok = 1;
+    res->Value = Amalgame_Compiler_Instant_new(n);
+    res->Error = "";
+    return res;
+}
+
+i64 Amalgame_Compiler_Instant_UnixNanos(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return self->nanos;
+}
+
+i64 Amalgame_Compiler_Instant_UnixMillis(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return self->nanos / 1000000;
+}
+
+i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return self->nanos / 1000000000;
+}
+
+code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return DateTime_FormatIso(self->nanos);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d) {
+    (void)self;
+    (void)d;
+    i64 __attribute__((unused)) dn = Amalgame_Compiler_Duration_Nanos(d);
+    i64 __attribute__((unused)) total = self->nanos + dn;
+    return Amalgame_Compiler_Instant_new(total);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Subtract(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d) {
+    (void)self;
+    (void)d;
+    i64 __attribute__((unused)) dn = Amalgame_Compiler_Duration_Nanos(d);
+    i64 __attribute__((unused)) total = self->nanos - dn;
+    return Amalgame_Compiler_Instant_new(total);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Instant_Since(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    i64 __attribute__((unused)) diff = self->nanos - on;
+    return Amalgame_Compiler_Duration_new(diff);
+}
+
+code_bool Amalgame_Compiler_Instant_IsBefore(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    return self->nanos < on;
+}
+
+code_bool Amalgame_Compiler_Instant_IsAfter(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    return self->nanos > on;
+}
+
+code_bool Amalgame_Compiler_Instant_Equals(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    return self->nanos == on;
+}
+
+struct _Amalgame_Compiler_Stopwatch {
+    i64 startNanos;
+};
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Elapsed(Amalgame_Compiler_Stopwatch* self);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_Stopwatch* self);
+
+Amalgame_Compiler_Stopwatch* Amalgame_Compiler_Stopwatch_new() {
+    Amalgame_Compiler_Stopwatch* self = (Amalgame_Compiler_Stopwatch*) GC_MALLOC(sizeof(Amalgame_Compiler_Stopwatch));
+    self->startNanos = DateTime_NowMonotonicNanos();
+    return self;
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Elapsed(Amalgame_Compiler_Stopwatch* self) {
+    (void)self;
+    i64 __attribute__((unused)) now = DateTime_NowMonotonicNanos();
+    i64 __attribute__((unused)) diff = now - self->startNanos;
+    return Amalgame_Compiler_Duration_new(diff);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_Stopwatch* self) {
+    (void)self;
+    i64 __attribute__((unused)) now = DateTime_NowMonotonicNanos();
+    i64 __attribute__((unused)) diff = now - self->startNanos;
+    self->startNanos = now;
+    return Amalgame_Compiler_Duration_new(diff);
+}
+
 struct _Amalgame_Compiler_LspServer {
     AmalgameList* DocUris;
     AmalgameList* Docs;
@@ -15468,7 +16406,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.4.3 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.4.4 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {

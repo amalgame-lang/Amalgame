@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-09 · `amc 0.4.2` · self-hosted · 307/307 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-09 · `amc 0.4.3` · self-hosted · 307/307 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -287,6 +287,64 @@ before the next big language addition.
       forgets to propagate it across the boundary) or codify the
       workaround patterns in `docs/guide/07-internals.md` so it's
       not a paper cut every time.
+- [ ] **CGen: chained `obj.Field.Method()` / `obj.Method().Method()`
+      lowers as a name-mash.** Repro:
+      `o.Field.Get()` emits `o->Field_Get()` (should be
+      `Inner_Get(o->Field)`); `o.GetInner().Get()` emits
+      `App_Outer_GetInner(o)_Get()` (should be
+      `Inner_Get(App_Outer_GetInner(o))`). Root cause:
+      `EmitCalleeStr` (`src/generator/c_gen.am:3003-3004`)
+      fallback returns `target + "_" + mname` where `target` is
+      already a complete C expression — concatenating a `_method`
+      suffix gives an invalid identifier. Fix is non-trivial:
+      callers (mostly `EmitCallExpr`) assume the callee is a
+      bare function name they can call as `<name>(args)` —
+      changing the contract to "if the receiver is a chain,
+      route through `Type_Method(<expr>, args)`" needs a typed
+      lookup of `callee.Left`'s return type and a small refactor
+      of every call site that consumes `EmitCalleeStr`.
+      Workaround: extract intermediate locals
+      (`let mid: T = obj.Field; mid.Method()`). Already applied
+      in `src/lsp.am`, `src/migrate.am`, and the JSON test
+      sample; comments inline cite this item.
+- [ ] **Parser: `expr >> N` inside a `let` drops the shift.**
+      Surfaced while writing `Amalgame.Random` (2026-05-09). Repro:
+      `let x: int = r >> 8` lowers to `i64 x = r;` — the shift
+      operator is silently dropped. The mask form of the same
+      expression (`expr & N`) lowers correctly. Likely a precedence
+      or look-ahead bug where `>>` collides with the closing
+      `>` of a generic parameter (`List<List<int>>` style).
+      Workarounds: replace with division by a power of two
+      (`let x: int = r / 256`) — used by `Random.Bytes` and
+      `Random.Float`. Found cases dropping `& 255` *outside* a
+      surrounding `(expr >> N) & 255`, lowering it as a stray
+      statement-level `_unknown_ & 255;`. Same call extracted to
+      named locals fixes both. Next step: build a minimal repro
+      file and grep the parser/cgen for the lowering of
+      `BinaryExpr(>>, …)` inside `LetStmt` initializers.
+- [ ] **Parser: top-level free functions in a stdlib namespace
+      don't emit a definition.** `public List<int> SystemBytes(n)`
+      at file scope (no enclosing class) parses without error but
+      cgen emits a bare `SystemBytes(...)` call site without ever
+      defining the function. Workaround: hang the function on a
+      class as a `public static` method (matches the existing
+      facade pattern in `Amalgame.Json`). Worth supporting because
+      free helpers are a natural fit for utility modules.
+- [ ] **CGen: constructor forward-decls don't precede call
+      sites.** Surfaced while writing `Amalgame.DateTime`
+      (2026-05-09). If class A's constructor calls `new B(...)`
+      and B is declared later in the same file, the bootstrap
+      cgen emits A's constructor body before B's `_new`
+      function, triggering an implicit declaration warning that
+      then conflicts with the real signature ("conflicting types
+      for B_new"). gcc still tolerates it as a warning so the
+      build limps through, but the produced binary may be wrong
+      if the compiler picks `int()` semantics for the implicit
+      decl. Workaround applied in datetime.am: `InstantResult`
+      takes the initial Instant as a constructor parameter
+      instead of building one inline. Real fix is to forward-
+      declare every `<Class>_new` signature at the top of pass2
+      output, before any class body emits.
 - [ ] **Snapshot size** — `snapshot/amc_lib.c` is ~12 500 lines,
       tracked in git for the bootstrap chain. Each compiler PR
       regenerates it and the diff dominates the review noise. Two
@@ -461,22 +519,34 @@ before the next big language addition.
 
 - [ ] **Core stdlib expansion** — fill in the gaps that everyday
       Amalgame code currently has to fake or shell out for:
-      - `Amalgame.DateTime` — wall-clock, monotonic, parsing,
-        formatting, durations.
-      - `Amalgame.Json` — parse + serialize, schemaless
-        `JsonValue` tree first, typed binding later.
-      - `Amalgame.Regex` — PCRE-style or RE2 binding, capture
+      - [x] `Amalgame.Json` — parse + serialize, schemaless
+        `JsonValue` tree first, typed binding later. (PR #182, #183, #193)
+      - [x] `Amalgame.Random` — seeded PRNG + crypto-grade source
+        for tokens / IDs. (PR #200)
+      - [x] `Amalgame.Encoding` — Base64, hex, URL encode/decode.
+        (PR #201)
+      - [x] `Amalgame.DateTime` — Instant + Duration + Stopwatch,
+        UTC-only, RFC 3339 strict (PR pending). Local time and
+        timezone follow-up tracked below.
+      - [ ] `Amalgame.Regex` — PCRE-style or RE2 binding, capture
         groups exposed as `Match` records.
-      - `Amalgame.Random` — seeded PRNG + crypto-grade source
-        for tokens / IDs.
-      - `Amalgame.Encoding` — Base64, hex, URL encode/decode.
-      - `Amalgame.Compress` — gzip, deflate (zip later).
-      - `Amalgame.Crypto` — SHA-256, HMAC, constant-time compare.
-      - `Amalgame.Threading` — at minimum a thread pool +
+      - [ ] `Amalgame.Compress` — gzip, deflate (zip later).
+      - [ ] `Amalgame.Crypto` — SHA-256, HMAC, constant-time compare.
+      - [ ] `Amalgame.Threading` — at minimum a thread pool +
         Mutex/Channel; needs runtime-side care around libgc.
       Each is a small project on its own; ship as separate PRs
       and add docs/guide entries in lockstep. Tied to the open
       "Stdlib delivery model" design question below.
+- [ ] **DateTime v2** — local time + named timezones. Adds a
+      `LocalTime` companion class wrapping `(instant, zoneId)`
+      with a `Now`, `In(zone)`, breakdown into Y/M/D/h/m/s,
+      and `strftime`-ish formatter. Needs a way to ship tzdata:
+      either bundle a stripped IANA dataset in the runtime, or
+      delegate to the OS (POSIX `TZ` env + `/usr/share/zoneinfo`,
+      Windows `GetDynamicTimeZoneInformation`). Also covers
+      explicit `+HH:MM` offsets in Parse, currently rejected.
+      Wait until a real consumer needs it — the v1 UTC API
+      already covers most server-side use cases.
 - [ ] **GUI / Forms toolkit** — bindings SDL2 dans la stdlib
       (`Amalgame.UI` ou similaire) avec une couche "Forms" au-dessus
       pour les widgets courants (Window, Button, TextField, Layout).
@@ -495,6 +565,15 @@ before the next big language addition.
 - [ ] Windows packaged installer (.msi or .exe with bundled MinGW
       gcc + libgc + libcurl, so end users don't need MSYS2). Sketched
       in conversation; no script yet.
+- [ ] **URL sweep** — 25 occurrences of the old
+      `BastienMOUGET/Amalgame` URL still live in the tree post-org-
+      transfer (PR #187). Touches `runtime/Amalgame_*.h` headers,
+      `install/homebrew/amalgame.rb`, `install/windows/install.ps1`
+      + `amalgame.iss`, `editors/vscode/package.json`,
+      `archive/vala-bootstrap/**`. CHANGELOG mention of the transfer
+      itself stays as historical record. One trivial sed pass +
+      smoke-test the homebrew formula locally — defer until after
+      the next stdlib batch lands.
 
 ### Documentation
 - [x] User guide (`docs/guide/`)

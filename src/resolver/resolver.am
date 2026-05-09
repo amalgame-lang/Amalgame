@@ -284,6 +284,22 @@ public class FullResolver {
         this.DeclareGlobal("Math_SeedRandom","void",   false)
         this.DeclareGlobal("Math_Random",    "float",  false)
         this.DeclareGlobal("Math_RandomInt", "int",    false)
+        // Random — runtime helpers behind the public Amalgame.Random
+        // facade in src/stdlib/random.am.
+        this.DeclareGlobal("Random_PcgOutput",     "int", false)
+        this.DeclareGlobal("Random_PcgAdvance",    "int", false)
+        this.DeclareGlobal("Random_CombineHiLo",   "int", false)
+        this.DeclareGlobal("Random_PrepInc",       "int", false)
+        this.DeclareGlobal("Random_BytesToI64",    "int", false)
+        this.DeclareGlobal("Random_TimeSeedNanos", "int", false)
+        this.DeclareGlobal("Random_SystemBytes",   "List<int>", false)
+        // DateTime — runtime helpers behind the public
+        // Amalgame.DateTime facade in src/stdlib/datetime.am.
+        this.DeclareGlobal("DateTime_NowNanos",          "int",    false)
+        this.DeclareGlobal("DateTime_NowMonotonicNanos", "int",    false)
+        this.DeclareGlobal("DateTime_FormatIso",         "string", false)
+        this.DeclareGlobal("DateTime_ParseIsoNanos",     "int",    false)
+        this.DeclareGlobal("DateTime_IsParseError",      "bool",   false)
         // String
         this.DeclareGlobal("String_Length",     "int",    false)
         this.DeclareGlobal("String_IsEmpty",    "bool",   false)

@@ -130,7 +130,7 @@ jobs:
         run: |
           gcc -O2 -Iruntime \
               src/amc_lib.c \
-              -lgc -lm -lcurl -lws2_32 -o amc.exe
+              -lgc -lm -lcurl -lws2_32 -lbcrypt -o amc.exe
 
       - name: Verify amc reports its version
         run: ./amc.exe --version
@@ -138,7 +138,7 @@ jobs:
       - name: Smoke compile a sample
         run: |
           ./amc.exe tests/samples/hello.am -o /tmp/hello
-          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -lws2_32 -o /tmp/hello.exe
+          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -lws2_32 -lbcrypt -o /tmp/hello.exe
           /tmp/hello.exe
 
       - name: Upload generated artifacts on failure

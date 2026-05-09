@@ -1,0 +1,165 @@
+namespace Amalgame.Random
+
+import Amalgame.Collections
+
+// ── Random ────────────────────────────────────────────
+//
+// PCG XSH-RR 64/32 — a small, statistically strong PRNG with
+// 64-bit internal state, 32-bit output, and 2^63 distinct streams.
+// Reference: https://www.pcg-random.org/
+//
+// Per-instance state — no global mutable shared, no implicit
+// seeding. Multiple Random instances are independent of each
+// other, so reproducible test cases (`new Random(42)`) and
+// parallel work coexist cleanly.
+//
+// Two ways to construct one:
+//
+//   let r = new Random(42)            // reproducible
+//   let r = Random.FromSystem()       // unguessable seed (16 bytes
+//                                     // of OS entropy)
+//
+// Use FromSystem when seed unguessability matters (auth tokens,
+// session IDs, salts). Use the seeded constructor for tests and
+// simulations.
+//
+// The actual PCG step (state advance + output transform) lives in
+// runtime/Amalgame_Random.h — those operations rely on uint64
+// wrap-around, which is well-defined unsigned but UB on Amalgame's
+// signed `int`. The runtime helpers do the casts safely.
+
+public class Random {
+    private state: int
+    private inc:   int
+
+    public Random(seed: int) {
+        // Standard PCG init: state starts at 0, inc must be odd
+        // (Random_PrepInc enforces that by setting the LSB).
+        // Two burn-in advances mix the seed into both fields.
+        this.state = 0
+        this.inc   = Random_PrepInc(seed)
+        this.state = Random_PcgAdvance(this.state, this.inc)
+        this.state = this.state + seed
+        this.state = Random_PcgAdvance(this.state, this.inc)
+    }
+
+    // 16 bytes of OS entropy → 64-bit seed for the constructor
+    // path, plus 64 more bits XOR'd into state to reach 128 bits
+    // of effective entropy in the (state, inc) pair. SystemBytes
+    // is crypto-grade on POSIX (getentropy / /dev/urandom) and
+    // Windows (BCryptGenRandom).
+    public static Random FromSystem() {
+        let bytes:  List<int> = Random.SystemBytes(16)
+        let seedA:  int       = Random_BytesToI64(bytes, 0)
+        let seedB:  int       = Random_BytesToI64(bytes, 8)
+        let r:      Random    = new Random(seedA)
+        r.state = r.state ^ seedB
+        return r
+    }
+
+    // Crypto-grade entropy passthrough — n bytes ∈ [0, 255].
+    // Use when you don't need a Random instance at all: salts,
+    // one-shot IDs, nonces. Matches the underlying OS source
+    // guarantees (getentropy on POSIX, BCryptGenRandom on Windows).
+    public static List<int> SystemBytes(n: int) {
+        return Random_SystemBytes(n)
+    }
+
+    // ── Core step ────────────────────────────────────
+    //
+    // Returns a value in [0, 2^32 - 1] as an `int`. All higher-
+    // level methods build on this single primitive.
+    public int NextUInt32() {
+        let out: int = Random_PcgOutput(this.state)
+        this.state = Random_PcgAdvance(this.state, this.inc)
+        return out
+    }
+
+    // ── Public API ───────────────────────────────────
+
+    // Full-range 64-bit signed int (i.e. all 2^64 values reachable).
+    // Combines two 32-bit draws via Random_CombineHiLo to avoid the
+    // signed shift UB you'd hit in pure Amalgame.
+    public int NextInt() {
+        let hi: int = this.NextUInt32()
+        let lo: int = this.NextUInt32()
+        return Random_CombineHiLo(hi, lo)
+    }
+
+    // [min, max). Half-open interval, idiomatic in modern stdlibs.
+    // If min >= max, returns min — caller passed a degenerate range.
+    //
+    // Uses simple modulo, which has slight bias when (max - min) is
+    // not a power of two. For typical ranges this is undetectable;
+    // unbiased sampling can be layered on top of NextUInt32 by
+    // callers who need it.
+    public int IntRange(min: int, max: int) {
+        if (min >= max) { return min }
+        let span: int = max - min
+        let r:    int = this.NextUInt32()
+        let off:  int = r % span
+        return min + off
+    }
+
+    // [0.0, 1.0). 32 bits of precision — fits comfortably in
+    // double's 53-bit mantissa with no rounding. (We'd ideally
+    // truncate via `>> 8` and divide by 2^24, but the parser
+    // currently drops `>> 8` inside a let; dividing the full
+    // 32-bit draw by 2^32 is equivalent up to a shift in
+    // representation.)
+    public float Float() {
+        let raw: int = this.NextUInt32()
+        return raw / 4294967296.0
+    }
+
+    // Coin flip. PCG's low bit is sound, so the simple LSB test is
+    // fine — no need to draw a full 32 bits for a single bit.
+    public bool Bool() {
+        let raw:    int = this.NextUInt32()
+        let parity: int = raw & 1
+        return parity == 1
+    }
+
+    // n random bytes ∈ [0, 255]. Generates 4 bytes per PCG step
+    // rather than one, so this is roughly 4× faster than calling
+    // NextUInt32 once per byte. For n ≤ 0 returns an empty list.
+    //
+    // The byte slices are extracted into named locals first; the
+    // current parser doesn't always preserve `&` precedence across
+    // a method-call argument list, so `out.Add(r & 255)` can lower
+    // to `out.Add(r) & 255` and lose the mask.
+    public List<int> Bytes(n: int) {
+        let out: List<int> = new List<int>()
+        if (n <= 0) { return out }
+        var produced: int = 0
+        while (produced < n) {
+            let r:     int = this.NextUInt32()
+            let avail: int = n - produced
+            // We use division instead of right-shift: the parser
+            // currently mis-handles `expr >> N` inside a `let` and
+            // drops the shift. Division by powers of two has the
+            // same effect for the non-negative i64 values we hold
+            // here (NextUInt32 returns [0, 2^32 - 1]).
+            let b0: int = r & 255
+            out.Add(b0)
+            if (avail >= 2) {
+                let r1: int = r / 256
+                let b1: int = r1 & 255
+                out.Add(b1)
+            }
+            if (avail >= 3) {
+                let r2: int = r / 65536
+                let b2: int = r2 & 255
+                out.Add(b2)
+            }
+            if (avail >= 4) {
+                let r3: int = r / 16777216
+                let b3: int = r3 & 255
+                out.Add(b3)
+            }
+            produced = produced + 4
+        }
+        return out
+    }
+}
+

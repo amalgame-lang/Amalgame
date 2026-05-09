@@ -1,6 +1,6 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-09 after shipping v0.4.2 (stdlib + DX release).
+> Last refreshed 2026-05-09 after shipping v0.4.3 (Json migration completes + amc migrate v3).
 > The block below is a self-contained prompt designed to bootstrap a
 > new Claude session with full context. Copy-paste it as your first
 > message in a fresh conversation.
@@ -12,7 +12,7 @@ I'm working on Amalgame, a self-hosted programming language that
 transpiles to C. I keep the project in
 /home/neitsab/Développement/Amalgame.
 
-Current state (May 2026, v0.4.2):
+Current state (May 2026, v0.4.3):
 
 - The compiler `amc` is written in Amalgame in src/ and compiles
   itself in ~5 seconds via ./build_amc.sh.
@@ -38,7 +38,7 @@ Current state (May 2026, v0.4.2):
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
 - Releases automated on `v*` tag (.github/workflows/release.yml).
-  Latest is v0.4.2 — see CHANGELOG.md for the per-release detail.
+  Latest is v0.4.3 — see CHANGELOG.md for the per-release detail.
   develop → main → tag is the release flow. Both develop and main
   are protected (force-push + delete blocked, PR required, admin
   bypass allowed).
@@ -75,6 +75,26 @@ Current state (May 2026, v0.4.2):
 - README + CHANGELOG at the repo root.
 - Design proposals: docs/proposals/amc-migrate.md tracks the v1+v2
   roadmap for the LLM commands (largely shipped now).
+
+Recently shipped (v0.4.3 Json migration completes, 2026-05-09):
+
+  - src/lsp.am request dispatcher swapped from JsonStr/JsonInt
+    substring extractors to a single Json.Parse(body) walked via
+    typed-local Get(...).At(...) chains.
+  - src/migrate.am providers parse actual response shapes:
+      Anthropic → root.content[0].text
+      OpenAI    → root.choices[0].message.content
+      Gemini    → root.candidates[0].content.parts[0].text
+  - amc migrate v3 (PR #194): real cost line printed after every
+    successful call from each provider's usage object. No `~`,
+    exact billed tokens. CLI shell-out and custom keep silent
+    (InputTokens == -1).
+  - Six dead JSON helpers removed (~150 LoC out).
+  - The earlier "Json.Parse hangs on 16 KB bodies" turned out to
+    be a probe artefact — bash ${#body} counts characters, not
+    bytes, so the Content-Length frame under-counted UTF-8
+    multibyte content. Real client traffic uses byte-accurate
+    counts and the parser does a 16 KB body in ~37 ms.
 
 Recently shipped (v0.4.2 stdlib + DX release, 2026-05-09):
 
@@ -173,24 +193,40 @@ Workflow rules:
 
 Where to head next (from ROADMAP_COMPLET.md):
 
-  1. Stdlib expansion: pick one or two from DateTime / Json /
-     Regex / Random / Encoding / Compress / Crypto / Threading.
-     Each is 200-400 LoC. Tied to the open "Stdlib delivery
-     model" design question (currently header-only).
-  2. LSP member completion: `obj.<cursor>` narrowed to the
-     receiver's type. ~150 LoC on top of the v0.3.5 global
-     completion.
-  3. amc new <name> [--template exe|lib|test]: scaffolding
-     command à la cargo new / dotnet new. File templates +
-     dispatcher branch in main.am + a roundtrip test that
-     scaffolds + compiles under /tmp. ~200-400 LoC.
-  4. amc migrate v3 follow-ups (deferred): API streaming via
-     SSE parser, actual usage stats from API responses (vs the
-     heuristic estimate), cost reporting in run summary.
-  5. amc test polish: --runtime <path> flag, per-file timeouts,
+  1. Stdlib expansion (next module): pick one or two from
+     DateTime / Random / Encoding / Regex / Compress / Crypto /
+     Threading. Each is 200-400 LoC, isolated, low risk.
+     Json shipped in v0.4.2-v0.4.3.
+  2. amc migrate v3 — API streaming via SSE: only deferred v3
+     item. Real cost reporting via usage stats already shipped
+     in v0.4.3.
+  3. Editor integration on install: auto-wire VS Code .vsix /
+     Neovim lspconfig snippet / Helix languages.toml entry from
+     install.sh. New roadmap item, no code yet.
+  4. CGen chain-mash fix (HARDER): obj.Field.Method() and
+     obj.Method().Method() lower as `Field_Method` /
+     `Method_Method` name-mash because EmitCalleeStr fallback at
+     src/generator/c_gen.am:3003 returns `target + "_" + mname`.
+     Fix needs a typed lookup of callee.Left's return type plus
+     a small refactor of every EmitCalleeStr consumer. Repro
+     and findings parked in ROADMAP_COMPLET.md. Workaround:
+     intermediate typed locals (used in lsp.am, migrate.am,
+     stdlib_json.am tests).
+  5. Typechecker enum-return bug (HARDER): 37 spurious
+     "Return type mismatch" / "if condition must be bool" on
+     lexer.am via the LSP. `got` type varies (void / string /
+     int) suggesting a NodeKey collision in ExprType map or a
+     parse-tree shape mismatch on single-stmt `{ return … }`
+     blocks. Doesn't reproduce on minimal cross-file repros.
+     Findings + next-step (instrument CheckReturn) in roadmap.
+  6. amc test polish: --runtime <path> flag, per-file timeouts,
      parallel execution.
-  6. Process v2: split stderr from stdout via real pipes, add
+  7. Process v2: split stderr from stdout via real pipes, add
      timeouts, async streaming.
+  8. amc doc: extract doc-comments → Markdown / HTML.
+  9. amc add <pkg>: package manager (re-export of the legacy
+     Vala one in archive/vala-bootstrap/src/pkg/).
+ 10. DAP: debug adapter using DWARF (-g3 already emitted).
 
 Quick checks before claiming a feature is done:
 
@@ -226,8 +262,10 @@ src/                    ← Amalgame compiler in Amalgame
 ├── explain.am            LLM Amalgame-to-prose     (`amc explain`)
 ├── typechecker.am
 ├── diagnostics.am
-├── main.am               (CLI: compile, fmt, test, lsp, --lint, --check,
-                                migrate, generate, explain)
+├── new_cmd.am           project scaffolder         (`amc new`)
+├── stdlib/json.am       Amalgame.Json (parser/encoder/accessors)
+├── main.am              (CLI: compile, fmt, test, lsp, --lint, --check,
+                                migrate, generate, explain, new)
 └── amc_lib.c             (generated)
 
 runtime/                ← C runtime (bdwgc, strings, IO, collections, net,
@@ -235,7 +273,9 @@ runtime/                ← C runtime (bdwgc, strings, IO, collections, net,
                           + Http_PostWithHeaders return-type tracked
                           since v0.4.0 (PR #160). libcurl required for
                           Net + claude-api / chatgpt / gemini providers.
-stdlib/strings.am       ← stdlib API reference (declarations only)
+src/stdlib/json.am      ← Amalgame.Json: pure-Amalgame JSON parser +
+                          encoder. Used internally by lsp.am / migrate.am.
+                          Bundled into amc_lib.c via gen_test.am.
 tests/                  ← samples + run_*.sh runners (output in /tmp)
 docs/guide/             ← user guide chapters 1–8 (8 = LLM commands)
 docs/language/          ← grammar.ebnf + grammar.md
@@ -347,20 +387,28 @@ A new session reads these automatically and applies them.
         Console.WriteLine("amc <X.Y.Z> (self-hosted Amalgame compiler)")
 
     This was forgotten on the v0.4.0 push (binary still printed
-    `0.3.6` after the tag). Workaround was to bump to v0.4.1 with
-    the fix. Pre-tag checklist:
+    `0.3.6` after the tag). Use `tools/release.sh` to do it
+    correctly:
 
-        grep -n "amc 0\." src/main.am   # finds the line
-        # → edit to the new version
-        ./build_amc.sh
-        ./tests/run_all_tests.sh
-        ./tools/save-snapshot.sh
-        # → commit, PR to develop, develop → main, then tag
+        ./tools/release.sh 0.4.4
 
-    A linter rule could catch this (compare the version string
-    against the latest tag) but currently relies on the contributor
-    remembering — which means it WILL be forgotten again unless
-    we automate it.
+    The script bumps every place the version lives
+    (`src/main.am`, `README.md`), inserts a CHANGELOG stub for
+    you to fill in, builds + tests + saves a snapshot, then
+    walks the gitflow:
+
+        release/vX.Y.Z  →  develop  →  main  →  tag vX.Y.Z
+
+    Both PR transitions go through `gh pr merge --auto --merge`
+    so the protected-branch CI is what flips them. `--dry-run`
+    walks through without mutating anything; `--no-tag` stops
+    after main is updated, in case you want to inspect main
+    before publishing the tag.
+
+    Pre-flight refuses to start if you're not on `develop`, the
+    working tree is dirty, or the target tag already exists —
+    so the v0.4.0-style "forgot to bump" mistake can't happen
+    through this path.
 
 13. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
     declares `merge=ours` for `snapshot/amc_lib.c`, `snapshot/INFO.md`,
