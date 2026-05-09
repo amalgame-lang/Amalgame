@@ -1,9 +1,9 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-09T07:44:43+02:00
+Captured: 2026-05-09T07:17:12+02:00
 Git rev:  23f704122b3f8ddde29dfbc8e77d316a6518d7cb
-Branch:   fix/parser-infinite-loop-on-bad-param-syntax
-Tests:    199 passed
+Branch:   feature/amc-migrate-v0
+Tests:    206 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
 mid-development. `build_amc.sh` falls back to `snapshot/amc` before

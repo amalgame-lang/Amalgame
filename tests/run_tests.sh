@@ -457,6 +457,73 @@ run_lsp_check "lsp: hover has contents"   '"id":3,"result":{"contents"'         
 run_lsp_check "lsp: completion has items" '"id":4,"result":{"isIncomplete":false,"items"' "$lsp_query_seq"
 run_lsp_check "lsp: completion lists Console" '"label":"Console"'                        "$lsp_query_seq"
 
+# ── amc migrate ────────────────────────────────────────
+echo ""
+echo "── amc migrate ─────────────────────────"
+
+# Run `amc migrate <file> --prompt-only` and grep the assembled prompt
+# for an expected substring. --prompt-only short-circuits before any
+# claude CLI call so the test is hermetic and fast.
+run_migrate_prompt_check() {
+    local name="$1"
+    local file="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+    if [ ! -f "$file" ]; then
+        echo -e "${YELLOW}SKIP${NC} (file not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+    local out
+    out=$("$AMC" migrate "$file" --prompt-only 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# Tiny TS fixture for prompt-only migration tests. Created at runtime
+# in $BUILD_DIR so the source tree stays clean.
+mig_fixture_ts="$BUILD_DIR/mig_fixture.ts"
+cat > "$mig_fixture_ts" <<'EOF'
+class User { constructor(public name: string, public age: number) {} }
+const u = new User("Alice", 30);
+console.log(u.name);
+EOF
+
+run_migrate_prompt_check "migrate: language detected"  "$mig_fixture_ts"  "translating TypeScript source"
+run_migrate_prompt_check "migrate: source embedded"    "$mig_fixture_ts"  'class User {'
+run_migrate_prompt_check "migrate: TODO marker hint"   "$mig_fixture_ts"  "TODO[migrate]"
+run_migrate_prompt_check "migrate: convention listed"  "$mig_fixture_ts"  "data class"
+run_migrate_prompt_check "migrate: limitation listed"  "$mig_fixture_ts"  "String interpolation does NOT propagate"
+
+# --dry-run path: hermetic too (no claude call), tests language
+# detection + output-path defaulting.
+run_migrate_dry_check() {
+    local name="$1"
+    local pattern="$2"
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" migrate "$mig_fixture_ts" --dry-run 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+run_migrate_dry_check "migrate: dry-run lang"     "TypeScript"
+run_migrate_dry_check "migrate: dry-run out"      "mig_fixture.am"
+run_migrate_dry_check "migrate: dry-run provider" "provider:      claude"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
