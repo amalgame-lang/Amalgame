@@ -374,6 +374,10 @@ run_test "lambda v2.5: Any"          "$SAMPLES/lambda_v25_typed.am"  "anyMinor: 
 run_test "lambda v2.5: All"          "$SAMPLES/lambda_v25_typed.am"  "allAdults: false"
 run_test "lambda v2.5: CountIf"      "$SAMPLES/lambda_v25_typed.am"  "underAge: 1"
 run_test "param syntax: TS-style"    "$SAMPLES/param_ts_syntax.am"   "box: 21"
+run_test "auto-qualify: ctor write"  "$SAMPLES/cgen_auto_qualify.am" "value: 7"
+run_test "auto-qualify: method read" "$SAMPLES/cgen_auto_qualify.am" "dp: 17"
+run_test "auto-qualify: method write" "$SAMPLES/cgen_auto_qualify.am" "after reset value: 0"
+run_test "auto-qualify: explicit this. mix" "$SAMPLES/cgen_auto_qualify.am" "after reset label: reset"
 
 # ── Process module ─────────────────────────────────────
 echo ""

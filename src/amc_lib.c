@@ -5155,7 +5155,17 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
         return "self";
     }
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        return expr->Name;
+        code_string __attribute__((unused)) name = expr->Name;
+        if (String_Length(self->CurrentClass) > 0) {
+            code_string __attribute__((unused)) asLocal = Amalgame_Compiler_CGen_LocalTypeGet(self, name);
+            if (String_Length(asLocal) == 0) {
+                code_string __attribute__((unused)) asField = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, name);
+                if (String_Length(asField) > 0 && !code_string_equals(asField, "?")) {
+                    return code_string_concat("self->", name);
+                }
+            }
+        }
+        return name;
     }
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
         if (expr->Flag) {
