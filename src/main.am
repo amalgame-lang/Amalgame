@@ -196,6 +196,8 @@ public class Program {
         Console.WriteError("                shells out to the local `claude` CLI. See `amc migrate --help`.")
         Console.WriteError("  generate <p>  Generate an Amalgame program from a natural-language prompt.")
         Console.WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.")
+        Console.WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.")
+        Console.WriteError("                See `amc explain --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
@@ -387,6 +389,10 @@ public class Program {
         }
         if (Args_Get(1) == "generate") {
             Exit_Set(GenerateCommand.Run(argc))
+            return
+        }
+        if (Args_Get(1) == "explain") {
+            Exit_Set(ExplainCommand.Run(argc))
             return
         }
 

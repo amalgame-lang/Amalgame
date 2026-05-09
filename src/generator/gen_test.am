@@ -116,6 +116,14 @@ public class Program {
         let genProg  = genPar.Parse()
         Console.WriteError("parsed: generate.am")
 
+        let expPath  = "./src/explain.am"
+        let expSrc   = File.ReadAll(expPath)
+        let expLex   = new Lexer(expSrc, expPath)
+        let expToks  = expLex.Tokenize()
+        let expPar   = new Parser(expToks)
+        let expProg  = expPar.Parse()
+        Console.WriteError("parsed: explain.am")
+
         let mainPath = "./src/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
@@ -149,6 +157,7 @@ public class Program {
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
+        gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         Console.WriteError("gen6: pass1 done, starting pass2")
@@ -166,6 +175,7 @@ public class Program {
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)
+        gen6.AddFilePass2(expProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
         // Emit the C entry point that boots Amalgame's Program.Main.
