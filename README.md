@@ -12,6 +12,9 @@ A self-hosted programming language that compiles to C.
 
 </div>
 
+> Site officiel : **[amalgame.me](https://amalgame.me)**
+> [Tour du langage](https://amalgame.me/fr/tour) · [Installer](https://amalgame.me/fr/install) · [Versions](https://amalgame.me/fr/releases)
+
 ```amalgame
 namespace App
 import Amalgame.IO
