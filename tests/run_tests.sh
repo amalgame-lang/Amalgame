@@ -651,6 +651,11 @@ run_migrate_provider_check "migrate: unknown provider"   "not supported (built-i
 # --help mentions the new claude-api provider so users discover it.
 run_migrate_help_check "migrate: --help mentions claude-api" "--help" "claude-api"
 
+# v1.3: prompt loaded from disk. When the docs are reachable, the
+# system prompt embeds the EBNF grammar + the language tour.
+run_migrate_prompt_check "migrate: prompt embeds grammar"   "$mig_fixture_ts"  "Amalgame grammar (EBNF)"
+run_migrate_prompt_check "migrate: prompt embeds tour"      "$mig_fixture_ts"  "Amalgame language tour"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
