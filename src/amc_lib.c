@@ -43,6 +43,7 @@ typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
 typedef struct _Amalgame_Compiler_GenerateCommand Amalgame_Compiler_GenerateCommand;
 typedef struct _Amalgame_Compiler_ExplainCommand Amalgame_Compiler_ExplainCommand;
+typedef struct _Amalgame_Compiler_NewCommand Amalgame_Compiler_NewCommand;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -13306,6 +13307,491 @@ static code_string Amalgame_Compiler_ExplainCommand_BuildUserPrompt(code_string 
     return p;
 }
 
+struct _Amalgame_Compiler_NewCommand {
+};
+
+void Amalgame_Compiler_NewCommand_PrintUsage();
+i64 Amalgame_Compiler_NewCommand_Run(i64 argc);
+static i64 Amalgame_Compiler_NewCommand_ScaffoldExe(code_string path, code_string base);
+static i64 Amalgame_Compiler_NewCommand_ScaffoldLib(code_string path, code_string base);
+static i64 Amalgame_Compiler_NewCommand_ScaffoldTest(code_string path, code_string base);
+static code_string Amalgame_Compiler_NewCommand_MainAmExe(code_string name);
+static code_string Amalgame_Compiler_NewCommand_TestAmExe(code_string name);
+static code_string Amalgame_Compiler_NewCommand_BuildShExe(code_string name);
+static code_string Amalgame_Compiler_NewCommand_ReadmeExe(code_string name);
+static code_string Amalgame_Compiler_NewCommand_LibAm(code_string name);
+static code_string Amalgame_Compiler_NewCommand_BuildShLib(code_string name);
+static code_string Amalgame_Compiler_NewCommand_ReadmeLib(code_string name);
+static code_string Amalgame_Compiler_NewCommand_TestAmTest(code_string name);
+static code_string Amalgame_Compiler_NewCommand_ReadmeTest(code_string name);
+static code_string Amalgame_Compiler_NewCommand_GitignoreCommon();
+static code_bool Amalgame_Compiler_NewCommand_WriteFile(code_string path, code_string content);
+static code_string Amalgame_Compiler_NewCommand_ShellEscape(code_string s);
+static code_bool Amalgame_Compiler_NewCommand_IsSafeName(code_string s);
+static code_string Amalgame_Compiler_NewCommand_Capitalize(code_string s);
+static code_string Amalgame_Compiler_NewCommand_Basename(code_string p);
+
+Amalgame_Compiler_NewCommand* Amalgame_Compiler_NewCommand_new() {
+    Amalgame_Compiler_NewCommand* self = (Amalgame_Compiler_NewCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_NewCommand));
+    return self;
+}
+
+void Amalgame_Compiler_NewCommand_PrintUsage() {
+    Console_WriteError("Usage: amc new <name> [--template <kind>] [--force]");
+    Console_WriteError("");
+    Console_WriteError("Scaffold a new Amalgame project named <name>.");
+    Console_WriteError("");
+    Console_WriteError("Templates:");
+    Console_WriteError("  exe    Default. src/main.am with Program.Main + a passing test.");
+    Console_WriteError("  lib    src/<name>.am with a public class skeleton, no main.");
+    Console_WriteError("  test   tests/<name>_test.am only — bolt onto an existing project.");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  --template <kind>    One of: exe (default), lib, test.");
+    Console_WriteError("  --force              Overwrite if <name>/ already exists.");
+    Console_WriteError("  -h, --help           Print this help and exit.");
+}
+
+i64 Amalgame_Compiler_NewCommand_Run(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) name = "";
+    code_string __attribute__((unused)) template = "exe";
+    code_bool __attribute__((unused)) force = 0;
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_NewCommand_PrintUsage();
+            return 0;
+        }
+        if (code_string_equals(a, "--force")) {
+            force = 1;
+        } else if (code_string_equals(a, "--template")) {
+            if (i + 1 >= argc) {
+                Console_WriteError("amc new: --template needs a value");
+                return 1;
+            }
+            i = i + 1;
+            template = Args_Get(i);
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc new: unknown flag '", a), "'"));
+            Amalgame_Compiler_NewCommand_PrintUsage();
+            return 1;
+        } else {
+            if (String_Length(name) == 0) {
+                name = a;
+            } else {
+                Console_WriteError(code_string_concat(code_string_concat("amc new: extra positional '", a), "'"));
+                return 1;
+            }
+        }
+        i = i + 1;
+    }
+    if (String_Length(name) == 0) {
+        Console_WriteError("amc new: missing <name>");
+        Amalgame_Compiler_NewCommand_PrintUsage();
+        return 1;
+    }
+    if (!code_string_equals(template, "exe") && !code_string_equals(template, "lib") && !code_string_equals(template, "test")) {
+        Console_WriteError(code_string_concat(code_string_concat("amc new: unknown template '", template), "' (try exe / lib / test)"));
+        return 1;
+    }
+    code_string __attribute__((unused)) baseName = Amalgame_Compiler_NewCommand_Basename(name);
+    if (!Amalgame_Compiler_NewCommand_IsSafeName(baseName)) {
+        Console_WriteError(code_string_concat(code_string_concat("amc new: '", baseName), "' is not a safe project name (a-z, A-Z, 0-9, _ or -)"));
+        return 1;
+    }
+    if (File_Exists(name) && !force) {
+        Console_WriteError(code_string_concat(code_string_concat("amc new: '", name), "' already exists (pass --force to overwrite)"));
+        return 1;
+    }
+    i64 __attribute__((unused)) mkExit = Process_Run(code_string_concat("mkdir -p ", Amalgame_Compiler_NewCommand_ShellEscape(name)));
+    if (mkExit != 0) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amc new: failed to create directory '", name), "' (mkdir exited "), String_FromInt(mkExit)), ")"));
+        return 1;
+    }
+    if (code_string_equals(template, "exe")) {
+        return Amalgame_Compiler_NewCommand_ScaffoldExe(name, baseName);
+    }
+    if (code_string_equals(template, "lib")) {
+        return Amalgame_Compiler_NewCommand_ScaffoldLib(name, baseName);
+    }
+    return Amalgame_Compiler_NewCommand_ScaffoldTest(name, baseName);
+}
+
+static i64 Amalgame_Compiler_NewCommand_ScaffoldExe(code_string path, code_string base) {
+    (void)path;
+    (void)base;
+    i64 __attribute__((unused)) srcDir = Process_Run(code_string_concat("mkdir -p ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/src"))));
+    i64 __attribute__((unused)) testDir = Process_Run(code_string_concat("mkdir -p ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/tests"))));
+    if (srcDir != 0 || testDir != 0) {
+        Console_WriteError("amc new: failed to create subdirectories");
+        return 1;
+    }
+    code_string __attribute__((unused)) mainAm = Amalgame_Compiler_NewCommand_MainAmExe(base);
+    code_string __attribute__((unused)) testAm = Amalgame_Compiler_NewCommand_TestAmExe(base);
+    code_string __attribute__((unused)) buildSh = Amalgame_Compiler_NewCommand_BuildShExe(base);
+    code_string __attribute__((unused)) readme = Amalgame_Compiler_NewCommand_ReadmeExe(base);
+    code_string __attribute__((unused)) gitignore = Amalgame_Compiler_NewCommand_GitignoreCommon();
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/src/main.am"), mainAm)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/tests/hello_test.am"), testAm)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/build.sh"), buildSh)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/.gitignore"), gitignore)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/README.md"), readme)) {
+        return 1;
+    }
+    Process_Run(code_string_concat("chmod +x ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/build.sh"))));
+    Console_WriteLine(code_string_concat(code_string_concat("Scaffolded '", base), "' (exe template)."));
+    Console_WriteLine(code_string_concat("  cd ", path));
+    Console_WriteLine(code_string_concat("  ./build.sh && ./", base));
+    return 0;
+}
+
+static i64 Amalgame_Compiler_NewCommand_ScaffoldLib(code_string path, code_string base) {
+    (void)path;
+    (void)base;
+    i64 __attribute__((unused)) srcDir = Process_Run(code_string_concat("mkdir -p ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/src"))));
+    if (srcDir != 0) {
+        Console_WriteError("amc new: failed to create src/ subdirectory");
+        return 1;
+    }
+    code_string __attribute__((unused)) libAm = Amalgame_Compiler_NewCommand_LibAm(base);
+    code_string __attribute__((unused)) buildSh = Amalgame_Compiler_NewCommand_BuildShLib(base);
+    code_string __attribute__((unused)) readme = Amalgame_Compiler_NewCommand_ReadmeLib(base);
+    code_string __attribute__((unused)) gitignore = Amalgame_Compiler_NewCommand_GitignoreCommon();
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(code_string_concat(code_string_concat(path, "/src/"), base), ".am"), libAm)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/build.sh"), buildSh)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/.gitignore"), gitignore)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/README.md"), readme)) {
+        return 1;
+    }
+    Process_Run(code_string_concat("chmod +x ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/build.sh"))));
+    Console_WriteLine(code_string_concat(code_string_concat("Scaffolded '", base), "' (lib template)."));
+    Console_WriteLine(code_string_concat("  cd ", path));
+    Console_WriteLine(code_string_concat(code_string_concat("  ./build.sh   # builds ", base), ".o (library)"));
+    return 0;
+}
+
+static i64 Amalgame_Compiler_NewCommand_ScaffoldTest(code_string path, code_string base) {
+    (void)path;
+    (void)base;
+    i64 __attribute__((unused)) testDir = Process_Run(code_string_concat("mkdir -p ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/tests"))));
+    if (testDir != 0) {
+        Console_WriteError("amc new: failed to create tests/ subdirectory");
+        return 1;
+    }
+    code_string __attribute__((unused)) testAm = Amalgame_Compiler_NewCommand_TestAmTest(base);
+    code_string __attribute__((unused)) readme = Amalgame_Compiler_NewCommand_ReadmeTest(base);
+    code_string __attribute__((unused)) gitignore = Amalgame_Compiler_NewCommand_GitignoreCommon();
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(code_string_concat(code_string_concat(path, "/tests/"), base), "_test.am"), testAm)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/.gitignore"), gitignore)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/README.md"), readme)) {
+        return 1;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat("Scaffolded '", base), "' (test template)."));
+    Console_WriteLine(code_string_concat("  cd ", path));
+    Console_WriteLine("  amc test tests/");
+    return 0;
+}
+
+static code_string Amalgame_Compiler_NewCommand_MainAmExe(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "namespace "), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "import Amalgame.Collections\n");
+    s = code_string_concat(s, "import Amalgame.IO\n");
+    s = code_string_concat(s, "import Amalgame.String\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "public class Program {\n");
+    s = code_string_concat(s, "    public static int Main(List<string> args) {\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "        Console.WriteLine(\"Hello from "), name), "!\")\n");
+    s = code_string_concat(s, "        return 0\n");
+    s = code_string_concat(s, "    }\n");
+    s = code_string_concat(s, "}\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_TestAmExe(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "// Smoke test for "), name), ". `amc test tests/` runs this file\n");
+    s = code_string_concat(s, "// and counts the [PASS]/[FAIL] tags it prints.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "import Amalgame.IO\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "class Program {\n");
+    s = code_string_concat(s, "    public static void Main() {\n");
+    s = code_string_concat(s, "        let n: int = 1 + 1\n");
+    s = code_string_concat(s, "        if (n == 2) {\n");
+    s = code_string_concat(s, "            Console.WriteLine(\"[PASS] sanity\")\n");
+    s = code_string_concat(s, "        } else {\n");
+    s = code_string_concat(s, "            Console.WriteLine(\"[FAIL] sanity\")\n");
+    s = code_string_concat(s, "        }\n");
+    s = code_string_concat(s, "    }\n");
+    s = code_string_concat(s, "}\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_BuildShExe(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) lb = "{";
+    code_string __attribute__((unused)) rb = "}";
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(s, "#!/bin/bash\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# Build script for "), name), ". Compiles src/main.am to a native\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# binary named `"), name), "` in the project root.\n");
+    s = code_string_concat(s, "#\n");
+    s = code_string_concat(s, "# amc emits the .c bundle; gcc links it against the Amalgame\n");
+    s = code_string_concat(s, "# runtime headers. Set AMALGAME_HOME if your runtime/ lives\n");
+    s = code_string_concat(s, "# outside the install default.\n");
+    s = code_string_concat(s, "set -e\n");
+    s = code_string_concat(s, "cd \"$(dirname \"$0\")\"\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Locate runtime/ (env override, install dirs, then the\n");
+    s = code_string_concat(s, "# Amalgame repo if amc is on PATH).\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "RUNTIME=\"$"), lb), "AMALGAME_HOME:-"), rb), "\"\n");
+    s = code_string_concat(s, "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n");
+    s = code_string_concat(s, "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n");
+    s = code_string_concat(s, "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n");
+    s = code_string_concat(s, "  done\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n");
+    s = code_string_concat(s, "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n");
+    s = code_string_concat(s, "  if [ -n \"$AMC_BIN\" ]; then\n");
+    s = code_string_concat(s, "    cand=$(dirname \"$AMC_BIN\")\n");
+    s = code_string_concat(s, "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n");
+    s = code_string_concat(s, "  fi\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n");
+    s = code_string_concat(s, "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir> (the dir\"\n");
+    s = code_string_concat(s, "  echo \"          containing runtime/), or install Amalgame globally.\"\n");
+    s = code_string_concat(s, "  exit 1\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "amc src/main.am -o "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "gcc -O2 -I\"$RUNTIME/runtime\" "), name), ".c -lgc -lm -lcurl -o "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"built ./"), name), "\"\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_ReadmeExe(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# "), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Amalgame project scaffolded by `amc new "), name), "`.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Build & run\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "./build.sh\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "./"), name), "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Test\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "amc test tests/\n");
+    s = code_string_concat(s, "```\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_LibAm(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "namespace "), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "import Amalgame.String\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "// [Library]\n");
+    s = code_string_concat(s, "// Marker comment is read by `amc --lib` to skip the missing-Main check.\n");
+    s = code_string_concat(s, "// See https://github.com/BastienMOUGET/Amalgame for the reference.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "public class "), Amalgame_Compiler_NewCommand_Capitalize(name)), " {\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "    public "), Amalgame_Compiler_NewCommand_Capitalize(name)), "() {}\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "    public string Greet(string who) {\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "        return \"Hello, \" + who + \", from "), name), "!\"\n");
+    s = code_string_concat(s, "    }\n");
+    s = code_string_concat(s, "}\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_BuildShLib(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(s, "#!/bin/bash\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "# Build script for the "), name), " library. Emits "), name), ".c\n");
+    s = code_string_concat(s, "# (a self-contained Amalgame translation) that callers compile\n");
+    s = code_string_concat(s, "# alongside their own sources via gcc.\n");
+    s = code_string_concat(s, "set -e\n");
+    s = code_string_concat(s, "cd \"$(dirname \"$0\")\"\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "amc --lib src/"), name), ".am -o "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"built ./"), name), ".c\"\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_ReadmeLib(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# "), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Amalgame library scaffolded by `amc new "), name), " --template lib`.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Build\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "./build.sh   # produces ./"), name), ".o\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Use from a host binary\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Compile your host with `amc src/main.am src/"), name), ".am -o app`,\n");
+    s = code_string_concat(s, "or pre-build the .o and link it manually with `gcc`.\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_TestAmTest(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "// Test bundle for "), name), ". Run with `amc test tests/`.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "import Amalgame.IO\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "class Program {\n");
+    s = code_string_concat(s, "    public static void Main() {\n");
+    s = code_string_concat(s, "        let n: int = 2 + 3\n");
+    s = code_string_concat(s, "        if (n == 5) {\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "            Console.WriteLine(\"[PASS] "), name), ": baseline\")\n");
+    s = code_string_concat(s, "        } else {\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "            Console.WriteLine(\"[FAIL] "), name), ": baseline\")\n");
+    s = code_string_concat(s, "        }\n");
+    s = code_string_concat(s, "    }\n");
+    s = code_string_concat(s, "}\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_ReadmeTest(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# "), name), " — tests\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Test bundle scaffolded by `amc new "), name), " --template test`.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Run\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "amc test tests/\n");
+    s = code_string_concat(s, "```\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_GitignoreCommon() {
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(s, "# Build artifacts\n");
+    s = code_string_concat(s, "*.o\n");
+    s = code_string_concat(s, "*.c.bundle\n");
+    s = code_string_concat(s, "a.out\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Editor state\n");
+    s = code_string_concat(s, ".vscode/\n");
+    s = code_string_concat(s, ".idea/\n");
+    s = code_string_concat(s, "*.swp\n");
+    return s;
+}
+
+static code_bool Amalgame_Compiler_NewCommand_WriteFile(code_string path, code_string content) {
+    (void)path;
+    (void)content;
+    code_bool __attribute__((unused)) ok = File_WriteAll(path, content);
+    if (!ok) {
+        Console_WriteError(code_string_concat(code_string_concat("amc new: failed to write '", path), "'"));
+        return 0;
+    }
+    return 1;
+}
+
+static code_string Amalgame_Compiler_NewCommand_ShellEscape(code_string s) {
+    (void)s;
+    i64 __attribute__((unused)) n = String_Length(s);
+    code_string __attribute__((unused)) out = "'";
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "'")) {
+            out = code_string_concat(out, "'\\''");
+        } else {
+            out = code_string_concat(out, c);
+        }
+    }
+    out = code_string_concat(out, "'");
+    return out;
+}
+
+static code_bool Amalgame_Compiler_NewCommand_IsSafeName(code_string s) {
+    (void)s;
+    i64 __attribute__((unused)) n = String_Length(s);
+    if (n == 0) {
+        return 0;
+    }
+    code_string __attribute__((unused)) allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (String_IndexOf(allowed, c) < 0) {
+            return 0;
+        }
+    }
+    if (String_StartsWith(s, "-")) {
+        return 0;
+    }
+    return 1;
+}
+
+static code_string Amalgame_Compiler_NewCommand_Capitalize(code_string s) {
+    (void)s;
+    if (String_Length(s) == 0) {
+        return s;
+    }
+    code_string __attribute__((unused)) head = String_Substring(s, 0, 1);
+    code_string __attribute__((unused)) tail = String_Substring(s, 1, String_Length(s) - 1);
+    return code_string_concat(String_ToUpper(head), tail);
+}
+
+static code_string Amalgame_Compiler_NewCommand_Basename(code_string p) {
+    (void)p;
+    i64 __attribute__((unused)) n = String_Length(p);
+    if (n == 0) {
+        return p;
+    }
+    i64 __attribute__((unused)) i = n - 1;
+    while (i >= 0) {
+        code_string __attribute__((unused)) c = String_Substring(p, i, 1);
+        if (code_string_equals(c, "/")) {
+            return String_Substring(p, i + 1, n - i - 1);
+        }
+        i = i - 1;
+    }
+    return p;
+}
+
 struct _Amalgame_Compiler_AmalgameCompiler {
     Amalgame_Compiler_DiagnosticFormatter* Diag;
     code_bool IsLib;
@@ -13519,6 +14005,8 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.");
     Console_WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.");
     Console_WriteError("                See `amc explain --help`.");
+    Console_WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test templates).");
+    Console_WriteError("                See `amc new --help`.");
 }
 
 i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
@@ -13693,6 +14181,10 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "explain")) {
         Exit_Set(Amalgame_Compiler_ExplainCommand_Run(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "new")) {
+        Exit_Set(Amalgame_Compiler_NewCommand_Run(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
