@@ -1,0 +1,243 @@
+// Stdlib test: Amalgame.Json — parser, encoder, round-trip.
+// Run by tests/run_stdlib_tests.sh; each line below produces one
+// match string the runner asserts on.
+//
+// Style note: many assertions extract intermediate locals
+// (e.g. `let v = r.Value` then `v.Has(...)`) instead of chaining
+// `r.Value.Has(...)`. The codegen currently mashes a Field+Method
+// chain on the same line into `r->Field_Method(...)` for some
+// receivers — see also the workaround pattern in src/lsp.am.
+// Local extractions sidestep the issue and keep diagnostics clean.
+
+import Amalgame.Json
+
+class Program {
+    public static void Main() {
+        // ── Parse: primitives ──────────────────────────
+        let r1 = Json.Parse("null")
+        let v1 = r1.Value
+        if (r1.Ok && v1.IsNull()) {
+            Console.WriteLine("[PASS] parse null")
+        } else {
+            Console.WriteLine("[FAIL] parse null")
+        }
+
+        let r2 = Json.Parse("true")
+        let v2 = r2.Value
+        if (r2.Ok && v2.AsBool()) {
+            Console.WriteLine("[PASS] parse true")
+        } else {
+            Console.WriteLine("[FAIL] parse true")
+        }
+
+        let r3 = Json.Parse("false")
+        let v3 = r3.Value
+        if (r3.Ok && !v3.AsBool()) {
+            Console.WriteLine("[PASS] parse false")
+        } else {
+            Console.WriteLine("[FAIL] parse false")
+        }
+
+        let r4 = Json.Parse("42")
+        let v4 = r4.Value
+        let n4: int = v4.AsInt()
+        if (r4.Ok && n4 == 42) {
+            Console.WriteLine("[PASS] parse int")
+        } else {
+            Console.WriteLine("[FAIL] parse int got=" + String_FromInt(n4))
+        }
+
+        let r5 = Json.Parse("-17")
+        let v5 = r5.Value
+        let n5: int = v5.AsInt()
+        if (r5.Ok && n5 == -17) {
+            Console.WriteLine("[PASS] parse negative int")
+        } else {
+            Console.WriteLine("[FAIL] parse negative int")
+        }
+
+        let r6 = Json.Parse("3.14")
+        let v6 = r6.Value
+        if (r6.Ok && v6.IsFloat()) {
+            Console.WriteLine("[PASS] parse float kind")
+        } else {
+            Console.WriteLine("[FAIL] parse float kind")
+        }
+
+        let r7 = Json.Parse("\"hello\"")
+        let v7 = r7.Value
+        let s7: string = v7.AsString()
+        if (r7.Ok && s7 == "hello") {
+            Console.WriteLine("[PASS] parse string")
+        } else {
+            Console.WriteLine("[FAIL] parse string")
+        }
+
+        // ── Parse: escapes ─────────────────────────────
+        let rEsc = Json.Parse("\"a\\nb\\tc\\\"d\\\\e\"")
+        let vEsc = rEsc.Value
+        let sEsc: string = vEsc.AsString()
+        let expectedEsc = "a\nb\tc\"d\\e"
+        if (rEsc.Ok && sEsc == expectedEsc) {
+            Console.WriteLine("[PASS] parse escapes")
+        } else {
+            Console.WriteLine("[FAIL] parse escapes got=" + sEsc)
+        }
+
+        // ── Parse: empty containers ────────────────────
+        let rEmpArr = Json.Parse("[]")
+        let vEmpArr = rEmpArr.Value
+        if (rEmpArr.Ok && vEmpArr.IsArray() && vEmpArr.Length() == 0) {
+            Console.WriteLine("[PASS] parse empty array")
+        } else {
+            Console.WriteLine("[FAIL] parse empty array")
+        }
+
+        let rEmpObj = Json.Parse("{}")
+        let vEmpObj = rEmpObj.Value
+        if (rEmpObj.Ok && vEmpObj.IsObject() && vEmpObj.Length() == 0) {
+            Console.WriteLine("[PASS] parse empty object")
+        } else {
+            Console.WriteLine("[FAIL] parse empty object")
+        }
+
+        // ── Parse: nested ─────────────────────────────
+        let rNest = Json.Parse("{\"name\":\"Bastien\",\"age\":42,\"tags\":[\"dev\",\"fr\"]}")
+        let vNest = rNest.Value
+        let nameNode: JsonValue = vNest.Get("name")
+        let ageNode:  JsonValue = vNest.Get("age")
+        let tagsNode: JsonValue = vNest.Get("tags")
+        let nameV: string = nameNode.AsString()
+        let ageV: int     = ageNode.AsInt()
+        let tag0: JsonValue = tagsNode.At(0)
+        let tag0S: string = tag0.AsString()
+        if (rNest.Ok && nameV == "Bastien" && ageV == 42 && tagsNode.Length() == 2 && tag0S == "dev") {
+            Console.WriteLine("[PASS] parse nested object")
+        } else {
+            Console.WriteLine("[FAIL] parse nested object")
+        }
+
+        // ── Parse: realistic LSP shape ─────────────────
+        let lspBody = "{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"textDocument/didOpen\"}"
+        let rLsp = Json.Parse(lspBody)
+        let vLsp = rLsp.Value
+        let idNode: JsonValue = vLsp.Get("id")
+        let mNode:  JsonValue = vLsp.Get("method")
+        let lspId: int     = idNode.AsInt()
+        let lspM: string   = mNode.AsString()
+        if (rLsp.Ok && lspId == 42 && lspM == "textDocument/didOpen") {
+            Console.WriteLine("[PASS] parse LSP request")
+        } else {
+            Console.WriteLine("[FAIL] parse LSP request")
+        }
+
+        // ── Parse: realistic Anthropic usage shape ────
+        let usageBody = "{\"usage\":{\"input_tokens\":1234,\"output_tokens\":567}}"
+        let rUsage = Json.Parse(usageBody)
+        let vUsage = rUsage.Value
+        let usageNode: JsonValue = vUsage.Get("usage")
+        let inNode:    JsonValue = usageNode.Get("input_tokens")
+        let outNode:   JsonValue = usageNode.Get("output_tokens")
+        let inT: int  = inNode.AsInt()
+        let outT: int = outNode.AsInt()
+        if (rUsage.Ok && inT == 1234 && outT == 567) {
+            Console.WriteLine("[PASS] parse usage stats")
+        } else {
+            Console.WriteLine("[FAIL] parse usage stats in=" + String_FromInt(inT) + " out=" + String_FromInt(outT))
+        }
+
+        // ── Has / missing keys ─────────────────────────
+        let hasName    = vNest.Has("name")
+        let hasMissing = vNest.Has("missing")
+        if (hasName && !hasMissing) {
+            Console.WriteLine("[PASS] Has key")
+        } else {
+            Console.WriteLine("[FAIL] Has key")
+        }
+
+        // ── Errors ─────────────────────────────────────
+        let rBad1 = Json.Parse("{\"a\":")
+        if (!rBad1.Ok) {
+            Console.WriteLine("[PASS] error truncated")
+        } else {
+            Console.WriteLine("[FAIL] error truncated")
+        }
+
+        let rBad2 = Json.Parse("[1,2,]")
+        if (!rBad2.Ok) {
+            Console.WriteLine("[PASS] error trailing comma")
+        } else {
+            Console.WriteLine("[FAIL] error trailing comma")
+        }
+
+        let rBad3 = Json.Parse("garbage")
+        if (!rBad3.Ok) {
+            Console.WriteLine("[PASS] error non-json")
+        } else {
+            Console.WriteLine("[FAIL] error non-json")
+        }
+
+        // ── Encoder ────────────────────────────────────
+        let nullVal: JsonValue = Json.NullValue()
+        let encNull: string = Json.Encode(nullVal)
+        if (encNull == "null") {
+            Console.WriteLine("[PASS] encode null")
+        } else {
+            Console.WriteLine("[FAIL] encode null got=" + encNull)
+        }
+
+        let bv: JsonValue = Json.OfBool(true)
+        let encBool: string = Json.Encode(bv)
+        if (encBool == "true") {
+            Console.WriteLine("[PASS] encode bool")
+        } else {
+            Console.WriteLine("[FAIL] encode bool got=" + encBool)
+        }
+
+        let iv: JsonValue = Json.OfInt(42)
+        let encInt: string = Json.Encode(iv)
+        if (encInt == "42") {
+            Console.WriteLine("[PASS] encode int")
+        } else {
+            Console.WriteLine("[FAIL] encode int got=" + encInt)
+        }
+
+        let sv: JsonValue = Json.OfString("hello")
+        let encStr: string = Json.Encode(sv)
+        if (encStr == "\"hello\"") {
+            Console.WriteLine("[PASS] encode string")
+        } else {
+            Console.WriteLine("[FAIL] encode string got=" + encStr)
+        }
+
+        let escv: JsonValue = Json.OfString("a\"b\\c\nd")
+        let encEsc: string = Json.Encode(escv)
+        if (encEsc == "\"a\\\"b\\\\c\\nd\"") {
+            Console.WriteLine("[PASS] encode escape")
+        } else {
+            Console.WriteLine("[FAIL] encode escape got=" + encEsc)
+        }
+
+        // ── Round-trip ─────────────────────────────────
+        let rt: string = Json.Encode(vNest)
+        let rt2 = Json.Parse(rt)
+        let rt2v = rt2.Value
+        let rt2age:  JsonValue = rt2v.Get("age")
+        let rt2name: JsonValue = rt2v.Get("name")
+        let rt2ageI: int   = rt2age.AsInt()
+        let rt2nameS: string = rt2name.AsString()
+        if (rt2.Ok && rt2ageI == 42 && rt2nameS == "Bastien") {
+            Console.WriteLine("[PASS] round-trip nested")
+        } else {
+            Console.WriteLine("[FAIL] round-trip nested")
+        }
+
+        // ── EscapeString direct ────────────────────────
+        let escapedStr: string = Json.EscapeString("line1\nline2\twith \"quote\"")
+        if (escapedStr == "line1\\nline2\\twith \\\"quote\\\"") {
+            Console.WriteLine("[PASS] escape direct")
+        } else {
+            Console.WriteLine("[FAIL] escape direct got=" + escapedStr)
+        }
+    }
+}
