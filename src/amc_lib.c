@@ -1104,6 +1104,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseAdd(Amalgame_Com
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMul(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseUnary(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame_Compiler_Parser* self);
+static code_bool Amalgame_Compiler_Parser_LookaheadStartsWithDot(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseCallArgs(Amalgame_Compiler_Parser* self, Amalgame_Compiler_AstNode* callee);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePrimary(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseListComp(Amalgame_Compiler_Parser* self);
@@ -2373,6 +2374,9 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame
     Amalgame_Compiler_AstNode* __attribute__((unused)) expr = Amalgame_Compiler_Parser_ParsePrimary(self);
     code_bool __attribute__((unused)) running = 1;
     while (running) {
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_NEWLINE) && Amalgame_Compiler_Parser_LookaheadStartsWithDot(self)) {
+            Amalgame_Compiler_Parser_SkipNewlines(self);
+        }
         if (Amalgame_Compiler_Parser_CheckValue(self, ".")) {
             Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
             Amalgame_Compiler_Token* __attribute__((unused)) memberTok = Amalgame_Compiler_Parser_ExpectIdent(self);
@@ -2404,6 +2408,24 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame
         }
     }
     return expr;
+}
+
+static code_bool Amalgame_Compiler_Parser_LookaheadStartsWithDot(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    i64 __attribute__((unused)) off = 0;
+    i64 __attribute__((unused)) max = self->TokenCount;
+    while (self->Pos + off < max) {
+        Amalgame_Compiler_Token* __attribute__((unused)) t = (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, self->Pos + off);
+        if (t->Type == Amalgame_Compiler_TokenType_NEWLINE) {
+            off = off + 1;
+            continue;
+        }
+        if (code_string_equals(t->Value, ".") || code_string_equals(t->Value, "?.")) {
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseCallArgs(Amalgame_Compiler_Parser* self, Amalgame_Compiler_AstNode* callee) {
@@ -5621,6 +5643,13 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             code_string __attribute__((unused)) vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vname);
             if (code_string_equals(vtype, "AmalgameList*")) {
                 listExpr = vname;
+                listCType = "AmalgameList*";
+            }
+        }
+        if (lk == Amalgame_Compiler_NodeKind_CALL) {
+            code_string __attribute__((unused)) innerStr = Amalgame_Compiler_CGen_TryEmitListCall(self, callee->Left);
+            if (String_Length(innerStr) > 0) {
+                listExpr = innerStr;
                 listCType = "AmalgameList*";
             }
         }
@@ -9126,6 +9155,16 @@ static code_string Amalgame_Compiler_FullResolver_InferExprType(Amalgame_Compile
         if (expr->Left != NULL) {
             code_string __attribute__((unused)) targetType = Amalgame_Compiler_FullResolver_InferExprType(self, expr->Left);
             return Amalgame_Compiler_MemberTable_Get(self->Members, targetType, expr->Name);
+        }
+    }
+    if (k == Amalgame_Compiler_NodeKind_CALL) {
+        if (expr->Left != NULL && expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
+            code_string __attribute__((unused)) mname = expr->Left->Name;
+            if (code_string_equals(mname, "Filter") || code_string_equals(mname, "ForEach")) {
+                if (expr->Left->Left != NULL) {
+                    return Amalgame_Compiler_FullResolver_InferExprType(self, expr->Left->Left);
+                }
+            }
         }
     }
     return "?";
