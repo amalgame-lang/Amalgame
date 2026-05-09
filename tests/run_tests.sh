@@ -382,6 +382,13 @@ run_test "auto-qualify: method read" "$SAMPLES/cgen_auto_qualify.am" "dp: 17"
 run_test "auto-qualify: method write" "$SAMPLES/cgen_auto_qualify.am" "after reset value: 0"
 run_test "auto-qualify: explicit this. mix" "$SAMPLES/cgen_auto_qualify.am" "after reset label: reset"
 
+# Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
+export AMC_ENV_PROBE=hello
+run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"
+run_test "env: probe value"          "$SAMPLES/stdlib_env.am"  "probe: hello"
+run_test "env: missing → false"      "$SAMPLES/stdlib_env.am"  "hasFake: false"
+unset AMC_ENV_PROBE
+
 # ── Process module ─────────────────────────────────────
 echo ""
 echo "── Process ─────────────────────────────"
