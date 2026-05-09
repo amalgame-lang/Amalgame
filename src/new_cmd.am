@@ -1,0 +1,467 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  new_cmd.am  —  `amc new` subcommand
+// ═══════════════════════════════════════════════════════
+//
+// Scaffold a new Amalgame project, à la `cargo new` / `dotnet new`.
+//
+//   amc new <name>                       # exe template (default)
+//   amc new <name> --template lib        # library skeleton
+//   amc new <name> --template test       # test-only bundle
+//
+// Creates a `<name>/` directory with starter files: source skeleton,
+// .gitignore, README.md, build.sh. The output is intentionally
+// minimal — what runs end-to-end via `./build.sh` and nothing more.
+// Editing afterwards is expected.
+
+public class NewCommand {
+
+    public NewCommand() {}
+
+    public static void PrintUsage() {
+        Console.WriteError("Usage: amc new <name> [--template <kind>] [--force]")
+        Console.WriteError("")
+        Console.WriteError("Scaffold a new Amalgame project named <name>.")
+        Console.WriteError("")
+        Console.WriteError("Templates:")
+        Console.WriteError("  exe    Default. src/main.am with Program.Main + a passing test.")
+        Console.WriteError("  lib    src/<name>.am with a public class skeleton, no main.")
+        Console.WriteError("  test   tests/<name>_test.am only — bolt onto an existing project.")
+        Console.WriteError("")
+        Console.WriteError("Flags:")
+        Console.WriteError("  --template <kind>    One of: exe (default), lib, test.")
+        Console.WriteError("  --force              Overwrite if <name>/ already exists.")
+        Console.WriteError("  -h, --help           Print this help and exit.")
+    }
+
+    public static int Run(int argc) {
+        var name:     string = ""
+        var template: string = "exe"
+        var force:    bool   = false
+
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                NewCommand.PrintUsage()
+                return 0
+            }
+            if (a == "--force") {
+                force = true
+            } else if (a == "--template") {
+                if (i + 1 >= argc) {
+                    Console.WriteError("amc new: --template needs a value")
+                    return 1
+                }
+                i = i + 1
+                template = Args_Get(i)
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc new: unknown flag '" + a + "'")
+                NewCommand.PrintUsage()
+                return 1
+            } else {
+                if (String_Length(name) == 0) {
+                    name = a
+                } else {
+                    Console.WriteError("amc new: extra positional '" + a + "'")
+                    return 1
+                }
+            }
+            i = i + 1
+        }
+
+        if (String_Length(name) == 0) {
+            Console.WriteError("amc new: missing <name>")
+            NewCommand.PrintUsage()
+            return 1
+        }
+        if (template != "exe" && template != "lib" && template != "test") {
+            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test)")
+            return 1
+        }
+        // Accept a path like `path/to/myproj` — IsSafeName only
+        // validates the last segment, which is what we use as the
+        // namespace and the lib/test file stem. Intermediate dirs
+        // can be anything mkdir -p accepts.
+        let baseName: string = NewCommand.Basename(name)
+        if (!NewCommand.IsSafeName(baseName)) {
+            Console.WriteError("amc new: '" + baseName + "' is not a safe project name (a-z, A-Z, 0-9, _ or -)")
+            return 1
+        }
+
+        // Pre-existence guard. We never silently overwrite an existing
+        // directory — confirmation is a single --force flag away.
+        if (File.Exists(name) && !force) {
+            Console.WriteError("amc new: '" + name + "' already exists (pass --force to overwrite)")
+            return 1
+        }
+
+        let mkExit: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(name))
+        if (mkExit != 0) {
+            Console.WriteError("amc new: failed to create directory '" + name + "' (mkdir exited " + String_FromInt(mkExit) + ")")
+            return 1
+        }
+
+        if (template == "exe") {
+            return NewCommand.ScaffoldExe(name, baseName)
+        }
+        if (template == "lib") {
+            return NewCommand.ScaffoldLib(name, baseName)
+        }
+        return NewCommand.ScaffoldTest(name, baseName)
+    }
+
+    // ── Templates ─────────────────────────────────────
+
+    private static int ScaffoldExe(string path, string base) {
+        let srcDir: int    = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/src"))
+        let testDir: int   = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/tests"))
+        if (srcDir != 0 || testDir != 0) {
+            Console.WriteError("amc new: failed to create subdirectories")
+            return 1
+        }
+
+        let mainAm: string = NewCommand.MainAmExe(base)
+        let testAm: string = NewCommand.TestAmExe(base)
+        let buildSh: string = NewCommand.BuildShExe(base)
+        let readme: string  = NewCommand.ReadmeExe(base)
+        let gitignore: string = NewCommand.GitignoreCommon()
+
+        if (!NewCommand.WriteFile(path + "/src/main.am", mainAm))            { return 1 }
+        if (!NewCommand.WriteFile(path + "/tests/hello_test.am", testAm))    { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.sh", buildSh))              { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore", gitignore))          { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md", readme))              { return 1 }
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/build.sh"))
+
+        Console.WriteLine("Scaffolded '" + base + "' (exe template).")
+        Console.WriteLine("  cd " + path)
+        Console.WriteLine("  ./build.sh && ./" + base)
+        return 0
+    }
+
+    private static int ScaffoldLib(string path, string base) {
+        let srcDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/src"))
+        if (srcDir != 0) {
+            Console.WriteError("amc new: failed to create src/ subdirectory")
+            return 1
+        }
+
+        let libAm: string  = NewCommand.LibAm(base)
+        let buildSh: string = NewCommand.BuildShLib(base)
+        let readme: string  = NewCommand.ReadmeLib(base)
+        let gitignore: string = NewCommand.GitignoreCommon()
+
+        if (!NewCommand.WriteFile(path + "/src/" + base + ".am", libAm))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.sh", buildSh))             { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore", gitignore))         { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md", readme))             { return 1 }
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/build.sh"))
+
+        Console.WriteLine("Scaffolded '" + base + "' (lib template).")
+        Console.WriteLine("  cd " + path)
+        Console.WriteLine("  ./build.sh   # builds " + base + ".o (library)")
+        return 0
+    }
+
+    private static int ScaffoldTest(string path, string base) {
+        let testDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/tests"))
+        if (testDir != 0) {
+            Console.WriteError("amc new: failed to create tests/ subdirectory")
+            return 1
+        }
+
+        let testAm: string = NewCommand.TestAmTest(base)
+        let readme: string  = NewCommand.ReadmeTest(base)
+        let gitignore: string = NewCommand.GitignoreCommon()
+
+        if (!NewCommand.WriteFile(path + "/tests/" + base + "_test.am", testAm)) { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore", gitignore))               { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md", readme))                   { return 1 }
+
+        Console.WriteLine("Scaffolded '" + base + "' (test template).")
+        Console.WriteLine("  cd " + path)
+        Console.WriteLine("  amc test tests/")
+        return 0
+    }
+
+    // ── File contents ─────────────────────────────────
+
+    private static string MainAmExe(string name) {
+        var s: string = ""
+        s = s + "namespace " + name + "\n"
+        s = s + "\n"
+        s = s + "import Amalgame.Collections\n"
+        s = s + "import Amalgame.IO\n"
+        s = s + "import Amalgame.String\n"
+        s = s + "\n"
+        s = s + "public class Program {\n"
+        s = s + "    public static int Main(List<string> args) {\n"
+        s = s + "        Console.WriteLine(\"Hello from " + name + "!\")\n"
+        s = s + "        return 0\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string TestAmExe(string name) {
+        var s: string = ""
+        s = s + "// Smoke test for " + name + ". `amc test tests/` runs this file\n"
+        s = s + "// and counts the [PASS]/[FAIL] tags it prints.\n"
+        s = s + "\n"
+        s = s + "import Amalgame.IO\n"
+        s = s + "\n"
+        s = s + "class Program {\n"
+        s = s + "    public static void Main() {\n"
+        s = s + "        let n: int = 1 + 1\n"
+        s = s + "        if (n == 2) {\n"
+        s = s + "            Console.WriteLine(\"[PASS] sanity\")\n"
+        s = s + "        } else {\n"
+        s = s + "            Console.WriteLine(\"[FAIL] sanity\")\n"
+        s = s + "        }\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string BuildShExe(string name) {
+        // Build the shell script in pieces. Curly braces in shell
+        // expansions like ${VAR:-default} collide with Amalgame's
+        // string-interpolation parser, so we substitute via a sentinel
+        // (LB / RB) and run a final replacement pass.
+        let lb: string = "{"
+        let rb: string = "}"
+        var s: string = ""
+        s = s + "#!/bin/bash\n"
+        s = s + "# Build script for " + name + ". Compiles src/main.am to a native\n"
+        s = s + "# binary named `" + name + "` in the project root.\n"
+        s = s + "#\n"
+        s = s + "# amc emits the .c bundle; gcc links it against the Amalgame\n"
+        s = s + "# runtime headers. Set AMALGAME_HOME if your runtime/ lives\n"
+        s = s + "# outside the install default.\n"
+        s = s + "set -e\n"
+        s = s + "cd \"$(dirname \"$0\")\"\n"
+        s = s + "\n"
+        s = s + "# Locate runtime/ (env override, install dirs, then the\n"
+        s = s + "# Amalgame repo if amc is on PATH).\n"
+        s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
+        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
+        s = s + "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n"
+        s = s + "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n"
+        s = s + "  done\n"
+        s = s + "fi\n"
+        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
+        s = s + "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n"
+        s = s + "  if [ -n \"$AMC_BIN\" ]; then\n"
+        s = s + "    cand=$(dirname \"$AMC_BIN\")\n"
+        s = s + "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n"
+        s = s + "  fi\n"
+        s = s + "fi\n"
+        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
+        s = s + "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir> (the dir\"\n"
+        s = s + "  echo \"          containing runtime/), or install Amalgame globally.\"\n"
+        s = s + "  exit 1\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "amc src/main.am -o " + name + "\n"
+        s = s + "gcc -O2 -I\"$RUNTIME/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + "\n"
+        s = s + "echo \"built ./" + name + "\"\n"
+        return s
+    }
+
+    private static string ReadmeExe(string name) {
+        var s: string = ""
+        s = s + "# " + name + "\n"
+        s = s + "\n"
+        s = s + "Amalgame project scaffolded by `amc new " + name + "`.\n"
+        s = s + "\n"
+        s = s + "## Build & run\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "./build.sh\n"
+        s = s + "./" + name + "\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "## Test\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "amc test tests/\n"
+        s = s + "```\n"
+        return s
+    }
+
+    private static string LibAm(string name) {
+        var s: string = ""
+        s = s + "namespace " + name + "\n"
+        s = s + "\n"
+        s = s + "import Amalgame.String\n"
+        s = s + "\n"
+        s = s + "// [Library]\n"
+        s = s + "// Marker comment is read by `amc --lib` to skip the missing-Main check.\n"
+        s = s + "// See https://github.com/BastienMOUGET/Amalgame for the reference.\n"
+        s = s + "\n"
+        s = s + "public class " + NewCommand.Capitalize(name) + " {\n"
+        s = s + "    public " + NewCommand.Capitalize(name) + "() {}\n"
+        s = s + "\n"
+        s = s + "    public string Greet(string who) {\n"
+        s = s + "        return \"Hello, \" + who + \", from " + name + "!\"\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string BuildShLib(string name) {
+        var s: string = ""
+        s = s + "#!/bin/bash\n"
+        s = s + "# Build script for the " + name + " library. Emits " + name + ".c\n"
+        s = s + "# (a self-contained Amalgame translation) that callers compile\n"
+        s = s + "# alongside their own sources via gcc.\n"
+        s = s + "set -e\n"
+        s = s + "cd \"$(dirname \"$0\")\"\n"
+        s = s + "amc --lib src/" + name + ".am -o " + name + "\n"
+        s = s + "echo \"built ./" + name + ".c\"\n"
+        return s
+    }
+
+    private static string ReadmeLib(string name) {
+        var s: string = ""
+        s = s + "# " + name + "\n"
+        s = s + "\n"
+        s = s + "Amalgame library scaffolded by `amc new " + name + " --template lib`.\n"
+        s = s + "\n"
+        s = s + "## Build\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "./build.sh   # produces ./" + name + ".o\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "## Use from a host binary\n"
+        s = s + "\n"
+        s = s + "Compile your host with `amc src/main.am src/" + name + ".am -o app`,\n"
+        s = s + "or pre-build the .o and link it manually with `gcc`.\n"
+        return s
+    }
+
+    private static string TestAmTest(string name) {
+        var s: string = ""
+        s = s + "// Test bundle for " + name + ". Run with `amc test tests/`.\n"
+        s = s + "\n"
+        s = s + "import Amalgame.IO\n"
+        s = s + "\n"
+        s = s + "class Program {\n"
+        s = s + "    public static void Main() {\n"
+        s = s + "        let n: int = 2 + 3\n"
+        s = s + "        if (n == 5) {\n"
+        s = s + "            Console.WriteLine(\"[PASS] " + name + ": baseline\")\n"
+        s = s + "        } else {\n"
+        s = s + "            Console.WriteLine(\"[FAIL] " + name + ": baseline\")\n"
+        s = s + "        }\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string ReadmeTest(string name) {
+        var s: string = ""
+        s = s + "# " + name + " — tests\n"
+        s = s + "\n"
+        s = s + "Test bundle scaffolded by `amc new " + name + " --template test`.\n"
+        s = s + "\n"
+        s = s + "## Run\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "amc test tests/\n"
+        s = s + "```\n"
+        return s
+    }
+
+    private static string GitignoreCommon() {
+        var s: string = ""
+        s = s + "# Build artifacts\n"
+        s = s + "*.o\n"
+        s = s + "*.c.bundle\n"
+        s = s + "a.out\n"
+        s = s + "\n"
+        s = s + "# Editor state\n"
+        s = s + ".vscode/\n"
+        s = s + ".idea/\n"
+        s = s + "*.swp\n"
+        return s
+    }
+
+    // ── Helpers ───────────────────────────────────────
+
+    private static bool WriteFile(string path, string content) {
+        let ok: bool = File.WriteAll(path, content)
+        if (!ok) {
+            Console.WriteError("amc new: failed to write '" + path + "'")
+            return false
+        }
+        return true
+    }
+
+    private static string ShellEscape(string s) {
+        // Minimal escape: wrap in single quotes, replacing internal `'`
+        // with `'\''`. Sufficient for project names which are already
+        // restricted by IsSafeName, plus the literal "src" / "tests"
+        // suffixes we tack on.
+        let n: int = String_Length(s)
+        var out: string = "'"
+        for i in 0..n {
+            let c: string = String_CharAt1(s, i)
+            if (c == "'") {
+                out = out + "'\\''"
+            } else {
+                out = out + c
+            }
+        }
+        out = out + "'"
+        return out
+    }
+
+    private static bool IsSafeName(string s) {
+        let n: int = String_Length(s)
+        if (n == 0) { return false }
+        let allowed: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+        for i in 0..n {
+            let c: string = String_CharAt1(s, i)
+            if (String_IndexOf(allowed, c) < 0) { return false }
+        }
+        // Disallow names that would collide with shell metacharacters
+        // even though IsSafeName already excludes them; double-check
+        // is cheap and protects ShellEscape's contract.
+        if (String_StartsWith(s, "-")) { return false }
+        return true
+    }
+
+    private static string Capitalize(string s) {
+        if (String_Length(s) == 0) { return s }
+        let head: string = String_Substring(s, 0, 1)
+        let tail: string = String_Substring(s, 1, String_Length(s) - 1)
+        return String_ToUpper(head) + tail
+    }
+
+    // Last segment of a slash-separated path. `foo/bar/baz` → `baz`.
+    // No segment → return as-is. Used so a user can pass a full
+    // path (`amc new path/to/foo`) and we extract `foo` as the
+    // namespace and source-file stem.
+    private static string Basename(string p) {
+        let n: int = String_Length(p)
+        if (n == 0) { return p }
+        var i: int = n - 1
+        while (i >= 0) {
+            let c: string = String_Substring(p, i, 1)
+            if (c == "/") {
+                return String_Substring(p, i + 1, n - i - 1)
+            }
+            i = i - 1
+        }
+        return p
+    }
+}
