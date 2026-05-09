@@ -41,6 +41,8 @@ typedef struct _Amalgame_Compiler_Linter Amalgame_Compiler_Linter;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
+typedef struct _Amalgame_Compiler_GenerateCommand Amalgame_Compiler_GenerateCommand;
+typedef struct _Amalgame_Compiler_ExplainCommand Amalgame_Compiler_ExplainCommand;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -11768,11 +11770,18 @@ static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang, code_string source);
 static code_string Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(code_string lang);
 static code_string Amalgame_Compiler_MigrateCommand_BuildUserPrompt(code_string lang, code_string source);
-static code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
+code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string lang, code_string source);
-static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string lang, code_string source);
+Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRaw(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
+code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
+code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt);
 static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
+static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
 static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd);
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
@@ -11795,9 +11804,12 @@ void Amalgame_Compiler_MigrateCommand_PrintUsage() {
     Console_WriteError("Flags:");
     Console_WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).");
     Console_WriteError("  --lang <name>        Override extension-based language detection.");
-    Console_WriteError("  --provider <name>    Pick the LLM provider. Built-in: claude (CLI), claude-api");
-    Console_WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when");
-    Console_WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api");
+    Console_WriteError("                       (Anthropic), chatgpt (OpenAI), gemini (Google),");
+    Console_WriteError("                       custom (delegates to AMC_CUSTOM_PROVIDER_CMD).");
+    Console_WriteError("                       Auto-selects API by env var: ANTHROPIC_API_KEY →");
+    Console_WriteError("                       claude-api, OPENAI_API_KEY → chatgpt,");
+    Console_WriteError("                       GEMINI_API_KEY → gemini, otherwise → claude (CLI).");
     Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
     Console_WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).");
     Console_WriteError("  --no-check           Skip the post-migration `amc --check` validation.");
@@ -11895,11 +11907,7 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
         return 1;
     }
     if (!providerSet) {
-        if (Env_Has("ANTHROPIC_API_KEY")) {
-            provider = "claude-api";
-        } else {
-            provider = "claude";
-        }
+        provider = Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
     }
     if (!File_Exists(input)) {
         Console_WriteError(code_string_concat("amc migrate: path not found: ", input));
@@ -11957,12 +11965,16 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         return 1;
     }
     if (dryRun) {
+        code_string __attribute__((unused)) sysP = Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang);
+        code_string __attribute__((unused)) usrP = Amalgame_Compiler_MigrateCommand_BuildUserPrompt(lang, source);
+        code_string __attribute__((unused)) est = Amalgame_Compiler_MigrateCommand_EstimateCost(provider, model, sysP, usrP);
         Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] would migrate: ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines)"));
         Console_WriteLine(code_string_concat("[migrate] would write:   ", outPath));
         Console_WriteLine(code_string_concat("[migrate] provider:      ", provider));
         if (String_Length(model) > 0) {
             Console_WriteLine(code_string_concat("[migrate] model:         ", model));
         }
+        Console_WriteLine(code_string_concat("[migrate] estimated cost: ", est));
         return 0;
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] processing ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines, provider="), provider), ")..."));
@@ -12257,7 +12269,7 @@ static code_string Amalgame_Compiler_MigrateCommand_BuildUserPrompt(code_string 
     return p;
 }
 
-static code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader() {
+code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader() {
     AmalgameList* __attribute__((unused)) candidates = AmalgameList_new();
     code_string __attribute__((unused)) execPath = Args_Get(0);
     code_string __attribute__((unused)) execDir = Path_GetDirectory(execPath);
@@ -12289,22 +12301,131 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallPro
     (void)model;
     (void)lang;
     (void)source;
+    code_string __attribute__((unused)) sys = Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang);
+    code_string __attribute__((unused)) usr = Amalgame_Compiler_MigrateCommand_BuildUserPrompt(lang, source);
+    return Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, sys, usr);
+}
+
+Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRaw(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)provider;
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
     if (code_string_equals(provider, "claude")) {
-        return Amalgame_Compiler_MigrateCommand_CallClaudeCli(model, Amalgame_Compiler_MigrateCommand_BuildPrompt(lang, source));
+        return Amalgame_Compiler_MigrateCommand_CallClaudeCli(model, code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt));
     }
     if (code_string_equals(provider, "claude-api")) {
-        return Amalgame_Compiler_MigrateCommand_CallClaudeApi(model, lang, source);
+        return Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(model, systemPrompt, userPrompt);
+    }
+    if (code_string_equals(provider, "chatgpt")) {
+        return Amalgame_Compiler_MigrateCommand_CallChatGptApi(model, systemPrompt, userPrompt);
+    }
+    if (code_string_equals(provider, "gemini")) {
+        return Amalgame_Compiler_MigrateCommand_CallGeminiApi(model, systemPrompt, userPrompt);
+    }
+    if (code_string_equals(provider, "custom")) {
+        return Amalgame_Compiler_MigrateCommand_CallCustomScript(systemPrompt, userPrompt);
     }
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
     res->Ok = 0;
-    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not supported (built-in: 'claude', 'claude-api')");
+    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not supported (built-in: claude, claude-api, chatgpt, gemini, custom)");
     return res;
 }
 
-static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string lang, code_string source) {
+code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider() {
+    if (Env_Has("ANTHROPIC_API_KEY")) {
+        return "claude-api";
+    }
+    if (Env_Has("OPENAI_API_KEY")) {
+        return "chatgpt";
+    }
+    if (Env_Has("GEMINI_API_KEY")) {
+        return "gemini";
+    }
+    return "claude";
+}
+
+code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)provider;
     (void)model;
-    (void)lang;
-    (void)source;
+    (void)systemPrompt;
+    (void)userPrompt;
+    if (code_string_equals(provider, "claude")) {
+        return "free (subscription via Claude Code CLI)";
+    }
+    if (code_string_equals(provider, "custom")) {
+        return "free (user-managed local backend)";
+    }
+    i64 __attribute__((unused)) sysLen = String_Length(systemPrompt);
+    i64 __attribute__((unused)) usrLen = String_Length(userPrompt);
+    i64 __attribute__((unused)) totalChars = sysLen + usrLen;
+    i64 __attribute__((unused)) inputToks = totalChars / 4;
+    i64 __attribute__((unused)) outputToks = 1000;
+    i64 __attribute__((unused)) inUsdPerM = 0;
+    i64 __attribute__((unused)) outUsdPerM = 0;
+    code_string __attribute__((unused)) resolvedModel = model;
+    if (code_string_equals(provider, "claude-api")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "claude-sonnet-4-6";
+        }
+        if (code_string_equals(resolvedModel, "claude-opus-4-7")) {
+            inUsdPerM = 15000000;
+            outUsdPerM = 75000000;
+        } else if (code_string_equals(resolvedModel, "claude-haiku-4-5")) {
+            inUsdPerM = 1000000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 3000000;
+            outUsdPerM = 15000000;
+        }
+    } else if (code_string_equals(provider, "chatgpt")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gpt-4o-mini";
+        }
+        if (code_string_equals(resolvedModel, "gpt-4o")) {
+            inUsdPerM = 2500000;
+            outUsdPerM = 10000000;
+        } else if (code_string_equals(resolvedModel, "gpt-4-turbo")) {
+            inUsdPerM = 10000000;
+            outUsdPerM = 30000000;
+        } else {
+            inUsdPerM = 150000;
+            outUsdPerM = 600000;
+        }
+    } else if (code_string_equals(provider, "gemini")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gemini-1.5-flash";
+        }
+        if (code_string_equals(resolvedModel, "gemini-1.5-pro")) {
+            inUsdPerM = 1250000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 75000;
+            outUsdPerM = 300000;
+        }
+    }
+    i64 __attribute__((unused)) inProd = inputToks * inUsdPerM;
+    i64 __attribute__((unused)) inMicro = inProd / 1000000;
+    i64 __attribute__((unused)) outProd = outputToks * outUsdPerM;
+    i64 __attribute__((unused)) outMicro = outProd / 1000000;
+    i64 __attribute__((unused)) totalMicro = inMicro + outMicro;
+    i64 __attribute__((unused)) totalCents = totalMicro / 10000;
+    i64 __attribute__((unused)) dollars = totalCents / 100;
+    i64 __attribute__((unused)) cents = totalCents % 100;
+    code_string __attribute__((unused)) centStr = String_FromInt(cents);
+    if (cents < 10) {
+        centStr = code_string_concat("0", centStr);
+    }
+    code_string __attribute__((unused)) inS = String_FromInt(inputToks);
+    code_string __attribute__((unused)) outS = String_FromInt(outputToks);
+    code_string __attribute__((unused)) dolS = String_FromInt(dollars);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("~", inS), " in + ~"), outS), " out -> ~$"), dolS), "."), centStr), " ("), resolvedModel), ")");
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
     code_string __attribute__((unused)) apiKey = Env_Get("ANTHROPIC_API_KEY");
     if (String_Length(apiKey) == 0) {
@@ -12316,8 +12437,6 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
     if (String_Length(modelId) == 0) {
         modelId = "claude-sonnet-4-6";
     }
-    code_string __attribute__((unused)) systemPrompt = Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang);
-    code_string __attribute__((unused)) userPrompt = Amalgame_Compiler_MigrateCommand_BuildUserPrompt(lang, source);
     code_string __attribute__((unused)) body = "{";
     body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
     body = code_string_concat(body, "\"max_tokens\":8192,");
@@ -12374,7 +12493,12 @@ static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s) {
 
 static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body) {
     (void)body;
-    code_string __attribute__((unused)) key = "\"text\":\"";
+    return Amalgame_Compiler_MigrateCommand_JsonExtract(body, "\"text\":\"");
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key) {
+    (void)body;
+    (void)key;
     i64 __attribute__((unused)) kIdx = String_IndexOf(body, key);
     if (kIdx < 0) {
         return "";
@@ -12413,6 +12537,122 @@ static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string 
         i = i + 1;
     }
     return out;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) apiKey = Env_Get("OPENAI_API_KEY");
+    if (String_Length(apiKey) == 0) {
+        res->Ok = 0;
+        res->Error = "chatgpt: OPENAI_API_KEY not set.";
+        return res;
+    }
+    code_string __attribute__((unused)) modelId = model;
+    if (String_Length(modelId) == 0) {
+        modelId = "gpt-4o-mini";
+    }
+    code_string __attribute__((unused)) body = "{";
+    body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
+    body = code_string_concat(body, "\"messages\":[{\"role\":\"system\",\"content\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, "\"},{\"role\":\"user\",\"content\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, "\"}]}");
+    AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
+    AmalgameMap_set(headers, "Authorization", (void*)(intptr_t)(code_string_concat("Bearer ", apiKey)));
+    AmalgameMap_set(headers, "Content-Type", (void*)(intptr_t)("application/json"));
+    AmalgameHttpResponse* __attribute__((unused)) resp = Http_PostWithHeaders("https://api.openai.com/v1/chat/completions", body, headers);
+    i64 __attribute__((unused)) status = resp->Status;
+    if (status != 200) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("chatgpt: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
+        return res;
+    }
+    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtract(resp->Body, "\"content\":\"");
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("chatgpt: empty or unparseable response. Raw:\n", resp->Body);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
+    return res;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) apiKey = Env_Get("GEMINI_API_KEY");
+    if (String_Length(apiKey) == 0) {
+        res->Ok = 0;
+        res->Error = "gemini: GEMINI_API_KEY not set.";
+        return res;
+    }
+    code_string __attribute__((unused)) modelId = model;
+    if (String_Length(modelId) == 0) {
+        modelId = "gemini-1.5-flash";
+    }
+    code_string __attribute__((unused)) body = "{";
+    body = code_string_concat(body, "\"systemInstruction\":{\"parts\":[{\"text\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, "\"}]},");
+    body = code_string_concat(body, "\"contents\":[{\"parts\":[{\"text\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, "\"}]}]}");
+    AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
+    AmalgameMap_set(headers, "Content-Type", (void*)(intptr_t)("application/json"));
+    code_string __attribute__((unused)) url = code_string_concat(code_string_concat(code_string_concat("https://generativelanguage.googleapis.com/v1beta/models/", modelId), ":generateContent?key="), apiKey);
+    AmalgameHttpResponse* __attribute__((unused)) resp = Http_PostWithHeaders(url, body, headers);
+    i64 __attribute__((unused)) status = resp->Status;
+    if (status != 200) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("gemini: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
+        return res;
+    }
+    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("gemini: empty or unparseable response. Raw:\n", resp->Body);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
+    return res;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt) {
+    (void)systemPrompt;
+    (void)userPrompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) cmd = Env_Get("AMC_CUSTOM_PROVIDER_CMD");
+    if (String_Length(cmd) == 0) {
+        res->Ok = 0;
+        res->Error = "custom: AMC_CUSTOM_PROVIDER_CMD not set. Point it at a script that reads prompt from stdin and writes the response to stdout.";
+        return res;
+    }
+    code_string __attribute__((unused)) tmpPath = "/tmp/amc_custom_prompt.txt";
+    code_string __attribute__((unused)) combined = code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt);
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(tmpPath, combined);
+    if (!writeOk) {
+        res->Ok = 0;
+        res->Error = code_string_concat("custom: failed to write prompt temp file: ", tmpPath);
+        return res;
+    }
+    code_string __attribute__((unused)) full = code_string_concat(code_string_concat(cmd, " < "), tmpPath);
+    AmalgameProcessResult* __attribute__((unused)) rr = Process_RunCapture(full);
+    if (rr->Exit != 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("custom: script exited ", String_FromInt(rr->Exit)), ". Output:\n"), rr->Stdout);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(rr->Stdout);
+    return res;
 }
 
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt) {
@@ -12470,6 +12710,428 @@ static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s) {
         return s;
     }
     return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3);
+}
+
+struct _Amalgame_Compiler_GenerateCommand {
+};
+
+void Amalgame_Compiler_GenerateCommand_PrintUsage();
+i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc);
+static code_string Amalgame_Compiler_GenerateCommand_BuildSystemPrompt();
+static code_string Amalgame_Compiler_GenerateCommand_BuildUserPrompt(code_string task);
+static code_string Amalgame_Compiler_GenerateCommand_StripFences(code_string s);
+
+Amalgame_Compiler_GenerateCommand* Amalgame_Compiler_GenerateCommand_new() {
+    Amalgame_Compiler_GenerateCommand* self = (Amalgame_Compiler_GenerateCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_GenerateCommand));
+    return self;
+}
+
+void Amalgame_Compiler_GenerateCommand_PrintUsage() {
+    Console_WriteError("Usage: amc generate \"<natural-language prompt>\" [flags]");
+    Console_WriteError("");
+    Console_WriteError("Generates an Amalgame program from a prompt via an LLM.");
+    Console_WriteError("Default output is stdout; use -o to write to a file.");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  -o, --output <out>   Write to <out> instead of stdout.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api,");
+    Console_WriteError("                       chatgpt, gemini, custom. Auto-selects API by env:");
+    Console_WriteError("                       ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY,");
+    Console_WriteError("                       fallback claude (CLI).");
+    Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
+    Console_WriteError("  --no-check           Skip the `amc --check` validation when -o is given.");
+    Console_WriteError("  --force              Overwrite an existing file at the -o path.");
+    Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
+    Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  -h, --help           Print this help and exit.");
+    Console_WriteError("");
+    Console_WriteError("Examples:");
+    Console_WriteError("  amc generate \"a HTTP server with /health and /version routes\"");
+    Console_WriteError("  amc generate \"sieve of Eratosthenes up to N\" -o sieve.am");
+}
+
+i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) prompt = "";
+    code_string __attribute__((unused)) output = "";
+    code_string __attribute__((unused)) provider = "";
+    code_bool __attribute__((unused)) providerSet = 0;
+    code_string __attribute__((unused)) model = "";
+    code_bool __attribute__((unused)) dryRun = 0;
+    code_bool __attribute__((unused)) promptOnly = 0;
+    code_bool __attribute__((unused)) noCheck = 0;
+    code_bool __attribute__((unused)) force = 0;
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_GenerateCommand_PrintUsage();
+            return 0;
+        } else if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError(code_string_concat(code_string_concat("amc generate: ", a), " requires a value"));
+                return 1;
+            }
+            output = Args_Get(i);
+        } else if (code_string_equals(a, "--dry-run")) {
+            dryRun = 1;
+        } else if (code_string_equals(a, "--prompt-only")) {
+            promptOnly = 1;
+        } else if (code_string_equals(a, "--no-check")) {
+            noCheck = 1;
+        } else if (code_string_equals(a, "--force")) {
+            force = 1;
+        } else if (code_string_equals(a, "--provider")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc generate: --provider requires a value");
+                return 1;
+            }
+            provider = Args_Get(i);
+            providerSet = 1;
+        } else if (code_string_equals(a, "--model")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc generate: --model requires a value");
+                return 1;
+            }
+            model = Args_Get(i);
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc generate: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(prompt) > 0) {
+                Console_WriteError("amc generate: too many positional arguments. Quote your prompt: amc generate \"...\"");
+                return 1;
+            }
+            prompt = a;
+        }
+        i = i + 1;
+    }
+    if (String_Length(prompt) == 0) {
+        Console_WriteError("amc generate: no prompt given");
+        Console_WriteError("usage: amc generate \"<natural-language prompt>\" [flags]");
+        return 1;
+    }
+    if (!providerSet) {
+        provider = Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
+    }
+    code_string __attribute__((unused)) systemPrompt = Amalgame_Compiler_GenerateCommand_BuildSystemPrompt();
+    code_string __attribute__((unused)) userPrompt = Amalgame_Compiler_GenerateCommand_BuildUserPrompt(prompt);
+    if (promptOnly) {
+        Console_WriteLine(systemPrompt);
+        Console_WriteLine("");
+        Console_WriteLine(userPrompt);
+        return 0;
+    }
+    if (dryRun) {
+        code_string __attribute__((unused)) est = Amalgame_Compiler_MigrateCommand_EstimateCost(provider, model, systemPrompt, userPrompt);
+        Console_WriteLine(code_string_concat(code_string_concat("[generate] would generate from prompt (", String_FromInt(String_Length(prompt))), " chars)"));
+        if (String_Length(output) > 0) {
+            Console_WriteLine(code_string_concat("[generate] would write:   ", output));
+        } else {
+            Console_WriteLine("[generate] would write:   <stdout>");
+        }
+        Console_WriteLine(code_string_concat("[generate] provider:      ", provider));
+        if (String_Length(model) > 0) {
+            Console_WriteLine(code_string_concat("[generate] model:         ", model));
+        }
+        Console_WriteLine(code_string_concat("[generate] estimated cost: ", est));
+        return 0;
+    }
+    if (String_Length(output) > 0 && File_Exists(output) && !force) {
+        Console_WriteError(code_string_concat("amc generate: output exists: ", output));
+        Console_WriteError("Pass --force to overwrite.");
+        return 1;
+    }
+    Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[generate] generating from prompt (", String_FromInt(String_Length(prompt))), " chars, provider="), provider), ")..."));
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);
+    if (!result->Ok) {
+        Console_WriteError(code_string_concat("amc generate: ", result->Error));
+        return 1;
+    }
+    code_string __attribute__((unused)) content = Amalgame_Compiler_GenerateCommand_StripFences(result->Content);
+    if (String_Length(output) == 0) {
+        Console_WriteLine(content);
+        return 0;
+    }
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(output, content);
+    if (!writeOk) {
+        Console_WriteError(code_string_concat("amc generate: failed to write ", output));
+        return 1;
+    }
+    Console_WriteLine(code_string_concat("[generate] wrote ", output));
+    if (!noCheck) {
+        code_string __attribute__((unused)) amcPath = Args_Get(0);
+        code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat(amcPath, " --check "), output);
+        AmalgameProcessResult* __attribute__((unused)) check = Process_RunCapture(cmd);
+        if (check->Exit != 0) {
+            Console_WriteError("[generate] check failed (typechecker errors in the generated file):");
+            Console_WriteError(check->Stdout);
+            Console_WriteError("The .am file was still written so you can inspect / fix manually.");
+            return 1;
+        }
+        Console_WriteLine("[generate] check passed");
+    }
+    return 0;
+}
+
+static code_string Amalgame_Compiler_GenerateCommand_BuildSystemPrompt() {
+    code_string __attribute__((unused)) lb = "{";
+    code_string __attribute__((unused)) rb = "}";
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(p, "You are writing an Amalgame program from scratch.\n");
+    p = code_string_concat(p, "Amalgame is a self-hosted programming language that transpiles to C.\n");
+    p = code_string_concat(p, "It uses class-based OOP with explicit visibility modifiers, generic\n");
+    p = code_string_concat(p, "collections (List<T>, Map<K,V>, Set<T>), ML-style match expressions,\n");
+    p = code_string_concat(p, "exception-based error handling, and higher-order list operations\n");
+    p = code_string_concat(p, "(.Map / .Filter / .Reduce / .Any / .All / .CountIf).\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Amalgame conventions\n");
+    p = code_string_concat(p, "- Files start with `namespace <Name>` then declarations.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Public entry point: `public class Program "), lb), " public static void Main(string[] args) "), lb), " ... "), rb), " "), rb), "`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Classes: `public class Name "), lb), " public Field: int = 0 "), rb), "`.\n");
+    p = code_string_concat(p, "- Data classes: `public data class User(string Name, int Age)`.\n");
+    p = code_string_concat(p, "- Locals: `let x = 1` (immutable), `var y = 2` (mutable).\n");
+    p = code_string_concat(p, "- Lambdas: `(x, y) => x + y` or block form.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Match: `match x "), lb), " 0 => \"zero\", _ => \"other\" "), rb), "`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Console output: `Console.WriteLine(\"x="), lb), "x"), rb), "\")` (string interpolation).\n");
+    p = code_string_concat(p, "\n");
+    code_string __attribute__((unused)) extras = Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
+    if (String_Length(extras) > 0) {
+        p = code_string_concat(p, extras);
+    }
+    return p;
+}
+
+static code_string Amalgame_Compiler_GenerateCommand_BuildUserPrompt(code_string task) {
+    (void)task;
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(p, "## Task\n");
+    p = code_string_concat(code_string_concat(p, task), "\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Output instructions\n");
+    p = code_string_concat(p, "Reply with ONLY the Amalgame source code. No prose, no markdown\n");
+    p = code_string_concat(p, "fences, no preamble like \"Here's the program:\". Just `.am` content.\n");
+    p = code_string_concat(p, "The output should compile with `amc --check`.\n");
+    return p;
+}
+
+static code_string Amalgame_Compiler_GenerateCommand_StripFences(code_string s) {
+    (void)s;
+    code_string __attribute__((unused)) trimmed = String_Trim(s);
+    if (!String_StartsWith(trimmed, "```")) {
+        return s;
+    }
+    i64 __attribute__((unused)) nl = String_IndexOf(trimmed, "\n");
+    if (nl <= 0) {
+        return s;
+    }
+    code_string __attribute__((unused)) afterFirst = String_Substring(trimmed, nl + 1, String_Length(trimmed) - nl - 1);
+    code_string __attribute__((unused)) rtrimmed = String_Trim(afterFirst);
+    if (!String_EndsWith(rtrimmed, "```")) {
+        return s;
+    }
+    return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3);
+}
+
+struct _Amalgame_Compiler_ExplainCommand {
+};
+
+void Amalgame_Compiler_ExplainCommand_PrintUsage();
+i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc);
+static code_string Amalgame_Compiler_ExplainCommand_BuildSystemPrompt(code_string outLang);
+static code_string Amalgame_Compiler_ExplainCommand_BuildUserPrompt(code_string path, code_string source);
+
+Amalgame_Compiler_ExplainCommand* Amalgame_Compiler_ExplainCommand_new() {
+    Amalgame_Compiler_ExplainCommand* self = (Amalgame_Compiler_ExplainCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_ExplainCommand));
+    return self;
+}
+
+void Amalgame_Compiler_ExplainCommand_PrintUsage() {
+    Console_WriteError("Usage: amc explain <file.am> [flags]");
+    Console_WriteError("");
+    Console_WriteError("Reads an Amalgame source file and prints a natural-language");
+    Console_WriteError("explanation of what it does. Default output is stdout.");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  -o, --output <out>   Write to <out> instead of stdout.");
+    Console_WriteError("  --lang <name>        Output language for the explanation.");
+    Console_WriteError("                       Default: English. Try --lang French, etc.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api,");
+    Console_WriteError("                       chatgpt, gemini, custom. Auto-selects API by env:");
+    Console_WriteError("                       ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY,");
+    Console_WriteError("                       fallback claude (CLI).");
+    Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
+    Console_WriteError("  --force              Overwrite an existing file at the -o path.");
+    Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
+    Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  -h, --help           Print this help and exit.");
+}
+
+i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) input = "";
+    code_string __attribute__((unused)) output = "";
+    code_string __attribute__((unused)) outLang = "English";
+    code_string __attribute__((unused)) provider = "";
+    code_bool __attribute__((unused)) providerSet = 0;
+    code_string __attribute__((unused)) model = "";
+    code_bool __attribute__((unused)) dryRun = 0;
+    code_bool __attribute__((unused)) promptOnly = 0;
+    code_bool __attribute__((unused)) force = 0;
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_ExplainCommand_PrintUsage();
+            return 0;
+        } else if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError(code_string_concat(code_string_concat("amc explain: ", a), " requires a value"));
+                return 1;
+            }
+            output = Args_Get(i);
+        } else if (code_string_equals(a, "--dry-run")) {
+            dryRun = 1;
+        } else if (code_string_equals(a, "--prompt-only")) {
+            promptOnly = 1;
+        } else if (code_string_equals(a, "--force")) {
+            force = 1;
+        } else if (code_string_equals(a, "--lang")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc explain: --lang requires a value");
+                return 1;
+            }
+            outLang = Args_Get(i);
+        } else if (code_string_equals(a, "--provider")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc explain: --provider requires a value");
+                return 1;
+            }
+            provider = Args_Get(i);
+            providerSet = 1;
+        } else if (code_string_equals(a, "--model")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc explain: --model requires a value");
+                return 1;
+            }
+            model = Args_Get(i);
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc explain: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(input) > 0) {
+                Console_WriteError("amc explain: too many positional arguments");
+                return 1;
+            }
+            input = a;
+        }
+        i = i + 1;
+    }
+    if (String_Length(input) == 0) {
+        Console_WriteError("amc explain: no input file");
+        Console_WriteError("usage: amc explain <file.am> [flags]");
+        return 1;
+    }
+    if (!File_Exists(input)) {
+        Console_WriteError(code_string_concat("amc explain: file not found: ", input));
+        return 1;
+    }
+    if (!providerSet) {
+        provider = Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
+    }
+    code_string __attribute__((unused)) source = File_ReadAll(input);
+    code_string __attribute__((unused)) systemPrompt = Amalgame_Compiler_ExplainCommand_BuildSystemPrompt(outLang);
+    code_string __attribute__((unused)) userPrompt = Amalgame_Compiler_ExplainCommand_BuildUserPrompt(input, source);
+    if (promptOnly) {
+        Console_WriteLine(systemPrompt);
+        Console_WriteLine("");
+        Console_WriteLine(userPrompt);
+        return 0;
+    }
+    if (dryRun) {
+        code_string __attribute__((unused)) est = Amalgame_Compiler_MigrateCommand_EstimateCost(provider, model, systemPrompt, userPrompt);
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] would explain: ", input), " ("), String_FromInt(String_Length(source))), " chars)"));
+        if (String_Length(output) > 0) {
+            Console_WriteLine(code_string_concat("[explain] would write:   ", output));
+        } else {
+            Console_WriteLine("[explain] would write:   <stdout>");
+        }
+        Console_WriteLine(code_string_concat("[explain] provider:      ", provider));
+        Console_WriteLine(code_string_concat("[explain] output lang:   ", outLang));
+        Console_WriteLine(code_string_concat("[explain] estimated cost: ", est));
+        return 0;
+    }
+    if (String_Length(output) > 0 && File_Exists(output) && !force) {
+        Console_WriteError(code_string_concat("amc explain: output exists: ", output));
+        Console_WriteError("Pass --force to overwrite.");
+        return 1;
+    }
+    Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] explaining ", input), " (provider="), provider), ", lang="), outLang), ")..."));
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);
+    if (!result->Ok) {
+        Console_WriteError(code_string_concat("amc explain: ", result->Error));
+        return 1;
+    }
+    if (String_Length(output) == 0) {
+        Console_WriteLine(result->Content);
+        return 0;
+    }
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(output, result->Content);
+    if (!writeOk) {
+        Console_WriteError(code_string_concat("amc explain: failed to write ", output));
+        return 1;
+    }
+    Console_WriteLine(code_string_concat("[explain] wrote ", output));
+    return 0;
+}
+
+static code_string Amalgame_Compiler_ExplainCommand_BuildSystemPrompt(code_string outLang) {
+    (void)outLang;
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(p, "You are explaining Amalgame source code to a developer.\n");
+    p = code_string_concat(p, "Amalgame is a self-hosted programming language that transpiles to C.\n");
+    p = code_string_concat(p, "It uses class-based OOP, generic collections (List<T>, Map<K,V>, Set<T>),\n");
+    p = code_string_concat(p, "ML-style match expressions, exception-based error handling, and\n");
+    p = code_string_concat(p, "higher-order list operations (.Map / .Filter / .Reduce / .Any / .All).\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(code_string_concat(code_string_concat(p, "Write the explanation in "), outLang), ".\n");
+    p = code_string_concat(p, "\n");
+    code_string __attribute__((unused)) extras = Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
+    if (String_Length(extras) > 0) {
+        p = code_string_concat(p, extras);
+    }
+    return p;
+}
+
+static code_string Amalgame_Compiler_ExplainCommand_BuildUserPrompt(code_string path, code_string source) {
+    (void)path;
+    (void)source;
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(code_string_concat(code_string_concat(p, "## Amalgame source: "), path), "\n");
+    p = code_string_concat(p, "```amalgame\n");
+    p = code_string_concat(p, source);
+    p = code_string_concat(p, "\n```\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## What to cover\n");
+    p = code_string_concat(p, "Explain this code clearly and concisely:\n");
+    p = code_string_concat(p, "  1. The overall purpose (what problem does it solve?).\n");
+    p = code_string_concat(p, "  2. The main types and their roles.\n");
+    p = code_string_concat(p, "  3. The control flow of the entry point.\n");
+    p = code_string_concat(p, "  4. Anything Amalgame-specific worth highlighting (lambdas,\n");
+    p = code_string_concat(p, "     match expressions, generics) and what they contribute.\n");
+    p = code_string_concat(p, "  5. Edge cases or limitations the reader should know about.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "Use prose with short headings (Markdown). Quote short snippets\n");
+    p = code_string_concat(p, "when illustrative. Don't restate the obvious — focus on the\n");
+    p = code_string_concat(p, "non-trivial decisions in the code.\n");
+    return p;
 }
 
 struct _Amalgame_Compiler_AmalgameCompiler {
@@ -12678,8 +13340,13 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.");
     Console_WriteError("  lsp           Run a minimal LSP server (stdio JSON-RPC).");
     Console_WriteError("                v1 publishes diagnostics on didOpen/didChange.");
-    Console_WriteError("  migrate <f>   Migrate a source file to Amalgame via LLM (v0:");
-    Console_WriteError("                claude CLI required). See `amc migrate --help`.");
+    Console_WriteError("  migrate <f>   Migrate a source file or directory to Amalgame via LLM.");
+    Console_WriteError("                Auto-uses claude-api when ANTHROPIC_API_KEY is set, else");
+    Console_WriteError("                shells out to the local `claude` CLI. See `amc migrate --help`.");
+    Console_WriteError("  generate <p>  Generate an Amalgame program from a natural-language prompt.");
+    Console_WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.");
+    Console_WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.");
+    Console_WriteError("                See `amc explain --help`.");
 }
 
 i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
@@ -12846,6 +13513,14 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "migrate")) {
         Exit_Set(Amalgame_Compiler_MigrateCommand_Run(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "generate")) {
+        Exit_Set(Amalgame_Compiler_GenerateCommand_Run(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "explain")) {
+        Exit_Set(Amalgame_Compiler_ExplainCommand_Run(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();

@@ -1,0 +1,219 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  explain.am  —  `amc explain` subcommand
+// ═══════════════════════════════════════════════════════
+//
+// Reverse cousin to `amc generate`: takes an Amalgame source file
+// and emits a natural-language explanation of what it does. Same
+// provider abstraction, same on-disk doc header (so the LLM has
+// the language reference when interpreting unfamiliar constructs),
+// no validation step (the output is prose, not code).
+
+public class ExplainCommand {
+
+    public ExplainCommand() {}
+
+    public static void PrintUsage() {
+        Console.WriteError("Usage: amc explain <file.am> [flags]")
+        Console.WriteError("")
+        Console.WriteError("Reads an Amalgame source file and prints a natural-language")
+        Console.WriteError("explanation of what it does. Default output is stdout.")
+        Console.WriteError("")
+        Console.WriteError("Flags:")
+        Console.WriteError("  -o, --output <out>   Write to <out> instead of stdout.")
+        Console.WriteError("  --lang <name>        Output language for the explanation.")
+        Console.WriteError("                       Default: English. Try --lang French, etc.")
+        Console.WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api,")
+        Console.WriteError("                       chatgpt, gemini, custom. Auto-selects API by env:")
+        Console.WriteError("                       ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY,")
+        Console.WriteError("                       fallback claude (CLI).")
+        Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
+        Console.WriteError("  --force              Overwrite an existing file at the -o path.")
+        Console.WriteError("  --dry-run            Print what would happen without invoking the LLM.")
+        Console.WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.")
+        Console.WriteError("  -h, --help           Print this help and exit.")
+    }
+
+    public static int Run(int argc) {
+        var input:        string = ""
+        var output:       string = ""
+        var outLang:      string = "English"
+        var provider:     string = ""
+        var providerSet:  bool   = false
+        var model:        string = ""
+        var dryRun:       bool   = false
+        var promptOnly:   bool   = false
+        var force:        bool   = false
+
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                ExplainCommand.PrintUsage()
+                return 0
+            } else if (a == "-o" || a == "--output") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc explain: " + a + " requires a value")
+                    return 1
+                }
+                output = Args_Get(i)
+            } else if (a == "--dry-run") {
+                dryRun = true
+            } else if (a == "--prompt-only") {
+                promptOnly = true
+            } else if (a == "--force") {
+                force = true
+            } else if (a == "--lang") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc explain: --lang requires a value")
+                    return 1
+                }
+                outLang = Args_Get(i)
+            } else if (a == "--provider") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc explain: --provider requires a value")
+                    return 1
+                }
+                provider    = Args_Get(i)
+                providerSet = true
+            } else if (a == "--model") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc explain: --model requires a value")
+                    return 1
+                }
+                model = Args_Get(i)
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc explain: unknown option '" + a + "'")
+                return 1
+            } else {
+                if (String_Length(input) > 0) {
+                    Console.WriteError("amc explain: too many positional arguments")
+                    return 1
+                }
+                input = a
+            }
+            i = i + 1
+        }
+
+        if (String_Length(input) == 0) {
+            Console.WriteError("amc explain: no input file")
+            Console.WriteError("usage: amc explain <file.am> [flags]")
+            return 1
+        }
+        if (!File.Exists(input)) {
+            Console.WriteError("amc explain: file not found: " + input)
+            return 1
+        }
+
+        if (!providerSet) {
+            provider = MigrateCommand.AutoSelectProvider()
+        }
+
+        let source: string = File.ReadAll(input)
+        let systemPrompt: string = ExplainCommand.BuildSystemPrompt(outLang)
+        let userPrompt:   string = ExplainCommand.BuildUserPrompt(input, source)
+
+        if (promptOnly) {
+            Console.WriteLine(systemPrompt)
+            Console.WriteLine("")
+            Console.WriteLine(userPrompt)
+            return 0
+        }
+        if (dryRun) {
+            let est: string = MigrateCommand.EstimateCost(provider, model, systemPrompt, userPrompt)
+            Console.WriteLine("[explain] would explain: " + input + " (" + String_FromInt(String_Length(source)) + " chars)")
+            if (String_Length(output) > 0) {
+                Console.WriteLine("[explain] would write:   " + output)
+            } else {
+                Console.WriteLine("[explain] would write:   <stdout>")
+            }
+            Console.WriteLine("[explain] provider:      " + provider)
+            Console.WriteLine("[explain] output lang:   " + outLang)
+            Console.WriteLine("[explain] estimated cost: " + est)
+            return 0
+        }
+
+        if (String_Length(output) > 0 && File.Exists(output) && !force) {
+            Console.WriteError("amc explain: output exists: " + output)
+            Console.WriteError("Pass --force to overwrite.")
+            return 1
+        }
+
+        Console.WriteError("[explain] explaining " + input + " (provider=" + provider + ", lang=" + outLang + ")...")
+        let result: MigrateResult = MigrateCommand.CallProviderRaw(provider, model, systemPrompt, userPrompt)
+        if (!result.Ok) {
+            Console.WriteError("amc explain: " + result.Error)
+            return 1
+        }
+
+        // Explain output is prose, not code — don't strip fences
+        // (the model may legitimately use fenced code blocks to
+        // quote snippets from the source). Just emit verbatim.
+        if (String_Length(output) == 0) {
+            Console.WriteLine(result.Content)
+            return 0
+        }
+        let writeOk: bool = File.WriteAll(output, result.Content)
+        if (!writeOk) {
+            Console.WriteError("amc explain: failed to write " + output)
+            return 1
+        }
+        Console.WriteLine("[explain] wrote " + output)
+        return 0
+    }
+
+    // System prompt: tells the model it's reading Amalgame and
+    // explaining it in `outLang`. Reuses the on-disk grammar +
+    // tour from migrate so the LLM has authoritative reference
+    // for unfamiliar constructs.
+    private static string BuildSystemPrompt(string outLang) {
+        var p: string = ""
+        p = p + "You are explaining Amalgame source code to a developer.\n"
+        p = p + "Amalgame is a self-hosted programming language that transpiles to C.\n"
+        p = p + "It uses class-based OOP, generic collections (List<T>, Map<K,V>, Set<T>),\n"
+        p = p + "ML-style match expressions, exception-based error handling, and\n"
+        p = p + "higher-order list operations (.Map / .Filter / .Reduce / .Any / .All).\n"
+        p = p + "\n"
+        p = p + "Write the explanation in " + outLang + ".\n"
+        p = p + "\n"
+        // Append on-disk grammar + language tour when reachable.
+        let extras: string = MigrateCommand.LoadDocsHeader()
+        if (String_Length(extras) > 0) {
+            p = p + extras
+        }
+        return p
+    }
+
+    // User prompt: the source + instructions on what to cover.
+    private static string BuildUserPrompt(string path, string source) {
+        var p: string = ""
+        p = p + "## Amalgame source: " + path + "\n"
+        p = p + "```amalgame\n"
+        p = p + source
+        p = p + "\n```\n"
+        p = p + "\n"
+        p = p + "## What to cover\n"
+        p = p + "Explain this code clearly and concisely:\n"
+        p = p + "  1. The overall purpose (what problem does it solve?).\n"
+        p = p + "  2. The main types and their roles.\n"
+        p = p + "  3. The control flow of the entry point.\n"
+        p = p + "  4. Anything Amalgame-specific worth highlighting (lambdas,\n"
+        p = p + "     match expressions, generics) and what they contribute.\n"
+        p = p + "  5. Edge cases or limitations the reader should know about.\n"
+        p = p + "\n"
+        p = p + "Use prose with short headings (Markdown). Quote short snippets\n"
+        p = p + "when illustrative. Don't restate the obvious — focus on the\n"
+        p = p + "non-trivial decisions in the code.\n"
+        return p
+    }
+}
