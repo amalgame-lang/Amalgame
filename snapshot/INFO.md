@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-09T16:13:06+02:00
-Git rev:  ff44f095edb3992b8368ae308e039af7056c6819
-Branch:   feature/amc-new-scaffolding
+Captured: 2026-05-09T16:21:55+02:00
+Git rev:  823faa345e134aeed901729cae204c4c8222dae1
+Branch:   feature/lsp-member-completion
 Tests:    291 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
