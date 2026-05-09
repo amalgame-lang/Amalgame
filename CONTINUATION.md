@@ -312,3 +312,15 @@ A new session reads these automatically and applies them.
     `-lcurl` too. build_amc.sh links it since v0.4.0 (PR #161). If a
     new runtime call brings in a fresh transitive dep, propagate the
     `-l<lib>` flag here as well.
+
+12. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
+    declares `merge=ours` for `snapshot/amc_lib.c`, `snapshot/INFO.md`,
+    and `src/amc_lib.c` (generated artefacts; canonical resolution
+    on conflict is "rebuild from sources"). For the strategy to take
+    effect, git needs to know "ours" is a valid driver. Run once
+    after cloning:
+
+        git config merge.ours.driver true
+
+    Without this, git falls back to a normal three-way merge on the
+    generated files and you get the same conflict noise as before.
