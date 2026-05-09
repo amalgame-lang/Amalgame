@@ -66,6 +66,7 @@ public class MigrateCommand {
         Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
         Console.WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).")
         Console.WriteError("  --no-check           Skip the post-migration `amc --check` validation.")
+        Console.WriteError("  --no-cache           Skip the on-disk result cache (always re-call LLM).")
         Console.WriteError("  --force              Overwrite an existing .am at the output path.")
         Console.WriteError("  --dry-run            Print what would happen without invoking the LLM.")
         Console.WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.")
@@ -87,6 +88,7 @@ public class MigrateCommand {
         var noCheck:      bool   = false
         var force:        bool   = false
         var maxLines:     int    = 2000
+        var noCache:      bool   = false
 
         // Skip Args[0] (binary path) and Args[1] ("migrate").
         var i: int = 2
@@ -108,6 +110,8 @@ public class MigrateCommand {
                 promptOnly = true
             } else if (a == "--no-check") {
                 noCheck = true
+            } else if (a == "--no-cache") {
+                noCache = true
             } else if (a == "--force") {
                 force = true
             } else if (a == "--lang") {
@@ -187,17 +191,17 @@ public class MigrateCommand {
                 Console.WriteError("amc migrate: --output cannot be used with directory input (writes are in-place next to each source).")
                 return 1
             }
-            return MigrateCommand.RunMigrateDirectory(input, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines)
+            return MigrateCommand.RunMigrateDirectory(input, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines, noCache)
         }
 
-        return MigrateCommand.RunMigrateOne(input, output, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines)
+        return MigrateCommand.RunMigrateOne(input, output, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines, noCache)
     }
 
     // ── Single-file migration ─────────────────────────
     // Extracted from Run() so the directory loop can call it per file
     // without duplicating the language detection / prompt build / call /
     // validate pipeline.
-    private static int RunMigrateOne(string input, string output, string langHint, string provider, string model, bool force, bool dryRun, bool promptOnly, bool noCheck, int maxLines) {
+    private static int RunMigrateOne(string input, string output, string langHint, string provider, string model, bool force, bool dryRun, bool promptOnly, bool noCheck, int maxLines, bool noCache) {
         // Detect language. Hint wins over extension.
         var lang: string = langHint
         if (String_Length(lang) == 0) {
@@ -253,6 +257,34 @@ public class MigrateCommand {
             return 0
         }
 
+        // Cache lookup — skip the LLM call when the source +
+        // current system prompt produced a result before. Source or
+        // prompt change → new hash → miss. --no-cache to force.
+        let sysForCache: string = MigrateCommand.BuildSystemPrompt(lang)
+        if (!noCache) {
+            let cached: string = MigrateCommand.CacheLookup(source, sysForCache)
+            if (String_Length(cached) > 0) {
+                let writeOkC: bool = File.WriteAll(outPath, cached)
+                if (!writeOkC) {
+                    Console.WriteError("amc migrate: failed to write " + outPath)
+                    return 1
+                }
+                Console.WriteLine("[migrate] wrote " + outPath + " (cache hit)")
+                if (!noCheck) {
+                    let amcPathC: string = Args_Get(0)
+                    let cmdC: string     = amcPathC + " --check " + outPath
+                    let checkC           = Process.RunCapture(cmdC)
+                    if (checkC.Exit != 0) {
+                        Console.WriteError("[migrate] check failed:")
+                        Console.WriteError(checkC.Stdout)
+                        return 1
+                    }
+                    Console.WriteLine("[migrate] check passed")
+                }
+                return 0
+            }
+        }
+
         // Real run: dispatch to provider. Each provider receives
         // the (lang, source) pair and decides how to format the
         // prompt — CLI gets a single combined message, the API
@@ -271,6 +303,10 @@ public class MigrateCommand {
             return 1
         }
         Console.WriteLine("[migrate] wrote " + outPath)
+        // Store in cache for future hits. Best-effort, silent on failure.
+        if (!noCache) {
+            MigrateCommand.CacheStore(source, sysForCache, result.Content)
+        }
 
         // Validate via amc --check.
         if (!noCheck) {
@@ -298,7 +334,7 @@ public class MigrateCommand {
     // Per-file --output paths default to <stem>.am next to each source;
     // the caller already rejects --output in directory mode so this
     // helper doesn't need to forward it.
-    private static int RunMigrateDirectory(string dir, string langHint, string provider, string model, bool force, bool dryRun, bool promptOnly, bool noCheck, int maxLines) {
+    private static int RunMigrateDirectory(string dir, string langHint, string provider, string model, bool force, bool dryRun, bool promptOnly, bool noCheck, int maxLines, bool noCache) {
         Console.WriteError("[migrate] discovering source files in " + dir + "...")
         let findCmd: string = "find " + dir + " -type f 2>/dev/null"
         let result = Process.RunCapture(findCmd)
@@ -337,7 +373,7 @@ public class MigrateCommand {
                 perFileLang = langs.Get(j)
             }
             // Per-file output path defaults to <stem>.am via RunMigrateOne.
-            let r: int = MigrateCommand.RunMigrateOne(path, "", perFileLang, provider, model, force, dryRun, promptOnly, noCheck, maxLines)
+            let r: int = MigrateCommand.RunMigrateOne(path, "", perFileLang, provider, model, force, dryRun, promptOnly, noCheck, maxLines, noCache)
             if (r == 0) {
                 ok = ok + 1
             } else {
@@ -534,14 +570,18 @@ public class MigrateCommand {
     // probing.
     public static string LoadDocsHeader() {
         let candidates = new List<string>()
-        // Preferred: relative to amc binary (works post-install when
-        // docs/ ships next to the executable).
         let execPath: string = Args_Get(0)
         let execDir:  string = Path_GetDirectory(execPath)
+        // Preferred order (FHS-friendly):
+        //   1. <exec-dir>/../share/amalgame      (Linux/macOS install)
+        //      e.g. /usr/local/bin/amc → /usr/local/share/amalgame/
+        //   2. <exec-dir>                        (Windows / portable)
+        //      e.g. C:\amalgame\amc.exe → C:\amalgame\
+        //   3. .                                 (source checkout / dev)
         if (String_Length(execDir) > 0) {
+            candidates.Add(execDir + "/../share/amalgame")
             candidates.Add(execDir)
         }
-        // Fallback: current working dir (source checkout, dev flow).
         candidates.Add(".")
         let cn: int = candidates.Count()
         for i in 0..cn {
@@ -1019,6 +1059,93 @@ public class MigrateCommand {
         let probe: string = "command -v " + cmd + " >/dev/null 2>&1"
         let rr = Process.RunCapture(probe)
         return rr.Exit == 0
+    }
+
+    // ── Result cache (v2) ─────────────────────────────
+    //
+    // Cache key = SHA-256 of (source + "\n---\n" + system prompt).
+    // Cache dir = $HOME/.cache/amalgame/migrate/. A re-run on an
+    // unchanged source with the same prompt header skips the LLM
+    // call entirely, saving both money and time. Source changes
+    // → new hash → cache miss. System prompt changes (e.g. amc
+    // upgrade with a new convention block) → new hash → miss.
+    //
+    // We shell out to `sha256sum` because the runtime doesn't
+    // expose a hash function. Standard on Linux + macOS;
+    // MSYS2 ships it. Falls back to a no-op cache on systems
+    // without it.
+
+    // Compute the SHA-256 of (source + sep + systemPrompt).
+    // Returns the 64-char hex digest, or "" on any failure.
+    public static string CacheHash(string source, string systemPrompt) {
+        let tmpPath: string = "/tmp/amc_cache_input.txt"
+        let combined: string = source + "\n---SYSTEM---\n" + systemPrompt
+        let writeOk: bool = File.WriteAll(tmpPath, combined)
+        if (!writeOk) { return "" }
+        let result = Process.RunCapture("sha256sum " + tmpPath + " 2>/dev/null")
+        if (result.Exit != 0) { return "" }
+        let out: string = String_Trim(result.Stdout)
+        if (String_Length(out) < 64) { return "" }
+        return String_Substring(out, 0, 64)
+    }
+
+    // Resolve the cache file path for a hash. Creates the dir if
+    // missing (`mkdir -p`). Returns "" when $HOME is not set.
+    public static string CachePath(string hash) {
+        let home: string = Env.Get("HOME")
+        if (String_Length(home) == 0) { return "" }
+        let dir: string = home + "/.cache/amalgame/migrate"
+        Process.RunCapture("mkdir -p " + dir)
+        return dir + "/" + hash + ".am"
+    }
+
+    // Look up a cached migration result. Returns "" on miss or any
+    // failure (no $HOME, no sha256sum, etc.) — callers fall back
+    // to the LLM call.
+    public static string CacheLookup(string source, string systemPrompt) {
+        let hash: string = MigrateCommand.CacheHash(source, systemPrompt)
+        if (String_Length(hash) == 0) { return "" }
+        let path: string = MigrateCommand.CachePath(hash)
+        if (String_Length(path) == 0) { return "" }
+        if (!File.Exists(path)) { return "" }
+        return File.ReadAll(path)
+    }
+
+    // Store a migration result for future cache hits. Best-effort —
+    // failure to write the cache entry is silent so a flaky disk
+    // doesn't break a migration run.
+    public static void CacheStore(string source, string systemPrompt, string content) {
+        let hash: string = MigrateCommand.CacheHash(source, systemPrompt)
+        if (String_Length(hash) == 0) { return }
+        let path: string = MigrateCommand.CachePath(hash)
+        if (String_Length(path) == 0) { return }
+        File.WriteAll(path, content)
+    }
+
+    // Streaming variant of CallClaudeCli — uses Process_Run (no
+    // capture) so the assistant output flows directly to the
+    // parent's stdout as it's produced. Returns the child's exit
+    // code (0 = success). Only valid for the `claude` CLI provider
+    // and only when the caller is OK with no captured text (no
+    // post-write validation, no -o, no fence stripping). Used by
+    // `amc generate --stream` and `amc explain --stream`.
+    public static int StreamClaudeCli(string model, string prompt) {
+        if (!MigrateCommand.IsCommandAvailable("claude")) {
+            Console.WriteError("claude CLI not found on PATH. Install Claude Code: https://docs.claude.com/claude-code")
+            return 1
+        }
+        let tmpPath: string = "/tmp/amc_stream_prompt.txt"
+        let writeOk: bool = File.WriteAll(tmpPath, prompt)
+        if (!writeOk) {
+            Console.WriteError("failed to write prompt temp file: " + tmpPath)
+            return 1
+        }
+        var cmd: string = "claude -p"
+        if (String_Length(model) > 0) {
+            cmd = cmd + " --model " + model
+        }
+        cmd = cmd + " < " + tmpPath
+        return Process.Run(cmd)
     }
 
     // If the response is wrapped in ```...``` (any language tag),

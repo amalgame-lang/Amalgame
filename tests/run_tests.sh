@@ -765,6 +765,17 @@ export GEMINI_API_KEY=fake
 run_generate_check "cost: gemini default flash"    "gemini-1.5-flash"       "test"  --dry-run
 unset GEMINI_API_KEY
 
+# --stream constraints (hermetic — doesn't actually call claude).
+run_generate_check "stream: requires CLI provider" "requires --provider claude" "test"  --stream --provider claude-api
+run_generate_check "stream: incompat with -o"      "incompatible with -o"       "test"  --stream -o /tmp/x.am
+run_generate_check "stream: --help mentions"       "Stream the LLM response"  --help
+run_explain_check  "stream: explain requires CLI"  "requires --provider claude" "$explain_fixture" --stream --provider claude-api
+run_explain_check  "stream: explain --help"        "Stream the LLM response"  --help
+
+# Result cache (--no-cache flag).
+run_migrate_help_check "cache: --help mentions"  "--help"  "Skip the on-disk result cache"
+run_migrate_provider_check "cache: --no-cache accepted" "claude-api: ANTHROPIC_API_KEY not set" --provider claude-api --no-cache
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"

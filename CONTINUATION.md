@@ -1,6 +1,6 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-08 after shipping v0.3.6.
+> Last refreshed 2026-05-09 after shipping v0.4.0 (LLM-driven workflows).
 > The block below is a self-contained prompt designed to bootstrap a
 > new Claude session with full context. Copy-paste it as your first
 > message in a fresh conversation.
@@ -12,7 +12,7 @@ I'm working on Amalgame, a self-hosted programming language that
 transpiles to C. I keep the project in
 /home/neitsab/Développement/Amalgame.
 
-Current state (May 2026, v0.3.6):
+Current state (May 2026, v0.4.0):
 
 - The compiler `amc` is written in Amalgame in src/ and compiles
   itself in ~5 seconds via ./build_amc.sh.
@@ -25,17 +25,19 @@ Current state (May 2026, v0.3.6):
                              no longer in CI but kept locally for cold
                              starts (./compile.sh).
 - The runtime headers are at runtime/. Cross-platform (POSIX +
-  Windows winsock2 via #ifdef _WIN32 in Amalgame_Net.h).
+  Windows winsock2 via #ifdef _WIN32 in Amalgame_Net.h). libcurl is
+  required by the runtime for the Net module + the new claude-api /
+  chatgpt / gemini providers.
 - Test runner (./tests/run_all_tests.sh) drives ./amc directly.
   Build artefacts go to /tmp via mktemp; the source tree stays clean.
-  Currently 187 PASS / 0 FAIL / 0 SKIP across 12 suites.
+  Currently 263 PASS / 0 FAIL / 0 SKIP across 13 suites.
 - Multi-OS CI (.github/workflows/ci.yml) — Linux + macOS + Windows
   MSYS2. Linux uses snapshot + self-hosted amc; no Vala in the graph.
   CI compiles with -Wint-conversion as an error on macOS/Windows;
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
 - Releases automated on `v*` tag (.github/workflows/release.yml).
-  Latest is v0.3.6 — see CHANGELOG.md for the per-release detail.
+  Latest is v0.4.0 — see CHANGELOG.md for the per-release detail.
   develop → main → tag is the release flow. Both develop and main
   are protected (force-push + delete blocked, PR required, admin
   bypass allowed).
@@ -47,61 +49,80 @@ Current state (May 2026, v0.3.6):
   comments preserved. Idempotent on every compiler source.
 - Linter: `amc --lint file.am` runs static analysis: unreachable
   code, unused locals, shadowed names.
-- LSP: `amc lsp` over stdio JSON-RPC. v0.3.4 ships diagnostics on
-  didOpen/didChange. v0.3.5 adds textDocument/hover (Markdown
-  tooltip with the inferred type) and textDocument/completion
-  (every global symbol the resolver knows about).
-- User guide at docs/guide/README.md (chapters 1–7).
+- LSP: `amc lsp` over stdio JSON-RPC. v0.3.4 ships diagnostics;
+  v0.3.5 adds hover + global completion; v0.3.6 (PR #146) makes
+  the LSP workspace-aware — it scans every *.am file under the
+  detected workspace root so cross-file types (e.g. NodeKind from
+  src/parser/ast.am) resolve in any open file.
+- LLM-driven workflows (v0.4.0):
+    amc migrate <file|dir>   translate other languages → .am
+    amc generate "<prompt>"  write a new .am from prose
+    amc explain  <file.am>   read a .am, write prose
+  All three share: provider auto-selection from env (ANTHROPIC_API_KEY
+  → claude-api, OPENAI_API_KEY → chatgpt, GEMINI_API_KEY → gemini,
+  fallback claude CLI), on-disk grammar+tour as system prompt
+  (cacheable via Anthropic prompt cache), --dry-run cost estimation,
+  --no-check / --force / -o / --lang flags, and (for generate +
+  explain) --stream via the claude CLI.
+- amc migrate also has: directory recursion, result caching by
+  SHA-256(source + system prompt) at ~/.cache/amalgame/migrate/,
+  and post-write `amc --check` validation.
+- User guide at docs/guide/README.md (chapters 1–8, with chapter
+  8 being the new LLM-commands reference).
 - Grammar: docs/language/grammar.ebnf mirrors src/parser/parser.am
   exactly. grammar.md is the prose companion.
 - README + CHANGELOG at the repo root.
+- Design proposals: docs/proposals/amc-migrate.md tracks the v1+v2
+  roadmap for the LLM commands (largely shipped now).
 
-Recently shipped:
+Recently shipped (v0.4.0 LLM-driven release, 2026-05-09):
 
-  v0.3.4 (the "tooling" release):
-  - Capturing closures (single-param expression-bodied)
-  - amc --lint extensions: unused locals + shadowed names
-  - Process stdlib module: Run + RunCapture
-  - amc test runner: discovers *_test.am, aggregates [PASS]/[FAIL]/[SKIP]
-  - amc lsp v1: diagnostics-only, plus VS Code client
+  Compiler infrastructure (unblocked the LLM-generated code paths):
+  - Lambda v2.5 (PR #142): non-int signatures — xs.Map(x => x.Name)
+    over List<Class> works. TypeChecker patches the lambda PARAM
+    type from the higher-order callsite, CGen emits typed unbox
+    + boxed return.
+  - LSP workspace-aware (PR #146): scans every *.am under the
+    workspace root, eliminating false "Unknown symbol" floods
+    on cross-file types (NodeKind, SourceSnippet, etc.).
+  - Parser: TS-style `name: type` param syntax accepted (PR #152)
+    + multi-line method chains (PR #154), both because LLM output
+    leans into those forms.
+  - CGen: auto-qualify implicit field access (PR #155) — `Id = id`
+    in a method body lowers to `self->Id = id` so users from
+    C# / TS / Kotlin can skip the explicit `this.` qualifier.
+  - Stdlib: Env.Get/Has builtins + Http_PostWithHeaders return-type
+    tracking (PR #160).
 
-  v0.3.5 (the "developer experience" release):
-  - Generic interfaces: `interface IComparable<T>` parses;
-    TypeChecker substitutes T at the implements site and asserts
-    every method exists on the class with the matching signature.
-    Static contract check, no vtable / dynamic dispatch.
-  - amc lsp hover + global completion: AST walk for the deepest
-    named node covering the cursor; LookupNodeType reads from
-    ExprTypeKeys/Vals; completion enumerates all globals from the
-    resolver with CompletionItemKind hints.
-  - Lambda v2: multi-param `(x, y) => x+y`, block bodies
-    `x => { let d = x*2; return d+1 }`, three-arg `(a,b,c) => …`.
-    Routes through new Closure_call2/3 runtime helpers; block
-    bodies emit through EmitBlock with an InLambdaBody flag that
-    boxes RETURN_STMT values as void*.
-  - Hotfix CI -Wint-conversion via explicit `let pn: int`.
+  amc migrate / generate / explain (the actual LLM commands):
+  - v0 single-file migrate (PR #149)
+  - v1.1 directory recursion (PR #158)
+  - v1.2 claude-api provider via Anthropic HTTP (PR #161)
+  - v1.3 prompt loaded from disk + system/user split for prompt
+    caching (PR #162)
+  - amc generate (PR #164)
+  - amc explain (PR #165)
+  - v2 providers: chatgpt, gemini, custom (PR #166)
+  - cost estimation in --dry-run (PR #167)
+  - --stream for generate/explain via claude CLI passthrough (PR #169)
+  - result caching by SHA-256 (PR #170)
 
-  v0.3.6 (the "lambdas in the wild" release):
-  - Higher-order List methods: xs.Filter / .Map / .Reduce /
-    .ForEach / .Any / .All / .CountIf. The lambda is passed as
-    AmalgameClosure* (env follows). CGen emits a GCC compound-
-    statement-expression at the call site that allocates the env,
-    copies captures in, and yields a fresh closure. InferTypeFromExpr
-    knows Filter/Map return AmalgameList*; EmitVarDecl propagates
-    the receiver's element type so big.Get(0) lowers with the
-    right cast.
+  Plus various small DX fixes: --help flags, cleanup of obsolete
+  files (use.sh, .github/workflow/ typo dir).
 
-Known limitations (deferred to v2.5 final):
-- Lambda arguments and results are still (i64) → i64 at the C
-  level. xs.Map(x => x.Name) over a List<Class> doesn't yet work;
-  needs a TypeChecker layer that infers the lambda signature
-  from the formal param at the call site, plus CGen to emit
-  non-int lam_N_fn signatures.
-- String interpolation `"x: {coll.Count()}"` doesn't propagate
-  the inferred AmalgameList* through to the embedded call.
-  Workaround: stage in named locals before printing.
-- ForEach mutating an enclosing var doesn't accumulate (closures
-  capture by value). Reduce is the right tool.
+Known limitations:
+
+- Lambda Reduce signatures still need init-arg type inference. If
+  you hit issues with .Reduce, fall back to a for-in with `var acc`.
+- String interpolation `"x: {coll.Get(i)}"` doesn't propagate the
+  inferred type into the embedded call. Workaround: stage in
+  named locals before printing.
+- ForEach captures by value — `var sum = 0; xs.ForEach(x => sum = sum + x)`
+  doesn't accumulate. Use Reduce for accumulation.
+- API streaming (claude-api / chatgpt / gemini) is buffered, not
+  Server-Sent Events. --stream only flows for the local claude CLI.
+- LSP grammar TextMate has a couple of false-positive zones
+  (coloration around certain enum.method patterns). Tracked.
 
 Workflow rules:
 
@@ -111,8 +132,7 @@ Workflow rules:
 - Execute git/gh commands directly (don't ask first). Same for
   bash and file edits — the user wants action, not confirmation
   loops. Asking is for design questions ("scope A or B?",
-  "which approach?"), not for permission to run a command. When
-  the user says "fais-le", they mean "go".
+  "which approach?"), not for permission to run a command.
 - Destructive ops (git reset --hard, push --force, branch -D,
   tag deletion) still get confirmed first.
 - Use `gh pr create --body "$(cat <<'EOF' … EOF)"` for PR bodies.
@@ -123,25 +143,22 @@ Workflow rules:
   in French.
 - TodoWrite for multi-step plans; one-liners can skip it.
 
-Where to head next (from ROADMAP_COMPLET.md, by unlocked-value /
-days-of-work):
+Where to head next (from ROADMAP_COMPLET.md):
 
-  1. Lambda v2.5 — non-int signatures: TypeChecker layer that
-     infers the lambda signature from the formal param at the
-     call site, plus CGen non-int lam_N_fn emission. Unlocks
-     xs.Map(x => x.Name) etc.
-  2. Stdlib expansion: pick one or two from DateTime / Json /
+  1. Stdlib expansion: pick one or two from DateTime / Json /
      Regex / Random / Encoding / Compress / Crypto / Threading.
      Each is 200-400 LoC. Tied to the open "Stdlib delivery
      model" design question (currently header-only).
-  3. LSP member completion: `obj.<cursor>` narrowed to the
+  2. LSP member completion: `obj.<cursor>` narrowed to the
      receiver's type. ~150 LoC on top of the v0.3.5 global
      completion.
-  4. amc new <name> [--template exe|lib|test]: scaffolding
+  3. amc new <name> [--template exe|lib|test]: scaffolding
      command à la cargo new / dotnet new. File templates +
      dispatcher branch in main.am + a roundtrip test that
-     scaffolds + compiles under /tmp. ~200-400 LoC. Strong
-     onboarding win.
+     scaffolds + compiles under /tmp. ~200-400 LoC.
+  4. amc migrate v3 follow-ups (deferred): API streaming via
+     SSE parser, actual usage stats from API responses (vs the
+     heuristic estimate), cost reporting in run summary.
   5. amc test polish: --runtime <path> flag, per-file timeouts,
      parallel execution.
   6. Process v2: split stderr from stdout via real pipes, add
@@ -155,6 +172,10 @@ Quick checks before claiming a feature is done:
 For non-trivial compiler changes, read docs/guide/07-internals.md
 first. The pipeline is single-pass: lex → parse → resolve →
 typecheck → (lint?) → cgen.
+
+For changes to the LLM commands, see docs/proposals/amc-migrate.md
+(design rationale + roadmap status) and docs/guide/08-llm-commands.md
+(user-facing reference).
 ```
 
 ---
@@ -171,20 +192,27 @@ src/                    ← Amalgame compiler in Amalgame
 ├── generator/            c_gen.am, gen_test.am
 ├── formatter/            formatter.am          (`amc fmt`)
 ├── linter.am             static analysis      (`amc --lint`)
-├── lsp.am                LSP server           (`amc lsp`)
+├── lsp.am                workspace-aware LSP  (`amc lsp`)
+├── migrate.am            LLM source-to-Amalgame    (`amc migrate`)
+├── generate.am           LLM prose-to-Amalgame     (`amc generate`)
+├── explain.am            LLM Amalgame-to-prose     (`amc explain`)
 ├── typechecker.am
 ├── diagnostics.am
-├── main.am               (CLI: compile, fmt, test, lsp, --lint, --check)
+├── main.am               (CLI: compile, fmt, test, lsp, --lint, --check,
+                                migrate, generate, explain)
 └── amc_lib.c             (generated)
 
-runtime/                ← C runtime (bdwgc, strings, IO, collections, net)
-                          _runtime.h: AmalgameClosure + _callN at the top,
-                          higher-order list helpers below; both used by
-                          v0.3.4-v0.3.6 closure work.
+runtime/                ← C runtime (bdwgc, strings, IO, collections, net,
+                          environment, process). Env_Get/Has aliases
+                          + Http_PostWithHeaders return-type tracked
+                          since v0.4.0 (PR #160). libcurl required for
+                          Net + claude-api / chatgpt / gemini providers.
 stdlib/strings.am       ← stdlib API reference (declarations only)
 tests/                  ← samples + run_*.sh runners (output in /tmp)
-docs/guide/             ← user guide chapters 1–7
+docs/guide/             ← user guide chapters 1–8 (8 = LLM commands)
 docs/language/          ← grammar.ebnf + grammar.md
+docs/proposals/         ← design proposals (RFC-style); amc-migrate.md
+                          tracks the LLM-roadmap status
 snapshot/               ← amc_lib.c (committed) + amc binary (gitignored)
                           + INFO.md (provenance)
 tools/save-snapshot.sh  ← capture a known-good amc after green tests
@@ -207,10 +235,11 @@ already holds:
 - `project_amalgame.md` — project overview
 - `reference_build.md` — build/test commands, file roles
 - `feedback_gitflow.md` — features always on develop, never on main
-- `feedback_push.md` — push feature branches without asking
-- `feedback_git_commands.md` — execute git/gh/bash/edits directly,
-  don't ask permission for each step (only for design questions)
+- `feedback_autonomous_edits.md` — execute Edit/Write/Bash/git
+  directly without per-step permission prompts
 - `feedback_language.md` — chat in French; code/commits stay English
+- `project_amc_migrate_idea.md` — the original idea log for the
+  LLM roadmap (now mostly shipped)
 
 A new session reads these automatically and applies them.
 
@@ -220,24 +249,19 @@ A new session reads these automatically and applies them.
    builtin, the running `amc` doesn't know about it until you rebuild.
    `build_amc.sh` step 1 tolerates non-zero exit from `amc` if the
    `.c` file was produced; gcc remains the real correctness gate.
+   This bit twice during v0.4 (Env_Get and Http_PostWithHeaders return
+   types had to land in their own infrastructure PR before the migrate
+   v1.2 PR could even bootstrap).
 
 2. **`void*` erasure across method-call boundaries** — the self-host
    codegen emits `void* x = SomeFunc()` instead of carrying the
    typed return when the call chains through a generic List<T>
    field. Two known fixes:
    (a) pin the local: `let pn: int = this.X.Count()`
-   (b) split into a typed helper that takes the AstNode parameter:
-       `private AstNode? FindX(string name) {
-            for ip in 0..this.Symbols.ProgramCount() {
-                let prog = this.Symbols.ProgramAt(ip)
-                let hit  = this.FindXInProg(prog, name)
-                ...
-            }
-        }
-        private AstNode? FindXInProg(AstNode prog, string name) { … }`
+   (b) split into a typed helper that takes the AstNode parameter.
    Both patterns are already in use across the compiler. CI on
-   macOS/Windows treats -Wint-conversion as an error, so
-   warnings ignored locally on Ubuntu will fail the merge.
+   macOS/Windows treats -Wint-conversion as an error, so warnings
+   ignored locally on Ubuntu will fail the merge.
 
 3. **File order in `AMC_SOURCES`** — `diagnostics.am` must come
    before files that reference `SourceMap` / `SourceSnippet`.
@@ -246,11 +270,10 @@ A new session reads these automatically and applies them.
    `gen_test.am`'s own.
 
 4. **Generics still erase to `void*` at the C level** — primitive
-   collection elements are boxed via `(void*)(intptr_t)`. Since
-   v0.3.3, the cgen tracks elem types for `List<T>` / `Map<K,V>`
-   (locals, params, returns, annotations) and emits `(T)…_get(…)`
-   so callers see the right type without a manual cast. v0.3.6
-   extends this to the result of xs.Filter / xs.Map.
+   collection elements are boxed via `(void*)(intptr_t)`. The cgen
+   tracks elem types for `List<T>` / `Map<K,V>` (locals, params,
+   returns, annotations) and emits `(T)…_get(…)` so callers see the
+   right type. Lambda v2.5 extends this to xs.Filter / xs.Map results.
 
 5. **`?.` evaluates the receiver twice** — keep the receiver
    side-effect-free, or extract it to a `let` first.
@@ -262,14 +285,14 @@ A new session reads these automatically and applies them.
    of an old commit, not for ongoing work.
 
 7. **Multi-line string concatenation** — the self-host parser
-   chokes on `let s = "a" +\n   "b" +\n   "c"`. Keep `+`-chains
-   on a single line, or use `var s = ""; s = s + "a"; s = s + "b"`.
-   Hit this twice in v0.3.5 (LSP JSON builders).
+   chokes on `let s = "a" +\n   "b" +\n   "c"`. Keep `+`-chains on
+   a single line, or use `var s = ""; s = s + "a"; s = s + "b"`.
+   (Multi-line method chains DO work since PR #154 — only string
+   concatenation is still single-line.)
 
 8. **Lambda capture is by value** — `var sum = 0; xs.ForEach(x =>
    sum = sum + x)` won't accumulate; the closure has a copy of sum.
-   Use Reduce for accumulation. (See known limitation in current-
-   state above.)
+   Use Reduce for accumulation.
 
 9. **Re-tagging a release** — if you need to retag (e.g. fixed CI
    config), delete the existing GitHub Release via the web UI BEFORE
@@ -277,6 +300,27 @@ A new session reads these automatically and applies them.
    instead of replacing, leaving stray assets from the old run.
    In practice it's almost always cleaner to bump the patch number.
 
-10. **`.github/workflow/` (no `s`)** is a leftover typo dir alongside
-    `.github/workflows/`. GitHub ignores the typoed one. Cleanup
-    pending.
+10. **String interpolation in source code that happens to contain
+    examples of itself** — when writing prompts in Amalgame source
+    that include `"x={x}"` literally, the lexer interpolates the
+    embedded `{x}`. Workaround used in migrate.am / generate.am /
+    explain.am: split the literal braces out as their own concat
+    pieces (`let lb = "{"; out = out + "..." + lb + "x" + "}"`).
+
+11. **gen_test linking and libcurl** — adding a runtime symbol that
+    pulls in curl (e.g. wrapping Http_*) means gen_test now needs
+    `-lcurl` too. build_amc.sh links it since v0.4.0 (PR #161). If a
+    new runtime call brings in a fresh transitive dep, propagate the
+    `-l<lib>` flag here as well.
+
+12. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
+    declares `merge=ours` for `snapshot/amc_lib.c`, `snapshot/INFO.md`,
+    and `src/amc_lib.c` (generated artefacts; canonical resolution
+    on conflict is "rebuild from sources"). For the strategy to take
+    effect, git needs to know "ours" is a valid driver. Run once
+    after cloning:
+
+        git config merge.ours.driver true
+
+    Without this, git falls back to a normal three-way merge on the
+    generated files and you get the same conflict noise as before.

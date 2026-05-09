@@ -223,12 +223,28 @@ error[resolver]: Unknown symbol 'someUndefinedThing'
   normal Amalgame program with a `Main` that prints tag lines per
   case; no framework required. Exits non-zero if any case FAILs
   or any file fails to compile.
-- **`amc lsp`** — minimal language server speaking JSON-RPC 2.0 on
-  stdio. v1 publishes diagnostics (resolver + typechecker errors)
-  on `textDocument/didOpen` and `textDocument/didChange`. Pair it
-  with the VS Code extension below. Hover and completion are
-  follow-ups.
-- **VS Code syntax highlighting** is in [editors/vscode/](editors/vscode/).
+- **`amc lsp`** — workspace-aware language server speaking JSON-RPC
+  2.0 on stdio. Publishes diagnostics on `didOpen` / `didChange`,
+  serves `textDocument/hover` (Markdown tooltip with the inferred
+  type) and `textDocument/completion` (every global symbol the
+  resolver knows about, including types declared in any sibling
+  `.am` file under the workspace root).
+- **`amc migrate <file|dir>`** — LLM-assisted source-to-Amalgame
+  migration. Auto-detects 21 source languages by extension
+  (TS, Python, Java, C#, Go, Rust, …). Provider auto-selection from
+  env: `ANTHROPIC_API_KEY` → claude-api, `OPENAI_API_KEY` → chatgpt,
+  `GEMINI_API_KEY` → gemini, fallback `claude` (CLI). Directory
+  recursion, result cache by SHA-256 of source + system prompt,
+  cost estimation in `--dry-run`, automated `amc --check`
+  validation. See [`docs/guide/08-llm-commands.md`](docs/guide/08-llm-commands.md).
+- **`amc generate "<prompt>"`** — LLM-driven prose-to-Amalgame.
+  Same provider stack, plus `--stream` via the claude CLI for
+  direct stdout passthrough. Ideal for "scaffold me a starting
+  point".
+- **`amc explain <file.am>`** — reverse direction: emit a
+  natural-language explanation of an Amalgame source file. Use
+  `--lang French` (or any other) to translate the explanation.
+- **VS Code syntax highlighting + LSP client** in [editors/vscode/](editors/vscode/).
   Install with:
   ```bash
   ln -s "$(pwd)/editors/vscode" ~/.vscode/extensions/amalgame-0.2.0
@@ -243,18 +259,23 @@ src/                  Compiler, written in Amalgame
 ├── resolver/           symbol.am, resolver.am
 ├── generator/          c_gen.am, gen_test.am
 ├── formatter/          formatter.am
+├── linter.am           static analysis (amc --lint)
 ├── typechecker.am
 ├── diagnostics.am
-├── lsp.am              LSP server (amc lsp)
-├── main.am             CLI: amc <files> | amc fmt | amc test | amc lsp
+├── lsp.am              workspace-aware LSP server (amc lsp)
+├── migrate.am          LLM source-to-Amalgame (amc migrate)
+├── generate.am         LLM prose-to-Amalgame (amc generate)
+├── explain.am          LLM Amalgame-to-prose (amc explain)
+├── main.am             CLI: compile | fmt | test | lsp | migrate | generate | explain
 └── amc_lib.c           Self-hosted bundle (generated)
 
-runtime/              C runtime (bdwgc, strings, IO, collections, net)
+runtime/              C runtime (bdwgc, strings, IO, collections, net, env, process)
 stdlib/               Stdlib API reference (.am declarations)
 snapshot/             Tracked amc_lib.c known-good bootstrap
 tools/                save-snapshot.sh
 tests/                Sample programs + run_*.sh runners
-docs/guide/           User guide chapters 1–7
+docs/guide/           User guide chapters 1–8
+docs/proposals/       Design RFCs (amc-migrate.md tracks LLM roadmap)
 archive/              Original Vala compiler (recovery path)
 editors/vscode/       Syntax highlighting extension
 .github/workflows/    CI + tag-driven Release automation

@@ -2930,6 +2930,8 @@ static code_string Amalgame_Compiler_CGen_EmitLambdaCaptureCopy(Amalgame_Compile
 static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* callee);
 static code_bool Amalgame_Compiler_CGen_IsEnum(Amalgame_Compiler_CGen* self, code_string t);
 static code_bool Amalgame_Compiler_CGen_IsCPointerType(Amalgame_Compiler_CGen* self, code_string ct);
+static code_string Amalgame_Compiler_CGen_BoxAsVoid(Amalgame_Compiler_CGen* self, code_string expr);
+static code_string Amalgame_Compiler_CGen_UnboxScalar(Amalgame_Compiler_CGen* self, code_string ctype, code_string expr);
 static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, code_string t);
 
 Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
@@ -3168,7 +3170,7 @@ static void Amalgame_Compiler_CGen_EmitOneLambdaBody(Amalgame_Compiler_CGen* sel
         if (Amalgame_Compiler_CGen_IsCPointerType(self, pTypeC)) {
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(pTypeC, " "), p->Name), " = ("), pTypeC), ")"), argName), ";"));
         } else {
-            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(pTypeC, " "), p->Name), " = ("), pTypeC), ")(intptr_t)"), argName), ";"));
+            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(pTypeC, " "), p->Name), " = "), Amalgame_Compiler_CGen_UnboxScalar(self, pTypeC, argName)), ";"));
         }
     }
     for (i64 i = 0; i < cn; i++) {
@@ -3195,12 +3197,12 @@ static void Amalgame_Compiler_CGen_EmitOneLambdaBody(Amalgame_Compiler_CGen* sel
         self->InLambdaBody = 1;
         Amalgame_Compiler_CGen_EmitBlock(self, lam->Body);
         self->InLambdaBody = prevInLam;
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "return (void*)(intptr_t)0;");
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, "0")), ";"));
     } else if (lam->Left != NULL) {
         code_string __attribute__((unused)) bodyStr = Amalgame_Compiler_CGen_EmitExprStr(self, lam->Left);
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return (void*)(intptr_t)(", bodyStr), ");"));
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, bodyStr)), ";"));
     } else {
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "return (void*)(intptr_t)0;");
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, "0")), ";"));
     }
     for (i64 pi = 0; pi < pn; pi++) {
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, pi);
@@ -5039,7 +5041,7 @@ static void Amalgame_Compiler_CGen_EmitStmt(Amalgame_Compiler_CGen* self, Amalga
     if (k == Amalgame_Compiler_NodeKind_RETURN_STMT) {
         if (stmt->Left == NULL) {
             if (self->InLambdaBody) {
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, "return (void*)(intptr_t)0;");
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, "0")), ";"));
             } else {
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return;");
             }
@@ -5048,7 +5050,7 @@ static void Amalgame_Compiler_CGen_EmitStmt(Amalgame_Compiler_CGen* self, Amalga
             if (code_string_equals(retExpr, "_unknown_")) {
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return;");
             } else if (self->InLambdaBody) {
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return (void*)(intptr_t)(", retExpr), ");"));
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, retExpr)), ";"));
             } else if (String_StartsWith(retExpr, "{") && String_Length(self->CurrentRetType) > 0) {
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("return (", self->CurrentRetType), ")"), retExpr), ";"));
             } else {
@@ -5355,18 +5357,18 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                 i64 __attribute__((unused)) argc = AmalgameList_count(expr->Args);
                 if (argc == 1) {
                     code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
-                    return code_string_concat(code_string_concat(code_string_concat(code_string_concat("(i64)(intptr_t)AmalgameClosure_call1(", calleeName), ", (void*)(intptr_t)("), arg0), "))");
+                    return Amalgame_Compiler_CGen_UnboxScalar(self, "i64", code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameClosure_call1(", calleeName), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0)), ")"));
                 }
                 if (argc == 2) {
                     code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                     code_string __attribute__((unused)) arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
-                    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("(i64)(intptr_t)AmalgameClosure_call2(", calleeName), ", (void*)(intptr_t)("), arg0), "), (void*)(intptr_t)("), arg1), "))");
+                    return Amalgame_Compiler_CGen_UnboxScalar(self, "i64", code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameClosure_call2(", calleeName), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0)), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1)), ")"));
                 }
                 if (argc == 3) {
                     code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                     code_string __attribute__((unused)) arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
                     code_string __attribute__((unused)) arg2 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 2));
-                    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("(i64)(intptr_t)AmalgameClosure_call3(", calleeName), ", (void*)(intptr_t)("), arg0), "), (void*)(intptr_t)("), arg1), "), (void*)(intptr_t)("), arg2), "))");
+                    return Amalgame_Compiler_CGen_UnboxScalar(self, "i64", code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameClosure_call3(", calleeName), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0)), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1)), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg2)), ")"));
                 }
             }
         }
@@ -5555,7 +5557,7 @@ static code_string Amalgame_Compiler_CGen_EmitListComp(Amalgame_Compiler_CGen* s
     code_string __attribute__((unused)) s = code_string_concat(code_string_concat("({ AmalgameList* __lc_", vn), " = AmalgameList_new(); ");
     s = code_string_concat(s, loopHeader);
     s = code_string_concat(s, guardStr);
-    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "AmalgameList_add(__lc_"), vn), ", (void*)(intptr_t)("), projStr), ")); ");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "AmalgameList_add(__lc_"), vn), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, projStr)), "); ");
     s = code_string_concat(code_string_concat(code_string_concat(s, "} __lc_"), vn), "; })");
     return s;
 }
@@ -5581,7 +5583,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
                 if (code_string_equals(mname, "Set") && ac >= 2) {
                     code_string __attribute__((unused)) k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
                     code_string __attribute__((unused)) v2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 1));
-                    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameMap_set(", vname), ", "), k2), ", (void*)(intptr_t)("), v2), "))");
+                    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameMap_set(", vname), ", "), k2), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, v2)), ")");
                 }
                 if (code_string_equals(mname, "Has") && ac >= 1) {
                     code_string __attribute__((unused)) k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
@@ -5705,7 +5707,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             return code_string_concat(code_string_concat("AmalgameList_add(", listExpr), ", NULL)");
         }
         code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_add(", listExpr), ", (void*)(intptr_t)("), arg0), "))");
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_add(", listExpr), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0)), ")");
     }
     if (code_string_equals(mname, "Get")) {
         i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
@@ -5751,7 +5753,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
         i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
         if (argc > 0) {
             code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-            return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_remove(", listExpr), ", (void*)(intptr_t)("), arg0), "))");
+            return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_remove(", listExpr), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0)), ")");
         }
     }
     if (code_string_equals(mname, "RemoveAt")) {
@@ -5804,7 +5806,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
         if (String_Length(lamStr) == 0) {
             return "";
         }
-        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("(i64)(intptr_t)AmalgameList_reduce(", listExpr), ", (void*)(intptr_t)("), initStr), "), "), lamStr), ")");
+        return Amalgame_Compiler_CGen_UnboxScalar(self, "i64", code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_reduce(", listExpr), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, initStr)), ", "), lamStr), ")"));
     }
     if (code_string_equals(mname, "Any")) {
         i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
@@ -5967,6 +5969,19 @@ static code_bool Amalgame_Compiler_CGen_IsCPointerType(Amalgame_Compiler_CGen* s
         return 1;
     }
     return 0;
+}
+
+static code_string Amalgame_Compiler_CGen_BoxAsVoid(Amalgame_Compiler_CGen* self, code_string expr) {
+    (void)self;
+    (void)expr;
+    return code_string_concat(code_string_concat("(void*)(intptr_t)(", expr), ")");
+}
+
+static code_string Amalgame_Compiler_CGen_UnboxScalar(Amalgame_Compiler_CGen* self, code_string ctype, code_string expr) {
+    (void)self;
+    (void)ctype;
+    (void)expr;
+    return code_string_concat(code_string_concat(code_string_concat("(", ctype), ")(intptr_t)"), expr);
 }
 
 static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, code_string t) {
@@ -11761,8 +11776,8 @@ struct _Amalgame_Compiler_MigrateCommand {
 
 void Amalgame_Compiler_MigrateCommand_PrintUsage();
 i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc);
-static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, code_string output, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines);
-static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines);
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, code_string output, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines, code_bool noCache);
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines, code_bool noCache);
 static code_bool Amalgame_Compiler_MigrateCommand_IsDirectory(code_string path);
 static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path);
 static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input);
@@ -11784,6 +11799,11 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
 static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd);
+code_string Amalgame_Compiler_MigrateCommand_CacheHash(code_string source, code_string systemPrompt);
+code_string Amalgame_Compiler_MigrateCommand_CachePath(code_string hash);
+code_string Amalgame_Compiler_MigrateCommand_CacheLookup(code_string source, code_string systemPrompt);
+void Amalgame_Compiler_MigrateCommand_CacheStore(code_string source, code_string systemPrompt, code_string content);
+i64 Amalgame_Compiler_MigrateCommand_StreamClaudeCli(code_string model, code_string prompt);
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
 
 Amalgame_Compiler_MigrateCommand* Amalgame_Compiler_MigrateCommand_new() {
@@ -11813,6 +11833,7 @@ void Amalgame_Compiler_MigrateCommand_PrintUsage() {
     Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
     Console_WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).");
     Console_WriteError("  --no-check           Skip the post-migration `amc --check` validation.");
+    Console_WriteError("  --no-cache           Skip the on-disk result cache (always re-call LLM).");
     Console_WriteError("  --force              Overwrite an existing .am at the output path.");
     Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
     Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
@@ -11834,6 +11855,7 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
     code_bool __attribute__((unused)) noCheck = 0;
     code_bool __attribute__((unused)) force = 0;
     i64 __attribute__((unused)) maxLines = 2000;
+    code_bool __attribute__((unused)) noCache = 0;
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
@@ -11853,6 +11875,8 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
             promptOnly = 1;
         } else if (code_string_equals(a, "--no-check")) {
             noCheck = 1;
+        } else if (code_string_equals(a, "--no-cache")) {
+            noCache = 1;
         } else if (code_string_equals(a, "--force")) {
             force = 1;
         } else if (code_string_equals(a, "--lang")) {
@@ -11918,12 +11942,12 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
             Console_WriteError("amc migrate: --output cannot be used with directory input (writes are in-place next to each source).");
             return 1;
         }
-        return Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(input, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines);
+        return Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(input, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines, noCache);
     }
-    return Amalgame_Compiler_MigrateCommand_RunMigrateOne(input, output, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines);
+    return Amalgame_Compiler_MigrateCommand_RunMigrateOne(input, output, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines, noCache);
 }
 
-static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, code_string output, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines) {
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, code_string output, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines, code_bool noCache) {
     (void)input;
     (void)output;
     (void)langHint;
@@ -11934,6 +11958,7 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
     (void)promptOnly;
     (void)noCheck;
     (void)maxLines;
+    (void)noCache;
     code_string __attribute__((unused)) lang = langHint;
     if (String_Length(lang) == 0) {
         lang = Amalgame_Compiler_MigrateCommand_DetectLanguage(input);
@@ -11977,6 +12002,30 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         Console_WriteLine(code_string_concat("[migrate] estimated cost: ", est));
         return 0;
     }
+    code_string __attribute__((unused)) sysForCache = Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang);
+    if (!noCache) {
+        code_string __attribute__((unused)) cached = Amalgame_Compiler_MigrateCommand_CacheLookup(source, sysForCache);
+        if (String_Length(cached) > 0) {
+            code_bool __attribute__((unused)) writeOkC = File_WriteAll(outPath, cached);
+            if (!writeOkC) {
+                Console_WriteError(code_string_concat("amc migrate: failed to write ", outPath));
+                return 1;
+            }
+            Console_WriteLine(code_string_concat(code_string_concat("[migrate] wrote ", outPath), " (cache hit)"));
+            if (!noCheck) {
+                code_string __attribute__((unused)) amcPathC = Args_Get(0);
+                code_string __attribute__((unused)) cmdC = code_string_concat(code_string_concat(amcPathC, " --check "), outPath);
+                AmalgameProcessResult* __attribute__((unused)) checkC = Process_RunCapture(cmdC);
+                if (checkC->Exit != 0) {
+                    Console_WriteError("[migrate] check failed:");
+                    Console_WriteError(checkC->Stdout);
+                    return 1;
+                }
+                Console_WriteLine("[migrate] check passed");
+            }
+            return 0;
+        }
+    }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] processing ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines, provider="), provider), ")..."));
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProvider(provider, model, lang, source);
     if (!result->Ok) {
@@ -11989,6 +12038,9 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         return 1;
     }
     Console_WriteLine(code_string_concat("[migrate] wrote ", outPath));
+    if (!noCache) {
+        Amalgame_Compiler_MigrateCommand_CacheStore(source, sysForCache, result->Content);
+    }
     if (!noCheck) {
         code_string __attribute__((unused)) amcPath = Args_Get(0);
         code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat(amcPath, " --check "), outPath);
@@ -12004,7 +12056,7 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
     return 0;
 }
 
-static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines) {
+static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir, code_string langHint, code_string provider, code_string model, code_bool force, code_bool dryRun, code_bool promptOnly, code_bool noCheck, i64 maxLines, code_bool noCache) {
     (void)dir;
     (void)langHint;
     (void)provider;
@@ -12014,6 +12066,7 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir,
     (void)promptOnly;
     (void)noCheck;
     (void)maxLines;
+    (void)noCache;
     Console_WriteError(code_string_concat(code_string_concat("[migrate] discovering source files in ", dir), "..."));
     code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", dir), " -type f 2>/dev/null");
     AmalgameProcessResult* __attribute__((unused)) result = Process_RunCapture(findCmd);
@@ -12054,7 +12107,7 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateDirectory(code_string dir,
         if (String_Length(perFileLang) == 0) {
             perFileLang = (code_string)AmalgameList_get(langs, j);
         }
-        i64 __attribute__((unused)) r = Amalgame_Compiler_MigrateCommand_RunMigrateOne(path, "", perFileLang, provider, model, force, dryRun, promptOnly, noCheck, maxLines);
+        i64 __attribute__((unused)) r = Amalgame_Compiler_MigrateCommand_RunMigrateOne(path, "", perFileLang, provider, model, force, dryRun, promptOnly, noCheck, maxLines, noCache);
         if (r == 0) {
             ok = ok + 1;
         } else {
@@ -12274,6 +12327,7 @@ code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader() {
     code_string __attribute__((unused)) execPath = Args_Get(0);
     code_string __attribute__((unused)) execDir = Path_GetDirectory(execPath);
     if (String_Length(execDir) > 0) {
+        AmalgameList_add(candidates, (void*)(intptr_t)(code_string_concat(execDir, "/../share/amalgame")));
         AmalgameList_add(candidates, (void*)(intptr_t)(execDir));
     }
     AmalgameList_add(candidates, (void*)(intptr_t)("."));
@@ -12694,6 +12748,90 @@ static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string
     return rr->Exit == 0;
 }
 
+code_string Amalgame_Compiler_MigrateCommand_CacheHash(code_string source, code_string systemPrompt) {
+    (void)source;
+    (void)systemPrompt;
+    code_string __attribute__((unused)) tmpPath = "/tmp/amc_cache_input.txt";
+    code_string __attribute__((unused)) combined = code_string_concat(code_string_concat(source, "\n---SYSTEM---\n"), systemPrompt);
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(tmpPath, combined);
+    if (!writeOk) {
+        return "";
+    }
+    AmalgameProcessResult* __attribute__((unused)) result = Process_RunCapture(code_string_concat(code_string_concat("sha256sum ", tmpPath), " 2>/dev/null"));
+    if (result->Exit != 0) {
+        return "";
+    }
+    code_string __attribute__((unused)) out = String_Trim(result->Stdout);
+    if (String_Length(out) < 64) {
+        return "";
+    }
+    return String_Substring(out, 0, 64);
+}
+
+code_string Amalgame_Compiler_MigrateCommand_CachePath(code_string hash) {
+    (void)hash;
+    code_string __attribute__((unused)) home = Env_Get("HOME");
+    if (String_Length(home) == 0) {
+        return "";
+    }
+    code_string __attribute__((unused)) dir = code_string_concat(home, "/.cache/amalgame/migrate");
+    Process_RunCapture(code_string_concat("mkdir -p ", dir));
+    return code_string_concat(code_string_concat(code_string_concat(dir, "/"), hash), ".am");
+}
+
+code_string Amalgame_Compiler_MigrateCommand_CacheLookup(code_string source, code_string systemPrompt) {
+    (void)source;
+    (void)systemPrompt;
+    code_string __attribute__((unused)) hash = Amalgame_Compiler_MigrateCommand_CacheHash(source, systemPrompt);
+    if (String_Length(hash) == 0) {
+        return "";
+    }
+    code_string __attribute__((unused)) path = Amalgame_Compiler_MigrateCommand_CachePath(hash);
+    if (String_Length(path) == 0) {
+        return "";
+    }
+    if (!File_Exists(path)) {
+        return "";
+    }
+    return File_ReadAll(path);
+}
+
+void Amalgame_Compiler_MigrateCommand_CacheStore(code_string source, code_string systemPrompt, code_string content) {
+    (void)source;
+    (void)systemPrompt;
+    (void)content;
+    code_string __attribute__((unused)) hash = Amalgame_Compiler_MigrateCommand_CacheHash(source, systemPrompt);
+    if (String_Length(hash) == 0) {
+        return;
+    }
+    code_string __attribute__((unused)) path = Amalgame_Compiler_MigrateCommand_CachePath(hash);
+    if (String_Length(path) == 0) {
+        return;
+    }
+    File_WriteAll(path, content);
+}
+
+i64 Amalgame_Compiler_MigrateCommand_StreamClaudeCli(code_string model, code_string prompt) {
+    (void)model;
+    (void)prompt;
+    if (!Amalgame_Compiler_MigrateCommand_IsCommandAvailable("claude")) {
+        Console_WriteError("claude CLI not found on PATH. Install Claude Code: https://docs.claude.com/claude-code");
+        return 1;
+    }
+    code_string __attribute__((unused)) tmpPath = "/tmp/amc_stream_prompt.txt";
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(tmpPath, prompt);
+    if (!writeOk) {
+        Console_WriteError(code_string_concat("failed to write prompt temp file: ", tmpPath));
+        return 1;
+    }
+    code_string __attribute__((unused)) cmd = "claude -p";
+    if (String_Length(model) > 0) {
+        cmd = code_string_concat(code_string_concat(cmd, " --model "), model);
+    }
+    cmd = code_string_concat(code_string_concat(cmd, " < "), tmpPath);
+    return Process_Run(cmd);
+}
+
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s) {
     (void)s;
     code_string __attribute__((unused)) trimmed = String_Trim(s);
@@ -12743,6 +12881,8 @@ void Amalgame_Compiler_GenerateCommand_PrintUsage() {
     Console_WriteError("  --force              Overwrite an existing file at the -o path.");
     Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
     Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  --stream             Stream the LLM response straight to stdout as it's");
+    Console_WriteError("                       produced. Requires --provider claude (CLI), no -o.");
     Console_WriteError("  -h, --help           Print this help and exit.");
     Console_WriteError("");
     Console_WriteError("Examples:");
@@ -12761,6 +12901,7 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
     code_bool __attribute__((unused)) promptOnly = 0;
     code_bool __attribute__((unused)) noCheck = 0;
     code_bool __attribute__((unused)) force = 0;
+    code_bool __attribute__((unused)) stream = 0;
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
@@ -12782,6 +12923,8 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
             noCheck = 1;
         } else if (code_string_equals(a, "--force")) {
             force = 1;
+        } else if (code_string_equals(a, "--stream")) {
+            stream = 1;
         } else if (code_string_equals(a, "--provider")) {
             i = i + 1;
             if (i >= argc) {
@@ -12844,6 +12987,18 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
         Console_WriteError(code_string_concat("amc generate: output exists: ", output));
         Console_WriteError("Pass --force to overwrite.");
         return 1;
+    }
+    if (stream) {
+        if (!code_string_equals(provider, "claude")) {
+            Console_WriteError("amc generate: --stream requires --provider claude (CLI). API streaming is a v3 follow-up.");
+            return 1;
+        }
+        if (String_Length(output) > 0) {
+            Console_WriteError("amc generate: --stream is incompatible with -o (no buffered text to write).");
+            return 1;
+        }
+        Console_WriteError("[generate] streaming via claude CLI...");
+        return Amalgame_Compiler_MigrateCommand_StreamClaudeCli(model, code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt));
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[generate] generating from prompt (", String_FromInt(String_Length(prompt))), " chars, provider="), provider), ")..."));
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);
@@ -12967,6 +13122,8 @@ void Amalgame_Compiler_ExplainCommand_PrintUsage() {
     Console_WriteError("  --force              Overwrite an existing file at the -o path.");
     Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
     Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  --stream             Stream the LLM response straight to stdout as it's");
+    Console_WriteError("                       produced. Requires --provider claude (CLI), no -o.");
     Console_WriteError("  -h, --help           Print this help and exit.");
 }
 
@@ -12981,6 +13138,7 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
     code_bool __attribute__((unused)) dryRun = 0;
     code_bool __attribute__((unused)) promptOnly = 0;
     code_bool __attribute__((unused)) force = 0;
+    code_bool __attribute__((unused)) stream = 0;
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
@@ -13000,6 +13158,8 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
             promptOnly = 1;
         } else if (code_string_equals(a, "--force")) {
             force = 1;
+        } else if (code_string_equals(a, "--stream")) {
+            stream = 1;
         } else if (code_string_equals(a, "--lang")) {
             i = i + 1;
             if (i >= argc) {
@@ -13072,6 +13232,18 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
         Console_WriteError(code_string_concat("amc explain: output exists: ", output));
         Console_WriteError("Pass --force to overwrite.");
         return 1;
+    }
+    if (stream) {
+        if (!code_string_equals(provider, "claude")) {
+            Console_WriteError("amc explain: --stream requires --provider claude (CLI). API streaming is a v3 follow-up.");
+            return 1;
+        }
+        if (String_Length(output) > 0) {
+            Console_WriteError("amc explain: --stream is incompatible with -o (no buffered text to write).");
+            return 1;
+        }
+        Console_WriteError("[explain] streaming via claude CLI...");
+        return Amalgame_Compiler_MigrateCommand_StreamClaudeCli(model, code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt));
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] explaining ", input), " (provider="), provider), ", lang="), outLang), ")..."));
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);

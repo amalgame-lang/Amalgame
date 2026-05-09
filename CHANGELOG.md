@@ -7,6 +7,113 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.0] — 2026-05-09
+
+The "LLM-driven workflows" release. Three new subcommands shipped in
+one big push: **`amc migrate`** (translate other languages → Amalgame),
+**`amc generate`** (write a new `.am` from a natural-language prompt),
+**`amc explain`** (read a `.am`, write prose). Plus a batch of
+compiler / parser / CGen fixes that the LLM-generated code surfaced
+along the way. Suite goes from **187/187** to **263/263**.
+
+### New subcommands
+
+- **`amc migrate <file|dir>`** *(PRs #149, #158, #161, #162, #156, #166, #167, #169, #170)*
+  - Auto-detects 21 source languages by extension (TS, JS, Python,
+    Java, C#, Go, Rust, C, C++, Kotlin, Swift, Ruby, PHP, …).
+  - Provider abstraction with five built-ins:
+      - `claude` (Claude Code CLI shell out — default fallback)
+      - `claude-api` (Anthropic HTTP via `Http_PostWithHeaders`)
+      - `chatgpt` (OpenAI HTTP)
+      - `gemini` (Google AI Studio HTTP)
+      - `custom` (delegates to `AMC_CUSTOM_PROVIDER_CMD`, reads stdin
+        / writes stdout — wraps any local LLM CLI)
+  - Provider auto-selection from env: `ANTHROPIC_API_KEY` →
+    `claude-api`, `OPENAI_API_KEY` → `chatgpt`, `GEMINI_API_KEY` →
+    `gemini`, fallback `claude` (CLI).
+  - Directory recursion. Result cache by SHA-256(source + system
+    prompt) at `~/.cache/amalgame/migrate/`. Per-file `amc --check`
+    validation (suppressible). Source-size cap (default 2000 lines).
+  - Cost estimation in `--dry-run` per provider + model.
+- **`amc generate "<prompt>"`** *(PR #164)* — same provider stack,
+  output to stdout by default. `--stream` flows the response live
+  via the claude CLI.
+- **`amc explain <file.am>`** *(PR #165)* — reverse direction.
+  `--lang <name>` controls the explanation language.
+
+### Compiler — language
+
+- **Lambda v2.5 — non-int signatures** *(PR #142)*. Higher-order
+  list operations like `xs.Map(x => x.Name)` over a `List<Class>`
+  now work end-to-end. The TypeChecker patches the lambda's `PARAM`
+  type from the higher-order callsite (so `x` resolves as `Class`
+  inside the body), and the CGen splits `EmitOneLambda` into
+  forward + body emission so `lam_N_fn` can dereference fields on
+  user struct types.
+- **Multi-line method chains** *(PR #154)*. `xs\n    .Filter(...)\n    .Map(...)`
+  parses cleanly. `ParsePostfix` peeks past `NEWLINE` when the next
+  non-NL token is `.` or `?.`. Statement boundaries (NEWLINE not
+  followed by a dot) stay intact.
+- **TS-style param syntax** *(PR #152)*. `Foo(id: int)` is accepted
+  as an alias for `Foo(int id)`. Same fix also resolves a
+  pre-existing infinite-loop on the malformed input. The parser
+  param-list while-loops gain a "did the cursor advance?" safety
+  belt.
+- **CGen auto-qualify implicit field access** *(PR #155)*. Within a
+  class method, `Id = id` lowers to `self->Id = id` when `Id` isn't
+  a local but is a field of the current class. Lets users from
+  C# / TS / Kotlin / Swift skip the explicit `this.` qualifier.
+
+### Stdlib
+
+- **`Env.Get(name)` / `Env.Has(name)`** *(PR #160)*. Wraps
+  `Environment_GetVar` / `_HasVar`. Required by the API providers
+  to read API keys from the environment.
+- **`Http_PostWithHeaders` / `Put` / `Delete` / `Patch` return
+  type tracked** *(PR #160)*. `resp.Status` / `.Body` / `.Ok`
+  type-check correctly after these calls (previously only
+  `Http_Get` / `Post` / `GetWithHeaders` / `GetTimeout` /
+  `PostJson` were registered).
+
+### Tooling
+
+- **LSP — workspace-aware diagnostics** *(PR #146)*. `amc lsp`
+  now scans every `.am` file under the detected workspace root
+  (markers: `.git`, `build_amc.sh`, `package.json`) and feeds them
+  to the resolver. Eliminates ~44 false `Unknown symbol` diagnostics
+  per file on `src/typechecker.am` (NodeKind, SourceSnippet, …).
+  Hover / completion benefit too.
+- **`amc migrate --help` / `-h`** *(PR #156)* — the discoverability
+  flag actually prints help instead of erroring.
+
+### Distribution
+
+- **Release artifacts now bundle `docs/language/grammar.ebnf` +
+  `docs/guide/02-language-tour.md`** under `share/amalgame/docs/...`
+  so `amc migrate / generate / explain` find them at
+  `<exec-dir>/../share/amalgame/docs/...` post-install. Without
+  these, the LLM commands degrade gracefully to an inline
+  conventions block.
+- `install.sh` copies them to `$PREFIX/share/amalgame/docs/`.
+- `build_amc.sh` now links `gen_test` against `-lcurl` (the bundled
+  `migrate.am` pulls in curl symbols transitively).
+
+### Documentation
+
+- New chapter **`docs/guide/08-llm-commands.md`** — user-facing
+  reference for migrate / generate / explain.
+- New design doc **`docs/proposals/amc-migrate.md`** — full v0/v1/v2
+  rationale, kept up-to-date with what shipped.
+- CONTINUATION.md and ROADMAP_COMPLET.md refreshed.
+
+### Cleanup
+
+- `use.sh` (pre-self-hosted doc snippet) removed.
+- `.github/workflow/` typo directory removed (was duplicate of
+  `.github/workflows/`, ignored by GitHub anyway).
+
+---
+
 ## [v0.3.6] — 2026-05-08
 
 The "lambdas in the wild" release. Higher-order `List<T>`
