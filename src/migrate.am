@@ -779,10 +779,10 @@ public class MigrateCommand {
         body = body + "\"model\":\"" + modelId + "\","
         body = body + "\"max_tokens\":8192,"
         body = body + "\"system\":[{\"type\":\"text\",\"text\":\""
-        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + Json.EscapeString(systemPrompt)
         body = body + "\",\"cache_control\":{\"type\":\"ephemeral\"}}],"
         body = body + "\"messages\":[{\"role\":\"user\",\"content\":\""
-        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + Json.EscapeString(userPrompt)
         body = body + "\"}]}"
 
         let headers = new Map<string, string>()
@@ -898,9 +898,9 @@ public class MigrateCommand {
         var body: string = "{"
         body = body + "\"model\":\"" + modelId + "\","
         body = body + "\"messages\":[{\"role\":\"system\",\"content\":\""
-        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + Json.EscapeString(systemPrompt)
         body = body + "\"},{\"role\":\"user\",\"content\":\""
-        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + Json.EscapeString(userPrompt)
         body = body + "\"}]}"
 
         let headers = new Map<string, string>()
@@ -947,10 +947,10 @@ public class MigrateCommand {
         // contents array of user/model messages. We use both.
         var body: string = "{"
         body = body + "\"systemInstruction\":{\"parts\":[{\"text\":\""
-        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + Json.EscapeString(systemPrompt)
         body = body + "\"}]},"
         body = body + "\"contents\":[{\"parts\":[{\"text\":\""
-        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + Json.EscapeString(userPrompt)
         body = body + "\"}]}]}"
 
         let headers = new Map<string, string>()
