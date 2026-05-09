@@ -312,24 +312,19 @@ before the next big language addition.
       `main.am::RunFmt`/`RunTest` each reimplement an args loop.
       A shared `ArgParser` class with a fluent registration API
       would cut ~150 lines and centralize the `--help` rendering.
-- [~] **Promote ad-hoc JSON to a real `Amalgame.Json` module** —
-      Phase 1 (module + tests, v0.4.2) and phase 2 partial (escape
-      sites swapped to `Json.EscapeString` in `lsp.am` and
-      `migrate.am`) shipped. The parsing swap is **deferred**:
-      `Json.Parse` on a 16 KB body (typical LSP `didOpen.text`)
-      hangs or runs >30s due to O(N²) string concatenation in the
-      pure-Amalgame parser. The ad-hoc `JsonStr` / `JsonInt`
-      extractors are O(N) substring-match and stay in `lsp.am`'s
-      hot path until the parser is fast enough. The
-      `migrate.am::JsonExtract` swap is also deferred — same root
-      cause, same expected size profile on LLM responses.
-- [ ] **`Amalgame.Json` parser performance** — replace the
-      character-by-character `out = out + c` accumulation with
-      either a runtime `StringBuilder` (mutable byte buffer in
-      `runtime/Amalgame_String.h`) or a chunked-String list +
-      single-pass concat at the end. Both are O(N) and shave the
-      LSP didOpen path back to milliseconds. Without this, phase
-      2 of the JSON migration can't complete.
+- [x] **Promote ad-hoc JSON to a real `Amalgame.Json` module**
+      (resolved). Phase 1 (module + 24 tests, v0.4.2). Phase 2
+      (swap `lsp.am` request dispatcher to `Json.Parse`, swap
+      Anthropic / ChatGPT / Gemini response extractors in
+      `migrate.am`, swap all `EscapeJsonStr` / `JsonEscape` to
+      `Json.EscapeString`). Phase 3 (delete the six dead helpers
+      in `lsp.am` and `migrate.am`). The earlier-noted
+      "Json.Parse hangs on 16 KB bodies" turned out to be a
+      benchmark artefact: a bash probe that used `${#body}` to
+      compute Content-Length under-counted UTF-8 multibyte chars
+      and shipped a truncated frame. Real client traffic uses
+      byte-accurate counts and the parser handles a typical 16 KB
+      didOpen body in ~37 ms.
 - [x] **Tighten the parser's error-recovery path** — audit done
       after PR #152. `ParseClassBody`, `ParseBlock`, `ParseCallArgs`,
       `ParseEnumBody`, `ParseMethod`-params, `ParseInterface`-params
