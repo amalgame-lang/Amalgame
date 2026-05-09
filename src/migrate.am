@@ -57,7 +57,9 @@ public class MigrateCommand {
         Console.WriteError("Flags:")
         Console.WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).")
         Console.WriteError("  --lang <name>        Override extension-based language detection.")
-        Console.WriteError("  --provider <name>    Pick the LLM provider (default: claude — only one in v0).")
+        Console.WriteError("  --provider <name>    Pick the LLM provider. Built-in: claude (CLI), claude-api")
+        Console.WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when")
+        Console.WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.")
         Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
         Console.WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).")
         Console.WriteError("  --no-check           Skip the post-migration `amc --check` validation.")
@@ -71,16 +73,17 @@ public class MigrateCommand {
 
     // ── Entry point ───────────────────────────────────
     public static int Run(int argc) {
-        var input:      string = ""
-        var output:     string = ""
-        var langHint:   string = ""
-        var provider:   string = "claude"
-        var model:      string = ""
-        var dryRun:     bool   = false
-        var promptOnly: bool   = false
-        var noCheck:    bool   = false
-        var force:      bool   = false
-        var maxLines:   int    = 2000
+        var input:        string = ""
+        var output:       string = ""
+        var langHint:     string = ""
+        var provider:     string = ""
+        var providerSet:  bool   = false
+        var model:        string = ""
+        var dryRun:       bool   = false
+        var promptOnly:   bool   = false
+        var noCheck:      bool   = false
+        var force:        bool   = false
+        var maxLines:     int    = 2000
 
         // Skip Args[0] (binary path) and Args[1] ("migrate").
         var i: int = 2
@@ -117,7 +120,8 @@ public class MigrateCommand {
                     Console.WriteError("amc migrate: --provider requires a value")
                     return 1
                 }
-                provider = Args_Get(i)
+                provider    = Args_Get(i)
+                providerSet = true
             } else if (a == "--model") {
                 i = i + 1
                 if (i >= argc) {
@@ -154,6 +158,19 @@ public class MigrateCommand {
             Console.WriteError("usage: amc migrate <file> [--output <out>] [--lang <hint>] [--provider <name>] [--model <id>]")
             Console.WriteError("                         [--dry-run] [--prompt-only] [--no-check] [--force] [--max-lines <n>]")
             return 1
+        }
+
+        // Provider auto-selection (v1.2): when --provider wasn't set,
+        // prefer the API path if ANTHROPIC_API_KEY is in the
+        // environment, else fall back to the claude CLI shell out.
+        // This makes `amc migrate` work on machines without Claude
+        // Code installed, as long as a key is exported.
+        if (!providerSet) {
+            if (Env.Has("ANTHROPIC_API_KEY")) {
+                provider = "claude-api"
+            } else {
+                provider = "claude"
+            }
         }
 
         if (!File.Exists(input)) {
@@ -202,6 +219,15 @@ public class MigrateCommand {
             return 1
         }
 
+        // --prompt-only: dump the combined prompt (what the CLI
+        // provider would send) and exit. Doesn't touch the output
+        // path so an existing .am next to the source isn't a blocker
+        // for inspecting the prompt template.
+        if (promptOnly) {
+            Console.WriteLine(MigrateCommand.BuildPrompt(lang, source))
+            return 0
+        }
+
         // Determine output path.
         var outPath: string = output
         if (String_Length(outPath) == 0) {
@@ -211,15 +237,6 @@ public class MigrateCommand {
             Console.WriteError("amc migrate: output exists: " + outPath)
             Console.WriteError("Pass --force to overwrite.")
             return 1
-        }
-
-        // Build the prompt.
-        let prompt: string = MigrateCommand.BuildPrompt(lang, source)
-
-        // --prompt-only: dump and exit cleanly.
-        if (promptOnly) {
-            Console.WriteLine(prompt)
-            return 0
         }
 
         // --dry-run: report what would happen.
@@ -233,9 +250,12 @@ public class MigrateCommand {
             return 0
         }
 
-        // Real run: dispatch to provider.
+        // Real run: dispatch to provider. Each provider receives
+        // the (lang, source) pair and decides how to format the
+        // prompt — CLI gets a single combined message, the API
+        // gets system/user split with cache_control.
         Console.WriteError("[migrate] processing " + input + " (" + lang + ", " + String_FromInt(lineCount) + " lines, provider=" + provider + ")...")
-        let result: MigrateResult = MigrateCommand.CallProvider(provider, model, prompt)
+        let result: MigrateResult = MigrateCommand.CallProvider(provider, model, lang, source)
         if (!result.Ok) {
             Console.WriteError("amc migrate: " + result.Error)
             return 1
@@ -393,13 +413,22 @@ public class MigrateCommand {
     // and selected guide chapters from disk so the prompt can grow
     // beyond what's reasonable to embed in source. Keep this template
     // in sync with docs/proposals/amc-migrate.md Appendix A.
+    // Combined prompt for providers that don't support a separate
+    // system message (the `claude` CLI). Just concatenates system +
+    // user. The `claude-api` provider sends them separately so the
+    // static prefix can be cached server-side.
     private static string BuildPrompt(string lang, string source) {
-        // We split prompt strings around `{...}` patterns: Amalgame's
-        // own string interpolation kicks in when the lexer sees a `{`
-        // followed by a closing `}` in the same literal, so embedding
-        // examples like Console.WriteLine("x={x}") would be parsed as
-        // an interpolation of a non-existent `x` local. We work around
-        // by isolating the literal braces in their own concat pieces.
+        return MigrateCommand.BuildSystemPrompt(lang) + "\n\n" + MigrateCommand.BuildUserPrompt(lang, source)
+    }
+
+    // System prompt: language-agnostic conventions, idioms, known
+    // limitations, plus (when the docs are reachable on disk) the
+    // grammar reference and language tour. Cacheable across
+    // back-to-back migrations because it doesn't depend on the
+    // source file.
+    private static string BuildSystemPrompt(string lang) {
+        // Bracket pair isolated as locals so the lexer doesn't try
+        // to interpolate `{x}` etc. embedded in the doc text.
         let lb: string = "{"
         let rb: string = "}"
         var p: string = ""
@@ -412,27 +441,27 @@ public class MigrateCommand {
         p = p + "\n"
         p = p + "## Amalgame conventions\n"
         p = p + "- Files start with `namespace <Name>` then declarations.\n"
-        p = p + "- Classes: `public class Name { public Field: int = 0; ... }`.\n"
+        p = p + "- Classes: `public class Name " + lb + " public Field: int = 0; ... " + rb + "`.\n"
         p = p + "- Data classes (record-like): `public data class User(string Name, int Age)`.\n"
         p = p + "- Constructors: `let u = new User(\"Alice\", 30)`.\n"
         p = p + "- Locals: `let x = 1` (immutable), `var y = 2` (mutable).\n"
         p = p + "- Type annotations are optional but supported: `let n: int = 1`.\n"
-        p = p + "- Lambdas: `(x, y) => x + y`, or block: `x => { let d = x*2; return d+1 }`.\n"
+        p = p + "- Lambdas: `(x, y) => x + y`, or block: `x => " + lb + " let d = x*2; return d+1 " + rb + "`.\n"
         p = p + "- Higher-order list: `users.Map(u => u.Name)`, `xs.Filter(x => x > 0)`.\n"
         p = p + "- Generics: `let xs = new List<int>()`, `let m = new Map<string,int>()`.\n"
-        p = p + "- Match expression: `match x { 0 => \"zero\", 1 => \"one\", _ => \"other\" }`.\n"
-        p = p + "- Try/catch: `try { ... } catch (e) { ... }`. Throw with `throw <expr>`.\n"
+        p = p + "- Match expression: `match x " + lb + " 0 => \"zero\", 1 => \"one\", _ => \"other\" " + rb + "`.\n"
+        p = p + "- Try/catch: `try " + lb + " ... " + rb + " catch (e) " + lb + " ... " + rb + "`. Throw with `throw <expr>`.\n"
         p = p + "- Console output: `Console.WriteLine(\"x=" + lb + "x" + rb + "\")` (string interpolation).\n"
         p = p + "- File I/O: `File.ReadAll(path)`, `File.WriteAll(path, text)`.\n"
         p = p + "- Process: `Process.RunCapture(cmd)` returns an exit + stdout.\n"
         p = p + "- HTTP: `Http.Get(url)`, `Http.Post(url, body)` from the runtime.\n"
         p = p + "- Comments: `//` line, `/* ... */` block.\n"
         p = p + "- Null-safe: `obj?.Field`, `a ?? b`. Nullable type: `Foo?`.\n"
-        p = p + "- Enum: `enum Direction { North, South, East, West }`.\n"
-        p = p + "- Interface (method-only, no fields): `interface IDrawable { void Draw() }`.\n"
-        p = p + "  Implement with `class Square implements IDrawable { ... }`.\n"
-        p = p + "- For-in over a collection: `for x in xs { ... }`. Range: `for i in 0..n`.\n"
-        p = p + "- Public entry point: `public class Program { public static void Main(string[] args) { ... } }`.\n"
+        p = p + "- Enum: `enum Direction " + lb + " North, South, East, West " + rb + "`.\n"
+        p = p + "- Interface (method-only, no fields): `interface IDrawable " + lb + " void Draw() " + rb + "`.\n"
+        p = p + "  Implement with `class Square implements IDrawable " + lb + " ... " + rb + "`.\n"
+        p = p + "- For-in over a collection: `for x in xs " + lb + " ... " + rb + "`. Range: `for i in 0..n`.\n"
+        p = p + "- Public entry point: `public class Program " + lb + " public static void Main(string[] args) " + lb + " ... " + rb + " " + rb + "`.\n"
         p = p + "\n"
         p = p + "## Idiomatic patterns\n"
         p = p + "- Prefer immutable `let` over `var`. Loops and accumulators are exceptions.\n"
@@ -451,7 +480,21 @@ public class MigrateCommand {
         p = p + "  hit issues with .Reduce, fall back to a for-in with `var acc`.\n"
         p = p + "- ForEach captures by value: `var sum = 0; xs.ForEach(x => sum = sum + x)`\n"
         p = p + "  does NOT accumulate. Use Reduce for accumulation.\n"
-        p = p + "\n"
+        // v1.3: append on-disk grammar + language tour when reachable.
+        // Keeps the prompt richer and gives the LLM canonical syntax
+        // examples without bloating this source file.
+        let extras: string = MigrateCommand.LoadDocsHeader()
+        if (String_Length(extras) > 0) {
+            p = p + "\n" + extras
+        }
+        return p
+    }
+
+    // User prompt: just the source file + output instructions.
+    // Changes per file, so it's not cacheable. Keeping it short
+    // maximizes the cache hit ratio across batch migrations.
+    private static string BuildUserPrompt(string lang, string source) {
+        var p: string = ""
         p = p + "## Source file to translate\n"
         p = p + "```" + lang + "\n"
         p = p + source
@@ -477,19 +520,190 @@ public class MigrateCommand {
         return p
     }
 
+    // Try to load the on-disk grammar reference and language tour
+    // and append them to the system prompt. We probe a small set of
+    // locations so the tool works both from a source checkout
+    // (./docs/...) and from the directory the amc binary lives in
+    // (<exec-dir>/docs/...). Returns "" if nothing is reachable —
+    // callers fall back to the inline conventions block.
+    private static string LoadDocsHeader() {
+        let candidates = new List<string>()
+        // Preferred: relative to amc binary (works post-install when
+        // docs/ ships next to the executable).
+        let execPath: string = Args_Get(0)
+        let execDir:  string = Path_GetDirectory(execPath)
+        if (String_Length(execDir) > 0) {
+            candidates.Add(execDir)
+        }
+        // Fallback: current working dir (source checkout, dev flow).
+        candidates.Add(".")
+        let cn: int = candidates.Count()
+        for i in 0..cn {
+            let base: string = candidates.Get(i)
+            let grammarPath: string = base + "/docs/language/grammar.ebnf"
+            let tourPath:    string = base + "/docs/guide/02-language-tour.md"
+            if (File.Exists(grammarPath) && File.Exists(tourPath)) {
+                let g: string = File.ReadAll(grammarPath)
+                let t: string = File.ReadAll(tourPath)
+                var out: string = ""
+                out = out + "\n## Amalgame grammar (EBNF)\n\n"
+                out = out + g
+                out = out + "\n\n## Amalgame language tour (excerpts)\n\n"
+                out = out + t
+                return out
+            }
+        }
+        return ""
+    }
+
     // ── Provider dispatch ─────────────────────────────
-    // v0 ships only `claude` (CLI shell out). v1 adds `claude-api`
-    // (Anthropic HTTP via Net.Http.Post + ANTHROPIC_API_KEY).
-    // v2 adds chatgpt / gemini. The dispatch is additive — adding
-    // a new provider is one new entry in this branch chain.
-    private static MigrateResult CallProvider(string provider, string model, string prompt) {
+    // v0   ships `claude`     (CLI shell out).
+    // v1.2 adds `claude-api`  (Anthropic HTTP, auto-selected when
+    //                          ANTHROPIC_API_KEY is set).
+    // v2   adds chatgpt / gemini (other vendor APIs).
+    // Dispatch is additive — a new provider is one new entry.
+    private static MigrateResult CallProvider(string provider, string model, string lang, string source) {
         if (provider == "claude") {
-            return MigrateCommand.CallClaudeCli(model, prompt)
+            // CLI sees one combined prompt — no system/user split
+            // available through `claude -p < file`.
+            return MigrateCommand.CallClaudeCli(model, MigrateCommand.BuildPrompt(lang, source))
+        }
+        if (provider == "claude-api") {
+            // API path takes (lang, source) so it can build the
+            // system field separately and attach cache_control.
+            return MigrateCommand.CallClaudeApi(model, lang, source)
         }
         let res = new MigrateResult()
         res.Ok    = false
-        res.Error = "provider '" + provider + "' not yet supported in v0 (only 'claude' ships in this version)"
+        res.Error = "provider '" + provider + "' not supported (built-in: 'claude', 'claude-api')"
         return res
+    }
+
+    // Anthropic HTTP provider. Reads the API key from
+    // ANTHROPIC_API_KEY. Default model: current Sonnet (override
+    // with --model).
+    //
+    // v1.3: split system / user. The `system` field carries the
+    // language-agnostic conventions block + (if the docs are on
+    // disk) grammar.ebnf and the language tour, marked with
+    // cache_control so Anthropic's prompt cache amortizes the
+    // payload across consecutive migrations within a 5-minute
+    // window. Per-file cost drops from full-prompt-tokens to
+    // just-the-source after the first call.
+    private static MigrateResult CallClaudeApi(string model, string lang, string source) {
+        let res = new MigrateResult()
+        let apiKey: string = Env.Get("ANTHROPIC_API_KEY")
+        if (String_Length(apiKey) == 0) {
+            res.Ok    = false
+            res.Error = "claude-api: ANTHROPIC_API_KEY not set. Export it or use --provider claude (CLI shell out)."
+            return res
+        }
+        var modelId: string = model
+        if (String_Length(modelId) == 0) {
+            modelId = "claude-sonnet-4-6"
+        }
+        let systemPrompt: string = MigrateCommand.BuildSystemPrompt(lang)
+        let userPrompt:   string = MigrateCommand.BuildUserPrompt(lang, source)
+
+        // The `system` field can be a string OR an array of content
+        // blocks. We use the array form so we can attach a
+        // cache_control marker on the static doc block.
+        var body: string = "{"
+        body = body + "\"model\":\"" + modelId + "\","
+        body = body + "\"max_tokens\":8192,"
+        body = body + "\"system\":[{\"type\":\"text\",\"text\":\""
+        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + "\",\"cache_control\":{\"type\":\"ephemeral\"}}],"
+        body = body + "\"messages\":[{\"role\":\"user\",\"content\":\""
+        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + "\"}]}"
+
+        let headers = new Map<string, string>()
+        headers.Set("x-api-key", apiKey)
+        headers.Set("anthropic-version", "2023-06-01")
+        headers.Set("Content-Type", "application/json")
+
+        let resp = Http_PostWithHeaders("https://api.anthropic.com/v1/messages", body, headers)
+        let status: int = resp.Status
+        if (status != 200) {
+            res.Ok    = false
+            res.Error = "claude-api: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
+            return res
+        }
+        let text: string = MigrateCommand.JsonExtractText(resp.Body)
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "claude-api: empty or unparseable response. Raw body:\n" + resp.Body
+            return res
+        }
+        res.Ok      = true
+        res.Content = MigrateCommand.StripFences(text)
+        return res
+    }
+
+    // Minimal JSON-string escaper. Handles the characters that would
+    // otherwise corrupt the request payload (quote, backslash, common
+    // control codes). Sufficient for an LLM prompt body — promote to
+    // a real JSON encoder if we ever need to round-trip arbitrary
+    // structured data.
+    private static string JsonEscape(string s) {
+        var out: string = ""
+        let n: int = String_Length(s)
+        for i in 0..n {
+            let c: string = String_CharAt1(s, i)
+            if (c == "\\") {
+                out = out + "\\\\"
+            } else if (c == "\"") {
+                out = out + "\\\""
+            } else if (c == "\n") {
+                out = out + "\\n"
+            } else if (c == "\r") {
+                out = out + "\\r"
+            } else if (c == "\t") {
+                out = out + "\\t"
+            } else {
+                out = out + c
+            }
+        }
+        return out
+    }
+
+    // Find the first `"text":"..."` value in the JSON response and
+    // return the unescaped string. Anthropic returns assistant
+    // content as `{"content":[{"type":"text","text":"..."}]}`. Same
+    // ad-hoc extraction approach as src/lsp.am's JsonStr — wiring a
+    // full JSON parser would be ~10× this code for one extraction.
+    private static string JsonExtractText(string body) {
+        let key: string = "\"text\":\""
+        let kIdx: int = String_IndexOf(body, key)
+        if (kIdx < 0) { return "" }
+        // Pin the offset addition into typed locals — bootstrap
+        // type inference doesn't track i64 returns through every chain.
+        let kLen: int  = String_Length(key)
+        let start: int = kIdx + kLen
+        let n: int = String_Length(body)
+        var out: string = ""
+        var i: int = start
+        while (i < n) {
+            let c: string = String_CharAt1(body, i)
+            if (c == "\\") {
+                if (i + 1 < n) {
+                    let nxt: string = String_CharAt1(body, i + 1)
+                    if (nxt == "n") { out = out + "\n" }
+                    else if (nxt == "r") { out = out + "\r" }
+                    else if (nxt == "t") { out = out + "\t" }
+                    else if (nxt == "\"") { out = out + "\"" }
+                    else if (nxt == "\\") { out = out + "\\" }
+                    else { out = out + nxt }
+                    i = i + 2
+                    continue
+                }
+            }
+            if (c == "\"") { return out }
+            out = out + c
+            i = i + 1
+        }
+        return out
     }
 
     // Shell out to the local `claude` CLI. The prompt is written to
