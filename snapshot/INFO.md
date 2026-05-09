@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-09T13:44:30+02:00
-Git rev:  34f5613edd6f0fe674b36b51f2ef5984552e8a18
-Branch:   docs/llm-features-update
+Captured: 2026-05-09T13:57:19+02:00
+Git rev:  9612bb64e8ae807a592312c4a0fb52ec0acb6d2f
+Branch:   refactor/cgen-box-unbox-helpers
 Tests:    266 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
