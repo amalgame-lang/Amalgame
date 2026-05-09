@@ -152,7 +152,7 @@ jobs:
         run: |
           gcc -O2 -Iruntime \
               src/amc_lib.c \
-              -lgc -lm -lcurl -lws2_32 -o amc.exe
+              -lgc -lm -lcurl -lws2_32 -lbcrypt -o amc.exe
 
       - name: Determine version
         id: ver
