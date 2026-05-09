@@ -12312,6 +12312,7 @@ code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader() {
     code_string __attribute__((unused)) execPath = Args_Get(0);
     code_string __attribute__((unused)) execDir = Path_GetDirectory(execPath);
     if (String_Length(execDir) > 0) {
+        AmalgameList_add(candidates, (void*)(intptr_t)(code_string_concat(execDir, "/../share/amalgame")));
         AmalgameList_add(candidates, (void*)(intptr_t)(execDir));
     }
     AmalgameList_add(candidates, (void*)(intptr_t)("."));

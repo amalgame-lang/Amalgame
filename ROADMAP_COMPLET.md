@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-08 · `amc 0.3.6` · self-hosted · 187/187 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-09 · `amc 0.4.0` · self-hosted · 263/263 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -67,11 +67,28 @@ keeps recovery easy:
 ### Tooling
 - **`amc fmt`** — formatter that re-emits the AST canonically with
   comment preservation. Idempotent on every compiler source.
-- **VS Code syntax highlighting** (`editors/vscode/`)
+- **`amc lsp`** — workspace-aware LSP server (since v0.3.6 / PR #146):
+  scans every `.am` file under the detected workspace root so
+  cross-file types resolve in any open file. Diagnostics + hover +
+  global completion.
+- **`amc migrate <file|dir>`** — LLM-driven source-to-Amalgame
+  migration (v0.4.0). 21 source extensions auto-detected. Provider
+  abstraction: `claude` (CLI), `claude-api` (Anthropic HTTP),
+  `chatgpt` (OpenAI), `gemini` (Google), `custom` (script). Auto-
+  selection by env var. Directory recursion. Result cache by
+  SHA-256(source + system prompt). Cost estimation in `--dry-run`.
+- **`amc generate "<prompt>"`** — LLM-driven prose-to-Amalgame
+  (v0.4.0). Same provider stack, plus `--stream` via the claude
+  CLI for direct stdout passthrough.
+- **`amc explain <file.am>`** — LLM-driven Amalgame-to-prose
+  (v0.4.0). `--lang` flag for non-English explanations.
+- **VS Code syntax highlighting + LSP client** (`editors/vscode/`)
 
 ### Stdlib
-Console, File, Path, Math, String, List/Map/Set, Http, TcpServer/TcpConn,
-TcpClient, UdpSocket, Args, Exit, Process (v0.3.4: Run + RunCapture).
+Console, File, Path, Math, String, List/Map/Set, Http (with
+`PostWithHeaders` return-type tracked since v0.4.0), TcpServer/TcpConn,
+TcpClient, UdpSocket, Args, Exit, Process (Run + RunCapture),
+Env (Get + Has, since v0.4.0).
 Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
 
 ### Compiler quality
@@ -81,8 +98,19 @@ Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
   graph.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- 170/170 tests in CI under `./amc` (108 core + 50 stdlib + 12 fmt),
-  with no SKIPs — every sample compiles under the self-hosted compiler.
+- **263/263 tests** in CI under `./amc` (201 core + 50 stdlib + 12
+  fmt), zero SKIP. Suite grew significantly with the v0.4.0 LLM
+  features (most additions are hermetic — no real LLM calls).
+- **Lambda v2.5** (PR #142) — non-int signatures unlocked.
+  `xs.Map(x => x.Name)` over `List<Class>` works.
+- **Multi-line method chains** (PR #154) — fluent / LINQ-style code
+  parses cleanly across newlines.
+- **CGen auto-qualify** (PR #155) — `Id = id` in a class method
+  lowers to `self->Id = id`. Lets users from C# / TS / Kotlin skip
+  the explicit `this.` qualifier.
+- **TS-style param syntax** (PR #152) — `Foo(id: int)` accepted as
+  alias for `Foo(int id)`. Also fixed an infinite-loop regression
+  on the same syntax.
 
 ---
 

@@ -20,6 +20,7 @@ VERSION="${AMC_VERSION:-latest}"
 PREFIX="${AMC_PREFIX:-/usr/local}"
 BIN_DIR="$PREFIX/bin"
 LIB_DIR="$PREFIX/lib/amalgame"
+SHARE_DIR="$PREFIX/share/amalgame"
 TMP_DIR="$(mktemp -d)"
 
 # ── Colors ────────────────────────────────────────────────
@@ -269,6 +270,18 @@ fi
 if [[ -d "$EXTRACT_DIR/stdlib" ]]; then
     sudo cp -r "$EXTRACT_DIR/stdlib" "$LIB_DIR/"
     success "Stdlib → $LIB_DIR/stdlib/"
+fi
+
+# Install LLM-prompt source docs (grammar.ebnf + language tour) under
+# share/amalgame so `amc migrate / generate / explain` find them at
+# <exec-dir>/../share/amalgame/docs/... (LoadDocsHeader lookup #1).
+# Without these, the LLM commands fall back to an inline conventions
+# block — still functional but the model loses access to the
+# canonical grammar reference.
+if [[ -d "$EXTRACT_DIR/share/amalgame/docs" ]]; then
+    sudo mkdir -p "$SHARE_DIR"
+    sudo cp -r "$EXTRACT_DIR/share/amalgame/docs" "$SHARE_DIR/"
+    success "LLM prompt docs → $SHARE_DIR/docs/"
 fi
 
 # ── Shell configuration ───────────────────────────────────
