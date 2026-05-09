@@ -32,6 +32,11 @@ run_test() {
     local file="$2"
     local expected="$3"
     local flags="${4:-}"
+    # Optional 5th arg: extra .am files to compile alongside $file.
+    # Used by Amalgame.Json tests to pull in src/stdlib/json.am, since
+    # there's no module loader yet — the test compilation has to see
+    # the library's source. Space-separated; passes through as args.
+    local extra_inputs="${5:-}"
 
     printf "  %-38s" "$name"
 
@@ -47,7 +52,7 @@ run_test() {
     fi
 
     local out_base="$BUILD_DIR/$(basename "${file%.am}")"
-    output=$("$AMC" $flags -o "$out_base" "$file" 2>&1)
+    output=$("$AMC" $flags -o "$out_base" $extra_inputs "$file" 2>&1)
     amc_exit=$?
 
     if [ $amc_exit -ne 0 ]; then
@@ -199,6 +204,37 @@ else
     run_skip "Net: Http.Post"         "no internet"
     run_skip "Net: done"              "no internet"
 fi
+
+# ── Amalgame.Json ──────────────────────────────────────
+# Tests pull in src/stdlib/json.am as a 5th-arg extra input so
+# the compilation sees both the library and the test sample.
+echo ""
+echo "── Amalgame.Json ───────────────────────────"
+JSON_LIB="src/stdlib/json.am"
+run_test "Json: parse null"           "$SAMPLES/stdlib_json.am" "[PASS] parse null"            "" "$JSON_LIB"
+run_test "Json: parse true"           "$SAMPLES/stdlib_json.am" "[PASS] parse true"            "" "$JSON_LIB"
+run_test "Json: parse false"          "$SAMPLES/stdlib_json.am" "[PASS] parse false"           "" "$JSON_LIB"
+run_test "Json: parse int"            "$SAMPLES/stdlib_json.am" "[PASS] parse int"             "" "$JSON_LIB"
+run_test "Json: parse negative int"   "$SAMPLES/stdlib_json.am" "[PASS] parse negative int"    "" "$JSON_LIB"
+run_test "Json: parse float kind"     "$SAMPLES/stdlib_json.am" "[PASS] parse float kind"      "" "$JSON_LIB"
+run_test "Json: parse string"         "$SAMPLES/stdlib_json.am" "[PASS] parse string"          "" "$JSON_LIB"
+run_test "Json: parse escapes"        "$SAMPLES/stdlib_json.am" "[PASS] parse escapes"         "" "$JSON_LIB"
+run_test "Json: parse empty array"    "$SAMPLES/stdlib_json.am" "[PASS] parse empty array"     "" "$JSON_LIB"
+run_test "Json: parse empty object"   "$SAMPLES/stdlib_json.am" "[PASS] parse empty object"    "" "$JSON_LIB"
+run_test "Json: parse nested object"  "$SAMPLES/stdlib_json.am" "[PASS] parse nested object"   "" "$JSON_LIB"
+run_test "Json: parse LSP request"    "$SAMPLES/stdlib_json.am" "[PASS] parse LSP request"     "" "$JSON_LIB"
+run_test "Json: parse usage stats"    "$SAMPLES/stdlib_json.am" "[PASS] parse usage stats"     "" "$JSON_LIB"
+run_test "Json: Has key"              "$SAMPLES/stdlib_json.am" "[PASS] Has key"               "" "$JSON_LIB"
+run_test "Json: error truncated"      "$SAMPLES/stdlib_json.am" "[PASS] error truncated"       "" "$JSON_LIB"
+run_test "Json: error trailing comma" "$SAMPLES/stdlib_json.am" "[PASS] error trailing comma"  "" "$JSON_LIB"
+run_test "Json: error non-json"       "$SAMPLES/stdlib_json.am" "[PASS] error non-json"        "" "$JSON_LIB"
+run_test "Json: encode null"          "$SAMPLES/stdlib_json.am" "[PASS] encode null"           "" "$JSON_LIB"
+run_test "Json: encode bool"          "$SAMPLES/stdlib_json.am" "[PASS] encode bool"           "" "$JSON_LIB"
+run_test "Json: encode int"           "$SAMPLES/stdlib_json.am" "[PASS] encode int"            "" "$JSON_LIB"
+run_test "Json: encode string"        "$SAMPLES/stdlib_json.am" "[PASS] encode string"         "" "$JSON_LIB"
+run_test "Json: encode escape"        "$SAMPLES/stdlib_json.am" "[PASS] encode escape"         "" "$JSON_LIB"
+run_test "Json: round-trip nested"    "$SAMPLES/stdlib_json.am" "[PASS] round-trip nested"     "" "$JSON_LIB"
+run_test "Json: escape direct"        "$SAMPLES/stdlib_json.am" "[PASS] escape direct"         "" "$JSON_LIB"
 
 # ── Summary ────────────────────────────────────────────
 echo ""

@@ -7,6 +7,86 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.2] — 2026-05-09
+
+The "stdlib + DX" release. Adds a real JSON module, a project
+scaffolder, and IDE-friendly member completion. Suite goes from
+**263/263** to **307/307**.
+
+### Added
+
+- **`Amalgame.Json`** — first-class JSON parser, encoder, and
+  accessor surface. Strict RFC 8259 with full escape support
+  (incl. `\uXXXX` + surrogate pairs). Class-with-tag `JsonValue`
+  with `Is*` / `As*` / `Get` / `At` / `Length` / `Keys`. Static
+  `Json.Parse` / `Encode` / `EscapeString` / `Of*` factories.
+  Lives in the new `src/stdlib/` directory. Replaces 4 ad-hoc
+  substring extractors in the compiler in a future PR (phase 2);
+  this release ships the library standalone. Direct prep for
+  `amc migrate v3` cost reporting via nested `usage.input_tokens`.
+  [PR #182, #183]
+
+- **`amc new <name>`** — project scaffolder à la `cargo new`.
+  Three templates: `exe` (default — `src/main.am` + a passing
+  test), `lib` (public class skeleton), `test` (test bundle
+  only). Each generates a working `build.sh` that locates the
+  Amalgame runtime via `$AMALGAME_HOME` / install dirs / `which
+  amc`, plus README, `.gitignore`. Path-aware: `amc new
+  path/to/foo` works (basename is the namespace stem). Refusal
+  on existing dirs unless `--force`. [PR #184]
+
+- **LSP member completion** — `obj.<cursor>` now narrows to the
+  methods/fields of the receiver type. Two-step receiver
+  resolution: global-symbol lookup (covers `Json.<cursor>`,
+  user-class names) then a local-decl text scan covering
+  `let x = new T(...)` / `let x: T = ...`. Falls back to the
+  global list for `this.<cursor>`, chained calls, builtin C
+  modules. [PR #185]
+
+- **Editor integration on install** — roadmap item added (auto-
+  wire VS Code `.vsix` / Neovim lspconfig snippet / Helix
+  `languages.toml` entry on first install). [PR #181]
+
+### Documentation
+
+- `docs/proposals/amalgame-json.md` — full design doc for the
+  JSON module: motivation, type design, API surface, 3-phase
+  migration plan, testing strategy, decisions captured in review.
+  [PR #182]
+
+- `ROADMAP_COMPLET.md` — LSP enum-lookup item marked resolved
+  (verified empirically: 0 "Unknown symbol" diagnostics on
+  `lexer.am` via `amc lsp`). New typechecker item parked with
+  investigation findings on the spurious "Return type mismatch"
+  cases. [PR #181, #186]
+
+### Infrastructure
+
+- Repo transferred from `BastienMOUGET/Amalgame` to
+  `amalgame-lang/Amalgame`. All code, docs, install scripts, and
+  publication recipes updated to the new URL. GitHub redirects
+  the old URLs for ~1 year; this lands canonical references
+  ahead of that window. [PR #187]
+
+- `tests/run_stdlib_tests.sh` extended with a 5th-arg
+  `extra_inputs` so per-module tests can pull in a stdlib source
+  file alongside the sample (used by the Json suite). [PR #183]
+
+- `tests/run_amc_new_tests.sh` added and wired into
+  `run_all_tests.sh`. 20 assertions: file/dir presence per
+  template, end-to-end compile + run for `exe`, error paths.
+  [PR #184]
+
+### Known issues (unchanged from v0.4.1)
+
+- Typechecker reports spurious "Return type mismatch" on enum-
+  member returns in some `lexer.am` IF-body shapes (37 cases via
+  the LSP). Doesn't reproduce on minimal cross-file repros.
+  Investigation findings captured in `ROADMAP_COMPLET.md`; next
+  step documented (instrument `CheckReturn`).
+
+---
+
 ## [v0.4.1] — 2026-05-09
 
 Patch release. The v0.4.0 binary still printed `amc 0.3.6` from
@@ -522,8 +602,11 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
-[v0.3.6]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.6
-[v0.3.5]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.5
-[v0.3.4]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.4
-[v0.3.3]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.3
-[v0.3.2]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.2
+[v0.4.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.2
+[v0.4.1]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.1
+[v0.4.0]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.0
+[v0.3.6]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.6
+[v0.3.5]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.5
+[v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
+[v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
+[v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
