@@ -329,18 +329,20 @@ before the next big language addition.
       Pattern documented in `docs/guide/07-internals.md`'s "Adding a
       new statement" recipe — any new while-loop that calls a sub-
       parser must include a position-watchdog.
-- [ ] **LSP false positives on enum types** — opening any compiler
-      file that references an `enum` declared elsewhere produces a
-      flood of "Unknown symbol 'TokenType'" / "Unknown symbol
-      'NodeKind'" / "Unknown symbol 'SourceSnippet'" diagnostics
-      (~70+ on `lexer.am` alone, similar on every other file). The
-      workspace-aware LSP (PR #146) handles classes correctly via
-      `PreRegisterMember`, but enum names aren't pre-registered the
-      same way. Fix: extend `CollectDecl` (or a sibling pass) to
-      register every `ENUM_DECL` name as a global so the resolver
-      `LookupInScopes` finds it. Should also catch the
-      `MigrateCommand` / `GenerateCommand` / `ExplainCommand`
-      cross-file class references that occasionally show up.
+- [x] **LSP false positives on enum types** (resolved) — verified
+      empirically on 2026-05-09: opening `src/lexer/lexer.am`
+      through `amc lsp` now produces 0 "Unknown symbol"
+      diagnostics (was ~70+). `FullResolver.CollectDecl`
+      (`src/resolver/resolver.am:516-525`) handles `ENUM_DECL` the
+      same way as `CLASS_DECL`: declares the enum name as a global,
+      then walks members via `CollectEnumMembers` to register
+      qualified names (`TokenType_KW_LET`) too. Cross-file enum
+      references resolve through the workspace scan (PR #146).
+      Note: a separate typechecker bug — "Return type mismatch:
+      expected 'TokenType', got 'void'" on enum-member returns
+      from one file when the enum lives in another (37 cases on
+      `lexer.am`) — is tracked as an open compiler internal item
+      below; it does not reproduce on minimal cross-file repros.
 
 ---
 
@@ -398,6 +400,33 @@ before the next big language addition.
       via `amalgame.serverPath` and `amalgame.enableLsp`.
 - [x] **`amc lsp` hover + global completion** (v0.3.5) — follow-up on top of v0.3.4
       diagnostics. Needs pos→symbol lookup on the AST.
+- [ ] **Editor integration on install** — when a user installs
+      Amalgame (`install.sh`, future `amc-up` package script,
+      Homebrew formula, `.deb`/`.rpm`), automatically wire the
+      LSP into the editors present on the host:
+        - **VS Code / VS Code Insiders / VSCodium**: detect via
+          `code --list-extensions`; if missing, install
+          `editors/vscode/` from the local `.vsix` bundled in
+          the release tarball, or publish to the Marketplace and
+          install by ID. Set `amalgame.serverPath` to the resolved
+          `amc` binary so the extension doesn't depend on `$PATH`.
+        - **Neovim**: drop a `lspconfig` snippet into
+          `~/.config/nvim/lua/amalgame_lsp.lua` and print the
+          one-line `require("amalgame_lsp")` users add to
+          `init.lua` (don't edit `init.lua` itself — too many
+          competing setups).
+        - **Helix**: append an `[[language]]` block to
+          `~/.config/helix/languages.toml` (idempotent — skip if
+          already present).
+        - **Zed / Sublime / Emacs**: emit a one-page setup hint
+          in the install summary pointing at `docs/guide/`.
+      Implementation: a post-install step (`install/setup-editors.sh`)
+      that's opt-out via `--no-editors` and prints a per-editor
+      summary at the end ("VS Code: ✓ extension installed",
+      "Neovim: snippet at <path>, source it from your init.lua").
+      Bundle the `.vsix` in release tarballs (already bundling docs
+      since v0.4.0) so this works air-gapped. Open question:
+      auto-detect editors vs. interactive prompt.
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
 - [ ] **Inlay hints + code actions** — once hover/completion is in.
 
