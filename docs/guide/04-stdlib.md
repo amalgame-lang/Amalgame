@@ -475,11 +475,109 @@ form body, or wait for a dedicated `Form` decoder.
 > return values in that range, so encoding entropy as Base64/Hex
 > works without an extra cast layer.
 
+## DateTime — Instant, Duration, Stopwatch
+
+`Amalgame.DateTime` ships three small classes — `Instant`,
+`Duration`, and `Stopwatch` — plus an `InstantResult` shape for
+parse fallout. v1 is **UTC-only**: explicit `+HH:MM` offsets in
+ISO 8601 input are rejected, and there is no concept of local
+time, named timezones, or DST. The roadmap tracks those as
+follow-ups; the current API is small enough that adding a
+parallel `LocalTime` later won't churn existing call sites.
+
+```amalgame
+import Amalgame.DateTime
+
+let now: Instant = Instant.Now()
+Console.WriteLine(now.Format())          // 2026-05-09T22:30:00.123456789Z
+
+// ISO 8601 round-trip (UTC subset)
+let r: InstantResult = Instant.Parse("2026-01-15T08:00:00.5Z")
+if (r.Ok) {
+    let v: Instant = r.Value
+    Console.WriteLine(v.UnixSeconds())   // 1768464000
+}
+
+// Arithmetic with Duration
+let later: Instant = now.Add(Duration.FromMinutes(30))
+let elapsed: Duration = later.Since(now)
+Console.WriteLine(elapsed.Format())      // 30m0s
+
+// Stopwatch over the monotonic clock — immune to wall-clock jumps
+let sw: Stopwatch = new Stopwatch()
+heavyComputation()
+Console.WriteLine("took " + sw.Elapsed().Format())
+```
+
+### Instant
+
+| Method                       | Returns           | Notes                              |
+|------------------------------|-------------------|------------------------------------|
+| `new Instant(nanos)`         | `Instant`         | Direct ns-since-epoch constructor  |
+| `Instant.Now()`              | `Instant`         | Wall clock (NTP-affected)          |
+| `Instant.FromUnixSeconds(s)` | `Instant`         |                                    |
+| `Instant.FromUnixMillis(ms)` | `Instant`         |                                    |
+| `Instant.FromUnixNanos(ns)`  | `Instant`         |                                    |
+| `Instant.Parse(s)`           | `InstantResult`   | RFC 3339 / ISO 8601, UTC only      |
+| `UnixSeconds()`              | `int`             |                                    |
+| `UnixMillis()`               | `int`             |                                    |
+| `UnixNanos()`                | `int`             |                                    |
+| `Format()`                   | `string`          | Fixed 9-digit fraction + `Z`       |
+| `Add(d)` / `Subtract(d)`     | `Instant`         | Shift by Duration                  |
+| `Since(other)`               | `Duration`        | `this - other`                     |
+| `IsBefore` / `IsAfter` / `Equals` | `bool`       |                                    |
+
+### Duration
+
+| Method                             | Returns       |
+|------------------------------------|---------------|
+| `new Duration(nanos)`              | `Duration`    |
+| `Duration.FromSeconds / Millis / Minutes / Hours / Days` | `Duration` |
+| `Nanos / Millis / Seconds`         | `int`         |
+| `SecondsFloat()`                   | `float`       |
+| `Plus / Minus / Times / Negate`    | `Duration`    |
+| `IsZero / IsNegative`              | `bool`        |
+| `Format()`                         | `string`      |
+
+`Format()` emits Go-style human readable shorthand: `0s`,
+`500ns`, `1us`, `1ms`, `5s`, `2m5s`, `1h2m5s`. Negative
+durations get a leading `-`.
+
+### Stopwatch
+
+| Method                  | Returns       |
+|-------------------------|---------------|
+| `new Stopwatch()`       | captures the monotonic clock |
+| `Elapsed()`             | `Duration` since construction |
+| `Reset()`               | `Duration` since last start, then rewinds to now |
+
+Use Stopwatch — not `Instant.Now()` differences — for measuring
+elapsed time. The monotonic clock is unaffected by NTP
+adjustments and manual clock changes.
+
+### Limitations to know about
+
+- **UTC only.** No timezones, no local-time conversion, no DST
+  handling. Track 1: a future `LocalTime` companion class.
+- **Parse strict on `Z`.** Inputs like `2026-05-09T22:30:00+02:00`
+  return `Ok=false`. If you need offset support, normalize to
+  UTC at the source for now.
+- **Leap seconds.** A `:60` second in parse input is accepted
+  (per ISO 8601) but clamped to `:59` internally — strict
+  leap-second handling needs a UTC↔TAI table that we don't
+  ship. In practice, almost no public timestamp source will
+  feed you a `:60` value anyway (most use UTC-SLS or smear).
+- **i64 nanoseconds.** Range is roughly **1678-09-21 → 2262-04-11**.
+  Outside that window, arithmetic silently wraps. Fine for the
+  decade or two ahead; the API can grow a `Date` (no time of
+  day, larger range) if applications outside this window become
+  a thing.
+
 ## What's missing
 
 - Bigger Math (trig, logs)
 - Async/iter/streaming abstractions over collections
-- Date/Time
+- Local time / timezones (deferred from DateTime v1)
 - Regex
 - Process spawning beyond `Args` / `Exit` (basic `Process.Run`
   / `Process.RunCapture` already in)

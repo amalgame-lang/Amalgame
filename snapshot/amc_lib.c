@@ -10,6 +10,7 @@
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
 #include "Amalgame_Random.h"
+#include "Amalgame_DateTime.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -49,6 +50,10 @@ typedef struct _Amalgame_Compiler_Random Amalgame_Compiler_Random;
 typedef struct _Amalgame_Compiler_Base64 Amalgame_Compiler_Base64;
 typedef struct _Amalgame_Compiler_Hex Amalgame_Compiler_Hex;
 typedef struct _Amalgame_Compiler_Url Amalgame_Compiler_Url;
+typedef struct _Amalgame_Compiler_Duration Amalgame_Compiler_Duration;
+typedef struct _Amalgame_Compiler_InstantResult Amalgame_Compiler_InstantResult;
+typedef struct _Amalgame_Compiler_Instant Amalgame_Compiler_Instant;
+typedef struct _Amalgame_Compiler_Stopwatch Amalgame_Compiler_Stopwatch;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -4131,6 +4136,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Random.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_DateTime.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -8349,6 +8355,11 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_BytesToI64", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_TimeSeedNanos", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_SystemBytes", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_NowNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_NowMonotonicNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_FormatIso", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_ParseIsoNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_IsParseError", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
@@ -12697,6 +12708,333 @@ static i64 Amalgame_Compiler_Url_HexValue(code_string c) {
         return upper;
     }
     return -1;
+}
+
+struct _Amalgame_Compiler_Duration {
+    i64 nanos;
+};
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromSeconds(i64 s);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMillis(i64 ms);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMinutes(i64 m);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromHours(i64 h);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromDays(i64 d);
+i64 Amalgame_Compiler_Duration_Nanos(Amalgame_Compiler_Duration* self);
+i64 Amalgame_Compiler_Duration_Millis(Amalgame_Compiler_Duration* self);
+i64 Amalgame_Compiler_Duration_Seconds(Amalgame_Compiler_Duration* self);
+double Amalgame_Compiler_Duration_SecondsFloat(Amalgame_Compiler_Duration* self);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Plus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Minus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Times(Amalgame_Compiler_Duration* self, i64 k);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Negate(Amalgame_Compiler_Duration* self);
+code_bool Amalgame_Compiler_Duration_IsZero(Amalgame_Compiler_Duration* self);
+code_bool Amalgame_Compiler_Duration_IsNegative(Amalgame_Compiler_Duration* self);
+code_string Amalgame_Compiler_Duration_Format(Amalgame_Compiler_Duration* self);
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_new(i64 nanos) {
+    Amalgame_Compiler_Duration* self = (Amalgame_Compiler_Duration*) GC_MALLOC(sizeof(Amalgame_Compiler_Duration));
+    self->nanos = nanos;
+    return self;
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromSeconds(i64 s) {
+    (void)s;
+    return Amalgame_Compiler_Duration_new(s * 1000000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMillis(i64 ms) {
+    (void)ms;
+    return Amalgame_Compiler_Duration_new(ms * 1000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromMinutes(i64 m) {
+    (void)m;
+    return Amalgame_Compiler_Duration_new(m * 60 * 1000000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromHours(i64 h) {
+    (void)h;
+    return Amalgame_Compiler_Duration_new(h * 3600 * 1000000000);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_FromDays(i64 d) {
+    (void)d;
+    return Amalgame_Compiler_Duration_new(d * 86400 * 1000000000);
+}
+
+i64 Amalgame_Compiler_Duration_Nanos(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos;
+}
+
+i64 Amalgame_Compiler_Duration_Millis(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos / 1000000;
+}
+
+i64 Amalgame_Compiler_Duration_Seconds(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos / 1000000000;
+}
+
+double Amalgame_Compiler_Duration_SecondsFloat(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos / 1000000000.0;
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Plus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) n = self->nanos + other->nanos;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Minus(Amalgame_Compiler_Duration* self, Amalgame_Compiler_Duration* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) n = self->nanos - other->nanos;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Times(Amalgame_Compiler_Duration* self, i64 k) {
+    (void)self;
+    (void)k;
+    i64 __attribute__((unused)) n = self->nanos * k;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_Negate(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    i64 __attribute__((unused)) n = 0 - self->nanos;
+    return Amalgame_Compiler_Duration_new(n);
+}
+
+code_bool Amalgame_Compiler_Duration_IsZero(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos == 0;
+}
+
+code_bool Amalgame_Compiler_Duration_IsNegative(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    return self->nanos < 0;
+}
+
+code_string Amalgame_Compiler_Duration_Format(Amalgame_Compiler_Duration* self) {
+    (void)self;
+    if (self->nanos == 0) {
+        return "0s";
+    }
+    i64 __attribute__((unused)) n = self->nanos;
+    code_string __attribute__((unused)) prefix = "";
+    if (n < 0) {
+        prefix = "-";
+        n = 0 - n;
+    }
+    if (n < 1000) {
+        return code_string_concat(code_string_concat(prefix, String_FromInt(n)), "ns");
+    }
+    if (n < 1000000) {
+        i64 __attribute__((unused)) us = n / 1000;
+        return code_string_concat(code_string_concat(prefix, String_FromInt(us)), "us");
+    }
+    if (n < 1000000000) {
+        i64 __attribute__((unused)) ms = n / 1000000;
+        return code_string_concat(code_string_concat(prefix, String_FromInt(ms)), "ms");
+    }
+    i64 __attribute__((unused)) totalSec = n / 1000000000;
+    if (totalSec < 60) {
+        i64 __attribute__((unused)) ms = n / 1000000 % 1000;
+        if (ms == 0) {
+            return code_string_concat(code_string_concat(prefix, String_FromInt(totalSec)), "s");
+        }
+        code_string __attribute__((unused)) msStr = String_FromInt(ms);
+        if (ms < 100) {
+            msStr = code_string_concat("0", msStr);
+        }
+        if (ms < 10) {
+            msStr = code_string_concat("0", msStr);
+        }
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(prefix, String_FromInt(totalSec)), "."), msStr), "s");
+    }
+    i64 __attribute__((unused)) totalMin = totalSec / 60;
+    i64 __attribute__((unused)) secPart = totalSec % 60;
+    if (totalMin < 60) {
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(prefix, String_FromInt(totalMin)), "m"), String_FromInt(secPart)), "s");
+    }
+    i64 __attribute__((unused)) totalHr = totalMin / 60;
+    i64 __attribute__((unused)) minPart = totalMin % 60;
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(prefix, String_FromInt(totalHr)), "h"), String_FromInt(minPart)), "m"), String_FromInt(secPart)), "s");
+}
+
+struct _Amalgame_Compiler_InstantResult {
+    code_bool Ok;
+    Amalgame_Compiler_Instant* Value;
+    code_string Error;
+};
+
+
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new(Amalgame_Compiler_Instant* initial) {
+    Amalgame_Compiler_InstantResult* self = (Amalgame_Compiler_InstantResult*) GC_MALLOC(sizeof(Amalgame_Compiler_InstantResult));
+    self->Ok = 0;
+    self->Value = initial;
+    self->Error = "";
+    return self;
+}
+
+struct _Amalgame_Compiler_Instant {
+    i64 nanos;
+};
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Now();
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixSeconds(i64 s);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixMillis(i64 ms);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixNanos(i64 ns);
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_Instant_Parse(code_string s);
+i64 Amalgame_Compiler_Instant_UnixNanos(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_UnixMillis(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self);
+code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Subtract(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Instant_Since(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+code_bool Amalgame_Compiler_Instant_IsBefore(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+code_bool Amalgame_Compiler_Instant_IsAfter(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+code_bool Amalgame_Compiler_Instant_Equals(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_new(i64 nanos) {
+    Amalgame_Compiler_Instant* self = (Amalgame_Compiler_Instant*) GC_MALLOC(sizeof(Amalgame_Compiler_Instant));
+    self->nanos = nanos;
+    return self;
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Now() {
+    i64 __attribute__((unused)) n = DateTime_NowNanos();
+    return Amalgame_Compiler_Instant_new(n);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixSeconds(i64 s) {
+    (void)s;
+    return Amalgame_Compiler_Instant_new(s * 1000000000);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixMillis(i64 ms) {
+    (void)ms;
+    return Amalgame_Compiler_Instant_new(ms * 1000000);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixNanos(i64 ns) {
+    (void)ns;
+    return Amalgame_Compiler_Instant_new(ns);
+}
+
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_Instant_Parse(code_string s) {
+    (void)s;
+    Amalgame_Compiler_Instant* __attribute__((unused)) zero = Amalgame_Compiler_Instant_new(0);
+    Amalgame_Compiler_InstantResult* __attribute__((unused)) res = Amalgame_Compiler_InstantResult_new(zero);
+    i64 __attribute__((unused)) n = DateTime_ParseIsoNanos(s);
+    code_bool __attribute__((unused)) bad = DateTime_IsParseError(n);
+    if (bad) {
+        res->Ok = 0;
+        res->Error = "invalid ISO 8601 / RFC 3339 timestamp (UTC subset only — must end with Z)";
+        return res;
+    }
+    res->Ok = 1;
+    res->Value = Amalgame_Compiler_Instant_new(n);
+    res->Error = "";
+    return res;
+}
+
+i64 Amalgame_Compiler_Instant_UnixNanos(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return self->nanos;
+}
+
+i64 Amalgame_Compiler_Instant_UnixMillis(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return self->nanos / 1000000;
+}
+
+i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return self->nanos / 1000000000;
+}
+
+code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self) {
+    (void)self;
+    return DateTime_FormatIso(self->nanos);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d) {
+    (void)self;
+    (void)d;
+    i64 __attribute__((unused)) dn = Amalgame_Compiler_Duration_Nanos(d);
+    i64 __attribute__((unused)) total = self->nanos + dn;
+    return Amalgame_Compiler_Instant_new(total);
+}
+
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Subtract(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d) {
+    (void)self;
+    (void)d;
+    i64 __attribute__((unused)) dn = Amalgame_Compiler_Duration_Nanos(d);
+    i64 __attribute__((unused)) total = self->nanos - dn;
+    return Amalgame_Compiler_Instant_new(total);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Instant_Since(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    i64 __attribute__((unused)) diff = self->nanos - on;
+    return Amalgame_Compiler_Duration_new(diff);
+}
+
+code_bool Amalgame_Compiler_Instant_IsBefore(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    return self->nanos < on;
+}
+
+code_bool Amalgame_Compiler_Instant_IsAfter(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    return self->nanos > on;
+}
+
+code_bool Amalgame_Compiler_Instant_Equals(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other) {
+    (void)self;
+    (void)other;
+    i64 __attribute__((unused)) on = Amalgame_Compiler_Instant_UnixNanos(other);
+    return self->nanos == on;
+}
+
+struct _Amalgame_Compiler_Stopwatch {
+    i64 startNanos;
+};
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Elapsed(Amalgame_Compiler_Stopwatch* self);
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_Stopwatch* self);
+
+Amalgame_Compiler_Stopwatch* Amalgame_Compiler_Stopwatch_new() {
+    Amalgame_Compiler_Stopwatch* self = (Amalgame_Compiler_Stopwatch*) GC_MALLOC(sizeof(Amalgame_Compiler_Stopwatch));
+    self->startNanos = DateTime_NowMonotonicNanos();
+    return self;
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Elapsed(Amalgame_Compiler_Stopwatch* self) {
+    (void)self;
+    i64 __attribute__((unused)) now = DateTime_NowMonotonicNanos();
+    i64 __attribute__((unused)) diff = now - self->startNanos;
+    return Amalgame_Compiler_Duration_new(diff);
+}
+
+Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_Stopwatch* self) {
+    (void)self;
+    i64 __attribute__((unused)) now = DateTime_NowMonotonicNanos();
+    i64 __attribute__((unused)) diff = now - self->startNanos;
+    self->startNanos = now;
+    return Amalgame_Compiler_Duration_new(diff);
 }
 
 struct _Amalgame_Compiler_LspServer {

@@ -330,6 +330,21 @@ before the next big language addition.
       class as a `public static` method (matches the existing
       facade pattern in `Amalgame.Json`). Worth supporting because
       free helpers are a natural fit for utility modules.
+- [ ] **CGen: constructor forward-decls don't precede call
+      sites.** Surfaced while writing `Amalgame.DateTime`
+      (2026-05-09). If class A's constructor calls `new B(...)`
+      and B is declared later in the same file, the bootstrap
+      cgen emits A's constructor body before B's `_new`
+      function, triggering an implicit declaration warning that
+      then conflicts with the real signature ("conflicting types
+      for B_new"). gcc still tolerates it as a warning so the
+      build limps through, but the produced binary may be wrong
+      if the compiler picks `int()` semantics for the implicit
+      decl. Workaround applied in datetime.am: `InstantResult`
+      takes the initial Instant as a constructor parameter
+      instead of building one inline. Real fix is to forward-
+      declare every `<Class>_new` signature at the top of pass2
+      output, before any class body emits.
 - [ ] **Snapshot size** — `snapshot/amc_lib.c` is ~12 500 lines,
       tracked in git for the bootstrap chain. Each compiler PR
       regenerates it and the diff dominates the review noise. Two
@@ -504,22 +519,34 @@ before the next big language addition.
 
 - [ ] **Core stdlib expansion** — fill in the gaps that everyday
       Amalgame code currently has to fake or shell out for:
-      - `Amalgame.DateTime` — wall-clock, monotonic, parsing,
-        formatting, durations.
-      - `Amalgame.Json` — parse + serialize, schemaless
-        `JsonValue` tree first, typed binding later.
-      - `Amalgame.Regex` — PCRE-style or RE2 binding, capture
+      - [x] `Amalgame.Json` — parse + serialize, schemaless
+        `JsonValue` tree first, typed binding later. (PR #182, #183, #193)
+      - [x] `Amalgame.Random` — seeded PRNG + crypto-grade source
+        for tokens / IDs. (PR #200)
+      - [x] `Amalgame.Encoding` — Base64, hex, URL encode/decode.
+        (PR #201)
+      - [x] `Amalgame.DateTime` — Instant + Duration + Stopwatch,
+        UTC-only, RFC 3339 strict (PR pending). Local time and
+        timezone follow-up tracked below.
+      - [ ] `Amalgame.Regex` — PCRE-style or RE2 binding, capture
         groups exposed as `Match` records.
-      - `Amalgame.Random` — seeded PRNG + crypto-grade source
-        for tokens / IDs.
-      - `Amalgame.Encoding` — Base64, hex, URL encode/decode.
-      - `Amalgame.Compress` — gzip, deflate (zip later).
-      - `Amalgame.Crypto` — SHA-256, HMAC, constant-time compare.
-      - `Amalgame.Threading` — at minimum a thread pool +
+      - [ ] `Amalgame.Compress` — gzip, deflate (zip later).
+      - [ ] `Amalgame.Crypto` — SHA-256, HMAC, constant-time compare.
+      - [ ] `Amalgame.Threading` — at minimum a thread pool +
         Mutex/Channel; needs runtime-side care around libgc.
       Each is a small project on its own; ship as separate PRs
       and add docs/guide entries in lockstep. Tied to the open
       "Stdlib delivery model" design question below.
+- [ ] **DateTime v2** — local time + named timezones. Adds a
+      `LocalTime` companion class wrapping `(instant, zoneId)`
+      with a `Now`, `In(zone)`, breakdown into Y/M/D/h/m/s,
+      and `strftime`-ish formatter. Needs a way to ship tzdata:
+      either bundle a stripped IANA dataset in the runtime, or
+      delegate to the OS (POSIX `TZ` env + `/usr/share/zoneinfo`,
+      Windows `GetDynamicTimeZoneInformation`). Also covers
+      explicit `+HH:MM` offsets in Parse, currently rejected.
+      Wait until a real consumer needs it — the v1 UTC API
+      already covers most server-side use cases.
 - [ ] **GUI / Forms toolkit** — bindings SDL2 dans la stdlib
       (`Amalgame.UI` ou similaire) avec une couche "Forms" au-dessus
       pour les widgets courants (Window, Button, TextField, Layout).
