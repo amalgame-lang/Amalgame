@@ -1,0 +1,45 @@
+namespace Tests
+
+// Multi-line method chains: a method call placed on a new line after
+// the receiver is parsed as a continuation of the same expression
+// (rather than a fresh statement). Pattern is canonical for fluent
+// APIs across TS/C#/Java/Kotlin/Swift, and is what `claude` produces
+// when asked to translate LINQ-style code to Amalgame.
+//
+//   xs
+//       .Filter(...)
+//       .Map(...)
+//
+// Before this fix, ParsePostfix bailed at the NEWLINE before `.` and
+// the resolver complained "Unknown symbol 'Filter'" with a phantom
+// receiver. The fix peeks past NEWLINEs only when the next non-NL
+// token is `.` or `?.`, so real statement boundaries stay intact.
+
+public data class User(string Name, int Age)
+
+public class Program {
+    public static void Main(string[] args) {
+        let users = new List<User>()
+        users.Add(new User("Alice", 30))
+        users.Add(new User("Bob", 17))
+        users.Add(new User("Carol", 25))
+
+        // 3-step chain across 4 lines.
+        let names = users
+            .Filter(u => u.Age >= 18)
+            .Map(u => u.Name)
+
+        let n0: string = names.Get(0)
+        let n1: string = names.Get(1)
+        Console.WriteLine("first: {n0}")
+        Console.WriteLine("last: {n1}")
+
+        // Statement boundary preserved: a NEWLINE not followed by
+        // a dot stays a statement separator.
+        let xs = new List<int>()
+        xs.Add(1)
+        xs.Add(2)
+        let sum: int = xs.Reduce(0, (acc, x) => acc + x)
+        Console.WriteLine("sum: {sum}")
+    }
+}
