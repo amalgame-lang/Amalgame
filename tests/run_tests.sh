@@ -690,6 +690,46 @@ run_generate_check "generate: claude-api no key" "ANTHROPIC_API_KEY not set" "te
 run_generate_check "generate: unknown provider" "not supported (built-in"  "test"        --provider gemini-x
 run_generate_check "generate: no prompt"        "no prompt given"
 
+# ── amc explain ─────────────────────────────────────────
+echo ""
+echo "── amc explain ─────────────────────────"
+
+run_explain_check() {
+    local name="$1"
+    local pattern="$2"
+    shift 2
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" explain "$@" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# A small Amalgame fixture for explain tests.
+explain_fixture="$BUILD_DIR/explain_fixture.am"
+cat > "$explain_fixture" <<'EOF'
+namespace Demo
+public class Program {
+    public static void Main(string[] args) { Console.WriteLine("hi") }
+}
+EOF
+
+run_explain_check "explain: --help"           "Usage: amc explain"      --help
+run_explain_check "explain: dry-run"          "would explain"           "$explain_fixture" --dry-run
+run_explain_check "explain: dry-run lang"     "output lang:   English"  "$explain_fixture" --dry-run
+run_explain_check "explain: lang override"    "output lang:   French"   "$explain_fixture" --dry-run --lang French
+run_explain_check "explain: prompt-only sys"  "explaining Amalgame"     "$explain_fixture" --prompt-only
+run_explain_check "explain: prompt-only src"  "Amalgame source: "       "$explain_fixture" --prompt-only
+run_explain_check "explain: file not found"   "file not found"          "/nonexistent/file.am"
+run_explain_check "explain: no input"         "no input file"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
