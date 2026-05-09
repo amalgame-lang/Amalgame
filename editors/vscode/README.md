@@ -1,7 +1,7 @@
 # Amalgame VS Code extension
 
 Syntax highlighting **and** an LSP client for the
-[Amalgame programming language](https://github.com/BastienMOUGET/Amalgame).
+[Amalgame programming language](https://github.com/amalgame-lang/Amalgame).
 
 ## Features
 
