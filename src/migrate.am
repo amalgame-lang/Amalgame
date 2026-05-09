@@ -1021,6 +1021,32 @@ public class MigrateCommand {
         return rr.Exit == 0
     }
 
+    // Streaming variant of CallClaudeCli — uses Process_Run (no
+    // capture) so the assistant output flows directly to the
+    // parent's stdout as it's produced. Returns the child's exit
+    // code (0 = success). Only valid for the `claude` CLI provider
+    // and only when the caller is OK with no captured text (no
+    // post-write validation, no -o, no fence stripping). Used by
+    // `amc generate --stream` and `amc explain --stream`.
+    public static int StreamClaudeCli(string model, string prompt) {
+        if (!MigrateCommand.IsCommandAvailable("claude")) {
+            Console.WriteError("claude CLI not found on PATH. Install Claude Code: https://docs.claude.com/claude-code")
+            return 1
+        }
+        let tmpPath: string = "/tmp/amc_stream_prompt.txt"
+        let writeOk: bool = File.WriteAll(tmpPath, prompt)
+        if (!writeOk) {
+            Console.WriteError("failed to write prompt temp file: " + tmpPath)
+            return 1
+        }
+        var cmd: string = "claude -p"
+        if (String_Length(model) > 0) {
+            cmd = cmd + " --model " + model
+        }
+        cmd = cmd + " < " + tmpPath
+        return Process.Run(cmd)
+    }
+
     // If the response is wrapped in ```...``` (any language tag),
     // peel off the fences. Otherwise return as-is.
     private static string StripFences(string s) {
