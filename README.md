@@ -12,6 +12,9 @@ A self-hosted programming language that compiles to C.
 
 </div>
 
+> Site officiel : **[amalgame.me](https://amalgame.me)**
+> [Tour du langage](https://amalgame.me/fr/tour) · [Installer](https://amalgame.me/fr/install) · [Versions](https://amalgame.me/fr/releases)
+
 ```amalgame
 namespace App
 import Amalgame.IO
@@ -112,7 +115,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.3.6
+./amc --version          # amc 0.4.2
 ./tests/run_all_tests.sh
 ```
 

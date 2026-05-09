@@ -38,6 +38,12 @@ typedef struct _Amalgame_Compiler_TypeCheckResult Amalgame_Compiler_TypeCheckRes
 typedef struct _Amalgame_Compiler_TypeChecker Amalgame_Compiler_TypeChecker;
 typedef struct _Amalgame_Compiler_LintWarning Amalgame_Compiler_LintWarning;
 typedef struct _Amalgame_Compiler_Linter Amalgame_Compiler_Linter;
+typedef enum _Amalgame_Compiler_JsonKind Amalgame_Compiler_JsonKind;
+typedef struct _Amalgame_Compiler_JsonValue Amalgame_Compiler_JsonValue;
+typedef struct _Amalgame_Compiler_JsonError Amalgame_Compiler_JsonError;
+typedef struct _Amalgame_Compiler_JsonResult Amalgame_Compiler_JsonResult;
+typedef struct _Amalgame_Compiler_JsonParser Amalgame_Compiler_JsonParser;
+typedef struct _Amalgame_Compiler_Json Amalgame_Compiler_Json;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -11112,6 +11118,987 @@ static void Amalgame_Compiler_Linter_Warn(Amalgame_Compiler_Linter* self, code_s
     AmalgameList_add(self->Warnings, (void*)(intptr_t)(w));
 }
 
+enum _Amalgame_Compiler_JsonKind {
+    Amalgame_Compiler_JsonKind_Null,
+    Amalgame_Compiler_JsonKind_Bool,
+    Amalgame_Compiler_JsonKind_Int,
+    Amalgame_Compiler_JsonKind_Float,
+    Amalgame_Compiler_JsonKind_String,
+    Amalgame_Compiler_JsonKind_Array,
+    Amalgame_Compiler_JsonKind_Object
+};
+
+struct _Amalgame_Compiler_JsonValue {
+    Amalgame_Compiler_JsonKind Kind;
+    code_bool B;
+    i64 I;
+    double F;
+    code_string S;
+    AmalgameList* Items;
+    AmalgameList* ObjKeys;
+    AmalgameList* ObjVals;
+};
+
+code_bool Amalgame_Compiler_JsonValue_IsNull(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsBool(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsInt(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsFloat(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsNumber(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsString(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsArray(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_IsObject(Amalgame_Compiler_JsonValue* self);
+code_bool Amalgame_Compiler_JsonValue_AsBool(Amalgame_Compiler_JsonValue* self);
+i64 Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue* self);
+double Amalgame_Compiler_JsonValue_AsFloat(Amalgame_Compiler_JsonValue* self);
+code_string Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue* self);
+AmalgameList* Amalgame_Compiler_JsonValue_AsArray(Amalgame_Compiler_JsonValue* self);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue* self, code_string key);
+code_bool Amalgame_Compiler_JsonValue_Has(Amalgame_Compiler_JsonValue* self, code_string key);
+AmalgameList* Amalgame_Compiler_JsonValue_Keys(Amalgame_Compiler_JsonValue* self);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonValue_At(Amalgame_Compiler_JsonValue* self, i64 i);
+i64 Amalgame_Compiler_JsonValue_Length(Amalgame_Compiler_JsonValue* self);
+void Amalgame_Compiler_JsonValue_SetNull(Amalgame_Compiler_JsonValue* self);
+void Amalgame_Compiler_JsonValue_SetBool(Amalgame_Compiler_JsonValue* self, code_bool b);
+void Amalgame_Compiler_JsonValue_SetInt(Amalgame_Compiler_JsonValue* self, i64 n);
+void Amalgame_Compiler_JsonValue_SetFloat(Amalgame_Compiler_JsonValue* self, double f);
+void Amalgame_Compiler_JsonValue_SetString(Amalgame_Compiler_JsonValue* self, code_string s);
+void Amalgame_Compiler_JsonValue_SetArray(Amalgame_Compiler_JsonValue* self, AmalgameList* xs);
+void Amalgame_Compiler_JsonValue_SetObject(Amalgame_Compiler_JsonValue* self, AmalgameList* keys, AmalgameList* vals);
+void Amalgame_Compiler_JsonValue_AppendItem(Amalgame_Compiler_JsonValue* self, Amalgame_Compiler_JsonValue* v);
+void Amalgame_Compiler_JsonValue_AppendEntry(Amalgame_Compiler_JsonValue* self, code_string key, Amalgame_Compiler_JsonValue* v);
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonValue_new() {
+    Amalgame_Compiler_JsonValue* self = (Amalgame_Compiler_JsonValue*) GC_MALLOC(sizeof(Amalgame_Compiler_JsonValue));
+    self->Kind = Amalgame_Compiler_JsonKind_Null;
+    self->B = 0;
+    self->I = 0;
+    self->F = 0.0;
+    self->S = "";
+    self->Items = AmalgameList_new();
+    self->ObjKeys = AmalgameList_new();
+    self->ObjVals = AmalgameList_new();
+    return self;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsNull(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_Null;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsBool(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_Bool;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsInt(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_Int;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsFloat(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_Float;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsNumber(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return Amalgame_Compiler_JsonValue_IsInt(self) || Amalgame_Compiler_JsonValue_IsFloat(self);
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsString(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_String;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsArray(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_Array;
+}
+
+code_bool Amalgame_Compiler_JsonValue_IsObject(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_JsonKind_Object;
+}
+
+code_bool Amalgame_Compiler_JsonValue_AsBool(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_JsonKind_Bool) {
+        return self->B;
+    }
+    return 0;
+}
+
+i64 Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_JsonKind_Int) {
+        return self->I;
+    }
+    return 0;
+}
+
+double Amalgame_Compiler_JsonValue_AsFloat(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_JsonKind_Float) {
+        return self->F;
+    }
+    return 0.0;
+}
+
+code_string Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_JsonKind_String) {
+        return self->S;
+    }
+    return "";
+}
+
+AmalgameList* Amalgame_Compiler_JsonValue_AsArray(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->Items;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue* self, code_string key) {
+    (void)self;
+    (void)key;
+    if (self->Kind != Amalgame_Compiler_JsonKind_Object) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(self->ObjKeys);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->ObjKeys, i), key)) {
+            return (Amalgame_Compiler_JsonValue*)AmalgameList_get(self->ObjVals, i);
+        }
+    }
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+code_bool Amalgame_Compiler_JsonValue_Has(Amalgame_Compiler_JsonValue* self, code_string key) {
+    (void)self;
+    (void)key;
+    if (self->Kind != Amalgame_Compiler_JsonKind_Object) {
+        return 0;
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(self->ObjKeys);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->ObjKeys, i), key)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+AmalgameList* Amalgame_Compiler_JsonValue_Keys(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    return self->ObjKeys;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonValue_At(Amalgame_Compiler_JsonValue* self, i64 i) {
+    (void)self;
+    (void)i;
+    if (self->Kind != Amalgame_Compiler_JsonKind_Array) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    if (i < 0) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    if (i >= AmalgameList_count(self->Items)) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    return (Amalgame_Compiler_JsonValue*)AmalgameList_get(self->Items, i);
+}
+
+i64 Amalgame_Compiler_JsonValue_Length(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_JsonKind_Array) {
+        return AmalgameList_count(self->Items);
+    }
+    if (self->Kind == Amalgame_Compiler_JsonKind_Object) {
+        return AmalgameList_count(self->ObjKeys);
+    }
+    if (self->Kind == Amalgame_Compiler_JsonKind_String) {
+        return String_Length(self->S);
+    }
+    return 0;
+}
+
+void Amalgame_Compiler_JsonValue_SetNull(Amalgame_Compiler_JsonValue* self) {
+    (void)self;
+    self->Kind = Amalgame_Compiler_JsonKind_Null;
+}
+
+void Amalgame_Compiler_JsonValue_SetBool(Amalgame_Compiler_JsonValue* self, code_bool b) {
+    (void)self;
+    (void)b;
+    self->Kind = Amalgame_Compiler_JsonKind_Bool;
+    self->B = b;
+}
+
+void Amalgame_Compiler_JsonValue_SetInt(Amalgame_Compiler_JsonValue* self, i64 n) {
+    (void)self;
+    (void)n;
+    self->Kind = Amalgame_Compiler_JsonKind_Int;
+    self->I = n;
+}
+
+void Amalgame_Compiler_JsonValue_SetFloat(Amalgame_Compiler_JsonValue* self, double f) {
+    (void)self;
+    (void)f;
+    self->Kind = Amalgame_Compiler_JsonKind_Float;
+    self->F = f;
+}
+
+void Amalgame_Compiler_JsonValue_SetString(Amalgame_Compiler_JsonValue* self, code_string s) {
+    (void)self;
+    (void)s;
+    self->Kind = Amalgame_Compiler_JsonKind_String;
+    self->S = s;
+}
+
+void Amalgame_Compiler_JsonValue_SetArray(Amalgame_Compiler_JsonValue* self, AmalgameList* xs) {
+    (void)self;
+    (void)xs;
+    self->Kind = Amalgame_Compiler_JsonKind_Array;
+    self->Items = xs;
+}
+
+void Amalgame_Compiler_JsonValue_SetObject(Amalgame_Compiler_JsonValue* self, AmalgameList* keys, AmalgameList* vals) {
+    (void)self;
+    (void)keys;
+    (void)vals;
+    self->Kind = Amalgame_Compiler_JsonKind_Object;
+    self->ObjKeys = keys;
+    self->ObjVals = vals;
+}
+
+void Amalgame_Compiler_JsonValue_AppendItem(Amalgame_Compiler_JsonValue* self, Amalgame_Compiler_JsonValue* v) {
+    (void)self;
+    (void)v;
+    AmalgameList_add(self->Items, (void*)(intptr_t)(v));
+}
+
+void Amalgame_Compiler_JsonValue_AppendEntry(Amalgame_Compiler_JsonValue* self, code_string key, Amalgame_Compiler_JsonValue* v) {
+    (void)self;
+    (void)key;
+    (void)v;
+    AmalgameList_add(self->ObjKeys, (void*)(intptr_t)(key));
+    AmalgameList_add(self->ObjVals, (void*)(intptr_t)(v));
+}
+
+struct _Amalgame_Compiler_JsonError {
+    code_string Message;
+    i64 Line;
+    i64 Column;
+};
+
+
+Amalgame_Compiler_JsonError* Amalgame_Compiler_JsonError_new(code_string msg, i64 line, i64 col) {
+    Amalgame_Compiler_JsonError* self = (Amalgame_Compiler_JsonError*) GC_MALLOC(sizeof(Amalgame_Compiler_JsonError));
+    self->Message = msg;
+    self->Line = line;
+    self->Column = col;
+    return self;
+}
+
+struct _Amalgame_Compiler_JsonResult {
+    code_bool Ok;
+    Amalgame_Compiler_JsonValue* Value;
+    Amalgame_Compiler_JsonError* Error;
+};
+
+
+Amalgame_Compiler_JsonResult* Amalgame_Compiler_JsonResult_new() {
+    Amalgame_Compiler_JsonResult* self = (Amalgame_Compiler_JsonResult*) GC_MALLOC(sizeof(Amalgame_Compiler_JsonResult));
+    self->Ok = 1;
+    self->Value = Amalgame_Compiler_JsonValue_new();
+    self->Error = Amalgame_Compiler_JsonError_new("", 0, 0);
+    return self;
+}
+
+struct _Amalgame_Compiler_JsonParser {
+    code_string Source;
+    i64 Pos;
+    i64 Line;
+    i64 Column;
+    code_bool Failed;
+    code_string ErrMsg;
+    i64 ErrLine;
+    i64 ErrCol;
+};
+
+code_bool Amalgame_Compiler_JsonParser_HasFailed(Amalgame_Compiler_JsonParser* self);
+code_string Amalgame_Compiler_JsonParser_ErrorMsg(Amalgame_Compiler_JsonParser* self);
+i64 Amalgame_Compiler_JsonParser_ErrorLine(Amalgame_Compiler_JsonParser* self);
+i64 Amalgame_Compiler_JsonParser_ErrorCol(Amalgame_Compiler_JsonParser* self);
+static void Amalgame_Compiler_JsonParser_Fail(Amalgame_Compiler_JsonParser* self, code_string msg);
+static code_bool Amalgame_Compiler_JsonParser_AtEnd(Amalgame_Compiler_JsonParser* self);
+static code_string Amalgame_Compiler_JsonParser_Peek(Amalgame_Compiler_JsonParser* self);
+static code_string Amalgame_Compiler_JsonParser_PeekAt(Amalgame_Compiler_JsonParser* self, i64 offset);
+static code_string Amalgame_Compiler_JsonParser_Advance(Amalgame_Compiler_JsonParser* self);
+static void Amalgame_Compiler_JsonParser_SkipWs(Amalgame_Compiler_JsonParser* self);
+static code_bool Amalgame_Compiler_JsonParser_MatchLit(Amalgame_Compiler_JsonParser* self, code_string lit);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseTopLevel(Amalgame_Compiler_JsonParser* self);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseValue(Amalgame_Compiler_JsonParser* self);
+static code_bool Amalgame_Compiler_JsonParser_IsDigit(code_string c);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseObject(Amalgame_Compiler_JsonParser* self);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseArray(Amalgame_Compiler_JsonParser* self);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseString(Amalgame_Compiler_JsonParser* self);
+static i64 Amalgame_Compiler_JsonParser_ParseHex4(Amalgame_Compiler_JsonParser* self);
+static i64 Amalgame_Compiler_JsonParser_HexDigit(code_string c);
+static code_string Amalgame_Compiler_JsonParser_Bs();
+static code_string Amalgame_Compiler_JsonParser_Ff();
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNumber(Amalgame_Compiler_JsonParser* self);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseBool(Amalgame_Compiler_JsonParser* self);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNull(Amalgame_Compiler_JsonParser* self);
+
+Amalgame_Compiler_JsonParser* Amalgame_Compiler_JsonParser_new(code_string source) {
+    Amalgame_Compiler_JsonParser* self = (Amalgame_Compiler_JsonParser*) GC_MALLOC(sizeof(Amalgame_Compiler_JsonParser));
+    self->Source = source;
+    self->Pos = 0;
+    self->Line = 1;
+    self->Column = 1;
+    self->Failed = 0;
+    self->ErrMsg = "";
+    self->ErrLine = 0;
+    self->ErrCol = 0;
+    return self;
+}
+
+code_bool Amalgame_Compiler_JsonParser_HasFailed(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    return self->Failed;
+}
+
+code_string Amalgame_Compiler_JsonParser_ErrorMsg(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    return self->ErrMsg;
+}
+
+i64 Amalgame_Compiler_JsonParser_ErrorLine(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    return self->ErrLine;
+}
+
+i64 Amalgame_Compiler_JsonParser_ErrorCol(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    return self->ErrCol;
+}
+
+static void Amalgame_Compiler_JsonParser_Fail(Amalgame_Compiler_JsonParser* self, code_string msg) {
+    (void)self;
+    (void)msg;
+    if (self->Failed) {
+        return;
+    }
+    self->Failed = 1;
+    self->ErrMsg = msg;
+    self->ErrLine = self->Line;
+    self->ErrCol = self->Column;
+}
+
+static code_bool Amalgame_Compiler_JsonParser_AtEnd(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    return self->Pos >= String_Length(self->Source);
+}
+
+static code_string Amalgame_Compiler_JsonParser_Peek(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
+        return "";
+    }
+    return String_CharAt1(self->Source, self->Pos);
+}
+
+static code_string Amalgame_Compiler_JsonParser_PeekAt(Amalgame_Compiler_JsonParser* self, i64 offset) {
+    (void)self;
+    (void)offset;
+    i64 __attribute__((unused)) idx = self->Pos + offset;
+    if (idx < 0) {
+        return "";
+    }
+    if (idx >= String_Length(self->Source)) {
+        return "";
+    }
+    return String_CharAt1(self->Source, idx);
+}
+
+static code_string Amalgame_Compiler_JsonParser_Advance(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
+        return "";
+    }
+    code_string __attribute__((unused)) ch = String_CharAt1(self->Source, self->Pos);
+    self->Pos = self->Pos + 1;
+    if (code_string_equals(ch, "\n")) {
+        self->Line = self->Line + 1;
+        self->Column = 1;
+    } else {
+        self->Column = self->Column + 1;
+    }
+    return ch;
+}
+
+static void Amalgame_Compiler_JsonParser_SkipWs(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    while (!Amalgame_Compiler_JsonParser_AtEnd(self)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_JsonParser_Peek(self);
+        if (code_string_equals(c, " ") || code_string_equals(c, "\t") || code_string_equals(c, "\n") || code_string_equals(c, "\\r")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+        } else {
+            return;
+        }
+    }
+}
+
+static code_bool Amalgame_Compiler_JsonParser_MatchLit(Amalgame_Compiler_JsonParser* self, code_string lit) {
+    (void)self;
+    (void)lit;
+    i64 __attribute__((unused)) n = String_Length(lit);
+    if (self->Pos + n > String_Length(self->Source)) {
+        return 0;
+    }
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) want = String_CharAt1(lit, i);
+        code_string __attribute__((unused)) got = String_CharAt1(self->Source, self->Pos + i);
+        if (!code_string_equals(want, got)) {
+            return 0;
+        }
+    }
+    for (i64 j = 0; j < n; j++) {
+        Amalgame_Compiler_JsonParser_Advance(self);
+    }
+    return 1;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseTopLevel(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    Amalgame_Compiler_JsonParser_SkipWs(self);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonParser_ParseValue(self);
+    if (self->Failed) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    Amalgame_Compiler_JsonParser_SkipWs(self);
+    if (!Amalgame_Compiler_JsonParser_AtEnd(self)) {
+        Amalgame_Compiler_JsonParser_Fail(self, "trailing characters after JSON value");
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    return v;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseValue(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    if (self->Failed) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    Amalgame_Compiler_JsonParser_SkipWs(self);
+    if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
+        Amalgame_Compiler_JsonParser_Fail(self, "unexpected end of input");
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    code_string __attribute__((unused)) c = Amalgame_Compiler_JsonParser_Peek(self);
+    if (code_string_equals(c, "{")) {
+        return Amalgame_Compiler_JsonParser_ParseObject(self);
+    }
+    if (code_string_equals(c, "[")) {
+        return Amalgame_Compiler_JsonParser_ParseArray(self);
+    }
+    if (code_string_equals(c, "\"")) {
+        return Amalgame_Compiler_JsonParser_ParseString(self);
+    }
+    if (code_string_equals(c, "t") || code_string_equals(c, "f")) {
+        return Amalgame_Compiler_JsonParser_ParseBool(self);
+    }
+    if (code_string_equals(c, "n")) {
+        return Amalgame_Compiler_JsonParser_ParseNull(self);
+    }
+    if (code_string_equals(c, "-") || Amalgame_Compiler_JsonParser_IsDigit(c)) {
+        return Amalgame_Compiler_JsonParser_ParseNumber(self);
+    }
+    Amalgame_Compiler_JsonParser_Fail(self, code_string_concat(code_string_concat("unexpected character '", c), "'"));
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+static code_bool Amalgame_Compiler_JsonParser_IsDigit(code_string c) {
+    (void)c;
+    if (String_Length(c) == 0) {
+        return 0;
+    }
+    return String_IndexOf("0123456789", c) >= 0;
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseObject(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    Amalgame_Compiler_JsonParser_Advance(self);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) out = Amalgame_Compiler_JsonValue_new();
+    AmalgameList* __attribute__((unused)) keys = AmalgameList_new();
+    AmalgameList* __attribute__((unused)) vals = AmalgameList_new();
+    Amalgame_Compiler_JsonValue_SetObject(out, keys, vals);
+    Amalgame_Compiler_JsonParser_SkipWs(self);
+    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "}")) {
+        Amalgame_Compiler_JsonParser_Advance(self);
+        return out;
+    }
+    while (1) {
+        Amalgame_Compiler_JsonParser_SkipWs(self);
+        if (!code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "\"")) {
+            Amalgame_Compiler_JsonParser_Fail(self, "expected string key in object");
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) keyVal = Amalgame_Compiler_JsonParser_ParseString(self);
+        if (self->Failed) {
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        code_string __attribute__((unused)) key = Amalgame_Compiler_JsonValue_AsString(keyVal);
+        Amalgame_Compiler_JsonParser_SkipWs(self);
+        if (!code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), ":")) {
+            Amalgame_Compiler_JsonParser_Fail(self, "expected ':' after object key");
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        Amalgame_Compiler_JsonParser_Advance(self);
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonParser_ParseValue(self);
+        if (self->Failed) {
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        Amalgame_Compiler_JsonValue_AppendEntry(out, key, v);
+        Amalgame_Compiler_JsonParser_SkipWs(self);
+        code_string __attribute__((unused)) nx = Amalgame_Compiler_JsonParser_Peek(self);
+        if (code_string_equals(nx, ",")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+            continue;
+        }
+        if (code_string_equals(nx, "}")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+            return out;
+        }
+        Amalgame_Compiler_JsonParser_Fail(self, "expected ',' or '}' in object");
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    return out;
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseArray(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    Amalgame_Compiler_JsonParser_Advance(self);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) out = Amalgame_Compiler_JsonValue_new();
+    AmalgameList* __attribute__((unused)) xs = AmalgameList_new();
+    Amalgame_Compiler_JsonValue_SetArray(out, xs);
+    Amalgame_Compiler_JsonParser_SkipWs(self);
+    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "]")) {
+        Amalgame_Compiler_JsonParser_Advance(self);
+        return out;
+    }
+    while (1) {
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonParser_ParseValue(self);
+        if (self->Failed) {
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        Amalgame_Compiler_JsonValue_AppendItem(out, v);
+        Amalgame_Compiler_JsonParser_SkipWs(self);
+        code_string __attribute__((unused)) nx = Amalgame_Compiler_JsonParser_Peek(self);
+        if (code_string_equals(nx, ",")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+            continue;
+        }
+        if (code_string_equals(nx, "]")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+            return out;
+        }
+        Amalgame_Compiler_JsonParser_Fail(self, "expected ',' or ']' in array");
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    return out;
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseString(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    Amalgame_Compiler_JsonParser_Advance(self);
+    code_string __attribute__((unused)) out = "";
+    while (!Amalgame_Compiler_JsonParser_AtEnd(self)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_JsonParser_Peek(self);
+        if (code_string_equals(c, "\"")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+            Amalgame_Compiler_JsonValue_SetString(v, out);
+            return v;
+        }
+        if (code_string_equals(c, "\\")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+            if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
+                Amalgame_Compiler_JsonParser_Fail(self, "unterminated escape in string");
+                return Amalgame_Compiler_JsonValue_new();
+            }
+            code_string __attribute__((unused)) esc = Amalgame_Compiler_JsonParser_Advance(self);
+            if (code_string_equals(esc, "\"")) {
+                out = code_string_concat(out, "\"");
+            } else if (code_string_equals(esc, "\\")) {
+                out = code_string_concat(out, "\\");
+            } else if (code_string_equals(esc, "/")) {
+                out = code_string_concat(out, "/");
+            } else if (code_string_equals(esc, "b")) {
+                out = code_string_concat(out, Amalgame_Compiler_JsonParser_Bs());
+            } else if (code_string_equals(esc, "f")) {
+                out = code_string_concat(out, Amalgame_Compiler_JsonParser_Ff());
+            } else if (code_string_equals(esc, "n")) {
+                out = code_string_concat(out, "\n");
+            } else if (code_string_equals(esc, "r")) {
+                out = code_string_concat(out, "\\r");
+            } else if (code_string_equals(esc, "t")) {
+                out = code_string_concat(out, "\t");
+            } else if (code_string_equals(esc, "u")) {
+                i64 __attribute__((unused)) cp = Amalgame_Compiler_JsonParser_ParseHex4(self);
+                if (self->Failed) {
+                    return Amalgame_Compiler_JsonValue_new();
+                }
+                if (cp >= 55296 && cp <= 56319) {
+                    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "\\") && code_string_equals(Amalgame_Compiler_JsonParser_PeekAt(self, 1), "u")) {
+                        Amalgame_Compiler_JsonParser_Advance(self);
+                        Amalgame_Compiler_JsonParser_Advance(self);
+                        i64 __attribute__((unused)) lo = Amalgame_Compiler_JsonParser_ParseHex4(self);
+                        if (self->Failed) {
+                            return Amalgame_Compiler_JsonValue_new();
+                        }
+                        if (lo >= 56320 && lo <= 57343) {
+                            i64 __attribute__((unused)) combined = 65536 + cp - 55296 * 1024 + lo - 56320;
+                            out = code_string_concat(out, String_FromCodepoint(combined));
+                        } else {
+                            out = code_string_concat(out, String_FromCodepoint(cp));
+                            out = code_string_concat(out, String_FromCodepoint(lo));
+                        }
+                    } else {
+                        out = code_string_concat(out, String_FromCodepoint(cp));
+                    }
+                } else {
+                    out = code_string_concat(out, String_FromCodepoint(cp));
+                }
+            } else {
+                Amalgame_Compiler_JsonParser_Fail(self, code_string_concat(code_string_concat("invalid escape '\\", esc), "'"));
+                return Amalgame_Compiler_JsonValue_new();
+            }
+        } else if (code_string_equals(c, "\n")) {
+            Amalgame_Compiler_JsonParser_Fail(self, "unescaped newline in string");
+            return Amalgame_Compiler_JsonValue_new();
+        } else {
+            out = code_string_concat(out, Amalgame_Compiler_JsonParser_Advance(self));
+        }
+    }
+    Amalgame_Compiler_JsonParser_Fail(self, "unterminated string");
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+static i64 Amalgame_Compiler_JsonParser_ParseHex4(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    i64 __attribute__((unused)) n = 0;
+    for (i64 i = 0; i < 4; i++) {
+        if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
+            Amalgame_Compiler_JsonParser_Fail(self, "incomplete \\u escape");
+            return 0;
+        }
+        code_string __attribute__((unused)) ch = Amalgame_Compiler_JsonParser_Advance(self);
+        i64 __attribute__((unused)) d = Amalgame_Compiler_JsonParser_HexDigit(ch);
+        if (d < 0) {
+            Amalgame_Compiler_JsonParser_Fail(self, code_string_concat(code_string_concat("invalid hex digit '", ch), "' in \\u escape"));
+            return 0;
+        }
+        n = n * 16 + d;
+    }
+    return n;
+}
+
+static i64 Amalgame_Compiler_JsonParser_HexDigit(code_string c) {
+    (void)c;
+    if (Amalgame_Compiler_JsonParser_IsDigit(c)) {
+        return String_ToInt(c);
+    }
+    if (code_string_equals(c, "a") || code_string_equals(c, "A")) {
+        return 10;
+    }
+    if (code_string_equals(c, "b") || code_string_equals(c, "B")) {
+        return 11;
+    }
+    if (code_string_equals(c, "c") || code_string_equals(c, "C")) {
+        return 12;
+    }
+    if (code_string_equals(c, "d") || code_string_equals(c, "D")) {
+        return 13;
+    }
+    if (code_string_equals(c, "e") || code_string_equals(c, "E")) {
+        return 14;
+    }
+    if (code_string_equals(c, "f") || code_string_equals(c, "F")) {
+        return 15;
+    }
+    return -1;
+}
+
+static code_string Amalgame_Compiler_JsonParser_Bs() {
+    return String_FromCodepoint(8);
+}
+
+static code_string Amalgame_Compiler_JsonParser_Ff() {
+    return String_FromCodepoint(12);
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNumber(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    i64 __attribute__((unused)) start = self->Pos;
+    code_bool __attribute__((unused)) isFloat = 0;
+    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "-")) {
+        Amalgame_Compiler_JsonParser_Advance(self);
+    }
+    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "0")) {
+        Amalgame_Compiler_JsonParser_Advance(self);
+    } else {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_JsonParser_Peek(self);
+        if (!Amalgame_Compiler_JsonParser_IsDigit(c) || code_string_equals(c, "0")) {
+            Amalgame_Compiler_JsonParser_Fail(self, "expected digit in number");
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        while (1) {
+            code_string __attribute__((unused)) d = Amalgame_Compiler_JsonParser_Peek(self);
+            if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
+                Amalgame_Compiler_JsonParser_Advance(self);
+            } else {
+                break;
+            }
+        }
+    }
+    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), ".")) {
+        isFloat = 1;
+        Amalgame_Compiler_JsonParser_Advance(self);
+        code_string __attribute__((unused)) c = Amalgame_Compiler_JsonParser_Peek(self);
+        if (!Amalgame_Compiler_JsonParser_IsDigit(c)) {
+            Amalgame_Compiler_JsonParser_Fail(self, "expected digit after '.'");
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        while (1) {
+            code_string __attribute__((unused)) d = Amalgame_Compiler_JsonParser_Peek(self);
+            if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
+                Amalgame_Compiler_JsonParser_Advance(self);
+            } else {
+                break;
+            }
+        }
+    }
+    code_string __attribute__((unused)) e = Amalgame_Compiler_JsonParser_Peek(self);
+    if (code_string_equals(e, "e") || code_string_equals(e, "E")) {
+        isFloat = 1;
+        Amalgame_Compiler_JsonParser_Advance(self);
+        code_string __attribute__((unused)) s = Amalgame_Compiler_JsonParser_Peek(self);
+        if (code_string_equals(s, "+") || code_string_equals(s, "-")) {
+            Amalgame_Compiler_JsonParser_Advance(self);
+        }
+        code_string __attribute__((unused)) c2 = Amalgame_Compiler_JsonParser_Peek(self);
+        if (!Amalgame_Compiler_JsonParser_IsDigit(c2)) {
+            Amalgame_Compiler_JsonParser_Fail(self, "expected digit in exponent");
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        while (1) {
+            code_string __attribute__((unused)) d = Amalgame_Compiler_JsonParser_Peek(self);
+            if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
+                Amalgame_Compiler_JsonParser_Advance(self);
+            } else {
+                break;
+            }
+        }
+    }
+    code_string __attribute__((unused)) raw = String_Substring(self->Source, start, self->Pos - start);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) out = Amalgame_Compiler_JsonValue_new();
+    if (isFloat) {
+        Amalgame_Compiler_JsonValue_SetFloat(out, String_ToFloat(raw));
+    } else {
+        Amalgame_Compiler_JsonValue_SetInt(out, String_ToInt(raw));
+    }
+    return out;
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseBool(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    if (Amalgame_Compiler_JsonParser_MatchLit(self, "true")) {
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+        Amalgame_Compiler_JsonValue_SetBool(v, 1);
+        return v;
+    }
+    if (Amalgame_Compiler_JsonParser_MatchLit(self, "false")) {
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+        Amalgame_Compiler_JsonValue_SetBool(v, 0);
+        return v;
+    }
+    Amalgame_Compiler_JsonParser_Fail(self, "invalid literal (expected true / false)");
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNull(Amalgame_Compiler_JsonParser* self) {
+    (void)self;
+    if (Amalgame_Compiler_JsonParser_MatchLit(self, "null")) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    Amalgame_Compiler_JsonParser_Fail(self, "invalid literal (expected null)");
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+struct _Amalgame_Compiler_Json {
+};
+
+Amalgame_Compiler_JsonResult* Amalgame_Compiler_Json_Parse(code_string source);
+code_string Amalgame_Compiler_Json_Encode(Amalgame_Compiler_JsonValue* v);
+static code_string Amalgame_Compiler_Json_EncodeArray(Amalgame_Compiler_JsonValue* v);
+static code_string Amalgame_Compiler_Json_EncodeObject(Amalgame_Compiler_JsonValue* v);
+code_string Amalgame_Compiler_Json_EscapeString(code_string s);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_NullValue();
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfBool(code_bool b);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfInt(i64 n);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfFloat(double f);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfString(code_string s);
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfArray(AmalgameList* xs);
+
+Amalgame_Compiler_Json* Amalgame_Compiler_Json_new() {
+    Amalgame_Compiler_Json* self = (Amalgame_Compiler_Json*) GC_MALLOC(sizeof(Amalgame_Compiler_Json));
+    return self;
+}
+
+Amalgame_Compiler_JsonResult* Amalgame_Compiler_Json_Parse(code_string source) {
+    (void)source;
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) res = Amalgame_Compiler_JsonResult_new();
+    Amalgame_Compiler_JsonParser* __attribute__((unused)) p = Amalgame_Compiler_JsonParser_new(source);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonParser_ParseTopLevel(p);
+    if (Amalgame_Compiler_JsonParser_HasFailed(p)) {
+        res->Ok = 0;
+        res->Value = Amalgame_Compiler_JsonValue_new();
+        res->Error = Amalgame_Compiler_JsonError_new(Amalgame_Compiler_JsonParser_ErrorMsg(p), Amalgame_Compiler_JsonParser_ErrorLine(p), Amalgame_Compiler_JsonParser_ErrorCol(p));
+        return res;
+    }
+    res->Ok = 1;
+    res->Value = v;
+    return res;
+}
+
+code_string Amalgame_Compiler_Json_Encode(Amalgame_Compiler_JsonValue* v) {
+    (void)v;
+    Amalgame_Compiler_JsonKind __attribute__((unused)) k = v->Kind;
+    if (k == Amalgame_Compiler_JsonKind_Null) {
+        return "null";
+    }
+    if (k == Amalgame_Compiler_JsonKind_Bool) {
+        if (Amalgame_Compiler_JsonValue_AsBool(v)) {
+            return "true";
+        }
+        return "false";
+    }
+    if (k == Amalgame_Compiler_JsonKind_Int) {
+        return String_FromInt(Amalgame_Compiler_JsonValue_AsInt(v));
+    }
+    if (k == Amalgame_Compiler_JsonKind_Float) {
+        return String_FromFloat(Amalgame_Compiler_JsonValue_AsFloat(v));
+    }
+    if (k == Amalgame_Compiler_JsonKind_String) {
+        return code_string_concat(code_string_concat("\"", Amalgame_Compiler_Json_EscapeString(Amalgame_Compiler_JsonValue_AsString(v))), "\"");
+    }
+    if (k == Amalgame_Compiler_JsonKind_Array) {
+        return Amalgame_Compiler_Json_EncodeArray(v);
+    }
+    if (k == Amalgame_Compiler_JsonKind_Object) {
+        return Amalgame_Compiler_Json_EncodeObject(v);
+    }
+    return "null";
+}
+
+static code_string Amalgame_Compiler_Json_EncodeArray(Amalgame_Compiler_JsonValue* v) {
+    (void)v;
+    AmalgameList* __attribute__((unused)) xs = Amalgame_Compiler_JsonValue_AsArray(v);
+    i64 __attribute__((unused)) n = AmalgameList_count(xs);
+    code_string __attribute__((unused)) out = "[";
+    for (i64 i = 0; i < n; i++) {
+        if (i > 0) {
+            out = code_string_concat(out, ",");
+        }
+        out = code_string_concat(out, Amalgame_Compiler_Json_Encode((Amalgame_Compiler_JsonValue*)AmalgameList_get(xs, i)));
+    }
+    out = code_string_concat(out, "]");
+    return out;
+}
+
+static code_string Amalgame_Compiler_Json_EncodeObject(Amalgame_Compiler_JsonValue* v) {
+    (void)v;
+    AmalgameList* __attribute__((unused)) keys = Amalgame_Compiler_JsonValue_Keys(v);
+    i64 __attribute__((unused)) n = AmalgameList_count(keys);
+    code_string __attribute__((unused)) out = "{";
+    for (i64 i = 0; i < n; i++) {
+        if (i > 0) {
+            out = code_string_concat(out, ",");
+        }
+        code_string __attribute__((unused)) key = (code_string)AmalgameList_get(keys, i);
+        out = code_string_concat(code_string_concat(code_string_concat(out, "\""), Amalgame_Compiler_Json_EscapeString(key)), "\":");
+        out = code_string_concat(out, Amalgame_Compiler_Json_Encode(Amalgame_Compiler_JsonValue_Get(v, key)));
+    }
+    out = code_string_concat(out, "}");
+    return out;
+}
+
+code_string Amalgame_Compiler_Json_EscapeString(code_string s) {
+    (void)s;
+    i64 __attribute__((unused)) n = String_Length(s);
+    code_string __attribute__((unused)) out = "";
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "\"")) {
+            out = code_string_concat(out, "\\\"");
+        } else if (code_string_equals(c, "\\")) {
+            out = code_string_concat(out, "\\\\");
+        } else if (code_string_equals(c, "\n")) {
+            out = code_string_concat(out, "\\n");
+        } else if (code_string_equals(c, "\\r")) {
+            out = code_string_concat(out, "\\r");
+        } else if (code_string_equals(c, "\t")) {
+            out = code_string_concat(out, "\\t");
+        } else if (code_string_equals(c, String_FromCodepoint(8))) {
+            out = code_string_concat(out, "\\b");
+        } else if (code_string_equals(c, String_FromCodepoint(12))) {
+            out = code_string_concat(out, "\\f");
+        } else {
+            out = code_string_concat(out, c);
+        }
+    }
+    return out;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_NullValue() {
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfBool(code_bool b) {
+    (void)b;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetBool(v, b);
+    return v;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfInt(i64 n) {
+    (void)n;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetInt(v, n);
+    return v;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfFloat(double f) {
+    (void)f;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetFloat(v, f);
+    return v;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfString(code_string s) {
+    (void)s;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetString(v, s);
+    return v;
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfArray(AmalgameList* xs) {
+    (void)xs;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetArray(v, xs);
+    return v;
+}
+
 struct _Amalgame_Compiler_LspServer {
     AmalgameList* DocUris;
     AmalgameList* Docs;
@@ -11147,13 +12134,10 @@ code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(code_string source, Ama
 static code_string Amalgame_Compiler_LspServer_DiagnosticBody(code_string source, i64 line, i64 col, code_string msg);
 static i64 Amalgame_Compiler_LspServer_TokenEndCol(code_string source, i64 line, i64 col);
 static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch);
-code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s);
 code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri);
 Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best);
 static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNode* node, i64 line, i64 col);
-code_string Amalgame_Compiler_LspServer_JsonStr(code_string body, code_string key);
-i64 Amalgame_Compiler_LspServer_JsonInt(code_string body, code_string key);
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new() {
     Amalgame_Compiler_LspServer* self = (Amalgame_Compiler_LspServer*) GC_MALLOC(sizeof(Amalgame_Compiler_LspServer));
@@ -11169,39 +12153,59 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
         if (String_Length(body) == 0) {
             return 0;
         }
-        code_string __attribute__((unused)) method = Amalgame_Compiler_LspServer_JsonStr(body, "method");
+        Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(body);
+        if (!parsed->Ok) {
+            continue;
+        }
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) methodNode = Amalgame_Compiler_JsonValue_Get(root, "method");
+        code_string __attribute__((unused)) method = Amalgame_Compiler_JsonValue_AsString(methodNode);
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) idNode = Amalgame_Compiler_JsonValue_Get(root, "id");
+        i64 __attribute__((unused)) id = Amalgame_Compiler_JsonValue_AsInt(idNode);
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) params = Amalgame_Compiler_JsonValue_Get(root, "params");
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) td = Amalgame_Compiler_JsonValue_Get(params, "textDocument");
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) pos = Amalgame_Compiler_JsonValue_Get(params, "position");
         if (code_string_equals(method, "initialize")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
             Amalgame_Compiler_LspServer_SendInit(self, id);
         } else if (code_string_equals(method, "shutdown")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
             Amalgame_Compiler_LspServer_SendShutdown(self, id);
         } else if (code_string_equals(method, "exit")) {
             return 0;
         } else if (code_string_equals(method, "textDocument/didOpen")) {
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            code_string __attribute__((unused)) txt = Amalgame_Compiler_LspServer_JsonStr(body, "text");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) txtNode = Amalgame_Compiler_JsonValue_Get(td, "text");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(txtNode);
             Amalgame_Compiler_LspServer_UpsertDoc(self, uri, txt);
             Amalgame_Compiler_LspServer_PublishDiagnostics(self, uri, txt);
         } else if (code_string_equals(method, "textDocument/didChange")) {
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            code_string __attribute__((unused)) txt = Amalgame_Compiler_LspServer_JsonStr(body, "text");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) changes = Amalgame_Compiler_JsonValue_Get(params, "contentChanges");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) firstChange = Amalgame_Compiler_JsonValue_At(changes, 0);
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) txtNode = Amalgame_Compiler_JsonValue_Get(firstChange, "text");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(txtNode);
             Amalgame_Compiler_LspServer_UpsertDoc(self, uri, txt);
             Amalgame_Compiler_LspServer_PublishDiagnostics(self, uri, txt);
         } else if (code_string_equals(method, "textDocument/didClose")) {
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
             Amalgame_Compiler_LspServer_RemoveDoc(self, uri);
         } else if (code_string_equals(method, "textDocument/hover")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            i64 __attribute__((unused)) line = Amalgame_Compiler_LspServer_JsonInt(body, "line");
-            i64 __attribute__((unused)) chr = Amalgame_Compiler_LspServer_JsonInt(body, "character");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) lineNode = Amalgame_Compiler_JsonValue_Get(pos, "line");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) chrNode = Amalgame_Compiler_JsonValue_Get(pos, "character");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(lineNode);
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(chrNode);
             Amalgame_Compiler_LspServer_HandleHover(self, id, uri, line, chr);
         } else if (code_string_equals(method, "textDocument/completion")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            i64 __attribute__((unused)) line = Amalgame_Compiler_LspServer_JsonInt(body, "line");
-            i64 __attribute__((unused)) chr = Amalgame_Compiler_LspServer_JsonInt(body, "character");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) lineNode = Amalgame_Compiler_JsonValue_Get(pos, "line");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) chrNode = Amalgame_Compiler_JsonValue_Get(pos, "character");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(lineNode);
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(chrNode);
             Amalgame_Compiler_LspServer_HandleCompletion(self, id, uri, line, chr);
         }
     }
@@ -11313,7 +12317,7 @@ static void Amalgame_Compiler_LspServer_PublishDiagnostics(Amalgame_Compiler_Lsp
     (void)uri;
     (void)source;
     code_string __attribute__((unused)) diags = Amalgame_Compiler_LspServer_Compile(self, uri, source);
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"", Amalgame_Compiler_LspServer_EscapeJsonStr(uri)), "\",\"diagnostics\":"), diags), "}}");
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"", Amalgame_Compiler_Json_EscapeString(uri)), "\",\"diagnostics\":"), diags), "}}");
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
@@ -11475,7 +12479,7 @@ static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer*
         return;
     }
     code_string __attribute__((unused)) content = code_string_concat(code_string_concat(code_string_concat(code_string_concat("**", node->Name), "**: `"), typeStr), "`");
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(content)), "\"}}}");
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\""), Amalgame_Compiler_Json_EscapeString(content)), "\"}}}");
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
@@ -11534,7 +12538,7 @@ static void Amalgame_Compiler_LspServer_SendGlobalCompletion(Amalgame_Compiler_L
         if (!first) {
             items = code_string_concat(items, ",");
         }
-        items = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(items, "{\"label\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"detail\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(typeS)), "\"}");
+        items = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(items, "{\"label\":\""), Amalgame_Compiler_Json_EscapeString(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"detail\":\""), Amalgame_Compiler_Json_EscapeString(typeS)), "\"}");
         first = 0;
     }
     code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"isIncomplete\":false,\"items\":["), items), "]}}");
@@ -11576,7 +12580,7 @@ static void Amalgame_Compiler_LspServer_SendMemberCompletion(Amalgame_Compiler_L
         if (!first) {
             items = code_string_concat(items, ",");
         }
-        items = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(items, "{\"label\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"detail\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(mtype)), "\"}");
+        items = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(items, "{\"label\":\""), Amalgame_Compiler_Json_EscapeString(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"detail\":\""), Amalgame_Compiler_Json_EscapeString(mtype)), "\"}");
         first = 0;
     }
     code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"isIncomplete\":false,\"items\":["), items), "]}}");
@@ -11804,7 +12808,7 @@ static code_string Amalgame_Compiler_LspServer_DiagnosticBody(code_string source
     code_string __attribute__((unused)) lStr = String_FromInt(l);
     code_string __attribute__((unused)) cStartStr = String_FromInt(cStart);
     code_string __attribute__((unused)) cEndStr = String_FromInt(cEnd);
-    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"severity\":1,\"range\":{\"start\":{\"line\":", lStr), ",\"character\":"), cStartStr), "},\"end\":{\"line\":"), lStr), ",\"character\":"), cEndStr), "}},\"message\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(msg)), "\"}");
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"severity\":1,\"range\":{\"start\":{\"line\":", lStr), ",\"character\":"), cStartStr), "},\"end\":{\"line\":"), lStr), ",\"character\":"), cEndStr), "}},\"message\":\""), Amalgame_Compiler_Json_EscapeString(msg)), "\"}");
 }
 
 static i64 Amalgame_Compiler_LspServer_TokenEndCol(code_string source, i64 line, i64 col) {
@@ -11861,30 +12865,6 @@ static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch) {
         return 1;
     }
     return 0;
-}
-
-code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s) {
-    (void)s;
-    i64 __attribute__((unused)) n = String_Length(s);
-    code_string __attribute__((unused)) cr = Amalgame_Compiler_LspServer_Cr();
-    code_string __attribute__((unused)) r = "";
-    for (i64 i = 0; i < n; i++) {
-        code_string __attribute__((unused)) ch = String_CharAt1(s, i);
-        if (code_string_equals(ch, "\"")) {
-            r = code_string_concat(r, "\\\"");
-        } else if (code_string_equals(ch, "\\")) {
-            r = code_string_concat(r, "\\\\");
-        } else if (code_string_equals(ch, "\n")) {
-            r = code_string_concat(r, "\\n");
-        } else if (code_string_equals(ch, cr)) {
-            r = code_string_concat(r, "\\r");
-        } else if (code_string_equals(ch, "\t")) {
-            r = code_string_concat(r, "\\t");
-        } else {
-            r = code_string_concat(r, ch);
-        }
-    }
-    return r;
 }
 
 code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri) {
@@ -11975,99 +12955,12 @@ static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNod
     return 1;
 }
 
-code_string Amalgame_Compiler_LspServer_JsonStr(code_string body, code_string key) {
-    (void)body;
-    (void)key;
-    code_string __attribute__((unused)) needle = code_string_concat(code_string_concat("\"", key), "\"");
-    i64 __attribute__((unused)) kIdx = String_IndexOf(body, needle);
-    if (kIdx < 0) {
-        return "";
-    }
-    i64 __attribute__((unused)) bn = String_Length(body);
-    i64 __attribute__((unused)) needleLen = String_Length(needle);
-    i64 __attribute__((unused)) i = kIdx + needleLen;
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "\"")) {
-            i = i + 1;
-            break;
-        }
-        i = i + 1;
-    }
-    code_string __attribute__((unused)) result = "";
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "\"")) {
-            break;
-        }
-        if (code_string_equals(ch, "\\")) {
-            if (i + 1 >= bn) {
-                break;
-            }
-            code_string __attribute__((unused)) nx = String_CharAt1(body, i + 1);
-            if (code_string_equals(nx, "n")) {
-                result = code_string_concat(result, "\n");
-            } else if (code_string_equals(nx, "r")) {
-                result = code_string_concat(result, "\\r");
-            } else if (code_string_equals(nx, "t")) {
-                result = code_string_concat(result, "\t");
-            } else if (code_string_equals(nx, "\"")) {
-                result = code_string_concat(result, "\"");
-            } else if (code_string_equals(nx, "\\")) {
-                result = code_string_concat(result, "\\");
-            } else if (code_string_equals(nx, "/")) {
-                result = code_string_concat(result, "/");
-            } else {
-                result = code_string_concat(result, nx);
-            }
-            i = i + 2;
-        } else {
-            result = code_string_concat(result, ch);
-            i = i + 1;
-        }
-    }
-    return result;
-}
-
-i64 Amalgame_Compiler_LspServer_JsonInt(code_string body, code_string key) {
-    (void)body;
-    (void)key;
-    code_string __attribute__((unused)) needle = code_string_concat(code_string_concat("\"", key), "\"");
-    i64 __attribute__((unused)) kIdx = String_IndexOf(body, needle);
-    if (kIdx < 0) {
-        return 0;
-    }
-    i64 __attribute__((unused)) bn = String_Length(body);
-    code_string __attribute__((unused)) dig = "0123456789";
-    i64 __attribute__((unused)) needleLen = String_Length(needle);
-    i64 __attribute__((unused)) i = kIdx + needleLen;
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "-")) {
-            break;
-        }
-        if (String_IndexOf(dig, ch) >= 0) {
-            break;
-        }
-        i = i + 1;
-    }
-    code_string __attribute__((unused)) numStr = "";
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "-") || String_IndexOf(dig, ch) >= 0) {
-            numStr = code_string_concat(numStr, ch);
-            i = i + 1;
-        } else {
-            break;
-        }
-    }
-    return String_ToInt(numStr);
-}
-
 struct _Amalgame_Compiler_MigrateResult {
     code_bool Ok;
     code_string Content;
     code_string Error;
+    i64 InputTokens;
+    i64 OutputTokens;
 };
 
 
@@ -12076,6 +12969,8 @@ Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateResult_new() {
     self->Ok = 0;
     self->Content = "";
     self->Error = "";
+    self->InputTokens = -1;
+    self->OutputTokens = -1;
     return self;
 }
 
@@ -12098,10 +12993,8 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallPro
 Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRaw(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
 code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
 code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
+code_string Amalgame_Compiler_MigrateCommand_FormatActualCost(code_string provider, code_string model, i64 inputToks, i64 outputToks);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt);
-static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt);
@@ -12346,6 +13239,10 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         return 1;
     }
     Console_WriteLine(code_string_concat("[migrate] wrote ", outPath));
+    code_string __attribute__((unused)) realCost = Amalgame_Compiler_MigrateCommand_FormatActualCost(provider, model, result->InputTokens, result->OutputTokens);
+    if (String_Length(realCost) > 0) {
+        Console_WriteLine(code_string_concat("[migrate] cost: ", realCost));
+    }
     if (!noCache) {
         Amalgame_Compiler_MigrateCommand_CacheStore(source, sysForCache, result->Content);
     }
@@ -12784,6 +13681,77 @@ code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, 
     return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("~", inS), " in + ~"), outS), " out -> ~$"), dolS), "."), centStr), " ("), resolvedModel), ")");
 }
 
+code_string Amalgame_Compiler_MigrateCommand_FormatActualCost(code_string provider, code_string model, i64 inputToks, i64 outputToks) {
+    (void)provider;
+    (void)model;
+    (void)inputToks;
+    (void)outputToks;
+    if (inputToks < 0 || outputToks < 0) {
+        return "";
+    }
+    i64 __attribute__((unused)) inUsdPerM = 0;
+    i64 __attribute__((unused)) outUsdPerM = 0;
+    code_string __attribute__((unused)) resolvedModel = model;
+    if (code_string_equals(provider, "claude-api")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "claude-sonnet-4-6";
+        }
+        if (code_string_equals(resolvedModel, "claude-opus-4-7")) {
+            inUsdPerM = 15000000;
+            outUsdPerM = 75000000;
+        } else if (code_string_equals(resolvedModel, "claude-haiku-4-5")) {
+            inUsdPerM = 1000000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 3000000;
+            outUsdPerM = 15000000;
+        }
+    } else if (code_string_equals(provider, "chatgpt")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gpt-4o-mini";
+        }
+        if (code_string_equals(resolvedModel, "gpt-4o")) {
+            inUsdPerM = 2500000;
+            outUsdPerM = 10000000;
+        } else if (code_string_equals(resolvedModel, "gpt-4-turbo")) {
+            inUsdPerM = 10000000;
+            outUsdPerM = 30000000;
+        } else {
+            inUsdPerM = 150000;
+            outUsdPerM = 600000;
+        }
+    } else if (code_string_equals(provider, "gemini")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gemini-1.5-flash";
+        }
+        if (code_string_equals(resolvedModel, "gemini-1.5-pro")) {
+            inUsdPerM = 1250000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 75000;
+            outUsdPerM = 300000;
+        }
+    } else {
+        return "";
+    }
+    i64 __attribute__((unused)) inProd = inputToks * inUsdPerM;
+    i64 __attribute__((unused)) inMicro = inProd / 1000000;
+    i64 __attribute__((unused)) outProd = outputToks * outUsdPerM;
+    i64 __attribute__((unused)) outMicro = outProd / 1000000;
+    i64 __attribute__((unused)) totalMicro = inMicro + outMicro;
+    i64 __attribute__((unused)) totalCents = totalMicro / 10000;
+    i64 __attribute__((unused)) dollars = totalCents / 100;
+    i64 __attribute__((unused)) cents = totalCents % 100;
+    code_string __attribute__((unused)) centStr = String_FromInt(cents);
+    if (cents < 10) {
+        centStr = code_string_concat("0", centStr);
+    }
+    code_string __attribute__((unused)) inS = String_FromInt(inputToks);
+    code_string __attribute__((unused)) outS = String_FromInt(outputToks);
+    code_string __attribute__((unused)) dolS = String_FromInt(dollars);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(inS, " in + "), outS), " out = $"), dolS), "."), centStr), " ("), resolvedModel), ")");
+}
+
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt) {
     (void)model;
     (void)systemPrompt;
@@ -12803,10 +13771,10 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
     body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
     body = code_string_concat(body, "\"max_tokens\":8192,");
     body = code_string_concat(body, "\"system\":[{\"type\":\"text\",\"text\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, Amalgame_Compiler_Json_EscapeString(systemPrompt));
     body = code_string_concat(body, "\",\"cache_control\":{\"type\":\"ephemeral\"}}],");
     body = code_string_concat(body, "\"messages\":[{\"role\":\"user\",\"content\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, Amalgame_Compiler_Json_EscapeString(userPrompt));
     body = code_string_concat(body, "\"}]}");
     AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
     AmalgameMap_set(headers, "x-api-key", (void*)(intptr_t)(apiKey));
@@ -12819,86 +13787,30 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
         res->Error = code_string_concat(code_string_concat(code_string_concat("claude-api: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
         return res;
     }
-    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
-    if (String_Length(text) == 0) {
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(resp->Body);
+    if (!parsed->Ok) {
         res->Ok = 0;
-        res->Error = code_string_concat("claude-api: empty or unparseable response. Raw body:\n", resp->Body);
+        res->Error = code_string_concat(code_string_concat(code_string_concat("claude-api: unparseable response (", parsed->Error->Message), "). Raw body:\n"), resp->Body);
         return res;
     }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) content = Amalgame_Compiler_JsonValue_Get(root, "content");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) block0 = Amalgame_Compiler_JsonValue_At(content, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(block0, "text");
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("claude-api: empty response (no content[0].text). Raw body:\n", resp->Body);
+        return res;
+    }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usage");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "input_tokens");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "output_tokens");
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
-}
-
-static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s) {
-    (void)s;
-    code_string __attribute__((unused)) out = "";
-    i64 __attribute__((unused)) n = String_Length(s);
-    for (i64 i = 0; i < n; i++) {
-        code_string __attribute__((unused)) c = String_CharAt1(s, i);
-        if (code_string_equals(c, "\\")) {
-            out = code_string_concat(out, "\\\\");
-        } else if (code_string_equals(c, "\"")) {
-            out = code_string_concat(out, "\\\"");
-        } else if (code_string_equals(c, "\n")) {
-            out = code_string_concat(out, "\\n");
-        } else if (code_string_equals(c, "\\r")) {
-            out = code_string_concat(out, "\\r");
-        } else if (code_string_equals(c, "\t")) {
-            out = code_string_concat(out, "\\t");
-        } else {
-            out = code_string_concat(out, c);
-        }
-    }
-    return out;
-}
-
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body) {
-    (void)body;
-    return Amalgame_Compiler_MigrateCommand_JsonExtract(body, "\"text\":\"");
-}
-
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key) {
-    (void)body;
-    (void)key;
-    i64 __attribute__((unused)) kIdx = String_IndexOf(body, key);
-    if (kIdx < 0) {
-        return "";
-    }
-    i64 __attribute__((unused)) kLen = String_Length(key);
-    i64 __attribute__((unused)) start = kIdx + kLen;
-    i64 __attribute__((unused)) n = String_Length(body);
-    code_string __attribute__((unused)) out = "";
-    i64 __attribute__((unused)) i = start;
-    while (i < n) {
-        code_string __attribute__((unused)) c = String_CharAt1(body, i);
-        if (code_string_equals(c, "\\")) {
-            if (i + 1 < n) {
-                code_string __attribute__((unused)) nxt = String_CharAt1(body, i + 1);
-                if (code_string_equals(nxt, "n")) {
-                    out = code_string_concat(out, "\n");
-                } else if (code_string_equals(nxt, "r")) {
-                    out = code_string_concat(out, "\\r");
-                } else if (code_string_equals(nxt, "t")) {
-                    out = code_string_concat(out, "\t");
-                } else if (code_string_equals(nxt, "\"")) {
-                    out = code_string_concat(out, "\"");
-                } else if (code_string_equals(nxt, "\\")) {
-                    out = code_string_concat(out, "\\");
-                } else {
-                    out = code_string_concat(out, nxt);
-                }
-                i = i + 2;
-                continue;
-            }
-        }
-        if (code_string_equals(c, "\"")) {
-            return out;
-        }
-        out = code_string_concat(out, c);
-        i = i + 1;
-    }
-    return out;
 }
 
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt) {
@@ -12919,9 +13831,9 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCha
     code_string __attribute__((unused)) body = "{";
     body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
     body = code_string_concat(body, "\"messages\":[{\"role\":\"system\",\"content\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, Amalgame_Compiler_Json_EscapeString(systemPrompt));
     body = code_string_concat(body, "\"},{\"role\":\"user\",\"content\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, Amalgame_Compiler_Json_EscapeString(userPrompt));
     body = code_string_concat(body, "\"}]}");
     AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
     AmalgameMap_set(headers, "Authorization", (void*)(intptr_t)(code_string_concat("Bearer ", apiKey)));
@@ -12933,12 +13845,28 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCha
         res->Error = code_string_concat(code_string_concat(code_string_concat("chatgpt: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
         return res;
     }
-    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtract(resp->Body, "\"content\":\"");
-    if (String_Length(text) == 0) {
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(resp->Body);
+    if (!parsed->Ok) {
         res->Ok = 0;
-        res->Error = code_string_concat("chatgpt: empty or unparseable response. Raw:\n", resp->Body);
+        res->Error = code_string_concat(code_string_concat(code_string_concat("chatgpt: unparseable response (", parsed->Error->Message), "). Raw:\n"), resp->Body);
         return res;
     }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) choices = Amalgame_Compiler_JsonValue_Get(root, "choices");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) choice0 = Amalgame_Compiler_JsonValue_At(choices, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) message = Amalgame_Compiler_JsonValue_Get(choice0, "message");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(message, "content");
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("chatgpt: empty response (no choices[0].message.content). Raw:\n", resp->Body);
+        return res;
+    }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usage");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "prompt_tokens");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "completion_tokens");
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
@@ -12961,10 +13889,10 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
     }
     code_string __attribute__((unused)) body = "{";
     body = code_string_concat(body, "\"systemInstruction\":{\"parts\":[{\"text\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, Amalgame_Compiler_Json_EscapeString(systemPrompt));
     body = code_string_concat(body, "\"}]},");
     body = code_string_concat(body, "\"contents\":[{\"parts\":[{\"text\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, Amalgame_Compiler_Json_EscapeString(userPrompt));
     body = code_string_concat(body, "\"}]}]}");
     AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
     AmalgameMap_set(headers, "Content-Type", (void*)(intptr_t)("application/json"));
@@ -12976,12 +13904,30 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
         res->Error = code_string_concat(code_string_concat(code_string_concat("gemini: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
         return res;
     }
-    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
-    if (String_Length(text) == 0) {
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(resp->Body);
+    if (!parsed->Ok) {
         res->Ok = 0;
-        res->Error = code_string_concat("gemini: empty or unparseable response. Raw:\n", resp->Body);
+        res->Error = code_string_concat(code_string_concat(code_string_concat("gemini: unparseable response (", parsed->Error->Message), "). Raw:\n"), resp->Body);
         return res;
     }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) candidates = Amalgame_Compiler_JsonValue_Get(root, "candidates");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) cand0 = Amalgame_Compiler_JsonValue_At(candidates, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) candContent = Amalgame_Compiler_JsonValue_Get(cand0, "content");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) parts = Amalgame_Compiler_JsonValue_Get(candContent, "parts");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) part0 = Amalgame_Compiler_JsonValue_At(parts, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(part0, "text");
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n", resp->Body);
+        return res;
+    }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usageMetadata");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "promptTokenCount");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "candidatesTokenCount");
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
@@ -14522,7 +15468,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.4.2 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.4.3 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {
