@@ -656,6 +656,40 @@ run_migrate_help_check "migrate: --help mentions claude-api" "--help" "claude-ap
 run_migrate_prompt_check "migrate: prompt embeds grammar"   "$mig_fixture_ts"  "Amalgame grammar (EBNF)"
 run_migrate_prompt_check "migrate: prompt embeds tour"      "$mig_fixture_ts"  "Amalgame language tour"
 
+# ── amc generate ────────────────────────────────────────
+echo ""
+echo "── amc generate ────────────────────────"
+
+run_generate_check() {
+    local name="$1"
+    local pattern="$2"
+    shift 2
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" generate "$@" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# All hermetic — no real LLM calls.
+run_generate_check "generate: --help"           "Usage: amc generate"      --help
+run_generate_check "generate: dry-run"          "would generate from"      "test prompt" --dry-run
+run_generate_check "generate: dry-run provider" "provider:      claude"    "test"        --dry-run
+run_generate_check "generate: prompt-only sys"  "writing an Amalgame"      "test"        --prompt-only
+run_generate_check "generate: prompt-only task" "## Task"                  "fizzbuzz"    --prompt-only
+run_generate_check "generate: prompt embeds grammar" "Amalgame grammar (EBNF)" "test"    --prompt-only
+unset ANTHROPIC_API_KEY
+run_generate_check "generate: claude-api no key" "ANTHROPIC_API_KEY not set" "test" --provider claude-api
+run_generate_check "generate: unknown provider" "not supported (built-in"  "test"        --provider gemini-x
+run_generate_check "generate: no prompt"        "no prompt given"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"

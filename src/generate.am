@@ -1,0 +1,255 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  generate.am  —  `amc generate` subcommand
+// ═══════════════════════════════════════════════════════
+//
+// LLM-driven code synthesis: takes a natural-language prompt and
+// emits an Amalgame program that fulfills it. Cousin to `amc
+// migrate` — same provider abstraction, same on-disk doc header,
+// same post-write validation. Different input shape: a prompt
+// string instead of a source file.
+//
+// Reuses MigrateCommand's lower-level entry points:
+//   - CallProviderRaw(provider, model, system, user) → MigrateResult
+//   - AutoSelectProvider()                            → "claude" or "claude-api"
+//   - LoadDocsHeader()                                → on-disk grammar + tour
+// (Hosted in migrate.am to avoid duplicating the dispatch table.)
+
+public class GenerateCommand {
+
+    public GenerateCommand() {}
+
+    // ── Usage ─────────────────────────────────────────
+    public static void PrintUsage() {
+        Console.WriteError("Usage: amc generate \"<natural-language prompt>\" [flags]")
+        Console.WriteError("")
+        Console.WriteError("Generates an Amalgame program from a prompt via an LLM.")
+        Console.WriteError("Default output is stdout; use -o to write to a file.")
+        Console.WriteError("")
+        Console.WriteError("Flags:")
+        Console.WriteError("  -o, --output <out>   Write to <out> instead of stdout.")
+        Console.WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api")
+        Console.WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when")
+        Console.WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.")
+        Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
+        Console.WriteError("  --no-check           Skip the `amc --check` validation when -o is given.")
+        Console.WriteError("  --force              Overwrite an existing file at the -o path.")
+        Console.WriteError("  --dry-run            Print what would happen without invoking the LLM.")
+        Console.WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.")
+        Console.WriteError("  -h, --help           Print this help and exit.")
+        Console.WriteError("")
+        Console.WriteError("Examples:")
+        Console.WriteError("  amc generate \"a HTTP server with /health and /version routes\"")
+        Console.WriteError("  amc generate \"sieve of Eratosthenes up to N\" -o sieve.am")
+    }
+
+    // ── Entry point ───────────────────────────────────
+    public static int Run(int argc) {
+        var prompt:       string = ""
+        var output:       string = ""
+        var provider:     string = ""
+        var providerSet:  bool   = false
+        var model:        string = ""
+        var dryRun:       bool   = false
+        var promptOnly:   bool   = false
+        var noCheck:      bool   = false
+        var force:        bool   = false
+
+        // Skip Args[0] (binary path) and Args[1] ("generate").
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                GenerateCommand.PrintUsage()
+                return 0
+            } else if (a == "-o" || a == "--output") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc generate: " + a + " requires a value")
+                    return 1
+                }
+                output = Args_Get(i)
+            } else if (a == "--dry-run") {
+                dryRun = true
+            } else if (a == "--prompt-only") {
+                promptOnly = true
+            } else if (a == "--no-check") {
+                noCheck = true
+            } else if (a == "--force") {
+                force = true
+            } else if (a == "--provider") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc generate: --provider requires a value")
+                    return 1
+                }
+                provider    = Args_Get(i)
+                providerSet = true
+            } else if (a == "--model") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc generate: --model requires a value")
+                    return 1
+                }
+                model = Args_Get(i)
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc generate: unknown option '" + a + "'")
+                return 1
+            } else {
+                if (String_Length(prompt) > 0) {
+                    Console.WriteError("amc generate: too many positional arguments. Quote your prompt: amc generate \"...\"")
+                    return 1
+                }
+                prompt = a
+            }
+            i = i + 1
+        }
+
+        if (String_Length(prompt) == 0) {
+            Console.WriteError("amc generate: no prompt given")
+            Console.WriteError("usage: amc generate \"<natural-language prompt>\" [flags]")
+            return 1
+        }
+
+        // Provider auto-selection mirrors `amc migrate`.
+        if (!providerSet) {
+            provider = MigrateCommand.AutoSelectProvider()
+        }
+
+        let systemPrompt: string = GenerateCommand.BuildSystemPrompt()
+        let userPrompt:   string = GenerateCommand.BuildUserPrompt(prompt)
+
+        if (promptOnly) {
+            Console.WriteLine(systemPrompt)
+            Console.WriteLine("")
+            Console.WriteLine(userPrompt)
+            return 0
+        }
+
+        if (dryRun) {
+            Console.WriteLine("[generate] would generate from prompt (" + String_FromInt(String_Length(prompt)) + " chars)")
+            if (String_Length(output) > 0) {
+                Console.WriteLine("[generate] would write:   " + output)
+            } else {
+                Console.WriteLine("[generate] would write:   <stdout>")
+            }
+            Console.WriteLine("[generate] provider:      " + provider)
+            if (String_Length(model) > 0) {
+                Console.WriteLine("[generate] model:         " + model)
+            }
+            return 0
+        }
+
+        // -o sanity: refuse to overwrite without --force.
+        if (String_Length(output) > 0 && File.Exists(output) && !force) {
+            Console.WriteError("amc generate: output exists: " + output)
+            Console.WriteError("Pass --force to overwrite.")
+            return 1
+        }
+
+        Console.WriteError("[generate] generating from prompt (" + String_FromInt(String_Length(prompt)) + " chars, provider=" + provider + ")...")
+        let result: MigrateResult = MigrateCommand.CallProviderRaw(provider, model, systemPrompt, userPrompt)
+        if (!result.Ok) {
+            Console.WriteError("amc generate: " + result.Error)
+            return 1
+        }
+
+        // Strip code fences if the model wrapped the response.
+        let content: string = GenerateCommand.StripFences(result.Content)
+
+        // No -o: print to stdout, no validation possible (we don't
+        // have a path to feed `amc --check`).
+        if (String_Length(output) == 0) {
+            Console.WriteLine(content)
+            return 0
+        }
+
+        // -o path: write + optionally validate.
+        let writeOk: bool = File.WriteAll(output, content)
+        if (!writeOk) {
+            Console.WriteError("amc generate: failed to write " + output)
+            return 1
+        }
+        Console.WriteLine("[generate] wrote " + output)
+
+        if (!noCheck) {
+            let amcPath: string = Args_Get(0)
+            let cmd: string     = amcPath + " --check " + output
+            let check           = Process.RunCapture(cmd)
+            if (check.Exit != 0) {
+                Console.WriteError("[generate] check failed (typechecker errors in the generated file):")
+                Console.WriteError(check.Stdout)
+                Console.WriteError("The .am file was still written so you can inspect / fix manually.")
+                return 1
+            }
+            Console.WriteLine("[generate] check passed")
+        }
+        return 0
+    }
+
+    // ── Prompt assembly ───────────────────────────────
+    // System prompt: tells the model it's writing Amalgame from
+    // scratch (vs translating). Then defers to MigrateCommand's
+    // shared on-disk doc loader so the grammar + language tour
+    // are identical between migrate and generate.
+    private static string BuildSystemPrompt() {
+        let lb: string = "{"
+        let rb: string = "}"
+        var p: string = ""
+        p = p + "You are writing an Amalgame program from scratch.\n"
+        p = p + "Amalgame is a self-hosted programming language that transpiles to C.\n"
+        p = p + "It uses class-based OOP with explicit visibility modifiers, generic\n"
+        p = p + "collections (List<T>, Map<K,V>, Set<T>), ML-style match expressions,\n"
+        p = p + "exception-based error handling, and higher-order list operations\n"
+        p = p + "(.Map / .Filter / .Reduce / .Any / .All / .CountIf).\n"
+        p = p + "\n"
+        p = p + "## Amalgame conventions\n"
+        p = p + "- Files start with `namespace <Name>` then declarations.\n"
+        p = p + "- Public entry point: `public class Program " + lb + " public static void Main(string[] args) " + lb + " ... " + rb + " " + rb + "`.\n"
+        p = p + "- Classes: `public class Name " + lb + " public Field: int = 0 " + rb + "`.\n"
+        p = p + "- Data classes: `public data class User(string Name, int Age)`.\n"
+        p = p + "- Locals: `let x = 1` (immutable), `var y = 2` (mutable).\n"
+        p = p + "- Lambdas: `(x, y) => x + y` or block form.\n"
+        p = p + "- Match: `match x " + lb + " 0 => \"zero\", _ => \"other\" " + rb + "`.\n"
+        p = p + "- Console output: `Console.WriteLine(\"x=" + lb + "x" + rb + "\")` (string interpolation).\n"
+        p = p + "\n"
+        // Append on-disk grammar + language tour when reachable.
+        let extras: string = MigrateCommand.LoadDocsHeader()
+        if (String_Length(extras) > 0) {
+            p = p + extras
+        }
+        return p
+    }
+
+    // User prompt: the natural-language task + output instructions.
+    private static string BuildUserPrompt(string task) {
+        var p: string = ""
+        p = p + "## Task\n"
+        p = p + task + "\n"
+        p = p + "\n"
+        p = p + "## Output instructions\n"
+        p = p + "Reply with ONLY the Amalgame source code. No prose, no markdown\n"
+        p = p + "fences, no preamble like \"Here's the program:\". Just `.am` content.\n"
+        p = p + "The output should compile with `amc --check`.\n"
+        return p
+    }
+
+    // Same defensive fence-stripper as in migrate.am — promote to
+    // a shared utility if a third subcommand picks it up.
+    private static string StripFences(string s) {
+        let trimmed: string = String_Trim(s)
+        if (!String_StartsWith(trimmed, "```")) { return s }
+        let nl: int = String_IndexOf(trimmed, "\n")
+        if (nl <= 0) { return s }
+        let afterFirst: string = String_Substring(trimmed, nl + 1, String_Length(trimmed) - nl - 1)
+        let rtrimmed: string   = String_Trim(afterFirst)
+        if (!String_EndsWith(rtrimmed, "```")) { return s }
+        return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3)
+    }
+}

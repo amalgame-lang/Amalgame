@@ -166,11 +166,7 @@ public class MigrateCommand {
         // This makes `amc migrate` work on machines without Claude
         // Code installed, as long as a key is exported.
         if (!providerSet) {
-            if (Env.Has("ANTHROPIC_API_KEY")) {
-                provider = "claude-api"
-            } else {
-                provider = "claude"
-            }
+            provider = MigrateCommand.AutoSelectProvider()
         }
 
         if (!File.Exists(input)) {
@@ -526,7 +522,10 @@ public class MigrateCommand {
     // (./docs/...) and from the directory the amc binary lives in
     // (<exec-dir>/docs/...). Returns "" if nothing is reachable —
     // callers fall back to the inline conventions block.
-    private static string LoadDocsHeader() {
+    // Exposed so `amc generate` can reuse the same on-disk doc
+    // header for its system prompt without reimplementing the path
+    // probing.
+    public static string LoadDocsHeader() {
         let candidates = new List<string>()
         // Preferred: relative to amc binary (works post-install when
         // docs/ ships next to the executable).
@@ -563,20 +562,40 @@ public class MigrateCommand {
     // v2   adds chatgpt / gemini (other vendor APIs).
     // Dispatch is additive — a new provider is one new entry.
     private static MigrateResult CallProvider(string provider, string model, string lang, string source) {
+        let sys: string  = MigrateCommand.BuildSystemPrompt(lang)
+        let usr: string  = MigrateCommand.BuildUserPrompt(lang, source)
+        return MigrateCommand.CallProviderRaw(provider, model, sys, usr)
+    }
+
+    // Lower-level provider entry point. Takes pre-built system +
+    // user prompts so callers can shape the conversation differently
+    // from the migration template (used by `amc generate`, which
+    // builds its own task description). Public so generate.am and
+    // any future LLM-driven subcommand can reuse the dispatch table
+    // without re-implementing the per-provider plumbing.
+    public static MigrateResult CallProviderRaw(string provider, string model, string systemPrompt, string userPrompt) {
         if (provider == "claude") {
-            // CLI sees one combined prompt — no system/user split
-            // available through `claude -p < file`.
-            return MigrateCommand.CallClaudeCli(model, MigrateCommand.BuildPrompt(lang, source))
+            // CLI sees one combined prompt (no system message
+            // option through `claude -p < file`).
+            return MigrateCommand.CallClaudeCli(model, systemPrompt + "\n\n" + userPrompt)
         }
         if (provider == "claude-api") {
-            // API path takes (lang, source) so it can build the
-            // system field separately and attach cache_control.
-            return MigrateCommand.CallClaudeApi(model, lang, source)
+            return MigrateCommand.CallClaudeApiRaw(model, systemPrompt, userPrompt)
         }
         let res = new MigrateResult()
         res.Ok    = false
         res.Error = "provider '" + provider + "' not supported (built-in: 'claude', 'claude-api')"
         return res
+    }
+
+    // Provider auto-selection used by both migrate and generate.
+    // Public so generate.am follows the same precedence rules:
+    //   ANTHROPIC_API_KEY in env → claude-api, else → claude (CLI).
+    public static string AutoSelectProvider() {
+        if (Env.Has("ANTHROPIC_API_KEY")) {
+            return "claude-api"
+        }
+        return "claude"
     }
 
     // Anthropic HTTP provider. Reads the API key from
@@ -590,7 +609,9 @@ public class MigrateCommand {
     // payload across consecutive migrations within a 5-minute
     // window. Per-file cost drops from full-prompt-tokens to
     // just-the-source after the first call.
-    private static MigrateResult CallClaudeApi(string model, string lang, string source) {
+    // Lower-level API call — takes pre-built system + user prompts
+    // so generate.am can reuse it with its own task description.
+    private static MigrateResult CallClaudeApiRaw(string model, string systemPrompt, string userPrompt) {
         let res = new MigrateResult()
         let apiKey: string = Env.Get("ANTHROPIC_API_KEY")
         if (String_Length(apiKey) == 0) {
@@ -602,8 +623,6 @@ public class MigrateCommand {
         if (String_Length(modelId) == 0) {
             modelId = "claude-sonnet-4-6"
         }
-        let systemPrompt: string = MigrateCommand.BuildSystemPrompt(lang)
-        let userPrompt:   string = MigrateCommand.BuildUserPrompt(lang, source)
 
         // The `system` field can be a string OR an array of content
         // blocks. We use the array form so we can attach a
