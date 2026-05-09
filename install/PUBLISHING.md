@@ -21,15 +21,15 @@ automatically build all platforms and create the release.
 
 ### Option A — Private tap (fastest, recommended for now)
 
-1. Create a new GitHub repo: `BastienMOUGET/homebrew-amalgame`
+1. Create a new GitHub repo: `amalgame-lang/homebrew-amalgame`
 2. Copy `install/homebrew/amalgame.rb` into it as `Formula/amalgame.rb`
 3. Update the `sha256` value:
    ```bash
-   curl -sSL https://github.com/BastienMOUGET/Amalgame/archive/refs/tags/v0.3.0.tar.gz | sha256sum
+   curl -sSL https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v0.3.0.tar.gz | sha256sum
    ```
 4. Users install with:
    ```bash
-   brew tap BastienMOUGET/amalgame
+   brew tap amalgame-lang/amalgame
    brew install amalgame
    ```
 
@@ -59,11 +59,11 @@ pkgver=0.3.0
 pkgrel=1
 pkgdesc="Modern programming language that transpiles to C"
 arch=('x86_64' 'aarch64')
-url="https://github.com/BastienMOUGET/Amalgame"
+url="https://github.com/amalgame-lang/Amalgame"
 license=('Apache-2.0')
 depends=('glib2' 'libgee' 'gc' 'gcc')
 makedepends=('vala' 'meson' 'ninja')
-source=("$pkgname-$pkgver.tar.gz::https://github.com/BastienMOUGET/Amalgame/archive/refs/tags/v$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('REPLACE_WITH_SHA256')
 
 build() {
@@ -114,7 +114,7 @@ Maintainer: Bastien MOUGET <your@email.com>
 Build-Depends: debhelper (>= 10), valac, libglib2.0-dev,
                libgee-0.8-dev, meson, ninja-build, libgc-dev
 Standards-Version: 4.6.0
-Homepage: https://github.com/BastienMOUGET/Amalgame
+Homepage: https://github.com/amalgame-lang/Amalgame
 
 Package: amalgame
 Architecture: any
@@ -150,8 +150,8 @@ Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Modern programming language that transpiles to C
 License:        Apache-2.0
-URL:            https://github.com/BastienMOUGET/Amalgame
-Source0:        https://github.com/BastienMOUGET/Amalgame/archive/refs/tags/v%{version}.tar.gz
+URL:            https://github.com/amalgame-lang/Amalgame
+Source0:        https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v%{version}.tar.gz
 
 BuildRequires:  vala
 BuildRequires:  meson
@@ -208,7 +208,7 @@ stdenv.mkDerivation rec {
   version = "0.3.0";
 
   src = fetchFromGitHub {
-    owner = "BastienMOUGET";
+    owner = "amalgame-lang";
     repo  = "Amalgame";
     rev   = "v${version}";
     hash  = "sha256-REPLACE";
@@ -224,7 +224,7 @@ stdenv.mkDerivation rec {
 
   meta = with lib; {
     description = "Modern programming language that transpiles to C";
-    homepage    = "https://github.com/BastienMOUGET/Amalgame";
+    homepage    = "https://github.com/amalgame-lang/Amalgame";
     license     = licenses.asl20;
     platforms   = platforms.unix;
     maintainers = [];
@@ -253,7 +253,7 @@ Submit to [nixpkgs](https://github.com/NixOS/nixpkgs) via PR.
 
 Users run in PowerShell:
 ```powershell
-irm https://raw.githubusercontent.com/BastienMOUGET/Amalgame/main/install/windows/install.ps1 | iex
+irm https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/windows/install.ps1 | iex
 ```
 
 This downloads the `.zip` from GitHub Releases, installs to `%LOCALAPPDATA%\Amalgame\`, and adds it to the user PATH.
@@ -274,23 +274,23 @@ The `.exe` installer:
 Once you have stable releases, submit to winget:
 ```bash
 # Fork https://github.com/microsoft/winget-pkgs
-# Add manifests/b/BastienMOUGET/Amalgame/0.3.0/
+# Add manifests/b/amalgame-lang/Amalgame/0.3.0/
 # Submit PR
 ```
 
 Manifest format:
 ```yaml
-# BastienMOUGET.Amalgame.yaml
-PackageIdentifier: BastienMOUGET.Amalgame
+# amalgame-lang.Amalgame.yaml
+PackageIdentifier: amalgame-lang.Amalgame
 PackageVersion: 0.3.0
 PackageName: Amalgame
 Publisher: Bastien MOUGET
 License: Apache-2.0
-PackageUrl: https://github.com/BastienMOUGET/Amalgame
+PackageUrl: https://github.com/amalgame-lang/Amalgame
 Installers:
   - Architecture: x64
     InstallerType: inno
-    InstallerUrl: https://github.com/BastienMOUGET/Amalgame/releases/download/v0.3.0/amalgame-0.3.0-windows-setup.exe
+    InstallerUrl: https://github.com/amalgame-lang/Amalgame/releases/download/v0.3.0/amalgame-0.3.0-windows-setup.exe
     InstallerSha256: REPLACE_WITH_SHA256
 ManifestType: singleton
 ManifestVersion: 1.4.0

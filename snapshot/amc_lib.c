@@ -13931,7 +13931,7 @@ static code_string Amalgame_Compiler_NewCommand_LibAm(code_string name) {
     s = code_string_concat(s, "\n");
     s = code_string_concat(s, "// [Library]\n");
     s = code_string_concat(s, "// Marker comment is read by `amc --lib` to skip the missing-Main check.\n");
-    s = code_string_concat(s, "// See https://github.com/BastienMOUGET/Amalgame for the reference.\n");
+    s = code_string_concat(s, "// See https://github.com/amalgame-lang/Amalgame for the reference.\n");
     s = code_string_concat(s, "\n");
     s = code_string_concat(code_string_concat(code_string_concat(s, "public class "), Amalgame_Compiler_NewCommand_Capitalize(name)), " {\n");
     s = code_string_concat(code_string_concat(code_string_concat(s, "    public "), Amalgame_Compiler_NewCommand_Capitalize(name)), "() {}\n");

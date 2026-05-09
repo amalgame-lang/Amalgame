@@ -304,7 +304,7 @@ public class NewCommand {
         s = s + "\n"
         s = s + "// [Library]\n"
         s = s + "// Marker comment is read by `amc --lib` to skip the missing-Main check.\n"
-        s = s + "// See https://github.com/BastienMOUGET/Amalgame for the reference.\n"
+        s = s + "// See https://github.com/amalgame-lang/Amalgame for the reference.\n"
         s = s + "\n"
         s = s + "public class " + NewCommand.Capitalize(name) + " {\n"
         s = s + "    public " + NewCommand.Capitalize(name) + "() {}\n"

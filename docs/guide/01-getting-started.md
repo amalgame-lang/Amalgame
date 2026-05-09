@@ -21,7 +21,7 @@ sudo apt install -y \
     valac meson ninja-build gcc \
     libglib2.0-dev libgee-0.8-dev libgc-dev libcurl4-openssl-dev
 
-git clone https://github.com/BastienMOUGET/Amalgame.git
+git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
 ./compile.sh         # one-time: builds the Vala-bootstrap amc into ./build/amc
 ./build_amc.sh       # builds the self-hosted amc into ./amc (~5s)
@@ -32,7 +32,7 @@ cd Amalgame
 
 ```bash
 brew install bdw-gc curl
-git clone https://github.com/BastienMOUGET/Amalgame.git
+git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
 gcc -O2 -Iruntime src/amc_lib.c \
     -lgc -lm -lcurl -o amc
@@ -47,7 +47,7 @@ to bootstrap.
 
 ```bash
 pacman -S mingw-w64-x86_64-{gcc,gc,curl}
-git clone https://github.com/BastienMOUGET/Amalgame.git
+git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
 gcc -O2 -Iruntime src/amc_lib.c \
     -lgc -lm -lcurl -o amc.exe
@@ -60,7 +60,7 @@ see `install/windows/amalgame.iss` (Inno Setup script).
 ### Pre-built binary
 
 Each tagged release in
-[GitHub Releases](https://github.com/BastienMOUGET/Amalgame/releases)
+[GitHub Releases](https://github.com/amalgame-lang/Amalgame/releases)
 ships `amc-X.Y.Z-{linux,macos,windows}-...` archives.
 
 ## Hello, World
