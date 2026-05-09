@@ -42,6 +42,7 @@ typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
 typedef struct _Amalgame_Compiler_GenerateCommand Amalgame_Compiler_GenerateCommand;
+typedef struct _Amalgame_Compiler_ExplainCommand Amalgame_Compiler_ExplainCommand;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -12707,6 +12708,201 @@ static code_string Amalgame_Compiler_GenerateCommand_StripFences(code_string s) 
     return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3);
 }
 
+struct _Amalgame_Compiler_ExplainCommand {
+};
+
+void Amalgame_Compiler_ExplainCommand_PrintUsage();
+i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc);
+static code_string Amalgame_Compiler_ExplainCommand_BuildSystemPrompt(code_string outLang);
+static code_string Amalgame_Compiler_ExplainCommand_BuildUserPrompt(code_string path, code_string source);
+
+Amalgame_Compiler_ExplainCommand* Amalgame_Compiler_ExplainCommand_new() {
+    Amalgame_Compiler_ExplainCommand* self = (Amalgame_Compiler_ExplainCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_ExplainCommand));
+    return self;
+}
+
+void Amalgame_Compiler_ExplainCommand_PrintUsage() {
+    Console_WriteError("Usage: amc explain <file.am> [flags]");
+    Console_WriteError("");
+    Console_WriteError("Reads an Amalgame source file and prints a natural-language");
+    Console_WriteError("explanation of what it does. Default output is stdout.");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  -o, --output <out>   Write to <out> instead of stdout.");
+    Console_WriteError("  --lang <name>        Output language for the explanation.");
+    Console_WriteError("                       Default: English. Try --lang French, etc.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api");
+    Console_WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when");
+    Console_WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.");
+    Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
+    Console_WriteError("  --force              Overwrite an existing file at the -o path.");
+    Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
+    Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  -h, --help           Print this help and exit.");
+}
+
+i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) input = "";
+    code_string __attribute__((unused)) output = "";
+    code_string __attribute__((unused)) outLang = "English";
+    code_string __attribute__((unused)) provider = "";
+    code_bool __attribute__((unused)) providerSet = 0;
+    code_string __attribute__((unused)) model = "";
+    code_bool __attribute__((unused)) dryRun = 0;
+    code_bool __attribute__((unused)) promptOnly = 0;
+    code_bool __attribute__((unused)) force = 0;
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_ExplainCommand_PrintUsage();
+            return 0;
+        } else if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError(code_string_concat(code_string_concat("amc explain: ", a), " requires a value"));
+                return 1;
+            }
+            output = Args_Get(i);
+        } else if (code_string_equals(a, "--dry-run")) {
+            dryRun = 1;
+        } else if (code_string_equals(a, "--prompt-only")) {
+            promptOnly = 1;
+        } else if (code_string_equals(a, "--force")) {
+            force = 1;
+        } else if (code_string_equals(a, "--lang")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc explain: --lang requires a value");
+                return 1;
+            }
+            outLang = Args_Get(i);
+        } else if (code_string_equals(a, "--provider")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc explain: --provider requires a value");
+                return 1;
+            }
+            provider = Args_Get(i);
+            providerSet = 1;
+        } else if (code_string_equals(a, "--model")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc explain: --model requires a value");
+                return 1;
+            }
+            model = Args_Get(i);
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc explain: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(input) > 0) {
+                Console_WriteError("amc explain: too many positional arguments");
+                return 1;
+            }
+            input = a;
+        }
+        i = i + 1;
+    }
+    if (String_Length(input) == 0) {
+        Console_WriteError("amc explain: no input file");
+        Console_WriteError("usage: amc explain <file.am> [flags]");
+        return 1;
+    }
+    if (!File_Exists(input)) {
+        Console_WriteError(code_string_concat("amc explain: file not found: ", input));
+        return 1;
+    }
+    if (!providerSet) {
+        provider = Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
+    }
+    code_string __attribute__((unused)) source = File_ReadAll(input);
+    code_string __attribute__((unused)) systemPrompt = Amalgame_Compiler_ExplainCommand_BuildSystemPrompt(outLang);
+    code_string __attribute__((unused)) userPrompt = Amalgame_Compiler_ExplainCommand_BuildUserPrompt(input, source);
+    if (promptOnly) {
+        Console_WriteLine(systemPrompt);
+        Console_WriteLine("");
+        Console_WriteLine(userPrompt);
+        return 0;
+    }
+    if (dryRun) {
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] would explain: ", input), " ("), String_FromInt(String_Length(source))), " chars)"));
+        if (String_Length(output) > 0) {
+            Console_WriteLine(code_string_concat("[explain] would write:   ", output));
+        } else {
+            Console_WriteLine("[explain] would write:   <stdout>");
+        }
+        Console_WriteLine(code_string_concat("[explain] provider:      ", provider));
+        Console_WriteLine(code_string_concat("[explain] output lang:   ", outLang));
+        return 0;
+    }
+    if (String_Length(output) > 0 && File_Exists(output) && !force) {
+        Console_WriteError(code_string_concat("amc explain: output exists: ", output));
+        Console_WriteError("Pass --force to overwrite.");
+        return 1;
+    }
+    Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] explaining ", input), " (provider="), provider), ", lang="), outLang), ")..."));
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);
+    if (!result->Ok) {
+        Console_WriteError(code_string_concat("amc explain: ", result->Error));
+        return 1;
+    }
+    if (String_Length(output) == 0) {
+        Console_WriteLine(result->Content);
+        return 0;
+    }
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(output, result->Content);
+    if (!writeOk) {
+        Console_WriteError(code_string_concat("amc explain: failed to write ", output));
+        return 1;
+    }
+    Console_WriteLine(code_string_concat("[explain] wrote ", output));
+    return 0;
+}
+
+static code_string Amalgame_Compiler_ExplainCommand_BuildSystemPrompt(code_string outLang) {
+    (void)outLang;
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(p, "You are explaining Amalgame source code to a developer.\n");
+    p = code_string_concat(p, "Amalgame is a self-hosted programming language that transpiles to C.\n");
+    p = code_string_concat(p, "It uses class-based OOP, generic collections (List<T>, Map<K,V>, Set<T>),\n");
+    p = code_string_concat(p, "ML-style match expressions, exception-based error handling, and\n");
+    p = code_string_concat(p, "higher-order list operations (.Map / .Filter / .Reduce / .Any / .All).\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(code_string_concat(code_string_concat(p, "Write the explanation in "), outLang), ".\n");
+    p = code_string_concat(p, "\n");
+    code_string __attribute__((unused)) extras = Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
+    if (String_Length(extras) > 0) {
+        p = code_string_concat(p, extras);
+    }
+    return p;
+}
+
+static code_string Amalgame_Compiler_ExplainCommand_BuildUserPrompt(code_string path, code_string source) {
+    (void)path;
+    (void)source;
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(code_string_concat(code_string_concat(p, "## Amalgame source: "), path), "\n");
+    p = code_string_concat(p, "```amalgame\n");
+    p = code_string_concat(p, source);
+    p = code_string_concat(p, "\n```\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## What to cover\n");
+    p = code_string_concat(p, "Explain this code clearly and concisely:\n");
+    p = code_string_concat(p, "  1. The overall purpose (what problem does it solve?).\n");
+    p = code_string_concat(p, "  2. The main types and their roles.\n");
+    p = code_string_concat(p, "  3. The control flow of the entry point.\n");
+    p = code_string_concat(p, "  4. Anything Amalgame-specific worth highlighting (lambdas,\n");
+    p = code_string_concat(p, "     match expressions, generics) and what they contribute.\n");
+    p = code_string_concat(p, "  5. Edge cases or limitations the reader should know about.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "Use prose with short headings (Markdown). Quote short snippets\n");
+    p = code_string_concat(p, "when illustrative. Don't restate the obvious — focus on the\n");
+    p = code_string_concat(p, "non-trivial decisions in the code.\n");
+    return p;
+}
+
 struct _Amalgame_Compiler_AmalgameCompiler {
     Amalgame_Compiler_DiagnosticFormatter* Diag;
     code_bool IsLib;
@@ -12918,6 +13114,8 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("                shells out to the local `claude` CLI. See `amc migrate --help`.");
     Console_WriteError("  generate <p>  Generate an Amalgame program from a natural-language prompt.");
     Console_WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.");
+    Console_WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.");
+    Console_WriteError("                See `amc explain --help`.");
 }
 
 i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
@@ -13088,6 +13286,10 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "generate")) {
         Exit_Set(Amalgame_Compiler_GenerateCommand_Run(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "explain")) {
+        Exit_Set(Amalgame_Compiler_ExplainCommand_Run(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
