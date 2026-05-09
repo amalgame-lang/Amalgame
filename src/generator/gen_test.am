@@ -112,6 +112,16 @@ public class Program {
         let rndProg  = rndPar.Parse()
         Console.WriteError("parsed: stdlib/random.am")
 
+        // Encoding stdlib — Base64 / Hex / Url percent-encoding.
+        // Pure Amalgame, no runtime header.
+        let encPath  = "./src/stdlib/encoding.am"
+        let encSrc   = File.ReadAll(encPath)
+        let encLex   = new Lexer(encSrc, encPath)
+        let encToks  = encLex.Tokenize()
+        let encPar   = new Parser(encToks)
+        let encProg  = encPar.Parse()
+        Console.WriteError("parsed: stdlib/encoding.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -184,6 +194,7 @@ public class Program {
         gen6.AddFilePass1(lintProg)
         gen6.AddFilePass1(jsonProg)
         gen6.AddFilePass1(rndProg)
+        gen6.AddFilePass1(encProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -205,6 +216,7 @@ public class Program {
         gen6.AddFilePass2(lintProg)
         gen6.AddFilePass2(jsonProg)
         gen6.AddFilePass2(rndProg)
+        gen6.AddFilePass2(encProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)
