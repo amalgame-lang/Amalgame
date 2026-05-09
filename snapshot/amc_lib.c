@@ -12959,6 +12959,8 @@ struct _Amalgame_Compiler_MigrateResult {
     code_bool Ok;
     code_string Content;
     code_string Error;
+    i64 InputTokens;
+    i64 OutputTokens;
 };
 
 
@@ -12967,6 +12969,8 @@ Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateResult_new() {
     self->Ok = 0;
     self->Content = "";
     self->Error = "";
+    self->InputTokens = -1;
+    self->OutputTokens = -1;
     return self;
 }
 
@@ -12989,6 +12993,7 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallPro
 Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRaw(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
 code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
 code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
+code_string Amalgame_Compiler_MigrateCommand_FormatActualCost(code_string provider, code_string model, i64 inputToks, i64 outputToks);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt);
@@ -13234,6 +13239,10 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         return 1;
     }
     Console_WriteLine(code_string_concat("[migrate] wrote ", outPath));
+    code_string __attribute__((unused)) realCost = Amalgame_Compiler_MigrateCommand_FormatActualCost(provider, model, result->InputTokens, result->OutputTokens);
+    if (String_Length(realCost) > 0) {
+        Console_WriteLine(code_string_concat("[migrate] cost: ", realCost));
+    }
     if (!noCache) {
         Amalgame_Compiler_MigrateCommand_CacheStore(source, sysForCache, result->Content);
     }
@@ -13672,6 +13681,77 @@ code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, 
     return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("~", inS), " in + ~"), outS), " out -> ~$"), dolS), "."), centStr), " ("), resolvedModel), ")");
 }
 
+code_string Amalgame_Compiler_MigrateCommand_FormatActualCost(code_string provider, code_string model, i64 inputToks, i64 outputToks) {
+    (void)provider;
+    (void)model;
+    (void)inputToks;
+    (void)outputToks;
+    if (inputToks < 0 || outputToks < 0) {
+        return "";
+    }
+    i64 __attribute__((unused)) inUsdPerM = 0;
+    i64 __attribute__((unused)) outUsdPerM = 0;
+    code_string __attribute__((unused)) resolvedModel = model;
+    if (code_string_equals(provider, "claude-api")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "claude-sonnet-4-6";
+        }
+        if (code_string_equals(resolvedModel, "claude-opus-4-7")) {
+            inUsdPerM = 15000000;
+            outUsdPerM = 75000000;
+        } else if (code_string_equals(resolvedModel, "claude-haiku-4-5")) {
+            inUsdPerM = 1000000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 3000000;
+            outUsdPerM = 15000000;
+        }
+    } else if (code_string_equals(provider, "chatgpt")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gpt-4o-mini";
+        }
+        if (code_string_equals(resolvedModel, "gpt-4o")) {
+            inUsdPerM = 2500000;
+            outUsdPerM = 10000000;
+        } else if (code_string_equals(resolvedModel, "gpt-4-turbo")) {
+            inUsdPerM = 10000000;
+            outUsdPerM = 30000000;
+        } else {
+            inUsdPerM = 150000;
+            outUsdPerM = 600000;
+        }
+    } else if (code_string_equals(provider, "gemini")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gemini-1.5-flash";
+        }
+        if (code_string_equals(resolvedModel, "gemini-1.5-pro")) {
+            inUsdPerM = 1250000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 75000;
+            outUsdPerM = 300000;
+        }
+    } else {
+        return "";
+    }
+    i64 __attribute__((unused)) inProd = inputToks * inUsdPerM;
+    i64 __attribute__((unused)) inMicro = inProd / 1000000;
+    i64 __attribute__((unused)) outProd = outputToks * outUsdPerM;
+    i64 __attribute__((unused)) outMicro = outProd / 1000000;
+    i64 __attribute__((unused)) totalMicro = inMicro + outMicro;
+    i64 __attribute__((unused)) totalCents = totalMicro / 10000;
+    i64 __attribute__((unused)) dollars = totalCents / 100;
+    i64 __attribute__((unused)) cents = totalCents % 100;
+    code_string __attribute__((unused)) centStr = String_FromInt(cents);
+    if (cents < 10) {
+        centStr = code_string_concat("0", centStr);
+    }
+    code_string __attribute__((unused)) inS = String_FromInt(inputToks);
+    code_string __attribute__((unused)) outS = String_FromInt(outputToks);
+    code_string __attribute__((unused)) dolS = String_FromInt(dollars);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(inS, " in + "), outS), " out = $"), dolS), "."), centStr), " ("), resolvedModel), ")");
+}
+
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt) {
     (void)model;
     (void)systemPrompt;
@@ -13723,6 +13803,11 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
         res->Error = code_string_concat("claude-api: empty response (no content[0].text). Raw body:\n", resp->Body);
         return res;
     }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usage");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "input_tokens");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "output_tokens");
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
@@ -13777,6 +13862,11 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCha
         res->Error = code_string_concat("chatgpt: empty response (no choices[0].message.content). Raw:\n", resp->Body);
         return res;
     }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usage");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "prompt_tokens");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "completion_tokens");
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
@@ -13833,6 +13923,11 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
         res->Error = code_string_concat("gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n", resp->Body);
         return res;
     }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usageMetadata");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "promptTokenCount");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "candidatesTokenCount");
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
