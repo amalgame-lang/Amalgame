@@ -399,13 +399,88 @@ spans can layer rejection sampling on top of `NextUInt32()`.
 > use a single global state, an 8-bit-output LCG, and have no
 > crypto path. New code should reach for `Amalgame.Random`.
 
+## Encoding — Base64, Hex, percent-encoding
+
+`Amalgame.Encoding` ships three small static facades for the
+bread-and-butter byte/text transcodings: `Base64` (RFC 4648),
+`Hex`, and `Url` (percent-encoding per RFC 3986). All three are
+pure Amalgame — no runtime header, no syscalls.
+
+```amalgame
+import Amalgame.Encoding
+import Amalgame.Collections
+
+// ── Base64 ──
+let bytes: List<int> = new List<int>()
+bytes.Add(72); bytes.Add(105)               // "Hi"
+let s: string = Base64.Encode(bytes)        // "SGk="
+let back: List<int> = Base64.Decode(s)      // [72, 105]
+
+// URL-safe variant (swaps + / for - _)
+let token: string = Base64.EncodeUrl(bytes) // "SGk="
+let raw:   List<int> = Base64.DecodeUrl(token)
+
+// ── Hex ──
+let h: string = Hex.Encode(bytes)            // "4869" (lowercase)
+let H: string = Hex.EncodeUpper(bytes)       // "4869"
+let bytes2: List<int> = Hex.Decode("48 69")  // [] (rejects spaces)
+let bytes3: List<int> = Hex.Decode("4869")   // [72, 105]
+
+// ── Url (percent-encoding) ──
+Url.Encode("hello world")           // "hello%20world"
+Url.Encode("a/b?c=1")               // "a/b?c=1"   — path-safe chars kept
+Url.EncodeComponent("a/b?c=1")      // "a%2Fb%3Fc%3D1"
+Url.Decode("a%2Fb%3Fc%3D1")         // "a/b?c=1"
+```
+
+### Base64
+
+| Method                | Returns                     |
+|-----------------------|-----------------------------|
+| `Encode(bytes)`       | `string` — RFC 4648 §4 alphabet, `=` padding |
+| `Decode(s)`           | `List<int>` — empty on invalid chars |
+| `EncodeUrl(bytes)`    | `string` — URL-safe alphabet (`-_` for `+/`) |
+| `DecodeUrl(s)`        | `List<int>` — counterpart of EncodeUrl |
+| `IsValid(s)`          | `bool` — true if `s` decodes cleanly under standard alphabet |
+
+Both decoders accept padded *or* unpadded input. Whitespace
+inside the encoded body is **not** stripped — strict mode by
+default. Trim or pre-clean upstream if your input may have
+embedded newlines (e.g. PEM blocks).
+
+### Hex
+
+| Method               | Returns                                |
+|----------------------|----------------------------------------|
+| `Encode(bytes)`      | `string` — lowercase, no separator     |
+| `EncodeUpper(bytes)` | `string` — uppercase                   |
+| `Decode(s)`          | `List<int>` — accepts mixed case; empty on odd-length or invalid char |
+| `IsValid(s)`         | `bool` — even-length + all hex chars   |
+
+### Url
+
+| Method                  | Returns                                   |
+|-------------------------|-------------------------------------------|
+| `Encode(s)`             | `string` — preserves the unreserved set + path-safe gen/sub-delims (`/?#&=+:@,;`) |
+| `EncodeComponent(s)`    | `string` — also escapes the path-safe set; matches JS `encodeURIComponent` |
+| `Decode(s)`             | `string` — RFC-strict; `+` is **not** mapped to space |
+
+`Decode` is intentionally strict on `+`. Form-encoded payloads
+(`application/x-www-form-urlencoded`) are a separate spec layered
+on top — pre-substitute `+` → space yourself if you're parsing a
+form body, or wait for a dedicated `Form` decoder.
+
+> The byte → char round-trips here all assume `bytes` ∈ [0, 255]
+> per entry. `Random.Bytes(n)` and `Random.SystemBytes(n)` already
+> return values in that range, so encoding entropy as Base64/Hex
+> works without an extra cast layer.
+
 ## What's missing
 
 - Bigger Math (trig, logs)
 - Async/iter/streaming abstractions over collections
 - Date/Time
 - Regex
-- Encoding (Base64, hex, URL)
 - Process spawning beyond `Args` / `Exit` (basic `Process.Run`
   / `Process.RunCapture` already in)
 - A package manager and ecosystem

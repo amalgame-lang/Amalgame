@@ -257,6 +257,34 @@ run_test "Random: SystemBytes count"    "$SAMPLES/stdlib_random.am" "[PASS] Syst
 run_test "Random: SystemBytes range"    "$SAMPLES/stdlib_random.am" "[PASS] SystemBytes in [0,255]" "" "$RND_LIB"
 run_test "Random: FromSystem usable"    "$SAMPLES/stdlib_random.am" "[PASS] FromSystem usable"    "" "$RND_LIB"
 
+# ── Amalgame.Encoding ──────────────────────────────────
+# Same extra-input pattern as Json/Random — pulls in
+# src/stdlib/encoding.am alongside the test sample.
+echo ""
+echo "── Amalgame.Encoding ───────────────────────"
+ENC_LIB="src/stdlib/encoding.am"
+run_test "Encoding: b64 encode hello"       "$SAMPLES/stdlib_encoding.am" "[PASS] b64 encode hello"          "" "$ENC_LIB"
+run_test "Encoding: b64 encode empty"       "$SAMPLES/stdlib_encoding.am" "[PASS] b64 encode empty"          "" "$ENC_LIB"
+run_test "Encoding: b64 encode 1 byte"      "$SAMPLES/stdlib_encoding.am" "[PASS] b64 encode 1 byte"         "" "$ENC_LIB"
+run_test "Encoding: b64 encode 2 bytes"     "$SAMPLES/stdlib_encoding.am" "[PASS] b64 encode 2 bytes"        "" "$ENC_LIB"
+run_test "Encoding: b64 round trip"         "$SAMPLES/stdlib_encoding.am" "[PASS] b64 round trip"            "" "$ENC_LIB"
+run_test "Encoding: b64 IsValid"            "$SAMPLES/stdlib_encoding.am" "[PASS] b64 IsValid"               "" "$ENC_LIB"
+run_test "Encoding: b64 url-safe alphabet"  "$SAMPLES/stdlib_encoding.am" "[PASS] b64 url-safe alphabet"     "" "$ENC_LIB"
+run_test "Encoding: b64 url-safe round"     "$SAMPLES/stdlib_encoding.am" "[PASS] b64 url-safe round trip"   "" "$ENC_LIB"
+run_test "Encoding: hex encode lower"       "$SAMPLES/stdlib_encoding.am" "[PASS] hex encode lower"          "" "$ENC_LIB"
+run_test "Encoding: hex encode upper"       "$SAMPLES/stdlib_encoding.am" "[PASS] hex encode upper"          "" "$ENC_LIB"
+run_test "Encoding: hex decode mixed case"  "$SAMPLES/stdlib_encoding.am" "[PASS] hex decode mixed case"     "" "$ENC_LIB"
+run_test "Encoding: hex rejects bad"        "$SAMPLES/stdlib_encoding.am" "[PASS] hex decode rejects bad input" "" "$ENC_LIB"
+run_test "Encoding: hex IsValid"            "$SAMPLES/stdlib_encoding.am" "[PASS] hex IsValid"               "" "$ENC_LIB"
+run_test "Encoding: url encode space"       "$SAMPLES/stdlib_encoding.am" "[PASS] url encode space"          "" "$ENC_LIB"
+run_test "Encoding: url path-safe"          "$SAMPLES/stdlib_encoding.am" "[PASS] url encode path-safe"      "" "$ENC_LIB"
+run_test "Encoding: url component"          "$SAMPLES/stdlib_encoding.am" "[PASS] url encode component"      "" "$ENC_LIB"
+run_test "Encoding: url unreserved"         "$SAMPLES/stdlib_encoding.am" "[PASS] url unreserved unchanged"  "" "$ENC_LIB"
+run_test "Encoding: url decode space"       "$SAMPLES/stdlib_encoding.am" "[PASS] url decode space"          "" "$ENC_LIB"
+run_test "Encoding: url decode lower hex"   "$SAMPLES/stdlib_encoding.am" "[PASS] url decode lowercase hex"  "" "$ENC_LIB"
+run_test "Encoding: url decode plus"        "$SAMPLES/stdlib_encoding.am" "[PASS] url decode plus literal"   "" "$ENC_LIB"
+run_test "Encoding: url round trip"         "$SAMPLES/stdlib_encoding.am" "[PASS] url round trip"            "" "$ENC_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"
