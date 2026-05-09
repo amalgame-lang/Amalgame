@@ -11749,6 +11749,7 @@ Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateResult_new() {
 struct _Amalgame_Compiler_MigrateCommand {
 };
 
+void Amalgame_Compiler_MigrateCommand_PrintUsage();
 i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc);
 static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path);
 static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input);
@@ -11762,6 +11763,31 @@ static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
 Amalgame_Compiler_MigrateCommand* Amalgame_Compiler_MigrateCommand_new() {
     Amalgame_Compiler_MigrateCommand* self = (Amalgame_Compiler_MigrateCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_MigrateCommand));
     return self;
+}
+
+void Amalgame_Compiler_MigrateCommand_PrintUsage() {
+    Console_WriteError("Usage: amc migrate <file> [flags]");
+    Console_WriteError("");
+    Console_WriteError("Translates a source file in any supported language to Amalgame");
+    Console_WriteError("via an LLM (v0: requires `claude` CLI on PATH).");
+    Console_WriteError("");
+    Console_WriteError("Supported source extensions:");
+    Console_WriteError("  .ts .tsx .js .jsx .mjs .py .java .cs .go .rs");
+    Console_WriteError("  .cpp .cc .cxx .hpp .h++ .c .h .kt .kts .swift .rb .php");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).");
+    Console_WriteError("  --lang <name>        Override extension-based language detection.");
+    Console_WriteError("  --provider <name>    Pick the LLM provider (default: claude — only one in v0).");
+    Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
+    Console_WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).");
+    Console_WriteError("  --no-check           Skip the post-migration `amc --check` validation.");
+    Console_WriteError("  --force              Overwrite an existing .am at the output path.");
+    Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
+    Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  -h, --help           Print this help and exit.");
+    Console_WriteError("");
+    Console_WriteError("See docs/proposals/amc-migrate.md for design rationale.");
 }
 
 i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
@@ -11779,7 +11805,10 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
-        if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_MigrateCommand_PrintUsage();
+            return 0;
+        } else if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
             i = i + 1;
             if (i >= argc) {
                 Console_WriteError(code_string_concat(code_string_concat("amc migrate: ", a), " requires a value"));
