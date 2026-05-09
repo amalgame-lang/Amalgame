@@ -1,0 +1,40 @@
+namespace Tests
+
+public class Counter {
+    public Value: int = 0
+    public Label: string = ""
+
+    // Constructor with implicit field assignment (no `this.` qualifier).
+    // Before the fix, `Value = v` lowered to bare C `Value = v;` and
+    // gcc errored with "Value undeclared".
+    public Counter(int v, string label) {
+        Value = v
+        Label = label
+    }
+
+    // Method using implicit field read on the rhs.
+    public int DoublePlus(int extra) {
+        return Value * 2 + extra
+    }
+
+    // Mixed: explicit `this.` and implicit, in the same method.
+    public void Reset() {
+        Value = 0
+        this.Label = "reset"
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let c = new Counter(7, "init")
+        Console.WriteLine("value: {c.Value}")
+        Console.WriteLine("label: {c.Label}")
+
+        let dp: int = c.DoublePlus(3)
+        Console.WriteLine("dp: {dp}")
+
+        c.Reset()
+        Console.WriteLine("after reset value: {c.Value}")
+        Console.WriteLine("after reset label: {c.Label}")
+    }
+}

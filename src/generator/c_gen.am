@@ -2218,7 +2218,27 @@ public class CGen {
         }
         if (k == NodeKind.LITERAL_NULL) { return "NULL" }
         if (k == NodeKind.THIS_EXPR)    { return "self" }
-        if (k == NodeKind.IDENTIFIER)   { return expr.Name }
+        if (k == NodeKind.IDENTIFIER) {
+            // Auto-qualify implicit field access in method bodies:
+            // `Id = id` inside a method/constructor lowers to
+            // `self->Id = id` when Id isn't a local (no shadow) but
+            // IS a field of the current class. Lets users from
+            // C# / TS / Kotlin / Swift skip the explicit `this.`
+            // qualifier without breaking codegen. Resolves naturally
+            // for both reads (rhs) and writes (lhs) since both go
+            // through this branch.
+            let name = expr.Name
+            if (String_Length(this.CurrentClass) > 0) {
+                let asLocal: string = this.LocalTypeGet(name)
+                if (String_Length(asLocal) == 0) {
+                    let asField: string = this.FieldTypeGet(this.CurrentClass, name)
+                    if (String_Length(asField) > 0 && asField != "?") {
+                        return "self->" + name
+                    }
+                }
+            }
+            return name
+        }
         if (k == NodeKind.MEMBER) {
             // Null-safe access: `obj?.field` → `(obj ? obj->field : NULL)`.
             // Note: assumes `obj` has no side effects (we evaluate it twice).
