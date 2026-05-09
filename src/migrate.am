@@ -157,10 +157,31 @@ public class MigrateCommand {
         }
 
         if (!File.Exists(input)) {
-            Console.WriteError("amc migrate: file not found: " + input)
+            Console.WriteError("amc migrate: path not found: " + input)
             return 1
         }
 
+        // v1.1: directory recursion. If `input` is a directory, walk it,
+        // pick every file with a recognized source extension, and run
+        // single-file migration for each, aggregating successes and
+        // failures into a final summary. The --output flag is rejected
+        // in this mode because we write each .am next to its source.
+        if (MigrateCommand.IsDirectory(input)) {
+            if (String_Length(output) > 0) {
+                Console.WriteError("amc migrate: --output cannot be used with directory input (writes are in-place next to each source).")
+                return 1
+            }
+            return MigrateCommand.RunMigrateDirectory(input, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines)
+        }
+
+        return MigrateCommand.RunMigrateOne(input, output, langHint, provider, model, force, dryRun, promptOnly, noCheck, maxLines)
+    }
+
+    // ── Single-file migration ─────────────────────────
+    // Extracted from Run() so the directory loop can call it per file
+    // without duplicating the language detection / prompt build / call /
+    // validate pipeline.
+    private static int RunMigrateOne(string input, string output, string langHint, string provider, string model, bool force, bool dryRun, bool promptOnly, bool noCheck, int maxLines) {
         // Detect language. Hint wins over extension.
         var lang: string = langHint
         if (String_Length(lang) == 0) {
@@ -243,6 +264,77 @@ public class MigrateCommand {
         }
 
         return 0
+    }
+
+    // ── Directory recursion (v1.1) ────────────────────
+    // Walks `dir` recursively via `find -type f`, filters to files with
+    // a recognized source extension, and runs RunMigrateOne for each.
+    // Reports a final summary (succeeded / failed counts). Exit non-zero
+    // when any file failed.
+    //
+    // Per-file --output paths default to <stem>.am next to each source;
+    // the caller already rejects --output in directory mode so this
+    // helper doesn't need to forward it.
+    private static int RunMigrateDirectory(string dir, string langHint, string provider, string model, bool force, bool dryRun, bool promptOnly, bool noCheck, int maxLines) {
+        Console.WriteError("[migrate] discovering source files in " + dir + "...")
+        let findCmd: string = "find " + dir + " -type f 2>/dev/null"
+        let result = Process.RunCapture(findCmd)
+        if (result.Exit != 0) {
+            Console.WriteError("amc migrate: failed to enumerate " + dir)
+            return 1
+        }
+        let lines: List<string> = String_Split(String_Trim(result.Stdout), "\n")
+        let n: int = lines.Count()
+        let candidates = new List<string>()
+        let langs      = new List<string>()
+        for i in 0..n {
+            let path: string = String_Trim(lines.Get(i))
+            if (String_Length(path) == 0) { continue }
+            // Skip already-migrated .am files so a re-run doesn't try
+            // to re-migrate its own previous output.
+            if (String_EndsWith(path, ".am")) { continue }
+            let lang: string = MigrateCommand.DetectLanguage(path)
+            if (String_Length(lang) == 0) { continue }
+            candidates.Add(path)
+            langs.Add(lang)
+        }
+        let total: int = candidates.Count()
+        if (total == 0) {
+            Console.WriteError("[migrate] no recognized source files found in " + dir)
+            return 0
+        }
+        Console.WriteError("[migrate] found " + String_FromInt(total) + " file(s) to migrate")
+
+        var ok: int = 0
+        var failed: int = 0
+        for j in 0..total {
+            let path: string = candidates.Get(j)
+            let perFileLang: string = langHint
+            if (String_Length(perFileLang) == 0) {
+                perFileLang = langs.Get(j)
+            }
+            // Per-file output path defaults to <stem>.am via RunMigrateOne.
+            let r: int = MigrateCommand.RunMigrateOne(path, "", perFileLang, provider, model, force, dryRun, promptOnly, noCheck, maxLines)
+            if (r == 0) {
+                ok = ok + 1
+            } else {
+                failed = failed + 1
+            }
+        }
+        Console.WriteLine("")
+        Console.WriteLine("[migrate] summary: " + String_FromInt(ok) + "/" + String_FromInt(total) + " succeeded, " + String_FromInt(failed) + " failed")
+        if (failed > 0) { return 1 }
+        return 0
+    }
+
+    // True iff `path` is an existing directory. We don't have a typed
+    // Directory.Exists in the runtime yet, so probe with the POSIX
+    // shell test (also works on MSYS2). Quiet via 2>&1 redirect.
+    private static bool IsDirectory(string path) {
+        let cmd: string = "[ -d \"" + path + "\" ] && echo y || echo n"
+        let res = Process.RunCapture(cmd)
+        let answer: string = String_Trim(res.Stdout)
+        return answer == "y"
     }
 
     // ── Language detection ────────────────────────────
