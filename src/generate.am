@@ -43,6 +43,8 @@ public class GenerateCommand {
         Console.WriteError("  --force              Overwrite an existing file at the -o path.")
         Console.WriteError("  --dry-run            Print what would happen without invoking the LLM.")
         Console.WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.")
+        Console.WriteError("  --stream             Stream the LLM response straight to stdout as it's")
+        Console.WriteError("                       produced. Requires --provider claude (CLI), no -o.")
         Console.WriteError("  -h, --help           Print this help and exit.")
         Console.WriteError("")
         Console.WriteError("Examples:")
@@ -61,6 +63,7 @@ public class GenerateCommand {
         var promptOnly:   bool   = false
         var noCheck:      bool   = false
         var force:        bool   = false
+        var stream:       bool   = false
 
         // Skip Args[0] (binary path) and Args[1] ("generate").
         var i: int = 2
@@ -84,6 +87,8 @@ public class GenerateCommand {
                 noCheck = true
             } else if (a == "--force") {
                 force = true
+            } else if (a == "--stream") {
+                stream = true
             } else if (a == "--provider") {
                 i = i + 1
                 if (i >= argc) {
@@ -154,6 +159,22 @@ public class GenerateCommand {
             Console.WriteError("amc generate: output exists: " + output)
             Console.WriteError("Pass --force to overwrite.")
             return 1
+        }
+
+        // --stream: bypass the capture pipeline. Only valid with the
+        // claude CLI (no API streaming yet) and no -o (we'd need the
+        // captured text to write a file).
+        if (stream) {
+            if (provider != "claude") {
+                Console.WriteError("amc generate: --stream requires --provider claude (CLI). API streaming is a v3 follow-up.")
+                return 1
+            }
+            if (String_Length(output) > 0) {
+                Console.WriteError("amc generate: --stream is incompatible with -o (no buffered text to write).")
+                return 1
+            }
+            Console.WriteError("[generate] streaming via claude CLI...")
+            return MigrateCommand.StreamClaudeCli(model, systemPrompt + "\n\n" + userPrompt)
         }
 
         Console.WriteError("[generate] generating from prompt (" + String_FromInt(String_Length(prompt)) + " chars, provider=" + provider + ")...")

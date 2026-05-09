@@ -333,7 +333,7 @@ public class CGen {
             if (this.IsCPointerType(pTypeC)) {
                 this.Out.EmitLine(pTypeC + " " + p.Name + " = (" + pTypeC + ")" + argName + ";")
             } else {
-                this.Out.EmitLine(pTypeC + " " + p.Name + " = (" + pTypeC + ")(intptr_t)" + argName + ";")
+                this.Out.EmitLine(pTypeC + " " + p.Name + " = " + this.UnboxScalar(pTypeC, argName) + ";")
             }
         }
         // Unpack captures into local C vars so the body emits naturally.
@@ -368,12 +368,12 @@ public class CGen {
             this.InLambdaBody = true
             this.EmitBlock(lam.Body)
             this.InLambdaBody = prevInLam
-            this.Out.EmitLine("return (void*)(intptr_t)0;")
+            this.Out.EmitLine("return " + this.BoxAsVoid("0") + ";")
         } else if (lam.Left != null) {
             let bodyStr = this.EmitExprStr(lam.Left)
-            this.Out.EmitLine("return (void*)(intptr_t)(" + bodyStr + ");")
+            this.Out.EmitLine("return " + this.BoxAsVoid(bodyStr) + ";")
         } else {
-            this.Out.EmitLine("return (void*)(intptr_t)0;")
+            this.Out.EmitLine("return " + this.BoxAsVoid("0") + ";")
         }
         // Reset local-type entries so subsequent emission isn't polluted.
         for pi in 0..pn {
@@ -2076,7 +2076,7 @@ public class CGen {
             if (stmt.Left == null) {
                 if (this.InLambdaBody) {
                     // Bare `return` inside a lambda body — yield boxed 0.
-                    this.Out.EmitLine("return (void*)(intptr_t)0;")
+                    this.Out.EmitLine("return " + this.BoxAsVoid("0") + ";")
                 } else {
                     this.Out.EmitLine("return;")
                 }
@@ -2087,7 +2087,7 @@ public class CGen {
                 } else if (this.InLambdaBody) {
                     // Lambda body's enclosing fn returns void*; box the
                     // expression via intptr_t so call sites can unbox.
-                    this.Out.EmitLine("return (void*)(intptr_t)(" + retExpr + ");")
+                    this.Out.EmitLine("return " + this.BoxAsVoid(retExpr) + ";")
                 } else if (String_StartsWith(retExpr, "{") && String_Length(this.CurrentRetType) > 0) {
                     // Tuple literal {a,b,...} — cast with current return type.
                     this.Out.EmitLine("return (" + this.CurrentRetType + ")" + retExpr + ";")
@@ -2392,18 +2392,18 @@ public class CGen {
                     let argc: int = expr.Args.Count()
                     if (argc == 1) {
                         let arg0 = this.EmitExprStr(expr.Args.Get(0))
-                        return "(i64)(intptr_t)AmalgameClosure_call1(" + calleeName + ", (void*)(intptr_t)(" + arg0 + "))"
+                        return this.UnboxScalar("i64", "AmalgameClosure_call1(" + calleeName + ", " + this.BoxAsVoid(arg0) + ")")
                     }
                     if (argc == 2) {
                         let arg0 = this.EmitExprStr(expr.Args.Get(0))
                         let arg1 = this.EmitExprStr(expr.Args.Get(1))
-                        return "(i64)(intptr_t)AmalgameClosure_call2(" + calleeName + ", (void*)(intptr_t)(" + arg0 + "), (void*)(intptr_t)(" + arg1 + "))"
+                        return this.UnboxScalar("i64", "AmalgameClosure_call2(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ")")
                     }
                     if (argc == 3) {
                         let arg0 = this.EmitExprStr(expr.Args.Get(0))
                         let arg1 = this.EmitExprStr(expr.Args.Get(1))
                         let arg2 = this.EmitExprStr(expr.Args.Get(2))
-                        return "(i64)(intptr_t)AmalgameClosure_call3(" + calleeName + ", (void*)(intptr_t)(" + arg0 + "), (void*)(intptr_t)(" + arg1 + "), (void*)(intptr_t)(" + arg2 + "))"
+                        return this.UnboxScalar("i64", "AmalgameClosure_call3(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ", " + this.BoxAsVoid(arg2) + ")")
                     }
                 }
             }
@@ -2610,7 +2610,7 @@ public class CGen {
         var s = "({ AmalgameList* __lc_" + vn + " = AmalgameList_new(); "
         s = s + loopHeader
         s = s + guardStr
-        s = s + "AmalgameList_add(__lc_" + vn + ", (void*)(intptr_t)(" + projStr + ")); "
+        s = s + "AmalgameList_add(__lc_" + vn + ", " + this.BoxAsVoid(projStr) + "); "
         s = s + "} __lc_" + vn + "; })"
         return s
     }
@@ -2641,7 +2641,7 @@ public class CGen {
                     if (mname == "Set" && ac >= 2) {
                         let k2 = this.EmitExprStr(args.Get(0))
                         let v2 = this.EmitExprStr(args.Get(1))
-                        return "AmalgameMap_set(" + vname + ", " + k2 + ", (void*)(intptr_t)(" + v2 + "))"
+                        return "AmalgameMap_set(" + vname + ", " + k2 + ", " + this.BoxAsVoid(v2) + ")"
                     }
                     if (mname == "Has" && ac >= 1) {
                         let k2 = this.EmitExprStr(args.Get(0))
@@ -2774,7 +2774,7 @@ public class CGen {
             let argc = callExpr.Args.Count()
             if (argc == 0) { return "AmalgameList_add(" + listExpr + ", NULL)" }
             let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
-            return "AmalgameList_add(" + listExpr + ", (void*)(intptr_t)(" + arg0 + "))"
+            return "AmalgameList_add(" + listExpr + ", " + this.BoxAsVoid(arg0) + ")"
         }
         if (mname == "Get") {
             let argc = callExpr.Args.Count()
@@ -2826,7 +2826,7 @@ public class CGen {
             let argc = callExpr.Args.Count()
             if (argc > 0) {
                 let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
-                return "AmalgameList_remove(" + listExpr + ", (void*)(intptr_t)(" + arg0 + "))"
+                return "AmalgameList_remove(" + listExpr + ", " + this.BoxAsVoid(arg0) + ")"
             }
         }
         if (mname == "RemoveAt") {
@@ -2870,7 +2870,7 @@ public class CGen {
             let initStr = this.EmitExprStr(callExpr.Args.Get(0))
             let lamStr  = this.EmitClosureArg(callExpr.Args.Get(1))
             if (String_Length(lamStr) == 0) { return "" }
-            return "(i64)(intptr_t)AmalgameList_reduce(" + listExpr + ", (void*)(intptr_t)(" + initStr + "), " + lamStr + ")"
+            return this.UnboxScalar("i64", "AmalgameList_reduce(" + listExpr + ", " + this.BoxAsVoid(initStr) + ", " + lamStr + ")")
         }
         if (mname == "Any") {
             let argc = callExpr.Args.Count()
@@ -3025,6 +3025,32 @@ public class CGen {
         if (ct == "code_string") { return true }
         if (String_EndsWith(ct, "*")) { return true }
         return false
+    }
+
+    // ── Box / unbox helpers ──────────────────────────
+    //
+    // The closure ABI passes everything as `void*` (see
+    // runtime/_runtime.h). Box scalar expressions through
+    // `intptr_t` to silence -Wint-to-pointer-cast on platforms where
+    // sizeof(int) < sizeof(void*); unbox the same way coming back.
+    // Pointer-typed values cast through `intptr_t` is wasteful but
+    // valid in 64-bit (we don't currently 32-bit), so the same helper
+    // covers both ABI shapes.
+    //
+    // These were duplicated across ~17 sites in CGen before being
+    // extracted; the refactor aimed at readability, not behavior.
+
+    // Box any expression to `void*` for the closure / collection ABI.
+    private string BoxAsVoid(string expr) {
+        return "(void*)(intptr_t)(" + expr + ")"
+    }
+
+    // Unbox a `void*` back to a scalar C type. Pointer types
+    // (anything for which IsCPointerType is true) should use a direct
+    // cast instead — the dedicated EmitOneLambdaBody path already
+    // does so via that predicate.
+    private string UnboxScalar(string ctype, string expr) {
+        return "(" + ctype + ")(intptr_t)" + expr
     }
 
     private string TypeToC(string t) {

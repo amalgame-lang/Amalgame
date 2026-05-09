@@ -20,6 +20,8 @@ hack on the compiler itself, jump to chapter 7.
    `build_amc.sh`, the bootstrap path, CI, releases.
 7. [Compiler internals](07-internals.md) — how `amc` is structured,
    adding a builtin, adding a syntax form, adding a CGen rule.
+8. [LLM commands](08-llm-commands.md) — `amc migrate`, `amc generate`,
+   `amc explain`: providers, env vars, caching, design rationale.
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
