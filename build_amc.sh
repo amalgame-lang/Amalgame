@@ -25,6 +25,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/linter.am \
              src/stdlib/json.am \
              src/stdlib/random.am \
+             src/stdlib/encoding.am \
              src/lsp.am \
              src/migrate.am \
              src/generate.am \
