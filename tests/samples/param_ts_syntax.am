@@ -1,0 +1,26 @@
+namespace Tests
+
+// Param syntax v2 — TypeScript-style `<name>: <type>` is accepted
+// alongside the canonical Amalgame `<type> <name>`. Both compile to
+// the same Method param list.
+//
+// Before this fix, `id: int` made the parser spin in an infinite
+// loop because ParseParam consumed `id` as a typeName, then the
+// `:` matched no rule, and the param-list while-loop didn't
+// advance. See fix/parser-infinite-loop-on-bad-param-syntax.
+
+public class Box {
+    public Value: int = 0
+
+    // Mixed: one TS-style, one Amalgame-style. Both parsed.
+    public Box(v: int, int multiplier) {
+        this.Value = v * multiplier
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let b = new Box(7, 3)
+        Console.WriteLine("box: {b.Value}")
+    }
+}
