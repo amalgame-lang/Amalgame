@@ -373,6 +373,7 @@ run_test "lambda v2.5: Filter mem"   "$SAMPLES/lambda_v25_typed.am"  "adult0: Al
 run_test "lambda v2.5: Any"          "$SAMPLES/lambda_v25_typed.am"  "anyMinor: true"
 run_test "lambda v2.5: All"          "$SAMPLES/lambda_v25_typed.am"  "allAdults: false"
 run_test "lambda v2.5: CountIf"      "$SAMPLES/lambda_v25_typed.am"  "underAge: 1"
+run_test "param syntax: TS-style"    "$SAMPLES/param_ts_syntax.am"   "box: 21"
 
 # ── Process module ─────────────────────────────────────
 echo ""

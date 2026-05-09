@@ -1634,7 +1634,11 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMethod(Amalgame_
             Amalgame_Compiler_Parser_SkipNewlines(self);
             continue;
         }
+        i64 __attribute__((unused)) beforePos = self->Pos;
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_ParseParam(self);
+        if (self->Pos == beforePos) {
+            Amalgame_Compiler_Parser_Advance(self);
+        }
         Amalgame_Compiler_NodeKind __attribute__((unused)) pk = p->Kind;
         if (pk != Amalgame_Compiler_NodeKind_IDENTIFIER) {
             AmalgameList_add(method->Params, (void*)(intptr_t)(p));
@@ -1663,9 +1667,21 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseParam(Amalgame_C
     code_string __attribute__((unused)) v = tok->Value;
     code_bool __attribute__((unused)) isKeywordType = code_string_equals(v, "int") || code_string_equals(v, "string") || code_string_equals(v, "bool") || code_string_equals(v, "void") || code_string_equals(v, "float");
     if (!Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER) && !isKeywordType) {
+        Amalgame_Compiler_Parser_Advance(self);
         return Amalgame_Compiler_Parser_Unknown(self);
     }
     code_string __attribute__((unused)) typeName = Amalgame_Compiler_Parser_ParseTypeName(self);
+    if (Amalgame_Compiler_Parser_CheckValue(self, ":")) {
+        Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_Token* __attribute__((unused)) realTypeTok = Amalgame_Compiler_Parser_Current(self);
+        code_string __attribute__((unused)) rv = realTypeTok->Value;
+        code_bool __attribute__((unused)) rIsKeywordType = code_string_equals(rv, "int") || code_string_equals(rv, "string") || code_string_equals(rv, "bool") || code_string_equals(rv, "void") || code_string_equals(rv, "float");
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER) || rIsKeywordType) {
+            code_string __attribute__((unused)) realType = Amalgame_Compiler_Parser_ParseTypeName(self);
+            return Amalgame_Compiler_Ast_Param(typeName, realType, tok->Line, tok->Column);
+        }
+        return Amalgame_Compiler_Ast_Param(typeName, "?", tok->Line, tok->Column);
+    }
     if (!Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
         return Amalgame_Compiler_Ast_Param("_", typeName, 0, 0);
     }
@@ -2116,7 +2132,11 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseInterface(Amalga
             if (Amalgame_Compiler_Parser_CheckValue(self, ")")) {
                 break;
             }
+            i64 __attribute__((unused)) beforePos = self->Pos;
             Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_ParseParam(self);
+            if (self->Pos == beforePos) {
+                Amalgame_Compiler_Parser_Advance(self);
+            }
             AmalgameList_add(m->Params, (void*)(intptr_t)(p));
         }
         Amalgame_Compiler_Parser_Expect(self, ")");
@@ -11292,9 +11312,7 @@ static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer*
     Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
     Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
     prog->Str2 = path;
-    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
-    AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
-    Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
+    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
     Amalgame_Compiler_TypeChecker* __attribute__((unused)) tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
     Amalgame_Compiler_TypeChecker_Check(tc, prog);
     i64 __attribute__((unused)) targetLine = line + 1;
@@ -11336,105 +11354,7 @@ static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspSe
     Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
     Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
     prog->Str2 = path;
-    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
-    AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
-    Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
-    code_string __attribute__((unused)) items = "";
-    code_bool __attribute__((unused)) first = 1;
-    i64 __attribute__((unused)) gn = Amalgame_Compiler_FullResolver_GlobalCount(resolver);
-    for (i64 gi = 0; gi < gn; gi++) {
-        code_string __attribute__((unused)) name = Amalgame_Compiler_FullResolver_GlobalNameAt(resolver, gi);
-        if (String_Length(name) == 0) {
-            continue;
-        }
-        code_string __attribute__((unused)) typeS = Amalgame_Compiler_FullResolver_GlobalTypeAt(resolver, gi);
-        i64 __attribute__((unused)) kind = 6;
-        if (code_string_equals(typeS, "type")) {
-            kind = 7;
-        } else if (code_string_equals(typeS, "void")) {
-            kind = 3;
-        }
-        if (!first) {
-            items = code_string_concat(items, ",");
-        }
-        items = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(items, "{\"label\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"detail\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(typeS)), "\"}");
-        first = 0;
-    }
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"isIncomplete\":false,\"items\":["), items), "]}}");
-    Amalgame_Compiler_LspServer_Send(self, body);
-}
-
-static void Amalgame_Compiler_LspServer_SendEmptyCompletion(Amalgame_Compiler_LspServer* self, i64 id) {
-    (void)self;
-    (void)id;
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"isIncomplete\":false,\"items\":[]}}");
-    Amalgame_Compiler_LspServer_Send(self, body);
-}
-
-static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    (void)self;
-    (void)id;
-    (void)uri;
-    (void)line;
-    (void)character;
-    code_string __attribute__((unused)) source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    if (String_Length(source) == 0) {
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        return;
-    }
-    code_string __attribute__((unused)) path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(source, path);
-    AmalgameList* __attribute__((unused)) toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
-    Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
-    prog->Str2 = path;
-    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
-    AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
-    Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
-    Amalgame_Compiler_TypeChecker* __attribute__((unused)) tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
-    Amalgame_Compiler_TypeChecker_Check(tc, prog);
-    i64 __attribute__((unused)) targetLine = line + 1;
-    i64 __attribute__((unused)) targetCol = character + 1;
-    Amalgame_Compiler_AstNode* __attribute__((unused)) node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
-    if (node == NULL) {
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        return;
-    }
-    code_string __attribute__((unused)) typeStr = Amalgame_Compiler_TypeChecker_LookupNodeType(tc, node);
-    if (code_string_equals(typeStr, "?") || String_Length(typeStr) == 0) {
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        return;
-    }
-    code_string __attribute__((unused)) content = code_string_concat(code_string_concat(code_string_concat(code_string_concat("**", node->Name), "**: `"), typeStr), "`");
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(content)), "\"}}}");
-    Amalgame_Compiler_LspServer_Send(self, body);
-}
-
-static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServer* self, i64 id) {
-    (void)self;
-    (void)id;
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":null}");
-    Amalgame_Compiler_LspServer_Send(self, body);
-}
-
-static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspServer* self, i64 id, code_string uri) {
-    (void)self;
-    (void)id;
-    (void)uri;
-    code_string __attribute__((unused)) source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    if (String_Length(source) == 0) {
-        Amalgame_Compiler_LspServer_SendEmptyCompletion(self, id);
-        return;
-    }
-    code_string __attribute__((unused)) path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(source, path);
-    AmalgameList* __attribute__((unused)) toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
-    Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
-    prog->Str2 = path;
-    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
-    AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
-    Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
+    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
     code_string __attribute__((unused)) items = "";
     code_bool __attribute__((unused)) first = 1;
     i64 __attribute__((unused)) gn = Amalgame_Compiler_FullResolver_GlobalCount(resolver);
