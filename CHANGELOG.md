@@ -7,6 +7,89 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.4] — 2026-05-10
+
+The "stdlib trio" release. Three new modules — `Amalgame.Random`,
+`Amalgame.Encoding`, `Amalgame.DateTime` — close the most-cited
+gaps in everyday Amalgame code. Plus a release script that
+automates the version bump → tag flow so the v0.4.0-style
+"forgot to bump src/main.am" mistake can't happen again.
+
+### Added
+
+- **`Amalgame.Random`** (PR #200) — instance-based PCG XSH-RR
+  64/32 PRNG. `new Random(seed)` for reproducibility,
+  `Random.FromSystem()` for crypto-grade entropy via the OS pool
+  (`getentropy` on POSIX, `BCryptGenRandom` on Windows).
+  Methods: `NextUInt32`, `NextInt`, `IntRange(min, max)`,
+  `Float`, `Bool`, `Bytes(n)`. Static `Random.SystemBytes(n)`
+  for one-off salt / nonce generation. Replaces the legacy
+  `Math.Random` 8-bit-output LCG for new code; the old API
+  stays for compatibility.
+- **`Amalgame.Encoding`** (PR #201) — three small static
+  facades: `Base64` (RFC 4648 + URL-safe variant), `Hex`
+  (lower / upper, case-insensitive decode), `Url`
+  (percent-encoding per RFC 3986, plus an `EncodeComponent`
+  matching JS's `encodeURIComponent`). 100% pure Amalgame, no
+  runtime header. Bytes flow as `List<int>` ∈ [0, 255], so
+  encoding `Random.Bytes(n)` output works without a cast layer.
+- **`Amalgame.DateTime`** (PR #202) — `Instant` (i64 ns since
+  1970-01-01 UTC, range ±292 years), `Duration` (signed ns
+  interval), `Stopwatch` (monotonic-clock convenience for
+  benchmarks). RFC 3339 strict parse + format (UTC only —
+  `+HH:MM` offsets rejected; local time / timezones tracked
+  as a v2 follow-up).
+- **`tools/release.sh`** (PR #203) — one-shot release script
+  that bumps the version everywhere, builds + tests + saves a
+  snapshot, opens the release → develop and develop → main PRs
+  with `gh pr merge --auto --merge`, polls until each lands,
+  then tags from main and pushes. `--dry-run` and `--no-tag`
+  flags for inspection. Closes the manual-checklist gap that
+  caused v0.4.0's missed bump.
+- CI Windows build links `-lbcrypt` for `Random.FromSystem()`'s
+  `BCryptGenRandom` call. Same flag added to the Windows release
+  artifact build.
+
+### Changed
+
+- `runtime/` gains `Amalgame_Random.h` + `Amalgame_DateTime.h`
+  next to the existing headers. The PCG step (`Random_PcgOutput`
+  / `Random_PcgAdvance`) keeps the multiply unsigned because
+  signed overflow is UB on Amalgame's `int` = i64.
+- `docs/guide/04-stdlib.md` gains Random, Encoding, and DateTime
+  sections — each with the full method table and the sharp-edge
+  caveats (modulo bias for IntRange, RFC-strict `+` handling for
+  Url.Decode, ±292-year window for Instant).
+
+### Roadmap (parser/cgen findings, not fixed in this release)
+
+Surfaced while writing the trio; workarounds applied inline,
+real fixes tracked in `ROADMAP_COMPLET.md`:
+
+- Parser drops `expr >> N` inside a `let` initializer (lowers
+  as `i64 x = expr;`). Workaround: division by 2^N.
+- Top-level `public fn(...)` outside a class parses but cgen
+  never emits a definition. Workaround: hang the helper on a
+  class as `public static`.
+- Constructors that instantiate a later-declared class trigger
+  an implicit-decl conflict because `_new` forward-decls aren't
+  emitted before pass2 bodies. Workaround: pass the dependency
+  in as a constructor parameter (used by `InstantResult`).
+- 25 stale `BastienMOUGET/Amalgame` URLs scattered across
+  runtime/ headers, install/, and archive/ — to be swept after
+  this release. Tracked under "URL sweep" in Distribution.
+
+### Tests / infra
+
+- Suite is now **363 PASS / 0 FAIL / 0 SKIP** (was 307 at
+  v0.4.3). +56 assertions split as +14 Random / +21 Encoding
+  / +21 DateTime.
+- Snapshot refreshed; `snapshot/amc_lib.c` is ~16 500 lines
+  reflecting the three new modules + the resolver builtins
+  for the new runtime helpers.
+
+---
+
 ## [v0.4.3] — 2026-05-09
 
 The "Json migration completes" release. Phase 2 final + phase 3
@@ -667,6 +750,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.4
 [v0.4.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.3
 [v0.4.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.2
 [v0.4.1]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.1
