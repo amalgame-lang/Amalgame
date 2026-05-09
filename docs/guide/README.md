@@ -13,7 +13,8 @@ hack on the compiler itself, jump to chapter 7.
 3. [CLI reference](03-cli-reference.md) — every `amc` flag, exit codes,
    typical workflows, debugging tips.
 4. [Standard library](04-stdlib.md) — `Console`, `File`, `Path`,
-   `Math`, `String`, `List`/`Map`/`Set`, `Http`, `Tcp`.
+   `Math`, `String`, `List`/`Map`/`Set`, `Http`, `Tcp`, `Json`,
+   `Random`, `Encoding`, `DateTime`.
 5. [Runtime & C interop](05-runtime-and-interop.md) — memory model,
    bdwgc, mapping types to C, calling C from Amalgame.
 6. [Build & tooling](06-build-and-tooling.md) — `compile.sh`,
