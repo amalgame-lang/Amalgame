@@ -522,8 +522,8 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
-[v0.3.6]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.6
-[v0.3.5]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.5
-[v0.3.4]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.4
-[v0.3.3]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.3
-[v0.3.2]: https://github.com/BastienMOUGET/Amalgame/releases/tag/v0.3.2
+[v0.3.6]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.6
+[v0.3.5]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.5
+[v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
+[v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
+[v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2

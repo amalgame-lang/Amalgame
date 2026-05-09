@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════
 #  Amalgame Language — Universal Installer
-#  https://github.com/BastienMOUGET/Amalgame
+#  https://github.com/amalgame-lang/Amalgame
 #
 #  Usage:
-#    curl -sSL https://raw.githubusercontent.com/BastienMOUGET/Amalgame/main/install/install.sh | bash
+#    curl -sSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | bash
 #
 #  Options (env vars):
 #    AMC_VERSION   — version to install (default: latest)
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────
-REPO="BastienMOUGET/Amalgame"
+REPO="amalgame-lang/Amalgame"
 VERSION="${AMC_VERSION:-latest}"
 PREFIX="${AMC_PREFIX:-/usr/local}"
 BIN_DIR="$PREFIX/bin"
