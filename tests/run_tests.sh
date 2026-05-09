@@ -621,6 +621,36 @@ run_migrate_dir_output_check() {
 
 run_migrate_dir_output_check "migrate: dir rejects --output" "cannot be used with directory"
 
+# claude-api provider: test the failure paths hermetically (no real
+# HTTP call to api.anthropic.com — that would cost money and be flaky
+# in CI). The success path is implicitly covered by the runtime
+# linkage (Http_PostWithHeaders is callable, see PR #160 infra).
+run_migrate_provider_check() {
+    local name="$1"
+    local pattern="$2"
+    shift 2
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" migrate "$mig_fixture_ts" "$@" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# --provider claude-api without ANTHROPIC_API_KEY → clean error.
+unset ANTHROPIC_API_KEY
+run_migrate_provider_check "migrate: claude-api no key"  "ANTHROPIC_API_KEY not set"  --provider claude-api
+# --provider with an unknown name → clean error.
+run_migrate_provider_check "migrate: unknown provider"   "not supported (built-in"     --provider gemini-7
+# --help mentions the new claude-api provider so users discover it.
+run_migrate_help_check "migrate: --help mentions claude-api" "--help" "claude-api"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
