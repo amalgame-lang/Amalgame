@@ -1,0 +1,28 @@
+# Merge strategies for generated artefacts.
+#
+# Both snapshot/amc_lib.c and src/amc_lib.c are produced by gen_test
+# from the .am sources, so any merge conflict in them is noise — the
+# canonical resolution is "rebuild after merge". `merge=ours` tells
+# git to keep our version on a merge conflict; the post-merge
+# `./build_amc.sh` + `./tools/save-snapshot.sh` then regenerate the
+# correct content from the merged sources.
+#
+# Without this, every cross-PR merge (which happens often when the
+# LLM-driven workflows + parser fixes land back-to-back) produced a
+# 5-step manual resolution dance: `git checkout --theirs` → rebuild
+# → re-snapshot → amend. Now it's a single rebuild + one amend.
+#
+# Note: `merge=ours` requires `git config merge.ours.driver true` once
+# per clone (this `.gitattributes` declares the strategy; git needs to
+# know that "ours" is a real driver). The post-clone hint lives in
+# CONTINUATION.md.
+
+snapshot/amc_lib.c    merge=ours
+snapshot/INFO.md      merge=ours
+src/amc_lib.c         merge=ours
+
+# Mark generated artefacts so GitHub's diff view collapses them and
+# linguist excludes them from the language stats.
+snapshot/amc_lib.c    linguist-generated=true
+src/amc_lib.c         linguist-generated=true
+runtime/*             linguist-vendored=true
