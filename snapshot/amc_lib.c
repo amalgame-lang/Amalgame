@@ -11777,6 +11777,10 @@ code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt);
 static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
+static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
 static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd);
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
@@ -11799,9 +11803,12 @@ void Amalgame_Compiler_MigrateCommand_PrintUsage() {
     Console_WriteError("Flags:");
     Console_WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).");
     Console_WriteError("  --lang <name>        Override extension-based language detection.");
-    Console_WriteError("  --provider <name>    Pick the LLM provider. Built-in: claude (CLI), claude-api");
-    Console_WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when");
-    Console_WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api");
+    Console_WriteError("                       (Anthropic), chatgpt (OpenAI), gemini (Google),");
+    Console_WriteError("                       custom (delegates to AMC_CUSTOM_PROVIDER_CMD).");
+    Console_WriteError("                       Auto-selects API by env var: ANTHROPIC_API_KEY →");
+    Console_WriteError("                       claude-api, OPENAI_API_KEY → chatgpt,");
+    Console_WriteError("                       GEMINI_API_KEY → gemini, otherwise → claude (CLI).");
     Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
     Console_WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).");
     Console_WriteError("  --no-check           Skip the post-migration `amc --check` validation.");
@@ -12305,15 +12312,30 @@ Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRa
     if (code_string_equals(provider, "claude-api")) {
         return Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(model, systemPrompt, userPrompt);
     }
+    if (code_string_equals(provider, "chatgpt")) {
+        return Amalgame_Compiler_MigrateCommand_CallChatGptApi(model, systemPrompt, userPrompt);
+    }
+    if (code_string_equals(provider, "gemini")) {
+        return Amalgame_Compiler_MigrateCommand_CallGeminiApi(model, systemPrompt, userPrompt);
+    }
+    if (code_string_equals(provider, "custom")) {
+        return Amalgame_Compiler_MigrateCommand_CallCustomScript(systemPrompt, userPrompt);
+    }
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
     res->Ok = 0;
-    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not supported (built-in: 'claude', 'claude-api')");
+    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not supported (built-in: claude, claude-api, chatgpt, gemini, custom)");
     return res;
 }
 
 code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider() {
     if (Env_Has("ANTHROPIC_API_KEY")) {
         return "claude-api";
+    }
+    if (Env_Has("OPENAI_API_KEY")) {
+        return "chatgpt";
+    }
+    if (Env_Has("GEMINI_API_KEY")) {
+        return "gemini";
     }
     return "claude";
 }
@@ -12389,7 +12411,12 @@ static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s) {
 
 static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body) {
     (void)body;
-    code_string __attribute__((unused)) key = "\"text\":\"";
+    return Amalgame_Compiler_MigrateCommand_JsonExtract(body, "\"text\":\"");
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key) {
+    (void)body;
+    (void)key;
     i64 __attribute__((unused)) kIdx = String_IndexOf(body, key);
     if (kIdx < 0) {
         return "";
@@ -12428,6 +12455,122 @@ static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string 
         i = i + 1;
     }
     return out;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) apiKey = Env_Get("OPENAI_API_KEY");
+    if (String_Length(apiKey) == 0) {
+        res->Ok = 0;
+        res->Error = "chatgpt: OPENAI_API_KEY not set.";
+        return res;
+    }
+    code_string __attribute__((unused)) modelId = model;
+    if (String_Length(modelId) == 0) {
+        modelId = "gpt-4o-mini";
+    }
+    code_string __attribute__((unused)) body = "{";
+    body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
+    body = code_string_concat(body, "\"messages\":[{\"role\":\"system\",\"content\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, "\"},{\"role\":\"user\",\"content\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, "\"}]}");
+    AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
+    AmalgameMap_set(headers, "Authorization", (void*)(intptr_t)(code_string_concat("Bearer ", apiKey)));
+    AmalgameMap_set(headers, "Content-Type", (void*)(intptr_t)("application/json"));
+    AmalgameHttpResponse* __attribute__((unused)) resp = Http_PostWithHeaders("https://api.openai.com/v1/chat/completions", body, headers);
+    i64 __attribute__((unused)) status = resp->Status;
+    if (status != 200) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("chatgpt: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
+        return res;
+    }
+    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtract(resp->Body, "\"content\":\"");
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("chatgpt: empty or unparseable response. Raw:\n", resp->Body);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
+    return res;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) apiKey = Env_Get("GEMINI_API_KEY");
+    if (String_Length(apiKey) == 0) {
+        res->Ok = 0;
+        res->Error = "gemini: GEMINI_API_KEY not set.";
+        return res;
+    }
+    code_string __attribute__((unused)) modelId = model;
+    if (String_Length(modelId) == 0) {
+        modelId = "gemini-1.5-flash";
+    }
+    code_string __attribute__((unused)) body = "{";
+    body = code_string_concat(body, "\"systemInstruction\":{\"parts\":[{\"text\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, "\"}]},");
+    body = code_string_concat(body, "\"contents\":[{\"parts\":[{\"text\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
+    body = code_string_concat(body, "\"}]}]}");
+    AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
+    AmalgameMap_set(headers, "Content-Type", (void*)(intptr_t)("application/json"));
+    code_string __attribute__((unused)) url = code_string_concat(code_string_concat(code_string_concat("https://generativelanguage.googleapis.com/v1beta/models/", modelId), ":generateContent?key="), apiKey);
+    AmalgameHttpResponse* __attribute__((unused)) resp = Http_PostWithHeaders(url, body, headers);
+    i64 __attribute__((unused)) status = resp->Status;
+    if (status != 200) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("gemini: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
+        return res;
+    }
+    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("gemini: empty or unparseable response. Raw:\n", resp->Body);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
+    return res;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt) {
+    (void)systemPrompt;
+    (void)userPrompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) cmd = Env_Get("AMC_CUSTOM_PROVIDER_CMD");
+    if (String_Length(cmd) == 0) {
+        res->Ok = 0;
+        res->Error = "custom: AMC_CUSTOM_PROVIDER_CMD not set. Point it at a script that reads prompt from stdin and writes the response to stdout.";
+        return res;
+    }
+    code_string __attribute__((unused)) tmpPath = "/tmp/amc_custom_prompt.txt";
+    code_string __attribute__((unused)) combined = code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt);
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(tmpPath, combined);
+    if (!writeOk) {
+        res->Ok = 0;
+        res->Error = code_string_concat("custom: failed to write prompt temp file: ", tmpPath);
+        return res;
+    }
+    code_string __attribute__((unused)) full = code_string_concat(code_string_concat(cmd, " < "), tmpPath);
+    AmalgameProcessResult* __attribute__((unused)) rr = Process_RunCapture(full);
+    if (rr->Exit != 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("custom: script exited ", String_FromInt(rr->Exit)), ". Output:\n"), rr->Stdout);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(rr->Stdout);
+    return res;
 }
 
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt) {
@@ -12509,9 +12652,10 @@ void Amalgame_Compiler_GenerateCommand_PrintUsage() {
     Console_WriteError("");
     Console_WriteError("Flags:");
     Console_WriteError("  -o, --output <out>   Write to <out> instead of stdout.");
-    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api");
-    Console_WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when");
-    Console_WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api,");
+    Console_WriteError("                       chatgpt, gemini, custom. Auto-selects API by env:");
+    Console_WriteError("                       ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY,");
+    Console_WriteError("                       fallback claude (CLI).");
     Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
     Console_WriteError("  --no-check           Skip the `amc --check` validation when -o is given.");
     Console_WriteError("  --force              Overwrite an existing file at the -o path.");
@@ -12731,9 +12875,10 @@ void Amalgame_Compiler_ExplainCommand_PrintUsage() {
     Console_WriteError("  -o, --output <out>   Write to <out> instead of stdout.");
     Console_WriteError("  --lang <name>        Output language for the explanation.");
     Console_WriteError("                       Default: English. Try --lang French, etc.");
-    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api");
-    Console_WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when");
-    Console_WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.");
+    Console_WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api,");
+    Console_WriteError("                       chatgpt, gemini, custom. Auto-selects API by env:");
+    Console_WriteError("                       ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY,");
+    Console_WriteError("                       fallback claude (CLI).");
     Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
     Console_WriteError("  --force              Overwrite an existing file at the -o path.");
     Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
