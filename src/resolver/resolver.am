@@ -205,6 +205,9 @@ public class FullResolver {
         this.DeclareGlobal("Path_GetExtension",   "string", false)
         this.DeclareGlobal("Path_GetFilename",    "string", false)
         this.DeclareGlobal("Path_GetDirectory",   "string", false)
+        // Environment variables (Env.Get / Env.Has)
+        this.DeclareGlobal("Env_Get",             "string", false)
+        this.DeclareGlobal("Env_Has",             "bool",   false)
         // Math
         this.DeclareGlobal("Math",           "type",   false)
         this.DeclareGlobal("Math_Sqrt",      "float",  false)

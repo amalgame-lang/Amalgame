@@ -1,0 +1,24 @@
+namespace Tests
+
+// Env builtins: Env.Get(name) reads an environment variable, Env.Has
+// reports presence. Both go through the runtime aliases Env_Get /
+// Env_Has, which call POSIX getenv. Used by `amc migrate` v1.2 to
+// pick up ANTHROPIC_API_KEY without reading from the command line.
+
+public class Program {
+    public static void Main(string[] args) {
+        // PATH is always present on POSIX shells; covers the happy path
+        // and asserts the alias is wired through CGen as expected.
+        let hasPath: bool = Env.Has("PATH")
+        Console.WriteLine("hasPath: {hasPath}")
+
+        // A name we set exclusively for this test in run_tests.sh
+        // (AMC_ENV_PROBE=hello). Asserts read-back returns the value.
+        let probe: string = Env.Get("AMC_ENV_PROBE")
+        Console.WriteLine("probe: {probe}")
+
+        // Missing var: Env.Has → false, Env.Get → null/empty.
+        let hasFake: bool = Env.Has("AMC_ENV_NOPE_NOPE_NOPE_42")
+        Console.WriteLine("hasFake: {hasFake}")
+    }
+}
