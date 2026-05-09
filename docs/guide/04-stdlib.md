@@ -277,13 +277,63 @@ public static void Main(string[] args) {
 The `args: string[]` parameter is a vestigial signature — use
 `Args.Count()` / `Args.Get(i)` instead.
 
+## Json — parsing, encoding, accessors
+
+`src/stdlib/json.am` · pure-Amalgame implementation, recursive-descent
+
+Strict RFC 8259 parser + encoder + a `JsonValue` accessor surface.
+Used internally by `amc lsp`, `amc migrate`, `amc generate`,
+`amc explain` to read API responses; available to user code under
+the `Amalgame.Json` namespace.
+
+```amalgame
+import Amalgame.Json
+
+let body = "{\"users\":[{\"name\":\"Alice\",\"age\":30}]}"
+let r = Json.Parse(body)
+if (r.Ok) {
+    let root: JsonValue  = r.Value
+    let users: JsonValue = root.Get("users")
+    let u0: JsonValue    = users.At(0)
+    let name: JsonValue  = u0.Get("name")
+    Console.WriteLine(name.AsString())     // → Alice
+}
+```
+
+| `Json.Parse(s) : JsonResult`                    | parse, returns ok/err |
+| `Json.Encode(v: JsonValue) : string`            | compact serialize     |
+| `Json.EscapeString(s) : string`                 | escape for embedding  |
+| `Json.NullValue() / OfBool / OfInt / OfFloat`   | factory constructors  |
+| `Json.OfString / OfArray`                       | factory constructors  |
+
+`JsonValue` carries one of seven kinds (`Null`, `Bool`, `Int`,
+`Float`, `String`, `Array`, `Object`):
+
+| `v.IsNull() / IsBool() / IsInt() / IsFloat() / IsString() / IsArray() / IsObject()` |
+| `v.AsBool() / AsInt() / AsFloat() / AsString() / AsArray()`         |
+| `v.Get(key: string) : JsonValue`        | object access (Null on miss)  |
+| `v.Has(key: string) : bool`             | object key existence          |
+| `v.Keys() : List<string>`               | iteration order = insertion   |
+| `v.At(i: int) : JsonValue`              | array access (Null on miss)   |
+| `v.Length() : int`                      | array len / object key count  |
+
+> Codegen note: a chain like `r.Value.Get("k").AsString()` currently
+> mashes through cgen because `obj.Field.Method()` is lowered as a
+> name-concat (`Value_Get`). Extract intermediate typed locals
+> (`let v: JsonValue = r.Value; let kn: JsonValue = v.Get("k");
+> kn.AsString()`) until the codegen fix lands. Same workaround as
+> the JSON test sample in `tests/samples/stdlib_json.am`.
+
 ## What's missing
 
 - Bigger Math (trig, logs)
 - Async/iter/streaming abstractions over collections
 - Date/Time
 - Regex
-- Process spawning beyond `Args` / `Exit`
+- Random (crypto-grade + seeded PRNG)
+- Encoding (Base64, hex, URL)
+- Process spawning beyond `Args` / `Exit` (basic `Process.Run`
+  / `Process.RunCapture` already in)
 - A package manager and ecosystem
 
 These are tracked in [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).
