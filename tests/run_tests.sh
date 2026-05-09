@@ -377,6 +377,10 @@ run_test "param syntax: TS-style"    "$SAMPLES/param_ts_syntax.am"   "box: 21"
 run_test "chain: multiline filter"   "$SAMPLES/multiline_method_chain.am"  "first: Alice"
 run_test "chain: multiline last"     "$SAMPLES/multiline_method_chain.am"  "last: Carol"
 run_test "chain: stmt boundary OK"   "$SAMPLES/multiline_method_chain.am"  "sum: 3"
+run_test "auto-qualify: ctor write"  "$SAMPLES/cgen_auto_qualify.am" "value: 7"
+run_test "auto-qualify: method read" "$SAMPLES/cgen_auto_qualify.am" "dp: 17"
+run_test "auto-qualify: method write" "$SAMPLES/cgen_auto_qualify.am" "after reset value: 0"
+run_test "auto-qualify: explicit this. mix" "$SAMPLES/cgen_auto_qualify.am" "after reset label: reset"
 
 # ── Process module ─────────────────────────────────────
 echo ""
