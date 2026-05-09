@@ -1,0 +1,187 @@
+// Stdlib test: Amalgame.Random — PCG generator + OS entropy.
+// Run by tests/run_stdlib_tests.sh; each [PASS] line below
+// matches one assertion the runner looks for.
+//
+// Notes on style:
+// - Same workaround as stdlib_json.am: extract intermediate
+//   locals to avoid the obj.Field.Method() codegen chain-mash.
+// - We test reproducibility (same seed → same draws) and basic
+//   range/distribution sanity, not statistical quality. PCG's
+//   quality is well-established upstream — testing it here would
+//   bloat the suite without catching anything new.
+
+import Amalgame.Random
+import Amalgame.Collections
+
+class Program {
+    public static void Main() {
+
+        // ── Seeded reproducibility ─────────────────────
+        // Two Random(42) instances must produce identical streams.
+        let a: Random = new Random(42)
+        let b: Random = new Random(42)
+        let xa: int = a.NextUInt32()
+        let xb: int = b.NextUInt32()
+        if (xa == xb) {
+            Console.WriteLine("[PASS] seeded reproducible")
+        } else {
+            Console.WriteLine("[FAIL] seeded reproducible")
+        }
+
+        // Different seeds must (overwhelmingly likely) produce
+        // different first draws.
+        let c: Random = new Random(42)
+        let d: Random = new Random(43)
+        let xc: int = c.NextUInt32()
+        let xd: int = d.NextUInt32()
+        if (xc != xd) {
+            Console.WriteLine("[PASS] different seeds differ")
+        } else {
+            Console.WriteLine("[FAIL] different seeds differ")
+        }
+
+        // ── NextUInt32 range ───────────────────────────
+        // Output must fit in [0, 2^32 - 1] = [0, 4294967295].
+        let r1: Random = new Random(1)
+        var inRange: bool = true
+        for i in 0..50 {
+            let v: int = r1.NextUInt32()
+            if (v < 0) { inRange = false }
+            if (v > 4294967295) { inRange = false }
+        }
+        if (inRange) {
+            Console.WriteLine("[PASS] NextUInt32 in range")
+        } else {
+            Console.WriteLine("[FAIL] NextUInt32 in range")
+        }
+
+        // ── NextInt produces variability ───────────────
+        // Two consecutive NextInt() calls should differ. Not a
+        // strict guarantee, but the probability of collision on
+        // 64-bit output is 2^-64 — effectively zero.
+        let r2: Random = new Random(7)
+        let n1: int = r2.NextInt()
+        let n2: int = r2.NextInt()
+        if (n1 != n2) {
+            Console.WriteLine("[PASS] NextInt varies")
+        } else {
+            Console.WriteLine("[FAIL] NextInt varies")
+        }
+
+        // ── IntRange staying in bounds ─────────────────
+        let r3: Random = new Random(99)
+        var allInBounds: bool = true
+        for j in 0..200 {
+            let v: int = r3.IntRange(10, 20)
+            if (v < 10)  { allInBounds = false }
+            if (v >= 20) { allInBounds = false }
+        }
+        if (allInBounds) {
+            Console.WriteLine("[PASS] IntRange in bounds")
+        } else {
+            Console.WriteLine("[FAIL] IntRange in bounds")
+        }
+
+        // Degenerate range: min == max → returns min.
+        let r4: Random = new Random(1)
+        let pin: int = r4.IntRange(5, 5)
+        if (pin == 5) {
+            Console.WriteLine("[PASS] IntRange degenerate")
+        } else {
+            Console.WriteLine("[FAIL] IntRange degenerate")
+        }
+
+        // ── Float in [0, 1) ────────────────────────────
+        let r5: Random = new Random(3)
+        var floatOk: bool = true
+        for k in 0..100 {
+            let f: float = r5.Float()
+            if (f < 0.0)  { floatOk = false }
+            if (f >= 1.0) { floatOk = false }
+        }
+        if (floatOk) {
+            Console.WriteLine("[PASS] Float in [0,1)")
+        } else {
+            Console.WriteLine("[FAIL] Float in [0,1)")
+        }
+
+        // ── Bool produces both values ──────────────────
+        let r6: Random = new Random(100)
+        var sawT: bool = false
+        var sawF: bool = false
+        for m in 0..30 {
+            let b: bool = r6.Bool()
+            if (b)  { sawT = true }
+            if (!b) { sawF = true }
+        }
+        if (sawT && sawF) {
+            Console.WriteLine("[PASS] Bool varies")
+        } else {
+            Console.WriteLine("[FAIL] Bool varies")
+        }
+
+        // ── Bytes count + range ────────────────────────
+        let r7: Random = new Random(123)
+        let bytes: List<int> = r7.Bytes(10)
+        let bcnt: int = bytes.Count()
+        if (bcnt == 10) {
+            Console.WriteLine("[PASS] Bytes count")
+        } else {
+            Console.WriteLine("[FAIL] Bytes count")
+        }
+        var bytesOk: bool = true
+        for n in 0..bcnt {
+            let by: int = bytes.Get(n)
+            if (by < 0)   { bytesOk = false }
+            if (by > 255) { bytesOk = false }
+        }
+        if (bytesOk) {
+            Console.WriteLine("[PASS] Bytes in [0,255]")
+        } else {
+            Console.WriteLine("[FAIL] Bytes in [0,255]")
+        }
+
+        // Degenerate Bytes: n <= 0 → empty list.
+        let r8: Random = new Random(1)
+        let zero: List<int> = r8.Bytes(0)
+        let zcnt: int = zero.Count()
+        if (zcnt == 0) {
+            Console.WriteLine("[PASS] Bytes zero")
+        } else {
+            Console.WriteLine("[FAIL] Bytes zero")
+        }
+
+        // ── SystemBytes returns requested count ────────
+        // We can't assert the values themselves (true entropy),
+        // only that we got n bytes back, each in byte range.
+        let sys: List<int> = Random.SystemBytes(8)
+        let scnt: int = sys.Count()
+        if (scnt == 8) {
+            Console.WriteLine("[PASS] SystemBytes count")
+        } else {
+            Console.WriteLine("[FAIL] SystemBytes count")
+        }
+        var sysOk: bool = true
+        for p in 0..scnt {
+            let sb: int = sys.Get(p)
+            if (sb < 0)   { sysOk = false }
+            if (sb > 255) { sysOk = false }
+        }
+        if (sysOk) {
+            Console.WriteLine("[PASS] SystemBytes in [0,255]")
+        } else {
+            Console.WriteLine("[FAIL] SystemBytes in [0,255]")
+        }
+
+        // ── FromSystem produces a usable Random ────────
+        // No determinism check — by design FromSystem seeds from
+        // OS entropy. Just confirm we can draw a value.
+        let rs: Random = Random.FromSystem()
+        let one: int = rs.NextUInt32()
+        if (one >= 0 && one <= 4294967295) {
+            Console.WriteLine("[PASS] FromSystem usable")
+        } else {
+            Console.WriteLine("[FAIL] FromSystem usable")
+        }
+    }
+}
