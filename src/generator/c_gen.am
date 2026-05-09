@@ -2694,6 +2694,18 @@ public class CGen {
                 }
             }
 
+            // Case 4: <list-call>.Method() — chained higher-order calls
+            // (e.g. xs.Filter(p).Map(q)). We recursively emit the inner
+            // call as the listExpr; the result is itself a List* so the
+            // outer Filter/Map/etc. can wrap it cleanly.
+            if (lk == NodeKind.CALL) {
+                let innerStr: string = this.TryEmitListCall(callee.Left)
+                if (String_Length(innerStr) > 0) {
+                    listExpr  = innerStr
+                    listCType = "AmalgameList*"
+                }
+            }
+
             // Case 2: this.Field.Method()
             if (lk == NodeKind.MEMBER) {
                 if (callee.Left.Left != null) {
