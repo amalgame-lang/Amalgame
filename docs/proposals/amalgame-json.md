@@ -98,6 +98,9 @@ public class JsonValue {
     // Accessors — return the underlying primitive, or a sensible
     // zero value (false / 0 / "" / empty list / empty map) if the
     // Kind doesn't match. Callers who care use `Is*()` first.
+    //
+    // Numeric coercion: `AsInt()` on a `Float` value truncates (3.7 → 3).
+    // `AsFloat()` on an `Int` widens (3 → 3.0). Other Kinds zero out.
     public bool        AsBool()
     public int         AsInt()
     public float       AsFloat()
@@ -322,18 +325,26 @@ Target: every public method on `JsonValue` and every parser path has
 at least one test. Coverage instrumentation isn't ergonomic on the
 self-hosted compiler yet, so we eyeball this rather than measure.
 
-## Open questions
+## Decisions (settled in review on 2026-05-09)
 
-- **Float vs. Number kind.** RFC 8259 doesn't distinguish int from
-  float — `42` and `42.0` are both `number`. We split on parse
-  (`Int` if no `.` and no exponent, otherwise `Float`) for caller
-  ergonomics. Some libs unify under `Number` and let the accessor
-  decide. Both work; the chosen split matches what `JsonInt` /
-  `JsonStr` callers already expect. Leaving as a flag if we change
-  our mind later.
-- **What does `AsInt()` do on a `Float` value?** Today: returns 0
-  (Kind mismatch). Alternatives: truncate, round, throw. Truncate is
-  easiest and matches `String_ToInt` behavior on `"42.7"`. Open.
+- **Split `Int` and `Float` kinds on parse.** `42` parses as `Int`,
+  `42.0` parses as `Float`. Matches what existing `JsonInt` callers
+  expect and preserves round-trip fidelity (`1` and `1.0` re-encode
+  to themselves). The cost is one extra Kind variant.
+- **`AsInt()` on a `Float` value truncates.** `AsInt()` on `3.7`
+  returns `3`. Consistent with `String_ToInt("3.7") == 3` and with
+  most mainstream JSON libs. Strict-mode "Kind mismatch returns 0"
+  was rejected as too surprising for the typical "I just want the
+  number" caller; throwing would require infra we don't yet have
+  pervasively.
+- **`json.am` lives in a new `src/stdlib/` directory.** Scopes
+  future stdlib additions (`Amalgame.DateTime`, `Amalgame.Regex`,
+  `Amalgame.Random`, ...) to a known place. Requires a one-line
+  adjustment to `build_amc.sh` to glob `src/stdlib/*.am` alongside
+  the existing source roots.
+
+## Other open items (deferred, not blocking v1)
+
 - **Error recovery vs. fail-fast.** Currently fail-fast (return on
   first parse error). If we ever need partial-parse semantics (e.g.
   for "show me what you got, then the error"), the parser will need
@@ -345,11 +356,6 @@ self-hosted compiler yet, so we eyeball this rather than measure.
   built `new JsonValue()` and set `.Kind` directly. The proposed v1
   does not encourage that pattern (constructors are static factories
   on `Json`), so the migration cost should be near-zero.
-- **Where does the file live?** `src/stdlib/` does not exist yet.
-  Creating it scopes future additions (`Amalgame.DateTime`,
-  `Amalgame.Regex`) to a known place. Alternative: drop `json.am`
-  next to `lsp.am` / `migrate.am` and split the directory later.
-  This proposal assumes the new directory.
 
 ## Estimated cost
 
