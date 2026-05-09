@@ -752,6 +752,19 @@ run_generate_check "v2: --help mentions chatgpt" "chatgpt"  --help
 run_generate_check "v2: --help mentions gemini"  "gemini"   --help
 run_generate_check "v2: --help mentions custom"  "custom"   --help
 
+# Cost estimation in --dry-run.
+run_generate_check "cost: claude free"             "free (subscription"     "test"  --dry-run
+export OPENAI_API_KEY=fake
+run_generate_check "cost: chatgpt has tokens"      "in + ~1000 out"         "test"  --dry-run
+run_generate_check "cost: chatgpt opus model dollars" "$"                   "test"  --dry-run --model gpt-4o
+unset OPENAI_API_KEY
+export ANTHROPIC_API_KEY=fake
+run_generate_check "cost: claude-api opus mentions opus" "claude-opus-4-7" "test" --dry-run --model claude-opus-4-7
+unset ANTHROPIC_API_KEY
+export GEMINI_API_KEY=fake
+run_generate_check "cost: gemini default flash"    "gemini-1.5-flash"       "test"  --dry-run
+unset GEMINI_API_KEY
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"

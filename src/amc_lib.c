@@ -11774,6 +11774,7 @@ code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string lang, code_string source);
 Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRaw(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
 code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
+code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt);
 static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
@@ -11964,12 +11965,16 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         return 1;
     }
     if (dryRun) {
+        code_string __attribute__((unused)) sysP = Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang);
+        code_string __attribute__((unused)) usrP = Amalgame_Compiler_MigrateCommand_BuildUserPrompt(lang, source);
+        code_string __attribute__((unused)) est = Amalgame_Compiler_MigrateCommand_EstimateCost(provider, model, sysP, usrP);
         Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] would migrate: ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines)"));
         Console_WriteLine(code_string_concat("[migrate] would write:   ", outPath));
         Console_WriteLine(code_string_concat("[migrate] provider:      ", provider));
         if (String_Length(model) > 0) {
             Console_WriteLine(code_string_concat("[migrate] model:         ", model));
         }
+        Console_WriteLine(code_string_concat("[migrate] estimated cost: ", est));
         return 0;
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] processing ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines, provider="), provider), ")..."));
@@ -12338,6 +12343,83 @@ code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider() {
         return "gemini";
     }
     return "claude";
+}
+
+code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt) {
+    (void)provider;
+    (void)model;
+    (void)systemPrompt;
+    (void)userPrompt;
+    if (code_string_equals(provider, "claude")) {
+        return "free (subscription via Claude Code CLI)";
+    }
+    if (code_string_equals(provider, "custom")) {
+        return "free (user-managed local backend)";
+    }
+    i64 __attribute__((unused)) sysLen = String_Length(systemPrompt);
+    i64 __attribute__((unused)) usrLen = String_Length(userPrompt);
+    i64 __attribute__((unused)) totalChars = sysLen + usrLen;
+    i64 __attribute__((unused)) inputToks = totalChars / 4;
+    i64 __attribute__((unused)) outputToks = 1000;
+    i64 __attribute__((unused)) inUsdPerM = 0;
+    i64 __attribute__((unused)) outUsdPerM = 0;
+    code_string __attribute__((unused)) resolvedModel = model;
+    if (code_string_equals(provider, "claude-api")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "claude-sonnet-4-6";
+        }
+        if (code_string_equals(resolvedModel, "claude-opus-4-7")) {
+            inUsdPerM = 15000000;
+            outUsdPerM = 75000000;
+        } else if (code_string_equals(resolvedModel, "claude-haiku-4-5")) {
+            inUsdPerM = 1000000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 3000000;
+            outUsdPerM = 15000000;
+        }
+    } else if (code_string_equals(provider, "chatgpt")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gpt-4o-mini";
+        }
+        if (code_string_equals(resolvedModel, "gpt-4o")) {
+            inUsdPerM = 2500000;
+            outUsdPerM = 10000000;
+        } else if (code_string_equals(resolvedModel, "gpt-4-turbo")) {
+            inUsdPerM = 10000000;
+            outUsdPerM = 30000000;
+        } else {
+            inUsdPerM = 150000;
+            outUsdPerM = 600000;
+        }
+    } else if (code_string_equals(provider, "gemini")) {
+        if (String_Length(resolvedModel) == 0) {
+            resolvedModel = "gemini-1.5-flash";
+        }
+        if (code_string_equals(resolvedModel, "gemini-1.5-pro")) {
+            inUsdPerM = 1250000;
+            outUsdPerM = 5000000;
+        } else {
+            inUsdPerM = 75000;
+            outUsdPerM = 300000;
+        }
+    }
+    i64 __attribute__((unused)) inProd = inputToks * inUsdPerM;
+    i64 __attribute__((unused)) inMicro = inProd / 1000000;
+    i64 __attribute__((unused)) outProd = outputToks * outUsdPerM;
+    i64 __attribute__((unused)) outMicro = outProd / 1000000;
+    i64 __attribute__((unused)) totalMicro = inMicro + outMicro;
+    i64 __attribute__((unused)) totalCents = totalMicro / 10000;
+    i64 __attribute__((unused)) dollars = totalCents / 100;
+    i64 __attribute__((unused)) cents = totalCents % 100;
+    code_string __attribute__((unused)) centStr = String_FromInt(cents);
+    if (cents < 10) {
+        centStr = code_string_concat("0", centStr);
+    }
+    code_string __attribute__((unused)) inS = String_FromInt(inputToks);
+    code_string __attribute__((unused)) outS = String_FromInt(outputToks);
+    code_string __attribute__((unused)) dolS = String_FromInt(dollars);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("~", inS), " in + ~"), outS), " out -> ~$"), dolS), "."), centStr), " ("), resolvedModel), ")");
 }
 
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt) {
@@ -12744,6 +12826,7 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
         return 0;
     }
     if (dryRun) {
+        code_string __attribute__((unused)) est = Amalgame_Compiler_MigrateCommand_EstimateCost(provider, model, systemPrompt, userPrompt);
         Console_WriteLine(code_string_concat(code_string_concat("[generate] would generate from prompt (", String_FromInt(String_Length(prompt))), " chars)"));
         if (String_Length(output) > 0) {
             Console_WriteLine(code_string_concat("[generate] would write:   ", output));
@@ -12754,6 +12837,7 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
         if (String_Length(model) > 0) {
             Console_WriteLine(code_string_concat("[generate] model:         ", model));
         }
+        Console_WriteLine(code_string_concat("[generate] estimated cost: ", est));
         return 0;
     }
     if (String_Length(output) > 0 && File_Exists(output) && !force) {
@@ -12972,6 +13056,7 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
         return 0;
     }
     if (dryRun) {
+        code_string __attribute__((unused)) est = Amalgame_Compiler_MigrateCommand_EstimateCost(provider, model, systemPrompt, userPrompt);
         Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] would explain: ", input), " ("), String_FromInt(String_Length(source))), " chars)"));
         if (String_Length(output) > 0) {
             Console_WriteLine(code_string_concat("[explain] would write:   ", output));
@@ -12980,6 +13065,7 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
         }
         Console_WriteLine(code_string_concat("[explain] provider:      ", provider));
         Console_WriteLine(code_string_concat("[explain] output lang:   ", outLang));
+        Console_WriteLine(code_string_concat("[explain] estimated cost: ", est));
         return 0;
     }
     if (String_Length(output) > 0 && File_Exists(output) && !force) {
