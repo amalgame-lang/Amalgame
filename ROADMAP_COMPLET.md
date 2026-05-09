@@ -287,6 +287,26 @@ before the next big language addition.
       forgets to propagate it across the boundary) or codify the
       workaround patterns in `docs/guide/07-internals.md` so it's
       not a paper cut every time.
+- [ ] **CGen: chained `obj.Field.Method()` / `obj.Method().Method()`
+      lowers as a name-mash.** Repro:
+      `o.Field.Get()` emits `o->Field_Get()` (should be
+      `Inner_Get(o->Field)`); `o.GetInner().Get()` emits
+      `App_Outer_GetInner(o)_Get()` (should be
+      `Inner_Get(App_Outer_GetInner(o))`). Root cause:
+      `EmitCalleeStr` (`src/generator/c_gen.am:3003-3004`)
+      fallback returns `target + "_" + mname` where `target` is
+      already a complete C expression — concatenating a `_method`
+      suffix gives an invalid identifier. Fix is non-trivial:
+      callers (mostly `EmitCallExpr`) assume the callee is a
+      bare function name they can call as `<name>(args)` —
+      changing the contract to "if the receiver is a chain,
+      route through `Type_Method(<expr>, args)`" needs a typed
+      lookup of `callee.Left`'s return type and a small refactor
+      of every call site that consumes `EmitCalleeStr`.
+      Workaround: extract intermediate locals
+      (`let mid: T = obj.Field; mid.Method()`). Already applied
+      in `src/lsp.am`, `src/migrate.am`, and the JSON test
+      sample; comments inline cite this item.
 - [ ] **Snapshot size** — `snapshot/amc_lib.c` is ~12 500 lines,
       tracked in git for the bootstrap chain. Each compiler PR
       regenerates it and the diff dominates the review noise. Two
