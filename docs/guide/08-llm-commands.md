@@ -75,9 +75,11 @@ export AMC_CUSTOM_PROVIDER_CMD="ollama run codellama"
 amc migrate file.go --provider custom
 ```
 
-## Cost estimation
+## Cost reporting
 
-`--dry-run` reports an estimated per-call cost based on a 4-char-per-token
+Two flavours, depending on whether the call has happened yet.
+
+**Pre-flight estimate** (`--dry-run`) — based on a 4-char-per-token
 heuristic and hardcoded model price tables:
 
 ```
@@ -88,8 +90,26 @@ $ amc migrate src/api.ts --dry-run
 [migrate] estimated cost: ~6862 in + ~1000 out -> ~$0.05 (claude-sonnet-4-6)
 ```
 
-CLI shell-out (`claude`, `custom`) reports `free` since the bill is on
-your subscription / local model.
+**Real cost** (since v0.4.3) — printed after a successful migration,
+pulled from the `usage` object on the API response. No `~`, no
+heuristic — exact tokens billed:
+
+```
+$ amc migrate src/api.ts
+[migrate] processing src/api.ts (TypeScript, 240 lines, provider=claude-api)...
+[migrate] wrote src/api.am
+[migrate] cost: 6431 in + 982 out = $0.04 (claude-sonnet-4-6)
+[migrate] check passed
+```
+
+Provider extraction paths:
+- `claude-api` → `usage.input_tokens` / `usage.output_tokens`
+- `chatgpt` → `usage.prompt_tokens` / `usage.completion_tokens`
+- `gemini` → `usageMetadata.promptTokenCount` / `usageMetadata.candidatesTokenCount`
+
+CLI shell-out (`claude`, `custom`) reports nothing since the bill is on
+your subscription / local model. The result has `InputTokens = -1`
+which the formatter treats as "skip the cost line".
 
 ## Result cache (`amc migrate` only)
 
