@@ -57,7 +57,9 @@ public class MigrateCommand {
         Console.WriteError("Flags:")
         Console.WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).")
         Console.WriteError("  --lang <name>        Override extension-based language detection.")
-        Console.WriteError("  --provider <name>    Pick the LLM provider (default: claude — only one in v0).")
+        Console.WriteError("  --provider <name>    Pick the LLM provider. Built-in: claude (CLI), claude-api")
+        Console.WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when")
+        Console.WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.")
         Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
         Console.WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).")
         Console.WriteError("  --no-check           Skip the post-migration `amc --check` validation.")
@@ -71,16 +73,17 @@ public class MigrateCommand {
 
     // ── Entry point ───────────────────────────────────
     public static int Run(int argc) {
-        var input:      string = ""
-        var output:     string = ""
-        var langHint:   string = ""
-        var provider:   string = "claude"
-        var model:      string = ""
-        var dryRun:     bool   = false
-        var promptOnly: bool   = false
-        var noCheck:    bool   = false
-        var force:      bool   = false
-        var maxLines:   int    = 2000
+        var input:        string = ""
+        var output:       string = ""
+        var langHint:     string = ""
+        var provider:     string = ""
+        var providerSet:  bool   = false
+        var model:        string = ""
+        var dryRun:       bool   = false
+        var promptOnly:   bool   = false
+        var noCheck:      bool   = false
+        var force:        bool   = false
+        var maxLines:     int    = 2000
 
         // Skip Args[0] (binary path) and Args[1] ("migrate").
         var i: int = 2
@@ -117,7 +120,8 @@ public class MigrateCommand {
                     Console.WriteError("amc migrate: --provider requires a value")
                     return 1
                 }
-                provider = Args_Get(i)
+                provider    = Args_Get(i)
+                providerSet = true
             } else if (a == "--model") {
                 i = i + 1
                 if (i >= argc) {
@@ -154,6 +158,19 @@ public class MigrateCommand {
             Console.WriteError("usage: amc migrate <file> [--output <out>] [--lang <hint>] [--provider <name>] [--model <id>]")
             Console.WriteError("                         [--dry-run] [--prompt-only] [--no-check] [--force] [--max-lines <n>]")
             return 1
+        }
+
+        // Provider auto-selection (v1.2): when --provider wasn't set,
+        // prefer the API path if ANTHROPIC_API_KEY is in the
+        // environment, else fall back to the claude CLI shell out.
+        // This makes `amc migrate` work on machines without Claude
+        // Code installed, as long as a key is exported.
+        if (!providerSet) {
+            if (Env.Has("ANTHROPIC_API_KEY")) {
+                provider = "claude-api"
+            } else {
+                provider = "claude"
+            }
         }
 
         if (!File.Exists(input)) {
@@ -478,18 +495,136 @@ public class MigrateCommand {
     }
 
     // ── Provider dispatch ─────────────────────────────
-    // v0 ships only `claude` (CLI shell out). v1 adds `claude-api`
-    // (Anthropic HTTP via Net.Http.Post + ANTHROPIC_API_KEY).
-    // v2 adds chatgpt / gemini. The dispatch is additive — adding
-    // a new provider is one new entry in this branch chain.
+    // v0   ships `claude`     (CLI shell out).
+    // v1.2 adds `claude-api`  (Anthropic HTTP, auto-selected when
+    //                          ANTHROPIC_API_KEY is set).
+    // v2   adds chatgpt / gemini (other vendor APIs).
+    // Dispatch is additive — a new provider is one new entry.
     private static MigrateResult CallProvider(string provider, string model, string prompt) {
         if (provider == "claude") {
             return MigrateCommand.CallClaudeCli(model, prompt)
         }
+        if (provider == "claude-api") {
+            return MigrateCommand.CallClaudeApi(model, prompt)
+        }
         let res = new MigrateResult()
         res.Ok    = false
-        res.Error = "provider '" + provider + "' not yet supported in v0 (only 'claude' ships in this version)"
+        res.Error = "provider '" + provider + "' not supported (built-in: 'claude', 'claude-api')"
         return res
+    }
+
+    // Anthropic HTTP provider. Reads the API key from
+    // ANTHROPIC_API_KEY (no flag — secrets don't belong on the
+    // command line). Default model is the current Sonnet (good
+    // quality / latency / cost tradeoff for migration). Override
+    // with --model. v1.3 will move BuildPrompt's static prefix into
+    // the API's `system` slot so prompt caching kicks in across
+    // batch migrations; for now everything ships as one user message.
+    private static MigrateResult CallClaudeApi(string model, string prompt) {
+        let res = new MigrateResult()
+        let apiKey: string = Env.Get("ANTHROPIC_API_KEY")
+        if (String_Length(apiKey) == 0) {
+            res.Ok    = false
+            res.Error = "claude-api: ANTHROPIC_API_KEY not set. Export it or use --provider claude (CLI shell out)."
+            return res
+        }
+        var modelId: string = model
+        if (String_Length(modelId) == 0) {
+            modelId = "claude-sonnet-4-6"
+        }
+        var body: string = "{"
+        body = body + "\"model\":\"" + modelId + "\","
+        body = body + "\"max_tokens\":8192,"
+        body = body + "\"messages\":[{\"role\":\"user\",\"content\":\""
+        body = body + MigrateCommand.JsonEscape(prompt)
+        body = body + "\"}]}"
+
+        let headers = new Map<string, string>()
+        headers.Set("x-api-key", apiKey)
+        headers.Set("anthropic-version", "2023-06-01")
+        headers.Set("Content-Type", "application/json")
+
+        let resp = Http_PostWithHeaders("https://api.anthropic.com/v1/messages", body, headers)
+        let status: int = resp.Status
+        if (status != 200) {
+            res.Ok    = false
+            res.Error = "claude-api: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
+            return res
+        }
+        let text: string = MigrateCommand.JsonExtractText(resp.Body)
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "claude-api: empty or unparseable response. Raw body:\n" + resp.Body
+            return res
+        }
+        res.Ok      = true
+        res.Content = MigrateCommand.StripFences(text)
+        return res
+    }
+
+    // Minimal JSON-string escaper. Handles the characters that would
+    // otherwise corrupt the request payload (quote, backslash, common
+    // control codes). Sufficient for an LLM prompt body — promote to
+    // a real JSON encoder if we ever need to round-trip arbitrary
+    // structured data.
+    private static string JsonEscape(string s) {
+        var out: string = ""
+        let n: int = String_Length(s)
+        for i in 0..n {
+            let c: string = String_CharAt1(s, i)
+            if (c == "\\") {
+                out = out + "\\\\"
+            } else if (c == "\"") {
+                out = out + "\\\""
+            } else if (c == "\n") {
+                out = out + "\\n"
+            } else if (c == "\r") {
+                out = out + "\\r"
+            } else if (c == "\t") {
+                out = out + "\\t"
+            } else {
+                out = out + c
+            }
+        }
+        return out
+    }
+
+    // Find the first `"text":"..."` value in the JSON response and
+    // return the unescaped string. Anthropic returns assistant
+    // content as `{"content":[{"type":"text","text":"..."}]}`. Same
+    // ad-hoc extraction approach as src/lsp.am's JsonStr — wiring a
+    // full JSON parser would be ~10× this code for one extraction.
+    private static string JsonExtractText(string body) {
+        let key: string = "\"text\":\""
+        let kIdx: int = String_IndexOf(body, key)
+        if (kIdx < 0) { return "" }
+        // Pin the offset addition into typed locals — bootstrap
+        // type inference doesn't track i64 returns through every chain.
+        let kLen: int  = String_Length(key)
+        let start: int = kIdx + kLen
+        let n: int = String_Length(body)
+        var out: string = ""
+        var i: int = start
+        while (i < n) {
+            let c: string = String_CharAt1(body, i)
+            if (c == "\\") {
+                if (i + 1 < n) {
+                    let nxt: string = String_CharAt1(body, i + 1)
+                    if (nxt == "n") { out = out + "\n" }
+                    else if (nxt == "r") { out = out + "\r" }
+                    else if (nxt == "t") { out = out + "\t" }
+                    else if (nxt == "\"") { out = out + "\"" }
+                    else if (nxt == "\\") { out = out + "\\" }
+                    else { out = out + nxt }
+                    i = i + 2
+                    continue
+                }
+            }
+            if (c == "\"") { return out }
+            out = out + c
+            i = i + 1
+        }
+        return out
     }
 
     // Shell out to the local `claude` CLI. The prompt is written to

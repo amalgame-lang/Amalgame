@@ -55,7 +55,7 @@ if [ ! -f gen_test.c ]; then
     echo "Step 1 failed: gen_test.c was not produced" >&2
     exit 1
 fi
-gcc -O2 -Iruntime gen_test.c -lgc -lm -o gen_test
+gcc -O2 -Iruntime gen_test.c -lgc -lm -lcurl -o gen_test
 
 echo "=== Step 2: Generate all bundles + amc_lib.c ==="
 time ./gen_test

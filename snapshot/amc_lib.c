@@ -11767,6 +11767,9 @@ static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_strin
 static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang, code_string source);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string prompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string prompt);
+static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
+static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
 static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd);
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
@@ -11789,7 +11792,9 @@ void Amalgame_Compiler_MigrateCommand_PrintUsage() {
     Console_WriteError("Flags:");
     Console_WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).");
     Console_WriteError("  --lang <name>        Override extension-based language detection.");
-    Console_WriteError("  --provider <name>    Pick the LLM provider (default: claude — only one in v0).");
+    Console_WriteError("  --provider <name>    Pick the LLM provider. Built-in: claude (CLI), claude-api");
+    Console_WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when");
+    Console_WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.");
     Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
     Console_WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).");
     Console_WriteError("  --no-check           Skip the post-migration `amc --check` validation.");
@@ -11806,7 +11811,8 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
     code_string __attribute__((unused)) input = "";
     code_string __attribute__((unused)) output = "";
     code_string __attribute__((unused)) langHint = "";
-    code_string __attribute__((unused)) provider = "claude";
+    code_string __attribute__((unused)) provider = "";
+    code_bool __attribute__((unused)) providerSet = 0;
     code_string __attribute__((unused)) model = "";
     code_bool __attribute__((unused)) dryRun = 0;
     code_bool __attribute__((unused)) promptOnly = 0;
@@ -11848,6 +11854,7 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
                 return 1;
             }
             provider = Args_Get(i);
+            providerSet = 1;
         } else if (code_string_equals(a, "--model")) {
             i = i + 1;
             if (i >= argc) {
@@ -11883,6 +11890,13 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
         Console_WriteError("usage: amc migrate <file> [--output <out>] [--lang <hint>] [--provider <name>] [--model <id>]");
         Console_WriteError("                         [--dry-run] [--prompt-only] [--no-check] [--force] [--max-lines <n>]");
         return 1;
+    }
+    if (!providerSet) {
+        if (Env_Has("ANTHROPIC_API_KEY")) {
+            provider = "claude-api";
+        } else {
+            provider = "claude";
+        }
     }
     if (!File_Exists(input)) {
         Console_WriteError(code_string_concat("amc migrate: path not found: ", input));
@@ -12233,10 +12247,121 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallPro
     if (code_string_equals(provider, "claude")) {
         return Amalgame_Compiler_MigrateCommand_CallClaudeCli(model, prompt);
     }
+    if (code_string_equals(provider, "claude-api")) {
+        return Amalgame_Compiler_MigrateCommand_CallClaudeApi(model, prompt);
+    }
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
     res->Ok = 0;
-    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not yet supported in v0 (only 'claude' ships in this version)");
+    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not supported (built-in: 'claude', 'claude-api')");
     return res;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string prompt) {
+    (void)model;
+    (void)prompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    code_string __attribute__((unused)) apiKey = Env_Get("ANTHROPIC_API_KEY");
+    if (String_Length(apiKey) == 0) {
+        res->Ok = 0;
+        res->Error = "claude-api: ANTHROPIC_API_KEY not set. Export it or use --provider claude (CLI shell out).";
+        return res;
+    }
+    code_string __attribute__((unused)) modelId = model;
+    if (String_Length(modelId) == 0) {
+        modelId = "claude-sonnet-4-6";
+    }
+    code_string __attribute__((unused)) body = "{";
+    body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
+    body = code_string_concat(body, "\"max_tokens\":8192,");
+    body = code_string_concat(body, "\"messages\":[{\"role\":\"user\",\"content\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(prompt));
+    body = code_string_concat(body, "\"}]}");
+    AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
+    AmalgameMap_set(headers, "x-api-key", (void*)(intptr_t)(apiKey));
+    AmalgameMap_set(headers, "anthropic-version", (void*)(intptr_t)("2023-06-01"));
+    AmalgameMap_set(headers, "Content-Type", (void*)(intptr_t)("application/json"));
+    AmalgameHttpResponse* __attribute__((unused)) resp = Http_PostWithHeaders("https://api.anthropic.com/v1/messages", body, headers);
+    i64 __attribute__((unused)) status = resp->Status;
+    if (status != 200) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("claude-api: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
+        return res;
+    }
+    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
+    if (String_Length(text) == 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat("claude-api: empty or unparseable response. Raw body:\n", resp->Body);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
+    return res;
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s) {
+    (void)s;
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) n = String_Length(s);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "\\")) {
+            out = code_string_concat(out, "\\\\");
+        } else if (code_string_equals(c, "\"")) {
+            out = code_string_concat(out, "\\\"");
+        } else if (code_string_equals(c, "\n")) {
+            out = code_string_concat(out, "\\n");
+        } else if (code_string_equals(c, "\\r")) {
+            out = code_string_concat(out, "\\r");
+        } else if (code_string_equals(c, "\t")) {
+            out = code_string_concat(out, "\\t");
+        } else {
+            out = code_string_concat(out, c);
+        }
+    }
+    return out;
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body) {
+    (void)body;
+    code_string __attribute__((unused)) key = "\"text\":\"";
+    i64 __attribute__((unused)) kIdx = String_IndexOf(body, key);
+    if (kIdx < 0) {
+        return "";
+    }
+    i64 __attribute__((unused)) kLen = String_Length(key);
+    i64 __attribute__((unused)) start = kIdx + kLen;
+    i64 __attribute__((unused)) n = String_Length(body);
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) i = start;
+    while (i < n) {
+        code_string __attribute__((unused)) c = String_CharAt1(body, i);
+        if (code_string_equals(c, "\\")) {
+            if (i + 1 < n) {
+                code_string __attribute__((unused)) nxt = String_CharAt1(body, i + 1);
+                if (code_string_equals(nxt, "n")) {
+                    out = code_string_concat(out, "\n");
+                } else if (code_string_equals(nxt, "r")) {
+                    out = code_string_concat(out, "\\r");
+                } else if (code_string_equals(nxt, "t")) {
+                    out = code_string_concat(out, "\t");
+                } else if (code_string_equals(nxt, "\"")) {
+                    out = code_string_concat(out, "\"");
+                } else if (code_string_equals(nxt, "\\")) {
+                    out = code_string_concat(out, "\\");
+                } else {
+                    out = code_string_concat(out, nxt);
+                }
+                i = i + 2;
+                continue;
+            }
+        }
+        if (code_string_equals(c, "\"")) {
+            return out;
+        }
+        out = code_string_concat(out, c);
+        i = i + 1;
+    }
+    return out;
 }
 
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt) {
