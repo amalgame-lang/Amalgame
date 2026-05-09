@@ -387,20 +387,28 @@ A new session reads these automatically and applies them.
         Console.WriteLine("amc <X.Y.Z> (self-hosted Amalgame compiler)")
 
     This was forgotten on the v0.4.0 push (binary still printed
-    `0.3.6` after the tag). Workaround was to bump to v0.4.1 with
-    the fix. Pre-tag checklist:
+    `0.3.6` after the tag). Use `tools/release.sh` to do it
+    correctly:
 
-        grep -n "amc 0\." src/main.am   # finds the line
-        # → edit to the new version
-        ./build_amc.sh
-        ./tests/run_all_tests.sh
-        ./tools/save-snapshot.sh
-        # → commit, PR to develop, develop → main, then tag
+        ./tools/release.sh 0.4.4
 
-    A linter rule could catch this (compare the version string
-    against the latest tag) but currently relies on the contributor
-    remembering — which means it WILL be forgotten again unless
-    we automate it.
+    The script bumps every place the version lives
+    (`src/main.am`, `README.md`), inserts a CHANGELOG stub for
+    you to fill in, builds + tests + saves a snapshot, then
+    walks the gitflow:
+
+        release/vX.Y.Z  →  develop  →  main  →  tag vX.Y.Z
+
+    Both PR transitions go through `gh pr merge --auto --merge`
+    so the protected-branch CI is what flips them. `--dry-run`
+    walks through without mutating anything; `--no-tag` stops
+    after main is updated, in case you want to inspect main
+    before publishing the tag.
+
+    Pre-flight refuses to start if you're not on `develop`, the
+    working tree is dirty, or the target tag already exists —
+    so the v0.4.0-style "forgot to bump" mistake can't happen
+    through this path.
 
 13. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
     declares `merge=ours` for `snapshot/amc_lib.c`, `snapshot/INFO.md`,
