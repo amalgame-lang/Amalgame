@@ -7,6 +7,71 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.3] — 2026-05-09
+
+The "Json migration completes" release. Phase 2 final + phase 3
+of the Amalgame.Json plan (the compiler + LLM commands now go
+through the proper parser, not substring tricks), plus
+`amc migrate v3` real cost reporting on top.
+
+### Changed
+
+- **`src/lsp.am`** request dispatcher: switched from the ad-hoc
+  `JsonStr` / `JsonInt` substring extractors to a single
+  `Json.Parse(body)` walked via structured `Get(...).At(...)`
+  chains. Each LSP message is now parsed once with a real JSON
+  parser; the helpers are gone.
+- **`src/migrate.am`** response parsing: each provider now reads
+  the actual JSON shape of its response instead of the first
+  `"text":"..."` substring trick:
+    - Anthropic → `root.content[0].text`
+    - OpenAI → `root.choices[0].message.content`
+    - Gemini → `root.candidates[0].content.parts[0].text`
+  Each path returns an attributed error if the shape doesn't
+  match, instead of a silent empty string.
+- **`amc migrate` real cost line** (v3): after a successful
+  migration, the real per-call cost is printed alongside the
+  pre-flight `--dry-run` estimate. No `~` prefix, no heuristic —
+  exact tokens billed, pulled from each provider's `usage`
+  object:
+
+      [migrate] wrote src/api.am
+      [migrate] cost: 6431 in + 982 out = $0.04 (claude-sonnet-4-6)
+
+  CLI shell-out (`claude`, `custom`) still reports nothing since
+  the bill is on the user's subscription / local backend.
+
+### Removed
+
+- `lsp.am::EscapeJsonStr` / `JsonStr` / `JsonInt`
+- `migrate.am::JsonEscape` / `JsonExtract` / `JsonExtractText`
+
+Six functions, ~150 LoC out. The compiler ships with one JSON
+parser (`Amalgame.Json`) instead of two-and-a-half overlapping
+substring matchers.
+
+### Fixed
+
+- The earlier-noted "Json.Parse hangs on 16 KB bodies" turned
+  out to be a benchmark artefact — bash `${#body}` counts
+  characters, not bytes, so the LSP probe shipped a frame that
+  under-counted UTF-8 multibyte content by the byte/char delta.
+  Real client traffic uses byte-accurate counts and the parser
+  handles a typical 16 KB didOpen body in ~37 ms.
+
+### Documentation
+
+- `docs/guide/08-llm-commands.md` — "Cost estimation" renamed to
+  "Cost reporting", documents both the pre-flight `--dry-run`
+  estimate and the post-flight real cost.
+- `docs/proposals/amc-migrate.md` — v3 cost reporting moved from
+  "deferred" to "partial". API streaming via SSE remains the
+  only deferred v3 item.
+- `ROADMAP_COMPLET.md` — `Promote ad-hoc JSON to a real
+  Amalgame.Json module` marked resolved.
+
+---
+
 ## [v0.4.2] — 2026-05-09
 
 The "stdlib + DX" release. Adds a real JSON module, a project
@@ -602,6 +667,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.3
 [v0.4.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.2
 [v0.4.1]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.1
 [v0.4.0]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.0

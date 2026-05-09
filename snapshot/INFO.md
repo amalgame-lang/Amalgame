@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-09T20:21:37+02:00
-Git rev:  2049c346f23287eead09287f36fd1c4cefb0e6ad
-Branch:   feature/migrate-v3-cost-reporting
+Captured: 2026-05-09T20:38:54+02:00
+Git rev:  afccd3665b630407ac72094354799a9d4ae6d61f
+Branch:   release/v0.4.3
 Tests:    291 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
