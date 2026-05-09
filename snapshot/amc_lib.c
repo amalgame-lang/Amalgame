@@ -9,6 +9,7 @@
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
+#include "Amalgame_Random.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -44,6 +45,7 @@ typedef struct _Amalgame_Compiler_JsonError Amalgame_Compiler_JsonError;
 typedef struct _Amalgame_Compiler_JsonResult Amalgame_Compiler_JsonResult;
 typedef struct _Amalgame_Compiler_JsonParser Amalgame_Compiler_JsonParser;
 typedef struct _Amalgame_Compiler_Json Amalgame_Compiler_Json;
+typedef struct _Amalgame_Compiler_Random Amalgame_Compiler_Random;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -4125,6 +4127,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Random.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -8336,6 +8339,13 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgOutput", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgAdvance", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_CombineHiLo", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PrepInc", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_BytesToI64", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_TimeSeedNanos", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_SystemBytes", "List<int>", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
@@ -12097,6 +12107,117 @@ Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfArray(AmalgameList* xs) {
     Amalgame_Compiler_JsonValue* __attribute__((unused)) v = Amalgame_Compiler_JsonValue_new();
     Amalgame_Compiler_JsonValue_SetArray(v, xs);
     return v;
+}
+
+struct _Amalgame_Compiler_Random {
+    i64 state;
+    i64 inc;
+};
+
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_FromSystem();
+AmalgameList* Amalgame_Compiler_Random_SystemBytes(i64 n);
+i64 Amalgame_Compiler_Random_NextUInt32(Amalgame_Compiler_Random* self);
+i64 Amalgame_Compiler_Random_NextInt(Amalgame_Compiler_Random* self);
+i64 Amalgame_Compiler_Random_IntRange(Amalgame_Compiler_Random* self, i64 min, i64 max);
+double Amalgame_Compiler_Random_Float(Amalgame_Compiler_Random* self);
+code_bool Amalgame_Compiler_Random_Bool(Amalgame_Compiler_Random* self);
+AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64 n);
+
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_new(i64 seed) {
+    Amalgame_Compiler_Random* self = (Amalgame_Compiler_Random*) GC_MALLOC(sizeof(Amalgame_Compiler_Random));
+    self->state = 0;
+    self->inc = Random_PrepInc(seed);
+    self->state = Random_PcgAdvance(self->state, self->inc);
+    self->state = self->state + seed;
+    self->state = Random_PcgAdvance(self->state, self->inc);
+    return self;
+}
+
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_FromSystem() {
+    AmalgameList* __attribute__((unused)) bytes = Amalgame_Compiler_Random_SystemBytes(16);
+    i64 __attribute__((unused)) seedA = Random_BytesToI64(bytes, 0);
+    i64 __attribute__((unused)) seedB = Random_BytesToI64(bytes, 8);
+    Amalgame_Compiler_Random* __attribute__((unused)) r = Amalgame_Compiler_Random_new(seedA);
+    r->state = r->state ^ seedB;
+    return r;
+}
+
+AmalgameList* Amalgame_Compiler_Random_SystemBytes(i64 n) {
+    (void)n;
+    return Random_SystemBytes(n);
+}
+
+i64 Amalgame_Compiler_Random_NextUInt32(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) out = Random_PcgOutput(self->state);
+    self->state = Random_PcgAdvance(self->state, self->inc);
+    return out;
+}
+
+i64 Amalgame_Compiler_Random_NextInt(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) hi = Amalgame_Compiler_Random_NextUInt32(self);
+    i64 __attribute__((unused)) lo = Amalgame_Compiler_Random_NextUInt32(self);
+    return Random_CombineHiLo(hi, lo);
+}
+
+i64 Amalgame_Compiler_Random_IntRange(Amalgame_Compiler_Random* self, i64 min, i64 max) {
+    (void)self;
+    (void)min;
+    (void)max;
+    if (min >= max) {
+        return min;
+    }
+    i64 __attribute__((unused)) span = max - min;
+    i64 __attribute__((unused)) r = Amalgame_Compiler_Random_NextUInt32(self);
+    i64 __attribute__((unused)) off = r % span;
+    return min + off;
+}
+
+double Amalgame_Compiler_Random_Float(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) raw = Amalgame_Compiler_Random_NextUInt32(self);
+    return raw / 4294967296.0;
+}
+
+code_bool Amalgame_Compiler_Random_Bool(Amalgame_Compiler_Random* self) {
+    (void)self;
+    i64 __attribute__((unused)) raw = Amalgame_Compiler_Random_NextUInt32(self);
+    i64 __attribute__((unused)) parity = raw & 1;
+    return parity == 1;
+}
+
+AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64 n) {
+    (void)self;
+    (void)n;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    if (n <= 0) {
+        return out;
+    }
+    i64 __attribute__((unused)) produced = 0;
+    while (produced < n) {
+        i64 __attribute__((unused)) r = Amalgame_Compiler_Random_NextUInt32(self);
+        i64 __attribute__((unused)) avail = n - produced;
+        i64 __attribute__((unused)) b0 = r & 255;
+        AmalgameList_add(out, (void*)(intptr_t)(b0));
+        if (avail >= 2) {
+            i64 __attribute__((unused)) r1 = r / 256;
+            i64 __attribute__((unused)) b1 = r1 & 255;
+            AmalgameList_add(out, (void*)(intptr_t)(b1));
+        }
+        if (avail >= 3) {
+            i64 __attribute__((unused)) r2 = r / 65536;
+            i64 __attribute__((unused)) b2 = r2 & 255;
+            AmalgameList_add(out, (void*)(intptr_t)(b2));
+        }
+        if (avail >= 4) {
+            i64 __attribute__((unused)) r3 = r / 16777216;
+            i64 __attribute__((unused)) b3 = r3 & 255;
+            AmalgameList_add(out, (void*)(intptr_t)(b3));
+        }
+        produced = produced + 4;
+    }
+    return out;
 }
 
 struct _Amalgame_Compiler_LspServer {

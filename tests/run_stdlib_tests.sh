@@ -236,6 +236,27 @@ run_test "Json: encode escape"        "$SAMPLES/stdlib_json.am" "[PASS] encode e
 run_test "Json: round-trip nested"    "$SAMPLES/stdlib_json.am" "[PASS] round-trip nested"     "" "$JSON_LIB"
 run_test "Json: escape direct"        "$SAMPLES/stdlib_json.am" "[PASS] escape direct"         "" "$JSON_LIB"
 
+# ── Amalgame.Random ────────────────────────────────────
+# Same extra-input pattern as Json — pulls in src/stdlib/random.am
+# alongside the test sample.
+echo ""
+echo "── Amalgame.Random ─────────────────────────"
+RND_LIB="src/stdlib/random.am"
+run_test "Random: seeded reproducible"  "$SAMPLES/stdlib_random.am" "[PASS] seeded reproducible"  "" "$RND_LIB"
+run_test "Random: different seeds"      "$SAMPLES/stdlib_random.am" "[PASS] different seeds differ" "" "$RND_LIB"
+run_test "Random: NextUInt32 range"     "$SAMPLES/stdlib_random.am" "[PASS] NextUInt32 in range"  "" "$RND_LIB"
+run_test "Random: NextInt varies"       "$SAMPLES/stdlib_random.am" "[PASS] NextInt varies"       "" "$RND_LIB"
+run_test "Random: IntRange in bounds"   "$SAMPLES/stdlib_random.am" "[PASS] IntRange in bounds"   "" "$RND_LIB"
+run_test "Random: IntRange degenerate"  "$SAMPLES/stdlib_random.am" "[PASS] IntRange degenerate"  "" "$RND_LIB"
+run_test "Random: Float in [0,1)"       "$SAMPLES/stdlib_random.am" "[PASS] Float in [0,1)"       "" "$RND_LIB"
+run_test "Random: Bool varies"          "$SAMPLES/stdlib_random.am" "[PASS] Bool varies"          "" "$RND_LIB"
+run_test "Random: Bytes count"          "$SAMPLES/stdlib_random.am" "[PASS] Bytes count"          "" "$RND_LIB"
+run_test "Random: Bytes in [0,255]"     "$SAMPLES/stdlib_random.am" "[PASS] Bytes in [0,255]"     "" "$RND_LIB"
+run_test "Random: Bytes zero"           "$SAMPLES/stdlib_random.am" "[PASS] Bytes zero"           "" "$RND_LIB"
+run_test "Random: SystemBytes count"    "$SAMPLES/stdlib_random.am" "[PASS] SystemBytes count"    "" "$RND_LIB"
+run_test "Random: SystemBytes range"    "$SAMPLES/stdlib_random.am" "[PASS] SystemBytes in [0,255]" "" "$RND_LIB"
+run_test "Random: FromSystem usable"    "$SAMPLES/stdlib_random.am" "[PASS] FromSystem usable"    "" "$RND_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"

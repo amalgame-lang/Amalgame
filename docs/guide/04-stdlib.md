@@ -324,13 +324,87 @@ if (r.Ok) {
 > kn.AsString()`) until the codegen fix lands. Same workaround as
 > the JSON test sample in `tests/samples/stdlib_json.am`.
 
+## Random — PRNG and OS entropy
+
+`Amalgame.Random` exposes a small, statistically strong PRNG
+(PCG XSH-RR 64/32) plus a passthrough to the OS entropy pool for
+crypto-grade needs. The PRNG step itself runs in the C runtime
+(`runtime/Amalgame_Random.h`) — the deliberate `uint64`
+wrap-around it relies on is well-defined unsigned but UB on
+Amalgame's signed `int`, so we keep the multiply behind a
+runtime helper.
+
+```amalgame
+import Amalgame.Random
+import Amalgame.Collections
+
+// Reproducible: same seed → same stream
+let r1 = new Random(42)
+let n  = r1.NextInt()
+
+// Unguessable: 16 bytes pulled from the OS entropy pool
+let r2 = Random.FromSystem()
+let f  = r2.Float()                  // [0.0, 1.0)
+let d6 = r2.IntRange(1, 7)           // [1, 7) = a six-sided die
+let coin = r2.Bool()
+let bs: List<int> = r2.Bytes(32)     // 32 bytes ∈ [0, 255]
+
+// Shortcut when you don't want to keep a Random instance around
+let salt: List<int> = Random.SystemBytes(16)
+```
+
+### Constructor + factories
+
+| Form                       | Purpose                                          |
+|----------------------------|--------------------------------------------------|
+| `new Random(seed)`         | Reproducible stream from a 64-bit seed.          |
+| `Random.FromSystem()`      | Unguessable seed from 16 bytes of OS entropy.    |
+| `Random.SystemBytes(n)`    | Static — n crypto-grade bytes ∈ [0, 255]. No instance needed. |
+
+### Methods on a Random instance
+
+| Method                  | Returns                              |
+|-------------------------|--------------------------------------|
+| `NextUInt32()`          | `int` ∈ [0, 2^32 - 1]                |
+| `NextInt()`             | `int`, full 64-bit range             |
+| `IntRange(min, max)`    | `int` ∈ [min, max) (half-open)       |
+| `Float()`               | `float` ∈ [0.0, 1.0)                 |
+| `Bool()`                | `bool`                               |
+| `Bytes(n)`              | `List<int>`, n entries ∈ [0, 255]    |
+
+**Reproducibility.** Two `new Random(seed)` instances with the
+same seed always produce identical streams across runs and across
+OSes. Use that for tests, simulations, and any "deterministic
+shuffle" needs.
+
+**OS entropy backend.** `FromSystem()` and `SystemBytes()` use:
+
+- POSIX (Linux, macOS, BSDs): `getentropy(3)` — falls back to
+  reading `/dev/urandom` if `getentropy` is unavailable.
+- Windows: `BCryptGenRandom` with the system-preferred RNG.
+
+If both paths fail (rare: chrooted POSIX without `/dev/urandom`,
+or no Windows crypto provider), the buffer is filled with zeros
+rather than returning a partial fill — the caller sees a
+deterministic-but-useless result instead of garbage.
+
+**Modulo bias in `IntRange`.** `IntRange(min, max)` uses simple
+modulo on a 32-bit draw. The bias is undetectable for ranges much
+smaller than 2^32 (i.e. anything you'd actually pass at the
+language level). Callers needing unbiased output for very large
+spans can layer rejection sampling on top of `NextUInt32()`.
+
+> The legacy `Math.SeedRandom` / `Math.Random` / `Math.RandomInt`
+> helpers stay for compatibility but are not recommended — they
+> use a single global state, an 8-bit-output LCG, and have no
+> crypto path. New code should reach for `Amalgame.Random`.
+
 ## What's missing
 
 - Bigger Math (trig, logs)
 - Async/iter/streaming abstractions over collections
 - Date/Time
 - Regex
-- Random (crypto-grade + seeded PRNG)
 - Encoding (Base64, hex, URL)
 - Process spawning beyond `Args` / `Exit` (basic `Process.Run`
   / `Process.RunCapture` already in)
