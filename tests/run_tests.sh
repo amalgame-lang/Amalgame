@@ -374,6 +374,13 @@ run_test "lambda v2.5: Any"          "$SAMPLES/lambda_v25_typed.am"  "anyMinor: 
 run_test "lambda v2.5: All"          "$SAMPLES/lambda_v25_typed.am"  "allAdults: false"
 run_test "lambda v2.5: CountIf"      "$SAMPLES/lambda_v25_typed.am"  "underAge: 1"
 run_test "param syntax: TS-style"    "$SAMPLES/param_ts_syntax.am"   "box: 21"
+run_test "chain: multiline filter"   "$SAMPLES/multiline_method_chain.am"  "first: Alice"
+run_test "chain: multiline last"     "$SAMPLES/multiline_method_chain.am"  "last: Carol"
+run_test "chain: stmt boundary OK"   "$SAMPLES/multiline_method_chain.am"  "sum: 3"
+run_test "auto-qualify: ctor write"  "$SAMPLES/cgen_auto_qualify.am" "value: 7"
+run_test "auto-qualify: method read" "$SAMPLES/cgen_auto_qualify.am" "dp: 17"
+run_test "auto-qualify: method write" "$SAMPLES/cgen_auto_qualify.am" "after reset value: 0"
+run_test "auto-qualify: explicit this. mix" "$SAMPLES/cgen_auto_qualify.am" "after reset label: reset"
 
 # ── Process module ─────────────────────────────────────
 echo ""
@@ -523,6 +530,28 @@ run_migrate_dry_check() {
 run_migrate_dry_check "migrate: dry-run lang"     "TypeScript"
 run_migrate_dry_check "migrate: dry-run out"      "mig_fixture.am"
 run_migrate_dry_check "migrate: dry-run provider" "provider:      claude"
+
+# --help and -h: print usage to stderr and exit 0.
+run_migrate_help_check() {
+    local name="$1"
+    local flag="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" migrate "$flag" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+run_migrate_help_check "migrate: --help" "--help" "Usage: amc migrate"
+run_migrate_help_check "migrate: -h"     "-h"     "Usage: amc migrate"
 
 # ── Namespace ──────────────────────────────────────────
 echo ""

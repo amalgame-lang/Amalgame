@@ -1038,6 +1038,24 @@ public class FullResolver {
                 return this.Members.Get(targetType, expr.Name)
             }
         }
+        if (k == NodeKind.CALL) {
+            // For chained higher-order list calls — `xs.Filter(p).Map(q)` —
+            // we need to infer the type of the inner call so that
+            // PatchLambdaParamTypes can patch q's param against the
+            // correct element type. Type-preserving methods (Filter,
+            // ForEach) yield the receiver's type unchanged. Map/Reduce
+            // change the element type and need lambda return-type
+            // inference, which we don't yet have at the resolver layer
+            // (deferred — falls through to "?").
+            if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER) {
+                let mname = expr.Left.Name
+                if (mname == "Filter" || mname == "ForEach") {
+                    if (expr.Left.Left != null) {
+                        return this.InferExprType(expr.Left.Left)
+                    }
+                }
+            }
+        }
         return "?"
     }
 
