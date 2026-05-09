@@ -198,6 +198,8 @@ public class Program {
         Console.WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.")
         Console.WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.")
         Console.WriteError("                See `amc explain --help`.")
+        Console.WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test templates).")
+        Console.WriteError("                See `amc new --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
@@ -395,6 +397,10 @@ public class Program {
             Exit_Set(ExplainCommand.Run(argc))
             return
         }
+        if (Args_Get(1) == "new") {
+            Exit_Set(NewCommand.Run(argc))
+            return
+        }
 
         let inputFiles = new List<string>()
         var outputName = "a.out"
@@ -425,7 +431,7 @@ public class Program {
             } else if (a == "--verbose") {
                 verbose = true
             } else if (a == "--version") {
-                Console.WriteLine("amc 0.4.1 (self-hosted Amalgame compiler)")
+                Console.WriteLine("amc 0.4.2 (self-hosted Amalgame compiler)")
                 Exit_Set(0)
                 return
             } else if (a == "--help" || a == "-h") {

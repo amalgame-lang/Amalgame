@@ -4,7 +4,7 @@
 
 A self-hosted programming language that compiles to C.
 
-[![CI](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml/badge.svg)](https://github.com/BastienMOUGET/Amalgame/actions/workflows/ci.yml)
+[![CI](https://github.com/amalgame-lang/Amalgame/actions/workflows/ci.yml/badge.svg)](https://github.com/amalgame-lang/Amalgame/actions/workflows/ci.yml)
 [![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-success)](src/)
 [![Tests](https://img.shields.io/badge/tests-170%2F170-brightgreen)](tests/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -109,7 +109,7 @@ A more thorough tour is in [docs/guide/02-language-tour.md](docs/guide/02-langua
 
 ```bash
 sudo apt install gcc libgc-dev libcurl4-openssl-dev
-git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
+git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
 ./amc --version          # amc 0.3.6
@@ -120,7 +120,7 @@ gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 
 ```bash
 brew install bdw-gc curl
-git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
+git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 GC_PREFIX=$(brew --prefix bdw-gc)
 CURL_PREFIX=$(brew --prefix curl)
 gcc -O2 -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
@@ -133,7 +133,7 @@ gcc -O2 -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
 
 ```bash
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl
-git clone https://github.com/BastienMOUGET/Amalgame.git && cd Amalgame
+git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -lws2_32 -o amc.exe
 ./amc.exe --version
 ```

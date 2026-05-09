@@ -23,10 +23,12 @@ AMC_SOURCES="src/lexer/token.am \
              src/resolver/resolver.am \
              src/typechecker.am \
              src/linter.am \
+             src/stdlib/json.am \
              src/lsp.am \
              src/migrate.am \
              src/generate.am \
-             src/explain.am"
+             src/explain.am \
+             src/new_cmd.am"
 
 # Self-host: 3-rung fallback chain.
 #   ./amc                ← current self-hosted (may be broken mid-development)

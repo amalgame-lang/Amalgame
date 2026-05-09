@@ -35,14 +35,23 @@ echo ""
 FMT_EXIT=$?
 
 echo ""
-if [ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ]; then
+echo "─────────────────────────────────────────────"
+echo ""
+
+# `amc new` scaffolding tests
+"$DIR/run_amc_new_tests.sh"
+NEW_EXIT=$?
+
+echo ""
+if [ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $NEW_EXIT -eq 0 ]; then
     echo -e "\033[0;32m  All suites passed ✓\033[0m"
 else
     echo -e "\033[0;31m  Some tests failed ✗\033[0m"
     [ $CORE_EXIT -ne 0 ]   && echo "  - Core tests failed"
     [ $STDLIB_EXIT -ne 0 ] && echo "  - Stdlib tests failed"
     [ $FMT_EXIT -ne 0 ]    && echo "  - Formatter tests failed"
+    [ $NEW_EXIT -ne 0 ]    && echo "  - amc new tests failed"
 fi
 echo ""
 
-[ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && exit 0 || exit 1
+[ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $NEW_EXIT -eq 0 ] && exit 0 || exit 1

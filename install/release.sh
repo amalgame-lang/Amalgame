@@ -72,7 +72,7 @@ echo "  3. Upload all .tar.gz files + checksums.sha256"
 echo "  4. Update install/homebrew/amalgame.rb with the new SHA256:"
 echo ""
 echo "     sha256 of source tarball:"
-curl -sSL "https://github.com/BastienMOUGET/CODE/archive/refs/tags/v${VERSION}.tar.gz" \
+curl -sSL "https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v${VERSION}.tar.gz" \
     | sha256sum | awk '{print "     " $1}' 2>/dev/null || \
     echo "     (run after pushing the tag to GitHub)"
 echo ""
