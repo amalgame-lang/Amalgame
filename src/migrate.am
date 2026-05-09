@@ -31,11 +31,18 @@ public class MigrateResult {
     public Ok:      bool
     public Content: string
     public Error:   string
+    // v3 cost reporting: real token counts pulled from each
+    // provider's usage object on the response. -1 means the
+    // provider didn't report (claude CLI shell-out, custom).
+    public InputTokens:  int
+    public OutputTokens: int
 
     public MigrateResult() {
-        this.Ok      = false
-        this.Content = ""
-        this.Error   = ""
+        this.Ok           = false
+        this.Content      = ""
+        this.Error        = ""
+        this.InputTokens  = -1
+        this.OutputTokens = -1
     }
 }
 
@@ -303,6 +310,12 @@ public class MigrateCommand {
             return 1
         }
         Console.WriteLine("[migrate] wrote " + outPath)
+        // v3: real cost reporting from the provider's usage stats.
+        // Silent for CLI / custom (InputTokens == -1).
+        let realCost: string = MigrateCommand.FormatActualCost(provider, model, result.InputTokens, result.OutputTokens)
+        if (String_Length(realCost) > 0) {
+            Console.WriteLine("[migrate] cost: " + realCost)
+        }
         // Store in cache for future hits. Best-effort, silent on failure.
         if (!noCache) {
             MigrateCommand.CacheStore(source, sysForCache, result.Content)
@@ -746,6 +759,67 @@ public class MigrateCommand {
         return "~" + inS + " in + ~" + outS + " out -> ~$" + dolS + "." + centStr + " (" + resolvedModel + ")"
     }
 
+    // v3: format an *actual* cost line from real usage stats
+    // returned by the provider. Same pricing tables as EstimateCost,
+    // no `~` prefixes since these aren't heuristics. Returns "" if
+    // tokens are -1 (provider didn't report — claude CLI / custom).
+    public static string FormatActualCost(string provider, string model, int inputToks, int outputToks) {
+        if (inputToks < 0 || outputToks < 0) { return "" }
+        var inUsdPerM:  int = 0
+        var outUsdPerM: int = 0
+        var resolvedModel: string = model
+        if (provider == "claude-api") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "claude-sonnet-4-6" }
+            if (resolvedModel == "claude-opus-4-7") {
+                inUsdPerM  = 15000000
+                outUsdPerM = 75000000
+            } else if (resolvedModel == "claude-haiku-4-5") {
+                inUsdPerM  = 1000000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 3000000
+                outUsdPerM = 15000000
+            }
+        } else if (provider == "chatgpt") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gpt-4o-mini" }
+            if (resolvedModel == "gpt-4o") {
+                inUsdPerM  = 2500000
+                outUsdPerM = 10000000
+            } else if (resolvedModel == "gpt-4-turbo") {
+                inUsdPerM  = 10000000
+                outUsdPerM = 30000000
+            } else {
+                inUsdPerM  = 150000
+                outUsdPerM = 600000
+            }
+        } else if (provider == "gemini") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gemini-1.5-flash" }
+            if (resolvedModel == "gemini-1.5-pro") {
+                inUsdPerM  = 1250000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 75000
+                outUsdPerM = 300000
+            }
+        } else {
+            return ""
+        }
+        let inProd:  int = inputToks * inUsdPerM
+        let inMicro: int = inProd / 1000000
+        let outProd:  int = outputToks * outUsdPerM
+        let outMicro: int = outProd / 1000000
+        let totalMicro: int = inMicro + outMicro
+        let totalCents: int = totalMicro / 10000
+        let dollars: int = totalCents / 100
+        let cents:   int = totalCents % 100
+        var centStr: string = String_FromInt(cents)
+        if (cents < 10) { centStr = "0" + centStr }
+        let inS:  string = String_FromInt(inputToks)
+        let outS: string = String_FromInt(outputToks)
+        let dolS: string = String_FromInt(dollars)
+        return inS + " in + " + outS + " out = $" + dolS + "." + centStr + " (" + resolvedModel + ")"
+    }
+
     // Anthropic HTTP provider. Reads the API key from
     // ANTHROPIC_API_KEY. Default model: current Sonnet (override
     // with --model).
@@ -779,10 +853,10 @@ public class MigrateCommand {
         body = body + "\"model\":\"" + modelId + "\","
         body = body + "\"max_tokens\":8192,"
         body = body + "\"system\":[{\"type\":\"text\",\"text\":\""
-        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + Json.EscapeString(systemPrompt)
         body = body + "\",\"cache_control\":{\"type\":\"ephemeral\"}}],"
         body = body + "\"messages\":[{\"role\":\"user\",\"content\":\""
-        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + Json.EscapeString(userPrompt)
         body = body + "\"}]}"
 
         let headers = new Map<string, string>()
@@ -797,85 +871,34 @@ public class MigrateCommand {
             res.Error = "claude-api: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
             return res
         }
-        let text: string = MigrateCommand.JsonExtractText(resp.Body)
-        if (String_Length(text) == 0) {
+        // Anthropic shape: { "content": [ { "type": "text", "text": "<...>" } ], "usage": {...}, ... }
+        // Each step uses a typed local because cgen mashes
+        // `parsed.Value.Get(...).Get(...).AsString()` chains.
+        let parsed = Json.Parse(resp.Body)
+        if (!parsed.Ok) {
             res.Ok    = false
-            res.Error = "claude-api: empty or unparseable response. Raw body:\n" + resp.Body
+            res.Error = "claude-api: unparseable response (" + parsed.Error.Message + "). Raw body:\n" + resp.Body
             return res
         }
+        let root: JsonValue    = parsed.Value
+        let content: JsonValue = root.Get("content")
+        let block0: JsonValue  = content.At(0)
+        let textNode: JsonValue = block0.Get("text")
+        let text: string       = textNode.AsString()
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "claude-api: empty response (no content[0].text). Raw body:\n" + resp.Body
+            return res
+        }
+        // v3 cost reporting: pull usage.input_tokens / output_tokens.
+        let usage: JsonValue  = root.Get("usage")
+        let inTok: JsonValue  = usage.Get("input_tokens")
+        let outTok: JsonValue = usage.Get("output_tokens")
+        res.InputTokens  = inTok.AsInt()
+        res.OutputTokens = outTok.AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
-    }
-
-    // Minimal JSON-string escaper. Handles the characters that would
-    // otherwise corrupt the request payload (quote, backslash, common
-    // control codes). Sufficient for an LLM prompt body — promote to
-    // a real JSON encoder if we ever need to round-trip arbitrary
-    // structured data.
-    private static string JsonEscape(string s) {
-        var out: string = ""
-        let n: int = String_Length(s)
-        for i in 0..n {
-            let c: string = String_CharAt1(s, i)
-            if (c == "\\") {
-                out = out + "\\\\"
-            } else if (c == "\"") {
-                out = out + "\\\""
-            } else if (c == "\n") {
-                out = out + "\\n"
-            } else if (c == "\r") {
-                out = out + "\\r"
-            } else if (c == "\t") {
-                out = out + "\\t"
-            } else {
-                out = out + c
-            }
-        }
-        return out
-    }
-
-    // Find the first `"text":"..."` value in the JSON response.
-    // Convenience wrapper for the v1.2 extraction site (Anthropic's
-    // `{"content":[{"type":"text","text":"..."}]}` shape). For other
-    // providers, callers pass a key directly to JsonExtract.
-    private static string JsonExtractText(string body) {
-        return MigrateCommand.JsonExtract(body, "\"text\":\"")
-    }
-
-    // Generic key-prefixed string extractor. Pass the literal key
-    // including `:"` (e.g. `"text":"`, `"content":"`). Returns the
-    // first un-escaped value, or "" if not found. Same ad-hoc style
-    // as src/lsp.am's JsonStr — wiring a real JSON parser would be
-    // ~10× this code for one site.
-    private static string JsonExtract(string body, string key) {
-        let kIdx: int = String_IndexOf(body, key)
-        if (kIdx < 0) { return "" }
-        let kLen: int  = String_Length(key)
-        let start: int = kIdx + kLen
-        let n: int = String_Length(body)
-        var out: string = ""
-        var i: int = start
-        while (i < n) {
-            let c: string = String_CharAt1(body, i)
-            if (c == "\\") {
-                if (i + 1 < n) {
-                    let nxt: string = String_CharAt1(body, i + 1)
-                    if (nxt == "n") { out = out + "\n" }
-                    else if (nxt == "r") { out = out + "\r" }
-                    else if (nxt == "t") { out = out + "\t" }
-                    else if (nxt == "\"") { out = out + "\"" }
-                    else if (nxt == "\\") { out = out + "\\" }
-                    else { out = out + nxt }
-                    i = i + 2
-                    continue
-                }
-            }
-            if (c == "\"") { return out }
-            out = out + c
-            i = i + 1
-        }
-        return out
     }
 
     // ── ChatGPT / OpenAI provider (v2) ────────────────
@@ -898,9 +921,9 @@ public class MigrateCommand {
         var body: string = "{"
         body = body + "\"model\":\"" + modelId + "\","
         body = body + "\"messages\":[{\"role\":\"system\",\"content\":\""
-        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + Json.EscapeString(systemPrompt)
         body = body + "\"},{\"role\":\"user\",\"content\":\""
-        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + Json.EscapeString(userPrompt)
         body = body + "\"}]}"
 
         let headers = new Map<string, string>()
@@ -914,13 +937,30 @@ public class MigrateCommand {
             res.Error = "chatgpt: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
             return res
         }
-        // OpenAI returns choices[0].message.content
-        let text: string = MigrateCommand.JsonExtract(resp.Body, "\"content\":\"")
-        if (String_Length(text) == 0) {
+        // OpenAI shape: { "choices": [ { "message": { "content": "<...>" } } ] }
+        let parsed = Json.Parse(resp.Body)
+        if (!parsed.Ok) {
             res.Ok    = false
-            res.Error = "chatgpt: empty or unparseable response. Raw:\n" + resp.Body
+            res.Error = "chatgpt: unparseable response (" + parsed.Error.Message + "). Raw:\n" + resp.Body
             return res
         }
+        let root: JsonValue    = parsed.Value
+        let choices: JsonValue = root.Get("choices")
+        let choice0: JsonValue = choices.At(0)
+        let message: JsonValue = choice0.Get("message")
+        let textNode: JsonValue = message.Get("content")
+        let text: string       = textNode.AsString()
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "chatgpt: empty response (no choices[0].message.content). Raw:\n" + resp.Body
+            return res
+        }
+        // v3 cost reporting: OpenAI usage.{prompt,completion}_tokens.
+        let usage: JsonValue  = root.Get("usage")
+        let inTok: JsonValue  = usage.Get("prompt_tokens")
+        let outTok: JsonValue = usage.Get("completion_tokens")
+        res.InputTokens  = inTok.AsInt()
+        res.OutputTokens = outTok.AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
@@ -947,10 +987,10 @@ public class MigrateCommand {
         // contents array of user/model messages. We use both.
         var body: string = "{"
         body = body + "\"systemInstruction\":{\"parts\":[{\"text\":\""
-        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + Json.EscapeString(systemPrompt)
         body = body + "\"}]},"
         body = body + "\"contents\":[{\"parts\":[{\"text\":\""
-        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + Json.EscapeString(userPrompt)
         body = body + "\"}]}]}"
 
         let headers = new Map<string, string>()
@@ -964,14 +1004,32 @@ public class MigrateCommand {
             res.Error = "gemini: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
             return res
         }
-        // Gemini returns candidates[0].content.parts[0].text — the
-        // first `"text":"..."` after the candidates key works.
-        let text: string = MigrateCommand.JsonExtractText(resp.Body)
-        if (String_Length(text) == 0) {
+        // Gemini shape: { "candidates": [ { "content": { "parts": [ { "text": "<...>" } ] } } ] }
+        let parsed = Json.Parse(resp.Body)
+        if (!parsed.Ok) {
             res.Ok    = false
-            res.Error = "gemini: empty or unparseable response. Raw:\n" + resp.Body
+            res.Error = "gemini: unparseable response (" + parsed.Error.Message + "). Raw:\n" + resp.Body
             return res
         }
+        let root: JsonValue       = parsed.Value
+        let candidates: JsonValue = root.Get("candidates")
+        let cand0: JsonValue      = candidates.At(0)
+        let candContent: JsonValue = cand0.Get("content")
+        let parts: JsonValue      = candContent.Get("parts")
+        let part0: JsonValue      = parts.At(0)
+        let textNode: JsonValue   = part0.Get("text")
+        let text: string          = textNode.AsString()
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n" + resp.Body
+            return res
+        }
+        // v3 cost reporting: Gemini usageMetadata.{prompt,candidates}TokenCount.
+        let usage: JsonValue  = root.Get("usageMetadata")
+        let inTok: JsonValue  = usage.Get("promptTokenCount")
+        let outTok: JsonValue = usage.Get("candidatesTokenCount")
+        res.InputTokens  = inTok.AsInt()
+        res.OutputTokens = outTok.AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res

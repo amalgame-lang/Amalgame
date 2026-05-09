@@ -1,6 +1,6 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-09 after shipping v0.4.0 (LLM-driven workflows).
+> Last refreshed 2026-05-09 after shipping v0.4.2 (stdlib + DX release).
 > The block below is a self-contained prompt designed to bootstrap a
 > new Claude session with full context. Copy-paste it as your first
 > message in a fresh conversation.
@@ -12,7 +12,7 @@ I'm working on Amalgame, a self-hosted programming language that
 transpiles to C. I keep the project in
 /home/neitsab/Développement/Amalgame.
 
-Current state (May 2026, v0.4.0):
+Current state (May 2026, v0.4.2):
 
 - The compiler `amc` is written in Amalgame in src/ and compiles
   itself in ~5 seconds via ./build_amc.sh.
@@ -30,14 +30,15 @@ Current state (May 2026, v0.4.0):
   chatgpt / gemini providers.
 - Test runner (./tests/run_all_tests.sh) drives ./amc directly.
   Build artefacts go to /tmp via mktemp; the source tree stays clean.
-  Currently 263 PASS / 0 FAIL / 0 SKIP across 13 suites.
+  Currently 307 PASS / 0 FAIL / 0 SKIP across the core/stdlib/fmt/
+  amc-new sub-suites.
 - Multi-OS CI (.github/workflows/ci.yml) — Linux + macOS + Windows
   MSYS2. Linux uses snapshot + self-hosted amc; no Vala in the graph.
   CI compiles with -Wint-conversion as an error on macOS/Windows;
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
 - Releases automated on `v*` tag (.github/workflows/release.yml).
-  Latest is v0.4.0 — see CHANGELOG.md for the per-release detail.
+  Latest is v0.4.2 — see CHANGELOG.md for the per-release detail.
   develop → main → tag is the release flow. Both develop and main
   are protected (force-push + delete blocked, PR required, admin
   bypass allowed).
@@ -74,6 +75,33 @@ Current state (May 2026, v0.4.0):
 - README + CHANGELOG at the repo root.
 - Design proposals: docs/proposals/amc-migrate.md tracks the v1+v2
   roadmap for the LLM commands (largely shipped now).
+
+Recently shipped (v0.4.2 stdlib + DX release, 2026-05-09):
+
+  Stdlib + tooling:
+  - Amalgame.Json (PR #182, #183): first-class JSON parser +
+    encoder + accessor surface in the new src/stdlib/ directory.
+    Strict RFC 8259 with full escape support including \uXXXX +
+    surrogate pairs. JsonValue with Is*/As*/Get/At/Length/Keys.
+    Replaces 4 ad-hoc substring extractors in the compiler in a
+    future phase 2 PR.
+  - amc new <name> (PR #184): project scaffolder à la cargo new.
+    Three templates (exe/lib/test) with working build.sh,
+    runtime auto-discovery via $AMALGAME_HOME / install dirs /
+    `which amc`, READMEs, .gitignore. Path-aware
+    (basename = namespace stem).
+  - LSP member completion (PR #185): obj.<cursor> narrows to the
+    receiver type. Two-step receiver resolution: global-symbol
+    lookup, then a local-decl text scan covering
+    `let x = new T(...)` / `let x: T = ...`.
+
+  Infra:
+  - Repo transferred to amalgame-lang/Amalgame (PR #187).
+    GitHub redirects the old URLs ~1 year; canonical references
+    landed everywhere.
+  - tests/run_amc_new_tests.sh + new 5th-arg `extra_inputs` on
+    run_stdlib_tests.sh so per-module tests can pull in stdlib
+    sources alongside the sample.
 
 Recently shipped (v0.4.0 LLM-driven release, 2026-05-09):
 

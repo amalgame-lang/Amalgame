@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-09 · `amc 0.4.0` · self-hosted · 263/263 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-09 · `amc 0.4.2` · self-hosted · 307/307 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -312,13 +312,19 @@ before the next big language addition.
       `main.am::RunFmt`/`RunTest` each reimplement an args loop.
       A shared `ArgParser` class with a fluent registration API
       would cut ~150 lines and centralize the `--help` rendering.
-- [ ] **Promote ad-hoc JSON to a real `Amalgame.Json` module** —
-      `lsp.am::JsonStr/JsonInt`, `migrate.am::JsonExtract/JsonEscape`,
-      and the request bodies built by hand all reinvent string-
-      level JSON. A real parser (recursive descent over a `JsonValue`
-      tagged union) would replace these and unblock `amc migrate`'s
-      v3 cost reporting (which needs to read `usage.input_tokens` /
-      `usage.output_tokens` from API responses cleanly).
+- [x] **Promote ad-hoc JSON to a real `Amalgame.Json` module**
+      (resolved). Phase 1 (module + 24 tests, v0.4.2). Phase 2
+      (swap `lsp.am` request dispatcher to `Json.Parse`, swap
+      Anthropic / ChatGPT / Gemini response extractors in
+      `migrate.am`, swap all `EscapeJsonStr` / `JsonEscape` to
+      `Json.EscapeString`). Phase 3 (delete the six dead helpers
+      in `lsp.am` and `migrate.am`). The earlier-noted
+      "Json.Parse hangs on 16 KB bodies" turned out to be a
+      benchmark artefact: a bash probe that used `${#body}` to
+      compute Content-Length under-counted UTF-8 multibyte chars
+      and shipped a truncated frame. Real client traffic uses
+      byte-accurate counts and the parser handles a typical 16 KB
+      didOpen body in ~37 ms.
 - [x] **Tighten the parser's error-recovery path** — audit done
       after PR #152. `ParseClassBody`, `ParseBlock`, `ParseCallArgs`,
       `ParseEnumBody`, `ParseMethod`-params, `ParseInterface`-params
