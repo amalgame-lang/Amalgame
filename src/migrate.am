@@ -43,6 +43,32 @@ public class MigrateCommand {
 
     public MigrateCommand() {}
 
+    // ── Usage ─────────────────────────────────────────
+    public static void PrintUsage() {
+        Console.WriteError("Usage: amc migrate <file> [flags]")
+        Console.WriteError("")
+        Console.WriteError("Translates a source file in any supported language to Amalgame")
+        Console.WriteError("via an LLM (v0: requires `claude` CLI on PATH).")
+        Console.WriteError("")
+        Console.WriteError("Supported source extensions:")
+        Console.WriteError("  .ts .tsx .js .jsx .mjs .py .java .cs .go .rs")
+        Console.WriteError("  .cpp .cc .cxx .hpp .h++ .c .h .kt .kts .swift .rb .php")
+        Console.WriteError("")
+        Console.WriteError("Flags:")
+        Console.WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).")
+        Console.WriteError("  --lang <name>        Override extension-based language detection.")
+        Console.WriteError("  --provider <name>    Pick the LLM provider (default: claude — only one in v0).")
+        Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
+        Console.WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).")
+        Console.WriteError("  --no-check           Skip the post-migration `amc --check` validation.")
+        Console.WriteError("  --force              Overwrite an existing .am at the output path.")
+        Console.WriteError("  --dry-run            Print what would happen without invoking the LLM.")
+        Console.WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.")
+        Console.WriteError("  -h, --help           Print this help and exit.")
+        Console.WriteError("")
+        Console.WriteError("See docs/proposals/amc-migrate.md for design rationale.")
+    }
+
     // ── Entry point ───────────────────────────────────
     public static int Run(int argc) {
         var input:      string = ""
@@ -60,7 +86,10 @@ public class MigrateCommand {
         var i: int = 2
         while (i < argc) {
             let a: string = Args_Get(i)
-            if (a == "-o" || a == "--output") {
+            if (a == "-h" || a == "--help") {
+                MigrateCommand.PrintUsage()
+                return 0
+            } else if (a == "-o" || a == "--output") {
                 i = i + 1
                 if (i >= argc) {
                     Console.WriteError("amc migrate: " + a + " requires a value")

@@ -1104,6 +1104,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseAdd(Amalgame_Com
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMul(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseUnary(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame_Compiler_Parser* self);
+static code_bool Amalgame_Compiler_Parser_LookaheadStartsWithDot(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseCallArgs(Amalgame_Compiler_Parser* self, Amalgame_Compiler_AstNode* callee);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePrimary(Amalgame_Compiler_Parser* self);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseListComp(Amalgame_Compiler_Parser* self);
@@ -2373,6 +2374,9 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame
     Amalgame_Compiler_AstNode* __attribute__((unused)) expr = Amalgame_Compiler_Parser_ParsePrimary(self);
     code_bool __attribute__((unused)) running = 1;
     while (running) {
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_NEWLINE) && Amalgame_Compiler_Parser_LookaheadStartsWithDot(self)) {
+            Amalgame_Compiler_Parser_SkipNewlines(self);
+        }
         if (Amalgame_Compiler_Parser_CheckValue(self, ".")) {
             Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
             Amalgame_Compiler_Token* __attribute__((unused)) memberTok = Amalgame_Compiler_Parser_ExpectIdent(self);
@@ -2404,6 +2408,24 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParsePostfix(Amalgame
         }
     }
     return expr;
+}
+
+static code_bool Amalgame_Compiler_Parser_LookaheadStartsWithDot(Amalgame_Compiler_Parser* self) {
+    (void)self;
+    i64 __attribute__((unused)) off = 0;
+    i64 __attribute__((unused)) max = self->TokenCount;
+    while (self->Pos + off < max) {
+        Amalgame_Compiler_Token* __attribute__((unused)) t = (Amalgame_Compiler_Token*)AmalgameList_get(self->Tokens, self->Pos + off);
+        if (t->Type == Amalgame_Compiler_TokenType_NEWLINE) {
+            off = off + 1;
+            continue;
+        }
+        if (code_string_equals(t->Value, ".") || code_string_equals(t->Value, "?.")) {
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseCallArgs(Amalgame_Compiler_Parser* self, Amalgame_Compiler_AstNode* callee) {
@@ -5155,7 +5177,17 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
         return "self";
     }
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        return expr->Name;
+        code_string __attribute__((unused)) name = expr->Name;
+        if (String_Length(self->CurrentClass) > 0) {
+            code_string __attribute__((unused)) asLocal = Amalgame_Compiler_CGen_LocalTypeGet(self, name);
+            if (String_Length(asLocal) == 0) {
+                code_string __attribute__((unused)) asField = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, name);
+                if (String_Length(asField) > 0 && !code_string_equals(asField, "?")) {
+                    return code_string_concat("self->", name);
+                }
+            }
+        }
+        return name;
     }
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
         if (expr->Flag) {
@@ -5611,6 +5643,13 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             code_string __attribute__((unused)) vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vname);
             if (code_string_equals(vtype, "AmalgameList*")) {
                 listExpr = vname;
+                listCType = "AmalgameList*";
+            }
+        }
+        if (lk == Amalgame_Compiler_NodeKind_CALL) {
+            code_string __attribute__((unused)) innerStr = Amalgame_Compiler_CGen_TryEmitListCall(self, callee->Left);
+            if (String_Length(innerStr) > 0) {
+                listExpr = innerStr;
                 listCType = "AmalgameList*";
             }
         }
@@ -9118,6 +9157,16 @@ static code_string Amalgame_Compiler_FullResolver_InferExprType(Amalgame_Compile
             return Amalgame_Compiler_MemberTable_Get(self->Members, targetType, expr->Name);
         }
     }
+    if (k == Amalgame_Compiler_NodeKind_CALL) {
+        if (expr->Left != NULL && expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
+            code_string __attribute__((unused)) mname = expr->Left->Name;
+            if (code_string_equals(mname, "Filter") || code_string_equals(mname, "ForEach")) {
+                if (expr->Left->Left != NULL) {
+                    return Amalgame_Compiler_FullResolver_InferExprType(self, expr->Left->Left);
+                }
+            }
+        }
+    }
     return "?";
 }
 
@@ -11700,6 +11749,7 @@ Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateResult_new() {
 struct _Amalgame_Compiler_MigrateCommand {
 };
 
+void Amalgame_Compiler_MigrateCommand_PrintUsage();
 i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc);
 static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path);
 static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input);
@@ -11713,6 +11763,31 @@ static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
 Amalgame_Compiler_MigrateCommand* Amalgame_Compiler_MigrateCommand_new() {
     Amalgame_Compiler_MigrateCommand* self = (Amalgame_Compiler_MigrateCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_MigrateCommand));
     return self;
+}
+
+void Amalgame_Compiler_MigrateCommand_PrintUsage() {
+    Console_WriteError("Usage: amc migrate <file> [flags]");
+    Console_WriteError("");
+    Console_WriteError("Translates a source file in any supported language to Amalgame");
+    Console_WriteError("via an LLM (v0: requires `claude` CLI on PATH).");
+    Console_WriteError("");
+    Console_WriteError("Supported source extensions:");
+    Console_WriteError("  .ts .tsx .js .jsx .mjs .py .java .cs .go .rs");
+    Console_WriteError("  .cpp .cc .cxx .hpp .h++ .c .h .kt .kts .swift .rb .php");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).");
+    Console_WriteError("  --lang <name>        Override extension-based language detection.");
+    Console_WriteError("  --provider <name>    Pick the LLM provider (default: claude — only one in v0).");
+    Console_WriteError("  --model <id>         Pass a specific model id to the provider.");
+    Console_WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).");
+    Console_WriteError("  --no-check           Skip the post-migration `amc --check` validation.");
+    Console_WriteError("  --force              Overwrite an existing .am at the output path.");
+    Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
+    Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  -h, --help           Print this help and exit.");
+    Console_WriteError("");
+    Console_WriteError("See docs/proposals/amc-migrate.md for design rationale.");
 }
 
 i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
@@ -11730,7 +11805,10 @@ i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
-        if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_MigrateCommand_PrintUsage();
+            return 0;
+        } else if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
             i = i + 1;
             if (i >= argc) {
                 Console_WriteError(code_string_concat(code_string_concat("amc migrate: ", a), " requires a value"));

@@ -1235,6 +1235,18 @@ public class Parser {
         var expr = this.ParsePrimary()
         var running = true
         while (running) {
+            // Multi-line method chains: skip NEWLINEs when the next
+            // non-NEWLINE token continues the expression (`.method` or
+            // `?.method`). Lets users write
+            //     users
+            //         .Filter(u => u.Age >= 18)
+            //         .Map(u => u.Name)
+            // as a single chained expression. We only skip on a
+            // dot-lookahead so statement boundaries (a NEWLINE
+            // followed by a new statement) stay intact.
+            if (this.CheckType(TokenType.NEWLINE) && this.LookaheadStartsWithDot()) {
+                this.SkipNewlines()
+            }
             if (this.CheckValue(".")) {
                 let tok = this.Advance()
                 let memberTok = this.ExpectIdent()
@@ -1268,6 +1280,24 @@ public class Parser {
             }
         }
         return expr
+    }
+
+    // True iff the first non-NEWLINE token at-or-after Pos is `.` or `?.`.
+    // Used by ParsePostfix to recognize multi-line method chains
+    // without swallowing real statement boundaries.
+    private bool LookaheadStartsWithDot() {
+        var off: int = 0
+        let max: int = this.TokenCount
+        while (this.Pos + off < max) {
+            let t: Token = this.Tokens.Get(this.Pos + off)
+            if (t.Type == TokenType.NEWLINE) {
+                off = off + 1
+                continue
+            }
+            if (t.Value == "." || t.Value == "?.") { return true }
+            return false
+        }
+        return false
     }
 
     private AstNode ParseCallArgs(AstNode callee) {
