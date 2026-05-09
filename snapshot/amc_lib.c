@@ -11766,8 +11766,11 @@ static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string p
 static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input);
 static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang, code_string source);
-static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string prompt);
-static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string prompt);
+static code_string Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(code_string lang);
+static code_string Amalgame_Compiler_MigrateCommand_BuildUserPrompt(code_string lang, code_string source);
+static code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string lang, code_string source);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string lang, code_string source);
 static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
 static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
@@ -11940,6 +11943,10 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         Console_WriteError("Suggestion: split the file or override with --max-lines <n>.");
         return 1;
     }
+    if (promptOnly) {
+        Console_WriteLine(Amalgame_Compiler_MigrateCommand_BuildPrompt(lang, source));
+        return 0;
+    }
     code_string __attribute__((unused)) outPath = output;
     if (String_Length(outPath) == 0) {
         outPath = Amalgame_Compiler_MigrateCommand_DefaultOutputPath(input);
@@ -11948,11 +11955,6 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         Console_WriteError(code_string_concat("amc migrate: output exists: ", outPath));
         Console_WriteError("Pass --force to overwrite.");
         return 1;
-    }
-    code_string __attribute__((unused)) prompt = Amalgame_Compiler_MigrateCommand_BuildPrompt(lang, source);
-    if (promptOnly) {
-        Console_WriteLine(prompt);
-        return 0;
     }
     if (dryRun) {
         Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] would migrate: ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines)"));
@@ -11964,7 +11966,7 @@ static i64 Amalgame_Compiler_MigrateCommand_RunMigrateOne(code_string input, cod
         return 0;
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] processing ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines, provider="), provider), ")..."));
-    Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProvider(provider, model, prompt);
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProvider(provider, model, lang, source);
     if (!result->Ok) {
         Console_WriteError(code_string_concat("amc migrate: ", result->Error));
         return 1;
@@ -12163,6 +12165,11 @@ static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s) {
 static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang, code_string source) {
     (void)lang;
     (void)source;
+    return code_string_concat(code_string_concat(Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang), "\n\n"), Amalgame_Compiler_MigrateCommand_BuildUserPrompt(lang, source));
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(code_string lang) {
+    (void)lang;
     code_string __attribute__((unused)) lb = "{";
     code_string __attribute__((unused)) rb = "}";
     code_string __attribute__((unused)) p = "";
@@ -12175,27 +12182,27 @@ static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang
     p = code_string_concat(p, "\n");
     p = code_string_concat(p, "## Amalgame conventions\n");
     p = code_string_concat(p, "- Files start with `namespace <Name>` then declarations.\n");
-    p = code_string_concat(p, "- Classes: `public class Name { public Field: int = 0; ... }`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Classes: `public class Name "), lb), " public Field: int = 0; ... "), rb), "`.\n");
     p = code_string_concat(p, "- Data classes (record-like): `public data class User(string Name, int Age)`.\n");
     p = code_string_concat(p, "- Constructors: `let u = new User(\"Alice\", 30)`.\n");
     p = code_string_concat(p, "- Locals: `let x = 1` (immutable), `var y = 2` (mutable).\n");
     p = code_string_concat(p, "- Type annotations are optional but supported: `let n: int = 1`.\n");
-    p = code_string_concat(p, "- Lambdas: `(x, y) => x + y`, or block: `x => { let d = x*2; return d+1 }`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Lambdas: `(x, y) => x + y`, or block: `x => "), lb), " let d = x*2; return d+1 "), rb), "`.\n");
     p = code_string_concat(p, "- Higher-order list: `users.Map(u => u.Name)`, `xs.Filter(x => x > 0)`.\n");
     p = code_string_concat(p, "- Generics: `let xs = new List<int>()`, `let m = new Map<string,int>()`.\n");
-    p = code_string_concat(p, "- Match expression: `match x { 0 => \"zero\", 1 => \"one\", _ => \"other\" }`.\n");
-    p = code_string_concat(p, "- Try/catch: `try { ... } catch (e) { ... }`. Throw with `throw <expr>`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Match expression: `match x "), lb), " 0 => \"zero\", 1 => \"one\", _ => \"other\" "), rb), "`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Try/catch: `try "), lb), " ... "), rb), " catch (e) "), lb), " ... "), rb), "`. Throw with `throw <expr>`.\n");
     p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Console output: `Console.WriteLine(\"x="), lb), "x"), rb), "\")` (string interpolation).\n");
     p = code_string_concat(p, "- File I/O: `File.ReadAll(path)`, `File.WriteAll(path, text)`.\n");
     p = code_string_concat(p, "- Process: `Process.RunCapture(cmd)` returns an exit + stdout.\n");
     p = code_string_concat(p, "- HTTP: `Http.Get(url)`, `Http.Post(url, body)` from the runtime.\n");
     p = code_string_concat(p, "- Comments: `//` line, `/* ... */` block.\n");
     p = code_string_concat(p, "- Null-safe: `obj?.Field`, `a ?? b`. Nullable type: `Foo?`.\n");
-    p = code_string_concat(p, "- Enum: `enum Direction { North, South, East, West }`.\n");
-    p = code_string_concat(p, "- Interface (method-only, no fields): `interface IDrawable { void Draw() }`.\n");
-    p = code_string_concat(p, "  Implement with `class Square implements IDrawable { ... }`.\n");
-    p = code_string_concat(p, "- For-in over a collection: `for x in xs { ... }`. Range: `for i in 0..n`.\n");
-    p = code_string_concat(p, "- Public entry point: `public class Program { public static void Main(string[] args) { ... } }`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Enum: `enum Direction "), lb), " North, South, East, West "), rb), "`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Interface (method-only, no fields): `interface IDrawable "), lb), " void Draw() "), rb), "`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "  Implement with `class Square implements IDrawable "), lb), " ... "), rb), "`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- For-in over a collection: `for x in xs "), lb), " ... "), rb), "`. Range: `for i in 0..n`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Public entry point: `public class Program "), lb), " public static void Main(string[] args) "), lb), " ... "), rb), " "), rb), "`.\n");
     p = code_string_concat(p, "\n");
     p = code_string_concat(p, "## Idiomatic patterns\n");
     p = code_string_concat(p, "- Prefer immutable `let` over `var`. Loops and accumulators are exceptions.\n");
@@ -12214,7 +12221,17 @@ static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang
     p = code_string_concat(p, "  hit issues with .Reduce, fall back to a for-in with `var acc`.\n");
     p = code_string_concat(p, "- ForEach captures by value: `var sum = 0; xs.ForEach(x => sum = sum + x)`\n");
     p = code_string_concat(p, "  does NOT accumulate. Use Reduce for accumulation.\n");
-    p = code_string_concat(p, "\n");
+    code_string __attribute__((unused)) extras = Amalgame_Compiler_MigrateCommand_LoadDocsHeader();
+    if (String_Length(extras) > 0) {
+        p = code_string_concat(code_string_concat(p, "\n"), extras);
+    }
+    return p;
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_BuildUserPrompt(code_string lang, code_string source) {
+    (void)lang;
+    (void)source;
+    code_string __attribute__((unused)) p = "";
     p = code_string_concat(p, "## Source file to translate\n");
     p = code_string_concat(code_string_concat(code_string_concat(p, "```"), lang), "\n");
     p = code_string_concat(p, source);
@@ -12240,15 +12257,43 @@ static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang
     return p;
 }
 
-static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string prompt) {
+static code_string Amalgame_Compiler_MigrateCommand_LoadDocsHeader() {
+    AmalgameList* __attribute__((unused)) candidates = AmalgameList_new();
+    code_string __attribute__((unused)) execPath = Args_Get(0);
+    code_string __attribute__((unused)) execDir = Path_GetDirectory(execPath);
+    if (String_Length(execDir) > 0) {
+        AmalgameList_add(candidates, (void*)(intptr_t)(execDir));
+    }
+    AmalgameList_add(candidates, (void*)(intptr_t)("."));
+    i64 __attribute__((unused)) cn = AmalgameList_count(candidates);
+    for (i64 i = 0; i < cn; i++) {
+        code_string __attribute__((unused)) base = (code_string)AmalgameList_get(candidates, i);
+        code_string __attribute__((unused)) grammarPath = code_string_concat(base, "/docs/language/grammar.ebnf");
+        code_string __attribute__((unused)) tourPath = code_string_concat(base, "/docs/guide/02-language-tour.md");
+        if (File_Exists(grammarPath) && File_Exists(tourPath)) {
+            code_string __attribute__((unused)) g = File_ReadAll(grammarPath);
+            code_string __attribute__((unused)) t = File_ReadAll(tourPath);
+            code_string __attribute__((unused)) out = "";
+            out = code_string_concat(out, "\n## Amalgame grammar (EBNF)\n\n");
+            out = code_string_concat(out, g);
+            out = code_string_concat(out, "\n\n## Amalgame language tour (excerpts)\n\n");
+            out = code_string_concat(out, t);
+            return out;
+        }
+    }
+    return "";
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string lang, code_string source) {
     (void)provider;
     (void)model;
-    (void)prompt;
+    (void)lang;
+    (void)source;
     if (code_string_equals(provider, "claude")) {
-        return Amalgame_Compiler_MigrateCommand_CallClaudeCli(model, prompt);
+        return Amalgame_Compiler_MigrateCommand_CallClaudeCli(model, Amalgame_Compiler_MigrateCommand_BuildPrompt(lang, source));
     }
     if (code_string_equals(provider, "claude-api")) {
-        return Amalgame_Compiler_MigrateCommand_CallClaudeApi(model, prompt);
+        return Amalgame_Compiler_MigrateCommand_CallClaudeApi(model, lang, source);
     }
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
     res->Ok = 0;
@@ -12256,9 +12301,10 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallPro
     return res;
 }
 
-static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string prompt) {
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApi(code_string model, code_string lang, code_string source) {
     (void)model;
-    (void)prompt;
+    (void)lang;
+    (void)source;
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
     code_string __attribute__((unused)) apiKey = Env_Get("ANTHROPIC_API_KEY");
     if (String_Length(apiKey) == 0) {
@@ -12270,11 +12316,16 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
     if (String_Length(modelId) == 0) {
         modelId = "claude-sonnet-4-6";
     }
+    code_string __attribute__((unused)) systemPrompt = Amalgame_Compiler_MigrateCommand_BuildSystemPrompt(lang);
+    code_string __attribute__((unused)) userPrompt = Amalgame_Compiler_MigrateCommand_BuildUserPrompt(lang, source);
     code_string __attribute__((unused)) body = "{";
     body = code_string_concat(code_string_concat(code_string_concat(body, "\"model\":\""), modelId), "\",");
     body = code_string_concat(body, "\"max_tokens\":8192,");
+    body = code_string_concat(body, "\"system\":[{\"type\":\"text\",\"text\":\"");
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(systemPrompt));
+    body = code_string_concat(body, "\",\"cache_control\":{\"type\":\"ephemeral\"}}],");
     body = code_string_concat(body, "\"messages\":[{\"role\":\"user\",\"content\":\"");
-    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(prompt));
+    body = code_string_concat(body, Amalgame_Compiler_MigrateCommand_JsonEscape(userPrompt));
     body = code_string_concat(body, "\"}]}");
     AmalgameMap* __attribute__((unused)) headers = AmalgameMap_new();
     AmalgameMap_set(headers, "x-api-key", (void*)(intptr_t)(apiKey));
