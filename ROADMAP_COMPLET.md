@@ -312,13 +312,24 @@ before the next big language addition.
       `main.am::RunFmt`/`RunTest` each reimplement an args loop.
       A shared `ArgParser` class with a fluent registration API
       would cut ~150 lines and centralize the `--help` rendering.
-- [ ] **Promote ad-hoc JSON to a real `Amalgame.Json` module** —
-      `lsp.am::JsonStr/JsonInt`, `migrate.am::JsonExtract/JsonEscape`,
-      and the request bodies built by hand all reinvent string-
-      level JSON. A real parser (recursive descent over a `JsonValue`
-      tagged union) would replace these and unblock `amc migrate`'s
-      v3 cost reporting (which needs to read `usage.input_tokens` /
-      `usage.output_tokens` from API responses cleanly).
+- [~] **Promote ad-hoc JSON to a real `Amalgame.Json` module** —
+      Phase 1 (module + tests, v0.4.2) and phase 2 partial (escape
+      sites swapped to `Json.EscapeString` in `lsp.am` and
+      `migrate.am`) shipped. The parsing swap is **deferred**:
+      `Json.Parse` on a 16 KB body (typical LSP `didOpen.text`)
+      hangs or runs >30s due to O(N²) string concatenation in the
+      pure-Amalgame parser. The ad-hoc `JsonStr` / `JsonInt`
+      extractors are O(N) substring-match and stay in `lsp.am`'s
+      hot path until the parser is fast enough. The
+      `migrate.am::JsonExtract` swap is also deferred — same root
+      cause, same expected size profile on LLM responses.
+- [ ] **`Amalgame.Json` parser performance** — replace the
+      character-by-character `out = out + c` accumulation with
+      either a runtime `StringBuilder` (mutable byte buffer in
+      `runtime/Amalgame_String.h`) or a chunked-String list +
+      single-pass concat at the end. Both are O(N) and shave the
+      LSP didOpen path back to milliseconds. Without this, phase
+      2 of the JSON migration can't complete.
 - [x] **Tighten the parser's error-recovery path** — audit done
       after PR #152. `ParseClassBody`, `ParseBlock`, `ParseCallArgs`,
       `ParseEnumBody`, `ParseMethod`-params, `ParseInterface`-params

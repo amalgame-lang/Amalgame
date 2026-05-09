@@ -41,6 +41,27 @@ public class LspServer {
     }
 
     // ── Main loop ─────────────────────────────────────
+    //
+    // We deliberately *don't* use Amalgame.Json on the LSP request
+    // path: didOpen / didChange bodies routinely contain the entire
+    // editor document inlined as the `text` field, and the pure-
+    // Amalgame parser walks the body byte-by-byte with O(N) string
+    // concatenation. On a 16 KB body that's seconds, not
+    // milliseconds — unacceptable for an editor where typing fires
+    // a didChange every keystroke.
+    //
+    // The ad-hoc JsonStr / JsonInt extractors are O(N) substring
+    // matches and finish in microseconds. We pay for the lack of
+    // depth by using deliberately-unique key names — every key the
+    // LSP cares about (method, id, uri, text, line, character)
+    // appears exactly once in the relevant frame, so the
+    // first-occurrence trick is correct in practice.
+    //
+    // Phase 2 keeps the extractors here. Json.EscapeString is fine
+    // (small inputs, single pass) and is used for outgoing
+    // responses. Json.Parse migrates the migrate.am LLM responses
+    // where bodies are similarly sized but only parsed once per
+    // command invocation.
     public int Run() {
         while (true) {
             let body = this.ReadMessage()
@@ -194,7 +215,7 @@ public class LspServer {
 
     private void PublishDiagnostics(string uri, string source) {
         let diags = this.Compile(uri, source)
-        let body  = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" + LspServer.EscapeJsonStr(uri) + "\",\"diagnostics\":" + diags + "}}"
+        let body  = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"" + Json.EscapeString(uri) + "\",\"diagnostics\":" + diags + "}}"
         this.Send(body)
     }
 
@@ -354,7 +375,7 @@ public class LspServer {
             return
         }
         let content = "**" + node.Name + "**: `" + typeStr + "`"
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + LspServer.EscapeJsonStr(content) + "\"}}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + Json.EscapeString(content) + "\"}}}"
         this.Send(body)
     }
 
@@ -421,7 +442,7 @@ public class LspServer {
             if (typeS == "type") { kind = 7 }
             else if (typeS == "void") { kind = 3 }
             if (!first) { items = items + "," }
-            items = items + "{\"label\":\"" + LspServer.EscapeJsonStr(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"detail\":\"" + LspServer.EscapeJsonStr(typeS) + "\"}"
+            items = items + "{\"label\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"detail\":\"" + Json.EscapeString(typeS) + "\"}"
             first = false
         }
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
@@ -471,7 +492,7 @@ public class LspServer {
                 kind = 2
             }
             if (!first) { items = items + "," }
-            items = items + "{\"label\":\"" + LspServer.EscapeJsonStr(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"detail\":\"" + LspServer.EscapeJsonStr(mtype) + "\"}"
+            items = items + "{\"label\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"detail\":\"" + Json.EscapeString(mtype) + "\"}"
             first = false
         }
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
@@ -682,7 +703,7 @@ public class LspServer {
         let lStr = String_FromInt(l)
         let cStartStr = String_FromInt(cStart)
         let cEndStr = String_FromInt(cEnd)
-        return "{\"severity\":1,\"range\":{\"start\":{\"line\":" + lStr + ",\"character\":" + cStartStr + "},\"end\":{\"line\":" + lStr + ",\"character\":" + cEndStr + "}},\"message\":\"" + LspServer.EscapeJsonStr(msg) + "\"}"
+        return "{\"severity\":1,\"range\":{\"start\":{\"line\":" + lStr + ",\"character\":" + cStartStr + "},\"end\":{\"line\":" + lStr + ",\"character\":" + cEndStr + "}},\"message\":\"" + Json.EscapeString(msg) + "\"}"
     }
 
     // Find the 1-indexed column where the token starting at
