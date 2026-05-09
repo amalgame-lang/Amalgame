@@ -1,0 +1,433 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  migrate.am  —  `amc migrate` subcommand (v0)
+// ═══════════════════════════════════════════════════════
+//
+// LLM-assisted source-to-Amalgame migration.
+// See docs/proposals/amc-migrate.md for the full design.
+//
+// v0 scope:
+//   - Single-file input only (no directory recursion yet)
+//   - Provider dispatch with `claude` CLI only (`--provider`
+//     flag is wired so v1 can add `claude-api` as a new entry)
+//   - Hardcoded prompt template inline (no external doc loading)
+//   - Source size cap (default 2000 lines / ~80 KB)
+//   - Post-migration `amc --check` validation (suppressible)
+//
+// v0 limitations (deferred):
+//   - AMC_MIGRATE_PROVIDER / AMC_MIGRATE_MODEL env vars: not yet
+//     wired (the Amalgame source language doesn't yet expose
+//     getenv). Lands with v1 + the API provider.
+//   - Directory recursion: v1.
+//   - Prompt loaded from disk: v1.
+
+public class MigrateResult {
+    public Ok:      bool
+    public Content: string
+    public Error:   string
+
+    public MigrateResult() {
+        this.Ok      = false
+        this.Content = ""
+        this.Error   = ""
+    }
+}
+
+public class MigrateCommand {
+
+    public MigrateCommand() {}
+
+    // ── Entry point ───────────────────────────────────
+    public static int Run(int argc) {
+        var input:      string = ""
+        var output:     string = ""
+        var langHint:   string = ""
+        var provider:   string = "claude"
+        var model:      string = ""
+        var dryRun:     bool   = false
+        var promptOnly: bool   = false
+        var noCheck:    bool   = false
+        var force:      bool   = false
+        var maxLines:   int    = 2000
+
+        // Skip Args[0] (binary path) and Args[1] ("migrate").
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-o" || a == "--output") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc migrate: " + a + " requires a value")
+                    return 1
+                }
+                output = Args_Get(i)
+            } else if (a == "--dry-run") {
+                dryRun = true
+            } else if (a == "--prompt-only") {
+                promptOnly = true
+            } else if (a == "--no-check") {
+                noCheck = true
+            } else if (a == "--force") {
+                force = true
+            } else if (a == "--lang") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc migrate: --lang requires a value")
+                    return 1
+                }
+                langHint = Args_Get(i)
+            } else if (a == "--provider") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc migrate: --provider requires a value")
+                    return 1
+                }
+                provider = Args_Get(i)
+            } else if (a == "--model") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc migrate: --model requires a value")
+                    return 1
+                }
+                model = Args_Get(i)
+            } else if (a == "--max-lines") {
+                i = i + 1
+                if (i >= argc) {
+                    Console.WriteError("amc migrate: --max-lines requires a value")
+                    return 1
+                }
+                maxLines = String_ToInt(Args_Get(i))
+                if (maxLines <= 0) {
+                    Console.WriteError("amc migrate: --max-lines must be > 0")
+                    return 1
+                }
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc migrate: unknown option '" + a + "'")
+                return 1
+            } else {
+                if (String_Length(input) > 0) {
+                    Console.WriteError("amc migrate: too many positional arguments (got '" + a + "', already had '" + input + "')")
+                    return 1
+                }
+                input = a
+            }
+            i = i + 1
+        }
+
+        if (String_Length(input) == 0) {
+            Console.WriteError("amc migrate: no input file")
+            Console.WriteError("usage: amc migrate <file> [--output <out>] [--lang <hint>] [--provider <name>] [--model <id>]")
+            Console.WriteError("                         [--dry-run] [--prompt-only] [--no-check] [--force] [--max-lines <n>]")
+            return 1
+        }
+
+        if (!File.Exists(input)) {
+            Console.WriteError("amc migrate: file not found: " + input)
+            return 1
+        }
+
+        // Detect language. Hint wins over extension.
+        var lang: string = langHint
+        if (String_Length(lang) == 0) {
+            lang = MigrateCommand.DetectLanguage(input)
+        }
+        if (String_Length(lang) == 0) {
+            Console.WriteError("amc migrate: unrecognized source extension for '" + input + "'")
+            Console.WriteError("Supported extensions: .ts .tsx .js .jsx .mjs .py .java .cs .go .rs .cpp .cc .cxx .hpp .h++ .c .h .kt .kts .swift .rb .php")
+            Console.WriteError("Or pass --lang <hint> with a language name.")
+            return 1
+        }
+
+        let source: string = File.ReadAll(input)
+        let lineCount: int = MigrateCommand.CountLines(source)
+        if (lineCount > maxLines) {
+            Console.WriteError("amc migrate: source exceeds " + String_FromInt(maxLines) + " lines (got " + String_FromInt(lineCount) + ")")
+            Console.WriteError("Suggestion: split the file or override with --max-lines <n>.")
+            return 1
+        }
+
+        // Determine output path.
+        var outPath: string = output
+        if (String_Length(outPath) == 0) {
+            outPath = MigrateCommand.DefaultOutputPath(input)
+        }
+        if (File.Exists(outPath) && !force) {
+            Console.WriteError("amc migrate: output exists: " + outPath)
+            Console.WriteError("Pass --force to overwrite.")
+            return 1
+        }
+
+        // Build the prompt.
+        let prompt: string = MigrateCommand.BuildPrompt(lang, source)
+
+        // --prompt-only: dump and exit cleanly.
+        if (promptOnly) {
+            Console.WriteLine(prompt)
+            return 0
+        }
+
+        // --dry-run: report what would happen.
+        if (dryRun) {
+            Console.WriteLine("[migrate] would migrate: " + input + " (" + lang + ", " + String_FromInt(lineCount) + " lines)")
+            Console.WriteLine("[migrate] would write:   " + outPath)
+            Console.WriteLine("[migrate] provider:      " + provider)
+            if (String_Length(model) > 0) {
+                Console.WriteLine("[migrate] model:         " + model)
+            }
+            return 0
+        }
+
+        // Real run: dispatch to provider.
+        Console.WriteError("[migrate] processing " + input + " (" + lang + ", " + String_FromInt(lineCount) + " lines, provider=" + provider + ")...")
+        let result: MigrateResult = MigrateCommand.CallProvider(provider, model, prompt)
+        if (!result.Ok) {
+            Console.WriteError("amc migrate: " + result.Error)
+            return 1
+        }
+
+        // Write output.
+        let writeOk: bool = File.WriteAll(outPath, result.Content)
+        if (!writeOk) {
+            Console.WriteError("amc migrate: failed to write " + outPath)
+            return 1
+        }
+        Console.WriteLine("[migrate] wrote " + outPath)
+
+        // Validate via amc --check.
+        if (!noCheck) {
+            let amcPath: string = Args_Get(0)
+            let cmd: string     = amcPath + " --check " + outPath
+            let check           = Process.RunCapture(cmd)
+            if (check.Exit != 0) {
+                Console.WriteError("[migrate] check failed (typechecker errors in the migrated file):")
+                Console.WriteError(check.Stdout)
+                Console.WriteError("The .am file was still written so you can inspect / fix manually.")
+                return 1
+            }
+            Console.WriteLine("[migrate] check passed")
+        }
+
+        return 0
+    }
+
+    // ── Language detection ────────────────────────────
+    private static string DetectLanguage(string path) {
+        if (String_EndsWith(path, ".ts"))    { return "TypeScript" }
+        if (String_EndsWith(path, ".tsx"))   { return "TypeScript" }
+        if (String_EndsWith(path, ".js"))    { return "JavaScript" }
+        if (String_EndsWith(path, ".jsx"))   { return "JavaScript" }
+        if (String_EndsWith(path, ".mjs"))   { return "JavaScript" }
+        if (String_EndsWith(path, ".py"))    { return "Python" }
+        if (String_EndsWith(path, ".java"))  { return "Java" }
+        if (String_EndsWith(path, ".cs"))    { return "C#" }
+        if (String_EndsWith(path, ".go"))    { return "Go" }
+        if (String_EndsWith(path, ".rs"))    { return "Rust" }
+        if (String_EndsWith(path, ".cpp"))   { return "C++" }
+        if (String_EndsWith(path, ".cc"))    { return "C++" }
+        if (String_EndsWith(path, ".cxx"))   { return "C++" }
+        if (String_EndsWith(path, ".hpp"))   { return "C++" }
+        if (String_EndsWith(path, ".h++"))   { return "C++" }
+        if (String_EndsWith(path, ".c"))     { return "C" }
+        if (String_EndsWith(path, ".h"))     { return "C" }
+        if (String_EndsWith(path, ".kt"))    { return "Kotlin" }
+        if (String_EndsWith(path, ".kts"))   { return "Kotlin" }
+        if (String_EndsWith(path, ".swift")) { return "Swift" }
+        if (String_EndsWith(path, ".rb"))    { return "Ruby" }
+        if (String_EndsWith(path, ".php"))   { return "PHP" }
+        return ""
+    }
+
+    // ── Output path defaulting ────────────────────────
+    // Replace the source extension with .am. user_service.ts → user_service.am.
+    private static string DefaultOutputPath(string input) {
+        let lastDot: int = String_LastIndexOf(input, ".")
+        let lastSlash: int = String_LastIndexOf(input, "/")
+        // Only treat as extension if the dot is in the basename (after the last /).
+        if (lastDot <= lastSlash || lastDot <= 0) {
+            return input + ".am"
+        }
+        return String_Substring(input, 0, lastDot) + ".am"
+    }
+
+    // ── Source line counting (for --max-lines cap) ────
+    private static int CountLines(string s) {
+        let len: int = String_Length(s)
+        if (len == 0) { return 0 }
+        var n: int = 1
+        for i in 0..len {
+            let ch: string = String_CharAt1(s, i)
+            if (ch == "\n") { n = n + 1 }
+        }
+        return n
+    }
+
+    // ── Prompt assembly ───────────────────────────────
+    // v0 keeps the prompt template inline. v1 will load grammar.ebnf
+    // and selected guide chapters from disk so the prompt can grow
+    // beyond what's reasonable to embed in source. Keep this template
+    // in sync with docs/proposals/amc-migrate.md Appendix A.
+    private static string BuildPrompt(string lang, string source) {
+        // We split prompt strings around `{...}` patterns: Amalgame's
+        // own string interpolation kicks in when the lexer sees a `{`
+        // followed by a closing `}` in the same literal, so embedding
+        // examples like Console.WriteLine("x={x}") would be parsed as
+        // an interpolation of a non-existent `x` local. We work around
+        // by isolating the literal braces in their own concat pieces.
+        let lb: string = "{"
+        let rb: string = "}"
+        var p: string = ""
+        p = p + "You are translating " + lang + " source code to Amalgame.\n"
+        p = p + "Amalgame is a self-hosted programming language that transpiles to C.\n"
+        p = p + "It uses class-based OOP with explicit visibility modifiers, generic\n"
+        p = p + "collections (List<T>, Map<K,V>, Set<T>), ML-style match expressions,\n"
+        p = p + "and exception-based error handling. Higher-order list operations like\n"
+        p = p + ".Map / .Filter / .Reduce / .Any / .All / .CountIf take lambdas.\n"
+        p = p + "\n"
+        p = p + "## Amalgame conventions\n"
+        p = p + "- Files start with `namespace <Name>` then declarations.\n"
+        p = p + "- Classes: `public class Name { public Field: int = 0; ... }`.\n"
+        p = p + "- Data classes (record-like): `public data class User(string Name, int Age)`.\n"
+        p = p + "- Constructors: `let u = new User(\"Alice\", 30)`.\n"
+        p = p + "- Locals: `let x = 1` (immutable), `var y = 2` (mutable).\n"
+        p = p + "- Type annotations are optional but supported: `let n: int = 1`.\n"
+        p = p + "- Lambdas: `(x, y) => x + y`, or block: `x => { let d = x*2; return d+1 }`.\n"
+        p = p + "- Higher-order list: `users.Map(u => u.Name)`, `xs.Filter(x => x > 0)`.\n"
+        p = p + "- Generics: `let xs = new List<int>()`, `let m = new Map<string,int>()`.\n"
+        p = p + "- Match expression: `match x { 0 => \"zero\", 1 => \"one\", _ => \"other\" }`.\n"
+        p = p + "- Try/catch: `try { ... } catch (e) { ... }`. Throw with `throw <expr>`.\n"
+        p = p + "- Console output: `Console.WriteLine(\"x=" + lb + "x" + rb + "\")` (string interpolation).\n"
+        p = p + "- File I/O: `File.ReadAll(path)`, `File.WriteAll(path, text)`.\n"
+        p = p + "- Process: `Process.RunCapture(cmd)` returns an exit + stdout.\n"
+        p = p + "- HTTP: `Http.Get(url)`, `Http.Post(url, body)` from the runtime.\n"
+        p = p + "- Comments: `//` line, `/* ... */` block.\n"
+        p = p + "- Null-safe: `obj?.Field`, `a ?? b`. Nullable type: `Foo?`.\n"
+        p = p + "- Enum: `enum Direction { North, South, East, West }`.\n"
+        p = p + "- Interface (method-only, no fields): `interface IDrawable { void Draw() }`.\n"
+        p = p + "  Implement with `class Square implements IDrawable { ... }`.\n"
+        p = p + "- For-in over a collection: `for x in xs { ... }`. Range: `for i in 0..n`.\n"
+        p = p + "- Public entry point: `public class Program { public static void Main(string[] args) { ... } }`.\n"
+        p = p + "\n"
+        p = p + "## Idiomatic patterns\n"
+        p = p + "- Prefer immutable `let` over `var`. Loops and accumulators are exceptions.\n"
+        p = p + "- For functional pipelines, use the higher-order list methods, not for-in.\n"
+        p = p + "- For value types, use `data class`. For behavior, regular `class`.\n"
+        p = p + "- One namespace per project area; multiple files can share a namespace.\n"
+        p = p + "\n"
+        p = p + "## Known Amalgame limitations to work around\n"
+        p = p + "- String interpolation does NOT propagate inferred types into embedded\n"
+        p = p + "  calls. Workaround: stage in named locals before printing.\n"
+        p = p + "    BAD:  Console.WriteLine(\"first: " + lb + "users.Map(u => u.Name).Get(0)" + rb + "\")\n"
+        p = p + "    GOOD: let names = users.Map(u => u.Name)\n"
+        p = p + "          let first: string = names.Get(0)\n"
+        p = p + "          Console.WriteLine(\"first: " + lb + "first" + rb + "\")\n"
+        p = p + "- Lambda Reduce signatures still need init-arg type inference. If you\n"
+        p = p + "  hit issues with .Reduce, fall back to a for-in with `var acc`.\n"
+        p = p + "- ForEach captures by value: `var sum = 0; xs.ForEach(x => sum = sum + x)`\n"
+        p = p + "  does NOT accumulate. Use Reduce for accumulation.\n"
+        p = p + "\n"
+        p = p + "## Source file to translate\n"
+        p = p + "```" + lang + "\n"
+        p = p + source
+        p = p + "\n```\n"
+        p = p + "\n"
+        p = p + "## Output instructions\n"
+        p = p + "Reply with ONLY the Amalgame source code. No prose, no markdown\n"
+        p = p + "fences, no preamble like \"Here's the translation:\". Just `.am` content.\n"
+        p = p + "\n"
+        p = p + "If you encounter a construct that has no clean Amalgame equivalent,\n"
+        p = p + "insert a `// TODO[migrate]: <short reason>` comment instead of\n"
+        p = p + "best-effort guessing. Examples of such constructs:\n"
+        p = p + "  - Python decorators (other than @dataclass which maps to `data class`)\n"
+        p = p + "  - JS/TS Promises and async/await (no async runtime in Amalgame yet)\n"
+        p = p + "  - Java reflection / annotations\n"
+        p = p + "  - Rust lifetimes / ownership / borrowing\n"
+        p = p + "  - Go goroutines / channels\n"
+        p = p + "  - C++ templates with non-type parameters\n"
+        p = p + "  - C macros / preprocessor directives\n"
+        p = p + "Preserve the source's logical structure: same number of functions,\n"
+        p = p + "same class hierarchy, same public surface. The output should compile\n"
+        p = p + "with `amc --check` modulo the TODO[migrate] markers.\n"
+        return p
+    }
+
+    // ── Provider dispatch ─────────────────────────────
+    // v0 ships only `claude` (CLI shell out). v1 adds `claude-api`
+    // (Anthropic HTTP via Net.Http.Post + ANTHROPIC_API_KEY).
+    // v2 adds chatgpt / gemini. The dispatch is additive — adding
+    // a new provider is one new entry in this branch chain.
+    private static MigrateResult CallProvider(string provider, string model, string prompt) {
+        if (provider == "claude") {
+            return MigrateCommand.CallClaudeCli(model, prompt)
+        }
+        let res = new MigrateResult()
+        res.Ok    = false
+        res.Error = "provider '" + provider + "' not yet supported in v0 (only 'claude' ships in this version)"
+        return res
+    }
+
+    // Shell out to the local `claude` CLI. The prompt is written to
+    // a temp file and piped via stdin to avoid shell escaping issues
+    // (multi-line prompts with quotes and backticks).
+    //
+    // Pre-flight check: confirm `claude` is on PATH before trying to
+    // invoke it, so the user gets an actionable install message
+    // instead of an opaque exit code from the shell.
+    private static MigrateResult CallClaudeCli(string model, string prompt) {
+        let res = new MigrateResult()
+        if (!MigrateCommand.IsCommandAvailable("claude")) {
+            res.Ok    = false
+            res.Error = "claude CLI not found on PATH. Install Claude Code: https://docs.claude.com/claude-code\nOr pick another provider with --provider <name> (none ships in v0 yet)."
+            return res
+        }
+        let tmpPath: string = "/tmp/amc_migrate_prompt.txt"
+        let writeOk: bool = File.WriteAll(tmpPath, prompt)
+        if (!writeOk) {
+            res.Ok    = false
+            res.Error = "failed to write prompt temp file: " + tmpPath
+            return res
+        }
+        var cmd: string = "claude -p"
+        if (String_Length(model) > 0) {
+            cmd = cmd + " --model " + model
+        }
+        cmd = cmd + " < " + tmpPath
+        let rr = Process.RunCapture(cmd)
+        if (rr.Exit != 0) {
+            res.Ok    = false
+            res.Error = "claude CLI failed (exit " + String_FromInt(rr.Exit) + "). Output:\n" + rr.Stdout
+            return res
+        }
+        // Defensive: strip a leading/trailing markdown fence if claude
+        // ignored the no-fences instruction.
+        res.Ok      = true
+        res.Content = MigrateCommand.StripFences(rr.Stdout)
+        return res
+    }
+
+    // True iff `cmd` is on PATH. Uses `command -v` (POSIX shell builtin,
+    // also works in MSYS2). Quiet via `>/dev/null 2>&1`.
+    private static bool IsCommandAvailable(string cmd) {
+        let probe: string = "command -v " + cmd + " >/dev/null 2>&1"
+        let rr = Process.RunCapture(probe)
+        return rr.Exit == 0
+    }
+
+    // If the response is wrapped in ```...``` (any language tag),
+    // peel off the fences. Otherwise return as-is.
+    private static string StripFences(string s) {
+        let trimmed: string = String_Trim(s)
+        if (!String_StartsWith(trimmed, "```")) { return s }
+        let nl: int = String_IndexOf(trimmed, "\n")
+        if (nl <= 0) { return s }
+        let afterFirst: string = String_Substring(trimmed, nl + 1, String_Length(trimmed) - nl - 1)
+        let rtrimmed: string   = String_Trim(afterFirst)
+        if (!String_EndsWith(rtrimmed, "```")) { return s }
+        return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3)
+    }
+}
