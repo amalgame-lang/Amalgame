@@ -193,24 +193,40 @@ Workflow rules:
 
 Where to head next (from ROADMAP_COMPLET.md):
 
-  1. Stdlib expansion: pick one or two from DateTime / Json /
-     Regex / Random / Encoding / Compress / Crypto / Threading.
-     Each is 200-400 LoC. Tied to the open "Stdlib delivery
-     model" design question (currently header-only).
-  2. LSP member completion: `obj.<cursor>` narrowed to the
-     receiver's type. ~150 LoC on top of the v0.3.5 global
-     completion.
-  3. amc new <name> [--template exe|lib|test]: scaffolding
-     command à la cargo new / dotnet new. File templates +
-     dispatcher branch in main.am + a roundtrip test that
-     scaffolds + compiles under /tmp. ~200-400 LoC.
-  4. amc migrate v3 follow-ups (deferred): API streaming via
-     SSE parser, actual usage stats from API responses (vs the
-     heuristic estimate), cost reporting in run summary.
-  5. amc test polish: --runtime <path> flag, per-file timeouts,
+  1. Stdlib expansion (next module): pick one or two from
+     DateTime / Random / Encoding / Regex / Compress / Crypto /
+     Threading. Each is 200-400 LoC, isolated, low risk.
+     Json shipped in v0.4.2-v0.4.3.
+  2. amc migrate v3 — API streaming via SSE: only deferred v3
+     item. Real cost reporting via usage stats already shipped
+     in v0.4.3.
+  3. Editor integration on install: auto-wire VS Code .vsix /
+     Neovim lspconfig snippet / Helix languages.toml entry from
+     install.sh. New roadmap item, no code yet.
+  4. CGen chain-mash fix (HARDER): obj.Field.Method() and
+     obj.Method().Method() lower as `Field_Method` /
+     `Method_Method` name-mash because EmitCalleeStr fallback at
+     src/generator/c_gen.am:3003 returns `target + "_" + mname`.
+     Fix needs a typed lookup of callee.Left's return type plus
+     a small refactor of every EmitCalleeStr consumer. Repro
+     and findings parked in ROADMAP_COMPLET.md. Workaround:
+     intermediate typed locals (used in lsp.am, migrate.am,
+     stdlib_json.am tests).
+  5. Typechecker enum-return bug (HARDER): 37 spurious
+     "Return type mismatch" / "if condition must be bool" on
+     lexer.am via the LSP. `got` type varies (void / string /
+     int) suggesting a NodeKey collision in ExprType map or a
+     parse-tree shape mismatch on single-stmt `{ return … }`
+     blocks. Doesn't reproduce on minimal cross-file repros.
+     Findings + next-step (instrument CheckReturn) in roadmap.
+  6. amc test polish: --runtime <path> flag, per-file timeouts,
      parallel execution.
-  6. Process v2: split stderr from stdout via real pipes, add
+  7. Process v2: split stderr from stdout via real pipes, add
      timeouts, async streaming.
+  8. amc doc: extract doc-comments → Markdown / HTML.
+  9. amc add <pkg>: package manager (re-export of the legacy
+     Vala one in archive/vala-bootstrap/src/pkg/).
+ 10. DAP: debug adapter using DWARF (-g3 already emitted).
 
 Quick checks before claiming a feature is done:
 
@@ -246,8 +262,10 @@ src/                    ← Amalgame compiler in Amalgame
 ├── explain.am            LLM Amalgame-to-prose     (`amc explain`)
 ├── typechecker.am
 ├── diagnostics.am
-├── main.am               (CLI: compile, fmt, test, lsp, --lint, --check,
-                                migrate, generate, explain)
+├── new_cmd.am           project scaffolder         (`amc new`)
+├── stdlib/json.am       Amalgame.Json (parser/encoder/accessors)
+├── main.am              (CLI: compile, fmt, test, lsp, --lint, --check,
+                                migrate, generate, explain, new)
 └── amc_lib.c             (generated)
 
 runtime/                ← C runtime (bdwgc, strings, IO, collections, net,
@@ -255,7 +273,9 @@ runtime/                ← C runtime (bdwgc, strings, IO, collections, net,
                           + Http_PostWithHeaders return-type tracked
                           since v0.4.0 (PR #160). libcurl required for
                           Net + claude-api / chatgpt / gemini providers.
-stdlib/strings.am       ← stdlib API reference (declarations only)
+src/stdlib/json.am      ← Amalgame.Json: pure-Amalgame JSON parser +
+                          encoder. Used internally by lsp.am / migrate.am.
+                          Bundled into amc_lib.c via gen_test.am.
 tests/                  ← samples + run_*.sh runners (output in /tmp)
 docs/guide/             ← user guide chapters 1–8 (8 = LLM commands)
 docs/language/          ← grammar.ebnf + grammar.md
