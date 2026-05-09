@@ -11784,6 +11784,7 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
 static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd);
+i64 Amalgame_Compiler_MigrateCommand_StreamClaudeCli(code_string model, code_string prompt);
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
 
 Amalgame_Compiler_MigrateCommand* Amalgame_Compiler_MigrateCommand_new() {
@@ -12694,6 +12695,27 @@ static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string
     return rr->Exit == 0;
 }
 
+i64 Amalgame_Compiler_MigrateCommand_StreamClaudeCli(code_string model, code_string prompt) {
+    (void)model;
+    (void)prompt;
+    if (!Amalgame_Compiler_MigrateCommand_IsCommandAvailable("claude")) {
+        Console_WriteError("claude CLI not found on PATH. Install Claude Code: https://docs.claude.com/claude-code");
+        return 1;
+    }
+    code_string __attribute__((unused)) tmpPath = "/tmp/amc_stream_prompt.txt";
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(tmpPath, prompt);
+    if (!writeOk) {
+        Console_WriteError(code_string_concat("failed to write prompt temp file: ", tmpPath));
+        return 1;
+    }
+    code_string __attribute__((unused)) cmd = "claude -p";
+    if (String_Length(model) > 0) {
+        cmd = code_string_concat(code_string_concat(cmd, " --model "), model);
+    }
+    cmd = code_string_concat(code_string_concat(cmd, " < "), tmpPath);
+    return Process_Run(cmd);
+}
+
 static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s) {
     (void)s;
     code_string __attribute__((unused)) trimmed = String_Trim(s);
@@ -12743,6 +12765,8 @@ void Amalgame_Compiler_GenerateCommand_PrintUsage() {
     Console_WriteError("  --force              Overwrite an existing file at the -o path.");
     Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
     Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  --stream             Stream the LLM response straight to stdout as it's");
+    Console_WriteError("                       produced. Requires --provider claude (CLI), no -o.");
     Console_WriteError("  -h, --help           Print this help and exit.");
     Console_WriteError("");
     Console_WriteError("Examples:");
@@ -12761,6 +12785,7 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
     code_bool __attribute__((unused)) promptOnly = 0;
     code_bool __attribute__((unused)) noCheck = 0;
     code_bool __attribute__((unused)) force = 0;
+    code_bool __attribute__((unused)) stream = 0;
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
@@ -12782,6 +12807,8 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
             noCheck = 1;
         } else if (code_string_equals(a, "--force")) {
             force = 1;
+        } else if (code_string_equals(a, "--stream")) {
+            stream = 1;
         } else if (code_string_equals(a, "--provider")) {
             i = i + 1;
             if (i >= argc) {
@@ -12844,6 +12871,18 @@ i64 Amalgame_Compiler_GenerateCommand_Run(i64 argc) {
         Console_WriteError(code_string_concat("amc generate: output exists: ", output));
         Console_WriteError("Pass --force to overwrite.");
         return 1;
+    }
+    if (stream) {
+        if (!code_string_equals(provider, "claude")) {
+            Console_WriteError("amc generate: --stream requires --provider claude (CLI). API streaming is a v3 follow-up.");
+            return 1;
+        }
+        if (String_Length(output) > 0) {
+            Console_WriteError("amc generate: --stream is incompatible with -o (no buffered text to write).");
+            return 1;
+        }
+        Console_WriteError("[generate] streaming via claude CLI...");
+        return Amalgame_Compiler_MigrateCommand_StreamClaudeCli(model, code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt));
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[generate] generating from prompt (", String_FromInt(String_Length(prompt))), " chars, provider="), provider), ")..."));
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);
@@ -12967,6 +13006,8 @@ void Amalgame_Compiler_ExplainCommand_PrintUsage() {
     Console_WriteError("  --force              Overwrite an existing file at the -o path.");
     Console_WriteError("  --dry-run            Print what would happen without invoking the LLM.");
     Console_WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.");
+    Console_WriteError("  --stream             Stream the LLM response straight to stdout as it's");
+    Console_WriteError("                       produced. Requires --provider claude (CLI), no -o.");
     Console_WriteError("  -h, --help           Print this help and exit.");
 }
 
@@ -12981,6 +13022,7 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
     code_bool __attribute__((unused)) dryRun = 0;
     code_bool __attribute__((unused)) promptOnly = 0;
     code_bool __attribute__((unused)) force = 0;
+    code_bool __attribute__((unused)) stream = 0;
     i64 __attribute__((unused)) i = 2;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
@@ -13000,6 +13042,8 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
             promptOnly = 1;
         } else if (code_string_equals(a, "--force")) {
             force = 1;
+        } else if (code_string_equals(a, "--stream")) {
+            stream = 1;
         } else if (code_string_equals(a, "--lang")) {
             i = i + 1;
             if (i >= argc) {
@@ -13072,6 +13116,18 @@ i64 Amalgame_Compiler_ExplainCommand_Run(i64 argc) {
         Console_WriteError(code_string_concat("amc explain: output exists: ", output));
         Console_WriteError("Pass --force to overwrite.");
         return 1;
+    }
+    if (stream) {
+        if (!code_string_equals(provider, "claude")) {
+            Console_WriteError("amc explain: --stream requires --provider claude (CLI). API streaming is a v3 follow-up.");
+            return 1;
+        }
+        if (String_Length(output) > 0) {
+            Console_WriteError("amc explain: --stream is incompatible with -o (no buffered text to write).");
+            return 1;
+        }
+        Console_WriteError("[explain] streaming via claude CLI...");
+        return Amalgame_Compiler_MigrateCommand_StreamClaudeCli(model, code_string_concat(code_string_concat(systemPrompt, "\n\n"), userPrompt));
     }
     Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[explain] explaining ", input), " (provider="), provider), ", lang="), outLang), ")..."));
     Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProviderRaw(provider, model, systemPrompt, userPrompt);

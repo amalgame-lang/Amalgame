@@ -37,6 +37,8 @@ public class ExplainCommand {
         Console.WriteError("  --force              Overwrite an existing file at the -o path.")
         Console.WriteError("  --dry-run            Print what would happen without invoking the LLM.")
         Console.WriteError("  --prompt-only        Dump the assembled prompt to stdout and exit.")
+        Console.WriteError("  --stream             Stream the LLM response straight to stdout as it's")
+        Console.WriteError("                       produced. Requires --provider claude (CLI), no -o.")
         Console.WriteError("  -h, --help           Print this help and exit.")
     }
 
@@ -50,6 +52,7 @@ public class ExplainCommand {
         var dryRun:       bool   = false
         var promptOnly:   bool   = false
         var force:        bool   = false
+        var stream:       bool   = false
 
         var i: int = 2
         while (i < argc) {
@@ -70,6 +73,8 @@ public class ExplainCommand {
                 promptOnly = true
             } else if (a == "--force") {
                 force = true
+            } else if (a == "--stream") {
+                stream = true
             } else if (a == "--lang") {
                 i = i + 1
                 if (i >= argc) {
@@ -147,6 +152,20 @@ public class ExplainCommand {
             Console.WriteError("amc explain: output exists: " + output)
             Console.WriteError("Pass --force to overwrite.")
             return 1
+        }
+
+        // --stream: same constraints as generate.
+        if (stream) {
+            if (provider != "claude") {
+                Console.WriteError("amc explain: --stream requires --provider claude (CLI). API streaming is a v3 follow-up.")
+                return 1
+            }
+            if (String_Length(output) > 0) {
+                Console.WriteError("amc explain: --stream is incompatible with -o (no buffered text to write).")
+                return 1
+            }
+            Console.WriteError("[explain] streaming via claude CLI...")
+            return MigrateCommand.StreamClaudeCli(model, systemPrompt + "\n\n" + userPrompt)
         }
 
         Console.WriteError("[explain] explaining " + input + " (provider=" + provider + ", lang=" + outLang + ")...")
