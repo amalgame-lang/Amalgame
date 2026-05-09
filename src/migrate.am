@@ -570,14 +570,18 @@ public class MigrateCommand {
     // probing.
     public static string LoadDocsHeader() {
         let candidates = new List<string>()
-        // Preferred: relative to amc binary (works post-install when
-        // docs/ ships next to the executable).
         let execPath: string = Args_Get(0)
         let execDir:  string = Path_GetDirectory(execPath)
+        // Preferred order (FHS-friendly):
+        //   1. <exec-dir>/../share/amalgame      (Linux/macOS install)
+        //      e.g. /usr/local/bin/amc → /usr/local/share/amalgame/
+        //   2. <exec-dir>                        (Windows / portable)
+        //      e.g. C:\amalgame\amc.exe → C:\amalgame\
+        //   3. .                                 (source checkout / dev)
         if (String_Length(execDir) > 0) {
+            candidates.Add(execDir + "/../share/amalgame")
             candidates.Add(execDir)
         }
-        // Fallback: current working dir (source checkout, dev flow).
         candidates.Add(".")
         let cn: int = candidates.Count()
         for i in 0..cn {
