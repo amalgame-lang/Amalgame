@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-09T18:49:24+02:00
-Git rev:  1ce18f04459ed4f3f178c158ef81655fb39acc88
-Branch:   feature/json-phase-2-call-sites
+Captured: 2026-05-09T20:15:35+02:00
+Git rev:  a727ffd11ebb2ae7221d9bc14688602046eee3ea
+Branch:   feature/json-phase-2-final
 Tests:    291 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
