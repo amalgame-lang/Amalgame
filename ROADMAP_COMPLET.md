@@ -319,11 +319,16 @@ before the next big language addition.
       tagged union) would replace these and unblock `amc migrate`'s
       v3 cost reporting (which needs to read `usage.input_tokens` /
       `usage.output_tokens` from API responses cleanly).
-- [ ] **Tighten the parser's error-recovery path** — `ParseParam`
-      and a few siblings now have safety-belt advances (PR #152) to
-      break infinite loops on malformed input. Audit the rest of
-      the parser for similar latent loops; the pattern is "any
-      while-loop that calls a sub-parser without forcing progress".
+- [x] **Tighten the parser's error-recovery path** — audit done
+      after PR #152. `ParseClassBody`, `ParseBlock`, `ParseCallArgs`,
+      `ParseEnumBody`, `ParseMethod`-params, `ParseInterface`-params
+      all have the `lastPos / Pos == lastPos → Advance` safety belt.
+      The remaining loops (logical / arithmetic operator climbing,
+      `ParseTypeName` chain, `ParseQualifiedName`) only call helpers
+      that always consume at least one token, so they're not at risk.
+      Pattern documented in `docs/guide/07-internals.md`'s "Adding a
+      new statement" recipe — any new while-loop that calls a sub-
+      parser must include a position-watchdog.
 - [ ] **LSP false positives on enum types** — opening any compiler
       file that references an `enum` declared elsewhere produces a
       flood of "Unknown symbol 'TokenType'" / "Unknown symbol
