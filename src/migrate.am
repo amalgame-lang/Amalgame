@@ -31,11 +31,18 @@ public class MigrateResult {
     public Ok:      bool
     public Content: string
     public Error:   string
+    // v3 cost reporting: real token counts pulled from each
+    // provider's usage object on the response. -1 means the
+    // provider didn't report (claude CLI shell-out, custom).
+    public InputTokens:  int
+    public OutputTokens: int
 
     public MigrateResult() {
-        this.Ok      = false
-        this.Content = ""
-        this.Error   = ""
+        this.Ok           = false
+        this.Content      = ""
+        this.Error        = ""
+        this.InputTokens  = -1
+        this.OutputTokens = -1
     }
 }
 
@@ -303,6 +310,12 @@ public class MigrateCommand {
             return 1
         }
         Console.WriteLine("[migrate] wrote " + outPath)
+        // v3: real cost reporting from the provider's usage stats.
+        // Silent for CLI / custom (InputTokens == -1).
+        let realCost: string = MigrateCommand.FormatActualCost(provider, model, result.InputTokens, result.OutputTokens)
+        if (String_Length(realCost) > 0) {
+            Console.WriteLine("[migrate] cost: " + realCost)
+        }
         // Store in cache for future hits. Best-effort, silent on failure.
         if (!noCache) {
             MigrateCommand.CacheStore(source, sysForCache, result.Content)
@@ -746,6 +759,67 @@ public class MigrateCommand {
         return "~" + inS + " in + ~" + outS + " out -> ~$" + dolS + "." + centStr + " (" + resolvedModel + ")"
     }
 
+    // v3: format an *actual* cost line from real usage stats
+    // returned by the provider. Same pricing tables as EstimateCost,
+    // no `~` prefixes since these aren't heuristics. Returns "" if
+    // tokens are -1 (provider didn't report — claude CLI / custom).
+    public static string FormatActualCost(string provider, string model, int inputToks, int outputToks) {
+        if (inputToks < 0 || outputToks < 0) { return "" }
+        var inUsdPerM:  int = 0
+        var outUsdPerM: int = 0
+        var resolvedModel: string = model
+        if (provider == "claude-api") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "claude-sonnet-4-6" }
+            if (resolvedModel == "claude-opus-4-7") {
+                inUsdPerM  = 15000000
+                outUsdPerM = 75000000
+            } else if (resolvedModel == "claude-haiku-4-5") {
+                inUsdPerM  = 1000000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 3000000
+                outUsdPerM = 15000000
+            }
+        } else if (provider == "chatgpt") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gpt-4o-mini" }
+            if (resolvedModel == "gpt-4o") {
+                inUsdPerM  = 2500000
+                outUsdPerM = 10000000
+            } else if (resolvedModel == "gpt-4-turbo") {
+                inUsdPerM  = 10000000
+                outUsdPerM = 30000000
+            } else {
+                inUsdPerM  = 150000
+                outUsdPerM = 600000
+            }
+        } else if (provider == "gemini") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gemini-1.5-flash" }
+            if (resolvedModel == "gemini-1.5-pro") {
+                inUsdPerM  = 1250000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 75000
+                outUsdPerM = 300000
+            }
+        } else {
+            return ""
+        }
+        let inProd:  int = inputToks * inUsdPerM
+        let inMicro: int = inProd / 1000000
+        let outProd:  int = outputToks * outUsdPerM
+        let outMicro: int = outProd / 1000000
+        let totalMicro: int = inMicro + outMicro
+        let totalCents: int = totalMicro / 10000
+        let dollars: int = totalCents / 100
+        let cents:   int = totalCents % 100
+        var centStr: string = String_FromInt(cents)
+        if (cents < 10) { centStr = "0" + centStr }
+        let inS:  string = String_FromInt(inputToks)
+        let outS: string = String_FromInt(outputToks)
+        let dolS: string = String_FromInt(dollars)
+        return inS + " in + " + outS + " out = $" + dolS + "." + centStr + " (" + resolvedModel + ")"
+    }
+
     // Anthropic HTTP provider. Reads the API key from
     // ANTHROPIC_API_KEY. Default model: current Sonnet (override
     // with --model).
@@ -816,6 +890,12 @@ public class MigrateCommand {
             res.Error = "claude-api: empty response (no content[0].text). Raw body:\n" + resp.Body
             return res
         }
+        // v3 cost reporting: pull usage.input_tokens / output_tokens.
+        let usage: JsonValue  = root.Get("usage")
+        let inTok: JsonValue  = usage.Get("input_tokens")
+        let outTok: JsonValue = usage.Get("output_tokens")
+        res.InputTokens  = inTok.AsInt()
+        res.OutputTokens = outTok.AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
@@ -875,6 +955,12 @@ public class MigrateCommand {
             res.Error = "chatgpt: empty response (no choices[0].message.content). Raw:\n" + resp.Body
             return res
         }
+        // v3 cost reporting: OpenAI usage.{prompt,completion}_tokens.
+        let usage: JsonValue  = root.Get("usage")
+        let inTok: JsonValue  = usage.Get("prompt_tokens")
+        let outTok: JsonValue = usage.Get("completion_tokens")
+        res.InputTokens  = inTok.AsInt()
+        res.OutputTokens = outTok.AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
@@ -938,6 +1024,12 @@ public class MigrateCommand {
             res.Error = "gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n" + resp.Body
             return res
         }
+        // v3 cost reporting: Gemini usageMetadata.{prompt,candidates}TokenCount.
+        let usage: JsonValue  = root.Get("usageMetadata")
+        let inTok: JsonValue  = usage.Get("promptTokenCount")
+        let outTok: JsonValue = usage.Get("candidatesTokenCount")
+        res.InputTokens  = inTok.AsInt()
+        res.OutputTokens = outTok.AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
