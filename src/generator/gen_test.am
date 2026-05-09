@@ -122,6 +122,16 @@ public class Program {
         let encProg  = encPar.Parse()
         Console.WriteError("parsed: stdlib/encoding.am")
 
+        // DateTime stdlib — Instant / Duration / Stopwatch over
+        // the wall + monotonic clocks in runtime/Amalgame_DateTime.h.
+        let dtPath   = "./src/stdlib/datetime.am"
+        let dtSrc    = File.ReadAll(dtPath)
+        let dtLex    = new Lexer(dtSrc, dtPath)
+        let dtToks   = dtLex.Tokenize()
+        let dtPar    = new Parser(dtToks)
+        let dtProg   = dtPar.Parse()
+        Console.WriteError("parsed: stdlib/datetime.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -195,6 +205,7 @@ public class Program {
         gen6.AddFilePass1(jsonProg)
         gen6.AddFilePass1(rndProg)
         gen6.AddFilePass1(encProg)
+        gen6.AddFilePass1(dtProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -217,6 +228,7 @@ public class Program {
         gen6.AddFilePass2(jsonProg)
         gen6.AddFilePass2(rndProg)
         gen6.AddFilePass2(encProg)
+        gen6.AddFilePass2(dtProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)

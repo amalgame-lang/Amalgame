@@ -293,6 +293,13 @@ public class FullResolver {
         this.DeclareGlobal("Random_BytesToI64",    "int", false)
         this.DeclareGlobal("Random_TimeSeedNanos", "int", false)
         this.DeclareGlobal("Random_SystemBytes",   "List<int>", false)
+        // DateTime — runtime helpers behind the public
+        // Amalgame.DateTime facade in src/stdlib/datetime.am.
+        this.DeclareGlobal("DateTime_NowNanos",          "int",    false)
+        this.DeclareGlobal("DateTime_NowMonotonicNanos", "int",    false)
+        this.DeclareGlobal("DateTime_FormatIso",         "string", false)
+        this.DeclareGlobal("DateTime_ParseIsoNanos",     "int",    false)
+        this.DeclareGlobal("DateTime_IsParseError",      "bool",   false)
         // String
         this.DeclareGlobal("String_Length",     "int",    false)
         this.DeclareGlobal("String_IsEmpty",    "bool",   false)

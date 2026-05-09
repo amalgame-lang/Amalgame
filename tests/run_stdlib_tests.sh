@@ -285,6 +285,34 @@ run_test "Encoding: url decode lower hex"   "$SAMPLES/stdlib_encoding.am" "[PASS
 run_test "Encoding: url decode plus"        "$SAMPLES/stdlib_encoding.am" "[PASS] url decode plus literal"   "" "$ENC_LIB"
 run_test "Encoding: url round trip"         "$SAMPLES/stdlib_encoding.am" "[PASS] url round trip"            "" "$ENC_LIB"
 
+# ── Amalgame.DateTime ──────────────────────────────────
+# Same extra-input pattern — pulls in src/stdlib/datetime.am
+# alongside the test sample.
+echo ""
+echo "── Amalgame.DateTime ───────────────────────"
+DT_LIB="src/stdlib/datetime.am"
+run_test "DateTime: Now plausible"         "$SAMPLES/stdlib_datetime.am" "[PASS] Now plausible"           "" "$DT_LIB"
+run_test "DateTime: FromUnixSeconds"       "$SAMPLES/stdlib_datetime.am" "[PASS] FromUnixSeconds"         "" "$DT_LIB"
+run_test "DateTime: iso round trip"        "$SAMPLES/stdlib_datetime.am" "[PASS] iso round trip"          "" "$DT_LIB"
+run_test "DateTime: iso fractional"        "$SAMPLES/stdlib_datetime.am" "[PASS] iso fractional"          "" "$DT_LIB"
+run_test "DateTime: parse rejects bad"     "$SAMPLES/stdlib_datetime.am" "[PASS] parse rejects bad"       "" "$DT_LIB"
+run_test "DateTime: Instant.Add hours"     "$SAMPLES/stdlib_datetime.am" "[PASS] Instant.Add hours"       "" "$DT_LIB"
+run_test "DateTime: Instant.Subtract"      "$SAMPLES/stdlib_datetime.am" "[PASS] Instant.Subtract hours"  "" "$DT_LIB"
+run_test "DateTime: Instant.Since"         "$SAMPLES/stdlib_datetime.am" "[PASS] Instant.Since"           "" "$DT_LIB"
+run_test "DateTime: Instant comparison"    "$SAMPLES/stdlib_datetime.am" "[PASS] Instant comparison"      "" "$DT_LIB"
+run_test "DateTime: Duration arithmetic"   "$SAMPLES/stdlib_datetime.am" "[PASS] Duration arithmetic"     "" "$DT_LIB"
+run_test "DateTime: Duration Times"        "$SAMPLES/stdlib_datetime.am" "[PASS] Duration Times"          "" "$DT_LIB"
+run_test "DateTime: Duration Negate"       "$SAMPLES/stdlib_datetime.am" "[PASS] Duration Negate"         "" "$DT_LIB"
+run_test "DateTime: dur fmt zero"          "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt zero"            "" "$DT_LIB"
+run_test "DateTime: dur fmt ns"            "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt ns"              "" "$DT_LIB"
+run_test "DateTime: dur fmt us"            "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt us"              "" "$DT_LIB"
+run_test "DateTime: dur fmt ms"            "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt ms"              "" "$DT_LIB"
+run_test "DateTime: dur fmt s"             "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt s"               "" "$DT_LIB"
+run_test "DateTime: dur fmt min"           "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt min"             "" "$DT_LIB"
+run_test "DateTime: dur fmt hour"          "$SAMPLES/stdlib_datetime.am" "[PASS] dur fmt hour"            "" "$DT_LIB"
+run_test "DateTime: Stopwatch elapsed"     "$SAMPLES/stdlib_datetime.am" "[PASS] Stopwatch elapsed"       "" "$DT_LIB"
+run_test "DateTime: Stopwatch reset"       "$SAMPLES/stdlib_datetime.am" "[PASS] Stopwatch reset"         "" "$DT_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"
