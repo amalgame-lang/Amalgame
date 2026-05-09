@@ -39,6 +39,8 @@ typedef struct _Amalgame_Compiler_TypeChecker Amalgame_Compiler_TypeChecker;
 typedef struct _Amalgame_Compiler_LintWarning Amalgame_Compiler_LintWarning;
 typedef struct _Amalgame_Compiler_Linter Amalgame_Compiler_Linter;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
+typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
+typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -11660,6 +11662,437 @@ i64 Amalgame_Compiler_LspServer_JsonInt(code_string body, code_string key) {
     return String_ToInt(numStr);
 }
 
+struct _Amalgame_Compiler_MigrateResult {
+    code_bool Ok;
+    code_string Content;
+    code_string Error;
+};
+
+
+Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateResult_new() {
+    Amalgame_Compiler_MigrateResult* self = (Amalgame_Compiler_MigrateResult*) GC_MALLOC(sizeof(Amalgame_Compiler_MigrateResult));
+    self->Ok = 0;
+    self->Content = "";
+    self->Error = "";
+    return self;
+}
+
+struct _Amalgame_Compiler_MigrateCommand {
+};
+
+i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc);
+static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path);
+static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input);
+static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s);
+static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang, code_string source);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string prompt);
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt);
+static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd);
+static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s);
+
+Amalgame_Compiler_MigrateCommand* Amalgame_Compiler_MigrateCommand_new() {
+    Amalgame_Compiler_MigrateCommand* self = (Amalgame_Compiler_MigrateCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_MigrateCommand));
+    return self;
+}
+
+i64 Amalgame_Compiler_MigrateCommand_Run(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) input = "";
+    code_string __attribute__((unused)) output = "";
+    code_string __attribute__((unused)) langHint = "";
+    code_string __attribute__((unused)) provider = "claude";
+    code_string __attribute__((unused)) model = "";
+    code_bool __attribute__((unused)) dryRun = 0;
+    code_bool __attribute__((unused)) promptOnly = 0;
+    code_bool __attribute__((unused)) noCheck = 0;
+    code_bool __attribute__((unused)) force = 0;
+    i64 __attribute__((unused)) maxLines = 2000;
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-o") || code_string_equals(a, "--output")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError(code_string_concat(code_string_concat("amc migrate: ", a), " requires a value"));
+                return 1;
+            }
+            output = Args_Get(i);
+        } else if (code_string_equals(a, "--dry-run")) {
+            dryRun = 1;
+        } else if (code_string_equals(a, "--prompt-only")) {
+            promptOnly = 1;
+        } else if (code_string_equals(a, "--no-check")) {
+            noCheck = 1;
+        } else if (code_string_equals(a, "--force")) {
+            force = 1;
+        } else if (code_string_equals(a, "--lang")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc migrate: --lang requires a value");
+                return 1;
+            }
+            langHint = Args_Get(i);
+        } else if (code_string_equals(a, "--provider")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc migrate: --provider requires a value");
+                return 1;
+            }
+            provider = Args_Get(i);
+        } else if (code_string_equals(a, "--model")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc migrate: --model requires a value");
+                return 1;
+            }
+            model = Args_Get(i);
+        } else if (code_string_equals(a, "--max-lines")) {
+            i = i + 1;
+            if (i >= argc) {
+                Console_WriteError("amc migrate: --max-lines requires a value");
+                return 1;
+            }
+            maxLines = String_ToInt(Args_Get(i));
+            if (maxLines <= 0) {
+                Console_WriteError("amc migrate: --max-lines must be > 0");
+                return 1;
+            }
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc migrate: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(input) > 0) {
+                Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amc migrate: too many positional arguments (got '", a), "', already had '"), input), "')"));
+                return 1;
+            }
+            input = a;
+        }
+        i = i + 1;
+    }
+    if (String_Length(input) == 0) {
+        Console_WriteError("amc migrate: no input file");
+        Console_WriteError("usage: amc migrate <file> [--output <out>] [--lang <hint>] [--provider <name>] [--model <id>]");
+        Console_WriteError("                         [--dry-run] [--prompt-only] [--no-check] [--force] [--max-lines <n>]");
+        return 1;
+    }
+    if (!File_Exists(input)) {
+        Console_WriteError(code_string_concat("amc migrate: file not found: ", input));
+        return 1;
+    }
+    code_string __attribute__((unused)) lang = langHint;
+    if (String_Length(lang) == 0) {
+        lang = Amalgame_Compiler_MigrateCommand_DetectLanguage(input);
+    }
+    if (String_Length(lang) == 0) {
+        Console_WriteError(code_string_concat(code_string_concat("amc migrate: unrecognized source extension for '", input), "'"));
+        Console_WriteError("Supported extensions: .ts .tsx .js .jsx .mjs .py .java .cs .go .rs .cpp .cc .cxx .hpp .h++ .c .h .kt .kts .swift .rb .php");
+        Console_WriteError("Or pass --lang <hint> with a language name.");
+        return 1;
+    }
+    code_string __attribute__((unused)) source = File_ReadAll(input);
+    i64 __attribute__((unused)) lineCount = Amalgame_Compiler_MigrateCommand_CountLines(source);
+    if (lineCount > maxLines) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amc migrate: source exceeds ", String_FromInt(maxLines)), " lines (got "), String_FromInt(lineCount)), ")"));
+        Console_WriteError("Suggestion: split the file or override with --max-lines <n>.");
+        return 1;
+    }
+    code_string __attribute__((unused)) outPath = output;
+    if (String_Length(outPath) == 0) {
+        outPath = Amalgame_Compiler_MigrateCommand_DefaultOutputPath(input);
+    }
+    if (File_Exists(outPath) && !force) {
+        Console_WriteError(code_string_concat("amc migrate: output exists: ", outPath));
+        Console_WriteError("Pass --force to overwrite.");
+        return 1;
+    }
+    code_string __attribute__((unused)) prompt = Amalgame_Compiler_MigrateCommand_BuildPrompt(lang, source);
+    if (promptOnly) {
+        Console_WriteLine(prompt);
+        return 0;
+    }
+    if (dryRun) {
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] would migrate: ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines)"));
+        Console_WriteLine(code_string_concat("[migrate] would write:   ", outPath));
+        Console_WriteLine(code_string_concat("[migrate] provider:      ", provider));
+        if (String_Length(model) > 0) {
+            Console_WriteLine(code_string_concat("[migrate] model:         ", model));
+        }
+        return 0;
+    }
+    Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("[migrate] processing ", input), " ("), lang), ", "), String_FromInt(lineCount)), " lines, provider="), provider), ")..."));
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) result = Amalgame_Compiler_MigrateCommand_CallProvider(provider, model, prompt);
+    if (!result->Ok) {
+        Console_WriteError(code_string_concat("amc migrate: ", result->Error));
+        return 1;
+    }
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(outPath, result->Content);
+    if (!writeOk) {
+        Console_WriteError(code_string_concat("amc migrate: failed to write ", outPath));
+        return 1;
+    }
+    Console_WriteLine(code_string_concat("[migrate] wrote ", outPath));
+    if (!noCheck) {
+        code_string __attribute__((unused)) amcPath = Args_Get(0);
+        code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat(amcPath, " --check "), outPath);
+        AmalgameProcessResult* __attribute__((unused)) check = Process_RunCapture(cmd);
+        if (check->Exit != 0) {
+            Console_WriteError("[migrate] check failed (typechecker errors in the migrated file):");
+            Console_WriteError(check->Stdout);
+            Console_WriteError("The .am file was still written so you can inspect / fix manually.");
+            return 1;
+        }
+        Console_WriteLine("[migrate] check passed");
+    }
+    return 0;
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_DetectLanguage(code_string path) {
+    (void)path;
+    if (String_EndsWith(path, ".ts")) {
+        return "TypeScript";
+    }
+    if (String_EndsWith(path, ".tsx")) {
+        return "TypeScript";
+    }
+    if (String_EndsWith(path, ".js")) {
+        return "JavaScript";
+    }
+    if (String_EndsWith(path, ".jsx")) {
+        return "JavaScript";
+    }
+    if (String_EndsWith(path, ".mjs")) {
+        return "JavaScript";
+    }
+    if (String_EndsWith(path, ".py")) {
+        return "Python";
+    }
+    if (String_EndsWith(path, ".java")) {
+        return "Java";
+    }
+    if (String_EndsWith(path, ".cs")) {
+        return "C#";
+    }
+    if (String_EndsWith(path, ".go")) {
+        return "Go";
+    }
+    if (String_EndsWith(path, ".rs")) {
+        return "Rust";
+    }
+    if (String_EndsWith(path, ".cpp")) {
+        return "C++";
+    }
+    if (String_EndsWith(path, ".cc")) {
+        return "C++";
+    }
+    if (String_EndsWith(path, ".cxx")) {
+        return "C++";
+    }
+    if (String_EndsWith(path, ".hpp")) {
+        return "C++";
+    }
+    if (String_EndsWith(path, ".h++")) {
+        return "C++";
+    }
+    if (String_EndsWith(path, ".c")) {
+        return "C";
+    }
+    if (String_EndsWith(path, ".h")) {
+        return "C";
+    }
+    if (String_EndsWith(path, ".kt")) {
+        return "Kotlin";
+    }
+    if (String_EndsWith(path, ".kts")) {
+        return "Kotlin";
+    }
+    if (String_EndsWith(path, ".swift")) {
+        return "Swift";
+    }
+    if (String_EndsWith(path, ".rb")) {
+        return "Ruby";
+    }
+    if (String_EndsWith(path, ".php")) {
+        return "PHP";
+    }
+    return "";
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_DefaultOutputPath(code_string input) {
+    (void)input;
+    i64 __attribute__((unused)) lastDot = String_LastIndexOf(input, ".");
+    i64 __attribute__((unused)) lastSlash = String_LastIndexOf(input, "/");
+    if (lastDot <= lastSlash || lastDot <= 0) {
+        return code_string_concat(input, ".am");
+    }
+    return code_string_concat(String_Substring(input, 0, lastDot), ".am");
+}
+
+static i64 Amalgame_Compiler_MigrateCommand_CountLines(code_string s) {
+    (void)s;
+    i64 __attribute__((unused)) len = String_Length(s);
+    if (len == 0) {
+        return 0;
+    }
+    i64 __attribute__((unused)) n = 1;
+    for (i64 i = 0; i < len; i++) {
+        code_string __attribute__((unused)) ch = String_CharAt1(s, i);
+        if (code_string_equals(ch, "\n")) {
+            n = n + 1;
+        }
+    }
+    return n;
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_BuildPrompt(code_string lang, code_string source) {
+    (void)lang;
+    (void)source;
+    code_string __attribute__((unused)) lb = "{";
+    code_string __attribute__((unused)) rb = "}";
+    code_string __attribute__((unused)) p = "";
+    p = code_string_concat(code_string_concat(code_string_concat(p, "You are translating "), lang), " source code to Amalgame.\n");
+    p = code_string_concat(p, "Amalgame is a self-hosted programming language that transpiles to C.\n");
+    p = code_string_concat(p, "It uses class-based OOP with explicit visibility modifiers, generic\n");
+    p = code_string_concat(p, "collections (List<T>, Map<K,V>, Set<T>), ML-style match expressions,\n");
+    p = code_string_concat(p, "and exception-based error handling. Higher-order list operations like\n");
+    p = code_string_concat(p, ".Map / .Filter / .Reduce / .Any / .All / .CountIf take lambdas.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Amalgame conventions\n");
+    p = code_string_concat(p, "- Files start with `namespace <Name>` then declarations.\n");
+    p = code_string_concat(p, "- Classes: `public class Name { public Field: int = 0; ... }`.\n");
+    p = code_string_concat(p, "- Data classes (record-like): `public data class User(string Name, int Age)`.\n");
+    p = code_string_concat(p, "- Constructors: `let u = new User(\"Alice\", 30)`.\n");
+    p = code_string_concat(p, "- Locals: `let x = 1` (immutable), `var y = 2` (mutable).\n");
+    p = code_string_concat(p, "- Type annotations are optional but supported: `let n: int = 1`.\n");
+    p = code_string_concat(p, "- Lambdas: `(x, y) => x + y`, or block: `x => { let d = x*2; return d+1 }`.\n");
+    p = code_string_concat(p, "- Higher-order list: `users.Map(u => u.Name)`, `xs.Filter(x => x > 0)`.\n");
+    p = code_string_concat(p, "- Generics: `let xs = new List<int>()`, `let m = new Map<string,int>()`.\n");
+    p = code_string_concat(p, "- Match expression: `match x { 0 => \"zero\", 1 => \"one\", _ => \"other\" }`.\n");
+    p = code_string_concat(p, "- Try/catch: `try { ... } catch (e) { ... }`. Throw with `throw <expr>`.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "- Console output: `Console.WriteLine(\"x="), lb), "x"), rb), "\")` (string interpolation).\n");
+    p = code_string_concat(p, "- File I/O: `File.ReadAll(path)`, `File.WriteAll(path, text)`.\n");
+    p = code_string_concat(p, "- Process: `Process.RunCapture(cmd)` returns an exit + stdout.\n");
+    p = code_string_concat(p, "- HTTP: `Http.Get(url)`, `Http.Post(url, body)` from the runtime.\n");
+    p = code_string_concat(p, "- Comments: `//` line, `/* ... */` block.\n");
+    p = code_string_concat(p, "- Null-safe: `obj?.Field`, `a ?? b`. Nullable type: `Foo?`.\n");
+    p = code_string_concat(p, "- Enum: `enum Direction { North, South, East, West }`.\n");
+    p = code_string_concat(p, "- Interface (method-only, no fields): `interface IDrawable { void Draw() }`.\n");
+    p = code_string_concat(p, "  Implement with `class Square implements IDrawable { ... }`.\n");
+    p = code_string_concat(p, "- For-in over a collection: `for x in xs { ... }`. Range: `for i in 0..n`.\n");
+    p = code_string_concat(p, "- Public entry point: `public class Program { public static void Main(string[] args) { ... } }`.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Idiomatic patterns\n");
+    p = code_string_concat(p, "- Prefer immutable `let` over `var`. Loops and accumulators are exceptions.\n");
+    p = code_string_concat(p, "- For functional pipelines, use the higher-order list methods, not for-in.\n");
+    p = code_string_concat(p, "- For value types, use `data class`. For behavior, regular `class`.\n");
+    p = code_string_concat(p, "- One namespace per project area; multiple files can share a namespace.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Known Amalgame limitations to work around\n");
+    p = code_string_concat(p, "- String interpolation does NOT propagate inferred types into embedded\n");
+    p = code_string_concat(p, "  calls. Workaround: stage in named locals before printing.\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "    BAD:  Console.WriteLine(\"first: "), lb), "users.Map(u => u.Name).Get(0)"), rb), "\")\n");
+    p = code_string_concat(p, "    GOOD: let names = users.Map(u => u.Name)\n");
+    p = code_string_concat(p, "          let first: string = names.Get(0)\n");
+    p = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(p, "          Console.WriteLine(\"first: "), lb), "first"), rb), "\")\n");
+    p = code_string_concat(p, "- Lambda Reduce signatures still need init-arg type inference. If you\n");
+    p = code_string_concat(p, "  hit issues with .Reduce, fall back to a for-in with `var acc`.\n");
+    p = code_string_concat(p, "- ForEach captures by value: `var sum = 0; xs.ForEach(x => sum = sum + x)`\n");
+    p = code_string_concat(p, "  does NOT accumulate. Use Reduce for accumulation.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Source file to translate\n");
+    p = code_string_concat(code_string_concat(code_string_concat(p, "```"), lang), "\n");
+    p = code_string_concat(p, source);
+    p = code_string_concat(p, "\n```\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "## Output instructions\n");
+    p = code_string_concat(p, "Reply with ONLY the Amalgame source code. No prose, no markdown\n");
+    p = code_string_concat(p, "fences, no preamble like \"Here's the translation:\". Just `.am` content.\n");
+    p = code_string_concat(p, "\n");
+    p = code_string_concat(p, "If you encounter a construct that has no clean Amalgame equivalent,\n");
+    p = code_string_concat(p, "insert a `// TODO[migrate]: <short reason>` comment instead of\n");
+    p = code_string_concat(p, "best-effort guessing. Examples of such constructs:\n");
+    p = code_string_concat(p, "  - Python decorators (other than @dataclass which maps to `data class`)\n");
+    p = code_string_concat(p, "  - JS/TS Promises and async/await (no async runtime in Amalgame yet)\n");
+    p = code_string_concat(p, "  - Java reflection / annotations\n");
+    p = code_string_concat(p, "  - Rust lifetimes / ownership / borrowing\n");
+    p = code_string_concat(p, "  - Go goroutines / channels\n");
+    p = code_string_concat(p, "  - C++ templates with non-type parameters\n");
+    p = code_string_concat(p, "  - C macros / preprocessor directives\n");
+    p = code_string_concat(p, "Preserve the source's logical structure: same number of functions,\n");
+    p = code_string_concat(p, "same class hierarchy, same public surface. The output should compile\n");
+    p = code_string_concat(p, "with `amc --check` modulo the TODO[migrate] markers.\n");
+    return p;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProvider(code_string provider, code_string model, code_string prompt) {
+    (void)provider;
+    (void)model;
+    (void)prompt;
+    if (code_string_equals(provider, "claude")) {
+        return Amalgame_Compiler_MigrateCommand_CallClaudeCli(model, prompt);
+    }
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    res->Ok = 0;
+    res->Error = code_string_concat(code_string_concat("provider '", provider), "' not yet supported in v0 (only 'claude' ships in this version)");
+    return res;
+}
+
+static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeCli(code_string model, code_string prompt) {
+    (void)model;
+    (void)prompt;
+    Amalgame_Compiler_MigrateResult* __attribute__((unused)) res = Amalgame_Compiler_MigrateResult_new();
+    if (!Amalgame_Compiler_MigrateCommand_IsCommandAvailable("claude")) {
+        res->Ok = 0;
+        res->Error = "claude CLI not found on PATH. Install Claude Code: https://docs.claude.com/claude-code\nOr pick another provider with --provider <name> (none ships in v0 yet).";
+        return res;
+    }
+    code_string __attribute__((unused)) tmpPath = "/tmp/amc_migrate_prompt.txt";
+    code_bool __attribute__((unused)) writeOk = File_WriteAll(tmpPath, prompt);
+    if (!writeOk) {
+        res->Ok = 0;
+        res->Error = code_string_concat("failed to write prompt temp file: ", tmpPath);
+        return res;
+    }
+    code_string __attribute__((unused)) cmd = "claude -p";
+    if (String_Length(model) > 0) {
+        cmd = code_string_concat(code_string_concat(cmd, " --model "), model);
+    }
+    cmd = code_string_concat(code_string_concat(cmd, " < "), tmpPath);
+    AmalgameProcessResult* __attribute__((unused)) rr = Process_RunCapture(cmd);
+    if (rr->Exit != 0) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("claude CLI failed (exit ", String_FromInt(rr->Exit)), "). Output:\n"), rr->Stdout);
+        return res;
+    }
+    res->Ok = 1;
+    res->Content = Amalgame_Compiler_MigrateCommand_StripFences(rr->Stdout);
+    return res;
+}
+
+static code_bool Amalgame_Compiler_MigrateCommand_IsCommandAvailable(code_string cmd) {
+    (void)cmd;
+    code_string __attribute__((unused)) probe = code_string_concat(code_string_concat("command -v ", cmd), " >/dev/null 2>&1");
+    AmalgameProcessResult* __attribute__((unused)) rr = Process_RunCapture(probe);
+    return rr->Exit == 0;
+}
+
+static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s) {
+    (void)s;
+    code_string __attribute__((unused)) trimmed = String_Trim(s);
+    if (!String_StartsWith(trimmed, "```")) {
+        return s;
+    }
+    i64 __attribute__((unused)) nl = String_IndexOf(trimmed, "\n");
+    if (nl <= 0) {
+        return s;
+    }
+    code_string __attribute__((unused)) afterFirst = String_Substring(trimmed, nl + 1, String_Length(trimmed) - nl - 1);
+    code_string __attribute__((unused)) rtrimmed = String_Trim(afterFirst);
+    if (!String_EndsWith(rtrimmed, "```")) {
+        return s;
+    }
+    return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3);
+}
+
 struct _Amalgame_Compiler_AmalgameCompiler {
     Amalgame_Compiler_DiagnosticFormatter* Diag;
     code_bool IsLib;
@@ -11866,6 +12299,8 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.");
     Console_WriteError("  lsp           Run a minimal LSP server (stdio JSON-RPC).");
     Console_WriteError("                v1 publishes diagnostics on didOpen/didChange.");
+    Console_WriteError("  migrate <f>   Migrate a source file to Amalgame via LLM (v0:");
+    Console_WriteError("                claude CLI required). See `amc migrate --help`.");
 }
 
 i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
@@ -12028,6 +12463,10 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     if (code_string_equals(Args_Get(1), "lsp")) {
         Amalgame_Compiler_LspServer* __attribute__((unused)) server = Amalgame_Compiler_LspServer_new();
         Exit_Set(Amalgame_Compiler_LspServer_Run(server));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "migrate")) {
+        Exit_Set(Amalgame_Compiler_MigrateCommand_Run(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
