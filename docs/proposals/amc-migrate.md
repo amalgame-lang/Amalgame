@@ -1,8 +1,11 @@
 # Proposal: `amc migrate` — LLM-assisted source-to-Amalgame
 
-**Status:** Draft (2026-05-09)
+**Status:** v1+v2 shipped in v0.4.0 (2026-05-09).
+v3 deferred (API streaming, real usage-stat cost reporting).
 **Author:** v0.4 cycle
-**Tracking issue:** TBD
+**Tracking PRs:** #149 (v0), #158 (v1.1), #161 (v1.2), #162 (v1.3),
+#164 (`amc generate`), #165 (`amc explain`), #166 (v2 providers),
+#167 (cost estimation), #169 (--stream), #170 (result cache).
 
 ## Problem
 
