@@ -7,6 +7,19 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.1] — 2026-05-09
+
+Patch release. The v0.4.0 binary still printed `amc 0.3.6` from
+`amc --version` because `src/main.am`'s hardcoded version string
+wasn't bumped before the tag. This release fixes the string and
+adds a CONTINUATION.md pitfall (#12) so the next contributor
+catches it pre-tag.
+
+No other changes — same code as v0.4.0 modulo the version literal
+and the snapshot refresh. CONTINUATION.md adds the pitfall.
+
+---
+
 ## [v0.4.0] — 2026-05-09
 
 The "LLM-driven workflows" release. Three new subcommands shipped in

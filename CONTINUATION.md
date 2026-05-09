@@ -313,7 +313,28 @@ A new session reads these automatically and applies them.
     new runtime call brings in a fresh transitive dep, propagate the
     `-l<lib>` flag here as well.
 
-12. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
+12. **Bump the `--version` string in `src/main.am` BEFORE every tag** —
+    the version is hardcoded in the `--version` flag handler:
+
+        Console.WriteLine("amc <X.Y.Z> (self-hosted Amalgame compiler)")
+
+    This was forgotten on the v0.4.0 push (binary still printed
+    `0.3.6` after the tag). Workaround was to bump to v0.4.1 with
+    the fix. Pre-tag checklist:
+
+        grep -n "amc 0\." src/main.am   # finds the line
+        # → edit to the new version
+        ./build_amc.sh
+        ./tests/run_all_tests.sh
+        ./tools/save-snapshot.sh
+        # → commit, PR to develop, develop → main, then tag
+
+    A linter rule could catch this (compare the version string
+    against the latest tag) but currently relies on the contributor
+    remembering — which means it WILL be forgotten again unless
+    we automate it.
+
+13. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
     declares `merge=ours` for `snapshot/amc_lib.c`, `snapshot/INFO.md`,
     and `src/amc_lib.c` (generated artefacts; canonical resolution
     on conflict is "rebuild from sources"). For the strategy to take
