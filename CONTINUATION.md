@@ -1,6 +1,6 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-09 after shipping v0.4.2 (stdlib + DX release).
+> Last refreshed 2026-05-09 after shipping v0.4.3 (Json migration completes + amc migrate v3).
 > The block below is a self-contained prompt designed to bootstrap a
 > new Claude session with full context. Copy-paste it as your first
 > message in a fresh conversation.
@@ -12,7 +12,7 @@ I'm working on Amalgame, a self-hosted programming language that
 transpiles to C. I keep the project in
 /home/neitsab/Développement/Amalgame.
 
-Current state (May 2026, v0.4.2):
+Current state (May 2026, v0.4.3):
 
 - The compiler `amc` is written in Amalgame in src/ and compiles
   itself in ~5 seconds via ./build_amc.sh.
@@ -38,7 +38,7 @@ Current state (May 2026, v0.4.2):
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
 - Releases automated on `v*` tag (.github/workflows/release.yml).
-  Latest is v0.4.2 — see CHANGELOG.md for the per-release detail.
+  Latest is v0.4.3 — see CHANGELOG.md for the per-release detail.
   develop → main → tag is the release flow. Both develop and main
   are protected (force-push + delete blocked, PR required, admin
   bypass allowed).
@@ -75,6 +75,26 @@ Current state (May 2026, v0.4.2):
 - README + CHANGELOG at the repo root.
 - Design proposals: docs/proposals/amc-migrate.md tracks the v1+v2
   roadmap for the LLM commands (largely shipped now).
+
+Recently shipped (v0.4.3 Json migration completes, 2026-05-09):
+
+  - src/lsp.am request dispatcher swapped from JsonStr/JsonInt
+    substring extractors to a single Json.Parse(body) walked via
+    typed-local Get(...).At(...) chains.
+  - src/migrate.am providers parse actual response shapes:
+      Anthropic → root.content[0].text
+      OpenAI    → root.choices[0].message.content
+      Gemini    → root.candidates[0].content.parts[0].text
+  - amc migrate v3 (PR #194): real cost line printed after every
+    successful call from each provider's usage object. No `~`,
+    exact billed tokens. CLI shell-out and custom keep silent
+    (InputTokens == -1).
+  - Six dead JSON helpers removed (~150 LoC out).
+  - The earlier "Json.Parse hangs on 16 KB bodies" turned out to
+    be a probe artefact — bash ${#body} counts characters, not
+    bytes, so the Content-Length frame under-counted UTF-8
+    multibyte content. Real client traffic uses byte-accurate
+    counts and the parser does a 16 KB body in ~37 ms.
 
 Recently shipped (v0.4.2 stdlib + DX release, 2026-05-09):
 
