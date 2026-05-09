@@ -92,6 +92,16 @@ public class Program {
         let lintProg = lintPar.Parse()
         Console.WriteError("parsed: linter.am")
 
+        // Json stdlib — must come before lsp.am / migrate.am which
+        // (in phase 2) call into Json.Parse / Json.EscapeString.
+        let jsonPath = "./src/stdlib/json.am"
+        let jsonSrc  = File.ReadAll(jsonPath)
+        let jsonLex  = new Lexer(jsonSrc, jsonPath)
+        let jsonToks = jsonLex.Tokenize()
+        let jsonPar  = new Parser(jsonToks)
+        let jsonProg = jsonPar.Parse()
+        Console.WriteError("parsed: stdlib/json.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -162,6 +172,7 @@ public class Program {
         gen6.AddFilePass1(rvrProg)
         gen6.AddFilePass1(tckProg)
         gen6.AddFilePass1(lintProg)
+        gen6.AddFilePass1(jsonProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -181,6 +192,7 @@ public class Program {
         gen6.AddFilePass2(rvrProg)
         gen6.AddFilePass2(tckProg)
         gen6.AddFilePass2(lintProg)
+        gen6.AddFilePass2(jsonProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)
