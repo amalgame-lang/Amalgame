@@ -12134,13 +12134,10 @@ code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(code_string source, Ama
 static code_string Amalgame_Compiler_LspServer_DiagnosticBody(code_string source, i64 line, i64 col, code_string msg);
 static i64 Amalgame_Compiler_LspServer_TokenEndCol(code_string source, i64 line, i64 col);
 static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch);
-code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s);
 code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri);
 Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best);
 static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNode* node, i64 line, i64 col);
-code_string Amalgame_Compiler_LspServer_JsonStr(code_string body, code_string key);
-i64 Amalgame_Compiler_LspServer_JsonInt(code_string body, code_string key);
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new() {
     Amalgame_Compiler_LspServer* self = (Amalgame_Compiler_LspServer*) GC_MALLOC(sizeof(Amalgame_Compiler_LspServer));
@@ -12156,39 +12153,59 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
         if (String_Length(body) == 0) {
             return 0;
         }
-        code_string __attribute__((unused)) method = Amalgame_Compiler_LspServer_JsonStr(body, "method");
+        Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(body);
+        if (!parsed->Ok) {
+            continue;
+        }
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) methodNode = Amalgame_Compiler_JsonValue_Get(root, "method");
+        code_string __attribute__((unused)) method = Amalgame_Compiler_JsonValue_AsString(methodNode);
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) idNode = Amalgame_Compiler_JsonValue_Get(root, "id");
+        i64 __attribute__((unused)) id = Amalgame_Compiler_JsonValue_AsInt(idNode);
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) params = Amalgame_Compiler_JsonValue_Get(root, "params");
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) td = Amalgame_Compiler_JsonValue_Get(params, "textDocument");
+        Amalgame_Compiler_JsonValue* __attribute__((unused)) pos = Amalgame_Compiler_JsonValue_Get(params, "position");
         if (code_string_equals(method, "initialize")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
             Amalgame_Compiler_LspServer_SendInit(self, id);
         } else if (code_string_equals(method, "shutdown")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
             Amalgame_Compiler_LspServer_SendShutdown(self, id);
         } else if (code_string_equals(method, "exit")) {
             return 0;
         } else if (code_string_equals(method, "textDocument/didOpen")) {
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            code_string __attribute__((unused)) txt = Amalgame_Compiler_LspServer_JsonStr(body, "text");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) txtNode = Amalgame_Compiler_JsonValue_Get(td, "text");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(txtNode);
             Amalgame_Compiler_LspServer_UpsertDoc(self, uri, txt);
             Amalgame_Compiler_LspServer_PublishDiagnostics(self, uri, txt);
         } else if (code_string_equals(method, "textDocument/didChange")) {
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            code_string __attribute__((unused)) txt = Amalgame_Compiler_LspServer_JsonStr(body, "text");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) changes = Amalgame_Compiler_JsonValue_Get(params, "contentChanges");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) firstChange = Amalgame_Compiler_JsonValue_At(changes, 0);
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) txtNode = Amalgame_Compiler_JsonValue_Get(firstChange, "text");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(txtNode);
             Amalgame_Compiler_LspServer_UpsertDoc(self, uri, txt);
             Amalgame_Compiler_LspServer_PublishDiagnostics(self, uri, txt);
         } else if (code_string_equals(method, "textDocument/didClose")) {
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
             Amalgame_Compiler_LspServer_RemoveDoc(self, uri);
         } else if (code_string_equals(method, "textDocument/hover")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            i64 __attribute__((unused)) line = Amalgame_Compiler_LspServer_JsonInt(body, "line");
-            i64 __attribute__((unused)) chr = Amalgame_Compiler_LspServer_JsonInt(body, "character");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) lineNode = Amalgame_Compiler_JsonValue_Get(pos, "line");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) chrNode = Amalgame_Compiler_JsonValue_Get(pos, "character");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(lineNode);
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(chrNode);
             Amalgame_Compiler_LspServer_HandleHover(self, id, uri, line, chr);
         } else if (code_string_equals(method, "textDocument/completion")) {
-            i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            i64 __attribute__((unused)) line = Amalgame_Compiler_LspServer_JsonInt(body, "line");
-            i64 __attribute__((unused)) chr = Amalgame_Compiler_LspServer_JsonInt(body, "character");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) lineNode = Amalgame_Compiler_JsonValue_Get(pos, "line");
+            Amalgame_Compiler_JsonValue* __attribute__((unused)) chrNode = Amalgame_Compiler_JsonValue_Get(pos, "character");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(lineNode);
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(chrNode);
             Amalgame_Compiler_LspServer_HandleCompletion(self, id, uri, line, chr);
         }
     }
@@ -12850,30 +12867,6 @@ static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch) {
     return 0;
 }
 
-code_string Amalgame_Compiler_LspServer_EscapeJsonStr(code_string s) {
-    (void)s;
-    i64 __attribute__((unused)) n = String_Length(s);
-    code_string __attribute__((unused)) cr = Amalgame_Compiler_LspServer_Cr();
-    code_string __attribute__((unused)) r = "";
-    for (i64 i = 0; i < n; i++) {
-        code_string __attribute__((unused)) ch = String_CharAt1(s, i);
-        if (code_string_equals(ch, "\"")) {
-            r = code_string_concat(r, "\\\"");
-        } else if (code_string_equals(ch, "\\")) {
-            r = code_string_concat(r, "\\\\");
-        } else if (code_string_equals(ch, "\n")) {
-            r = code_string_concat(r, "\\n");
-        } else if (code_string_equals(ch, cr)) {
-            r = code_string_concat(r, "\\r");
-        } else if (code_string_equals(ch, "\t")) {
-            r = code_string_concat(r, "\\t");
-        } else {
-            r = code_string_concat(r, ch);
-        }
-    }
-    return r;
-}
-
 code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri) {
     (void)uri;
     if (String_StartsWith(uri, "file://")) {
@@ -12962,95 +12955,6 @@ static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNod
     return 1;
 }
 
-code_string Amalgame_Compiler_LspServer_JsonStr(code_string body, code_string key) {
-    (void)body;
-    (void)key;
-    code_string __attribute__((unused)) needle = code_string_concat(code_string_concat("\"", key), "\"");
-    i64 __attribute__((unused)) kIdx = String_IndexOf(body, needle);
-    if (kIdx < 0) {
-        return "";
-    }
-    i64 __attribute__((unused)) bn = String_Length(body);
-    i64 __attribute__((unused)) needleLen = String_Length(needle);
-    i64 __attribute__((unused)) i = kIdx + needleLen;
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "\"")) {
-            i = i + 1;
-            break;
-        }
-        i = i + 1;
-    }
-    code_string __attribute__((unused)) result = "";
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "\"")) {
-            break;
-        }
-        if (code_string_equals(ch, "\\")) {
-            if (i + 1 >= bn) {
-                break;
-            }
-            code_string __attribute__((unused)) nx = String_CharAt1(body, i + 1);
-            if (code_string_equals(nx, "n")) {
-                result = code_string_concat(result, "\n");
-            } else if (code_string_equals(nx, "r")) {
-                result = code_string_concat(result, "\\r");
-            } else if (code_string_equals(nx, "t")) {
-                result = code_string_concat(result, "\t");
-            } else if (code_string_equals(nx, "\"")) {
-                result = code_string_concat(result, "\"");
-            } else if (code_string_equals(nx, "\\")) {
-                result = code_string_concat(result, "\\");
-            } else if (code_string_equals(nx, "/")) {
-                result = code_string_concat(result, "/");
-            } else {
-                result = code_string_concat(result, nx);
-            }
-            i = i + 2;
-        } else {
-            result = code_string_concat(result, ch);
-            i = i + 1;
-        }
-    }
-    return result;
-}
-
-i64 Amalgame_Compiler_LspServer_JsonInt(code_string body, code_string key) {
-    (void)body;
-    (void)key;
-    code_string __attribute__((unused)) needle = code_string_concat(code_string_concat("\"", key), "\"");
-    i64 __attribute__((unused)) kIdx = String_IndexOf(body, needle);
-    if (kIdx < 0) {
-        return 0;
-    }
-    i64 __attribute__((unused)) bn = String_Length(body);
-    code_string __attribute__((unused)) dig = "0123456789";
-    i64 __attribute__((unused)) needleLen = String_Length(needle);
-    i64 __attribute__((unused)) i = kIdx + needleLen;
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "-")) {
-            break;
-        }
-        if (String_IndexOf(dig, ch) >= 0) {
-            break;
-        }
-        i = i + 1;
-    }
-    code_string __attribute__((unused)) numStr = "";
-    while (i < bn) {
-        code_string __attribute__((unused)) ch = String_CharAt1(body, i);
-        if (code_string_equals(ch, "-") || String_IndexOf(dig, ch) >= 0) {
-            numStr = code_string_concat(numStr, ch);
-            i = i + 1;
-        } else {
-            break;
-        }
-    }
-    return String_ToInt(numStr);
-}
-
 struct _Amalgame_Compiler_MigrateResult {
     code_bool Ok;
     code_string Content;
@@ -13086,9 +12990,6 @@ Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallProviderRa
 code_string Amalgame_Compiler_MigrateCommand_AutoSelectProvider();
 code_string Amalgame_Compiler_MigrateCommand_EstimateCost(code_string provider, code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallClaudeApiRaw(code_string model, code_string systemPrompt, code_string userPrompt);
-static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s);
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body);
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGeminiApi(code_string model, code_string systemPrompt, code_string userPrompt);
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCustomScript(code_string systemPrompt, code_string userPrompt);
@@ -13806,86 +13707,25 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
         res->Error = code_string_concat(code_string_concat(code_string_concat("claude-api: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
         return res;
     }
-    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(resp->Body);
+    if (!parsed->Ok) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("claude-api: unparseable response (", parsed->Error->Message), "). Raw body:\n"), resp->Body);
+        return res;
+    }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) content = Amalgame_Compiler_JsonValue_Get(root, "content");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) block0 = Amalgame_Compiler_JsonValue_At(content, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(block0, "text");
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
     if (String_Length(text) == 0) {
         res->Ok = 0;
-        res->Error = code_string_concat("claude-api: empty or unparseable response. Raw body:\n", resp->Body);
+        res->Error = code_string_concat("claude-api: empty response (no content[0].text). Raw body:\n", resp->Body);
         return res;
     }
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
-}
-
-static code_string Amalgame_Compiler_MigrateCommand_JsonEscape(code_string s) {
-    (void)s;
-    code_string __attribute__((unused)) out = "";
-    i64 __attribute__((unused)) n = String_Length(s);
-    for (i64 i = 0; i < n; i++) {
-        code_string __attribute__((unused)) c = String_CharAt1(s, i);
-        if (code_string_equals(c, "\\")) {
-            out = code_string_concat(out, "\\\\");
-        } else if (code_string_equals(c, "\"")) {
-            out = code_string_concat(out, "\\\"");
-        } else if (code_string_equals(c, "\n")) {
-            out = code_string_concat(out, "\\n");
-        } else if (code_string_equals(c, "\\r")) {
-            out = code_string_concat(out, "\\r");
-        } else if (code_string_equals(c, "\t")) {
-            out = code_string_concat(out, "\\t");
-        } else {
-            out = code_string_concat(out, c);
-        }
-    }
-    return out;
-}
-
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtractText(code_string body) {
-    (void)body;
-    return Amalgame_Compiler_MigrateCommand_JsonExtract(body, "\"text\":\"");
-}
-
-static code_string Amalgame_Compiler_MigrateCommand_JsonExtract(code_string body, code_string key) {
-    (void)body;
-    (void)key;
-    i64 __attribute__((unused)) kIdx = String_IndexOf(body, key);
-    if (kIdx < 0) {
-        return "";
-    }
-    i64 __attribute__((unused)) kLen = String_Length(key);
-    i64 __attribute__((unused)) start = kIdx + kLen;
-    i64 __attribute__((unused)) n = String_Length(body);
-    code_string __attribute__((unused)) out = "";
-    i64 __attribute__((unused)) i = start;
-    while (i < n) {
-        code_string __attribute__((unused)) c = String_CharAt1(body, i);
-        if (code_string_equals(c, "\\")) {
-            if (i + 1 < n) {
-                code_string __attribute__((unused)) nxt = String_CharAt1(body, i + 1);
-                if (code_string_equals(nxt, "n")) {
-                    out = code_string_concat(out, "\n");
-                } else if (code_string_equals(nxt, "r")) {
-                    out = code_string_concat(out, "\\r");
-                } else if (code_string_equals(nxt, "t")) {
-                    out = code_string_concat(out, "\t");
-                } else if (code_string_equals(nxt, "\"")) {
-                    out = code_string_concat(out, "\"");
-                } else if (code_string_equals(nxt, "\\")) {
-                    out = code_string_concat(out, "\\");
-                } else {
-                    out = code_string_concat(out, nxt);
-                }
-                i = i + 2;
-                continue;
-            }
-        }
-        if (code_string_equals(c, "\"")) {
-            return out;
-        }
-        out = code_string_concat(out, c);
-        i = i + 1;
-    }
-    return out;
 }
 
 static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallChatGptApi(code_string model, code_string systemPrompt, code_string userPrompt) {
@@ -13920,10 +13760,21 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCha
         res->Error = code_string_concat(code_string_concat(code_string_concat("chatgpt: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
         return res;
     }
-    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtract(resp->Body, "\"content\":\"");
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(resp->Body);
+    if (!parsed->Ok) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("chatgpt: unparseable response (", parsed->Error->Message), "). Raw:\n"), resp->Body);
+        return res;
+    }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) choices = Amalgame_Compiler_JsonValue_Get(root, "choices");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) choice0 = Amalgame_Compiler_JsonValue_At(choices, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) message = Amalgame_Compiler_JsonValue_Get(choice0, "message");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(message, "content");
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
     if (String_Length(text) == 0) {
         res->Ok = 0;
-        res->Error = code_string_concat("chatgpt: empty or unparseable response. Raw:\n", resp->Body);
+        res->Error = code_string_concat("chatgpt: empty response (no choices[0].message.content). Raw:\n", resp->Body);
         return res;
     }
     res->Ok = 1;
@@ -13963,10 +13814,23 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
         res->Error = code_string_concat(code_string_concat(code_string_concat("gemini: HTTP ", String_FromInt(status)), ". Response:\n"), resp->Body);
         return res;
     }
-    code_string __attribute__((unused)) text = Amalgame_Compiler_MigrateCommand_JsonExtractText(resp->Body);
+    Amalgame_Compiler_JsonResult* __attribute__((unused)) parsed = Amalgame_Compiler_Json_Parse(resp->Body);
+    if (!parsed->Ok) {
+        res->Ok = 0;
+        res->Error = code_string_concat(code_string_concat(code_string_concat("gemini: unparseable response (", parsed->Error->Message), "). Raw:\n"), resp->Body);
+        return res;
+    }
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) candidates = Amalgame_Compiler_JsonValue_Get(root, "candidates");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) cand0 = Amalgame_Compiler_JsonValue_At(candidates, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) candContent = Amalgame_Compiler_JsonValue_Get(cand0, "content");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) parts = Amalgame_Compiler_JsonValue_Get(candContent, "parts");
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) part0 = Amalgame_Compiler_JsonValue_At(parts, 0);
+    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(part0, "text");
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
     if (String_Length(text) == 0) {
         res->Ok = 0;
-        res->Error = code_string_concat("gemini: empty or unparseable response. Raw:\n", resp->Body);
+        res->Error = code_string_concat("gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n", resp->Body);
         return res;
     }
     res->Ok = 1;

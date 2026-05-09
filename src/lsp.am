@@ -42,63 +42,71 @@ public class LspServer {
 
     // ── Main loop ─────────────────────────────────────
     //
-    // We deliberately *don't* use Amalgame.Json on the LSP request
-    // path: didOpen / didChange bodies routinely contain the entire
-    // editor document inlined as the `text` field, and the pure-
-    // Amalgame parser walks the body byte-by-byte with O(N) string
-    // concatenation. On a 16 KB body that's seconds, not
-    // milliseconds — unacceptable for an editor where typing fires
-    // a didChange every keystroke.
+    // Each LSP message is one JSON document. Parse it once with
+    // Amalgame.Json, then walk into the structured params via
+    // Get(...) chains rather than the old key-substring extractors.
     //
-    // The ad-hoc JsonStr / JsonInt extractors are O(N) substring
-    // matches and finish in microseconds. We pay for the lack of
-    // depth by using deliberately-unique key names — every key the
-    // LSP cares about (method, id, uri, text, line, character)
-    // appears exactly once in the relevant frame, so the
-    // first-occurrence trick is correct in practice.
-    //
-    // Phase 2 keeps the extractors here. Json.EscapeString is fine
-    // (small inputs, single pass) and is used for outgoing
-    // responses. Json.Parse migrates the migrate.am LLM responses
-    // where bodies are similarly sized but only parsed once per
-    // command invocation.
+    // Per-step typed locals because cgen mashes
+    // `obj.Get("x").AsInt()` into `Get_AsInt(obj, "x")` (chained
+    // Method().Method() doesn't lower yet). Verbose but mechanical.
     public int Run() {
         while (true) {
             let body = this.ReadMessage()
             if (String_Length(body) == 0) { return 0 }
-            let method = LspServer.JsonStr(body, "method")
+            let parsed = Json.Parse(body)
+            if (!parsed.Ok) { continue }
+            let root: JsonValue       = parsed.Value
+            let methodNode: JsonValue = root.Get("method")
+            let method: string        = methodNode.AsString()
+            let idNode: JsonValue     = root.Get("id")
+            let id: int               = idNode.AsInt()
+            let params: JsonValue     = root.Get("params")
+            let td: JsonValue         = params.Get("textDocument")
+            let pos: JsonValue        = params.Get("position")
+
             if (method == "initialize") {
-                let id = LspServer.JsonInt(body, "id")
                 this.SendInit(id)
             } else if (method == "shutdown") {
-                let id = LspServer.JsonInt(body, "id")
                 this.SendShutdown(id)
             } else if (method == "exit") {
                 return 0
             } else if (method == "textDocument/didOpen") {
-                let uri = LspServer.JsonStr(body, "uri")
-                let txt = LspServer.JsonStr(body, "text")
+                let uriNode: JsonValue = td.Get("uri")
+                let txtNode: JsonValue = td.Get("text")
+                let uri: string = uriNode.AsString()
+                let txt: string = txtNode.AsString()
                 this.UpsertDoc(uri, txt)
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didChange") {
-                let uri = LspServer.JsonStr(body, "uri")
-                let txt = LspServer.JsonStr(body, "text")
+                // Full sync: client re-sends the whole document text
+                // under contentChanges[0].text.
+                let uriNode: JsonValue     = td.Get("uri")
+                let changes: JsonValue     = params.Get("contentChanges")
+                let firstChange: JsonValue = changes.At(0)
+                let txtNode: JsonValue     = firstChange.Get("text")
+                let uri: string = uriNode.AsString()
+                let txt: string = txtNode.AsString()
                 this.UpsertDoc(uri, txt)
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didClose") {
-                let uri = LspServer.JsonStr(body, "uri")
+                let uriNode: JsonValue = td.Get("uri")
+                let uri: string = uriNode.AsString()
                 this.RemoveDoc(uri)
             } else if (method == "textDocument/hover") {
-                let id   = LspServer.JsonInt(body, "id")
-                let uri  = LspServer.JsonStr(body, "uri")
-                let line = LspServer.JsonInt(body, "line")
-                let chr  = LspServer.JsonInt(body, "character")
+                let uriNode: JsonValue  = td.Get("uri")
+                let lineNode: JsonValue = pos.Get("line")
+                let chrNode: JsonValue  = pos.Get("character")
+                let uri: string = uriNode.AsString()
+                let line: int   = lineNode.AsInt()
+                let chr: int    = chrNode.AsInt()
                 this.HandleHover(id, uri, line, chr)
             } else if (method == "textDocument/completion") {
-                let id   = LspServer.JsonInt(body, "id")
-                let uri  = LspServer.JsonStr(body, "uri")
-                let line = LspServer.JsonInt(body, "line")
-                let chr  = LspServer.JsonInt(body, "character")
+                let uriNode: JsonValue  = td.Get("uri")
+                let lineNode: JsonValue = pos.Get("line")
+                let chrNode: JsonValue  = pos.Get("character")
+                let uri: string = uriNode.AsString()
+                let line: int   = lineNode.AsInt()
+                let chr: int    = chrNode.AsInt()
                 this.HandleCompletion(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
@@ -746,25 +754,6 @@ public class LspServer {
         return false
     }
 
-    // Minimal JSON string escape — covers what error messages
-    // contain in practice (quotes, backslashes, newlines).
-    // CR uses Cr() not "\r" (see Send() comment about lexer bootstrap).
-    public static string EscapeJsonStr(string s) {
-        let n: int = String_Length(s)
-        let cr     = LspServer.Cr()
-        var r = ""
-        for i in 0..n {
-            let ch = String_CharAt1(s, i)
-            if (ch == "\"")      { r = r + "\\\"" }
-            else if (ch == "\\") { r = r + "\\\\" }
-            else if (ch == "\n") { r = r + "\\n" }
-            else if (ch == cr)   { r = r + "\\r" }
-            else if (ch == "\t") { r = r + "\\t" }
-            else                  { r = r + ch }
-        }
-        return r
-    }
-
     // file:///abs/path → /abs/path. Doesn't decode percent-encoding;
     // editors don't send it for plain ASCII paths in practice.
     public static string UriToPath(string uri) {
@@ -841,69 +830,4 @@ public class LspServer {
         return true
     }
 
-    // ── JSON ad-hoc extractors ────────────────────────
-    // Find `"<key>"`, skip to the next `"`, then read until the
-    // closing `"` — handling backslash escapes. Returns "" if
-    // the key isn't found.
-    public static string JsonStr(string body, string key) {
-        let needle = "\"" + key + "\""
-        let kIdx: int = String_IndexOf(body, needle)
-        if (kIdx < 0) { return "" }
-        let bn: int = String_Length(body)
-        let needleLen: int = String_Length(needle)
-        var i: int = kIdx + needleLen
-        // Skip whitespace and `:` to the opening quote.
-        while (i < bn) {
-            let ch = String_CharAt1(body, i)
-            if (ch == "\"") { i = i + 1; break }
-            i = i + 1
-        }
-        var result = ""
-        while (i < bn) {
-            let ch = String_CharAt1(body, i)
-            if (ch == "\"") { break }
-            if (ch == "\\") {
-                if (i + 1 >= bn) { break }
-                let nx = String_CharAt1(body, i + 1)
-                if (nx == "n")       { result = result + "\n" }
-                else if (nx == "r")  { result = result + "\r" }
-                else if (nx == "t")  { result = result + "\t" }
-                else if (nx == "\"") { result = result + "\"" }
-                else if (nx == "\\") { result = result + "\\" }
-                else if (nx == "/")  { result = result + "/" }
-                else                  { result = result + nx }
-                i = i + 2
-            } else {
-                result = result + ch
-                i = i + 1
-            }
-        }
-        return result
-    }
-
-    // Find `"<key>"`, skip to the first digit (or `-`), and parse.
-    public static int JsonInt(string body, string key) {
-        let needle = "\"" + key + "\""
-        let kIdx: int = String_IndexOf(body, needle)
-        if (kIdx < 0) { return 0 }
-        let bn: int   = String_Length(body)
-        let dig       = "0123456789"
-        let needleLen: int = String_Length(needle)
-        var i: int    = kIdx + needleLen
-        while (i < bn) {
-            let ch = String_CharAt1(body, i)
-            if (ch == "-") { break }
-            if (String_IndexOf(dig, ch) >= 0) { break }
-            i = i + 1
-        }
-        var numStr = ""
-        while (i < bn) {
-            let ch = String_CharAt1(body, i)
-            if (ch == "-" || String_IndexOf(dig, ch) >= 0) {
-                numStr = numStr + ch
-                i = i + 1
-            } else { break }
-        }
-        return String_ToInt(numStr)
-    }
 }
