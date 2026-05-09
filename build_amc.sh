@@ -23,6 +23,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/resolver/resolver.am \
              src/typechecker.am \
              src/linter.am \
+             src/stdlib/json.am \
              src/lsp.am \
              src/migrate.am \
              src/generate.am \
