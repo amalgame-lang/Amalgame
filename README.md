@@ -115,7 +115,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.4.2
+./amc --version          # amc 0.4.4
 ./tests/run_all_tests.sh
 ```
 

@@ -3,7 +3,8 @@
 ## Synopsis
 
 ```
-amc [options] file1.am [file2.am ...] -o <output>
+amc [options] file1.am [file2.am ...] -o <output>     # compile
+amc <subcommand> [args...]                            # other commands
 ```
 
 The compiler always emits a `.c` file. To produce a native binary,
@@ -16,6 +17,21 @@ gcc -Iruntime hello.c -lgc -lm -lcurl -o hello           # → hello (binary)
 ```
 
 The runtime headers live in `runtime/` at the project root.
+
+## Subcommands
+
+| Command | Purpose | Reference |
+| ------- | ------- | --------- |
+| `fmt [-w] file.am`     | Idempotent formatter (stdout, or `-w` in-place)        | `amc fmt --help` |
+| `test [<dir>]`         | Discover `*_test.am`, compile + run, aggregate         | `amc test --help` |
+| `lsp`                  | Workspace-aware LSP server over stdio JSON-RPC          | chap. 6 |
+| `new <name> [--template exe\|lib\|test]` | Scaffold a new project       | `amc new --help` |
+| `migrate <file\|dir>`   | LLM-driven source-to-Amalgame translation               | chap. 8 |
+| `generate "<prompt>"`  | LLM-driven prose-to-Amalgame                            | chap. 8 |
+| `explain <file.am>`    | LLM-driven Amalgame-to-prose                            | chap. 8 |
+
+Each subcommand handles its own flags and exit codes; consult the
+referenced chapter or `--help` for the full surface.
 
 ## Options
 
