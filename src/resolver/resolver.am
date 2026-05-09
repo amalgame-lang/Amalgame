@@ -66,6 +66,60 @@ public class MemberTable {
         }
         return false
     }
+
+    // Used by the LSP completion path to enumerate the members of a
+    // given class / enum. Walks the flat key list and strips the
+    // `<className>.` prefix; deduplicates so re-Set'd entries don't
+    // surface twice. The order matches insertion (which mirrors the
+    // declaration order in the source — useful for the LSP client).
+    public int MemberCountFor(string className) {
+        let prefix: string = className + "."
+        let n: int = this.Keys.Count()
+        var seen: int = 0
+        let names = new List<string>()
+        for i in 0..n {
+            let k: string = this.Keys.Get(i)
+            if (String_StartsWith(k, prefix)) {
+                let nameLen: int = String_Length(k) - String_Length(prefix)
+                let name: string = String_Substring(k, String_Length(prefix), nameLen)
+                var dup: bool = false
+                let sn: int = names.Count()
+                for j in 0..sn {
+                    if (names.Get(j) == name) { dup = true }
+                }
+                if (!dup) {
+                    names.Add(name)
+                    seen = seen + 1
+                }
+            }
+        }
+        return seen
+    }
+
+    public string MemberNameForAt(string className, int idx) {
+        let prefix: string = className + "."
+        let n: int = this.Keys.Count()
+        var seen: int = 0
+        let names = new List<string>()
+        for i in 0..n {
+            let k: string = this.Keys.Get(i)
+            if (String_StartsWith(k, prefix)) {
+                let nameLen: int = String_Length(k) - String_Length(prefix)
+                let name: string = String_Substring(k, String_Length(prefix), nameLen)
+                var dup: bool = false
+                let sn: int = names.Count()
+                for j in 0..sn {
+                    if (names.Get(j) == name) { dup = true }
+                }
+                if (!dup) {
+                    if (seen == idx) { return name }
+                    names.Add(name)
+                    seen = seen + 1
+                }
+            }
+        }
+        return ""
+    }
 }
 
 // ── ResolverError ────────────────────────────────────

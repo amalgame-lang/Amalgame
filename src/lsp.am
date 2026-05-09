@@ -74,9 +74,11 @@ public class LspServer {
                 let chr  = LspServer.JsonInt(body, "character")
                 this.HandleHover(id, uri, line, chr)
             } else if (method == "textDocument/completion") {
-                let id  = LspServer.JsonInt(body, "id")
-                let uri = LspServer.JsonStr(body, "uri")
-                this.HandleCompletion(id, uri)
+                let id   = LspServer.JsonInt(body, "id")
+                let uri  = LspServer.JsonStr(body, "uri")
+                let line = LspServer.JsonInt(body, "line")
+                let chr  = LspServer.JsonInt(body, "character")
+                this.HandleCompletion(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -362,8 +364,20 @@ public class LspServer {
     }
 
     // ── Completion ────────────────────────────────────
+    //
+    // Two flavours, picked by the character immediately to the left
+    // of the cursor:
+    //
+    //   `obj.<cursor>` → member completion. Look back for the
+    //   identifier preceding the dot, resolve its type via the
+    //   resolver's local + global tables, and emit the methods/
+    //   fields of that type from MemberTable.
+    //
+    //   anything else → global completion (the original v0.3.5
+    //   behaviour: every name the resolver knows about, useful as
+    //   a generic fallback).
 
-    private void HandleCompletion(int id, string uri) {
+    private void HandleCompletion(int id, string uri, int line, int chr) {
         let source = this.LookupDoc(uri)
         if (String_Length(source) == 0) {
             this.SendEmptyCompletion(id)
@@ -377,11 +391,21 @@ public class LspServer {
         prog.Str2 = path
         let resolver = this.BuildWorkspaceResolver(path, prog)
 
-        // Walk all global names known to the resolver: builtins +
-        // user-declared classes / enums / functions, including those
-        // defined in sibling files (loaded by BuildWorkspaceResolver).
-        // The LSP client filters by prefix on its side, so we don't
-        // need to here.
+        // Inspect the cursor context: if the character right before
+        // the cursor is a dot, attempt member completion. LSP line/
+        // character are 0-based.
+        let receiverType: string = LspServer.ReceiverTypeAt(source, line, chr, resolver)
+        if (String_Length(receiverType) > 0 && receiverType != "?") {
+            this.SendMemberCompletion(id, resolver, receiverType)
+            return
+        }
+
+        // Fallback: list every global the resolver knows. Editor
+        // filters by prefix on its side.
+        this.SendGlobalCompletion(id, resolver)
+    }
+
+    private void SendGlobalCompletion(int id, FullResolver resolver) {
         var items = ""
         var first = true
         let gn: int = resolver.GlobalCount()
@@ -390,7 +414,6 @@ public class LspServer {
             if (String_Length(name) == 0) { continue }
             let typeS = resolver.GlobalTypeAt(gi)
             // CompletionItemKind: 7 = Class, 6 = Variable, 3 = Function.
-            // We guess from the type-marker the resolver stores:
             //   "type" → Class      (e.g. List, Map, Math, user classes)
             //   "void" → Function   (e.g. Console_WriteLine, File_WriteAll)
             //   else   → Variable   (typed values: int, string, etc.)
@@ -403,6 +426,224 @@ public class LspServer {
         }
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
         this.Send(body)
+    }
+
+    private void SendMemberCompletion(int id, FullResolver resolver, string typeName) {
+        // Strip nullable "?" and pointer "*" so the MemberTable lookup
+        // (keyed by bare class names) hits. Same normalisation as the
+        // typechecker's CheckMemberExpr.
+        var bare: string = typeName
+        if (String_EndsWith(bare, "?")) {
+            bare = String_Substring(bare, 0, String_Length(bare) - 1)
+        }
+        if (String_EndsWith(bare, "*")) {
+            bare = String_Substring(bare, 0, String_Length(bare) - 1)
+        }
+        // Extract Members in a local first — a `resolver.Members.X(...)`
+        // chain on the same line gets mashed by the cgen into
+        // `resolver->Members_X(...)` (Field+Method on the same
+        // expression doesn't lower yet). Same workaround pattern as
+        // the migrate / Json test suite.
+        let members: MemberTable = resolver.Members
+        let mc: int = members.MemberCountFor(bare)
+        if (mc == 0) {
+            // No known members → fall back to empty rather than
+            // surprising the user with a global dump for an unknown
+            // type.
+            this.SendEmptyCompletion(id)
+            return
+        }
+        var items = ""
+        var first = true
+        for i in 0..mc {
+            let name: string = members.MemberNameForAt(bare, i)
+            if (String_Length(name) == 0) { continue }
+            let mtype: string = members.Get(bare, name)
+            // Heuristic: a bare type marker like "void" / "int" /
+            // "string" on a member is a method's return type, so use
+            // CompletionItemKind 2 = Method. Anything else is a field.
+            // (We can't tell for sure without re-walking the AST; the
+            // "?" returned for unknown stays Field.)
+            var kind = 5
+            if (mtype == "void" || mtype == "int" || mtype == "string" || mtype == "bool" || mtype == "float") {
+                kind = 2
+            } else if (String_Length(mtype) > 0 && mtype != "?") {
+                kind = 2
+            }
+            if (!first) { items = items + "," }
+            items = items + "{\"label\":\"" + LspServer.EscapeJsonStr(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"detail\":\"" + LspServer.EscapeJsonStr(mtype) + "\"}"
+            first = false
+        }
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
+        this.Send(body)
+    }
+
+    // Walk the source text at (line, chr) (LSP 0-based) and decide
+    // whether the position is a member-completion site. Returns the
+    // type name of the receiver, or "" if the context isn't `ident.`
+    // / the receiver type can't be resolved.
+    public static string ReceiverTypeAt(string source, int line, int chr, FullResolver resolver) {
+        // Locate the start of the target line.
+        let n: int = String_Length(source)
+        var lineStart: int = 0
+        var curLine: int = 0
+        for i in 0..n {
+            if (curLine == line) {
+                lineStart = i
+                break
+            }
+            let c: string = String_CharAt1(source, i)
+            if (c == "\n") { curLine = curLine + 1 }
+        }
+        if (curLine != line) { return "" }
+        // The cursor is at `lineStart + chr`. The character to its
+        // left should be a dot for member completion.
+        let cursorAbs: int = lineStart + chr
+        if (cursorAbs <= 0 || cursorAbs > n) { return "" }
+        // Before-cursor char check.
+        let dotPos: int = cursorAbs - 1
+        if (dotPos < 0) { return "" }
+        let dotCh: string = String_CharAt1(source, dotPos)
+        if (dotCh != ".") { return "" }
+        // Walk back over the receiver identifier.
+        var ident: string = ""
+        var p: int = dotPos - 1
+        while (p >= lineStart) {
+            let c: string = String_CharAt1(source, p)
+            if (LspServer.IsIdentChar(c)) {
+                ident = c + ident
+                p = p - 1
+            } else { break }
+        }
+        if (String_Length(ident) == 0) { return "" }
+        // Resolve the identifier's type:
+        //   1. a global symbol (class / enum name) → the type IS the
+        //      identifier (Class.StaticMember pattern).
+        //   2. a local variable → look up its declared type.
+        //   3. a `this` access — short circuit to the surrounding
+        //      class. We don't track "current class at offset" yet,
+        //      so we punt on this case in v1 and return "".
+        if (ident == "this") { return "" }
+        if (resolver.HasSymbol(ident)) {
+            let t: string = resolver.GetTypeName(ident)
+            // A class name has its own name as the type marker
+            // (DeclareGlobal(name, name, false) for ENUM_DECL and
+            // CLASS_DECL). That's the right thing to return for
+            // member completion.
+            if (String_Length(t) > 0 && t != "?") { return t }
+        }
+        // Local-variable text scan: walk the file looking for the
+        // most recent `let <ident> = new <Type>(...)` or
+        // `let <ident>: <Type> = ...` decl above the cursor. This is
+        // a v1 heuristic — it doesn't follow control flow or shadow
+        // semantics, but it covers the common pattern users hit
+        // (`let g = new Greeter(...); g.<cursor>`).
+        let lt: string = LspServer.ScanLocalDeclType(source, cursorAbs, ident)
+        if (String_Length(lt) > 0) { return lt }
+        return ""
+    }
+
+    // Scan `source` from the start to `before` for the latest
+    // `let <ident>` or `var <ident>` declaration and pull its type
+    // out of the right-hand side. Returns "" if nothing matches.
+    private static string ScanLocalDeclType(string source, int before, string ident) {
+        let n: int = String_Length(source)
+        if (before > n) { before = n }
+        // Two patterns we recognise:
+        //   1. `let <ident>: <Type> = ...`
+        //   2. `let <ident> = new <Type>(...)`
+        // Same for `var`. Walk forwards keeping the most recent hit.
+        var bestType: string = ""
+        let needles = new List<string>()
+        needles.Add("let " + ident)
+        needles.Add("var " + ident)
+        let nn: int = needles.Count()
+        for ni in 0..nn {
+            let needle: string = needles.Get(ni)
+            let nlen: int = String_Length(needle)
+            var pos: int = 0
+            while (pos < before) {
+                let idx: int = String_IndexOf(String_Substring(source, pos, before - pos), needle)
+                if (idx < 0) { break }
+                let absIdx: int = pos + idx
+                // Confirm the match boundary: the char before must be
+                // start-of-line / whitespace and the char after must be
+                // a non-ident char (so `let g` doesn't match `let gen`).
+                let okStart: bool = absIdx == 0 || !LspServer.IsIdentChar(String_CharAt1(source, absIdx - 1))
+                let after: int   = absIdx + nlen
+                let okEnd: bool  = after >= n || !LspServer.IsIdentChar(String_CharAt1(source, after))
+                if (okStart && okEnd) {
+                    let t: string = LspServer.ExtractTypeAfterDecl(source, after, n)
+                    if (String_Length(t) > 0) { bestType = t }
+                }
+                pos = absIdx + nlen
+            }
+        }
+        return bestType
+    }
+
+    // Starting just past `let <ident>`, parse forward to find either
+    // `: <Type>` (annotation) or `= new <Type>(`. Returns the bare
+    // type name or "" if neither shape is found.
+    private static string ExtractTypeAfterDecl(string source, int start, int n) {
+        var i: int = start
+        // Skip whitespace.
+        while (i < n) {
+            let c: string = String_CharAt1(source, i)
+            if (c == " " || c == "\t") { i = i + 1 } else { break }
+        }
+        if (i >= n) { return "" }
+        let head: string = String_CharAt1(source, i)
+        if (head == ":") {
+            i = i + 1
+            // Skip whitespace.
+            while (i < n) {
+                let c: string = String_CharAt1(source, i)
+                if (c == " " || c == "\t") { i = i + 1 } else { break }
+            }
+            // Read identifier (possibly generic — we strip `<...>`).
+            var t: string = ""
+            while (i < n) {
+                let c: string = String_CharAt1(source, i)
+                if (LspServer.IsIdentChar(c)) {
+                    t = t + c
+                    i = i + 1
+                } else { break }
+            }
+            return t
+        }
+        if (head == "=") {
+            i = i + 1
+            // Skip whitespace.
+            while (i < n) {
+                let c: string = String_CharAt1(source, i)
+                if (c == " " || c == "\t") { i = i + 1 } else { break }
+            }
+            // Look for `new <Type>(`.
+            let newKw: string = "new "
+            if (i + 4 <= n) {
+                let head4: string = String_Substring(source, i, 4)
+                if (head4 == newKw) {
+                    i = i + 4
+                    var t: string = ""
+                    while (i < n) {
+                        let c: string = String_CharAt1(source, i)
+                        if (LspServer.IsIdentChar(c)) {
+                            t = t + c
+                            i = i + 1
+                        } else { break }
+                    }
+                    return t
+                }
+            }
+        }
+        return ""
+    }
+
+    private static bool IsIdentChar(string c) {
+        if (String_Length(c) == 0) { return false }
+        let alnum: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+        return String_IndexOf(alnum, c) >= 0
     }
 
     private void SendEmptyCompletion(int id) {
