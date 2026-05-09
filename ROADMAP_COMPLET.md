@@ -254,6 +254,77 @@ fix.
       `for i in 0..N`. Investigate whether it's a real GC bug or
       just a CGen mis-detection.
 
+### Compiler — internal refactoring & optimization
+
+These are quality-of-life improvements *to the compiler source
+itself*, not to the code it emits. The compiler grew quickly
+during v0.3 → v0.4 and now has technical debt worth paying down
+before the next big language addition.
+
+- [ ] **`if`/`else if` chains → `match` expressions** — the
+      compiler dispatches on `NodeKind` / token values via long
+      chains of `if (k == NodeKind.X) { ... } else if (k == NodeKind.Y)`
+      almost everywhere (`EmitStmt`, `EmitExprStr`, `ResolveExpr`,
+      `ResolveStmt`, `ParseDecl`, `ParseStmt`, `InferTypeFromExpr`).
+      Match expressions would be ~30% shorter, easier to read, and
+      catch missing cases at typecheck time. Blocked on:
+        - Algebraic-enum patterns in expression position (currently
+          partial — see `### Compiler — open bugs` above).
+        - Match-arm guards on enum patterns (also partial).
+      So the language work is partly already on the roadmap;
+      this refactor is the prize once it lands.
+- [ ] **Extract repeated CGen helpers** — `EmitInterpolatedString`,
+      `EmitMatchExpr`, `EmitOneLambdaBody`, `EmitClosureArg`, and
+      `TryEmitListCall` all duplicate variants of the
+      `(void*)(intptr_t)X` boxing dance and the symmetric unbox.
+      Extract a typed `BoxScalar(expr, ctype)` / `UnboxScalar(expr,
+      ctype)` pair so the call-sites read as intent rather than
+      ceremony.
+- [ ] **Reduce `void*` erasure across method-call boundaries** —
+      every other contributor PR hits this and works around it with
+      `let x: T = chain.Get(i)` or by extracting a typed helper.
+      Either fix the inference (CGen knows the return type, just
+      forgets to propagate it across the boundary) or codify the
+      workaround patterns in `docs/guide/07-internals.md` so it's
+      not a paper cut every time.
+- [ ] **Snapshot size** — `snapshot/amc_lib.c` is ~12 500 lines,
+      tracked in git for the bootstrap chain. Each compiler PR
+      regenerates it and the diff dominates the review noise. Two
+      mitigations:
+      (a) shrink the C output (the per-method `__attribute__((unused))`
+          dance + redundant `(void)` casts add ~20%);
+      (b) `.gitattributes` `merge=ours` on `snapshot/amc_lib.c` so
+          merge conflicts auto-resolve (we always rebuild the
+          snapshot post-merge anyway — see PR #146 / #149 / #155
+          conflict resolutions).
+- [ ] **Profile compile time** — `./build_amc.sh` is ~5 s end-to-end,
+      and the largest cost is gen_test re-parsing every source on
+      every invocation. A serializable AST cache (file mtime →
+      pickled AST under `.amc-cache/`) could probably halve that.
+      Modest win but unblocks faster CI loops.
+- [ ] **Linter coverage** — `amc --lint` flags unreachable code,
+      unused locals, shadowed names. Easy adds the framework already
+      supports: catch-binder unused, suspicious match (missing default
+      arm + non-exhaustive enum), implicit fallthrough, dead `import`,
+      `let` declared but never assigned past initialization.
+- [ ] **Reduce duplication in arg parsing across subcommands** —
+      `migrate.am`, `generate.am`, `explain.am`, and
+      `main.am::RunFmt`/`RunTest` each reimplement an args loop.
+      A shared `ArgParser` class with a fluent registration API
+      would cut ~150 lines and centralize the `--help` rendering.
+- [ ] **Promote ad-hoc JSON to a real `Amalgame.Json` module** —
+      `lsp.am::JsonStr/JsonInt`, `migrate.am::JsonExtract/JsonEscape`,
+      and the request bodies built by hand all reinvent string-
+      level JSON. A real parser (recursive descent over a `JsonValue`
+      tagged union) would replace these and unblock `amc migrate`'s
+      v3 cost reporting (which needs to read `usage.input_tokens` /
+      `usage.output_tokens` from API responses cleanly).
+- [ ] **Tighten the parser's error-recovery path** — `ParseParam`
+      and a few siblings now have safety-belt advances (PR #152) to
+      break infinite loops on malformed input. Audit the rest of
+      the parser for similar latent loops; the pattern is "any
+      while-loop that calls a sub-parser without forcing progress".
+
 ---
 
 ## 🟢 Ecosystem — outillage et docs
