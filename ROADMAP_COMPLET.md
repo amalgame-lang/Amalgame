@@ -338,11 +338,32 @@ before the next big language addition.
       then walks members via `CollectEnumMembers` to register
       qualified names (`TokenType_KW_LET`) too. Cross-file enum
       references resolve through the workspace scan (PR #146).
-      Note: a separate typechecker bug — "Return type mismatch:
-      expected 'TokenType', got 'void'" on enum-member returns
-      from one file when the enum lives in another (37 cases on
-      `lexer.am`) — is tracked as an open compiler internal item
-      below; it does not reproduce on minimal cross-file repros.
+      Note: a separate typechecker bug — spurious "Return type
+      mismatch: expected 'TokenType', got '?'" on enum-member
+      returns inside `if (word == "lit") { return TokenType.X }`
+      bodies (37 cases on `lexer.am` via the LSP) — is tracked
+      as an open compiler internal item below.
+
+- [ ] **Typechecker: spurious return-type mismatch in IF-body
+      RETURN of enum members.** Investigation (2026-05-09): the
+      reported `got` type is variable across the 37 `lexer.am`
+      sites — sometimes `void`, sometimes `string`, sometimes
+      `int`. For
+      `if (word == "if") { return TokenType.KW_IF }` the LSP
+      reports `got 'string'`, which matches the type of the
+      `"if"` LITERAL_STRING in the surrounding condition. That
+      strongly suggests `CheckReturn` is reading the wrong
+      `stmt.Left` when the RETURN is nested inside an IF body —
+      either a parse-tree shape mismatch on single-stmt
+      `{ return ... }` blocks, or a NodeKey collision in the
+      `ExprType` map (the SetType/GetType pair desyncs Keys vs
+      Vals on update — see typechecker.am:162). Doesn't
+      reproduce on minimal cross-file repros (a 2-file
+      `enum_def.am` + `enum_use.am` passes both `--check` and
+      the LSP probe with 0 diagnostics). Next step: instrument
+      `CheckReturn` to log `(stmt.Line, stmt.Left.Kind,
+      stmt.Left.Name, GetType result)` for each return on
+      `lexer.am`, compare to expected.
 
 ---
 
