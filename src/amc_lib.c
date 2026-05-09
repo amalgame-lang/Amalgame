@@ -8028,6 +8028,8 @@ struct _Amalgame_Compiler_MemberTable {
 void Amalgame_Compiler_MemberTable_Set(Amalgame_Compiler_MemberTable* self, code_string className, code_string memberName, code_string typeName);
 code_string Amalgame_Compiler_MemberTable_Get(Amalgame_Compiler_MemberTable* self, code_string className, code_string memberName);
 code_bool Amalgame_Compiler_MemberTable_Has(Amalgame_Compiler_MemberTable* self, code_string className, code_string memberName);
+i64 Amalgame_Compiler_MemberTable_MemberCountFor(Amalgame_Compiler_MemberTable* self, code_string className);
+code_string Amalgame_Compiler_MemberTable_MemberNameForAt(Amalgame_Compiler_MemberTable* self, code_string className, i64 idx);
 
 Amalgame_Compiler_MemberTable* Amalgame_Compiler_MemberTable_new() {
     Amalgame_Compiler_MemberTable* self = (Amalgame_Compiler_MemberTable*) GC_MALLOC(sizeof(Amalgame_Compiler_MemberTable));
@@ -8080,6 +8082,66 @@ code_bool Amalgame_Compiler_MemberTable_Has(Amalgame_Compiler_MemberTable* self,
         }
     }
     return 0;
+}
+
+i64 Amalgame_Compiler_MemberTable_MemberCountFor(Amalgame_Compiler_MemberTable* self, code_string className) {
+    (void)self;
+    (void)className;
+    code_string __attribute__((unused)) prefix = code_string_concat(className, ".");
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Keys);
+    i64 __attribute__((unused)) seen = 0;
+    AmalgameList* __attribute__((unused)) names = AmalgameList_new();
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) k = (code_string)AmalgameList_get(self->Keys, i);
+        if (String_StartsWith(k, prefix)) {
+            i64 __attribute__((unused)) nameLen = String_Length(k) - String_Length(prefix);
+            code_string __attribute__((unused)) name = String_Substring(k, String_Length(prefix), nameLen);
+            code_bool __attribute__((unused)) dup = 0;
+            i64 __attribute__((unused)) sn = AmalgameList_count(names);
+            for (i64 j = 0; j < sn; j++) {
+                if ((code_string)AmalgameList_get(names, j) == name) {
+                    dup = 1;
+                }
+            }
+            if (!dup) {
+                AmalgameList_add(names, (void*)(intptr_t)(name));
+                seen = seen + 1;
+            }
+        }
+    }
+    return seen;
+}
+
+code_string Amalgame_Compiler_MemberTable_MemberNameForAt(Amalgame_Compiler_MemberTable* self, code_string className, i64 idx) {
+    (void)self;
+    (void)className;
+    (void)idx;
+    code_string __attribute__((unused)) prefix = code_string_concat(className, ".");
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Keys);
+    i64 __attribute__((unused)) seen = 0;
+    AmalgameList* __attribute__((unused)) names = AmalgameList_new();
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) k = (code_string)AmalgameList_get(self->Keys, i);
+        if (String_StartsWith(k, prefix)) {
+            i64 __attribute__((unused)) nameLen = String_Length(k) - String_Length(prefix);
+            code_string __attribute__((unused)) name = String_Substring(k, String_Length(prefix), nameLen);
+            code_bool __attribute__((unused)) dup = 0;
+            i64 __attribute__((unused)) sn = AmalgameList_count(names);
+            for (i64 j = 0; j < sn; j++) {
+                if ((code_string)AmalgameList_get(names, j) == name) {
+                    dup = 1;
+                }
+            }
+            if (!dup) {
+                if (seen == idx) {
+                    return name;
+                }
+                AmalgameList_add(names, (void*)(intptr_t)(name));
+                seen = seen + 1;
+            }
+        }
+    }
+    return "";
 }
 
 struct _Amalgame_Compiler_ResolverError {
@@ -11072,7 +11134,13 @@ code_string Amalgame_Compiler_LspServer_Dirname(code_string path);
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
 static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
 static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServer* self, i64 id);
-static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspServer* self, i64 id, code_string uri);
+static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 chr);
+static void Amalgame_Compiler_LspServer_SendGlobalCompletion(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_FullResolver* resolver);
+static void Amalgame_Compiler_LspServer_SendMemberCompletion(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_FullResolver* resolver, code_string typeName);
+code_string Amalgame_Compiler_LspServer_ReceiverTypeAt(code_string source, i64 line, i64 chr, Amalgame_Compiler_FullResolver* resolver);
+static code_string Amalgame_Compiler_LspServer_ScanLocalDeclType(code_string source, i64 before, code_string ident);
+static code_string Amalgame_Compiler_LspServer_ExtractTypeAfterDecl(code_string source, i64 start, i64 n);
+static code_bool Amalgame_Compiler_LspServer_IsIdentChar(code_string c);
 static void Amalgame_Compiler_LspServer_SendEmptyCompletion(Amalgame_Compiler_LspServer* self, i64 id);
 code_string Amalgame_Compiler_LspServer_DiagnosticFromResolver(code_string source, Amalgame_Compiler_ResolverError* e);
 code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(code_string source, Amalgame_Compiler_TypeError* e);
@@ -11132,7 +11200,9 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
         } else if (code_string_equals(method, "textDocument/completion")) {
             i64 __attribute__((unused)) id = Amalgame_Compiler_LspServer_JsonInt(body, "id");
             code_string __attribute__((unused)) uri = Amalgame_Compiler_LspServer_JsonStr(body, "uri");
-            Amalgame_Compiler_LspServer_HandleCompletion(self, id, uri);
+            i64 __attribute__((unused)) line = Amalgame_Compiler_LspServer_JsonInt(body, "line");
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_LspServer_JsonInt(body, "character");
+            Amalgame_Compiler_LspServer_HandleCompletion(self, id, uri, line, chr);
         }
     }
     return 0;
@@ -11416,10 +11486,12 @@ static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServ
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
-static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspServer* self, i64 id, code_string uri) {
+static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 chr) {
     (void)self;
     (void)id;
     (void)uri;
+    (void)line;
+    (void)chr;
     code_string __attribute__((unused)) source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
     if (String_Length(source) == 0) {
         Amalgame_Compiler_LspServer_SendEmptyCompletion(self, id);
@@ -11432,6 +11504,18 @@ static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspSe
     Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
     prog->Str2 = path;
     Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    code_string __attribute__((unused)) receiverType = Amalgame_Compiler_LspServer_ReceiverTypeAt(source, line, chr, resolver);
+    if (String_Length(receiverType) > 0 && !code_string_equals(receiverType, "?")) {
+        Amalgame_Compiler_LspServer_SendMemberCompletion(self, id, resolver, receiverType);
+        return;
+    }
+    Amalgame_Compiler_LspServer_SendGlobalCompletion(self, id, resolver);
+}
+
+static void Amalgame_Compiler_LspServer_SendGlobalCompletion(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_FullResolver* resolver) {
+    (void)self;
+    (void)id;
+    (void)resolver;
     code_string __attribute__((unused)) items = "";
     code_bool __attribute__((unused)) first = 1;
     i64 __attribute__((unused)) gn = Amalgame_Compiler_FullResolver_GlobalCount(resolver);
@@ -11455,6 +11539,229 @@ static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspSe
     }
     code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"isIncomplete\":false,\"items\":["), items), "]}}");
     Amalgame_Compiler_LspServer_Send(self, body);
+}
+
+static void Amalgame_Compiler_LspServer_SendMemberCompletion(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_FullResolver* resolver, code_string typeName) {
+    (void)self;
+    (void)id;
+    (void)resolver;
+    (void)typeName;
+    code_string __attribute__((unused)) bare = typeName;
+    if (String_EndsWith(bare, "?")) {
+        bare = String_Substring(bare, 0, String_Length(bare) - 1);
+    }
+    if (String_EndsWith(bare, "*")) {
+        bare = String_Substring(bare, 0, String_Length(bare) - 1);
+    }
+    Amalgame_Compiler_MemberTable* __attribute__((unused)) members = resolver->Members;
+    i64 __attribute__((unused)) mc = Amalgame_Compiler_MemberTable_MemberCountFor(members, bare);
+    if (mc == 0) {
+        Amalgame_Compiler_LspServer_SendEmptyCompletion(self, id);
+        return;
+    }
+    code_string __attribute__((unused)) items = "";
+    code_bool __attribute__((unused)) first = 1;
+    for (i64 i = 0; i < mc; i++) {
+        code_string __attribute__((unused)) name = Amalgame_Compiler_MemberTable_MemberNameForAt(members, bare, i);
+        if (String_Length(name) == 0) {
+            continue;
+        }
+        code_string __attribute__((unused)) mtype = Amalgame_Compiler_MemberTable_Get(members, bare, name);
+        i64 __attribute__((unused)) kind = 5;
+        if (code_string_equals(mtype, "void") || code_string_equals(mtype, "int") || code_string_equals(mtype, "string") || code_string_equals(mtype, "bool") || code_string_equals(mtype, "float")) {
+            kind = 2;
+        } else if (String_Length(mtype) > 0 && !code_string_equals(mtype, "?")) {
+            kind = 2;
+        }
+        if (!first) {
+            items = code_string_concat(items, ",");
+        }
+        items = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(items, "{\"label\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"detail\":\""), Amalgame_Compiler_LspServer_EscapeJsonStr(mtype)), "\"}");
+        first = 0;
+    }
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"isIncomplete\":false,\"items\":["), items), "]}}");
+    Amalgame_Compiler_LspServer_Send(self, body);
+}
+
+code_string Amalgame_Compiler_LspServer_ReceiverTypeAt(code_string source, i64 line, i64 chr, Amalgame_Compiler_FullResolver* resolver) {
+    (void)source;
+    (void)line;
+    (void)chr;
+    (void)resolver;
+    i64 __attribute__((unused)) n = String_Length(source);
+    i64 __attribute__((unused)) lineStart = 0;
+    i64 __attribute__((unused)) curLine = 0;
+    for (i64 i = 0; i < n; i++) {
+        if (curLine == line) {
+            lineStart = i;
+            break;
+        }
+        code_string __attribute__((unused)) c = String_CharAt1(source, i);
+        if (code_string_equals(c, "\n")) {
+            curLine = curLine + 1;
+        }
+    }
+    if (curLine != line) {
+        return "";
+    }
+    i64 __attribute__((unused)) cursorAbs = lineStart + chr;
+    if (cursorAbs <= 0 || cursorAbs > n) {
+        return "";
+    }
+    i64 __attribute__((unused)) dotPos = cursorAbs - 1;
+    if (dotPos < 0) {
+        return "";
+    }
+    code_string __attribute__((unused)) dotCh = String_CharAt1(source, dotPos);
+    if (!code_string_equals(dotCh, ".")) {
+        return "";
+    }
+    code_string __attribute__((unused)) ident = "";
+    i64 __attribute__((unused)) p = dotPos - 1;
+    while (p >= lineStart) {
+        code_string __attribute__((unused)) c = String_CharAt1(source, p);
+        if (Amalgame_Compiler_LspServer_IsIdentChar(c)) {
+            ident = code_string_concat(c, ident);
+            p = p - 1;
+        } else {
+            break;
+        }
+    }
+    if (String_Length(ident) == 0) {
+        return "";
+    }
+    if (code_string_equals(ident, "this")) {
+        return "";
+    }
+    if (Amalgame_Compiler_FullResolver_HasSymbol(resolver, ident)) {
+        code_string __attribute__((unused)) t = Amalgame_Compiler_FullResolver_GetTypeName(resolver, ident);
+        if (String_Length(t) > 0 && !code_string_equals(t, "?")) {
+            return t;
+        }
+    }
+    code_string __attribute__((unused)) lt = Amalgame_Compiler_LspServer_ScanLocalDeclType(source, cursorAbs, ident);
+    if (String_Length(lt) > 0) {
+        return lt;
+    }
+    return "";
+}
+
+static code_string Amalgame_Compiler_LspServer_ScanLocalDeclType(code_string source, i64 before, code_string ident) {
+    (void)source;
+    (void)before;
+    (void)ident;
+    i64 __attribute__((unused)) n = String_Length(source);
+    if (before > n) {
+        before = n;
+    }
+    code_string __attribute__((unused)) bestType = "";
+    AmalgameList* __attribute__((unused)) needles = AmalgameList_new();
+    AmalgameList_add(needles, (void*)(intptr_t)(code_string_concat("let ", ident)));
+    AmalgameList_add(needles, (void*)(intptr_t)(code_string_concat("var ", ident)));
+    i64 __attribute__((unused)) nn = AmalgameList_count(needles);
+    for (i64 ni = 0; ni < nn; ni++) {
+        code_string __attribute__((unused)) needle = (code_string)AmalgameList_get(needles, ni);
+        i64 __attribute__((unused)) nlen = String_Length(needle);
+        i64 __attribute__((unused)) pos = 0;
+        while (pos < before) {
+            i64 __attribute__((unused)) idx = String_IndexOf(String_Substring(source, pos, before - pos), needle);
+            if (idx < 0) {
+                break;
+            }
+            i64 __attribute__((unused)) absIdx = pos + idx;
+            code_bool __attribute__((unused)) okStart = absIdx == 0 || !Amalgame_Compiler_LspServer_IsIdentChar(String_CharAt1(source, absIdx - 1));
+            i64 __attribute__((unused)) after = absIdx + nlen;
+            code_bool __attribute__((unused)) okEnd = after >= n || !Amalgame_Compiler_LspServer_IsIdentChar(String_CharAt1(source, after));
+            if (okStart && okEnd) {
+                code_string __attribute__((unused)) t = Amalgame_Compiler_LspServer_ExtractTypeAfterDecl(source, after, n);
+                if (String_Length(t) > 0) {
+                    bestType = t;
+                }
+            }
+            pos = absIdx + nlen;
+        }
+    }
+    return bestType;
+}
+
+static code_string Amalgame_Compiler_LspServer_ExtractTypeAfterDecl(code_string source, i64 start, i64 n) {
+    (void)source;
+    (void)start;
+    (void)n;
+    i64 __attribute__((unused)) i = start;
+    while (i < n) {
+        code_string __attribute__((unused)) c = String_CharAt1(source, i);
+        if (code_string_equals(c, " ") || code_string_equals(c, "\t")) {
+            i = i + 1;
+        } else {
+            break;
+        }
+    }
+    if (i >= n) {
+        return "";
+    }
+    code_string __attribute__((unused)) head = String_CharAt1(source, i);
+    if (code_string_equals(head, ":")) {
+        i = i + 1;
+        while (i < n) {
+            code_string __attribute__((unused)) c = String_CharAt1(source, i);
+            if (code_string_equals(c, " ") || code_string_equals(c, "\t")) {
+                i = i + 1;
+            } else {
+                break;
+            }
+        }
+        code_string __attribute__((unused)) t = "";
+        while (i < n) {
+            code_string __attribute__((unused)) c = String_CharAt1(source, i);
+            if (Amalgame_Compiler_LspServer_IsIdentChar(c)) {
+                t = code_string_concat(t, c);
+                i = i + 1;
+            } else {
+                break;
+            }
+        }
+        return t;
+    }
+    if (code_string_equals(head, "=")) {
+        i = i + 1;
+        while (i < n) {
+            code_string __attribute__((unused)) c = String_CharAt1(source, i);
+            if (code_string_equals(c, " ") || code_string_equals(c, "\t")) {
+                i = i + 1;
+            } else {
+                break;
+            }
+        }
+        code_string __attribute__((unused)) newKw = "new ";
+        if (i + 4 <= n) {
+            code_string __attribute__((unused)) head4 = String_Substring(source, i, 4);
+            if (code_string_equals(head4, newKw)) {
+                i = i + 4;
+                code_string __attribute__((unused)) t = "";
+                while (i < n) {
+                    code_string __attribute__((unused)) c = String_CharAt1(source, i);
+                    if (Amalgame_Compiler_LspServer_IsIdentChar(c)) {
+                        t = code_string_concat(t, c);
+                        i = i + 1;
+                    } else {
+                        break;
+                    }
+                }
+                return t;
+            }
+        }
+    }
+    return "";
+}
+
+static code_bool Amalgame_Compiler_LspServer_IsIdentChar(code_string c) {
+    (void)c;
+    if (String_Length(c) == 0) {
+        return 0;
+    }
+    code_string __attribute__((unused)) alnum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+    return String_IndexOf(alnum, c) >= 0;
 }
 
 static void Amalgame_Compiler_LspServer_SendEmptyCompletion(Amalgame_Compiler_LspServer* self, i64 id) {
