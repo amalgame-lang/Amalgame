@@ -102,6 +102,16 @@ public class Program {
         let jsonProg = jsonPar.Parse()
         Console.WriteError("parsed: stdlib/json.am")
 
+        // Random stdlib — pure-Amalgame facade over the PCG +
+        // OS-entropy helpers in runtime/Amalgame_Random.h.
+        let rndPath  = "./src/stdlib/random.am"
+        let rndSrc   = File.ReadAll(rndPath)
+        let rndLex   = new Lexer(rndSrc, rndPath)
+        let rndToks  = rndLex.Tokenize()
+        let rndPar   = new Parser(rndToks)
+        let rndProg  = rndPar.Parse()
+        Console.WriteError("parsed: stdlib/random.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -173,6 +183,7 @@ public class Program {
         gen6.AddFilePass1(tckProg)
         gen6.AddFilePass1(lintProg)
         gen6.AddFilePass1(jsonProg)
+        gen6.AddFilePass1(rndProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -193,6 +204,7 @@ public class Program {
         gen6.AddFilePass2(tckProg)
         gen6.AddFilePass2(lintProg)
         gen6.AddFilePass2(jsonProg)
+        gen6.AddFilePass2(rndProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)

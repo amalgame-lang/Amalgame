@@ -1101,6 +1101,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Random.h\"")
         this.Out.EmitBlank()
     }
 

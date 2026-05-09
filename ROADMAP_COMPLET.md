@@ -307,6 +307,29 @@ before the next big language addition.
       (`let mid: T = obj.Field; mid.Method()`). Already applied
       in `src/lsp.am`, `src/migrate.am`, and the JSON test
       sample; comments inline cite this item.
+- [ ] **Parser: `expr >> N` inside a `let` drops the shift.**
+      Surfaced while writing `Amalgame.Random` (2026-05-09). Repro:
+      `let x: int = r >> 8` lowers to `i64 x = r;` — the shift
+      operator is silently dropped. The mask form of the same
+      expression (`expr & N`) lowers correctly. Likely a precedence
+      or look-ahead bug where `>>` collides with the closing
+      `>` of a generic parameter (`List<List<int>>` style).
+      Workarounds: replace with division by a power of two
+      (`let x: int = r / 256`) — used by `Random.Bytes` and
+      `Random.Float`. Found cases dropping `& 255` *outside* a
+      surrounding `(expr >> N) & 255`, lowering it as a stray
+      statement-level `_unknown_ & 255;`. Same call extracted to
+      named locals fixes both. Next step: build a minimal repro
+      file and grep the parser/cgen for the lowering of
+      `BinaryExpr(>>, …)` inside `LetStmt` initializers.
+- [ ] **Parser: top-level free functions in a stdlib namespace
+      don't emit a definition.** `public List<int> SystemBytes(n)`
+      at file scope (no enclosing class) parses without error but
+      cgen emits a bare `SystemBytes(...)` call site without ever
+      defining the function. Workaround: hang the function on a
+      class as a `public static` method (matches the existing
+      facade pattern in `Amalgame.Json`). Worth supporting because
+      free helpers are a natural fit for utility modules.
 - [ ] **Snapshot size** — `snapshot/amc_lib.c` is ~12 500 lines,
       tracked in git for the bootstrap chain. Each compiler PR
       regenerates it and the diff dominates the review noise. Two
@@ -515,6 +538,15 @@ before the next big language addition.
 - [ ] Windows packaged installer (.msi or .exe with bundled MinGW
       gcc + libgc + libcurl, so end users don't need MSYS2). Sketched
       in conversation; no script yet.
+- [ ] **URL sweep** — 25 occurrences of the old
+      `BastienMOUGET/Amalgame` URL still live in the tree post-org-
+      transfer (PR #187). Touches `runtime/Amalgame_*.h` headers,
+      `install/homebrew/amalgame.rb`, `install/windows/install.ps1`
+      + `amalgame.iss`, `editors/vscode/package.json`,
+      `archive/vala-bootstrap/**`. CHANGELOG mention of the transfer
+      itself stays as historical record. One trivial sed pass +
+      smoke-test the homebrew formula locally — defer until after
+      the next stdlib batch lands.
 
 ### Documentation
 - [x] User guide (`docs/guide/`)
