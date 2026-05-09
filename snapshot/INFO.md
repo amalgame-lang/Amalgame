@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-09T16:38:04+02:00
-Git rev:  e1274a3919af39c0ddc8086939500139262fc338
-Branch:   chore/transfer-to-amalgame-lang
+Captured: 2026-05-09T16:43:37+02:00
+Git rev:  56c7fc9480632ac5ff2296fceece8481a0d797c8
+Branch:   release/v0.4.2
 Tests:    291 passed
 
 This snapshot is the canonical recovery binary when ./amc is broken
