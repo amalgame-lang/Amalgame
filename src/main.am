@@ -191,6 +191,8 @@ public class Program {
         Console.WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.")
         Console.WriteError("  lsp           Run a minimal LSP server (stdio JSON-RPC).")
         Console.WriteError("                v1 publishes diagnostics on didOpen/didChange.")
+        Console.WriteError("  migrate <f>   Migrate a source file to Amalgame via LLM (v0:")
+        Console.WriteError("                claude CLI required). See `amc migrate --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
@@ -374,6 +376,10 @@ public class Program {
         if (Args_Get(1) == "lsp") {
             let server = new LspServer()
             Exit_Set(server.Run())
+            return
+        }
+        if (Args_Get(1) == "migrate") {
+            Exit_Set(MigrateCommand.Run(argc))
             return
         }
 
