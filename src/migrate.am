@@ -238,14 +238,18 @@ public class MigrateCommand {
             return 1
         }
 
-        // --dry-run: report what would happen.
+        // --dry-run: report what would happen + estimated cost.
         if (dryRun) {
+            let sysP: string = MigrateCommand.BuildSystemPrompt(lang)
+            let usrP: string = MigrateCommand.BuildUserPrompt(lang, source)
+            let est:  string = MigrateCommand.EstimateCost(provider, model, sysP, usrP)
             Console.WriteLine("[migrate] would migrate: " + input + " (" + lang + ", " + String_FromInt(lineCount) + " lines)")
             Console.WriteLine("[migrate] would write:   " + outPath)
             Console.WriteLine("[migrate] provider:      " + provider)
             if (String_Length(model) > 0) {
                 Console.WriteLine("[migrate] model:         " + model)
             }
+            Console.WriteLine("[migrate] estimated cost: " + est)
             return 0
         }
 
@@ -610,6 +614,96 @@ public class MigrateCommand {
         if (Env.Has("OPENAI_API_KEY"))    { return "chatgpt" }
         if (Env.Has("GEMINI_API_KEY"))    { return "gemini" }
         return "claude"
+    }
+
+    // ── Cost estimation (v2) ──────────────────────────
+    //
+    // Heuristic token count: ~4 chars per token for English / code
+    // (close enough for a budgeting line in --dry-run; Anthropic /
+    // OpenAI tokenizers differ but rarely by more than 20%). We
+    // assume ~1000 output tokens for a typical migration response.
+    //
+    // Prices in USD per million tokens (input / output) as of 2026:
+    //   claude-sonnet-4-6   $3    / $15
+    //   claude-opus-4-7     $15   / $75
+    //   claude-haiku-4-5    $1    / $5
+    //   gpt-4o-mini         $0.15 / $0.60
+    //   gpt-4o              $2.50 / $10
+    //   gpt-4-turbo         $10   / $30
+    //   gemini-1.5-flash    $0.075/ $0.30
+    //   gemini-1.5-pro      $1.25 / $5
+    // Local CLI / custom providers report $0 (subscription-based or
+    // user-managed).
+    public static string EstimateCost(string provider, string model, string systemPrompt, string userPrompt) {
+        // CLI shell-out and custom scripts don't bill per-call here.
+        if (provider == "claude")  { return "free (subscription via Claude Code CLI)" }
+        if (provider == "custom")  { return "free (user-managed local backend)" }
+
+        // Pin every int local explicitly — bootstrap type inference
+        // mis-types `String_Length(a) + String_Length(b)` as a string
+        // concat in some chains, segfaulting when arithmetic continues.
+        let sysLen: int = String_Length(systemPrompt)
+        let usrLen: int = String_Length(userPrompt)
+        let totalChars: int = sysLen + usrLen
+        let inputToks:  int = totalChars / 4
+        let outputToks: int = 1000
+
+        // Prices in micro-USD per million tokens. Integer arithmetic
+        // throughout — Amalgame's float lowering still has rough edges.
+        var inUsdPerM:  int = 0
+        var outUsdPerM: int = 0
+        var resolvedModel: string = model
+        if (provider == "claude-api") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "claude-sonnet-4-6" }
+            if (resolvedModel == "claude-opus-4-7") {
+                inUsdPerM  = 15000000
+                outUsdPerM = 75000000
+            } else if (resolvedModel == "claude-haiku-4-5") {
+                inUsdPerM  = 1000000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 3000000
+                outUsdPerM = 15000000
+            }
+        } else if (provider == "chatgpt") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gpt-4o-mini" }
+            if (resolvedModel == "gpt-4o") {
+                inUsdPerM  = 2500000
+                outUsdPerM = 10000000
+            } else if (resolvedModel == "gpt-4-turbo") {
+                inUsdPerM  = 10000000
+                outUsdPerM = 30000000
+            } else {
+                inUsdPerM  = 150000
+                outUsdPerM = 600000
+            }
+        } else if (provider == "gemini") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gemini-1.5-flash" }
+            if (resolvedModel == "gemini-1.5-pro") {
+                inUsdPerM  = 1250000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 75000
+                outUsdPerM = 300000
+            }
+        }
+
+        // Cost = tokens × $/M ÷ 1_000_000. Stay integer (micro-USD).
+        let inProd:  int = inputToks * inUsdPerM
+        let inMicro: int = inProd / 1000000
+        let outProd:  int = outputToks * outUsdPerM
+        let outMicro: int = outProd / 1000000
+        let totalMicro: int = inMicro + outMicro
+        // micro-USD / 10000 = hundredths of a cent; round to cents.
+        let totalCents: int = totalMicro / 10000
+        let dollars: int = totalCents / 100
+        let cents:   int = totalCents % 100
+        var centStr: string = String_FromInt(cents)
+        if (cents < 10) { centStr = "0" + centStr }
+        let inS:  string = String_FromInt(inputToks)
+        let outS: string = String_FromInt(outputToks)
+        let dolS: string = String_FromInt(dollars)
+        return "~" + inS + " in + ~" + outS + " out -> ~$" + dolS + "." + centStr + " (" + resolvedModel + ")"
     }
 
     // Anthropic HTTP provider. Reads the API key from

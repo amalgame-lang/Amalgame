@@ -134,6 +134,7 @@ public class GenerateCommand {
         }
 
         if (dryRun) {
+            let est: string = MigrateCommand.EstimateCost(provider, model, systemPrompt, userPrompt)
             Console.WriteLine("[generate] would generate from prompt (" + String_FromInt(String_Length(prompt)) + " chars)")
             if (String_Length(output) > 0) {
                 Console.WriteLine("[generate] would write:   " + output)
@@ -144,6 +145,7 @@ public class GenerateCommand {
             if (String_Length(model) > 0) {
                 Console.WriteLine("[generate] model:         " + model)
             }
+            Console.WriteLine("[generate] estimated cost: " + est)
             return 0
         }
 

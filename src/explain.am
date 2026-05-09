@@ -130,6 +130,7 @@ public class ExplainCommand {
             return 0
         }
         if (dryRun) {
+            let est: string = MigrateCommand.EstimateCost(provider, model, systemPrompt, userPrompt)
             Console.WriteLine("[explain] would explain: " + input + " (" + String_FromInt(String_Length(source)) + " chars)")
             if (String_Length(output) > 0) {
                 Console.WriteLine("[explain] would write:   " + output)
@@ -138,6 +139,7 @@ public class ExplainCommand {
             }
             Console.WriteLine("[explain] provider:      " + provider)
             Console.WriteLine("[explain] output lang:   " + outLang)
+            Console.WriteLine("[explain] estimated cost: " + est)
             return 0
         }
 
