@@ -57,9 +57,12 @@ public class MigrateCommand {
         Console.WriteError("Flags:")
         Console.WriteError("  -o, --output <out>   Output path (default: <stem>.am next to source).")
         Console.WriteError("  --lang <name>        Override extension-based language detection.")
-        Console.WriteError("  --provider <name>    Pick the LLM provider. Built-in: claude (CLI), claude-api")
-        Console.WriteError("                       (Anthropic HTTP). Auto-selected to claude-api when")
-        Console.WriteError("                       ANTHROPIC_API_KEY is set, otherwise claude.")
+        Console.WriteError("  --provider <name>    LLM provider. Built-in: claude (CLI), claude-api")
+        Console.WriteError("                       (Anthropic), chatgpt (OpenAI), gemini (Google),")
+        Console.WriteError("                       custom (delegates to AMC_CUSTOM_PROVIDER_CMD).")
+        Console.WriteError("                       Auto-selects API by env var: ANTHROPIC_API_KEY →")
+        Console.WriteError("                       claude-api, OPENAI_API_KEY → chatgpt,")
+        Console.WriteError("                       GEMINI_API_KEY → gemini, otherwise → claude (CLI).")
         Console.WriteError("  --model <id>         Pass a specific model id to the provider.")
         Console.WriteError("  --max-lines <n>      Refuse files larger than n lines (default: 2000).")
         Console.WriteError("  --no-check           Skip the post-migration `amc --check` validation.")
@@ -166,11 +169,7 @@ public class MigrateCommand {
         // This makes `amc migrate` work on machines without Claude
         // Code installed, as long as a key is exported.
         if (!providerSet) {
-            if (Env.Has("ANTHROPIC_API_KEY")) {
-                provider = "claude-api"
-            } else {
-                provider = "claude"
-            }
+            provider = MigrateCommand.AutoSelectProvider()
         }
 
         if (!File.Exists(input)) {
@@ -239,14 +238,18 @@ public class MigrateCommand {
             return 1
         }
 
-        // --dry-run: report what would happen.
+        // --dry-run: report what would happen + estimated cost.
         if (dryRun) {
+            let sysP: string = MigrateCommand.BuildSystemPrompt(lang)
+            let usrP: string = MigrateCommand.BuildUserPrompt(lang, source)
+            let est:  string = MigrateCommand.EstimateCost(provider, model, sysP, usrP)
             Console.WriteLine("[migrate] would migrate: " + input + " (" + lang + ", " + String_FromInt(lineCount) + " lines)")
             Console.WriteLine("[migrate] would write:   " + outPath)
             Console.WriteLine("[migrate] provider:      " + provider)
             if (String_Length(model) > 0) {
                 Console.WriteLine("[migrate] model:         " + model)
             }
+            Console.WriteLine("[migrate] estimated cost: " + est)
             return 0
         }
 
@@ -526,7 +529,10 @@ public class MigrateCommand {
     // (./docs/...) and from the directory the amc binary lives in
     // (<exec-dir>/docs/...). Returns "" if nothing is reachable —
     // callers fall back to the inline conventions block.
-    private static string LoadDocsHeader() {
+    // Exposed so `amc generate` can reuse the same on-disk doc
+    // header for its system prompt without reimplementing the path
+    // probing.
+    public static string LoadDocsHeader() {
         let candidates = new List<string>()
         // Preferred: relative to amc binary (works post-install when
         // docs/ ships next to the executable).
@@ -563,20 +569,141 @@ public class MigrateCommand {
     // v2   adds chatgpt / gemini (other vendor APIs).
     // Dispatch is additive — a new provider is one new entry.
     private static MigrateResult CallProvider(string provider, string model, string lang, string source) {
+        let sys: string  = MigrateCommand.BuildSystemPrompt(lang)
+        let usr: string  = MigrateCommand.BuildUserPrompt(lang, source)
+        return MigrateCommand.CallProviderRaw(provider, model, sys, usr)
+    }
+
+    // Lower-level provider entry point. Takes pre-built system +
+    // user prompts so callers can shape the conversation differently
+    // from the migration template (used by `amc generate`, which
+    // builds its own task description). Public so generate.am and
+    // any future LLM-driven subcommand can reuse the dispatch table
+    // without re-implementing the per-provider plumbing.
+    public static MigrateResult CallProviderRaw(string provider, string model, string systemPrompt, string userPrompt) {
         if (provider == "claude") {
-            // CLI sees one combined prompt — no system/user split
-            // available through `claude -p < file`.
-            return MigrateCommand.CallClaudeCli(model, MigrateCommand.BuildPrompt(lang, source))
+            return MigrateCommand.CallClaudeCli(model, systemPrompt + "\n\n" + userPrompt)
         }
         if (provider == "claude-api") {
-            // API path takes (lang, source) so it can build the
-            // system field separately and attach cache_control.
-            return MigrateCommand.CallClaudeApi(model, lang, source)
+            return MigrateCommand.CallClaudeApiRaw(model, systemPrompt, userPrompt)
+        }
+        if (provider == "chatgpt") {
+            return MigrateCommand.CallChatGptApi(model, systemPrompt, userPrompt)
+        }
+        if (provider == "gemini") {
+            return MigrateCommand.CallGeminiApi(model, systemPrompt, userPrompt)
+        }
+        if (provider == "custom") {
+            return MigrateCommand.CallCustomScript(systemPrompt, userPrompt)
         }
         let res = new MigrateResult()
         res.Ok    = false
-        res.Error = "provider '" + provider + "' not supported (built-in: 'claude', 'claude-api')"
+        res.Error = "provider '" + provider + "' not supported (built-in: claude, claude-api, chatgpt, gemini, custom)"
         return res
+    }
+
+    // Provider auto-selection used by migrate / generate / explain.
+    // Precedence (first env-var present wins):
+    //   ANTHROPIC_API_KEY → claude-api
+    //   OPENAI_API_KEY    → chatgpt
+    //   GEMINI_API_KEY    → gemini
+    //   else              → claude (CLI shell out)
+    // Custom is opt-in only (--provider custom + AMC_CUSTOM_PROVIDER_CMD).
+    public static string AutoSelectProvider() {
+        if (Env.Has("ANTHROPIC_API_KEY")) { return "claude-api" }
+        if (Env.Has("OPENAI_API_KEY"))    { return "chatgpt" }
+        if (Env.Has("GEMINI_API_KEY"))    { return "gemini" }
+        return "claude"
+    }
+
+    // ── Cost estimation (v2) ──────────────────────────
+    //
+    // Heuristic token count: ~4 chars per token for English / code
+    // (close enough for a budgeting line in --dry-run; Anthropic /
+    // OpenAI tokenizers differ but rarely by more than 20%). We
+    // assume ~1000 output tokens for a typical migration response.
+    //
+    // Prices in USD per million tokens (input / output) as of 2026:
+    //   claude-sonnet-4-6   $3    / $15
+    //   claude-opus-4-7     $15   / $75
+    //   claude-haiku-4-5    $1    / $5
+    //   gpt-4o-mini         $0.15 / $0.60
+    //   gpt-4o              $2.50 / $10
+    //   gpt-4-turbo         $10   / $30
+    //   gemini-1.5-flash    $0.075/ $0.30
+    //   gemini-1.5-pro      $1.25 / $5
+    // Local CLI / custom providers report $0 (subscription-based or
+    // user-managed).
+    public static string EstimateCost(string provider, string model, string systemPrompt, string userPrompt) {
+        // CLI shell-out and custom scripts don't bill per-call here.
+        if (provider == "claude")  { return "free (subscription via Claude Code CLI)" }
+        if (provider == "custom")  { return "free (user-managed local backend)" }
+
+        // Pin every int local explicitly — bootstrap type inference
+        // mis-types `String_Length(a) + String_Length(b)` as a string
+        // concat in some chains, segfaulting when arithmetic continues.
+        let sysLen: int = String_Length(systemPrompt)
+        let usrLen: int = String_Length(userPrompt)
+        let totalChars: int = sysLen + usrLen
+        let inputToks:  int = totalChars / 4
+        let outputToks: int = 1000
+
+        // Prices in micro-USD per million tokens. Integer arithmetic
+        // throughout — Amalgame's float lowering still has rough edges.
+        var inUsdPerM:  int = 0
+        var outUsdPerM: int = 0
+        var resolvedModel: string = model
+        if (provider == "claude-api") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "claude-sonnet-4-6" }
+            if (resolvedModel == "claude-opus-4-7") {
+                inUsdPerM  = 15000000
+                outUsdPerM = 75000000
+            } else if (resolvedModel == "claude-haiku-4-5") {
+                inUsdPerM  = 1000000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 3000000
+                outUsdPerM = 15000000
+            }
+        } else if (provider == "chatgpt") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gpt-4o-mini" }
+            if (resolvedModel == "gpt-4o") {
+                inUsdPerM  = 2500000
+                outUsdPerM = 10000000
+            } else if (resolvedModel == "gpt-4-turbo") {
+                inUsdPerM  = 10000000
+                outUsdPerM = 30000000
+            } else {
+                inUsdPerM  = 150000
+                outUsdPerM = 600000
+            }
+        } else if (provider == "gemini") {
+            if (String_Length(resolvedModel) == 0) { resolvedModel = "gemini-1.5-flash" }
+            if (resolvedModel == "gemini-1.5-pro") {
+                inUsdPerM  = 1250000
+                outUsdPerM = 5000000
+            } else {
+                inUsdPerM  = 75000
+                outUsdPerM = 300000
+            }
+        }
+
+        // Cost = tokens × $/M ÷ 1_000_000. Stay integer (micro-USD).
+        let inProd:  int = inputToks * inUsdPerM
+        let inMicro: int = inProd / 1000000
+        let outProd:  int = outputToks * outUsdPerM
+        let outMicro: int = outProd / 1000000
+        let totalMicro: int = inMicro + outMicro
+        // micro-USD / 10000 = hundredths of a cent; round to cents.
+        let totalCents: int = totalMicro / 10000
+        let dollars: int = totalCents / 100
+        let cents:   int = totalCents % 100
+        var centStr: string = String_FromInt(cents)
+        if (cents < 10) { centStr = "0" + centStr }
+        let inS:  string = String_FromInt(inputToks)
+        let outS: string = String_FromInt(outputToks)
+        let dolS: string = String_FromInt(dollars)
+        return "~" + inS + " in + ~" + outS + " out -> ~$" + dolS + "." + centStr + " (" + resolvedModel + ")"
     }
 
     // Anthropic HTTP provider. Reads the API key from
@@ -590,7 +717,9 @@ public class MigrateCommand {
     // payload across consecutive migrations within a 5-minute
     // window. Per-file cost drops from full-prompt-tokens to
     // just-the-source after the first call.
-    private static MigrateResult CallClaudeApi(string model, string lang, string source) {
+    // Lower-level API call — takes pre-built system + user prompts
+    // so generate.am can reuse it with its own task description.
+    private static MigrateResult CallClaudeApiRaw(string model, string systemPrompt, string userPrompt) {
         let res = new MigrateResult()
         let apiKey: string = Env.Get("ANTHROPIC_API_KEY")
         if (String_Length(apiKey) == 0) {
@@ -602,8 +731,6 @@ public class MigrateCommand {
         if (String_Length(modelId) == 0) {
             modelId = "claude-sonnet-4-6"
         }
-        let systemPrompt: string = MigrateCommand.BuildSystemPrompt(lang)
-        let userPrompt:   string = MigrateCommand.BuildUserPrompt(lang, source)
 
         // The `system` field can be a string OR an array of content
         // blocks. We use the array form so we can attach a
@@ -668,17 +795,22 @@ public class MigrateCommand {
         return out
     }
 
-    // Find the first `"text":"..."` value in the JSON response and
-    // return the unescaped string. Anthropic returns assistant
-    // content as `{"content":[{"type":"text","text":"..."}]}`. Same
-    // ad-hoc extraction approach as src/lsp.am's JsonStr — wiring a
-    // full JSON parser would be ~10× this code for one extraction.
+    // Find the first `"text":"..."` value in the JSON response.
+    // Convenience wrapper for the v1.2 extraction site (Anthropic's
+    // `{"content":[{"type":"text","text":"..."}]}` shape). For other
+    // providers, callers pass a key directly to JsonExtract.
     private static string JsonExtractText(string body) {
-        let key: string = "\"text\":\""
+        return MigrateCommand.JsonExtract(body, "\"text\":\"")
+    }
+
+    // Generic key-prefixed string extractor. Pass the literal key
+    // including `:"` (e.g. `"text":"`, `"content":"`). Returns the
+    // first un-escaped value, or "" if not found. Same ad-hoc style
+    // as src/lsp.am's JsonStr — wiring a real JSON parser would be
+    // ~10× this code for one site.
+    private static string JsonExtract(string body, string key) {
         let kIdx: int = String_IndexOf(body, key)
         if (kIdx < 0) { return "" }
-        // Pin the offset addition into typed locals — bootstrap
-        // type inference doesn't track i64 returns through every chain.
         let kLen: int  = String_Length(key)
         let start: int = kIdx + kLen
         let n: int = String_Length(body)
@@ -704,6 +836,142 @@ public class MigrateCommand {
             i = i + 1
         }
         return out
+    }
+
+    // ── ChatGPT / OpenAI provider (v2) ────────────────
+    // POST to api.openai.com/v1/chat/completions with the standard
+    // chat-completions shape (system + user messages). Reads the
+    // key from OPENAI_API_KEY. Default model: gpt-4o-mini (good
+    // quality / cost / latency tradeoff for code translation).
+    private static MigrateResult CallChatGptApi(string model, string systemPrompt, string userPrompt) {
+        let res = new MigrateResult()
+        let apiKey: string = Env.Get("OPENAI_API_KEY")
+        if (String_Length(apiKey) == 0) {
+            res.Ok    = false
+            res.Error = "chatgpt: OPENAI_API_KEY not set."
+            return res
+        }
+        var modelId: string = model
+        if (String_Length(modelId) == 0) {
+            modelId = "gpt-4o-mini"
+        }
+        var body: string = "{"
+        body = body + "\"model\":\"" + modelId + "\","
+        body = body + "\"messages\":[{\"role\":\"system\",\"content\":\""
+        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + "\"},{\"role\":\"user\",\"content\":\""
+        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + "\"}]}"
+
+        let headers = new Map<string, string>()
+        headers.Set("Authorization", "Bearer " + apiKey)
+        headers.Set("Content-Type", "application/json")
+
+        let resp = Http_PostWithHeaders("https://api.openai.com/v1/chat/completions", body, headers)
+        let status: int = resp.Status
+        if (status != 200) {
+            res.Ok    = false
+            res.Error = "chatgpt: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
+            return res
+        }
+        // OpenAI returns choices[0].message.content
+        let text: string = MigrateCommand.JsonExtract(resp.Body, "\"content\":\"")
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "chatgpt: empty or unparseable response. Raw:\n" + resp.Body
+            return res
+        }
+        res.Ok      = true
+        res.Content = MigrateCommand.StripFences(text)
+        return res
+    }
+
+    // ── Gemini / Google AI Studio provider (v2) ───────
+    // POST to generativelanguage.googleapis.com with the
+    // generateContent shape. Key passed as a query string param
+    // (Google's convention). Default model: gemini-1.5-flash
+    // (Google's fast / cheap tier; bump to -pro for quality).
+    private static MigrateResult CallGeminiApi(string model, string systemPrompt, string userPrompt) {
+        let res = new MigrateResult()
+        let apiKey: string = Env.Get("GEMINI_API_KEY")
+        if (String_Length(apiKey) == 0) {
+            res.Ok    = false
+            res.Error = "gemini: GEMINI_API_KEY not set."
+            return res
+        }
+        var modelId: string = model
+        if (String_Length(modelId) == 0) {
+            modelId = "gemini-1.5-flash"
+        }
+        // Gemini accepts an optional systemInstruction block + a
+        // contents array of user/model messages. We use both.
+        var body: string = "{"
+        body = body + "\"systemInstruction\":{\"parts\":[{\"text\":\""
+        body = body + MigrateCommand.JsonEscape(systemPrompt)
+        body = body + "\"}]},"
+        body = body + "\"contents\":[{\"parts\":[{\"text\":\""
+        body = body + MigrateCommand.JsonEscape(userPrompt)
+        body = body + "\"}]}]}"
+
+        let headers = new Map<string, string>()
+        headers.Set("Content-Type", "application/json")
+        let url: string = "https://generativelanguage.googleapis.com/v1beta/models/" + modelId + ":generateContent?key=" + apiKey
+
+        let resp = Http_PostWithHeaders(url, body, headers)
+        let status: int = resp.Status
+        if (status != 200) {
+            res.Ok    = false
+            res.Error = "gemini: HTTP " + String_FromInt(status) + ". Response:\n" + resp.Body
+            return res
+        }
+        // Gemini returns candidates[0].content.parts[0].text — the
+        // first `"text":"..."` after the candidates key works.
+        let text: string = MigrateCommand.JsonExtractText(resp.Body)
+        if (String_Length(text) == 0) {
+            res.Ok    = false
+            res.Error = "gemini: empty or unparseable response. Raw:\n" + resp.Body
+            return res
+        }
+        res.Ok      = true
+        res.Content = MigrateCommand.StripFences(text)
+        return res
+    }
+
+    // ── Custom script provider (v2) ───────────────────
+    // Power-user escape hatch: shell out to a user-defined script
+    // pointed at by AMC_CUSTOM_PROVIDER_CMD. Convention: stdin
+    // receives the assembled prompt (system + "\n\n" + user),
+    // stdout is the response. Lets you wire in any local LLM
+    // (llama.cpp, ollama, vllm, ...) without patching amc.
+    //
+    //   export AMC_CUSTOM_PROVIDER_CMD="ollama run codellama"
+    //   amc migrate file.ts --provider custom
+    private static MigrateResult CallCustomScript(string systemPrompt, string userPrompt) {
+        let res = new MigrateResult()
+        let cmd: string = Env.Get("AMC_CUSTOM_PROVIDER_CMD")
+        if (String_Length(cmd) == 0) {
+            res.Ok    = false
+            res.Error = "custom: AMC_CUSTOM_PROVIDER_CMD not set. Point it at a script that reads prompt from stdin and writes the response to stdout."
+            return res
+        }
+        let tmpPath: string = "/tmp/amc_custom_prompt.txt"
+        let combined: string = systemPrompt + "\n\n" + userPrompt
+        let writeOk: bool = File.WriteAll(tmpPath, combined)
+        if (!writeOk) {
+            res.Ok    = false
+            res.Error = "custom: failed to write prompt temp file: " + tmpPath
+            return res
+        }
+        let full: string = cmd + " < " + tmpPath
+        let rr = Process.RunCapture(full)
+        if (rr.Exit != 0) {
+            res.Ok    = false
+            res.Error = "custom: script exited " + String_FromInt(rr.Exit) + ". Output:\n" + rr.Stdout
+            return res
+        }
+        res.Ok      = true
+        res.Content = MigrateCommand.StripFences(rr.Stdout)
+        return res
     }
 
     // Shell out to the local `claude` CLI. The prompt is written to

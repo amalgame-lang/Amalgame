@@ -191,8 +191,13 @@ public class Program {
         Console.WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.")
         Console.WriteError("  lsp           Run a minimal LSP server (stdio JSON-RPC).")
         Console.WriteError("                v1 publishes diagnostics on didOpen/didChange.")
-        Console.WriteError("  migrate <f>   Migrate a source file to Amalgame via LLM (v0:")
-        Console.WriteError("                claude CLI required). See `amc migrate --help`.")
+        Console.WriteError("  migrate <f>   Migrate a source file or directory to Amalgame via LLM.")
+        Console.WriteError("                Auto-uses claude-api when ANTHROPIC_API_KEY is set, else")
+        Console.WriteError("                shells out to the local `claude` CLI. See `amc migrate --help`.")
+        Console.WriteError("  generate <p>  Generate an Amalgame program from a natural-language prompt.")
+        Console.WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.")
+        Console.WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.")
+        Console.WriteError("                See `amc explain --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
@@ -380,6 +385,14 @@ public class Program {
         }
         if (Args_Get(1) == "migrate") {
             Exit_Set(MigrateCommand.Run(argc))
+            return
+        }
+        if (Args_Get(1) == "generate") {
+            Exit_Set(GenerateCommand.Run(argc))
+            return
+        }
+        if (Args_Get(1) == "explain") {
+            Exit_Set(ExplainCommand.Run(argc))
             return
         }
 

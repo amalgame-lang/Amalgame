@@ -656,6 +656,115 @@ run_migrate_help_check "migrate: --help mentions claude-api" "--help" "claude-ap
 run_migrate_prompt_check "migrate: prompt embeds grammar"   "$mig_fixture_ts"  "Amalgame grammar (EBNF)"
 run_migrate_prompt_check "migrate: prompt embeds tour"      "$mig_fixture_ts"  "Amalgame language tour"
 
+# ── amc generate ────────────────────────────────────────
+echo ""
+echo "── amc generate ────────────────────────"
+
+run_generate_check() {
+    local name="$1"
+    local pattern="$2"
+    shift 2
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" generate "$@" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# All hermetic — no real LLM calls.
+run_generate_check "generate: --help"           "Usage: amc generate"      --help
+run_generate_check "generate: dry-run"          "would generate from"      "test prompt" --dry-run
+run_generate_check "generate: dry-run provider" "provider:      claude"    "test"        --dry-run
+run_generate_check "generate: prompt-only sys"  "writing an Amalgame"      "test"        --prompt-only
+run_generate_check "generate: prompt-only task" "## Task"                  "fizzbuzz"    --prompt-only
+run_generate_check "generate: prompt embeds grammar" "Amalgame grammar (EBNF)" "test"    --prompt-only
+unset ANTHROPIC_API_KEY
+run_generate_check "generate: claude-api no key" "ANTHROPIC_API_KEY not set" "test" --provider claude-api
+run_generate_check "generate: unknown provider" "not supported (built-in"  "test"        --provider gemini-x
+run_generate_check "generate: no prompt"        "no prompt given"
+
+# ── amc explain ─────────────────────────────────────────
+echo ""
+echo "── amc explain ─────────────────────────"
+
+run_explain_check() {
+    local name="$1"
+    local pattern="$2"
+    shift 2
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" explain "$@" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+# A small Amalgame fixture for explain tests.
+explain_fixture="$BUILD_DIR/explain_fixture.am"
+cat > "$explain_fixture" <<'EOF'
+namespace Demo
+public class Program {
+    public static void Main(string[] args) { Console.WriteLine("hi") }
+}
+EOF
+
+run_explain_check "explain: --help"           "Usage: amc explain"      --help
+run_explain_check "explain: dry-run"          "would explain"           "$explain_fixture" --dry-run
+run_explain_check "explain: dry-run lang"     "output lang:   English"  "$explain_fixture" --dry-run
+run_explain_check "explain: lang override"    "output lang:   French"   "$explain_fixture" --dry-run --lang French
+run_explain_check "explain: prompt-only sys"  "explaining Amalgame"     "$explain_fixture" --prompt-only
+run_explain_check "explain: prompt-only src"  "Amalgame source: "       "$explain_fixture" --prompt-only
+run_explain_check "explain: file not found"   "file not found"          "/nonexistent/file.am"
+run_explain_check "explain: no input"         "no input file"
+
+# v2 providers (chatgpt / gemini / custom): hermetic — no real
+# API call. Just exercise the dispatch table + missing-key paths.
+unset ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY AMC_CUSTOM_PROVIDER_CMD
+
+run_generate_check "v2: chatgpt no key"   "OPENAI_API_KEY not set"      "test"  --provider chatgpt
+run_generate_check "v2: gemini no key"    "GEMINI_API_KEY not set"      "test"  --provider gemini
+run_generate_check "v2: custom no cmd"    "AMC_CUSTOM_PROVIDER_CMD"     "test"  --provider custom
+
+# Auto-selection: when OPENAI_API_KEY is set, chatgpt becomes the
+# default. Same shape for gemini.
+export OPENAI_API_KEY=fake
+run_generate_check "v2: auto-select chatgpt" "provider:      chatgpt" "test"  --dry-run
+unset OPENAI_API_KEY
+export GEMINI_API_KEY=fake
+run_generate_check "v2: auto-select gemini"  "provider:      gemini"  "test"  --dry-run
+unset GEMINI_API_KEY
+
+# --help advertises the new providers.
+run_generate_check "v2: --help mentions chatgpt" "chatgpt"  --help
+run_generate_check "v2: --help mentions gemini"  "gemini"   --help
+run_generate_check "v2: --help mentions custom"  "custom"   --help
+
+# Cost estimation in --dry-run.
+run_generate_check "cost: claude free"             "free (subscription"     "test"  --dry-run
+export OPENAI_API_KEY=fake
+run_generate_check "cost: chatgpt has tokens"      "in + ~1000 out"         "test"  --dry-run
+run_generate_check "cost: chatgpt opus model dollars" "$"                   "test"  --dry-run --model gpt-4o
+unset OPENAI_API_KEY
+export ANTHROPIC_API_KEY=fake
+run_generate_check "cost: claude-api opus mentions opus" "claude-opus-4-7" "test" --dry-run --model claude-opus-4-7
+unset ANTHROPIC_API_KEY
+export GEMINI_API_KEY=fake
+run_generate_check "cost: gemini default flash"    "gemini-1.5-flash"       "test"  --dry-run
+unset GEMINI_API_KEY
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
