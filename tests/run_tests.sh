@@ -553,6 +553,67 @@ run_migrate_help_check() {
 run_migrate_help_check "migrate: --help" "--help" "Usage: amc migrate"
 run_migrate_help_check "migrate: -h"     "-h"     "Usage: amc migrate"
 
+# Directory recursion (v1.1): create a fixture dir with mixed-language
+# sources + non-source noise, then assert --dry-run discovers + reports
+# the right files.
+mig_fixture_dir="$BUILD_DIR/mig_fixture_dir"
+mkdir -p "$mig_fixture_dir"
+cat > "$mig_fixture_dir/u1.ts" <<'EOF'
+class A { x: number = 0 }
+EOF
+cat > "$mig_fixture_dir/u2.py" <<'EOF'
+class B:
+    def __init__(self, x: int): self.x = x
+EOF
+cat > "$mig_fixture_dir/README.md" <<'EOF'
+# Not a source file
+EOF
+cat > "$mig_fixture_dir/already.am" <<'EOF'
+namespace Y
+EOF
+
+run_migrate_dir_check() {
+    local name="$1"
+    local pattern="$2"
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" migrate "$mig_fixture_dir" --dry-run 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+run_migrate_dir_check "migrate: dir discovers"      "found 2 file(s) to migrate"
+run_migrate_dir_check "migrate: dir picks ts"       "u1.ts (TypeScript"
+run_migrate_dir_check "migrate: dir picks py"       "u2.py (Python"
+run_migrate_dir_check "migrate: dir summary"        "2/2 succeeded, 0 failed"
+
+# --output is rejected in directory mode.
+run_migrate_dir_output_check() {
+    local name="$1"
+    local pattern="$2"
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" migrate "$mig_fixture_dir" --output /tmp/x.am --dry-run 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+run_migrate_dir_output_check "migrate: dir rejects --output" "cannot be used with directory"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
