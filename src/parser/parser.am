@@ -507,7 +507,15 @@ public class Parser {
                 this.SkipNewlines()
                 continue
             }
+            // Safety belt: if ParseParam fails to advance the cursor,
+            // skip one token to break what would otherwise be an
+            // infinite loop. ParseParam's branches all consume at
+            // least one token now, but this guards future regressions.
+            let beforePos: int = this.Pos
             let p = this.ParseParam()
+            if (this.Pos == beforePos) {
+                this.Advance()
+            }
             let pk = p.Kind
             if (pk != NodeKind.IDENTIFIER) {
                 method.Params.Add(p)
@@ -533,16 +541,46 @@ public class Parser {
     }
 
     // ── Param ─────────────────────────────────────────
-
+    //
+    // Amalgame param syntax is C-style: `<type> <name>` (e.g. `int id`,
+    // `string title`). The TypeScript-style `<name>: <type>` form
+    // (e.g. `id: int`) is NOT valid Amalgame syntax — it shows up in
+    // LLM-migrated code (`amc migrate`) when the model defaults to
+    // colon syntax. Without explicit handling, ParseTypeName would
+    // consume `id` as a typeName, then the `:` would not match an
+    // IDENTIFIER, then the param-list loop in ParseMethod would not
+    // advance, and the parser would spin forever. We detect the
+    // colon explicitly and emit an error so the user sees an
+    // actionable diagnostic.
     private AstNode ParseParam() {
-        // Handle keyword types (int, string, bool, void, float) and identifier types
         let tok = this.Current()
         let v = tok.Value
         let isKeywordType = v == "int" || v == "string" || v == "bool" || v == "void" || v == "float"
         if (!this.CheckType(TokenType.IDENTIFIER) && !isKeywordType) {
+            // Unknown opening token — consume one to break any
+            // outer loop (the caller may not advance otherwise).
+            this.Advance()
             return this.Unknown()
         }
         let typeName = this.ParseTypeName()
+        // TypeScript-style `<name>: <type>` detection. The token
+        // we just consumed as `typeName` is actually the name; the
+        // ':' confirms that, and the next identifier/keyword is the
+        // real type. Consume them all so the param list can advance,
+        // and return a Param built with the corrected name+type.
+        if (this.CheckValue(":")) {
+            this.Advance()
+            let realTypeTok = this.Current()
+            let rv = realTypeTok.Value
+            let rIsKeywordType = rv == "int" || rv == "string" || rv == "bool" || rv == "void" || rv == "float"
+            if (this.CheckType(TokenType.IDENTIFIER) || rIsKeywordType) {
+                let realType = this.ParseTypeName()
+                return Ast.Param(typeName, realType, tok.Line, tok.Column)
+            }
+            // ':' but no following type — drop the param, but at
+            // least we consumed enough to break the loop.
+            return Ast.Param(typeName, "?", tok.Line, tok.Column)
+        }
         if (!this.CheckType(TokenType.IDENTIFIER)) {
             return Ast.Param("_", typeName, 0, 0)
         }
@@ -965,7 +1003,13 @@ public class Parser {
             while (!this.IsEnd() && !this.CheckValue(")")) {
                 if (this.CheckValue(",")) { this.Advance() }
                 if (this.CheckValue(")")) { break }
+                // Safety belt against an infinite-loop regression: if
+                // ParseParam doesn't advance, force a one-token skip.
+                let beforePos: int = this.Pos
                 let p = this.ParseParam()
+                if (this.Pos == beforePos) {
+                    this.Advance()
+                }
                 m.Params.Add(p)
             }
             this.Expect(")")

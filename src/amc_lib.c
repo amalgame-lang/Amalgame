@@ -1634,7 +1634,11 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseMethod(Amalgame_
             Amalgame_Compiler_Parser_SkipNewlines(self);
             continue;
         }
+        i64 __attribute__((unused)) beforePos = self->Pos;
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_ParseParam(self);
+        if (self->Pos == beforePos) {
+            Amalgame_Compiler_Parser_Advance(self);
+        }
         Amalgame_Compiler_NodeKind __attribute__((unused)) pk = p->Kind;
         if (pk != Amalgame_Compiler_NodeKind_IDENTIFIER) {
             AmalgameList_add(method->Params, (void*)(intptr_t)(p));
@@ -1663,9 +1667,21 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseParam(Amalgame_C
     code_string __attribute__((unused)) v = tok->Value;
     code_bool __attribute__((unused)) isKeywordType = code_string_equals(v, "int") || code_string_equals(v, "string") || code_string_equals(v, "bool") || code_string_equals(v, "void") || code_string_equals(v, "float");
     if (!Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER) && !isKeywordType) {
+        Amalgame_Compiler_Parser_Advance(self);
         return Amalgame_Compiler_Parser_Unknown(self);
     }
     code_string __attribute__((unused)) typeName = Amalgame_Compiler_Parser_ParseTypeName(self);
+    if (Amalgame_Compiler_Parser_CheckValue(self, ":")) {
+        Amalgame_Compiler_Parser_Advance(self);
+        Amalgame_Compiler_Token* __attribute__((unused)) realTypeTok = Amalgame_Compiler_Parser_Current(self);
+        code_string __attribute__((unused)) rv = realTypeTok->Value;
+        code_bool __attribute__((unused)) rIsKeywordType = code_string_equals(rv, "int") || code_string_equals(rv, "string") || code_string_equals(rv, "bool") || code_string_equals(rv, "void") || code_string_equals(rv, "float");
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER) || rIsKeywordType) {
+            code_string __attribute__((unused)) realType = Amalgame_Compiler_Parser_ParseTypeName(self);
+            return Amalgame_Compiler_Ast_Param(typeName, realType, tok->Line, tok->Column);
+        }
+        return Amalgame_Compiler_Ast_Param(typeName, "?", tok->Line, tok->Column);
+    }
     if (!Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_IDENTIFIER)) {
         return Amalgame_Compiler_Ast_Param("_", typeName, 0, 0);
     }
@@ -2116,7 +2132,11 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseInterface(Amalga
             if (Amalgame_Compiler_Parser_CheckValue(self, ")")) {
                 break;
             }
+            i64 __attribute__((unused)) beforePos = self->Pos;
             Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_ParseParam(self);
+            if (self->Pos == beforePos) {
+                Amalgame_Compiler_Parser_Advance(self);
+            }
             AmalgameList_add(m->Params, (void*)(intptr_t)(p));
         }
         Amalgame_Compiler_Parser_Expect(self, ")");
