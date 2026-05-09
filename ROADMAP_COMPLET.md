@@ -324,6 +324,18 @@ before the next big language addition.
       break infinite loops on malformed input. Audit the rest of
       the parser for similar latent loops; the pattern is "any
       while-loop that calls a sub-parser without forcing progress".
+- [ ] **LSP false positives on enum types** — opening any compiler
+      file that references an `enum` declared elsewhere produces a
+      flood of "Unknown symbol 'TokenType'" / "Unknown symbol
+      'NodeKind'" / "Unknown symbol 'SourceSnippet'" diagnostics
+      (~70+ on `lexer.am` alone, similar on every other file). The
+      workspace-aware LSP (PR #146) handles classes correctly via
+      `PreRegisterMember`, but enum names aren't pre-registered the
+      same way. Fix: extend `CollectDecl` (or a sibling pass) to
+      register every `ENUM_DECL` name as a global so the resolver
+      `LookupInScopes` finds it. Should also catch the
+      `MigrateCommand` / `GenerateCommand` / `ExplainCommand`
+      cross-file class references that occasionally show up.
 
 ---
 
