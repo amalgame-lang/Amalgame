@@ -531,6 +531,28 @@ run_migrate_dry_check "migrate: dry-run lang"     "TypeScript"
 run_migrate_dry_check "migrate: dry-run out"      "mig_fixture.am"
 run_migrate_dry_check "migrate: dry-run provider" "provider:      claude"
 
+# --help and -h: print usage to stderr and exit 0.
+run_migrate_help_check() {
+    local name="$1"
+    local flag="$2"
+    local pattern="$3"
+
+    printf "  %-34s" "$name"
+    local out
+    out=$("$AMC" migrate "$flag" 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (pattern not found)"
+        echo "    looking for: $pattern"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
+run_migrate_help_check "migrate: --help" "--help" "Usage: amc migrate"
+run_migrate_help_check "migrate: -h"     "-h"     "Usage: amc migrate"
+
 # ── Namespace ──────────────────────────────────────────
 echo ""
 echo "── Namespace ───────────────────────────"
