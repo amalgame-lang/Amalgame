@@ -152,6 +152,16 @@ public class LspServer {
             } else if (method == "textDocument/inlayHint") {
                 let uri: string = td.Get("uri").AsString()
                 this.HandleInlayHint(id, uri)
+            } else if (method == "textDocument/codeAction") {
+                let uri: string  = td.Get("uri").AsString()
+                let range        = params.Get("range")
+                let rs           = range.Get("start")
+                let re           = range.Get("end")
+                let sl: int      = rs.Get("line").AsInt()
+                let sc: int      = rs.Get("character").AsInt()
+                let el: int      = re.Get("line").AsInt()
+                let ec: int      = re.Get("character").AsInt()
+                this.HandleCodeAction(id, uri, sl, sc, el, ec)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -277,7 +287,7 @@ public class LspServer {
         // box to the actual identifier span.
         // callHierarchyProvider: true → Shift+Alt+H "Show Call
         // Hierarchy", supports both incoming and outgoing calls.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -1526,6 +1536,110 @@ public class LspServer {
         let pos: string = "{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}"
         let label: string = ": " + typeStr
         return "{\"position\":" + pos + ",\"label\":\"" + Json.EscapeString(label) + "\",\"kind\":1,\"paddingLeft\":true}"
+    }
+
+    // ── Code actions (quick fixes) ────────────────────
+    //
+    // v1 fix: "Add explicit type annotation". When the cursor (or
+    // selection start) lies on a `let x = …` whose annotation is
+    // empty and the typechecker can infer a concrete type, offer
+    // a CodeAction whose WorkspaceEdit inserts `: <type>` right after
+    // the variable name. Same inference data the inlay hint walker
+    // already uses, just packaged as an applicable edit instead of
+    // editor decoration.
+    //
+    // Range matching: we accept any VAR_DECL whose declaration line
+    // falls within the request's range (inclusive on both ends). VS
+    // Code's Quick Fix UI sends the cursor as a zero-width range
+    // pinned to the line; multi-line selections widen the match.
+    private void HandleCodeAction(int id, string uri, int startLine, int startChr, int endLine, int endChr) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+        let tc = new TypeChecker(resolver, path)
+        tc.Check(prog)
+
+        // Convert LSP 0-based to AST 1-based.
+        let sLine: int = startLine + 1
+        let eLine: int = endLine + 1
+        let actions: List<string> = new List<string>()
+        LspServer.CollectAnnotationFixes(prog, tc, uri, sLine, eLine, actions)
+
+        var json: string = "["
+        let n: int = actions.Count()
+        for i in 0..n {
+            if (i > 0) { json = json + "," }
+            json = json + actions.Get(i)
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Walk the AST collecting CodeAction JSONs for every annotation-
+    // less VAR_DECL whose declaration line is inside [sLine, eLine].
+    // Skips the same shapes the inlay hint walker skips (annotated
+    // decls, tuple destructuring, "?" inferred type).
+    private static void CollectAnnotationFixes(AstNode node, TypeChecker tc, string uri, int sLine, int eLine, List<string> out) {
+        if (node == null) { return }
+        if (node.Kind == NodeKind.VAR_DECL) {
+            // Match same gating as inlay hints, plus the line-range filter.
+            let inRange: bool = node.Line >= sLine && node.Line <= eLine
+            if (inRange && String_Length(node.Str) == 0 && node.Str != "__tuple_destructure__" && node.Left != null) {
+                let inferred: string = tc.LookupNodeType(node.Left)
+                if (String_Length(inferred) > 0 && inferred != "?") {
+                    out.Add(LspServer.AnnotationFixJson(uri, node.Line, node.Column, node.Name, inferred))
+                }
+            }
+        }
+        if (node.Left  != null) { LspServer.CollectAnnotationFixes(node.Left,  tc, uri, sLine, eLine, out) }
+        if (node.Right != null) { LspServer.CollectAnnotationFixes(node.Right, tc, uri, sLine, eLine, out) }
+        if (node.Cond  != null) { LspServer.CollectAnnotationFixes(node.Cond,  tc, uri, sLine, eLine, out) }
+        if (node.Body  != null) { LspServer.CollectAnnotationFixes(node.Body,  tc, uri, sLine, eLine, out) }
+        if (node.Else  != null) { LspServer.CollectAnnotationFixes(node.Else,  tc, uri, sLine, eLine, out) }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectAnnotationFixes(node.Children.Get(i), tc, uri, sLine, eLine, out)
+        }
+        let pn: int = node.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectAnnotationFixes(node.Params.Get(j), tc, uri, sLine, eLine, out)
+        }
+        let an: int = node.Args.Count()
+        for k in 0..an {
+            LspServer.CollectAnnotationFixes(node.Args.Get(k), tc, uri, sLine, eLine, out)
+        }
+    }
+
+    // Build a CodeAction JSON for the "add type annotation" quick fix.
+    // The TextEdit inserts `: <type>` at column = (var name end). LSP
+    // treats a zero-width range as an insertion point, so start ==
+    // end here.
+    //
+    // kind = "quickfix" — VS Code groups these under the lightbulb;
+    // isPreferred = true so Quick Fix... defaults to this action when
+    // the user hits Ctrl+. on the line.
+    private static string AnnotationFixJson(string uri, int line, int col, string name, string typeStr) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let insertPoint: string = "{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}"
+        let range: string = "{\"start\":" + insertPoint + ",\"end\":" + insertPoint + "}"
+        let newText: string = ": " + typeStr
+        let edit: string = "{\"range\":" + range + ",\"newText\":\"" + Json.EscapeString(newText) + "\"}"
+        let changes: string = "{\"" + Json.EscapeString(uri) + "\":[" + edit + "]}"
+        let title: string = "Add type annotation: " + typeStr
+        return "{\"title\":\"" + Json.EscapeString(title) + "\",\"kind\":\"quickfix\",\"isPreferred\":true,\"edit\":{\"changes\":" + changes + "}}"
     }
 
     // ── Workspace symbol (Ctrl+T) ─────────────────────
