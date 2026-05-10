@@ -4,13 +4,15 @@
 # ─────────────────────────────────────────────────────
 #
 # Saves the current amc as a fallback for when self-host bootstrap
-# is broken (e.g. introducing a new syntax that the Vala bootstrap
-# doesn't understand). The snapshot is one rung above ./build/amc
-# (Vala) in build_amc.sh's fallback chain:
+# is broken (e.g. introducing a new syntax that the running amc
+# doesn't understand). The snapshot is the sole bootstrap rung
+# below ./amc:
 #
 #   ./amc                  ← current self-hosted (may be broken)
 #   ./snapshot/amc         ← last known-good Amalgame (this script)
-#   ./build/amc            ← Vala bootstrap (frozen, original syntax)
+#
+# From a clean clone, snapshot/amc is rebuildable in one gcc step
+# from the tracked snapshot/amc_lib.c — see snapshot/INFO.md.
 #
 # Usage:
 #   ./tools/save-snapshot.sh            # validate + save snapshot
@@ -73,10 +75,11 @@ Git rev:  $(git rev-parse HEAD)
 Branch:   $(git rev-parse --abbrev-ref HEAD)
 Tests:    $PASS_COUNT passed
 
-This snapshot is the canonical recovery binary when ./amc is broken
-mid-development. \`build_amc.sh\` falls back to \`snapshot/amc\` before
-\`./build/amc\` (Vala) so a known-good Amalgame compiler is always one
-rung closer than the original bootstrap.
+This snapshot is the canonical bootstrap binary. \`build_amc.sh\` uses
+\`./amc\` if present, otherwise falls back to \`./snapshot/amc\`. From a
+clean clone, recompile \`snapshot/amc\` from the tracked
+\`snapshot/amc_lib.c\` with \`gcc\` (one command, no other compiler
+needed).
 
 To recompile the snapshot binary on this platform:
 

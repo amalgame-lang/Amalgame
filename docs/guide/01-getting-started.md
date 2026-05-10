@@ -17,14 +17,13 @@ pipeline applied to the compiler's own sources in `src/`.
 ### Linux (Debian/Ubuntu)
 
 ```bash
-sudo apt install -y \
-    valac meson ninja-build gcc \
-    libglib2.0-dev libgee-0.8-dev libgc-dev libcurl4-openssl-dev
+sudo apt install -y gcc libgc-dev libcurl4-openssl-dev
 
 git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
-./compile.sh         # one-time: builds the Vala-bootstrap amc into ./build/amc
-./build_amc.sh       # builds the self-hosted amc into ./amc (~5s)
+gcc -O2 -Iruntime snapshot/amc_lib.c \
+    -lgc -lm -lcurl -o snapshot/amc   # one-time: bootstrap from tracked C
+./build_amc.sh                         # builds the self-hosted amc into ./amc (~5s)
 ./tests/run_all_tests.sh
 ```
 
@@ -40,8 +39,8 @@ gcc -O2 -Iruntime src/amc_lib.c \
 ```
 
 `amc_lib.c` is the canonical cross-platform snapshot of the
-self-hosted compiler — it's tracked in git, so macOS doesn't need Vala
-to bootstrap.
+self-hosted compiler — it's tracked in git, so any platform with a
+working `gcc` can bootstrap from a clean clone.
 
 ### Windows (MSYS2 MINGW64)
 

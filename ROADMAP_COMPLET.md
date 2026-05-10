@@ -12,7 +12,7 @@ For architecture and contribution guidance see
 
 ### Self-hosted compiler
 The compiler is written in Amalgame in [src/](src/) and compiles
-itself in ~5 seconds (`./build_amc.sh`). A 3-rung bootstrap chain
+itself in ~5 seconds (`./build_amc.sh`). A 2-rung bootstrap chain
 keeps recovery easy:
 
 1. **`./amc`** — current self-hosted compiler.
@@ -20,9 +20,7 @@ keeps recovery easy:
    `tools/save-snapshot.sh` after a green test run. The portable
    `snapshot/amc_lib.c` is committed; the binary regenerates with one
    `gcc`. Used as fallback whenever `./amc` is broken mid-development.
-3. **`./build/amc`** — Vala bootstrap in `archive/vala-bootstrap/`,
-   no longer exercised by CI but kept locally for cold-start recovery
-   (`./compile.sh`).
+   From a clean clone, this is also the cold-start entry point.
 
 | Component        | File                                |
 |------------------|-------------------------------------|
@@ -61,8 +59,8 @@ keeps recovery easy:
 - **Capturing closures** (since v0.3.4) — single-param expression-bodied
   lambdas snapshot enclosing locals into a heap-allocated env struct;
   callable as values, dispatched through `AmalgameClosure_call1`.
-- try / catch / throw / finally — Vala bootstrap only;
-  not yet implemented in self-hosted parser
+- try / catch / throw — implemented in self-host (PR landed);
+  `finally` clause still TBD.
 
 ### Tooling
 - **`amc fmt`** — formatter that re-emits the AST canonically with
@@ -93,9 +91,9 @@ Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
 
 ### Compiler quality
 - Rustc-style diagnostics with source snippet + caret (Resolver + TypeChecker)
-- Multi-OS CI (Linux + macOS + Windows MSYS2). Linux runs on the
-  self-hosted amc directly — Vala is no longer in the CI dependency
-  graph.
+- Multi-OS CI (Linux + macOS + Windows MSYS2). All three platforms
+  bootstrap from the tracked `snapshot/amc_lib.c` and run the
+  self-hosted `amc` for testing.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
 - **263/263 tests** in CI under `./amc` (201 core + 50 stdlib + 12
@@ -195,10 +193,9 @@ In rough order of usefulness × effort:
 
 ## 🟠 Compiler — open bugs (samples currently SKIPped)
 
-These samples pass under the Vala bootstrap but trigger bugs in the
-self-hosted compiler. They're marked SKIP in `tests/run_tests.sh`
-(`SKIP_SELFHOST`) so the suite stays green; each one needs its own
-fix.
+These samples trigger bugs in the self-hosted compiler. They're
+marked SKIP in `tests/run_tests.sh` (`SKIP_SELFHOST`) so the suite
+stays green; each one needs its own fix.
 
 - [x] **`Type.Variant` patterns in match** — `ParseMatchPattern`
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
@@ -207,10 +204,10 @@ fix.
 - [x] **try / catch / throw** — `ParseTry` and `ParseThrow` build
       `TRY_STMT { Body=try, Else=catch, Cond=finally?, Name=binder }`
       and `THROW_STMT { Left=expr }`. Resolver/typechecker open a
-      `catch` scope and declare the binder as `void*`. CGen emits the
-      same `setjmp`/`longjmp` pattern the Vala bootstrap used (saves
-      `_am_ex.env` into a `_am_prev_env_<line>` slot, restores it
-      after the handler) and lowers `throw new T(args)` to
+      `catch` scope and declare the binder as `void*`. CGen emits a
+      `setjmp`/`longjmp` pattern (saves `_am_ex.env` into a
+      `_am_prev_env_<line>` slot, restores it after the handler) and
+      lowers `throw new T(args)` to
       `_am_throw((void*)(T_new(args)), "T", first_string_arg)`. The
       formatter learned `EmitTry` / `EmitThrow` so round-trip stays
       lossless. Drops `try_catch.am` from `SKIP_SELFHOST`.
@@ -471,8 +468,9 @@ before the next big language addition.
       branch in `main.am`, and a sample roundtrip test that
       scaffolds + compiles a fresh project under `/tmp`.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
-- [ ] **`amc add <pkg>`** — package manager (re-export of the legacy
-      Vala one in `archive/vala-bootstrap/src/pkg/`).
+- [ ] **`amc add <pkg>`** — package manager (re-port of the
+      pre-self-host Vala implementation, available via the
+      `vala-bootstrap-final` git tag if revival is needed).
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
@@ -567,8 +565,8 @@ before the next big language addition.
       in conversation; no script yet.
 - [x] **URL sweep** — old `BastienMOUGET/...` URLs scrubbed
       from `runtime/Amalgame_*.h`, `install/homebrew/amalgame.rb`,
-      `install/windows/install.ps1` + `amalgame.iss`, and
-      `archive/vala-bootstrap/**` (post-PR #187 / org transfer).
+      `install/windows/install.ps1` + `amalgame.iss` (post-PR #187 /
+      org transfer).
       CHANGELOG mention of the transfer itself kept as historical
       record. The VS Code `publisher` field in
       `editors/vscode/package.json` is left at `BastienMOUGET`
@@ -620,10 +618,10 @@ before the next big language addition.
       with the "Module/import system" question above.
   Bootstrap-curiosity → A is fine. Daily driver → D or E
   (likely E once imports are physical).
-- **Error vs. exception model** — `try/catch/throw` works under Vala
-  but is missing in self-host. Worth replacing with a Rust-like
-  `Result<T, E>` plus `?` operator for short-circuiting before
-  re-implementing the setjmp version.
+- **Error vs. exception model** — `try/catch/throw` works in
+  self-host via setjmp/longjmp. Worth considering a Rust-like
+  `Result<T, E>` plus `?` operator for short-circuiting as a
+  complementary path.
 - **Single-threaded** — bdwgc is configured for the main thread. If
   Amalgame ever wants concurrency, the GC config and runtime helpers
   need a pass.
