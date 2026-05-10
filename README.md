@@ -15,7 +15,7 @@ A self-hosted programming language that compiles to C.
 > Site officiel : **[amalgame.me](https://amalgame.me)**
 > [Tour du langage](https://amalgame.me/fr/tour) · [Installer](https://amalgame.me/fr/install) · [Versions](https://amalgame.me/fr/releases)
 
-```amalgame
+```kotlin
 namespace App
 import Amalgame.IO
 
@@ -51,11 +51,11 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.4.4**.
+Current version: **v0.4.5**.
 
 ## Language at a glance
 
-```amalgame
+```kotlin
 namespace App
 import Amalgame.IO
 
@@ -115,7 +115,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.4.4
+./amc --version          # amc 0.4.5
 ./tests/run_all_tests.sh
 ```
 
@@ -143,7 +143,7 @@ gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -lws2_32 -o amc.exe
 
 ### Hello, world
 
-```amalgame
+```kotlin
 // hello.am
 namespace App
 import Amalgame.IO

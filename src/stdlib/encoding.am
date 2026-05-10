@@ -17,10 +17,13 @@ import Amalgame.Collections
 //
 // Notes on style:
 //   - Bit slices use `/` and `*` instead of `>>` and `<<`. The
-//     parser currently drops `expr >> N` inside `let` initializers
-//     (see ROADMAP_COMPLET.md, "Parser: expr >> N drops the shift");
-//     division by powers of two is the equivalent operation for
-//     the non-negative byte values handled here.
+//     original "parser drops `expr >> N`" bug is now fixed, but
+//     these slices appear inside mixed `+` expressions here, and
+//     in C `<<` / `>>` bind LOOSER than `+` (the opposite of `*`
+//     / `/`). Switching would require parenthesisation that the
+//     cgen doesn't currently insert — so we keep the `/` / `*`
+//     form, which is equivalent for the non-negative byte values
+//     handled here and produces the same emitted C either way.
 //   - Reverse lookups (char → 0-63 for Base64, char → 0-15 for
 //     Hex) go through `String_IndexOf` rather than a precomputed
 //     table. Quadratic in the input length with respect to the

@@ -93,7 +93,7 @@ the next release.
 
 Compile your library with `--lib` and link the `.o`:
 
-```amalgame
+```kotlin
 // greeter.am
 namespace MyLib
 
@@ -152,7 +152,7 @@ static inline i64 String_DamerauLevenshtein(code_string a, code_string b) {
 }
 ```
 
-```amalgame
+```kotlin
 // src/resolver/resolver.am — RegisterBuiltins()
 this.DeclareGlobal("String_DamerauLevenshtein", "int", false)
 ```
@@ -188,7 +188,7 @@ forwards. The CGen will emit normal C calls.
 There's no length cache — `String.Length(s)` is `strlen(s)` — so
 hot loops that ask for the length should hoist it:
 
-```amalgame
+```kotlin
 let len = String.Length(text)         // O(strlen)
 for i in 0..len { /* … */ }            // body is O(1) per iteration
 ```

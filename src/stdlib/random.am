@@ -135,25 +135,25 @@ public class Random {
         while (produced < n) {
             let r:     int = this.NextUInt32()
             let avail: int = n - produced
-            // We use division instead of right-shift: the parser
-            // currently mis-handles `expr >> N` inside a `let` and
-            // drops the shift. Division by powers of two has the
-            // same effect for the non-negative i64 values we hold
-            // here (NextUInt32 returns [0, 2^32 - 1]).
+            // Right-shift to slice each successive byte. Earlier
+            // versions divided by 256 / 65536 / 16777216 because
+            // the parser dropped `expr >> N` inside `let`; that's
+            // fixed (PR landing this comment), so the shifts now
+            // emit as written.
             let b0: int = r & 255
             out.Add(b0)
             if (avail >= 2) {
-                let r1: int = r / 256
+                let r1: int = r >> 8
                 let b1: int = r1 & 255
                 out.Add(b1)
             }
             if (avail >= 3) {
-                let r2: int = r / 65536
+                let r2: int = r >> 16
                 let b2: int = r2 & 255
                 out.Add(b2)
             }
             if (avail >= 4) {
-                let r3: int = r / 16777216
+                let r3: int = r >> 24
                 let b3: int = r3 & 255
                 out.Add(b3)
             }

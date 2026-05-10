@@ -11,7 +11,7 @@ Versions: [Semantic Versioning](https://semver.org)
 
 #### Tuple return types & destructuring (2026-04-30)
 
-```amalgame
+```kotlin
 // Return multiple values
 public static (int, string) GetPlayer() {
     return (42, "Arthus")
@@ -54,7 +54,7 @@ code_string name = _am_tuple_0._1;
 ---
 
 
-```amalgame
+```kotlin
 let msg = """
 Hello
 World
@@ -86,7 +86,7 @@ let sql = """
 ---
 
 
-```amalgame
+```kotlin
 try {
     let result = Program.SafeDiv(10, 0)
 } catch e {
@@ -115,7 +115,7 @@ Generated C via `setjmp/longjmp` — zero runtime overhead when no exception thr
 ---
 
 
-```amalgame
+```kotlin
 let label   = if x > 5 { "big" } else { "small" }
 let grade   = if score >= 90 { "A" } else if score >= 80 { "B" } else { "F" }
 let bigger  = if x > 3 { x } else { 3 }
@@ -140,7 +140,7 @@ code_string label = ((x > 5) ? ("big") : ("small"));
 ---
 
 
-```amalgame
+```kotlin
 // Range
 for i in 0..10 { Console.WriteLine("{i}") }
 
@@ -183,7 +183,7 @@ for ch in "Hello" { count = count + 1 }
 
 Full enum support — simple and rich (tagged union) variants:
 
-```amalgame
+```kotlin
 // Simple enum
 public enum Direction { North, South, East, West }
 
@@ -229,7 +229,7 @@ public enum Shape {
 
 Full interface support with C vtable pattern:
 
-```amalgame
+```kotlin
 public interface IDescribable {
     Describe() -> string
 }
@@ -263,7 +263,7 @@ Program.PrintDesc(c)   // → Tests_Circle_as_IDescribable(c)
 
 Full network support — HTTP, TCP client/server, UDP:
 
-```amalgame
+```kotlin
 import Amalgame.Net
 
 // HTTP
@@ -330,7 +330,7 @@ error[syntax]: Attendu un identifiant, trouvé ','
 
 Full `List<T>`, `Map<K,V>`, `Set<T>` support:
 
-```amalgame
+```kotlin
 import Amalgame.Collections
 
 let list = new List<int>()

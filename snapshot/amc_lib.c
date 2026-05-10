@@ -11,6 +11,7 @@
 #include "Amalgame_Process.h"
 #include "Amalgame_Random.h"
 #include "Amalgame_DateTime.h"
+#include "Amalgame_Crypto.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -54,6 +55,8 @@ typedef struct _Amalgame_Compiler_Duration Amalgame_Compiler_Duration;
 typedef struct _Amalgame_Compiler_InstantResult Amalgame_Compiler_InstantResult;
 typedef struct _Amalgame_Compiler_Instant Amalgame_Compiler_Instant;
 typedef struct _Amalgame_Compiler_Stopwatch Amalgame_Compiler_Stopwatch;
+typedef struct _Amalgame_Compiler_Sha256 Amalgame_Compiler_Sha256;
+typedef struct _Amalgame_Compiler_Hmac Amalgame_Compiler_Hmac;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -2330,7 +2333,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseEquality(Amalgam
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseRelational(Amalgame_Compiler_Parser* self) {
     (void)self;
-    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseAdd(self);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseShift(self);
     while (Amalgame_Compiler_Parser_CheckValue(self, "<") || Amalgame_Compiler_Parser_CheckValue(self, ">") || Amalgame_Compiler_Parser_CheckValue(self, "<=") || Amalgame_Compiler_Parser_CheckValue(self, ">=")) {
         Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseShift(self);
@@ -4137,6 +4140,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Random.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_DateTime.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Crypto.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -8360,6 +8364,12 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_FormatIso", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_ParseIsoNanos", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_IsParseError", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256Hex", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256OfString", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_HmacSha256", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_HmacSha256Hex", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_HmacSha256OfStrings", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
@@ -12215,17 +12225,17 @@ AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64
         i64 __attribute__((unused)) b0 = r & 255;
         AmalgameList_add(out, (void*)(intptr_t)(b0));
         if (avail >= 2) {
-            i64 __attribute__((unused)) r1 = r / 256;
+            i64 __attribute__((unused)) r1 = r >> 8;
             i64 __attribute__((unused)) b1 = r1 & 255;
             AmalgameList_add(out, (void*)(intptr_t)(b1));
         }
         if (avail >= 3) {
-            i64 __attribute__((unused)) r2 = r / 65536;
+            i64 __attribute__((unused)) r2 = r >> 16;
             i64 __attribute__((unused)) b2 = r2 & 255;
             AmalgameList_add(out, (void*)(intptr_t)(b2));
         }
         if (avail >= 4) {
-            i64 __attribute__((unused)) r3 = r / 16777216;
+            i64 __attribute__((unused)) r3 = r >> 24;
             i64 __attribute__((unused)) b3 = r3 & 255;
             AmalgameList_add(out, (void*)(intptr_t)(b3));
         }
@@ -13035,6 +13045,63 @@ Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_
     i64 __attribute__((unused)) diff = now - self->startNanos;
     self->startNanos = now;
     return Amalgame_Compiler_Duration_new(diff);
+}
+
+struct _Amalgame_Compiler_Sha256 {
+};
+
+AmalgameList* Amalgame_Compiler_Sha256_Bytes(AmalgameList* data);
+code_string Amalgame_Compiler_Sha256_Hex(AmalgameList* data);
+code_string Amalgame_Compiler_Sha256_OfString(code_string s);
+
+Amalgame_Compiler_Sha256* Amalgame_Compiler_Sha256_new() {
+    Amalgame_Compiler_Sha256* self = (Amalgame_Compiler_Sha256*) GC_MALLOC(sizeof(Amalgame_Compiler_Sha256));
+    return self;
+}
+
+AmalgameList* Amalgame_Compiler_Sha256_Bytes(AmalgameList* data) {
+    (void)data;
+    return Crypto_Sha256(data);
+}
+
+code_string Amalgame_Compiler_Sha256_Hex(AmalgameList* data) {
+    (void)data;
+    return Crypto_Sha256Hex(data);
+}
+
+code_string Amalgame_Compiler_Sha256_OfString(code_string s) {
+    (void)s;
+    return Crypto_Sha256OfString(s);
+}
+
+struct _Amalgame_Compiler_Hmac {
+};
+
+AmalgameList* Amalgame_Compiler_Hmac_Sha256(AmalgameList* key, AmalgameList* msg);
+code_string Amalgame_Compiler_Hmac_Sha256Hex(AmalgameList* key, AmalgameList* msg);
+code_string Amalgame_Compiler_Hmac_Sha256OfStrings(code_string key, code_string msg);
+
+Amalgame_Compiler_Hmac* Amalgame_Compiler_Hmac_new() {
+    Amalgame_Compiler_Hmac* self = (Amalgame_Compiler_Hmac*) GC_MALLOC(sizeof(Amalgame_Compiler_Hmac));
+    return self;
+}
+
+AmalgameList* Amalgame_Compiler_Hmac_Sha256(AmalgameList* key, AmalgameList* msg) {
+    (void)key;
+    (void)msg;
+    return Crypto_HmacSha256(key, msg);
+}
+
+code_string Amalgame_Compiler_Hmac_Sha256Hex(AmalgameList* key, AmalgameList* msg) {
+    (void)key;
+    (void)msg;
+    return Crypto_HmacSha256Hex(key, msg);
+}
+
+code_string Amalgame_Compiler_Hmac_Sha256OfStrings(code_string key, code_string msg) {
+    (void)key;
+    (void)msg;
+    return Crypto_HmacSha256OfStrings(key, msg);
 }
 
 struct _Amalgame_Compiler_LspServer {
@@ -16406,7 +16473,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.4.4 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.4.5 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {

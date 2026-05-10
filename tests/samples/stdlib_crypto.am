@@ -1,0 +1,159 @@
+// Stdlib test: Amalgame.Crypto — SHA-256 + HMAC-SHA-256.
+// Vectors come from FIPS 180-4 (SHA-256) and RFC 4231 (HMAC-SHA-256
+// test cases 1 and 2). Each [PASS] line below matches one assertion
+// the runner looks for.
+
+import Amalgame.Crypto
+import Amalgame.Collections
+
+class Program {
+    public static void Main() {
+
+        // ── SHA-256 of "abc" ───────────────────────────
+        // FIPS 180-4 Appendix B.1, the canonical 3-byte test vector.
+        let h1: string = Sha256.OfString("abc")
+        let exp1: string = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        if (h1 == exp1) {
+            Console.WriteLine("[PASS] sha256 'abc'")
+        } else {
+            Console.WriteLine("[FAIL] sha256 'abc' got " + h1)
+        }
+
+        // ── SHA-256 of empty string ───────────────────
+        // FIPS 180-4 Appendix B.3 — exercises the all-padding path
+        // (no message bytes, just the 0x80 + zeros + length suffix).
+        let h2: string = Sha256.OfString("")
+        let exp2: string = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        if (h2 == exp2) {
+            Console.WriteLine("[PASS] sha256 empty")
+        } else {
+            Console.WriteLine("[FAIL] sha256 empty got " + h2)
+        }
+
+        // ── SHA-256 byte-list path round-trip ──────────
+        // Build the bytes [0x61, 0x62, 0x63] = "abc" by hand to
+        // exercise the List<int> entry points (Sha256.Bytes /
+        // Sha256.Hex), and confirm Hex(bytes-of-"abc") matches the
+        // string-input path.
+        let abc: List<int> = new List<int>()
+        abc.Add(97)  // 'a'
+        abc.Add(98)  // 'b'
+        abc.Add(99)  // 'c'
+        let raw: List<int> = Sha256.Bytes(abc)
+        let nb:  int       = raw.Count()
+        if (nb == 32) {
+            Console.WriteLine("[PASS] sha256 bytes length")
+        } else {
+            Console.WriteLine("[FAIL] sha256 bytes length")
+        }
+        let h3: string = Sha256.Hex(abc)
+        if (h3 == exp1) {
+            Console.WriteLine("[PASS] sha256 bytes hex")
+        } else {
+            Console.WriteLine("[FAIL] sha256 bytes hex")
+        }
+
+        // ── SHA-256 of long input (cross-block) ────────
+        // 100 'a' chars, longer than one 64-byte SHA block, so this
+        // exercises the multi-block compression path. Avoid the
+        // identifier `long` since it's a C keyword and amc maps
+        // user names through to C unchanged.
+        var lng: string = ""
+        for i in 0..100 {
+            lng = lng + "a"
+        }
+        let h4: string = Sha256.OfString(lng)
+        let exp4: string = "2816597888e4a0d3a36b82b83316ab32680eb8f00f8cd3b904d681246d285a0e"
+        if (h4 == exp4) {
+            Console.WriteLine("[PASS] sha256 100a")
+        } else {
+            Console.WriteLine("[FAIL] sha256 100a got " + h4)
+        }
+
+        // ── HMAC-SHA-256 RFC 4231 case 1 ──────────────
+        // Key = 0x0b * 20, Msg = "Hi There".
+        let key1: List<int> = new List<int>()
+        for i in 0..20 {
+            key1.Add(11)  // 0x0b
+        }
+        let msg1: List<int> = new List<int>()
+        msg1.Add(72)   // 'H'
+        msg1.Add(105)  // 'i'
+        msg1.Add(32)   // ' '
+        msg1.Add(84)   // 'T'
+        msg1.Add(104)  // 'h'
+        msg1.Add(101)  // 'e'
+        msg1.Add(114)  // 'r'
+        msg1.Add(101)  // 'e'
+        let m1: string   = Hmac.Sha256Hex(key1, msg1)
+        let expM1: string = "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+        if (m1 == expM1) {
+            Console.WriteLine("[PASS] hmac rfc4231 case 1")
+        } else {
+            Console.WriteLine("[FAIL] hmac rfc4231 case 1 got " + m1)
+        }
+
+        // ── HMAC-SHA-256 RFC 4231 case 2 ──────────────
+        // Key = "Jefe", Msg = "what do ya want for nothing?".
+        // String-input convenience method.
+        let m2: string = Hmac.Sha256OfStrings("Jefe", "what do ya want for nothing?")
+        let expM2: string = "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        if (m2 == expM2) {
+            Console.WriteLine("[PASS] hmac rfc4231 case 2")
+        } else {
+            Console.WriteLine("[FAIL] hmac rfc4231 case 2 got " + m2)
+        }
+
+        // ── HMAC-SHA-256 raw-bytes round-trip ─────────
+        // Same vectors as case 2 but going through the List<int>
+        // entry point. Bytes spelled out by codepoint (Amalgame
+        // doesn't expose a single-byte-from-char helper, and the
+        // string is pure ASCII so codepoint == byte).
+        let key3: List<int> = new List<int>()
+        key3.Add(74)  // 'J'
+        key3.Add(101) // 'e'
+        key3.Add(102) // 'f'
+        key3.Add(101) // 'e'
+        let msg3: List<int> = new List<int>()
+        msg3.Add(119) // 'w'
+        msg3.Add(104) // 'h'
+        msg3.Add(97)  // 'a'
+        msg3.Add(116) // 't'
+        msg3.Add(32)  // ' '
+        msg3.Add(100) // 'd'
+        msg3.Add(111) // 'o'
+        msg3.Add(32)  // ' '
+        msg3.Add(121) // 'y'
+        msg3.Add(97)  // 'a'
+        msg3.Add(32)  // ' '
+        msg3.Add(119) // 'w'
+        msg3.Add(97)  // 'a'
+        msg3.Add(110) // 'n'
+        msg3.Add(116) // 't'
+        msg3.Add(32)  // ' '
+        msg3.Add(102) // 'f'
+        msg3.Add(111) // 'o'
+        msg3.Add(114) // 'r'
+        msg3.Add(32)  // ' '
+        msg3.Add(110) // 'n'
+        msg3.Add(111) // 'o'
+        msg3.Add(116) // 't'
+        msg3.Add(104) // 'h'
+        msg3.Add(105) // 'i'
+        msg3.Add(110) // 'n'
+        msg3.Add(103) // 'g'
+        msg3.Add(63)  // '?'
+        let m3raw: List<int> = Hmac.Sha256(key3, msg3)
+        if (m3raw.Count() == 32) {
+            Console.WriteLine("[PASS] hmac bytes length")
+        } else {
+            Console.WriteLine("[FAIL] hmac bytes length")
+        }
+        let m3hex: string = Hmac.Sha256Hex(key3, msg3)
+        if (m3hex == expM2) {
+            Console.WriteLine("[PASS] hmac bytes path")
+        } else {
+            Console.WriteLine("[FAIL] hmac bytes path got " + m3hex)
+        }
+    }
+}
