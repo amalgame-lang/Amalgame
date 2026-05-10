@@ -38,7 +38,22 @@ public class MemberTable {
         let count = this.Keys.Count()
         for i in 0..count {
             if (this.Keys.Get(i) == key) {
-                this.Values.Add(typeName)   // last write wins
+                // Key already known — silently no-op. The previous
+                // "Values.Add(typeName) // last write wins" was a bug:
+                // it appended a new value while leaving Keys at the
+                // same length, desynching the parallel-array indices
+                // so every subsequent lookup returned a value belonging
+                // to another member. Surfaced loudly under workspace
+                // LSP because it re-collects every class when the open
+                // file is also seen by the workspace scan, and any
+                // duplicate Set there would skew every lookup made
+                // after it (TypeChecker reading members of unrelated
+                // classes would get wrong types — bool for fields
+                // declared string, TokenType for fields declared bool,
+                // etc.). For our use case, duplicate Sets within a
+                // single resolver instance always carry the same value
+                // (same source text, same parser output), so dropping
+                // the duplicate is safe.
                 return
             }
         }

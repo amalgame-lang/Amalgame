@@ -2809,7 +2809,7 @@ public class CGen {
             }
         }
 
-        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve" && mname != "Filter" && mname != "Map" && mname != "Reduce" && mname != "ForEach" && mname != "Any" && mname != "All" && mname != "CountIf") { return "" }
+        if (mname != "Add" && mname != "Set" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve" && mname != "Filter" && mname != "Map" && mname != "Reduce" && mname != "ForEach" && mname != "Any" && mname != "All" && mname != "CountIf") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -2887,6 +2887,15 @@ public class CGen {
             if (argc == 0) { return "AmalgameList_add(" + listExpr + ", NULL)" }
             let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
             return "AmalgameList_add(" + listExpr + ", " + this.BoxAsVoid(arg0) + ")"
+        }
+        if (mname == "Set") {
+            // List.Set(idx, value): replace the element at idx in place.
+            // The runtime guards out-of-range writes (silent no-op).
+            let argc = callExpr.Args.Count()
+            if (argc < 2) { return "" }
+            let idxArg = this.EmitExprStr(callExpr.Args.Get(0))
+            let valArg = this.EmitExprStr(callExpr.Args.Get(1))
+            return "AmalgameList_set(" + listExpr + ", " + idxArg + ", " + this.BoxAsVoid(valArg) + ")"
         }
         if (mname == "Get") {
             let argc = callExpr.Args.Count()
