@@ -8,10 +8,25 @@
 // Disable via `"amalgame.enableLsp": false` in settings to fall
 // back to syntax-only highlighting.
 
+const os = require('os');
 const { workspace, window } = require('vscode');
 const { LanguageClient, TransportKind, Trace } = require('vscode-languageclient/node');
 
 let client;
+
+// Normalise the user-set `amalgame.serverPath`: trim incidental
+// whitespace (trivial JSON paste error) and expand a leading `~/`
+// to the user's home directory. Without this, child_process.spawn
+// fails with ENOENT on values that "look fine" but differ from
+// what spawn understands — `spawn` doesn't run a shell, so neither
+// trimming nor tilde expansion happens implicitly.
+function resolveServerPath(raw) {
+    let p = (raw || '').trim();
+    if (p.startsWith('~/') || p === '~') {
+        p = os.homedir() + p.slice(1);
+    }
+    return p || 'amc';
+}
 
 function activate(context) {
     const config = workspace.getConfiguration('amalgame');
@@ -19,9 +34,14 @@ function activate(context) {
         return;
     }
 
-    const serverPath = config.get('serverPath', 'amc');
+    const rawServerPath = config.get('serverPath', 'amc');
+    const serverPath = resolveServerPath(rawServerPath);
     const outputChannel = window.createOutputChannel('Amalgame LSP');
-    outputChannel.appendLine(`[ext] activate — serverPath="${serverPath}"`);
+    if (rawServerPath !== serverPath) {
+        outputChannel.appendLine(`[ext] activate — serverPath="${serverPath}" (resolved from "${rawServerPath}")`);
+    } else {
+        outputChannel.appendLine(`[ext] activate — serverPath="${serverPath}"`);
+    }
 
     const serverOptions = {
         command: serverPath,

@@ -2,7 +2,7 @@
   "name": "amalgame",
   "displayName": "Amalgame",
   "description": "Syntax highlighting + LSP client for the Amalgame programming language (.am files).",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "BastienMOUGET",
   "license": "MIT",
   "repository": {
