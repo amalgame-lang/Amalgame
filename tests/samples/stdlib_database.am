@@ -1,0 +1,143 @@
+// Stdlib test: Amalgame.Database — SQLite 3 via the vendored
+// amalgamation. Uses `:memory:` so we don't litter /tmp with
+// test artifacts and the suite stays parallel-safe.
+
+namespace Tests
+
+import Amalgame.Collections
+import Amalgame.Database.SQLite
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── Open + close ──────────────────────────────────
+
+        let db = SQLite.Open(":memory:")
+        if (SQLite.IsOpen(db)) {
+            Console.WriteLine("[PASS] open memory")
+        } else {
+            Console.WriteLine("[FAIL] open memory got " + SQLite.LastError(db))
+        }
+
+        // ── DDL + DML ─────────────────────────────────────
+
+        let createOk: bool = SQLite.Exec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+        if (createOk) {
+            Console.WriteLine("[PASS] create table")
+        } else {
+            Console.WriteLine("[FAIL] create table: " + SQLite.LastError(db))
+        }
+
+        let insertOk: bool = SQLite.Exec(db, "INSERT INTO users (name, age) VALUES ('Alice', 30)")
+        if (insertOk) {
+            Console.WriteLine("[PASS] insert alice")
+        } else {
+            Console.WriteLine("[FAIL] insert alice: " + SQLite.LastError(db))
+        }
+
+        let alice_id: int = SQLite.LastInsertId(db)
+        if (alice_id == 1) {
+            Console.WriteLine("[PASS] last insert id 1")
+        } else {
+            Console.WriteLine("[FAIL] last insert id got " + String_FromInt(alice_id))
+        }
+
+        SQLite.Exec(db, "INSERT INTO users (name, age) VALUES ('Bob', 25)")
+        SQLite.Exec(db, "INSERT INTO users (name, age) VALUES ('Charlie', 40)")
+        let final_id: int = SQLite.LastInsertId(db)
+        if (final_id == 3) {
+            Console.WriteLine("[PASS] last insert id 3")
+        } else {
+            Console.WriteLine("[FAIL] last insert id got " + String_FromInt(final_id))
+        }
+
+        // ── Changes counter ───────────────────────────────
+
+        let updateOk: bool = SQLite.Exec(db, "UPDATE users SET age = age + 1 WHERE name != 'Charlie'")
+        let updated: int = SQLite.Changes(db)
+        if (updated == 2) {
+            Console.WriteLine("[PASS] changes 2")
+        } else {
+            Console.WriteLine("[FAIL] changes got " + String_FromInt(updated))
+        }
+
+        // ── Query: SELECT *, count rows ────────────────────
+
+        // Outer list has no type annotation because the Amalgame
+        // parser rejects nested generics in let bindings
+        // (`List<List<string>>`). Inner list is annotated explicitly
+        // so the cgen can resolve `.Get(int)` to the typed result.
+        let rows = SQLite.QueryAll(db, "SELECT id, name, age FROM users ORDER BY id")
+        let rowCount: int = rows.Count()
+        if (rowCount == 3) {
+            Console.WriteLine("[PASS] query 3 rows")
+        } else {
+            Console.WriteLine("[FAIL] query got " + String_FromInt(rowCount) + " rows")
+        }
+
+        // ── Query: column values as text ───────────────────
+
+        let alice_row: List<string> = rows.Get(0)
+        let alice_name: string = alice_row.Get(1)
+        if (alice_name == "Alice") {
+            Console.WriteLine("[PASS] alice name")
+        } else {
+            Console.WriteLine("[FAIL] alice name got " + alice_name)
+        }
+
+        let alice_age: string = alice_row.Get(2)
+        if (alice_age == "31") {
+            Console.WriteLine("[PASS] alice age post-update")
+        } else {
+            Console.WriteLine("[FAIL] alice age got " + alice_age)
+        }
+
+        // ── Aggregate: SELECT COUNT(*) ────────────────────
+
+        // Post-update ages: Alice=31, Bob=26, Charlie=40. Both
+        // Alice and Charlie are > 30, so the count is 2.
+        let countRows = SQLite.QueryAll(db, "SELECT COUNT(*) FROM users WHERE age > 30")
+        let countRow: List<string> = countRows.Get(0)
+        let countStr: string = countRow.Get(0)
+        if (countStr == "2") {
+            Console.WriteLine("[PASS] aggregate count 2")
+        } else {
+            Console.WriteLine("[FAIL] aggregate got " + countStr)
+        }
+
+        // ── Error path: invalid SQL ────────────────────────
+
+        let badOk: bool = SQLite.Exec(db, "INSERT INTO nonexistent_table VALUES (1)")
+        if (!badOk) {
+            let err: string = SQLite.LastError(db)
+            if (String_Contains(err, "no such table")) {
+                Console.WriteLine("[PASS] error reported")
+            } else {
+                Console.WriteLine("[FAIL] error msg got: " + err)
+            }
+        } else {
+            Console.WriteLine("[FAIL] error should have flagged")
+        }
+
+        // ── DELETE + verify ────────────────────────────────
+
+        SQLite.Exec(db, "DELETE FROM users WHERE name = 'Bob'")
+        let afterDelete = SQLite.QueryAll(db, "SELECT COUNT(*) FROM users")
+        let afterRow: List<string> = afterDelete.Get(0)
+        let leftStr: string = afterRow.Get(0)
+        if (leftStr == "2") {
+            Console.WriteLine("[PASS] delete leaves 2")
+        } else {
+            Console.WriteLine("[FAIL] delete count got " + leftStr)
+        }
+
+        // ── Close ─────────────────────────────────────────
+
+        SQLite.Close(db)
+        if (!SQLite.IsOpen(db)) {
+            Console.WriteLine("[PASS] closed")
+        } else {
+            Console.WriteLine("[FAIL] still open after close")
+        }
+    }
+}
