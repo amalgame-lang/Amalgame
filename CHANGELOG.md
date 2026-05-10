@@ -7,6 +7,50 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.9] — 2026-05-10
+
+The "LSP slice 3 closes" release. v0.4.8 made navigation fast and
+broad; v0.4.9 fills in the IDE features that ride on top of the
+already-walked AST: rename's pre-flight check (so F2's UI stops
+silently failing on punctuation) and the Call Hierarchy panel
+(Shift+Alt+H).
+
+### Added
+
+- **`textDocument/prepareRename`** (PR #243) — F2's pre-flight
+  check. Returns `{ range, placeholder }` when the cursor is on a
+  renameable token (IDENTIFIER / MEMBER / CLASS_DECL / ENUM_DECL /
+  METHOD_DECL / VAR_DECL / PARAM with a non-empty Name), null
+  otherwise. VS Code now shows the proper "you cannot rename this
+  element" message on punctuation/whitespace instead of silently
+  noop-ing.
+- **`textDocument/prepareCallHierarchy`** + **`callHierarchy/incomingCalls`**
+  + **`callHierarchy/outgoingCalls`** (PR #243) — exposes the
+  caller/callee graph for the method enclosing the cursor. Shift+Alt+H
+  in VS Code lights up; the outgoing pass walks the method body
+  collecting CALL nodes grouped by callee Name; the incoming pass
+  walks every program for CALL nodes whose callee matches `item.name`
+  and groups call sites by their enclosing METHOD_DECL. Items
+  roundtrip name/uri/line/character via the spec's `data` field so
+  follow-up requests re-locate the method without another search.
+
+### Roadmap
+
+- Slice 4 LSP work: tighter `selectionRange` (parser nameStart
+  hook), inlay hints (parameter names, inferred types), code
+  actions (organize imports, "extract to method").
+- `amc new <name> --template service` and `--template forms` —
+  cross-platform service / GUI scaffolders.
+
+### Tests / infra
+
+- Suite stays at **372 PASS / 0 FAIL / 0 SKIP**. Snapshot refreshed
+  for the new cgen output.
+- `tests/run_tests.sh` lsp-init expected string updated for
+  `renameProvider:{prepareProvider:true}` and `callHierarchyProvider:true`.
+
+---
+
 ## [v0.4.8] — 2026-05-10
 
 The "LSP gets fast + comprehensive" release. v0.4.7 made Cmd+Click
@@ -1112,6 +1156,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.9]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.9
 [v0.4.8]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.8
 [v0.4.7]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.7
 [v0.4.6]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.6
