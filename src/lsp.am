@@ -35,9 +35,24 @@ public class LspServer {
     private DocUris: List<string>
     private Docs:    List<string>
 
+    // Workspace cache. The full set of `.am` files reachable from
+    // the project root is parsed once on first use and reused for
+    // every subsequent BuildWorkspaceResolver call. Per-request the
+    // open file's freshly-parsed AST overrides the cached entry, so
+    // editor-fresh text always wins on the active document; sibling
+    // files use the on-disk version (good enough for the typical
+    // single-file-edit workflow). Cache is keyed on the resolved
+    // workspace root — switching projects rebuilds it once.
+    private CachedRoot:         string
+    private CachedSiblingPaths: List<string>
+    private CachedSiblingProgs: List<AstNode>
+
     public LspServer() {
-        this.DocUris = new List<string>()
-        this.Docs    = new List<string>()
+        this.DocUris             = new List<string>()
+        this.Docs                = new List<string>()
+        this.CachedRoot          = ""
+        this.CachedSiblingPaths  = new List<string>()
+        this.CachedSiblingProgs  = new List<AstNode>()
     }
 
     // ── Main loop ─────────────────────────────────────
@@ -238,19 +253,38 @@ public class LspServer {
     private FullResolver BuildWorkspaceResolver(string path, AstNode prog) {
         let resolver = new FullResolver()
         resolver.Programs.Add(prog)
-        this.LoadWorkspaceFiles(resolver, path)
+        this.EnsureWorkspaceCache(path)
+        // Add cached siblings, skipping any whose path matches the
+        // current open file (prog already covers it with editor-
+        // fresh text). The path-equality check guards against the
+        // workspace scan having picked the open file up too — find
+        // returns it under its real disk path, currentPath comes
+        // from UriToPath; both sides are decoded post-PR #227 so
+        // string equality holds.
+        let n: int = this.CachedSiblingPaths.Count()
+        for i in 0..n {
+            let cachedPath: string = this.CachedSiblingPaths.Get(i)
+            if (cachedPath == path) { continue }
+            resolver.Programs.Add(this.CachedSiblingProgs.Get(i))
+        }
         resolver.ResolvePrograms()
         return resolver
     }
 
-    // Scan the workspace for sibling *.am files (any path other than
-    // `currentPath`), parse each, and add the resulting AstNode to
-    // `resolver.Programs`. Skips silently on read or scan failure —
-    // the LSP can degrade to single-file mode rather than refuse to
-    // serve diagnostics.
-    private void LoadWorkspaceFiles(FullResolver resolver, string currentPath) {
+    // Populate the workspace cache on first use, or after the user
+    // navigates to a different project root. Once populated, the
+    // cache lives for the LSP server's lifetime — siblings change
+    // rarely in practice (the active file's edits override the
+    // cached entry per request, see BuildWorkspaceResolver). The
+    // explicit invalidation hooks for didCreate / didDelete /
+    // out-of-band edits land in slice 2.
+    private void EnsureWorkspaceCache(string currentPath) {
         let root: string = LspServer.FindWorkspaceRoot(currentPath)
         if (String_Length(root) == 0) { return }
+        if (root == this.CachedRoot && this.CachedSiblingPaths.Count() > 0) { return }
+        this.CachedRoot         = root
+        this.CachedSiblingPaths = new List<string>()
+        this.CachedSiblingProgs = new List<AstNode>()
         // 2>/dev/null swallows "permission denied" noise from any
         // unrelated subtrees; on MSYS2 / POSIX `find` is universally
         // available (already used by `amc test` discovery).
@@ -262,7 +296,6 @@ public class LspServer {
         for i in 0..n {
             let path: string = String_Trim(lines.Get(i))
             if (String_Length(path) == 0) { continue }
-            if (path == currentPath) { continue }
             if (!File.Exists(path)) { continue }
             let src: string = File.ReadAll(path)
             let lex  = new Lexer(src, path)
@@ -270,7 +303,8 @@ public class LspServer {
             let par  = new Parser(toks)
             let p    = par.Parse()
             p.Str2   = path
-            resolver.Programs.Add(p)
+            this.CachedSiblingPaths.Add(path)
+            this.CachedSiblingProgs.Add(p)
         }
     }
 
