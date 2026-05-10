@@ -46,23 +46,18 @@ public class LspServer {
     // Amalgame.Json, then walk into the structured params via
     // Get(...) chains rather than the old key-substring extractors.
     //
-    // Per-step typed locals because cgen mashes
-    // `obj.Get("x").AsInt()` into `Get_AsInt(obj, "x")` (chained
-    // Method().Method() doesn't lower yet). Verbose but mechanical.
     public int Run() {
         while (true) {
             let body = this.ReadMessage()
             if (String_Length(body) == 0) { return 0 }
             let parsed = Json.Parse(body)
             if (!parsed.Ok) { continue }
-            let root: JsonValue       = parsed.Value
-            let methodNode: JsonValue = root.Get("method")
-            let method: string        = methodNode.AsString()
-            let idNode: JsonValue     = root.Get("id")
-            let id: int               = idNode.AsInt()
-            let params: JsonValue     = root.Get("params")
-            let td: JsonValue         = params.Get("textDocument")
-            let pos: JsonValue        = params.Get("position")
+            let root: JsonValue   = parsed.Value
+            let method: string    = root.Get("method").AsString()
+            let id: int           = root.Get("id").AsInt()
+            let params: JsonValue = root.Get("params")
+            let td: JsonValue     = params.Get("textDocument")
+            let pos: JsonValue    = params.Get("position")
 
             if (method == "initialize") {
                 this.SendInit(id)
@@ -71,43 +66,38 @@ public class LspServer {
             } else if (method == "exit") {
                 return 0
             } else if (method == "textDocument/didOpen") {
-                let uriNode: JsonValue = td.Get("uri")
-                let txtNode: JsonValue = td.Get("text")
-                let uri: string = uriNode.AsString()
-                let txt: string = txtNode.AsString()
+                let uri: string = td.Get("uri").AsString()
+                let txt: string = td.Get("text").AsString()
                 this.UpsertDoc(uri, txt)
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didChange") {
                 // Full sync: client re-sends the whole document text
                 // under contentChanges[0].text.
-                let uriNode: JsonValue     = td.Get("uri")
-                let changes: JsonValue     = params.Get("contentChanges")
-                let firstChange: JsonValue = changes.At(0)
-                let txtNode: JsonValue     = firstChange.Get("text")
-                let uri: string = uriNode.AsString()
-                let txt: string = txtNode.AsString()
+                let uri: string        = td.Get("uri").AsString()
+                let changes: JsonValue = params.Get("contentChanges")
+                let txt: string        = changes.At(0).Get("text").AsString()
                 this.UpsertDoc(uri, txt)
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didClose") {
-                let uriNode: JsonValue = td.Get("uri")
-                let uri: string = uriNode.AsString()
+                let uri: string = td.Get("uri").AsString()
                 this.RemoveDoc(uri)
             } else if (method == "textDocument/hover") {
-                let uriNode: JsonValue  = td.Get("uri")
-                let lineNode: JsonValue = pos.Get("line")
-                let chrNode: JsonValue  = pos.Get("character")
-                let uri: string = uriNode.AsString()
-                let line: int   = lineNode.AsInt()
-                let chr: int    = chrNode.AsInt()
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
                 this.HandleHover(id, uri, line, chr)
             } else if (method == "textDocument/completion") {
-                let uriNode: JsonValue  = td.Get("uri")
-                let lineNode: JsonValue = pos.Get("line")
-                let chrNode: JsonValue  = pos.Get("character")
-                let uri: string = uriNode.AsString()
-                let line: int   = lineNode.AsInt()
-                let chr: int    = chrNode.AsInt()
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
                 this.HandleCompletion(id, uri, line, chr)
+            } else if (method == "textDocument/definition" || method == "textDocument/declaration") {
+                // declaration aliases definition for languages without
+                // forward declarations — same handler.
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
+                this.HandleDefinition(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -212,7 +202,11 @@ public class LspServer {
         // hoverProvider:  true  → client may send textDocument/hover
         // completionProvider: { triggerCharacters: ["."] } → client
         // requests completion lists on demand or when typing a dot.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // definitionProvider / declarationProvider: true → client
+        // may send textDocument/definition (Cmd+Click in VS Code).
+        // declaration aliases definition since Amalgame has no
+        // separate declaration/definition split.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -390,6 +384,164 @@ public class LspServer {
     private void SendNullResult(int id) {
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":null}"
         this.Send(body)
+    }
+
+    // ── Definition ────────────────────────────────────
+    //
+    // Slice 1: walk the workspace's top-level decls, return the
+    // first match by name. Covers classes, enums, interfaces,
+    // standalone (well, on-class-static) functions — every name
+    // that appears at file scope across the workspace.
+    //
+    // Out of scope here: member methods, fields, locals, parameters,
+    // imports. They land in slice 2 once we extend the resolver to
+    // expose declaration AstNodes for non-top-level symbols. The
+    // common Cmd+Click case (jump to a class or enum used somewhere)
+    // already works against this v1.
+    private void HandleDefinition(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.SendNullResult(id)
+            return
+        }
+
+        // For MEMBER nodes (e.g. `NodeKind.METHOD_DECL`), the left
+        // child carries the type name the user most likely wants
+        // — VS Code separately offers `typeDefinition` for that
+        // case. Falling back to `node.Name` covers IDENTIFIER too.
+        var lookup: string = node.Name
+        if (node.Kind == NodeKind.MEMBER) {
+            if (node.Left != null && node.Left.Kind == NodeKind.IDENTIFIER) {
+                lookup = node.Left.Name
+            }
+        }
+        if (String_Length(lookup) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+
+        // Search every workspace program's top-level children.
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode = resolver.Programs.Get(i)
+            let nDecls: int = p.Children.Count()
+            for j in 0..nDecls {
+                let decl: AstNode = p.Children.Get(j)
+                if (decl.Name == lookup) {
+                    var declPath: string = p.Str2
+                    if (String_Length(declPath) == 0) { declPath = path }
+                    this.SendDefinitionLocation(id, declPath, decl.Line, decl.Column, lookup)
+                    return
+                }
+            }
+        }
+
+        this.SendNullResult(id)
+    }
+
+    // Build and send a `Location` JSON. Range covers the symbol's
+    // name token (1-char start col → start + name length end col),
+    // converted from the AST's 1-based to LSP's 0-based positions.
+    //
+    // The URI is percent-encoded — RFC 3986 requires it for any
+    // non-ASCII byte, and VS Code silently ignores Location replies
+    // whose `uri` doesn't round-trip through its DocumentURI parser.
+    // (Symptom: Cmd+Click "spins forever" because the client never
+    // accepts our well-formed-but-decoded reply.)
+    private void SendDefinitionLocation(int id, string path, int line, int col, string name) {
+        let encPath: string = LspServer.PercentEncodePath(path)
+        let declUri: string = "file://" + encPath
+        let declLine: int   = line - 1
+        let declCol:  int   = col - 1
+        // String_Length isn't seen as i64-returning by the cgen here
+        // — the binary `+` mistypes as code_string_concat. Pinning the
+        // length through a typed local sidesteps that until the cgen
+        // gets a follow-on fix.
+        let nameLen: int = String_Length(name)
+        let endCol:  int = declCol + nameLen
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"uri\":\"" + Json.EscapeString(declUri) + "\",\"range\":{\"start\":{\"line\":" + String_FromInt(declLine) + ",\"character\":" + String_FromInt(declCol) + "},\"end\":{\"line\":" + String_FromInt(declLine) + ",\"character\":" + String_FromInt(endCol) + "}}}}"
+        this.Send(body)
+    }
+
+    // Encode every byte of `path` that's outside the URI-unreserved
+    // set to %XX. Reverse of PercentDecode. We only escape what RFC
+    // 3986 considers a `pchar` violation (anything not alpha/digit/
+    // -/./_/~//) — `/` itself stays so path separators are preserved.
+    private static string PercentEncodePath(string path) {
+        var out: string = ""
+        let n: int = String_Length(path)
+        let upper: string = "0123456789ABCDEF"
+        for i in 0..n {
+            let c: string = String_CharAt1(path, i)
+            let code: int = String_ToInt(String_FromInt(0)) // dummy init
+            // Direct char→int via a single-char string compare ladder
+            // would be enormous; use String_CharCode if available, else
+            // fall through to "preserve ASCII, escape everything else".
+            // Pragmatic shortcut: single-byte ASCII alnum + safe punct
+            // pass through, anything else is encoded byte-by-byte from
+            // the underlying UTF-8 string slice.
+            let isSafeAlnum: bool = LspServer.IsUriSafeChar(c)
+            if (isSafeAlnum) {
+                out = out + c
+            } else {
+                // Re-encode this single char (one or more UTF-8 bytes
+                // from the source) into %XX form. String_CharAt1 here
+                // returns one Unicode codepoint as a UTF-8 string; we
+                // walk its bytes and emit each as %XX.
+                let cn: int = String_Length(c)
+                for bi in 0..cn {
+                    let b: string = String_CharAt1(c, bi)
+                    let bcode: int = LspServer.AsciiCodeOf(b)
+                    let hi: int = bcode / 16
+                    let lo: int = bcode - hi * 16
+                    let hiCh: string = String_CharAt1(upper, hi)
+                    let loCh: string = String_CharAt1(upper, lo)
+                    out = out + "%" + hiCh + loCh
+                }
+            }
+        }
+        return out
+    }
+
+    // Single-char check for the "safe" set we don't %-encode: ASCII
+    // letters, digits, `-`, `.`, `_`, `~`, `/`. Anything else (incl.
+    // multi-byte UTF-8 chars) gets re-encoded per byte.
+    private static bool IsUriSafeChar(string c) {
+        if (String_Length(c) != 1) { return false }
+        let code: int = LspServer.AsciiCodeOf(c)
+        if (code >= 65 && code <= 90)  { return true }   // A-Z
+        if (code >= 97 && code <= 122) { return true }   // a-z
+        if (code >= 48 && code <= 57)  { return true }   // 0-9
+        if (code == 45 || code == 46 || code == 95 || code == 126) { return true } // - . _ ~
+        if (code == 47) { return true }                  // /
+        return false
+    }
+
+    // Codepoint of the FIRST byte of `c` (one-char UTF-8 string).
+    // Brute-force linear lookup against an ASCII codepoint table —
+    // slow but only called on path edge bytes, where N is tiny.
+    private static int AsciiCodeOf(string c) {
+        let n: int = String_Length(c)
+        if (n == 0) { return 0 }
+        for code in 0..256 {
+            if (String_FromByte(code) == c) { return code }
+        }
+        return 0
     }
 
     // ── Completion ────────────────────────────────────
@@ -754,14 +906,69 @@ public class LspServer {
         return false
     }
 
-    // file:///abs/path → /abs/path. Doesn't decode percent-encoding;
-    // editors don't send it for plain ASCII paths in practice.
+    // file:///abs/path → /abs/path. Decodes %XX percent-encoding —
+    // VS Code sends UTF-8 bytes encoded that way for any non-ASCII
+    // char in the path (e.g. `Développement` → `D%C3%A9veloppement`).
+    // Without decoding, the workspace scan walks an inexistent path
+    // and silently degrades to single-file resolve, which surfaces as
+    // spurious "Unknown symbol" diagnostics for cross-file types.
     public static string UriToPath(string uri) {
+        var raw: string = uri
         if (String_StartsWith(uri, "file://")) {
             let n: int = String_Length(uri)
-            return String_Substring(uri, 7, n - 7)
+            raw = String_Substring(uri, 7, n - 7)
         }
-        return uri
+        return LspServer.PercentDecode(raw)
+    }
+
+    // %XX → byte. Anything else (literal, truncated escape, bad hex)
+    // is passed through unchanged so a malformed URI still produces
+    // a usable path rather than an empty string.
+    private static string PercentDecode(string s) {
+        var out: string = ""
+        let n: int = String_Length(s)
+        var i: int = 0
+        while (i < n) {
+            let c: string = String_CharAt1(s, i)
+            if (c == "%" && i + 2 < n) {
+                let h0: string = String_CharAt1(s, i + 1)
+                let h1: string = String_CharAt1(s, i + 2)
+                let v0: int = LspServer.HexDigit(h0)
+                let v1: int = LspServer.HexDigit(h1)
+                if (v0 >= 0 && v1 >= 0) {
+                    let b: int = (v0 * 16) + v1
+                    out = out + String_FromByte(b)
+                    i = i + 3
+                } else {
+                    out = out + c
+                    i = i + 1
+                }
+            } else {
+                out = out + c
+                i = i + 1
+            }
+        }
+        return out
+    }
+
+    private static int HexDigit(string c) {
+        if (c == "0") { return 0 }
+        if (c == "1") { return 1 }
+        if (c == "2") { return 2 }
+        if (c == "3") { return 3 }
+        if (c == "4") { return 4 }
+        if (c == "5") { return 5 }
+        if (c == "6") { return 6 }
+        if (c == "7") { return 7 }
+        if (c == "8") { return 8 }
+        if (c == "9") { return 9 }
+        if (c == "a" || c == "A") { return 10 }
+        if (c == "b" || c == "B") { return 11 }
+        if (c == "c" || c == "C") { return 12 }
+        if (c == "d" || c == "D") { return 13 }
+        if (c == "e" || c == "E") { return 14 }
+        if (c == "f" || c == "F") { return 15 }
+        return -1
     }
 
     // ── AST positional lookup ─────────────────────────
