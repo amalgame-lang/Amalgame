@@ -143,6 +143,145 @@ static inline code_string Path_GetDirectory(code_string path) {
     return r;
 }
 
+/* Filename minus its extension, mirroring Python's `Path.stem` and
+ * Rust's `Path::file_stem`. Uses the same separator handling as
+ * Path_GetFilename — last `/` or `\` wins — then drops everything
+ * from the rightmost `.` onward. Matches the convention that
+ * "report.tar.gz" stems to "report.tar" (only the LAST extension
+ * is stripped). A leading-dot dotfile ("./.bashrc") stems to
+ * itself, since the rightmost dot IS the leading dot. */
+static inline code_string Path_GetStem(code_string path) {
+    const char* slash = strrchr(path, '/');
+    if (!slash) slash = strrchr(path, '\\');
+    const char* base = slash ? slash + 1 : path;
+    const char* dot  = strrchr(base, '.');
+    if (!dot || dot == base) return code_strdup(base);
+    size_t len = (size_t)(dot - base);
+    char* r = (char*) GC_MALLOC(len + 1);
+    memcpy(r, base, len);
+    r[len] = '\0';
+    return r;
+}
+
+/* True iff path starts with `/` (POSIX) or `<drive>:` (Windows
+ * absolute), i.e. the path resolves without consulting any cwd.
+ * Backslash-only Windows roots like `\\\\server\\share` and `\\?\\…`
+ * UNCs also count as absolute. Mirrors Python's `os.path.isabs`. */
+static inline code_bool Path_IsAbsolute(code_string path) {
+    if (!path || !path[0]) return 0;
+    if (path[0] == '/' || path[0] == '\\') return 1;
+    /* Windows drive letter: a-zA-Z then ':'. */
+    if (((path[0] >= 'A' && path[0] <= 'Z') ||
+         (path[0] >= 'a' && path[0] <= 'z')) &&
+        path[1] == ':') return 1;
+    return 0;
+}
+
+/* Native path separator: "/" on POSIX, "\\" on Windows. The runtime
+ * accepts both throughout (Path_Combine et al normalize on insert),
+ * but callers writing platform-native code paths still need it
+ * for shelling out, registry keys, etc. */
+static inline code_string Path_Sep(void) {
+#ifdef _WIN32
+    return "\\";
+#else
+    return "/";
+#endif
+}
+
+/* Lexical normalisation: collapse runs of `/` and `\\`, drop `.`
+ * components, resolve `..` against earlier components. Pure string
+ * operation — does NOT touch the filesystem (so `..` past a
+ * symlink may resolve incorrectly relative to the real path; use
+ * realpath(3) when you need that). Trailing separator is removed
+ * unless the path is exactly "/" or a Windows root.
+ *
+ * Mirrors Go's filepath.Clean semantics — chosen over libc
+ * realpath(3) precisely because it works on non-existent paths,
+ * which is what most Path API callers want for path manipulation. */
+static inline code_string Path_Normalize(code_string path) {
+    if (!path) return code_strdup("");
+    size_t n = strlen(path);
+    if (n == 0) return code_strdup(".");
+    /* Detect whether path is absolute and/or starts with a drive.
+     * POSIX: leading '/'. Windows drive: `[A-Za-z]:`. */
+    int absolute = (path[0] == '/' || path[0] == '\\');
+    int drive    = 0;
+    size_t start = 0;
+    if (((path[0] >= 'A' && path[0] <= 'Z') ||
+         (path[0] >= 'a' && path[0] <= 'z')) &&
+        n >= 2 && path[1] == ':') {
+        drive = 1;
+        start = 2;
+        if (n > 2 && (path[2] == '/' || path[2] == '\\')) {
+            absolute = 1;
+            start = 3;
+        }
+    } else if (absolute) {
+        start = 1;
+    }
+    /* Tokenise on '/' or '\\'. Stack of component pointers + lengths
+     * into the original string; walk back on `..`. */
+    const char* parts[256];
+    size_t      lens [256];
+    int top = 0;
+    size_t i = start;
+    while (i < n) {
+        while (i < n && (path[i] == '/' || path[i] == '\\')) i++;
+        if (i >= n) break;
+        size_t j = i;
+        while (j < n && path[j] != '/' && path[j] != '\\') j++;
+        size_t len = j - i;
+        if (len == 1 && path[i] == '.') {
+            /* skip "." */
+        } else if (len == 2 && path[i] == '.' && path[i+1] == '.') {
+            if (top > 0 && !(lens[top-1] == 2 && parts[top-1][0] == '.' && parts[top-1][1] == '.')) {
+                top--;
+            } else if (!absolute) {
+                if (top < 256) {
+                    parts[top] = path + i;
+                    lens [top] = len;
+                    top++;
+                }
+            }
+            /* absolute + ".." past root: drop silently */
+        } else {
+            if (top < 256) {
+                parts[top] = path + i;
+                lens [top] = len;
+                top++;
+            }
+        }
+        i = j;
+    }
+    /* Compute output length. */
+    size_t out_len = start;
+    for (int k = 0; k < top; k++) {
+        if (k > 0) out_len += 1;
+        out_len += lens[k];
+    }
+    if (out_len == 0) return code_strdup(".");
+    char* r = (char*) GC_MALLOC(out_len + 1);
+    size_t w = 0;
+    /* Always emit '/' for consistency — Windows accepts forward
+     * slashes everywhere, and a deterministic canonical form is
+     * what callers expect from Normalize. */
+    if (drive) {
+        r[w++] = path[0];
+        r[w++] = ':';
+        if (absolute) r[w++] = '/';
+    } else if (absolute) {
+        r[w++] = '/';
+    }
+    for (int k = 0; k < top; k++) {
+        if (k > 0) r[w++] = '/';
+        memcpy(r + w, parts[k], lens[k]);
+        w += lens[k];
+    }
+    r[w] = '\0';
+    return r;
+}
+
 /* ─────────────────────────────────────────────
    Environment
    ───────────────────────────────────────────── */

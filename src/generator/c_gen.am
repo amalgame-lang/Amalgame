@@ -843,7 +843,8 @@ public class CGen {
                 if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
                 if (calleeStr == "File_Size") { return "i64" }
                 // Path stdlib return types
-                if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory") { return "code_string" }
+                if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory" || calleeStr == "Path_GetStem" || calleeStr == "Path_Normalize" || calleeStr == "Path_Sep") { return "code_string" }
+                if (calleeStr == "Path_IsAbsolute") { return "code_bool" }
                 // Net stdlib return types
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson" || calleeStr == "Http_PostWithHeaders" || calleeStr == "Http_Put" || calleeStr == "Http_Delete" || calleeStr == "Http_Patch") { return "AmalgameHttpResponse*" }
                 if (calleeStr == "Env_Get") { return "code_string" }
