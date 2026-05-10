@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-10 · `amc 0.4.14` · self-hosted · 421/421 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-11 · `amc 0.4.15` · self-hosted · 434/434 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -641,11 +641,39 @@ implementation effort.
       `-framework AudioToolbox -framework CoreAudio` on macOS,
       `-lole32 -lwinmm` on Windows. ~400 LoC stdlib + ~200 LoC
       runtime (mostly miniaudio passthrough). Stretch: MIDI in/out.
-- [ ] **`Amalgame.Database`** — at minimum SQLite via `libsqlite3`.
-      `new Database(path)`, `db.Execute(sql, params)`, `db.Query(sql,
-      params) → Rows`, prepared-statement reuse, transactions.
-      Postgres / MySQL bindings can come later; SQLite covers the
-      90% case (CLI tools, app local storage, test fixtures).
+- [x] **`Amalgame.Database.SQLite` v1** (PR #266, v0.4.15) —
+      SQLite 3 binding via the vendored amalgamation
+      (`runtime/Amalgame_Database/sqlite/`). Public-domain
+      upstream, no `libsqlite3-dev` package needed on any OS.
+      Surface: `SQLite.Open(path) → AmalgameSQLite*`, `Close`,
+      `IsOpen`, `Exec(sql)`, `QueryAll(sql) → List<List<string>>`,
+      `LastInsertId`, `Changes`, `LastError`. Parameter binding
+      via `?` placeholders is the v2 ask.
+- [ ] **`Amalgame.Database.<Engine>` siblings** — extend the
+      `Amalgame.Database.*` namespace with vendored bindings to
+      other engines under `runtime/Amalgame_Database/<engine>/`:
+        - **DuckDB** — vendored amalgamation similar to SQLite
+          (single `duckdb.cpp` + `duckdb.h`, MIT licence).
+          OLAP-flavoured workloads; columnar storage + vectorised
+          execution. Surface mirrors SQLite (Open/Exec/QueryAll/…)
+          so callers swap engines without rewriting.
+        - **Postgres (libpq client)** — link to system `libpq`
+          (heavy to vendor — vendor only the headers, dynamic-link
+          the .so/.dylib/.dll). Surface adds `SetUser` / `SetPass`
+          / connection-string variants for network auth.
+        - **MySQL / MariaDB** (`libmariadbclient`) — similar
+          dynamic-link path. Lower priority than Postgres.
+      Each backend ships its own header (`Amalgame_Database_<Engine>.h`)
+      and resolver-declared globals (`<Engine>_Open`, `<Engine>_Exec`,
+      …) so users opt-in to the surface they need without compiling
+      everything. Common `Result` / `Rows` types belong in a shared
+      `Amalgame_Database.h` once a third engine lands and the
+      pattern is clear.
+- [ ] **`Amalgame.Database.SQLite` v2** — parameter binding
+      (`db.ExecBind(sql, params)` / `db.QueryBindAll(sql, params)`),
+      typed column accessors (`row.AsInt(0)` / `row.AsBytes(2)`),
+      prepared-statement reuse, transactions (`db.Begin` / `Commit`
+      / `Rollback`). Same pattern applies to sibling engines.
 - [ ] **`Amalgame.Path`** — cross-platform path manipulation.
       Currently scattered in user code (string splits, hardcoded
       separators). Exposes `Path.Join`, `Path.Parent`, `Path.Stem`,

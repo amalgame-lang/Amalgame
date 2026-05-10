@@ -781,14 +781,91 @@ with-EINTR for console signals).
 **Reinstalling** — calling `Service.Install()` more than once is
 safe; the OS just replaces the existing handler.
 
+## Database.SQLite — embedded SQL via vendored amalgamation
+
+`namespace Amalgame.Database.SQLite` ships a SQLite 3 binding via
+the vendored amalgamation (`runtime/Amalgame_Database/sqlite/
+sqlite3.c` + `sqlite3.h`). Public-domain upstream, no
+`libsqlite3-dev` package required on any of Linux / macOS /
+Windows — the source compiles directly into the user binary.
+
+The namespace nests under `Amalgame.Database.<Engine>` so sibling
+backends (DuckDB, Postgres, MySQL) can land alongside SQLite in
+the same surface family without conflicting class names. v1 ships
+SQLite only; siblings tracked in the roadmap.
+
+```kotlin
+import Amalgame.Database.SQLite
+import Amalgame.Collections
+
+let db = SQLite.Open(":memory:")   // or a real file path
+if (!SQLite.IsOpen(db)) {
+    Console.WriteError("open failed: " + SQLite.LastError(db))
+    return
+}
+
+SQLite.Exec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+SQLite.Exec(db, "INSERT INTO users (name, age) VALUES ('Alice', 30)")
+SQLite.Exec(db, "INSERT INTO users (name, age) VALUES ('Bob', 25)")
+let id: int = SQLite.LastInsertId(db)            // 2
+
+// Outer list has no annotation because the parser rejects nested
+// generics (`List<List<string>>`). Inner list is annotated so the
+// cgen can resolve `.Get(int)` to the typed result.
+let rows = SQLite.QueryAll(db, "SELECT id, name FROM users ORDER BY id")
+let firstRow: List<string> = rows.Get(0)
+let firstName: string = firstRow.Get(1)          // "Alice"
+
+SQLite.Close(db)
+```
+
+| Method                                | Returns                | Notes                                                              |
+|---------------------------------------|------------------------|--------------------------------------------------------------------|
+| `SQLite.Open(path: string)`           | `AmalgameSQLite*`      | `:memory:` for transient in-memory; any path for on-disk           |
+| `SQLite.IsOpen(db)`                   | `bool`                 | Checks the handle is live                                          |
+| `SQLite.Close(db)`                    | `void`                 | Idempotent; no-op on already-closed handles                        |
+| `SQLite.Exec(db, sql: string)`        | `bool`                 | No-result SQL (DDL / DML / PRAGMA). Returns false on error         |
+| `SQLite.QueryAll(db, sql: string)`    | `List<List<string>>`   | Rows × columns as text. Empty list on no rows OR error             |
+| `SQLite.LastInsertId(db)`             | `int`                  | Rowid of the most recent INSERT on this handle                     |
+| `SQLite.Changes(db)`                  | `int`                  | Row count of the most recent INSERT/UPDATE/DELETE                  |
+| `SQLite.LastError(db)`                | `string`               | Snapshot of the most recent error message; empty if none           |
+
+**Result shape:** `QueryAll` returns every column value as text
+(via `sqlite3_column_text`). NULL columns become empty strings.
+Convert numerics in Amalgame as needed (`String_ToInt(row.Get(0))`).
+
+**Linking:** user projects that import `Amalgame.Database.SQLite`
+must add `runtime/Amalgame_Database/sqlite/sqlite3.c` to their gcc
+command alongside the generated `.c`. The `amc test` runner does
+this automatically by precompiling the amalgamation to a `.o`
+once per session; manual builds use:
+
+```
+gcc -O2 -Iruntime your_program.c runtime/Amalgame_Database/sqlite/sqlite3.c \
+    -lgc -lm -lcurl -ldl -lpthread -o your_program
+```
+
+**v1 limitations:**
+
+- **No parameter binding.** All SQL is passed as raw strings, so
+  callers MUST escape any user input by hand or stick to fully-
+  trusted SQL. Prepared-statement `?` binding is the v2 ask.
+- **Text-only columns.** Numeric types are returned as their
+  string representation. Typed accessors (`AsInt(0)` / `AsBytes(0)`)
+  ride alongside `?` binding in v2.
+- **No explicit transactions.** Run `BEGIN` / `COMMIT` / `ROLLBACK`
+  via `Exec` for now; a `db.Begin()` / `Commit()` API lands in v2.
+
 ## What's missing
 
 - Bigger Math (trig, logs)
 - Async/iter/streaming abstractions over collections
 - Local time / timezones (deferred from DateTime v1)
 - Regex
-- Database (SQLite via libsqlite3 — sized for a single PR once
-  CI deps on three OSes are settled)
+- Sibling Database backends (DuckDB / Postgres / MySQL) — same
+  namespace family as SQLite, vendored amalgamation for the
+  ones that ship one (DuckDB), dynamic-link for the network-
+  bound ones (Postgres / MySQL).
 - A package manager and ecosystem
 
 These are tracked in [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).

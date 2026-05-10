@@ -1,0 +1,56 @@
+# Auto-close PRs opened from forks.
+#
+# Amalgame is currently solo-developed and not accepting outside
+# contributions — see CONTRIBUTING.md. To make the policy clear
+# without leaving forked PRs lingering in the queue, this workflow
+# leaves a polite comment + closes the PR as soon as it's opened.
+#
+# Internal PRs (branches owned by the repo, i.e. release/* and
+# feat/* pushed by the maintainer) skip this hook because their
+# head repo matches the base repo. Forks always have a distinct
+# head repo, which is what `head.repo.full_name != base.repo.full_name`
+# detects.
+
+name: Auto-close external PRs
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close-fork-prs:
+    if: github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment and close
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              "Thanks for the interest in Amalgame!",
+              "",
+              "External pull requests are paused for now — the project is",
+              "solo-developed and the contribution surface isn't ready to",
+              "scale yet. See [CONTRIBUTING.md](../blob/develop/CONTRIBUTING.md)",
+              "for the full policy and how that may change later.",
+              "",
+              "**Bug reports are welcome** — please open an issue instead.",
+              "Forks are fine too, per the Apache-2.0 licence.",
+              "",
+              "Closing this PR automatically. No hard feelings."
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              state: "closed"
+            });
