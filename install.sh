@@ -11,7 +11,7 @@ sudo apt install -y \\
 # Compiler le transpileur
 git clone https://github.com/NeitsabTeguom/CODE.git
 cd CODE
-meson setup build
+meson setup build archive/vala-bootstrap
 ninja -C build
 
 # Vérifier

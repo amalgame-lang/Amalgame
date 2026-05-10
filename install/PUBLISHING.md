@@ -68,7 +68,7 @@ sha256sums=('REPLACE_WITH_SHA256')
 
 build() {
     cd "Amalgame-$pkgver"
-    meson setup build --buildtype=release --prefix=/usr
+    meson setup build archive/vala-bootstrap --buildtype=release --prefix=/usr
     ninja -C build
 }
 
