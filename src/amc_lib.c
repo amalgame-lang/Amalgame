@@ -13,6 +13,7 @@
 #include "Amalgame_DateTime.h"
 #include "Amalgame_Crypto.h"
 #include "Amalgame_Logging.h"
+#include "Amalgame_Service.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -3836,6 +3837,12 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Logging_SetMinLevel") || code_string_equals(calleeStr, "Logging_SetFile") || code_string_equals(calleeStr, "Logging_Debug") || code_string_equals(calleeStr, "Logging_Info") || code_string_equals(calleeStr, "Logging_Warn") || code_string_equals(calleeStr, "Logging_Error")) {
                 return "void";
             }
+            if (code_string_equals(calleeStr, "Service_ShouldStop")) {
+                return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "Service_Install") || code_string_equals(calleeStr, "Service_RequestStop") || code_string_equals(calleeStr, "Service_Sleep")) {
+                return "void";
+            }
             if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson") || code_string_equals(calleeStr, "Http_PostWithHeaders") || code_string_equals(calleeStr, "Http_Put") || code_string_equals(calleeStr, "Http_Delete") || code_string_equals(calleeStr, "Http_Patch")) {
                 return "AmalgameHttpResponse*";
             }
@@ -4250,6 +4257,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_DateTime.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Crypto.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Logging.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -8518,6 +8526,10 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Info", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Warn", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Error", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Install", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Sleep", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Get", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Has", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math", "type", 0);

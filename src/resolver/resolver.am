@@ -287,6 +287,11 @@ public class FullResolver {
         this.DeclareGlobal("Logging_Info",        "void",   false)
         this.DeclareGlobal("Logging_Warn",        "void",   false)
         this.DeclareGlobal("Logging_Error",       "void",   false)
+        // Service stdlib
+        this.DeclareGlobal("Service_Install",     "void",   false)
+        this.DeclareGlobal("Service_ShouldStop",  "bool",   false)
+        this.DeclareGlobal("Service_RequestStop", "void",   false)
+        this.DeclareGlobal("Service_Sleep",       "void",   false)
         // Environment variables (Env.Get / Env.Has)
         this.DeclareGlobal("Env_Get",             "string", false)
         this.DeclareGlobal("Env_Has",             "bool",   false)
