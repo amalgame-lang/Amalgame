@@ -7,6 +7,85 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.6] — 2026-05-10
+
+The "compiler quirk-cleanup" release. Three patches to long-known
+parser/cgen sharp edges, plus an end-to-end fix to `tools/release.sh`
+informed by walking through it manually for v0.4.5. No new user-
+facing features; this is purely making the compiler emit cleaner C
+and the release flow less twitchy.
+
+### Fixed
+
+- **Parser: `expr >> N` and `expr << N` no longer drop the shift**
+  (PR #215). `ParseRelational` was correctly calling `ParseShift` on
+  its RHS but went straight to `ParseAdd` on the LHS, so any
+  expression starting with a shift got truncated. One-line fix
+  restores the intended `equality > relational > shift > add > mul`
+  precedence ladder. Cleaned up the `r / 256` workaround in
+  `random.am`. `encoding.am` keeps `/` / `*` because the cgen
+  doesn't yet preserve precedence parens around mixed `+` / shift
+  expressions — separate roadmap item.
+- **Parser: top-level `fn` now errors clearly** (PR #221). Before:
+  `public fn foo()` outside a class parsed silently as Unknown,
+  the body was swallowed, the call site compiled fine, the linker
+  failed (or worse, called the C `double` keyword by accident).
+  Now: `amc` exits 1 with `Top-level functions aren't supported
+  (got 'fn foo' at L:C). Wrap it inside a class as 'public static'.`
+  Drive-by: the regular compile path now actually checks
+  `par.HasErrors()` after each parse — only `amc fmt` was doing
+  it before.
+- **CGen: constructor `_new(...)` forward-decls emitted before any
+  class body** (PR #221). Before: a constructor whose body called
+  `new B(...)` for a class declared later (or even earlier in the
+  same file but emitted after) hit `gcc: implicit declaration` +
+  `conflicting types` for `App_B_new`. Fix walks every class decl
+  at pass-2 entry and emits its `_new` signature before any body.
+  +316 forward declarations across the bundled compiler.
+- **CGen: chain-mash on `obj.Field.Method()` and
+  `obj.Method().Method()`** (PR #222). Two related bugs in
+  `EmitCalleeStr` + the call-site self-injection block both caused
+  the cgen to mash a member or call expression into the method
+  name instead of resolving it through the typed receiver:
+
+      Before                   →  After
+      o.Field.Get()            →  Inner_Get(o->Field)
+                                 (was: o->Field_Get())
+      o.GetInner().Doubled()   →  Inner_Doubled(Outer_GetInner(o))
+                                 (was: Outer_GetInner(o)_Doubled())
+
+  The typed-local workarounds (`let mid: T = obj.Field; mid.Method()`)
+  in `lsp.am`, `migrate.am`, `stdlib/json.am`, `stdlib/datetime.am`
+  are now mechanically unnecessary; cleanup deferred to a separate
+  PR to keep the diff focused.
+
+### Tooling
+
+- **`tools/release.sh` patched in four spots** (PR #220) after
+  walking through it manually for v0.4.5:
+    1. `sed` for README now also bumps the `Current version: **vX.Y.Z**.`
+       overview line, not just the `# amc X.Y.Z` comment.
+    2. New "Back-merge main into develop" step before the
+       develop → main PR — prevents the conflict cascade when main
+       carries a merge commit develop never absorbed (the standard
+       outcome of any previous develop → main PR with conflict
+       resolution).
+    3. `--admin --merge` fallback retried on each poll tick if
+       `--auto --merge` rejects (this repo's main branch doesn't
+       allow auto-merge with merge-commit strategy).
+    4. CHANGELOG-edit prompt uses `$EDITOR` if set, falls back to
+       the read-from-tty pattern, finally warns + continues if
+       neither path works (was hanging non-interactive runs).
+
+### Tests / infra
+
+- Suite stays at **372 PASS / 0 FAIL / 0 SKIP** — cleanup release,
+  no new test surface added. Snapshot refreshed three times during
+  the cycle (after each cgen-touching PR) so cold-start clones
+  bootstrap from a parser+cgen consistent with the new sources.
+
+---
+
 ## [v0.4.5] — 2026-05-10
 
 The "infrastructure cleanup + Crypto" release. Drops the Vala
@@ -846,6 +925,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.6]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.6
 [v0.4.5]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.5
 [v0.4.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.4
 [v0.4.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.3

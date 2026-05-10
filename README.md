@@ -51,7 +51,7 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.4.5**.
+Current version: **v0.4.6**.
 
 ## Language at a glance
 
@@ -115,7 +115,7 @@ sudo apt install gcc libgc-dev libcurl4-openssl-dev
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
-./amc --version          # amc 0.4.5
+./amc --version          # amc 0.4.6
 ./tests/run_all_tests.sh
 ```
 
