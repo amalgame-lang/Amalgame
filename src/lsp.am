@@ -149,6 +149,9 @@ public class LspServer {
             } else if (method == "callHierarchy/outgoingCalls") {
                 let item: JsonValue = params.Get("item")
                 this.HandleOutgoingCalls(id, item)
+            } else if (method == "textDocument/inlayHint") {
+                let uri: string = td.Get("uri").AsString()
+                this.HandleInlayHint(id, uri)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -274,7 +277,7 @@ public class LspServer {
         // box to the actual identifier span.
         // callHierarchyProvider: true → Shift+Alt+H "Show Call
         // Hierarchy", supports both incoming and outgoing calls.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -1419,6 +1422,110 @@ public class LspServer {
         let nameLen: int = String_Length(name)
         let endCol:  int = colLsp + nameLen
         return "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+    }
+
+    // ── Inlay hints (inferred types) ──────────────────
+    //
+    // Walk the open file's AST and emit one InlayHint per VAR_DECL
+    // that has an RHS but no type annotation (`let x = …`). The hint
+    // shows the typechecker's inferred type rendered as `: <type>`,
+    // pinned to the column right after the variable name. VS Code
+    // greys it out so it reads like editor decoration, not real text.
+    //
+    // Skips:
+    //   - decls with an explicit annotation (Str non-empty) — user
+    //     already wrote the type, no need to repeat it.
+    //   - tuple destructuring (`let (a, b) = …`) — the synthetic
+    //     `__tuple__` decl carries no useful type, and per-binder
+    //     hints would need a parser hook to track each name's column.
+    //   - decls whose inferred type is "?" — typechecker has no
+    //     answer, hinting the literal "?" is just noise.
+    //
+    // The `range` filter from the request params is currently ignored
+    // — we return every hint in the file. VS Code clamps display to
+    // the viewport itself, and the document AST walk is fast enough
+    // (sub-50ms even on the largest compiler source).
+    private void HandleInlayHint(int id, string uri) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+        let tc = new TypeChecker(resolver, path)
+        tc.Check(prog)
+
+        let hints: List<string> = new List<string>()
+        LspServer.CollectInlayHints(prog, tc, hints)
+
+        var json: string = "["
+        let n: int = hints.Count()
+        for i in 0..n {
+            if (i > 0) { json = json + "," }
+            json = json + hints.Get(i)
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Recursive walker — emits an InlayHint per qualifying VAR_DECL.
+    // Walks the same AstNode child slots as the rename / references
+    // collectors so any new positional child added to the AST is
+    // covered automatically.
+    private static void CollectInlayHints(AstNode node, TypeChecker tc, List<string> out) {
+        if (node == null) { return }
+        if (node.Kind == NodeKind.VAR_DECL) {
+            // Skip annotated decls + the tuple-destructure synthetic.
+            // `__tuple_destructure__` is the marker the parser plants
+            // on the synthesized "__tuple__" VarDecl for `let (a,b) = …`.
+            if (String_Length(node.Str) == 0 || node.Str == "__tuple_destructure__") {
+                if (node.Str != "__tuple_destructure__" && node.Left != null) {
+                    let inferred: string = tc.LookupNodeType(node.Left)
+                    if (String_Length(inferred) > 0 && inferred != "?") {
+                        out.Add(LspServer.InlayHintJson(node.Line, node.Column, node.Name, inferred))
+                    }
+                }
+            }
+        }
+        if (node.Left  != null) { LspServer.CollectInlayHints(node.Left,  tc, out) }
+        if (node.Right != null) { LspServer.CollectInlayHints(node.Right, tc, out) }
+        if (node.Cond  != null) { LspServer.CollectInlayHints(node.Cond,  tc, out) }
+        if (node.Body  != null) { LspServer.CollectInlayHints(node.Body,  tc, out) }
+        if (node.Else  != null) { LspServer.CollectInlayHints(node.Else,  tc, out) }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectInlayHints(node.Children.Get(i), tc, out)
+        }
+        let pn: int = node.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectInlayHints(node.Params.Get(j), tc, out)
+        }
+        let an: int = node.Args.Count()
+        for k in 0..an {
+            LspServer.CollectInlayHints(node.Args.Get(k), tc, out)
+        }
+    }
+
+    // Build a single InlayHint JSON. Position pins the hint right
+    // after the variable name (col + nameLen, 0-based for LSP).
+    // kind = 1 (Type) so the editor styles it like a type annotation;
+    // paddingLeft = true so VS Code inserts a space between the name
+    // and the leading colon.
+    private static string InlayHintJson(int line, int col, string name, string typeStr) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let pos: string = "{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}"
+        let label: string = ": " + typeStr
+        return "{\"position\":" + pos + ",\"label\":\"" + Json.EscapeString(label) + "\",\"kind\":1,\"paddingLeft\":true}"
     }
 
     // ── Workspace symbol (Ctrl+T) ─────────────────────
