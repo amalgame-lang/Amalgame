@@ -13303,6 +13303,7 @@ static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServ
 static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
 static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
+static code_string Amalgame_Compiler_LspServer_BareTypeName(code_string raw);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindEnclosingMethod(Amalgame_Compiler_AstNode* prog, i64 targetLine);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_LookupLocalInMethod(Amalgame_Compiler_AstNode* method, code_string name);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindLocalVarDecl(Amalgame_Compiler_AstNode* node, code_string name);
@@ -13730,6 +13731,48 @@ static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspSe
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
         return;
     }
+    Amalgame_Compiler_AstNode* __attribute__((unused)) enclosing = Amalgame_Compiler_LspServer_FindEnclosingMethod(prog, targetLine);
+    if (node->Kind == Amalgame_Compiler_NodeKind_MEMBER && enclosing != NULL) {
+        if (node->Left != NULL && node->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+            Amalgame_Compiler_AstNode* __attribute__((unused)) recv = Amalgame_Compiler_LspServer_LookupLocalInMethod(enclosing, node->Left->Name);
+            if (recv != NULL) {
+                code_string __attribute__((unused)) recvType = Amalgame_Compiler_LspServer_BareTypeName(recv->Str);
+                if (String_Length(recvType) > 0) {
+                    i64 __attribute__((unused)) nProgs2 = AmalgameList_count(resolver->Programs);
+                    for (i64 i = 0; i < nProgs2; i++) {
+                        Amalgame_Compiler_AstNode* __attribute__((unused)) p2 = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
+                        i64 __attribute__((unused)) dc2 = AmalgameList_count(p2->Children);
+                        for (i64 j = 0; j < dc2; j++) {
+                            Amalgame_Compiler_AstNode* __attribute__((unused)) cls = (Amalgame_Compiler_AstNode*)AmalgameList_get(p2->Children, j);
+                            if (cls->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
+                                continue;
+                            }
+                            if (!code_string_equals(cls->Name, recvType)) {
+                                continue;
+                            }
+                            i64 __attribute__((unused)) mc = AmalgameList_count(cls->Children);
+                            for (i64 k2 = 0; k2 < mc; k2++) {
+                                Amalgame_Compiler_AstNode* __attribute__((unused)) m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, k2);
+                                Amalgame_Compiler_NodeKind __attribute__((unused)) mk = m->Kind;
+                                if (mk != Amalgame_Compiler_NodeKind_METHOD_DECL && mk != Amalgame_Compiler_NodeKind_VAR_DECL) {
+                                    continue;
+                                }
+                                if (!code_string_equals(m->Name, node->Name)) {
+                                    continue;
+                                }
+                                code_string __attribute__((unused)) memPath = p2->Str2;
+                                if (String_Length(memPath) == 0) {
+                                    memPath = path;
+                                }
+                                Amalgame_Compiler_LspServer_SendDefinitionLocation(self, id, memPath, m->Line, m->Column, m->Name);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     code_string __attribute__((unused)) lookup = node->Name;
     if (node->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
         if (node->Left != NULL && node->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
@@ -13740,7 +13783,6 @@ static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspSe
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
         return;
     }
-    Amalgame_Compiler_AstNode* __attribute__((unused)) enclosing = Amalgame_Compiler_LspServer_FindEnclosingMethod(prog, targetLine);
     if (enclosing != NULL) {
         Amalgame_Compiler_AstNode* __attribute__((unused)) local = Amalgame_Compiler_LspServer_LookupLocalInMethod(enclosing, lookup);
         if (local != NULL) {
@@ -13765,6 +13807,25 @@ static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspSe
         }
     }
     Amalgame_Compiler_LspServer_SendNullResult(self, id);
+}
+
+static code_string Amalgame_Compiler_LspServer_BareTypeName(code_string raw) {
+    (void)raw;
+    code_string __attribute__((unused)) t = raw;
+    if (String_Length(t) == 0) {
+        return "";
+    }
+    if (String_EndsWith(t, "?")) {
+        t = String_Substring(t, 0, String_Length(t) - 1);
+    }
+    if (String_EndsWith(t, "*")) {
+        t = String_Substring(t, 0, String_Length(t) - 1);
+    }
+    i64 __attribute__((unused)) lt = String_IndexOf(t, "<");
+    if (lt >= 0) {
+        t = String_Substring(t, 0, lt);
+    }
+    return t;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindEnclosingMethod(Amalgame_Compiler_AstNode* prog, i64 targetLine) {

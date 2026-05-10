@@ -479,6 +479,49 @@ public class LspServer {
             return
         }
 
+        let enclosing: AstNode? = LspServer.FindEnclosingMethod(prog, targetLine)
+
+        // Member-def first: when the click lands on the right side
+        // of a MEMBER expression (e.g. `obj.method` / `obj.field`),
+        // jump into the receiver's class declaration. Try this
+        // before the local-by-name search so `obj.x` doesn't get
+        // misrouted to a same-named local in the same method.
+        // Walk the receiver type's class in the workspace, return
+        // the first METHOD_DECL or VAR_DECL whose Name matches the
+        // member token. Falls through to the regular search if the
+        // receiver type can't be resolved or the member isn't found.
+        if (node.Kind == NodeKind.MEMBER && enclosing != null) {
+            if (node.Left != null && node.Left.Kind == NodeKind.IDENTIFIER) {
+                let recv: AstNode? = LspServer.LookupLocalInMethod(enclosing, node.Left.Name)
+                if (recv != null) {
+                    let recvType: string = LspServer.BareTypeName(recv.Str)
+                    if (String_Length(recvType) > 0) {
+                        let nProgs2: int = resolver.Programs.Count()
+                        for i in 0..nProgs2 {
+                            let p2: AstNode = resolver.Programs.Get(i)
+                            let dc2: int = p2.Children.Count()
+                            for j in 0..dc2 {
+                                let cls: AstNode = p2.Children.Get(j)
+                                if (cls.Kind != NodeKind.CLASS_DECL) { continue }
+                                if (cls.Name != recvType) { continue }
+                                let mc: int = cls.Children.Count()
+                                for k2 in 0..mc {
+                                    let m: AstNode = cls.Children.Get(k2)
+                                    let mk = m.Kind
+                                    if (mk != NodeKind.METHOD_DECL && mk != NodeKind.VAR_DECL) { continue }
+                                    if (m.Name != node.Name) { continue }
+                                    var memPath: string = p2.Str2
+                                    if (String_Length(memPath) == 0) { memPath = path }
+                                    this.SendDefinitionLocation(id, memPath, m.Line, m.Column, m.Name)
+                                    return
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // For MEMBER nodes (e.g. `NodeKind.METHOD_DECL`), the left
         // child carries the type name the user most likely wants
         // — VS Code separately offers `typeDefinition` for that
@@ -494,14 +537,11 @@ public class LspServer {
             return
         }
 
-        // First pass: search the enclosing method's params + locals
-        // in the OPEN file. Common case (clicking on a parameter or
-        // a `let` binding) — top-level search would miss those, so
-        // before the workspace walk look for the method whose body
-        // contains the click position and check it for a name match.
-        let enclosing: AstNode = LspServer.FindEnclosingMethod(prog, targetLine)
+        // Search the enclosing method's params + locals in the OPEN
+        // file. Common case (clicking on a parameter or a `let`
+        // binding) — top-level search would miss those.
         if (enclosing != null) {
-            let local: AstNode = LspServer.LookupLocalInMethod(enclosing, lookup)
+            let local: AstNode? = LspServer.LookupLocalInMethod(enclosing, lookup)
             if (local != null) {
                 this.SendDefinitionLocation(id, path, local.Line, local.Column, lookup)
                 return
@@ -528,6 +568,27 @@ public class LspServer {
         this.SendNullResult(id)
     }
 
+    // Strip type annotations down to the bare class name for the
+    // member-def lookup. `MigrateResult?` → `MigrateResult`,
+    // `List<int>` → `List`, `Outer*` → `Outer`. Works for the simple
+    // shape user code carries on let / param annotations; generic
+    // unwrapping for nested `List<MigrateResult>` lookups is slice 3.
+    private static string BareTypeName(string raw) {
+        var t: string = raw
+        if (String_Length(t) == 0) { return "" }
+        if (String_EndsWith(t, "?")) {
+            t = String_Substring(t, 0, String_Length(t) - 1)
+        }
+        if (String_EndsWith(t, "*")) {
+            t = String_Substring(t, 0, String_Length(t) - 1)
+        }
+        let lt: int = String_IndexOf(t, "<")
+        if (lt >= 0) {
+            t = String_Substring(t, 0, lt)
+        }
+        return t
+    }
+
     // Find the METHOD_DECL whose body contains `targetLine`. Walks
     // every class top-level + its method children and picks the
     // method with the largest start Line <= targetLine. Approximate
@@ -537,8 +598,8 @@ public class LspServer {
     // methods, the "enclosing" method is the one above; that field
     // isn't in any method's Params/Body, so the lookup falls
     // through to the workspace top-level pass.
-    private static AstNode FindEnclosingMethod(AstNode prog, int targetLine) {
-        var best: AstNode = null
+    private static AstNode? FindEnclosingMethod(AstNode prog, int targetLine) {
+        var best: AstNode? = null
         var bestLine: int = -1
         let dc: int = prog.Children.Count()
         for i in 0..dc {
@@ -563,7 +624,7 @@ public class LspServer {
     // nodes encountered while walking the body. Returns the first
     // match, or null. Used by HandleDefinition's first pass before
     // it falls through to the workspace top-level walk.
-    private static AstNode LookupLocalInMethod(AstNode method, string name) {
+    private static AstNode? LookupLocalInMethod(AstNode method, string name) {
         let pc: int = method.Params.Count()
         for i in 0..pc {
             let p: AstNode = method.Params.Get(i)
@@ -576,7 +637,7 @@ public class LspServer {
     // VAR_DECL whose Name matches. Stops at nested method/class
     // bodies so an inner closure's locals don't leak out (closures
     // are just lambda METHOD_DECLs in our AST).
-    private static AstNode FindLocalVarDecl(AstNode node, string name) {
+    private static AstNode? FindLocalVarDecl(AstNode node, string name) {
         if (node == null) { return null }
         let k = node.Kind
         if (k == NodeKind.METHOD_DECL || k == NodeKind.CLASS_DECL) { return null }
@@ -585,28 +646,28 @@ public class LspServer {
         // populate. AstNode child fields parallel what the cgen's
         // lambda hoister walks.
         if (node.Left != null) {
-            let r1: AstNode = LspServer.FindLocalVarDecl(node.Left, name)
+            let r1: AstNode? = LspServer.FindLocalVarDecl(node.Left, name)
             if (r1 != null) { return r1 }
         }
         if (node.Right != null) {
-            let r2: AstNode = LspServer.FindLocalVarDecl(node.Right, name)
+            let r2: AstNode? = LspServer.FindLocalVarDecl(node.Right, name)
             if (r2 != null) { return r2 }
         }
         if (node.Cond != null) {
-            let r3: AstNode = LspServer.FindLocalVarDecl(node.Cond, name)
+            let r3: AstNode? = LspServer.FindLocalVarDecl(node.Cond, name)
             if (r3 != null) { return r3 }
         }
         if (node.Body != null) {
-            let r4: AstNode = LspServer.FindLocalVarDecl(node.Body, name)
+            let r4: AstNode? = LspServer.FindLocalVarDecl(node.Body, name)
             if (r4 != null) { return r4 }
         }
         if (node.Else != null) {
-            let r5: AstNode = LspServer.FindLocalVarDecl(node.Else, name)
+            let r5: AstNode? = LspServer.FindLocalVarDecl(node.Else, name)
             if (r5 != null) { return r5 }
         }
         let cn: int = node.Children.Count()
         for i in 0..cn {
-            let r6: AstNode = LspServer.FindLocalVarDecl(node.Children.Get(i), name)
+            let r6: AstNode? = LspServer.FindLocalVarDecl(node.Children.Get(i), name)
             if (r6 != null) { return r6 }
         }
         return null
