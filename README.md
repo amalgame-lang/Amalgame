@@ -6,7 +6,7 @@ A self-hosted programming language that compiles to C.
 
 [![CI](https://github.com/amalgame-lang/Amalgame/actions/workflows/ci.yml/badge.svg)](https://github.com/amalgame-lang/Amalgame/actions/workflows/ci.yml)
 [![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-success)](src/)
-[![Tests](https://img.shields.io/badge/tests-170%2F170-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-363%2F363-brightgreen)](tests/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)]()
 
