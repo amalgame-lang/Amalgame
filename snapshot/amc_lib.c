@@ -2333,7 +2333,7 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseEquality(Amalgam
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseRelational(Amalgame_Compiler_Parser* self) {
     (void)self;
-    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseAdd(self);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) left = Amalgame_Compiler_Parser_ParseShift(self);
     while (Amalgame_Compiler_Parser_CheckValue(self, "<") || Amalgame_Compiler_Parser_CheckValue(self, ">") || Amalgame_Compiler_Parser_CheckValue(self, "<=") || Amalgame_Compiler_Parser_CheckValue(self, ">=")) {
         Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Advance(self);
         Amalgame_Compiler_AstNode* __attribute__((unused)) right = Amalgame_Compiler_Parser_ParseShift(self);
@@ -12225,17 +12225,17 @@ AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64
         i64 __attribute__((unused)) b0 = r & 255;
         AmalgameList_add(out, (void*)(intptr_t)(b0));
         if (avail >= 2) {
-            i64 __attribute__((unused)) r1 = r / 256;
+            i64 __attribute__((unused)) r1 = r >> 8;
             i64 __attribute__((unused)) b1 = r1 & 255;
             AmalgameList_add(out, (void*)(intptr_t)(b1));
         }
         if (avail >= 3) {
-            i64 __attribute__((unused)) r2 = r / 65536;
+            i64 __attribute__((unused)) r2 = r >> 16;
             i64 __attribute__((unused)) b2 = r2 & 255;
             AmalgameList_add(out, (void*)(intptr_t)(b2));
         }
         if (avail >= 4) {
-            i64 __attribute__((unused)) r3 = r / 16777216;
+            i64 __attribute__((unused)) r3 = r >> 24;
             i64 __attribute__((unused)) b3 = r3 & 255;
             AmalgameList_add(out, (void*)(intptr_t)(b3));
         }
