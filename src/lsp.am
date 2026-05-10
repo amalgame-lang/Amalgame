@@ -122,6 +122,11 @@ public class LspServer {
             } else if (method == "workspace/symbol") {
                 let q: string = params.Get("query").AsString()
                 this.HandleWorkspaceSymbol(id, q)
+            } else if (method == "textDocument/references") {
+                let uri: string = td.Get("uri").AsString()
+                let line: int   = pos.Get("line").AsInt()
+                let chr: int    = pos.Get("character").AsInt()
+                this.HandleReferences(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -239,7 +244,9 @@ public class LspServer {
         // the receiver's class.
         // workspaceSymbolProvider: true → Ctrl+T (project-wide
         // fuzzy symbol search across every cached `.am` file).
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // referencesProvider: true → Find All References / Shift+F12
+        // (walks every program for IDENTIFIER/MEMBER name matches).
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -599,6 +606,112 @@ public class LspServer {
         let endCol:  int = colLsp + nameLen
         let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
         return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"range\":" + range + ",\"selectionRange\":" + range + ",\"children\":" + childrenJson + "}"
+    }
+
+    // ── References (Find All References / Shift+F12) ──
+    //
+    // Walks every program in the workspace (cached siblings +
+    // current open file's freshly-parsed AST) and collects every
+    // IDENTIFIER / MEMBER node whose `Name` matches the symbol
+    // under the cursor. Returns a `Location[]` per LSP spec.
+    //
+    // Scope-unaware on this pass — two different locals with the
+    // same name will both surface. Acceptable starting point: the
+    // primary use case (rename / refactor visibility) is for
+    // class/enum/method names which are workspace-unique anyway.
+    // Scope-aware filtering is a slice-3 follow-up.
+    private void HandleReferences(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let target: string = node.Name
+        if (String_Length(target) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+
+        var json: string = "["
+        var first: bool = true
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode  = resolver.Programs.Get(i)
+            var filePath: string = p.Str2
+            if (String_Length(filePath) == 0) { filePath = path }
+            let entries: List<string> = new List<string>()
+            LspServer.CollectReferences(p, target, filePath, entries)
+            let ec: int = entries.Count()
+            for j in 0..ec {
+                if (!first) { json = json + "," }
+                json = json + entries.Get(j)
+                first = false
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Recursive AST walker that appends one Location-shaped JSON
+    // string per IDENTIFIER / MEMBER whose Name == target. The
+    // AstNode child fields walked here mirror what the cgen lambda
+    // hoister walks (Left/Right/Cond/Body/Else/Children/Params/
+    // Args) so any new positional child added to the AST surfaces
+    // in references automatically.
+    private static void CollectReferences(AstNode node, string target, string filePath, List<string> out) {
+        if (node == null) { return }
+        let k = node.Kind
+        if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) {
+            if (node.Name == target) {
+                out.Add(LspServer.LocationJson(filePath, node.Line, node.Column, target))
+            }
+        }
+        if (node.Left  != null) { LspServer.CollectReferences(node.Left,  target, filePath, out) }
+        if (node.Right != null) { LspServer.CollectReferences(node.Right, target, filePath, out) }
+        if (node.Cond  != null) { LspServer.CollectReferences(node.Cond,  target, filePath, out) }
+        if (node.Body  != null) { LspServer.CollectReferences(node.Body,  target, filePath, out) }
+        if (node.Else  != null) { LspServer.CollectReferences(node.Else,  target, filePath, out) }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectReferences(node.Children.Get(i), target, filePath, out)
+        }
+        let pn: int = node.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectReferences(node.Params.Get(j), target, filePath, out)
+        }
+        let an: int = node.Args.Count()
+        for k2 in 0..an {
+            LspServer.CollectReferences(node.Args.Get(k2), target, filePath, out)
+        }
+    }
+
+    // Build a Location JSON object string. Same shape as the
+    // definition reply, factored out so HandleReferences can emit
+    // many of these in one array without reaching for SendDefinitionLocation.
+    private static string LocationJson(string filePath, int line, int col, string name) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let uri:     string = "file://" + LspServer.PercentEncodePath(filePath)
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        return "{\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + "}"
     }
 
     // ── Workspace symbol (Ctrl+T) ─────────────────────
