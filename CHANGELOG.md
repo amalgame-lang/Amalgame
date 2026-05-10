@@ -7,6 +7,52 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.10] — 2026-05-10
+
+The "LSP slice 4 closes" release. v0.4.9 finished slice 3 (rename
++ call hierarchy); v0.4.10 ships the next two features that ride on
+the typechecker's per-node inference: inferred-type inlay hints and
+the lightbulb / Quick Fix UI.
+
+### Added
+
+- **`textDocument/inlayHint`** (PR #246) — walks the open file's
+  AST + runs the typechecker, emits one `InlayHint` per `VAR_DECL`
+  that has an RHS but no annotation. Hint pinned right after the
+  variable name, kind=1 (Type), paddingLeft=true so VS Code renders
+  it as a greyed-out `name : type` decoration. Skips annotated
+  decls, tuple destructuring, and decls whose inferred type is `?`.
+- **`textDocument/codeAction`** (PR #247) — first quick fix lands:
+  *Add type annotation*. When the cursor (or selection start) is on
+  a `let x = …` whose annotation is empty and the typechecker can
+  infer a concrete type, the server emits a `CodeAction` whose
+  `WorkspaceEdit` inserts `: <type>` right after the variable name.
+  Reuses the same inference path inlayHint already walks. The
+  framework — dispatch + WorkspaceEdit emission — also unblocks
+  future quick fixes (typechecker-driven annotation correction,
+  unused-local removal, top-level-fn wrap-in-class) without
+  another round-trip through the parser.
+
+Capabilities advertised:
+  `inlayHintProvider: true`
+  `codeActionProvider: true`
+
+### Roadmap
+
+- Slice 5 LSP — tighter `selectionRange` (parser nameStart hook),
+  more code actions (driven by linter / typechecker diags).
+- `amc new <name> --template service` and `--template forms` —
+  cross-platform service / GUI scaffolders.
+
+### Tests / infra
+
+- Suite stays at **372 PASS / 0 FAIL / 0 SKIP**. Snapshot refreshed
+  twice across the cycle (one per LSP-touching PR).
+- `tests/run_tests.sh` lsp-init expected string updated for
+  `inlayHintProvider:true` and `codeActionProvider:true`.
+
+---
+
 ## [v0.4.9] — 2026-05-10
 
 The "LSP slice 3 closes" release. v0.4.8 made navigation fast and
@@ -1156,6 +1202,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.10]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.10
 [v0.4.9]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.9
 [v0.4.8]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.8
 [v0.4.7]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.7
