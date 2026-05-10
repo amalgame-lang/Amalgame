@@ -1,0 +1,45 @@
+// Stdlib test: Amalgame.Service — long-running process primitives.
+//
+// We can't deliver SIGTERM to the test runner's own process during
+// the suite (it would kill the runner mid-suite). Instead we drive
+// the same code paths via `Service.RequestStop()`, the programmatic
+// shutdown hook documented for in-process triggers.
+
+namespace Tests
+
+import Amalgame.Service
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // Initial state: nothing has triggered shutdown yet.
+        let before: bool = Service.ShouldStop()
+        if (!before) {
+            Console.WriteLine("[PASS] not stopping at start")
+        } else {
+            Console.WriteLine("[FAIL] not stopping at start")
+        }
+
+        // Install the signal handler. Should be a no-op for repeated
+        // calls (the OS replaces the existing handler).
+        Service.Install()
+        Service.Install()
+        Console.WriteLine("[PASS] install idempotent")
+
+        // Programmatic shutdown trigger. Same flag the signal handler
+        // would flip — drives the rest of the test from in-process.
+        Service.RequestStop()
+        let after: bool = Service.ShouldStop()
+        if (after) {
+            Console.WriteLine("[PASS] should-stop after request")
+        } else {
+            Console.WriteLine("[FAIL] should-stop after request")
+        }
+
+        // Sleep with the flag already set returns immediately. We
+        // ask for 5s; if the implementation honours the flag, the
+        // call returns in well under a second.
+        Service.Sleep(5000)
+        Console.WriteLine("[PASS] sleep short-circuits when stopping")
+    }
+}

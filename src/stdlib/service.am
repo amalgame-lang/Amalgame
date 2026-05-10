@@ -1,0 +1,72 @@
+namespace Amalgame.Service
+
+// ── Service ───────────────────────────────────────────
+//
+// Long-running background process primitives. The minimum surface
+// a daemon needs to run cleanly under systemd / launchd / Windows
+// Service Manager: catch the shutdown signal, exit the main loop
+// promptly, and sleep between iterations without burning CPU.
+//
+// Typical usage:
+//
+//     import Amalgame.Service
+//     import Amalgame.Logging
+//
+//     public class Program {
+//         public static int Main(List<string> args) {
+//             Log.Info("starting")
+//             Service.Install()
+//             while (!Service.ShouldStop()) {
+//                 // do one unit of work
+//                 Service.Sleep(5000)
+//             }
+//             Log.Info("shutting down cleanly")
+//             return 0
+//         }
+//     }
+//
+// Cross-platform: POSIX `signal()` for SIGTERM / SIGINT on Linux
+// and macOS; `SetConsoleCtrlHandler` for CTRL_C / CTRL_CLOSE /
+// CTRL_SHUTDOWN on Windows. Both compile to the same Amalgame
+// surface; callers don't branch on platform.
+//
+// Single-process scope. `ShouldStop()` is a single atomic flag —
+// not a per-thread token. If you spawn worker threads, they all
+// observe the same flag, which is what you want for "the whole
+// service is shutting down".
+
+public class Service {
+    public Service() {}
+
+    // Install the shutdown-signal handler. Call exactly once early
+    // in `Main()`, before the work loop. No-op if called more than
+    // once on the same process — the OS just re-registers the same
+    // handler.
+    public static void Install() {
+        Service_Install()
+    }
+
+    // True after the OS has delivered a shutdown signal. The loop
+    // body should check this on every iteration and exit promptly.
+    // Calling repeatedly is cheap (single memory read).
+    public static bool ShouldStop() {
+        return Service_ShouldStop()
+    }
+
+    // Programmatic shutdown request — flip the flag without waiting
+    // for an external signal. Useful from in-process triggers
+    // (admin HTTP endpoint, watchdog timer, fatal error in a sub-
+    // task). The next `ShouldStop()` call returns true.
+    public static void RequestStop() {
+        Service_RequestStop()
+    }
+
+    // Sleep for `ms` milliseconds, returning early if a shutdown
+    // signal arrives during the sleep. POSIX path uses `nanosleep`
+    // which is naturally interruptible; Windows path slices into
+    // 100ms chunks so a Ctrl-handler callback interrupts within
+    // bounded latency.
+    public static void Sleep(ms: int) {
+        Service_Sleep(ms)
+    }
+}
