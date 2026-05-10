@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-11 · `amc 0.4.15` · self-hosted · 434/434 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-11 · `amc 0.4.16` · self-hosted · 434/434 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -649,31 +649,146 @@ implementation effort.
       `IsOpen`, `Exec(sql)`, `QueryAll(sql) → List<List<string>>`,
       `LastInsertId`, `Changes`, `LastError`. Parameter binding
       via `?` placeholders is the v2 ask.
-- [ ] **`Amalgame.Database.<Engine>` siblings** — extend the
-      `Amalgame.Database.*` namespace with vendored bindings to
-      other engines under `runtime/Amalgame_Database/<engine>/`:
+- [ ] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
+      extend the `Amalgame.Database.*` namespace with bindings to
+      other relational engines. Each gets its own header
+      (`Amalgame_Database_<Engine>.h`) and resolver-declared
+      globals so users opt-in to the surface they need without
+      compiling everything. Shared `Result` / `Rows` types
+      consolidate into a common `Amalgame_Database.h` once a
+      third engine lands and the pattern is clear.
         - **DuckDB** — vendored amalgamation similar to SQLite
           (single `duckdb.cpp` + `duckdb.h`, MIT licence).
           OLAP-flavoured workloads; columnar storage + vectorised
           execution. Surface mirrors SQLite (Open/Exec/QueryAll/…)
           so callers swap engines without rewriting.
-        - **Postgres (libpq client)** — link to system `libpq`
-          (heavy to vendor — vendor only the headers, dynamic-link
-          the .so/.dylib/.dll). Surface adds `SetUser` / `SetPass`
-          / connection-string variants for network auth.
-        - **MySQL / MariaDB** (`libmariadbclient`) — similar
-          dynamic-link path. Lower priority than Postgres.
-      Each backend ships its own header (`Amalgame_Database_<Engine>.h`)
-      and resolver-declared globals (`<Engine>_Open`, `<Engine>_Exec`,
-      …) so users opt-in to the surface they need without compiling
-      everything. Common `Result` / `Rows` types belong in a shared
-      `Amalgame_Database.h` once a third engine lands and the
-      pattern is clear.
+        - **PostgreSQL** (`libpq` client) — link to system
+          `libpq` (heavy to vendor — vendor only the headers,
+          dynamic-link the .so/.dylib/.dll). Surface adds
+          `SetUser` / `SetPass` / connection-string variants for
+          network auth. PostgreSQL licence is permissive (BSD-
+          style), compatible with Apache-2.0.
+        - **MySQL / MariaDB** (`libmariadbclient`) — same
+          dynamic-link path as Postgres. Lower priority.
+          MariaDB connector under LGPL-2.1 → fine to dynamic-link
+          (LGPL doesn't taint dynamically-linked consumers).
+        - **Oracle Database** — only the **Oracle Instant Client**
+          (free download, proprietary) ships the headers + libs
+          needed (`oci.h`, `libclntsh.so` / `oci.dll`). Cannot
+          vendor; must dynamic-link at runtime and document the
+          one-time `Instant Client` install for the operator.
+          Connection: `oraclite.<host>:<port>/<service>`. Surface
+          adds session pooling (`OCISessionPool*`) since Oracle
+          connections are expensive to set up.
+        - **Microsoft SQL Server** — three viable client paths:
+          1. **MS ODBC Driver for SQL Server** — proprietary
+             distributable from Microsoft; works on Linux / macOS /
+             Windows. Dynamic-link to `libodbc` + the MS driver.
+             Surface: connection-string-based (`Driver={ODBC Driver
+             18 for SQL Server};Server=...;…`).
+          2. **FreeTDS** — open-source TDS protocol library,
+             LGPL. Dynamic-link, no Microsoft distributable
+             needed. Less feature-complete (no AAD auth, older
+             TDS versions only).
+          3. **Tiberius (Rust)** — rules out FFI-from-Amalgame
+             complexity; skipped.
+          Default to ODBC for parity with the .NET ecosystem;
+          FreeTDS as a fallback for fully-FOSS deployments.
 - [ ] **`Amalgame.Database.SQLite` v2** — parameter binding
       (`db.ExecBind(sql, params)` / `db.QueryBindAll(sql, params)`),
       typed column accessors (`row.AsInt(0)` / `row.AsBytes(2)`),
       prepared-statement reuse, transactions (`db.Begin` / `Commit`
       / `Rollback`). Same pattern applies to sibling engines.
+- [ ] **`Amalgame.Database.NoSQL.<Engine>` — document / KV /
+      column stores.** Different surface from the SQL family:
+      no `Exec(sql)` / `QueryAll(sql)`, instead JSON-document
+      reads and writes with engine-native query expressions.
+      Shared namespace prefix `Amalgame.Database.NoSQL.*` to keep
+      it discoverable next to the SQL siblings; types and
+      patterns deliberately diverge.
+        - **MongoDB** — link to `libmongoc` + `libbson`
+          (Apache-2.0). Surface: `Mongo.Connect(uri)`,
+          `Mongo.InsertOne(collection, json)`,
+          `Mongo.FindMany(collection, filter_json) → List<string>`
+          (each entry is the document serialised as JSON; the
+          caller reparses with `Amalgame.Json`). Aggregation
+          pipelines, indexes, change-streams in v2.
+        - **Redis** — pure-protocol client, no vendored lib
+          needed — RESP3 is ~300 LoC of socket + parser code.
+          Surface: `Redis.Connect(host, port)`, `Redis.Get(key)`,
+          `Redis.Set(key, value)`, `Redis.Del(key)`, `Redis.Exists`,
+          plus pub/sub. Fits naturally as the "cache + ephemeral
+          KV" companion to SQLite's "durable structured" role.
+        - **DynamoDB / Cosmos DB / Firestore** — service APIs over
+          HTTP; can be built on top of `Amalgame.Net.Http` +
+          `Amalgame.Json` without a vendored driver. Lower
+          priority since they're cloud-vendor-specific; tracked
+          for completeness.
+        - **Cassandra / ScyllaDB** — CQL over the native binary
+          protocol. Either dynamic-link to `libcassandra` or
+          implement the binary protocol in Amalgame. Defer to v2.
+      All NoSQL backends expose a `<Engine>.LastError()` and
+      maintain a single connection handle per facade, same
+      ergonomic shape as the SQL family.
+- [ ] **`Amalgame.Messaging.<Broker>` — message brokers** — the
+      missing tier between "in-process work loop" and "SQL/NoSQL
+      durable storage". Covers pub/sub, work queues, event
+      streams, the patterns that decouple services. Two families
+      based on protocol complexity:
+
+      **Pure-Amalgame implementations** — implement the wire
+      protocol in `.am`, no vendored library, no system package.
+      Faster to ship, fewer install steps, lower surface area.
+
+        - **MQTT v3.1.1 / v5** — binary protocol, ~300 LoC of
+          packet encode/decode + socket reader. Built on top of
+          `Amalgame.Net.TcpClient`. Surface:
+          `Mqtt.Connect(host, port, clientId)`,
+          `Mqtt.Publish(topic, payload, qos)`,
+          `Mqtt.Subscribe(topic, qos, handler: (msg) => ...)`,
+          `Mqtt.Loop()`. Targets the IoT + embedded story —
+          tiny binary, no native dep, runs on every OS Amalgame
+          supports.
+        - **NATS Core** — text protocol over TCP, ~250 LoC. Pub/
+          sub + request/reply. Closest fit for the "Redis but
+          for messages" mental model. Same handle + Subscribe
+          callback shape as MQTT.
+
+      **Dynamic-link to native broker client** — for protocols
+      where the upstream library does work we don't want to
+      re-implement (compression, SASL, advanced ack semantics,
+      partition consumer groups).
+
+        - **Apache Kafka** (`librdkafka`, BSD-2-clause) —
+          producer + consumer. Surface:
+          `Kafka.Producer(brokers)`,
+          `Kafka.Send(topic, key, value)`,
+          `Kafka.Consumer(brokers, groupId, topics)`,
+          `Kafka.Poll(timeout) → KafkaMessage?`. The librdkafka
+          client handles partition assignment, offset commits,
+          delivery reports. Surface deliberately thin so the
+          underlying tunables (acks, compression, retries)
+          stay accessible via setter methods.
+        - **RabbitMQ / AMQP 0.9.1** (`librabbitmq`, MIT) —
+          publish + consume on named exchanges and queues.
+          Surface: `Rabbit.Connect(host, port)`,
+          `Rabbit.DeclareExchange(name, kind)`,
+          `Rabbit.DeclareQueue(name)`, `Rabbit.Bind(queue,
+          exchange, routingKey)`, `Rabbit.Publish(exchange,
+          routingKey, body)`, `Rabbit.Consume(queue, handler)`.
+          Heavier surface than MQTT/NATS because AMQP itself is.
+
+      **Out of scope for v1:** ZeroMQ (LGPL is fine but ZMQ
+      itself is a library, not a broker — different mental
+      model), Pulsar (smaller user base than Kafka, can be
+      added later via the C++ client).
+
+      Common ergonomics across all brokers: single connection
+      handle per facade, `<Broker>.LastError()` for diagnostics,
+      blocking + callback-style consumer APIs, no async/await
+      requirement on the caller (the Amalgame side stays
+      synchronous; concurrency comes from running the consumer
+      loop in a thread spawned by user code).
 - [ ] **`Amalgame.Path`** — cross-platform path manipulation.
       Currently scattered in user code (string splits, hardcoded
       separators). Exposes `Path.Join`, `Path.Parent`, `Path.Stem`,
