@@ -91,6 +91,13 @@ public class LspServer {
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
                 this.HandleCompletion(id, uri, line, chr)
+            } else if (method == "textDocument/definition" || method == "textDocument/declaration") {
+                // declaration aliases definition for languages without
+                // forward declarations — same handler.
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
+                this.HandleDefinition(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -195,7 +202,11 @@ public class LspServer {
         // hoverProvider:  true  → client may send textDocument/hover
         // completionProvider: { triggerCharacters: ["."] } → client
         // requests completion lists on demand or when typing a dot.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // definitionProvider / declarationProvider: true → client
+        // may send textDocument/definition (Cmd+Click in VS Code).
+        // declaration aliases definition since Amalgame has no
+        // separate declaration/definition split.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -372,6 +383,91 @@ public class LspServer {
 
     private void SendNullResult(int id) {
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":null}"
+        this.Send(body)
+    }
+
+    // ── Definition ────────────────────────────────────
+    //
+    // Slice 1: walk the workspace's top-level decls, return the
+    // first match by name. Covers classes, enums, interfaces,
+    // standalone (well, on-class-static) functions — every name
+    // that appears at file scope across the workspace.
+    //
+    // Out of scope here: member methods, fields, locals, parameters,
+    // imports. They land in slice 2 once we extend the resolver to
+    // expose declaration AstNodes for non-top-level symbols. The
+    // common Cmd+Click case (jump to a class or enum used somewhere)
+    // already works against this v1.
+    private void HandleDefinition(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.SendNullResult(id)
+            return
+        }
+
+        // For MEMBER nodes (e.g. `NodeKind.METHOD_DECL`), the left
+        // child carries the type name the user most likely wants
+        // — VS Code separately offers `typeDefinition` for that
+        // case. Falling back to `node.Name` covers IDENTIFIER too.
+        var lookup: string = node.Name
+        if (node.Kind == NodeKind.MEMBER) {
+            if (node.Left != null && node.Left.Kind == NodeKind.IDENTIFIER) {
+                lookup = node.Left.Name
+            }
+        }
+        if (String_Length(lookup) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+
+        // Search every workspace program's top-level children.
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode = resolver.Programs.Get(i)
+            let nDecls: int = p.Children.Count()
+            for j in 0..nDecls {
+                let decl: AstNode = p.Children.Get(j)
+                if (decl.Name == lookup) {
+                    var declPath: string = p.Str2
+                    if (String_Length(declPath) == 0) { declPath = path }
+                    this.SendDefinitionLocation(id, declPath, decl.Line, decl.Column, lookup)
+                    return
+                }
+            }
+        }
+
+        this.SendNullResult(id)
+    }
+
+    // Build and send a `Location` JSON. Range covers the symbol's
+    // name token (1-char start col → start + name length end col),
+    // converted from the AST's 1-based to LSP's 0-based positions.
+    private void SendDefinitionLocation(int id, string path, int line, int col, string name) {
+        let declUri: string = "file://" + path
+        let declLine: int   = line - 1
+        let declCol:  int   = col - 1
+        // String_Length isn't seen as i64-returning by the cgen here
+        // — the binary `+` mistypes as code_string_concat. Pinning the
+        // length through a typed local sidesteps that until the cgen
+        // gets a follow-on fix.
+        let nameLen: int = String_Length(name)
+        let endCol:  int = declCol + nameLen
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"uri\":\"" + Json.EscapeString(declUri) + "\",\"range\":{\"start\":{\"line\":" + String_FromInt(declLine) + ",\"character\":" + String_FromInt(declCol) + "},\"end\":{\"line\":" + String_FromInt(declLine) + ",\"character\":" + String_FromInt(endCol) + "}}}}"
         this.Send(body)
     }
 
@@ -737,14 +833,69 @@ public class LspServer {
         return false
     }
 
-    // file:///abs/path → /abs/path. Doesn't decode percent-encoding;
-    // editors don't send it for plain ASCII paths in practice.
+    // file:///abs/path → /abs/path. Decodes %XX percent-encoding —
+    // VS Code sends UTF-8 bytes encoded that way for any non-ASCII
+    // char in the path (e.g. `Développement` → `D%C3%A9veloppement`).
+    // Without decoding, the workspace scan walks an inexistent path
+    // and silently degrades to single-file resolve, which surfaces as
+    // spurious "Unknown symbol" diagnostics for cross-file types.
     public static string UriToPath(string uri) {
+        var raw: string = uri
         if (String_StartsWith(uri, "file://")) {
             let n: int = String_Length(uri)
-            return String_Substring(uri, 7, n - 7)
+            raw = String_Substring(uri, 7, n - 7)
         }
-        return uri
+        return LspServer.PercentDecode(raw)
+    }
+
+    // %XX → byte. Anything else (literal, truncated escape, bad hex)
+    // is passed through unchanged so a malformed URI still produces
+    // a usable path rather than an empty string.
+    private static string PercentDecode(string s) {
+        var out: string = ""
+        let n: int = String_Length(s)
+        var i: int = 0
+        while (i < n) {
+            let c: string = String_CharAt1(s, i)
+            if (c == "%" && i + 2 < n) {
+                let h0: string = String_CharAt1(s, i + 1)
+                let h1: string = String_CharAt1(s, i + 2)
+                let v0: int = LspServer.HexDigit(h0)
+                let v1: int = LspServer.HexDigit(h1)
+                if (v0 >= 0 && v1 >= 0) {
+                    let b: int = (v0 * 16) + v1
+                    out = out + String_FromByte(b)
+                    i = i + 3
+                } else {
+                    out = out + c
+                    i = i + 1
+                }
+            } else {
+                out = out + c
+                i = i + 1
+            }
+        }
+        return out
+    }
+
+    private static int HexDigit(string c) {
+        if (c == "0") { return 0 }
+        if (c == "1") { return 1 }
+        if (c == "2") { return 2 }
+        if (c == "3") { return 3 }
+        if (c == "4") { return 4 }
+        if (c == "5") { return 5 }
+        if (c == "6") { return 6 }
+        if (c == "7") { return 7 }
+        if (c == "8") { return 8 }
+        if (c == "9") { return 9 }
+        if (c == "a" || c == "A") { return 10 }
+        if (c == "b" || c == "B") { return 11 }
+        if (c == "c" || c == "C") { return 12 }
+        if (c == "d" || c == "D") { return 13 }
+        if (c == "e" || c == "E") { return 14 }
+        if (c == "f" || c == "F") { return 15 }
+        return -1
     }
 
     // ── AST positional lookup ─────────────────────────
