@@ -300,6 +300,14 @@ public class FullResolver {
         this.DeclareGlobal("DateTime_FormatIso",         "string", false)
         this.DeclareGlobal("DateTime_ParseIsoNanos",     "int",    false)
         this.DeclareGlobal("DateTime_IsParseError",      "bool",   false)
+        // Crypto — runtime helpers behind the public Amalgame.Crypto
+        // facade in src/stdlib/crypto.am (SHA-256 + HMAC-SHA-256).
+        this.DeclareGlobal("Crypto_Sha256",                  "List<int>", false)
+        this.DeclareGlobal("Crypto_Sha256Hex",               "string",    false)
+        this.DeclareGlobal("Crypto_Sha256OfString",          "string",    false)
+        this.DeclareGlobal("Crypto_HmacSha256",              "List<int>", false)
+        this.DeclareGlobal("Crypto_HmacSha256Hex",           "string",    false)
+        this.DeclareGlobal("Crypto_HmacSha256OfStrings",     "string",    false)
         // String
         this.DeclareGlobal("String_Length",     "int",    false)
         this.DeclareGlobal("String_IsEmpty",    "bool",   false)

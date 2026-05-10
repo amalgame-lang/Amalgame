@@ -573,6 +573,67 @@ adjustments and manual clock changes.
   day, larger range) if applications outside this window become
   a thing.
 
+## Crypto — SHA-256 and HMAC-SHA-256
+
+`namespace Amalgame.Crypto` exposes two static facades — `Sha256`
+for the bare hash and `Hmac` for keyed authentication. Both go
+straight to `runtime/Amalgame_Crypto.h`, which holds the SHA-256
+compression function (FIPS 180-4 §6.2) and the HMAC ipad/opad
+construction (RFC 2104) in pure C. No external crypto library
+dependency — the runtime header is self-contained, ~150 lines.
+
+Bytes flow through as `List<int>` with each entry in `[0, 255]`
+(the runtime masks to 8 bits anyway, so any int list works).
+String-input convenience methods hash the UTF-8 byte
+representation directly. All hex output is lowercase (RFC 4648
+hex is case-insensitive on decode, so this matches the de-facto
+modern convention).
+
+```amalgame
+import Amalgame.Crypto
+
+// ── SHA-256 ─────────────────────────────────────────
+let h1: string = Sha256.OfString("hello")        // hex (most common)
+let raw: List<int> = Sha256.Bytes(some_bytes)    // 32 raw bytes
+let h2: string = Sha256.Hex(some_bytes)          // hex of bytes input
+
+// ── HMAC-SHA-256 ────────────────────────────────────
+let mac: string = Hmac.Sha256OfStrings(api_key, payload)
+let mac_raw: List<int> = Hmac.Sha256(key_bytes, msg_bytes)
+let mac_hex: string = Hmac.Sha256Hex(key_bytes, msg_bytes)
+```
+
+### Sha256
+
+| Method                          | Returns        | Notes                                     |
+|---------------------------------|----------------|-------------------------------------------|
+| `Sha256.Bytes(data: List<int>)` | `List<int>`    | Raw 32-byte digest                        |
+| `Sha256.Hex(data: List<int>)`   | `string`       | Lowercase hex of the 32-byte digest       |
+| `Sha256.OfString(s: string)`    | `string`       | UTF-8 bytes of `s` → digest → hex         |
+
+### Hmac
+
+| Method                                                | Returns      |
+|-------------------------------------------------------|--------------|
+| `Hmac.Sha256(key: List<int>, msg: List<int>)`         | `List<int>`  |
+| `Hmac.Sha256Hex(key: List<int>, msg: List<int>)`      | `string`     |
+| `Hmac.Sha256OfStrings(key: string, msg: string)`      | `string`     |
+
+Keys longer than the SHA-256 block size (64 bytes) are hashed down
+to 32 bytes per RFC 2104 §2; keys shorter than 64 are zero-padded.
+Either is handled transparently inside the runtime.
+
+### Caveats
+
+- **SHA-256 only for now.** No SHA-1 (insecure for new uses anyway),
+  SHA-512, MD5, or Blake. Add as needed.
+- **Constant-time comparison** of MAC values is the caller's
+  responsibility. Amalgame's `string ==` and `List<int>` comparison
+  short-circuit on the first byte mismatch, which leaks timing
+  information against a determined attacker. For verifying signatures
+  / MACs against untrusted input, compare via a manual byte-by-byte
+  loop that always runs to completion.
+
 ## What's missing
 
 - Bigger Math (trig, logs)

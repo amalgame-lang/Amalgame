@@ -132,6 +132,16 @@ public class Program {
         let dtProg   = dtPar.Parse()
         Console.WriteError("parsed: stdlib/datetime.am")
 
+        // Crypto stdlib — SHA-256 + HMAC-SHA-256 facade over
+        // runtime/Amalgame_Crypto.h.
+        let crPath   = "./src/stdlib/crypto.am"
+        let crSrc    = File.ReadAll(crPath)
+        let crLex    = new Lexer(crSrc, crPath)
+        let crToks   = crLex.Tokenize()
+        let crPar    = new Parser(crToks)
+        let crProg   = crPar.Parse()
+        Console.WriteError("parsed: stdlib/crypto.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -206,6 +216,7 @@ public class Program {
         gen6.AddFilePass1(rndProg)
         gen6.AddFilePass1(encProg)
         gen6.AddFilePass1(dtProg)
+        gen6.AddFilePass1(crProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -229,6 +240,7 @@ public class Program {
         gen6.AddFilePass2(rndProg)
         gen6.AddFilePass2(encProg)
         gen6.AddFilePass2(dtProg)
+        gen6.AddFilePass2(crProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)
