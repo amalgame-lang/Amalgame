@@ -483,6 +483,48 @@ before the next big language addition.
       via `amalgame.serverPath` and `amalgame.enableLsp`.
 - [x] **`amc lsp` hover + global completion** (v0.3.5) — follow-up on top of v0.3.4
       diagnostics. Needs pos→symbol lookup on the AST.
+- [ ] **`amc lsp` navigation (v2)** — the next-tier features users
+      hit fastest after diagnostics + completion are working:
+        - **`textDocument/definition`** — jump to where a symbol is
+          declared. Reuses the resolver's symbol table; pos→token →
+          symbol → `(file, line, col)`. Probably the highest-value
+          single feature here.
+        - **`textDocument/declaration`** — separate endpoint per LSP
+          spec; for languages without forward declarations it
+          aliases definition. Trivial passthrough.
+        - **`textDocument/typeDefinition`** — for `let x: T = …`
+          jumps to T's definition. Needs the typechecker to expose
+          the inferred type at a given position.
+        - **`textDocument/references`** + **`Find all references`** —
+          enumerate every use of a symbol across the workspace. Needs
+          a reverse index; cheap to build during resolve since we
+          already walk every reference site.
+        - **`textDocument/documentHighlight`** — highlight other
+          occurrences of the symbol under the cursor in the current
+          file. Subset of references, scope-limited.
+        - **`textDocument/documentSymbol`** — outline view (classes,
+          methods, top-level decls). Walks the AST top-level + class
+          children, emits SymbolKind.{Class,Method,Field,Enum}.
+        - **`workspace/symbol`** — fuzzy-search every declared symbol
+          in the workspace. Needs the same reverse index as references.
+        - **`textDocument/prepareCallHierarchy`** +
+          **`callHierarchy/{incoming,outgoing}Calls`** — jump-to-callers
+          / jump-to-callees views. Builds on references for incoming;
+          outgoing is a method-body walk for CALL nodes.
+        - **Hover preview ("Aperçu")** — peek-style inline preview
+          panel. We already serve hover; "Peek" is the editor's
+          rendering of the same data, so usually no extra server
+          work. VS Code wires it automatically.
+        - **`textDocument/rename`** — rename a symbol across the
+          workspace. Builds on references; emit a `WorkspaceEdit`
+          with one TextEdit per use site.
+        - **`textDocument/inlayHint`** — inferred-type hints at
+          `let x = …` positions. Needs the inferred-type lookup
+          from typeDefinition above.
+        - **`textDocument/codeAction`** — quick fixes (e.g. "wrap
+          this top-level fn in a class as `public static`" —
+          recently emitted as a parse diagnostic). Per-diagnostic
+          dispatcher that returns a `WorkspaceEdit`.
 - [ ] **Editor integration on install** — when a user installs
       Amalgame (`install.sh`, future `amc-up` package script,
       Homebrew formula, `.deb`/`.rpm`), automatically wire the
