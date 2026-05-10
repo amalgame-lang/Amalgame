@@ -66,6 +66,7 @@ typedef struct _Amalgame_Compiler_NewCommand Amalgame_Compiler_NewCommand;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
+Amalgame_Compiler_Token* Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType t, code_string value, i64 line, i64 col, code_string file);
 enum _Amalgame_Compiler_TokenType {
     Amalgame_Compiler_TokenType_INTEGER,
     Amalgame_Compiler_TokenType_FLOAT,
@@ -195,6 +196,8 @@ code_bool Amalgame_Compiler_Token_IsKeyword(Amalgame_Compiler_Token* self) {
     return v == Amalgame_Compiler_TokenType_KW_LET || v == Amalgame_Compiler_TokenType_KW_VAR || v == Amalgame_Compiler_TokenType_KW_IF || v == Amalgame_Compiler_TokenType_KW_ELSE || v == Amalgame_Compiler_TokenType_KW_FOR || v == Amalgame_Compiler_TokenType_KW_WHILE || v == Amalgame_Compiler_TokenType_KW_RETURN || v == Amalgame_Compiler_TokenType_KW_CLASS || v == Amalgame_Compiler_TokenType_KW_PUBLIC || v == Amalgame_Compiler_TokenType_KW_STATIC || v == Amalgame_Compiler_TokenType_KW_NEW || v == Amalgame_Compiler_TokenType_KW_ENUM || v == Amalgame_Compiler_TokenType_KW_MATCH || v == Amalgame_Compiler_TokenType_KW_IN;
 }
 
+Amalgame_Compiler_AstNode* Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind kind, i64 line, i64 col);
+Amalgame_Compiler_Ast* Amalgame_Compiler_Ast_new();
 enum _Amalgame_Compiler_NodeKind {
     Amalgame_Compiler_NodeKind_PROGRAM,
     Amalgame_Compiler_NodeKind_CLASS_DECL,
@@ -468,6 +471,7 @@ Amalgame_Compiler_AstNode* Amalgame_Compiler_Ast_This(i64 line, i64 col) {
     return Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind_THIS_EXPR, line, col);
 }
 
+Amalgame_Compiler_Lexer* Amalgame_Compiler_Lexer_new(code_string source, code_string filename);
 struct _Amalgame_Compiler_Lexer {
     code_string Source;
     i64 Pos;
@@ -1061,6 +1065,7 @@ static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
     }
 }
 
+Amalgame_Compiler_Parser* Amalgame_Compiler_Parser_new(AmalgameList* tokens);
 struct _Amalgame_Compiler_Parser {
     AmalgameList* Tokens;
     i64 TokenCount;
@@ -1394,6 +1399,31 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseDecl(Amalgame_Co
     }
     if (Amalgame_Compiler_Parser_CheckKw(self, "interface")) {
         return Amalgame_Compiler_Parser_ParseInterface(self, isPublic);
+    }
+    if (Amalgame_Compiler_Parser_CheckKw(self, "fn")) {
+        Amalgame_Compiler_Token* __attribute__((unused)) tok = Amalgame_Compiler_Parser_Current(self);
+        code_string __attribute__((unused)) name = "<anonymous>";
+        Amalgame_Compiler_Token* __attribute__((unused)) nextTok = Amalgame_Compiler_Parser_Peek(self, 1);
+        if (nextTok->Type == Amalgame_Compiler_TokenType_IDENTIFIER) {
+            name = nextTok->Value;
+        }
+        AmalgameList_add(self->Errors, (void*)(intptr_t)(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Top-level functions aren't supported (got 'fn ", name), "' at "), String_FromInt(tok->Line)), ":"), String_FromInt(tok->Column)), "). Wrap it inside a class as `public static`.")));
+        while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, "{")) {
+            Amalgame_Compiler_Parser_Advance(self);
+        }
+        if (Amalgame_Compiler_Parser_CheckValue(self, "{")) {
+            Amalgame_Compiler_Parser_Advance(self);
+            i64 __attribute__((unused)) depth = 1;
+            while (!Amalgame_Compiler_Parser_IsEnd(self) && depth > 0) {
+                if (Amalgame_Compiler_Parser_CheckValue(self, "{")) {
+                    depth = depth + 1;
+                } else if (Amalgame_Compiler_Parser_CheckValue(self, "}")) {
+                    depth = depth - 1;
+                }
+                Amalgame_Compiler_Parser_Advance(self);
+            }
+        }
+        return Amalgame_Compiler_Parser_Unknown(self);
     }
     Amalgame_Compiler_Parser_Advance(self);
     return Amalgame_Compiler_Parser_Unknown(self);
@@ -2787,6 +2817,8 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseNew(Amalgame_Com
     return node;
 }
 
+Amalgame_Compiler_Emitter* Amalgame_Compiler_Emitter_new();
+Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new();
 struct _Amalgame_Compiler_Emitter {
     AmalgameList* Lines;
     i64 Indent;
@@ -2897,6 +2929,7 @@ void Amalgame_Compiler_CGen_BeginMulti(Amalgame_Compiler_CGen* self, code_string
 void Amalgame_Compiler_CGen_AddFilePass1(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
 void Amalgame_Compiler_CGen_EmitSeparator(Amalgame_Compiler_CGen* self);
 void Amalgame_Compiler_CGen_AddFilePass2(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
+static void Amalgame_Compiler_CGen_EmitConstructorForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
 static void Amalgame_Compiler_CGen_EmitLambdaForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* node);
 static void Amalgame_Compiler_CGen_EmitLambdaBodies(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* node);
 static void Amalgame_Compiler_CGen_EmitOneLambdaForward(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* lam);
@@ -3001,6 +3034,8 @@ code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalga
         Amalgame_Compiler_CGen_EmitForwardDecl(self, decl);
     }
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
+    Amalgame_Compiler_CGen_EmitConstructorForwards(self, prog);
+    Amalgame_Compiler_Emitter_EmitBlank(self->Out);
     for (i64 j = 0; j < decls; j++) {
         Amalgame_Compiler_AstNode* __attribute__((unused)) decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, j);
         Amalgame_Compiler_CGen_EmitDecl(self, decl);
@@ -3041,6 +3076,7 @@ void Amalgame_Compiler_CGen_EmitSeparator(Amalgame_Compiler_CGen* self) {
 void Amalgame_Compiler_CGen_AddFilePass2(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
     (void)self;
     (void)prog;
+    Amalgame_Compiler_CGen_EmitConstructorForwards(self, prog);
     Amalgame_Compiler_CGen_EmitLambdaForwards(self, prog);
     i64 __attribute__((unused)) decls = AmalgameList_count(prog->Children);
     for (i64 j = 0; j < decls; j++) {
@@ -3048,6 +3084,42 @@ void Amalgame_Compiler_CGen_AddFilePass2(Amalgame_Compiler_CGen* self, Amalgame_
         Amalgame_Compiler_CGen_EmitDecl(self, decl);
     }
     Amalgame_Compiler_CGen_EmitLambdaBodies(self, prog);
+}
+
+static void Amalgame_Compiler_CGen_EmitConstructorForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
+    (void)self;
+    (void)prog;
+    i64 __attribute__((unused)) decls = AmalgameList_count(prog->Children);
+    for (i64 i = 0; i < decls; i++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
+        if (decl->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) {
+            code_string __attribute__((unused)) name = Amalgame_Compiler_CGen_SymName(self, decl->Name);
+            code_bool __attribute__((unused)) ctorFound = 0;
+            i64 __attribute__((unused)) members = AmalgameList_count(decl->Children);
+            for (i64 j = 0; j < members; j++) {
+                Amalgame_Compiler_AstNode* __attribute__((unused)) m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, j);
+                if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL && code_string_equals(m->Name, decl->Name)) {
+                    ctorFound = 1;
+                    code_string __attribute__((unused)) sig = code_string_concat(code_string_concat(code_string_concat(name, "* "), name), "_new(");
+                    i64 __attribute__((unused)) pcount = AmalgameList_count(m->Params);
+                    code_bool __attribute__((unused)) first = 1;
+                    for (i64 pi = 0; pi < pcount; pi++) {
+                        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
+                        if (!first) {
+                            sig = code_string_concat(sig, ", ");
+                        }
+                        sig = code_string_concat(code_string_concat(code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str)), " "), p->Name);
+                        first = 0;
+                    }
+                    sig = code_string_concat(sig, ");");
+                    Amalgame_Compiler_Emitter_EmitLine(self->Out, sig);
+                }
+            }
+            if (!ctorFound) {
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(name, "* "), name), "_new();"));
+            }
+        }
+    }
 }
 
 static void Amalgame_Compiler_CGen_EmitLambdaForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* node) {
@@ -6078,6 +6150,7 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     return code_string_concat(sym, "*");
 }
 
+Amalgame_Compiler_Formatter* Amalgame_Compiler_Formatter_new(AmalgameList* comments);
 struct _Amalgame_Compiler_Formatter {
     AmalgameList* Out;
     code_string Buf;
@@ -7198,6 +7271,11 @@ static code_string Amalgame_Compiler_Formatter_KindName(Amalgame_Compiler_Format
     return "?";
 }
 
+Amalgame_Compiler_Ansi* Amalgame_Compiler_Ansi_new();
+Amalgame_Compiler_SourceMap* Amalgame_Compiler_SourceMap_new();
+Amalgame_Compiler_SourceSnippet* Amalgame_Compiler_SourceSnippet_new();
+Amalgame_Compiler_Diagnostic* Amalgame_Compiler_Diagnostic_new(Amalgame_Compiler_DiagSeverity sev, code_string kind, code_string msg, code_string file, i64 line, i64 col);
+Amalgame_Compiler_DiagnosticFormatter* Amalgame_Compiler_DiagnosticFormatter_new();
 struct _Amalgame_Compiler_Ansi {
 };
 
@@ -7572,6 +7650,9 @@ code_string Amalgame_Compiler_DiagnosticFormatter_FormatCompact(Amalgame_Compile
     return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(loc, ": "), severity), "["), kind), "]: "), message);
 }
 
+Amalgame_Compiler_Symbol* Amalgame_Compiler_Symbol_new(code_string name, Amalgame_Compiler_SymKind kind);
+Amalgame_Compiler_SymbolTable* Amalgame_Compiler_SymbolTable_new();
+Amalgame_Compiler_Resolver* Amalgame_Compiler_Resolver_new();
 enum _Amalgame_Compiler_SymKind {
     Amalgame_Compiler_SymKind_CLASS,
     Amalgame_Compiler_SymKind_ENUM,
@@ -8042,6 +8123,9 @@ static code_bool Amalgame_Compiler_Resolver_LookupInScopes(Amalgame_Compiler_Res
     return found;
 }
 
+Amalgame_Compiler_MemberTable* Amalgame_Compiler_MemberTable_new();
+Amalgame_Compiler_ResolverError* Amalgame_Compiler_ResolverError_new(code_string msg, code_string file, i64 line, i64 col);
+Amalgame_Compiler_FullResolver* Amalgame_Compiler_FullResolver_new();
 struct _Amalgame_Compiler_MemberTable {
     AmalgameList* Keys;
     AmalgameList* Values;
@@ -9368,6 +9452,9 @@ void Amalgame_Compiler_FullResolver_SetTypeName(Amalgame_Compiler_FullResolver* 
     }
 }
 
+Amalgame_Compiler_TypeError* Amalgame_Compiler_TypeError_new(code_string msg, code_string file, i64 line, i64 col);
+Amalgame_Compiler_TypeCheckResult* Amalgame_Compiler_TypeCheckResult_new();
+Amalgame_Compiler_TypeChecker* Amalgame_Compiler_TypeChecker_new(Amalgame_Compiler_FullResolver* symbols, code_string filename);
 struct _Amalgame_Compiler_TypeError {
     code_string Message;
     code_string Filename;
@@ -10626,6 +10713,8 @@ code_string Amalgame_Compiler_TypeChecker_FormatErrors(Amalgame_Compiler_TypeChe
     return result;
 }
 
+Amalgame_Compiler_LintWarning* Amalgame_Compiler_LintWarning_new(code_string msg, code_string file, i64 line, i64 col);
+Amalgame_Compiler_Linter* Amalgame_Compiler_Linter_new();
 struct _Amalgame_Compiler_LintWarning {
     code_string Message;
     code_string Filename;
@@ -11152,6 +11241,11 @@ static void Amalgame_Compiler_Linter_Warn(Amalgame_Compiler_Linter* self, code_s
     AmalgameList_add(self->Warnings, (void*)(intptr_t)(w));
 }
 
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonValue_new();
+Amalgame_Compiler_JsonError* Amalgame_Compiler_JsonError_new(code_string msg, i64 line, i64 col);
+Amalgame_Compiler_JsonResult* Amalgame_Compiler_JsonResult_new();
+Amalgame_Compiler_JsonParser* Amalgame_Compiler_JsonParser_new(code_string source);
+Amalgame_Compiler_Json* Amalgame_Compiler_Json_new();
 enum _Amalgame_Compiler_JsonKind {
     Amalgame_Compiler_JsonKind_Null,
     Amalgame_Compiler_JsonKind_Bool,
@@ -12133,6 +12227,7 @@ Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfArray(AmalgameList* xs) {
     return v;
 }
 
+Amalgame_Compiler_Random* Amalgame_Compiler_Random_new(i64 seed);
 struct _Amalgame_Compiler_Random {
     i64 state;
     i64 inc;
@@ -12244,6 +12339,9 @@ AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64
     return out;
 }
 
+Amalgame_Compiler_Base64* Amalgame_Compiler_Base64_new();
+Amalgame_Compiler_Hex* Amalgame_Compiler_Hex_new();
+Amalgame_Compiler_Url* Amalgame_Compiler_Url_new();
 struct _Amalgame_Compiler_Base64 {
 };
 
@@ -12720,6 +12818,10 @@ static i64 Amalgame_Compiler_Url_HexValue(code_string c) {
     return -1;
 }
 
+Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_new(i64 nanos);
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new(Amalgame_Compiler_Instant* initial);
+Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_new(i64 nanos);
+Amalgame_Compiler_Stopwatch* Amalgame_Compiler_Stopwatch_new();
 struct _Amalgame_Compiler_Duration {
     i64 nanos;
 };
@@ -13047,6 +13149,8 @@ Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_
     return Amalgame_Compiler_Duration_new(diff);
 }
 
+Amalgame_Compiler_Sha256* Amalgame_Compiler_Sha256_new();
+Amalgame_Compiler_Hmac* Amalgame_Compiler_Hmac_new();
 struct _Amalgame_Compiler_Sha256 {
 };
 
@@ -13104,6 +13208,7 @@ code_string Amalgame_Compiler_Hmac_Sha256OfStrings(code_string key, code_string 
     return Crypto_HmacSha256OfStrings(key, msg);
 }
 
+Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
 struct _Amalgame_Compiler_LspServer {
     AmalgameList* DocUris;
     AmalgameList* Docs;
@@ -13960,6 +14065,8 @@ static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNod
     return 1;
 }
 
+Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateResult_new();
+Amalgame_Compiler_MigrateCommand* Amalgame_Compiler_MigrateCommand_new();
 struct _Amalgame_Compiler_MigrateResult {
     code_bool Ok;
     code_string Content;
@@ -15109,6 +15216,7 @@ static code_string Amalgame_Compiler_MigrateCommand_StripFences(code_string s) {
     return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3);
 }
 
+Amalgame_Compiler_GenerateCommand* Amalgame_Compiler_GenerateCommand_new();
 struct _Amalgame_Compiler_GenerateCommand {
 };
 
@@ -15350,6 +15458,7 @@ static code_string Amalgame_Compiler_GenerateCommand_StripFences(code_string s) 
     return String_Substring(rtrimmed, 0, String_Length(rtrimmed) - 3);
 }
 
+Amalgame_Compiler_ExplainCommand* Amalgame_Compiler_ExplainCommand_new();
 struct _Amalgame_Compiler_ExplainCommand {
 };
 
@@ -15565,6 +15674,7 @@ static code_string Amalgame_Compiler_ExplainCommand_BuildUserPrompt(code_string 
     return p;
 }
 
+Amalgame_Compiler_NewCommand* Amalgame_Compiler_NewCommand_new();
 struct _Amalgame_Compiler_NewCommand {
 };
 
@@ -16050,6 +16160,8 @@ static code_string Amalgame_Compiler_NewCommand_Basename(code_string p) {
     return p;
 }
 
+Amalgame_Compiler_AmalgameCompiler* Amalgame_Compiler_AmalgameCompiler_new();
+Amalgame_Compiler_Program* Amalgame_Compiler_Program_new();
 struct _Amalgame_Compiler_AmalgameCompiler {
     Amalgame_Compiler_DiagnosticFormatter* Diag;
     code_bool IsLib;
@@ -16151,7 +16263,16 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
         Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
         AmalgameList_add(progs, (void*)(intptr_t)(prog));
+        if (Amalgame_Compiler_Parser_HasErrors(par)) {
+            Console_WriteError(code_string_concat("amc: parse errors in ", path));
+            Console_WriteError(Amalgame_Compiler_Parser_GetErrors(par));
+            self->ExitCode = 1;
+            parseOk = 0;
+        }
         Amalgame_Compiler_CGen_AddFilePass1(gen, prog);
+    }
+    if (!parseOk) {
+        return;
     }
     Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
     resolver->Sources = self->Diag->Sources;
