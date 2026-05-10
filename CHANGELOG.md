@@ -7,6 +7,49 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.12] — 2026-05-10
+
+The "Logging stdlib lands" release. v0.4.11 added `Amalgame.Path`;
+v0.4.12 adds the second stdlib brick on the way to `amc new
+--template service`: leveled logging with a stderr + optional
+file sink.
+
+### Added
+
+- **`Amalgame.Logging`** (PR #253) — `public class Log` with four
+  levels (Debug / Info / Warn / Error), UTC ISO 8601 timestamps,
+  fixed-width labels, optional file sink. Configuration is
+  process-wide singleton state held in the runtime (`Logging_*`
+  helpers), same pattern as `Exit_Set` / `Exit_Get`.
+
+  Level names are case-insensitive on the first letter — "DEBUG",
+  "Debug", "debug" all map. Unknown names default to "info"
+  silently; logging itself should never crash a process. File
+  sink reopens on each emit — slower than holding a stream open
+  but robust against external log rotation, which is the typical
+  production setup.
+
+  Single-process, thread-unsafe v1 — fine for CLIs and single-
+  threaded servers. Mutex is the v2 ask once a real multi-threaded
+  user lands.
+
+### Roadmap
+
+- `Amalgame.Database` — minimum SQLite via libsqlite3.
+- `amc new <name> --template service` and `--template forms` —
+  cross-platform service / GUI scaffolders. Now unblocked on the
+  Path + Logging side.
+
+### Tests / infra
+
+- Suite grows to **403 PASS / 0 FAIL / 0 SKIP** (was 393). 10 new
+  cases cover level round-trips, case-insensitive parsing,
+  unknown-level fallback, file sink round-trip, and emit + level
+  filter via the file sink.
+- Snapshot refreshed.
+
+---
+
 ## [v0.4.11] — 2026-05-10
 
 The "Path stdlib lands" release. v0.4.10 closed LSP slice 4;
@@ -1240,6 +1283,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.12]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.12
 [v0.4.11]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.11
 [v0.4.10]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.10
 [v0.4.9]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.9
