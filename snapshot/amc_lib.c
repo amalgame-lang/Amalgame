@@ -13280,6 +13280,9 @@ Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
 struct _Amalgame_Compiler_LspServer {
     AmalgameList* DocUris;
     AmalgameList* Docs;
+    code_string CachedRoot;
+    AmalgameList* CachedSiblingPaths;
+    AmalgameList* CachedSiblingProgs;
 };
 
 i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self);
@@ -13293,7 +13296,7 @@ static void Amalgame_Compiler_LspServer_SendInit(Amalgame_Compiler_LspServer* se
 static void Amalgame_Compiler_LspServer_SendShutdown(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_PublishDiagnostics(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
 static Amalgame_Compiler_FullResolver* Amalgame_Compiler_LspServer_BuildWorkspaceResolver(Amalgame_Compiler_LspServer* self, code_string path, Amalgame_Compiler_AstNode* prog);
-static void Amalgame_Compiler_LspServer_LoadWorkspaceFiles(Amalgame_Compiler_LspServer* self, Amalgame_Compiler_FullResolver* resolver, code_string currentPath);
+static void Amalgame_Compiler_LspServer_EnsureWorkspaceCache(Amalgame_Compiler_LspServer* self, code_string currentPath);
 code_string Amalgame_Compiler_LspServer_FindWorkspaceRoot(code_string startPath);
 code_string Amalgame_Compiler_LspServer_Dirname(code_string path);
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
@@ -13328,6 +13331,9 @@ Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new() {
     Amalgame_Compiler_LspServer* self = (Amalgame_Compiler_LspServer*) GC_MALLOC(sizeof(Amalgame_Compiler_LspServer));
     self->DocUris = AmalgameList_new();
     self->Docs = AmalgameList_new();
+    self->CachedRoot = "";
+    self->CachedSiblingPaths = AmalgameList_new();
+    self->CachedSiblingProgs = AmalgameList_new();
     return self;
 }
 
@@ -13503,19 +13509,32 @@ static Amalgame_Compiler_FullResolver* Amalgame_Compiler_LspServer_BuildWorkspac
     (void)prog;
     Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
     AmalgameList_add(resolver->Programs, (void*)(intptr_t)(prog));
-    Amalgame_Compiler_LspServer_LoadWorkspaceFiles(self, resolver, path);
+    Amalgame_Compiler_LspServer_EnsureWorkspaceCache(self, path);
+    i64 __attribute__((unused)) n = AmalgameList_count(self->CachedSiblingPaths);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) cachedPath = (code_string)AmalgameList_get(self->CachedSiblingPaths, i);
+        if (code_string_equals(cachedPath, path)) {
+            continue;
+        }
+        AmalgameList_add(resolver->Programs, (void*)(intptr_t)((Amalgame_Compiler_AstNode*)AmalgameList_get(self->CachedSiblingProgs, i)));
+    }
     Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
     return resolver;
 }
 
-static void Amalgame_Compiler_LspServer_LoadWorkspaceFiles(Amalgame_Compiler_LspServer* self, Amalgame_Compiler_FullResolver* resolver, code_string currentPath) {
+static void Amalgame_Compiler_LspServer_EnsureWorkspaceCache(Amalgame_Compiler_LspServer* self, code_string currentPath) {
     (void)self;
-    (void)resolver;
     (void)currentPath;
     code_string __attribute__((unused)) root = Amalgame_Compiler_LspServer_FindWorkspaceRoot(currentPath);
     if (String_Length(root) == 0) {
         return;
     }
+    if (code_string_equals(root, self->CachedRoot) && AmalgameList_count(self->CachedSiblingPaths) > 0) {
+        return;
+    }
+    self->CachedRoot = root;
+    self->CachedSiblingPaths = AmalgameList_new();
+    self->CachedSiblingProgs = AmalgameList_new();
     code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", root), " -name '*.am' -type f 2>/dev/null");
     AmalgameProcessResult* __attribute__((unused)) result = Process_RunCapture(findCmd);
     if (result->Exit != 0) {
@@ -13528,9 +13547,6 @@ static void Amalgame_Compiler_LspServer_LoadWorkspaceFiles(Amalgame_Compiler_Lsp
         if (String_Length(path) == 0) {
             continue;
         }
-        if (code_string_equals(path, currentPath)) {
-            continue;
-        }
         if (!File_Exists(path)) {
             continue;
         }
@@ -13540,7 +13556,8 @@ static void Amalgame_Compiler_LspServer_LoadWorkspaceFiles(Amalgame_Compiler_Lsp
         Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
         Amalgame_Compiler_AstNode* __attribute__((unused)) p = Amalgame_Compiler_Parser_Parse(par);
         p->Str2 = path;
-        AmalgameList_add(resolver->Programs, (void*)(intptr_t)(p));
+        AmalgameList_add(self->CachedSiblingPaths, (void*)(intptr_t)(path));
+        AmalgameList_add(self->CachedSiblingProgs, (void*)(intptr_t)(p));
     }
 }
 
