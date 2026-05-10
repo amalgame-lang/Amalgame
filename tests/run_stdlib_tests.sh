@@ -20,6 +20,17 @@ SKIP_SELFHOST=" "
 BUILD_DIR=$(mktemp -d -t amc-stdlib-XXXXXX)
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
+# Pre-compile the vendored SQLite amalgamation once. Database tests
+# link against this .o — compiling 9MB of sqlite3.c per test would
+# add 10s × N tests; doing it here adds 10s total. Built with the
+# same flags as the test compile (-O2, -Iruntime so cross-references
+# work) and with -w to silence sqlite3.c's own warnings.
+SQLITE_OBJ="$BUILD_DIR/sqlite3.o"
+echo "── Pre-compiling vendored SQLite amalgamation ──"
+gcc -O2 -Iruntime -w -c runtime/Amalgame_Database/sqlite/sqlite3.c -o "$SQLITE_OBJ"
+echo "  built: $SQLITE_OBJ ($(stat -c%s "$SQLITE_OBJ" 2>/dev/null || stat -f%z "$SQLITE_OBJ") bytes)"
+echo ""
+
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -67,7 +78,11 @@ run_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+    # Always link the pre-compiled SQLite amalgamation. Adds ~1.5MB
+    # to the test binary but means Database tests work without
+    # special-casing — and non-Database tests get the link as
+    # dead-code that the loader skips.
+    gcc -O2 -Iruntime "$c_file" "$SQLITE_OBJ" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -389,6 +404,26 @@ run_test "Service: not stopping at start"   "$SAMPLES/stdlib_service.am" "[PASS]
 run_test "Service: install idempotent"      "$SAMPLES/stdlib_service.am" "[PASS] install idempotent"             "" "$SVC_LIB"
 run_test "Service: should-stop after req"   "$SAMPLES/stdlib_service.am" "[PASS] should-stop after request"      "" "$SVC_LIB"
 run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS] sleep short-circuits when stopping" "" "$SVC_LIB"
+
+# ── Amalgame.Database ─────────────────────────────────
+# SQLite 3 via the vendored amalgamation. No facade .am — Db is in
+# the cgen's isStdlib short-circuit so Db.Open / Db.Exec / etc. lower
+# straight to the runtime helpers. Tests open an in-memory db.
+echo ""
+echo "── Amalgame.Database ───────────────────────"
+run_test "Db: open memory"                  "$SAMPLES/stdlib_database.am" "[PASS] open memory"               ""
+run_test "Db: create table"                 "$SAMPLES/stdlib_database.am" "[PASS] create table"              ""
+run_test "Db: insert"                       "$SAMPLES/stdlib_database.am" "[PASS] insert alice"              ""
+run_test "Db: last insert id 1"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 1"          ""
+run_test "Db: last insert id 3"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 3"          ""
+run_test "Db: changes counter"              "$SAMPLES/stdlib_database.am" "[PASS] changes 2"                 ""
+run_test "Db: query rows"                   "$SAMPLES/stdlib_database.am" "[PASS] query 3 rows"              ""
+run_test "Db: column text"                  "$SAMPLES/stdlib_database.am" "[PASS] alice name"                ""
+run_test "Db: update reflected"             "$SAMPLES/stdlib_database.am" "[PASS] alice age post-update"     ""
+run_test "Db: aggregate count"              "$SAMPLES/stdlib_database.am" "[PASS] aggregate count 2"         ""
+run_test "Db: error reported"               "$SAMPLES/stdlib_database.am" "[PASS] error reported"            ""
+run_test "Db: delete + verify"              "$SAMPLES/stdlib_database.am" "[PASS] delete leaves 2"           ""
+run_test "Db: close"                        "$SAMPLES/stdlib_database.am" "[PASS] closed"                    ""
 
 # ── Summary ────────────────────────────────────────────
 echo ""
