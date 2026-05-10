@@ -133,6 +133,22 @@ public class LspServer {
                 let chr: int        = pos.Get("character").AsInt()
                 let newName: string = params.Get("newName").AsString()
                 this.HandleRename(id, uri, line, chr, newName)
+            } else if (method == "textDocument/prepareRename") {
+                let uri: string = td.Get("uri").AsString()
+                let line: int   = pos.Get("line").AsInt()
+                let chr: int    = pos.Get("character").AsInt()
+                this.HandlePrepareRename(id, uri, line, chr)
+            } else if (method == "textDocument/prepareCallHierarchy") {
+                let uri: string = td.Get("uri").AsString()
+                let line: int   = pos.Get("line").AsInt()
+                let chr: int    = pos.Get("character").AsInt()
+                this.HandlePrepareCallHierarchy(id, uri, line, chr)
+            } else if (method == "callHierarchy/incomingCalls") {
+                let item: JsonValue = params.Get("item")
+                this.HandleIncomingCalls(id, item)
+            } else if (method == "callHierarchy/outgoingCalls") {
+                let item: JsonValue = params.Get("item")
+                this.HandleOutgoingCalls(id, item)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -252,12 +268,13 @@ public class LspServer {
         // fuzzy symbol search across every cached `.am` file).
         // referencesProvider: true → Find All References / Shift+F12
         // (walks every program for IDENTIFIER/MEMBER name matches).
-        // renameProvider: true → F2 / right-click "Rename Symbol".
-        // Reuses the references walker, emits a WorkspaceEdit with
-        // one TextEdit per occurrence. We don't advertise
-        // prepareProvider on the rename — VS Code falls back to the
-        // word-at-cursor scope, which is what we want.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // renameProvider with prepareProvider: F2 / right-click
+        // "Rename Symbol" — VS Code calls prepareRename first to
+        // confirm the symbol is renameable and to scope the input
+        // box to the actual identifier span.
+        // callHierarchyProvider: true → Shift+Alt+H "Show Call
+        // Hierarchy", supports both incoming and outgoing calls.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -1018,6 +1035,390 @@ public class LspServer {
         let endCol:  int = colLsp + oldLen
         let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
         return "{\"range\":" + range + ",\"newText\":\"" + Json.EscapeString(newName) + "\"}"
+    }
+
+    // ── Prepare rename (F2 pre-flight) ────────────────
+    //
+    // VS Code calls textDocument/prepareRename before issuing the
+    // actual rename — if we return null the F2 popup says "you cannot
+    // rename this element". We accept any node carrying a Name on a
+    // declaration- or reference-shape kind. The reply gives the
+    // editor the exact span of the old name (so its inline rename UI
+    // pre-fills the right text) plus a `placeholder` it shows in the
+    // input box.
+    private void HandlePrepareRename(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.SendNullResult(id)
+            return
+        }
+        let k = node.Kind
+        // Same renameable-kind set CollectRenameEdits accepts. Split
+        // across multiple if's for the same cgen-precedence reason.
+        var renameable: bool = false
+        if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) { renameable = true }
+        if (k == NodeKind.CLASS_DECL || k == NodeKind.ENUM_DECL) { renameable = true }
+        if (k == NodeKind.METHOD_DECL || k == NodeKind.VAR_DECL) { renameable = true }
+        if (k == NodeKind.PARAM)                                  { renameable = true }
+        if (!renameable) {
+            this.SendNullResult(id)
+            return
+        }
+        let name: string = node.Name
+        if (String_Length(name) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let lineLsp: int = node.Line - 1
+        let colLsp:  int = node.Column - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"range\":" + range + ",\"placeholder\":\"" + Json.EscapeString(name) + "\"}}"
+        this.Send(body)
+    }
+
+    // ── Call hierarchy (Shift+Alt+H) ──────────────────
+    //
+    // Three-step protocol per LSP spec:
+    //
+    //   prepareCallHierarchy → returns the CallHierarchyItem[] the
+    //   user picks from. We return at most one item: the method
+    //   enclosing the cursor (Amalgame methods are not overloaded so
+    //   one position → one method).
+    //
+    //   incomingCalls(item) → who calls this method? Walk every
+    //   program; for every CALL whose callee Name matches `item.name`,
+    //   group the call site by the enclosing METHOD_DECL.
+    //
+    //   outgoingCalls(item) → who does this method call? Find the
+    //   method by name+uri+line, walk its body, collect CALL nodes,
+    //   group by callee Name (resolving the called method back to a
+    //   CallHierarchyItem when we can find a workspace decl).
+    //
+    // Item `data` field roundtrip: `{ name, uri, line, character }`
+    // — the editor passes the item back verbatim, so we plant the
+    // original cursor coordinates here to re-locate the method on
+    // each follow-up request.
+    private void HandlePrepareCallHierarchy(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        let targetLine: int = line + 1
+        let enclosing: AstNode? = LspServer.FindEnclosingMethod(prog, targetLine)
+        if (enclosing == null) {
+            this.SendNullResult(id)
+            return
+        }
+        let item: string = LspServer.CallHierarchyItemJson(enclosing, path)
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[" + item + "]}"
+        this.Send(body)
+    }
+
+    private void HandleIncomingCalls(int id, JsonValue item) {
+        let target: string = item.Get("name").AsString()
+        if (String_Length(target) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        // Anchor the workspace cache off the item's URI so we resolve
+        // siblings even if the user hasn't opened any file yet.
+        let itemUri: string = item.Get("uri").AsString()
+        let anchor:  string = LspServer.UriToPath(itemUri)
+
+        // Reparse the open file (if tracked) so its AST is fresh;
+        // otherwise feed BuildWorkspaceResolver an empty program so
+        // it still wires up the cached siblings.
+        let openSrc: string = this.LookupDoc(itemUri)
+        let lex2  = new Lexer(openSrc, anchor)
+        let toks2 = lex2.Tokenize()
+        let par2  = new Parser(toks2)
+        let openProg: AstNode = par2.Parse()
+        openProg.Str2 = anchor
+        let resolver = this.BuildWorkspaceResolver(anchor, openProg)
+
+        var json: string = "["
+        var first: bool = true
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode = resolver.Programs.Get(i)
+            var filePath: string = p.Str2
+            if (String_Length(filePath) == 0) { filePath = anchor }
+            let dc: int = p.Children.Count()
+            for j in 0..dc {
+                let cls: AstNode = p.Children.Get(j)
+                if (cls.Kind != NodeKind.CLASS_DECL) { continue }
+                let mc: int = cls.Children.Count()
+                for k2 in 0..mc {
+                    let m: AstNode = cls.Children.Get(k2)
+                    if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                    let ranges: List<string> = new List<string>()
+                    LspServer.CollectCallSitesForName(m.Body, target, ranges)
+                    let rc: int = ranges.Count()
+                    if (rc == 0) { continue }
+                    var rangesJson: string = "["
+                    for ri in 0..rc {
+                        if (ri > 0) { rangesJson = rangesJson + "," }
+                        rangesJson = rangesJson + ranges.Get(ri)
+                    }
+                    rangesJson = rangesJson + "]"
+                    let fromItem: string = LspServer.CallHierarchyItemJson(m, filePath)
+                    if (!first) { json = json + "," }
+                    json = json + "{\"from\":" + fromItem + ",\"fromRanges\":" + rangesJson + "}"
+                    first = false
+                }
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    private void HandleOutgoingCalls(int id, JsonValue item) {
+        let itemName: string = item.Get("name").AsString()
+        let itemUri:  string = item.Get("uri").AsString()
+        if (String_Length(itemName) == 0 || String_Length(itemUri) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        // selectionRange.start.line gives us the original method's
+        // declaration line — re-locate by name+line on the file the
+        // item came from.
+        let selRange: JsonValue = item.Get("selectionRange")
+        let selStart: JsonValue = selRange.Get("start")
+        let methodLine: int = selStart.Get("line").AsInt() + 1
+
+        let anchor: string = LspServer.UriToPath(itemUri)
+        let openSrc: string = this.LookupDoc(itemUri)
+        let lex2  = new Lexer(openSrc, anchor)
+        let toks2 = lex2.Tokenize()
+        let par2  = new Parser(toks2)
+        let prog: AstNode = par2.Parse()
+        prog.Str2 = anchor
+        let resolver = this.BuildWorkspaceResolver(anchor, prog)
+
+        // Locate the method AST node in the URI's file by name+line.
+        var method: AstNode? = null
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode = resolver.Programs.Get(i)
+            let pPath: string = p.Str2
+            if (pPath != anchor) { continue }
+            let dc: int = p.Children.Count()
+            for j in 0..dc {
+                let cls: AstNode = p.Children.Get(j)
+                if (cls.Kind != NodeKind.CLASS_DECL) { continue }
+                let mc: int = cls.Children.Count()
+                for k2 in 0..mc {
+                    let m: AstNode = cls.Children.Get(k2)
+                    if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                    if (m.Name != itemName) { continue }
+                    if (m.Line != methodLine) { continue }
+                    method = m
+                }
+            }
+        }
+        if (method == null) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+
+        // Collect every CALL node in the method body. Group by callee
+        // name. For each unique callee, find a workspace decl (if any)
+        // and emit one outgoing entry with all call-site ranges.
+        let calleeNames: List<string> = new List<string>()
+        let calleeSites: List<string> = new List<string>()  // parallel: each entry is a "ranges" JSON-array string
+        LspServer.CollectOutgoingCalls(method.Body, calleeNames, calleeSites)
+
+        var json: string = "["
+        var first: bool = true
+        let cn: int = calleeNames.Count()
+        for i in 0..cn {
+            let name: string = calleeNames.Get(i)
+            let ranges: string = calleeSites.Get(i)
+            // Look up the called method's decl somewhere in the
+            // workspace — first match wins. If we can't find one,
+            // fall back to a synthetic item pointing at the call
+            // site so the editor still renders the row.
+            var toItem: string = ""
+            for pi in 0..nProgs {
+                if (String_Length(toItem) > 0) { break }
+                let p: AstNode = resolver.Programs.Get(pi)
+                var pPath: string = p.Str2
+                if (String_Length(pPath) == 0) { pPath = anchor }
+                let dc: int = p.Children.Count()
+                for dj in 0..dc {
+                    if (String_Length(toItem) > 0) { break }
+                    let cls: AstNode = p.Children.Get(dj)
+                    if (cls.Kind != NodeKind.CLASS_DECL) { continue }
+                    let mc: int = cls.Children.Count()
+                    for mk in 0..mc {
+                        let m: AstNode = cls.Children.Get(mk)
+                        if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                        if (m.Name != name) { continue }
+                        toItem = LspServer.CallHierarchyItemJson(m, pPath)
+                    }
+                }
+            }
+            if (String_Length(toItem) == 0) { continue }
+            if (!first) { json = json + "," }
+            json = json + "{\"to\":" + toItem + ",\"fromRanges\":" + ranges + "}"
+            first = false
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Walk a method body collecting Range JSONs for every CALL whose
+    // callee Name matches `target`. The "name" of a CALL is the right
+    // edge of its callee: callee = IDENTIFIER → callee.Name; callee =
+    // MEMBER → callee.Name (the member token, e.g. `obj.foo` ⇒ "foo").
+    private static void CollectCallSitesForName(AstNode? node, string target, List<string> out) {
+        if (node == null) { return }
+        let n: AstNode = node
+        if (n.Kind == NodeKind.CALL && n.Left != null) {
+            let callee: AstNode = n.Left
+            var calleeName: string = ""
+            if (callee.Kind == NodeKind.IDENTIFIER) { calleeName = callee.Name }
+            if (callee.Kind == NodeKind.MEMBER)     { calleeName = callee.Name }
+            if (calleeName == target) {
+                out.Add(LspServer.RangeJsonForName(callee.Line, callee.Column, calleeName))
+            }
+        }
+        // Don't recurse into nested METHOD_DECLs (lambdas) — their
+        // calls belong to a different caller in the hierarchy.
+        if (n.Kind == NodeKind.METHOD_DECL) { return }
+        if (n.Left  != null) { LspServer.CollectCallSitesForName(n.Left,  target, out) }
+        if (n.Right != null) { LspServer.CollectCallSitesForName(n.Right, target, out) }
+        if (n.Cond  != null) { LspServer.CollectCallSitesForName(n.Cond,  target, out) }
+        if (n.Body  != null) { LspServer.CollectCallSitesForName(n.Body,  target, out) }
+        if (n.Else  != null) { LspServer.CollectCallSitesForName(n.Else,  target, out) }
+        let cn: int = n.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectCallSitesForName(n.Children.Get(i), target, out)
+        }
+        let pn: int = n.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectCallSitesForName(n.Params.Get(j), target, out)
+        }
+        let an: int = n.Args.Count()
+        for k in 0..an {
+            LspServer.CollectCallSitesForName(n.Args.Get(k), target, out)
+        }
+    }
+
+    // Walk a method body collecting (calleeName, ranges-JSON-array)
+    // pairs in two parallel lists. Same kind of walker as
+    // CollectCallSitesForName but groups every CALL it sees, not
+    // only ones matching a specific name.
+    private static void CollectOutgoingCalls(AstNode? node, List<string> names, List<string> rangesOut) {
+        if (node == null) { return }
+        let n: AstNode = node
+        if (n.Kind == NodeKind.CALL && n.Left != null) {
+            let callee: AstNode = n.Left
+            var calleeName: string = ""
+            if (callee.Kind == NodeKind.IDENTIFIER) { calleeName = callee.Name }
+            if (callee.Kind == NodeKind.MEMBER)     { calleeName = callee.Name }
+            if (String_Length(calleeName) > 0) {
+                let r: string = LspServer.RangeJsonForName(callee.Line, callee.Column, calleeName)
+                let nc: int = names.Count()
+                var found: bool = false
+                for i in 0..nc {
+                    if (names.Get(i) == calleeName) {
+                        let prev: string = rangesOut.Get(i)
+                        // prev is "[r1,r2,...]" — splice the new range
+                        // before the closing bracket.
+                        let prevLen: int = String_Length(prev)
+                        let head: string = String_Substring(prev, 0, prevLen - 1)
+                        var sep: string = ","
+                        if (prev == "[]") { sep = "" }
+                        let updated: string = head + sep + r + "]"
+                        rangesOut.RemoveAt(i)
+                        rangesOut.Add(updated)
+                        // Keep parallel arrays in sync: pop and re-push
+                        // the name too so its index matches.
+                        names.RemoveAt(i)
+                        names.Add(calleeName)
+                        found = true
+                    }
+                }
+                if (!found) {
+                    names.Add(calleeName)
+                    rangesOut.Add("[" + r + "]")
+                }
+            }
+        }
+        if (n.Kind == NodeKind.METHOD_DECL) { return }
+        if (n.Left  != null) { LspServer.CollectOutgoingCalls(n.Left,  names, rangesOut) }
+        if (n.Right != null) { LspServer.CollectOutgoingCalls(n.Right, names, rangesOut) }
+        if (n.Cond  != null) { LspServer.CollectOutgoingCalls(n.Cond,  names, rangesOut) }
+        if (n.Body  != null) { LspServer.CollectOutgoingCalls(n.Body,  names, rangesOut) }
+        if (n.Else  != null) { LspServer.CollectOutgoingCalls(n.Else,  names, rangesOut) }
+        let cn: int = n.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectOutgoingCalls(n.Children.Get(i), names, rangesOut)
+        }
+        let pn: int = n.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectOutgoingCalls(n.Params.Get(j), names, rangesOut)
+        }
+        let an: int = n.Args.Count()
+        for k in 0..an {
+            LspServer.CollectOutgoingCalls(n.Args.Get(k), names, rangesOut)
+        }
+    }
+
+    // Build a CallHierarchyItem JSON for a METHOD_DECL.
+    //   - kind 6 = Method per LSP spec.
+    //   - range / selectionRange both cover the method's name span on
+    //     its declaration line. A tighter `range` covering the whole
+    //     method body is a nice-to-have but our AstNode doesn't carry
+    //     end positions yet.
+    //   - data field ferries name+uri+line+character so incoming /
+    //     outgoing handlers can re-locate the method on the next req.
+    private static string CallHierarchyItemJson(AstNode method, string filePath) {
+        let name: string = method.Name
+        let lineLsp: int = method.Line - 1
+        let colLsp:  int = method.Column - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let uri: string = "file://" + LspServer.PercentEncodePath(filePath)
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        let data: string  = "{\"name\":\"" + Json.EscapeString(name) + "\",\"uri\":\"" + Json.EscapeString(uri) + "\",\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "}"
+        return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":6,\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + ",\"selectionRange\":" + range + ",\"data\":" + data + "}"
+    }
+
+    // Build a single Range JSON for a 1-based (line, col) pair plus a
+    // length derived from the name. Used by both incoming and outgoing
+    // call site rendering. Same conversion as TextEditJson but emits
+    // the bare range, not a TextEdit object.
+    private static string RangeJsonForName(int line, int col, string name) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        return "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
     }
 
     // ── Workspace symbol (Ctrl+T) ─────────────────────
