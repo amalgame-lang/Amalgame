@@ -111,12 +111,12 @@ Console.WriteLine(String.FromInt(String.Length(s))) // → 19
 | `File.CloseWrite()`                       | close the stream                |
 | `File.Delete(path) : bool`                |                                 |
 
-### Path helpers
+### Path helpers — legacy flat API
 
-| `Path.Combine(a, b) : string`             | join with `/`                   |
-| `Path.GetExtension(p) : string`           | `.ext`                          |
-| `Path.GetFilename(p) : string`            | basename                        |
-| `Path.GetDirectory(p) : string`           | dirname                         |
+The raw `Path_*` runtime functions are still callable for backwards
+compat. New code should use the `namespace Amalgame.Path` facade
+instead — see the dedicated [Path](#path--cross-platform-path-manipulation)
+section below.
 
 ```kotlin
 let cfg = File.ReadAll("config.txt")
@@ -124,6 +124,57 @@ File.AppendAll("log.txt", "[startup]\n")
 let lines = String.Split(cfg, "\n")
 File.WriteLines("clean.txt", lines)
 ```
+
+## Path — cross-platform path manipulation
+
+`namespace Amalgame.Path` exposes a `public class Path` facade
+mirroring Python's `pathlib` / Rust's `Path` semantics. Pure
+string operations — none of the methods touch the filesystem.
+For path lookup that needs to follow symlinks or check existence,
+use `File.*` from the previous section.
+
+Separator handling: every method accepts both `/` and `\` on
+every platform, mirroring how Windows kernel APIs themselves
+behave. Output paths use `/` as the canonical separator (Windows
+accepts it everywhere); call `Path.Sep()` if you need the
+platform-native byte for shell-out commands or registry strings.
+
+```kotlin
+import Amalgame.Path
+
+let cfg: string = Path.Combine("/etc/app", "config.toml")  // "/etc/app/config.toml"
+let dir: string = Path.Directory(cfg)                       // "/etc/app"
+let ext: string = Path.Extension(cfg)                       // ".toml"
+let stem: string = Path.Stem(cfg)                            // "config"
+let isAbs: bool = Path.IsAbsolute(cfg)                       // true
+let norm: string = Path.Normalize("a/b/../c/./d")            // "a/c/d"
+```
+
+| Method                              | Returns  | Notes                                                                       |
+|-------------------------------------|----------|-----------------------------------------------------------------------------|
+| `Path.Combine(a: string, b: string)`| `string` | Joins with `/`, idempotent on trailing-slash inputs                         |
+| `Path.Extension(p: string)`         | `string` | `.gz` for `report.tar.gz` (last extension only), `""` if none               |
+| `Path.Filename(p: string)`          | `string` | Last path component (`/a/b/c.txt` → `c.txt`)                                |
+| `Path.Directory(p: string)`         | `string` | Parent directory (`/a/b/c` → `/a/b`, bare `c` → `.`)                        |
+| `Path.Stem(p: string)`              | `string` | Filename minus last extension (`report.tar.gz` → `report.tar`)              |
+| `Path.IsAbsolute(p: string)`        | `bool`   | True for POSIX `/...` or Windows `<drive>:` / UNC roots                     |
+| `Path.Normalize(p: string)`         | `string` | Lexical canonical form (collapse `//`, resolve `.`/`..`); empty → `"."`     |
+| `Path.Sep()`                        | `string` | `"/"` on POSIX, `"\\"` on Windows                                           |
+
+**Normalize semantics** mirror Go's `filepath.Clean`:
+
+```kotlin
+Path.Normalize("a/b/../c")    // "a/c"
+Path.Normalize("./a//b")      // "a/b"
+Path.Normalize("/usr/../etc") // "/etc"
+Path.Normalize("../../foo")   // "../../foo"  (preserved when relative)
+Path.Normalize("")            // "."
+Path.Normalize("/")           // "/"
+```
+
+It does **not** touch the filesystem — so `..` past a symlink may
+resolve incorrectly relative to the real path. Use a filesystem-
+resolving helper if you need that.
 
 ## Math — arithmetic
 
@@ -634,14 +685,110 @@ Either is handled transparently inside the runtime.
   / MACs against untrusted input, compare via a manual byte-by-byte
   loop that always runs to completion.
 
+## Logging — leveled stderr + optional file sink
+
+`namespace Amalgame.Logging` exposes a `public class Log` facade
+with four levels (Debug, Info, Warn, Error). Emits to stderr with
+a UTC ISO 8601 timestamp + fixed-width label, plus an optional
+file sink that appends every line. Configuration is process-wide
+singleton state held in the runtime (same pattern as `Exit.Set`
+/ `Exit.Get`).
+
+```kotlin
+import Amalgame.Logging
+
+Log.SetMinLevel("info")             // default; "debug"/"info"/"warn"/"error"
+Log.SetFile("/var/log/app.log")     // optional; empty string disables
+
+Log.Debug("got 42 items")           // suppressed unless min level <= debug
+Log.Info("server ready on :8080")
+Log.Warn("retry attempt 3")
+Log.Error("connection refused")
+```
+
+Output looks like:
+
+```
+2026-05-10T20:42:33Z INFO  server ready on :8080
+2026-05-10T20:42:35Z WARN  retry attempt 3
+2026-05-10T20:42:38Z ERROR connection refused
+```
+
+| Method                              | Returns  | Notes                                                            |
+|-------------------------------------|----------|------------------------------------------------------------------|
+| `Log.SetMinLevel(name: string)`     | `void`   | "debug" / "info" / "warn" / "error"; case-insensitive on 1st char|
+| `Log.GetMinLevel()`                 | `string` | Lower-case canonical name of the current minimum                 |
+| `Log.SetFile(path: string)`         | `void`   | Empty string disables the file sink                              |
+| `Log.GetFile()`                     | `string` | Empty string when no sink                                        |
+| `Log.Debug(msg: string)`            | `void`   |                                                                  |
+| `Log.Info(msg: string)`             | `void`   |                                                                  |
+| `Log.Warn(msg: string)`             | `void`   |                                                                  |
+| `Log.Error(msg: string)`            | `void`   |                                                                  |
+
+**Level name parsing** is case-insensitive on the first letter —
+`"DEBUG"`, `"Debug"`, `"debug"` all map to the same code. Unknown
+names default to `"info"` silently; logging itself should never
+crash a process.
+
+**File sink** reopens on each emit — slower than holding a stream
+open but robust against external log rotation, which is the
+typical production setup. Single-process, thread-unsafe v1 — fine
+for CLIs and single-threaded servers. A mutex is the v2 ask once
+a real multi-threaded user lands.
+
+## Service — long-running process primitives
+
+`namespace Amalgame.Service` wraps POSIX `signal()` + `nanosleep()`
+(Linux/macOS) and `SetConsoleCtrlHandler` + `Sleep()` (Windows)
+behind one unified surface. Callers don't branch on platform.
+
+The typical service loop pattern:
+
+```kotlin
+import Amalgame.Service
+import Amalgame.Logging
+
+public class Program {
+    public static int Main(List<string> args) {
+        Log.SetMinLevel("info")
+        Log.Info("starting")
+        Service.Install()
+        while (!Service.ShouldStop()) {
+            // one unit of work
+            Service.Sleep(5000)
+        }
+        Log.Info("shutting down cleanly")
+        return 0
+    }
+}
+```
+
+| Method                       | Returns | Notes                                                                       |
+|------------------------------|---------|-----------------------------------------------------------------------------|
+| `Service.Install()`          | `void`  | Register SIGTERM/SIGINT handler (or `SetConsoleCtrlHandler` on Windows)     |
+| `Service.ShouldStop()`       | `bool`  | True after the OS has delivered a shutdown signal                           |
+| `Service.RequestStop()`      | `void`  | Programmatic shutdown trigger — flips the same flag                         |
+| `Service.Sleep(ms: int)`     | `void`  | Returns early when `ShouldStop()` becomes true                              |
+
+**Shutdown semantics**: the flag is `sig_atomic_t` on POSIX and
+`LONG` + `InterlockedExchange` on Windows. Async-signal-safe on
+POSIX, atomic on Windows; no mutex needed for v1 single-process
+scope. POSIX `Service.Sleep` uses `nanosleep` and is naturally
+interruptible by signal delivery via EINTR. The Windows path
+slices into 100ms chunks (no portable equivalent of nanosleep-
+with-EINTR for console signals).
+
+**Reinstalling** — calling `Service.Install()` more than once is
+safe; the OS just replaces the existing handler.
+
 ## What's missing
 
 - Bigger Math (trig, logs)
 - Async/iter/streaming abstractions over collections
 - Local time / timezones (deferred from DateTime v1)
 - Regex
-- Process spawning beyond `Args` / `Exit` (basic `Process.Run`
-  / `Process.RunCapture` already in)
+- Database (SQLite via libsqlite3 — sized for a single PR once
+  CI deps on three OSes are settled)
 - A package manager and ecosystem
 
 These are tracked in [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).

@@ -14,7 +14,8 @@ hack on the compiler itself, jump to chapter 7.
    typical workflows, debugging tips.
 4. [Standard library](04-stdlib.md) — `Console`, `File`, `Path`,
    `Math`, `String`, `List`/`Map`/`Set`, `Http`, `Tcp`, `Json`,
-   `Random`, `Encoding`, `DateTime`, `Crypto`.
+   `Random`, `Encoding`, `DateTime`, `Crypto`, `Logging`,
+   `Service`.
 5. [Runtime & C interop](05-runtime-and-interop.md) — memory model,
    bdwgc, mapping types to C, calling C from Amalgame.
 6. [Build & tooling](06-build-and-tooling.md) — `build_amc.sh`,
