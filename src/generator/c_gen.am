@@ -907,8 +907,31 @@ public class CGen {
                                 let vn3   = ll.Name
                                 let vtype = this.LocalTypeGet(vn3)
                                 let bare3 = String_Replace(vtype, "*", "")
+                                // `Get` isn't only the list/map accessor —
+                                // user classes often have a `Get(key)` of
+                                // their own (JsonValue.Get(string) → JsonValue
+                                // being the canonical example). Consult the
+                                // method-return registry before falling back
+                                // to the generic void* assumption.
+                                if (String_Length(bare3) > 0) {
+                                    let urt = this.MethodRetGet(bare3, "Get")
+                                    if (String_Length(urt) > 0) { return urt }
+                                }
                                 // Check local list elem type — not yet tracked per variable
                                 // Return void* as fallback
+                            }
+                            // <chain>.Get(...) — receiver is itself a call
+                            // (e.g. changes.At(0).Get("text") in lsp.am).
+                            // Recursively infer the chain's return type and
+                            // look up its `Get` method. Without this, triple-
+                            // chained method calls fall through to void*.
+                            if (ll.Kind == NodeKind.CALL) {
+                                let chainT = this.InferTypeFromExpr(ll)
+                                let chainBare = String_Replace(chainT, "*", "")
+                                if (String_Length(chainBare) > 0) {
+                                    let urt = this.MethodRetGet(chainBare, "Get")
+                                    if (String_Length(urt) > 0) { return urt }
+                                }
                             }
                         }
                         return "void*"
@@ -919,6 +942,19 @@ public class CGen {
                         if (llk2 == NodeKind.THIS_EXPR) {
                             let retT = this.MethodRetGet(this.CurrentClass, mname2)
                             if (String_Length(retT) > 0) { return retT }
+                        }
+                        // <chain>.Method() — receiver is itself a CALL.
+                        // Recursively infer the inner-call's return type, then
+                        // look up `Method` on that class. Lets triple-chained
+                        // patterns like `root.Get("a").At(0).Get("b").AsString()`
+                        // propagate types through every step.
+                        if (llk2 == NodeKind.CALL) {
+                            let chainT2    = this.InferTypeFromExpr(expr.Left.Left)
+                            let chainBare2 = String_Replace(chainT2, "*", "")
+                            if (String_Length(chainBare2) > 0) {
+                                let retTC = this.MethodRetGet(chainBare2, mname2)
+                                if (String_Length(retTC) > 0) { return retTC }
+                            }
                         }
                         // ClassName.Method() → static call, look up SymName(ClassName)
                         if (llk2 == NodeKind.IDENTIFIER) {
@@ -2773,7 +2809,7 @@ public class CGen {
             }
         }
 
-        if (mname != "Add" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve" && mname != "Filter" && mname != "Map" && mname != "Reduce" && mname != "ForEach" && mname != "Any" && mname != "All" && mname != "CountIf") { return "" }
+        if (mname != "Add" && mname != "Set" && mname != "Count" && mname != "Get" && mname != "IsEmpty" && mname != "Remove" && mname != "RemoveAt" && mname != "Clear" && mname != "Reserve" && mname != "Filter" && mname != "Map" && mname != "Reduce" && mname != "ForEach" && mname != "Any" && mname != "All" && mname != "CountIf") { return "" }
 
         // Determine the list object expression and its C type
         var listExpr = ""
@@ -2851,6 +2887,15 @@ public class CGen {
             if (argc == 0) { return "AmalgameList_add(" + listExpr + ", NULL)" }
             let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
             return "AmalgameList_add(" + listExpr + ", " + this.BoxAsVoid(arg0) + ")"
+        }
+        if (mname == "Set") {
+            // List.Set(idx, value): replace the element at idx in place.
+            // The runtime guards out-of-range writes (silent no-op).
+            let argc = callExpr.Args.Count()
+            if (argc < 2) { return "" }
+            let idxArg = this.EmitExprStr(callExpr.Args.Get(0))
+            let valArg = this.EmitExprStr(callExpr.Args.Get(1))
+            return "AmalgameList_set(" + listExpr + ", " + idxArg + ", " + this.BoxAsVoid(valArg) + ")"
         }
         if (mname == "Get") {
             let argc = callExpr.Args.Count()
