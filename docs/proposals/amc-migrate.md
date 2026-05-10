@@ -197,7 +197,7 @@ fit comfortably in the cache window.
 When the LLM encounters a construct without a clean Amalgame
 mapping, it inserts a comment:
 
-```amalgame
+```kotlin
 // TODO[migrate]: Python decorators (@dataclass) — Amalgame's
 // equivalent is `data class`. Original: @dataclass class User: ...
 // Manually verify field order matches the source.

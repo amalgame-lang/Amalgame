@@ -20,7 +20,7 @@ see the headers themselves: `runtime/Amalgame_*.h`.
 | `Console.ReadLine() : string`              | read a line from stdin (no trailing `\n`) |
 | `Console.Clear()`                          | clear the terminal (ANSI sequence)      |
 
-```amalgame
+```kotlin
 Console.WriteLine("Hi")
 Console.WriteError("oops")
 let name = Console.ReadLine()
@@ -82,7 +82,7 @@ Console.WriteLine("Hello, " + name + "!")
 | `String.FromByte(b) : string`             |         | one-byte string from 0..255 |
 | `String.FromCodepoint(cp) : string`       |         | UTF-8 encoded codepoint     |
 
-```amalgame
+```kotlin
 let s = "  Hello, World!  "
 let trimmed = String.Trim(s)
 Console.WriteLine(String.ToUpper(trimmed))           // → HELLO, WORLD!
@@ -118,7 +118,7 @@ Console.WriteLine(String.FromInt(String.Length(s))) // → 19
 | `Path.GetFilename(p) : string`            | basename                        |
 | `Path.GetDirectory(p) : string`           | dirname                         |
 
-```amalgame
+```kotlin
 let cfg = File.ReadAll("config.txt")
 File.AppendAll("log.txt", "[startup]\n")
 let lines = String.Split(cfg, "\n")
@@ -152,7 +152,7 @@ File.WriteLines("clean.txt", lines)
 | `Math.Random()`              | float   | [0.0, 1.0)                  |
 | `Math.RandomInt(lo, hi)`     | int     | [lo, hi]                    |
 
-```amalgame
+```kotlin
 Math.SeedRandom(42)
 let dice = Math.RandomInt(1, 6)
 let h = Math.Sqrt(3.0 * 3.0 + 4.0 * 4.0)
@@ -184,7 +184,7 @@ Higher-order methods (since v0.3.6, take a lambda):
 | `xs.All(pred) : bool`                | true if all items satisfy pred   |
 | `xs.CountIf(pred) : int`             | count of items satisfying pred   |
 
-```amalgame
+```kotlin
 let xs = new List<string>()
 xs.Add("a") ; xs.Add("b") ; xs.Add("c")
 for i in 0..xs.Count() {
@@ -261,7 +261,7 @@ Set up at `int main()` time and accessible from Amalgame:
 | `Exit.Set(n: int)`              | mark process exit status |
 | `Exit.Get() : int`              | read current exit status |
 
-```amalgame
+```kotlin
 public static void Main(string[] args) {
     let n = Args.Count()
     Console.WriteLine("argc = {String.FromInt(n)}")
@@ -286,7 +286,7 @@ Used internally by `amc lsp`, `amc migrate`, `amc generate`,
 `amc explain` to read API responses; available to user code under
 the `Amalgame.Json` namespace.
 
-```amalgame
+```kotlin
 import Amalgame.Json
 
 let body = "{\"users\":[{\"name\":\"Alice\",\"age\":30}]}"
@@ -334,7 +334,7 @@ wrap-around it relies on is well-defined unsigned but UB on
 Amalgame's signed `int`, so we keep the multiply behind a
 runtime helper.
 
-```amalgame
+```kotlin
 import Amalgame.Random
 import Amalgame.Collections
 
@@ -406,7 +406,7 @@ bread-and-butter byte/text transcodings: `Base64` (RFC 4648),
 `Hex`, and `Url` (percent-encoding per RFC 3986). All three are
 pure Amalgame — no runtime header, no syscalls.
 
-```amalgame
+```kotlin
 import Amalgame.Encoding
 import Amalgame.Collections
 
@@ -485,7 +485,7 @@ time, named timezones, or DST. The roadmap tracks those as
 follow-ups; the current API is small enough that adding a
 parallel `LocalTime` later won't churn existing call sites.
 
-```amalgame
+```kotlin
 import Amalgame.DateTime
 
 let now: Instant = Instant.Now()
@@ -589,7 +589,7 @@ representation directly. All hex output is lowercase (RFC 4648
 hex is case-insensitive on decode, so this matches the de-facto
 modern convention).
 
-```amalgame
+```kotlin
 import Amalgame.Crypto
 
 // ── SHA-256 ─────────────────────────────────────────
