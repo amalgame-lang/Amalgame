@@ -7,6 +7,54 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.13] — 2026-05-10
+
+The "Service stdlib lands" release. Third stdlib brick after Path
+(v0.4.11) and Logging (v0.4.12); last pre-requisite before the
+`amc new --template service` scaffolder.
+
+### Added
+
+- **`Amalgame.Service`** (PR #256) — long-running process
+  primitives wrapping POSIX `signal()` + `nanosleep()` (Linux/
+  macOS) and `SetConsoleCtrlHandler` + `Sleep()` (Windows) behind
+  the same Amalgame surface. Callers don't branch on platform.
+
+  Surface: `Service.Install()`, `Service.ShouldStop()`,
+  `Service.RequestStop()`, `Service.Sleep(ms)`. The typical loop:
+
+      Service.Install()
+      while (!Service.ShouldStop()) {
+          Log.Info("heartbeat")
+          Service.Sleep(5000)
+      }
+
+  Shutdown flag is `sig_atomic_t` on POSIX, `LONG` + `Interlocked-
+  Exchange` on Windows — async-signal-safe and atomic respectively,
+  no mutex needed for v1 single-process scope. POSIX `Service.
+  Sleep` uses `nanosleep` (interruptible via EINTR); Windows
+  slices into 100ms chunks (no portable equivalent for console
+  signals).
+
+### Roadmap
+
+- `amc new <name> --template service` — now unblocked. Scaffolds
+  a project using `Amalgame.Service` + `Amalgame.Logging` with
+  a `<name>.service` systemd unit + `install.sh` for Linux v1.
+- `--template forms` (cross-platform GUI) — SDL2 binding work
+  tracked separately.
+
+### Tests / infra
+
+- Suite grows to **407 PASS / 0 FAIL / 0 SKIP** (was 403). 4 new
+  cases drive the programmatic shutdown path (`RequestStop` flips
+  the same flag the OS would). Direct SIGTERM delivery to the
+  test runner would kill the suite, so the test exercises the
+  post-flag state instead.
+- Snapshot refreshed.
+
+---
+
 ## [v0.4.12] — 2026-05-10
 
 The "Logging stdlib lands" release. v0.4.11 added `Amalgame.Path`;
@@ -1283,6 +1331,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.13]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.13
 [v0.4.12]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.12
 [v0.4.11]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.11
 [v0.4.10]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.10
