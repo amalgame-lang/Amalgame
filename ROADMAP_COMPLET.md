@@ -649,31 +649,87 @@ implementation effort.
       `IsOpen`, `Exec(sql)`, `QueryAll(sql) → List<List<string>>`,
       `LastInsertId`, `Changes`, `LastError`. Parameter binding
       via `?` placeholders is the v2 ask.
-- [ ] **`Amalgame.Database.<Engine>` siblings** — extend the
-      `Amalgame.Database.*` namespace with vendored bindings to
-      other engines under `runtime/Amalgame_Database/<engine>/`:
+- [ ] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
+      extend the `Amalgame.Database.*` namespace with bindings to
+      other relational engines. Each gets its own header
+      (`Amalgame_Database_<Engine>.h`) and resolver-declared
+      globals so users opt-in to the surface they need without
+      compiling everything. Shared `Result` / `Rows` types
+      consolidate into a common `Amalgame_Database.h` once a
+      third engine lands and the pattern is clear.
         - **DuckDB** — vendored amalgamation similar to SQLite
           (single `duckdb.cpp` + `duckdb.h`, MIT licence).
           OLAP-flavoured workloads; columnar storage + vectorised
           execution. Surface mirrors SQLite (Open/Exec/QueryAll/…)
           so callers swap engines without rewriting.
-        - **Postgres (libpq client)** — link to system `libpq`
-          (heavy to vendor — vendor only the headers, dynamic-link
-          the .so/.dylib/.dll). Surface adds `SetUser` / `SetPass`
-          / connection-string variants for network auth.
-        - **MySQL / MariaDB** (`libmariadbclient`) — similar
-          dynamic-link path. Lower priority than Postgres.
-      Each backend ships its own header (`Amalgame_Database_<Engine>.h`)
-      and resolver-declared globals (`<Engine>_Open`, `<Engine>_Exec`,
-      …) so users opt-in to the surface they need without compiling
-      everything. Common `Result` / `Rows` types belong in a shared
-      `Amalgame_Database.h` once a third engine lands and the
-      pattern is clear.
+        - **PostgreSQL** (`libpq` client) — link to system
+          `libpq` (heavy to vendor — vendor only the headers,
+          dynamic-link the .so/.dylib/.dll). Surface adds
+          `SetUser` / `SetPass` / connection-string variants for
+          network auth. PostgreSQL licence is permissive (BSD-
+          style), compatible with Apache-2.0.
+        - **MySQL / MariaDB** (`libmariadbclient`) — same
+          dynamic-link path as Postgres. Lower priority.
+          MariaDB connector under LGPL-2.1 → fine to dynamic-link
+          (LGPL doesn't taint dynamically-linked consumers).
+        - **Oracle Database** — only the **Oracle Instant Client**
+          (free download, proprietary) ships the headers + libs
+          needed (`oci.h`, `libclntsh.so` / `oci.dll`). Cannot
+          vendor; must dynamic-link at runtime and document the
+          one-time `Instant Client` install for the operator.
+          Connection: `oraclite.<host>:<port>/<service>`. Surface
+          adds session pooling (`OCISessionPool*`) since Oracle
+          connections are expensive to set up.
+        - **Microsoft SQL Server** — three viable client paths:
+          1. **MS ODBC Driver for SQL Server** — proprietary
+             distributable from Microsoft; works on Linux / macOS /
+             Windows. Dynamic-link to `libodbc` + the MS driver.
+             Surface: connection-string-based (`Driver={ODBC Driver
+             18 for SQL Server};Server=...;…`).
+          2. **FreeTDS** — open-source TDS protocol library,
+             LGPL. Dynamic-link, no Microsoft distributable
+             needed. Less feature-complete (no AAD auth, older
+             TDS versions only).
+          3. **Tiberius (Rust)** — rules out FFI-from-Amalgame
+             complexity; skipped.
+          Default to ODBC for parity with the .NET ecosystem;
+          FreeTDS as a fallback for fully-FOSS deployments.
 - [ ] **`Amalgame.Database.SQLite` v2** — parameter binding
       (`db.ExecBind(sql, params)` / `db.QueryBindAll(sql, params)`),
       typed column accessors (`row.AsInt(0)` / `row.AsBytes(2)`),
       prepared-statement reuse, transactions (`db.Begin` / `Commit`
       / `Rollback`). Same pattern applies to sibling engines.
+- [ ] **`Amalgame.Database.NoSQL.<Engine>` — document / KV /
+      column stores.** Different surface from the SQL family:
+      no `Exec(sql)` / `QueryAll(sql)`, instead JSON-document
+      reads and writes with engine-native query expressions.
+      Shared namespace prefix `Amalgame.Database.NoSQL.*` to keep
+      it discoverable next to the SQL siblings; types and
+      patterns deliberately diverge.
+        - **MongoDB** — link to `libmongoc` + `libbson`
+          (Apache-2.0). Surface: `Mongo.Connect(uri)`,
+          `Mongo.InsertOne(collection, json)`,
+          `Mongo.FindMany(collection, filter_json) → List<string>`
+          (each entry is the document serialised as JSON; the
+          caller reparses with `Amalgame.Json`). Aggregation
+          pipelines, indexes, change-streams in v2.
+        - **Redis** — pure-protocol client, no vendored lib
+          needed — RESP3 is ~300 LoC of socket + parser code.
+          Surface: `Redis.Connect(host, port)`, `Redis.Get(key)`,
+          `Redis.Set(key, value)`, `Redis.Del(key)`, `Redis.Exists`,
+          plus pub/sub. Fits naturally as the "cache + ephemeral
+          KV" companion to SQLite's "durable structured" role.
+        - **DynamoDB / Cosmos DB / Firestore** — service APIs over
+          HTTP; can be built on top of `Amalgame.Net.Http` +
+          `Amalgame.Json` without a vendored driver. Lower
+          priority since they're cloud-vendor-specific; tracked
+          for completeness.
+        - **Cassandra / ScyllaDB** — CQL over the native binary
+          protocol. Either dynamic-link to `libcassandra` or
+          implement the binary protocol in Amalgame. Defer to v2.
+      All NoSQL backends expose a `<Engine>.LastError()` and
+      maintain a single connection handle per facade, same
+      ergonomic shape as the SQL family.
 - [ ] **`Amalgame.Path`** — cross-platform path manipulation.
       Currently scattered in user code (string splits, hardcoded
       separators). Exposes `Path.Join`, `Path.Parent`, `Path.Stem`,
