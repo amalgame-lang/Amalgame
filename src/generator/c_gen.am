@@ -149,6 +149,10 @@ public class CGen {
             this.EmitForwardDecl(decl)
         }
         this.Out.EmitBlank()
+        // Forward-declare every constructor before any class body —
+        // see AddFilePass2 for the rationale.
+        this.EmitConstructorForwards(prog)
+        this.Out.EmitBlank()
         for j in 0..decls {
             let decl = prog.Children.Get(j)
             this.EmitDecl(decl)
@@ -181,6 +185,15 @@ public class CGen {
     }
 
     public void AddFilePass2(AstNode prog) {
+        // Phase A0 — forward-declare every class's `_new(...)` constructor
+        // signature, BEFORE any class body is emitted. Without this, a
+        // constructor whose body calls `new B(...)` on a class declared
+        // later in the file (or even just below in the same file) hits
+        // an implicit-decl / conflicting-types pair in gcc, since pass 2
+        // emits decls top-to-bottom and class B's `_new` only appears
+        // when B's body is reached. All Pass-1 typedefs are visible by
+        // now, so the parameter types resolve cleanly.
+        this.EmitConstructorForwards(prog)
         // Phase A — assign ids and emit env struct + forward decl for
         // every lambda in this file, BEFORE any decl bodies that may
         // reference them. The fn bodies themselves come last so they
@@ -199,6 +212,41 @@ public class CGen {
         // now visible, so typed param unboxing (e.g. `Probe_User* u =
         // (Probe_User*)__arg0;` followed by `u->Name`) lowers cleanly.
         this.EmitLambdaBodies(prog)
+    }
+
+    private void EmitConstructorForwards(AstNode prog) {
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            if (decl.Kind == NodeKind.CLASS_DECL) {
+                let name = this.SymName(decl.Name)
+                var ctorFound = false
+                let members = decl.Children.Count()
+                for j in 0..members {
+                    let m = decl.Children.Get(j)
+                    if (m.Kind == NodeKind.METHOD_DECL && m.Name == decl.Name) {
+                        ctorFound = true
+                        var sig = name + "* " + name + "_new("
+                        let pcount = m.Params.Count()
+                        var first = true
+                        for pi in 0..pcount {
+                            let p = m.Params.Get(pi)
+                            if (!first) { sig = sig + ", " }
+                            sig = sig + this.TypeToC(p.Str) + " " + p.Name
+                            first = false
+                        }
+                        sig = sig + ");"
+                        this.Out.EmitLine(sig)
+                    }
+                }
+                // Class without an explicit constructor still gets a
+                // no-arg `Name_new()` from EmitClass — forward-declare
+                // that too so peer constructors can call `new Name()`.
+                if (!ctorFound) {
+                    this.Out.EmitLine(name + "* " + name + "_new();")
+                }
+            }
+        }
     }
 
     // ── Lambda discovery & top-level emission ─────────
