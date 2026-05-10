@@ -1,0 +1,59 @@
+namespace Amalgame.Logging
+
+// ── Logging ───────────────────────────────────────────
+//
+// Leveled logging facade. Four levels — Debug, Info, Warn, Error —
+// emitted to stderr with a UTC ISO 8601 timestamp + fixed-width
+// label so terminal output stays column-aligned. An optional file
+// sink appends every emitted line (no rotation in v1; that's
+// tracked alongside the `service` template work).
+//
+// Configuration is process-wide singleton state held in the
+// runtime — same pattern as `Exit_Set` / `Exit_Get`. Sufficient
+// for CLIs and single-threaded servers; a mutex is the v2 ask
+// once a real multi-threaded user lands.
+//
+// Level names are case-insensitive on the first letter — "debug",
+// "DEBUG", "Debug" all map to the same code. Unknown names
+// default to Info silently; logging itself should never crash
+// a process.
+
+public class Log {
+    public Log() {}
+
+    // ── Configuration ────────────────────────────────────
+
+    // Set the minimum level. Calls below this are dropped.
+    // Default: Info.
+    //
+    //   Log.SetMinLevel("debug")    // emit everything
+    //   Log.SetMinLevel("warn")     // hide Debug + Info
+    public static void SetMinLevel(name: string) {
+        Logging_SetMinLevel(name)
+    }
+
+    // Lower-case canonical name of the current minimum level.
+    public static string GetMinLevel() {
+        return Logging_GetMinLevel()
+    }
+
+    // Set (or clear) the file sink. Pass empty string to disable.
+    // The file is opened in append mode on every emit — slower
+    // than holding a stream open but robust against external
+    // log rotation, which is the typical production setup.
+    public static void SetFile(path: string) {
+        Logging_SetFile(path)
+    }
+
+    // Current file sink path, or empty string if disabled.
+    public static string GetFile() {
+        return Logging_GetFile()
+    }
+
+    // ── Emit ─────────────────────────────────────────────
+
+    public static void Debug(msg: string) { Logging_Debug(msg) }
+    public static void Info(msg: string)  { Logging_Info(msg)  }
+    public static void Warn(msg: string)  { Logging_Warn(msg)  }
+    public static void Error(msg: string) { Logging_Error(msg) }
+}

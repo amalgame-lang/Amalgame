@@ -29,6 +29,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/stdlib/datetime.am \
              src/stdlib/crypto.am \
              src/stdlib/path.am \
+             src/stdlib/logging.am \
              src/lsp.am \
              src/migrate.am \
              src/generate.am \

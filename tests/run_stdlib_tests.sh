@@ -360,6 +360,24 @@ run_test "Path: normalize root"      "$SAMPLES/stdlib_path.am" "[PASS] normalize
 run_test "Path: normalize parent"    "$SAMPLES/stdlib_path.am" "[PASS] normalize parent"    "" "$PATH_LIB"
 run_test "Path: sep length"          "$SAMPLES/stdlib_path.am" "[PASS] sep length"          "" "$PATH_LIB"
 
+# ── Amalgame.Logging ──────────────────────────────────
+# Configuration getters/setters + level-filter via the file sink.
+# Direct stderr capture would mean dropping the runner's color/log
+# noise filter; the file sink lets us assert on a clean byte stream.
+echo ""
+echo "── Amalgame.Logging ────────────────────────"
+LOG_LIB="src/stdlib/logging.am"
+run_test "Log: level debug"               "$SAMPLES/stdlib_logging.am" "[PASS] level debug"               "" "$LOG_LIB"
+run_test "Log: level info"                "$SAMPLES/stdlib_logging.am" "[PASS] level info"                "" "$LOG_LIB"
+run_test "Log: level warn"                "$SAMPLES/stdlib_logging.am" "[PASS] level warn"                "" "$LOG_LIB"
+run_test "Log: level error"               "$SAMPLES/stdlib_logging.am" "[PASS] level error"               "" "$LOG_LIB"
+run_test "Log: level case-insensitive"    "$SAMPLES/stdlib_logging.am" "[PASS] level case-insensitive"    "" "$LOG_LIB"
+run_test "Log: level unknown→info"        "$SAMPLES/stdlib_logging.am" "[PASS] level unknown falls to info" "" "$LOG_LIB"
+run_test "Log: file set"                  "$SAMPLES/stdlib_logging.am" "[PASS] file set"                  "" "$LOG_LIB"
+run_test "Log: file unset"                "$SAMPLES/stdlib_logging.am" "[PASS] file unset"                "" "$LOG_LIB"
+run_test "Log: level filter via file"     "$SAMPLES/stdlib_logging.am" "[PASS] level filter via file"     "" "$LOG_LIB"
+run_test "Log: file labels"               "$SAMPLES/stdlib_logging.am" "[PASS] file labels"               "" "$LOG_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"
