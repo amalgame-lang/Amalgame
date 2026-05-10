@@ -35,9 +35,24 @@ public class LspServer {
     private DocUris: List<string>
     private Docs:    List<string>
 
+    // Workspace cache. The full set of `.am` files reachable from
+    // the project root is parsed once on first use and reused for
+    // every subsequent BuildWorkspaceResolver call. Per-request the
+    // open file's freshly-parsed AST overrides the cached entry, so
+    // editor-fresh text always wins on the active document; sibling
+    // files use the on-disk version (good enough for the typical
+    // single-file-edit workflow). Cache is keyed on the resolved
+    // workspace root — switching projects rebuilds it once.
+    private CachedRoot:         string
+    private CachedSiblingPaths: List<string>
+    private CachedSiblingProgs: List<AstNode>
+
     public LspServer() {
-        this.DocUris = new List<string>()
-        this.Docs    = new List<string>()
+        this.DocUris             = new List<string>()
+        this.Docs                = new List<string>()
+        this.CachedRoot          = ""
+        this.CachedSiblingPaths  = new List<string>()
+        this.CachedSiblingProgs  = new List<AstNode>()
     }
 
     // ── Main loop ─────────────────────────────────────
@@ -91,13 +106,27 @@ public class LspServer {
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
                 this.HandleCompletion(id, uri, line, chr)
-            } else if (method == "textDocument/definition" || method == "textDocument/declaration") {
-                // declaration aliases definition for languages without
-                // forward declarations — same handler.
+            } else if (method == "textDocument/definition" || method == "textDocument/declaration" || method == "textDocument/typeDefinition") {
+                // declaration / typeDefinition both alias definition
+                // until we differentiate (declaration: same as
+                // definition since Amalgame has no forward-decl split;
+                // typeDefinition: identical for now, refinement once
+                // the typechecker exposes inferred types per node).
                 let uri: string  = td.Get("uri").AsString()
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
                 this.HandleDefinition(id, uri, line, chr)
+            } else if (method == "textDocument/documentSymbol") {
+                let uri: string = td.Get("uri").AsString()
+                this.HandleDocumentSymbol(id, uri)
+            } else if (method == "workspace/symbol") {
+                let q: string = params.Get("query").AsString()
+                this.HandleWorkspaceSymbol(id, q)
+            } else if (method == "textDocument/references") {
+                let uri: string = td.Get("uri").AsString()
+                let line: int   = pos.Get("line").AsInt()
+                let chr: int    = pos.Get("character").AsInt()
+                this.HandleReferences(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -206,7 +235,18 @@ public class LspServer {
         // may send textDocument/definition (Cmd+Click in VS Code).
         // declaration aliases definition since Amalgame has no
         // separate declaration/definition split.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // documentSymbolProvider: true → outline view (Ctrl+Shift+O,
+        // left-pane Outline panel) shows top-level + member decls.
+        // typeDefinitionProvider: true → "Go to Type Definition"
+        // (Cmd+K F12 in VS Code). Identical to definition for now;
+        // diverges once the typechecker exposes per-node inferred
+        // types so we can route on the receiver's TYPE rather than
+        // the receiver's class.
+        // workspaceSymbolProvider: true → Ctrl+T (project-wide
+        // fuzzy symbol search across every cached `.am` file).
+        // referencesProvider: true → Find All References / Shift+F12
+        // (walks every program for IDENTIFIER/MEMBER name matches).
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -238,19 +278,38 @@ public class LspServer {
     private FullResolver BuildWorkspaceResolver(string path, AstNode prog) {
         let resolver = new FullResolver()
         resolver.Programs.Add(prog)
-        this.LoadWorkspaceFiles(resolver, path)
+        this.EnsureWorkspaceCache(path)
+        // Add cached siblings, skipping any whose path matches the
+        // current open file (prog already covers it with editor-
+        // fresh text). The path-equality check guards against the
+        // workspace scan having picked the open file up too — find
+        // returns it under its real disk path, currentPath comes
+        // from UriToPath; both sides are decoded post-PR #227 so
+        // string equality holds.
+        let n: int = this.CachedSiblingPaths.Count()
+        for i in 0..n {
+            let cachedPath: string = this.CachedSiblingPaths.Get(i)
+            if (cachedPath == path) { continue }
+            resolver.Programs.Add(this.CachedSiblingProgs.Get(i))
+        }
         resolver.ResolvePrograms()
         return resolver
     }
 
-    // Scan the workspace for sibling *.am files (any path other than
-    // `currentPath`), parse each, and add the resulting AstNode to
-    // `resolver.Programs`. Skips silently on read or scan failure —
-    // the LSP can degrade to single-file mode rather than refuse to
-    // serve diagnostics.
-    private void LoadWorkspaceFiles(FullResolver resolver, string currentPath) {
+    // Populate the workspace cache on first use, or after the user
+    // navigates to a different project root. Once populated, the
+    // cache lives for the LSP server's lifetime — siblings change
+    // rarely in practice (the active file's edits override the
+    // cached entry per request, see BuildWorkspaceResolver). The
+    // explicit invalidation hooks for didCreate / didDelete /
+    // out-of-band edits land in slice 2.
+    private void EnsureWorkspaceCache(string currentPath) {
         let root: string = LspServer.FindWorkspaceRoot(currentPath)
         if (String_Length(root) == 0) { return }
+        if (root == this.CachedRoot && this.CachedSiblingPaths.Count() > 0) { return }
+        this.CachedRoot         = root
+        this.CachedSiblingPaths = new List<string>()
+        this.CachedSiblingProgs = new List<AstNode>()
         // 2>/dev/null swallows "permission denied" noise from any
         // unrelated subtrees; on MSYS2 / POSIX `find` is universally
         // available (already used by `amc test` discovery).
@@ -262,7 +321,6 @@ public class LspServer {
         for i in 0..n {
             let path: string = String_Trim(lines.Get(i))
             if (String_Length(path) == 0) { continue }
-            if (path == currentPath) { continue }
             if (!File.Exists(path)) { continue }
             let src: string = File.ReadAll(path)
             let lex  = new Lexer(src, path)
@@ -270,7 +328,8 @@ public class LspServer {
             let par  = new Parser(toks)
             let p    = par.Parse()
             p.Str2   = path
-            resolver.Programs.Add(p)
+            this.CachedSiblingPaths.Add(path)
+            this.CachedSiblingProgs.Add(p)
         }
     }
 
@@ -435,7 +494,22 @@ public class LspServer {
             return
         }
 
-        // Search every workspace program's top-level children.
+        // First pass: search the enclosing method's params + locals
+        // in the OPEN file. Common case (clicking on a parameter or
+        // a `let` binding) — top-level search would miss those, so
+        // before the workspace walk look for the method whose body
+        // contains the click position and check it for a name match.
+        let enclosing: AstNode = LspServer.FindEnclosingMethod(prog, targetLine)
+        if (enclosing != null) {
+            let local: AstNode = LspServer.LookupLocalInMethod(enclosing, lookup)
+            if (local != null) {
+                this.SendDefinitionLocation(id, path, local.Line, local.Column, lookup)
+                return
+            }
+        }
+
+        // Second pass: search every workspace program's top-level
+        // children (classes, enums, interfaces).
         let nProgs: int = resolver.Programs.Count()
         for i in 0..nProgs {
             let p: AstNode = resolver.Programs.Get(i)
@@ -452,6 +526,370 @@ public class LspServer {
         }
 
         this.SendNullResult(id)
+    }
+
+    // Find the METHOD_DECL whose body contains `targetLine`. Walks
+    // every class top-level + its method children and picks the
+    // method with the largest start Line <= targetLine. Approximate
+    // (we don't track each method's end line on the AstNode) but
+    // works for the common-case clicks inside one method body — if
+    // the user clicks on a class field declared between two
+    // methods, the "enclosing" method is the one above; that field
+    // isn't in any method's Params/Body, so the lookup falls
+    // through to the workspace top-level pass.
+    private static AstNode FindEnclosingMethod(AstNode prog, int targetLine) {
+        var best: AstNode = null
+        var bestLine: int = -1
+        let dc: int = prog.Children.Count()
+        for i in 0..dc {
+            let decl: AstNode = prog.Children.Get(i)
+            if (decl.Kind != NodeKind.CLASS_DECL) { continue }
+            let mc: int = decl.Children.Count()
+            for j in 0..mc {
+                let m: AstNode = decl.Children.Get(j)
+                if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                if (m.Line > targetLine) { continue }
+                if (m.Line > bestLine) {
+                    bestLine = m.Line
+                    best     = m
+                }
+            }
+        }
+        return best
+    }
+
+    // Search a method's parameters + local var-decls for a name
+    // match. Params are direct PARAM children; locals are VAR_DECL
+    // nodes encountered while walking the body. Returns the first
+    // match, or null. Used by HandleDefinition's first pass before
+    // it falls through to the workspace top-level walk.
+    private static AstNode LookupLocalInMethod(AstNode method, string name) {
+        let pc: int = method.Params.Count()
+        for i in 0..pc {
+            let p: AstNode = method.Params.Get(i)
+            if (p.Name == name) { return p }
+        }
+        return LspServer.FindLocalVarDecl(method.Body, name)
+    }
+
+    // Recursive walker for the method body — collects the first
+    // VAR_DECL whose Name matches. Stops at nested method/class
+    // bodies so an inner closure's locals don't leak out (closures
+    // are just lambda METHOD_DECLs in our AST).
+    private static AstNode FindLocalVarDecl(AstNode node, string name) {
+        if (node == null) { return null }
+        let k = node.Kind
+        if (k == NodeKind.METHOD_DECL || k == NodeKind.CLASS_DECL) { return null }
+        if (k == NodeKind.VAR_DECL && node.Name == name) { return node }
+        // Descend through every child slot the parser might
+        // populate. AstNode child fields parallel what the cgen's
+        // lambda hoister walks.
+        if (node.Left != null) {
+            let r1: AstNode = LspServer.FindLocalVarDecl(node.Left, name)
+            if (r1 != null) { return r1 }
+        }
+        if (node.Right != null) {
+            let r2: AstNode = LspServer.FindLocalVarDecl(node.Right, name)
+            if (r2 != null) { return r2 }
+        }
+        if (node.Cond != null) {
+            let r3: AstNode = LspServer.FindLocalVarDecl(node.Cond, name)
+            if (r3 != null) { return r3 }
+        }
+        if (node.Body != null) {
+            let r4: AstNode = LspServer.FindLocalVarDecl(node.Body, name)
+            if (r4 != null) { return r4 }
+        }
+        if (node.Else != null) {
+            let r5: AstNode = LspServer.FindLocalVarDecl(node.Else, name)
+            if (r5 != null) { return r5 }
+        }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            let r6: AstNode = LspServer.FindLocalVarDecl(node.Children.Get(i), name)
+            if (r6 != null) { return r6 }
+        }
+        return null
+    }
+
+    // ── Document symbol (outline) ─────────────────────
+    //
+    // Walk the open file's AST and emit a `DocumentSymbol[]` tree.
+    // VS Code shows it in the Outline panel + breadcrumbs +
+    // Ctrl+Shift+O fuzzy-find. The shape per LSP spec:
+    //
+    //   { name, kind, range, selectionRange, children }
+    //
+    // - `range` covers the whole declaration body (not strictly
+    //   required to be tight; we approximate with the decl line
+    //   to keep this slice 2 small).
+    // - `selectionRange` is the symbol name itself — the AST
+    //   stores the keyword's column rather than the name's, so
+    //   we widen by `name.length` for now.
+    // - `children` recurses into class members for the nested
+    //   tree the Outline panel renders.
+    //
+    // SymbolKind values per LSP spec:
+    //   5  Class    6  Method     7  Property   8  Field
+    //  10  Enum    11  Interface 22  EnumMember
+    private void HandleDocumentSymbol(int id, string uri) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        var json: string = "["
+        let n: int = prog.Children.Count()
+        var first: bool = true
+        for i in 0..n {
+            let decl: AstNode = prog.Children.Get(i)
+            let entry: string = LspServer.SymbolForDecl(decl)
+            if (String_Length(entry) > 0) {
+                if (!first) { json = json + "," }
+                json = json + entry
+                first = false
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Map an AstNode top-level decl to a DocumentSymbol JSON, or
+    // empty string if the node isn't a decl we surface. Recurses
+    // into class/enum members to populate `children`.
+    private static string SymbolForDecl(AstNode decl) {
+        let k = decl.Kind
+        var kind: int = 0
+        if (k == NodeKind.CLASS_DECL)     { kind = 5 }
+        else if (k == NodeKind.ENUM_DECL) { kind = 10 }
+        else { return "" }
+        let name: string = decl.Name
+        if (String_Length(name) == 0) { return "" }
+        var children: string = "["
+        var firstChild: bool = true
+        let mc: int = decl.Children.Count()
+        for i in 0..mc {
+            let m: AstNode = decl.Children.Get(i)
+            let mk = m.Kind
+            var ckind: int = 0
+            // Class/interface members
+            if (mk == NodeKind.METHOD_DECL) { ckind = 6 }
+            if (mk == NodeKind.VAR_DECL)    { ckind = 8 }
+            // Enum variants are stored as bare IDENTIFIER nodes —
+            // one per `EnumName.Variant` declaration line.
+            if (k == NodeKind.ENUM_DECL && mk == NodeKind.IDENTIFIER) { ckind = 22 }
+            if (ckind == 0) { continue }
+            if (String_Length(m.Name) == 0) { continue }
+            if (!firstChild) { children = children + "," }
+            children = children + LspServer.SymbolEntry(m.Name, ckind, m.Line, m.Column, "[]")
+            firstChild = false
+        }
+        children = children + "]"
+        return LspServer.SymbolEntry(name, kind, decl.Line, decl.Column, children)
+    }
+
+    // Build a single DocumentSymbol JSON object. Both `range` and
+    // `selectionRange` cover the same span — start of the decl
+    // line, length of the symbol name. VS Code accepts a coarser
+    // range; tight ranges are slice 3.
+    private static string SymbolEntry(string name, int kind, int line, int col, string childrenJson) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"range\":" + range + ",\"selectionRange\":" + range + ",\"children\":" + childrenJson + "}"
+    }
+
+    // ── References (Find All References / Shift+F12) ──
+    //
+    // Walks every program in the workspace (cached siblings +
+    // current open file's freshly-parsed AST) and collects every
+    // IDENTIFIER / MEMBER node whose `Name` matches the symbol
+    // under the cursor. Returns a `Location[]` per LSP spec.
+    //
+    // Scope-unaware on this pass — two different locals with the
+    // same name will both surface. Acceptable starting point: the
+    // primary use case (rename / refactor visibility) is for
+    // class/enum/method names which are workspace-unique anyway.
+    // Scope-aware filtering is a slice-3 follow-up.
+    private void HandleReferences(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let target: string = node.Name
+        if (String_Length(target) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+
+        var json: string = "["
+        var first: bool = true
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode  = resolver.Programs.Get(i)
+            var filePath: string = p.Str2
+            if (String_Length(filePath) == 0) { filePath = path }
+            let entries: List<string> = new List<string>()
+            LspServer.CollectReferences(p, target, filePath, entries)
+            let ec: int = entries.Count()
+            for j in 0..ec {
+                if (!first) { json = json + "," }
+                json = json + entries.Get(j)
+                first = false
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Recursive AST walker that appends one Location-shaped JSON
+    // string per IDENTIFIER / MEMBER whose Name == target. The
+    // AstNode child fields walked here mirror what the cgen lambda
+    // hoister walks (Left/Right/Cond/Body/Else/Children/Params/
+    // Args) so any new positional child added to the AST surfaces
+    // in references automatically.
+    private static void CollectReferences(AstNode node, string target, string filePath, List<string> out) {
+        if (node == null) { return }
+        let k = node.Kind
+        if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) {
+            if (node.Name == target) {
+                out.Add(LspServer.LocationJson(filePath, node.Line, node.Column, target))
+            }
+        }
+        if (node.Left  != null) { LspServer.CollectReferences(node.Left,  target, filePath, out) }
+        if (node.Right != null) { LspServer.CollectReferences(node.Right, target, filePath, out) }
+        if (node.Cond  != null) { LspServer.CollectReferences(node.Cond,  target, filePath, out) }
+        if (node.Body  != null) { LspServer.CollectReferences(node.Body,  target, filePath, out) }
+        if (node.Else  != null) { LspServer.CollectReferences(node.Else,  target, filePath, out) }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectReferences(node.Children.Get(i), target, filePath, out)
+        }
+        let pn: int = node.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectReferences(node.Params.Get(j), target, filePath, out)
+        }
+        let an: int = node.Args.Count()
+        for k2 in 0..an {
+            LspServer.CollectReferences(node.Args.Get(k2), target, filePath, out)
+        }
+    }
+
+    // Build a Location JSON object string. Same shape as the
+    // definition reply, factored out so HandleReferences can emit
+    // many of these in one array without reaching for SendDefinitionLocation.
+    private static string LocationJson(string filePath, int line, int col, string name) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let uri:     string = "file://" + LspServer.PercentEncodePath(filePath)
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        return "{\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + "}"
+    }
+
+    // ── Workspace symbol (Ctrl+T) ─────────────────────
+    //
+    // Fuzzy-search every top-level decl across every cached
+    // workspace file. The query is a plain substring filter
+    // (case-insensitive); LSP clients do their own fuzzy ranking
+    // on top, so we don't bother with a scoring algorithm. Empty
+    // query returns every symbol — VS Code's default behaviour
+    // when the user opens Ctrl+T without typing anything.
+    //
+    // Response shape per LSP spec is `SymbolInformation[]`, not
+    // the nested `WorkspaceSymbol[]`. SymbolInformation is older
+    // but universally supported; switching to WorkspaceSymbol +
+    // resolve() is a slice-3 follow-up if lazy resolution becomes
+    // worth it.
+    private void HandleWorkspaceSymbol(int id, string query) {
+        // Reuse the workspace cache built for diagnostics/hover.
+        // Pick any open document to resolve the workspace root —
+        // if none is open yet, fall back to a dummy path that
+        // resolves to current directory; FindWorkspaceRoot walks
+        // up looking for `.git` etc.
+        var anchor: string = ""
+        if (this.DocUris.Count() > 0) {
+            anchor = LspServer.UriToPath(this.DocUris.Get(0))
+        } else {
+            anchor = "./_.am"
+        }
+        this.EnsureWorkspaceCache(anchor)
+
+        let q: string = String_ToLower(query)
+        var json: string = "["
+        var first: bool = true
+        let n: int = this.CachedSiblingProgs.Count()
+        for i in 0..n {
+            let prog: AstNode = this.CachedSiblingProgs.Get(i)
+            let path: string  = this.CachedSiblingPaths.Get(i)
+            let dc: int = prog.Children.Count()
+            for j in 0..dc {
+                let decl: AstNode = prog.Children.Get(j)
+                let entry: string = LspServer.WorkspaceSymbolEntry(decl, path, q)
+                if (String_Length(entry) > 0) {
+                    if (!first) { json = json + "," }
+                    json = json + entry
+                    first = false
+                }
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // SymbolInformation entry for a single top-level decl, or
+    // empty string if the decl doesn't match the filter or isn't
+    // a kind we surface. Class members aren't surfaced by
+    // workspace/symbol on this pass — VS Code's Ctrl+T usually
+    // wants the high-level "where is class X" answer; member
+    // search is what `documentSymbol` covers per file.
+    private static string WorkspaceSymbolEntry(AstNode decl, string path, string lowerQuery) {
+        let k = decl.Kind
+        var kind: int = 0
+        if (k == NodeKind.CLASS_DECL)     { kind = 5 }
+        else if (k == NodeKind.ENUM_DECL) { kind = 10 }
+        else { return "" }
+        let name: string = decl.Name
+        if (String_Length(name) == 0) { return "" }
+        if (String_Length(lowerQuery) > 0) {
+            let lname: string = String_ToLower(name)
+            if (String_IndexOf(lname, lowerQuery) < 0) { return "" }
+        }
+        let lineLsp: int = decl.Line - 1
+        let colLsp:  int = decl.Column - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let uri:     string = "file://" + LspServer.PercentEncodePath(path)
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        let location: string = "{\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + "}"
+        return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"location\":" + location + "}"
     }
 
     // Build and send a `Location` JSON. Range covers the symbol's

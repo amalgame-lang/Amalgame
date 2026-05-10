@@ -448,7 +448,7 @@ lsp_exit='{"jsonrpc":"2.0","method":"exit"}'
 
 lsp_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
 
-run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1,"hoverProvider":true,"definitionProvider":true,"declarationProvider":true,"completionProvider":{"triggerCharacters":["."]}}' "$lsp_seq"
+run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1,"hoverProvider":true,"definitionProvider":true,"declarationProvider":true,"typeDefinitionProvider":true,"documentSymbolProvider":true,"workspaceSymbolProvider":true,"referencesProvider":true,"completionProvider":{"triggerCharacters":["."]}}' "$lsp_seq"
 run_lsp_check "lsp: publishDiagnostics" '"method":"textDocument/publishDiagnostics"' "$lsp_seq"
 run_lsp_check "lsp: error in diag"      'thisDoesNotExist'                          "$lsp_seq"
 run_lsp_check "lsp: shutdown reply"     '"id":2,"result":null'                      "$lsp_seq"
