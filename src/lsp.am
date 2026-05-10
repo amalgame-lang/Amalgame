@@ -457,8 +457,15 @@ public class LspServer {
     // Build and send a `Location` JSON. Range covers the symbol's
     // name token (1-char start col → start + name length end col),
     // converted from the AST's 1-based to LSP's 0-based positions.
+    //
+    // The URI is percent-encoded — RFC 3986 requires it for any
+    // non-ASCII byte, and VS Code silently ignores Location replies
+    // whose `uri` doesn't round-trip through its DocumentURI parser.
+    // (Symptom: Cmd+Click "spins forever" because the client never
+    // accepts our well-formed-but-decoded reply.)
     private void SendDefinitionLocation(int id, string path, int line, int col, string name) {
-        let declUri: string = "file://" + path
+        let encPath: string = LspServer.PercentEncodePath(path)
+        let declUri: string = "file://" + encPath
         let declLine: int   = line - 1
         let declCol:  int   = col - 1
         // String_Length isn't seen as i64-returning by the cgen here
@@ -469,6 +476,72 @@ public class LspServer {
         let endCol:  int = declCol + nameLen
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"uri\":\"" + Json.EscapeString(declUri) + "\",\"range\":{\"start\":{\"line\":" + String_FromInt(declLine) + ",\"character\":" + String_FromInt(declCol) + "},\"end\":{\"line\":" + String_FromInt(declLine) + ",\"character\":" + String_FromInt(endCol) + "}}}}"
         this.Send(body)
+    }
+
+    // Encode every byte of `path` that's outside the URI-unreserved
+    // set to %XX. Reverse of PercentDecode. We only escape what RFC
+    // 3986 considers a `pchar` violation (anything not alpha/digit/
+    // -/./_/~//) — `/` itself stays so path separators are preserved.
+    private static string PercentEncodePath(string path) {
+        var out: string = ""
+        let n: int = String_Length(path)
+        let upper: string = "0123456789ABCDEF"
+        for i in 0..n {
+            let c: string = String_CharAt1(path, i)
+            let code: int = String_ToInt(String_FromInt(0)) // dummy init
+            // Direct char→int via a single-char string compare ladder
+            // would be enormous; use String_CharCode if available, else
+            // fall through to "preserve ASCII, escape everything else".
+            // Pragmatic shortcut: single-byte ASCII alnum + safe punct
+            // pass through, anything else is encoded byte-by-byte from
+            // the underlying UTF-8 string slice.
+            let isSafeAlnum: bool = LspServer.IsUriSafeChar(c)
+            if (isSafeAlnum) {
+                out = out + c
+            } else {
+                // Re-encode this single char (one or more UTF-8 bytes
+                // from the source) into %XX form. String_CharAt1 here
+                // returns one Unicode codepoint as a UTF-8 string; we
+                // walk its bytes and emit each as %XX.
+                let cn: int = String_Length(c)
+                for bi in 0..cn {
+                    let b: string = String_CharAt1(c, bi)
+                    let bcode: int = LspServer.AsciiCodeOf(b)
+                    let hi: int = bcode / 16
+                    let lo: int = bcode - hi * 16
+                    let hiCh: string = String_CharAt1(upper, hi)
+                    let loCh: string = String_CharAt1(upper, lo)
+                    out = out + "%" + hiCh + loCh
+                }
+            }
+        }
+        return out
+    }
+
+    // Single-char check for the "safe" set we don't %-encode: ASCII
+    // letters, digits, `-`, `.`, `_`, `~`, `/`. Anything else (incl.
+    // multi-byte UTF-8 chars) gets re-encoded per byte.
+    private static bool IsUriSafeChar(string c) {
+        if (String_Length(c) != 1) { return false }
+        let code: int = LspServer.AsciiCodeOf(c)
+        if (code >= 65 && code <= 90)  { return true }   // A-Z
+        if (code >= 97 && code <= 122) { return true }   // a-z
+        if (code >= 48 && code <= 57)  { return true }   // 0-9
+        if (code == 45 || code == 46 || code == 95 || code == 126) { return true } // - . _ ~
+        if (code == 47) { return true }                  // /
+        return false
+    }
+
+    // Codepoint of the FIRST byte of `c` (one-char UTF-8 string).
+    // Brute-force linear lookup against an ASCII codepoint table —
+    // slow but only called on path edge bytes, where N is tiny.
+    private static int AsciiCodeOf(string c) {
+        let n: int = String_Length(c)
+        if (n == 0) { return 0 }
+        for code in 0..256 {
+            if (String_FromByte(code) == c) { return code }
+        }
+        return 0
     }
 
     // ── Completion ────────────────────────────────────
