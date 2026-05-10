@@ -21,7 +21,7 @@ Builds `./build/amc` (Vala) via meson + ninja.
 
 ```bash
 ./compile.sh
-# → meson setup build (first time)
+# → meson setup build archive/vala-bootstrap (first time)
 # → ninja -C build
 # → ./build/amc --version
 ```
@@ -38,7 +38,10 @@ You only need this on Linux (the supported platform for Vala in CI).
 macOS and Windows users compile `amc` directly from the tracked
 `src/amc_lib.c` and skip Vala entirely.
 
-`meson.build` points at `archive/vala-bootstrap/src/`.
+The Vala build definition lives at `archive/vala-bootstrap/meson.build`
+alongside its `.vala` sources. The `./build` directory still ends
+up at the repo root so `build_amc.sh` can pick `./build/amc` as the
+final fallback in its bootstrap chain.
 
 ## `./build_amc.sh` — self-host build
 
