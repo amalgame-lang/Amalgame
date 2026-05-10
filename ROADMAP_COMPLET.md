@@ -730,6 +730,65 @@ implementation effort.
       All NoSQL backends expose a `<Engine>.LastError()` and
       maintain a single connection handle per facade, same
       ergonomic shape as the SQL family.
+- [ ] **`Amalgame.Messaging.<Broker>` — message brokers** — the
+      missing tier between "in-process work loop" and "SQL/NoSQL
+      durable storage". Covers pub/sub, work queues, event
+      streams, the patterns that decouple services. Two families
+      based on protocol complexity:
+
+      **Pure-Amalgame implementations** — implement the wire
+      protocol in `.am`, no vendored library, no system package.
+      Faster to ship, fewer install steps, lower surface area.
+
+        - **MQTT v3.1.1 / v5** — binary protocol, ~300 LoC of
+          packet encode/decode + socket reader. Built on top of
+          `Amalgame.Net.TcpClient`. Surface:
+          `Mqtt.Connect(host, port, clientId)`,
+          `Mqtt.Publish(topic, payload, qos)`,
+          `Mqtt.Subscribe(topic, qos, handler: (msg) => ...)`,
+          `Mqtt.Loop()`. Targets the IoT + embedded story —
+          tiny binary, no native dep, runs on every OS Amalgame
+          supports.
+        - **NATS Core** — text protocol over TCP, ~250 LoC. Pub/
+          sub + request/reply. Closest fit for the "Redis but
+          for messages" mental model. Same handle + Subscribe
+          callback shape as MQTT.
+
+      **Dynamic-link to native broker client** — for protocols
+      where the upstream library does work we don't want to
+      re-implement (compression, SASL, advanced ack semantics,
+      partition consumer groups).
+
+        - **Apache Kafka** (`librdkafka`, BSD-2-clause) —
+          producer + consumer. Surface:
+          `Kafka.Producer(brokers)`,
+          `Kafka.Send(topic, key, value)`,
+          `Kafka.Consumer(brokers, groupId, topics)`,
+          `Kafka.Poll(timeout) → KafkaMessage?`. The librdkafka
+          client handles partition assignment, offset commits,
+          delivery reports. Surface deliberately thin so the
+          underlying tunables (acks, compression, retries)
+          stay accessible via setter methods.
+        - **RabbitMQ / AMQP 0.9.1** (`librabbitmq`, MIT) —
+          publish + consume on named exchanges and queues.
+          Surface: `Rabbit.Connect(host, port)`,
+          `Rabbit.DeclareExchange(name, kind)`,
+          `Rabbit.DeclareQueue(name)`, `Rabbit.Bind(queue,
+          exchange, routingKey)`, `Rabbit.Publish(exchange,
+          routingKey, body)`, `Rabbit.Consume(queue, handler)`.
+          Heavier surface than MQTT/NATS because AMQP itself is.
+
+      **Out of scope for v1:** ZeroMQ (LGPL is fine but ZMQ
+      itself is a library, not a broker — different mental
+      model), Pulsar (smaller user base than Kafka, can be
+      added later via the C++ client).
+
+      Common ergonomics across all brokers: single connection
+      handle per facade, `<Broker>.LastError()` for diagnostics,
+      blocking + callback-style consumer APIs, no async/await
+      requirement on the caller (the Amalgame side stays
+      synchronous; concurrency comes from running the consumer
+      loop in a thread spawned by user code).
 - [ ] **`Amalgame.Path`** — cross-platform path manipulation.
       Currently scattered in user code (string splits, hardcoded
       separators). Exposes `Path.Join`, `Path.Parent`, `Path.Stem`,
