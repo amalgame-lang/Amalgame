@@ -7,6 +7,91 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.8] — 2026-05-10
+
+The "LSP gets fast + comprehensive" release. v0.4.7 made Cmd+Click
+work; this release makes it instant, expands navigation to the
+features users hit constantly (Find All References, Outline,
+project-wide symbol search, parameter / local jumps), and patches
+the VS Code extension wart that broke the natural `~/`-style
+`serverPath` value.
+
+### Added
+
+- **`amc lsp` workspace resolver caching** (PR #232) — every
+  hover / completion / definition / references request used to
+  re-parse every `.am` in the workspace from scratch. On a 30-
+  file repo that's 2.7s per Cmd+Click; VS Code shows the spinner.
+  Now sibling files are parsed once on first use and reused
+  across requests; the open file's freshly-parsed AST overrides
+  the cached entry per request so editor-fresh text always wins.
+  Probe before / after on three sequential definition calls:
+
+      def #1: 0.061s    def #2: 0.037s    def #3: 0.040s
+
+  ~45–70× speedup. Cache is keyed on the resolved workspace
+  root; navigating to a different project rebuilds it once.
+- **`textDocument/documentSymbol`** (PR #235) — Outline panel,
+  breadcrumbs, and Ctrl+Shift+O fuzzy-find now light up for
+  every `.am` file. Top-level: classes (kind 5), enums (kind 10).
+  Class children: methods (kind 6), fields (kind 8). Enum
+  variants surface as kind 22 (EnumMember).
+- **`textDocument/typeDefinition`** + **`workspace/symbol`**
+  (PR #236) — Ctrl+T project-wide symbol search across every
+  cached `.am` file (case-insensitive substring filter), and
+  Cmd+K F12 "Go to Type Definition" advertised. Type definition
+  is identical to definition for now; diverges once the
+  typechecker exposes per-node inferred types.
+- **`textDocument/references`** (PR #237) — Find All References
+  / Shift+F12 walks every program, recursively descends through
+  every AstNode child slot (`Left/Right/Cond/Body/Else/Children/
+  Params/Args`), collects every IDENTIFIER / MEMBER whose Name
+  matches the symbol under the cursor. Probe shape on `NodeKind`
+  in `parser/ast.am`: 433 hits across 9 files in 220ms.
+- **`textDocument/definition` resolves params + local var-decls**
+  (PR #238) — first pass searches the enclosing method's Params
+  + recursively-walked Body for VAR_DECLs matching the lookup
+  name, then falls through to the workspace top-level walk. Bug
+  report: clicking on `model` at an assignment site in
+  `migrate.am` returned null because `model` is a local. Now
+  jumps to the `var model: string = ""` declaration.
+
+### Fixed
+
+- **VS Code extension: `amalgame.serverPath` trim + tilde-expand**
+  (PR #234) — `child_process.spawn` doesn't run through a shell,
+  so neither incidental whitespace nor `~/` were processed. A
+  setting like `' ~/.local/bin/amc'` (leading space, tilde) failed
+  with ENOENT and the LSP never started. New `resolveServerPath`
+  helper trims, replaces a leading `~` with `os.homedir()`, falls
+  through to `'amc'` if the resulting string is empty. Bumped
+  extension version to 0.2.1.
+
+### Roadmap
+
+- Slice 3 LSP work staying on the roadmap: tighter
+  `selectionRange` (parser nameStart hook), member-def in
+  definition (jump to a method body when clicking on
+  `obj.method()`), rename, call hierarchy, inlay hints, code
+  actions. Each is sized to land as a small follow-up PR.
+- `amc new <name> --template service` and `--template forms` —
+  cross-platform service / GUI scaffolders. Roadmap entries
+  expanded in PR #232 with the SDL2 / systemd / launchd / SCM
+  outline.
+
+### Tests / infra
+
+- Suite stays at **372 PASS / 0 FAIL / 0 SKIP**. Snapshot
+  refreshed multiple times across the cycle (each LSP-touching
+  PR + the cgen patches needed a re-bootstrap so cold-start
+  clones could parse the new sources).
+- Run scripts updated to track every new LSP capability advertised
+  in the initialize reply (`documentSymbolProvider`,
+  `workspaceSymbolProvider`, `referencesProvider`,
+  `typeDefinitionProvider`).
+
+---
+
 ## [v0.4.7] — 2026-05-10
 
 The "LSP gets useful" release. The IDE experience moves from
@@ -1027,6 +1112,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.8]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.8
 [v0.4.7]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.7
 [v0.4.6]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.6
 [v0.4.5]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.5

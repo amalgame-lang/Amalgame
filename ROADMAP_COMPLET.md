@@ -460,7 +460,19 @@ before the next big language addition.
           codebase to add a test layer.
         - Future: `cli` (with arg parsing skeleton), `web` (HTTP
           server skeleton tied to the `Http` stdlib), `fmt-plugin`,
-          etc.
+          `service` (long-running background process — cross-platform
+          install/start/stop hooks: systemd unit on Linux, launchd
+          plist on macOS, Windows Service via `sc create`/SCM stubs;
+          template ships a `Service.Run()` with signal-aware shutdown
+          and a sample `journalctl`/`Console`-friendly logger), and
+          `forms` (cross-platform GUI app — SDL2-or-equivalent
+          binding under the hood; template ships a Window + Button +
+          TextField sample with the platform DLL/dylib/so resolution
+          handled in the build script). `service` and `forms` both
+          need extra runtime headers (signal/SCM glue and an SDL
+          binding respectively), so their templates land alongside
+          `Amalgame.Service` / `Amalgame.UI` stdlib modules — see
+          "Stdlib gaps" below for the matching entries.
       All templates ship a `.gitignore`, a `README.md` stub, and a
       `build.sh` calling `amc` directly. Implementation: a small set
       of file templates in `src/templates/` (or hard-coded strings
@@ -661,13 +673,42 @@ implementation effort.
       explicit `+HH:MM` offsets in Parse, currently rejected.
       Wait until a real consumer needs it — the v1 UTC API
       already covers most server-side use cases.
-- [ ] **GUI / Forms toolkit** — bindings SDL2 dans la stdlib
-      (`Amalgame.UI` ou similaire) avec une couche "Forms" au-dessus
-      pour les widgets courants (Window, Button, TextField, Layout).
-      Permettrait d'écrire des apps graphiques en Amalgame sans
-      descendre au C. Choix de design ouverts : retained vs immediate
-      mode, theming, accessibilité, packaging du runtime SDL2 dans
-      les releases.
+- [ ] **`Amalgame.UI` / Forms toolkit (cross-platform GUI)** —
+      backs the `amc new <name> --template forms` scaffolder. SDL2
+      binding under the hood (universally available on Linux/macOS/
+      Windows, MIT-equivalent license, packageable via apt / brew /
+      MSYS2). Public surface in two layers: a thin
+      `Amalgame.UI.Window` / `Surface` / `Event` API that mirrors
+      SDL's event loop, and a `Forms` layer above it
+      (`Window`, `Button`, `TextField`, `Layout`, theming hooks) so
+      everyday apps don't reach for raw event handling. Open design
+      questions: retained vs immediate mode, accessibility surface
+      (ATK / NSAccessibility / UIAutomation), how to ship the SDL
+      runtime in release tarballs (link static? bundle the .so/dylib/
+      DLL alongside the binary?). ~600 LoC stdlib + ~400 LoC runtime
+      (mostly SDL passthrough).
+- [ ] **`Amalgame.Service` (cross-platform background process)** —
+      backs the `amc new <name> --template service` scaffolder.
+      Wraps the platform-specific service host APIs behind a single
+      `Service.Run(handler)` entry point that does the right thing
+      everywhere:
+        - **Linux**: foreground process; the scaffolder ships a
+          systemd unit (`<name>.service`) wired to `ExecStart=
+          ./build/<name>` and prints `journalctl -u <name>` in the
+          README.
+        - **macOS**: foreground process; scaffolder ships a launchd
+          plist (`~/Library/LaunchAgents/com.<user>.<name>.plist`)
+          + `launchctl load` instructions.
+        - **Windows**: dispatch to the SCM via the Win32 Service
+          API (`StartServiceCtrlDispatcher`, `RegisterServiceCtrlHandler`,
+          `SetServiceStatus`). Scaffolder ships a one-liner
+          `sc create <name>` script.
+      Stdlib surface: `Service.Run(onStart, onStop)` (signal-aware
+      shutdown — SIGTERM/SIGINT on POSIX, SERVICE_CONTROL_STOP on
+      Windows), `Service.Log(msg, level)` (routes to journald /
+      `os_log` / Event Log), `Service.IsInteractive()` (detect
+      whether we're under a service host or running standalone).
+      ~250 LoC stdlib + ~200 LoC per-platform runtime header.
 
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
