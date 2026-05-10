@@ -106,9 +106,12 @@ public class LspServer {
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
                 this.HandleCompletion(id, uri, line, chr)
-            } else if (method == "textDocument/definition" || method == "textDocument/declaration") {
-                // declaration aliases definition for languages without
-                // forward declarations — same handler.
+            } else if (method == "textDocument/definition" || method == "textDocument/declaration" || method == "textDocument/typeDefinition") {
+                // declaration / typeDefinition both alias definition
+                // until we differentiate (declaration: same as
+                // definition since Amalgame has no forward-decl split;
+                // typeDefinition: identical for now, refinement once
+                // the typechecker exposes inferred types per node).
                 let uri: string  = td.Get("uri").AsString()
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
@@ -116,6 +119,9 @@ public class LspServer {
             } else if (method == "textDocument/documentSymbol") {
                 let uri: string = td.Get("uri").AsString()
                 this.HandleDocumentSymbol(id, uri)
+            } else if (method == "workspace/symbol") {
+                let q: string = params.Get("query").AsString()
+                this.HandleWorkspaceSymbol(id, q)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -226,7 +232,14 @@ public class LspServer {
         // separate declaration/definition split.
         // documentSymbolProvider: true → outline view (Ctrl+Shift+O,
         // left-pane Outline panel) shows top-level + member decls.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"documentSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // typeDefinitionProvider: true → "Go to Type Definition"
+        // (Cmd+K F12 in VS Code). Identical to definition for now;
+        // diverges once the typechecker exposes per-node inferred
+        // types so we can route on the receiver's TYPE rather than
+        // the receiver's class.
+        // workspaceSymbolProvider: true → Ctrl+T (project-wide
+        // fuzzy symbol search across every cached `.am` file).
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -586,6 +599,85 @@ public class LspServer {
         let endCol:  int = colLsp + nameLen
         let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
         return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"range\":" + range + ",\"selectionRange\":" + range + ",\"children\":" + childrenJson + "}"
+    }
+
+    // ── Workspace symbol (Ctrl+T) ─────────────────────
+    //
+    // Fuzzy-search every top-level decl across every cached
+    // workspace file. The query is a plain substring filter
+    // (case-insensitive); LSP clients do their own fuzzy ranking
+    // on top, so we don't bother with a scoring algorithm. Empty
+    // query returns every symbol — VS Code's default behaviour
+    // when the user opens Ctrl+T without typing anything.
+    //
+    // Response shape per LSP spec is `SymbolInformation[]`, not
+    // the nested `WorkspaceSymbol[]`. SymbolInformation is older
+    // but universally supported; switching to WorkspaceSymbol +
+    // resolve() is a slice-3 follow-up if lazy resolution becomes
+    // worth it.
+    private void HandleWorkspaceSymbol(int id, string query) {
+        // Reuse the workspace cache built for diagnostics/hover.
+        // Pick any open document to resolve the workspace root —
+        // if none is open yet, fall back to a dummy path that
+        // resolves to current directory; FindWorkspaceRoot walks
+        // up looking for `.git` etc.
+        var anchor: string = ""
+        if (this.DocUris.Count() > 0) {
+            anchor = LspServer.UriToPath(this.DocUris.Get(0))
+        } else {
+            anchor = "./_.am"
+        }
+        this.EnsureWorkspaceCache(anchor)
+
+        let q: string = String_ToLower(query)
+        var json: string = "["
+        var first: bool = true
+        let n: int = this.CachedSiblingProgs.Count()
+        for i in 0..n {
+            let prog: AstNode = this.CachedSiblingProgs.Get(i)
+            let path: string  = this.CachedSiblingPaths.Get(i)
+            let dc: int = prog.Children.Count()
+            for j in 0..dc {
+                let decl: AstNode = prog.Children.Get(j)
+                let entry: string = LspServer.WorkspaceSymbolEntry(decl, path, q)
+                if (String_Length(entry) > 0) {
+                    if (!first) { json = json + "," }
+                    json = json + entry
+                    first = false
+                }
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // SymbolInformation entry for a single top-level decl, or
+    // empty string if the decl doesn't match the filter or isn't
+    // a kind we surface. Class members aren't surfaced by
+    // workspace/symbol on this pass — VS Code's Ctrl+T usually
+    // wants the high-level "where is class X" answer; member
+    // search is what `documentSymbol` covers per file.
+    private static string WorkspaceSymbolEntry(AstNode decl, string path, string lowerQuery) {
+        let k = decl.Kind
+        var kind: int = 0
+        if (k == NodeKind.CLASS_DECL)     { kind = 5 }
+        else if (k == NodeKind.ENUM_DECL) { kind = 10 }
+        else { return "" }
+        let name: string = decl.Name
+        if (String_Length(name) == 0) { return "" }
+        if (String_Length(lowerQuery) > 0) {
+            let lname: string = String_ToLower(name)
+            if (String_IndexOf(lname, lowerQuery) < 0) { return "" }
+        }
+        let lineLsp: int = decl.Line - 1
+        let colLsp:  int = decl.Column - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let uri:     string = "file://" + LspServer.PercentEncodePath(path)
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        let location: string = "{\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + "}"
+        return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"location\":" + location + "}"
     }
 
     // Build and send a `Location` JSON. Range covers the symbol's
