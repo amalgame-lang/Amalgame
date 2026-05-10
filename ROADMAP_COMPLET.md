@@ -565,15 +565,15 @@ before the next big language addition.
 - [ ] Windows packaged installer (.msi or .exe with bundled MinGW
       gcc + libgc + libcurl, so end users don't need MSYS2). Sketched
       in conversation; no script yet.
-- [ ] **URL sweep** — 25 occurrences of the old
-      `BastienMOUGET/Amalgame` URL still live in the tree post-org-
-      transfer (PR #187). Touches `runtime/Amalgame_*.h` headers,
-      `install/homebrew/amalgame.rb`, `install/windows/install.ps1`
-      + `amalgame.iss`, `editors/vscode/package.json`,
-      `archive/vala-bootstrap/**`. CHANGELOG mention of the transfer
-      itself stays as historical record. One trivial sed pass +
-      smoke-test the homebrew formula locally — defer until after
-      the next stdlib batch lands.
+- [x] **URL sweep** — old `BastienMOUGET/...` URLs scrubbed
+      from `runtime/Amalgame_*.h`, `install/homebrew/amalgame.rb`,
+      `install/windows/install.ps1` + `amalgame.iss`, and
+      `archive/vala-bootstrap/**` (post-PR #187 / org transfer).
+      CHANGELOG mention of the transfer itself kept as historical
+      record. The VS Code `publisher` field in
+      `editors/vscode/package.json` is left at `BastienMOUGET`
+      until the extension is actually published under the org
+      identity on the marketplace.
 
 ### Documentation
 - [x] User guide (`docs/guide/`)
