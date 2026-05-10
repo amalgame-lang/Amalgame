@@ -3,6 +3,16 @@ name: Build docs PDF on release
 on:
   push:
     tags: ['v*']
+  # Manual trigger for testing the workflow without cutting a real
+  # release. The `tag` input lets you point at any existing tag
+  # to (re)generate its PDF — useful when the workflow itself was
+  # broken at tag time, like v0.4.5 which hit a missing-lmodern
+  # error and didn't get a PDF.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to generate PDF for (e.g. v0.4.5). Must match an existing GitHub Release.'
+        required: true
 
 jobs:
   build-pdf:
@@ -11,9 +21,36 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Resolve target tag
+        id: tag
+        # On `push: tags: ['v*']`, GITHUB_REF_NAME is the tag itself
+        # (e.g. `v0.4.5`). On `workflow_dispatch`, the user supplies
+        # the tag explicitly via `inputs.tag`. Either way we end up
+        # with a `name` (used for the filename + release attachment)
+        # and a `ref` (used for the checkout).
+        run: |
+          INPUT_TAG="${{ github.event.inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            echo "name=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "ref=refs/tags/$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
 
       - name: Install pandoc + LaTeX
+        # lmodern is the Latin Modern font package pandoc's default
+        # LaTeX template references via `lmodern.sty`. It's NOT
+        # pulled in by `texlive-fonts-recommended` on Ubuntu 24.04
+        # — first run of this workflow (v0.4.5) failed at
+        # `! LaTeX Error: File 'lmodern.sty' not found.`
+        # texlive-latex-recommended adds the standard pandoc-friendly
+        # template macros so xelatex can resolve the rest of the
+        # default preamble too.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -21,9 +58,13 @@ jobs:
             texlive-xetex \
             texlive-fonts-recommended \
             texlive-fonts-extra \
+            texlive-latex-recommended \
+            lmodern \
             fonts-dejavu
 
       - name: Generate PDF
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
           # Glob docs/guide/0*.md picks chapters 01..08 in lexicographic
           # order and skips README.md (the chapter index TOC).
@@ -35,12 +76,13 @@ jobs:
             -V mainfont="DejaVu Sans" \
             -V monofont="DejaVu Sans Mono" \
             -V title="Amalgame Language Guide" \
-            -V subtitle="${GITHUB_REF_NAME}" \
+            -V subtitle="$TAG" \
             -V author="Bastien Mouget" \
             -V date="$(date +%Y-%m-%d)" \
-            -o "amalgame-guide-${GITHUB_REF_NAME}.pdf"
+            -o "amalgame-guide-$TAG.pdf"
 
       - name: Attach PDF to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
           files: amalgame-guide-*.pdf

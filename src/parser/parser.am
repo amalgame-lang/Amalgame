@@ -263,6 +263,34 @@ public class Parser {
             return this.ParseInterface(isPublic)
         }
 
+        // Top-level `fn` parses without complaint today but cgen
+        // emits no definition, so call sites link-fail later. We
+        // don't currently support free-standing functions — the
+        // language puts everything on a class — so emit a clear
+        // diagnostic now and skip past the body to avoid cascading
+        // parse errors.
+        if (this.CheckKw("fn")) {
+            let tok = this.Current()
+            var name: string = "<anonymous>"
+            let nextTok = this.Peek(1)
+            if (nextTok.Type == TokenType.IDENTIFIER) {
+                name = nextTok.Value
+            }
+            this.Errors.Add("Top-level functions aren't supported (got 'fn " + name + "' at " + String_FromInt(tok.Line) + ":" + String_FromInt(tok.Column) + "). Wrap it inside a class as `public static`.")
+            // Skip to the body's opening `{`, then to its matching `}`.
+            while (!this.IsEnd() && !this.CheckValue("{")) { this.Advance() }
+            if (this.CheckValue("{")) {
+                this.Advance()
+                var depth: int = 1
+                while (!this.IsEnd() && depth > 0) {
+                    if (this.CheckValue("{")) { depth = depth + 1 }
+                    else if (this.CheckValue("}")) { depth = depth - 1 }
+                    this.Advance()
+                }
+            }
+            return this.Unknown()
+        }
+
         this.Advance()
         return this.Unknown()
     }
