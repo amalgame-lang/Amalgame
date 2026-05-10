@@ -5487,6 +5487,14 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                                 isSelfCall = 1;
                                 selfExpr = code_string_concat("self->", ll->Name);
                             }
+                            if (ll->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+                                code_string __attribute__((unused)) vt = Amalgame_Compiler_CGen_LocalTypeGet(self, ll->Left->Name);
+                                code_string __attribute__((unused)) vbare = String_Replace(vt, "*", "");
+                                if (String_Length(vbare) > 0 && !Amalgame_Compiler_CGen_IsEnum(self, vbare)) {
+                                    isSelfCall = 1;
+                                    selfExpr = code_string_concat(code_string_concat(ll->Left->Name, "->"), ll->Name);
+                                }
+                            }
                         }
                     }
                     if (ll->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
@@ -5495,6 +5503,14 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                         if (String_Length(bare) > 0 && !Amalgame_Compiler_CGen_IsEnum(self, bare)) {
                             isSelfCall = 1;
                             selfExpr = ll->Name;
+                        }
+                    }
+                    if (ll->Kind == Amalgame_Compiler_NodeKind_CALL) {
+                        code_string __attribute__((unused)) rt = Amalgame_Compiler_CGen_InferTypeFromExpr(self, ll);
+                        code_string __attribute__((unused)) rbare = String_Replace(rt, "*", "");
+                        if (String_Length(rbare) > 0 && !Amalgame_Compiler_CGen_IsEnum(self, rbare)) {
+                            isSelfCall = 1;
+                            selfExpr = Amalgame_Compiler_CGen_EmitExprStr(self, ll);
                         }
                     }
                     if (ll->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
@@ -6021,6 +6037,13 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 }
                 return code_string_concat(code_string_concat(tname, "_"), mname);
             }
+            if (lk == Amalgame_Compiler_NodeKind_CALL) {
+                code_string __attribute__((unused)) retT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, callee->Left);
+                code_string __attribute__((unused)) bareR = String_Replace(retT, "*", "");
+                if (String_Length(bareR) > 0) {
+                    return code_string_concat(code_string_concat(bareR, "_"), mname);
+                }
+            }
             if (lk == Amalgame_Compiler_NodeKind_MEMBER) {
                 if (callee->Left->Left != NULL) {
                     Amalgame_Compiler_NodeKind __attribute__((unused)) llk = callee->Left->Left->Kind;
@@ -6030,6 +6053,19 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                         code_string __attribute__((unused)) bare = String_Replace(ftype, "*", "");
                         if (String_Length(bare) > 0) {
                             return code_string_concat(code_string_concat(bare, "_"), mname);
+                        }
+                    }
+                    if (llk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+                        code_string __attribute__((unused)) vname = callee->Left->Left->Name;
+                        code_string __attribute__((unused)) vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vname);
+                        code_string __attribute__((unused)) vbare = String_Replace(vtype, "*", "");
+                        if (String_Length(vbare) > 0) {
+                            code_string __attribute__((unused)) fname = callee->Left->Name;
+                            code_string __attribute__((unused)) ftype = Amalgame_Compiler_CGen_FieldTypeGet(self, vbare, fname);
+                            code_string __attribute__((unused)) fbare = String_Replace(ftype, "*", "");
+                            if (String_Length(fbare) > 0) {
+                                return code_string_concat(code_string_concat(fbare, "_"), mname);
+                            }
                         }
                     }
                 }

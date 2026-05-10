@@ -2473,12 +2473,24 @@ public class CGen {
                             isSelfCall = true
                             selfExpr   = "self"
                         }
-                        // this.Field.Method(...) — field is itself a struct
+                        // this.Field.Method(...) or varName.Field.Method(...)
+                        // — field is itself a struct.
                         if (ll.Kind == NodeKind.MEMBER) {
                             if (ll.Left != null) {
                                 if (ll.Left.Kind == NodeKind.THIS_EXPR) {
                                     isSelfCall = true
                                     selfExpr   = "self->" + ll.Name
+                                }
+                                // varName.Field.Method(...): pass varName->Field
+                                // as self. The function name resolves via
+                                // EmitCalleeStr's matching new branch below.
+                                if (ll.Left.Kind == NodeKind.IDENTIFIER) {
+                                    let vt = this.LocalTypeGet(ll.Left.Name)
+                                    let vbare = String_Replace(vt, "*", "")
+                                    if (String_Length(vbare) > 0 && !this.IsEnum(vbare)) {
+                                        isSelfCall = true
+                                        selfExpr   = ll.Left.Name + "->" + ll.Name
+                                    }
                                 }
                             }
                         }
@@ -2489,6 +2501,19 @@ public class CGen {
                             if (String_Length(bare) > 0 && !this.IsEnum(bare)) {
                                 isSelfCall = true
                                 selfExpr   = ll.Name
+                            }
+                        }
+                        // varName.Method().OtherMethod(...) — chain into the
+                        // result of the inner call. InferTypeFromExpr knows
+                        // user-defined method return types (registered via
+                        // MethodRetSet during pass-1 forward emission), so
+                        // the receiver type comes back resolved.
+                        if (ll.Kind == NodeKind.CALL) {
+                            let rt = this.InferTypeFromExpr(ll)
+                            let rbare = String_Replace(rt, "*", "")
+                            if (String_Length(rbare) > 0 && !this.IsEnum(rbare)) {
+                                isSelfCall = true
+                                selfExpr   = this.EmitExprStr(ll)
                             }
                         }
                         // "literal".Method(...) — pass the literal as the
@@ -3036,7 +3061,22 @@ public class CGen {
                     // Fallback: obj_Method (simplified)
                     return tname + "_" + mname
                 }
-                // this.Field.Method() → detect field type → FieldType_Method
+                // Chained call: o.GetInner().Doubled(). The inner
+                // CALL's return type is the receiver of the outer call;
+                // emit `RetType_Method`. Without this the fallback
+                // appends `_Method` to the call expression string,
+                // producing e.g. `Outer_GetInner(o)_Doubled` (invalid).
+                if (lk == NodeKind.CALL) {
+                    let retT = this.InferTypeFromExpr(callee.Left)
+                    let bareR = String_Replace(retT, "*", "")
+                    if (String_Length(bareR) > 0) {
+                        return bareR + "_" + mname
+                    }
+                }
+                // Chained-member call: this.Field.Method() or
+                // varName.Field.Method(). Look up the inner-receiver
+                // class's field type and emit `FieldType_Method` so the
+                // call lands on the right struct's method.
                 if (lk == NodeKind.MEMBER) {
                     if (callee.Left.Left != null) {
                         let llk = callee.Left.Left.Kind
@@ -3046,6 +3086,27 @@ public class CGen {
                             let bare  = String_Replace(ftype, "*", "")
                             if (String_Length(bare) > 0) {
                                 return bare + "_" + mname
+                            }
+                        }
+                        if (llk == NodeKind.IDENTIFIER) {
+                            // varName.Field.Method(): chain into the
+                            // local's class to find Field's type, then
+                            // emit `FieldType_Method`. Without this the
+                            // fallback at the end of the function would
+                            // mash the field name into the method name
+                            // (`o->Field_Method` instead of
+                            // `Inner_Method(o->Field)`), causing the
+                            // chain-mash bug we're fixing.
+                            let vname = callee.Left.Left.Name
+                            let vtype = this.LocalTypeGet(vname)
+                            let vbare = String_Replace(vtype, "*", "")
+                            if (String_Length(vbare) > 0) {
+                                let fname = callee.Left.Name
+                                let ftype = this.FieldTypeGet(vbare, fname)
+                                let fbare = String_Replace(ftype, "*", "")
+                                if (String_Length(fbare) > 0) {
+                                    return fbare + "_" + mname
+                                }
                             }
                         }
                     }
