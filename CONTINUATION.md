@@ -1,6 +1,9 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-10 after shipping v0.4.4 (stdlib trio: Random + Encoding + DateTime, plus tools/release.sh).
+> Last refreshed 2026-05-11 after shipping v0.4.15 (Database.SQLite
+> stdlib + governance: NOTICE.md / CONTRIBUTING.md / auto-close
+> external PRs / CLEANUP.sh removal).
+>
 > The block below is a self-contained prompt designed to bootstrap a
 > new Claude session with full context. Copy-paste it as your first
 > message in a fresh conversation.
@@ -12,10 +15,14 @@ I'm working on Amalgame, a self-hosted programming language that
 transpiles to C. I keep the project in
 /home/neitsab/Développement/Amalgame.
 
-Current state (May 2026, v0.4.4):
+Current state (May 2026, v0.4.15):
+
+═══════════════════════════════════════════════════════════════
+  Compiler + bootstrap
+═══════════════════════════════════════════════════════════════
 
 - The compiler `amc` is written in Amalgame in src/ and compiles
-  itself in ~5 seconds via ./build_amc.sh.
+  itself in ~3 seconds via ./build_amc.sh.
 - 2-rung bootstrap chain in build_amc.sh:
     ./amc                  → current self-hosted (may break in dev)
     ./snapshot/amc         → last known-good amc, captured by
@@ -25,12 +32,12 @@ Current state (May 2026, v0.4.4):
                              (see snapshot/INFO.md).
 - The runtime headers are at runtime/. Cross-platform (POSIX +
   Windows winsock2 via #ifdef _WIN32 in Amalgame_Net.h). libcurl is
-  required by the runtime for the Net module + the new claude-api /
+  required by the runtime for the Net module + the claude-api /
   chatgpt / gemini providers.
 - Test runner (./tests/run_all_tests.sh) drives ./amc directly.
-  Build artefacts go to /tmp via mktemp; the source tree stays clean.
-  Currently 363 PASS / 0 FAIL / 0 SKIP across the core/stdlib/fmt/
-  amc-new sub-suites.
+  Build artefacts go to /tmp via mktemp; the source tree stays
+  clean. Currently **434 PASS / 0 FAIL / 0 SKIP** across the
+  core / stdlib / fmt / amc-new sub-suites.
 - Multi-OS CI (.github/workflows/ci.yml) — Linux + macOS + Windows
   MSYS2. All three platforms gcc the snapshot/amc_lib.c then chain
   through build_amc.sh.
@@ -38,421 +45,499 @@ Current state (May 2026, v0.4.4):
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
 - Releases automated on `v*` tag (.github/workflows/release.yml).
-  Latest is v0.4.4 — see CHANGELOG.md for the per-release detail.
-  develop → main → tag is the release flow. Both develop and main
-  are protected (force-push + delete blocked, PR required, admin
-  bypass allowed).
+  Latest is **v0.4.15** — see CHANGELOG.md for the per-release detail.
+  develop → release/vX.Y.Z → develop → main → tag is the release flow.
+  Both develop and main are protected (force-push + delete blocked,
+  PR required, admin bypass allowed for owner-driven release flow).
 - VS Code extension in editors/vscode/ — TextMate grammar +
   language config + LSP client (vscode-languageclient over stdio).
   Configurable via `amalgame.serverPath` in user settings to point
-  at a local amc build.
+  at a local amc build. Tilde-expansion + whitespace-trim of the
+  serverPath value handled inline since v0.4.8.
 - Formatter: `amc fmt file.am` re-emits canonical source with
   comments preserved. Idempotent on every compiler source.
-- Linter: `amc --lint file.am` runs static analysis: unreachable
-  code, unused locals, shadowed names.
-- LSP: `amc lsp` over stdio JSON-RPC. v0.3.4 ships diagnostics;
-  v0.3.5 adds hover + global completion; v0.3.6 (PR #146) makes
-  the LSP workspace-aware — it scans every *.am file under the
-  detected workspace root so cross-file types (e.g. NodeKind from
-  src/parser/ast.am) resolve in any open file.
-- LLM-driven workflows (v0.4.0):
-    amc migrate <file|dir>   translate other languages → .am
-    amc generate "<prompt>"  write a new .am from prose
-    amc explain  <file.am>   read a .am, write prose
-  All three share: provider auto-selection from env (ANTHROPIC_API_KEY
-  → claude-api, OPENAI_API_KEY → chatgpt, GEMINI_API_KEY → gemini,
-  fallback claude CLI), on-disk grammar+tour as system prompt
-  (cacheable via Anthropic prompt cache), --dry-run cost estimation,
-  --no-check / --force / -o / --lang flags, and (for generate +
-  explain) --stream via the claude CLI.
-- amc migrate also has: directory recursion, result caching by
-  SHA-256(source + system prompt) at ~/.cache/amalgame/migrate/,
-  and post-write `amc --check` validation.
-- User guide at docs/guide/README.md (chapters 1–8, with chapter
-  8 being the new LLM-commands reference).
-- Grammar: docs/language/grammar.ebnf mirrors src/parser/parser.am
-  exactly. grammar.md is the prose companion.
-- README + CHANGELOG at the repo root.
-- Design proposals: docs/proposals/amc-migrate.md tracks the v1+v2
-  roadmap for the LLM commands (largely shipped now).
 
-Recently shipped (v0.4.4 stdlib trio + release tooling, 2026-05-10):
+═══════════════════════════════════════════════════════════════
+  Standard library — what's in
+═══════════════════════════════════════════════════════════════
 
-  - Amalgame.Random (PR #200): instance-based PCG XSH-RR 64/32
-    PRNG. `new Random(seed)` for reproducibility,
-    `Random.FromSystem()` for crypto-grade entropy via
-    getentropy / BCryptGenRandom. Methods: NextUInt32, NextInt,
-    IntRange(min, max), Float, Bool, Bytes(n). Plus a static
-    Random.SystemBytes(n) for one-off salts/nonces. Legacy
-    Math.SeedRandom / Math.Random / Math.RandomInt stay for
-    compat.
-  - Amalgame.Encoding (PR #201): three small static facades —
-    Base64 (RFC 4648 + URL-safe), Hex (lower/upper, case-
-    insensitive decode), Url (percent-encoding per RFC 3986
-    plus a stricter EncodeComponent matching JS's
-    encodeURIComponent). 100% pure Amalgame, no runtime header.
-  - Amalgame.DateTime (PR #202): Instant (i64 ns since
-    1970-01-01 UTC), Duration (signed ns interval), Stopwatch
-    (monotonic-clock convenience). RFC 3339 strict parse +
-    format, UTC only — `+HH:MM` offsets in input are rejected,
-    local time / timezones tracked as a v2 follow-up. Range is
-    ±292 years from 1970.
-  - tools/release.sh (PR #203): one-shot script that bumps the
-    version everywhere (src/main.am + README.md), inserts a
-    CHANGELOG stub, builds + tests + saves a snapshot, then
-    walks release/vX.Y.Z → develop → main → tag through gh pr
-    auto-merge polls. --dry-run + --no-tag flags. Closes the
-    manual-checklist gap that previously caused the v0.4.0
-    missed bump.
-  - CI Windows builds now link -lbcrypt for
-    Random.FromSystem()'s BCryptGenRandom call. Same flag added
-    to the Windows release artifact build.
-  - Three parser/cgen quirks surfaced and noted in the roadmap
-    (workarounds applied inline): `expr >> N` dropped inside a
-    `let`, top-level free `public fn` doesn't emit, constructor
-    forward-decls don't precede call sites.
+Core (since v0.3.x): Console, File, Path (flat fn API), Math,
+String, List<T> / Map<K,V> / Set<T>, Http + HttpResponse, Tcp
+{Server,Client}, Udp, Args, Exit, Process (Run + RunCapture), Env.
 
-Recently shipped (v0.4.3 Json migration completes, 2026-05-09):
+Namespace-facade stdlib (each under `namespace Amalgame.<Module>`):
 
-  - src/lsp.am request dispatcher swapped from JsonStr/JsonInt
-    substring extractors to a single Json.Parse(body) walked via
-    typed-local Get(...).At(...) chains.
-  - src/migrate.am providers parse actual response shapes:
-      Anthropic → root.content[0].text
-      OpenAI    → root.choices[0].message.content
-      Gemini    → root.candidates[0].content.parts[0].text
-  - amc migrate v3 (PR #194): real cost line printed after every
-    successful call from each provider's usage object. No `~`,
-    exact billed tokens. CLI shell-out and custom keep silent
-    (InputTokens == -1).
-  - Six dead JSON helpers removed (~150 LoC out).
-  - The earlier "Json.Parse hangs on 16 KB bodies" turned out to
-    be a probe artefact — bash ${#body} counts characters, not
-    bytes, so the Content-Length frame under-counted UTF-8
-    multibyte content. Real client traffic uses byte-accurate
-    counts and the parser does a 16 KB body in ~37 ms.
+- **Amalgame.Json** (v0.3.6) — schemaless JsonValue tree, parse +
+  serialize, accessors (AsInt/AsString/Get/At), encoder.
+- **Amalgame.Random** (v0.4.4) — PCG-32 + crypto-grade entropy
+  (Random.SystemBytes).
+- **Amalgame.Encoding** (v0.4.4) — Base64 (RFC 4648 + URL-safe),
+  Hex, percent-encoding.
+- **Amalgame.DateTime** (v0.4.4) — Instant.Now / FromUnixSeconds,
+  Duration arithmetic, ISO 8601 formatting, Stopwatch.
+- **Amalgame.Crypto** (v0.4.4) — SHA-256 + HMAC-SHA-256 (FIPS
+  180-4 / RFC 2104, pure C in runtime/Amalgame_Crypto.h).
+- **Amalgame.Path** (v0.4.11) — cross-platform path manipulation:
+  Combine, Extension, Filename, Directory, Stem, IsAbsolute,
+  Normalize (Go filepath.Clean semantics, no FS access), Sep.
+- **Amalgame.Logging** (v0.4.12) — leveled stderr + optional file
+  sink. `Log.SetMinLevel("debug"|"info"|"warn"|"error")`,
+  `Log.SetFile(path)`, `Log.Debug/Info/Warn/Error(msg)`. Process-
+  wide singleton state in the runtime.
+- **Amalgame.Service** (v0.4.13) — long-running daemon primitives.
+  `Service.Install()` (SIGTERM/SIGINT on POSIX,
+  SetConsoleCtrlHandler on Windows), `Service.ShouldStop()`,
+  `Service.RequestStop()`, `Service.Sleep(ms)` (interruptible).
+- **Amalgame.Database.SQLite** (v0.4.15) — embedded SQL via the
+  vendored SQLite amalgamation at
+  runtime/Amalgame_Database/sqlite/sqlite3.{c,h} (public-domain
+  dedication, no libsqlite3-dev needed anywhere). Surface:
+  `SQLite.Open(path)`, `Close`, `IsOpen`, `Exec(sql) → bool`,
+  `QueryAll(sql) → List<List<string>>`, `LastInsertId`, `Changes`,
+  `LastError`. User binaries link sqlite3.c directly; the test
+  runner precompiles it to .o once at startup. Namespace is
+  `Amalgame.Database.SQLite` (not just `.Database`) so sibling
+  backends — DuckDB, Postgres, MySQL, Oracle, SQL Server,
+  MongoDB, Redis, Kafka, RabbitMQ — can land alongside under
+  `Amalgame.Database.<Engine>` / `Amalgame.Database.NoSQL.<Engine>`
+  / `Amalgame.Messaging.<Broker>` per the roadmap.
 
-Recently shipped (v0.4.2 stdlib + DX release, 2026-05-09):
+The Console / File / Math / String / List / Env / Process / Log /
+Service / SQLite class names live in a hardcoded "isStdlib" list
+inside the cgen (src/generator/c_gen.am ~line 3102) so `Log.Info(
+"msg")` lowers directly to `Log_Info("msg")` — the runtime helper
+under runtime/Amalgame_Logging.h — without needing the user to
+import the facade .am source. The facade files (e.g.
+src/stdlib/logging.am) still exist as documentation + as test-
+runner inputs but are not required for the short-syntax usage.
+Other namespace-facades (Crypto, Json, Random, Encoding, DateTime,
+Path) require their .am file as a compile input today.
 
-  Stdlib + tooling:
-  - Amalgame.Json (PR #182, #183): first-class JSON parser +
-    encoder + accessor surface in the new src/stdlib/ directory.
-    Strict RFC 8259 with full escape support including \uXXXX +
-    surrogate pairs. JsonValue with Is*/As*/Get/At/Length/Keys.
-    Replaces 4 ad-hoc substring extractors in the compiler in a
-    future phase 2 PR.
-  - amc new <name> (PR #184): project scaffolder à la cargo new.
-    Three templates (exe/lib/test) with working build.sh,
-    runtime auto-discovery via $AMALGAME_HOME / install dirs /
-    `which amc`, READMEs, .gitignore. Path-aware
-    (basename = namespace stem).
-  - LSP member completion (PR #185): obj.<cursor> narrows to the
-    receiver type. Two-step receiver resolution: global-symbol
-    lookup, then a local-decl text scan covering
-    `let x = new T(...)` / `let x: T = ...`.
+═══════════════════════════════════════════════════════════════
+  LSP — what's in
+═══════════════════════════════════════════════════════════════
 
-  Infra:
-  - Repo transferred to amalgame-lang/Amalgame (PR #187).
-    GitHub redirects the old URLs ~1 year; canonical references
-    landed everywhere.
-  - tests/run_amc_new_tests.sh + new 5th-arg `extra_inputs` on
-    run_stdlib_tests.sh so per-module tests can pull in stdlib
-    sources alongside the sample.
+amc lsp (src/lsp.am) is a workspace-aware LSP 3.x server over
+stdio JSON-RPC. Capabilities currently advertised:
 
-Recently shipped (v0.4.0 LLM-driven release, 2026-05-09):
+- textDocumentSync: 1 (Full)
+- hoverProvider, completionProvider with `.` triggerCharacters
+- definitionProvider, declarationProvider, typeDefinitionProvider
+- documentSymbolProvider, workspaceSymbolProvider
+- referencesProvider
+- renameProvider with prepareProvider:true
+- callHierarchyProvider
+- inlayHintProvider
+- codeActionProvider
 
-  Compiler infrastructure (unblocked the LLM-generated code paths):
-  - Lambda v2.5 (PR #142): non-int signatures — xs.Map(x => x.Name)
-    over List<Class> works. TypeChecker patches the lambda PARAM
-    type from the higher-order callsite, CGen emits typed unbox
-    + boxed return.
-  - LSP workspace-aware (PR #146): scans every *.am under the
-    workspace root, eliminating false "Unknown symbol" floods
-    on cross-file types (NodeKind, SourceSnippet, etc.).
-  - Parser: TS-style `name: type` param syntax accepted (PR #152)
-    + multi-line method chains (PR #154), both because LLM output
-    leans into those forms.
-  - CGen: auto-qualify implicit field access (PR #155) — `Id = id`
-    in a method body lowers to `self->Id = id` so users from
-    C# / TS / Kotlin can skip the explicit `this.` qualifier.
-  - Stdlib: Env.Get/Has builtins + Http_PostWithHeaders return-type
-    tracking (PR #160).
+Slices closed:
+- Slice 1: diagnostics + hover + completion (v0.3.4–v0.3.5)
+- Slice 2: definition + declaration + typeDefinition + outline +
+  workspace symbol + references + workspace-resolver caching
+  (v0.4.5–v0.4.8)
+- Slice 3: rename + call hierarchy (v0.4.9)
+- Slice 4: inlay hints (inferred types on `let x = …`) + code
+  actions ("Add type annotation" quick fix) (v0.4.10)
 
-  amc migrate / generate / explain (the actual LLM commands):
-  - v0 single-file migrate (PR #149)
-  - v1.1 directory recursion (PR #158)
-  - v1.2 claude-api provider via Anthropic HTTP (PR #161)
-  - v1.3 prompt loaded from disk + system/user split for prompt
-    caching (PR #162)
-  - amc generate (PR #164)
-  - amc explain (PR #165)
-  - v2 providers: chatgpt, gemini, custom (PR #166)
-  - cost estimation in --dry-run (PR #167)
-  - --stream for generate/explain via claude CLI passthrough (PR #169)
-  - result caching by SHA-256 (PR #170)
+Next LSP slice tracked in ROADMAP_COMPLET.md: tighter
+selectionRange via a parser nameStart hook, textDocument/
+foldingRange (the +/- gutter markers for class/method bodies +
+block comments + import groups), more code actions wired to
+linter / typechecker diagnostics.
 
-  Plus various small DX fixes: --help flags, cleanup of obsolete
-  files (use.sh, .github/workflow/ typo dir).
+═══════════════════════════════════════════════════════════════
+  `amc new` scaffolder — what's in
+═══════════════════════════════════════════════════════════════
 
-Known limitations:
+amc new <name> [--template <kind>] [--force] generates a starter
+project. Four templates:
 
-- Lambda Reduce signatures still need init-arg type inference. If
-  you hit issues with .Reduce, fall back to a for-in with `var acc`.
-- String interpolation `"x: {coll.Get(i)}"` doesn't propagate the
-  inferred type into the embedded call. Workaround: stage in
-  named locals before printing.
-- ForEach captures by value — `var sum = 0; xs.ForEach(x => sum = sum + x)`
-  doesn't accumulate. Use Reduce for accumulation.
-- API streaming (claude-api / chatgpt / gemini) is buffered, not
-  Server-Sent Events. --stream only flows for the local claude CLI.
-- LSP grammar TextMate has a couple of false-positive zones
-  (coloration around certain enum.method patterns). Tracked.
+  exe      Default. src/main.am with Program.Main + a passing
+           test, build.sh that locates AMALGAME_HOME and calls
+           amc + gcc.
+  lib      src/<name>.am with a public class skeleton, no main.
+  test     tests/<name>_test.am only — bolt onto an existing
+           project.
+  service  Long-running daemon (v0.4.14). Generates:
+             src/main.am               — canonical
+                                          Service.Install +
+                                          while !ShouldStop +
+                                          Log.Info loop
+             <name>.service            — systemd unit (Linux)
+             install.sh                — systemctl daemon-reload
+                                          + enable + restart
+             install.ps1               — NSSM-based install on
+                                          Windows (auto-downloads
+                                          NSSM if missing). Native
+                                          Windows SCM dispatcher
+                                          tracked as v2 in the
+                                          roadmap.
+             build.sh + build.ps1      — POSIX gcc + Windows
+                                          MinGW gcc paths.
+             README.md                 — full cross-OS run /
+                                          install / operate matrix.
 
-Workflow rules:
+═══════════════════════════════════════════════════════════════
+  Authorship + contribution policy
+═══════════════════════════════════════════════════════════════
 
-- gitflow simplified: feature/<name> → develop → main → tag.
-  Never commit directly to main or develop. Both branches are
-  protected on GitHub.
-- Execute git/gh commands directly (don't ask first). Same for
-  bash and file edits — the user wants action, not confirmation
-  loops. Asking is for design questions ("scope A or B?",
-  "which approach?"), not for permission to run a command.
-- Destructive ops (git reset --hard, push --force, branch -D,
-  tag deletion) still get confirmed first.
-- Use `gh pr create --body "$(cat <<'EOF' … EOF)"` for PR bodies.
-  The heredoc avoids shell quoting issues. Keep markdown
-  reasonable (don't paste raw triple-backtick blocks containing
-  special chars).
-- Code, commit messages, PR bodies stay in English. Chat replies
-  in French.
-- TodoWrite for multi-step plans; one-liners can skip it.
+- **Bastien Mouget is the sole author and copyright holder**
+  (NOTICE.md). All work is Apache-2.0 licensed.
+- **External contributions are paused** (CONTRIBUTING.md). Bug
+  reports via Issues stay open; forks are allowed per Apache-2.0.
+- A GitHub Action at .github/workflows/auto-close-external-prs.yml
+  auto-closes PRs opened from forks with a comment pointing at
+  CONTRIBUTING.md. Internal branches (release/*, feat/*, docs/*,
+  chore/*) skip the hook because their head.repo matches base.repo.
+- **No `Co-Authored-By: Claude …` trailers in any new commit** —
+  the AI is a tool, not a co-author at law (NOTICE.md spells this
+  out). Some pre-2026-05-10 commits carry the trailer for
+  historical honesty; future commits omit it.
+- Third-party licence audit lives in NOTICE.md: bdwgc (permissive),
+  libcurl (MIT/X), SQLite (PD), NSSM (PD), host compilers (GPL —
+  tools not output). All compatible with Apache-2.0 redistribution.
 
-Where to head next (from ROADMAP_COMPLET.md):
+═══════════════════════════════════════════════════════════════
+  Release flow (gitflow + tools/release.sh)
+═══════════════════════════════════════════════════════════════
 
-  1. Stdlib expansion (next module): pick one or two from
-     DateTime / Random / Encoding / Regex / Compress / Crypto /
-     Threading. Each is 200-400 LoC, isolated, low risk.
-     Json shipped in v0.4.2-v0.4.3.
-  2. amc migrate v3 — API streaming via SSE: only deferred v3
-     item. Real cost reporting via usage stats already shipped
-     in v0.4.3.
-  3. Editor integration on install: auto-wire VS Code .vsix /
-     Neovim lspconfig snippet / Helix languages.toml entry from
-     install.sh. New roadmap item, no code yet.
-  4. CGen chain-mash fix (HARDER): obj.Field.Method() and
-     obj.Method().Method() lower as `Field_Method` /
-     `Method_Method` name-mash because EmitCalleeStr fallback at
-     src/generator/c_gen.am:3003 returns `target + "_" + mname`.
-     Fix needs a typed lookup of callee.Left's return type plus
-     a small refactor of every EmitCalleeStr consumer. Repro
-     and findings parked in ROADMAP_COMPLET.md. Workaround:
-     intermediate typed locals (used in lsp.am, migrate.am,
-     stdlib_json.am tests).
-  5. Typechecker enum-return bug (HARDER): 37 spurious
-     "Return type mismatch" / "if condition must be bool" on
-     lexer.am via the LSP. `got` type varies (void / string /
-     int) suggesting a NodeKey collision in ExprType map or a
-     parse-tree shape mismatch on single-stmt `{ return … }`
-     blocks. Doesn't reproduce on minimal cross-file repros.
-     Findings + next-step (instrument CheckReturn) in roadmap.
-  6. amc test polish: --runtime <path> flag, per-file timeouts,
-     parallel execution.
-  7. Process v2: split stderr from stdout via real pipes, add
-     timeouts, async streaming.
-  8. amc doc: extract doc-comments → Markdown / HTML.
-  9. amc add <pkg>: package manager (re-export of the pre-self-host
-     Vala implementation, available via the vala-bootstrap-final
-     git tag if revival is needed).
- 10. DAP: debug adapter using DWARF (-g3 already emitted).
+Bump the version in src/main.am BEFORE every tag — the `--version`
+flag has a hardcoded string:
 
-Quick checks before claiming a feature is done:
+    Console.WriteLine("amc <X.Y.Z> (self-hosted Amalgame compiler)")
 
-  ./build_amc.sh
-  ./tests/run_all_tests.sh
+Use tools/release.sh which bumps every place the version lives
+(src/main.am, README.md "Current version" + "amc 0.4.X" probe,
+ROADMAP_COMPLET.md header), inserts a CHANGELOG stub, builds +
+tests + saves a snapshot, then walks:
 
-For non-trivial compiler changes, read docs/guide/07-internals.md
-first. The pipeline is single-pass: lex → parse → resolve →
-typecheck → (lint?) → cgen.
+    release/vX.Y.Z  →  develop  →  main  →  tag vX.Y.Z
 
-For changes to the LLM commands, see docs/proposals/amc-migrate.md
-(design rationale + roadmap status) and docs/guide/08-llm-commands.md
-(user-facing reference).
+Both PR transitions go through `gh pr merge --auto --merge` so
+the protected-branch CI is what flips them. After every release,
+back-merge `main → develop` (fast-forward) so the next
+develop→main PR doesn't carry a squash-divergence conflict.
+
+Pre-flight refuses to start if you're not on develop, the working
+tree is dirty, or the target tag already exists — so the v0.4.0-
+style "forgot to bump" mistake can't happen through this path.
+
+If you do the release flow manually (the typical pattern in this
+session), the same gates apply by hand:
+
+    git checkout -b release/vX.Y.Z
+    # edit src/main.am, README.md, ROADMAP_COMPLET.md, CHANGELOG.md
+    ./build_amc.sh && ./tools/save-snapshot.sh
+    git add … && git commit -m "release: vX.Y.Z" && git push
+    gh pr create --base develop … && gh pr merge --squash --admin
+    gh pr create --base main --head develop … && gh pr merge --merge --admin
+    git checkout main && git tag -a vX.Y.Z -m … && git push origin vX.Y.Z
+    # release.yml builds + publishes the 4 artefacts
+    git checkout develop && git merge origin/main --ff-only && git push
+
+═══════════════════════════════════════════════════════════════
+  Memory feedback (claude.ai/code, per-project)
+═══════════════════════════════════════════════════════════════
+
+Saved feedbacks under
+~/.claude/projects/-home-neitsab-D-veloppement-Amalgame/memory/:
+
+- **feedback_gitflow.md** — depuis 2026-05-07, features sur
+  develop (jamais commit direct sur main/develop).
+- **feedback_language.md** — depuis 2026-05-08, répondre en
+  français dans le chat (code/commits restent en anglais).
+- **feedback_autonomous_edits.md** — depuis 2026-05-08, exécuter
+  Edit/Write/Bash sans "veux-tu que je..." une fois le plan
+  validé.
+- **feedback_no_coauthor_trailer.md** — depuis 2026-05-10, plus
+  de `Co-Authored-By: Claude …` dans les commits Amalgame
+  (projet potentiellement revendable, AI = outil pas co-auteur).
+
+═══════════════════════════════════════════════════════════════
+  Known gotchas / sharp edges
+═══════════════════════════════════════════════════════════════
+
+1. **Bootstrap chicken-and-egg when adding a new runtime header**
+   — adding `#include "Amalgame_<New>.h"` to the cgen's prelude
+   emission means the OLD amc embedded in the previous snapshot
+   doesn't know about the new header, but compiles src/ that
+   references the renamed symbols. The bootstrap step 1 fails at
+   link time.
+
+   Two workarounds, both retired immediately after use:
+     - Temporarily add `-include Amalgame_<New>.h` to the gen_test
+       gcc command in build_amc.sh. After saving the new snapshot,
+       remove the flag.
+     - Create a one-line shim header at the OLD name that includes
+       the new name. After saving the snapshot, delete the shim.
+
+   Either way, the snapshot is the keystone: once it ships the new
+   cgen, the workaround is dead code.
+
+2. **Nested generics in `let` annotations don't parse** — Amalgame
+   parser rejects `let xs: List<List<string>> = …`. Drop the
+   outer annotation (cgen infers the AmalgameList* type) and
+   annotate just the inner: `let row: List<string> = xs.Get(0)`.
+   Test sample tests/samples/stdlib_database.am does this.
+
+3. **Cross-namespace static-call return-type inference** — the
+   cgen's isStdlib short-circuit skips MethodRetRawSet/Get for
+   short-syntax stdlib calls. So `let rows = SQLite.QueryAll(...)`
+   doesn't carry the `List<List<string>>` raw type through to the
+   cgen — the user has to annotate the inner list explicitly.
+   Tracked as a v2 improvement.
+
+4. **`amc` doesn't auto-link** — `amc -o foo bar.am` emits
+   `foo.c` only. The test runner (and build.sh templates) do
+   `gcc -O2 -Iruntime foo.c -lgc -lm -lcurl -o foo` as a
+   separate step. `amc test` does the gcc step internally for
+   the suite case.
+
+5. **`amc test` doesn't see Database tests** — its internal gcc
+   command doesn't link runtime/Amalgame_Database/sqlite/sqlite3.c.
+   Database tests live under tests/samples/ and are run by
+   tests/run_stdlib_tests.sh which precompiles a sqlite3.o once
+   and links it in. A future `amc test` enhancement could grep
+   the generated .c for sqlite3_ symbols and conditionally link
+   the amalgamation.
+
+6. **MemberTable.Set silent-no-op on duplicate** — important
+   resolver invariant from v0.4.7 (PR #228). The parallel arrays
+   Keys + Values were getting desync'd by Values.Add on duplicate
+   keys, producing ~150 spurious typechecker errors. The fix:
+   no-op silently if the key already exists. Don't undo this.
+
+7. **CGen-precedence bug on `(A || B) && C`** — the cgen re-
+   associates parenthesised boolean expressions to `A || (B && C)`
+   in the C output. Workaround in src/lsp.am
+   CollectRenameEdits: split the kind+name check across multiple
+   `if` statements:
+     ```
+     var matches: bool = false
+     if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) { matches = true }
+     if (k == NodeKind.CLASS_DECL || k == NodeKind.ENUM_DECL)  { matches = true }
+     …
+     if (matches && node.Name == target) { … }
+     ```
+   Track the root cause in c_gen.am if you need to fix it
+   properly; otherwise the split-if workaround is good.
+
+8. **String-interpolation conflict with `${VAR:-default}` in shell
+   strings** — Amalgame's `"text {var} text"` interpolation
+   collides with shell-style `${VAR:-default}` when emitting
+   shell-script templates (new_cmd.am). Workaround: sentinels.
+     ```
+     let lb: string = "{"
+     let rb: string = "}"
+     s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
+     ```
+   Used in BuildShExe + BuildShService.
+
+9. **`File_WriteAll` bool return tracking** — `let ok = File.WriteAll(…)`
+   typed as bool only since v0.4.x. Older code using the call as
+   void won't trip; new code that wants the success flag should
+   annotate `let ok: bool = …`.
+
+10. **Curly braces in string templates** — when building file
+    contents in new_cmd.am, escape `{` and `}` if your literal
+    contains them otherwise the interpolation parser sees an
+    embedded `{x}`. Workaround used in migrate.am / generate.am /
+    explain.am / new_cmd.am: split the literal braces out as
+    their own concat pieces.
+
+11. **gen_test linking and libcurl** — adding a runtime symbol
+    that pulls in curl means gen_test now needs `-lcurl` too.
+    build_amc.sh links it since v0.4.0 (PR #161). If a new
+    runtime call brings in a fresh transitive dep, propagate the
+    `-l<lib>` flag here as well.
+
+12. **Bump the `--version` string in `src/main.am` BEFORE every
+    tag** — see the release-flow section above. tools/release.sh
+    handles this automatically; the manual flow has to remember.
+
+13. **One-time post-clone setup for `merge=ours`** —
+    `.gitattributes` declares `merge=ours` for
+    `snapshot/amc_lib.c`, `snapshot/INFO.md`, and
+    `src/amc_lib.c` (generated artefacts; canonical resolution on
+    conflict is "rebuild from sources"). Run once after cloning:
+
+        git config merge.ours.driver true
+
+    Without this, git falls back to a normal three-way merge on
+    the generated files and you get conflict noise.
+
+14. **`linguist-vendored=true` on runtime/* in .gitattributes** —
+    keeps the vendored SQLite amalgamation (9MB sqlite3.c +
+    641KB sqlite3.h) out of GitHub's language stats. Without it,
+    Amalgame would show as "85% C" because of one upstream lib.
+
+═══════════════════════════════════════════════════════════════
+  Roadmap snapshot (next-up at the time of this refresh)
+═══════════════════════════════════════════════════════════════
+
+Stdlib backlog tracked in ROADMAP_COMPLET.md:
+
+- **`Amalgame.Database.<Engine>` siblings — SQL backends**:
+  DuckDB (vendored amalgamation), PostgreSQL (dynamic-link
+  libpq), MySQL / MariaDB (dynamic-link libmariadbclient),
+  Oracle (Instant Client dynamic-link, proprietary download),
+  SQL Server (MS ODBC default + FreeTDS fallback).
+- **`Amalgame.Database.NoSQL.<Engine>`**: MongoDB (libmongoc +
+  libbson), Redis (pure-Amalgame RESP3 client ~300 LoC),
+  DynamoDB / Cosmos DB / Firestore (HTTP over Net.Http + Json),
+  Cassandra / ScyllaDB (CQL binary protocol).
+- **`Amalgame.Messaging.<Broker>`**: pure-Amalgame MQTT (~300
+  LoC) + NATS Core (~250 LoC), plus dynamic-link to Kafka
+  (librdkafka) + RabbitMQ (librabbitmq AMQP).
+- **`Amalgame.Database.SQLite` v2**: parameter binding via `?`
+  placeholders, typed column accessors (row.AsInt(0) /
+  row.AsBytes(2)), prepared statements, transactions.
+- **`Amalgame.Service` v2**: native Windows SCM dispatcher
+  (`StartServiceCtrlDispatcher` + `RegisterServiceCtrlHandler` +
+  `SetServiceStatus`) — drops the NSSM dependency on Windows.
+- **`amc new --template service` v2**: macOS launchd .plist +
+  install-macos.sh wrapper.
+- **LSP slice 5**: tighter `selectionRange` via parser nameStart
+  hook, `textDocument/foldingRange` (the +/- gutter markers),
+  more code actions wired to linter/typechecker diags.
+
+═══════════════════════════════════════════════════════════════
+  Repo layout
+═══════════════════════════════════════════════════════════════
+
+  amc                              ← built binary (gitignored)
+  build_amc.sh                     ← 3-step bootstrap
+  README.md                        ← project intro, install/run
+  CHANGELOG.md                     ← per-release detail
+  NOTICE.md                        ← authorship + 3rd-party audit
+  CONTRIBUTING.md                  ← external PRs paused
+  LICENSE                          ← Apache-2.0
+  ROADMAP_COMPLET.md               ← what's next
+  CONTINUATION.md                  ← this file
+  .gitattributes                   ← merge=ours + linguist
+  .github/workflows/               ← ci.yml, release.yml,
+                                     release-pdf.yml,
+                                     auto-close-external-prs.yml
+  docs/
+    guide/                         ← user-facing 8-chapter book
+      01-getting-started.md
+      02-language-tour.md
+      03-cli-reference.md
+      04-stdlib.md                 ← every stdlib module
+      05-runtime-and-interop.md
+      06-build-and-tooling.md
+      07-internals.md
+      08-llm-commands.md
+      README.md                    ← chapter index
+    language/                      ← grammar.ebnf + grammar.md
+    changelog/                     ← per-version PDF builds
+    proposals/                     ← design docs
+    DEVELOPER_GUIDE.md
+  editors/vscode/                  ← extension.js + grammar
+  runtime/
+    _runtime.h                     ← core types + closure runtime
+    Amalgame_Console.h
+    Amalgame_String.h
+    Amalgame_Collections.h
+    Amalgame_IO.h                  ← File + Path + Env
+    Amalgame_Math.h
+    Amalgame_Net.h                 ← Http + Tcp + Udp
+    Amalgame_Process.h
+    Amalgame_Random.h
+    Amalgame_DateTime.h
+    Amalgame_Crypto.h
+    Amalgame_Logging.h
+    Amalgame_Service.h
+    Amalgame_Database_SQLite.h     ← v0.4.15
+    Amalgame_Database/sqlite/
+        sqlite3.c, sqlite3.h       ← vendored amalgamation
+  snapshot/
+    amc_lib.c                      ← portable bootstrap source
+    amc                            ← compiled snapshot binary
+    INFO.md                        ← provenance
+  src/
+    main.am                        ← CLI entry, gen_test injection
+    amc_lib.c                      ← generated; merge=ours
+    lexer/{token,lexer}.am
+    parser/{ast,parser}.am
+    generator/{c_gen,gen_test}.am  ← cgen + bootstrap driver
+    formatter/formatter.am
+    diagnostics.am
+    resolver/{symbol,resolver}.am
+    typechecker.am
+    linter.am
+    lsp.am                         ← LSP server
+    migrate.am / generate.am /
+    explain.am                     ← LLM-driven commands (v0.4.0)
+    new_cmd.am                     ← amc new scaffolder (4 templates)
+    stdlib/
+      json.am
+      random.am
+      encoding.am
+      datetime.am
+      crypto.am
+      path.am                      ← v0.4.11
+      logging.am                   ← v0.4.12
+      service.am                   ← v0.4.13
+  tests/
+    run_all_tests.sh               ← drives every sub-suite
+    run_tests.sh                   ← core + advanced
+    run_stdlib_tests.sh            ← stdlib modules
+    run_fmt_tests.sh
+    run_amc_new_tests.sh           ← amc new templates
+    samples/                       ← .am test fixtures
+  stdlib/strings.am                ← legacy pure-Amalgame strings
+  tools/
+    save-snapshot.sh
+    release.sh                     ← end-to-end release flow
+  install/                         ← homebrew/etc placeholders
+
+═══════════════════════════════════════════════════════════════
+  TL;DR for the new session
+═══════════════════════════════════════════════════════════════
+
+Pick up from v0.4.15. Develop is 3 commits ahead of main with
+post-release accumulation (CLEANUP.sh removal + 2 doc-PRs that
+expanded the database / messaging roadmap entries). Working tree
+clean, both branches synced to origin, all tags up to v0.4.15
+published. `~/.local/bin/amc` is updated to 0.4.15 (the LSP
+extension uses it).
+
+Memory feedbacks already cover: répondre en français dans le
+chat / pas de Co-Authored-By trailer / édits autonomes après
+plan validé / features sur develop. Apply them by default.
+
+The most natural next directions are:
+1. **Cut v0.4.16** to roll the develop-side accumulation into a
+   real release (small — CLEANUP.sh + doc updates only).
+2. **LSP slice 5** — foldingRange is the user-explicitly-requested
+   piece, smallest scope.
+3. **Pick a sibling Database backend** to ship — PostgreSQL or
+   DuckDB are the natural follow-ons to SQLite. Redis as a NoSQL
+   would be smallest (pure-Amalgame, no native dep).
+4. **Pick a message broker** — MQTT first (smallest pure-Amalgame
+   implementation, ~300 LoC).
+
+Ask me which direction before diving in.
 ```
 
 ---
 
-## What's actually in the repo right now
-
-For quick recall when reopening the project:
+## After-clone setup (one-time)
 
 ```
-src/                    ← Amalgame compiler in Amalgame
-├── lexer/                token.am, lexer.am
-├── parser/               ast.am, parser.am
-├── resolver/             symbol.am, resolver.am
-├── generator/            c_gen.am, gen_test.am
-├── formatter/            formatter.am          (`amc fmt`)
-├── linter.am             static analysis      (`amc --lint`)
-├── lsp.am                workspace-aware LSP  (`amc lsp`)
-├── migrate.am            LLM source-to-Amalgame    (`amc migrate`)
-├── generate.am           LLM prose-to-Amalgame     (`amc generate`)
-├── explain.am            LLM Amalgame-to-prose     (`amc explain`)
-├── typechecker.am
-├── diagnostics.am
-├── new_cmd.am           project scaffolder         (`amc new`)
-├── stdlib/json.am       Amalgame.Json (parser/encoder/accessors)
-├── main.am              (CLI: compile, fmt, test, lsp, --lint, --check,
-                                migrate, generate, explain, new)
-└── amc_lib.c             (generated)
-
-runtime/                ← C runtime (bdwgc, strings, IO, collections, net,
-                          environment, process). Env_Get/Has aliases
-                          + Http_PostWithHeaders return-type tracked
-                          since v0.4.0 (PR #160). libcurl required for
-                          Net + claude-api / chatgpt / gemini providers.
-src/stdlib/json.am      ← Amalgame.Json: pure-Amalgame JSON parser +
-                          encoder. Used internally by lsp.am / migrate.am.
-                          Bundled into amc_lib.c via gen_test.am.
-tests/                  ← samples + run_*.sh runners (output in /tmp)
-docs/guide/             ← user guide chapters 1–8 (8 = LLM commands)
-docs/language/          ← grammar.ebnf + grammar.md
-docs/proposals/         ← design proposals (RFC-style); amc-migrate.md
-                          tracks the LLM-roadmap status
-snapshot/               ← amc_lib.c (committed) + amc binary (gitignored)
-                          + INFO.md (provenance)
-tools/save-snapshot.sh  ← capture a known-good amc after green tests
-editors/vscode/         ← VS Code extension (TextMate grammar + LSP client)
-.github/workflows/      ← CI + Release automation
-install/                ← Homebrew / Inno Setup / install.sh sketches
-README.md               ← elevator pitch + tested samples
-ROADMAP_COMPLET.md      ← canonical "what's next" board
-CHANGELOG.md            ← per-release notes (v0.3.2 onwards)
-CONTINUATION.md         ← this file
+git clone https://github.com/amalgame-lang/Amalgame.git
+cd Amalgame
+git config merge.ours.driver true          # see gotcha #13 above
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+./build_amc.sh                              # builds ./amc from src/
+./tests/run_all_tests.sh                    # 434 PASS expected
 ```
 
-## Memory the assistant has about this project
+System deps (apt):
 
-The session-persistent memory store at
-`~/.claude/projects/-home-neitsab-D-veloppement-Amalgame/memory/`
-already holds:
+```
+sudo apt install -y gcc libgc-dev libcurl4-openssl-dev
+```
 
-- `project_amalgame.md` — project overview
-- `reference_build.md` — build/test commands, file roles
-- `feedback_gitflow.md` — features always on develop, never on main
-- `feedback_autonomous_edits.md` — execute Edit/Write/Bash/git
-  directly without per-step permission prompts
-- `feedback_language.md` — chat in French; code/commits stay English
-- `project_amc_migrate_idea.md` — the original idea log for the
-  LLM roadmap (now mostly shipped)
-
-A new session reads these automatically and applies them.
-
-## Common pitfalls when resuming
-
-1. **Bootstrap circularity** — when you add a runtime helper or
-   builtin, the running `amc` doesn't know about it until you rebuild.
-   `build_amc.sh` step 1 tolerates non-zero exit from `amc` if the
-   `.c` file was produced; gcc remains the real correctness gate.
-   This bit twice during v0.4 (Env_Get and Http_PostWithHeaders return
-   types had to land in their own infrastructure PR before the migrate
-   v1.2 PR could even bootstrap).
-
-2. **`void*` erasure across method-call boundaries** — the self-host
-   codegen emits `void* x = SomeFunc()` instead of carrying the
-   typed return when the call chains through a generic List<T>
-   field. Two known fixes:
-   (a) pin the local: `let pn: int = this.X.Count()`
-   (b) split into a typed helper that takes the AstNode parameter.
-   Both patterns are already in use across the compiler. CI on
-   macOS/Windows treats -Wint-conversion as an error, so warnings
-   ignored locally on Ubuntu will fail the merge.
-
-3. **File order in `AMC_SOURCES`** — `diagnostics.am` must come
-   before files that reference `SourceMap` / `SourceSnippet`.
-   `main.am` is intentionally **excluded** from the gen_test build
-   list because it carries a `Program.Main` that conflicts with
-   `gen_test.am`'s own.
-
-4. **Generics still erase to `void*` at the C level** — primitive
-   collection elements are boxed via `(void*)(intptr_t)`. The cgen
-   tracks elem types for `List<T>` / `Map<K,V>` (locals, params,
-   returns, annotations) and emits `(T)…_get(…)` so callers see the
-   right type. Lambda v2.5 extends this to xs.Filter / xs.Map results.
-
-5. **`?.` evaluates the receiver twice** — keep the receiver
-   side-effect-free, or extract it to a `let` first.
-
-6. **Snapshot before risky syntax** — when introducing new syntax,
-   *take a snapshot first* (tools/save-snapshot.sh) so the bootstrap
-   chain stays usable. If `./amc` breaks, build_amc.sh falls through
-   to `./snapshot/amc`.
-
-7. **Multi-line string concatenation** — the self-host parser
-   chokes on `let s = "a" +\n   "b" +\n   "c"`. Keep `+`-chains on
-   a single line, or use `var s = ""; s = s + "a"; s = s + "b"`.
-   (Multi-line method chains DO work since PR #154 — only string
-   concatenation is still single-line.)
-
-8. **Lambda capture is by value** — `var sum = 0; xs.ForEach(x =>
-   sum = sum + x)` won't accumulate; the closure has a copy of sum.
-   Use Reduce for accumulation.
-
-9. **Re-tagging a release** — if you need to retag (e.g. fixed CI
-   config), delete the existing GitHub Release via the web UI BEFORE
-   pushing the new tag. `softprops/action-gh-release@v2` edits
-   instead of replacing, leaving stray assets from the old run.
-   In practice it's almost always cleaner to bump the patch number.
-
-10. **String interpolation in source code that happens to contain
-    examples of itself** — when writing prompts in Amalgame source
-    that include `"x={x}"` literally, the lexer interpolates the
-    embedded `{x}`. Workaround used in migrate.am / generate.am /
-    explain.am: split the literal braces out as their own concat
-    pieces (`let lb = "{"; out = out + "..." + lb + "x" + "}"`).
-
-11. **gen_test linking and libcurl** — adding a runtime symbol that
-    pulls in curl (e.g. wrapping Http_*) means gen_test now needs
-    `-lcurl` too. build_amc.sh links it since v0.4.0 (PR #161). If a
-    new runtime call brings in a fresh transitive dep, propagate the
-    `-l<lib>` flag here as well.
-
-12. **Bump the `--version` string in `src/main.am` BEFORE every tag** —
-    the version is hardcoded in the `--version` flag handler:
-
-        Console.WriteLine("amc <X.Y.Z> (self-hosted Amalgame compiler)")
-
-    This was forgotten on the v0.4.0 push (binary still printed
-    `0.3.6` after the tag). Use `tools/release.sh` to do it
-    correctly:
-
-        ./tools/release.sh 0.4.4
-
-    The script bumps every place the version lives
-    (`src/main.am`, `README.md`), inserts a CHANGELOG stub for
-    you to fill in, builds + tests + saves a snapshot, then
-    walks the gitflow:
-
-        release/vX.Y.Z  →  develop  →  main  →  tag vX.Y.Z
-
-    Both PR transitions go through `gh pr merge --auto --merge`
-    so the protected-branch CI is what flips them. `--dry-run`
-    walks through without mutating anything; `--no-tag` stops
-    after main is updated, in case you want to inspect main
-    before publishing the tag.
-
-    Pre-flight refuses to start if you're not on `develop`, the
-    working tree is dirty, or the target tag already exists —
-    so the v0.4.0-style "forgot to bump" mistake can't happen
-    through this path.
-
-13. **One-time post-clone setup for `merge=ours`** — `.gitattributes`
-    declares `merge=ours` for `snapshot/amc_lib.c`, `snapshot/INFO.md`,
-    and `src/amc_lib.c` (generated artefacts; canonical resolution
-    on conflict is "rebuild from sources"). For the strategy to take
-    effect, git needs to know "ours" is a valid driver. Run once
-    after cloning:
-
-        git config merge.ours.driver true
-
-    Without this, git falls back to a normal three-way merge on the
-    generated files and you get the same conflict noise as before.
+(macOS uses brew; Windows uses MSYS2 mingw64 — see ci.yml.)
