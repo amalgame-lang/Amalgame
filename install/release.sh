@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-VERSION="${1:-$(grep "version" meson.build | head -1 | grep -oP "[\d.]+" )}"
+VERSION="${1:-$(grep "version" archive/vala-bootstrap/meson.build | head -1 | grep -oP "[\d.]+" )}"
 DIST="dist"
 
 echo "Building Amalgame v$VERSION release archives..."
@@ -38,8 +38,9 @@ ARCHIVE_DIR="$DIST/$ARCHIVE_NAME"
 
 echo "Building for $TARGET..."
 
-# Build
-meson setup build --buildtype=release --wipe 2>/dev/null || meson setup build --buildtype=release
+# Build (the Vala bootstrap meson.build now lives in archive/)
+meson setup build archive/vala-bootstrap --buildtype=release --wipe 2>/dev/null \
+    || meson setup build archive/vala-bootstrap --buildtype=release
 ninja -C build
 
 # Assemble archive directory
