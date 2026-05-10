@@ -7,6 +7,44 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.11] — 2026-05-10
+
+The "Path stdlib lands" release. v0.4.10 closed LSP slice 4;
+v0.4.11 pivots to the stdlib backlog and ships the first of
+several gaps: cross-platform path manipulation as a proper
+`namespace Amalgame.Path` facade.
+
+### Added
+
+- **`Amalgame.Path`** (PR #250) — `public class Path` exposing
+  Combine, Extension, Filename, Directory, Stem, IsAbsolute,
+  Normalize, and Sep. Wraps the existing C runtime `Path_*`
+  helpers and adds four new operations (`Stem`, `IsAbsolute`,
+  `Normalize`, `Sep`) for the gaps the runtime didn't cover.
+  Normalize follows Go's `filepath.Clean` semantics — pure
+  string operation, doesn't touch the filesystem, so it works
+  on non-existent paths. Output canonical separator is always
+  `/` — Windows accepts forward slashes everywhere, and a
+  deterministic canonical form is what callers expect.
+
+### Roadmap
+
+- `Amalgame.Logging` — structured logging with levels, JSON +
+  text formatters, console + file sinks. Tracked alongside Path
+  as a pre-requisite for `amc new --template service`.
+- `Amalgame.Database` — minimum SQLite via libsqlite3.
+- `amc new <name> --template service` and `--template forms` —
+  cross-platform service / GUI scaffolders.
+
+### Tests / infra
+
+- Suite grows to **393 PASS / 0 FAIL / 0 SKIP** (was 372).
+  21 new cases under `tests/run_stdlib_tests.sh` exercise every
+  Path method + the documented edge cases.
+- Snapshot refreshed.
+
+---
+
 ## [v0.4.10] — 2026-05-10
 
 The "LSP slice 4 closes" release. v0.4.9 finished slice 3 (rename
@@ -1202,6 +1240,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.11]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.11
 [v0.4.10]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.10
 [v0.4.9]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.9
 [v0.4.8]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.8
