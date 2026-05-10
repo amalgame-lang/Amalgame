@@ -17,7 +17,7 @@ you're impatient, skim this chapter once and refer back when needed.
 
 ## Variables and primitives
 
-```amalgame
+```kotlin
 let x = 42                  // immutable binding (recommended)
 var y = 3.14                // mutable binding
 let n: int = 7              // explicit type annotation
@@ -32,7 +32,7 @@ Nullable types use `T?` (e.g. `User?`).
 
 ## Operators
 
-```amalgame
+```kotlin
 // Arithmetic
 let a = 1 + 2 - 3 * 4 / 5 % 6
 // Comparison
@@ -63,7 +63,7 @@ bitwise complement.
 
 ## Strings
 
-```amalgame
+```kotlin
 let plain = "hello"
 let escaped = "tab\there\nnewline"
 let hex = "\x1b[31mred\x1b[0m"          // \xHH = one byte
@@ -80,14 +80,14 @@ a known local), `this.field`, and method/static calls (e.g.
 `{Math.Sqrt(x)}`, `{String.Length(s)}`). For deeper expressions like
 `{Math.Sqrt(obj.field)}` use a let-binding first:
 
-```amalgame
+```kotlin
 let v = obj.field
 "sqrt = {Math.Sqrt(v)}"
 ```
 
 ## Classes
 
-```amalgame
+```kotlin
 public class User {
     // Fields with explicit types
     public Name: string
@@ -114,7 +114,7 @@ public class User {
 
 Use:
 
-```amalgame
+```kotlin
 let u = new User("Alice", 30)
 Console.WriteLine(u.Greet())
 u.AddScore(10)
@@ -122,7 +122,7 @@ u.AddScore(10)
 
 ### Static methods
 
-```amalgame
+```kotlin
 public class Calc {
     public static int Add(int a, int b) { return a + b }
     public static int Mul(int a, int b) { return a * b }
@@ -133,7 +133,7 @@ let n = Calc.Add(2, 3)
 
 ### Inheritance
 
-```amalgame
+```kotlin
 public class Animal {
     public Name: string
     public Animal(string n) { this.Name = n }
@@ -151,7 +151,7 @@ public class Cat extends Animal {
 
 ### Data classes / records
 
-```amalgame
+```kotlin
 data class Point(float X, float Y)
 record Line(Point A, Point B)
 ```
@@ -163,7 +163,7 @@ field declaration order. Useful for plain value carriers.
 
 Simple enum:
 
-```amalgame
+```kotlin
 public enum Direction {
     North
     East
@@ -182,7 +182,7 @@ match d {
 
 Algebraic enum (tagged union):
 
-```amalgame
+```kotlin
 public enum Shape {
     Circle(int)
     Rect(int, int)
@@ -203,7 +203,7 @@ match s {
 
 ## Interfaces
 
-```amalgame
+```kotlin
 public interface Shape {
     int Area()
     string Name()
@@ -220,7 +220,7 @@ public class Square implements Shape {
 Since v0.3.5, interfaces support generic params and the
 TypeChecker enforces the contract:
 
-```amalgame
+```kotlin
 public interface IComparable<T> {
     Compare(T other) -> int
 }
@@ -243,7 +243,7 @@ duck-typed dispatch — there's no vtable yet.
 
 ## Control flow
 
-```amalgame
+```kotlin
 if (x > 0) {
     Console.WriteLine("positive")
 } else if (x < 0) {
@@ -265,7 +265,7 @@ continue
 
 ### Guard clauses
 
-```amalgame
+```kotlin
 public static int Clamp(int x, int lo, int hi) {
     guard x > lo else { return lo }
     guard x < hi else { return hi }
@@ -279,7 +279,7 @@ to `if (!(cond)) { exit }`.
 
 ### Pattern matching
 
-```amalgame
+```kotlin
 match n {
     0           => Console.WriteLine("zero"),
     x if x < 0  => Console.WriteLine("negative"),         // arm guard
@@ -292,7 +292,7 @@ match n {
 Arm bodies are **statements**, not expressions. To compute a value,
 use early-return inside arms or assign in each branch:
 
-```amalgame
+```kotlin
 public string Classify(int n) {
     if (n == 0) { return "zero" }
     if (n < 0)  { return "negative" }
@@ -302,7 +302,7 @@ public string Classify(int n) {
 
 For algebraic enums, patterns destructure the payload:
 
-```amalgame
+```kotlin
 match shape {
     Circle(r)  => useRadius(r),
     Rect(w, h) => useDims(w, h)
@@ -311,7 +311,7 @@ match shape {
 
 ### Try / catch / throw
 
-```amalgame
+```kotlin
 try {
     risky()
 } catch (e) {
@@ -326,7 +326,7 @@ stack unwinding cost when no throw fires.
 
 ## Tuples
 
-```amalgame
+```kotlin
 public class Math2 {
     public static (int, int) DivMod(int a, int b) {
         return (a / b, a % b)
@@ -338,7 +338,7 @@ let (q, r) = Math2.DivMod(17, 5)   // q = 3, r = 2
 
 ## Lambdas
 
-```amalgame
+```kotlin
 // Single-param, expression body
 let double = x => x * 2
 
@@ -367,7 +367,7 @@ Higher-order `List<T>` methods accept a lambda directly (since
 v0.3.6 — see [04-stdlib.md](04-stdlib.md#listt) for the full
 list):
 
-```amalgame
+```kotlin
 let nums = new List<int>()
 nums.Add(1) ; nums.Add(2) ; nums.Add(3) ; nums.Add(4)
 let big   = nums.Filter(x => x > 2)              // [3, 4]
@@ -386,7 +386,7 @@ layer that's tracked for the next release.
 `T?` declares a nullable. `?.` short-circuits to `null` when the
 receiver is null:
 
-```amalgame
+```kotlin
 let user: User? = null
 let name = user?.Name              // null
 let len  = user?.GetNameLength()   // null
@@ -398,13 +398,13 @@ if (name == null) {
 `??` is null-coalescing (returns the right operand when the left
 is null):
 
-```amalgame
+```kotlin
 let display = user?.Name ?? "anonymous"
 ```
 
 ## Decorators
 
-```amalgame
+```kotlin
 public class Math2 {
     @inline
     public static int Square(int x) { return x * x }
@@ -423,7 +423,7 @@ Other decorators are accepted by the parser but currently no-ops.
 
 ## Named arguments
 
-```amalgame
+```kotlin
 let p = new Person(name: "Bastien", age: 31)
 Math2.Clamp(x: 50, lo: 0, hi: 10)
 ```

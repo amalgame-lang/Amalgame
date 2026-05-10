@@ -15,7 +15,7 @@ A self-hosted programming language that compiles to C.
 > Site officiel : **[amalgame.me](https://amalgame.me)**
 > [Tour du langage](https://amalgame.me/fr/tour) · [Installer](https://amalgame.me/fr/install) · [Versions](https://amalgame.me/fr/releases)
 
-```amalgame
+```kotlin
 namespace App
 import Amalgame.IO
 
@@ -55,7 +55,7 @@ Current version: **v0.4.4**.
 
 ## Language at a glance
 
-```amalgame
+```kotlin
 namespace App
 import Amalgame.IO
 
@@ -143,7 +143,7 @@ gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -lws2_32 -o amc.exe
 
 ### Hello, world
 
-```amalgame
+```kotlin
 // hello.am
 namespace App
 import Amalgame.IO

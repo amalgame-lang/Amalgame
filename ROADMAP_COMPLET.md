@@ -627,6 +627,18 @@ implementation effort.
       until the extension is actually published under the org
       identity on the marketplace.
 
+### Marketing / discoverability
+- [ ] **Submit Amalgame to GitHub Linguist** — until accepted,
+      ` ```amalgame ` markdown fences render as plain text and
+      `.am` files don't get a language badge on the repo. Linguist
+      uses a stars/usage heuristic (~200 repos) and requires a
+      TextMate grammar — we already have one in
+      `editors/vscode/syntaxes/amalgame.tmLanguage.json`. Until we
+      cross the threshold, README + docs/guide use ` ```kotlin `
+      as a syntax-highlight fallback (closest visual match: shared
+      `let` / `var` / `class` / `null` keywords, mismatches on
+      `fn` and lowercase type names).
+
 ### Documentation
 - [x] User guide (`docs/guide/`)
 - [x] README that doesn't lie about features

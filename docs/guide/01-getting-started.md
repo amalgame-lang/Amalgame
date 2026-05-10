@@ -66,7 +66,7 @@ ships `amc-X.Y.Z-{linux,macos,windows}-...` archives.
 
 Save as `hello.am`:
 
-```amalgame
+```kotlin
 namespace App
 import Amalgame.IO
 
@@ -99,7 +99,7 @@ A few important conventions:
 
 ## A slightly bigger first program
 
-```amalgame
+```kotlin
 // add.am
 namespace App
 import Amalgame.IO
@@ -123,7 +123,7 @@ public class Program {
 
 ## Library mode (no `main()`)
 
-```amalgame
+```kotlin
 // greeter.am
 namespace MyLib
 
