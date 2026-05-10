@@ -7,6 +7,108 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.7] — 2026-05-10
+
+The "LSP gets useful" release. The IDE experience moves from
+"diagnostics + hover + completion, with ~150 spurious typechecker
+errors per workspace" to "diagnostics-clean + Cmd+Click navigates
+to definition". Plus a one-line resolver fix that turned out to
+be the root cause of the long-parked typechecker false-positives.
+
+### Added
+
+- **`textDocument/definition` + `textDocument/declaration`**
+  (PR #227) — Cmd+Click jumps to the declaration site of any
+  top-level symbol (class, enum, interface) reachable through
+  the workspace resolver. Slice 1 of `amc lsp` v2 navigation
+  per the roadmap. Slice 2 (member methods, fields, references)
+  lands as a follow-up.
+- **`Amalgame.Crypto` cleanup-only follow-up tooling**
+  — `xs.Set(idx, value)` wired into the cgen as a side effect
+  of investigating the resolver bug below. The runtime
+  `AmalgameList_set` was already there; the cgen surface is
+  new (PR #228).
+
+### Fixed
+
+- **Resolver: `MemberTable.Set` was `Values.Add`-ing on duplicate
+  key** (PR #228) — single-line semantic bug that desynced the
+  parallel `Keys` / `Values` arrays. Every subsequent lookup
+  returned a value belonging to *another* (member, class) pair.
+  The build path never tripped on it (each MemberTable instance
+  saw each member once); workspace LSP did, because the open
+  file is parsed once from didOpen text and *also* picked up by
+  the workspace `find` scan, re-collecting its classes. LSP probe
+  before / after across the 9 main compiler files: ~150 spurious
+  typechecker diagnostics → **0**. Resolves the "37-case spurious
+  typechecker on lexer.am via the LSP" item parked in
+  ROADMAP_COMPLET since v0.4.4.
+- **LSP: `UriToPath` percent-decodes `%XX` escapes** (PR #227) —
+  VS Code sends URIs with percent-encoded UTF-8 for any non-ASCII
+  byte in the path (`Développement` → `D%C3%A9veloppement`). The
+  previous decoder kept the literal bytes, the workspace scan
+  walked an inexistent path, the resolver fell back to
+  single-file mode, and any cross-file type reference became an
+  "Unknown symbol" diagnostic. Self-contained ~50 LoC pure-
+  Amalgame decoder + hex helper. On `c_gen.am` alone: ~130
+  spurious "Unknown symbol 'NodeKind'" → 0.
+- **LSP: definition replies now percent-encode the response URI**
+  (PR #229) — the inverse of the request-side fix. VS Code's
+  DocumentURI parser silently rejects replies whose `uri` carries
+  raw UTF-8 bytes; symptom was Cmd+Click "spinning forever" even
+  though the LSP did respond. New `PercentEncodePath` walks the
+  reply path byte-by-byte, leaves the URI-unreserved set
+  (`A-Za-z0-9-._~/`) literal, percent-encodes everything else.
+- **Cleanup: chain-mash typed-local workarounds removed**
+  (PR #225) — now that PR #221 (constructor forward-decl) and
+  PR #222 (`obj.Field.Method()` / `obj.Method().Method()`
+  chain-mash) are in, the workarounds in `lsp.am`, `migrate.am`,
+  and `stdlib/datetime.am::InstantResult` are mechanically
+  unnecessary. Same PR uncovered + fixed two more cgen type-
+  inference gaps (`Get`-handler chain receiver,
+  `MethodRetGet` chain receiver) that the workarounds had been
+  masking.
+
+### Tooling
+
+- **`tools/release.sh` patched in four spots** (PR #220) after
+  walking through it manually for v0.4.5: README sed catches
+  both bump patterns, back-merge from main runs before the
+  develop → main PR, `--admin --merge` fallback for repos where
+  auto-merge isn't available, CHANGELOG-edit prompt prefers
+  `$EDITOR` and falls through cleanly when there's no tty.
+- **`release-pdf.yml` lmodern fix + `workflow_dispatch`**
+  (PR #219) — Ubuntu 24.04's `texlive-fonts-recommended` doesn't
+  pull `lmodern`, which pandoc's default LaTeX template needs.
+  v0.4.5 missed its PDF; v0.4.6+ have the asset attached on the
+  first run. Manual trigger added so older tags can be reprocessed.
+
+### Roadmap
+
+- **`amc lsp` v2 navigation** (PR #226) — full inventory of the
+  next-tier LSP features (declaration, type definition,
+  references, hover preview, find-all-references, document
+  symbols, workspace symbol, call hierarchy, rename, inlay
+  hints, code actions). Slice 1 (definition) lands here; the
+  rest is sized to drop in as small PRs.
+- **`amc lsp` performance — workspace resolver caching**
+  (PR #229) — every request currently re-parses the entire
+  workspace (~2.5–3s on a 30-file repo). Caching with
+  invalidation on didChange is the next perf win.
+- **VS Code extension robustness on `serverPath`** (PR #229) —
+  ~5 LoC fix in `extension.js`: trim whitespace + expand
+  leading `~/` before `child_process.spawn` so the natural
+  shell-style values just work.
+
+### Tests / infra
+
+- Suite stays at **372 PASS / 0 FAIL / 0 SKIP**. Snapshot refreshed
+  several times across the cycle (each cgen-touching PR + the
+  resolver bug fix needed a re-bootstrap so cold-start clones
+  could parse the new sources).
+
+---
+
 ## [v0.4.6] — 2026-05-10
 
 The "compiler quirk-cleanup" release. Three patches to long-known
@@ -925,6 +1027,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.7]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.7
 [v0.4.6]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.6
 [v0.4.5]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.5
 [v0.4.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.4
