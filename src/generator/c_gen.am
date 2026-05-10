@@ -845,9 +845,11 @@ public class CGen {
                 // Path stdlib return types
                 if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory" || calleeStr == "Path_GetStem" || calleeStr == "Path_Normalize" || calleeStr == "Path_Sep") { return "code_string" }
                 if (calleeStr == "Path_IsAbsolute") { return "code_bool" }
-                // Logging stdlib return types
-                if (calleeStr == "Logging_GetMinLevel" || calleeStr == "Logging_GetFile") { return "code_string" }
-                if (calleeStr == "Logging_SetMinLevel" || calleeStr == "Logging_SetFile" || calleeStr == "Logging_Debug" || calleeStr == "Logging_Info" || calleeStr == "Logging_Warn" || calleeStr == "Logging_Error") { return "void" }
+                // Logging stdlib return types — runtime helpers under
+                // the `Log_*` prefix; `Log.Info(...)` in user code lowers
+                // here directly via the isStdlib short-circuit below.
+                if (calleeStr == "Log_GetMinLevel" || calleeStr == "Log_GetFile") { return "code_string" }
+                if (calleeStr == "Log_SetMinLevel" || calleeStr == "Log_SetFile" || calleeStr == "Log_Debug" || calleeStr == "Log_Info" || calleeStr == "Log_Warn" || calleeStr == "Log_Error") { return "void" }
                 // Service stdlib return types
                 if (calleeStr == "Service_ShouldStop") { return "code_bool" }
                 if (calleeStr == "Service_Install" || calleeStr == "Service_RequestStop" || calleeStr == "Service_Sleep") { return "void" }
@@ -3099,7 +3101,7 @@ public class CGen {
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
                         // Stdlib classes are never namespace-prefixed
-                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process"
+                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service"
                         if (isStdlib) {
                             return tname + "_" + mname
                         }

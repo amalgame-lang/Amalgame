@@ -3831,10 +3831,10 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Path_IsAbsolute")) {
                 return "code_bool";
             }
-            if (code_string_equals(calleeStr, "Logging_GetMinLevel") || code_string_equals(calleeStr, "Logging_GetFile")) {
+            if (code_string_equals(calleeStr, "Log_GetMinLevel") || code_string_equals(calleeStr, "Log_GetFile")) {
                 return "code_string";
             }
-            if (code_string_equals(calleeStr, "Logging_SetMinLevel") || code_string_equals(calleeStr, "Logging_SetFile") || code_string_equals(calleeStr, "Logging_Debug") || code_string_equals(calleeStr, "Logging_Info") || code_string_equals(calleeStr, "Logging_Warn") || code_string_equals(calleeStr, "Logging_Error")) {
+            if (code_string_equals(calleeStr, "Log_SetMinLevel") || code_string_equals(calleeStr, "Log_SetFile") || code_string_equals(calleeStr, "Log_Debug") || code_string_equals(calleeStr, "Log_Info") || code_string_equals(calleeStr, "Log_Warn") || code_string_equals(calleeStr, "Log_Error")) {
                 return "void";
             }
             if (code_string_equals(calleeStr, "Service_ShouldStop")) {
@@ -6087,7 +6087,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
-                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process");
+                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service");
                     if (isStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8518,14 +8518,16 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Sep", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_SetMinLevel", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_GetMinLevel", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_SetFile", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_GetFile", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Debug", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Info", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Warn", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Logging_Error", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_SetMinLevel", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_GetMinLevel", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_SetFile", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_GetFile", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Debug", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Info", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Warn", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Error", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Install", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
@@ -17272,6 +17274,7 @@ void Amalgame_Compiler_NewCommand_PrintUsage();
 i64 Amalgame_Compiler_NewCommand_Run(i64 argc);
 static i64 Amalgame_Compiler_NewCommand_ScaffoldExe(code_string path, code_string base);
 static i64 Amalgame_Compiler_NewCommand_ScaffoldLib(code_string path, code_string base);
+static i64 Amalgame_Compiler_NewCommand_ScaffoldService(code_string path, code_string base);
 static i64 Amalgame_Compiler_NewCommand_ScaffoldTest(code_string path, code_string base);
 static code_string Amalgame_Compiler_NewCommand_MainAmExe(code_string name);
 static code_string Amalgame_Compiler_NewCommand_TestAmExe(code_string name);
@@ -17282,7 +17285,15 @@ static code_string Amalgame_Compiler_NewCommand_BuildShLib(code_string name);
 static code_string Amalgame_Compiler_NewCommand_ReadmeLib(code_string name);
 static code_string Amalgame_Compiler_NewCommand_TestAmTest(code_string name);
 static code_string Amalgame_Compiler_NewCommand_ReadmeTest(code_string name);
+static code_string Amalgame_Compiler_NewCommand_MainAmService(code_string name);
+static code_string Amalgame_Compiler_NewCommand_SystemdUnit(code_string name);
+static code_string Amalgame_Compiler_NewCommand_InstallShService(code_string name);
+static code_string Amalgame_Compiler_NewCommand_BuildShService(code_string name);
+static code_string Amalgame_Compiler_NewCommand_BuildPs1Service(code_string name);
+static code_string Amalgame_Compiler_NewCommand_InstallPs1Service(code_string name);
+static code_string Amalgame_Compiler_NewCommand_ReadmeService(code_string name);
 static code_string Amalgame_Compiler_NewCommand_GitignoreCommon();
+static code_string Amalgame_Compiler_NewCommand_GitignoreService(code_string name);
 static code_bool Amalgame_Compiler_NewCommand_WriteFile(code_string path, code_string content);
 static code_string Amalgame_Compiler_NewCommand_ShellEscape(code_string s);
 static code_bool Amalgame_Compiler_NewCommand_IsSafeName(code_string s);
@@ -17300,12 +17311,15 @@ void Amalgame_Compiler_NewCommand_PrintUsage() {
     Console_WriteError("Scaffold a new Amalgame project named <name>.");
     Console_WriteError("");
     Console_WriteError("Templates:");
-    Console_WriteError("  exe    Default. src/main.am with Program.Main + a passing test.");
-    Console_WriteError("  lib    src/<name>.am with a public class skeleton, no main.");
-    Console_WriteError("  test   tests/<name>_test.am only — bolt onto an existing project.");
+    Console_WriteError("  exe      Default. src/main.am with Program.Main + a passing test.");
+    Console_WriteError("  lib      src/<name>.am with a public class skeleton, no main.");
+    Console_WriteError("  test     tests/<name>_test.am only — bolt onto an existing project.");
+    Console_WriteError("  service  Long-running daemon. signal-aware shutdown loop using");
+    Console_WriteError("           Amalgame.Service + Amalgame.Logging, a systemd unit, and");
+    Console_WriteError("           an install.sh wired for /usr/local/bin + systemctl.");
     Console_WriteError("");
     Console_WriteError("Flags:");
-    Console_WriteError("  --template <kind>    One of: exe (default), lib, test.");
+    Console_WriteError("  --template <kind>    One of: exe (default), lib, test, service.");
     Console_WriteError("  --force              Overwrite if <name>/ already exists.");
     Console_WriteError("  -h, --help           Print this help and exit.");
 }
@@ -17350,8 +17364,8 @@ i64 Amalgame_Compiler_NewCommand_Run(i64 argc) {
         Amalgame_Compiler_NewCommand_PrintUsage();
         return 1;
     }
-    if (!code_string_equals(template, "exe") && !code_string_equals(template, "lib") && !code_string_equals(template, "test")) {
-        Console_WriteError(code_string_concat(code_string_concat("amc new: unknown template '", template), "' (try exe / lib / test)"));
+    if (!code_string_equals(template, "exe") && !code_string_equals(template, "lib") && !code_string_equals(template, "test") && !code_string_equals(template, "service")) {
+        Console_WriteError(code_string_concat(code_string_concat("amc new: unknown template '", template), "' (try exe / lib / test / service)"));
         return 1;
     }
     code_string __attribute__((unused)) baseName = Amalgame_Compiler_NewCommand_Basename(name);
@@ -17373,6 +17387,9 @@ i64 Amalgame_Compiler_NewCommand_Run(i64 argc) {
     }
     if (code_string_equals(template, "lib")) {
         return Amalgame_Compiler_NewCommand_ScaffoldLib(name, baseName);
+    }
+    if (code_string_equals(template, "service")) {
+        return Amalgame_Compiler_NewCommand_ScaffoldService(name, baseName);
     }
     return Amalgame_Compiler_NewCommand_ScaffoldTest(name, baseName);
 }
@@ -17441,6 +17458,57 @@ static i64 Amalgame_Compiler_NewCommand_ScaffoldLib(code_string path, code_strin
     Console_WriteLine(code_string_concat(code_string_concat("Scaffolded '", base), "' (lib template)."));
     Console_WriteLine(code_string_concat("  cd ", path));
     Console_WriteLine(code_string_concat(code_string_concat("  ./build.sh   # builds ", base), ".o (library)"));
+    return 0;
+}
+
+static i64 Amalgame_Compiler_NewCommand_ScaffoldService(code_string path, code_string base) {
+    (void)path;
+    (void)base;
+    i64 __attribute__((unused)) srcDir = Process_Run(code_string_concat("mkdir -p ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/src"))));
+    if (srcDir != 0) {
+        Console_WriteError("amc new: failed to create src/ subdirectory");
+        return 1;
+    }
+    code_string __attribute__((unused)) mainAm = Amalgame_Compiler_NewCommand_MainAmService(base);
+    code_string __attribute__((unused)) unit = Amalgame_Compiler_NewCommand_SystemdUnit(base);
+    code_string __attribute__((unused)) installSh = Amalgame_Compiler_NewCommand_InstallShService(base);
+    code_string __attribute__((unused)) buildSh = Amalgame_Compiler_NewCommand_BuildShService(base);
+    code_string __attribute__((unused)) buildPs1 = Amalgame_Compiler_NewCommand_BuildPs1Service(base);
+    code_string __attribute__((unused)) installPs1 = Amalgame_Compiler_NewCommand_InstallPs1Service(base);
+    code_string __attribute__((unused)) readme = Amalgame_Compiler_NewCommand_ReadmeService(base);
+    code_string __attribute__((unused)) gitignore = Amalgame_Compiler_NewCommand_GitignoreService(base);
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/src/main.am"), mainAm)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(code_string_concat(code_string_concat(path, "/"), base), ".service"), unit)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/install.sh"), installSh)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/build.sh"), buildSh)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/install.ps1"), installPs1)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/build.ps1"), buildPs1)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/.gitignore"), gitignore)) {
+        return 1;
+    }
+    if (!Amalgame_Compiler_NewCommand_WriteFile(code_string_concat(path, "/README.md"), readme)) {
+        return 1;
+    }
+    Process_Run(code_string_concat("chmod +x ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/build.sh"))));
+    Process_Run(code_string_concat("chmod +x ", Amalgame_Compiler_NewCommand_ShellEscape(code_string_concat(path, "/install.sh"))));
+    Console_WriteLine(code_string_concat(code_string_concat("Scaffolded '", base), "' (service template)."));
+    Console_WriteLine(code_string_concat("  cd ", path));
+    Console_WriteLine("  Linux:    ./build.sh && sudo ./install.sh");
+    Console_WriteLine(code_string_concat("            sudo journalctl -fu ", base));
+    Console_WriteLine("  Windows:  .\\build.ps1 ; Start-Process powershell -Verb runAs install.ps1");
+    Console_WriteLine("            (uses NSSM under the hood; auto-downloaded if missing)");
     return 0;
 }
 
@@ -17663,6 +17731,345 @@ static code_string Amalgame_Compiler_NewCommand_ReadmeTest(code_string name) {
     return s;
 }
 
+static code_string Amalgame_Compiler_NewCommand_MainAmService(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "namespace "), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "import Amalgame.Collections\n");
+    s = code_string_concat(s, "import Amalgame.IO\n");
+    s = code_string_concat(s, "import Amalgame.Logging\n");
+    s = code_string_concat(s, "import Amalgame.Service\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "// ── "), name), " — long-running daemon ─────────────────────\n");
+    s = code_string_concat(s, "//\n");
+    s = code_string_concat(s, "// Built with `amc new <name> --template service`. The skeleton\n");
+    s = code_string_concat(s, "// covers the three things every service needs: catch the\n");
+    s = code_string_concat(s, "// shutdown signal, sleep between iterations without burning\n");
+    s = code_string_concat(s, "// CPU, and log to a place that survives the process exit.\n");
+    s = code_string_concat(s, "//\n");
+    s = code_string_concat(s, "// Replace `OnTick()` with your actual work. The systemd unit\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "// (`"), name), ".service`) runs this with stdout/stderr routed\n");
+    s = code_string_concat(s, "// to journald; on macOS use launchd, on Windows wrap it with sc.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "public class Program {\n");
+    s = code_string_concat(s, "    public static int Main(List<string> args) {\n");
+    s = code_string_concat(s, "        Log.SetMinLevel(\"info\")\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "        Log.Info(\""), name), " starting\")\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "        Service.Install()\n");
+    s = code_string_concat(s, "        var ticks: int = 0\n");
+    s = code_string_concat(s, "        while (!Service.ShouldStop()) {\n");
+    s = code_string_concat(s, "            Program.OnTick(ticks)\n");
+    s = code_string_concat(s, "            ticks = ticks + 1\n");
+    s = code_string_concat(s, "            Service.Sleep(5000)\n");
+    s = code_string_concat(s, "        }\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "        Log.Info(\""), name), " shutting down cleanly\")\n");
+    s = code_string_concat(s, "        return 0\n");
+    s = code_string_concat(s, "    }\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "    // Single iteration of work. Called every 5s by default; tune\n");
+    s = code_string_concat(s, "    // the Service.Sleep above or drive off events instead.\n");
+    s = code_string_concat(s, "    private static void OnTick(int n) {\n");
+    s = code_string_concat(s, "        Log.Info(\"tick \" + String_FromInt(n))\n");
+    s = code_string_concat(s, "    }\n");
+    s = code_string_concat(s, "}\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_SystemdUnit(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(s, "[Unit]\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Description="), name), " (Amalgame service)\n");
+    s = code_string_concat(s, "After=network.target\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "[Service]\n");
+    s = code_string_concat(s, "Type=simple\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "ExecStart=/usr/local/bin/"), name), "\n");
+    s = code_string_concat(s, "Restart=on-failure\n");
+    s = code_string_concat(s, "RestartSec=5s\n");
+    s = code_string_concat(s, "StandardOutput=journal\n");
+    s = code_string_concat(s, "StandardError=journal\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Run as a dedicated unprivileged user. Create with:\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin "), name), "\n");
+    s = code_string_concat(s, "# Then uncomment the User= line below.\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# User="), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# Group="), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "[Install]\n");
+    s = code_string_concat(s, "WantedBy=multi-user.target\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_InstallShService(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(s, "#!/usr/bin/env bash\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# install.sh — build + install the "), name), " daemon under systemd.\n");
+    s = code_string_concat(s, "# Re-run after a code change to deploy the new binary; systemctl\n");
+    s = code_string_concat(s, "# picks it up on the next restart triggered by the install step.\n");
+    s = code_string_concat(s, "set -euo pipefail\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "if [ \"$(id -u)\" -ne 0 ]; then\n");
+    s = code_string_concat(s, "    echo \"install.sh: must run as root (try: sudo ./install.sh)\" >&2\n");
+    s = code_string_concat(s, "    exit 1\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"==> Building "), name), "\"\n");
+    s = code_string_concat(s, "./build.sh\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"==> Installing binary to /usr/local/bin/"), name), "\"\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "install -m 0755 ./"), name), " /usr/local/bin/"), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"==> Installing systemd unit to /etc/systemd/system/"), name), ".service\"\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "install -m 0644 ./"), name), ".service /etc/systemd/system/"), name), ".service\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "echo \"==> Reloading systemd, enabling + (re)starting\"\n");
+    s = code_string_concat(s, "systemctl daemon-reload\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "systemctl enable "), name), ".service\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "systemctl restart "), name), ".service\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "echo \"==> Status\"\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "systemctl --no-pager --full status "), name), ".service || true\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "echo\n");
+    s = code_string_concat(s, "echo \"Done. Tail the logs with:\"\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"  journalctl -fu "), name), "\"\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_BuildShService(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) lb = "{";
+    code_string __attribute__((unused)) rb = "}";
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(s, "#!/usr/bin/env bash\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# build.sh — compile "), name), " to a native binary.\n");
+    s = code_string_concat(s, "# Same locate-the-runtime logic as the exe template:\n");
+    s = code_string_concat(s, "# env override (AMALGAME_HOME), system install dirs, or\n");
+    s = code_string_concat(s, "# the repo amc points to.\n");
+    s = code_string_concat(s, "set -euo pipefail\n");
+    s = code_string_concat(s, "cd \"$(dirname \"$0\")\"\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "RUNTIME=\"$"), lb), "AMALGAME_HOME:-"), rb), "\"\n");
+    s = code_string_concat(s, "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n");
+    s = code_string_concat(s, "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n");
+    s = code_string_concat(s, "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n");
+    s = code_string_concat(s, "  done\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n");
+    s = code_string_concat(s, "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n");
+    s = code_string_concat(s, "  if [ -n \"$AMC_BIN\" ]; then\n");
+    s = code_string_concat(s, "    cand=$(dirname \"$AMC_BIN\")\n");
+    s = code_string_concat(s, "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n");
+    s = code_string_concat(s, "  fi\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n");
+    s = code_string_concat(s, "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir>.\" >&2\n");
+    s = code_string_concat(s, "  exit 1\n");
+    s = code_string_concat(s, "fi\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "amc src/main.am -o "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "gcc -O2 -I\"$RUNTIME/runtime\" "), name), ".c -lgc -lm -lcurl -o "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "echo \"built ./"), name), "\"\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_BuildPs1Service(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# build.ps1 — compile "), name), " on Windows via MinGW gcc.\n");
+    s = code_string_concat(s, "#\n");
+    s = code_string_concat(s, "# Run from a PowerShell where `amc.exe` and a MinGW `gcc.exe`\n");
+    s = code_string_concat(s, "# are on PATH. The MSYS2 mingw64 shell installs both with:\n");
+    s = code_string_concat(s, "#   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl\n");
+    s = code_string_concat(s, "$ErrorActionPreference = 'Stop'\n");
+    s = code_string_concat(s, "Set-Location $PSScriptRoot\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "$runtime = $env:AMALGAME_HOME\n");
+    s = code_string_concat(s, "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n");
+    s = code_string_concat(s, "  $amc = (Get-Command amc -ErrorAction SilentlyContinue)\n");
+    s = code_string_concat(s, "  if ($amc) {\n");
+    s = code_string_concat(s, "    $cand = Split-Path -Parent $amc.Path\n");
+    s = code_string_concat(s, "    if (Test-Path \"$cand/runtime\") { $runtime = $cand }\n");
+    s = code_string_concat(s, "  }\n");
+    s = code_string_concat(s, "}\n");
+    s = code_string_concat(s, "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n");
+    s = code_string_concat(s, "  Write-Error \"build.ps1: runtime/ not found. Set `$env:AMALGAME_HOME.\"\n");
+    s = code_string_concat(s, "  exit 1\n");
+    s = code_string_concat(s, "}\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& amc src/main.am -o "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "& gcc -O2 -I\"$runtime/runtime\" "), name), ".c -lgc -lm -lcurl -o "), name), ".exe\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Write-Host \"built ./"), name), ".exe\"\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_InstallPs1Service(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# install.ps1 — register "), name), " as a Windows service via NSSM.\n");
+    s = code_string_concat(s, "#\n");
+    s = code_string_concat(s, "# NSSM (https://nssm.cc) is a tiny SCM wrapper that turns any\n");
+    s = code_string_concat(s, "# console binary into a proper Windows service. v1 of `amc new\n");
+    s = code_string_concat(s, "# --template service` ships NSSM-based scripts; native SCM\n");
+    s = code_string_concat(s, "# dispatcher integration is tracked for v2.\n");
+    s = code_string_concat(s, "#\n");
+    s = code_string_concat(s, "# Run from an elevated PowerShell:\n");
+    s = code_string_concat(s, "#   Start-Process powershell -Verb runAs -ArgumentList '-File','install.ps1'\n");
+    s = code_string_concat(s, "$ErrorActionPreference = 'Stop'\n");
+    s = code_string_concat(s, "Set-Location $PSScriptRoot\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Elevation check.\n");
+    s = code_string_concat(s, "$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()\n");
+    s = code_string_concat(s, "$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)\n");
+    s = code_string_concat(s, "if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {\n");
+    s = code_string_concat(s, "  Write-Error 'install.ps1 must run as Administrator.'\n");
+    s = code_string_concat(s, "  exit 1\n");
+    s = code_string_concat(s, "}\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Locate NSSM. Check PATH first, then fall back to a vendored\n");
+    s = code_string_concat(s, "# copy under ./nssm.exe (drop it in the project root if you\n");
+    s = code_string_concat(s, "# pre-downloaded). Auto-download as a last resort.\n");
+    s = code_string_concat(s, "$nssm = (Get-Command nssm -ErrorAction SilentlyContinue)\n");
+    s = code_string_concat(s, "$nssmExe = if ($nssm) { $nssm.Path } else { Join-Path $PSScriptRoot 'nssm.exe' }\n");
+    s = code_string_concat(s, "if (-not (Test-Path $nssmExe)) {\n");
+    s = code_string_concat(s, "  $url = 'https://nssm.cc/release/nssm-2.24.zip'\n");
+    s = code_string_concat(s, "  Write-Host \"Downloading NSSM from $url\"\n");
+    s = code_string_concat(s, "  $tmp = New-TemporaryFile\n");
+    s = code_string_concat(s, "  Invoke-WebRequest -Uri $url -OutFile $tmp.FullName\n");
+    s = code_string_concat(s, "  $extract = Join-Path $env:TEMP ('nssm-' + [Guid]::NewGuid())\n");
+    s = code_string_concat(s, "  Expand-Archive -Path $tmp.FullName -DestinationPath $extract -Force\n");
+    s = code_string_concat(s, "  $arch = if ([Environment]::Is64BitOperatingSystem) { 'win64' } else { 'win32' }\n");
+    s = code_string_concat(s, "  Copy-Item -Path (Join-Path $extract \"nssm-2.24/$arch/nssm.exe\") -Destination $nssmExe -Force\n");
+    s = code_string_concat(s, "  Remove-Item $tmp.FullName, $extract -Recurse -Force\n");
+    s = code_string_concat(s, "}\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Build the binary if missing or stale.\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "$exe = Join-Path $PSScriptRoot '"), name), ".exe'\n");
+    s = code_string_concat(s, "if (-not (Test-Path $exe)) { & .\\build.ps1 }\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Stop + remove any prior install so we cleanly replace it.\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe stop '"), name), "' 2>$null | Out-Null\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe remove '"), name), "' confirm 2>$null | Out-Null\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Register + configure + start.\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe install '"), name), "' $exe\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe set '"), name), "' AppDirectory $PSScriptRoot\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe set '"), name), "' DisplayName '"), name), " (Amalgame service)'\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe set '"), name), "' Start SERVICE_AUTO_START\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe set '"), name), "' AppStdout (Join-Path $PSScriptRoot '"), name), ".out.log')\n");
+    s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe set '"), name), "' AppStderr (Join-Path $PSScriptRoot '"), name), ".err.log')\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe start '"), name), "'\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "Write-Host ''\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Write-Host \"Done. Service registered as '"), name), "'.\"\n");
+    s = code_string_concat(s, "Write-Host '  Status:'\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "& $nssmExe status '"), name), "'\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Write-Host '  Stderr log: ' (Join-Path $PSScriptRoot '"), name), ".err.log')\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_ReadmeService(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = "";
+    s = code_string_concat(code_string_concat(code_string_concat(s, "# "), name), "\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "A long-running Amalgame daemon scaffolded by `amc new "), name), " --template service`.\n");
+    s = code_string_concat(s, "Uses `Amalgame.Service` for signal-aware shutdown and `Amalgame.Logging` for stderr / journal output.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Run in the foreground (any OS)\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "Build, then run the binary directly. Logs go to stderr in human-readable form.\n");
+    s = code_string_concat(s, "Hit `Ctrl-C` for clean shutdown.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "- **Linux / macOS:** `./build.sh && ./"), name), "`\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "- **Windows:**       `.\\build.ps1 ; .\\"), name), ".exe`\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Linux — install under systemd\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "sudo ./install.sh\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "Installs the binary to `/usr/local/bin/"), name), "`, drops the unit at\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "`/etc/systemd/system/"), name), ".service`, reloads systemd, and enables\n");
+    s = code_string_concat(s, "+ starts the service. Re-run after each code change to deploy.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "Inspect status / tail logs:\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "systemctl status "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "journalctl -fu "), name), "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Windows — install as a service (via NSSM)\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```powershell\n");
+    s = code_string_concat(s, "# elevated PowerShell\n");
+    s = code_string_concat(s, "Start-Process powershell -Verb runAs -ArgumentList '-File','install.ps1'\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "`install.ps1` does three things: builds the binary if missing,\n");
+    s = code_string_concat(s, "fetches [NSSM](https://nssm.cc) (a tiny SCM wrapper) into the project\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "root if not already present, then registers `"), name), "` as an\n");
+    s = code_string_concat(s, "auto-start Windows service with stdout/stderr routed to log files\n");
+    s = code_string_concat(s, "in the project directory.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "Operate the service via NSSM:\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```powershell\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "nssm status "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "nssm restart "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "nssm stop "), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "nssm remove "), name), " confirm\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "Or use the standard `sc` / `Get-Service` commands — NSSM-registered\n");
+    s = code_string_concat(s, "services are real Windows services from the OS's perspective.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## macOS — launchd\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "Not scaffolded yet. The binary itself runs cleanly on macOS\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "(`./build.sh && ./"), name), "` works identically to Linux); only\n");
+    s = code_string_concat(s, "the install scripting is Linux-specific. Write a `launchd.plist`\n");
+    s = code_string_concat(s, "and `launchctl bootstrap` it — tracked for a future template revision.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Why NSSM on Windows?\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "A native Windows service must call `StartServiceCtrlDispatcher`\n");
+    s = code_string_concat(s, "within ~30s of launch and report status changes back to SCM via\n");
+    s = code_string_concat(s, "`SetServiceStatus`. Plain console binaries — like the one this\n");
+    s = code_string_concat(s, "template scaffolds — don't do that. NSSM is a tiny exe (~350 KB)\n");
+    s = code_string_concat(s, "that handles the SCM dance + auto-restart + log rotation + crash\n");
+    s = code_string_concat(s, "recovery, transparently wrapping any console binary as a proper\n");
+    s = code_string_concat(s, "Windows service.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "From the operator's perspective the result is indistinguishable\n");
+    s = code_string_concat(s, "from a native service — same `sc start` / `Get-Service` / Event\n");
+    s = code_string_concat(s, "Viewer integration. A future template revision will add a\n");
+    s = code_string_concat(s, "`--native` switch that wires the SCM dispatcher directly into the\n");
+    s = code_string_concat(s, "binary; v1 ships NSSM-only.\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "## Project layout\n");
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "```\n");
+    s = code_string_concat(code_string_concat(s, name), "/\n");
+    s = code_string_concat(s, "├── src/main.am             # daemon entry point — edit OnTick() here\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "├── "), name), ".service      # systemd unit (Linux)\n");
+    s = code_string_concat(s, "├── install.sh              # build + deploy under systemd (Linux)\n");
+    s = code_string_concat(s, "├── install.ps1             # NSSM-based service install (Windows)\n");
+    s = code_string_concat(s, "├── build.sh                # POSIX compile: amc + gcc\n");
+    s = code_string_concat(s, "├── build.ps1               # Windows compile: amc + MinGW gcc\n");
+    s = code_string_concat(s, "├── .gitignore\n");
+    s = code_string_concat(s, "└── README.md\n");
+    s = code_string_concat(s, "```\n");
+    return s;
+}
+
 static code_string Amalgame_Compiler_NewCommand_GitignoreCommon() {
     code_string __attribute__((unused)) s = "";
     s = code_string_concat(s, "# Build artifacts\n");
@@ -17674,6 +18081,20 @@ static code_string Amalgame_Compiler_NewCommand_GitignoreCommon() {
     s = code_string_concat(s, ".vscode/\n");
     s = code_string_concat(s, ".idea/\n");
     s = code_string_concat(s, "*.swp\n");
+    return s;
+}
+
+static code_string Amalgame_Compiler_NewCommand_GitignoreService(code_string name) {
+    (void)name;
+    code_string __attribute__((unused)) s = Amalgame_Compiler_NewCommand_GitignoreCommon();
+    s = code_string_concat(s, "\n");
+    s = code_string_concat(s, "# Service template artifacts\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "/"), name), "\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "/"), name), ".exe\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "/"), name), ".c\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "/"), name), ".out.log\n");
+    s = code_string_concat(code_string_concat(code_string_concat(s, "/"), name), ".err.log\n");
+    s = code_string_concat(s, "/nssm.exe\n");
     return s;
 }
 
@@ -18184,7 +18605,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.4.13 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.4.14 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {
