@@ -127,6 +127,12 @@ public class LspServer {
                 let line: int   = pos.Get("line").AsInt()
                 let chr: int    = pos.Get("character").AsInt()
                 this.HandleReferences(id, uri, line, chr)
+            } else if (method == "textDocument/rename") {
+                let uri: string     = td.Get("uri").AsString()
+                let line: int       = pos.Get("line").AsInt()
+                let chr: int        = pos.Get("character").AsInt()
+                let newName: string = params.Get("newName").AsString()
+                this.HandleRename(id, uri, line, chr, newName)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -246,7 +252,12 @@ public class LspServer {
         // fuzzy symbol search across every cached `.am` file).
         // referencesProvider: true → Find All References / Shift+F12
         // (walks every program for IDENTIFIER/MEMBER name matches).
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // renameProvider: true → F2 / right-click "Rename Symbol".
+        // Reuses the references walker, emits a WorkspaceEdit with
+        // one TextEdit per occurrence. We don't advertise
+        // prepareProvider on the rename — VS Code falls back to the
+        // word-at-cursor scope, which is what we want.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -872,6 +883,141 @@ public class LspServer {
         let uri:     string = "file://" + LspServer.PercentEncodePath(filePath)
         let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
         return "{\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + "}"
+    }
+
+    // ── Rename (F2) ───────────────────────────────────
+    //
+    // Find every IDENTIFIER / MEMBER whose Name matches the symbol
+    // under the cursor (same walker `references` uses) and emit a
+    // WorkspaceEdit:
+    //
+    //   { "changes": { "<uri1>": [TextEdit, ...], "<uri2>": [...] } }
+    //
+    // Each TextEdit is `{ range, newText }` where range covers the
+    // old name span and newText is the user's chosen replacement.
+    // The receiver's class field/method declarations themselves are
+    // captured because the walker visits every CLASS_DECL /
+    // METHOD_DECL / VAR_DECL Name string via their AST nodes —
+    // those are stored as `.Name` strings, not separate IDENTIFIER
+    // children, so they're effectively renamed by the same
+    // operation when the user-facing Name matches.
+    //
+    // Scope-unaware: same caveat as references — two unrelated
+    // locals named the same will both get renamed. Acceptable for
+    // workspace-unique names (classes, enums, top-level methods),
+    // which is the typical rename target.
+    private void HandleRename(int id, string uri, int line, int character, string newName) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"changes\":{}}}")
+            return
+        }
+        if (String_Length(newName) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"changes\":{}}}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+        let resolver = this.BuildWorkspaceResolver(path, prog)
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"changes\":{}}}")
+            return
+        }
+        let target: string = node.Name
+        if (String_Length(target) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"changes\":{}}}")
+            return
+        }
+
+        // Walk every program; build the WorkspaceEdit `changes` map
+        // directly. Parallel lists rather than Map<K,V> here because
+        // the bundled cgen we ship for cold-start clones predates
+        // the Map.Keys() dispatcher and would link-fail. Each file
+        // appears at most once per request anyway, so the linear
+        // scan is fine.
+        var changes: string = "{"
+        var firstFile: bool = true
+        let nProgs: int = resolver.Programs.Count()
+        for i in 0..nProgs {
+            let p: AstNode = resolver.Programs.Get(i)
+            var filePath: string = p.Str2
+            if (String_Length(filePath) == 0) { filePath = path }
+            let fileUri: string = "file://" + LspServer.PercentEncodePath(filePath)
+            let edits: List<string> = new List<string>()
+            LspServer.CollectRenameEdits(p, target, newName, edits)
+            let ec: int = edits.Count()
+            if (ec == 0) { continue }
+            if (!firstFile) { changes = changes + "," }
+            changes = changes + "\"" + Json.EscapeString(fileUri) + "\":["
+            for j in 0..ec {
+                if (j > 0) { changes = changes + "," }
+                changes = changes + edits.Get(j)
+            }
+            changes = changes + "]"
+            firstFile = false
+        }
+        changes = changes + "}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"changes\":" + changes + "}}"
+        this.Send(body)
+    }
+
+    // Recursive walker that emits a TextEdit JSON for every
+    // IDENTIFIER / MEMBER / decl-bearing node whose Name matches
+    // `target`. Same shape as CollectReferences, but produces
+    // `{ range, newText }` entries directly.
+    private static void CollectRenameEdits(AstNode node, string target, string newName, List<string> out) {
+        if (node == null) { return }
+        let k = node.Kind
+        // Split the kind-then-name check across two if's so the
+        // cgen can't drop our parentheses and re-associate `(A || B)
+        // && C` as `A || (B && C)` (which would emit an edit for
+        // every identifier in the file regardless of name match —
+        // that's a real cgen-precedence bug we hit while writing
+        // this).
+        var matches: bool = false
+        if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) { matches = true }
+        if (k == NodeKind.CLASS_DECL || k == NodeKind.ENUM_DECL) { matches = true }
+        if (k == NodeKind.METHOD_DECL || k == NodeKind.VAR_DECL) { matches = true }
+        if (k == NodeKind.PARAM)                                  { matches = true }
+        if (matches && node.Name == target) {
+            out.Add(LspServer.TextEditJson(node.Line, node.Column, target, newName))
+        }
+        if (node.Left  != null) { LspServer.CollectRenameEdits(node.Left,  target, newName, out) }
+        if (node.Right != null) { LspServer.CollectRenameEdits(node.Right, target, newName, out) }
+        if (node.Cond  != null) { LspServer.CollectRenameEdits(node.Cond,  target, newName, out) }
+        if (node.Body  != null) { LspServer.CollectRenameEdits(node.Body,  target, newName, out) }
+        if (node.Else  != null) { LspServer.CollectRenameEdits(node.Else,  target, newName, out) }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectRenameEdits(node.Children.Get(i), target, newName, out)
+        }
+        let pn: int = node.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectRenameEdits(node.Params.Get(j), target, newName, out)
+        }
+        let an: int = node.Args.Count()
+        for k2 in 0..an {
+            LspServer.CollectRenameEdits(node.Args.Get(k2), target, newName, out)
+        }
+    }
+
+    // Build a TextEdit JSON for a single occurrence. Range covers
+    // the old name's span; newText is the replacement.
+    private static string TextEditJson(int line, int col, string oldName, string newName) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let oldLen:  int = String_Length(oldName)
+        let endCol:  int = colLsp + oldLen
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        return "{\"range\":" + range + ",\"newText\":\"" + Json.EscapeString(newName) + "\"}"
     }
 
     // ── Workspace symbol (Ctrl+T) ─────────────────────

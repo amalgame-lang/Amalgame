@@ -2743,6 +2743,15 @@ public class CGen {
         let mname  = callee.Name
 
         // Map methods
+        // Map iteration helpers — Keys() / Values() return List<K>/List<V>.
+        if ((mname == "Keys" || mname == "Values") && callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
+            let vname = callee.Left.Name
+            let vtype = this.LocalTypeGet(vname)
+            if (vtype == "AmalgameMap*") {
+                if (mname == "Keys")   { return "AmalgameMap_keys(" + vname + ")" }
+                if (mname == "Values") { return "AmalgameMap_values(" + vname + ")" }
+            }
+        }
         if (mname == "Set" || mname == "Has" || mname == "Size" || mname == "Remove" || mname == "Get") {
             if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
                 let vname = callee.Left.Name
