@@ -149,21 +149,19 @@ public class Duration {
 // can read the other. `Ok` flags success; on failure `Value` is a
 // zeroed Instant and `Error` carries a human-readable message.
 //
-// Declared before Instant because Instant.Parse instantiates one,
-// and the constructor takes the initial Instant as a parameter:
-// otherwise a default `new Instant(0)` inside this constructor
-// would forward-reference Instant_new before its body emits.
-// (CGen forward-declares struct types in pass1 but constructors
-// in source order during pass2.)
+// Still declared before Instant for the namespacing flow above,
+// but the constructor can now instantiate `new Instant(0)` directly
+// — pass-2's EmitConstructorForwards emits every `_new` signature
+// before any class body, so Instant_new is in scope here.
 
 public class InstantResult {
     public Ok:    bool
     public Value: Instant
     public Error: string
 
-    public InstantResult(initial: Instant) {
+    public InstantResult() {
         this.Ok    = false
-        this.Value = initial
+        this.Value = new Instant(0)
         this.Error = ""
     }
 }
@@ -202,11 +200,9 @@ public class Instant {
     // Explicit offsets ('+02:00') are rejected in v1 — the
     // returned InstantResult.Ok will be false.
     public static InstantResult Parse(s: string) {
-        let zero: Instant      = new Instant(0)
-        let res:  InstantResult = new InstantResult(zero)
-        let n:    int           = DateTime_ParseIsoNanos(s)
-        let bad:  bool          = DateTime_IsParseError(n)
-        if (bad) {
+        let res: InstantResult = new InstantResult()
+        let n:   int           = DateTime_ParseIsoNanos(s)
+        if (DateTime_IsParseError(n)) {
             res.Ok    = false
             res.Error = "invalid ISO 8601 / RFC 3339 timestamp (UTC subset only — must end with Z)"
             return res

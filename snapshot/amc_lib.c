@@ -3932,6 +3932,22 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                             code_string __attribute__((unused)) vn3 = ll->Name;
                             code_string __attribute__((unused)) vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vn3);
                             code_string __attribute__((unused)) bare3 = String_Replace(vtype, "*", "");
+                            if (String_Length(bare3) > 0) {
+                                code_string __attribute__((unused)) urt = Amalgame_Compiler_CGen_MethodRetGet(self, bare3, "Get");
+                                if (String_Length(urt) > 0) {
+                                    return urt;
+                                }
+                            }
+                        }
+                        if (ll->Kind == Amalgame_Compiler_NodeKind_CALL) {
+                            code_string __attribute__((unused)) chainT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, ll);
+                            code_string __attribute__((unused)) chainBare = String_Replace(chainT, "*", "");
+                            if (String_Length(chainBare) > 0) {
+                                code_string __attribute__((unused)) urt = Amalgame_Compiler_CGen_MethodRetGet(self, chainBare, "Get");
+                                if (String_Length(urt) > 0) {
+                                    return urt;
+                                }
+                            }
                         }
                     }
                     return "void*";
@@ -3942,6 +3958,16 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                         code_string __attribute__((unused)) retT = Amalgame_Compiler_CGen_MethodRetGet(self, self->CurrentClass, mname2);
                         if (String_Length(retT) > 0) {
                             return retT;
+                        }
+                    }
+                    if (llk2 == Amalgame_Compiler_NodeKind_CALL) {
+                        code_string __attribute__((unused)) chainT2 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left->Left);
+                        code_string __attribute__((unused)) chainBare2 = String_Replace(chainT2, "*", "");
+                        if (String_Length(chainBare2) > 0) {
+                            code_string __attribute__((unused)) retTC = Amalgame_Compiler_CGen_MethodRetGet(self, chainBare2, mname2);
+                            if (String_Length(retTC) > 0) {
+                                return retTC;
+                            }
                         }
                     }
                     if (llk2 == Amalgame_Compiler_NodeKind_IDENTIFIER) {
@@ -12855,7 +12881,7 @@ static i64 Amalgame_Compiler_Url_HexValue(code_string c) {
 }
 
 Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_new(i64 nanos);
-Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new(Amalgame_Compiler_Instant* initial);
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new();
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_new(i64 nanos);
 Amalgame_Compiler_Stopwatch* Amalgame_Compiler_Stopwatch_new();
 struct _Amalgame_Compiler_Duration {
@@ -13021,10 +13047,10 @@ struct _Amalgame_Compiler_InstantResult {
 };
 
 
-Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new(Amalgame_Compiler_Instant* initial) {
+Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new() {
     Amalgame_Compiler_InstantResult* self = (Amalgame_Compiler_InstantResult*) GC_MALLOC(sizeof(Amalgame_Compiler_InstantResult));
     self->Ok = 0;
-    self->Value = initial;
+    self->Value = Amalgame_Compiler_Instant_new(0);
     self->Error = "";
     return self;
 }
@@ -13077,11 +13103,9 @@ Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixNanos(i64 ns) {
 
 Amalgame_Compiler_InstantResult* Amalgame_Compiler_Instant_Parse(code_string s) {
     (void)s;
-    Amalgame_Compiler_Instant* __attribute__((unused)) zero = Amalgame_Compiler_Instant_new(0);
-    Amalgame_Compiler_InstantResult* __attribute__((unused)) res = Amalgame_Compiler_InstantResult_new(zero);
+    Amalgame_Compiler_InstantResult* __attribute__((unused)) res = Amalgame_Compiler_InstantResult_new();
     i64 __attribute__((unused)) n = DateTime_ParseIsoNanos(s);
-    code_bool __attribute__((unused)) bad = DateTime_IsParseError(n);
-    if (bad) {
+    if (DateTime_IsParseError(n)) {
         res->Ok = 0;
         res->Error = "invalid ISO 8601 / RFC 3339 timestamp (UTC subset only — must end with Z)";
         return res;
@@ -13304,10 +13328,8 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
             continue;
         }
         Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
-        Amalgame_Compiler_JsonValue* __attribute__((unused)) methodNode = Amalgame_Compiler_JsonValue_Get(root, "method");
-        code_string __attribute__((unused)) method = Amalgame_Compiler_JsonValue_AsString(methodNode);
-        Amalgame_Compiler_JsonValue* __attribute__((unused)) idNode = Amalgame_Compiler_JsonValue_Get(root, "id");
-        i64 __attribute__((unused)) id = Amalgame_Compiler_JsonValue_AsInt(idNode);
+        code_string __attribute__((unused)) method = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(root, "method"));
+        i64 __attribute__((unused)) id = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(root, "id"));
         Amalgame_Compiler_JsonValue* __attribute__((unused)) params = Amalgame_Compiler_JsonValue_Get(root, "params");
         Amalgame_Compiler_JsonValue* __attribute__((unused)) td = Amalgame_Compiler_JsonValue_Get(params, "textDocument");
         Amalgame_Compiler_JsonValue* __attribute__((unused)) pos = Amalgame_Compiler_JsonValue_Get(params, "position");
@@ -13318,40 +13340,28 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
         } else if (code_string_equals(method, "exit")) {
             return 0;
         } else if (code_string_equals(method, "textDocument/didOpen")) {
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) txtNode = Amalgame_Compiler_JsonValue_Get(td, "text");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
-            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(txtNode);
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
+            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "text"));
             Amalgame_Compiler_LspServer_UpsertDoc(self, uri, txt);
             Amalgame_Compiler_LspServer_PublishDiagnostics(self, uri, txt);
         } else if (code_string_equals(method, "textDocument/didChange")) {
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
             Amalgame_Compiler_JsonValue* __attribute__((unused)) changes = Amalgame_Compiler_JsonValue_Get(params, "contentChanges");
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) firstChange = Amalgame_Compiler_JsonValue_At(changes, 0);
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) txtNode = Amalgame_Compiler_JsonValue_Get(firstChange, "text");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
-            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(txtNode);
+            code_string __attribute__((unused)) txt = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_At(changes, 0), "text"));
             Amalgame_Compiler_LspServer_UpsertDoc(self, uri, txt);
             Amalgame_Compiler_LspServer_PublishDiagnostics(self, uri, txt);
         } else if (code_string_equals(method, "textDocument/didClose")) {
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
             Amalgame_Compiler_LspServer_RemoveDoc(self, uri);
         } else if (code_string_equals(method, "textDocument/hover")) {
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) lineNode = Amalgame_Compiler_JsonValue_Get(pos, "line");
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) chrNode = Amalgame_Compiler_JsonValue_Get(pos, "character");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
-            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(lineNode);
-            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(chrNode);
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "line"));
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "character"));
             Amalgame_Compiler_LspServer_HandleHover(self, id, uri, line, chr);
         } else if (code_string_equals(method, "textDocument/completion")) {
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) uriNode = Amalgame_Compiler_JsonValue_Get(td, "uri");
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) lineNode = Amalgame_Compiler_JsonValue_Get(pos, "line");
-            Amalgame_Compiler_JsonValue* __attribute__((unused)) chrNode = Amalgame_Compiler_JsonValue_Get(pos, "character");
-            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(uriNode);
-            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(lineNode);
-            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(chrNode);
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "line"));
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "character"));
             Amalgame_Compiler_LspServer_HandleCompletion(self, id, uri, line, chr);
         }
     }
@@ -14942,20 +14952,15 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCla
         return res;
     }
     Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) content = Amalgame_Compiler_JsonValue_Get(root, "content");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) block0 = Amalgame_Compiler_JsonValue_At(content, 0);
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(block0, "text");
-    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_At(Amalgame_Compiler_JsonValue_Get(root, "content"), 0), "text"));
     if (String_Length(text) == 0) {
         res->Ok = 0;
         res->Error = code_string_concat("claude-api: empty response (no content[0].text). Raw body:\n", resp->Body);
         return res;
     }
     Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usage");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "input_tokens");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "output_tokens");
-    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
-    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(usage, "input_tokens"));
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(usage, "output_tokens"));
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
@@ -15000,21 +15005,15 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallCha
         return res;
     }
     Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) choices = Amalgame_Compiler_JsonValue_Get(root, "choices");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) choice0 = Amalgame_Compiler_JsonValue_At(choices, 0);
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) message = Amalgame_Compiler_JsonValue_Get(choice0, "message");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(message, "content");
-    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_At(Amalgame_Compiler_JsonValue_Get(root, "choices"), 0), "message"), "content"));
     if (String_Length(text) == 0) {
         res->Ok = 0;
         res->Error = code_string_concat("chatgpt: empty response (no choices[0].message.content). Raw:\n", resp->Body);
         return res;
     }
     Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usage");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "prompt_tokens");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "completion_tokens");
-    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
-    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(usage, "prompt_tokens"));
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(usage, "completion_tokens"));
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
@@ -15059,23 +15058,15 @@ static Amalgame_Compiler_MigrateResult* Amalgame_Compiler_MigrateCommand_CallGem
         return res;
     }
     Amalgame_Compiler_JsonValue* __attribute__((unused)) root = parsed->Value;
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) candidates = Amalgame_Compiler_JsonValue_Get(root, "candidates");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) cand0 = Amalgame_Compiler_JsonValue_At(candidates, 0);
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) candContent = Amalgame_Compiler_JsonValue_Get(cand0, "content");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) parts = Amalgame_Compiler_JsonValue_Get(candContent, "parts");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) part0 = Amalgame_Compiler_JsonValue_At(parts, 0);
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) textNode = Amalgame_Compiler_JsonValue_Get(part0, "text");
-    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(textNode);
+    code_string __attribute__((unused)) text = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_At(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_Get(Amalgame_Compiler_JsonValue_At(Amalgame_Compiler_JsonValue_Get(root, "candidates"), 0), "content"), "parts"), 0), "text"));
     if (String_Length(text) == 0) {
         res->Ok = 0;
         res->Error = code_string_concat("gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n", resp->Body);
         return res;
     }
     Amalgame_Compiler_JsonValue* __attribute__((unused)) usage = Amalgame_Compiler_JsonValue_Get(root, "usageMetadata");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) inTok = Amalgame_Compiler_JsonValue_Get(usage, "promptTokenCount");
-    Amalgame_Compiler_JsonValue* __attribute__((unused)) outTok = Amalgame_Compiler_JsonValue_Get(usage, "candidatesTokenCount");
-    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(inTok);
-    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(outTok);
+    res->InputTokens = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(usage, "promptTokenCount"));
+    res->OutputTokens = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(usage, "candidatesTokenCount"));
     res->Ok = 1;
     res->Content = Amalgame_Compiler_MigrateCommand_StripFences(text);
     return res;
