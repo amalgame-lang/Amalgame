@@ -33,14 +33,12 @@ AMC_SOURCES="src/lexer/token.am \
              src/explain.am \
              src/new_cmd.am"
 
-# Self-host: 3-rung fallback chain.
+# Self-host: 2-rung fallback chain.
 #   ./amc                ← current self-hosted (may be broken mid-development)
 #   ./snapshot/amc       ← last known-good Amalgame (tools/save-snapshot.sh)
-#   ./build/amc          ← Vala bootstrap (frozen, original syntax only)
 #
-# Each rung knows strictly more syntax than the rung below, so falling
-# down is safe; falling up from Vala when the language has evolved
-# beyond what Vala parses is what the snapshot rung exists to bridge.
+# If neither exists, build snapshot/amc from the tracked snapshot/amc_lib.c:
+#   gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 if [ -x ./amc ]; then
     AMC=./amc
     echo "=== Step 1: Build gen_test (self-hosted via ./amc) ==="
@@ -48,8 +46,10 @@ elif [ -x ./snapshot/amc ]; then
     AMC=./snapshot/amc
     echo "=== Step 1: Build gen_test (recovery via ./snapshot/amc) ==="
 else
-    AMC=./build/amc
-    echo "=== Step 1: Build gen_test (cold start via Vala ./build/amc) ==="
+    echo "ERROR: no amc binary found (./amc nor ./snapshot/amc)." >&2
+    echo "Bootstrap from the tracked C snapshot:" >&2
+    echo "  gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc" >&2
+    exit 1
 fi
 # amc exits non-zero on resolver warnings (e.g. when a new builtin was just
 # added but the running amc was compiled before it was registered). Accept

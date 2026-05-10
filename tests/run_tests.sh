@@ -12,11 +12,9 @@ SAMPLES="./tests/samples"
 BUILD_DIR=$(mktemp -d -t amc-tests-XXXXXX)
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
-# Samples that the self-hosted ./amc can't yet compile due to bugs tracked
-# separately (algebraic enum methods, tuple destructure typing, try/catch
-# binder scoping, advanced pattern matching, null-safety inference). They
-# pass under the Vala bootstrap (./build/amc) — see run_tests_vala.sh if
-# you need full coverage during recovery work. PRs welcome.
+# Samples the self-hosted ./amc can't yet compile (tracked separately:
+# algebraic enum methods, tuple destructure typing, try/catch binder
+# scoping, advanced pattern matching, null-safety inference). PRs welcome.
 SKIP_SELFHOST="  "
 PASS=0
 FAIL=0
@@ -57,8 +55,7 @@ run_test() {
         FAIL=$((FAIL + 1)); return
     fi
 
-    # The self-hosted amc only emits a .c file; the Vala bootstrap used to
-    # auto-compile, so call gcc explicitly here to keep behaviour identical.
+    # amc only emits a .c file; gcc it here to produce the test binary.
     local c_file="${out_base}.c"
     if [ ! -f "$c_file" ]; then
         echo -e "${RED}FAIL${NC} (no .c emitted)"
@@ -259,8 +256,6 @@ run_c_check() {
 }
 
 # Compile a lib with --lib, archive into .o, link a consumer C, run, check stdout.
-# Uses the bootstrap ./amc because the legacy Vala compiler still emits public methods
-# with `static` forward declarations, which gives them internal linkage.
 run_lib_link_test() {
     local name="$1"
     local lib_file="$2"

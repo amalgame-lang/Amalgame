@@ -1,7 +1,7 @@
 /*
  * Amalgame Standard Library - Amalgame.Collections
  * Copyright (c) 2026 Bastien MOUGET
- * https://github.com/BastienMOUGET/Amalgame
+ * https://github.com/amalgame-lang/Amalgame
  *
  * Provides: List<T>, Map<K,V>, Set<T>
  */

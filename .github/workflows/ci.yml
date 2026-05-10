@@ -9,8 +9,7 @@ on:
 jobs:
   # ── Linux: full self-hosted pipeline. The snapshot bootstraps amc, the
   #    self-host build then re-bootstraps from src/, and the test runner
-  #    exercises the freshly-built ./amc. Vala isn't installed here at
-  #    all — to use the Vala recovery path, run ./compile.sh locally. ──
+  #    exercises the freshly-built ./amc. ──
   linux:
     name: Build & test (Ubuntu)
     runs-on: ubuntu-latest
@@ -54,8 +53,8 @@ jobs:
             src/amc_lib.c
           retention-days: 3
 
-  # ── macOS: skip Vala (no native Vala on macOS runners by default). Build amc
-  #    directly from the tracked amc_lib.c — proves the snapshot is portable. ──
+  # ── macOS: build amc directly from the tracked amc_lib.c — proves the
+  #    snapshot is portable. ──
   macos:
     name: Build & test (macOS)
     runs-on: macos-latest
@@ -101,9 +100,8 @@ jobs:
             src/amc_lib.c
           retention-days: 3
 
-  # ── Windows: build via MSYS2 (gcc + libgc + libcurl available). Skips Vala
-  #    for the same reason as macOS — the tracked amc_lib.c is the canonical
-  #    cross-platform snapshot. ──
+  # ── Windows: build via MSYS2 (gcc + libgc + libcurl available). The
+  #    tracked amc_lib.c is the canonical cross-platform snapshot. ──
   windows:
     name: Build & test (Windows / MSYS2)
     runs-on: windows-latest

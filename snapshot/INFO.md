@@ -5,10 +5,11 @@ Git rev:  99ca28045bac5517be11bca7c61b14c0501944dd
 Branch:   release/v0.4.4
 Tests:    (skipped) passed
 
-This snapshot is the canonical recovery binary when ./amc is broken
-mid-development. `build_amc.sh` falls back to `snapshot/amc` before
-`./build/amc` (Vala) so a known-good Amalgame compiler is always one
-rung closer than the original bootstrap.
+This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
+`./amc` if present, otherwise falls back to `./snapshot/amc`. From a
+clean clone, recompile `snapshot/amc` from the tracked
+`snapshot/amc_lib.c` with `gcc` (one command, no other compiler
+needed).
 
 To recompile the snapshot binary on this platform:
 

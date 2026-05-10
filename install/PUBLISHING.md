@@ -61,20 +61,19 @@ pkgdesc="Modern programming language that transpiles to C"
 arch=('x86_64' 'aarch64')
 url="https://github.com/amalgame-lang/Amalgame"
 license=('Apache-2.0')
-depends=('glib2' 'libgee' 'gc' 'gcc')
-makedepends=('vala' 'meson' 'ninja')
+depends=('gc' 'curl' 'gcc')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('REPLACE_WITH_SHA256')
 
 build() {
     cd "Amalgame-$pkgver"
-    meson setup build --buildtype=release --prefix=/usr
-    ninja -C build
+    gcc -O2 -Iruntime snapshot/amc_lib.c \
+        -lgc -lm -lcurl -o amc
 }
 
 package() {
     cd "Amalgame-$pkgver"
-    DESTDIR="$pkgdir" ninja -C build install
+    install -Dm755 amc "$pkgdir/usr/bin/amc"
     install -Dm644 runtime/_runtime.h \
         "$pkgdir/usr/lib/amalgame/_runtime.h"
 }
@@ -111,8 +110,7 @@ Source: amalgame
 Section: devel
 Priority: optional
 Maintainer: Bastien MOUGET <your@email.com>
-Build-Depends: debhelper (>= 10), valac, libglib2.0-dev,
-               libgee-0.8-dev, meson, ninja-build, libgc-dev
+Build-Depends: debhelper (>= 10), gcc, libgc-dev, libcurl4-openssl-dev
 Standards-Version: 4.6.0
 Homepage: https://github.com/amalgame-lang/Amalgame
 
@@ -139,8 +137,7 @@ debuild -us -uc
 
 ```bash
 # Install RPM build tools
-sudo dnf install rpm-build rpmdevtools vala glib2-devel \
-                 libgee-devel meson ninja-build gc-devel
+sudo dnf install rpm-build rpmdevtools gcc gc-devel libcurl-devel
 
 rpmdev-setuptree
 
@@ -153,15 +150,13 @@ License:        Apache-2.0
 URL:            https://github.com/amalgame-lang/Amalgame
 Source0:        https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v%{version}.tar.gz
 
-BuildRequires:  vala
-BuildRequires:  meson
-BuildRequires:  ninja-build
-BuildRequires:  glib2-devel
-BuildRequires:  libgee-devel
+BuildRequires:  gcc
 BuildRequires:  gc-devel
+BuildRequires:  libcurl-devel
 
 Requires:       gcc
 Requires:       gc
+Requires:       libcurl
 
 %description
 Amalgame distills the best features from today's most productive
@@ -171,11 +166,11 @@ languages into a single, modern, statically-typed language.
 %autosetup -n Amalgame-%{version}
 
 %build
-%meson
-%meson_build
+gcc -O2 -Iruntime snapshot/amc_lib.c \
+    -lgc -lm -lcurl -o amc
 
 %install
-%meson_install
+install -Dm755 amc %{buildroot}%{_bindir}/amc
 install -Dm644 runtime/_runtime.h \
     %{buildroot}%{_libdir}/amalgame/_runtime.h
 
@@ -200,8 +195,7 @@ rpmbuild -ba ~/rpmbuild/SPECS/amalgame.spec
 
 ```nix
 # amalgame.nix
-{ lib, stdenv, fetchFromGitHub, meson, ninja, pkg-config,
-  vala, glib, libgee, boehmgc, gcc }:
+{ lib, stdenv, fetchFromGitHub, gcc, boehmgc, curl }:
 
 stdenv.mkDerivation rec {
   pname = "amalgame";
@@ -214,11 +208,17 @@ stdenv.mkDerivation rec {
     hash  = "sha256-REPLACE";
   };
 
-  nativeBuildInputs = [ meson ninja pkg-config vala ];
-  buildInputs       = [ glib libgee boehmgc ];
+  nativeBuildInputs = [ gcc ];
+  buildInputs       = [ boehmgc curl ];
 
-  postInstall = ''
-    mkdir -p $out/lib/amalgame
+  buildPhase = ''
+    gcc -O2 -Iruntime snapshot/amc_lib.c \
+        -lgc -lm -lcurl -o amc
+  '';
+
+  installPhase = ''
+    mkdir -p $out/bin $out/lib/amalgame
+    cp amc $out/bin/
     cp runtime/_runtime.h $out/lib/amalgame/
   '';
 
