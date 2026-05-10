@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-10T13:59:10+02:00
-Git rev:  aefce8e15591e4f8603f436a32ce6dc247d13998
+Captured: 2026-05-10T15:11:31+02:00
+Git rev:  997ca2300541d592f599f74719554677b9e526ba
 Branch:   develop
 Tests:    356 passed
 
