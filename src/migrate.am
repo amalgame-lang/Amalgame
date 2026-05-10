@@ -872,30 +872,23 @@ public class MigrateCommand {
             return res
         }
         // Anthropic shape: { "content": [ { "type": "text", "text": "<...>" } ], "usage": {...}, ... }
-        // Each step uses a typed local because cgen mashes
-        // `parsed.Value.Get(...).Get(...).AsString()` chains.
         let parsed = Json.Parse(resp.Body)
         if (!parsed.Ok) {
             res.Ok    = false
             res.Error = "claude-api: unparseable response (" + parsed.Error.Message + "). Raw body:\n" + resp.Body
             return res
         }
-        let root: JsonValue    = parsed.Value
-        let content: JsonValue = root.Get("content")
-        let block0: JsonValue  = content.At(0)
-        let textNode: JsonValue = block0.Get("text")
-        let text: string       = textNode.AsString()
+        let root: JsonValue = parsed.Value
+        let text: string    = root.Get("content").At(0).Get("text").AsString()
         if (String_Length(text) == 0) {
             res.Ok    = false
             res.Error = "claude-api: empty response (no content[0].text). Raw body:\n" + resp.Body
             return res
         }
         // v3 cost reporting: pull usage.input_tokens / output_tokens.
-        let usage: JsonValue  = root.Get("usage")
-        let inTok: JsonValue  = usage.Get("input_tokens")
-        let outTok: JsonValue = usage.Get("output_tokens")
-        res.InputTokens  = inTok.AsInt()
-        res.OutputTokens = outTok.AsInt()
+        let usage: JsonValue = root.Get("usage")
+        res.InputTokens  = usage.Get("input_tokens").AsInt()
+        res.OutputTokens = usage.Get("output_tokens").AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
@@ -944,23 +937,17 @@ public class MigrateCommand {
             res.Error = "chatgpt: unparseable response (" + parsed.Error.Message + "). Raw:\n" + resp.Body
             return res
         }
-        let root: JsonValue    = parsed.Value
-        let choices: JsonValue = root.Get("choices")
-        let choice0: JsonValue = choices.At(0)
-        let message: JsonValue = choice0.Get("message")
-        let textNode: JsonValue = message.Get("content")
-        let text: string       = textNode.AsString()
+        let root: JsonValue = parsed.Value
+        let text: string    = root.Get("choices").At(0).Get("message").Get("content").AsString()
         if (String_Length(text) == 0) {
             res.Ok    = false
             res.Error = "chatgpt: empty response (no choices[0].message.content). Raw:\n" + resp.Body
             return res
         }
         // v3 cost reporting: OpenAI usage.{prompt,completion}_tokens.
-        let usage: JsonValue  = root.Get("usage")
-        let inTok: JsonValue  = usage.Get("prompt_tokens")
-        let outTok: JsonValue = usage.Get("completion_tokens")
-        res.InputTokens  = inTok.AsInt()
-        res.OutputTokens = outTok.AsInt()
+        let usage: JsonValue = root.Get("usage")
+        res.InputTokens  = usage.Get("prompt_tokens").AsInt()
+        res.OutputTokens = usage.Get("completion_tokens").AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res
@@ -1011,25 +998,17 @@ public class MigrateCommand {
             res.Error = "gemini: unparseable response (" + parsed.Error.Message + "). Raw:\n" + resp.Body
             return res
         }
-        let root: JsonValue       = parsed.Value
-        let candidates: JsonValue = root.Get("candidates")
-        let cand0: JsonValue      = candidates.At(0)
-        let candContent: JsonValue = cand0.Get("content")
-        let parts: JsonValue      = candContent.Get("parts")
-        let part0: JsonValue      = parts.At(0)
-        let textNode: JsonValue   = part0.Get("text")
-        let text: string          = textNode.AsString()
+        let root: JsonValue = parsed.Value
+        let text: string    = root.Get("candidates").At(0).Get("content").Get("parts").At(0).Get("text").AsString()
         if (String_Length(text) == 0) {
             res.Ok    = false
             res.Error = "gemini: empty response (no candidates[0].content.parts[0].text). Raw:\n" + resp.Body
             return res
         }
         // v3 cost reporting: Gemini usageMetadata.{prompt,candidates}TokenCount.
-        let usage: JsonValue  = root.Get("usageMetadata")
-        let inTok: JsonValue  = usage.Get("promptTokenCount")
-        let outTok: JsonValue = usage.Get("candidatesTokenCount")
-        res.InputTokens  = inTok.AsInt()
-        res.OutputTokens = outTok.AsInt()
+        let usage: JsonValue = root.Get("usageMetadata")
+        res.InputTokens  = usage.Get("promptTokenCount").AsInt()
+        res.OutputTokens = usage.Get("candidatesTokenCount").AsInt()
         res.Ok      = true
         res.Content = MigrateCommand.StripFences(text)
         return res

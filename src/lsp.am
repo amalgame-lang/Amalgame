@@ -46,23 +46,18 @@ public class LspServer {
     // Amalgame.Json, then walk into the structured params via
     // Get(...) chains rather than the old key-substring extractors.
     //
-    // Per-step typed locals because cgen mashes
-    // `obj.Get("x").AsInt()` into `Get_AsInt(obj, "x")` (chained
-    // Method().Method() doesn't lower yet). Verbose but mechanical.
     public int Run() {
         while (true) {
             let body = this.ReadMessage()
             if (String_Length(body) == 0) { return 0 }
             let parsed = Json.Parse(body)
             if (!parsed.Ok) { continue }
-            let root: JsonValue       = parsed.Value
-            let methodNode: JsonValue = root.Get("method")
-            let method: string        = methodNode.AsString()
-            let idNode: JsonValue     = root.Get("id")
-            let id: int               = idNode.AsInt()
-            let params: JsonValue     = root.Get("params")
-            let td: JsonValue         = params.Get("textDocument")
-            let pos: JsonValue        = params.Get("position")
+            let root: JsonValue   = parsed.Value
+            let method: string    = root.Get("method").AsString()
+            let id: int           = root.Get("id").AsInt()
+            let params: JsonValue = root.Get("params")
+            let td: JsonValue     = params.Get("textDocument")
+            let pos: JsonValue    = params.Get("position")
 
             if (method == "initialize") {
                 this.SendInit(id)
@@ -71,42 +66,30 @@ public class LspServer {
             } else if (method == "exit") {
                 return 0
             } else if (method == "textDocument/didOpen") {
-                let uriNode: JsonValue = td.Get("uri")
-                let txtNode: JsonValue = td.Get("text")
-                let uri: string = uriNode.AsString()
-                let txt: string = txtNode.AsString()
+                let uri: string = td.Get("uri").AsString()
+                let txt: string = td.Get("text").AsString()
                 this.UpsertDoc(uri, txt)
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didChange") {
                 // Full sync: client re-sends the whole document text
                 // under contentChanges[0].text.
-                let uriNode: JsonValue     = td.Get("uri")
-                let changes: JsonValue     = params.Get("contentChanges")
-                let firstChange: JsonValue = changes.At(0)
-                let txtNode: JsonValue     = firstChange.Get("text")
-                let uri: string = uriNode.AsString()
-                let txt: string = txtNode.AsString()
+                let uri: string        = td.Get("uri").AsString()
+                let changes: JsonValue = params.Get("contentChanges")
+                let txt: string        = changes.At(0).Get("text").AsString()
                 this.UpsertDoc(uri, txt)
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didClose") {
-                let uriNode: JsonValue = td.Get("uri")
-                let uri: string = uriNode.AsString()
+                let uri: string = td.Get("uri").AsString()
                 this.RemoveDoc(uri)
             } else if (method == "textDocument/hover") {
-                let uriNode: JsonValue  = td.Get("uri")
-                let lineNode: JsonValue = pos.Get("line")
-                let chrNode: JsonValue  = pos.Get("character")
-                let uri: string = uriNode.AsString()
-                let line: int   = lineNode.AsInt()
-                let chr: int    = chrNode.AsInt()
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
                 this.HandleHover(id, uri, line, chr)
             } else if (method == "textDocument/completion") {
-                let uriNode: JsonValue  = td.Get("uri")
-                let lineNode: JsonValue = pos.Get("line")
-                let chrNode: JsonValue  = pos.Get("character")
-                let uri: string = uriNode.AsString()
-                let line: int   = lineNode.AsInt()
-                let chr: int    = chrNode.AsInt()
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
                 this.HandleCompletion(id, uri, line, chr)
             }
             // Unknown method: ignore. LSP allows the server to skip
