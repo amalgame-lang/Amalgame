@@ -13306,6 +13306,9 @@ static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspSe
 static void Amalgame_Compiler_LspServer_HandleDocumentSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string uri);
 static code_string Amalgame_Compiler_LspServer_SymbolForDecl(Amalgame_Compiler_AstNode* decl);
 static code_string Amalgame_Compiler_LspServer_SymbolEntry(code_string name, i64 kind, i64 line, i64 col, code_string childrenJson);
+static void Amalgame_Compiler_LspServer_HandleReferences(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
+static void Amalgame_Compiler_LspServer_CollectReferences(Amalgame_Compiler_AstNode* node, code_string target, code_string filePath, AmalgameList* out);
+static code_string Amalgame_Compiler_LspServer_LocationJson(code_string filePath, i64 line, i64 col, code_string name);
 static void Amalgame_Compiler_LspServer_HandleWorkspaceSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string query);
 static code_string Amalgame_Compiler_LspServer_WorkspaceSymbolEntry(Amalgame_Compiler_AstNode* decl, code_string path, code_string lowerQuery);
 static void Amalgame_Compiler_LspServer_SendDefinitionLocation(Amalgame_Compiler_LspServer* self, i64 id, code_string path, i64 line, i64 col, code_string name);
@@ -13400,6 +13403,11 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
         } else if (code_string_equals(method, "workspace/symbol")) {
             code_string __attribute__((unused)) q = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(params, "query"));
             Amalgame_Compiler_LspServer_HandleWorkspaceSymbol(self, id, q);
+        } else if (code_string_equals(method, "textDocument/references")) {
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
+            i64 __attribute__((unused)) line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "line"));
+            i64 __attribute__((unused)) chr = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "character"));
+            Amalgame_Compiler_LspServer_HandleReferences(self, id, uri, line, chr);
         }
     }
     return 0;
@@ -13494,7 +13502,7 @@ static void Amalgame_Compiler_LspServer_Send(Amalgame_Compiler_LspServer* self, 
 static void Amalgame_Compiler_LspServer_SendInit(Amalgame_Compiler_LspServer* self, i64 id) {
     (void)self;
     (void)id;
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}");
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}");
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
@@ -13840,6 +13848,118 @@ static code_string Amalgame_Compiler_LspServer_SymbolEntry(code_string name, i64
     i64 __attribute__((unused)) endCol = colLsp + nameLen;
     code_string __attribute__((unused)) range = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp)), ",\"character\":"), String_FromInt(colLsp)), "},\"end\":{\"line\":"), String_FromInt(lineLsp)), ",\"character\":"), String_FromInt(endCol)), "}}");
     return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name)), "\",\"kind\":"), String_FromInt(kind)), ",\"range\":"), range), ",\"selectionRange\":"), range), ",\"children\":"), childrenJson), "}");
+}
+
+static void Amalgame_Compiler_LspServer_HandleReferences(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
+    (void)self;
+    (void)id;
+    (void)uri;
+    (void)line;
+    (void)character;
+    code_string __attribute__((unused)) source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
+    if (String_Length(source) == 0) {
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":[]}"));
+        return;
+    }
+    code_string __attribute__((unused)) path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(source, path);
+    AmalgameList* __attribute__((unused)) toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    Amalgame_Compiler_Parser* __attribute__((unused)) par = Amalgame_Compiler_Parser_new(toks);
+    Amalgame_Compiler_AstNode* __attribute__((unused)) prog = Amalgame_Compiler_Parser_Parse(par);
+    prog->Str2 = path;
+    Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    i64 __attribute__((unused)) targetLine = line + 1;
+    i64 __attribute__((unused)) targetCol = character + 1;
+    Amalgame_Compiler_AstNode* __attribute__((unused)) node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    if (node == NULL) {
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":[]}"));
+        return;
+    }
+    code_string __attribute__((unused)) target = node->Name;
+    if (String_Length(target) == 0) {
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":[]}"));
+        return;
+    }
+    code_string __attribute__((unused)) json = "[";
+    code_bool __attribute__((unused)) first = 1;
+    i64 __attribute__((unused)) nProgs = AmalgameList_count(resolver->Programs);
+    for (i64 i = 0; i < nProgs; i++) {
+        Amalgame_Compiler_AstNode* __attribute__((unused)) p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
+        code_string __attribute__((unused)) filePath = p->Str2;
+        if (String_Length(filePath) == 0) {
+            filePath = path;
+        }
+        AmalgameList* __attribute__((unused)) entries = AmalgameList_new();
+        Amalgame_Compiler_LspServer_CollectReferences(p, target, filePath, entries);
+        i64 __attribute__((unused)) ec = AmalgameList_count(entries);
+        for (i64 j = 0; j < ec; j++) {
+            if (!first) {
+                json = code_string_concat(json, ",");
+            }
+            json = code_string_concat(json, (code_string)((code_string)AmalgameList_get(entries, j)));
+            first = 0;
+        }
+    }
+    json = code_string_concat(json, "]");
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":"), json), "}");
+    Amalgame_Compiler_LspServer_Send(self, body);
+}
+
+static void Amalgame_Compiler_LspServer_CollectReferences(Amalgame_Compiler_AstNode* node, code_string target, code_string filePath, AmalgameList* out) {
+    (void)node;
+    (void)target;
+    (void)filePath;
+    (void)out;
+    if (node == NULL) {
+        return;
+    }
+    Amalgame_Compiler_NodeKind __attribute__((unused)) k = node->Kind;
+    if (k == Amalgame_Compiler_NodeKind_IDENTIFIER || k == Amalgame_Compiler_NodeKind_MEMBER) {
+        if (code_string_equals(node->Name, target)) {
+            AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_LspServer_LocationJson(filePath, node->Line, node->Column, target)));
+        }
+    }
+    if (node->Left != NULL) {
+        Amalgame_Compiler_LspServer_CollectReferences(node->Left, target, filePath, out);
+    }
+    if (node->Right != NULL) {
+        Amalgame_Compiler_LspServer_CollectReferences(node->Right, target, filePath, out);
+    }
+    if (node->Cond != NULL) {
+        Amalgame_Compiler_LspServer_CollectReferences(node->Cond, target, filePath, out);
+    }
+    if (node->Body != NULL) {
+        Amalgame_Compiler_LspServer_CollectReferences(node->Body, target, filePath, out);
+    }
+    if (node->Else != NULL) {
+        Amalgame_Compiler_LspServer_CollectReferences(node->Else, target, filePath, out);
+    }
+    i64 __attribute__((unused)) cn = AmalgameList_count(node->Children);
+    for (i64 i = 0; i < cn; i++) {
+        Amalgame_Compiler_LspServer_CollectReferences((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i), target, filePath, out);
+    }
+    i64 __attribute__((unused)) pn = AmalgameList_count(node->Params);
+    for (i64 j = 0; j < pn; j++) {
+        Amalgame_Compiler_LspServer_CollectReferences((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j), target, filePath, out);
+    }
+    i64 __attribute__((unused)) an = AmalgameList_count(node->Args);
+    for (i64 k2 = 0; k2 < an; k2++) {
+        Amalgame_Compiler_LspServer_CollectReferences((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k2), target, filePath, out);
+    }
+}
+
+static code_string Amalgame_Compiler_LspServer_LocationJson(code_string filePath, i64 line, i64 col, code_string name) {
+    (void)filePath;
+    (void)line;
+    (void)col;
+    (void)name;
+    i64 __attribute__((unused)) lineLsp = line - 1;
+    i64 __attribute__((unused)) colLsp = col - 1;
+    i64 __attribute__((unused)) nameLen = String_Length(name);
+    i64 __attribute__((unused)) endCol = colLsp + nameLen;
+    code_string __attribute__((unused)) uri = code_string_concat("file://", Amalgame_Compiler_LspServer_PercentEncodePath(filePath));
+    code_string __attribute__((unused)) range = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp)), ",\"character\":"), String_FromInt(colLsp)), "},\"end\":{\"line\":"), String_FromInt(lineLsp)), ",\"character\":"), String_FromInt(endCol)), "}}");
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"uri\":\"", Amalgame_Compiler_Json_EscapeString(uri)), "\",\"range\":"), range), "}");
 }
 
 static void Amalgame_Compiler_LspServer_HandleWorkspaceSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string query) {
