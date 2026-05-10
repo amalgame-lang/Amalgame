@@ -73,7 +73,20 @@ public class AmalgameCompiler {
             let par  = new Parser(toks)
             let prog = par.Parse()
             progs.Add(prog)
+            if (par.HasErrors()) {
+                Console.WriteError("amc: parse errors in " + path)
+                Console.WriteError(par.GetErrors())
+                this.ExitCode = 1
+                parseOk = false
+            }
             gen.AddFilePass1(prog)
+        }
+        // Don't continue past resolve/typecheck/cgen if the parser
+        // refused part of the input — the AST is incomplete and
+        // downstream phases would just chain spurious errors off
+        // the resulting holes.
+        if (!parseOk) {
+            return
         }
 
         // ── Resolver pass ─────────────────────────────
@@ -431,7 +444,7 @@ public class Program {
             } else if (a == "--verbose") {
                 verbose = true
             } else if (a == "--version") {
-                Console.WriteLine("amc 0.4.5 (self-hosted Amalgame compiler)")
+                Console.WriteLine("amc 0.4.6 (self-hosted Amalgame compiler)")
                 Exit_Set(0)
                 return
             } else if (a == "--help" || a == "-h") {

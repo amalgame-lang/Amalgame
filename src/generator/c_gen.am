@@ -149,6 +149,10 @@ public class CGen {
             this.EmitForwardDecl(decl)
         }
         this.Out.EmitBlank()
+        // Forward-declare every constructor before any class body —
+        // see AddFilePass2 for the rationale.
+        this.EmitConstructorForwards(prog)
+        this.Out.EmitBlank()
         for j in 0..decls {
             let decl = prog.Children.Get(j)
             this.EmitDecl(decl)
@@ -181,6 +185,15 @@ public class CGen {
     }
 
     public void AddFilePass2(AstNode prog) {
+        // Phase A0 — forward-declare every class's `_new(...)` constructor
+        // signature, BEFORE any class body is emitted. Without this, a
+        // constructor whose body calls `new B(...)` on a class declared
+        // later in the file (or even just below in the same file) hits
+        // an implicit-decl / conflicting-types pair in gcc, since pass 2
+        // emits decls top-to-bottom and class B's `_new` only appears
+        // when B's body is reached. All Pass-1 typedefs are visible by
+        // now, so the parameter types resolve cleanly.
+        this.EmitConstructorForwards(prog)
         // Phase A — assign ids and emit env struct + forward decl for
         // every lambda in this file, BEFORE any decl bodies that may
         // reference them. The fn bodies themselves come last so they
@@ -199,6 +212,41 @@ public class CGen {
         // now visible, so typed param unboxing (e.g. `Probe_User* u =
         // (Probe_User*)__arg0;` followed by `u->Name`) lowers cleanly.
         this.EmitLambdaBodies(prog)
+    }
+
+    private void EmitConstructorForwards(AstNode prog) {
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            if (decl.Kind == NodeKind.CLASS_DECL) {
+                let name = this.SymName(decl.Name)
+                var ctorFound = false
+                let members = decl.Children.Count()
+                for j in 0..members {
+                    let m = decl.Children.Get(j)
+                    if (m.Kind == NodeKind.METHOD_DECL && m.Name == decl.Name) {
+                        ctorFound = true
+                        var sig = name + "* " + name + "_new("
+                        let pcount = m.Params.Count()
+                        var first = true
+                        for pi in 0..pcount {
+                            let p = m.Params.Get(pi)
+                            if (!first) { sig = sig + ", " }
+                            sig = sig + this.TypeToC(p.Str) + " " + p.Name
+                            first = false
+                        }
+                        sig = sig + ");"
+                        this.Out.EmitLine(sig)
+                    }
+                }
+                // Class without an explicit constructor still gets a
+                // no-arg `Name_new()` from EmitClass — forward-declare
+                // that too so peer constructors can call `new Name()`.
+                if (!ctorFound) {
+                    this.Out.EmitLine(name + "* " + name + "_new();")
+                }
+            }
+        }
     }
 
     // ── Lambda discovery & top-level emission ─────────
@@ -2425,12 +2473,24 @@ public class CGen {
                             isSelfCall = true
                             selfExpr   = "self"
                         }
-                        // this.Field.Method(...) — field is itself a struct
+                        // this.Field.Method(...) or varName.Field.Method(...)
+                        // — field is itself a struct.
                         if (ll.Kind == NodeKind.MEMBER) {
                             if (ll.Left != null) {
                                 if (ll.Left.Kind == NodeKind.THIS_EXPR) {
                                     isSelfCall = true
                                     selfExpr   = "self->" + ll.Name
+                                }
+                                // varName.Field.Method(...): pass varName->Field
+                                // as self. The function name resolves via
+                                // EmitCalleeStr's matching new branch below.
+                                if (ll.Left.Kind == NodeKind.IDENTIFIER) {
+                                    let vt = this.LocalTypeGet(ll.Left.Name)
+                                    let vbare = String_Replace(vt, "*", "")
+                                    if (String_Length(vbare) > 0 && !this.IsEnum(vbare)) {
+                                        isSelfCall = true
+                                        selfExpr   = ll.Left.Name + "->" + ll.Name
+                                    }
                                 }
                             }
                         }
@@ -2441,6 +2501,19 @@ public class CGen {
                             if (String_Length(bare) > 0 && !this.IsEnum(bare)) {
                                 isSelfCall = true
                                 selfExpr   = ll.Name
+                            }
+                        }
+                        // varName.Method().OtherMethod(...) — chain into the
+                        // result of the inner call. InferTypeFromExpr knows
+                        // user-defined method return types (registered via
+                        // MethodRetSet during pass-1 forward emission), so
+                        // the receiver type comes back resolved.
+                        if (ll.Kind == NodeKind.CALL) {
+                            let rt = this.InferTypeFromExpr(ll)
+                            let rbare = String_Replace(rt, "*", "")
+                            if (String_Length(rbare) > 0 && !this.IsEnum(rbare)) {
+                                isSelfCall = true
+                                selfExpr   = this.EmitExprStr(ll)
                             }
                         }
                         // "literal".Method(...) — pass the literal as the
@@ -2988,7 +3061,22 @@ public class CGen {
                     // Fallback: obj_Method (simplified)
                     return tname + "_" + mname
                 }
-                // this.Field.Method() → detect field type → FieldType_Method
+                // Chained call: o.GetInner().Doubled(). The inner
+                // CALL's return type is the receiver of the outer call;
+                // emit `RetType_Method`. Without this the fallback
+                // appends `_Method` to the call expression string,
+                // producing e.g. `Outer_GetInner(o)_Doubled` (invalid).
+                if (lk == NodeKind.CALL) {
+                    let retT = this.InferTypeFromExpr(callee.Left)
+                    let bareR = String_Replace(retT, "*", "")
+                    if (String_Length(bareR) > 0) {
+                        return bareR + "_" + mname
+                    }
+                }
+                // Chained-member call: this.Field.Method() or
+                // varName.Field.Method(). Look up the inner-receiver
+                // class's field type and emit `FieldType_Method` so the
+                // call lands on the right struct's method.
                 if (lk == NodeKind.MEMBER) {
                     if (callee.Left.Left != null) {
                         let llk = callee.Left.Left.Kind
@@ -2998,6 +3086,27 @@ public class CGen {
                             let bare  = String_Replace(ftype, "*", "")
                             if (String_Length(bare) > 0) {
                                 return bare + "_" + mname
+                            }
+                        }
+                        if (llk == NodeKind.IDENTIFIER) {
+                            // varName.Field.Method(): chain into the
+                            // local's class to find Field's type, then
+                            // emit `FieldType_Method`. Without this the
+                            // fallback at the end of the function would
+                            // mash the field name into the method name
+                            // (`o->Field_Method` instead of
+                            // `Inner_Method(o->Field)`), causing the
+                            // chain-mash bug we're fixing.
+                            let vname = callee.Left.Left.Name
+                            let vtype = this.LocalTypeGet(vname)
+                            let vbare = String_Replace(vtype, "*", "")
+                            if (String_Length(vbare) > 0) {
+                                let fname = callee.Left.Name
+                                let ftype = this.FieldTypeGet(vbare, fname)
+                                let fbare = String_Replace(ftype, "*", "")
+                                if (String_Length(fbare) > 0) {
+                                    return fbare + "_" + mname
+                                }
                             }
                         }
                     }
