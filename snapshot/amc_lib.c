@@ -5778,7 +5778,7 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             }
         }
     }
-    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "RemoveAt") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve") && !code_string_equals(mname, "Filter") && !code_string_equals(mname, "Map") && !code_string_equals(mname, "Reduce") && !code_string_equals(mname, "ForEach") && !code_string_equals(mname, "Any") && !code_string_equals(mname, "All") && !code_string_equals(mname, "CountIf")) {
+    if (!code_string_equals(mname, "Add") && !code_string_equals(mname, "Set") && !code_string_equals(mname, "Count") && !code_string_equals(mname, "Get") && !code_string_equals(mname, "IsEmpty") && !code_string_equals(mname, "Remove") && !code_string_equals(mname, "RemoveAt") && !code_string_equals(mname, "Clear") && !code_string_equals(mname, "Reserve") && !code_string_equals(mname, "Filter") && !code_string_equals(mname, "Map") && !code_string_equals(mname, "Reduce") && !code_string_equals(mname, "ForEach") && !code_string_equals(mname, "Any") && !code_string_equals(mname, "All") && !code_string_equals(mname, "CountIf")) {
         return "";
     }
     code_string __attribute__((unused)) listExpr = "";
@@ -5845,6 +5845,15 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
         }
         code_string __attribute__((unused)) arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
         return code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_add(", listExpr), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0)), ")");
+    }
+    if (code_string_equals(mname, "Set")) {
+        i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
+        if (argc < 2) {
+            return "";
+        }
+        code_string __attribute__((unused)) idxArg = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        code_string __attribute__((unused)) valArg = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 1));
+        return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("AmalgameList_set(", listExpr), ", "), idxArg), ", "), Amalgame_Compiler_CGen_BoxAsVoid(self, valArg)), ")");
     }
     if (code_string_equals(mname, "Get")) {
         i64 __attribute__((unused)) argc = AmalgameList_count(callExpr->Args);
@@ -8215,7 +8224,6 @@ void Amalgame_Compiler_MemberTable_Set(Amalgame_Compiler_MemberTable* self, code
     i64 __attribute__((unused)) count = AmalgameList_count(self->Keys);
     for (i64 i = 0; i < count; i++) {
         if (code_string_equals((code_string)AmalgameList_get(self->Keys, i), key)) {
-            AmalgameList_add(self->Values, (void*)(intptr_t)(typeName));
             return;
         }
     }
