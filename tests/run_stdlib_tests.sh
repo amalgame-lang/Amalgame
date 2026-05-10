@@ -378,6 +378,18 @@ run_test "Log: file unset"                "$SAMPLES/stdlib_logging.am" "[PASS] f
 run_test "Log: level filter via file"     "$SAMPLES/stdlib_logging.am" "[PASS] level filter via file"     "" "$LOG_LIB"
 run_test "Log: file labels"               "$SAMPLES/stdlib_logging.am" "[PASS] file labels"               "" "$LOG_LIB"
 
+# ── Amalgame.Service ──────────────────────────────────
+# Daemon primitives. We can't deliver SIGTERM to the test runner's
+# own process (it would kill the runner), so the test uses
+# Service.RequestStop() — same flag, programmatic path.
+echo ""
+echo "── Amalgame.Service ────────────────────────"
+SVC_LIB="src/stdlib/service.am"
+run_test "Service: not stopping at start"   "$SAMPLES/stdlib_service.am" "[PASS] not stopping at start"          "" "$SVC_LIB"
+run_test "Service: install idempotent"      "$SAMPLES/stdlib_service.am" "[PASS] install idempotent"             "" "$SVC_LIB"
+run_test "Service: should-stop after req"   "$SAMPLES/stdlib_service.am" "[PASS] should-stop after request"      "" "$SVC_LIB"
+run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS] sleep short-circuits when stopping" "" "$SVC_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"
