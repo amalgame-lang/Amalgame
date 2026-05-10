@@ -40,9 +40,9 @@ is written in Amalgame and emits portable C. The runtime is a thin
 header-only layer over libc, libgc (Boehm GC) and libcurl.
 
 - **Self-hosted.** The compiler bootstraps itself in about five
-  seconds. The original Vala bootstrap is preserved in
-  `archive/vala-bootstrap/` for cold-start recovery; day-to-day work
-  uses a tracked `snapshot/` of a known-good `amc_lib.c`.
+  seconds. A tracked `snapshot/amc_lib.c` (known-good portable C)
+  is the cold-start entry point — one `gcc` invocation rebuilds the
+  bootstrap binary on any platform.
 - **Predictable output.** Source maps cleanly to C. Strings are
   `char*`, lists are `void**` arrays, integers are `i64`. No VM, no
   hidden allocations beyond the GC. Generated C is `gcc`-buildable
@@ -275,11 +275,10 @@ src/                  Compiler, written in Amalgame
 runtime/              C runtime (bdwgc, strings, IO, collections, net, env, process)
 stdlib/               Stdlib API reference (.am declarations)
 snapshot/             Tracked amc_lib.c known-good bootstrap
-tools/                save-snapshot.sh
+tools/                save-snapshot.sh, release.sh
 tests/                Sample programs + run_*.sh runners
 docs/guide/           User guide chapters 1–8
 docs/proposals/       Design RFCs (amc-migrate.md tracks LLM roadmap)
-archive/              Original Vala compiler (recovery path)
 editors/vscode/       Syntax highlighting extension
 .github/workflows/    CI + tag-driven Release automation
 ```
@@ -294,7 +293,8 @@ src/*.am ─[ ./amc ]─▶ amc_lib.c ─[ gcc ]─▶ amc binary
 ```
 
 When `./amc` is missing or broken, `build_amc.sh` falls back to
-`./snapshot/amc`, then to `./build/amc` (Vala). See
+`./snapshot/amc`. From a clean clone, rebuild that binary with
+`gcc snapshot/amc_lib.c …` (see `snapshot/INFO.md`). See
 `tools/save-snapshot.sh` for capturing a new snapshot.
 
 ## Roadmap
@@ -303,8 +303,7 @@ The full board is in [ROADMAP_COMPLET.md](ROADMAP_COMPLET.md). The
 short version, ordered by unlocked-value per day of work:
 
 1. **Fix the SKIPped samples** — `Type.Variant` patterns in match,
-   `try / catch`, null-safety inference. Restores feature parity
-   with the original Vala bootstrap.
+   `try / catch`, null-safety inference.
 2. **Minimal LSP** — completion + hover via stdio JSON-RPC, reusing
    the existing parser, resolver, and type-checker.
 3. **Capturing closures.**

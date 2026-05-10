@@ -133,9 +133,6 @@ That script's behaviour is described in chapter 6.
 The CLI is hermetic — it doesn't read environment variables. The
 compile-side runtime headers come from `gcc -I<runtime-dir>`.
 
-The Vala fallback (`./build/amc`) honors `AMC_RUNTIME` when set, but
-the self-hosted `amc` does not (and doesn't need to).
-
 ## Debugging the compiler
 
 If `amc` produces invalid C, narrow the input by deleting half until

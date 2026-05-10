@@ -8,11 +8,16 @@
 
 ```bash
 # Dépendances build
-sudo apt install libgc-dev libcurl4-openssl-dev valac
+sudo apt install libgc-dev libcurl4-openssl-dev gcc
+
+# Cold-start bootstrap (rebuilds snapshot/amc from tracked snapshot/amc_lib.c)
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+
+# Build the self-hosted compiler
+./build_amc.sh
 
 # Vérification
-./build/amc --version   # Vala amc (bootstrap)
-./amc --version         # Amalgame amc (self-hosted)
+./amc --version
 ```
 
 ---
@@ -36,8 +41,7 @@ src/          ← Code source du compilateur en Amalgame
     resolver.am        ← FullResolver : 2 passes, MemberTable, scope 2-niveaux
   diagnostics.am       ← DiagnosticFormatter (errors, warnings, phase reporting)
   typechecker.am       ← TypeChecker : inférence de types, validation
-  main.am              ← AmalgameCompiler.Run() : pipeline complet
-  amc_main.c           ← Entry point C : parse CLI, appelle Run()
+  main.am              ← AmalgameCompiler.Run() + int main() entry point
 
 runtime/   ← Headers C du runtime
   _runtime.h             ← AmalgameList, types de base, File_StreamLine
@@ -49,8 +53,8 @@ runtime/   ← Headers C du runtime
   Amalgame_Console.h     ← Console_WriteLine, Console_WriteError
 
 tests/
-  run_tests.sh           ← 76 tests Vala (lexer, parser, resolver, typechecker)
-  samples/               ← 37 programmes .am de test end-to-end
+  run_tests.sh           ← driver self-hosted (lexer, parser, resolver, typechecker)
+  samples/               ← programmes .am de test end-to-end
 ```
 
 ---
@@ -60,18 +64,17 @@ tests/
 ```
 .am source files
      │
-     ▼ build/amc (Vala, bootstrap)
+     ▼ ./amc (or ./snapshot/amc on cold start)
 gen_test.c
      │
      ▼ gcc -O2
 gen_test binary
      │
      ▼ ./gen_test
-     ├── amc_bootstrap_lib.c  (lexer+parser+cgen bundles)
-     └── amc_lib.c            (compilateur complet, ~7000 lignes)
+     └── src/amc_lib.c        (compilateur complet bundlé)
           │
           ▼ gcc
-          amc  ←── amc_main.c
+          amc
 ```
 
 **Pipeline de compilation d'un programme Amalgame :**
@@ -93,28 +96,13 @@ hello (binaire)
 
 ```bash
 # 1. Éditer un .am dans src/
-# 2. Rebuild :
-./build/amc src/lexer/token.am src/lexer/lexer.am \
-            src/parser/ast.am src/parser/parser.am \
-            src/generator/c_gen.am src/resolver/symbol.am \
-            src/resolver/resolver.am \
-            src/diagnostics.am src/typechecker.am \
-            src/main.am src/generator/gen_test.am \
-            -o gen_test
-
-# 3. Recompiler gen_test en -O2 (IMPORTANT pour la vitesse)
-gcc -O2 -Iruntime gen_test.c -lgc -lm -o gen_test
-
-# 4. Générer amc_lib.c
-./gen_test
-
-# 5. Compiler amc
-gcc -Iruntime src/amc_lib.c src/amc_main.c \
-    -lgc -lm -lcurl -o amc
-
-# 6. Tester
-./tests/run_tests.sh 2>&1 | tail -3
+# 2. Rebuild + test :
+./build_amc.sh
+./tests/run_all_tests.sh 2>&1 | tail -3
 ```
+
+`build_amc.sh` runs the three stages (compile gen_test, generate
+`src/amc_lib.c`, gcc the final `amc` binary) in ~5 seconds.
 
 ### Ajouter un nouveau fichier .am au compilateur
 
@@ -256,8 +244,7 @@ File_CloseWrite();             // ferme
 
 ### Lancer tous les tests
 ```bash
-./tests/run_tests.sh        # 76 tests Vala : lexer, parser, resolver, TC
-./tests/run_stdlib_tests.sh # tests stdlib
+./tests/run_all_tests.sh    # full suite (363 PASS / 0 FAIL / 0 SKIP)
 ```
 
 ### Ajouter un test

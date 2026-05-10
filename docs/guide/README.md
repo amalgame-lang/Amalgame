@@ -17,8 +17,8 @@ hack on the compiler itself, jump to chapter 7.
    `Random`, `Encoding`, `DateTime`.
 5. [Runtime & C interop](05-runtime-and-interop.md) — memory model,
    bdwgc, mapping types to C, calling C from Amalgame.
-6. [Build & tooling](06-build-and-tooling.md) — `compile.sh`,
-   `build_amc.sh`, the bootstrap path, CI, releases.
+6. [Build & tooling](06-build-and-tooling.md) — `build_amc.sh`,
+   the snapshot bootstrap, CI, releases.
 7. [Compiler internals](07-internals.md) — how `amc` is structured,
    adding a builtin, adding a syntax form, adding a CGen rule.
 8. [LLM commands](08-llm-commands.md) — `amc migrate`, `amc generate`,

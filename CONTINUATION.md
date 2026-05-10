@@ -16,14 +16,13 @@ Current state (May 2026, v0.4.4):
 
 - The compiler `amc` is written in Amalgame in src/ and compiles
   itself in ~5 seconds via ./build_amc.sh.
-- 3-rung bootstrap chain in build_amc.sh:
+- 2-rung bootstrap chain in build_amc.sh:
     ./amc                  → current self-hosted (may break in dev)
     ./snapshot/amc         → last known-good amc, captured by
                              tools/save-snapshot.sh after green tests.
-                             snapshot/amc_lib.c is committed.
-    ./build/amc            → Vala bootstrap in archive/vala-bootstrap/,
-                             no longer in CI but kept locally for cold
-                             starts (./compile.sh).
+                             snapshot/amc_lib.c is committed; from a
+                             clean clone, rebuild with one gcc step
+                             (see snapshot/INFO.md).
 - The runtime headers are at runtime/. Cross-platform (POSIX +
   Windows winsock2 via #ifdef _WIN32 in Amalgame_Net.h). libcurl is
   required by the runtime for the Net module + the new claude-api /
@@ -33,7 +32,8 @@ Current state (May 2026, v0.4.4):
   Currently 363 PASS / 0 FAIL / 0 SKIP across the core/stdlib/fmt/
   amc-new sub-suites.
 - Multi-OS CI (.github/workflows/ci.yml) — Linux + macOS + Windows
-  MSYS2. Linux uses snapshot + self-hosted amc; no Vala in the graph.
+  MSYS2. All three platforms gcc the snapshot/amc_lib.c then chain
+  through build_amc.sh.
   CI compiles with -Wint-conversion as an error on macOS/Windows;
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
@@ -260,8 +260,9 @@ Where to head next (from ROADMAP_COMPLET.md):
   7. Process v2: split stderr from stdout via real pipes, add
      timeouts, async streaming.
   8. amc doc: extract doc-comments → Markdown / HTML.
-  9. amc add <pkg>: package manager (re-export of the legacy
-     Vala one in archive/vala-bootstrap/src/pkg/).
+  9. amc add <pkg>: package manager (re-export of the pre-self-host
+     Vala implementation, available via the vala-bootstrap-final
+     git tag if revival is needed).
  10. DAP: debug adapter using DWARF (-g3 already emitted).
 
 Quick checks before claiming a feature is done:
@@ -320,7 +321,6 @@ docs/proposals/         ← design proposals (RFC-style); amc-migrate.md
 snapshot/               ← amc_lib.c (committed) + amc binary (gitignored)
                           + INFO.md (provenance)
 tools/save-snapshot.sh  ← capture a known-good amc after green tests
-archive/vala-bootstrap/ ← original Vala compiler (recovery only)
 editors/vscode/         ← VS Code extension (TextMate grammar + LSP client)
 .github/workflows/      ← CI + Release automation
 install/                ← Homebrew / Inno Setup / install.sh sketches
@@ -382,11 +382,10 @@ A new session reads these automatically and applies them.
 5. **`?.` evaluates the receiver twice** — keep the receiver
    side-effect-free, or extract it to a `let` first.
 
-6. **Snapshot vs Vala** — when introducing new syntax, *take a
-   snapshot first* (tools/save-snapshot.sh) so the bootstrap chain
-   stays usable. The Vala bootstrap can no longer parse much of
-   what's in src/, so it's only useful for a from-scratch recovery
-   of an old commit, not for ongoing work.
+6. **Snapshot before risky syntax** — when introducing new syntax,
+   *take a snapshot first* (tools/save-snapshot.sh) so the bootstrap
+   chain stays usable. If `./amc` breaks, build_amc.sh falls through
+   to `./snapshot/amc`.
 
 7. **Multi-line string concatenation** — the self-host parser
    chokes on `let s = "a" +\n   "b" +\n   "c"`. Keep `+`-chains on

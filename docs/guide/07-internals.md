@@ -282,23 +282,20 @@ source-file dependency graph to stay one-way.
 
 ## Snapshot bootstrap (`snapshot/`, `tools/save-snapshot.sh`)
 
-`build_amc.sh` has a 3-rung bootstrap chain:
+`build_amc.sh` has a 2-rung bootstrap chain:
 
 1. `./amc` — the freshly-built self-hosted compiler.
 2. `./snapshot/amc` — last known-good amc, captured by
    `tools/save-snapshot.sh` after a green test run. The portable
    `snapshot/amc_lib.c` is committed; the binary is rebuilt by `gcc`
    on each platform that needs it.
-3. `./build/amc` — the original Vala bootstrap in
-   `archive/vala-bootstrap/`. CI no longer exercises it; it stays
-   for cold-start recovery from a clean checkout (`./compile.sh`).
 
 The snapshot rung exists so we can introduce new syntax without
 losing the bootstrap. If `./amc` breaks mid-development, `build_amc.sh`
 falls through to `./snapshot/amc`, which still understands every
 syntax shipped at the time of the last `tools/save-snapshot.sh` run.
-The Vala bootstrap can no longer parse most of `src/`, so the
-snapshot is the working safety net in practice.
+From a clean clone, recompile `snapshot/amc` from the tracked
+`snapshot/amc_lib.c` with one `gcc` invocation — see `snapshot/INFO.md`.
 
 When introducing new syntax, take a snapshot *before* using the
 new construct in `src/*.am`. That way, if the implementation has a
@@ -367,6 +364,5 @@ sample minimal — one feature, one observable.
 
 - `ROADMAP_COMPLET.md` — what's planned and what's in flight.
 - `CONTINUATION.md` — context dump for resuming a session.
-- `docs/transpiler/*.md` — older design docs (somewhat stale).
 - The git log of `feature/*` branches — every feature shipped has
   an explanatory commit message walking through the change.

@@ -3,45 +3,37 @@
 This chapter walks through every script and workflow that builds,
 tests, and ships Amalgame.
 
-## The two compilers
+## The compiler and its snapshot
 
-Amalgame keeps **two** working compilers in tree:
+Amalgame keeps the self-hosted compiler in tree, plus a portable
+known-good snapshot:
 
 - **`./amc`** — self-hosted, written in Amalgame. The everyday
   compiler. Source in `src/`, output of `./build_amc.sh`.
-- **`./build/amc`** — Vala bootstrap, kept as a recovery path.
-  Sources in `archive/vala-bootstrap/`, output of `./compile.sh`.
+- **`./snapshot/amc`** — last known-good `amc` captured by
+  `tools/save-snapshot.sh`. The portable `snapshot/amc_lib.c` is
+  committed; one `gcc` invocation rebuilds the binary on any platform
+  (see `snapshot/INFO.md`). This is the cold-start entry point and
+  the recovery rung when `./amc` is broken mid-development.
 
-The Vala compiler exists because at any point in time, a bug in
-`./amc` can break self-compilation. `./build/amc` is the escape hatch.
+## Cold-start bootstrap
 
-## `./compile.sh` — Vala bootstrap
-
-Builds `./build/amc` (Vala) via meson + ninja.
+From a clean clone:
 
 ```bash
-./compile.sh
-# → meson setup build archive/vala-bootstrap (first time)
-# → ninja -C build
-# → ./build/amc --version
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+./build_amc.sh
 ```
 
-Dependencies:
+Dependencies (Linux):
 
-- valac
-- meson, ninja
-- libglib2.0-dev, libgee-0.8-dev
+- gcc
 - libgc-dev
 - libcurl4-openssl-dev (for the Amalgame stdlib's Net module)
 
-You only need this on Linux (the supported platform for Vala in CI).
-macOS and Windows users compile `amc` directly from the tracked
-`src/amc_lib.c` and skip Vala entirely.
-
-The Vala build definition lives at `archive/vala-bootstrap/meson.build`
-alongside its `.vala` sources. The `./build` directory still ends
-up at the repo root so `build_amc.sh` can pick `./build/amc` as the
-final fallback in its bootstrap chain.
+macOS uses `brew install bdw-gc curl`; Windows uses MSYS2 MinGW64
+(`mingw-w64-x86_64-{gcc,gc,curl}`). The same `snapshot/amc_lib.c` is
+the cross-platform entry point everywhere.
 
 ## `./build_amc.sh` — self-host build
 
@@ -56,9 +48,9 @@ Step 3   gcc -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc
 
 Notes:
 
-- Step 1 uses `./amc` if it exists, otherwise falls back to `./build/amc`
-  (Vala). That makes the very first build on a fresh clone work even
-  if you only ran `./compile.sh`.
+- Step 1 uses `./amc` if it exists, otherwise `./snapshot/amc`. From
+  a clean clone, build `./snapshot/amc` first via the cold-start
+  command above.
 - Step 1 tolerates non-zero exit from `amc` as long as the `.c`
   output was produced. This is the recurring "I just added a builtin
   and the running amc doesn't know it yet" case — gcc remains the
@@ -79,22 +71,17 @@ Re-running `./build_amc.sh` is always safe.
 
 ## `./tests/run_all_tests.sh` — test suite
 
-Two suites, ~127 tests in total:
+Two suites:
 
 - **Core / advanced / namespace / interfaces / enums / match / lib /
   stdlib basics** (`tests/run_tests.sh`) — runs each `tests/samples/*.am`
-  through `./build/amc` and grep-checks the output.
+  through `./amc` and grep-checks the output.
 - **Stdlib** (`tests/run_stdlib_tests.sh`) — focused on
   String/Collections/Net runtime.
 
-The lib end-to-end test (`run_lib_link_test`) uses `./amc` rather
-than `./build/amc` because the Vala CGen still emits public methods
-with `static` forward decls (internal linkage), which would prevent
-linking from a separate translation unit.
-
 ```bash
 ./tests/run_all_tests.sh
-# Core (76)  Stdlib (50)  + 1 e2e lib   →  127/127 PASS
+# → 363 PASS / 0 FAIL / 0 SKIP
 ```
 
 ## Continuous integration
@@ -102,14 +89,14 @@ linking from a separate translation unit.
 `.github/workflows/ci.yml` — runs on every push and PR to `main` /
 `develop`:
 
-| Job     | Runs on                | What it does                                           |
-| ------- | ---------------------- | ------------------------------------------------------ |
-| linux   | ubuntu-latest          | apt deps · `./compile.sh` · `./build_amc.sh` · tests   |
-| macos   | macos-latest (arm64)   | brew deps · gcc `src/amc_lib.c` · smoke compile hello  |
-| windows | windows-latest (MSYS2) | pacman deps · gcc `src/amc_lib.c` · smoke compile hello|
+| Job     | Runs on                | What it does                                                       |
+| ------- | ---------------------- | ------------------------------------------------------------------ |
+| linux   | ubuntu-latest          | apt deps · `gcc snapshot/amc_lib.c` · `./build_amc.sh` · tests     |
+| macos   | macos-latest (arm64)   | brew deps · `gcc src/amc_lib.c` · smoke compile hello              |
+| windows | windows-latest (MSYS2) | pacman deps · `gcc src/amc_lib.c` · smoke compile hello            |
 
-macOS and Windows skip Vala — they validate that the tracked
-`amc_lib.c` is portable and produces a working binary.
+All three platforms validate that the tracked `amc_lib.c` is
+portable and produces a working binary.
 
 ## Releases
 
@@ -155,8 +142,7 @@ out of the box.
 ## Homebrew formula
 
 `install/homebrew/amalgame.rb` — for `brew tap` distribution. Update
-the version and SHA256 every release; `install/release.sh`'s tail
-prints the SHA to copy.
+the version and SHA256 every release.
 
 ## Local hygiene
 
