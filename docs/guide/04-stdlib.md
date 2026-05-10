@@ -20,7 +20,7 @@ see the headers themselves: `runtime/Amalgame_*.h`.
 | `Console.ReadLine() : string`              | read a line from stdin (no trailing `\n`) |
 | `Console.Clear()`                          | clear the terminal (ANSI sequence)      |
 
-```amalgame
+```kotlin
 Console.WriteLine("Hi")
 Console.WriteError("oops")
 let name = Console.ReadLine()
@@ -82,7 +82,7 @@ Console.WriteLine("Hello, " + name + "!")
 | `String.FromByte(b) : string`             |         | one-byte string from 0..255 |
 | `String.FromCodepoint(cp) : string`       |         | UTF-8 encoded codepoint     |
 
-```amalgame
+```kotlin
 let s = "  Hello, World!  "
 let trimmed = String.Trim(s)
 Console.WriteLine(String.ToUpper(trimmed))           // → HELLO, WORLD!
@@ -118,7 +118,7 @@ Console.WriteLine(String.FromInt(String.Length(s))) // → 19
 | `Path.GetFilename(p) : string`            | basename                        |
 | `Path.GetDirectory(p) : string`           | dirname                         |
 
-```amalgame
+```kotlin
 let cfg = File.ReadAll("config.txt")
 File.AppendAll("log.txt", "[startup]\n")
 let lines = String.Split(cfg, "\n")
@@ -152,7 +152,7 @@ File.WriteLines("clean.txt", lines)
 | `Math.Random()`              | float   | [0.0, 1.0)                  |
 | `Math.RandomInt(lo, hi)`     | int     | [lo, hi]                    |
 
-```amalgame
+```kotlin
 Math.SeedRandom(42)
 let dice = Math.RandomInt(1, 6)
 let h = Math.Sqrt(3.0 * 3.0 + 4.0 * 4.0)
@@ -184,7 +184,7 @@ Higher-order methods (since v0.3.6, take a lambda):
 | `xs.All(pred) : bool`                | true if all items satisfy pred   |
 | `xs.CountIf(pred) : int`             | count of items satisfying pred   |
 
-```amalgame
+```kotlin
 let xs = new List<string>()
 xs.Add("a") ; xs.Add("b") ; xs.Add("c")
 for i in 0..xs.Count() {
@@ -261,7 +261,7 @@ Set up at `int main()` time and accessible from Amalgame:
 | `Exit.Set(n: int)`              | mark process exit status |
 | `Exit.Get() : int`              | read current exit status |
 
-```amalgame
+```kotlin
 public static void Main(string[] args) {
     let n = Args.Count()
     Console.WriteLine("argc = {String.FromInt(n)}")
@@ -286,7 +286,7 @@ Used internally by `amc lsp`, `amc migrate`, `amc generate`,
 `amc explain` to read API responses; available to user code under
 the `Amalgame.Json` namespace.
 
-```amalgame
+```kotlin
 import Amalgame.Json
 
 let body = "{\"users\":[{\"name\":\"Alice\",\"age\":30}]}"
@@ -334,7 +334,7 @@ wrap-around it relies on is well-defined unsigned but UB on
 Amalgame's signed `int`, so we keep the multiply behind a
 runtime helper.
 
-```amalgame
+```kotlin
 import Amalgame.Random
 import Amalgame.Collections
 
@@ -406,7 +406,7 @@ bread-and-butter byte/text transcodings: `Base64` (RFC 4648),
 `Hex`, and `Url` (percent-encoding per RFC 3986). All three are
 pure Amalgame — no runtime header, no syscalls.
 
-```amalgame
+```kotlin
 import Amalgame.Encoding
 import Amalgame.Collections
 
@@ -485,7 +485,7 @@ time, named timezones, or DST. The roadmap tracks those as
 follow-ups; the current API is small enough that adding a
 parallel `LocalTime` later won't churn existing call sites.
 
-```amalgame
+```kotlin
 import Amalgame.DateTime
 
 let now: Instant = Instant.Now()
@@ -572,6 +572,67 @@ adjustments and manual clock changes.
   decade or two ahead; the API can grow a `Date` (no time of
   day, larger range) if applications outside this window become
   a thing.
+
+## Crypto — SHA-256 and HMAC-SHA-256
+
+`namespace Amalgame.Crypto` exposes two static facades — `Sha256`
+for the bare hash and `Hmac` for keyed authentication. Both go
+straight to `runtime/Amalgame_Crypto.h`, which holds the SHA-256
+compression function (FIPS 180-4 §6.2) and the HMAC ipad/opad
+construction (RFC 2104) in pure C. No external crypto library
+dependency — the runtime header is self-contained, ~150 lines.
+
+Bytes flow through as `List<int>` with each entry in `[0, 255]`
+(the runtime masks to 8 bits anyway, so any int list works).
+String-input convenience methods hash the UTF-8 byte
+representation directly. All hex output is lowercase (RFC 4648
+hex is case-insensitive on decode, so this matches the de-facto
+modern convention).
+
+```kotlin
+import Amalgame.Crypto
+
+// ── SHA-256 ─────────────────────────────────────────
+let h1: string = Sha256.OfString("hello")        // hex (most common)
+let raw: List<int> = Sha256.Bytes(some_bytes)    // 32 raw bytes
+let h2: string = Sha256.Hex(some_bytes)          // hex of bytes input
+
+// ── HMAC-SHA-256 ────────────────────────────────────
+let mac: string = Hmac.Sha256OfStrings(api_key, payload)
+let mac_raw: List<int> = Hmac.Sha256(key_bytes, msg_bytes)
+let mac_hex: string = Hmac.Sha256Hex(key_bytes, msg_bytes)
+```
+
+### Sha256
+
+| Method                          | Returns        | Notes                                     |
+|---------------------------------|----------------|-------------------------------------------|
+| `Sha256.Bytes(data: List<int>)` | `List<int>`    | Raw 32-byte digest                        |
+| `Sha256.Hex(data: List<int>)`   | `string`       | Lowercase hex of the 32-byte digest       |
+| `Sha256.OfString(s: string)`    | `string`       | UTF-8 bytes of `s` → digest → hex         |
+
+### Hmac
+
+| Method                                                | Returns      |
+|-------------------------------------------------------|--------------|
+| `Hmac.Sha256(key: List<int>, msg: List<int>)`         | `List<int>`  |
+| `Hmac.Sha256Hex(key: List<int>, msg: List<int>)`      | `string`     |
+| `Hmac.Sha256OfStrings(key: string, msg: string)`      | `string`     |
+
+Keys longer than the SHA-256 block size (64 bytes) are hashed down
+to 32 bytes per RFC 2104 §2; keys shorter than 64 are zero-padded.
+Either is handled transparently inside the runtime.
+
+### Caveats
+
+- **SHA-256 only for now.** No SHA-1 (insecure for new uses anyway),
+  SHA-512, MD5, or Blake. Add as needed.
+- **Constant-time comparison** of MAC values is the caller's
+  responsibility. Amalgame's `string ==` and `List<int>` comparison
+  short-circuit on the first byte mismatch, which leaks timing
+  information against a determined attacker. For verifying signatures
+  / MACs against untrusted input, compare via a manual byte-by-byte
+  loop that always runs to completion.
 
 ## What's missing
 

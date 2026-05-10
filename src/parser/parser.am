@@ -1176,7 +1176,12 @@ public class Parser {
     }
 
     private AstNode ParseRelational() {
-        var left = this.ParseAdd()
+        // ParseShift was already wired on the RHS but not the LHS,
+        // so `let x: int = r >> 8` parsed as `let x: int = r` and
+        // dropped the shift. Calling ParseShift on both sides walks
+        // the precedence ladder consistently:
+        //   equality > relational > shift > add > mul > unary
+        var left = this.ParseShift()
         while (this.CheckValue("<") || this.CheckValue(">") || this.CheckValue("<=") || this.CheckValue(">=")) {
             let tok = this.Advance()
             let right = this.ParseShift()

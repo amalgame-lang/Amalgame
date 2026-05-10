@@ -524,17 +524,71 @@ before the next big language addition.
       - [x] `Amalgame.Encoding` — Base64, hex, URL encode/decode.
         (PR #201)
       - [x] `Amalgame.DateTime` — Instant + Duration + Stopwatch,
-        UTC-only, RFC 3339 strict (PR pending). Local time and
+        UTC-only, RFC 3339 strict (PR #202). Local time and
         timezone follow-up tracked below.
+      - [x] `Amalgame.Crypto` — SHA-256 + HMAC-SHA-256 (FIPS 180-4
+        + RFC 2104), pure-C runtime header, no external dep
+        (PR #213). Constant-time compare deferred — caller's
+        responsibility documented in the guide.
       - [ ] `Amalgame.Regex` — PCRE-style or RE2 binding, capture
         groups exposed as `Match` records.
       - [ ] `Amalgame.Compress` — gzip, deflate (zip later).
-      - [ ] `Amalgame.Crypto` — SHA-256, HMAC, constant-time compare.
       - [ ] `Amalgame.Threading` — at minimum a thread pool +
         Mutex/Channel; needs runtime-side care around libgc.
       Each is a small project on its own; ship as separate PRs
       and add docs/guide entries in lockstep. Tied to the open
       "Stdlib delivery model" design question below.
+
+### Stdlib gaps — second tier
+
+Beyond the core "fill obvious holes" list above, here's the inventory
+of things a reasonably complete stdlib usually has and Amalgame
+currently doesn't. Ordered by rough user-facing value, not by
+implementation effort.
+
+- [ ] **`Amalgame.Audio`** — playback + capture + basic synthesis.
+      Recommended path: a runtime header binding [miniaudio](https://miniaud.io/)
+      (single-file C library, MIT, cross-platform via WASAPI on
+      Windows / CoreAudio on macOS / ALSA-or-PulseAudio on Linux).
+      Public surface: `AudioBuffer.Load(path)` for WAV/MP3/Ogg
+      decode, `AudioStream.Play(buf)` / `.Pause()` / `.Stop()`,
+      `AudioMixer` for multi-source playback, `AudioRecorder` for
+      mic capture. Linker flags: `-ldl -lpthread -lm` on Linux,
+      `-framework AudioToolbox -framework CoreAudio` on macOS,
+      `-lole32 -lwinmm` on Windows. ~400 LoC stdlib + ~200 LoC
+      runtime (mostly miniaudio passthrough). Stretch: MIDI in/out.
+- [ ] **`Amalgame.Database`** — at minimum SQLite via `libsqlite3`.
+      `new Database(path)`, `db.Execute(sql, params)`, `db.Query(sql,
+      params) → Rows`, prepared-statement reuse, transactions.
+      Postgres / MySQL bindings can come later; SQLite covers the
+      90% case (CLI tools, app local storage, test fixtures).
+- [ ] **`Amalgame.Path`** — cross-platform path manipulation.
+      Currently scattered in user code (string splits, hardcoded
+      separators). Exposes `Path.Join`, `Path.Parent`, `Path.Stem`,
+      `Path.Extension`, `Path.Normalize`, `Path.IsAbsolute`. Pure
+      Amalgame, no runtime header — handles Windows `\` ↔ POSIX
+      `/` and `..` resolution.
+- [ ] **`Amalgame.Logging`** — structured logging with levels
+      (Trace/Debug/Info/Warn/Error), pluggable sinks (stderr,
+      file, JSON-per-line for ingestion), context fields
+      (`logger.With("requestId", id)`). Pure Amalgame on top of
+      Console + File. ~200 LoC.
+- [ ] **`Amalgame.Net.WebSocket`** — RFC 6455 client (and later
+      server). The existing `TcpServer` could host it but the
+      handshake + framing isn't trivial. Useful for amc lsp over
+      websocket transport, bidirectional service comms, etc.
+- [ ] **Filesystem watcher** — extend `Amalgame.IO` with
+      `File.Watch(path, callback)` backed by `inotify` on Linux,
+      `FSEvents` on macOS, `ReadDirectoryChangesW` on Windows.
+      Useful for `amc test --watch`, dev-server hot reload, and
+      generally anything dev-tools-shaped.
+- [ ] **`Amalgame.Math` advanced** — vectors (`Vec2/3/4`), matrices
+      (`Mat4`), complex numbers, bigint. Currently `Math.*` is
+      scalar-only. Easy to start with `Vec3` for game/graphics
+      use cases; `BigInt` is a bigger project (no GMP dep wanted).
+- [ ] **Other serialization formats** — TOML (config files),
+      YAML (CI configs), MessagePack (binary RPC). Json covers
+      most needs but each has its niche.
 - [ ] **DateTime v2** — local time + named timezones. Adds a
       `LocalTime` companion class wrapping `(instant, zoneId)`
       with a `Now`, `In(zone)`, breakdown into Y/M/D/h/m/s,
@@ -572,6 +626,18 @@ before the next big language addition.
       `editors/vscode/package.json` is left at `BastienMOUGET`
       until the extension is actually published under the org
       identity on the marketplace.
+
+### Marketing / discoverability
+- [ ] **Submit Amalgame to GitHub Linguist** — until accepted,
+      ` ```amalgame ` markdown fences render as plain text and
+      `.am` files don't get a language badge on the repo. Linguist
+      uses a stars/usage heuristic (~200 repos) and requires a
+      TextMate grammar — we already have one in
+      `editors/vscode/syntaxes/amalgame.tmLanguage.json`. Until we
+      cross the threshold, README + docs/guide use ` ```kotlin `
+      as a syntax-highlight fallback (closest visual match: shared
+      `let` / `var` / `class` / `null` keywords, mismatches on
+      `fn` and lowercase type names).
 
 ### Documentation
 - [x] User guide (`docs/guide/`)

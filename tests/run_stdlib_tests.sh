@@ -313,6 +313,23 @@ run_test "DateTime: dur fmt hour"          "$SAMPLES/stdlib_datetime.am" "[PASS]
 run_test "DateTime: Stopwatch elapsed"     "$SAMPLES/stdlib_datetime.am" "[PASS] Stopwatch elapsed"       "" "$DT_LIB"
 run_test "DateTime: Stopwatch reset"       "$SAMPLES/stdlib_datetime.am" "[PASS] Stopwatch reset"         "" "$DT_LIB"
 
+# ── Amalgame.Crypto ───────────────────────────────────
+# Same extra-input pattern — pulls in src/stdlib/crypto.am
+# alongside the test sample. Vectors come from FIPS 180-4
+# (SHA-256) and RFC 4231 (HMAC-SHA-256 cases 1 & 2).
+echo ""
+echo "── Amalgame.Crypto ─────────────────────────"
+CR_LIB="src/stdlib/crypto.am"
+run_test "Crypto: sha256 'abc'"            "$SAMPLES/stdlib_crypto.am" "[PASS] sha256 'abc'"            "" "$CR_LIB"
+run_test "Crypto: sha256 empty"            "$SAMPLES/stdlib_crypto.am" "[PASS] sha256 empty"            "" "$CR_LIB"
+run_test "Crypto: sha256 bytes length"     "$SAMPLES/stdlib_crypto.am" "[PASS] sha256 bytes length"     "" "$CR_LIB"
+run_test "Crypto: sha256 bytes hex"        "$SAMPLES/stdlib_crypto.am" "[PASS] sha256 bytes hex"        "" "$CR_LIB"
+run_test "Crypto: sha256 multi-block"      "$SAMPLES/stdlib_crypto.am" "[PASS] sha256 100a"             "" "$CR_LIB"
+run_test "Crypto: hmac rfc4231 case 1"     "$SAMPLES/stdlib_crypto.am" "[PASS] hmac rfc4231 case 1"     "" "$CR_LIB"
+run_test "Crypto: hmac rfc4231 case 2"     "$SAMPLES/stdlib_crypto.am" "[PASS] hmac rfc4231 case 2"     "" "$CR_LIB"
+run_test "Crypto: hmac bytes length"       "$SAMPLES/stdlib_crypto.am" "[PASS] hmac bytes length"       "" "$CR_LIB"
+run_test "Crypto: hmac bytes path"         "$SAMPLES/stdlib_crypto.am" "[PASS] hmac bytes path"         "" "$CR_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"

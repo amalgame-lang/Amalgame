@@ -153,7 +153,7 @@ CGen
 
 **Accès chaînés** — Le Resolver ne suit pas les types au-delà d'un appel de méthode.
 Au lieu de `obj.Field.Method()`, utiliser des variables intermédiaires :
-```amalgame
+```kotlin
 // ❌ Ne compile pas correctement
 let count = this.SomeList.Children.Count()
 
@@ -163,14 +163,14 @@ let count = children.Count()
 ```
 
 **Variables mutables** — Toujours `var` pour les variables réassignées :
-```amalgame
+```kotlin
 var x = 0        // mutable
 let y = "hello"  // immutable (let)
 ```
 
 **Boucles bornées** — Jamais `while (ptr != null)` sur des objets GC.
 Toujours une boucle `for i in 0..MAX` avec break :
-```amalgame
+```kotlin
 // ❌ Peut boucler infiniment (GC ne met pas NULL)
 while (scope != null) { scope = scope.Parent }
 
@@ -182,7 +182,7 @@ for i in 0..64 {
 ```
 
 **Corps de méthodes vides** — Pas de `{ }` vide, toujours un no-op :
-```amalgame
+```kotlin
 // ❌ Fait boucler le parser
 public void Noop() { }
 
@@ -191,7 +191,7 @@ public void Noop() { this.X = this.X }
 ```
 
 **Continuations de ligne** — Pas de `+` en fin de ligne :
-```amalgame
+```kotlin
 // ❌ Parser interprète comme fin de statement
 let s = "hello" +
         "world"

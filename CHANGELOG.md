@@ -7,6 +7,102 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.5] — 2026-05-10
+
+The "infrastructure cleanup + Crypto" release. Drops the Vala
+bootstrap entirely now that the snapshot is the sole bootstrap
+entry point, adds `Amalgame.Crypto` (SHA-256 + HMAC), fixes a
+silent shift-drop bug in the parser, and wires a release-time
+PDF guide build. 14 commits across 6 PRs.
+
+### Added
+
+- **`Amalgame.Crypto`** (PR #213) — SHA-256 (FIPS 180-4) and
+  HMAC-SHA-256 (RFC 2104) primitives in two static facades:
+  `Sha256` for the bare hash, `Hmac` for keyed authentication.
+  Pure-C runtime header `runtime/Amalgame_Crypto.h` (~150 lines,
+  no external crypto dep). API:
+
+      Sha256.Bytes(data: List<int>)    -> List<int>   # raw 32 bytes
+      Sha256.Hex(data: List<int>)      -> string      # hex
+      Sha256.OfString(s: string)       -> string      # UTF-8 → hex
+
+      Hmac.Sha256(key, msg: List<int>)        -> List<int>
+      Hmac.Sha256Hex(key, msg: List<int>)     -> string
+      Hmac.Sha256OfStrings(key, msg: string)  -> string
+
+  Tested against FIPS 180-4 SHA-256 vectors ('abc', empty,
+  100×'a' multi-block) and RFC 4231 HMAC-SHA-256 cases 1–2.
+  Documented caveat: constant-time MAC comparison is the
+  caller's responsibility.
+
+- **`release-pdf` GitHub Actions workflow** (PR #211) — on every
+  `v*` tag, concatenates `docs/guide/0*.md` (chapters 01..08) and
+  builds `amalgame-guide-vX.Y.Z.pdf` via pandoc + xelatex,
+  attached to the GitHub Release. The amalgame.me /releases page
+  picks it up automatically.
+
+### Changed
+
+- **README + guide code blocks** (PR #216) — 61 ` ```amalgame `
+  fences swapped to ` ```kotlin ` as a syntax-highlight fallback.
+  GitHub Linguist doesn't recognise `amalgame` yet (roadmap entry
+  added), and Kotlin shares enough keywords (`let` / `var` /
+  `class` / `null` / `for x in xs`) to highlight ~80% of the
+  syntax usefully.
+
+### Fixed
+
+- **Parser: `expr >> N` and `expr << N` no longer drop the shift**
+  (PR #215). `ParseRelational` was correctly calling `ParseShift`
+  on its RHS but went straight to `ParseAdd` on the LHS, so any
+  expression starting with a shift got truncated. One-line fix
+  restores the intended `equality > relational > shift > add >
+  mul` precedence ladder. Cleaned up the `r / 256` → `r >> 8`
+  workaround in `random.am`. `encoding.am` keeps `/` / `*` for
+  now since its slices appear inside mixed `+` expressions where
+  the cgen-precedence-parens issue would change C evaluation
+  order — separate roadmap item.
+
+### Removed
+
+- **Vala bootstrap** (PR #210) — `archive/vala-bootstrap/`
+  (Vala compiler sources, meson.build, ~13 500 LoC), `compile.sh`
+  (Vala build wrapper), `install/release.sh` (meson-based release
+  builder, superseded by `release.yml`), top-level `install.sh`
+  (stale stub referencing `codec --version` and the pre-rename
+  repo URL), `bootstrap/` directory (unused 2 MB Vala binary +
+  README describing commands that don't exist), and 6
+  `docs/transpiler/*.md` v0.1.0 design docs (described the
+  deleted impl). The bootstrap chain is now 2-rung — `./amc →
+  ./snapshot/amc` — and a clean clone cold-starts in one `gcc`
+  invocation. The pre-removal state is preserved at the
+  `vala-bootstrap-final` git tag if revival is ever needed.
+  Net diff: 30 files removed, ~13 569 lines deleted.
+
+### Roadmap
+
+- **Stdlib gaps — second tier** (PR #214) — new ROADMAP_COMPLET
+  section inventorying modules a complete stdlib usually has
+  and Amalgame doesn't yet: Audio (miniaudio binding sketch),
+  Database (SQLite), Path manipulation, Logging, WebSocket,
+  Filesystem watcher, advanced Math (Vec/Mat/BigInt), other
+  serialization formats (TOML/YAML/MessagePack).
+- **Submit Amalgame to GitHub Linguist** (PR #216) — long-term
+  fix for the markdown highlight fallback; we already have the
+  TextMate grammar in `editors/vscode/syntaxes/`.
+
+### Tests / infra
+
+- Suite is now **372 PASS / 0 FAIL / 0 SKIP** (+9 from
+  `Amalgame.Crypto`).
+- `snapshot/amc_lib.c` refreshed twice during the cycle: once
+  after Crypto wiring (new resolver globals), once after the
+  parser fix (so cold-start clones don't hit the old shift-drop
+  on the new `random.am`).
+
+---
+
 ## [v0.4.4] — 2026-05-10
 
 The "stdlib trio" release. Three new modules — `Amalgame.Random`,
@@ -750,6 +846,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.5]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.5
 [v0.4.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.4
 [v0.4.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.3
 [v0.4.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.2

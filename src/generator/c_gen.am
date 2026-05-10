@@ -1103,6 +1103,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
         this.Out.EmitLine("#include \"Amalgame_Random.h\"")
         this.Out.EmitLine("#include \"Amalgame_DateTime.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Crypto.h\"")
         this.Out.EmitBlank()
     }
 
