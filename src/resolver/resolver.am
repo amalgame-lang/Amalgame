@@ -296,6 +296,22 @@ public class FullResolver {
         // Service stdlib — same isStdlib short-circuit pattern as Log.
         this.DeclareGlobal("Service",             "type",   false)
         this.DeclareGlobal("Service_Install",     "void",   false)
+        // Database.SQLite stdlib — same isStdlib short-circuit
+        // pattern. Runtime ships the SQLite amalgamation at
+        // runtime/Amalgame_Database/sqlite/sqlite3.c; users link
+        // that file into their binary alongside the generated .c.
+        // The namespace convention `Amalgame.Database.<Engine>`
+        // leaves room for sibling backends (Postgres / DuckDB /
+        // MySQL / …) under `Amalgame.Database.<Engine>` later.
+        this.DeclareGlobal("SQLite",                "type",         false)
+        this.DeclareGlobal("SQLite_Open",           "AmalgameSQLite", false)
+        this.DeclareGlobal("SQLite_Close",          "void",         false)
+        this.DeclareGlobal("SQLite_IsOpen",         "bool",         false)
+        this.DeclareGlobal("SQLite_LastError",      "string",       false)
+        this.DeclareGlobal("SQLite_Exec",           "bool",         false)
+        this.DeclareGlobal("SQLite_QueryAll",       "List<List<string>>", false)
+        this.DeclareGlobal("SQLite_LastInsertId",   "int",          false)
+        this.DeclareGlobal("SQLite_Changes",        "int",          false)
         this.DeclareGlobal("Service_ShouldStop",  "bool",   false)
         this.DeclareGlobal("Service_RequestStop", "void",   false)
         this.DeclareGlobal("Service_Sleep",       "void",   false)
