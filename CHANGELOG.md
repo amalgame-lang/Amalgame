@@ -7,6 +7,74 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.15] — 2026-05-11
+
+The "embedded database lands" release. Fourth stdlib brick after
+Path / Logging / Service, plus a cluster of governance + ergonomics
+upgrades — NOTICE.md, CONTRIBUTING.md, an auto-close workflow for
+external PRs, and the docs/guide refresh.
+
+### Added
+
+- **`Amalgame.Database.SQLite`** (PR #266) — embedded SQL via the
+  vendored SQLite amalgamation
+  (`runtime/Amalgame_Database/sqlite/sqlite3.c` + `sqlite3.h`,
+  public-domain dedication). No `libsqlite3-dev` package needed
+  on any OS; the amalgamation compiles directly into the user
+  binary. Surface: `SQLite.Open(path)`, `Close`, `IsOpen`,
+  `Exec(sql)`, `QueryAll(sql)` → `List<List<string>>`,
+  `LastInsertId`, `Changes`, `LastError`. Namespace nests under
+  `Amalgame.Database.<Engine>` so sibling backends (DuckDB,
+  Postgres, MySQL) can land alongside without conflicts.
+- **`.github/workflows/auto-close-external-prs.yml`** (PR #265)
+  — auto-closes PRs opened from forks with a polite pointer to
+  `CONTRIBUTING.md`. Detects external-vs-internal via the
+  head-repo / base-repo mismatch, so `release/*` / `feat/*` /
+  `docs/*` branches pushed by the maintainer skip the hook.
+- **NOTICE.md** (PR #264, expanded here) — clarifies authorship
+  (sole author = Bastien Mouget; the AI used during development
+  is a tool, not a co-author at law), a "You are free to use
+  Amalgame" plain-language Apache-2.0 grant summary, and a full
+  third-party-licence audit (bdwgc / libcurl / SQLite / NSSM /
+  host compilers) with compatibility notes for each.
+- **CONTRIBUTING.md** (PR #264) — external contributions paused
+  while the project is solo-developed; Issues stay open for bug
+  reports; forks allowed per Apache-2.0.
+- **docs/guide/04-stdlib.md** — Database.SQLite section with
+  worked example + linking instructions + v1 limitations
+  (no parameter binding yet, text-only columns, no explicit
+  transactions — all tracked for v2).
+
+### Changed
+
+- **`tests/run_stdlib_tests.sh`** precompiles the SQLite
+  amalgamation once at startup (~10s) and links the resulting
+  `.o` into every stdlib test binary. Per-test overhead stays
+  flat; the .o is dead-code-eliminated for non-Database tests.
+
+### Roadmap
+
+- `Amalgame.Database.<Engine>` siblings — DuckDB (vendored
+  amalgamation), Postgres + MySQL (dynamic-link to system libs).
+- `Amalgame.Database.SQLite` v2 — parameter binding via `?`
+  placeholders, typed column accessors (`row.AsInt(0)`), prepared-
+  statement reuse, transactions.
+- `Amalgame.Service` v2 — native Windows SCM dispatcher, drop the
+  NSSM dependency on Windows.
+
+### Tests / infra
+
+- Suite grows to **434 PASS / 0 FAIL / 0 SKIP** (was 421). 13 new
+  cases cover open, DDL, DML, last-insert-id, changes counter,
+  query+columns, aggregate, error path, delete, close. End-to-end
+  on an in-memory database.
+- Repo size: `+10MB` for the vendored SQLite amalgamation.
+  `linguist-vendored=true` in `.gitattributes` keeps the lines
+  out of GitHub's language stats.
+- Snapshot refreshed.
+
+---
+
 ## [v0.4.14] — 2026-05-10
 
 The "service scaffolder lands" release. Path + Logging + Service
@@ -1406,6 +1474,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
 [v0.4.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.14
 [v0.4.13]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.13
 [v0.4.12]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.12
