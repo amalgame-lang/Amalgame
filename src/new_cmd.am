@@ -14,6 +14,7 @@ import Amalgame.String
 //   amc new <name>                       # exe template (default)
 //   amc new <name> --template lib        # library skeleton
 //   amc new <name> --template test       # test-only bundle
+//   amc new <name> --template service    # long-running daemon
 //
 // Creates a `<name>/` directory with starter files: source skeleton,
 // .gitignore, README.md, build.sh. The output is intentionally
@@ -30,12 +31,15 @@ public class NewCommand {
         Console.WriteError("Scaffold a new Amalgame project named <name>.")
         Console.WriteError("")
         Console.WriteError("Templates:")
-        Console.WriteError("  exe    Default. src/main.am with Program.Main + a passing test.")
-        Console.WriteError("  lib    src/<name>.am with a public class skeleton, no main.")
-        Console.WriteError("  test   tests/<name>_test.am only — bolt onto an existing project.")
+        Console.WriteError("  exe      Default. src/main.am with Program.Main + a passing test.")
+        Console.WriteError("  lib      src/<name>.am with a public class skeleton, no main.")
+        Console.WriteError("  test     tests/<name>_test.am only — bolt onto an existing project.")
+        Console.WriteError("  service  Long-running daemon. signal-aware shutdown loop using")
+        Console.WriteError("           Amalgame.Service + Amalgame.Logging, a systemd unit, and")
+        Console.WriteError("           an install.sh wired for /usr/local/bin + systemctl.")
         Console.WriteError("")
         Console.WriteError("Flags:")
-        Console.WriteError("  --template <kind>    One of: exe (default), lib, test.")
+        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service.")
         Console.WriteError("  --force              Overwrite if <name>/ already exists.")
         Console.WriteError("  -h, --help           Print this help and exit.")
     }
@@ -81,8 +85,8 @@ public class NewCommand {
             NewCommand.PrintUsage()
             return 1
         }
-        if (template != "exe" && template != "lib" && template != "test") {
-            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test)")
+        if (template != "exe" && template != "lib" && template != "test" && template != "service") {
+            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service)")
             return 1
         }
         // Accept a path like `path/to/myproj` — IsSafeName only
@@ -113,6 +117,9 @@ public class NewCommand {
         }
         if (template == "lib") {
             return NewCommand.ScaffoldLib(name, baseName)
+        }
+        if (template == "service") {
+            return NewCommand.ScaffoldService(name, baseName)
         }
         return NewCommand.ScaffoldTest(name, baseName)
     }
@@ -167,6 +174,46 @@ public class NewCommand {
         Console.WriteLine("Scaffolded '" + base + "' (lib template).")
         Console.WriteLine("  cd " + path)
         Console.WriteLine("  ./build.sh   # builds " + base + ".o (library)")
+        return 0
+    }
+
+    private static int ScaffoldService(string path, string base) {
+        let srcDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/src"))
+        if (srcDir != 0) {
+            Console.WriteError("amc new: failed to create src/ subdirectory")
+            return 1
+        }
+
+        // POSIX side — systemd unit + install/build .sh
+        let mainAm:    string = NewCommand.MainAmService(base)
+        let unit:      string = NewCommand.SystemdUnit(base)
+        let installSh: string = NewCommand.InstallShService(base)
+        let buildSh:   string = NewCommand.BuildShService(base)
+        // Windows side — NSSM-based install + MinGW build, PowerShell only
+        // (modern, available on every Windows 7+ host, much cleaner
+        // download-and-extract logic than a CMD batch script).
+        let buildPs1:   string = NewCommand.BuildPs1Service(base)
+        let installPs1: string = NewCommand.InstallPs1Service(base)
+        let readme:     string = NewCommand.ReadmeService(base)
+        let gitignore:  string = NewCommand.GitignoreService(base)
+
+        if (!NewCommand.WriteFile(path + "/src/main.am",            mainAm))     { return 1 }
+        if (!NewCommand.WriteFile(path + "/" + base + ".service",   unit))       { return 1 }
+        if (!NewCommand.WriteFile(path + "/install.sh",             installSh))  { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.sh",               buildSh))    { return 1 }
+        if (!NewCommand.WriteFile(path + "/install.ps1",            installPs1)) { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.ps1",              buildPs1))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore",             gitignore))  { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md",              readme))     { return 1 }
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/build.sh"))
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/install.sh"))
+
+        Console.WriteLine("Scaffolded '" + base + "' (service template).")
+        Console.WriteLine("  cd " + path)
+        Console.WriteLine("  Linux:    ./build.sh && sudo ./install.sh")
+        Console.WriteLine("            sudo journalctl -fu " + base)
+        Console.WriteLine("  Windows:  .\\build.ps1 ; Start-Process powershell -Verb runAs install.ps1")
+        Console.WriteLine("            (uses NSSM under the hood; auto-downloaded if missing)")
         return 0
     }
 
@@ -381,6 +428,364 @@ public class NewCommand {
         return s
     }
 
+    // ── Service template content ──────────────────────
+
+    private static string MainAmService(string name) {
+        var s: string = ""
+        s = s + "namespace " + name + "\n"
+        s = s + "\n"
+        s = s + "import Amalgame.Collections\n"
+        s = s + "import Amalgame.IO\n"
+        s = s + "import Amalgame.Logging\n"
+        s = s + "import Amalgame.Service\n"
+        s = s + "\n"
+        s = s + "// ── " + name + " — long-running daemon ─────────────────────\n"
+        s = s + "//\n"
+        s = s + "// Built with `amc new <name> --template service`. The skeleton\n"
+        s = s + "// covers the three things every service needs: catch the\n"
+        s = s + "// shutdown signal, sleep between iterations without burning\n"
+        s = s + "// CPU, and log to a place that survives the process exit.\n"
+        s = s + "//\n"
+        s = s + "// Replace `OnTick()` with your actual work. The systemd unit\n"
+        s = s + "// (`" + name + ".service`) runs this with stdout/stderr routed\n"
+        s = s + "// to journald; on macOS use launchd, on Windows wrap it with sc.\n"
+        s = s + "\n"
+        s = s + "public class Program {\n"
+        s = s + "    public static int Main(List<string> args) {\n"
+        s = s + "        Log.SetMinLevel(\"info\")\n"
+        s = s + "        Log.Info(\"" + name + " starting\")\n"
+        s = s + "\n"
+        s = s + "        Service.Install()\n"
+        s = s + "        var ticks: int = 0\n"
+        s = s + "        while (!Service.ShouldStop()) {\n"
+        s = s + "            Program.OnTick(ticks)\n"
+        s = s + "            ticks = ticks + 1\n"
+        s = s + "            Service.Sleep(5000)\n"
+        s = s + "        }\n"
+        s = s + "\n"
+        s = s + "        Log.Info(\"" + name + " shutting down cleanly\")\n"
+        s = s + "        return 0\n"
+        s = s + "    }\n"
+        s = s + "\n"
+        s = s + "    // Single iteration of work. Called every 5s by default; tune\n"
+        s = s + "    // the Service.Sleep above or drive off events instead.\n"
+        s = s + "    private static void OnTick(int n) {\n"
+        s = s + "        Log.Info(\"tick \" + String_FromInt(n))\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string SystemdUnit(string name) {
+        var s: string = ""
+        s = s + "[Unit]\n"
+        s = s + "Description=" + name + " (Amalgame service)\n"
+        s = s + "After=network.target\n"
+        s = s + "\n"
+        s = s + "[Service]\n"
+        s = s + "Type=simple\n"
+        s = s + "ExecStart=/usr/local/bin/" + name + "\n"
+        s = s + "Restart=on-failure\n"
+        s = s + "RestartSec=5s\n"
+        s = s + "StandardOutput=journal\n"
+        s = s + "StandardError=journal\n"
+        s = s + "\n"
+        s = s + "# Run as a dedicated unprivileged user. Create with:\n"
+        s = s + "#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin " + name + "\n"
+        s = s + "# Then uncomment the User= line below.\n"
+        s = s + "# User=" + name + "\n"
+        s = s + "# Group=" + name + "\n"
+        s = s + "\n"
+        s = s + "[Install]\n"
+        s = s + "WantedBy=multi-user.target\n"
+        return s
+    }
+
+    private static string InstallShService(string name) {
+        var s: string = ""
+        s = s + "#!/usr/bin/env bash\n"
+        s = s + "# install.sh — build + install the " + name + " daemon under systemd.\n"
+        s = s + "# Re-run after a code change to deploy the new binary; systemctl\n"
+        s = s + "# picks it up on the next restart triggered by the install step.\n"
+        s = s + "set -euo pipefail\n"
+        s = s + "\n"
+        s = s + "if [ \"$(id -u)\" -ne 0 ]; then\n"
+        s = s + "    echo \"install.sh: must run as root (try: sudo ./install.sh)\" >&2\n"
+        s = s + "    exit 1\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "echo \"==> Building " + name + "\"\n"
+        s = s + "./build.sh\n"
+        s = s + "\n"
+        s = s + "echo \"==> Installing binary to /usr/local/bin/" + name + "\"\n"
+        s = s + "install -m 0755 ./" + name + " /usr/local/bin/" + name + "\n"
+        s = s + "\n"
+        s = s + "echo \"==> Installing systemd unit to /etc/systemd/system/" + name + ".service\"\n"
+        s = s + "install -m 0644 ./" + name + ".service /etc/systemd/system/" + name + ".service\n"
+        s = s + "\n"
+        s = s + "echo \"==> Reloading systemd, enabling + (re)starting\"\n"
+        s = s + "systemctl daemon-reload\n"
+        s = s + "systemctl enable " + name + ".service\n"
+        s = s + "systemctl restart " + name + ".service\n"
+        s = s + "\n"
+        s = s + "echo \"==> Status\"\n"
+        s = s + "systemctl --no-pager --full status " + name + ".service || true\n"
+        s = s + "\n"
+        s = s + "echo\n"
+        s = s + "echo \"Done. Tail the logs with:\"\n"
+        s = s + "echo \"  journalctl -fu " + name + "\"\n"
+        return s
+    }
+
+    private static string BuildShService(string name) {
+        // Curly braces in shell parameter expansions (${VAR:-default})
+        // collide with Amalgame's string interpolation parser, so we
+        // substitute via sentinels and run a final replacement.
+        let lb: string = "{"
+        let rb: string = "}"
+        var s: string = ""
+        s = s + "#!/usr/bin/env bash\n"
+        s = s + "# build.sh — compile " + name + " to a native binary.\n"
+        s = s + "# Same locate-the-runtime logic as the exe template:\n"
+        s = s + "# env override (AMALGAME_HOME), system install dirs, or\n"
+        s = s + "# the repo amc points to.\n"
+        s = s + "set -euo pipefail\n"
+        s = s + "cd \"$(dirname \"$0\")\"\n"
+        s = s + "\n"
+        s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
+        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
+        s = s + "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n"
+        s = s + "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n"
+        s = s + "  done\n"
+        s = s + "fi\n"
+        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
+        s = s + "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n"
+        s = s + "  if [ -n \"$AMC_BIN\" ]; then\n"
+        s = s + "    cand=$(dirname \"$AMC_BIN\")\n"
+        s = s + "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n"
+        s = s + "  fi\n"
+        s = s + "fi\n"
+        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
+        s = s + "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir>.\" >&2\n"
+        s = s + "  exit 1\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "amc src/main.am -o " + name + "\n"
+        s = s + "gcc -O2 -I\"$RUNTIME/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + "\n"
+        s = s + "echo \"built ./" + name + "\"\n"
+        return s
+    }
+
+    // ── Windows build (MinGW gcc) ────────────────────
+    //
+    // PowerShell variant — works under modern Windows (Windows 7+)
+    // without extra setup. Calls `amc` then MinGW `gcc` with the
+    // same `-I runtime` + `-lgc -lm -lcurl` flags as the POSIX path.
+    // AMALGAME_HOME points at the directory containing `runtime/`.
+    private static string BuildPs1Service(string name) {
+        var s: string = ""
+        s = s + "# build.ps1 — compile " + name + " on Windows via MinGW gcc.\n"
+        s = s + "#\n"
+        s = s + "# Run from a PowerShell where `amc.exe` and a MinGW `gcc.exe`\n"
+        s = s + "# are on PATH. The MSYS2 mingw64 shell installs both with:\n"
+        s = s + "#   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl\n"
+        s = s + "$ErrorActionPreference = 'Stop'\n"
+        s = s + "Set-Location $PSScriptRoot\n"
+        s = s + "\n"
+        s = s + "$runtime = $env:AMALGAME_HOME\n"
+        s = s + "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n"
+        s = s + "  $amc = (Get-Command amc -ErrorAction SilentlyContinue)\n"
+        s = s + "  if ($amc) {\n"
+        s = s + "    $cand = Split-Path -Parent $amc.Path\n"
+        s = s + "    if (Test-Path \"$cand/runtime\") { $runtime = $cand }\n"
+        s = s + "  }\n"
+        s = s + "}\n"
+        s = s + "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n"
+        s = s + "  Write-Error \"build.ps1: runtime/ not found. Set `$env:AMALGAME_HOME.\"\n"
+        s = s + "  exit 1\n"
+        s = s + "}\n"
+        s = s + "\n"
+        s = s + "& amc src/main.am -o " + name + "\n"
+        s = s + "& gcc -O2 -I\"$runtime/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + ".exe\n"
+        s = s + "Write-Host \"built ./" + name + ".exe\"\n"
+        return s
+    }
+
+    // ── Windows install (NSSM wrapper) ────────────────
+    //
+    // Native Windows Service mode (StartServiceCtrlDispatcher /
+    // RegisterServiceCtrlHandler / SetServiceStatus) requires the
+    // exe to itself register with SCM within ~30s of launch, which
+    // means wiring an SCM dispatcher into amc's generated main().
+    // Tracked as a v2 follow-up.
+    //
+    // For v1 we ship NSSM-based scripts. NSSM (Non-Sucking Service
+    // Manager — https://nssm.cc) is a tiny exe that wraps any
+    // console binary as a proper Windows service: handles SCM
+    // dispatch, status reporting, log rotation, auto-restart.
+    // Same outcome as a "native" service from the operator's POV;
+    // user binary stays a plain console app.
+    private static string InstallPs1Service(string name) {
+        var s: string = ""
+        s = s + "# install.ps1 — register " + name + " as a Windows service via NSSM.\n"
+        s = s + "#\n"
+        s = s + "# NSSM (https://nssm.cc) is a tiny SCM wrapper that turns any\n"
+        s = s + "# console binary into a proper Windows service. v1 of `amc new\n"
+        s = s + "# --template service` ships NSSM-based scripts; native SCM\n"
+        s = s + "# dispatcher integration is tracked for v2.\n"
+        s = s + "#\n"
+        s = s + "# Run from an elevated PowerShell:\n"
+        s = s + "#   Start-Process powershell -Verb runAs -ArgumentList '-File','install.ps1'\n"
+        s = s + "$ErrorActionPreference = 'Stop'\n"
+        s = s + "Set-Location $PSScriptRoot\n"
+        s = s + "\n"
+        s = s + "# Elevation check.\n"
+        s = s + "$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()\n"
+        s = s + "$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)\n"
+        s = s + "if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {\n"
+        s = s + "  Write-Error 'install.ps1 must run as Administrator.'\n"
+        s = s + "  exit 1\n"
+        s = s + "}\n"
+        s = s + "\n"
+        s = s + "# Locate NSSM. Check PATH first, then fall back to a vendored\n"
+        s = s + "# copy under ./nssm.exe (drop it in the project root if you\n"
+        s = s + "# pre-downloaded). Auto-download as a last resort.\n"
+        s = s + "$nssm = (Get-Command nssm -ErrorAction SilentlyContinue)\n"
+        s = s + "$nssmExe = if ($nssm) { $nssm.Path } else { Join-Path $PSScriptRoot 'nssm.exe' }\n"
+        s = s + "if (-not (Test-Path $nssmExe)) {\n"
+        s = s + "  $url = 'https://nssm.cc/release/nssm-2.24.zip'\n"
+        s = s + "  Write-Host \"Downloading NSSM from $url\"\n"
+        s = s + "  $tmp = New-TemporaryFile\n"
+        s = s + "  Invoke-WebRequest -Uri $url -OutFile $tmp.FullName\n"
+        s = s + "  $extract = Join-Path $env:TEMP ('nssm-' + [Guid]::NewGuid())\n"
+        s = s + "  Expand-Archive -Path $tmp.FullName -DestinationPath $extract -Force\n"
+        s = s + "  $arch = if ([Environment]::Is64BitOperatingSystem) { 'win64' } else { 'win32' }\n"
+        s = s + "  Copy-Item -Path (Join-Path $extract \"nssm-2.24/$arch/nssm.exe\") -Destination $nssmExe -Force\n"
+        s = s + "  Remove-Item $tmp.FullName, $extract -Recurse -Force\n"
+        s = s + "}\n"
+        s = s + "\n"
+        s = s + "# Build the binary if missing or stale.\n"
+        s = s + "$exe = Join-Path $PSScriptRoot '" + name + ".exe'\n"
+        s = s + "if (-not (Test-Path $exe)) { & .\\build.ps1 }\n"
+        s = s + "\n"
+        s = s + "# Stop + remove any prior install so we cleanly replace it.\n"
+        s = s + "& $nssmExe stop '" + name + "' 2>$null | Out-Null\n"
+        s = s + "& $nssmExe remove '" + name + "' confirm 2>$null | Out-Null\n"
+        s = s + "\n"
+        s = s + "# Register + configure + start.\n"
+        s = s + "& $nssmExe install '" + name + "' $exe\n"
+        s = s + "& $nssmExe set '" + name + "' AppDirectory $PSScriptRoot\n"
+        s = s + "& $nssmExe set '" + name + "' DisplayName '" + name + " (Amalgame service)'\n"
+        s = s + "& $nssmExe set '" + name + "' Start SERVICE_AUTO_START\n"
+        s = s + "& $nssmExe set '" + name + "' AppStdout (Join-Path $PSScriptRoot '" + name + ".out.log')\n"
+        s = s + "& $nssmExe set '" + name + "' AppStderr (Join-Path $PSScriptRoot '" + name + ".err.log')\n"
+        s = s + "& $nssmExe start '" + name + "'\n"
+        s = s + "\n"
+        s = s + "Write-Host ''\n"
+        s = s + "Write-Host \"Done. Service registered as '" + name + "'.\"\n"
+        s = s + "Write-Host '  Status:'\n"
+        s = s + "& $nssmExe status '" + name + "'\n"
+        s = s + "Write-Host '  Stderr log: ' (Join-Path $PSScriptRoot '" + name + ".err.log')\n"
+        return s
+    }
+
+
+    private static string ReadmeService(string name) {
+        var s: string = ""
+        s = s + "# " + name + "\n"
+        s = s + "\n"
+        s = s + "A long-running Amalgame daemon scaffolded by `amc new " + name + " --template service`.\n"
+        s = s + "Uses `Amalgame.Service` for signal-aware shutdown and `Amalgame.Logging` for stderr / journal output.\n"
+        s = s + "\n"
+        s = s + "## Run in the foreground (any OS)\n"
+        s = s + "\n"
+        s = s + "Build, then run the binary directly. Logs go to stderr in human-readable form.\n"
+        s = s + "Hit `Ctrl-C` for clean shutdown.\n"
+        s = s + "\n"
+        s = s + "- **Linux / macOS:** `./build.sh && ./" + name + "`\n"
+        s = s + "- **Windows:**       `.\\build.ps1 ; .\\" + name + ".exe`\n"
+        s = s + "\n"
+        s = s + "## Linux — install under systemd\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "sudo ./install.sh\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "Installs the binary to `/usr/local/bin/" + name + "`, drops the unit at\n"
+        s = s + "`/etc/systemd/system/" + name + ".service`, reloads systemd, and enables\n"
+        s = s + "+ starts the service. Re-run after each code change to deploy.\n"
+        s = s + "\n"
+        s = s + "Inspect status / tail logs:\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "systemctl status " + name + "\n"
+        s = s + "journalctl -fu " + name + "\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "## Windows — install as a service (via NSSM)\n"
+        s = s + "\n"
+        s = s + "```powershell\n"
+        s = s + "# elevated PowerShell\n"
+        s = s + "Start-Process powershell -Verb runAs -ArgumentList '-File','install.ps1'\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "`install.ps1` does three things: builds the binary if missing,\n"
+        s = s + "fetches [NSSM](https://nssm.cc) (a tiny SCM wrapper) into the project\n"
+        s = s + "root if not already present, then registers `" + name + "` as an\n"
+        s = s + "auto-start Windows service with stdout/stderr routed to log files\n"
+        s = s + "in the project directory.\n"
+        s = s + "\n"
+        s = s + "Operate the service via NSSM:\n"
+        s = s + "\n"
+        s = s + "```powershell\n"
+        s = s + "nssm status " + name + "\n"
+        s = s + "nssm restart " + name + "\n"
+        s = s + "nssm stop " + name + "\n"
+        s = s + "nssm remove " + name + " confirm\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "Or use the standard `sc` / `Get-Service` commands — NSSM-registered\n"
+        s = s + "services are real Windows services from the OS's perspective.\n"
+        s = s + "\n"
+        s = s + "## macOS — launchd\n"
+        s = s + "\n"
+        s = s + "Not scaffolded yet. The binary itself runs cleanly on macOS\n"
+        s = s + "(`./build.sh && ./" + name + "` works identically to Linux); only\n"
+        s = s + "the install scripting is Linux-specific. Write a `launchd.plist`\n"
+        s = s + "and `launchctl bootstrap` it — tracked for a future template revision.\n"
+        s = s + "\n"
+        s = s + "## Why NSSM on Windows?\n"
+        s = s + "\n"
+        s = s + "A native Windows service must call `StartServiceCtrlDispatcher`\n"
+        s = s + "within ~30s of launch and report status changes back to SCM via\n"
+        s = s + "`SetServiceStatus`. Plain console binaries — like the one this\n"
+        s = s + "template scaffolds — don't do that. NSSM is a tiny exe (~350 KB)\n"
+        s = s + "that handles the SCM dance + auto-restart + log rotation + crash\n"
+        s = s + "recovery, transparently wrapping any console binary as a proper\n"
+        s = s + "Windows service.\n"
+        s = s + "\n"
+        s = s + "From the operator's perspective the result is indistinguishable\n"
+        s = s + "from a native service — same `sc start` / `Get-Service` / Event\n"
+        s = s + "Viewer integration. A future template revision will add a\n"
+        s = s + "`--native` switch that wires the SCM dispatcher directly into the\n"
+        s = s + "binary; v1 ships NSSM-only.\n"
+        s = s + "\n"
+        s = s + "## Project layout\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + name + "/\n"
+        s = s + "├── src/main.am             # daemon entry point — edit OnTick() here\n"
+        s = s + "├── " + name + ".service      # systemd unit (Linux)\n"
+        s = s + "├── install.sh              # build + deploy under systemd (Linux)\n"
+        s = s + "├── install.ps1             # NSSM-based service install (Windows)\n"
+        s = s + "├── build.sh                # POSIX compile: amc + gcc\n"
+        s = s + "├── build.ps1               # Windows compile: amc + MinGW gcc\n"
+        s = s + "├── .gitignore\n"
+        s = s + "└── README.md\n"
+        s = s + "```\n"
+        return s
+    }
+
     private static string GitignoreCommon() {
         var s: string = ""
         s = s + "# Build artifacts\n"
@@ -392,6 +797,22 @@ public class NewCommand {
         s = s + ".vscode/\n"
         s = s + ".idea/\n"
         s = s + "*.swp\n"
+        return s
+    }
+
+    // Service-template extras on top of GitignoreCommon: the generated
+    // binary, the NSSM bundle the install.ps1 auto-downloads, and the
+    // stdout/stderr log files NSSM writes back into the project dir.
+    private static string GitignoreService(string name) {
+        var s: string = NewCommand.GitignoreCommon()
+        s = s + "\n"
+        s = s + "# Service template artifacts\n"
+        s = s + "/" + name + "\n"
+        s = s + "/" + name + ".exe\n"
+        s = s + "/" + name + ".c\n"
+        s = s + "/" + name + ".out.log\n"
+        s = s + "/" + name + ".err.log\n"
+        s = s + "/nssm.exe\n"
         return s
     }
 

@@ -29,12 +29,12 @@ public class Log {
     //   Log.SetMinLevel("debug")    // emit everything
     //   Log.SetMinLevel("warn")     // hide Debug + Info
     public static void SetMinLevel(name: string) {
-        Logging_SetMinLevel(name)
+        Log_SetMinLevel(name)
     }
 
     // Lower-case canonical name of the current minimum level.
     public static string GetMinLevel() {
-        return Logging_GetMinLevel()
+        return Log_GetMinLevel()
     }
 
     // Set (or clear) the file sink. Pass empty string to disable.
@@ -42,18 +42,18 @@ public class Log {
     // than holding a stream open but robust against external
     // log rotation, which is the typical production setup.
     public static void SetFile(path: string) {
-        Logging_SetFile(path)
+        Log_SetFile(path)
     }
 
     // Current file sink path, or empty string if disabled.
     public static string GetFile() {
-        return Logging_GetFile()
+        return Log_GetFile()
     }
 
     // ── Emit ─────────────────────────────────────────────
 
-    public static void Debug(msg: string) { Logging_Debug(msg) }
-    public static void Info(msg: string)  { Logging_Info(msg)  }
-    public static void Warn(msg: string)  { Logging_Warn(msg)  }
-    public static void Error(msg: string) { Logging_Error(msg) }
+    public static void Debug(msg: string) { Log_Debug(msg) }
+    public static void Info(msg: string)  { Log_Info(msg)  }
+    public static void Warn(msg: string)  { Log_Warn(msg)  }
+    public static void Error(msg: string) { Log_Error(msg) }
 }

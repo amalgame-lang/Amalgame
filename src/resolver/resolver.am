@@ -278,16 +278,23 @@ public class FullResolver {
         this.DeclareGlobal("Path_IsAbsolute",     "bool",   false)
         this.DeclareGlobal("Path_Normalize",      "string", false)
         this.DeclareGlobal("Path_Sep",            "string", false)
-        // Logging stdlib
-        this.DeclareGlobal("Logging_SetMinLevel", "void",   false)
-        this.DeclareGlobal("Logging_GetMinLevel", "string", false)
-        this.DeclareGlobal("Logging_SetFile",     "void",   false)
-        this.DeclareGlobal("Logging_GetFile",     "string", false)
-        this.DeclareGlobal("Logging_Debug",       "void",   false)
-        this.DeclareGlobal("Logging_Info",        "void",   false)
-        this.DeclareGlobal("Logging_Warn",        "void",   false)
-        this.DeclareGlobal("Logging_Error",       "void",   false)
-        // Service stdlib
+        // Logging stdlib — runtime helpers under the `Log_*` prefix so
+        // `Log.Info(...)` in user code lowers to `Log_Info(...)` via the
+        // cgen's isStdlib short-circuit, matching the Console/File/Math
+        // convention. The facade in src/stdlib/logging.am is now
+        // optional sugar; user code reaches the same runtime helpers
+        // directly when amc auto-includes Amalgame_Logging.h.
+        this.DeclareGlobal("Log",             "type",   false)
+        this.DeclareGlobal("Log_SetMinLevel", "void",   false)
+        this.DeclareGlobal("Log_GetMinLevel", "string", false)
+        this.DeclareGlobal("Log_SetFile",     "void",   false)
+        this.DeclareGlobal("Log_GetFile",     "string", false)
+        this.DeclareGlobal("Log_Debug",       "void",   false)
+        this.DeclareGlobal("Log_Info",        "void",   false)
+        this.DeclareGlobal("Log_Warn",        "void",   false)
+        this.DeclareGlobal("Log_Error",       "void",   false)
+        // Service stdlib — same isStdlib short-circuit pattern as Log.
+        this.DeclareGlobal("Service",             "type",   false)
         this.DeclareGlobal("Service_Install",     "void",   false)
         this.DeclareGlobal("Service_ShouldStop",  "bool",   false)
         this.DeclareGlobal("Service_RequestStop", "void",   false)
