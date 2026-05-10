@@ -1,9 +1,9 @@
 # ═══════════════════════════════════════════════════════════
 #  Amalgame Language — Windows Installer (PowerShell)
-#  https://github.com/BastienMOUGET/Amalgame
+#  https://github.com/amalgame-lang/Amalgame
 #
 #  Usage (PowerShell as Administrator):
-#    irm https://raw.githubusercontent.com/BastienMOUGET/Amalgame/main/install/windows/install.ps1 | iex
+#    irm https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/windows/install.ps1 | iex
 #
 #  Or with options:
 #    $env:AMC_VERSION="0.3.0"; irm https://... | iex
@@ -20,7 +20,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference    = "SilentlyContinue"   # speeds up Invoke-WebRequest
 
 # ── Config ────────────────────────────────────────────────
-$Repo    = "BastienMOUGET/Amalgame"
+$Repo    = "amalgame-lang/Amalgame"
 $BinDir  = "$Prefix\bin"
 $LibDir  = "$Prefix\lib"
 $TmpDir  = [System.IO.Path]::GetTempPath() + "amalgame_install"

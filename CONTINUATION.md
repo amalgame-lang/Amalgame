@@ -107,12 +107,10 @@ Recently shipped (v0.4.4 stdlib trio + release tooling, 2026-05-10):
   - CI Windows builds now link -lbcrypt for
     Random.FromSystem()'s BCryptGenRandom call. Same flag added
     to the Windows release artifact build.
-  - Four parser/cgen quirks surfaced and noted in the roadmap
+  - Three parser/cgen quirks surfaced and noted in the roadmap
     (workarounds applied inline): `expr >> N` dropped inside a
     `let`, top-level free `public fn` doesn't emit, constructor
-    forward-decls don't precede call sites, and the
-    BastienMOUGET URL sweep that's been outstanding since the
-    org transfer.
+    forward-decls don't precede call sites.
 
 Recently shipped (v0.4.3 Json migration completes, 2026-05-09):
 
