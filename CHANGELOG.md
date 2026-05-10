@@ -7,6 +7,53 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.16] — 2026-05-11
+
+A small roll-up release that lands the post-v0.4.15 develop
+accumulation: a roadmap expansion across the database + messaging
+families, a stale-doc refresh, and one dead-script removal. No
+code changes — the test suite stays at **434 PASS / 0 FAIL / 0
+SKIP** and the snapshot is refreshed unchanged.
+
+### Changed
+
+- **`ROADMAP_COMPLET.md`** (PRs #270, #271) — fleshes out two
+  stdlib families that previously sat as one-liners:
+  - `Amalgame.Database.<Engine>` siblings now spell out Oracle
+    (Instant Client dynamic-link, proprietary download) and SQL
+    Server (MS ODBC default + FreeTDS fallback) alongside the
+    already-tracked DuckDB / Postgres / MySQL. The NoSQL branch
+    adds MongoDB (libmongoc + libbson), Redis (pure-Amalgame
+    RESP3 client ~300 LoC), DynamoDB / Cosmos DB / Firestore
+    (HTTP over Net.Http + Json), Cassandra / ScyllaDB (CQL
+    binary protocol).
+  - New `Amalgame.Messaging.<Broker>` family — pure-Amalgame
+    MQTT (~300 LoC) + NATS Core (~250 LoC), plus dynamic-link
+    backends for Kafka (librdkafka) and RabbitMQ (librabbitmq
+    AMQP). Sits parallel to the database namespace so brokers
+    and storage engines stay separately namespaced.
+- **`CONTINUATION.md`** (PR #272) — refreshed for v0.4.15. The
+  file had drifted to v0.4.4 state (Path / Logging / Service /
+  Database.SQLite were all missing from the stdlib block); now
+  reflects the current 434-test self-hosted state, the four
+  closed LSP slices, the `amc new` service template, and the
+  authorship / contribution policy bullets.
+
+### Removed
+
+- **`CLEANUP.sh`** (PR #269) — referenced bootstrap artefacts
+  (`build/`, `stage1/`, `stage2/`) that haven't existed since
+  the self-hosting transition. Dead code; deleting it is a net
+  reduction in "wait, what does this do?" surface area.
+
+### Tests / infra
+
+- No code changes; snapshot refreshed via `tools/save-snapshot.sh`
+  for consistency with the bumped `--version` string.
+- Test suite: **434 PASS / 0 FAIL / 0 SKIP** (unchanged).
+
+---
+
 ## [v0.4.15] — 2026-05-11
 
 The "embedded database lands" release. Fourth stdlib brick after
@@ -1474,6 +1521,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
 [v0.4.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.14
 [v0.4.13]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.13
