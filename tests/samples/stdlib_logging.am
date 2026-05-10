@@ -1,0 +1,123 @@
+// Stdlib test: Amalgame.Logging — leveled logging.
+//
+// Emit-side smoke is tricky to assert against (stderr + timestamps);
+// we focus on the configuration getters round-tripping correctly,
+// which is the part most likely to regress on cgen / runtime
+// changes. The file-sink emit path is covered by writing to /tmp
+// then reading the file back and matching the level labels.
+
+namespace Tests
+
+import Amalgame.Logging
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── Level round-trip ──
+
+        Log.SetMinLevel("debug")
+        let lvl1: string = Log.GetMinLevel()
+        if (lvl1 == "debug") {
+            Console.WriteLine("[PASS] level debug")
+        } else {
+            Console.WriteLine("[FAIL] level debug got " + lvl1)
+        }
+
+        Log.SetMinLevel("info")
+        let lvl2: string = Log.GetMinLevel()
+        if (lvl2 == "info") {
+            Console.WriteLine("[PASS] level info")
+        } else {
+            Console.WriteLine("[FAIL] level info got " + lvl2)
+        }
+
+        Log.SetMinLevel("warn")
+        let lvl3: string = Log.GetMinLevel()
+        if (lvl3 == "warn") {
+            Console.WriteLine("[PASS] level warn")
+        } else {
+            Console.WriteLine("[FAIL] level warn got " + lvl3)
+        }
+
+        Log.SetMinLevel("error")
+        let lvl4: string = Log.GetMinLevel()
+        if (lvl4 == "error") {
+            Console.WriteLine("[PASS] level error")
+        } else {
+            Console.WriteLine("[FAIL] level error got " + lvl4)
+        }
+
+        // Case-insensitive on first letter — "DEBUG" maps to debug.
+        Log.SetMinLevel("DEBUG")
+        let lvlUpper: string = Log.GetMinLevel()
+        if (lvlUpper == "debug") {
+            Console.WriteLine("[PASS] level case-insensitive")
+        } else {
+            Console.WriteLine("[FAIL] level case-insensitive got " + lvlUpper)
+        }
+
+        // Unknown name falls back to info silently.
+        Log.SetMinLevel("xyzzy")
+        let lvlFallback: string = Log.GetMinLevel()
+        if (lvlFallback == "info") {
+            Console.WriteLine("[PASS] level unknown falls to info")
+        } else {
+            Console.WriteLine("[FAIL] level unknown got " + lvlFallback)
+        }
+
+        // ── File sink round-trip ──
+
+        let logPath: string = "/tmp/amalgame_log_test.log"
+        // Clear any prior file from a previous run.
+        File_Delete(logPath)
+
+        Log.SetFile(logPath)
+        let fileSet: string = Log.GetFile()
+        if (fileSet == logPath) {
+            Console.WriteLine("[PASS] file set")
+        } else {
+            Console.WriteLine("[FAIL] file set got " + fileSet)
+        }
+
+        // Disabling the sink with empty string clears the path.
+        Log.SetFile("")
+        let fileEmpty: string = Log.GetFile()
+        if (fileEmpty == "") {
+            Console.WriteLine("[PASS] file unset")
+        } else {
+            Console.WriteLine("[FAIL] file unset got " + fileEmpty)
+        }
+
+        // ── Emit + level filter via file sink ──
+
+        Log.SetFile(logPath)
+        Log.SetMinLevel("warn")
+        Log.Debug("hidden_debug")
+        Log.Info("hidden_info")
+        Log.Warn("visible_warn")
+        Log.Error("visible_error")
+        // Reset before reading so future runs don't inherit our config.
+        Log.SetFile("")
+        Log.SetMinLevel("info")
+
+        let body: string = File_ReadAll(logPath)
+        let hasDebug:  bool = String_Contains(body, "hidden_debug")
+        let hasInfo:   bool = String_Contains(body, "hidden_info")
+        let hasWarn:   bool = String_Contains(body, "visible_warn")
+        let hasError:  bool = String_Contains(body, "visible_error")
+        if (!hasDebug && !hasInfo && hasWarn && hasError) {
+            Console.WriteLine("[PASS] level filter via file")
+        } else {
+            Console.WriteLine("[FAIL] level filter via file")
+        }
+
+        // Verify the file content has the proper labels.
+        if (String_Contains(body, "WARN ") && String_Contains(body, "ERROR")) {
+            Console.WriteLine("[PASS] file labels")
+        } else {
+            Console.WriteLine("[FAIL] file labels")
+        }
+
+        File_Delete(logPath)
+    }
+}
