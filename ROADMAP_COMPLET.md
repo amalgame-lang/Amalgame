@@ -525,6 +525,26 @@ before the next big language addition.
           this top-level fn in a class as `public static`" —
           recently emitted as a parse diagnostic). Per-diagnostic
           dispatcher that returns a `WorkspaceEdit`.
+- [ ] **`amc lsp` performance — workspace resolver caching.**
+      Every hover / completion / definition call rebuilds the
+      whole workspace resolver: parse the open file, walk every
+      sibling `.am`, parse each, collect+resolve. On a 30-file
+      workspace that's ~2.5–3s per request — fast enough for
+      diagnostics-on-save but noticeably slow for Cmd+Click
+      definition (VS Code shows the spinner). Cache the resolver
+      across requests, invalidate on `didChange` /
+      `didCreate` / `didDelete`. ~1 day of work; biggest LSP
+      UX win after the v2 navigation features themselves.
+- [ ] **VS Code extension robustness on `serverPath`.** The
+      extension currently does `child_process.spawn(serverPath)`
+      with the user-set value verbatim. Two real-world traps:
+      a leading whitespace in the JSON setting silently makes
+      the path look like ` /home/.../amc` (ENOENT), and a `~/`
+      prefix isn't expanded by `spawn`. Fix in
+      `editors/vscode/extension.js`: `serverPath.trim()` then
+      `serverPath.replace(/^~/, os.homedir())` before spawning.
+      ~5 LoC, unblocks anyone who configures `amalgame.serverPath`
+      with the natural shell-style value.
 - [ ] **Editor integration on install** — when a user installs
       Amalgame (`install.sh`, future `amc-up` package script,
       Homebrew formula, `.deb`/`.rpm`), automatically wire the
