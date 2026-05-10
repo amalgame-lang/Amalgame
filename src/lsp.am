@@ -113,6 +113,9 @@ public class LspServer {
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
                 this.HandleDefinition(id, uri, line, chr)
+            } else if (method == "textDocument/documentSymbol") {
+                let uri: string = td.Get("uri").AsString()
+                this.HandleDocumentSymbol(id, uri)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -221,7 +224,9 @@ public class LspServer {
         // may send textDocument/definition (Cmd+Click in VS Code).
         // declaration aliases definition since Amalgame has no
         // separate declaration/definition split.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        // documentSymbolProvider: true → outline view (Ctrl+Shift+O,
+        // left-pane Outline panel) shows top-level + member decls.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"documentSymbolProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -486,6 +491,101 @@ public class LspServer {
         }
 
         this.SendNullResult(id)
+    }
+
+    // ── Document symbol (outline) ─────────────────────
+    //
+    // Walk the open file's AST and emit a `DocumentSymbol[]` tree.
+    // VS Code shows it in the Outline panel + breadcrumbs +
+    // Ctrl+Shift+O fuzzy-find. The shape per LSP spec:
+    //
+    //   { name, kind, range, selectionRange, children }
+    //
+    // - `range` covers the whole declaration body (not strictly
+    //   required to be tight; we approximate with the decl line
+    //   to keep this slice 2 small).
+    // - `selectionRange` is the symbol name itself — the AST
+    //   stores the keyword's column rather than the name's, so
+    //   we widen by `name.length` for now.
+    // - `children` recurses into class members for the nested
+    //   tree the Outline panel renders.
+    //
+    // SymbolKind values per LSP spec:
+    //   5  Class    6  Method     7  Property   8  Field
+    //  10  Enum    11  Interface 22  EnumMember
+    private void HandleDocumentSymbol(int id, string uri) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        var json: string = "["
+        let n: int = prog.Children.Count()
+        var first: bool = true
+        for i in 0..n {
+            let decl: AstNode = prog.Children.Get(i)
+            let entry: string = LspServer.SymbolForDecl(decl)
+            if (String_Length(entry) > 0) {
+                if (!first) { json = json + "," }
+                json = json + entry
+                first = false
+            }
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // Map an AstNode top-level decl to a DocumentSymbol JSON, or
+    // empty string if the node isn't a decl we surface. Recurses
+    // into class/enum members to populate `children`.
+    private static string SymbolForDecl(AstNode decl) {
+        let k = decl.Kind
+        var kind: int = 0
+        if (k == NodeKind.CLASS_DECL)     { kind = 5 }
+        else if (k == NodeKind.ENUM_DECL) { kind = 10 }
+        else { return "" }
+        let name: string = decl.Name
+        if (String_Length(name) == 0) { return "" }
+        var children: string = "["
+        var firstChild: bool = true
+        let mc: int = decl.Children.Count()
+        for i in 0..mc {
+            let m: AstNode = decl.Children.Get(i)
+            let mk = m.Kind
+            var ckind: int = 0
+            // Class/interface members
+            if (mk == NodeKind.METHOD_DECL) { ckind = 6 }
+            if (mk == NodeKind.VAR_DECL)    { ckind = 8 }
+            // Enum variants are stored as bare IDENTIFIER nodes —
+            // one per `EnumName.Variant` declaration line.
+            if (k == NodeKind.ENUM_DECL && mk == NodeKind.IDENTIFIER) { ckind = 22 }
+            if (ckind == 0) { continue }
+            if (String_Length(m.Name) == 0) { continue }
+            if (!firstChild) { children = children + "," }
+            children = children + LspServer.SymbolEntry(m.Name, ckind, m.Line, m.Column, "[]")
+            firstChild = false
+        }
+        children = children + "]"
+        return LspServer.SymbolEntry(name, kind, decl.Line, decl.Column, children)
+    }
+
+    // Build a single DocumentSymbol JSON object. Both `range` and
+    // `selectionRange` cover the same span — start of the decl
+    // line, length of the symbol name. VS Code accepts a coarser
+    // range; tight ranges are slice 3.
+    private static string SymbolEntry(string name, int kind, int line, int col, string childrenJson) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let nameLen: int = String_Length(name)
+        let endCol:  int = colLsp + nameLen
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        return "{\"name\":\"" + Json.EscapeString(name) + "\",\"kind\":" + String_FromInt(kind) + ",\"range\":" + range + ",\"selectionRange\":" + range + ",\"children\":" + childrenJson + "}"
     }
 
     // Build and send a `Location` JSON. Range covers the symbol's
