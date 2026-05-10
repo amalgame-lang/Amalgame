@@ -330,6 +330,36 @@ run_test "Crypto: hmac rfc4231 case 2"     "$SAMPLES/stdlib_crypto.am" "[PASS] h
 run_test "Crypto: hmac bytes length"       "$SAMPLES/stdlib_crypto.am" "[PASS] hmac bytes length"       "" "$CR_LIB"
 run_test "Crypto: hmac bytes path"         "$SAMPLES/stdlib_crypto.am" "[PASS] hmac bytes path"         "" "$CR_LIB"
 
+# ── Amalgame.Path ─────────────────────────────────────
+# Same extra-input pattern — pulls in src/stdlib/path.am alongside
+# the test sample. Covers the existing wrappers (Combine /
+# Filename / Directory / Extension) plus the v1 additions
+# (Stem / IsAbsolute / Normalize / Sep).
+echo ""
+echo "── Amalgame.Path ───────────────────────────"
+PATH_LIB="src/stdlib/path.am"
+run_test "Path: combine"             "$SAMPLES/stdlib_path.am" "[PASS] combined"            "" "$PATH_LIB"
+run_test "Path: combine trailing"    "$SAMPLES/stdlib_path.am" "[PASS] combined trailing"   "" "$PATH_LIB"
+run_test "Path: directory"           "$SAMPLES/stdlib_path.am" "[PASS] directory"           "" "$PATH_LIB"
+run_test "Path: directory no-slash"  "$SAMPLES/stdlib_path.am" "[PASS] directory no-slash"  "" "$PATH_LIB"
+run_test "Path: filename"            "$SAMPLES/stdlib_path.am" "[PASS] filename"            "" "$PATH_LIB"
+run_test "Path: extension"           "$SAMPLES/stdlib_path.am" "[PASS] extension"           "" "$PATH_LIB"
+run_test "Path: extension multi"     "$SAMPLES/stdlib_path.am" "[PASS] extension multi"     "" "$PATH_LIB"
+run_test "Path: extension none"      "$SAMPLES/stdlib_path.am" "[PASS] extension none"      "" "$PATH_LIB"
+run_test "Path: stem"                "$SAMPLES/stdlib_path.am" "[PASS] stem"                "" "$PATH_LIB"
+run_test "Path: stem dotfile"        "$SAMPLES/stdlib_path.am" "[PASS] stem dotfile"        "" "$PATH_LIB"
+run_test "Path: isabs posix"         "$SAMPLES/stdlib_path.am" "[PASS] isabs posix"         "" "$PATH_LIB"
+run_test "Path: isabs drive"         "$SAMPLES/stdlib_path.am" "[PASS] isabs drive"         "" "$PATH_LIB"
+run_test "Path: isabs relative"      "$SAMPLES/stdlib_path.am" "[PASS] isabs relative"      "" "$PATH_LIB"
+run_test "Path: isabs empty"         "$SAMPLES/stdlib_path.am" "[PASS] isabs empty"         "" "$PATH_LIB"
+run_test "Path: normalize relative"  "$SAMPLES/stdlib_path.am" "[PASS] normalize relative"  "" "$PATH_LIB"
+run_test "Path: normalize dot"       "$SAMPLES/stdlib_path.am" "[PASS] normalize dot"       "" "$PATH_LIB"
+run_test "Path: normalize absolute"  "$SAMPLES/stdlib_path.am" "[PASS] normalize absolute"  "" "$PATH_LIB"
+run_test "Path: normalize empty"     "$SAMPLES/stdlib_path.am" "[PASS] normalize empty"     "" "$PATH_LIB"
+run_test "Path: normalize root"      "$SAMPLES/stdlib_path.am" "[PASS] normalize root"      "" "$PATH_LIB"
+run_test "Path: normalize parent"    "$SAMPLES/stdlib_path.am" "[PASS] normalize parent"    "" "$PATH_LIB"
+run_test "Path: sep length"          "$SAMPLES/stdlib_path.am" "[PASS] sep length"          "" "$PATH_LIB"
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"

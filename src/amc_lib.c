@@ -3823,8 +3823,11 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "File_Size")) {
                 return "i64";
             }
-            if (code_string_equals(calleeStr, "Path_Combine") || code_string_equals(calleeStr, "Path_GetExtension") || code_string_equals(calleeStr, "Path_GetFilename") || code_string_equals(calleeStr, "Path_GetDirectory")) {
+            if (code_string_equals(calleeStr, "Path_Combine") || code_string_equals(calleeStr, "Path_GetExtension") || code_string_equals(calleeStr, "Path_GetFilename") || code_string_equals(calleeStr, "Path_GetDirectory") || code_string_equals(calleeStr, "Path_GetStem") || code_string_equals(calleeStr, "Path_Normalize") || code_string_equals(calleeStr, "Path_Sep")) {
                 return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Path_IsAbsolute")) {
+                return "code_bool";
             }
             if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson") || code_string_equals(calleeStr, "Http_PostWithHeaders") || code_string_equals(calleeStr, "Http_Put") || code_string_equals(calleeStr, "Http_Delete") || code_string_equals(calleeStr, "Http_Patch")) {
                 return "AmalgameHttpResponse*";
@@ -8495,6 +8498,10 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetExtension", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetFilename", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetDirectory", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetStem", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Sep", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Get", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Has", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math", "type", 0);
