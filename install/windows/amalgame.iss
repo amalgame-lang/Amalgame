@@ -13,7 +13,7 @@
 #define AppName      "Amalgame"
 #define AppVersion   "0.3.0"
 #define AppPublisher "Bastien MOUGET"
-#define AppURL       "https://github.com/BastienMOUGET/Amalgame"
+#define AppURL       "https://github.com/amalgame-lang/Amalgame"
 #define AppExe       "amc.exe"
 
 [Setup]
