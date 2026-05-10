@@ -1,0 +1,95 @@
+namespace Amalgame.Path
+
+import Amalgame.Collections
+
+// ── Path ──────────────────────────────────────────────
+//
+// Cross-platform path manipulation. Pure string operations — none
+// of the methods touch the filesystem. For path lookup that needs
+// to follow symlinks or check existence, use the File / Process
+// stdlib (or write a small helper that combines them with these).
+//
+// Separator handling: every method accepts both `/` and `\` on
+// every platform, mirroring how Windows kernel APIs themselves
+// behave. Output paths use `/` as the canonical separator (Windows
+// accepts it everywhere); call `Path.Sep()` if you need the
+// platform-native byte for shell-out commands or registry strings.
+//
+// Every method is `public static` on the `Path` facade — no
+// instances. Same shape as `Sha256` / `Hmac` in `Amalgame.Crypto`.
+
+public class Path {
+    public Path() {}
+
+    // Join two segments with the platform-tolerant separator.
+    // Idempotent on the boundary: `Combine("a/", "b")` and
+    // `Combine("a", "b")` both produce `"a/b"`. Doesn't normalize
+    // (`a/./b` stays `a/./b`); pass through `Normalize` if you
+    // want the canonical form. For >2 segments, chain calls:
+    //   Path.Combine(Path.Combine(a, b), c)
+    public static string Combine(a: string, b: string) {
+        return Path_Combine(a, b)
+    }
+
+    // Trailing extension including the leading dot, or empty
+    // string if none. `report.tar.gz` → `.gz` (only the LAST
+    // extension), matching Python's `Path.suffix` and Rust's
+    // `Path::extension` semantics.
+    public static string Extension(p: string) {
+        return Path_GetExtension(p)
+    }
+
+    // Last path component. `Filename("/a/b/c.txt")` → `"c.txt"`,
+    // `Filename("/a/b/")` → `""` (trailing-sep input has no
+    // basename), `Filename("c.txt")` → `"c.txt"`.
+    public static string Filename(p: string) {
+        return Path_GetFilename(p)
+    }
+
+    // Parent directory. `Directory("/a/b/c")` → `"/a/b"`,
+    // `Directory("c")` → `"."`. Mirrors POSIX `dirname(1)`.
+    public static string Directory(p: string) {
+        return Path_GetDirectory(p)
+    }
+
+    // Filename minus the trailing extension. Same separator-
+    // tolerant scan as Filename, then drops everything after
+    // the rightmost dot in the basename. `report.tar.gz` →
+    // `report.tar` (last extension only). Dotfiles are
+    // preserved as-is: `.bashrc` → `.bashrc`, since the
+    // rightmost dot IS the leading dot.
+    public static string Stem(p: string) {
+        return Path_GetStem(p)
+    }
+
+    // True iff `p` resolves without consulting any cwd. POSIX:
+    // leading `/`. Windows: leading `<drive>:` or `\` (UNC root).
+    // Empty input is not absolute.
+    public static bool IsAbsolute(p: string) {
+        return Path_IsAbsolute(p)
+    }
+
+    // Lexical normalisation: collapse runs of separators, drop
+    // `.` components, resolve `..` against earlier components.
+    // Pure string operation — does NOT touch the filesystem, so
+    // `..` past a symlink may resolve incorrectly relative to the
+    // real path. Use a filesystem-resolving helper if you need
+    // that.
+    //
+    //   Normalize("a/b/../c")    → "a/c"
+    //   Normalize("./a//b")      → "a/b"
+    //   Normalize("/usr/../etc") → "/etc"
+    //   Normalize("")            → "."
+    public static string Normalize(p: string) {
+        return Path_Normalize(p)
+    }
+
+    // Native path separator: `"/"` on POSIX, `"\\"` on Windows.
+    // Useful for shelling out commands or registry strings that
+    // require the platform-native byte. Most Amalgame code
+    // doesn't need this — `Combine` and `Normalize` already
+    // accept both separators on every platform.
+    public static string Sep() {
+        return Path_Sep()
+    }
+}

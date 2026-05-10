@@ -1,0 +1,169 @@
+// Stdlib test: Amalgame.Path — cross-platform path manipulation.
+// Each [PASS] line below matches one assertion the runner looks for;
+// fast-path failure prints [FAIL] with the actual value. Same shape
+// as stdlib_crypto.am.
+
+namespace Tests
+
+import Amalgame.Path
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── Combine / Filename / Directory / Extension / Stem ──
+
+        let combined: string = Path.Combine("/tmp", "report.tar.gz")
+        if (combined == "/tmp/report.tar.gz") {
+            Console.WriteLine("[PASS] combined")
+        } else {
+            Console.WriteLine("[FAIL] combined got " + combined)
+        }
+
+        let combinedTrailing: string = Path.Combine("/tmp/", "x.txt")
+        if (combinedTrailing == "/tmp/x.txt") {
+            Console.WriteLine("[PASS] combined trailing")
+        } else {
+            Console.WriteLine("[FAIL] combined trailing got " + combinedTrailing)
+        }
+
+        let dir: string = Path.Directory("/a/b/c.txt")
+        if (dir == "/a/b") {
+            Console.WriteLine("[PASS] directory")
+        } else {
+            Console.WriteLine("[FAIL] directory got " + dir)
+        }
+
+        let dirNoSlash: string = Path.Directory("c.txt")
+        if (dirNoSlash == ".") {
+            Console.WriteLine("[PASS] directory no-slash")
+        } else {
+            Console.WriteLine("[FAIL] directory no-slash got " + dirNoSlash)
+        }
+
+        let fname: string = Path.Filename("/home/user/hello.am")
+        if (fname == "hello.am") {
+            Console.WriteLine("[PASS] filename")
+        } else {
+            Console.WriteLine("[FAIL] filename got " + fname)
+        }
+
+        let ext: string = Path.Extension("hello.am")
+        if (ext == ".am") {
+            Console.WriteLine("[PASS] extension")
+        } else {
+            Console.WriteLine("[FAIL] extension got " + ext)
+        }
+
+        let extMulti: string = Path.Extension("report.tar.gz")
+        if (extMulti == ".gz") {
+            Console.WriteLine("[PASS] extension multi")
+        } else {
+            Console.WriteLine("[FAIL] extension multi got " + extMulti)
+        }
+
+        let extNone: string = Path.Extension("README")
+        if (extNone == "") {
+            Console.WriteLine("[PASS] extension none")
+        } else {
+            Console.WriteLine("[FAIL] extension none got " + extNone)
+        }
+
+        let stem: string = Path.Stem("/a/b/report.tar.gz")
+        if (stem == "report.tar") {
+            Console.WriteLine("[PASS] stem")
+        } else {
+            Console.WriteLine("[FAIL] stem got " + stem)
+        }
+
+        let stemDotfile: string = Path.Stem(".bashrc")
+        if (stemDotfile == ".bashrc") {
+            Console.WriteLine("[PASS] stem dotfile")
+        } else {
+            Console.WriteLine("[FAIL] stem dotfile got " + stemDotfile)
+        }
+
+        // ── IsAbsolute ──
+
+        let absPosix: bool = Path.IsAbsolute("/etc/passwd")
+        if (absPosix) {
+            Console.WriteLine("[PASS] isabs posix")
+        } else {
+            Console.WriteLine("[FAIL] isabs posix")
+        }
+
+        let absDrive: bool = Path.IsAbsolute("C:/Users/foo")
+        if (absDrive) {
+            Console.WriteLine("[PASS] isabs drive")
+        } else {
+            Console.WriteLine("[FAIL] isabs drive")
+        }
+
+        let relSimple: bool = Path.IsAbsolute("foo/bar")
+        if (!relSimple) {
+            Console.WriteLine("[PASS] isabs relative")
+        } else {
+            Console.WriteLine("[FAIL] isabs relative")
+        }
+
+        let absEmpty: bool = Path.IsAbsolute("")
+        if (!absEmpty) {
+            Console.WriteLine("[PASS] isabs empty")
+        } else {
+            Console.WriteLine("[FAIL] isabs empty")
+        }
+
+        // ── Normalize ──
+
+        let normRel: string = Path.Normalize("a/b/../c")
+        if (normRel == "a/c") {
+            Console.WriteLine("[PASS] normalize relative")
+        } else {
+            Console.WriteLine("[FAIL] normalize relative got " + normRel)
+        }
+
+        let normDot: string = Path.Normalize("./a//b")
+        if (normDot == "a/b") {
+            Console.WriteLine("[PASS] normalize dot")
+        } else {
+            Console.WriteLine("[FAIL] normalize dot got " + normDot)
+        }
+
+        let normAbs: string = Path.Normalize("/usr/../etc/passwd")
+        if (normAbs == "/etc/passwd") {
+            Console.WriteLine("[PASS] normalize absolute")
+        } else {
+            Console.WriteLine("[FAIL] normalize absolute got " + normAbs)
+        }
+
+        let normEmpty: string = Path.Normalize("")
+        if (normEmpty == ".") {
+            Console.WriteLine("[PASS] normalize empty")
+        } else {
+            Console.WriteLine("[FAIL] normalize empty got " + normEmpty)
+        }
+
+        let normRoot: string = Path.Normalize("/")
+        if (normRoot == "/") {
+            Console.WriteLine("[PASS] normalize root")
+        } else {
+            Console.WriteLine("[FAIL] normalize root got " + normRoot)
+        }
+
+        let normParent: string = Path.Normalize("../../foo")
+        if (normParent == "../../foo") {
+            Console.WriteLine("[PASS] normalize parent")
+        } else {
+            Console.WriteLine("[FAIL] normalize parent got " + normParent)
+        }
+
+        // ── Sep ──
+
+        let sep: string = Path.Sep()
+        let sepLen: int = String_Length(sep)
+        if (sepLen == 1) {
+            Console.WriteLine("[PASS] sep length")
+        } else {
+            Console.WriteLine("[FAIL] sep length got " + String_FromInt(sepLen))
+        }
+    }
+}
