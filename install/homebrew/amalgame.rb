@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════
 #  Homebrew Formula — Amalgame Language
-#  https://github.com/BastienMOUGET/Amalgame
+#  https://github.com/amalgame-lang/Amalgame
 #
 #  To publish:
 #    1. Fork homebrew-core (or create a tap)
@@ -8,17 +8,17 @@
 #    3. Submit a Pull Request to homebrew-core
 #
 #  Or use as a private tap:
-#    brew tap BastienMOUGET/amalgame https://github.com/BastienMOUGET/homebrew-amalgame
+#    brew tap amalgame-lang/amalgame https://github.com/amalgame-lang/homebrew-amalgame
 #    brew install amalgame
 # ═══════════════════════════════════════════════════════════
 
 class Amalgame < Formula
   desc "Modern programming language that transpiles to C"
-  homepage "https://github.com/BastienMOUGET/Amalgame"
-  url "https://github.com/BastienMOUGET/Amalgame/archive/refs/tags/v0.3.0.tar.gz"
+  homepage "https://github.com/amalgame-lang/Amalgame"
+  url "https://github.com/amalgame-lang/Amalgame/archive/refs/tags/v0.3.0.tar.gz"
   sha256 "REPLACE_WITH_ACTUAL_SHA256_OF_RELEASE_TARBALL"
   license "Apache-2.0"
-  head "https://github.com/BastienMOUGET/Amalgame.git", branch: "main"
+  head "https://github.com/amalgame-lang/Amalgame.git", branch: "main"
 
   # ── Dependencies ──────────────────────────────────────────
   depends_on "meson"  => :build

@@ -1,0 +1,46 @@
+name: Build docs PDF on release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pandoc + LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pandoc \
+            texlive-xetex \
+            texlive-fonts-recommended \
+            texlive-fonts-extra \
+            fonts-dejavu
+
+      - name: Generate PDF
+        run: |
+          # Glob docs/guide/0*.md picks chapters 01..08 in lexicographic
+          # order and skips README.md (the chapter index TOC).
+          cat docs/guide/0*.md | pandoc \
+            --from gfm \
+            --pdf-engine=xelatex \
+            --toc --toc-depth=2 \
+            -V geometry:margin=2.5cm \
+            -V mainfont="DejaVu Sans" \
+            -V monofont="DejaVu Sans Mono" \
+            -V title="Amalgame Language Guide" \
+            -V subtitle="${GITHUB_REF_NAME}" \
+            -V author="Bastien Mouget" \
+            -V date="$(date +%Y-%m-%d)" \
+            -o "amalgame-guide-${GITHUB_REF_NAME}.pdf"
+
+      - name: Attach PDF to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: amalgame-guide-*.pdf

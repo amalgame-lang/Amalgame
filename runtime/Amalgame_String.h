@@ -1,7 +1,7 @@
 /*
  * Amalgame Standard Library — Amalgame.String
  * Copyright (c) 2026 Bastien MOUGET
- * https://github.com/BastienMOUGET/Amalgame
+ * https://github.com/amalgame-lang/Amalgame
  *
  * Provides: String manipulation functions
  */
