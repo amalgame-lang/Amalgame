@@ -7,6 +7,81 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.14] — 2026-05-10
+
+The "service scaffolder lands" release. Path + Logging + Service
+stdlib bricks (v0.4.11–v0.4.13) all came together to unblock
+`amc new --template service` — one command generates a full daemon
+project with cross-platform install paths.
+
+### Added
+
+- **`amc new --template service`** (PR #261) — fourth `amc new`
+  template. Generates:
+    - `src/main.am` with the canonical `Service.Install()` /
+      `while !ShouldStop()` / `Log.Info` loop pattern.
+    - **Linux side**: `<name>.service` systemd unit + `install.sh`
+      that runs `systemctl daemon-reload`, `enable`, `restart`.
+      Logs route to journald; `journalctl -fu <name>` to tail.
+    - **Windows side**: `install.ps1` registers the binary as a
+      Windows service via [NSSM](https://nssm.cc) (auto-downloaded
+      if missing). NSSM transparently wraps any console binary as
+      a proper Windows service: SCM dispatch, status reporting,
+      auto-restart, log rotation. Operator interface is identical
+      to a native service (`sc start` / `Get-Service` / Event
+      Viewer all work).
+    - `build.sh` (POSIX `gcc`) + `build.ps1` (MinGW `gcc`). Both
+      auto-locate `runtime/` via `AMALGAME_HOME` env var, system
+      install dirs, or the `amc` binary's neighbour directory.
+    - `README.md` with the full run / install / operate matrix
+      for every supported OS, plus a rationale section on why
+      NSSM and how the v2 native-SCM path will eventually drop
+      the wrapper.
+
+  Native Windows Service mode (`StartServiceCtrlDispatcher` +
+  `RegisterServiceCtrlHandler` + `SetServiceStatus`) is tracked
+  as v2 — requires a worker-thread split and an amc-side wrap of
+  generated `main()`. NSSM is the v1 pragmatic answer; existing
+  NSSM installs will keep working through the v2 transition since
+  NSSM-managed services run the same binary either way.
+
+### Changed
+
+- **Logging runtime helpers renamed `Logging_*` → `Log_*`** —
+  matches the class facade name so `Log.Info(...)` in user code
+  lowers to `Log_Info(...)` via the cgen's `isStdlib` short-
+  circuit, same convention as `Console_*` / `File_*` / `Math_*`.
+  The `src/stdlib/logging.am` facade is now optional sugar; user
+  code reaches the same runtime helpers directly when amc auto-
+  includes `Amalgame_Logging.h`. The service template generates
+  code that uses this direct path — no facade import needed.
+- **`Log` and `Service` added to the cgen's stdlib short-circuit
+  list** plus `DeclareGlobal("Log", "type", ...)` /
+  `DeclareGlobal("Service", "type", ...)` in the resolver, so
+  the short-syntax usage (`Log.Info(...)` / `Service.Sleep(...)`)
+  resolves cleanly without importing the facade source.
+
+### Roadmap
+
+- `Amalgame.Service` v2 — native SCM dispatcher (drop NSSM
+  dependency on Windows).
+- `amc new --template service` v2 — macOS launchd plist +
+  `launchctl bootstrap` wrapper.
+- `Amalgame.Database` — SQLite via libsqlite3 (next stdlib brick).
+
+### Tests / infra
+
+- Suite grows to **421 PASS / 0 FAIL / 0 SKIP** (was 407). 12
+  new `amc new` cases cover the service template (file presence,
+  generated `main.am` references the right APIs, systemd unit
+  has the right `ExecStart`, `install.ps1` references NSSM).
+- End-to-end roundtrip verified locally — `amc new`, `./build.sh`,
+  run the binary, observe `INFO myd starting` / `INFO tick 0`,
+  SIGTERM, observe `INFO myd shutting down cleanly`.
+- Snapshot refreshed.
+
+---
+
 ## [v0.4.13] — 2026-05-10
 
 The "Service stdlib lands" release. Third stdlib brick after Path
@@ -1331,6 +1406,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.14
 [v0.4.13]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.13
 [v0.4.12]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.12
 [v0.4.11]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.11

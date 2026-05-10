@@ -42,11 +42,11 @@ static inline int Amalgame_Logging_NameToLevel(code_string name) {
     return 1;
 }
 
-static inline void Logging_SetMinLevel(code_string name) {
+static inline void Log_SetMinLevel(code_string name) {
     Amalgame_Logging_MinLevel = Amalgame_Logging_NameToLevel(name);
 }
 
-static inline code_string Logging_GetMinLevel(void) {
+static inline code_string Log_GetMinLevel(void) {
     int l = Amalgame_Logging_MinLevel;
     if (l == 0) return "debug";
     if (l == 1) return "info";
@@ -54,7 +54,7 @@ static inline code_string Logging_GetMinLevel(void) {
     return "error";
 }
 
-static inline void Logging_SetFile(code_string path) {
+static inline void Log_SetFile(code_string path) {
     if (Amalgame_Logging_FilePath) {
         free(Amalgame_Logging_FilePath);
         Amalgame_Logging_FilePath = NULL;
@@ -66,7 +66,7 @@ static inline void Logging_SetFile(code_string path) {
     }
 }
 
-static inline code_string Logging_GetFile(void) {
+static inline code_string Log_GetFile(void) {
     return Amalgame_Logging_FilePath ? Amalgame_Logging_FilePath : "";
 }
 
@@ -100,16 +100,16 @@ static inline void Amalgame_Logging_Emit(int level, code_string label, code_stri
     }
 }
 
-static inline void Logging_Debug(code_string msg) {
+static inline void Log_Debug(code_string msg) {
     Amalgame_Logging_Emit(0, "DEBUG", msg);
 }
-static inline void Logging_Info(code_string msg) {
+static inline void Log_Info(code_string msg) {
     Amalgame_Logging_Emit(1, "INFO ", msg);
 }
-static inline void Logging_Warn(code_string msg) {
+static inline void Log_Warn(code_string msg) {
     Amalgame_Logging_Emit(2, "WARN ", msg);
 }
-static inline void Logging_Error(code_string msg) {
+static inline void Log_Error(code_string msg) {
     Amalgame_Logging_Emit(3, "ERROR", msg);
 }
 

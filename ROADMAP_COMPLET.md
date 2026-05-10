@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-10 · `amc 0.4.13` · self-hosted · 407/407 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-10 · `amc 0.4.14` · self-hosted · 421/421 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -537,6 +537,16 @@ before the next big language addition.
           this top-level fn in a class as `public static`" —
           recently emitted as a parse diagnostic). Per-diagnostic
           dispatcher that returns a `WorkspaceEdit`.
+        - **`textDocument/foldingRange`** — the +/- expand/collapse
+          markers in the gutter for collapsible regions: class
+          bodies, method bodies, multi-line `if`/`while`/`for`
+          blocks, multi-line block comments, multi-line `import`
+          groups, multi-line `match` arms. Walks the AST top-down,
+          emits `FoldingRange { startLine, endLine, kind }` per
+          region. `kind` is "region" by default; "comment" /
+          "imports" for the two special-cased categories. VS Code
+          renders the gutter chevrons automatically once the
+          server advertises `foldingRangeProvider: true`.
 - [ ] **`amc lsp` performance — workspace resolver caching.**
       Every hover / completion / definition call rebuilds the
       whole workspace resolver: parse the open file, walk every
@@ -687,28 +697,48 @@ implementation effort.
       runtime in release tarballs (link static? bundle the .so/dylib/
       DLL alongside the binary?). ~600 LoC stdlib + ~400 LoC runtime
       (mostly SDL passthrough).
-- [ ] **`Amalgame.Service` (cross-platform background process)** —
-      backs the `amc new <name> --template service` scaffolder.
-      Wraps the platform-specific service host APIs behind a single
-      `Service.Run(handler)` entry point that does the right thing
-      everywhere:
-        - **Linux**: foreground process; the scaffolder ships a
-          systemd unit (`<name>.service`) wired to `ExecStart=
-          ./build/<name>` and prints `journalctl -u <name>` in the
-          README.
-        - **macOS**: foreground process; scaffolder ships a launchd
-          plist (`~/Library/LaunchAgents/com.<user>.<name>.plist`)
-          + `launchctl load` instructions.
-        - **Windows**: dispatch to the SCM via the Win32 Service
-          API (`StartServiceCtrlDispatcher`, `RegisterServiceCtrlHandler`,
-          `SetServiceStatus`). Scaffolder ships a one-liner
-          `sc create <name>` script.
-      Stdlib surface: `Service.Run(onStart, onStop)` (signal-aware
-      shutdown — SIGTERM/SIGINT on POSIX, SERVICE_CONTROL_STOP on
-      Windows), `Service.Log(msg, level)` (routes to journald /
-      `os_log` / Event Log), `Service.IsInteractive()` (detect
-      whether we're under a service host or running standalone).
-      ~250 LoC stdlib + ~200 LoC per-platform runtime header.
+- [x] **`Amalgame.Service` v1 — POSIX signals + Windows console**
+      (PR #256, v0.4.13). `Service.Install` / `ShouldStop` /
+      `RequestStop` / `Sleep`. POSIX `signal()` + `nanosleep()`;
+      Windows `SetConsoleCtrlHandler` + chunked `Sleep`. Single
+      surface across platforms; no SCM dispatch yet.
+- [x] **`amc new --template service` v1 — Linux systemd + Windows NSSM**
+      (PR #261, v0.4.14). Scaffolds a full daemon project:
+      `src/main.am` with the canonical loop, `<name>.service`
+      systemd unit + `install.sh` for Linux, `build.ps1` +
+      `install.ps1` (NSSM-based) for Windows. README covers all
+      three OSes; macOS install scripts are documented but not
+      auto-generated (run the binary directly under launchd
+      manually for now).
+- [ ] **`Amalgame.Service` v2 — native Windows Service mode (SCM
+      dispatcher).** Today the Windows path relies on NSSM
+      (https://nssm.cc) to wrap the console binary as a service —
+      operationally indistinguishable from a native service but
+      requires the operator to install a small wrapper exe. v2
+      ships the SCM dance inside the binary itself: at startup
+      call `StartServiceCtrlDispatcher` with a static `ServiceMain`
+      callback; if it returns FALSE with
+      `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT`, fall through to
+      console mode (current behaviour). The `ServiceMain` callback
+      calls `RegisterServiceCtrlHandler` for shutdown control codes
+      and pumps `SetServiceStatus` so SCM sees the service as
+      properly running. The user-loop side stays exactly the same
+      (`while (!Service.ShouldStop()) { ... }`); the runtime hides
+      the dual-mode plumbing.
+      Implementation needs a worker-thread split (SCM dispatcher
+      blocks the main thread; the user loop runs on a secondary
+      thread, both observe the same `ShouldStop` atomic flag) plus
+      an amc-side wrap of generated `main()` so the SCM bootstrap
+      happens before the user's Amalgame `Main()` is invoked. The
+      `--template service` scaffolder switches to native mode and
+      drops the NSSM dependency; existing NSSM installs keep
+      working since NSSM-managed services run the same binary
+      either way.
+- [ ] **`amc new --template service` v2 — macOS launchd plist.**
+      The binary already runs cleanly on macOS via `./build.sh
+      && ./<name>`; only the install scripting is missing. Ship
+      a `launchd.plist` template + `install-macos.sh` wrapper
+      that does `launchctl bootstrap gui/$(id -u) <plist>`.
 
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
