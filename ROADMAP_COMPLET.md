@@ -537,6 +537,16 @@ before the next big language addition.
           this top-level fn in a class as `public static`" —
           recently emitted as a parse diagnostic). Per-diagnostic
           dispatcher that returns a `WorkspaceEdit`.
+        - **`textDocument/foldingRange`** — the +/- expand/collapse
+          markers in the gutter for collapsible regions: class
+          bodies, method bodies, multi-line `if`/`while`/`for`
+          blocks, multi-line block comments, multi-line `import`
+          groups, multi-line `match` arms. Walks the AST top-down,
+          emits `FoldingRange { startLine, endLine, kind }` per
+          region. `kind` is "region" by default; "comment" /
+          "imports" for the two special-cased categories. VS Code
+          renders the gutter chevrons automatically once the
+          server advertises `foldingRangeProvider: true`.
 - [ ] **`amc lsp` performance — workspace resolver caching.**
       Every hover / completion / definition call rebuilds the
       whole workspace resolver: parse the open file, walk every
