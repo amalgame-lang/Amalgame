@@ -494,7 +494,22 @@ public class LspServer {
             return
         }
 
-        // Search every workspace program's top-level children.
+        // First pass: search the enclosing method's params + locals
+        // in the OPEN file. Common case (clicking on a parameter or
+        // a `let` binding) — top-level search would miss those, so
+        // before the workspace walk look for the method whose body
+        // contains the click position and check it for a name match.
+        let enclosing: AstNode = LspServer.FindEnclosingMethod(prog, targetLine)
+        if (enclosing != null) {
+            let local: AstNode = LspServer.LookupLocalInMethod(enclosing, lookup)
+            if (local != null) {
+                this.SendDefinitionLocation(id, path, local.Line, local.Column, lookup)
+                return
+            }
+        }
+
+        // Second pass: search every workspace program's top-level
+        // children (classes, enums, interfaces).
         let nProgs: int = resolver.Programs.Count()
         for i in 0..nProgs {
             let p: AstNode = resolver.Programs.Get(i)
@@ -511,6 +526,90 @@ public class LspServer {
         }
 
         this.SendNullResult(id)
+    }
+
+    // Find the METHOD_DECL whose body contains `targetLine`. Walks
+    // every class top-level + its method children and picks the
+    // method with the largest start Line <= targetLine. Approximate
+    // (we don't track each method's end line on the AstNode) but
+    // works for the common-case clicks inside one method body — if
+    // the user clicks on a class field declared between two
+    // methods, the "enclosing" method is the one above; that field
+    // isn't in any method's Params/Body, so the lookup falls
+    // through to the workspace top-level pass.
+    private static AstNode FindEnclosingMethod(AstNode prog, int targetLine) {
+        var best: AstNode = null
+        var bestLine: int = -1
+        let dc: int = prog.Children.Count()
+        for i in 0..dc {
+            let decl: AstNode = prog.Children.Get(i)
+            if (decl.Kind != NodeKind.CLASS_DECL) { continue }
+            let mc: int = decl.Children.Count()
+            for j in 0..mc {
+                let m: AstNode = decl.Children.Get(j)
+                if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                if (m.Line > targetLine) { continue }
+                if (m.Line > bestLine) {
+                    bestLine = m.Line
+                    best     = m
+                }
+            }
+        }
+        return best
+    }
+
+    // Search a method's parameters + local var-decls for a name
+    // match. Params are direct PARAM children; locals are VAR_DECL
+    // nodes encountered while walking the body. Returns the first
+    // match, or null. Used by HandleDefinition's first pass before
+    // it falls through to the workspace top-level walk.
+    private static AstNode LookupLocalInMethod(AstNode method, string name) {
+        let pc: int = method.Params.Count()
+        for i in 0..pc {
+            let p: AstNode = method.Params.Get(i)
+            if (p.Name == name) { return p }
+        }
+        return LspServer.FindLocalVarDecl(method.Body, name)
+    }
+
+    // Recursive walker for the method body — collects the first
+    // VAR_DECL whose Name matches. Stops at nested method/class
+    // bodies so an inner closure's locals don't leak out (closures
+    // are just lambda METHOD_DECLs in our AST).
+    private static AstNode FindLocalVarDecl(AstNode node, string name) {
+        if (node == null) { return null }
+        let k = node.Kind
+        if (k == NodeKind.METHOD_DECL || k == NodeKind.CLASS_DECL) { return null }
+        if (k == NodeKind.VAR_DECL && node.Name == name) { return node }
+        // Descend through every child slot the parser might
+        // populate. AstNode child fields parallel what the cgen's
+        // lambda hoister walks.
+        if (node.Left != null) {
+            let r1: AstNode = LspServer.FindLocalVarDecl(node.Left, name)
+            if (r1 != null) { return r1 }
+        }
+        if (node.Right != null) {
+            let r2: AstNode = LspServer.FindLocalVarDecl(node.Right, name)
+            if (r2 != null) { return r2 }
+        }
+        if (node.Cond != null) {
+            let r3: AstNode = LspServer.FindLocalVarDecl(node.Cond, name)
+            if (r3 != null) { return r3 }
+        }
+        if (node.Body != null) {
+            let r4: AstNode = LspServer.FindLocalVarDecl(node.Body, name)
+            if (r4 != null) { return r4 }
+        }
+        if (node.Else != null) {
+            let r5: AstNode = LspServer.FindLocalVarDecl(node.Else, name)
+            if (r5 != null) { return r5 }
+        }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            let r6: AstNode = LspServer.FindLocalVarDecl(node.Children.Get(i), name)
+            if (r6 != null) { return r6 }
+        }
+        return null
     }
 
     // ── Document symbol (outline) ─────────────────────
