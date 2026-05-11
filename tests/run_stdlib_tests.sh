@@ -366,10 +366,13 @@ USRAM
     printf "  %-38s${GREEN}PASS${NC}\n" "PM e2e: amc compile"; PASS=$((PASS+1))
 
     check_e2e "PM e2e: header included"          "#include.*fake_pkg.h"
-    check_e2e "PM e2e: FakePkg_Init typed"       "AmalgameFakePkg\\* .*= FakePkg_Init"
-    check_e2e "PM e2e: FakePkg_Tick i64"         "i64 .*= FakePkg_Tick"
-    check_e2e "PM e2e: FakePkg_IsOk bool"        "code_bool .*= FakePkg_IsOk"
-    check_e2e "PM e2e: FakePkg_Close called"     "FakePkg_Close\\("
+    # v0.5+: C symbols are namespace-mangled. The fixture manifest
+    # declares namespace="Amalgame.Fake.FakePkg" so cgen emits
+    # Amalgame_Fake_FakePkg_<method> at call sites.
+    check_e2e "PM e2e: FakePkg.Init typed"       "AmalgameFakePkg\\* .*= Amalgame_Fake_FakePkg_Init"
+    check_e2e "PM e2e: FakePkg.Tick i64"         "i64 .*= Amalgame_Fake_FakePkg_Tick"
+    check_e2e "PM e2e: FakePkg.IsOk bool"        "code_bool .*= Amalgame_Fake_FakePkg_IsOk"
+    check_e2e "PM e2e: FakePkg.Close called"     "Amalgame_Fake_FakePkg_Close\\("
 
     # Full round-trip: gcc + run.
     gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
