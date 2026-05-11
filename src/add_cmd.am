@@ -426,6 +426,61 @@ public class AddCommand {
         return File.ReadAll(cachePath)
     }
 
+    // ── EnsureInstalled (used by amc test) ────────────
+    //
+    // Walks amalgame.lock and re-installs any [[package]] entry
+    // whose cached directory is missing on disk. Idempotent —
+    // if the cache is intact, no-op (no network, no clone).
+    //
+    // Returns the number of packages newly installed (0 means
+    // everything was already present). -1 on a hard error.
+    //
+    // Called at the start of `amc test` so user CI can clone +
+    // run without an extra `amc add` step. Same hook applies to
+    // any future `amc build` / `amc run` once those land.
+    public static int EnsureInstalled() {
+        let lockPath: string = "amalgame.lock"
+        if (!File.Exists(lockPath)) { return 0 }
+        let lockSrc: string = File.ReadAll(lockPath)
+        let lockDoc = Toml.Parse(lockSrc)
+        if (lockDoc.IsNull()) { return 0 }
+        let pkgs: TomlValue = lockDoc.Get("package")
+        if (!pkgs.IsArray()) { return 0 }
+
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let n: int = pkgs.Count()
+        var installed: int = 0
+        for i in 0..n {
+            let entry: TomlValue = pkgs.At(i)
+            let gitV: TomlValue = entry.Get("git")
+            let tagV: TomlValue = entry.Get("tag")
+            let revV: TomlValue = entry.Get("rev")
+            let gitS: string = gitV.AsString()
+            let tagS: string = tagV.AsString()
+            let revS: string = revV.AsString()
+            if (String_Length(gitS) == 0 || String_Length(tagS) == 0) { continue }
+            if (String_Length(revS) < 8) { continue }
+            let shortSha: string = String_Substring(revS, 0, 8)
+            let pkgDir: string = cacheRoot + "/" + gitS + "/" + tagS + "_" + shortSha
+            let manifestPath: string = pkgDir + "/amalgame.toml"
+            if (File.Exists(manifestPath)) { continue }
+            // Missing — install via the shell-out path. Use the
+            // same Args_Get(0) trick as RunInstallSpec for path
+            // discovery.
+            Console.WriteLine("Installing missing dep: " + gitS + "@" + tagS + "...")
+            let amcPath0: string = Args_Get(0)
+            var amcExe: string = amcPath0
+            if (String_Length(amcExe) == 0) { amcExe = "amc" }
+            let exit: int = Process_Run("'" + amcExe + "' add '" + gitS + "@" + tagS + "'")
+            if (exit != 0) {
+                Console.WriteError("amc add failed for " + gitS + "@" + tagS)
+                return -1
+            }
+            installed = installed + 1
+        }
+        return installed
+    }
+
     // ── amc cache ─────────────────────────────────────
     //
     // `amc cache clear`         — drop the packages-index cache
