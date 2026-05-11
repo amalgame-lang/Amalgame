@@ -92,6 +92,11 @@ public class AmalgameCompiler {
         // ── Resolver pass ─────────────────────────────
         let resolver = new FullResolver()
         resolver.Sources = this.Diag.Sources
+        // v0.5 package-manager hook: load installed packages and
+        // declare their classes + functions as globals. Empty
+        // amalgame.lock → no-op, preserves v0.4.x behaviour.
+        let pkgReg = PackageRegistry.Load()
+        resolver.RegisterPackages(pkgReg)
         let progCount = progs.Count()
         for ri in 0..progCount {
             resolver.Programs.Add(progs.Get(ri))
