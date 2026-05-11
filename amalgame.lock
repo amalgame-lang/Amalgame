@@ -1,7 +1,0 @@
-# amalgame.lock — auto-generated, commit me
-
-[[package]]
-name = "sqlite"
-git  = "github.com/amalgame-lang/amalgame-database-sqlite"
-tag  = "v0.2.0"
-rev  = "4564456e"

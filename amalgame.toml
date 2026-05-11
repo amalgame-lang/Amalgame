@@ -1,6 +1,0 @@
-
-[dependencies]
-
-[dependencies.sqlite]
-git = "github.com/amalgame-lang/amalgame-database-sqlite"
-tag = "v0.2.0"
