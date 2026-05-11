@@ -201,6 +201,14 @@ public class Program {
         let addProg  = addPar.Parse()
         Console.WriteError("parsed: add_cmd.am")
 
+        let prPath   = "./src/package_registry.am"
+        let prSrc    = File.ReadAll(prPath)
+        let prLex    = new Lexer(prSrc, prPath)
+        let prToks   = prLex.Tokenize()
+        let prPar    = new Parser(prToks)
+        let prProg   = prPar.Parse()
+        Console.WriteError("parsed: package_registry.am")
+
         let mainPath = "./src/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
@@ -243,6 +251,7 @@ public class Program {
         gen6.AddFilePass1(newProg)
         gen6.AddFilePass1(tomlProg)
         gen6.AddFilePass1(addProg)
+        gen6.AddFilePass1(prProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         Console.WriteError("gen6: pass1 done, starting pass2")
@@ -269,6 +278,7 @@ public class Program {
         gen6.AddFilePass2(newProg)
         gen6.AddFilePass2(tomlProg)
         gen6.AddFilePass2(addProg)
+        gen6.AddFilePass2(prProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
         // Emit the C entry point that boots Amalgame's Program.Main.

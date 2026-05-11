@@ -284,6 +284,29 @@ run_test "Toml: aot entry 0"          "$SAMPLES/stdlib_toml.am" "[PASS] aot entr
 run_test "Toml: aot entry 1"          "$SAMPLES/stdlib_toml.am" "[PASS] aot entry 1"          "" "$TOML_LIB"
 run_test "Toml: roundtrip simple"     "$SAMPLES/stdlib_toml.am" "[PASS] roundtrip simple"     "" "$TOML_LIB"
 
+# ── PackageRegistry (v0.5 PR 3b) ───────────────────────
+# Loads amalgame.lock + cached package manifests, exposes them as
+# a typed registry. Test fixture lives under tests/fixtures/pm/
+# (no network, no git — just files on disk).
+echo ""
+echo "── PackageRegistry ─────────────────────────"
+PR_EXTRA="src/stdlib/toml.am src/package_registry.am"
+run_test "PR: one package"            "$SAMPLES/stdlib_package_registry.am" "[PASS] one package"        "" "$PR_EXTRA"
+run_test "PR: name"                   "$SAMPLES/stdlib_package_registry.am" "[PASS] name"               "" "$PR_EXTRA"
+run_test "PR: class name"             "$SAMPLES/stdlib_package_registry.am" "[PASS] class name"         "" "$PR_EXTRA"
+run_test "PR: namespace"              "$SAMPLES/stdlib_package_registry.am" "[PASS] namespace"          "" "$PR_EXTRA"
+run_test "PR: header path"            "$SAMPLES/stdlib_package_registry.am" "[PASS] header path"        "" "$PR_EXTRA"
+run_test "PR: func count"             "$SAMPLES/stdlib_package_registry.am" "[PASS] func count"         "" "$PR_EXTRA"
+run_test "PR: Init returns pointer"   "$SAMPLES/stdlib_package_registry.am" "[PASS] Init returns pointer"  "" "$PR_EXTRA"
+run_test "PR: Tick returns i64"       "$SAMPLES/stdlib_package_registry.am" "[PASS] Tick returns i64"      "" "$PR_EXTRA"
+run_test "PR: IsOk returns bool"      "$SAMPLES/stdlib_package_registry.am" "[PASS] IsOk returns bool"     "" "$PR_EXTRA"
+run_test "PR: Close returns void"     "$SAMPLES/stdlib_package_registry.am" "[PASS] Close returns void"    "" "$PR_EXTRA"
+run_test "PR: ClassNames aggregate"   "$SAMPLES/stdlib_package_registry.am" "[PASS] ClassNames aggregate"  "" "$PR_EXTRA"
+run_test "PR: Headers aggregate"      "$SAMPLES/stdlib_package_registry.am" "[PASS] Headers aggregate"     "" "$PR_EXTRA"
+run_test "PR: strip star"             "$SAMPLES/stdlib_package_registry.am" "[PASS] strip star"            "" "$PR_EXTRA"
+run_test "PR: passthrough primitive"  "$SAMPLES/stdlib_package_registry.am" "[PASS] passthrough primitive" "" "$PR_EXTRA"
+run_test "PR: missing lock empty"     "$SAMPLES/stdlib_package_registry.am" "[PASS] missing lock empty"    "" "$PR_EXTRA"
+
 # ── Amalgame.Random ────────────────────────────────────
 # Same extra-input pattern as Json — pulls in src/stdlib/random.am
 # alongside the test sample.
