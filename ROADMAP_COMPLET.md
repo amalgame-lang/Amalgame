@@ -495,6 +495,12 @@ before the next big language addition.
       via `amalgame.serverPath` and `amalgame.enableLsp`.
 - [x] **`amc lsp` hover + global completion** (v0.3.5) — follow-up on top of v0.3.4
       diagnostics. Needs pos→symbol lookup on the AST.
+- [x] **`amc lsp` foldingRange** (slice 5) — token-driven brace-pair
+      matching for class / method / block bodies; `kind:"comment"`
+      runs for consecutive `//` lines; `kind:"imports"` runs for
+      consecutive `import …` statements. Filters one- and two-line
+      blocks so the gutter stays uncluttered. Capability advertised
+      as `foldingRangeProvider: true`.
 - [ ] **`amc lsp` navigation (v2)** — the next-tier features users
       hit fastest after diagnostics + completion are working:
         - **`textDocument/definition`** — jump to where a symbol is
