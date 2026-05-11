@@ -262,10 +262,16 @@ public class AddCommand {
             return 1
         }
 
-        // ── 6. Update amalgame.lock ───────────────────────
-        if (!AddCommand.UpdateLockFile(depName, url, tag, rev)) {
-            Console.WriteError("could not update amalgame.lock")
-            return 1
+        // ── 6. Rebuild amalgame.lock from the full deps table ─
+        // Reads the just-updated amalgame.toml and emits a
+        // coherent multi-entry lock. Previously each amc add
+        // overwrote the lock with a single entry (PR 2 default);
+        // re-reading the toml here keeps all deps in the lock.
+        let tomlAfter: string = File.ReadAll("amalgame.toml")
+        let docAfter = Toml.Parse(tomlAfter)
+        let depsAfter: TomlValue = docAfter.Get("dependencies")
+        if (depsAfter.IsTable()) {
+            AddCommand.RebuildLockFromTomlDeps(depsAfter, "amalgame.lock")
         }
 
         Console.WriteLine("Added " + depName + " " + tag)
@@ -418,6 +424,179 @@ public class AddCommand {
             return ""
         }
         return File.ReadAll(cachePath)
+    }
+
+    // ── amc list ──────────────────────────────────────
+    //
+    // List packages installed in the current project's
+    // amalgame.lock. Empty / missing lock → friendly "no
+    // packages" message, NOT an error (lots of projects don't
+    // use any external packages).
+    public static int RunList(int argc) {
+        let reg = PackageRegistry.Load()
+        let n: int = reg.Packages.Count()
+        if (n == 0) {
+            Console.WriteLine("No packages installed in this project.")
+            Console.WriteLine("(no amalgame.lock in cwd, or the lock has no [[package]] entries)")
+            return 0
+        }
+        Console.WriteLine(String_FromInt(n) + " package(s) installed:")
+        Console.WriteLine("")
+        for i in 0..n {
+            let lp: LoadedPackage = reg.Packages.Get(i)
+            // 'class' field is the short Amalgame class name; the
+            // package's `Name` is the full slug. Show the short
+            // class first since that's what users type in code.
+            Console.WriteLine("  " + lp.ClassName + " — " + lp.Name)
+            Console.WriteLine("    namespace: " + lp.Ns)
+            Console.WriteLine("    header:    " + lp.Header)
+            Console.WriteLine("")
+        }
+        return 0
+    }
+
+    // ── amc remove ────────────────────────────────────
+    //
+    // Strip a dep from amalgame.toml + amalgame.lock. Does NOT
+    // delete the cached package files at
+    // `~/.amalgame/packages/...` — those stay so re-installing
+    // is instant. v0.5.x `amc gc` will clean unreferenced
+    // cache dirs.
+    //
+    //   amc remove redis
+    //   amc remove sqlite mqtt   (multi-arg, all-or-nothing)
+    public static int RunRemove(int argc) {
+        let toRemove: List<string> = new List<string>()
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc remove <dep-name> [<dep-name>...]")
+                Console.WriteError("")
+                Console.WriteError("Strip the named dep(s) from amalgame.toml + amalgame.lock.")
+                Console.WriteError("Cached package files are kept; `amc gc` (v0.5.x) cleans those.")
+                return 0
+            }
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                return 2
+            }
+            toRemove.Add(a)
+            i = i + 1
+        }
+        if (toRemove.Count() == 0) {
+            Console.WriteError("usage: amc remove <dep-name> [...]")
+            return 2
+        }
+
+        // Read project's amalgame.toml.
+        let tomlPath: string = "amalgame.toml"
+        if (!File.Exists(tomlPath)) {
+            Console.WriteError("no amalgame.toml in cwd — nothing to remove")
+            return 1
+        }
+        let tomlSrc: string = File.ReadAll(tomlPath)
+        let doc = Toml.Parse(tomlSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("amalgame.toml parse error")
+            return 1
+        }
+        let depsTable: TomlValue = doc.Get("dependencies")
+        if (!depsTable.IsTable()) {
+            Console.WriteError("amalgame.toml has no [dependencies] table — nothing to remove")
+            return 1
+        }
+
+        // Verify every name exists before mutating either file.
+        let remN: int = toRemove.Count()
+        for ri in 0..remN {
+            let name: string = toRemove.Get(ri)
+            if (!depsTable.Has(name)) {
+                Console.WriteError("'" + name + "' is not a declared dependency")
+                return 1
+            }
+        }
+
+        // Mutate: build a fresh [dependencies] table that omits
+        // the names. Toml.SetEntry doesn't have a Remove, so we
+        // rebuild by copying surviving entries.
+        let oldKeys: List<string> = depsTable.Keys()
+        let oldN: int = oldKeys.Count()
+        let newDeps = new TomlValue()
+        newDeps.BecomeTable()
+        for ki in 0..oldN {
+            let k: string = oldKeys.Get(ki)
+            var skip: bool = false
+            for rj in 0..remN {
+                // Extract to a typed local — chained `List.Get(idx)
+                // == otherString` confuses the cgen's cross-call
+                // return-type inference and silently produces a
+                // wrong comparison (gotcha #3).
+                let removeName: string = toRemove.Get(rj)
+                if (removeName == k) { skip = true }
+            }
+            if (!skip) {
+                let v: TomlValue = depsTable.Get(k)
+                newDeps.SetEntry(k, v)
+            }
+        }
+        doc.SetEntry("dependencies", newDeps)
+        let out: string = Toml.Serialize(doc)
+        let ok: bool = File.WriteAll(tomlPath, out)
+        if (!ok) {
+            Console.WriteError("could not write amalgame.toml")
+            return 1
+        }
+
+        // Rewrite amalgame.lock — for v0.5 it's a flat list of
+        // [[package]] entries; we rebuild it from the surviving
+        // deps' cache manifests so the SHA pins stay coherent.
+        let lockPath: string = "amalgame.lock"
+        if (File.Exists(lockPath)) {
+            AddCommand.RebuildLockFromTomlDeps(newDeps, lockPath)
+        }
+
+        // Confirm.
+        for ri2 in 0..remN {
+            Console.WriteLine("Removed '" + toRemove.Get(ri2) + "' from amalgame.toml + amalgame.lock.")
+        }
+        Console.WriteLine("(cached files at ~/.amalgame/packages/... were kept — `amc gc` reclaims those)")
+        return 0
+    }
+
+    // Rebuild the lock file from a [dependencies] table. Walks
+    // each dep, looks up its existing cache dir to recover the
+    // pinned `rev`, emits a fresh lock. If any dep can't be
+    // resolved in the cache, the lock entry is dropped (the
+    // next `amc add` will repin).
+    public static void RebuildLockFromTomlDeps(TomlValue depsTable, string lockPath) {
+        let cacheRoot: string = AddCommand.CacheRoot()
+        var out: string = "# amalgame.lock — auto-generated, commit me\n"
+        let keys: List<string> = depsTable.Keys()
+        let n: int = keys.Count()
+        for i in 0..n {
+            let depName: string = keys.Get(i)
+            let entry: TomlValue = depsTable.Get(depName)
+            let gitV: TomlValue = entry.Get("git")
+            let tagV: TomlValue = entry.Get("tag")
+            let gitS: string = gitV.AsString()
+            let tagS: string = tagV.AsString()
+            if (String_Length(gitS) == 0 || String_Length(tagS) == 0) { continue }
+            // Find the matching cache dir (any <tag>_<sha>).
+            let baseDir: string = cacheRoot + "/" + gitS
+            let existing: string = AddCommand.FindExistingForTag(baseDir, tagS)
+            if (String_Length(existing) == 0) { continue }
+            let rev: string = AddCommand.ExtractRevFromDirName(existing)
+            // Pad short sha back to 40 chars best-effort; we
+            // only stored 8. v0.5.x can probe git for the full
+            // SHA at install time.
+            out = out + "\n[[package]]\n"
+            out = out + "name = \"" + depName + "\"\n"
+            out = out + "git  = \"" + gitS + "\"\n"
+            out = out + "tag  = \"" + tagS + "\"\n"
+            out = out + "rev  = \"" + rev + "\"\n"
+        }
+        let _ok: bool = File.WriteAll(lockPath, out)
     }
 
     // ── amc search ────────────────────────────────────

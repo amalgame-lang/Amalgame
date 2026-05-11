@@ -19561,6 +19561,9 @@ code_string Amalgame_Compiler_AddCommand_CacheRoot();
 code_string Amalgame_Compiler_AddCommand_IndexCachePath();
 static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs);
 code_string Amalgame_Compiler_AddCommand_FetchIndex();
+i64 Amalgame_Compiler_AddCommand_RunList(i64 argc);
+i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc);
+void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_TomlValue* depsTable, code_string lockPath);
 i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc);
 code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec);
 code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag);
@@ -19749,9 +19752,11 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc) {
         Console_WriteError("could not update amalgame.toml");
         return 1;
     }
-    if (!Amalgame_Compiler_AddCommand_UpdateLockFile(depName, url, tag, rev)) {
-        Console_WriteError("could not update amalgame.lock");
-        return 1;
+    code_string __attribute__((unused)) tomlAfter = File_ReadAll("amalgame.toml");
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) docAfter = Amalgame_Compiler_Toml_Parse(tomlAfter);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) depsAfter = Amalgame_Compiler_TomlValue_Get(docAfter, "dependencies");
+    if (Amalgame_Compiler_TomlValue_IsTable(depsAfter)) {
+        Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(depsAfter, "amalgame.lock");
     }
     Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("Added ", depName), " "), tag));
     return 0;
@@ -19905,6 +19910,143 @@ code_string Amalgame_Compiler_AddCommand_FetchIndex() {
         return "";
     }
     return File_ReadAll(cachePath);
+}
+
+i64 Amalgame_Compiler_AddCommand_RunList(i64 argc) {
+    (void)argc;
+    Amalgame_Compiler_PackageRegistry* __attribute__((unused)) reg = Amalgame_Compiler_PackageRegistry_Load();
+    i64 __attribute__((unused)) n = AmalgameList_count(reg->Packages);
+    if (n == 0) {
+        Console_WriteLine("No packages installed in this project.");
+        Console_WriteLine("(no amalgame.lock in cwd, or the lock has no [[package]] entries)");
+        return 0;
+    }
+    Console_WriteLine(code_string_concat(String_FromInt(n), " package(s) installed:"));
+    Console_WriteLine("");
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) lp = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, i);
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("  ", lp->ClassName), " — "), lp->Name));
+        Console_WriteLine(code_string_concat("    namespace: ", lp->Ns));
+        Console_WriteLine(code_string_concat("    header:    ", lp->Header));
+        Console_WriteLine("");
+    }
+    return 0;
+}
+
+i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc) {
+    (void)argc;
+    AmalgameList* __attribute__((unused)) toRemove = AmalgameList_new();
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc remove <dep-name> [<dep-name>...]");
+            Console_WriteError("");
+            Console_WriteError("Strip the named dep(s) from amalgame.toml + amalgame.lock.");
+            Console_WriteError("Cached package files are kept; `amc gc` (v0.5.x) cleans those.");
+            return 0;
+        }
+        if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat("unknown flag: ", a));
+            return 2;
+        }
+        AmalgameList_add(toRemove, (void*)(intptr_t)(a));
+        i = i + 1;
+    }
+    if (AmalgameList_count(toRemove) == 0) {
+        Console_WriteError("usage: amc remove <dep-name> [...]");
+        return 2;
+    }
+    code_string __attribute__((unused)) tomlPath = "amalgame.toml";
+    if (!File_Exists(tomlPath)) {
+        Console_WriteError("no amalgame.toml in cwd — nothing to remove");
+        return 1;
+    }
+    code_string __attribute__((unused)) tomlSrc = File_ReadAll(tomlPath);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(tomlSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        Console_WriteError("amalgame.toml parse error");
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) depsTable = Amalgame_Compiler_TomlValue_Get(doc, "dependencies");
+    if (!Amalgame_Compiler_TomlValue_IsTable(depsTable)) {
+        Console_WriteError("amalgame.toml has no [dependencies] table — nothing to remove");
+        return 1;
+    }
+    i64 __attribute__((unused)) remN = AmalgameList_count(toRemove);
+    for (i64 ri = 0; ri < remN; ri++) {
+        code_string __attribute__((unused)) name = (code_string)AmalgameList_get(toRemove, ri);
+        if (!Amalgame_Compiler_TomlValue_Has(depsTable, name)) {
+            Console_WriteError(code_string_concat(code_string_concat("'", name), "' is not a declared dependency"));
+            return 1;
+        }
+    }
+    AmalgameList* __attribute__((unused)) oldKeys = Amalgame_Compiler_TomlValue_Keys(depsTable);
+    i64 __attribute__((unused)) oldN = AmalgameList_count(oldKeys);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) newDeps = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_BecomeTable(newDeps);
+    for (i64 ki = 0; ki < oldN; ki++) {
+        code_string __attribute__((unused)) k = (code_string)AmalgameList_get(oldKeys, ki);
+        code_bool __attribute__((unused)) skip = 0;
+        for (i64 rj = 0; rj < remN; rj++) {
+            code_string __attribute__((unused)) removeName = (code_string)AmalgameList_get(toRemove, rj);
+            if (code_string_equals(removeName, k)) {
+                skip = 1;
+            }
+        }
+        if (!skip) {
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_TomlValue_Get(depsTable, k);
+            Amalgame_Compiler_TomlValue_SetEntry(newDeps, k, v);
+        }
+    }
+    Amalgame_Compiler_TomlValue_SetEntry(doc, "dependencies", newDeps);
+    code_string __attribute__((unused)) out = Amalgame_Compiler_Toml_Serialize(doc);
+    code_bool __attribute__((unused)) ok = File_WriteAll(tomlPath, out);
+    if (!ok) {
+        Console_WriteError("could not write amalgame.toml");
+        return 1;
+    }
+    code_string __attribute__((unused)) lockPath = "amalgame.lock";
+    if (File_Exists(lockPath)) {
+        Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(newDeps, lockPath);
+    }
+    for (i64 ri2 = 0; ri2 < remN; ri2++) {
+        Console_WriteLine(code_string_concat(code_string_concat("Removed '", (code_string)((code_string)AmalgameList_get(toRemove, ri2))), "' from amalgame.toml + amalgame.lock."));
+    }
+    Console_WriteLine("(cached files at ~/.amalgame/packages/... were kept — `amc gc` reclaims those)");
+    return 0;
+}
+
+void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_TomlValue* depsTable, code_string lockPath) {
+    (void)depsTable;
+    (void)lockPath;
+    code_string __attribute__((unused)) cacheRoot = Amalgame_Compiler_AddCommand_CacheRoot();
+    code_string __attribute__((unused)) out = "# amalgame.lock — auto-generated, commit me\n";
+    AmalgameList* __attribute__((unused)) keys = Amalgame_Compiler_TomlValue_Keys(depsTable);
+    i64 __attribute__((unused)) n = AmalgameList_count(keys);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) depName = (code_string)AmalgameList_get(keys, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_Get(depsTable, depName);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) gitV = Amalgame_Compiler_TomlValue_Get(entry, "git");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) tagV = Amalgame_Compiler_TomlValue_Get(entry, "tag");
+        code_string __attribute__((unused)) gitS = Amalgame_Compiler_TomlValue_AsString(gitV);
+        code_string __attribute__((unused)) tagS = Amalgame_Compiler_TomlValue_AsString(tagV);
+        if (String_Length(gitS) == 0 || String_Length(tagS) == 0) {
+            continue;
+        }
+        code_string __attribute__((unused)) baseDir = code_string_concat(code_string_concat(cacheRoot, "/"), gitS);
+        code_string __attribute__((unused)) existing = Amalgame_Compiler_AddCommand_FindExistingForTag(baseDir, tagS);
+        if (String_Length(existing) == 0) {
+            continue;
+        }
+        code_string __attribute__((unused)) rev = Amalgame_Compiler_AddCommand_ExtractRevFromDirName(existing);
+        out = code_string_concat(out, "\n[[package]]\n");
+        out = code_string_concat(code_string_concat(code_string_concat(out, "name = \""), depName), "\"\n");
+        out = code_string_concat(code_string_concat(code_string_concat(out, "git  = \""), gitS), "\"\n");
+        out = code_string_concat(code_string_concat(code_string_concat(out, "tag  = \""), tagS), "\"\n");
+        out = code_string_concat(code_string_concat(code_string_concat(out, "rev  = \""), rev), "\"\n");
+    }
+    code_bool __attribute__((unused)) _ok = File_WriteAll(lockPath, out);
 }
 
 i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc) {
@@ -20531,6 +20673,14 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "search")) {
         Exit_Set(Amalgame_Compiler_AddCommand_RunSearch(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "list")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_RunList(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "remove")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_RunRemove(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
