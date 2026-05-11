@@ -788,7 +788,7 @@ as an opt-in external package: **`amalgame-lang/amalgame-database-sqlite`**.
 Since v0.5 it's no longer bundled with the compiler — install via:
 
 ```bash
-amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0
+amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.2.0
 ```
 
 The package vendors the SQLite amalgamation (public-domain
@@ -841,20 +841,25 @@ SQLite.Close(db)
 (via `sqlite3_column_text`). NULL columns become empty strings.
 Convert numerics in Amalgame as needed (`String_ToInt(row.Get(0))`).
 
-**Linking:** after `amc add`, the package's vendored `sqlite3.c`
-lives at
-`~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/<tag>_<sha>/runtime/Amalgame_Database/sqlite/sqlite3.c`.
-Pre-compile it once and link with the generated user `.c`:
+**Linking:** the package's manifest declares `sqlite3.c` under its
+`[stdlib].sources` array, so since v0.5.2 **`amc test` links it
+automatically** — pre-compiles each source once to a cached `/tmp`
+`.o`, then appends it (plus `-ldl -lpthread`) to every test
+binary's link command. No manual `gcc` step needed.
+
+For ad-hoc `amc <file>.am` builds (outside `amc test`), the
+vendored source still lives at
+`~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/<tag>_<sha>/runtime/Amalgame_Database/sqlite/sqlite3.c`
+and can be linked by hand:
 
 ```
-PKG=~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/v0.1.0_*
+PKG=~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/v0.2.0_*
 gcc -O2 -Iruntime -w -c $PKG/runtime/Amalgame_Database/sqlite/sqlite3.c -o sqlite3.o
 gcc -O2 -Iruntime your_program.c sqlite3.o -lgc -lm -lcurl -ldl -lpthread -o your_program
 ```
 
-The `amc test` runner automates this on Database tests; a future
-`amc build` will wire the link step automatically based on each
-package's `sources` field in its manifest.
+A future `amc build` will wire this step for non-test binaries
+too, reusing the same `[stdlib].sources` machinery.
 
 **v1 limitations:**
 

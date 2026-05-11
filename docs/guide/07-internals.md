@@ -215,18 +215,26 @@ subcommand.
 
 Pipeline per test file:
 
+0. **Pre-flight (once per run)** — resolve `amcRuntime` from
+   `$AMC_RUNTIME`, else `<dirname(amc)>/runtime`, else fall back
+   to `./runtime`. Then load `PackageRegistry` (manifest + lock)
+   and, for every package declaring `[stdlib].sources`,
+   `Program.PreCompilePackageSources` compiles each `.c` once
+   with `gcc -O2 -I<amcRuntime> -w -c …` to a cached
+   `/tmp/amc-pkg-<class>-<leaf>.o`. The `.o` paths feed into the
+   per-test link step below.
 1. **Discover** — shells out to `find <dir> -name '*_test.am' -type f`
    via `Process.RunCapture`. Cross-platform on POSIX and Windows
    MSYS2 (the CI's Windows path).
 2. **Compile to C** — invokes the running `amc` binary on the file
    (path from `Args_Get(0)`) with `-o /tmp/amc_test_<idx>` and
    `--quiet`. Emits `<tmp>.c`.
-3. **Compile to native** — `gcc -O2 -Iruntime <tmp>.c -lgc -lm -lcurl
-   -o <tmp>`. Same flags as `tests/run_tests.sh` so behavior matches
-   the canonical shell runner. Assumes the cwd has a sibling
-   `runtime/` directory; downstream users will need a richer install
-   story (`--runtime`, `AMC_RUNTIME` env var) which is left for a
-   follow-up.
+3. **Compile to native** — `gcc -O2 -Iruntime -I'<amcRuntime>'
+   <tmp>.c <pkg-objs…> -lgc -lm -lcurl -ldl -lpthread -o <tmp>`.
+   The pre-compiled package `.o` files from step 0 are spliced in
+   so vendoring backends (SQLite, future DuckDB) link cleanly with
+   no user intervention. `-ldl` / `-lpthread` are unconditional —
+   harmless when no package needs them, required by SQLite.
 4. **Run + parse** — runs the test binary via `Process.RunCapture`
    and scans its stdout for tag-prefixed lines. Anything else is
    ignored. A non-zero exit with no tag lines is reported as

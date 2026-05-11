@@ -480,9 +480,16 @@ before the next big language addition.
       branch in `main.am`, and a sample roundtrip test that
       scaffolds + compiles a fresh project under `/tmp`.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
-- [ ] **`amc add <pkg>`** — package manager (re-port of the
-      pre-self-host Vala implementation, available via the
-      `vala-bootstrap-final` git tag if revival is needed).
+- [x] **`amc package <action>`** (v0.5.0 → v0.5.2) — full package
+      manager. `add <git-url>@<tag>` clones + validates + records,
+      `remove` / `list` / `search` / `update` / `cache` round out
+      the CLI (PR #303 grouped them under `amc package`, alias
+      `amc pkg`). Storage at `~/.amalgame/packages/<host>/<owner>/
+      <repo>/<tag>_<sha>/`. `amalgame.toml` (deps) +
+      `amalgame.lock` (resolved SHAs) live in the project root.
+      `amc test` is package-aware: auto-installs missing deps
+      (v0.5.1) and links each package's `[stdlib].sources` `.c`
+      files into every test binary (v0.5.2).
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
