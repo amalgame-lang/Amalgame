@@ -867,13 +867,10 @@ public class CGen {
                 // Service stdlib return types
                 if (calleeStr == "Service_ShouldStop") { return "code_bool" }
                 if (calleeStr == "Service_Install" || calleeStr == "Service_RequestStop" || calleeStr == "Service_Sleep") { return "void" }
-                // Database.SQLite stdlib return types
-                if (calleeStr == "SQLite_Open") { return "AmalgameSQLite*" }
-                if (calleeStr == "SQLite_IsOpen" || calleeStr == "SQLite_Exec") { return "code_bool" }
-                if (calleeStr == "SQLite_LastInsertId" || calleeStr == "SQLite_Changes") { return "i64" }
-                if (calleeStr == "SQLite_LastError") { return "code_string" }
-                if (calleeStr == "SQLite_QueryAll") { return "AmalgameList*" }
-                if (calleeStr == "SQLite_Close") { return "void" }
+                // (Database.SQLite return types moved to package
+                //  amalgame-database-sqlite v0.1.0 — see PR #__.
+                //  PackageRegistry now feeds them via the loop a
+                //  few lines down from here.)
                 // Database.NoSQL.Redis stdlib return types
                 if (calleeStr == "Redis_Open") { return "AmalgameRedis*" }
                 if (calleeStr == "Redis_IsOpen" || calleeStr == "Redis_Ping" || calleeStr == "Redis_Set" || calleeStr == "Redis_Exists" || calleeStr == "Redis_Expire") { return "code_bool" }
@@ -1245,7 +1242,9 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Crypto.h\"")
         this.Out.EmitLine("#include \"Amalgame_Logging.h\"")
         this.Out.EmitLine("#include \"Amalgame_Service.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Database_SQLite.h\"")
+        // (Amalgame_Database_SQLite.h moved to package
+        //  amalgame-database-sqlite v0.1.0 — PackageRegistry
+        //  emits the #include below if the user `amc add`'d it.)
         this.Out.EmitLine("#include \"Amalgame_Database_Redis.h\"")
         this.Out.EmitLine("#include \"Amalgame_Messaging_MQTT.h\"")
         // v0.5 package-manager: each installed external package
@@ -3194,7 +3193,7 @@ public class CGen {
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
                         // Stdlib classes are never namespace-prefixed
-                        var isStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "SQLite" || tname == "Redis" || tname == "MQTT"
+                        var isStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "Redis" || tname == "MQTT"
                         if (!isStdlib) {
                             // v0.5: also match classes installed via
                             // `amc add`. Same call lowering rule —
