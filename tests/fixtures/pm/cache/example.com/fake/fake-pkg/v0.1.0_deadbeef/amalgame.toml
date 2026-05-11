@@ -1,0 +1,18 @@
+# Manifest for the fake-pkg fixture — exercises every field
+# PackageRegistry.LoadFrom looks at.
+
+[package]
+name    = "fake-pkg"
+version = "0.1.0"
+license = "Apache-2.0"
+
+[stdlib]
+class     = "FakePkg"
+header    = "runtime/fake_pkg.h"
+namespace = "Amalgame.Fake.FakePkg"
+
+[stdlib.functions]
+Init  = { returns = "AmalgameFakePkg*" }
+Tick  = { returns = "i64" }
+IsOk  = { returns = "code_bool" }
+Close = { returns = "void" }

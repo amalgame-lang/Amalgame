@@ -1,0 +1,8 @@
+# amalgame.lock — fixture for PackageRegistry tests
+# (this lock points at the fake-pkg fixture in cache/, not a real git repo)
+
+[[package]]
+name = "fake-pkg"
+git  = "example.com/fake/fake-pkg"
+tag  = "v0.1.0"
+rev  = "deadbeefcafebabe0000000000000000000000ab"
