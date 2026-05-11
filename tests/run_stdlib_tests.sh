@@ -548,88 +548,9 @@ run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS]
 # repos' own CI — not here. See the header note at the top of
 # this file for the per-package invocation.
 
-# ── Amalgame.Database.NoSQL.Redis ─────────────────────
-# RESP2 client over raw TCP. Gated on a TCP reachability probe so
-# the test suite runs cleanly without Redis installed — every case
-# becomes a SKIP rather than a failure. To exercise the round-trip,
-# start a Redis-compatible server on 127.0.0.1:6379 (e.g.
-# `docker run --rm -p 6379:6379 redis:7` or `redis-server &`).
-echo ""
-echo "── Amalgame.Database.NoSQL.Redis ───────────"
-REDIS_AVAILABLE=0
-if (echo > /dev/tcp/127.0.0.1/6379) 2>/dev/null; then
-    REDIS_AVAILABLE=1
-fi
-
-if [ "$REDIS_AVAILABLE" = "1" ]; then
-    run_test "Redis: open 6379"             "$SAMPLES/stdlib_redis.am" "[PASS] open 6379"             ""
-    run_test "Redis: ping"                  "$SAMPLES/stdlib_redis.am" "[PASS] ping"                  ""
-    run_test "Redis: set greeting"          "$SAMPLES/stdlib_redis.am" "[PASS] set greeting"          ""
-    run_test "Redis: get greeting"          "$SAMPLES/stdlib_redis.am" "[PASS] get greeting"          ""
-    run_test "Redis: get missing empty"     "$SAMPLES/stdlib_redis.am" "[PASS] get missing is empty"  ""
-    run_test "Redis: exists hit"            "$SAMPLES/stdlib_redis.am" "[PASS] exists hit"            ""
-    run_test "Redis: exists miss"           "$SAMPLES/stdlib_redis.am" "[PASS] exists miss"           ""
-    run_test "Redis: incr 1,2"              "$SAMPLES/stdlib_redis.am" "[PASS] incr 1,2"              ""
-    run_test "Redis: decr to 1"             "$SAMPLES/stdlib_redis.am" "[PASS] decr to 1"             ""
-    run_test "Redis: expire 60s"            "$SAMPLES/stdlib_redis.am" "[PASS] expire 60s"            ""
-    run_test "Redis: expire on missing"     "$SAMPLES/stdlib_redis.am" "[PASS] expire on missing"     ""
-    run_test "Redis: del 1"                 "$SAMPLES/stdlib_redis.am" "[PASS] del 1"                 ""
-    run_test "Redis: gone after del"        "$SAMPLES/stdlib_redis.am" "[PASS] gone after del"        ""
-    run_test "Redis: close"                 "$SAMPLES/stdlib_redis.am" "[PASS] closed"                ""
-else
-    run_skip "Redis: open 6379"             "no server on 127.0.0.1:6379"
-    run_skip "Redis: ping"                  "no server on 127.0.0.1:6379"
-    run_skip "Redis: set greeting"          "no server on 127.0.0.1:6379"
-    run_skip "Redis: get greeting"          "no server on 127.0.0.1:6379"
-    run_skip "Redis: get missing empty"     "no server on 127.0.0.1:6379"
-    run_skip "Redis: exists hit"            "no server on 127.0.0.1:6379"
-    run_skip "Redis: exists miss"           "no server on 127.0.0.1:6379"
-    run_skip "Redis: incr 1,2"              "no server on 127.0.0.1:6379"
-    run_skip "Redis: decr to 1"             "no server on 127.0.0.1:6379"
-    run_skip "Redis: expire 60s"            "no server on 127.0.0.1:6379"
-    run_skip "Redis: expire on missing"     "no server on 127.0.0.1:6379"
-    run_skip "Redis: del 1"                 "no server on 127.0.0.1:6379"
-    run_skip "Redis: gone after del"        "no server on 127.0.0.1:6379"
-    run_skip "Redis: close"                 "no server on 127.0.0.1:6379"
-fi
-
-# ── Amalgame.Messaging.MQTT ──────────────────────────
-# Pure-protocol MQTT 3.1.1 client. Gated on a TCP reachability probe
-# (broker default port 1883) so the suite stays green without a
-# broker installed. To exercise the round-trip locally:
-#   docker run --rm -p 1883:1883 eclipse-mosquitto:2 \
-#     mosquitto -c /mosquitto-no-auth.conf
-# or `sudo apt install mosquitto && mosquitto &`.
-echo ""
-echo "── Amalgame.Messaging.MQTT ─────────────────"
-MQTT_AVAILABLE=0
-if (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null; then
-    MQTT_AVAILABLE=1
-fi
-
-if [ "$MQTT_AVAILABLE" = "1" ]; then
-    run_test "MQTT: open 1883"              "$SAMPLES/stdlib_mqtt.am" "[PASS] open 1883"              ""
-    run_test "MQTT: ping"                   "$SAMPLES/stdlib_mqtt.am" "[PASS] ping"                   ""
-    run_test "MQTT: subscribe greeting"     "$SAMPLES/stdlib_mqtt.am" "[PASS] subscribe greeting"     ""
-    run_test "MQTT: publish greeting"       "$SAMPLES/stdlib_mqtt.am" "[PASS] publish greeting"       ""
-    run_test "MQTT: received message"       "$SAMPLES/stdlib_mqtt.am" "[PASS] received message"       ""
-    run_test "MQTT: topic matches"          "$SAMPLES/stdlib_mqtt.am" "[PASS] topic matches"          ""
-    run_test "MQTT: payload matches"        "$SAMPLES/stdlib_mqtt.am" "[PASS] payload matches"        ""
-    run_test "MQTT: second message"         "$SAMPLES/stdlib_mqtt.am" "[PASS] second message"         ""
-    run_test "MQTT: wait timeout"           "$SAMPLES/stdlib_mqtt.am" "[PASS] wait timeout"           ""
-    run_test "MQTT: close"                  "$SAMPLES/stdlib_mqtt.am" "[PASS] closed"                 ""
-else
-    run_skip "MQTT: open 1883"              "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: ping"                   "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: subscribe greeting"     "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: publish greeting"       "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: received message"       "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: topic matches"          "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: payload matches"        "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: second message"         "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: wait timeout"           "no broker on 127.0.0.1:1883"
-    run_skip "MQTT: close"                  "no broker on 127.0.0.1:1883"
-fi
+# Database.NoSQL.Redis tests live in amalgame-database-nosql-redis,
+# Messaging.MQTT tests live in amalgame-messaging-mqtt. See the
+# header comment at the top of this file for invocation.
 
 # ── Summary ────────────────────────────────────────────
 echo ""

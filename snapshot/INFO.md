@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-11T12:03:44+02:00
-Git rev:  7c4fed815679a952342983b660f16e3959fbdc6a
-Branch:   feat/remove-hardcoded-sqlite
+Captured: 2026-05-11T12:40:12+02:00
+Git rev:  25d2936f8e56c1dddaf017b0c09981bea436762b
+Branch:   feat/extract-redis-mqtt
 Tests:    (skipped) passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
