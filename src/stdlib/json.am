@@ -1,4 +1,4 @@
-namespace Amalgame.Json
+namespace Amalgame.Formats.Json
 
 import Amalgame.Collections
 import Amalgame.String

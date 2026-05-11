@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-11 · `amc 0.4.17` · self-hosted · 438/438 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-11 · `amc 0.5.0` · self-hosted · 470/470 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem launch
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -668,10 +668,43 @@ implementation effort.
       server is up, runs the round-trip otherwise. AUTH / SELECT,
       pipelining, pub/sub, MULTI/EXEC, SCAN, TLS, binary values
       with embedded NULs are v2.
-- [ ] **Stdlib package manager — extract DB backends as
-      packages.** Triggered once 3-4 optional backends are in
-      tree (Redis + DuckDB? + Postgres? + MQTT?) and the
-      monolithic-stdlib model starts hurting. Design space:
+- [x] **`Amalgame.Messaging.MQTT` v1** (v0.4.18) —
+      pure-protocol MQTT 3.1.1 client over raw TCP, no vendored
+      lib (no `libmosquitto` / `libpaho` at link time). Runtime
+      header (`runtime/Amalgame_Messaging_MQTT.h`, ~450 LoC)
+      implements CONNECT/CONNACK, PUBLISH (QoS 0), SUBSCRIBE/
+      SUBACK, PINGREQ/PINGRESP, DISCONNECT, and the variable-
+      length encoding for "remaining length". Surface:
+      `MQTT.Open(host, port, clientId) → AmalgameMQTT*`,
+      `Close`, `IsOpen`, `LastError`, `Ping`, `Publish(topic,
+      payload)`, `Subscribe(topic)`, `WaitMessage(timeout_ms)
+      → bool`, `LastTopic`, `LastPayload`. Lands the
+      `Amalgame.Messaging.*` namespace as the parallel to
+      `Amalgame.Database.*`. QoS 1/2, retain, will, auto-
+      keepalive, multi-topic SUBSCRIBE, MQTT 5, TLS, username/
+      password auth, broker-side wildcards (`+`/`#`) exercised
+      in tests are v2.
+- [ ] **Stdlib package manager — extract optional backends as
+      packages.** Triggered now that 3 optional backends are in
+      tree (SQLite, Redis, MQTT) and the monolithic-stdlib model
+      is starting to hurt (every new backend touches c_gen.am +
+      resolver.am + run_stdlib_tests.sh — those will become merge-
+      hot files).
+
+      **Release batching policy** — to avoid burning CI + release-
+      flow cycles on every backend addition between now and the
+      package manager landing, we batch features-headed-for-
+      extraction directly into the v0.5 release rather than
+      cutting intermediate patch releases. Concretely: MQTT is
+      shipped on `develop` but no v0.4.18 release will be cut for
+      it; it rolls into v0.5 alongside the package manager + the
+      SQLite/Redis/MQTT extraction. Same rule for any further
+      backend that lands before v0.5 (DuckDB, Postgres, etc.).
+      Once the package manager is live, each external package
+      cuts its own releases on its own cadence — totally
+      decoupled from the compiler's version.
+
+      Design space:
         - **Manifest format** — `package.am` or `amalgame.toml`
           listing name, version, runtime headers, link flags,
           deps. Has to be parseable by the package manager
@@ -692,14 +725,19 @@ implementation effort.
           (`-lcurl`, `-lz`, vendored amalgamation .c sources
           to compile alongside the user binary).
         - **Inaugural packages** — extract
-          `Amalgame.Database.SQLite` and
-          `Amalgame.Database.NoSQL.Redis` to
-          `amalgame-lang/amalgame-sqlite` and
-          `amalgame-lang/amalgame-redis`. Both already use the
-          runtime-header pattern so the migration is mostly
+          `Amalgame.Database.SQLite`,
+          `Amalgame.Database.NoSQL.Redis`, and
+          `Amalgame.Messaging.MQTT` to
+          `amalgame-lang/amalgame-database-sqlite`,
+          `amalgame-lang/amalgame-database-nosql-redis`, and
+          `amalgame-lang/amalgame-messaging-mqtt`. All three already use
+          the runtime-header pattern so the migration is mostly
           moving files + writing the manifest. Validates the
-          design against two distinct shapes (vendored .c
-          amalgamation vs pure-protocol header).
+          design against three distinct shapes: vendored .c
+          amalgamation (SQLite), binary protocol with simple
+          framing (Redis RESP2), and binary protocol with
+          variable-length encoding + bidirectional async
+          delivery (MQTT 3.1.1).
       ~1 week of work; gates further DB / Messaging backends
       so we don't keep adding to the monolithic compiler tree.
 - [ ] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
