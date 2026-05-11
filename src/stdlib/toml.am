@@ -1,0 +1,734 @@
+namespace Amalgame.Formats.Toml
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── Subset notes ──────────────────────────────────────
+//
+// Supports the slice of TOML 1.0 that `amalgame.toml` manifests need
+// (see docs/proposals/amalgame-package-manager.md). Specifically:
+//
+//   - `[table]` and `[table.sub.sub]` headers
+//   - `key = value` pairs inside tables
+//   - Bare keys (identifiers + `_` + digits) and quoted keys
+//   - Basic strings `"with \n \t \\ \" escapes"`
+//   - Literal strings `'no escapes here'`
+//   - Integers, booleans (`true` / `false`)
+//   - Arrays `[a, b, c]`, possibly nested
+//   - Inline tables `{ key = val, key2 = val2 }`
+//   - `# line comments` anywhere
+//   - Free whitespace + blank lines
+//
+// Deferred to v2:
+//
+//   - Dates / times (RFC 3339)
+//   - Floats with exponents / `inf` / `nan`
+//   - Multiline basic / literal strings (`"""..."""`)
+//   - Hex / octal / binary integer literals
+//   - Underscores in numeric literals (`1_000`)
+//   - Array of tables `[[foo]]`
+//   - Dotted-key assignment without `[header]` first (`a.b.c = 1`)
+//
+// The parser is single-pass, recursive-descent, no AST — emits a
+// `TomlValue` tree of `Kind = Table` at the root, with nested
+// children mirroring the document shape. Same accessor pattern as
+// `Amalgame.Formats.Json` (`IsX` / `AsX` / `Get` / `At`) so users
+// who already know one switch between them cleanly.
+
+// ── TomlKind ──────────────────────────────────────────
+
+public enum TomlKind {
+    Null
+    Bool
+    Int
+    String
+    Array
+    Table
+}
+
+// ── TomlValue ─────────────────────────────────────────
+//
+// One tag per TOML scalar/composite. `Null` is reserved for the
+// result of missing-key lookups so callers can chain
+// `doc.Get("a").Get("b").AsString()` without intermediate null
+// checks — same ergonomic shape as `JsonValue` in
+// `Amalgame.Formats.Json`. Tables and inline tables share the
+// `Kind = Table` flavour; the parser doesn't distinguish them past
+// the literal layer.
+public class TomlValue {
+    public  Kind:      TomlKind
+    private B:         bool
+    private I:         int
+    private S:         string
+    private Items:     List<TomlValue>      // for Array
+    private TableKeys: List<string>          // for Table
+    private TableVals: List<TomlValue>       // for Table
+
+    public TomlValue() {
+        this.Kind      = TomlKind.Null
+        this.B         = false
+        this.I         = 0
+        this.S         = ""
+        this.Items     = new List<TomlValue>()
+        this.TableKeys = new List<string>()
+        this.TableVals = new List<TomlValue>()
+    }
+
+    // ── Kind guards ───────────────────────────────────
+    public bool IsNull()   { return this.Kind == TomlKind.Null }
+    public bool IsBool()   { return this.Kind == TomlKind.Bool }
+    public bool IsInt()    { return this.Kind == TomlKind.Int }
+    public bool IsString() { return this.Kind == TomlKind.String }
+    public bool IsArray()  { return this.Kind == TomlKind.Array }
+    public bool IsTable()  { return this.Kind == TomlKind.Table }
+
+    // ── Scalar accessors ──────────────────────────────
+    public bool AsBool() {
+        if (this.Kind == TomlKind.Bool) { return this.B }
+        return false
+    }
+
+    public int AsInt() {
+        if (this.Kind == TomlKind.Int) { return this.I }
+        return 0
+    }
+
+    public string AsString() {
+        if (this.Kind == TomlKind.String) { return this.S }
+        return ""
+    }
+
+    public List<TomlValue> AsArray() {
+        return this.Items
+    }
+
+    // ── Array access ──────────────────────────────────
+    public int Count() {
+        if (this.Kind == TomlKind.Array) { return this.Items.Count() }
+        if (this.Kind == TomlKind.Table) { return this.TableKeys.Count() }
+        return 0
+    }
+
+    public TomlValue At(int idx) {
+        if (this.Kind != TomlKind.Array) { return new TomlValue() }
+        if (idx < 0 || idx >= this.Items.Count()) { return new TomlValue() }
+        return this.Items.Get(idx)
+    }
+
+    // ── Table access ──────────────────────────────────
+    //
+    // Returns Null-kind TomlValue for missing keys so chains like
+    //   doc.Get("package").Get("name").AsString()
+    // stay readable. Use Has() if you need to distinguish "key
+    // exists with empty value" from "key not present".
+    public TomlValue Get(string key) {
+        if (this.Kind != TomlKind.Table) { return new TomlValue() }
+        let n: int = this.TableKeys.Count()
+        for i in 0..n {
+            if (this.TableKeys.Get(i) == key) {
+                return this.TableVals.Get(i)
+            }
+        }
+        return new TomlValue()
+    }
+
+    public bool Has(string key) {
+        if (this.Kind != TomlKind.Table) { return false }
+        let n: int = this.TableKeys.Count()
+        for i in 0..n {
+            if (this.TableKeys.Get(i) == key) { return true }
+        }
+        return false
+    }
+
+    public List<string> Keys() {
+        return this.TableKeys
+    }
+
+    // ── Mutators (used by the parser; usable by callers building docs) ──
+    public void SetBool(bool v)   { this.Kind = TomlKind.Bool;   this.B = v }
+    public void SetInt(int v)     { this.Kind = TomlKind.Int;    this.I = v }
+    public void SetString(string v) { this.Kind = TomlKind.String; this.S = v }
+    public void BecomeArray()     { this.Kind = TomlKind.Array }
+    public void BecomeTable()     { this.Kind = TomlKind.Table }
+
+    public void AppendItem(TomlValue v) {
+        if (this.Kind != TomlKind.Array) { this.BecomeArray() }
+        this.Items.Add(v)
+    }
+
+    // Set or replace a table entry. Replace-on-duplicate matches
+    // TOML's reserved behaviour for `[header]` re-declaration of an
+    // already-explicitly-set table (a real TOML 1.0 parser errors;
+    // for the manifest subset we silently overwrite — sufficient
+    // for our use case).
+    public void SetEntry(string key, TomlValue v) {
+        if (this.Kind != TomlKind.Table) { this.BecomeTable() }
+        let n: int = this.TableKeys.Count()
+        for i in 0..n {
+            if (this.TableKeys.Get(i) == key) {
+                this.TableVals.Set(i, v)
+                return
+            }
+        }
+        this.TableKeys.Add(key)
+        this.TableVals.Add(v)
+    }
+}
+
+// ── Parser state ──────────────────────────────────────
+//
+// Mutable cursor through the source. We do single-character lookahead;
+// the parser is small enough that token streaming would be overkill.
+public class TomlParser {
+    public  Src:      string
+    public  Pos:      int
+    public  Len:      int
+    public  HasError: bool
+    public  ErrMsg:   string
+
+    public TomlParser(string src) {
+        this.Src      = src
+        this.Pos      = 0
+        this.Len      = String_Length(src)
+        this.HasError = false
+        this.ErrMsg   = ""
+    }
+
+    // Set the error flag + message. Idempotent — the first error
+    // wins so subsequent calls don't clobber the root cause.
+    public void Fail(string msg) {
+        if (!this.HasError) {
+            this.HasError = true
+            this.ErrMsg   = msg
+        }
+    }
+
+    public bool AtEnd() {
+        return this.Pos >= this.Len
+    }
+
+    public string Peek() {
+        if (this.AtEnd()) { return "" }
+        return String_CharAt1(this.Src, this.Pos)
+    }
+
+    public string PeekAt(int offset) {
+        let p: int = this.Pos + offset
+        if (p < 0 || p >= this.Len) { return "" }
+        return String_CharAt1(this.Src, p)
+    }
+
+    public string Advance() {
+        let c: string = this.Peek()
+        this.Pos = this.Pos + 1
+        return c
+    }
+
+    // Skip horizontal whitespace + line comments. Newlines are
+    // structural in TOML (they end a key/value statement) so we
+    // expose a separate SkipBlankLines for the outer loop.
+    public void SkipInlineSpace() {
+        while (!this.AtEnd()) {
+            let c: string = this.Peek()
+            if (c == " " || c == "\t") {
+                this.Pos = this.Pos + 1
+            } else if (c == "#") {
+                // Skip to end of line, leave the newline for caller.
+                while (!this.AtEnd() && this.Peek() != "\n") {
+                    this.Pos = this.Pos + 1
+                }
+            } else {
+                return
+            }
+        }
+    }
+
+    // Consume any number of blank lines + comments between
+    // statements. Called from the top-level loop after each line.
+    public void SkipBlankLines() {
+        while (!this.AtEnd()) {
+            this.SkipInlineSpace()
+            if (this.AtEnd()) { return }
+            let c: string = this.Peek()
+            if (c == "\n") {
+                this.Pos = this.Pos + 1
+            } else if (c == "\r") {
+                this.Pos = this.Pos + 1
+                if (!this.AtEnd() && this.Peek() == "\n") { this.Pos = this.Pos + 1 }
+            } else {
+                return
+            }
+        }
+    }
+
+    // Bare key = run of ASCII letters, digits, '_', '-'. TOML's
+    // canonical bare-key set; manifests don't use anything more
+    // exotic.
+    private bool IsBareKeyChar(string c) {
+        if (c == "_") { return true }
+        if (c == "-") { return true }
+        if (String_IndexOf("0123456789", c) >= 0) { return true }
+        if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) { return true }
+        if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0) { return true }
+        return false
+    }
+
+    private bool IsDigit(string c) {
+        if (String_IndexOf("0123456789", c) >= 0) { return true }
+        return false
+    }
+
+    // Read one bare-key or quoted-key. Returns the key bytes
+    // (without surrounding quotes for quoted keys).
+    public string ReadKey() {
+        this.SkipInlineSpace()
+        let first: string = this.Peek()
+        if (first == "\"" || first == "'") {
+            return this.ReadStringLiteral()
+        }
+        var name: string = ""
+        while (!this.AtEnd()) {
+            let c: string = this.Peek()
+            if (this.IsBareKeyChar(c)) {
+                name = name + c
+                this.Pos = this.Pos + 1
+            } else {
+                break
+            }
+        }
+        if (String_Length(name) == 0) {
+            this.Fail("expected key")
+        }
+        return name
+    }
+
+    // Read a basic ("..." with escapes) or literal ('...' raw)
+    // string. Caller has confirmed the opening quote via Peek.
+    public string ReadStringLiteral() {
+        let quote: string = this.Advance()
+        var out: string = ""
+        let literal: bool = quote == "'"
+        while (!this.AtEnd()) {
+            let c: string = this.Peek()
+            if (c == quote) {
+                this.Pos = this.Pos + 1
+                return out
+            }
+            if (c == "\n") {
+                this.Fail("newline inside single-line string")
+                return out
+            }
+            if (literal) {
+                out = out + c
+                this.Pos = this.Pos + 1
+            } else if (c == "\\") {
+                this.Pos = this.Pos + 1
+                let esc: string = this.Peek()
+                this.Pos = this.Pos + 1
+                if (esc == "n")  { out = out + "\n" }
+                else if (esc == "t")  { out = out + "\t" }
+                else if (esc == "r")  { out = out + "\r" }
+                else if (esc == "\"") { out = out + "\"" }
+                else if (esc == "'")  { out = out + "'" }
+                else if (esc == "\\") { out = out + "\\" }
+                else {
+                    // Pass through unknown escape unchanged for v1.
+                    // Real TOML 1.0 errors here; we're tolerant.
+                    out = out + esc
+                }
+            } else {
+                out = out + c
+                this.Pos = this.Pos + 1
+            }
+        }
+        this.Fail("unterminated string")
+        return out
+    }
+}
+
+// ── Public API ────────────────────────────────────────
+
+public class Toml {
+    public Toml() {}
+
+    // Parse a TOML source into a Table-kind TomlValue. On parse
+    // failure returns a Null-kind TomlValue — same pattern as
+    // `Amalgame.Formats.Json.Parse`. Use `ParseWithError` if you
+    // need the error message.
+    //
+    // Single-pass recursive descent: each iteration reads one
+    // top-level item (table header or `key = value`) and dispatches.
+    public static TomlValue Parse(string source) {
+        let p = new TomlParser(source)
+        let res: TomlValue = Toml.RunParse(p, source)
+        if (p.HasError) { return new TomlValue() }
+        return res
+    }
+
+    // Parse + return both the result and the error message. The
+    // parser context is the public surface — callers inspect
+    // `parser.HasError` / `parser.ErrMsg` for diagnostics.
+    public static TomlValue ParseWithError(string source, TomlParser parser) {
+        return Toml.RunParse(parser, source)
+    }
+
+    private static TomlValue RunParse(TomlParser p, string source) {
+        let root = new TomlValue()
+        root.BecomeTable()
+        var current: TomlValue = root
+
+        p.SkipBlankLines()
+        while (!p.AtEnd()) {
+            if (p.HasError) { break }
+            let c: string = p.Peek()
+            if (c == "[") {
+                // Table header.
+                p.Pos = p.Pos + 1
+                p.SkipInlineSpace()
+                let path: List<string> = Toml.ReadHeaderPath(p)
+                if (path.Count() == 0) { p.Fail("empty table header") }
+                p.SkipInlineSpace()
+                if (p.Peek() != "]") { p.Fail("expected ']' after table header") }
+                else { p.Pos = p.Pos + 1 }
+                p.SkipInlineSpace()
+                current = Toml.NavigateOrCreate(root, path)
+            } else {
+                // key = value
+                let key: string = p.ReadKey()
+                p.SkipInlineSpace()
+                if (p.Peek() != "=") { p.Fail("expected '=' after key '" + key + "'") }
+                else { p.Pos = p.Pos + 1 }
+                p.SkipInlineSpace()
+                let val: TomlValue = Toml.ReadValue(p)
+                current.SetEntry(key, val)
+            }
+            p.SkipBlankLines()
+        }
+        return root
+    }
+
+    // ── Internals (exposed as `public static` so the parser-state
+    //    class can call them without indirection) ──
+
+    public static List<string> ReadHeaderPath(TomlParser p) {
+        let out: List<string> = new List<string>()
+        var first: bool = true
+        while (!p.AtEnd()) {
+            p.SkipInlineSpace()
+            if (p.Peek() == "]") { return out }
+            if (!first) {
+                if (p.Peek() != ".") {
+                    p.Fail("expected '.' or ']' in table header")
+                    return out
+                }
+                p.Pos = p.Pos + 1
+                p.SkipInlineSpace()
+            }
+            let seg: string = p.ReadKey()
+            if (String_Length(seg) == 0) { return out }
+            out.Add(seg)
+            first = false
+        }
+        return out
+    }
+
+    // Walk `path` through `root`, creating intermediate Table
+    // values when missing. Returns the leaf Table.
+    public static TomlValue NavigateOrCreate(TomlValue root, List<string> path) {
+        var cur: TomlValue = root
+        let n: int = path.Count()
+        for i in 0..n {
+            let seg: string = path.Get(i)
+            let existing: TomlValue = cur.Get(seg)
+            if (existing.IsTable()) {
+                cur = existing
+            } else {
+                let fresh = new TomlValue()
+                fresh.BecomeTable()
+                cur.SetEntry(seg, fresh)
+                cur = fresh
+            }
+        }
+        return cur
+    }
+
+    public static TomlValue ReadValue(TomlParser p) {
+        p.SkipInlineSpace()
+        let c: string = p.Peek()
+        if (c == "\"" || c == "'") {
+            let s: string = p.ReadStringLiteral()
+            let v = new TomlValue()
+            v.SetString(s)
+            return v
+        }
+        if (c == "[") {
+            return Toml.ReadArray(p)
+        }
+        if (c == "{") {
+            return Toml.ReadInlineTable(p)
+        }
+        if (c == "t" || c == "f") {
+            return Toml.ReadBool(p)
+        }
+        // Split sign + digit detection across two checks to dodge
+        // CGen gotcha #7 (precedence re-association on
+        //   (A || B) && C   →   A || (B && C)).
+        var isNumeric: bool = false
+        if (c == "-" || c == "+") { isNumeric = true }
+        if (String_IndexOf("0123456789", c) >= 0) { isNumeric = true }
+        if (isNumeric) {
+            return Toml.ReadInt(p)
+        }
+        p.Fail("unexpected character '" + c + "' starting value")
+        return new TomlValue()
+    }
+
+    public static TomlValue ReadArray(TomlParser p) {
+        p.Pos = p.Pos + 1  // consume '['
+        let arr = new TomlValue()
+        arr.BecomeArray()
+        Toml.SkipWsAndNewlines(p)
+        if (p.Peek() == "]") {
+            p.Pos = p.Pos + 1
+            return arr
+        }
+        while (!p.AtEnd()) {
+            Toml.SkipWsAndNewlines(p)
+            let v: TomlValue = Toml.ReadValue(p)
+            arr.AppendItem(v)
+            Toml.SkipWsAndNewlines(p)
+            let c: string = p.Peek()
+            if (c == ",") {
+                p.Pos = p.Pos + 1
+                Toml.SkipWsAndNewlines(p)
+                if (p.Peek() == "]") {
+                    // Trailing comma allowed.
+                    p.Pos = p.Pos + 1
+                    return arr
+                }
+            } else if (c == "]") {
+                p.Pos = p.Pos + 1
+                return arr
+            } else {
+                p.Fail("expected ',' or ']' in array")
+                return arr
+            }
+        }
+        p.Fail("unterminated array")
+        return arr
+    }
+
+    public static TomlValue ReadInlineTable(TomlParser p) {
+        p.Pos = p.Pos + 1  // consume '{'
+        let tbl = new TomlValue()
+        tbl.BecomeTable()
+        p.SkipInlineSpace()
+        if (p.Peek() == "}") {
+            p.Pos = p.Pos + 1
+            return tbl
+        }
+        while (!p.AtEnd()) {
+            p.SkipInlineSpace()
+            let key: string = p.ReadKey()
+            p.SkipInlineSpace()
+            if (p.Peek() != "=") {
+                p.Fail("expected '=' in inline table")
+                return tbl
+            }
+            p.Pos = p.Pos + 1
+            p.SkipInlineSpace()
+            let v: TomlValue = Toml.ReadValue(p)
+            tbl.SetEntry(key, v)
+            p.SkipInlineSpace()
+            let c: string = p.Peek()
+            if (c == ",") {
+                p.Pos = p.Pos + 1
+            } else if (c == "}") {
+                p.Pos = p.Pos + 1
+                return tbl
+            } else {
+                p.Fail("expected ',' or '}' in inline table")
+                return tbl
+            }
+        }
+        p.Fail("unterminated inline table")
+        return tbl
+    }
+
+    public static TomlValue ReadBool(TomlParser p) {
+        let v = new TomlValue()
+        if (p.Peek() == "t") {
+            if (p.PeekAt(0) == "t" && p.PeekAt(1) == "r" && p.PeekAt(2) == "u" && p.PeekAt(3) == "e") {
+                p.Pos = p.Pos + 4
+                v.SetBool(true)
+                return v
+            }
+        }
+        if (p.Peek() == "f") {
+            if (p.PeekAt(0) == "f" && p.PeekAt(1) == "a" && p.PeekAt(2) == "l" && p.PeekAt(3) == "s" && p.PeekAt(4) == "e") {
+                p.Pos = p.Pos + 5
+                v.SetBool(false)
+                return v
+            }
+        }
+        p.Fail("expected 'true' or 'false'")
+        return v
+    }
+
+    public static TomlValue ReadInt(TomlParser p) {
+        var raw: string = ""
+        let first: string = p.Peek()
+        if (first == "+" || first == "-") {
+            raw = raw + first
+            p.Pos = p.Pos + 1
+        }
+        while (!p.AtEnd()) {
+            let c: string = p.Peek()
+            if (String_IndexOf("0123456789", c) >= 0) {
+                raw = raw + c
+                p.Pos = p.Pos + 1
+            } else {
+                break
+            }
+        }
+        let v = new TomlValue()
+        if (String_Length(raw) == 0 || raw == "+" || raw == "-") {
+            p.Fail("expected digits")
+            return v
+        }
+        v.SetInt(String_ToInt(raw))
+        return v
+    }
+
+    // Skip whitespace + newlines + comments. Used inside arrays
+    // and inline-array contexts where newlines are ignored.
+    public static void SkipWsAndNewlines(TomlParser p) {
+        while (!p.AtEnd()) {
+            let c: string = p.Peek()
+            if (c == " " || c == "\t" || c == "\n" || c == "\r") {
+                p.Pos = p.Pos + 1
+            } else if (c == "#") {
+                while (!p.AtEnd() && p.Peek() != "\n") {
+                    p.Pos = p.Pos + 1
+                }
+            } else {
+                return
+            }
+        }
+    }
+
+    // ── Serializer ────────────────────────────────────
+    //
+    // Round-trips most documents the parser accepts back to a
+    // canonical string. Output keeps tables flat (`[header]` lines)
+    // when nesting is "deep", and uses inline tables for scalars.
+    // Not strictly idempotent for every input (we don't preserve
+    // comment placement or key ordering surprises), but good enough
+    // for emitting fresh manifests / lock files.
+    public static string Serialize(TomlValue doc) {
+        if (!doc.IsTable()) { return "" }
+        var out: string = ""
+        let path: List<string> = new List<string>()
+        out = Toml.WriteTable(doc, path, out)
+        return out
+    }
+
+    private static string WriteTable(TomlValue t, List<string> path, string out) {
+        var s: string = out
+        // Bind the keys list once. Chained `t.Keys().Get(i)` confuses
+        // the cgen's cross-call return-type inference (gotcha #3),
+        // emitting an int-typed result that gcc rejects.
+        let keys: List<string> = t.Keys()
+        let n: int = keys.Count()
+        // First pass: emit scalar / array / inline-table entries under this header.
+        if (path.Count() > 0) {
+            s = s + "[" + Toml.JoinPath(path) + "]\n"
+        }
+        for i in 0..n {
+            let k: string = keys.Get(i)
+            let v: TomlValue = t.Get(k)
+            if (v.IsTable()) { continue }
+            s = s + k + " = " + Toml.WriteValue(v) + "\n"
+        }
+        // Second pass: recurse into child tables, each as its own header.
+        for j in 0..n {
+            let k2: string = keys.Get(j)
+            let v2: TomlValue = t.Get(k2)
+            if (!v2.IsTable()) { continue }
+            let childPath: List<string> = new List<string>()
+            let pn: int = path.Count()
+            for pi in 0..pn { childPath.Add(path.Get(pi)) }
+            childPath.Add(k2)
+            s = s + "\n"
+            s = Toml.WriteTable(v2, childPath, s)
+        }
+        return s
+    }
+
+    private static string WriteValue(TomlValue v) {
+        if (v.IsString()) {
+            return "\"" + Toml.EscapeString(v.AsString()) + "\""
+        }
+        if (v.IsInt()) {
+            return String_FromInt(v.AsInt())
+        }
+        if (v.IsBool()) {
+            if (v.AsBool()) { return "true" }
+            return "false"
+        }
+        if (v.IsArray()) {
+            var out: string = "["
+            let items: List<TomlValue> = v.AsArray()
+            let n: int = items.Count()
+            for i in 0..n {
+                if (i > 0) { out = out + ", " }
+                out = out + Toml.WriteValue(items.Get(i))
+            }
+            out = out + "]"
+            return out
+        }
+        if (v.IsTable()) {
+            // Inline table form — only used when nested inside an array
+            // or another inline table; top-level tables go through
+            // WriteTable.
+            var out: string = "{ "
+            let keys: List<string> = v.Keys()
+            let n: int = keys.Count()
+            for i in 0..n {
+                if (i > 0) { out = out + ", " }
+                let k: string = keys.Get(i)
+                out = out + k + " = " + Toml.WriteValue(v.Get(k))
+            }
+            out = out + " }"
+            return out
+        }
+        return "\"\""  // Null → empty string fallback
+    }
+
+    private static string EscapeString(string s) {
+        var out: string = ""
+        let n: int = String_Length(s)
+        for i in 0..n {
+            let c: string = String_CharAt1(s, i)
+            if (c == "\\")      { out = out + "\\\\" }
+            else if (c == "\"") { out = out + "\\\"" }
+            else if (c == "\n") { out = out + "\\n" }
+            else if (c == "\t") { out = out + "\\t" }
+            else if (c == "\r") { out = out + "\\r" }
+            else                { out = out + c }
+        }
+        return out
+    }
+
+    private static string JoinPath(List<string> path) {
+        var out: string = ""
+        let n: int = path.Count()
+        for i in 0..n {
+            if (i > 0) { out = out + "." }
+            out = out + path.Get(i)
+        }
+        return out
+    }
+}
+
