@@ -162,6 +162,9 @@ public class LspServer {
                 let el: int      = re.Get("line").AsInt()
                 let ec: int      = re.Get("character").AsInt()
                 this.HandleCodeAction(id, uri, sl, sc, el, ec)
+            } else if (method == "textDocument/foldingRange") {
+                let uri: string = td.Get("uri").AsString()
+                this.HandleFoldingRange(id, uri)
             }
             // Unknown method: ignore. LSP allows the server to skip
             // unhandled notifications, and we don't want to crash on
@@ -287,7 +290,7 @@ public class LspServer {
         // box to the actual identifier span.
         // callHierarchyProvider: true → Shift+Alt+H "Show Call
         // Hierarchy", supports both incoming and outgoing calls.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
         this.Send(body)
     }
 
@@ -1640,6 +1643,124 @@ public class LspServer {
         let changes: string = "{\"" + Json.EscapeString(uri) + "\":[" + edit + "]}"
         let title: string = "Add type annotation: " + typeStr
         return "{\"title\":\"" + Json.EscapeString(title) + "\",\"kind\":\"quickfix\",\"isPreferred\":true,\"edit\":{\"changes\":" + changes + "}}"
+    }
+
+    // ── Folding range (textDocument/foldingRange) ────────
+    //
+    // Slice-5 feature. Returns the +/- gutter markers that let
+    // the client collapse class / method / block bodies, runs
+    // of `//` comments, and runs of `import …` statements.
+    //
+    // Token-driven so we don't need a fully-parsed AST: each
+    // LBRACE / RBRACE pair becomes a region fold; consecutive
+    // COMMENT tokens on adjacent lines become a comment fold;
+    // consecutive KW_IMPORT tokens on adjacent lines become an
+    // imports fold. One-line and two-line brace blocks are
+    // skipped — folding a block whose `{` and `}` are one line
+    // apart is just noise. Same threshold for comment/import
+    // runs (need at least 2 lines).
+    //
+    // LSP convention: endLine is INCLUSIVE and 0-based. For
+    // brace folds we set it to (closeLine - 2) so the line
+    // carrying `}` stays visible when the block is collapsed.
+    // For comment / import runs endLine is the last line of
+    // the run, inclusive.
+    private void HandleFoldingRange(int id, string uri) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+
+        let folds: List<string> = new List<string>()
+        let braceStack: List<int> = new List<int>()
+        var commStart: int = 0
+        var commEnd:   int = 0
+        var lastComm:  int = -2
+        var impStart:  int = 0
+        var impEnd:    int = 0
+        var lastImp:   int = -2
+
+        let nT: int = toks.Count()
+        for i in 0..nT {
+            let t: Token = toks.Get(i)
+            let ty = t.Type
+            // ── Brace pairs ──
+            if (ty == TokenType.LBRACE) {
+                braceStack.Add(t.Line)
+            }
+            if (ty == TokenType.RBRACE) {
+                let depth: int = braceStack.Count()
+                if (depth > 0) {
+                    let openLine:  int = braceStack.Get(depth - 1)
+                    braceStack.RemoveAt(depth - 1)
+                    let closeLine: int = t.Line
+                    // Need at least 3 source lines to be a useful fold.
+                    if (closeLine > openLine + 1) {
+                        folds.Add(LspServer.FoldEntry(openLine - 1, closeLine - 2, ""))
+                    }
+                }
+            }
+            // ── Comment runs ──
+            if (ty == TokenType.COMMENT) {
+                if (t.Line == lastComm + 1) {
+                    commEnd = t.Line
+                } else {
+                    if (commEnd > commStart) {
+                        folds.Add(LspServer.FoldEntry(commStart - 1, commEnd - 1, "comment"))
+                    }
+                    commStart = t.Line
+                    commEnd   = t.Line
+                }
+                lastComm = t.Line
+            }
+            // ── Import runs ──
+            if (ty == TokenType.KW_IMPORT) {
+                if (t.Line == lastImp + 1) {
+                    impEnd = t.Line
+                } else {
+                    if (impEnd > impStart) {
+                        folds.Add(LspServer.FoldEntry(impStart - 1, impEnd - 1, "imports"))
+                    }
+                    impStart = t.Line
+                    impEnd   = t.Line
+                }
+                lastImp = t.Line
+            }
+        }
+        // Flush trailing comment + import runs (file ends mid-run).
+        if (commEnd > commStart) {
+            folds.Add(LspServer.FoldEntry(commStart - 1, commEnd - 1, "comment"))
+        }
+        if (impEnd > impStart) {
+            folds.Add(LspServer.FoldEntry(impStart - 1, impEnd - 1, "imports"))
+        }
+
+        var json: string = "["
+        let fn: int = folds.Count()
+        for i in 0..fn {
+            if (i > 0) { json = json + "," }
+            json = json + folds.Get(i)
+        }
+        json = json + "]"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
+        this.Send(body)
+    }
+
+    // FoldingRange JSON object. `kind` is "" for plain region
+    // folds (class / method / block bodies); pass "comment" or
+    // "imports" to hint the client. LSP allows omitting `kind` —
+    // we only emit the field when non-empty.
+    private static string FoldEntry(int startLine, int endLine, string kind) {
+        var s: string = "{\"startLine\":" + String_FromInt(startLine) + ",\"endLine\":" + String_FromInt(endLine)
+        if (String_Length(kind) > 0) {
+            s = s + ",\"kind\":\"" + kind + "\""
+        }
+        s = s + "}"
+        return s
     }
 
     // ── Workspace symbol (Ctrl+T) ─────────────────────
