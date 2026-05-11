@@ -73,6 +73,8 @@ typedef struct _Amalgame_Compiler_TomlValue Amalgame_Compiler_TomlValue;
 typedef struct _Amalgame_Compiler_TomlParser Amalgame_Compiler_TomlParser;
 typedef struct _Amalgame_Compiler_Toml Amalgame_Compiler_Toml;
 typedef struct _Amalgame_Compiler_AddCommand Amalgame_Compiler_AddCommand;
+typedef struct _Amalgame_Compiler_LoadedPackage Amalgame_Compiler_LoadedPackage;
+typedef struct _Amalgame_Compiler_PackageRegistry Amalgame_Compiler_PackageRegistry;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -19664,6 +19666,185 @@ code_bool Amalgame_Compiler_AddCommand_UpdateLockFile(code_string depName, code_
     out = code_string_concat(code_string_concat(code_string_concat(out, "rev  = \""), rev), "\"\n");
     code_bool __attribute__((unused)) ok = File_WriteAll(path, out);
     return ok;
+}
+
+Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new();
+Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new();
+struct _Amalgame_Compiler_LoadedPackage {
+    code_string Name;
+    code_string ClassName;
+    code_string Header;
+    code_string Ns;
+    AmalgameList* FuncNames;
+    AmalgameList* FuncRets;
+};
+
+
+Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new() {
+    Amalgame_Compiler_LoadedPackage* self = (Amalgame_Compiler_LoadedPackage*) GC_MALLOC(sizeof(Amalgame_Compiler_LoadedPackage));
+    self->Name = "";
+    self->ClassName = "";
+    self->Header = "";
+    self->Ns = "";
+    self->FuncNames = AmalgameList_new();
+    self->FuncRets = AmalgameList_new();
+    return self;
+}
+
+struct _Amalgame_Compiler_PackageRegistry {
+    AmalgameList* Packages;
+};
+
+Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_Load();
+Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(code_string lockPath, code_string cacheRoot);
+AmalgameList* Amalgame_Compiler_PackageRegistry_ClassNames(Amalgame_Compiler_PackageRegistry* self);
+AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_PackageRegistry* self);
+code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot();
+code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType);
+
+Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new() {
+    Amalgame_Compiler_PackageRegistry* self = (Amalgame_Compiler_PackageRegistry*) GC_MALLOC(sizeof(Amalgame_Compiler_PackageRegistry));
+    self->Packages = AmalgameList_new();
+    return self;
+}
+
+Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_Load() {
+    code_string __attribute__((unused)) cacheRoot = Amalgame_Compiler_PackageRegistry_DefaultCacheRoot();
+    return Amalgame_Compiler_PackageRegistry_LoadFrom("amalgame.lock", cacheRoot);
+}
+
+Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(code_string lockPath, code_string cacheRoot) {
+    (void)lockPath;
+    (void)cacheRoot;
+    Amalgame_Compiler_PackageRegistry* __attribute__((unused)) reg = Amalgame_Compiler_PackageRegistry_new();
+    if (!File_Exists(lockPath)) {
+        return reg;
+    }
+    code_string __attribute__((unused)) lockSrc = File_ReadAll(lockPath);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) lockDoc = Amalgame_Compiler_Toml_Parse(lockSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(lockDoc)) {
+        return reg;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgsArr = Amalgame_Compiler_TomlValue_Get(lockDoc, "package");
+    if (!Amalgame_Compiler_TomlValue_IsArray(pkgsArr)) {
+        return reg;
+    }
+    i64 __attribute__((unused)) n = Amalgame_Compiler_TomlValue_Count(pkgsArr);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(pkgsArr, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) nameVal = Amalgame_Compiler_TomlValue_Get(entry, "name");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) gitVal = Amalgame_Compiler_TomlValue_Get(entry, "git");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) tagVal = Amalgame_Compiler_TomlValue_Get(entry, "tag");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) revVal = Amalgame_Compiler_TomlValue_Get(entry, "rev");
+        code_string __attribute__((unused)) pkgName = Amalgame_Compiler_TomlValue_AsString(nameVal);
+        code_string __attribute__((unused)) pkgGit = Amalgame_Compiler_TomlValue_AsString(gitVal);
+        code_string __attribute__((unused)) pkgTag = Amalgame_Compiler_TomlValue_AsString(tagVal);
+        code_string __attribute__((unused)) pkgRev = Amalgame_Compiler_TomlValue_AsString(revVal);
+        if (String_Length(pkgName) == 0) {
+            continue;
+        }
+        if (String_Length(pkgGit) == 0) {
+            continue;
+        }
+        if (String_Length(pkgTag) == 0) {
+            continue;
+        }
+        if (String_Length(pkgRev) < 8) {
+            continue;
+        }
+        code_string __attribute__((unused)) shortSha = String_Substring(pkgRev, 0, 8);
+        code_string __attribute__((unused)) pkgDir = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(cacheRoot, "/"), pkgGit), "/"), pkgTag), "_"), shortSha);
+        code_string __attribute__((unused)) manifestPath = code_string_concat(pkgDir, "/amalgame.toml");
+        if (!File_Exists(manifestPath)) {
+            continue;
+        }
+        code_string __attribute__((unused)) manifestSrc = File_ReadAll(manifestPath);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) manifest = Amalgame_Compiler_Toml_Parse(manifestSrc);
+        if (Amalgame_Compiler_TomlValue_IsNull(manifest)) {
+            continue;
+        }
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) stdlibTable = Amalgame_Compiler_TomlValue_Get(manifest, "stdlib");
+        if (!Amalgame_Compiler_TomlValue_IsTable(stdlibTable)) {
+            continue;
+        }
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) classVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "class");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) headerVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "header");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) nsVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "namespace");
+        code_string __attribute__((unused)) clsName = Amalgame_Compiler_TomlValue_AsString(classVal);
+        code_string __attribute__((unused)) hdr = Amalgame_Compiler_TomlValue_AsString(headerVal);
+        code_string __attribute__((unused)) ns = Amalgame_Compiler_TomlValue_AsString(nsVal);
+        if (String_Length(clsName) == 0) {
+            continue;
+        }
+        if (String_Length(hdr) == 0) {
+            continue;
+        }
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) lp = Amalgame_Compiler_LoadedPackage_new();
+        lp->Name = pkgName;
+        lp->ClassName = clsName;
+        lp->Header = code_string_concat(code_string_concat(pkgDir, "/"), hdr);
+        lp->Ns = ns;
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) funcsTbl = Amalgame_Compiler_TomlValue_Get(stdlibTable, "functions");
+        if (Amalgame_Compiler_TomlValue_IsTable(funcsTbl)) {
+            AmalgameList* __attribute__((unused)) funcKeys = Amalgame_Compiler_TomlValue_Keys(funcsTbl);
+            i64 __attribute__((unused)) fn = AmalgameList_count(funcKeys);
+            for (i64 j = 0; j < fn; j++) {
+                code_string __attribute__((unused)) fName = (code_string)AmalgameList_get(funcKeys, j);
+                Amalgame_Compiler_TomlValue* __attribute__((unused)) fDef = Amalgame_Compiler_TomlValue_Get(funcsTbl, fName);
+                Amalgame_Compiler_TomlValue* __attribute__((unused)) fRet = Amalgame_Compiler_TomlValue_Get(fDef, "returns");
+                code_string __attribute__((unused)) retStr = Amalgame_Compiler_TomlValue_AsString(fRet);
+                if (String_Length(retStr) == 0) {
+                    continue;
+                }
+                AmalgameList_add(lp->FuncNames, (void*)(intptr_t)(fName));
+                AmalgameList_add(lp->FuncRets, (void*)(intptr_t)(retStr));
+            }
+        }
+        AmalgameList_add(reg->Packages, (void*)(intptr_t)(lp));
+    }
+    return reg;
+}
+
+AmalgameList* Amalgame_Compiler_PackageRegistry_ClassNames(Amalgame_Compiler_PackageRegistry* self) {
+    (void)self;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(self->Packages, i);
+        AmalgameList_add(out, (void*)(intptr_t)(p->ClassName));
+    }
+    return out;
+}
+
+AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_PackageRegistry* self) {
+    (void)self;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(self->Packages, i);
+        AmalgameList_add(out, (void*)(intptr_t)(p->Header));
+    }
+    return out;
+}
+
+code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot() {
+    code_string __attribute__((unused)) home = Env_Get("HOME");
+    if (String_Length(home) > 0) {
+        return code_string_concat(home, "/.amalgame/packages");
+    }
+    return "/tmp/amalgame-packages";
+}
+
+code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType) {
+    (void)cType;
+    i64 __attribute__((unused)) n = String_Length(cType);
+    if (n == 0) {
+        return "";
+    }
+    if (String_EndsWith(cType, "*")) {
+        return String_Substring(cType, 0, n - 1);
+    }
+    return cType;
 }
 
 Amalgame_Compiler_AmalgameCompiler* Amalgame_Compiler_AmalgameCompiler_new();
