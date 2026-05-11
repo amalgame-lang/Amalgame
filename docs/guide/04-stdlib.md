@@ -788,13 +788,18 @@ as an opt-in external package: **`amalgame-lang/amalgame-database-sqlite`**.
 Since v0.5 it's no longer bundled with the compiler — install via:
 
 ```bash
-amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.2.0
+amc package add sqlite                  # auto-resolve latest (amc 0.6.0+)
+amc package add sqlite@v0.2.2           # pin a specific tag
 ```
 
 The package vendors the SQLite amalgamation (public-domain
 upstream), so no `libsqlite3-dev` system package is required on
 any of Linux / macOS / Windows — the source compiles directly
-into the user binary at link time.
+into the user binary at link time. Since v0.2.1, the manifest
+declares `[stdlib].precompile = true` (requires amc 0.5.4+):
+`amc package add` runs the gcc pass once at install and caches
+the `.o` at `~/.amalgame/packages/.../build/<platform>/`, so
+subsequent `amc test` / build reuse it instantly.
 
 The namespace nests under `Amalgame.Database.<Engine>` so sibling
 backends (DuckDB, Postgres, MySQL) can land as their own packages
@@ -880,17 +885,21 @@ analytics". Shipped as an opt-in external package:
 **`amalgame-lang/amalgame-database-duckdb`**.
 
 ```bash
-amc package add github.com/amalgame-lang/amalgame-database-duckdb@v0.1.0
-# or via the curated index:
-amc package add duckdb@v0.1.0
+amc package add duckdb                  # auto-resolve latest (amc 0.6.0+)
+amc package add duckdb@v0.1.1           # pin a specific tag
+amc package add github.com/amalgame-lang/amalgame-database-duckdb@v0.1.1
 ```
 
 The package vendors the official DuckDB C++ amalgamation (MIT) —
-no `libduckdb-dev` needed on any platform. Requires **amc ≥ 0.5.3**
-(C++ source support in the package manager) and a C++17-capable
-`g++`. The amalgamation is ~25 MB so the first compile takes
-30–60 s; subsequent `amc test` runs hit the `/tmp/amc-pkg-*.o`
-cache and are fast.
+no `libduckdb-dev` needed on any platform. Requires **amc ≥ 0.5.4**
+(for precompile-on-install) and a C++17-capable `g++`. Since
+v0.1.1 the manifest declares `[stdlib].precompile = true`, so
+the g++ pass on the ~25 MB amalgamation runs **once at install**
+(typically 3–15 minutes depending on CPU) and the resulting `.o`
+is cached at `~/.amalgame/packages/.../build/<platform>/`.
+Subsequent `amc test` / build reuse it instantly. Skip the
+install-time compile with `amc package add duckdb --no-precompile`
+if you want fast install + lazy compile on first build.
 
 ```amalgame
 namespace App
