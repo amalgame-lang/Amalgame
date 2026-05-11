@@ -248,6 +248,36 @@ public class Program {
             i = i + 1
         }
 
+        // v0.5.1: auto-install missing deps before running tests.
+        // amalgame.lock-declared packages that aren't in the cache
+        // get re-cloned here, so `git clone <repo> && amc test`
+        // works in one step. No-op when there's no lock file or
+        // every dep is already present.
+        let installed: int = AddCommand.EnsureInstalled()
+        if (installed < 0) {
+            Console.WriteError("amc test: package install failed; aborting")
+            return 1
+        }
+        if (installed > 0) {
+            Console.WriteLine("amc test: installed " + String_FromInt(installed) + " missing dep(s)")
+        }
+
+        // v0.5.2: resolve amc's runtime/ once + pre-compile each
+        // installed package's vendored .c sources to .o files
+        // cached in /tmp. The .o files get linked into every test
+        // binary so SQLite (and any future vendoring backend)
+        // links cleanly without the user doing gcc by hand.
+        let amcPathForRt: string = Args_Get(0)
+        var amcRuntime: string = Env_Get("AMC_RUNTIME")
+        if (String_Length(amcRuntime) == 0) {
+            let slashIdx: int = String_LastIndexOf(amcPathForRt, "/")
+            if (slashIdx >= 0) {
+                amcRuntime = String_Substring(amcPathForRt, 0, slashIdx) + "/runtime"
+            }
+        }
+        let registry = PackageRegistry.Load()
+        let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
+
         // Discovery: shell out to `find`. Works on POSIX and on
         // Windows MSYS2 (the only Windows path the repo CI exercises).
         let findCmd = "find " + dir + " -name '*_test.am' -type f"
@@ -295,10 +325,20 @@ public class Program {
                 compileFail = compileFail + 1
                 continue
             }
-            // Step 2 — gcc on the emitted .c. Same flags as
-            // tests/run_tests.sh so behavior matches the canonical
-            // runner.
-            let gccCmd = "gcc -O2 -Iruntime " + outC + " -lgc -lm -lcurl -o " + outBin + " 2>&1"
+            // Step 2 — gcc on the emitted .c. Locate amc's
+            // runtime/ headers so the test compile works in any
+            // cwd (not just the Amalgame source tree). amcRuntime
+            // is resolved once before the test loop (see above).
+            var gccCmd: string = "gcc -O2 -Iruntime"
+            if (String_Length(amcRuntime) > 0) {
+                gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+            }
+            gccCmd = gccCmd + " " + outC
+            let nObjs: int = pkgObjs.Count()
+            for poi in 0..nObjs {
+                gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
+            }
+            gccCmd = gccCmd + " -lgc -lm -lcurl -ldl -lpthread -o " + outBin + " 2>&1"
             let gcc = Process.RunCapture(gccCmd)
             if (gcc.Exit != 0) {
                 Console.WriteLine("  [LINK-FAIL]")
@@ -342,6 +382,57 @@ public class Program {
         }
         if (fail > 0) { return 1 }
         return 0
+    }
+
+    // Pre-compile every installed package's vendored .c source(s)
+    // to .o files cached in /tmp. The same .o list is then linked
+    // into every test binary so packages with vendored deps (the
+    // SQLite amalgamation today) compile cleanly via `amc test`.
+    //
+    // `.o` cache layout: `/tmp/amc-pkg-<basename>.o`. Cheap reuse:
+    // if the .o already exists we skip the gcc -c, saving 10s+
+    // per test run on SQLite-using projects.
+    public static List<string> PreCompilePackageSources(PackageRegistry reg, string amcRuntime) {
+        let out: List<string> = new List<string>()
+        let n: int = reg.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = reg.Packages.Get(i)
+            let sources: List<string> = p.Sources
+            let sn: int = sources.Count()
+            for j in 0..sn {
+                let srcPath: string = sources.Get(j)
+                if (String_Length(srcPath) == 0) { continue }
+                // Derive an .o filename from the basename so two
+                // packages shipping a `foo.c` don't collide.
+                let lastSlash: int = String_LastIndexOf(srcPath, "/")
+                var srcLeaf: string = srcPath
+                if (lastSlash >= 0) {
+                    srcLeaf = String_Substring(srcPath, lastSlash + 1, String_Length(srcPath) - lastSlash - 1)
+                }
+                let objPath: string = "/tmp/amc-pkg-" + p.ClassName + "-" + srcLeaf + ".o"
+                if (File.Exists(objPath)) {
+                    out.Add(objPath)
+                    continue
+                }
+                var gcc: string = "gcc -O2"
+                if (String_Length(amcRuntime) > 0) {
+                    gcc = gcc + " -I'" + amcRuntime + "'"
+                }
+                // -w to silence the upstream code's own warnings;
+                // we don't want sqlite3.c warnings cluttering
+                // `amc test` output.
+                gcc = gcc + " -w -c '" + srcPath + "' -o '" + objPath + "'"
+                let res = Process.RunCapture(gcc)
+                if (res.Exit != 0) {
+                    Console.WriteError("amc test: failed to pre-compile " + srcPath)
+                    Console.WriteError(res.Stdout)
+                    continue
+                }
+                Console.WriteLine("Pre-compiled " + p.ClassName + " source: " + srcLeaf)
+                out.Add(objPath)
+            }
+        }
+        return out
     }
 
     // ── fmt subcommand ─────────────────────────────────
@@ -425,8 +516,15 @@ public class Program {
             Exit_Set(NewCommand.Run(argc))
             return
         }
-        if (Args_Get(1) == "add") {
-            Exit_Set(AddCommand.Run(argc))
+        // Package-manager commands live under `amc package <X>`
+        // (also accepts the short alias `amc pkg <X>`). Centralising
+        // every PM verb under one umbrella keeps the top-level
+        // command space clear for language ops (compile / fmt /
+        // test / lsp / migrate / generate / explain / new) and
+        // matches dotnet's / go-mod's grouping convention.
+        let v1: string = Args_Get(1)
+        if (v1 == "package" || v1 == "pkg") {
+            Exit_Set(AddCommand.RunPackage(argc))
             return
         }
 

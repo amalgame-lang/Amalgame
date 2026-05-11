@@ -16,7 +16,7 @@ import Amalgame.Formats.Toml
 // rollout — design doc:
 //   docs/proposals/amalgame-package-manager.md
 //
-//   amc add <git-url>@<tag>
+//   amc package add <git-url>@<tag>
 //
 //     git-url:  e.g. github.com/amalgame-lang/amalgame-database-sqlite
 //               (protocol stripped if present; https:// prepended)
@@ -46,14 +46,14 @@ public class AddCommand {
     public AddCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc add <git-url>@<tag>")
+        Console.WriteError("Usage: amc package add <git-url>@<tag>")
         Console.WriteError("")
         Console.WriteError("Install an Amalgame package from a Git URL into the user cache")
         Console.WriteError("and record it in amalgame.toml + amalgame.lock.")
         Console.WriteError("")
         Console.WriteError("Examples:")
-        Console.WriteError("  amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0")
-        Console.WriteError("  amc add gitlab.com/foo/bar@v1.2.3")
+        Console.WriteError("  amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0")
+        Console.WriteError("  amc package add gitlab.com/foo/bar@v1.2.3")
         Console.WriteError("")
         Console.WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/")
         Console.WriteError("")
@@ -67,9 +67,9 @@ public class AddCommand {
         Console.WriteError("  -h, --help    Print this help and exit.")
     }
 
-    public static int Run(int argc) {
+    public static int Run(int argc, int startIdx) {
         var spec: string = ""
-        var i: int = 2
+        var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
@@ -96,10 +96,17 @@ public class AddCommand {
             return 2
         }
 
-        // ── 1. Parse spec ─────────────────────────────────
-        let parsed: List<string> = AddCommand.ParseSpec(spec)
+        // ── 1. Resolve shortname if applicable ────────────
+        // `amc package add redis@v0.2.0` looks the shortname up via the
+        // amalgame-lang/packages-index repo and rewrites to the
+        // full git URL. URLs (anything containing `/` or `.` in
+        // the part before `@`) skip the lookup.
+        let resolvedSpec: string = AddCommand.ResolveShortname(spec)
+
+        // ── 2. Parse spec ─────────────────────────────────
+        let parsed: List<string> = AddCommand.ParseSpec(resolvedSpec)
         if (parsed.Count() != 2) {
-            Console.WriteError("expected <git-url>@<tag> — got '" + spec + "'")
+            Console.WriteError("expected <git-url>@<tag> or <shortname>@<tag> — got '" + spec + "'")
             return 2
         }
         let url: string = parsed.Get(0)
@@ -255,10 +262,16 @@ public class AddCommand {
             return 1
         }
 
-        // ── 6. Update amalgame.lock ───────────────────────
-        if (!AddCommand.UpdateLockFile(depName, url, tag, rev)) {
-            Console.WriteError("could not update amalgame.lock")
-            return 1
+        // ── 6. Rebuild amalgame.lock from the full deps table ─
+        // Reads the just-updated amalgame.toml and emits a
+        // coherent multi-entry lock. Previously each amc add
+        // overwrote the lock with a single entry (PR 2 default);
+        // re-reading the toml here keeps all deps in the lock.
+        let tomlAfter: string = File.ReadAll("amalgame.toml")
+        let docAfter = Toml.Parse(tomlAfter)
+        let depsAfter: TomlValue = docAfter.Get("dependencies")
+        if (depsAfter.IsTable()) {
+            AddCommand.RebuildLockFromTomlDeps(depsAfter, "amalgame.lock")
         }
 
         Console.WriteLine("Added " + depName + " " + tag)
@@ -365,6 +378,624 @@ public class AddCommand {
             return home + "/.amalgame/packages"
         }
         return "/tmp/amalgame-packages"
+    }
+
+    // Where the packages-index lives once fetched. Always under
+    // $HOME/.amalgame regardless of AMALGAME_PACKAGES_DIR — that
+    // override is for the *package* cache, not the index. A
+    // separate cache dir keeps the two concerns clean.
+    public static string IndexCachePath() {
+        let home: string = Env_Get("HOME")
+        if (String_Length(home) > 0) {
+            return home + "/.amalgame/cache/packages-index.toml"
+        }
+        return "/tmp/amalgame-index.toml"
+    }
+
+    // ── Shortname resolution via packages-index ───────
+
+    // Detect a shortname: the part before `@` contains no `/`
+    // and no `.`. URLs always have one or the other (host
+    // separator or domain dot).
+    private static bool IsShortname(string lhs) {
+        if (String_IndexOf(lhs, "/") >= 0) { return false }
+        if (String_IndexOf(lhs, ".") >= 0) { return false }
+        return String_Length(lhs) > 0
+    }
+
+    // Fetch the packages-index, cache forever under
+    // ~/.amalgame/cache/packages-index.toml. Clear the cache
+    // manually (rm) to refresh — v0.5.1 may add `amc cache clear`.
+    // Returns "" on download failure (caller falls back to
+    // passing the input through unchanged).
+    public static string FetchIndex() {
+        let cachePath: string = AddCommand.IndexCachePath()
+        if (File.Exists(cachePath)) {
+            return File.ReadAll(cachePath)
+        }
+        // Make sure ~/.amalgame/cache exists.
+        let cacheDir: string = String_Substring(cachePath, 0, String_LastIndexOf(cachePath, "/"))
+        let _mkdir: int = Process_Run("mkdir -p '" + cacheDir + "'")
+        // Fetch via raw.githubusercontent.com.
+        let indexUrl: string = "https://raw.githubusercontent.com/amalgame-lang/packages-index/main/packages.toml"
+        let cmd: string = "curl -fsSL '" + indexUrl + "' -o '" + cachePath + "' 2>&1"
+        let exit: int = Process_Run(cmd)
+        if (exit != 0 || !File.Exists(cachePath)) {
+            return ""
+        }
+        return File.ReadAll(cachePath)
+    }
+
+    // ── amc package <subcommand> ──────────────────────
+    //
+    // Single top-level dispatcher for every PM verb. Matches
+    // dotnet's `dotnet add package` / `dotnet remove package`
+    // grouping convention: pkgmgr commands don't clutter the
+    // top-level (which stays reserved for language ops —
+    // compile / new / fmt / test / lsp / migrate / generate /
+    // explain).
+    //
+    //   amc package add <git-url|shortname>@<tag>
+    //   amc package search [keyword]
+    //   amc package list
+    //   amc package remove <name> [<name>...]
+    //   amc package update <name>@<tag>
+    //   amc package cache clear [--all]
+    //
+    // Short alias: `amc pkg <subcmd>` (main.am dispatches
+    // both `package` and `pkg` here).
+    public static int RunPackage(int argc) {
+        if (argc < 3) {
+            AddCommand.PrintPackageUsage()
+            return 2
+        }
+        let sub: string = Args_Get(2)
+        if (sub == "-h" || sub == "--help") {
+            AddCommand.PrintPackageUsage()
+            return 0
+        }
+        // Sub-commands all read their positional args starting
+        // at argv[3] (after `amc package <sub>`); the second
+        // arg to each method tells it where to start the scan.
+        if (sub == "add")    { return AddCommand.Run(argc, 3) }
+        if (sub == "search") { return AddCommand.RunSearch(argc, 3) }
+        if (sub == "list")   { return AddCommand.RunList(argc, 3) }
+        if (sub == "remove") { return AddCommand.RunRemove(argc, 3) }
+        if (sub == "update") { return AddCommand.RunUpdate(argc, 3) }
+        if (sub == "cache")  { return AddCommand.RunCache(argc, 3) }
+        Console.WriteError("amc package: unknown subcommand '" + sub + "'")
+        AddCommand.PrintPackageUsage()
+        return 2
+    }
+
+    public static void PrintPackageUsage() {
+        Console.WriteError("Usage: amc package <subcommand> [args...]")
+        Console.WriteError("       amc pkg     <subcommand> [args...]")
+        Console.WriteError("")
+        Console.WriteError("Subcommands:")
+        Console.WriteError("  add <name|url>@<tag>          Install a package")
+        Console.WriteError("  search [keyword]              List or filter packages-index")
+        Console.WriteError("  list                          Show installed deps")
+        Console.WriteError("  remove <name> [<name>...]     Strip dep(s) from amalgame.toml + lock")
+        Console.WriteError("  update <name>@<tag>           Bump a pinned tag")
+        Console.WriteError("  cache clear [--all]           Drop cached index / packages")
+        Console.WriteError("")
+        Console.WriteError("Example:")
+        Console.WriteError("  amc package add redis@v0.2.0")
+        Console.WriteError("  amc package list")
+    }
+
+    // ── EnsureInstalled (used by amc test) ────────────
+    //
+    // Walks amalgame.lock and re-installs any [[package]] entry
+    // whose cached directory is missing on disk. Idempotent —
+    // if the cache is intact, no-op (no network, no clone).
+    //
+    // Returns the number of packages newly installed (0 means
+    // everything was already present). -1 on a hard error.
+    //
+    // Called at the start of `amc test` so user CI can clone +
+    // run without an extra `amc add` step. Same hook applies to
+    // any future `amc build` / `amc run` once those land.
+    public static int EnsureInstalled() {
+        let lockPath: string = "amalgame.lock"
+        if (!File.Exists(lockPath)) { return 0 }
+        let lockSrc: string = File.ReadAll(lockPath)
+        let lockDoc = Toml.Parse(lockSrc)
+        if (lockDoc.IsNull()) { return 0 }
+        let pkgs: TomlValue = lockDoc.Get("package")
+        if (!pkgs.IsArray()) { return 0 }
+
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let n: int = pkgs.Count()
+        var installed: int = 0
+        for i in 0..n {
+            let entry: TomlValue = pkgs.At(i)
+            let gitV: TomlValue = entry.Get("git")
+            let tagV: TomlValue = entry.Get("tag")
+            let revV: TomlValue = entry.Get("rev")
+            let gitS: string = gitV.AsString()
+            let tagS: string = tagV.AsString()
+            let revS: string = revV.AsString()
+            if (String_Length(gitS) == 0 || String_Length(tagS) == 0) { continue }
+            if (String_Length(revS) < 8) { continue }
+            let shortSha: string = String_Substring(revS, 0, 8)
+            let pkgDir: string = cacheRoot + "/" + gitS + "/" + tagS + "_" + shortSha
+            let manifestPath: string = pkgDir + "/amalgame.toml"
+            if (File.Exists(manifestPath)) { continue }
+            // Missing — install via the shell-out path. Use the
+            // same Args_Get(0) trick as RunInstallSpec for path
+            // discovery.
+            Console.WriteLine("Installing missing dep: " + gitS + "@" + tagS + "...")
+            let amcPath0: string = Args_Get(0)
+            var amcExe: string = amcPath0
+            if (String_Length(amcExe) == 0) { amcExe = "amc" }
+            let exit: int = Process_Run("'" + amcExe + "' package add '" + gitS + "@" + tagS + "'")
+            if (exit != 0) {
+                Console.WriteError("amc package add failed for " + gitS + "@" + tagS)
+                return -1
+            }
+            installed = installed + 1
+        }
+        return installed
+    }
+
+    // ── amc cache ─────────────────────────────────────
+    //
+    // `amc cache clear`         — drop the packages-index cache
+    //                              so the next `amc add` / `amc
+    //                              search` re-fetches from
+    //                              raw.githubusercontent.com.
+    // `amc cache clear --all`   — also wipe the package cache
+    //                              (~/.amalgame/packages/). Next
+    //                              `amc add` will re-clone every
+    //                              dep from scratch.
+    public static int RunCache(int argc, int startIdx) {
+        if (argc <= startIdx) {
+            Console.WriteError("Usage: amc package cache <subcmd>")
+            Console.WriteError("")
+            Console.WriteError("Subcommands:")
+            Console.WriteError("  clear         drop the packages-index cache")
+            Console.WriteError("  clear --all   also wipe ~/.amalgame/packages/")
+            return 2
+        }
+        let sub: string = Args_Get(startIdx)
+        if (sub == "clear") {
+            var alsoPackages: bool = false
+            var helpAsked: bool = false
+            var i: int = startIdx + 1
+            while (i < argc) {
+                let a: string = Args_Get(i)
+                if (a == "--all")  { alsoPackages = true }
+                if (a == "-h")     { helpAsked = true }
+                if (a == "--help") { helpAsked = true }
+                i = i + 1
+            }
+            if (helpAsked) {
+                Console.WriteError("Usage: amc cache clear [--all]")
+                return 0
+            }
+            // Always nuke the index cache file.
+            let idxPath: string = AddCommand.IndexCachePath()
+            let _idxRm: int = Process_Run("rm -f '" + idxPath + "'")
+            Console.WriteLine("Cleared packages-index cache (" + idxPath + ")")
+            if (alsoPackages) {
+                let pkgRoot: string = AddCommand.CacheRoot()
+                let _pkgRm: int = Process_Run("rm -rf '" + pkgRoot + "'")
+                Console.WriteLine("Cleared package cache (" + pkgRoot + ")")
+                Console.WriteLine("Run `amc add` again to reinstall each dep.")
+            }
+            return 0
+        }
+        Console.WriteError("unknown cache subcommand: " + sub)
+        return 2
+    }
+
+    // ── amc update ────────────────────────────────────
+    //
+    // `amc update <name>@<tag>` — bump a dep's pinned tag.
+    // Internally a remove + add: rewrites amalgame.toml +
+    // amalgame.lock to reference the new tag.
+    //
+    //   amc update redis@v0.3.0
+    //
+    // For v0.5.1 we don't auto-discover newer tags from the
+    // package's git remote — the user names the target tag
+    // explicitly. Semver-range driven auto-update is a v0.5.x
+    // ask once we add range constraints.
+    public static int RunUpdate(int argc, int startIdx) {
+        var spec: string = ""
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package update <name>@<tag>")
+                Console.WriteError("")
+                Console.WriteError("Bump the pinned tag for the named dep. Equivalent to")
+                Console.WriteError("`amc package remove <name>` then `amc package add <name>@<tag>`.")
+                return 0
+            }
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                return 2
+            }
+            if (String_Length(spec) == 0) { spec = a }
+            i = i + 1
+        }
+        if (String_Length(spec) == 0) {
+            Console.WriteError("usage: amc update <name>@<tag>")
+            return 2
+        }
+        let atIdx: int = String_LastIndexOf(spec, "@")
+        if (atIdx <= 0 || atIdx >= String_Length(spec) - 1) {
+            Console.WriteError("expected <name>@<tag> — got '" + spec + "'")
+            return 2
+        }
+        let depName: string = String_Substring(spec, 0, atIdx)
+        let newTag:  string = String_Substring(spec, atIdx + 1, String_Length(spec) - atIdx - 1)
+
+        // Verify the dep exists.
+        if (!File.Exists("amalgame.toml")) {
+            Console.WriteError("no amalgame.toml in cwd — nothing to update")
+            return 1
+        }
+        let tomlSrc: string = File.ReadAll("amalgame.toml")
+        let doc = Toml.Parse(tomlSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("amalgame.toml parse error")
+            return 1
+        }
+        let deps: TomlValue = doc.Get("dependencies")
+        if (!deps.IsTable() || !deps.Has(depName)) {
+            Console.WriteError("'" + depName + "' is not a declared dependency. Use `amc package add " + spec + "` to install it fresh.")
+            return 1
+        }
+        // Get the existing git URL — we keep the same source,
+        // just bump the tag.
+        let entry: TomlValue = deps.Get(depName)
+        let gitV: TomlValue = entry.Get("git")
+        let gitUrl: string = gitV.AsString()
+        if (String_Length(gitUrl) == 0) {
+            Console.WriteError("dependency '" + depName + "' has no git url — manifest is malformed")
+            return 1
+        }
+        Console.WriteLine("Updating " + depName + " → " + newTag + " (from " + gitUrl + ")")
+        // Synthesise the spec `amc add` would have parsed and run
+        // its full pipeline. The existing Run() does ResolveShortname
+        // → clone → validate → manifest update → lock rebuild.
+        // We bypass shortname resolution (gitUrl is already a URL)
+        // by passing the URL form directly via Args.
+        //
+        // Cheap form: just shell out... actually we're already in
+        // amc. Better: factor Run() so we can call it with a
+        // pre-built spec. For v1 simplicity, write Args[2] via a
+        // global is too invasive — just inline by calling the
+        // same helpers in order.
+        return AddCommand.RunInstallSpec(gitUrl + "@" + newTag)
+    }
+
+    // Programmatic entry to the install pipeline — used by amc
+    // update (and any future caller that wants to install with
+    // an already-resolved URL@tag). Mirrors what Run() does after
+    // arg parsing.
+    public static int RunInstallSpec(string spec) {
+        let parsed: List<string> = AddCommand.ParseSpec(spec)
+        if (parsed.Count() != 2) {
+            Console.WriteError("RunInstallSpec: malformed spec '" + spec + "'")
+            return 2
+        }
+        let url: string = parsed.Get(0)
+        let tag: string = parsed.Get(1)
+        if (!AddCommand.IsSafeUrl(url)) { return 2 }
+        if (!AddCommand.IsSafeTag(tag)) { return 2 }
+        // The rest of the install pipeline is identical to what
+        // Run() does — proper refactor (Run() taking a spec
+        // parameter) is a v0.5.x ask. For now: shell out to the
+        // same amc binary the user invoked. Args_Get(0) is the
+        // argv[0] amc was launched with — if a bare name, $PATH
+        // resolves it; if a full path, it's used directly. Works
+        // cross-platform (no /proc dependency).
+        let amcPath: string = Args_Get(0)
+        if (String_Length(amcPath) == 0) { amcPath = "amc" }
+        return Process_Run("'" + amcPath + "' package add '" + url + "@" + tag + "'")
+    }
+
+    // ── amc list ──────────────────────────────────────
+    //
+    // List packages installed in the current project's
+    // amalgame.lock. Empty / missing lock → friendly "no
+    // packages" message, NOT an error (lots of projects don't
+    // use any external packages).
+    public static int RunList(int argc, int startIdx) {
+        let reg = PackageRegistry.Load()
+        let n: int = reg.Packages.Count()
+        if (n == 0) {
+            Console.WriteLine("No packages installed in this project.")
+            Console.WriteLine("(no amalgame.lock in cwd, or the lock has no [[package]] entries)")
+            return 0
+        }
+        Console.WriteLine(String_FromInt(n) + " package(s) installed:")
+        Console.WriteLine("")
+        for i in 0..n {
+            let lp: LoadedPackage = reg.Packages.Get(i)
+            // 'class' field is the short Amalgame class name; the
+            // package's `Name` is the full slug. Show the short
+            // class first since that's what users type in code.
+            Console.WriteLine("  " + lp.ClassName + " — " + lp.Name)
+            Console.WriteLine("    namespace: " + lp.Ns)
+            Console.WriteLine("    header:    " + lp.Header)
+            Console.WriteLine("")
+        }
+        return 0
+    }
+
+    // ── amc remove ────────────────────────────────────
+    //
+    // Strip a dep from amalgame.toml + amalgame.lock. Does NOT
+    // delete the cached package files at
+    // `~/.amalgame/packages/...` — those stay so re-installing
+    // is instant. v0.5.x `amc gc` will clean unreferenced
+    // cache dirs.
+    //
+    //   amc remove redis
+    //   amc remove sqlite mqtt   (multi-arg, all-or-nothing)
+    public static int RunRemove(int argc, int startIdx) {
+        let toRemove: List<string> = new List<string>()
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package remove <dep-name> [<dep-name>...]")
+                Console.WriteError("")
+                Console.WriteError("Strip the named dep(s) from amalgame.toml + amalgame.lock.")
+                Console.WriteError("Cached package files are kept; `amc package gc` (v0.5.x) cleans those.")
+                return 0
+            }
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                return 2
+            }
+            toRemove.Add(a)
+            i = i + 1
+        }
+        if (toRemove.Count() == 0) {
+            Console.WriteError("usage: amc remove <dep-name> [...]")
+            return 2
+        }
+
+        // Read project's amalgame.toml.
+        let tomlPath: string = "amalgame.toml"
+        if (!File.Exists(tomlPath)) {
+            Console.WriteError("no amalgame.toml in cwd — nothing to remove")
+            return 1
+        }
+        let tomlSrc: string = File.ReadAll(tomlPath)
+        let doc = Toml.Parse(tomlSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("amalgame.toml parse error")
+            return 1
+        }
+        let depsTable: TomlValue = doc.Get("dependencies")
+        if (!depsTable.IsTable()) {
+            Console.WriteError("amalgame.toml has no [dependencies] table — nothing to remove")
+            return 1
+        }
+
+        // Verify every name exists before mutating either file.
+        let remN: int = toRemove.Count()
+        for ri in 0..remN {
+            let name: string = toRemove.Get(ri)
+            if (!depsTable.Has(name)) {
+                Console.WriteError("'" + name + "' is not a declared dependency")
+                return 1
+            }
+        }
+
+        // Mutate: build a fresh [dependencies] table that omits
+        // the names. Toml.SetEntry doesn't have a Remove, so we
+        // rebuild by copying surviving entries.
+        let oldKeys: List<string> = depsTable.Keys()
+        let oldN: int = oldKeys.Count()
+        let newDeps = new TomlValue()
+        newDeps.BecomeTable()
+        for ki in 0..oldN {
+            let k: string = oldKeys.Get(ki)
+            var skip: bool = false
+            for rj in 0..remN {
+                // Extract to a typed local — chained `List.Get(idx)
+                // == otherString` confuses the cgen's cross-call
+                // return-type inference and silently produces a
+                // wrong comparison (gotcha #3).
+                let removeName: string = toRemove.Get(rj)
+                if (removeName == k) { skip = true }
+            }
+            if (!skip) {
+                let v: TomlValue = depsTable.Get(k)
+                newDeps.SetEntry(k, v)
+            }
+        }
+        doc.SetEntry("dependencies", newDeps)
+        let out: string = Toml.Serialize(doc)
+        let ok: bool = File.WriteAll(tomlPath, out)
+        if (!ok) {
+            Console.WriteError("could not write amalgame.toml")
+            return 1
+        }
+
+        // Rewrite amalgame.lock — for v0.5 it's a flat list of
+        // [[package]] entries; we rebuild it from the surviving
+        // deps' cache manifests so the SHA pins stay coherent.
+        let lockPath: string = "amalgame.lock"
+        if (File.Exists(lockPath)) {
+            AddCommand.RebuildLockFromTomlDeps(newDeps, lockPath)
+        }
+
+        // Confirm.
+        for ri2 in 0..remN {
+            Console.WriteLine("Removed '" + toRemove.Get(ri2) + "' from amalgame.toml + amalgame.lock.")
+        }
+        Console.WriteLine("(cached files at ~/.amalgame/packages/... were kept — `amc gc` reclaims those)")
+        return 0
+    }
+
+    // Rebuild the lock file from a [dependencies] table. Walks
+    // each dep, looks up its existing cache dir to recover the
+    // pinned `rev`, emits a fresh lock. If any dep can't be
+    // resolved in the cache, the lock entry is dropped (the
+    // next `amc add` will repin).
+    public static void RebuildLockFromTomlDeps(TomlValue depsTable, string lockPath) {
+        let cacheRoot: string = AddCommand.CacheRoot()
+        var out: string = "# amalgame.lock — auto-generated, commit me\n"
+        let keys: List<string> = depsTable.Keys()
+        let n: int = keys.Count()
+        for i in 0..n {
+            let depName: string = keys.Get(i)
+            let entry: TomlValue = depsTable.Get(depName)
+            let gitV: TomlValue = entry.Get("git")
+            let tagV: TomlValue = entry.Get("tag")
+            let gitS: string = gitV.AsString()
+            let tagS: string = tagV.AsString()
+            if (String_Length(gitS) == 0 || String_Length(tagS) == 0) { continue }
+            // Find the matching cache dir (any <tag>_<sha>).
+            let baseDir: string = cacheRoot + "/" + gitS
+            let existing: string = AddCommand.FindExistingForTag(baseDir, tagS)
+            if (String_Length(existing) == 0) { continue }
+            let rev: string = AddCommand.ExtractRevFromDirName(existing)
+            // Pad short sha back to 40 chars best-effort; we
+            // only stored 8. v0.5.x can probe git for the full
+            // SHA at install time.
+            out = out + "\n[[package]]\n"
+            out = out + "name = \"" + depName + "\"\n"
+            out = out + "git  = \"" + gitS + "\"\n"
+            out = out + "tag  = \"" + tagS + "\"\n"
+            out = out + "rev  = \"" + rev + "\"\n"
+        }
+        let _ok: bool = File.WriteAll(lockPath, out)
+    }
+
+    // ── amc search ────────────────────────────────────
+    //
+    // `amc search [keyword]` — list packages in the curated
+    // index. Filters by substring match against name +
+    // description when a keyword is given. No keyword: lists
+    // everything. Reuses the same FetchIndex helper as the
+    // shortname-resolution path, so the cache is shared.
+    public static int RunSearch(int argc, int startIdx) {
+        var keyword: string = ""
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package search [keyword]")
+                Console.WriteError("")
+                Console.WriteError("List packages in amalgame-lang/packages-index.")
+                Console.WriteError("With a keyword, filter by name + description substring.")
+                return 0
+            }
+            if (String_Length(keyword) == 0) {
+                keyword = a
+            }
+            i = i + 1
+        }
+        let kw: string = String_ToLower(keyword)
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            Console.WriteError("could not fetch packages-index")
+            return 1
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("packages-index parse error")
+            return 1
+        }
+        let pkgArr: TomlValue = doc.Get("package")
+        if (!pkgArr.IsArray()) {
+            Console.WriteError("packages-index has no [[package]] entries")
+            return 1
+        }
+        let n: int = pkgArr.Count()
+        var matches: int = 0
+        for j in 0..n {
+            let entry: TomlValue = pkgArr.At(j)
+            let nameTv: TomlValue = entry.Get("name")
+            let descTv: TomlValue = entry.Get("description")
+            let tierTv: TomlValue = entry.Get("tier")
+            let urlTv:  TomlValue = entry.Get("url")
+            let licTv:  TomlValue = entry.Get("license")
+            let nameS:  string = nameTv.AsString()
+            let descS:  string = descTv.AsString()
+            let tierS:  string = tierTv.AsString()
+            let urlS:   string = urlTv.AsString()
+            let licS:   string = licTv.AsString()
+            var skip: bool = false
+            if (String_Length(kw) > 0) {
+                let nameL: string = String_ToLower(nameS)
+                let descL: string = String_ToLower(descS)
+                if (String_IndexOf(nameL, kw) < 0 && String_IndexOf(descL, kw) < 0) {
+                    skip = true
+                }
+            }
+            if (skip) { continue }
+            let badge: string = "  "
+            if (tierS == "official") { badge = "✓ " }
+            Console.WriteLine(badge + nameS + " — " + descS)
+            Console.WriteLine("    " + urlS + " (" + tierS + ", " + licS + ")")
+            Console.WriteLine("    amc package add" + nameS + "@<tag>")
+            Console.WriteLine("")
+            matches = matches + 1
+        }
+        if (matches == 0) {
+            if (String_Length(kw) > 0) {
+                Console.WriteLine("No packages match '" + keyword + "'.")
+            } else {
+                Console.WriteLine("(packages-index is empty)")
+            }
+            return 1
+        }
+        return 0
+    }
+
+    // Rewrite a `<shortname>@<tag>` spec to its full URL form by
+    // consulting the curated index. If the input isn't a
+    // shortname (already a URL), or the index can't be fetched,
+    // or the shortname isn't listed: pass through unchanged.
+    // Always emits a one-line breadcrumb when a rewrite happens.
+    public static string ResolveShortname(string spec) {
+        let atIdx: int = String_LastIndexOf(spec, "@")
+        if (atIdx <= 0) { return spec }
+        let n: int = String_Length(spec)
+        let lhs: string = String_Substring(spec, 0, atIdx)
+        let rhs: string = String_Substring(spec, atIdx + 1, n - atIdx - 1)
+        if (!AddCommand.IsShortname(lhs)) { return spec }
+
+        Console.WriteLine("Resolving shortname '" + lhs + "' via amalgame-lang/packages-index...")
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            Console.WriteError("warning: could not fetch packages-index — passing '" + lhs + "' through as URL")
+            return spec
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("warning: packages-index could not be parsed — passing through")
+            return spec
+        }
+        let pkgArr: TomlValue = doc.Get("package")
+        if (!pkgArr.IsArray()) { return spec }
+        let pkgN: int = pkgArr.Count()
+        for i in 0..pkgN {
+            let entry: TomlValue = pkgArr.At(i)
+            let entryName: TomlValue = entry.Get("name")
+            if (entryName.AsString() == lhs) {
+                let entryUrl: TomlValue = entry.Get("url")
+                let entryTier: TomlValue = entry.Get("tier")
+                let urlStr: string = entryUrl.AsString()
+                let tierStr: string = entryTier.AsString()
+                Console.WriteLine("  → " + urlStr + " (" + tierStr + ")")
+                return urlStr + "@" + rhs
+            }
+        }
+        Console.WriteError("'" + lhs + "' not found in packages-index — passing through as URL")
+        return spec
     }
 
     // Look for an existing `<tag>_<sha>` directory under baseDir.
