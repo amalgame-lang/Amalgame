@@ -3937,7 +3937,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.5.0-dev";
+    return "0.5.0";
 }
 
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v) {

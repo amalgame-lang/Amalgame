@@ -3774,6 +3774,7 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
 AmalgameList* Amalgame_Compiler_PackageRegistry_ClassNames(Amalgame_Compiler_PackageRegistry* self);
 AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_PackageRegistry* self);
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot();
+code_string Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(code_string ns, code_string method);
 code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType);
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion();
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v);
@@ -3916,6 +3917,13 @@ code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot() {
     return "/tmp/amalgame-packages";
 }
 
+code_string Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(code_string ns, code_string method) {
+    (void)ns;
+    (void)method;
+    code_string __attribute__((unused)) mangledNs = String_Replace(ns, ".", "_");
+    return code_string_concat(code_string_concat(mangledNs, "_"), method);
+}
+
 code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType) {
     (void)cType;
     i64 __attribute__((unused)) n = String_Length(cType);
@@ -3929,7 +3937,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.5.0-dev";
+    return "0.5.0";
 }
 
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v) {
@@ -4102,6 +4110,7 @@ struct _Amalgame_Compiler_CGen {
     AmalgameList* PkgFuncs;
     AmalgameList* PkgFuncCTypes;
     AmalgameList* PkgHeaders;
+    AmalgameList* PkgClassNs;
 };
 
 code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
@@ -4140,6 +4149,7 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
 static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self);
 void Amalgame_Compiler_CGen_EmitNetHeader(Amalgame_Compiler_CGen* self);
 void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalgame_Compiler_PackageRegistry* reg);
+static code_string Amalgame_Compiler_CGen_PkgClassMangledPrefix(Amalgame_Compiler_CGen* self, code_string tname);
 static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl);
 static void Amalgame_Compiler_CGen_EmitDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl);
 static void Amalgame_Compiler_CGen_EmitEnum(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* en);
@@ -4192,6 +4202,7 @@ Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
     self->PkgFuncs = AmalgameList_new();
     self->PkgFuncCTypes = AmalgameList_new();
     self->PkgHeaders = AmalgameList_new();
+    self->PkgClassNs = AmalgameList_new();
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Status", "i64");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Body", "code_string");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Error", "code_string");
@@ -5467,19 +5478,35 @@ void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalg
     self->PkgFuncs = AmalgameList_new();
     self->PkgFuncCTypes = AmalgameList_new();
     self->PkgHeaders = AmalgameList_new();
+    self->PkgClassNs = AmalgameList_new();
     i64 __attribute__((unused)) n = AmalgameList_count(reg->Packages);
     for (i64 i = 0; i < n; i++) {
         Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, i);
         AmalgameList_add(self->PkgClasses, (void*)(intptr_t)(p->ClassName));
+        AmalgameList_add(self->PkgClassNs, (void*)(intptr_t)(p->Ns));
         AmalgameList_add(self->PkgHeaders, (void*)(intptr_t)(p->Header));
         i64 __attribute__((unused)) fn = AmalgameList_count(p->FuncNames);
         for (i64 j = 0; j < fn; j++) {
             code_string __attribute__((unused)) fName = (code_string)AmalgameList_get(p->FuncNames, j);
             code_string __attribute__((unused)) cType = (code_string)AmalgameList_get(p->FuncRets, j);
-            AmalgameList_add(self->PkgFuncs, (void*)(intptr_t)(code_string_concat(code_string_concat(p->ClassName, "_"), fName)));
+            code_string __attribute__((unused)) mangled = Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(p->Ns, fName);
+            AmalgameList_add(self->PkgFuncs, (void*)(intptr_t)(mangled));
             AmalgameList_add(self->PkgFuncCTypes, (void*)(intptr_t)(cType));
         }
     }
+}
+
+static code_string Amalgame_Compiler_CGen_PkgClassMangledPrefix(Amalgame_Compiler_CGen* self, code_string tname) {
+    (void)self;
+    (void)tname;
+    i64 __attribute__((unused)) n = AmalgameList_count(self->PkgClasses);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->PkgClasses, i), tname)) {
+            code_string __attribute__((unused)) ns = (code_string)AmalgameList_get(self->PkgClassNs, i);
+            return String_Replace(ns, ".", "_");
+        }
+    }
+    return "";
 }
 
 static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl) {
@@ -7303,17 +7330,13 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
-                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service");
-                    if (!isStdlib) {
-                        i64 __attribute__((unused)) pkgClsN = AmalgameList_count(self->PkgClasses);
-                        for (i64 pci = 0; pci < pkgClsN; pci++) {
-                            if (code_string_equals((code_string)AmalgameList_get(self->PkgClasses, pci), tname)) {
-                                isStdlib = 1;
-                            }
-                        }
-                    }
-                    if (isStdlib) {
+                    code_bool __attribute__((unused)) isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service");
+                    if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
+                    }
+                    code_string __attribute__((unused)) mangledPrefix = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, tname);
+                    if (String_Length(mangledPrefix) > 0) {
+                        return code_string_concat(code_string_concat(mangledPrefix, "_"), mname);
                     }
                     return code_string_concat(code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_"), mname);
                 }
@@ -9710,10 +9733,10 @@ void Amalgame_Compiler_FullResolver_RegisterPackages(Amalgame_Compiler_FullResol
         for (i64 j = 0; j < fn; j++) {
             code_string __attribute__((unused)) fName = (code_string)AmalgameList_get(p->FuncNames, j);
             code_string __attribute__((unused)) cType = (code_string)AmalgameList_get(p->FuncRets, j);
-            code_string __attribute__((unused)) fullName = code_string_concat(code_string_concat(p->ClassName, "_"), fName);
+            code_string __attribute__((unused)) mangled = Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(p->Ns, fName);
             code_string __attribute__((unused)) amType = Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(cType);
-            Amalgame_Compiler_FullResolver_DeclareGlobal(self, fullName, amType, 0);
-            AmalgameList_add(self->PkgFuncs, (void*)(intptr_t)(fullName));
+            Amalgame_Compiler_FullResolver_DeclareGlobal(self, mangled, amType, 0);
+            AmalgameList_add(self->PkgFuncs, (void*)(intptr_t)(mangled));
             AmalgameList_add(self->PkgFuncCTypes, (void*)(intptr_t)(cType));
         }
     }
