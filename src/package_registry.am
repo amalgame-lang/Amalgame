@@ -564,25 +564,98 @@ public class PackageRegistry {
         return File.ReadAll(path)
     }
 
+    // Check whether `current` satisfies `constraint`. Supported
+    // operators (v0.6+):
+    //   `>=X.Y.Z`  — at least X.Y.Z (existing)
+    //   `>X.Y.Z`   — strictly greater
+    //   `<=X.Y.Z`  — at most X.Y.Z
+    //   `<X.Y.Z`   — strictly less
+    //   `=X.Y.Z`   — exact match
+    //   `^X.Y.Z`   — semver caret: same major (or for 0.x: same
+    //                minor) + >=patch
+    //   `~X.Y.Z`   — tilde: same major.minor + >=patch
+    //   `<bare>`   — no operator → treated as `>=` for back-compat
+    //                with the v0.5 manifest convention
+    //
+    // Empty constraint → always true. Unrecognised operator →
+    // returns true (lenient — future syntax doesn't brick older
+    // amc binaries).
     public static bool VersionSatisfies(string current, string constraint) {
         if (String_Length(constraint) == 0) { return true }
-        var op: string = ""
-        var verPart: string = constraint
-        if (String_StartsWith(constraint, ">=")) {
-            op = ">="
-            verPart = String_Substring(constraint, 2, String_Length(constraint) - 2)
+        let c: string = String_Trim(constraint)
+        // Order matters: 2-char operators (>=, <=) MUST be checked
+        // before their 1-char prefixes (>, <).
+        if (String_StartsWith(c, ">=")) {
+            return PackageRegistry.CompareCmp(current, String_Substring(c, 2, String_Length(c) - 2)) >= 0
         }
-        verPart = String_Trim(verPart)
-        if (op != ">=") {
-            // Unrecognised operator → don't block install.
-            return true
+        if (String_StartsWith(c, "<=")) {
+            return PackageRegistry.CompareCmp(current, String_Substring(c, 2, String_Length(c) - 2)) <= 0
         }
+        if (String_StartsWith(c, ">")) {
+            return PackageRegistry.CompareCmp(current, String_Substring(c, 1, String_Length(c) - 1)) > 0
+        }
+        if (String_StartsWith(c, "<")) {
+            return PackageRegistry.CompareCmp(current, String_Substring(c, 1, String_Length(c) - 1)) < 0
+        }
+        if (String_StartsWith(c, "=")) {
+            return PackageRegistry.CompareCmp(current, String_Substring(c, 1, String_Length(c) - 1)) == 0
+        }
+        if (String_StartsWith(c, "^")) {
+            return PackageRegistry.CaretSatisfies(current, String_Substring(c, 1, String_Length(c) - 1))
+        }
+        if (String_StartsWith(c, "~")) {
+            return PackageRegistry.TildeSatisfies(current, String_Substring(c, 1, String_Length(c) - 1))
+        }
+        // Bare version — treat as `>=` for back-compat with v0.5
+        // packages that wrote `required-amalgame = "0.5.0"` (the
+        // `>=` was implicit).
+        return PackageRegistry.CompareCmp(current, c) >= 0
+    }
+
+    // Compare two version strings as (major, minor, patch) tuples.
+    // Returns < 0 if a < b, > 0 if a > b, 0 if equal. Strips `v`
+    // prefix + pre-release / build metadata via ParseVersion.
+    public static int CompareCmp(string a, string b) {
+        let pa: List<int> = PackageRegistry.ParseVersion(a)
+        let pb: List<int> = PackageRegistry.ParseVersion(b)
+        if (pa.Get(0) != pb.Get(0)) { return pa.Get(0) - pb.Get(0) }
+        if (pa.Get(1) != pb.Get(1)) { return pa.Get(1) - pb.Get(1) }
+        return pa.Get(2) - pb.Get(2)
+    }
+
+    // Caret semver — `^X.Y.Z`. Compatible with the leftmost
+    // non-zero version component. So:
+    //   `^1.2.3`  matches `>=1.2.3, <2.0.0`  (lock major)
+    //   `^0.5.3`  matches `>=0.5.3, <0.6.0`  (lock minor, since major is 0)
+    //   `^0.0.5`  matches `=0.0.5`           (lock patch, since major+minor are 0)
+    // This is the same rule as npm's caret. Aligns with the way
+    // semver treats 0.x as "pre-stable, minor bumps may break".
+    public static bool CaretSatisfies(string current, string base) {
         let cur: List<int> = PackageRegistry.ParseVersion(current)
-        let req: List<int> = PackageRegistry.ParseVersion(verPart)
-        // Tuple compare major → minor → patch.
-        if (cur.Get(0) != req.Get(0)) { return cur.Get(0) > req.Get(0) }
-        if (cur.Get(1) != req.Get(1)) { return cur.Get(1) > req.Get(1) }
-        return cur.Get(2) >= req.Get(2)
+        let req: List<int> = PackageRegistry.ParseVersion(base)
+        // Lower bound: current >= base.
+        if (PackageRegistry.CompareCmp(current, base) < 0) { return false }
+        // Upper bound depends on leftmost non-zero.
+        if (req.Get(0) > 0) {
+            // ^1.2.3 → <2.0.0
+            return cur.Get(0) == req.Get(0)
+        }
+        if (req.Get(1) > 0) {
+            // ^0.5.3 → <0.6.0
+            return cur.Get(0) == 0 && cur.Get(1) == req.Get(1)
+        }
+        // ^0.0.5 → =0.0.5
+        return cur.Get(0) == 0 && cur.Get(1) == 0 && cur.Get(2) == req.Get(2)
+    }
+
+    // Tilde semver — `~X.Y.Z` matches `>=X.Y.Z, <X.(Y+1).0`.
+    // Locks major + minor, allows patches. Same rule as npm's
+    // tilde. More conservative than caret (no minor bumps).
+    public static bool TildeSatisfies(string current, string base) {
+        let cur: List<int> = PackageRegistry.ParseVersion(current)
+        let req: List<int> = PackageRegistry.ParseVersion(base)
+        if (PackageRegistry.CompareCmp(current, base) < 0) { return false }
+        return cur.Get(0) == req.Get(0) && cur.Get(1) == req.Get(1)
     }
 }
 

@@ -3807,6 +3807,9 @@ i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema();
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v);
 code_string Amalgame_Compiler_PackageRegistry_ReadCalibrationFile();
 code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current, code_string constraint);
+i64 Amalgame_Compiler_PackageRegistry_CompareCmp(code_string a, code_string b);
+code_bool Amalgame_Compiler_PackageRegistry_CaretSatisfies(code_string current, code_string base);
+code_bool Amalgame_Compiler_PackageRegistry_TildeSatisfies(code_string current, code_string base);
 
 Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new() {
     Amalgame_Compiler_PackageRegistry* self = (Amalgame_Compiler_PackageRegistry*) GC_MALLOC(sizeof(Amalgame_Compiler_PackageRegistry));
@@ -4176,25 +4179,71 @@ code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current
     if (String_Length(constraint) == 0) {
         return 1;
     }
-    code_string __attribute__((unused)) op = "";
-    code_string __attribute__((unused)) verPart = constraint;
-    if (String_StartsWith(constraint, ">=")) {
-        op = ">=";
-        verPart = String_Substring(constraint, 2, String_Length(constraint) - 2);
+    code_string __attribute__((unused)) c = String_Trim(constraint);
+    if (String_StartsWith(c, ">=")) {
+        return Amalgame_Compiler_PackageRegistry_CompareCmp(current, String_Substring(c, 2, String_Length(c) - 2)) >= 0;
     }
-    verPart = String_Trim(verPart);
-    if (!code_string_equals(op, ">=")) {
-        return 1;
+    if (String_StartsWith(c, "<=")) {
+        return Amalgame_Compiler_PackageRegistry_CompareCmp(current, String_Substring(c, 2, String_Length(c) - 2)) <= 0;
     }
+    if (String_StartsWith(c, ">")) {
+        return Amalgame_Compiler_PackageRegistry_CompareCmp(current, String_Substring(c, 1, String_Length(c) - 1)) > 0;
+    }
+    if (String_StartsWith(c, "<")) {
+        return Amalgame_Compiler_PackageRegistry_CompareCmp(current, String_Substring(c, 1, String_Length(c) - 1)) < 0;
+    }
+    if (String_StartsWith(c, "=")) {
+        return Amalgame_Compiler_PackageRegistry_CompareCmp(current, String_Substring(c, 1, String_Length(c) - 1)) == 0;
+    }
+    if (String_StartsWith(c, "^")) {
+        return Amalgame_Compiler_PackageRegistry_CaretSatisfies(current, String_Substring(c, 1, String_Length(c) - 1));
+    }
+    if (String_StartsWith(c, "~")) {
+        return Amalgame_Compiler_PackageRegistry_TildeSatisfies(current, String_Substring(c, 1, String_Length(c) - 1));
+    }
+    return Amalgame_Compiler_PackageRegistry_CompareCmp(current, c) >= 0;
+}
+
+i64 Amalgame_Compiler_PackageRegistry_CompareCmp(code_string a, code_string b) {
+    (void)a;
+    (void)b;
+    AmalgameList* __attribute__((unused)) pa = Amalgame_Compiler_PackageRegistry_ParseVersion(a);
+    AmalgameList* __attribute__((unused)) pb = Amalgame_Compiler_PackageRegistry_ParseVersion(b);
+    if ((i64)AmalgameList_get(pa, 0) != (i64)AmalgameList_get(pb, 0)) {
+        return (i64)AmalgameList_get(pa, 0) - (i64)AmalgameList_get(pb, 0);
+    }
+    if ((i64)AmalgameList_get(pa, 1) != (i64)AmalgameList_get(pb, 1)) {
+        return (i64)AmalgameList_get(pa, 1) - (i64)AmalgameList_get(pb, 1);
+    }
+    return (i64)AmalgameList_get(pa, 2) - (i64)AmalgameList_get(pb, 2);
+}
+
+code_bool Amalgame_Compiler_PackageRegistry_CaretSatisfies(code_string current, code_string base) {
+    (void)current;
+    (void)base;
     AmalgameList* __attribute__((unused)) cur = Amalgame_Compiler_PackageRegistry_ParseVersion(current);
-    AmalgameList* __attribute__((unused)) req = Amalgame_Compiler_PackageRegistry_ParseVersion(verPart);
-    if ((i64)AmalgameList_get(cur, 0) != (i64)AmalgameList_get(req, 0)) {
-        return (i64)AmalgameList_get(cur, 0) > (i64)AmalgameList_get(req, 0);
+    AmalgameList* __attribute__((unused)) req = Amalgame_Compiler_PackageRegistry_ParseVersion(base);
+    if (Amalgame_Compiler_PackageRegistry_CompareCmp(current, base) < 0) {
+        return 0;
     }
-    if ((i64)AmalgameList_get(cur, 1) != (i64)AmalgameList_get(req, 1)) {
-        return (i64)AmalgameList_get(cur, 1) > (i64)AmalgameList_get(req, 1);
+    if ((i64)AmalgameList_get(req, 0) > 0) {
+        return (i64)AmalgameList_get(cur, 0) == (i64)AmalgameList_get(req, 0);
     }
-    return (i64)AmalgameList_get(cur, 2) >= (i64)AmalgameList_get(req, 2);
+    if ((i64)AmalgameList_get(req, 1) > 0) {
+        return (i64)AmalgameList_get(cur, 0) == 0 && (i64)AmalgameList_get(cur, 1) == (i64)AmalgameList_get(req, 1);
+    }
+    return (i64)AmalgameList_get(cur, 0) == 0 && (i64)AmalgameList_get(cur, 1) == 0 && (i64)AmalgameList_get(cur, 2) == (i64)AmalgameList_get(req, 2);
+}
+
+code_bool Amalgame_Compiler_PackageRegistry_TildeSatisfies(code_string current, code_string base) {
+    (void)current;
+    (void)base;
+    AmalgameList* __attribute__((unused)) cur = Amalgame_Compiler_PackageRegistry_ParseVersion(current);
+    AmalgameList* __attribute__((unused)) req = Amalgame_Compiler_PackageRegistry_ParseVersion(base);
+    if (Amalgame_Compiler_PackageRegistry_CompareCmp(current, base) < 0) {
+        return 0;
+    }
+    return (i64)AmalgameList_get(cur, 0) == (i64)AmalgameList_get(req, 0) && (i64)AmalgameList_get(cur, 1) == (i64)AmalgameList_get(req, 1);
 }
 
 struct _Amalgame_Compiler_CalibrationSample {
@@ -19917,6 +19966,7 @@ i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc, i64 startIdx);
 void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_TomlValue* depsTable, code_string lockPath);
 i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc, i64 startIdx);
 void Amalgame_Compiler_AddCommand_PrintVersionsForPackage(Amalgame_Compiler_TomlValue* verArr, code_string pkgName, code_string amcVer);
+code_string Amalgame_Compiler_AddCommand_ResolveLatestCompatible(code_string shortname);
 code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec);
 code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag);
 code_string Amalgame_Compiler_AddCommand_ExtractRevFromDirName(code_string dir);
@@ -19982,11 +20032,26 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
         i = i + 1;
     }
     if (String_Length(spec) == 0) {
-        Console_WriteError("missing <git-url>@<tag>");
+        Console_WriteError("missing <git-url>@<tag> or <shortname>");
         Amalgame_Compiler_AddCommand_PrintUsage();
         return 2;
     }
-    code_string __attribute__((unused)) resolvedSpec = Amalgame_Compiler_AddCommand_ResolveShortname(spec);
+    code_string __attribute__((unused)) workingSpec = spec;
+    i64 __attribute__((unused)) hasAt = String_IndexOf(spec, "@");
+    if (hasAt < 0) {
+        if (!Amalgame_Compiler_AddCommand_IsShortname(spec)) {
+            Console_WriteError(code_string_concat(code_string_concat("'", spec), "' is a git URL — it needs an explicit @<tag>."));
+            Console_WriteError("       Auto-resolve (no @<tag>) only works for indexed shortnames.");
+            return 2;
+        }
+        code_string __attribute__((unused)) resolvedTag = Amalgame_Compiler_AddCommand_ResolveLatestCompatible(spec);
+        if (String_Length(resolvedTag) == 0) {
+            return 1;
+        }
+        workingSpec = code_string_concat(code_string_concat(spec, "@"), resolvedTag);
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Auto-resolved '", spec), "' → '"), spec), "@"), resolvedTag), "' (latest compatible with amc "), Amalgame_Compiler_PackageRegistry_AmcVersion()), ")"));
+    }
+    code_string __attribute__((unused)) resolvedSpec = Amalgame_Compiler_AddCommand_ResolveShortname(workingSpec);
     AmalgameList* __attribute__((unused)) parsed = Amalgame_Compiler_AddCommand_ParseSpec(resolvedSpec);
     if (AmalgameList_count(parsed) != 2) {
         Console_WriteError(code_string_concat(code_string_concat("expected <git-url>@<tag> or <shortname>@<tag> — got '", spec), "'"));
@@ -20485,7 +20550,9 @@ void Amalgame_Compiler_AddCommand_PrintPackageUsage() {
     Console_WriteError("       amc pkg     <subcommand> [args...]");
     Console_WriteError("");
     Console_WriteError("Subcommands:");
-    Console_WriteError("  add <name|url>@<tag>          Install a package");
+    Console_WriteError("  add <name|url>[@<tag>]        Install a package; auto-resolve latest");
+    Console_WriteError("                                compatible tag if @<tag> is omitted (indexed");
+    Console_WriteError("                                shortnames only)");
     Console_WriteError("    [--no-precompile]            Skip install-time compile (manifest opt-in)");
     Console_WriteError("  search [keyword] [--refresh]  List or filter packages-index with version compat");
     Console_WriteError("  versions <name>               Show all indexed versions of a single package");
@@ -21069,6 +21136,55 @@ void Amalgame_Compiler_AddCommand_PrintVersionsForPackage(Amalgame_Compiler_Toml
         Console_WriteLine(line);
         k = k - 1;
     }
+}
+
+code_string Amalgame_Compiler_AddCommand_ResolveLatestCompatible(code_string shortname) {
+    (void)shortname;
+    code_string __attribute__((unused)) indexSrc = Amalgame_Compiler_AddCommand_FetchIndex();
+    if (String_Length(indexSrc) == 0) {
+        Console_WriteError("could not fetch packages-index — auto-resolve needs the index.");
+        Console_WriteError(code_string_concat(code_string_concat("       Specify an explicit @<tag> or run `amc package search ", shortname), " --refresh`."));
+        return "";
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(indexSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        Console_WriteError("packages-index parse error");
+        return "";
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) verArr = Amalgame_Compiler_TomlValue_Get(doc, "version");
+    if (!Amalgame_Compiler_TomlValue_IsArray(verArr)) {
+        Console_WriteError("packages-index has no [[version]] entries — auto-resolve impossible.");
+        Console_WriteError("       Specify an explicit @<tag> or ask the package maintainer to update the index.");
+        return "";
+    }
+    code_string __attribute__((unused)) amcVer = Amalgame_Compiler_PackageRegistry_AmcVersion();
+    i64 __attribute__((unused)) n = Amalgame_Compiler_TomlValue_Count(verArr);
+    code_string __attribute__((unused)) latestCompat = "";
+    code_bool __attribute__((unused)) anyForShortname = 0;
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(verArr, i);
+        if (!code_string_equals(Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "package")), shortname)) {
+            continue;
+        }
+        anyForShortname = 1;
+        code_string __attribute__((unused)) tag = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "tag"));
+        code_string __attribute__((unused)) req = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "required-amalgame"));
+        if (Amalgame_Compiler_PackageRegistry_VersionSatisfies(amcVer, req)) {
+            latestCompat = tag;
+        }
+    }
+    if (!anyForShortname) {
+        Console_WriteError(code_string_concat(code_string_concat("'", shortname), "' not found in packages-index."));
+        Console_WriteError("       For unindexed packages, use the full URL form:");
+        Console_WriteError("       `amc package add github.com/<owner>/<repo>@<tag>`");
+        return "";
+    }
+    if (String_Length(latestCompat) == 0) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("No version of '", shortname), "' is compatible with your amc "), amcVer), "."));
+        Console_WriteError(code_string_concat(code_string_concat("       Run `amc package versions ", shortname), "` to see all tags + their constraints."));
+        return "";
+    }
+    return latestCompat;
 }
 
 code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec) {

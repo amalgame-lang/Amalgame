@@ -97,17 +97,39 @@ public class AddCommand {
             i = i + 1
         }
         if (String_Length(spec) == 0) {
-            Console.WriteError("missing <git-url>@<tag>")
+            Console.WriteError("missing <git-url>@<tag> or <shortname>")
             AddCommand.PrintUsage()
             return 2
         }
 
-        // ── 1. Resolve shortname if applicable ────────────
+        // ── 1a. Auto-resolve tag if user dropped @<tag> ───
+        // `amc package add duckdb` (no tag) → fetch index, pick
+        // the newest version whose required-amalgame is satisfied
+        // by the running amc. Only works for indexed shortnames;
+        // full git URLs still need an explicit @<tag>.
+        var workingSpec: string = spec
+        let hasAt: int = String_IndexOf(spec, "@")
+        if (hasAt < 0) {
+            if (!AddCommand.IsShortname(spec)) {
+                Console.WriteError("'" + spec + "' is a git URL — it needs an explicit @<tag>.")
+                Console.WriteError("       Auto-resolve (no @<tag>) only works for indexed shortnames.")
+                return 2
+            }
+            let resolvedTag: string = AddCommand.ResolveLatestCompatible(spec)
+            if (String_Length(resolvedTag) == 0) {
+                // ResolveLatestCompatible printed the error already.
+                return 1
+            }
+            workingSpec = spec + "@" + resolvedTag
+            Console.WriteLine("Auto-resolved '" + spec + "' → '" + spec + "@" + resolvedTag + "' (latest compatible with amc " + PackageRegistry.AmcVersion() + ")")
+        }
+
+        // ── 1b. Resolve shortname if applicable ────────────
         // `amc package add redis@v0.2.0` looks the shortname up via the
         // amalgame-lang/packages-index repo and rewrites to the
         // full git URL. URLs (anything containing `/` or `.` in
         // the part before `@`) skip the lookup.
-        let resolvedSpec: string = AddCommand.ResolveShortname(spec)
+        let resolvedSpec: string = AddCommand.ResolveShortname(workingSpec)
 
         // ── 2. Parse spec ─────────────────────────────────
         let parsed: List<string> = AddCommand.ParseSpec(resolvedSpec)
@@ -703,7 +725,9 @@ public class AddCommand {
         Console.WriteError("       amc pkg     <subcommand> [args...]")
         Console.WriteError("")
         Console.WriteError("Subcommands:")
-        Console.WriteError("  add <name|url>@<tag>          Install a package")
+        Console.WriteError("  add <name|url>[@<tag>]        Install a package; auto-resolve latest")
+        Console.WriteError("                                compatible tag if @<tag> is omitted (indexed")
+        Console.WriteError("                                shortnames only)")
         Console.WriteError("    [--no-precompile]            Skip install-time compile (manifest opt-in)")
         Console.WriteError("  search [keyword] [--refresh]  List or filter packages-index with version compat")
         Console.WriteError("  versions <name>               Show all indexed versions of a single package")
@@ -1374,6 +1398,61 @@ public class AddCommand {
             Console.WriteLine(line)
             k = k - 1
         }
+    }
+
+    // For `amc package add <shortname>` (no @<tag>) — fetch the
+    // index, walk the [[version]] entries for this shortname,
+    // return the newest tag whose required-amalgame is satisfied
+    // by the running amc. Returns "" if no compatible version is
+    // found (printing a clear error for the user first). The
+    // returned tag does NOT include a leading `@`.
+    public static string ResolveLatestCompatible(string shortname) {
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            Console.WriteError("could not fetch packages-index — auto-resolve needs the index.")
+            Console.WriteError("       Specify an explicit @<tag> or run `amc package search " + shortname + " --refresh`.")
+            return ""
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("packages-index parse error")
+            return ""
+        }
+        let verArr: TomlValue = doc.Get("version")
+        if (!verArr.IsArray()) {
+            Console.WriteError("packages-index has no [[version]] entries — auto-resolve impossible.")
+            Console.WriteError("       Specify an explicit @<tag> or ask the package maintainer to update the index.")
+            return ""
+        }
+        let amcVer: string = PackageRegistry.AmcVersion()
+        let n: int = verArr.Count()
+        // Walk newest-last (index convention: append on release),
+        // track the last compatible tag we see. After the loop,
+        // that's the latest compatible.
+        var latestCompat: string = ""
+        var anyForShortname: bool = false
+        for i in 0..n {
+            let entry: TomlValue = verArr.At(i)
+            if (entry.Get("package").AsString() != shortname) { continue }
+            anyForShortname = true
+            let tag: string = entry.Get("tag").AsString()
+            let req: string = entry.Get("required-amalgame").AsString()
+            if (PackageRegistry.VersionSatisfies(amcVer, req)) {
+                latestCompat = tag
+            }
+        }
+        if (!anyForShortname) {
+            Console.WriteError("'" + shortname + "' not found in packages-index.")
+            Console.WriteError("       For unindexed packages, use the full URL form:")
+            Console.WriteError("       `amc package add github.com/<owner>/<repo>@<tag>`")
+            return ""
+        }
+        if (String_Length(latestCompat) == 0) {
+            Console.WriteError("No version of '" + shortname + "' is compatible with your amc " + amcVer + ".")
+            Console.WriteError("       Run `amc package versions " + shortname + "` to see all tags + their constraints.")
+            return ""
+        }
+        return latestCompat
     }
 
     // Rewrite a `<shortname>@<tag>` spec to its full URL form by

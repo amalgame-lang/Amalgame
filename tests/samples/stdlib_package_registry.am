@@ -297,5 +297,107 @@ public class Program {
         } else {
             Console.WriteLine("[FAIL] unknown lang eta")
         }
+
+        // ── v0.6.0: version operators ─────────────────────
+
+        // >= (existing, regression).
+        if (PackageRegistry.VersionSatisfies("0.5.6", ">=0.5.0")) {
+            Console.WriteLine("[PASS] ge satisfied")
+        } else {
+            Console.WriteLine("[FAIL] ge satisfied")
+        }
+        if (!PackageRegistry.VersionSatisfies("0.4.0", ">=0.5.0")) {
+            Console.WriteLine("[PASS] ge unsatisfied")
+        } else {
+            Console.WriteLine("[FAIL] ge unsatisfied")
+        }
+        // > strict.
+        if (PackageRegistry.VersionSatisfies("0.5.6", ">0.5.5")) {
+            Console.WriteLine("[PASS] gt strict")
+        } else {
+            Console.WriteLine("[FAIL] gt strict")
+        }
+        if (!PackageRegistry.VersionSatisfies("0.5.5", ">0.5.5")) {
+            Console.WriteLine("[PASS] gt strict equal")
+        } else {
+            Console.WriteLine("[FAIL] gt strict equal")
+        }
+        // <= and <.
+        if (PackageRegistry.VersionSatisfies("0.5.5", "<=0.5.5")) {
+            Console.WriteLine("[PASS] le equal")
+        } else {
+            Console.WriteLine("[FAIL] le equal")
+        }
+        if (PackageRegistry.VersionSatisfies("0.5.4", "<0.5.5")) {
+            Console.WriteLine("[PASS] lt strict")
+        } else {
+            Console.WriteLine("[FAIL] lt strict")
+        }
+        if (!PackageRegistry.VersionSatisfies("0.5.5", "<0.5.5")) {
+            Console.WriteLine("[PASS] lt strict equal")
+        } else {
+            Console.WriteLine("[FAIL] lt strict equal")
+        }
+        // = exact.
+        if (PackageRegistry.VersionSatisfies("0.5.5", "=0.5.5")) {
+            Console.WriteLine("[PASS] eq match")
+        } else {
+            Console.WriteLine("[FAIL] eq match")
+        }
+        if (!PackageRegistry.VersionSatisfies("0.5.6", "=0.5.5")) {
+            Console.WriteLine("[PASS] eq miss")
+        } else {
+            Console.WriteLine("[FAIL] eq miss")
+        }
+        // Caret: major locked when major > 0.
+        if (PackageRegistry.VersionSatisfies("1.2.5", "^1.2.3")) {
+            Console.WriteLine("[PASS] caret 1.x within")
+        } else {
+            Console.WriteLine("[FAIL] caret 1.x within")
+        }
+        if (!PackageRegistry.VersionSatisfies("2.0.0", "^1.2.3")) {
+            Console.WriteLine("[PASS] caret 1.x reject major")
+        } else {
+            Console.WriteLine("[FAIL] caret 1.x reject major")
+        }
+        // Caret on 0.x: minor locked.
+        if (PackageRegistry.VersionSatisfies("0.5.9", "^0.5.3")) {
+            Console.WriteLine("[PASS] caret 0.x within")
+        } else {
+            Console.WriteLine("[FAIL] caret 0.x within")
+        }
+        if (!PackageRegistry.VersionSatisfies("0.6.0", "^0.5.3")) {
+            Console.WriteLine("[PASS] caret 0.x reject minor")
+        } else {
+            Console.WriteLine("[FAIL] caret 0.x reject minor")
+        }
+        // Caret on 0.0.x: patch exact.
+        if (PackageRegistry.VersionSatisfies("0.0.5", "^0.0.5")) {
+            Console.WriteLine("[PASS] caret 0.0.x exact")
+        } else {
+            Console.WriteLine("[FAIL] caret 0.0.x exact")
+        }
+        if (!PackageRegistry.VersionSatisfies("0.0.6", "^0.0.5")) {
+            Console.WriteLine("[PASS] caret 0.0.x reject patch")
+        } else {
+            Console.WriteLine("[FAIL] caret 0.0.x reject patch")
+        }
+        // Tilde: major.minor locked.
+        if (PackageRegistry.VersionSatisfies("1.2.9", "~1.2.3")) {
+            Console.WriteLine("[PASS] tilde within")
+        } else {
+            Console.WriteLine("[FAIL] tilde within")
+        }
+        if (!PackageRegistry.VersionSatisfies("1.3.0", "~1.2.3")) {
+            Console.WriteLine("[PASS] tilde reject minor")
+        } else {
+            Console.WriteLine("[FAIL] tilde reject minor")
+        }
+        // Bare version (no operator) → treated as >=.
+        if (PackageRegistry.VersionSatisfies("0.5.6", "0.5.0")) {
+            Console.WriteLine("[PASS] bare ge")
+        } else {
+            Console.WriteLine("[FAIL] bare ge")
+        }
     }
 }

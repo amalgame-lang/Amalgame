@@ -332,6 +332,25 @@ run_test "PR: sample counts"          "$SAMPLES/stdlib_package_registry.am" "[PA
 run_test "PR: cxx eta"                "$SAMPLES/stdlib_package_registry.am" "[PASS] cxx eta"               "" "$PR_EXTRA"
 run_test "PR: c eta"                  "$SAMPLES/stdlib_package_registry.am" "[PASS] c eta"                 "" "$PR_EXTRA"
 run_test "PR: unknown lang no eta"    "$SAMPLES/stdlib_package_registry.am" "[PASS] unknown lang no eta"   "" "$PR_EXTRA"
+# v0.6.0 — version operators (>=, >, <=, <, =, ^, ~, bare).
+run_test "PR: ge satisfied"           "$SAMPLES/stdlib_package_registry.am" "[PASS] ge satisfied"          "" "$PR_EXTRA"
+run_test "PR: ge unsatisfied"         "$SAMPLES/stdlib_package_registry.am" "[PASS] ge unsatisfied"        "" "$PR_EXTRA"
+run_test "PR: gt strict"              "$SAMPLES/stdlib_package_registry.am" "[PASS] gt strict"             "" "$PR_EXTRA"
+run_test "PR: gt strict equal"        "$SAMPLES/stdlib_package_registry.am" "[PASS] gt strict equal"       "" "$PR_EXTRA"
+run_test "PR: le equal"               "$SAMPLES/stdlib_package_registry.am" "[PASS] le equal"              "" "$PR_EXTRA"
+run_test "PR: lt strict"              "$SAMPLES/stdlib_package_registry.am" "[PASS] lt strict"             "" "$PR_EXTRA"
+run_test "PR: lt strict equal"        "$SAMPLES/stdlib_package_registry.am" "[PASS] lt strict equal"       "" "$PR_EXTRA"
+run_test "PR: eq match"               "$SAMPLES/stdlib_package_registry.am" "[PASS] eq match"              "" "$PR_EXTRA"
+run_test "PR: eq miss"                "$SAMPLES/stdlib_package_registry.am" "[PASS] eq miss"               "" "$PR_EXTRA"
+run_test "PR: caret 1.x within"       "$SAMPLES/stdlib_package_registry.am" "[PASS] caret 1.x within"      "" "$PR_EXTRA"
+run_test "PR: caret 1.x reject major" "$SAMPLES/stdlib_package_registry.am" "[PASS] caret 1.x reject major" "" "$PR_EXTRA"
+run_test "PR: caret 0.x within"       "$SAMPLES/stdlib_package_registry.am" "[PASS] caret 0.x within"      "" "$PR_EXTRA"
+run_test "PR: caret 0.x reject minor" "$SAMPLES/stdlib_package_registry.am" "[PASS] caret 0.x reject minor" "" "$PR_EXTRA"
+run_test "PR: caret 0.0.x exact"      "$SAMPLES/stdlib_package_registry.am" "[PASS] caret 0.0.x exact"     "" "$PR_EXTRA"
+run_test "PR: caret 0.0.x reject patch" "$SAMPLES/stdlib_package_registry.am" "[PASS] caret 0.0.x reject patch" "" "$PR_EXTRA"
+run_test "PR: tilde within"           "$SAMPLES/stdlib_package_registry.am" "[PASS] tilde within"          "" "$PR_EXTRA"
+run_test "PR: tilde reject minor"     "$SAMPLES/stdlib_package_registry.am" "[PASS] tilde reject minor"    "" "$PR_EXTRA"
+run_test "PR: bare ge"                "$SAMPLES/stdlib_package_registry.am" "[PASS] bare ge"               "" "$PR_EXTRA"
 
 # ── PackageManager e2e (full pipeline) ────────────────
 # Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
