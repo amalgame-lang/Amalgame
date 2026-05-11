@@ -781,18 +781,25 @@ with-EINTR for console signals).
 **Reinstalling** — calling `Service.Install()` more than once is
 safe; the OS just replaces the existing handler.
 
-## Database.SQLite — embedded SQL via vendored amalgamation
+## Database.SQLite — embedded SQL via opt-in package
 
-`namespace Amalgame.Database.SQLite` ships a SQLite 3 binding via
-the vendored amalgamation (`runtime/Amalgame_Database/sqlite/
-sqlite3.c` + `sqlite3.h`). Public-domain upstream, no
-`libsqlite3-dev` package required on any of Linux / macOS /
-Windows — the source compiles directly into the user binary.
+`namespace Amalgame.Database.SQLite` is a SQLite 3 binding shipped
+as an opt-in external package: **`amalgame-lang/amalgame-database-sqlite`**.
+Since v0.5 it's no longer bundled with the compiler — install via:
+
+```bash
+amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0
+```
+
+The package vendors the SQLite amalgamation (public-domain
+upstream), so no `libsqlite3-dev` system package is required on
+any of Linux / macOS / Windows — the source compiles directly
+into the user binary at link time.
 
 The namespace nests under `Amalgame.Database.<Engine>` so sibling
-backends (DuckDB, Postgres, MySQL) can land alongside SQLite in
-the same surface family without conflicting class names. v1 ships
-SQLite only; siblings tracked in the roadmap.
+backends (DuckDB, Postgres, MySQL) can land as their own packages
+without conflicting class names. SQLite v0.1.0 is the first
+inaugural package; siblings tracked in the roadmap.
 
 ```kotlin
 import Amalgame.Database.SQLite
@@ -834,16 +841,20 @@ SQLite.Close(db)
 (via `sqlite3_column_text`). NULL columns become empty strings.
 Convert numerics in Amalgame as needed (`String_ToInt(row.Get(0))`).
 
-**Linking:** user projects that import `Amalgame.Database.SQLite`
-must add `runtime/Amalgame_Database/sqlite/sqlite3.c` to their gcc
-command alongside the generated `.c`. The `amc test` runner does
-this automatically by precompiling the amalgamation to a `.o`
-once per session; manual builds use:
+**Linking:** after `amc add`, the package's vendored `sqlite3.c`
+lives at
+`~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/<tag>_<sha>/runtime/Amalgame_Database/sqlite/sqlite3.c`.
+Pre-compile it once and link with the generated user `.c`:
 
 ```
-gcc -O2 -Iruntime your_program.c runtime/Amalgame_Database/sqlite/sqlite3.c \
-    -lgc -lm -lcurl -ldl -lpthread -o your_program
+PKG=~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/v0.1.0_*
+gcc -O2 -Iruntime -w -c $PKG/runtime/Amalgame_Database/sqlite/sqlite3.c -o sqlite3.o
+gcc -O2 -Iruntime your_program.c sqlite3.o -lgc -lm -lcurl -ldl -lpthread -o your_program
 ```
+
+The `amc test` runner automates this on Database tests; a future
+`amc build` will wire the link step automatically based on each
+package's `sources` field in its manifest.
 
 **v1 limitations:**
 
