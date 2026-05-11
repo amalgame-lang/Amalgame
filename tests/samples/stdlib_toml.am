@@ -1,0 +1,253 @@
+// Stdlib test: Amalgame.Formats.Toml — TOML 1.0 subset parser
+// that's sufficient for v0.5 package-manager manifests. Covers
+// every shape the spec exercises (tables, nested tables, inline
+// tables, arrays, scalars, comments) on a fixture mirroring a
+// realistic amalgame.toml.
+//
+// Style note: same as stdlib_json.am — chained method calls on
+// the result of another method confuse the cgen
+// (`a.At(0).AsString()` → invalid C). Every chain is broken up
+// into named locals.
+
+namespace Tests
+
+import Amalgame.Collections
+import Amalgame.Formats.Toml
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── Empty document ────────────────────────────────
+
+        let empty = Toml.Parse("")
+        let emptyOk: bool = empty.IsTable()
+        let emptyCount: int = empty.Count()
+        if (emptyOk && emptyCount == 0) {
+            Console.WriteLine("[PASS] parse empty")
+        } else {
+            Console.WriteLine("[FAIL] parse empty")
+        }
+
+        // ── Single key/value ──────────────────────────────
+
+        let kv = Toml.Parse("name = \"foo\"")
+        let kvName = kv.Get("name")
+        let kvNameStr: string = kvName.AsString()
+        if (kv.IsTable() && kvNameStr == "foo") {
+            Console.WriteLine("[PASS] kv string")
+        } else {
+            Console.WriteLine("[FAIL] kv string got '" + kvNameStr + "'")
+        }
+
+        let kvInt = Toml.Parse("count = 42")
+        let kvCount = kvInt.Get("count")
+        let kvCountVal: int = kvCount.AsInt()
+        if (kvCountVal == 42) {
+            Console.WriteLine("[PASS] kv int")
+        } else {
+            Console.WriteLine("[FAIL] kv int got " + String_FromInt(kvCountVal))
+        }
+
+        let kvNegInt = Toml.Parse("delta = -7")
+        let kvDelta = kvNegInt.Get("delta")
+        let kvDeltaVal: int = kvDelta.AsInt()
+        if (kvDeltaVal == -7) {
+            Console.WriteLine("[PASS] kv neg int")
+        } else {
+            Console.WriteLine("[FAIL] kv neg int got " + String_FromInt(kvDeltaVal))
+        }
+
+        let kvBoolT = Toml.Parse("flag = true")
+        let kvFlag = kvBoolT.Get("flag")
+        let isBool: bool = kvFlag.IsBool()
+        let flagVal: bool = kvFlag.AsBool()
+        if (isBool && flagVal) {
+            Console.WriteLine("[PASS] kv bool true")
+        } else {
+            Console.WriteLine("[FAIL] kv bool true")
+        }
+
+        let kvBoolF = Toml.Parse("flag = false")
+        let kvFlagF = kvBoolF.Get("flag")
+        let flagFalseVal: bool = kvFlagF.AsBool()
+        if (!flagFalseVal) {
+            Console.WriteLine("[PASS] kv bool false")
+        } else {
+            Console.WriteLine("[FAIL] kv bool false")
+        }
+
+        // ── Strings: escapes + literal form ───────────────
+
+        let esc = Toml.Parse("msg = \"hello\\nworld\"")
+        let escMsg = esc.Get("msg")
+        let escStr: string = escMsg.AsString()
+        if (escStr == "hello\nworld") {
+            Console.WriteLine("[PASS] string escapes")
+        } else {
+            Console.WriteLine("[FAIL] string escapes got '" + escStr + "'")
+        }
+
+        let lit = Toml.Parse("regex = '\\d+'")
+        let litRegex = lit.Get("regex")
+        let litStr: string = litRegex.AsString()
+        if (litStr == "\\d+") {
+            Console.WriteLine("[PASS] literal string")
+        } else {
+            Console.WriteLine("[FAIL] literal string got '" + litStr + "'")
+        }
+
+        // ── Comments ──────────────────────────────────────
+
+        let cmt = Toml.Parse("# leading comment\nname = \"foo\" # trailing\n# trailing line\n")
+        let cmtName = cmt.Get("name")
+        let cmtStr: string = cmtName.AsString()
+        if (cmtStr == "foo") {
+            Console.WriteLine("[PASS] comments tolerated")
+        } else {
+            Console.WriteLine("[FAIL] comments")
+        }
+
+        // ── Arrays ────────────────────────────────────────
+
+        let arr = Toml.Parse("authors = [\"alice\", \"bob\"]")
+        let authors = arr.Get("authors")
+        let isArr: bool = authors.IsArray()
+        let arrCount: int = authors.Count()
+        let item0 = authors.At(0)
+        let item1 = authors.At(1)
+        let s0: string = item0.AsString()
+        let s1: string = item1.AsString()
+        var arrOk: bool = false
+        if (isArr && arrCount == 2 && s0 == "alice" && s1 == "bob") { arrOk = true }
+        if (arrOk) {
+            Console.WriteLine("[PASS] array strings")
+        } else {
+            Console.WriteLine("[FAIL] array strings")
+        }
+
+        let arrInts = Toml.Parse("primes = [2, 3, 5, 7]")
+        let primes = arrInts.Get("primes")
+        let pCount: int = primes.Count()
+        let pAt2 = primes.At(2)
+        let pAt2Val: int = pAt2.AsInt()
+        if (pCount == 4 && pAt2Val == 5) {
+            Console.WriteLine("[PASS] array ints")
+        } else {
+            Console.WriteLine("[FAIL] array ints")
+        }
+
+        // ── Tables ────────────────────────────────────────
+
+        let tbl = Toml.Parse("[pkg]\nname = \"foo\"\nversion = \"1.0\"")
+        let pkg = tbl.Get("pkg")
+        let isPkgTable: bool = pkg.IsTable()
+        let pkgName = pkg.Get("name")
+        let pkgVer = pkg.Get("version")
+        let pkgNameStr: string = pkgName.AsString()
+        let pkgVerStr: string = pkgVer.AsString()
+        if (isPkgTable && pkgNameStr == "foo" && pkgVerStr == "1.0") {
+            Console.WriteLine("[PASS] table")
+        } else {
+            Console.WriteLine("[FAIL] table")
+        }
+
+        // ── Nested table header ───────────────────────────
+
+        let nested = Toml.Parse("[a.b.c]\nx = 1")
+        let a = nested.Get("a")
+        let b = a.Get("b")
+        let c = b.Get("c")
+        let bx = c.Get("x")
+        let bxVal: int = bx.AsInt()
+        if (bxVal == 1) {
+            Console.WriteLine("[PASS] nested table")
+        } else {
+            Console.WriteLine("[FAIL] nested table")
+        }
+
+        // ── Inline table ──────────────────────────────────
+
+        let inl = Toml.Parse("dep = { git = \"u\", tag = \"v1\" }")
+        let dep = inl.Get("dep")
+        let isDepTbl: bool = dep.IsTable()
+        let depGit = dep.Get("git")
+        let depTag = dep.Get("tag")
+        let depGitStr: string = depGit.AsString()
+        let depTagStr: string = depTag.AsString()
+        if (isDepTbl && depGitStr == "u" && depTagStr == "v1") {
+            Console.WriteLine("[PASS] inline table")
+        } else {
+            Console.WriteLine("[FAIL] inline table")
+        }
+
+        // ── Realistic amalgame.toml fixture ───────────────
+
+        let fixture: string = "# Realistic manifest\n[package]\nname = \"amalgame-redis\"\nversion = \"0.1.0\"\nlicense = \"Apache-2.0\"\n\n[stdlib]\nclass = \"Redis\"\nheader = \"runtime/Amalgame_Database_Redis.h\"\n\n[dependencies]\nfoo = { git = \"github.com/x/foo\", tag = \"v0.1.0\" }\n"
+        let doc = Toml.Parse(fixture)
+        let docOk: bool = doc.IsTable()
+        let docPkg = doc.Get("package")
+        let docPkgName = docPkg.Get("name")
+        let docPkgNameStr: string = docPkgName.AsString()
+        if (docOk && docPkgNameStr == "amalgame-redis") {
+            Console.WriteLine("[PASS] manifest package.name")
+        } else {
+            Console.WriteLine("[FAIL] manifest package.name")
+        }
+
+        let docStd = doc.Get("stdlib")
+        let docStdClass = docStd.Get("class")
+        let docStdClassStr: string = docStdClass.AsString()
+        if (docStdClassStr == "Redis") {
+            Console.WriteLine("[PASS] manifest stdlib.class")
+        } else {
+            Console.WriteLine("[FAIL] manifest stdlib.class")
+        }
+
+        let docDeps = doc.Get("dependencies")
+        let docFoo = docDeps.Get("foo")
+        let docFooTag = docFoo.Get("tag")
+        let docFooTagStr: string = docFooTag.AsString()
+        if (docFooTagStr == "v0.1.0") {
+            Console.WriteLine("[PASS] manifest dep tag")
+        } else {
+            Console.WriteLine("[FAIL] manifest dep tag")
+        }
+
+        // ── Missing keys return Null ──────────────────────
+
+        let n1 = doc.Get("nonexistent")
+        let n2 = n1.Get("path")
+        let n3 = n2.Get("here")
+        let n3IsNull: bool = n3.IsNull()
+        if (n3IsNull) {
+            Console.WriteLine("[PASS] missing key chain is null")
+        } else {
+            Console.WriteLine("[FAIL] missing key chain")
+        }
+
+        // ── Has() ─────────────────────────────────────────
+
+        let pkg2 = doc.Get("package")
+        let has1: bool = pkg2.Has("name")
+        let has2: bool = pkg2.Has("nope")
+        if (has1 && !has2) {
+            Console.WriteLine("[PASS] has present + absent")
+        } else {
+            Console.WriteLine("[FAIL] has")
+        }
+
+        // ── Round-trip via Serialize ──────────────────────
+
+        let mini = Toml.Parse("[package]\nname = \"x\"\nversion = \"1.0\"")
+        let out: string = Toml.Serialize(mini)
+        let round = Toml.Parse(out)
+        let roundPkg = round.Get("package")
+        let roundName = roundPkg.Get("name")
+        let roundNameStr: string = roundName.AsString()
+        if (roundNameStr == "x") {
+            Console.WriteLine("[PASS] roundtrip simple")
+        } else {
+            Console.WriteLine("[FAIL] roundtrip simple, serialized to: " + out)
+        }
+    }
+}
