@@ -689,7 +689,22 @@ implementation effort.
       tree (SQLite, Redis, MQTT) and the monolithic-stdlib model
       is starting to hurt (every new backend touches c_gen.am +
       resolver.am + run_stdlib_tests.sh — those will become merge-
-      hot files). Design space:
+      hot files).
+
+      **Release batching policy** — to avoid burning CI + release-
+      flow cycles on every backend addition between now and the
+      package manager landing, we batch features-headed-for-
+      extraction directly into the v0.5 release rather than
+      cutting intermediate patch releases. Concretely: MQTT is
+      shipped on `develop` but no v0.4.18 release will be cut for
+      it; it rolls into v0.5 alongside the package manager + the
+      SQLite/Redis/MQTT extraction. Same rule for any further
+      backend that lands before v0.5 (DuckDB, Postgres, etc.).
+      Once the package manager is live, each external package
+      cuts its own releases on its own cadence — totally
+      decoupled from the compiler's version.
+
+      Design space:
         - **Manifest format** — `package.am` or `amalgame.toml`
           listing name, version, runtime headers, link flags,
           deps. Has to be parseable by the package manager
