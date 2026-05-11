@@ -236,6 +236,37 @@ public class Program {
             Console.WriteLine("[FAIL] has")
         }
 
+        // ── Array of tables [[foo]] ───────────────────────
+
+        let aotSrc: string = "[[package]]\nname = \"redis\"\ntag = \"v0.1.0\"\n\n[[package]]\nname = \"mqtt\"\ntag = \"v0.2.0\"\n"
+        let aotDoc = Toml.Parse(aotSrc)
+        let aotPkgs = aotDoc.Get("package")
+        let aotIsArr: bool = aotPkgs.IsArray()
+        let aotCount: int = aotPkgs.Count()
+        if (aotIsArr && aotCount == 2) {
+            Console.WriteLine("[PASS] aot count")
+        } else {
+            Console.WriteLine("[FAIL] aot count got " + String_FromInt(aotCount))
+        }
+        let aotP0 = aotPkgs.At(0)
+        let aotP0Name = aotP0.Get("name")
+        let aotP0NameStr: string = aotP0Name.AsString()
+        let aotP0Tag = aotP0.Get("tag")
+        let aotP0TagStr: string = aotP0Tag.AsString()
+        if (aotP0NameStr == "redis" && aotP0TagStr == "v0.1.0") {
+            Console.WriteLine("[PASS] aot entry 0")
+        } else {
+            Console.WriteLine("[FAIL] aot entry 0 got '" + aotP0NameStr + "' '" + aotP0TagStr + "'")
+        }
+        let aotP1 = aotPkgs.At(1)
+        let aotP1Name = aotP1.Get("name")
+        let aotP1NameStr: string = aotP1Name.AsString()
+        if (aotP1NameStr == "mqtt") {
+            Console.WriteLine("[PASS] aot entry 1")
+        } else {
+            Console.WriteLine("[FAIL] aot entry 1 got '" + aotP1NameStr + "'")
+        }
+
         // ── Round-trip via Serialize ──────────────────────
 
         let mini = Toml.Parse("[package]\nname = \"x\"\nversion = \"1.0\"")

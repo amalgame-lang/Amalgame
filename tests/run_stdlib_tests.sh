@@ -279,6 +279,9 @@ run_test "Toml: manifest stdlib.class" "$SAMPLES/stdlib_toml.am" "[PASS] manifes
 run_test "Toml: manifest dep tag"     "$SAMPLES/stdlib_toml.am" "[PASS] manifest dep tag"     "" "$TOML_LIB"
 run_test "Toml: missing key is null"  "$SAMPLES/stdlib_toml.am" "[PASS] missing key chain is null" "" "$TOML_LIB"
 run_test "Toml: has present+absent"   "$SAMPLES/stdlib_toml.am" "[PASS] has present + absent" "" "$TOML_LIB"
+run_test "Toml: aot count"            "$SAMPLES/stdlib_toml.am" "[PASS] aot count"            "" "$TOML_LIB"
+run_test "Toml: aot entry 0"          "$SAMPLES/stdlib_toml.am" "[PASS] aot entry 0"          "" "$TOML_LIB"
+run_test "Toml: aot entry 1"          "$SAMPLES/stdlib_toml.am" "[PASS] aot entry 1"          "" "$TOML_LIB"
 run_test "Toml: roundtrip simple"     "$SAMPLES/stdlib_toml.am" "[PASS] roundtrip simple"     "" "$TOML_LIB"
 
 # ── Amalgame.Random ────────────────────────────────────
