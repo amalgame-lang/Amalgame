@@ -604,14 +604,16 @@ public class AddCommand {
         return String_Length(lhs) > 0
     }
 
-    // Fetch the packages-index, cache forever under
-    // ~/.amalgame/cache/packages-index.toml. Clear the cache
-    // manually (rm) to refresh — v0.5.1 may add `amc cache clear`.
-    // Returns "" on download failure (caller falls back to
-    // passing the input through unchanged).
+    // Fetch the packages-index. The result is cached at
+    // ~/.amalgame/cache/packages-index.toml. Since v0.5.6, the
+    // cache has a 30-minute TTL — older than that triggers a
+    // re-fetch automatically. Force-refresh with `--refresh` on
+    // search/versions or `amc package cache clear`. Returns ""
+    // on download failure (caller falls back to passing the
+    // input through unchanged or surfaces the error).
     public static string FetchIndex() {
         let cachePath: string = AddCommand.IndexCachePath()
-        if (File.Exists(cachePath)) {
+        if (File.Exists(cachePath) && AddCommand.IndexCacheIsFresh(cachePath)) {
             return File.ReadAll(cachePath)
         }
         // Make sure ~/.amalgame/cache exists.
@@ -622,9 +624,35 @@ public class AddCommand {
         let cmd: string = "curl -fsSL '" + indexUrl + "' -o '" + cachePath + "' 2>&1"
         let exit: int = Process_Run(cmd)
         if (exit != 0 || !File.Exists(cachePath)) {
+            // Network failure: serve the stale cache if any. Better
+            // than nothing — the worst case is the user sees an old
+            // version listing, not a hard error.
+            if (File.Exists(cachePath)) {
+                Console.WriteError("warning: index fetch failed, serving stale cache from " + cachePath)
+                return File.ReadAll(cachePath)
+            }
             return ""
         }
         return File.ReadAll(cachePath)
+    }
+
+    // True if the cached index file is younger than INDEX_TTL_SECS.
+    // Uses `date -r <file> +%s` to read mtime — POSIX-portable
+    // (Linux, macOS, MSYS2). On Windows native, the underlying
+    // stat works through the WSL-style POSIX layer that amc's
+    // git-bash runtime already requires. Returns true on any error
+    // (treat as "freshness unknown, don't re-fetch unnecessarily").
+    public static bool IndexCacheIsFresh(string cachePath) {
+        let ttlSecs: int = 1800   // 30 minutes
+        let cmd: string = "date -r '" + cachePath + "' +%s"
+        let res = Process.RunCapture(cmd)
+        if (res.Exit != 0) { return true }
+        let mtimeStr: string = String_Trim(res.Stdout)
+        let mtime: int = String_ToInt(mtimeStr)
+        if (mtime <= 0) { return true }
+        let now: int = AddCommand.NowSeconds()
+        if (now <= 0) { return true }
+        return (now - mtime) < ttlSecs
     }
 
     // ── amc package <subcommand> ──────────────────────

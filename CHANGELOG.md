@@ -7,6 +7,43 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [Unreleased] — v0.5.6
+
+The **"index TTL + QoL"** patch release.
+
+### Index cache TTL
+
+`amc package search` / `versions` / `add` previously cached the
+packages-index **forever** at `~/.amalgame/cache/packages-index.toml`.
+Bumping a tag in a package repo + waiting for the auto-PR to merge
+on the index didn't surface until the user manually ran
+`--refresh` or `amc package cache clear`. Annoying.
+
+v0.5.6 adds a **30-min TTL** via `date -r <file> +%s` (POSIX +
+MSYS2 + Cygwin). Older than that → automatic re-fetch on the
+next `search` / `versions` / `add`. Network failure during
+refresh falls back to serving the stale cache with a warning
+(better than a hard error when offline).
+
+### Network failure resilience
+
+When the index can't be fetched (offline, 5xx, etc.) but a
+cached file exists, `FetchIndex()` now returns the stale cache
+with a `warning: index fetch failed, serving stale cache`
+message on stderr. Previously: hard error. Tradeoff: slightly
+stale data over no-go.
+
+### External packages — test runner fixes
+
+`amalgame-database-nosql-redis` and `amalgame-messaging-mqtt`
+had `tests/run_tests.sh` still using the v0.5.0-era `amc add`
+syntax (removed in v0.5.1 by PR #303). Their CI was silently
+SKIPping every case for months. Now both runners use the
+AMALGAME_PACKAGES_DIR + symlink trick, matching what SQLite
+and DuckDB do.
+
+---
+
 ## [v0.5.5] — 2026-05-11
 
 The **"search-with-versions"** release. `amc package search` and a
