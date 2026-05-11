@@ -46,14 +46,23 @@ public class AddCommand {
     public AddCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc package add <git-url>@<tag>")
+        Console.WriteError("Usage: amc package add <name|url>[@<tag>] [--no-precompile]")
         Console.WriteError("")
-        Console.WriteError("Install an Amalgame package from a Git URL into the user cache")
-        Console.WriteError("and record it in amalgame.toml + amalgame.lock.")
+        Console.WriteError("Install an Amalgame package into the user cache and record it")
+        Console.WriteError("in amalgame.toml + amalgame.lock.")
+        Console.WriteError("")
+        Console.WriteError("Two spec forms:")
+        Console.WriteError("  <shortname>[@<tag>]   resolved via amalgame-lang/packages-index.")
+        Console.WriteError("                        When @<tag> is omitted, the latest tag whose")
+        Console.WriteError("                        [package].required-amalgame is satisfied by")
+        Console.WriteError("                        your running amc is picked automatically.")
+        Console.WriteError("  <git-url>@<tag>       full git URL form for unindexed packages;")
+        Console.WriteError("                        @<tag> is mandatory (no auto-resolve).")
         Console.WriteError("")
         Console.WriteError("Examples:")
-        Console.WriteError("  amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0")
-        Console.WriteError("  amc package add gitlab.com/foo/bar@v1.2.3")
+        Console.WriteError("  amc package add duckdb                              # auto-resolve")
+        Console.WriteError("  amc package add sqlite@v0.2.0")
+        Console.WriteError("  amc package add github.com/foo/bar@v1.2.3")
         Console.WriteError("")
         Console.WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/")
         Console.WriteError("")
@@ -62,9 +71,16 @@ public class AddCommand {
         Console.WriteError("  - [package].name matches the URL repo slug")
         Console.WriteError("  - [package].version matches the tag")
         Console.WriteError("  - [package].license is declared")
+        Console.WriteError("  - [package].required-amalgame (if present) is satisfied by")
+        Console.WriteError("    the running amc. Supports >=, >, <, <=, =, ^, ~, and bare")
+        Console.WriteError("    (treated as >= for back-compat).")
         Console.WriteError("")
         Console.WriteError("Flags:")
-        Console.WriteError("  -h, --help    Print this help and exit.")
+        Console.WriteError("  --no-precompile   Skip install-time compile even if the package's")
+        Console.WriteError("                    manifest opts in via [stdlib].precompile = true.")
+        Console.WriteError("                    Useful in CI batch installs where you want to")
+        Console.WriteError("                    separate install from build.")
+        Console.WriteError("  -h, --help        Print this help and exit.")
     }
 
     public static int Run(int argc, int startIdx) {
@@ -708,13 +724,15 @@ public class AddCommand {
         // Sub-commands all read their positional args starting
         // at argv[3] (after `amc package <sub>`); the second
         // arg to each method tells it where to start the scan.
-        if (sub == "add")      { return AddCommand.Run(argc, 3) }
-        if (sub == "search")   { return AddCommand.RunSearch(argc, 3) }
-        if (sub == "versions") { return AddCommand.RunVersions(argc, 3) }
-        if (sub == "list")     { return AddCommand.RunList(argc, 3) }
-        if (sub == "remove")   { return AddCommand.RunRemove(argc, 3) }
-        if (sub == "update")   { return AddCommand.RunUpdate(argc, 3) }
-        if (sub == "cache")    { return AddCommand.RunCache(argc, 3) }
+        if (sub == "add")       { return AddCommand.Run(argc, 3) }
+        if (sub == "search")    { return AddCommand.RunSearch(argc, 3) }
+        if (sub == "versions")  { return AddCommand.RunVersions(argc, 3) }
+        if (sub == "info")      { return AddCommand.RunInfo(argc, 3) }
+        if (sub == "outdated")  { return AddCommand.RunOutdated(argc, 3) }
+        if (sub == "list")      { return AddCommand.RunList(argc, 3) }
+        if (sub == "remove")    { return AddCommand.RunRemove(argc, 3) }
+        if (sub == "update")    { return AddCommand.RunUpdate(argc, 3) }
+        if (sub == "cache")     { return AddCommand.RunCache(argc, 3) }
         Console.WriteError("amc package: unknown subcommand '" + sub + "'")
         AddCommand.PrintPackageUsage()
         return 2
@@ -730,9 +748,15 @@ public class AddCommand {
         Console.WriteError("                                shortnames only)")
         Console.WriteError("    [--no-precompile]            Skip install-time compile (manifest opt-in)")
         Console.WriteError("  search [keyword] [--refresh]  List or filter packages-index with version compat")
-        Console.WriteError("  versions <name>               Show all indexed versions of a single package")
+        Console.WriteError("    [--no-versions]              Skip the per-package versions block (faster)")
+        Console.WriteError("  versions <name> [--refresh]   Show all indexed versions of a single package")
+        Console.WriteError("    [--json]                     Emit machine-readable JSON")
+        Console.WriteError("  info <name> [--refresh]       Show description, url, license, versions, install")
+        Console.WriteError("  outdated [--refresh]          List installed deps with a newer compatible tag")
         Console.WriteError("  list                          Show installed deps")
-        Console.WriteError("  remove <name> [<name>...]     Strip dep(s) from amalgame.toml + lock")
+        Console.WriteError("  remove <name>[@<tag>] [...]   Strip dep(s) from amalgame.toml + lock.")
+        Console.WriteError("                                `@<tag>` is a safety check (refuses to remove")
+        Console.WriteError("                                if the installed tag differs)")
         Console.WriteError("  update <name>@<tag>           Bump a pinned tag")
         Console.WriteError("  cache clear [--all]           Drop cached index / packages")
         Console.WriteError("")
@@ -751,18 +775,24 @@ public class AddCommand {
     public static int RunVersions(int argc, int startIdx) {
         var pkgName: string = ""
         var refresh: bool = false
+        var jsonOut: bool = false
         var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc package versions <name> [--refresh]")
+                Console.WriteError("Usage: amc package versions <name> [--refresh] [--json]")
                 Console.WriteError("")
                 Console.WriteError("Show indexed versions of <name> with compat against your")
                 Console.WriteError("amc " + PackageRegistry.AmcVersion() + ".")
+                Console.WriteError("")
+                Console.WriteError("--refresh  force re-download of the index (cache TTL 30 min).")
+                Console.WriteError("--json     emit machine-readable JSON on stdout (for scripts).")
                 return 0
             }
             if (a == "--refresh") {
                 refresh = true
+            } else if (a == "--json") {
+                jsonOut = true
             } else if (String_Length(pkgName) == 0) {
                 pkgName = a
             }
@@ -810,9 +840,13 @@ public class AddCommand {
             Console.WriteError("       `amc package add github.com/<owner>/<repo>@<tag>`")
             return 1
         }
-        Console.WriteLine(pkgName + " — " + urlS)
         let amcVer: string = PackageRegistry.AmcVersion()
         let verArr: TomlValue = doc.Get("version")
+        if (jsonOut) {
+            AddCommand.PrintVersionsJsonForPackage(verArr, pkgName, urlS, amcVer)
+            return 0
+        }
+        Console.WriteLine(pkgName + " — " + urlS)
         AddCommand.PrintVersionsForPackage(verArr, pkgName, amcVer)
         return 0
     }
@@ -955,7 +989,7 @@ public class AddCommand {
             i = i + 1
         }
         if (String_Length(spec) == 0) {
-            Console.WriteError("usage: amc update <name>@<tag>")
+            Console.WriteError("usage: amc package update <name>@<tag>")
             return 2
         }
         let atIdx: int = String_LastIndexOf(spec, "@")
@@ -1093,7 +1127,8 @@ public class AddCommand {
                 Console.WriteError("Strip the named dep(s) from amalgame.toml + amalgame.lock.")
                 Console.WriteError("With `@<tag>`, refuse to remove unless the installed tag matches —")
                 Console.WriteError("safer than the bare-name form when you're not sure what's pinned.")
-                Console.WriteError("Cached package files are kept; `amc package gc` (v0.5.x) cleans those.")
+                Console.WriteError("Cached package files are kept; a future `amc package gc` verb will")
+                Console.WriteError("clean unreferenced cache dirs.")
                 return 0
             }
             if (String_StartsWith(a, "-")) {
@@ -1251,22 +1286,27 @@ public class AddCommand {
     public static int RunSearch(int argc, int startIdx) {
         var keyword: string = ""
         var refresh: bool = false
+        var noVersions: bool = false
         var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc package search [keyword] [--refresh]")
+                Console.WriteError("Usage: amc package search [keyword] [--refresh] [--no-versions]")
                 Console.WriteError("")
                 Console.WriteError("List packages in amalgame-lang/packages-index.")
                 Console.WriteError("With a keyword, filter by name + description substring.")
                 Console.WriteError("Each match shows its known versions and compat status")
                 Console.WriteError("against your amc " + PackageRegistry.AmcVersion() + ".")
                 Console.WriteError("")
-                Console.WriteError("--refresh  force re-download of the index (cache TTL 30 min).")
+                Console.WriteError("--refresh       force re-download of the index (cache TTL 30 min).")
+                Console.WriteError("--no-versions   omit the per-package versions block — faster browse,")
+                Console.WriteError("                useful when you only want names + urls.")
                 return 0
             }
             if (a == "--refresh") {
                 refresh = true
+            } else if (a == "--no-versions") {
+                noVersions = true
             } else if (String_Length(keyword) == 0) {
                 keyword = a
             }
@@ -1318,7 +1358,9 @@ public class AddCommand {
             if (tierS == "official") { badge = "✓ " }
             Console.WriteLine(badge + nameS + " — " + descS)
             Console.WriteLine("    " + urlS + " (" + tierS + ", " + licS + ")")
-            AddCommand.PrintVersionsForPackage(verArr, nameS, amcVer)
+            if (!noVersions) {
+                AddCommand.PrintVersionsForPackage(verArr, nameS, amcVer)
+            }
             Console.WriteLine("")
             matches = matches + 1
         }
@@ -1398,6 +1440,386 @@ public class AddCommand {
             Console.WriteLine(line)
             k = k - 1
         }
+    }
+
+    // ── versions --json ──────────────────────────────
+    //
+    // Same data as PrintVersionsForPackage but emitted as a single
+    // JSON object on stdout, so scripts can pipe to jq / parse
+    // without scraping the rendered text. Schema kept stable on
+    // purpose — additions go to new keys, never rename existing.
+    public static void PrintVersionsJsonForPackage(TomlValue verArr, string pkgName, string urlS, string amcVer) {
+        let tags: List<string> = new List<string>()
+        let reqs: List<string> = new List<string>()
+        if (verArr.IsArray()) {
+            let n: int = verArr.Count()
+            for i in 0..n {
+                let entry: TomlValue = verArr.At(i)
+                if (entry.Get("package").AsString() != pkgName) { continue }
+                let tag: string = entry.Get("tag").AsString()
+                if (String_Length(tag) == 0) { continue }
+                tags.Add(tag)
+                reqs.Add(entry.Get("required-amalgame").AsString())
+            }
+        }
+        let count: int = tags.Count()
+        var latestCompat: int = -1
+        for j in 0..count {
+            if (PackageRegistry.VersionSatisfies(amcVer, reqs.Get(j))) {
+                latestCompat = j
+            }
+        }
+        var out: string = "{\n"
+        out = out + "  \"package\": \"" + AddCommand.JsonEscape(pkgName) + "\",\n"
+        out = out + "  \"url\": \""     + AddCommand.JsonEscape(urlS)    + "\",\n"
+        out = out + "  \"amc\": \""     + AddCommand.JsonEscape(amcVer)  + "\",\n"
+        out = out + "  \"versions\": ["
+        if (count == 0) {
+            out = out + "]\n}"
+            Console.WriteLine(out)
+            return
+        }
+        out = out + "\n"
+        // Emit newest-first (reverse iteration), same order as the
+        // text renderer, so jq users see the same ordering.
+        var k: int = count - 1
+        while (k >= 0) {
+            let tag: string = tags.Get(k)
+            let req: string = reqs.Get(k)
+            var compat: bool = true
+            if (String_Length(req) > 0) {
+                compat = PackageRegistry.VersionSatisfies(amcVer, req)
+            }
+            var entryOut: string = "    {"
+            entryOut = entryOut + "\"tag\": \"" + AddCommand.JsonEscape(tag) + "\""
+            entryOut = entryOut + ", \"required-amalgame\": \"" + AddCommand.JsonEscape(req) + "\""
+            if (compat) {
+                entryOut = entryOut + ", \"compatible\": true"
+            } else {
+                entryOut = entryOut + ", \"compatible\": false"
+            }
+            if (k == latestCompat) {
+                entryOut = entryOut + ", \"latest_compatible\": true"
+            } else {
+                entryOut = entryOut + ", \"latest_compatible\": false"
+            }
+            entryOut = entryOut + "}"
+            if (k > 0) {
+                entryOut = entryOut + ","
+            }
+            out = out + entryOut + "\n"
+            k = k - 1
+        }
+        out = out + "  ]\n}"
+        Console.WriteLine(out)
+    }
+
+    // Minimal JSON string escape: backslash, double-quote, and the
+    // few control chars that show up in URL / description fields.
+    // Sufficient for our index payload (no embedded newlines in
+    // practice); upgrade to a full Unicode escape if a malicious
+    // index entry ever lands.
+    public static string JsonEscape(string s) {
+        var out: string = String_Replace(s, "\\", "\\\\")
+        out = String_Replace(out, "\"", "\\\"")
+        out = String_Replace(out, "\n", "\\n")
+        out = String_Replace(out, "\r", "\\r")
+        out = String_Replace(out, "\t", "\\t")
+        return out
+    }
+
+    // ── info verb ─────────────────────────────────────
+    //
+    // Detail view for a single indexed package: description, url,
+    // tier, license, category, maintainer — plus all known
+    // versions (same renderer as `versions`) and whether the
+    // package is currently installed in this project.
+    //
+    // The install lookup matches the `[[package]].url` slug
+    // (last path segment) against `LoadedPackage.Name` in
+    // amalgame.lock; works for any package installed via the
+    // shortname-resolution path.
+    public static int RunInfo(int argc, int startIdx) {
+        var pkgName: string = ""
+        var refresh: bool = false
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package info <name> [--refresh]")
+                Console.WriteError("")
+                Console.WriteError("Show description, url, license, indexed versions and")
+                Console.WriteError("install status for a single indexed package.")
+                Console.WriteError("")
+                Console.WriteError("--refresh  force re-download of the index (cache TTL 30 min).")
+                return 0
+            }
+            if (a == "--refresh") {
+                refresh = true
+            } else if (String_Length(pkgName) == 0) {
+                pkgName = a
+            }
+            i = i + 1
+        }
+        if (String_Length(pkgName) == 0) {
+            Console.WriteError("amc package info: missing <name>")
+            return 2
+        }
+        if (refresh) {
+            let cachePath: string = AddCommand.IndexCachePath()
+            if (File.Exists(cachePath)) {
+                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+            }
+        }
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            Console.WriteError("could not fetch packages-index")
+            return 1
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("packages-index parse error")
+            return 1
+        }
+        let pkgArr: TomlValue = doc.Get("package")
+        if (!pkgArr.IsArray()) {
+            Console.WriteError("packages-index has no [[package]] entries")
+            return 1
+        }
+        var found:  bool   = false
+        var descS:  string = ""
+        var urlS:   string = ""
+        var tierS:  string = ""
+        var licS:   string = ""
+        var catS:   string = ""
+        var maintS: string = ""
+        let pn: int = pkgArr.Count()
+        for j in 0..pn {
+            let p: TomlValue = pkgArr.At(j)
+            if (p.Get("name").AsString() == pkgName) {
+                found  = true
+                descS  = p.Get("description").AsString()
+                urlS   = p.Get("url").AsString()
+                tierS  = p.Get("tier").AsString()
+                licS   = p.Get("license").AsString()
+                catS   = p.Get("category").AsString()
+                maintS = p.Get("maintainer").AsString()
+            }
+        }
+        if (!found) {
+            Console.WriteError("amc package info: '" + pkgName + "' not found in packages-index.")
+            Console.WriteError("       For unindexed packages, use the full URL form:")
+            Console.WriteError("       `amc package add github.com/<owner>/<repo>@<tag>`")
+            return 1
+        }
+        var badge: string = "  "
+        if (tierS == "official") { badge = "✓ " }
+        Console.WriteLine(badge + pkgName + " — " + descS)
+        Console.WriteLine("  url:        " + urlS)
+        if (String_Length(tierS) > 0)  { Console.WriteLine("  tier:       " + tierS) }
+        if (String_Length(licS) > 0)   { Console.WriteLine("  license:    " + licS) }
+        if (String_Length(catS) > 0)   { Console.WriteLine("  category:   " + catS) }
+        if (String_Length(maintS) > 0) { Console.WriteLine("  maintainer: " + maintS) }
+
+        // Installation status — match by URL slug against the
+        // lockfile entries.
+        let reg = PackageRegistry.Load()
+        var installed:    bool   = false
+        var installedTag: string = ""
+        let urlSlug: string = AddCommand.LastUrlSegment(urlS)
+        let np: int = reg.Packages.Count()
+        for k in 0..np {
+            let lp: LoadedPackage = reg.Packages.Get(k)
+            if (lp.Name == urlSlug) {
+                installed = true
+                installedTag = lp.Tag
+            }
+        }
+        if (installed) {
+            if (String_Length(installedTag) > 0) {
+                Console.WriteLine("  installed:  yes (" + installedTag + ")")
+            } else {
+                Console.WriteLine("  installed:  yes")
+            }
+        } else {
+            Console.WriteLine("  installed:  no")
+        }
+
+        let amcVer: string = PackageRegistry.AmcVersion()
+        let verArr: TomlValue = doc.Get("version")
+        AddCommand.PrintVersionsForPackage(verArr, pkgName, amcVer)
+        return 0
+    }
+
+    // ── outdated verb ─────────────────────────────────
+    //
+    // Cross-reference amalgame.lock against the packages-index and
+    // list installed deps that have a newer compatible tag
+    // available. "Compatible" = the tag's required-amalgame field
+    // is satisfied by the running amc; otherwise the bump would
+    // refuse to install.
+    //
+    // Output is one line per outdated dep, plus a summary count.
+    // Up-to-date deps are silent (typical `make`-style "nothing to
+    // say if nothing to do") so the output is easy to grep in CI.
+    // Unindexed deps (installed via full URL, not in packages-index)
+    // are reported on stderr so they don't pollute the actionable
+    // stdout list.
+    //
+    // Exit code: 0 in every non-error case (informational verb;
+    // unlike npm which returns 1 when outdated deps exist, we keep
+    // 0 to avoid breaking simple CI invocations that just want the
+    // listing).
+    public static int RunOutdated(int argc, int startIdx) {
+        var refresh: bool = false
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package outdated [--refresh]")
+                Console.WriteError("")
+                Console.WriteError("Compare amalgame.lock against the packages-index and list")
+                Console.WriteError("installed deps that have a newer tag whose required-amalgame")
+                Console.WriteError("is satisfied by your amc " + PackageRegistry.AmcVersion() + ".")
+                Console.WriteError("")
+                Console.WriteError("--refresh  force re-download of the index (cache TTL 30 min).")
+                return 0
+            }
+            if (a == "--refresh") {
+                refresh = true
+            }
+            i = i + 1
+        }
+        let reg = PackageRegistry.Load()
+        let np: int = reg.Packages.Count()
+        if (np == 0) {
+            Console.WriteLine("No packages installed in this project.")
+            return 0
+        }
+        if (refresh) {
+            let cachePath: string = AddCommand.IndexCachePath()
+            if (File.Exists(cachePath)) {
+                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+            }
+        }
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            Console.WriteError("could not fetch packages-index")
+            return 1
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("packages-index parse error")
+            return 1
+        }
+        let pkgArr: TomlValue = doc.Get("package")
+        let verArr: TomlValue = doc.Get("version")
+        let amcVer: string = PackageRegistry.AmcVersion()
+
+        // Two-pass: collect outdated lines first so we can print
+        // a clean header + count, then the lines, then a footer
+        // with the upgrade hint.
+        let outNames:   List<string> = new List<string>()
+        let outCurrent: List<string> = new List<string>()
+        let outLatest:  List<string> = new List<string>()
+        let outReq:     List<string> = new List<string>()
+        var unindexed:  int = 0
+
+        for k in 0..np {
+            let lp: LoadedPackage = reg.Packages.Get(k)
+            let slug: string = lp.Name
+            // URL slug → shortname via [[package]] match.
+            var shortname: string = ""
+            if (pkgArr.IsArray()) {
+                let pn: int = pkgArr.Count()
+                for j in 0..pn {
+                    let p: TomlValue = pkgArr.At(j)
+                    let u: string = p.Get("url").AsString()
+                    if (AddCommand.LastUrlSegment(u) == slug) {
+                        shortname = p.Get("name").AsString()
+                    }
+                }
+            }
+            if (String_Length(shortname) == 0) {
+                Console.WriteError("  skipped (unindexed): " + slug + " @ " + lp.Tag)
+                unindexed = unindexed + 1
+                continue
+            }
+            // Walk [[version]] for this shortname newest-last, keep
+            // the last-compatible tag we see. That's the candidate
+            // upgrade target.
+            var latestCompat:    string = ""
+            var latestCompatReq: string = ""
+            if (verArr.IsArray()) {
+                let vn: int = verArr.Count()
+                for j in 0..vn {
+                    let v: TomlValue = verArr.At(j)
+                    if (v.Get("package").AsString() != shortname) { continue }
+                    let tag: string = v.Get("tag").AsString()
+                    let req: string = v.Get("required-amalgame").AsString()
+                    if (PackageRegistry.VersionSatisfies(amcVer, req)) {
+                        latestCompat = tag
+                        latestCompatReq = req
+                    }
+                }
+            }
+            if (String_Length(latestCompat) == 0) { continue }
+            // Only report an upgrade when the candidate is strictly
+            // newer than the installed tag. If the user is already
+            // on or past the latest known tag (e.g. they installed
+            // via full URL ahead of the index PR), say nothing.
+            if (PackageRegistry.CompareCmp(latestCompat, lp.Tag) <= 0) { continue }
+            outNames.Add(shortname)
+            outCurrent.Add(lp.Tag)
+            outLatest.Add(latestCompat)
+            outReq.Add(latestCompatReq)
+        }
+
+        let updates: int = outNames.Count()
+        if (updates == 0) {
+            Console.WriteLine("All " + String_FromInt(np) + " installed package(s) are up to date.")
+            return 0
+        }
+        Console.WriteLine(String_FromInt(updates) + " of " + String_FromInt(np) + " installed package(s) have updates available:")
+        Console.WriteLine("")
+        // Compute name column width for a poor man's table.
+        var maxName: int = 0
+        for k in 0..updates {
+            let n: int = String_Length(outNames.Get(k))
+            if (n > maxName) { maxName = n }
+        }
+        for k in 0..updates {
+            let name: string = outNames.Get(k)
+            var pad: string = ""
+            let padN: int = maxName - String_Length(name)
+            var p: int = 0
+            while (p < padN) {
+                pad = pad + " "
+                p = p + 1
+            }
+            var line: string = "  " + name + pad + "  " + outCurrent.Get(k) + " → " + outLatest.Get(k)
+            let req: string = outReq.Get(k)
+            if (String_Length(req) > 0) {
+                line = line + "  (needs amc " + req + ")"
+            }
+            Console.WriteLine(line)
+        }
+        Console.WriteLine("")
+        Console.WriteLine("Run `amc package update <name>@<tag>` to bump.")
+        return 0
+    }
+
+    // Strip everything up to and including the last `/` — used to
+    // turn `github.com/amalgame-lang/amalgame-database-duckdb`
+    // into `amalgame-database-duckdb`, the slug stored on
+    // LoadedPackage.Name. Falls back to the full string if no
+    // `/` is present.
+    public static string LastUrlSegment(string url) {
+        let n: int = String_Length(url)
+        if (n == 0) { return "" }
+        let idx: int = String_LastIndexOf(url, "/")
+        if (idx < 0) { return url }
+        return String_Substring(url, idx + 1, n - idx - 1)
     }
 
     // For `amc package add <shortname>` (no @<tag>) — fetch the

@@ -225,7 +225,8 @@ public class Program {
         Console.WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test templates).")
         Console.WriteError("                See `amc new --help`.")
         Console.WriteError("  package <X>   Package manager (alias `pkg`). Verbs: add / remove / list /")
-        Console.WriteError("                search / update / cache. See `amc package --help`.")
+        Console.WriteError("                search / versions / info / outdated / update / cache. See")
+        Console.WriteError("                `amc package --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
