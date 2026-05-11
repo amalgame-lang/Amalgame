@@ -307,6 +307,86 @@ run_test "PR: strip star"             "$SAMPLES/stdlib_package_registry.am" "[PA
 run_test "PR: passthrough primitive"  "$SAMPLES/stdlib_package_registry.am" "[PASS] passthrough primitive" "" "$PR_EXTRA"
 run_test "PR: missing lock empty"     "$SAMPLES/stdlib_package_registry.am" "[PASS] missing lock empty"    "" "$PR_EXTRA"
 
+# ── PackageManager e2e (full pipeline) ────────────────
+# Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
+# compiles a user program that imports a class only known to the
+# compiler via the fixture amalgame.lock + cached manifest, and
+# asserts the generated C has the right symbols + types + include.
+# AMALGAME_PACKAGES_DIR env var overrides the default cache root
+# so the test doesn't poke at ~/.amalgame/packages/.
+echo ""
+echo "── PackageManager e2e ──────────────────────"
+test_pm_e2e() {
+    local TMPDIR=$(mktemp -d -t pm-e2e-XXXXXX)
+    cat > "$TMPDIR/amalgame.lock" <<EOF
+[[package]]
+name = "fake-pkg"
+git  = "example.com/fake/fake-pkg"
+tag  = "v0.1.0"
+rev  = "deadbeefcafebabe0000000000000000000000ab"
+EOF
+    cat > "$TMPDIR/user.am" <<'USRAM'
+public class Program {
+    public static void Main() {
+        let r = FakePkg.Init()
+        let t: int = FakePkg.Tick(r)
+        let ok: bool = FakePkg.IsOk(r)
+        var okStr: string = "false"
+        if (ok) { okStr = "true" }
+        Console.WriteLine("e2e tick=" + String_FromInt(t) + " ok=" + okStr)
+        FakePkg.Close(r)
+    }
+}
+USRAM
+    local AMC_ABS="$(realpath ./amc)"
+    local CACHE_ABS="$(realpath tests/fixtures/pm/cache)"
+    local RUNTIME_ABS="$(realpath runtime)"
+    (cd "$TMPDIR" && AMALGAME_PACKAGES_DIR="$CACHE_ABS" "$AMC_ABS" -o out user.am) > "$TMPDIR/amc.log" 2>&1
+    local amc_exit=$?
+
+    check_e2e() {
+        local name="$1"; local pattern="$2"
+        printf "  %-38s" "$name"
+        if grep -qE "$pattern" "$TMPDIR/out.c"; then
+            echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
+        fi
+    }
+
+    if [ $amc_exit -ne 0 ]; then
+        printf "  %-38s${RED}FAIL${NC} (amc exited %d)\n" "PM e2e: amc compile" $amc_exit
+        FAIL=$((FAIL+1))
+        cat "$TMPDIR/amc.log" | head -5 | sed 's/^/    /'
+        rm -rf "$TMPDIR"; return
+    fi
+    printf "  %-38s${GREEN}PASS${NC}\n" "PM e2e: amc compile"; PASS=$((PASS+1))
+
+    check_e2e "PM e2e: header included"          "#include.*fake_pkg.h"
+    check_e2e "PM e2e: FakePkg_Init typed"       "AmalgameFakePkg\\* .*= FakePkg_Init"
+    check_e2e "PM e2e: FakePkg_Tick i64"         "i64 .*= FakePkg_Tick"
+    check_e2e "PM e2e: FakePkg_IsOk bool"        "code_bool .*= FakePkg_IsOk"
+    check_e2e "PM e2e: FakePkg_Close called"     "FakePkg_Close\\("
+
+    # Full round-trip: gcc + run.
+    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
+    printf "  %-38s" "PM e2e: gcc + run"
+    if [ -x "$TMPDIR/out" ]; then
+        local run_out=$("$TMPDIR/out" 2>&1)
+        if echo "$run_out" | grep -q "e2e tick=1 ok=true"; then
+            echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC} (run output: $run_out)"; FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${RED}FAIL${NC} (gcc failed)"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/gcc.log" | sed 's/^/    /'
+    fi
+
+    rm -rf "$TMPDIR"
+}
+test_pm_e2e
+
 # ── Amalgame.Random ────────────────────────────────────
 # Same extra-input pattern as Json — pulls in src/stdlib/random.am
 # alongside the test sample.

@@ -192,10 +192,15 @@ public class PackageRegistry {
         return out
     }
 
-    // Default cache root — `$HOME/.amalgame/packages`. Falls
-    // back to `/tmp/amalgame-packages` if HOME is unset (rare
-    // but possible in containers / CI).
+    // Default cache root resolution order:
+    //   1. `$AMALGAME_PACKAGES_DIR` env var if set (test/CI override)
+    //   2. `$HOME/.amalgame/packages` (normal user case)
+    //   3. `/tmp/amalgame-packages` (container / unset-HOME fallback)
     public static string DefaultCacheRoot() {
+        let envOverride: string = Env_Get("AMALGAME_PACKAGES_DIR")
+        if (String_Length(envOverride) > 0) {
+            return envOverride
+        }
         let home: string = Env_Get("HOME")
         if (String_Length(home) > 0) {
             return home + "/.amalgame/packages"
