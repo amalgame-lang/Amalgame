@@ -426,6 +426,166 @@ public class AddCommand {
         return File.ReadAll(cachePath)
     }
 
+    // ── amc cache ─────────────────────────────────────
+    //
+    // `amc cache clear`         — drop the packages-index cache
+    //                              so the next `amc add` / `amc
+    //                              search` re-fetches from
+    //                              raw.githubusercontent.com.
+    // `amc cache clear --all`   — also wipe the package cache
+    //                              (~/.amalgame/packages/). Next
+    //                              `amc add` will re-clone every
+    //                              dep from scratch.
+    public static int RunCache(int argc) {
+        if (argc < 3) {
+            Console.WriteError("Usage: amc cache <subcmd>")
+            Console.WriteError("")
+            Console.WriteError("Subcommands:")
+            Console.WriteError("  clear         drop the packages-index cache")
+            Console.WriteError("  clear --all   also wipe ~/.amalgame/packages/")
+            return 2
+        }
+        let sub: string = Args_Get(2)
+        if (sub == "clear") {
+            var alsoPackages: bool = false
+            var helpAsked: bool = false
+            var i: int = 3
+            while (i < argc) {
+                let a: string = Args_Get(i)
+                if (a == "--all")  { alsoPackages = true }
+                if (a == "-h")     { helpAsked = true }
+                if (a == "--help") { helpAsked = true }
+                i = i + 1
+            }
+            if (helpAsked) {
+                Console.WriteError("Usage: amc cache clear [--all]")
+                return 0
+            }
+            // Always nuke the index cache file.
+            let idxPath: string = AddCommand.IndexCachePath()
+            let _idxRm: int = Process_Run("rm -f '" + idxPath + "'")
+            Console.WriteLine("Cleared packages-index cache (" + idxPath + ")")
+            if (alsoPackages) {
+                let pkgRoot: string = AddCommand.CacheRoot()
+                let _pkgRm: int = Process_Run("rm -rf '" + pkgRoot + "'")
+                Console.WriteLine("Cleared package cache (" + pkgRoot + ")")
+                Console.WriteLine("Run `amc add` again to reinstall each dep.")
+            }
+            return 0
+        }
+        Console.WriteError("unknown cache subcommand: " + sub)
+        return 2
+    }
+
+    // ── amc update ────────────────────────────────────
+    //
+    // `amc update <name>@<tag>` — bump a dep's pinned tag.
+    // Internally a remove + add: rewrites amalgame.toml +
+    // amalgame.lock to reference the new tag.
+    //
+    //   amc update redis@v0.3.0
+    //
+    // For v0.5.1 we don't auto-discover newer tags from the
+    // package's git remote — the user names the target tag
+    // explicitly. Semver-range driven auto-update is a v0.5.x
+    // ask once we add range constraints.
+    public static int RunUpdate(int argc) {
+        var spec: string = ""
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc update <name>@<tag>")
+                Console.WriteError("")
+                Console.WriteError("Bump the pinned tag for the named dep. Equivalent to")
+                Console.WriteError("`amc remove <name>` followed by `amc add <name>@<tag>`.")
+                return 0
+            }
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                return 2
+            }
+            if (String_Length(spec) == 0) { spec = a }
+            i = i + 1
+        }
+        if (String_Length(spec) == 0) {
+            Console.WriteError("usage: amc update <name>@<tag>")
+            return 2
+        }
+        let atIdx: int = String_LastIndexOf(spec, "@")
+        if (atIdx <= 0 || atIdx >= String_Length(spec) - 1) {
+            Console.WriteError("expected <name>@<tag> — got '" + spec + "'")
+            return 2
+        }
+        let depName: string = String_Substring(spec, 0, atIdx)
+        let newTag:  string = String_Substring(spec, atIdx + 1, String_Length(spec) - atIdx - 1)
+
+        // Verify the dep exists.
+        if (!File.Exists("amalgame.toml")) {
+            Console.WriteError("no amalgame.toml in cwd — nothing to update")
+            return 1
+        }
+        let tomlSrc: string = File.ReadAll("amalgame.toml")
+        let doc = Toml.Parse(tomlSrc)
+        if (doc.IsNull()) {
+            Console.WriteError("amalgame.toml parse error")
+            return 1
+        }
+        let deps: TomlValue = doc.Get("dependencies")
+        if (!deps.IsTable() || !deps.Has(depName)) {
+            Console.WriteError("'" + depName + "' is not a declared dependency. Use `amc add " + spec + "` to install it fresh.")
+            return 1
+        }
+        // Get the existing git URL — we keep the same source,
+        // just bump the tag.
+        let entry: TomlValue = deps.Get(depName)
+        let gitV: TomlValue = entry.Get("git")
+        let gitUrl: string = gitV.AsString()
+        if (String_Length(gitUrl) == 0) {
+            Console.WriteError("dependency '" + depName + "' has no git url — manifest is malformed")
+            return 1
+        }
+        Console.WriteLine("Updating " + depName + " → " + newTag + " (from " + gitUrl + ")")
+        // Synthesise the spec `amc add` would have parsed and run
+        // its full pipeline. The existing Run() does ResolveShortname
+        // → clone → validate → manifest update → lock rebuild.
+        // We bypass shortname resolution (gitUrl is already a URL)
+        // by passing the URL form directly via Args.
+        //
+        // Cheap form: just shell out... actually we're already in
+        // amc. Better: factor Run() so we can call it with a
+        // pre-built spec. For v1 simplicity, write Args[2] via a
+        // global is too invasive — just inline by calling the
+        // same helpers in order.
+        return AddCommand.RunInstallSpec(gitUrl + "@" + newTag)
+    }
+
+    // Programmatic entry to the install pipeline — used by amc
+    // update (and any future caller that wants to install with
+    // an already-resolved URL@tag). Mirrors what Run() does after
+    // arg parsing.
+    public static int RunInstallSpec(string spec) {
+        let parsed: List<string> = AddCommand.ParseSpec(spec)
+        if (parsed.Count() != 2) {
+            Console.WriteError("RunInstallSpec: malformed spec '" + spec + "'")
+            return 2
+        }
+        let url: string = parsed.Get(0)
+        let tag: string = parsed.Get(1)
+        if (!AddCommand.IsSafeUrl(url)) { return 2 }
+        if (!AddCommand.IsSafeTag(tag)) { return 2 }
+        // The rest of the install pipeline is identical to what
+        // Run() does — proper refactor (Run() taking a spec
+        // parameter) is a v0.5.x ask. For now: shell out to the
+        // same amc binary the user invoked. Args_Get(0) is the
+        // argv[0] amc was launched with — if a bare name, $PATH
+        // resolves it; if a full path, it's used directly. Works
+        // cross-platform (no /proc dependency).
+        let amcPath: string = Args_Get(0)
+        if (String_Length(amcPath) == 0) { amcPath = "amc" }
+        return Process_Run("'" + amcPath + "' add '" + url + "@" + tag + "'")
+    }
+
     // ── amc list ──────────────────────────────────────
     //
     // List packages installed in the current project's
