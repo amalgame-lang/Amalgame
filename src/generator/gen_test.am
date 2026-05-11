@@ -232,6 +232,12 @@ public class Program {
         gen6.AddFilePass1(astProg)
         gen6.AddFilePass1(lexProg)
         gen6.AddFilePass1(parProg)
+        // Toml + PackageRegistry pulled up before cgen + resolver:
+        // those reference PackageRegistry as a parameter type
+        // (RegisterPackages(reg: PackageRegistry)) starting in PR
+        // 3c, so the struct typedef has to be emitted earlier.
+        gen6.AddFilePass1(tomlProg)
+        gen6.AddFilePass1(prProg)
         gen6.AddFilePass1(cgenProg)
         gen6.AddFilePass1(fmtProg)
         gen6.AddFilePass1(diagProg)
@@ -249,9 +255,7 @@ public class Program {
         gen6.AddFilePass1(genProg)
         gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(newProg)
-        gen6.AddFilePass1(tomlProg)
         gen6.AddFilePass1(addProg)
-        gen6.AddFilePass1(prProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         Console.WriteError("gen6: pass1 done, starting pass2")
@@ -259,6 +263,9 @@ public class Program {
         gen6.AddFilePass2(astProg)
         gen6.AddFilePass2(lexProg)
         gen6.AddFilePass2(parProg)
+        // Same reorder as Pass1: toml + pr before cgen + resolver.
+        gen6.AddFilePass2(tomlProg)
+        gen6.AddFilePass2(prProg)
         gen6.AddFilePass2(cgenProg)
         gen6.AddFilePass2(fmtProg)
         gen6.AddFilePass2(diagProg)
@@ -276,9 +283,7 @@ public class Program {
         gen6.AddFilePass2(genProg)
         gen6.AddFilePass2(expProg)
         gen6.AddFilePass2(newProg)
-        gen6.AddFilePass2(tomlProg)
         gen6.AddFilePass2(addProg)
-        gen6.AddFilePass2(prProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
         // Emit the C entry point that boots Amalgame's Program.Main.
