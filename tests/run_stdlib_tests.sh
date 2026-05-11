@@ -425,6 +425,51 @@ run_test "Db: error reported"               "$SAMPLES/stdlib_database.am" "[PASS
 run_test "Db: delete + verify"              "$SAMPLES/stdlib_database.am" "[PASS] delete leaves 2"           ""
 run_test "Db: close"                        "$SAMPLES/stdlib_database.am" "[PASS] closed"                    ""
 
+# ── Amalgame.Database.NoSQL.Redis ─────────────────────
+# RESP2 client over raw TCP. Gated on a TCP reachability probe so
+# the test suite runs cleanly without Redis installed — every case
+# becomes a SKIP rather than a failure. To exercise the round-trip,
+# start a Redis-compatible server on 127.0.0.1:6379 (e.g.
+# `docker run --rm -p 6379:6379 redis:7` or `redis-server &`).
+echo ""
+echo "── Amalgame.Database.NoSQL.Redis ───────────"
+REDIS_AVAILABLE=0
+if (echo > /dev/tcp/127.0.0.1/6379) 2>/dev/null; then
+    REDIS_AVAILABLE=1
+fi
+
+if [ "$REDIS_AVAILABLE" = "1" ]; then
+    run_test "Redis: open 6379"             "$SAMPLES/stdlib_redis.am" "[PASS] open 6379"             ""
+    run_test "Redis: ping"                  "$SAMPLES/stdlib_redis.am" "[PASS] ping"                  ""
+    run_test "Redis: set greeting"          "$SAMPLES/stdlib_redis.am" "[PASS] set greeting"          ""
+    run_test "Redis: get greeting"          "$SAMPLES/stdlib_redis.am" "[PASS] get greeting"          ""
+    run_test "Redis: get missing empty"     "$SAMPLES/stdlib_redis.am" "[PASS] get missing is empty"  ""
+    run_test "Redis: exists hit"            "$SAMPLES/stdlib_redis.am" "[PASS] exists hit"            ""
+    run_test "Redis: exists miss"           "$SAMPLES/stdlib_redis.am" "[PASS] exists miss"           ""
+    run_test "Redis: incr 1,2"              "$SAMPLES/stdlib_redis.am" "[PASS] incr 1,2"              ""
+    run_test "Redis: decr to 1"             "$SAMPLES/stdlib_redis.am" "[PASS] decr to 1"             ""
+    run_test "Redis: expire 60s"            "$SAMPLES/stdlib_redis.am" "[PASS] expire 60s"            ""
+    run_test "Redis: expire on missing"     "$SAMPLES/stdlib_redis.am" "[PASS] expire on missing"     ""
+    run_test "Redis: del 1"                 "$SAMPLES/stdlib_redis.am" "[PASS] del 1"                 ""
+    run_test "Redis: gone after del"        "$SAMPLES/stdlib_redis.am" "[PASS] gone after del"        ""
+    run_test "Redis: close"                 "$SAMPLES/stdlib_redis.am" "[PASS] closed"                ""
+else
+    run_skip "Redis: open 6379"             "no server on 127.0.0.1:6379"
+    run_skip "Redis: ping"                  "no server on 127.0.0.1:6379"
+    run_skip "Redis: set greeting"          "no server on 127.0.0.1:6379"
+    run_skip "Redis: get greeting"          "no server on 127.0.0.1:6379"
+    run_skip "Redis: get missing empty"     "no server on 127.0.0.1:6379"
+    run_skip "Redis: exists hit"            "no server on 127.0.0.1:6379"
+    run_skip "Redis: exists miss"           "no server on 127.0.0.1:6379"
+    run_skip "Redis: incr 1,2"              "no server on 127.0.0.1:6379"
+    run_skip "Redis: decr to 1"             "no server on 127.0.0.1:6379"
+    run_skip "Redis: expire 60s"            "no server on 127.0.0.1:6379"
+    run_skip "Redis: expire on missing"     "no server on 127.0.0.1:6379"
+    run_skip "Redis: del 1"                 "no server on 127.0.0.1:6379"
+    run_skip "Redis: gone after del"        "no server on 127.0.0.1:6379"
+    run_skip "Redis: close"                 "no server on 127.0.0.1:6379"
+fi
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"
