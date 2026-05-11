@@ -16,7 +16,7 @@ import Amalgame.Formats.Toml
 // rollout — design doc:
 //   docs/proposals/amalgame-package-manager.md
 //
-//   amc add <git-url>@<tag>
+//   amc package add <git-url>@<tag>
 //
 //     git-url:  e.g. github.com/amalgame-lang/amalgame-database-sqlite
 //               (protocol stripped if present; https:// prepended)
@@ -46,14 +46,14 @@ public class AddCommand {
     public AddCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc add <git-url>@<tag>")
+        Console.WriteError("Usage: amc package add <git-url>@<tag>")
         Console.WriteError("")
         Console.WriteError("Install an Amalgame package from a Git URL into the user cache")
         Console.WriteError("and record it in amalgame.toml + amalgame.lock.")
         Console.WriteError("")
         Console.WriteError("Examples:")
-        Console.WriteError("  amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0")
-        Console.WriteError("  amc add gitlab.com/foo/bar@v1.2.3")
+        Console.WriteError("  amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0")
+        Console.WriteError("  amc package add gitlab.com/foo/bar@v1.2.3")
         Console.WriteError("")
         Console.WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/")
         Console.WriteError("")
@@ -67,9 +67,9 @@ public class AddCommand {
         Console.WriteError("  -h, --help    Print this help and exit.")
     }
 
-    public static int Run(int argc) {
+    public static int Run(int argc, int startIdx) {
         var spec: string = ""
-        var i: int = 2
+        var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
@@ -97,7 +97,7 @@ public class AddCommand {
         }
 
         // ── 1. Resolve shortname if applicable ────────────
-        // `amc add redis@v0.2.0` looks the shortname up via the
+        // `amc package add redis@v0.2.0` looks the shortname up via the
         // amalgame-lang/packages-index repo and rewrites to the
         // full git URL. URLs (anything containing `/` or `.` in
         // the part before `@`) skip the lookup.
@@ -426,6 +426,65 @@ public class AddCommand {
         return File.ReadAll(cachePath)
     }
 
+    // ── amc package <subcommand> ──────────────────────
+    //
+    // Single top-level dispatcher for every PM verb. Matches
+    // dotnet's `dotnet add package` / `dotnet remove package`
+    // grouping convention: pkgmgr commands don't clutter the
+    // top-level (which stays reserved for language ops —
+    // compile / new / fmt / test / lsp / migrate / generate /
+    // explain).
+    //
+    //   amc package add <git-url|shortname>@<tag>
+    //   amc package search [keyword]
+    //   amc package list
+    //   amc package remove <name> [<name>...]
+    //   amc package update <name>@<tag>
+    //   amc package cache clear [--all]
+    //
+    // Short alias: `amc pkg <subcmd>` (main.am dispatches
+    // both `package` and `pkg` here).
+    public static int RunPackage(int argc) {
+        if (argc < 3) {
+            AddCommand.PrintPackageUsage()
+            return 2
+        }
+        let sub: string = Args_Get(2)
+        if (sub == "-h" || sub == "--help") {
+            AddCommand.PrintPackageUsage()
+            return 0
+        }
+        // Sub-commands all read their positional args starting
+        // at argv[3] (after `amc package <sub>`); the second
+        // arg to each method tells it where to start the scan.
+        if (sub == "add")    { return AddCommand.Run(argc, 3) }
+        if (sub == "search") { return AddCommand.RunSearch(argc, 3) }
+        if (sub == "list")   { return AddCommand.RunList(argc, 3) }
+        if (sub == "remove") { return AddCommand.RunRemove(argc, 3) }
+        if (sub == "update") { return AddCommand.RunUpdate(argc, 3) }
+        if (sub == "cache")  { return AddCommand.RunCache(argc, 3) }
+        Console.WriteError("amc package: unknown subcommand '" + sub + "'")
+        AddCommand.PrintPackageUsage()
+        return 2
+    }
+
+    public static void PrintPackageUsage() {
+        Console.WriteError("Usage: amc package <subcommand> [args...]")
+        Console.WriteError("       amc pkg     <subcommand> [args...]")
+        Console.WriteError("")
+        Console.WriteError("Subcommands:")
+        Console.WriteError("  add <name|url>@<tag>          Install a package")
+        Console.WriteError("  search [keyword]              List or filter packages-index")
+        Console.WriteError("  list                          Show installed deps")
+        Console.WriteError("  remove <name> [<name>...]     Strip dep(s) from amalgame.toml + lock")
+        Console.WriteError("  update <name>@<tag>           Bump a pinned tag")
+        Console.WriteError("  cache clear [--all]           Drop cached index / packages")
+        Console.WriteError("")
+        Console.WriteError("Example:")
+        Console.WriteError("  amc package add redis@v0.2.0")
+        Console.WriteError("  amc package list")
+    }
+
     // ── EnsureInstalled (used by amc test) ────────────
     //
     // Walks amalgame.lock and re-installs any [[package]] entry
@@ -471,9 +530,9 @@ public class AddCommand {
             let amcPath0: string = Args_Get(0)
             var amcExe: string = amcPath0
             if (String_Length(amcExe) == 0) { amcExe = "amc" }
-            let exit: int = Process_Run("'" + amcExe + "' add '" + gitS + "@" + tagS + "'")
+            let exit: int = Process_Run("'" + amcExe + "' package add '" + gitS + "@" + tagS + "'")
             if (exit != 0) {
-                Console.WriteError("amc add failed for " + gitS + "@" + tagS)
+                Console.WriteError("amc package add failed for " + gitS + "@" + tagS)
                 return -1
             }
             installed = installed + 1
@@ -491,20 +550,20 @@ public class AddCommand {
     //                              (~/.amalgame/packages/). Next
     //                              `amc add` will re-clone every
     //                              dep from scratch.
-    public static int RunCache(int argc) {
-        if (argc < 3) {
-            Console.WriteError("Usage: amc cache <subcmd>")
+    public static int RunCache(int argc, int startIdx) {
+        if (argc <= startIdx) {
+            Console.WriteError("Usage: amc package cache <subcmd>")
             Console.WriteError("")
             Console.WriteError("Subcommands:")
             Console.WriteError("  clear         drop the packages-index cache")
             Console.WriteError("  clear --all   also wipe ~/.amalgame/packages/")
             return 2
         }
-        let sub: string = Args_Get(2)
+        let sub: string = Args_Get(startIdx)
         if (sub == "clear") {
             var alsoPackages: bool = false
             var helpAsked: bool = false
-            var i: int = 3
+            var i: int = startIdx + 1
             while (i < argc) {
                 let a: string = Args_Get(i)
                 if (a == "--all")  { alsoPackages = true }
@@ -544,16 +603,16 @@ public class AddCommand {
     // package's git remote — the user names the target tag
     // explicitly. Semver-range driven auto-update is a v0.5.x
     // ask once we add range constraints.
-    public static int RunUpdate(int argc) {
+    public static int RunUpdate(int argc, int startIdx) {
         var spec: string = ""
-        var i: int = 2
+        var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc update <name>@<tag>")
+                Console.WriteError("Usage: amc package update <name>@<tag>")
                 Console.WriteError("")
                 Console.WriteError("Bump the pinned tag for the named dep. Equivalent to")
-                Console.WriteError("`amc remove <name>` followed by `amc add <name>@<tag>`.")
+                Console.WriteError("`amc package remove <name>` then `amc package add <name>@<tag>`.")
                 return 0
             }
             if (String_StartsWith(a, "-")) {
@@ -588,7 +647,7 @@ public class AddCommand {
         }
         let deps: TomlValue = doc.Get("dependencies")
         if (!deps.IsTable() || !deps.Has(depName)) {
-            Console.WriteError("'" + depName + "' is not a declared dependency. Use `amc add " + spec + "` to install it fresh.")
+            Console.WriteError("'" + depName + "' is not a declared dependency. Use `amc package add " + spec + "` to install it fresh.")
             return 1
         }
         // Get the existing git URL — we keep the same source,
@@ -638,7 +697,7 @@ public class AddCommand {
         // cross-platform (no /proc dependency).
         let amcPath: string = Args_Get(0)
         if (String_Length(amcPath) == 0) { amcPath = "amc" }
-        return Process_Run("'" + amcPath + "' add '" + url + "@" + tag + "'")
+        return Process_Run("'" + amcPath + "' package add '" + url + "@" + tag + "'")
     }
 
     // ── amc list ──────────────────────────────────────
@@ -647,7 +706,7 @@ public class AddCommand {
     // amalgame.lock. Empty / missing lock → friendly "no
     // packages" message, NOT an error (lots of projects don't
     // use any external packages).
-    public static int RunList(int argc) {
+    public static int RunList(int argc, int startIdx) {
         let reg = PackageRegistry.Load()
         let n: int = reg.Packages.Count()
         if (n == 0) {
@@ -680,16 +739,16 @@ public class AddCommand {
     //
     //   amc remove redis
     //   amc remove sqlite mqtt   (multi-arg, all-or-nothing)
-    public static int RunRemove(int argc) {
+    public static int RunRemove(int argc, int startIdx) {
         let toRemove: List<string> = new List<string>()
-        var i: int = 2
+        var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc remove <dep-name> [<dep-name>...]")
+                Console.WriteError("Usage: amc package remove <dep-name> [<dep-name>...]")
                 Console.WriteError("")
                 Console.WriteError("Strip the named dep(s) from amalgame.toml + amalgame.lock.")
-                Console.WriteError("Cached package files are kept; `amc gc` (v0.5.x) cleans those.")
+                Console.WriteError("Cached package files are kept; `amc package gc` (v0.5.x) cleans those.")
                 return 0
             }
             if (String_StartsWith(a, "-")) {
@@ -821,13 +880,13 @@ public class AddCommand {
     // description when a keyword is given. No keyword: lists
     // everything. Reuses the same FetchIndex helper as the
     // shortname-resolution path, so the cache is shared.
-    public static int RunSearch(int argc) {
+    public static int RunSearch(int argc, int startIdx) {
         var keyword: string = ""
-        var i: int = 2
+        var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc search [keyword]")
+                Console.WriteError("Usage: amc package search [keyword]")
                 Console.WriteError("")
                 Console.WriteError("List packages in amalgame-lang/packages-index.")
                 Console.WriteError("With a keyword, filter by name + description substring.")
@@ -881,7 +940,7 @@ public class AddCommand {
             if (tierS == "official") { badge = "✓ " }
             Console.WriteLine(badge + nameS + " — " + descS)
             Console.WriteLine("    " + urlS + " (" + tierS + ", " + licS + ")")
-            Console.WriteLine("    amc add " + nameS + "@<tag>")
+            Console.WriteLine("    amc package add" + nameS + "@<tag>")
             Console.WriteLine("")
             matches = matches + 1
         }
