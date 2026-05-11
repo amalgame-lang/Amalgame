@@ -871,17 +871,10 @@ public class CGen {
                 //  amalgame-database-sqlite v0.1.0 — see PR #__.
                 //  PackageRegistry now feeds them via the loop a
                 //  few lines down from here.)
-                // Database.NoSQL.Redis stdlib return types
-                if (calleeStr == "Redis_Open") { return "AmalgameRedis*" }
-                if (calleeStr == "Redis_IsOpen" || calleeStr == "Redis_Ping" || calleeStr == "Redis_Set" || calleeStr == "Redis_Exists" || calleeStr == "Redis_Expire") { return "code_bool" }
-                if (calleeStr == "Redis_Del" || calleeStr == "Redis_Incr" || calleeStr == "Redis_Decr") { return "i64" }
-                if (calleeStr == "Redis_Get" || calleeStr == "Redis_LastError") { return "code_string" }
-                if (calleeStr == "Redis_Close") { return "void" }
-                // Messaging.MQTT stdlib return types
-                if (calleeStr == "MQTT_Open") { return "AmalgameMQTT*" }
-                if (calleeStr == "MQTT_IsOpen" || calleeStr == "MQTT_Ping" || calleeStr == "MQTT_Publish" || calleeStr == "MQTT_Subscribe" || calleeStr == "MQTT_WaitMessage") { return "code_bool" }
-                if (calleeStr == "MQTT_LastError" || calleeStr == "MQTT_LastTopic" || calleeStr == "MQTT_LastPayload") { return "code_string" }
-                if (calleeStr == "MQTT_Close") { return "void" }
+                // (Database.NoSQL.Redis + Messaging.MQTT return
+                //  types moved to packages amalgame-database-nosql-
+                //  redis + amalgame-messaging-mqtt v0.1.0.
+                //  PackageRegistry feeds them via the loop below.)
                 // Net stdlib return types
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson" || calleeStr == "Http_PostWithHeaders" || calleeStr == "Http_Put" || calleeStr == "Http_Delete" || calleeStr == "Http_Patch") { return "AmalgameHttpResponse*" }
                 if (calleeStr == "Env_Get") { return "code_string" }
@@ -1242,11 +1235,10 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Crypto.h\"")
         this.Out.EmitLine("#include \"Amalgame_Logging.h\"")
         this.Out.EmitLine("#include \"Amalgame_Service.h\"")
-        // (Amalgame_Database_SQLite.h moved to package
-        //  amalgame-database-sqlite v0.1.0 — PackageRegistry
-        //  emits the #include below if the user `amc add`'d it.)
-        this.Out.EmitLine("#include \"Amalgame_Database_Redis.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Messaging_MQTT.h\"")
+        // (Amalgame_Database_SQLite.h / Amalgame_Database_Redis.h
+        //  / Amalgame_Messaging_MQTT.h all moved to their own
+        //  packages — PackageRegistry emits the #include lines for
+        //  whichever the user has `amc add`'d.)
         // v0.5 package-manager: each installed external package
         // contributes its runtime header to the prelude. Empty
         // when no packages are installed; SQLite/Redis/MQTT stay
@@ -3193,7 +3185,7 @@ public class CGen {
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
                         // Stdlib classes are never namespace-prefixed
-                        var isStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "Redis" || tname == "MQTT"
+                        var isStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service"
                         if (!isStdlib) {
                             // v0.5: also match classes installed via
                             // `amc add`. Same call lowering rule —
