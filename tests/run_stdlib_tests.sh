@@ -251,6 +251,36 @@ run_test "Json: encode escape"        "$SAMPLES/stdlib_json.am" "[PASS] encode e
 run_test "Json: round-trip nested"    "$SAMPLES/stdlib_json.am" "[PASS] round-trip nested"     "" "$JSON_LIB"
 run_test "Json: escape direct"        "$SAMPLES/stdlib_json.am" "[PASS] escape direct"         "" "$JSON_LIB"
 
+# ── Amalgame.Formats.Toml ──────────────────────────────
+# TOML 1.0 subset for v0.5 package-manager manifests. Same facade
+# pattern as Json: the .am stdlib file passes as a 5th-arg extra
+# input. Stdlib must be passed BEFORE the test file so the cgen
+# forward-declares Toml.* methods cleanly (gotcha — emission order
+# matters for static-class methods across compile units).
+echo ""
+echo "── Amalgame.Formats.Toml ───────────────────"
+TOML_LIB="src/stdlib/toml.am"
+run_test "Toml: parse empty"          "$SAMPLES/stdlib_toml.am" "[PASS] parse empty"          "" "$TOML_LIB"
+run_test "Toml: kv string"            "$SAMPLES/stdlib_toml.am" "[PASS] kv string"            "" "$TOML_LIB"
+run_test "Toml: kv int"               "$SAMPLES/stdlib_toml.am" "[PASS] kv int"               "" "$TOML_LIB"
+run_test "Toml: kv neg int"           "$SAMPLES/stdlib_toml.am" "[PASS] kv neg int"           "" "$TOML_LIB"
+run_test "Toml: kv bool true"         "$SAMPLES/stdlib_toml.am" "[PASS] kv bool true"         "" "$TOML_LIB"
+run_test "Toml: kv bool false"        "$SAMPLES/stdlib_toml.am" "[PASS] kv bool false"        "" "$TOML_LIB"
+run_test "Toml: string escapes"       "$SAMPLES/stdlib_toml.am" "[PASS] string escapes"       "" "$TOML_LIB"
+run_test "Toml: literal string"       "$SAMPLES/stdlib_toml.am" "[PASS] literal string"       "" "$TOML_LIB"
+run_test "Toml: comments tolerated"   "$SAMPLES/stdlib_toml.am" "[PASS] comments tolerated"   "" "$TOML_LIB"
+run_test "Toml: array strings"        "$SAMPLES/stdlib_toml.am" "[PASS] array strings"        "" "$TOML_LIB"
+run_test "Toml: array ints"           "$SAMPLES/stdlib_toml.am" "[PASS] array ints"           "" "$TOML_LIB"
+run_test "Toml: table"                "$SAMPLES/stdlib_toml.am" "[PASS] table"                "" "$TOML_LIB"
+run_test "Toml: nested table"         "$SAMPLES/stdlib_toml.am" "[PASS] nested table"         "" "$TOML_LIB"
+run_test "Toml: inline table"         "$SAMPLES/stdlib_toml.am" "[PASS] inline table"         "" "$TOML_LIB"
+run_test "Toml: manifest package.name" "$SAMPLES/stdlib_toml.am" "[PASS] manifest package.name" "" "$TOML_LIB"
+run_test "Toml: manifest stdlib.class" "$SAMPLES/stdlib_toml.am" "[PASS] manifest stdlib.class" "" "$TOML_LIB"
+run_test "Toml: manifest dep tag"     "$SAMPLES/stdlib_toml.am" "[PASS] manifest dep tag"     "" "$TOML_LIB"
+run_test "Toml: missing key is null"  "$SAMPLES/stdlib_toml.am" "[PASS] missing key chain is null" "" "$TOML_LIB"
+run_test "Toml: has present+absent"   "$SAMPLES/stdlib_toml.am" "[PASS] has present + absent" "" "$TOML_LIB"
+run_test "Toml: roundtrip simple"     "$SAMPLES/stdlib_toml.am" "[PASS] roundtrip simple"     "" "$TOML_LIB"
+
 # ── Amalgame.Random ────────────────────────────────────
 # Same extra-input pattern as Json — pulls in src/stdlib/random.am
 # alongside the test sample.

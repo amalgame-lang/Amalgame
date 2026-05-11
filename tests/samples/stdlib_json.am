@@ -9,7 +9,7 @@
 // receivers — see also the workaround pattern in src/lsp.am.
 // Local extractions sidestep the issue and keep diagnostics clean.
 
-import Amalgame.Json
+import Amalgame.Formats.Json
 
 class Program {
     public static void Main() {
