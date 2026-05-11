@@ -4028,6 +4028,10 @@ struct _Amalgame_Compiler_CGen {
     AmalgameList* MethodRetRawTypes;
     i64 LambdaCounter;
     code_bool InLambdaBody;
+    AmalgameList* PkgClasses;
+    AmalgameList* PkgFuncs;
+    AmalgameList* PkgFuncCTypes;
+    AmalgameList* PkgHeaders;
 };
 
 code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
@@ -4065,6 +4069,7 @@ static code_string Amalgame_Compiler_CGen_InterpExprToC(Amalgame_Compiler_CGen* 
 static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGen* self, code_string raw);
 static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self);
 void Amalgame_Compiler_CGen_EmitNetHeader(Amalgame_Compiler_CGen* self);
+void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalgame_Compiler_PackageRegistry* reg);
 static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl);
 static void Amalgame_Compiler_CGen_EmitDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl);
 static void Amalgame_Compiler_CGen_EmitEnum(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* en);
@@ -4113,6 +4118,10 @@ Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
     self->MethodRetRawTypes = AmalgameList_new();
     self->LambdaCounter = 0;
     self->InLambdaBody = 0;
+    self->PkgClasses = AmalgameList_new();
+    self->PkgFuncs = AmalgameList_new();
+    self->PkgFuncCTypes = AmalgameList_new();
+    self->PkgHeaders = AmalgameList_new();
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Status", "i64");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Body", "code_string");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Error", "code_string");
@@ -5050,6 +5059,12 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Math_SeedRandom")) {
                 return "void";
             }
+            i64 __attribute__((unused)) pkgN = AmalgameList_count(self->PkgFuncs);
+            for (i64 pkgI = 0; pkgI < pkgN; pkgI++) {
+                if (code_string_equals(calleeStr, (code_string)AmalgameList_get(self->PkgFuncs, pkgI))) {
+                    return (code_string)AmalgameList_get(self->PkgFuncCTypes, pkgI);
+                }
+            }
             if (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
                 code_string __attribute__((unused)) mname2 = expr->Left->Name;
                 if (code_string_equals(mname2, "Count") || code_string_equals(mname2, "Size")) {
@@ -5411,12 +5426,38 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_SQLite.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_Redis.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Messaging_MQTT.h\"");
+    i64 __attribute__((unused)) pkgHdrN = AmalgameList_count(self->PkgHeaders);
+    for (i64 ph = 0; ph < pkgHdrN; ph++) {
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("#include \"", (code_string)AmalgameList_get(self->PkgHeaders, ph)), "\""));
+    }
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
 void Amalgame_Compiler_CGen_EmitNetHeader(Amalgame_Compiler_CGen* self) {
     (void)self;
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
+}
+
+void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalgame_Compiler_PackageRegistry* reg) {
+    (void)self;
+    (void)reg;
+    self->PkgClasses = AmalgameList_new();
+    self->PkgFuncs = AmalgameList_new();
+    self->PkgFuncCTypes = AmalgameList_new();
+    self->PkgHeaders = AmalgameList_new();
+    i64 __attribute__((unused)) n = AmalgameList_count(reg->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, i);
+        AmalgameList_add(self->PkgClasses, (void*)(intptr_t)(p->ClassName));
+        AmalgameList_add(self->PkgHeaders, (void*)(intptr_t)(p->Header));
+        i64 __attribute__((unused)) fn = AmalgameList_count(p->FuncNames);
+        for (i64 j = 0; j < fn; j++) {
+            code_string __attribute__((unused)) fName = (code_string)AmalgameList_get(p->FuncNames, j);
+            code_string __attribute__((unused)) cType = (code_string)AmalgameList_get(p->FuncRets, j);
+            AmalgameList_add(self->PkgFuncs, (void*)(intptr_t)(code_string_concat(code_string_concat(p->ClassName, "_"), fName)));
+            AmalgameList_add(self->PkgFuncCTypes, (void*)(intptr_t)(cType));
+        }
+    }
 }
 
 static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl) {
@@ -7241,6 +7282,14 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
                     code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "SQLite") || code_string_equals(tname, "Redis") || code_string_equals(tname, "MQTT");
+                    if (!isStdlib) {
+                        i64 __attribute__((unused)) pkgClsN = AmalgameList_count(self->PkgClasses);
+                        for (i64 pci = 0; pci < pkgClsN; pci++) {
+                            if (code_string_equals((code_string)AmalgameList_get(self->PkgClasses, pci), tname)) {
+                                isStdlib = 1;
+                            }
+                        }
+                    }
                     if (isStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -19965,7 +20014,9 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
             nsPrefix = String_Replace(String_Trim(rawNs), ".", "_");
         }
     }
+    Amalgame_Compiler_PackageRegistry* __attribute__((unused)) pkgReg = Amalgame_Compiler_PackageRegistry_Load();
     Amalgame_Compiler_CGen* __attribute__((unused)) gen = Amalgame_Compiler_CGen_new();
+    Amalgame_Compiler_CGen_RegisterPackages(gen, pkgReg);
     Amalgame_Compiler_CGen_BeginMulti(gen, nsPrefix);
     AmalgameList* __attribute__((unused)) progs = AmalgameList_new();
     code_bool __attribute__((unused)) parseOk = 1;
@@ -19991,7 +20042,6 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     }
     Amalgame_Compiler_FullResolver* __attribute__((unused)) resolver = Amalgame_Compiler_FullResolver_new();
     resolver->Sources = self->Diag->Sources;
-    Amalgame_Compiler_PackageRegistry* __attribute__((unused)) pkgReg = Amalgame_Compiler_PackageRegistry_Load();
     Amalgame_Compiler_FullResolver_RegisterPackages(resolver, pkgReg);
     i64 __attribute__((unused)) progCount = AmalgameList_count(progs);
     for (i64 ri = 0; ri < progCount; ri++) {

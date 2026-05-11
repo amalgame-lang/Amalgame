@@ -57,8 +57,16 @@ public class AmalgameCompiler {
             }
         }
 
+        // ── Load v0.5 package registry ───────────────
+        // amalgame.lock in cwd (if present) lists installed
+        // external packages. Resolver + CGen each consume the
+        // registry to seed globals / isStdlib / return-types /
+        // #include emission. Empty lock → no-op everywhere.
+        let pkgReg = PackageRegistry.Load()
+
         // ── CGen init ─────────────────────────────────
         let gen = new CGen()
+        gen.RegisterPackages(pkgReg)
         gen.BeginMulti(nsPrefix)
 
         // ── Parse all files & Pass 1 ──────────────────
@@ -92,10 +100,8 @@ public class AmalgameCompiler {
         // ── Resolver pass ─────────────────────────────
         let resolver = new FullResolver()
         resolver.Sources = this.Diag.Sources
-        // v0.5 package-manager hook: load installed packages and
-        // declare their classes + functions as globals. Empty
-        // amalgame.lock → no-op, preserves v0.4.x behaviour.
-        let pkgReg = PackageRegistry.Load()
+        // Reuse the registry loaded above for CGen — keeps the two
+        // in lock-step on what packages exist.
         resolver.RegisterPackages(pkgReg)
         let progCount = progs.Count()
         for ri in 0..progCount {
