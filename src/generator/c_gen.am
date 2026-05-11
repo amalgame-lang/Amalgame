@@ -866,6 +866,11 @@ public class CGen {
                 if (calleeStr == "Redis_Del" || calleeStr == "Redis_Incr" || calleeStr == "Redis_Decr") { return "i64" }
                 if (calleeStr == "Redis_Get" || calleeStr == "Redis_LastError") { return "code_string" }
                 if (calleeStr == "Redis_Close") { return "void" }
+                // Messaging.MQTT stdlib return types
+                if (calleeStr == "MQTT_Open") { return "AmalgameMQTT*" }
+                if (calleeStr == "MQTT_IsOpen" || calleeStr == "MQTT_Ping" || calleeStr == "MQTT_Publish" || calleeStr == "MQTT_Subscribe" || calleeStr == "MQTT_WaitMessage") { return "code_bool" }
+                if (calleeStr == "MQTT_LastError" || calleeStr == "MQTT_LastTopic" || calleeStr == "MQTT_LastPayload") { return "code_string" }
+                if (calleeStr == "MQTT_Close") { return "void" }
                 // Net stdlib return types
                 if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson" || calleeStr == "Http_PostWithHeaders" || calleeStr == "Http_Put" || calleeStr == "Http_Delete" || calleeStr == "Http_Patch") { return "AmalgameHttpResponse*" }
                 if (calleeStr == "Env_Get") { return "code_string" }
@@ -1214,6 +1219,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Service.h\"")
         this.Out.EmitLine("#include \"Amalgame_Database_SQLite.h\"")
         this.Out.EmitLine("#include \"Amalgame_Database_Redis.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Messaging_MQTT.h\"")
         this.Out.EmitBlank()
     }
 
@@ -3116,7 +3122,7 @@ public class CGen {
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
                         // Stdlib classes are never namespace-prefixed
-                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "SQLite" || tname == "Redis"
+                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "SQLite" || tname == "Redis" || tname == "MQTT"
                         if (isStdlib) {
                             return tname + "_" + mname
                         }
