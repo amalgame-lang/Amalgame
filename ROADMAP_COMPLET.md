@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-11 · `amc 0.5.2` · self-hosted · 470/470 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem launch + `amc test` auto-links vendored package sources
+> Updated 2026-05-11 · `amc 0.5.3` · self-hosted · 482/482 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ package pipeline
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
