@@ -182,6 +182,25 @@ public class Program {
         let newProg  = newPar.Parse()
         Console.WriteError("parsed: new_cmd.am")
 
+        // Toml stdlib — required by add_cmd.am for manifest parsing.
+        // Same chicken-and-egg pattern as json: must be parsed before
+        // any file that imports Amalgame.Formats.Toml.
+        let tomlPath = "./src/stdlib/toml.am"
+        let tomlSrc  = File.ReadAll(tomlPath)
+        let tomlLex  = new Lexer(tomlSrc, tomlPath)
+        let tomlToks = tomlLex.Tokenize()
+        let tomlPar  = new Parser(tomlToks)
+        let tomlProg = tomlPar.Parse()
+        Console.WriteError("parsed: stdlib/toml.am")
+
+        let addPath  = "./src/add_cmd.am"
+        let addSrc   = File.ReadAll(addPath)
+        let addLex   = new Lexer(addSrc, addPath)
+        let addToks  = addLex.Tokenize()
+        let addPar   = new Parser(addToks)
+        let addProg  = addPar.Parse()
+        Console.WriteError("parsed: add_cmd.am")
+
         let mainPath = "./src/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
@@ -222,6 +241,8 @@ public class Program {
         gen6.AddFilePass1(genProg)
         gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(newProg)
+        gen6.AddFilePass1(tomlProg)
+        gen6.AddFilePass1(addProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         Console.WriteError("gen6: pass1 done, starting pass2")
@@ -246,6 +267,8 @@ public class Program {
         gen6.AddFilePass2(genProg)
         gen6.AddFilePass2(expProg)
         gen6.AddFilePass2(newProg)
+        gen6.AddFilePass2(tomlProg)
+        gen6.AddFilePass2(addProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
         // Emit the C entry point that boots Amalgame's Program.Main.
