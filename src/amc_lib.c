@@ -19904,6 +19904,7 @@ code_string Amalgame_Compiler_AddCommand_CacheRoot();
 code_string Amalgame_Compiler_AddCommand_IndexCachePath();
 static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs);
 code_string Amalgame_Compiler_AddCommand_FetchIndex();
+code_bool Amalgame_Compiler_AddCommand_IndexCacheIsFresh(code_string cachePath);
 i64 Amalgame_Compiler_AddCommand_RunPackage(i64 argc);
 void Amalgame_Compiler_AddCommand_PrintPackageUsage();
 i64 Amalgame_Compiler_AddCommand_RunVersions(i64 argc, i64 startIdx);
@@ -20404,7 +20405,7 @@ static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs) {
 
 code_string Amalgame_Compiler_AddCommand_FetchIndex() {
     code_string __attribute__((unused)) cachePath = Amalgame_Compiler_AddCommand_IndexCachePath();
-    if (File_Exists(cachePath)) {
+    if (File_Exists(cachePath) && Amalgame_Compiler_AddCommand_IndexCacheIsFresh(cachePath)) {
         return File_ReadAll(cachePath);
     }
     code_string __attribute__((unused)) cacheDir = String_Substring(cachePath, 0, String_LastIndexOf(cachePath, "/"));
@@ -20413,9 +20414,33 @@ code_string Amalgame_Compiler_AddCommand_FetchIndex() {
     code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat("curl -fsSL '", indexUrl), "' -o '"), cachePath), "' 2>&1");
     i64 __attribute__((unused)) exit = Process_Run(cmd);
     if (exit != 0 || !File_Exists(cachePath)) {
+        if (File_Exists(cachePath)) {
+            Console_WriteError(code_string_concat("warning: index fetch failed, serving stale cache from ", cachePath));
+            return File_ReadAll(cachePath);
+        }
         return "";
     }
     return File_ReadAll(cachePath);
+}
+
+code_bool Amalgame_Compiler_AddCommand_IndexCacheIsFresh(code_string cachePath) {
+    (void)cachePath;
+    i64 __attribute__((unused)) ttlSecs = 1800;
+    code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat("date -r '", cachePath), "' +%s");
+    AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(cmd);
+    if (res->Exit != 0) {
+        return 1;
+    }
+    code_string __attribute__((unused)) mtimeStr = String_Trim(res->Stdout);
+    i64 __attribute__((unused)) mtime = String_ToInt(mtimeStr);
+    if (mtime <= 0) {
+        return 1;
+    }
+    i64 __attribute__((unused)) now = Amalgame_Compiler_AddCommand_NowSeconds();
+    if (now <= 0) {
+        return 1;
+    }
+    return now - mtime < ttlSecs;
 }
 
 i64 Amalgame_Compiler_AddCommand_RunPackage(i64 argc) {
