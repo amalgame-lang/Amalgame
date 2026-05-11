@@ -441,6 +441,14 @@ public class Program {
             Exit_Set(AddCommand.RunRemove(argc))
             return
         }
+        if (Args_Get(1) == "update") {
+            Exit_Set(AddCommand.RunUpdate(argc))
+            return
+        }
+        if (Args_Get(1) == "cache") {
+            Exit_Set(AddCommand.RunCache(argc))
+            return
+        }
 
         let inputFiles = new List<string>()
         var outputName = "a.out"
