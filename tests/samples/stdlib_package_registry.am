@@ -144,5 +144,86 @@ public class Program {
         } else {
             Console.WriteLine("[FAIL] missing lock empty")
         }
+
+        // ── v0.5.3: cflags / cxxflags / libs ──────────────
+
+        if (lp.CFlags == "-DFAKEPKG_BUILD=1") {
+            Console.WriteLine("[PASS] cflags parsed")
+        } else {
+            Console.WriteLine("[FAIL] cflags got '" + lp.CFlags + "'")
+        }
+
+        if (lp.CxxFlags == "-std=c++11") {
+            Console.WriteLine("[PASS] cxxflags parsed")
+        } else {
+            Console.WriteLine("[FAIL] cxxflags got '" + lp.CxxFlags + "'")
+        }
+
+        let libsCount: int = lp.Libs.Count()
+        if (libsCount == 2) {
+            Console.WriteLine("[PASS] libs count")
+        } else {
+            Console.WriteLine("[FAIL] libs count got " + String_FromInt(libsCount))
+        }
+        if (libsCount >= 1 && lp.Libs.Get(0) == "stdc++") {
+            Console.WriteLine("[PASS] libs[0]")
+        } else {
+            Console.WriteLine("[FAIL] libs[0]")
+        }
+        if (libsCount >= 2 && lp.Libs.Get(1) == "m") {
+            Console.WriteLine("[PASS] libs[1]")
+        } else {
+            Console.WriteLine("[FAIL] libs[1]")
+        }
+
+        // ── v0.5.3: schema-version gate ───────────────────
+
+        // The fixture declares schema-version = 1, which the
+        // current amc supports — the package must load.
+        if (PackageRegistry.SupportedManifestSchema() >= 1) {
+            Console.WriteLine("[PASS] supports schema v1")
+        } else {
+            Console.WriteLine("[FAIL] supports schema v1")
+        }
+
+        // ── v0.5.3: C++ source detection ──────────────────
+
+        if (PackageRegistry.IsCxxSource("foo.cpp")) {
+            Console.WriteLine("[PASS] detects .cpp")
+        } else {
+            Console.WriteLine("[FAIL] detects .cpp")
+        }
+        if (PackageRegistry.IsCxxSource("foo.cc")) {
+            Console.WriteLine("[PASS] detects .cc")
+        } else {
+            Console.WriteLine("[FAIL] detects .cc")
+        }
+        if (PackageRegistry.IsCxxSource("foo.cxx")) {
+            Console.WriteLine("[PASS] detects .cxx")
+        } else {
+            Console.WriteLine("[FAIL] detects .cxx")
+        }
+        if (!PackageRegistry.IsCxxSource("foo.c")) {
+            Console.WriteLine("[PASS] .c not cxx")
+        } else {
+            Console.WriteLine("[FAIL] .c not cxx")
+        }
+
+        // ── v0.5.3: registry aggregates ───────────────────
+
+        // The fixture has no sources → HasCxxSources is false.
+        if (!reg.HasCxxSources()) {
+            Console.WriteLine("[PASS] no cxx sources")
+        } else {
+            Console.WriteLine("[FAIL] no cxx sources")
+        }
+        // The fixture declares libs=["stdc++","m"] → CollectLibs
+        // returns both.
+        let collected: List<string> = reg.CollectLibs()
+        if (collected.Count() == 2 && collected.Get(0) == "stdc++" && collected.Get(1) == "m") {
+            Console.WriteLine("[PASS] CollectLibs")
+        } else {
+            Console.WriteLine("[FAIL] CollectLibs got " + String_FromInt(collected.Count()))
+        }
     }
 }

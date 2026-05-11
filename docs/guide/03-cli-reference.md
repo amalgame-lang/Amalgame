@@ -52,7 +52,53 @@ the current working directory.
 `amc test` auto-installs any missing deps before running the suite,
 and links each package's `[stdlib].sources` vendored C objects into
 every test binary — backends like SQLite "just work" without manual
-`gcc` flags.
+`gcc` flags. Since v0.5.3, `.cpp` / `.cc` / `.cxx` sources are
+compiled with `g++` (and the final test link goes through `g++`
+when any package contributes C++), so DuckDB-style packages
+vendoring a C++ amalgamation work out of the box too.
+
+### `amalgame.toml` manifest reference
+
+A package's `amalgame.toml` describes both its own metadata
+(`[package]`) and the surface it contributes to consumers (`[stdlib]`).
+A user project's `amalgame.toml` typically has just `[package]` +
+`[dependencies]`.
+
+```toml
+[package]
+name              = "amalgame-database-duckdb"
+version           = "0.1.0"
+license           = "Apache-2.0"
+required-amalgame = ">=0.5.3"   # refuses install on older amc
+schema-version    = 1           # refuses install on amc < this schema
+
+[stdlib]
+class     = "DuckDB"
+header    = "runtime/Amalgame_Database_DuckDB.h"
+namespace = "Amalgame.Database.DuckDB"
+sources   = ["runtime/Amalgame_Database/duckdb/duckdb.cpp"]
+cflags    = ""                  # extra flags for .c sources
+cxxflags  = "-O3 -DNDEBUG -std=c++17"  # extra flags for .cpp/.cc/.cxx
+libs      = ["stdc++"]          # bare names → -l<name> at link time
+
+[stdlib.functions]
+Open  = { returns = "AmalgameDuckDB*" }
+Close = { returns = "void" }
+# …
+```
+
+| Key                              | Where     | Since   | Purpose                                                                    |
+| -------------------------------- | --------- | ------- | -------------------------------------------------------------------------- |
+| `name`, `version`, `license`     | `[package]` | v0.5.0 | Required identity fields                                                   |
+| `description`, `authors`         | `[package]` | v0.5.0 | Surfaced in `amc package list` / search                                    |
+| `required-amalgame`              | `[package]` | v0.5.0 | Semver constraint on the running amc (e.g. `">=0.5.3"`)                    |
+| `schema-version`                 | `[package]` | v0.5.3 | Refuses install when amc supports a lower manifest schema                  |
+| `class`, `header`, `namespace`   | `[stdlib]`  | v0.5.0 | Required wiring for the cgen + resolver                                    |
+| `sources`                        | `[stdlib]`  | v0.5.0 | Vendored `.c` / `.cpp` paths to compile + link                             |
+| `cflags`                         | `[stdlib]`  | v0.5.3 | Extra gcc flags for the package's `.c` sources                             |
+| `cxxflags`                       | `[stdlib]`  | v0.5.3 | Extra g++ flags for the package's `.cpp` / `.cc` / `.cxx` sources          |
+| `libs`                           | `[stdlib]`  | v0.5.3 | Bare lib names → `-l<name>` appended to every consumer's final link        |
+| `[stdlib.functions]`             | section     | v0.5.0 | `<Method> = { returns = "<C-type>" }` — populates the cgen's dispatch     |
 
 ## Options
 
