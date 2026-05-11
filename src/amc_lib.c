@@ -19547,7 +19547,7 @@ AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec);
 code_bool Amalgame_Compiler_AddCommand_IsSafeUrl(code_string url);
 code_bool Amalgame_Compiler_AddCommand_IsSafeTag(code_string tag);
 code_string Amalgame_Compiler_AddCommand_SlugFromUrl(code_string url);
-code_string Amalgame_Compiler_AddCommand_StripAmalgamePrefix(code_string slug);
+code_string Amalgame_Compiler_AddCommand_DepNameFromSlug(code_string slug);
 code_string Amalgame_Compiler_AddCommand_StripV(code_string tag);
 code_string Amalgame_Compiler_AddCommand_CacheRoot();
 code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag);
@@ -19567,7 +19567,7 @@ void Amalgame_Compiler_AddCommand_PrintUsage() {
     Console_WriteError("and record it in amalgame.toml + amalgame.lock.");
     Console_WriteError("");
     Console_WriteError("Examples:");
-    Console_WriteError("  amc add github.com/amalgame-lang/amalgame-redis@v0.1.0");
+    Console_WriteError("  amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0");
     Console_WriteError("  amc add gitlab.com/foo/bar@v1.2.3");
     Console_WriteError("");
     Console_WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/");
@@ -19631,7 +19631,7 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc) {
         Console_WriteError(code_string_concat(code_string_concat("could not derive package name from url '", url), "'"));
         return 2;
     }
-    code_string __attribute__((unused)) depName = Amalgame_Compiler_AddCommand_StripAmalgamePrefix(pkgName);
+    code_string __attribute__((unused)) depName = Amalgame_Compiler_AddCommand_DepNameFromSlug(pkgName);
     Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Resolving ", url), "@"), tag), "..."));
     code_string __attribute__((unused)) cacheRoot = Amalgame_Compiler_AddCommand_CacheRoot();
     code_string __attribute__((unused)) baseDir = code_string_concat(code_string_concat(cacheRoot, "/"), url);
@@ -19819,12 +19819,17 @@ code_string Amalgame_Compiler_AddCommand_SlugFromUrl(code_string url) {
     return String_Substring(url, slashIdx + 1, String_Length(url) - slashIdx - 1);
 }
 
-code_string Amalgame_Compiler_AddCommand_StripAmalgamePrefix(code_string slug) {
+code_string Amalgame_Compiler_AddCommand_DepNameFromSlug(code_string slug) {
     (void)slug;
-    if (String_StartsWith(slug, "amalgame-")) {
-        return String_Substring(slug, 9, String_Length(slug) - 9);
+    if (!String_StartsWith(slug, "amalgame-")) {
+        return slug;
     }
-    return slug;
+    code_string __attribute__((unused)) rest = String_Substring(slug, 9, String_Length(slug) - 9);
+    i64 __attribute__((unused)) lastDash = String_LastIndexOf(rest, "-");
+    if (lastDash < 0) {
+        return rest;
+    }
+    return String_Substring(rest, lastDash + 1, String_Length(rest) - lastDash - 1);
 }
 
 code_string Amalgame_Compiler_AddCommand_StripV(code_string tag) {

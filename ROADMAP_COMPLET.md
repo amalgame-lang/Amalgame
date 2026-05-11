@@ -728,9 +728,9 @@ implementation effort.
           `Amalgame.Database.SQLite`,
           `Amalgame.Database.NoSQL.Redis`, and
           `Amalgame.Messaging.MQTT` to
-          `amalgame-lang/amalgame-sqlite`,
-          `amalgame-lang/amalgame-redis`, and
-          `amalgame-lang/amalgame-mqtt`. All three already use
+          `amalgame-lang/amalgame-database-sqlite`,
+          `amalgame-lang/amalgame-database-nosql-redis`, and
+          `amalgame-lang/amalgame-messaging-mqtt`. All three already use
           the runtime-header pattern so the migration is mostly
           moving files + writing the manifest. Validates the
           design against three distinct shapes: vendored .c
