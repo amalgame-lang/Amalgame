@@ -220,4 +220,75 @@ public class PackageRegistry {
         }
         return cType
     }
+
+    // ── amc version + compat check ────────────────────
+    //
+    // Single source of truth for the compiler's version string.
+    // Both main.am's --version output and amc add's required-
+    // amalgame check read from here so a release bump only needs
+    // one edit (this constant + tools/release.sh which already
+    // handles --version).
+    public static string AmcVersion() {
+        return "0.5.0-dev"
+    }
+
+    // Parse a semver-ish version string into a (major, minor, patch)
+    // triple. Suffixes like `-dev`, `-rc.1`, `+build.42` are
+    // stripped — only the core triple matters for compat. Returns
+    // a List<int> of length 3; missing components default to 0.
+    public static List<int> ParseVersion(string v) {
+        let out: List<int> = new List<int>()
+        // Strip a `v` prefix if present (tag-style "v1.2.3").
+        var s: string = v
+        if (String_StartsWith(s, "v")) {
+            s = String_Substring(s, 1, String_Length(s) - 1)
+        }
+        // Strip pre-release / build metadata after `-` or `+`.
+        let dashIdx: int = String_IndexOf(s, "-")
+        if (dashIdx >= 0) {
+            s = String_Substring(s, 0, dashIdx)
+        }
+        let plusIdx: int = String_IndexOf(s, "+")
+        if (plusIdx >= 0) {
+            s = String_Substring(s, 0, plusIdx)
+        }
+        let parts: List<string> = String_Split(s, ".")
+        let n: int = parts.Count()
+        var maj: int = 0
+        var min: int = 0
+        var pat: int = 0
+        if (n >= 1) { maj = String_ToInt(parts.Get(0)) }
+        if (n >= 2) { min = String_ToInt(parts.Get(1)) }
+        if (n >= 3) { pat = String_ToInt(parts.Get(2)) }
+        out.Add(maj)
+        out.Add(min)
+        out.Add(pat)
+        return out
+    }
+
+    // Check whether the current amc version satisfies a constraint
+    // string from a package's `required-amalgame` field. Supports
+    // `>=X.Y.Z` only in v0.5 (every other operator is treated as
+    // "no constraint" — generous default so future syntax doesn't
+    // brick old amc binaries). Empty constraint → always true.
+    public static bool VersionSatisfies(string current, string constraint) {
+        if (String_Length(constraint) == 0) { return true }
+        var op: string = ""
+        var verPart: string = constraint
+        if (String_StartsWith(constraint, ">=")) {
+            op = ">="
+            verPart = String_Substring(constraint, 2, String_Length(constraint) - 2)
+        }
+        verPart = String_Trim(verPart)
+        if (op != ">=") {
+            // Unrecognised operator → don't block install.
+            return true
+        }
+        let cur: List<int> = PackageRegistry.ParseVersion(current)
+        let req: List<int> = PackageRegistry.ParseVersion(verPart)
+        // Tuple compare major → minor → patch.
+        if (cur.Get(0) != req.Get(0)) { return cur.Get(0) > req.Get(0) }
+        if (cur.Get(1) != req.Get(1)) { return cur.Get(1) > req.Get(1) }
+        return cur.Get(2) >= req.Get(2)
+    }
 }
