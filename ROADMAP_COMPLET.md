@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-12 · `amc 0.6.0` · self-hosted · 509/509 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=)
+> Updated 2026-05-12 · `amc 0.6.1` · self-hosted · 509/509 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -541,32 +541,33 @@ before the next big language addition.
           semver operators on top of `>=`: `>`, `<`, `<=`, `=`,
           `^` (caret, npm/Cargo flavour with 0.x special-case),
           `~` (tilde, locks major.minor).
-        - **v0.6.1** — `amc package info <name>` (description, url,
-          tier, license, category, maintainer, versions, install
+        - **v0.6.1** — bundled QoL + ship-to-prod release:
+          `amc package info <name>` (description, url, tier,
+          license, category, maintainer, versions, install
           status); `amc package outdated` (cross-references the
           lockfile against the index, lists deps with a newer
-          compatible tag); `--no-versions` on `search` for faster
+          compatible tag); `amc package notice` (aggregates each
+          installed package's `[package].license / authors /
+          description` into a NOTICE-style listing on stdout,
+          ready to redirect into `NOTICE_DEPS.md` for downstream
+          commercial redistribution); `amc package check
+          [--frozen]` (verifies amalgame.lock matches the
+          installed cache — `--frozen` exits 1 on mismatch for
+          CI fail-fast lanes, bare form is informational and
+          always exits 0); `--no-versions` on `search` for faster
           browse; `--json` on `versions` for scripting (jq / CI
-          compat probes, stable schema). Plus a help-text audit
-          pass: `add --help` now documents the shortname auto-
-          resolve form + `--no-precompile` + the full semver
-          operator set; the top-level `amc --help` verb list adds
-          `versions / info / outdated` (previously omitted).
-        - **v0.6.2** — `amc package notice` (aggregates each
-          installed package's `[package].license/authors/description`
-          into a NOTICE-style listing, ready to redirect into
-          `NOTICE_DEPS.md` for downstream commercial
-          redistribution); `amc package check [--frozen]`
-          (verifies amalgame.lock matches the installed cache —
-          `--frozen` exits 1 on mismatch for CI fail-fast lanes,
-          bare form is informational and always exits 0). Also:
-          `amc --version` now bakes the git short-SHA + UTC
-          build timestamp via `-DAMC_GIT_REV=...` /
-          `-DAMC_BUILD_DATE=...` (build_amc.sh wires both;
-          fall back to "" cleanly when the defines are absent),
-          and surfaces author / licence / website / repository /
-          issues URLs in the banner — debugging an ambiguous
-          binary is one `amc --version` away now.
+          compat probes, stable schema). Plus: `amc --version`
+          now bakes the git short-SHA + UTC build timestamp via
+          `-DAMC_GIT_REV=...` / `-DAMC_BUILD_DATE=...`
+          (`build_amc.sh` wires both; fall back to "" cleanly
+          when the defines are absent), and surfaces author /
+          licence / website / repository / issues URLs in the
+          banner — debugging an ambiguous binary is one
+          `amc --version` away. Help-text audit pass:
+          `add --help` documents the shortname auto-resolve form
+          + `--no-precompile` + the full semver operator set; the
+          top-level `amc --help` verb list adds `versions / info
+          / outdated / notice / check`.
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
