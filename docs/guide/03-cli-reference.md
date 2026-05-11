@@ -42,13 +42,13 @@ the current working directory.
 
 | Action | Purpose |
 | ------ | ------- |
-| `add <git-url>@<tag> [--no-precompile]`  | Clone + validate + record dep. Accepts `<name>@<tag>` resolved via the curated index. `--no-precompile` (v0.5.4+) skips the install-time compile of `[stdlib].sources` even if the manifest declares `precompile = true`. |
-| `remove <name>`        | Drop dep from manifest + lockfile. |
-| `search <keyword> [--refresh]` | Substring match against indexed packages. Each result lists known tags with compat status against the running amc. `--refresh` re-downloads the index (cache TTL: manual via `--refresh` or `cache clear`). |
-| `versions <name> [--refresh]`  | Shortcut: same output as `search` filtered to one package. |
-| `list`                 | Show installed packages with tier badge (official / community / unverified). |
-| `update [<name>]`      | Bump a single dep, or all if no name given. |
-| `cache <ls\|gc>`       | Inspect / prune `~/.amalgame/packages/`. |
+| `add <name\|url>[@<tag>] [--no-precompile]` | Clone + validate + record dep. Accepts `<name>@<tag>` (shortname resolved via the curated index) or a full `<git-url>@<tag>`. Since v0.6.0 the `@<tag>` is optional on **indexed shortnames**: amc auto-resolves the latest tag whose `required-amalgame` is satisfied by the running amc. Full git URLs still need an explicit `@<tag>`. `--no-precompile` (v0.5.4+) skips the install-time compile of `[stdlib].sources` even if the manifest declares `precompile = true`. |
+| `remove <name>[@<tag>] [...]` | Strip dep(s) from `amalgame.toml` + `amalgame.lock`. The `@<tag>` safety suffix (v0.5.5+) refuses to remove unless the installed tag matches — guards against typo'ing the wrong version after an `update`. |
+| `search <keyword> [--refresh]` | Substring match against indexed packages. Each result lists known tags with compat status (`✓`/`✗` vs running amc) and a `← latest compatible` marker. Index cache TTL is 30 min since v0.5.6 (auto-refresh); `--refresh` forces a re-fetch sooner. |
+| `versions <name> [--refresh]` | Shortcut: same output as `search` filtered to one package. |
+| `list` | Show installed packages with their pinned tag (since v0.5.5) — format: `<ClassName> @ <tag> — <slug>`. |
+| `update <name>@<tag>` | Bump a pinned tag (delegates to `add` under the hood). |
+| `cache clear [--all]` | Drop cached index (and packages with `--all`). |
 
 `amc test` auto-installs any missing deps before running the suite,
 and links each package's `[stdlib].sources` vendored C objects into
@@ -92,7 +92,7 @@ Close = { returns = "void" }
 | -------------------------------- | --------- | ------- | -------------------------------------------------------------------------- |
 | `name`, `version`, `license`     | `[package]` | v0.5.0 | Required identity fields                                                   |
 | `description`, `authors`         | `[package]` | v0.5.0 | Surfaced in `amc package list` / search                                    |
-| `required-amalgame`              | `[package]` | v0.5.0 | Semver constraint on the running amc (e.g. `">=0.5.3"`)                    |
+| `required-amalgame`              | `[package]` | v0.5.0 | Semver constraint on the running amc. Operators (v0.6.0+): `>=`, `>`, `<=`, `<`, `=`, `^` (caret — npm-style, 0.x-aware), `~` (tilde — locks `major.minor`), bare version treated as `>=`. E.g. `">=0.5.3"`, `"^0.6.0"`, `"~1.2.3"`. |
 | `schema-version`                 | `[package]` | v0.5.3 | Refuses install when amc supports a lower manifest schema                  |
 | `class`, `header`, `namespace`   | `[stdlib]`  | v0.5.0 | Required wiring for the cgen + resolver                                    |
 | `sources`                        | `[stdlib]`  | v0.5.0 | Vendored `.c` / `.cpp` paths to compile + link                             |
@@ -101,6 +101,48 @@ Close = { returns = "void" }
 | `libs`                           | `[stdlib]`  | v0.5.3 | Bare lib names → `-l<name>` appended to every consumer's final link        |
 | `precompile`                     | `[stdlib]`  | v0.5.4 | When `true`, `amc package add` compiles sources at install time into `~/.amalgame/packages/.../build/<platform>/`. Subsequent `amc test`/`amc build` reuse the cached `.o`. Override with `--no-precompile`. |
 | `[stdlib.functions]`             | section     | v0.5.0 | `<Method> = { returns = "<C-type>" }` — populates the cgen's dispatch     |
+
+### `required-amalgame` operators (v0.6.0+)
+
+The constraint string follows npm/Cargo conventions. Examples:
+
+| Constraint   | Matches                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `">=0.5.3"`  | At least 0.5.3 (current behaviour, back-compat)                   |
+| `">0.5.5"`   | Strictly greater than 0.5.5                                       |
+| `"<=0.6.0"`  | At most 0.6.0                                                     |
+| `"<1.0.0"`   | Strictly less than 1.0.0                                          |
+| `"=0.5.5"`   | Exact match                                                       |
+| `"^1.2.3"`   | `>=1.2.3, <2.0.0` (major locked when major > 0)                   |
+| `"^0.5.3"`   | `>=0.5.3, <0.6.0` (0.x minor locked, pre-stable rule)             |
+| `"^0.0.5"`   | `=0.0.5` (0.0.x → exact patch, even stricter)                     |
+| `"~1.2.3"`   | `>=1.2.3, <1.3.0` (always locks `major.minor`)                    |
+| `"0.5.0"`    | Bare version — treated as `>=` for back-compat with v0.5 manifests |
+
+Unrecognised operators are treated as "no constraint" (returns
+true) to keep older amc binaries compatible with future syntax
+extensions.
+
+### Auto-resolve `amc package add <pkg>` (v0.6.0+)
+
+When the `@<tag>` suffix is omitted on an **indexed shortname**,
+amc fetches the index and picks the latest tag whose
+`required-amalgame` is satisfied by the running amc:
+
+```bash
+$ amc package add duckdb
+Auto-resolved 'duckdb' → 'duckdb@v0.1.1' (latest compatible with amc 0.6.0)
+…
+```
+
+Full git URLs still require an explicit `@<tag>` — the index is
+the SoT for "what amc knows about", and unindexed repos opt out
+of auto-resolve by design.
+
+If no version is compatible (e.g. all indexed tags require a
+newer amc than you have installed), the command errors with a
+hint to run `amc package versions <pkg>` for the full constraint
+list.
 
 ## Options
 
