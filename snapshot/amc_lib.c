@@ -28,6 +28,8 @@ typedef struct _Amalgame_Compiler_TomlParser Amalgame_Compiler_TomlParser;
 typedef struct _Amalgame_Compiler_Toml Amalgame_Compiler_Toml;
 typedef struct _Amalgame_Compiler_LoadedPackage Amalgame_Compiler_LoadedPackage;
 typedef struct _Amalgame_Compiler_PackageRegistry Amalgame_Compiler_PackageRegistry;
+typedef struct _Amalgame_Compiler_CalibrationSample Amalgame_Compiler_CalibrationSample;
+typedef struct _Amalgame_Compiler_Calibration Amalgame_Compiler_Calibration;
 typedef struct _Amalgame_Compiler_Emitter Amalgame_Compiler_Emitter;
 typedef struct _Amalgame_Compiler_CGen Amalgame_Compiler_CGen;
 typedef struct _Amalgame_Compiler_Formatter Amalgame_Compiler_Formatter;
@@ -3744,17 +3746,21 @@ static code_string Amalgame_Compiler_Toml_JoinPath(AmalgameList* path) {
 
 Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new();
 Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new();
+Amalgame_Compiler_CalibrationSample* Amalgame_Compiler_CalibrationSample_new();
+Amalgame_Compiler_Calibration* Amalgame_Compiler_Calibration_new();
 struct _Amalgame_Compiler_LoadedPackage {
     code_string Name;
     code_string ClassName;
     code_string Header;
     code_string Ns;
+    code_string PkgDir;
     AmalgameList* FuncNames;
     AmalgameList* FuncRets;
     AmalgameList* Sources;
     code_string CFlags;
     code_string CxxFlags;
     AmalgameList* Libs;
+    code_bool Precompile;
 };
 
 
@@ -3764,12 +3770,14 @@ Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new() {
     self->ClassName = "";
     self->Header = "";
     self->Ns = "";
+    self->PkgDir = "";
     self->FuncNames = AmalgameList_new();
     self->FuncRets = AmalgameList_new();
     self->Sources = AmalgameList_new();
     self->CFlags = "";
     self->CxxFlags = "";
     self->Libs = AmalgameList_new();
+    self->Precompile = 0;
     return self;
 }
 
@@ -3784,12 +3792,18 @@ AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_Packag
 code_bool Amalgame_Compiler_PackageRegistry_HasCxxSources(Amalgame_Compiler_PackageRegistry* self);
 AmalgameList* Amalgame_Compiler_PackageRegistry_CollectLibs(Amalgame_Compiler_PackageRegistry* self);
 code_bool Amalgame_Compiler_PackageRegistry_IsCxxSource(code_string path);
+code_string Amalgame_Compiler_PackageRegistry_AmalgameHome();
+code_string Amalgame_Compiler_PackageRegistry_AmalgameStateDir();
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot();
+code_string Amalgame_Compiler_PackageRegistry_CalibrationPath();
+code_string Amalgame_Compiler_PackageRegistry_PrecompileCacheDir(code_string pkgDir);
+code_string Amalgame_Compiler_PackageRegistry_PlatformTag();
 code_string Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(code_string ns, code_string method);
 code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType);
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion();
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema();
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v);
+code_string Amalgame_Compiler_PackageRegistry_ReadCalibrationFile();
 code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current, code_string constraint);
 
 Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new() {
@@ -3879,6 +3893,7 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
         }
         Amalgame_Compiler_LoadedPackage* __attribute__((unused)) lp = Amalgame_Compiler_LoadedPackage_new();
         lp->Name = pkgName;
+        lp->PkgDir = pkgDir;
         lp->ClassName = clsName;
         lp->Header = code_string_concat(code_string_concat(pkgDir, "/"), hdr);
         lp->Ns = ns;
@@ -3908,6 +3923,8 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
                 }
             }
         }
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) precompileVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "precompile");
+        lp->Precompile = Amalgame_Compiler_TomlValue_AsBool(precompileVal);
         Amalgame_Compiler_TomlValue* __attribute__((unused)) funcsTbl = Amalgame_Compiler_TomlValue_Get(stdlibTable, "functions");
         if (Amalgame_Compiler_TomlValue_IsTable(funcsTbl)) {
             AmalgameList* __attribute__((unused)) funcKeys = Amalgame_Compiler_TomlValue_Keys(funcsTbl);
@@ -3994,16 +4011,87 @@ code_bool Amalgame_Compiler_PackageRegistry_IsCxxSource(code_string path) {
     return 0;
 }
 
+code_string Amalgame_Compiler_PackageRegistry_AmalgameHome() {
+    code_string __attribute__((unused)) override = Env_Get("AMALGAME_HOME");
+    if (String_Length(override) > 0) {
+        return override;
+    }
+    code_string __attribute__((unused)) home = Env_Get("HOME");
+    if (String_Length(home) > 0) {
+        return home;
+    }
+    code_string __attribute__((unused)) userProfile = Env_Get("USERPROFILE");
+    if (String_Length(userProfile) > 0) {
+        return userProfile;
+    }
+    return "";
+}
+
+code_string Amalgame_Compiler_PackageRegistry_AmalgameStateDir() {
+    code_string __attribute__((unused)) home = Amalgame_Compiler_PackageRegistry_AmalgameHome();
+    if (String_Length(home) == 0) {
+        return "";
+    }
+    return Path_Combine(home, ".amalgame");
+}
+
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot() {
     code_string __attribute__((unused)) envOverride = Env_Get("AMALGAME_PACKAGES_DIR");
     if (String_Length(envOverride) > 0) {
         return envOverride;
     }
-    code_string __attribute__((unused)) home = Env_Get("HOME");
-    if (String_Length(home) > 0) {
-        return code_string_concat(home, "/.amalgame/packages");
+    code_string __attribute__((unused)) stateDir = Amalgame_Compiler_PackageRegistry_AmalgameStateDir();
+    if (String_Length(stateDir) > 0) {
+        return Path_Combine(stateDir, "packages");
     }
     return "/tmp/amalgame-packages";
+}
+
+code_string Amalgame_Compiler_PackageRegistry_CalibrationPath() {
+    code_string __attribute__((unused)) stateDir = Amalgame_Compiler_PackageRegistry_AmalgameStateDir();
+    if (String_Length(stateDir) == 0) {
+        return "";
+    }
+    return Path_Combine(stateDir, "calibration.toml");
+}
+
+code_string Amalgame_Compiler_PackageRegistry_PrecompileCacheDir(code_string pkgDir) {
+    (void)pkgDir;
+    code_string __attribute__((unused)) p = Amalgame_Compiler_PackageRegistry_PlatformTag();
+    code_string __attribute__((unused)) buildDir = Path_Combine(pkgDir, "build");
+    return Path_Combine(buildDir, p);
+}
+
+code_string Amalgame_Compiler_PackageRegistry_PlatformTag() {
+    code_string __attribute__((unused)) unameS = String_Trim(Process_RunCapture("uname -s")->Stdout);
+    code_string __attribute__((unused)) unameM = String_Trim(Process_RunCapture("uname -m")->Stdout);
+    code_string __attribute__((unused)) os = "unknown";
+    if (String_StartsWith(unameS, "Linux")) {
+        os = "linux";
+    }
+    if (String_StartsWith(unameS, "Darwin")) {
+        os = "macos";
+    }
+    if (String_StartsWith(unameS, "MINGW")) {
+        os = "windows";
+    }
+    if (String_StartsWith(unameS, "MSYS")) {
+        os = "windows";
+    }
+    if (String_StartsWith(unameS, "CYGWIN")) {
+        os = "windows";
+    }
+    code_string __attribute__((unused)) arch = unameM;
+    if (code_string_equals(arch, "")) {
+        arch = "unknown";
+    }
+    if (code_string_equals(arch, "amd64")) {
+        arch = "x86_64";
+    }
+    if (code_string_equals(arch, "aarch64")) {
+        arch = "arm64";
+    }
+    return code_string_concat(code_string_concat(os, "-"), arch);
 }
 
 code_string Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(code_string ns, code_string method) {
@@ -4068,6 +4156,17 @@ AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v) {
     return out;
 }
 
+code_string Amalgame_Compiler_PackageRegistry_ReadCalibrationFile() {
+    code_string __attribute__((unused)) path = Amalgame_Compiler_PackageRegistry_CalibrationPath();
+    if (String_Length(path) == 0) {
+        return "";
+    }
+    if (!File_Exists(path)) {
+        return "";
+    }
+    return File_ReadAll(path);
+}
+
 code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current, code_string constraint) {
     (void)current;
     (void)constraint;
@@ -4093,6 +4192,151 @@ code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current
         return (i64)AmalgameList_get(cur, 1) > (i64)AmalgameList_get(req, 1);
     }
     return (i64)AmalgameList_get(cur, 2) >= (i64)AmalgameList_get(req, 2);
+}
+
+struct _Amalgame_Compiler_CalibrationSample {
+    code_string Lang;
+    i64 SizeKb;
+    i64 ElapsedS;
+    code_string PkgVer;
+};
+
+
+Amalgame_Compiler_CalibrationSample* Amalgame_Compiler_CalibrationSample_new() {
+    Amalgame_Compiler_CalibrationSample* self = (Amalgame_Compiler_CalibrationSample*) GC_MALLOC(sizeof(Amalgame_Compiler_CalibrationSample));
+    self->Lang = "";
+    self->SizeKb = 0;
+    self->ElapsedS = 0;
+    self->PkgVer = "";
+    return self;
+}
+
+struct _Amalgame_Compiler_Calibration {
+    AmalgameList* Samples;
+};
+
+Amalgame_Compiler_Calibration* Amalgame_Compiler_Calibration_Load();
+void Amalgame_Compiler_Calibration_Add(Amalgame_Compiler_Calibration* self, code_string lang, i64 sizeKb, i64 elapsedS, code_string pkgVer);
+i64 Amalgame_Compiler_Calibration_EstimateSeconds(Amalgame_Compiler_Calibration* self, code_string lang, i64 sizeKb);
+i64 Amalgame_Compiler_Calibration_SampleCount(Amalgame_Compiler_Calibration* self, code_string lang);
+code_bool Amalgame_Compiler_Calibration_Save(Amalgame_Compiler_Calibration* self);
+
+Amalgame_Compiler_Calibration* Amalgame_Compiler_Calibration_new() {
+    Amalgame_Compiler_Calibration* self = (Amalgame_Compiler_Calibration*) GC_MALLOC(sizeof(Amalgame_Compiler_Calibration));
+    self->Samples = AmalgameList_new();
+    return self;
+}
+
+Amalgame_Compiler_Calibration* Amalgame_Compiler_Calibration_Load() {
+    Amalgame_Compiler_Calibration* __attribute__((unused)) cal = Amalgame_Compiler_Calibration_new();
+    code_string __attribute__((unused)) raw = Amalgame_Compiler_PackageRegistry_ReadCalibrationFile();
+    if (String_Length(raw) == 0) {
+        return cal;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(raw);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        return cal;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) schemaVal = Amalgame_Compiler_TomlValue_Get(doc, "schema-version");
+    if (Amalgame_Compiler_TomlValue_AsInt(schemaVal) > 1) {
+        return cal;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) arr = Amalgame_Compiler_TomlValue_Get(doc, "sample");
+    if (!Amalgame_Compiler_TomlValue_IsArray(arr)) {
+        return cal;
+    }
+    i64 __attribute__((unused)) n = Amalgame_Compiler_TomlValue_Count(arr);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(arr, i);
+        Amalgame_Compiler_CalibrationSample* __attribute__((unused)) s = Amalgame_Compiler_CalibrationSample_new();
+        s->Lang = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "lang"));
+        s->SizeKb = Amalgame_Compiler_TomlValue_AsInt(Amalgame_Compiler_TomlValue_Get(entry, "size_kb"));
+        s->ElapsedS = Amalgame_Compiler_TomlValue_AsInt(Amalgame_Compiler_TomlValue_Get(entry, "elapsed_s"));
+        s->PkgVer = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "pkg_ver"));
+        if (String_Length(s->Lang) == 0) {
+            continue;
+        }
+        if (s->SizeKb <= 0 || s->ElapsedS <= 0) {
+            continue;
+        }
+        AmalgameList_add(cal->Samples, (void*)(intptr_t)(s));
+    }
+    return cal;
+}
+
+void Amalgame_Compiler_Calibration_Add(Amalgame_Compiler_Calibration* self, code_string lang, i64 sizeKb, i64 elapsedS, code_string pkgVer) {
+    (void)self;
+    (void)lang;
+    (void)sizeKb;
+    (void)elapsedS;
+    (void)pkgVer;
+    Amalgame_Compiler_CalibrationSample* __attribute__((unused)) s = Amalgame_Compiler_CalibrationSample_new();
+    s->Lang = lang;
+    s->SizeKb = sizeKb;
+    s->ElapsedS = elapsedS;
+    s->PkgVer = pkgVer;
+    AmalgameList_add(self->Samples, (void*)(intptr_t)(s));
+}
+
+i64 Amalgame_Compiler_Calibration_EstimateSeconds(Amalgame_Compiler_Calibration* self, code_string lang, i64 sizeKb) {
+    (void)self;
+    (void)lang;
+    (void)sizeKb;
+    i64 __attribute__((unused)) totalKb = 0;
+    i64 __attribute__((unused)) totalSec = 0;
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Samples);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_CalibrationSample* __attribute__((unused)) s = (Amalgame_Compiler_CalibrationSample*)AmalgameList_get(self->Samples, i);
+        if (code_string_equals(s->Lang, lang)) {
+            totalKb = totalKb + s->SizeKb;
+            totalSec = totalSec + s->ElapsedS;
+        }
+    }
+    if (totalKb <= 0) {
+        return -1;
+    }
+    return sizeKb * totalSec / totalKb;
+}
+
+i64 Amalgame_Compiler_Calibration_SampleCount(Amalgame_Compiler_Calibration* self, code_string lang) {
+    (void)self;
+    (void)lang;
+    i64 __attribute__((unused)) n = 0;
+    i64 __attribute__((unused)) len = AmalgameList_count(self->Samples);
+    for (i64 i = 0; i < len; i++) {
+        Amalgame_Compiler_CalibrationSample* __attribute__((unused)) s = (Amalgame_Compiler_CalibrationSample*)AmalgameList_get(self->Samples, i);
+        if (code_string_equals(s->Lang, lang)) {
+            n = n + 1;
+        }
+    }
+    return n;
+}
+
+code_bool Amalgame_Compiler_Calibration_Save(Amalgame_Compiler_Calibration* self) {
+    (void)self;
+    code_string __attribute__((unused)) path = Amalgame_Compiler_PackageRegistry_CalibrationPath();
+    if (String_Length(path) == 0) {
+        return 0;
+    }
+    code_string __attribute__((unused)) stateDir = Amalgame_Compiler_PackageRegistry_AmalgameStateDir();
+    if (String_Length(stateDir) > 0) {
+        Process_RunCapture(code_string_concat(code_string_concat("mkdir -p '", stateDir), "'"));
+    }
+    code_string __attribute__((unused)) s = "# Amalgame calibration store — auto-managed by `amc package add`.\n";
+    s = code_string_concat(s, "# Each precompile contributes a sample; the weighted average\n");
+    s = code_string_concat(s, "# across samples of the same language drives ETA.\n");
+    s = code_string_concat(s, "schema-version = 1\n\n");
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Samples);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_CalibrationSample* __attribute__((unused)) sm = (Amalgame_Compiler_CalibrationSample*)AmalgameList_get(self->Samples, i);
+        s = code_string_concat(s, "[[sample]]\n");
+        s = code_string_concat(code_string_concat(code_string_concat(s, "lang      = \""), sm->Lang), "\"\n");
+        s = code_string_concat(code_string_concat(code_string_concat(s, "size_kb   = "), String_FromInt(sm->SizeKb)), "\n");
+        s = code_string_concat(code_string_concat(code_string_concat(s, "elapsed_s = "), String_FromInt(sm->ElapsedS)), "\n");
+        s = code_string_concat(code_string_concat(code_string_concat(s, "pkg_ver   = \""), sm->PkgVer), "\"\n");
+        s = code_string_concat(s, "\n");
+    }
+    return File_WriteAll(path, s);
 }
 
 Amalgame_Compiler_Emitter* Amalgame_Compiler_Emitter_new();
@@ -19644,6 +19888,9 @@ struct _Amalgame_Compiler_AddCommand {
 
 void Amalgame_Compiler_AddCommand_PrintUsage();
 i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx);
+void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame_Compiler_TomlValue* stdlibTbl, code_string pkgVer);
+i64 Amalgame_Compiler_AddCommand_NowSeconds();
+code_string Amalgame_Compiler_AddCommand_HumanDuration(i64 seconds);
 AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec);
 code_bool Amalgame_Compiler_AddCommand_IsSafeUrl(code_string url);
 code_bool Amalgame_Compiler_AddCommand_IsSafeTag(code_string tag);
@@ -19701,12 +19948,18 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
     (void)argc;
     (void)startIdx;
     code_string __attribute__((unused)) spec = "";
+    code_bool __attribute__((unused)) noPrecompile = 0;
     i64 __attribute__((unused)) i = startIdx;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
         if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
             Amalgame_Compiler_AddCommand_PrintUsage();
             return 0;
+        }
+        if (code_string_equals(a, "--no-precompile")) {
+            noPrecompile = 1;
+            i = i + 1;
+            continue;
         }
         if (String_StartsWith(a, "-")) {
             Console_WriteError(code_string_concat("unknown flag: ", a));
@@ -19856,6 +20109,13 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
     }
     Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Validated ", mfNameStr), " v"), mfVerStr), " (licence "), mfLicStr), ")"));
     Console_WriteLine(code_string_concat("Cached at ", pkgDir));
+    if (!noPrecompile) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) stdlibTblPre = Amalgame_Compiler_TomlValue_Get(manifest, "stdlib");
+        if (Amalgame_Compiler_TomlValue_IsTable(stdlibTblPre) && Amalgame_Compiler_TomlValue_AsBool(Amalgame_Compiler_TomlValue_Get(stdlibTblPre, "precompile"))) {
+            code_string __attribute__((unused)) pkgVer = code_string_concat(code_string_concat(mfNameStr, "@"), tag);
+            Amalgame_Compiler_AddCommand_PrecompilePackage(pkgDir, stdlibTblPre, pkgVer);
+        }
+    }
     if (!Amalgame_Compiler_AddCommand_UpdateProjectManifest(depName, url, tag)) {
         Console_WriteError("could not update amalgame.toml");
         return 1;
@@ -19868,6 +20128,139 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
     }
     Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("Added ", depName), " "), tag));
     return 0;
+}
+
+void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame_Compiler_TomlValue* stdlibTbl, code_string pkgVer) {
+    (void)pkgDir;
+    (void)stdlibTbl;
+    (void)pkgVer;
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) classVal = Amalgame_Compiler_TomlValue_Get(stdlibTbl, "class");
+    code_string __attribute__((unused)) className = Amalgame_Compiler_TomlValue_AsString(classVal);
+    if (String_Length(className) == 0) {
+        return;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) sourcesArr = Amalgame_Compiler_TomlValue_Get(stdlibTbl, "sources");
+    if (!Amalgame_Compiler_TomlValue_IsArray(sourcesArr)) {
+        return;
+    }
+    i64 __attribute__((unused)) sn = Amalgame_Compiler_TomlValue_Count(sourcesArr);
+    if (sn == 0) {
+        return;
+    }
+    code_string __attribute__((unused)) cflags = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(stdlibTbl, "cflags"));
+    code_string __attribute__((unused)) cxxflags = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(stdlibTbl, "cxxflags"));
+    code_string __attribute__((unused)) buildDir = Amalgame_Compiler_PackageRegistry_PrecompileCacheDir(pkgDir);
+    AmalgameProcessResult* __attribute__((unused)) mkdirRes = Process_RunCapture(code_string_concat(code_string_concat("mkdir -p '", buildDir), "'"));
+    if (mkdirRes->Exit != 0) {
+        Console_WriteError(code_string_concat("amc package add: could not create ", buildDir));
+        return;
+    }
+    code_string __attribute__((unused)) amcPath0 = Args_Get(0);
+    code_string __attribute__((unused)) amcRuntime = Env_Get("AMC_RUNTIME");
+    if (String_Length(amcRuntime) == 0) {
+        i64 __attribute__((unused)) slashIdx = String_LastIndexOf(amcPath0, "/");
+        if (slashIdx >= 0) {
+            amcRuntime = code_string_concat(String_Substring(amcPath0, 0, slashIdx), "/runtime");
+        }
+    }
+    Amalgame_Compiler_Calibration* __attribute__((unused)) cal = Amalgame_Compiler_Calibration_Load();
+    i64 __attribute__((unused)) totalCKb = 0;
+    i64 __attribute__((unused)) totalCSec = 0;
+    i64 __attribute__((unused)) totalCxxKb = 0;
+    i64 __attribute__((unused)) totalCxxSec = 0;
+    for (i64 j = 0; j < sn; j++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) srcTv = Amalgame_Compiler_TomlValue_At(sourcesArr, j);
+        code_string __attribute__((unused)) srcRel = Amalgame_Compiler_TomlValue_AsString(srcTv);
+        if (String_Length(srcRel) == 0) {
+            continue;
+        }
+        code_string __attribute__((unused)) srcAbs = code_string_concat(code_string_concat(pkgDir, "/"), srcRel);
+        i64 __attribute__((unused)) lastSlash = String_LastIndexOf(srcAbs, "/");
+        code_string __attribute__((unused)) srcLeaf = srcAbs;
+        if (lastSlash >= 0) {
+            srcLeaf = String_Substring(srcAbs, lastSlash + 1, String_Length(srcAbs) - lastSlash - 1);
+        }
+        code_string __attribute__((unused)) objPath = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(buildDir, "/"), className), "-"), srcLeaf), ".o");
+        if (File_Exists(objPath)) {
+            Console_WriteLine(code_string_concat("  reused cache: ", srcLeaf));
+            continue;
+        }
+        i64 __attribute__((unused)) sizeBytes = File_Size(srcAbs);
+        i64 __attribute__((unused)) sizeKb = sizeBytes / 1024;
+        code_bool __attribute__((unused)) isCxx = Amalgame_Compiler_PackageRegistry_IsCxxSource(srcAbs);
+        code_string __attribute__((unused)) lang = (isCxx ? "cxx" : "c");
+        i64 __attribute__((unused)) etaSec = Amalgame_Compiler_Calibration_EstimateSeconds(cal, lang, sizeKb);
+        code_string __attribute__((unused)) header = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  Compiling ", srcLeaf), " ("), String_FromInt(sizeKb)), " KB "), lang), ")");
+        if (etaSec > 0) {
+            header = code_string_concat(code_string_concat(header, " — estimated "), Amalgame_Compiler_AddCommand_HumanDuration(etaSec));
+        } else {
+            header = code_string_concat(code_string_concat(code_string_concat(header, " — first "), lang), " compile on this machine, no ETA yet");
+        }
+        Console_WriteLine(header);
+        code_string __attribute__((unused)) cmd = "";
+        if (isCxx) {
+            cmd = "g++ -O2";
+        } else {
+            cmd = "gcc -O2";
+        }
+        if (String_Length(amcRuntime) > 0) {
+            cmd = code_string_concat(code_string_concat(code_string_concat(cmd, " -I'"), amcRuntime), "'");
+        }
+        if (isCxx && String_Length(cxxflags) > 0) {
+            cmd = code_string_concat(code_string_concat(cmd, " "), cxxflags);
+        }
+        if (!isCxx && String_Length(cflags) > 0) {
+            cmd = code_string_concat(code_string_concat(cmd, " "), cflags);
+        }
+        cmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(cmd, " -w -c '"), srcAbs), "' -o '"), objPath), "' 2>&1");
+        i64 __attribute__((unused)) t0 = Amalgame_Compiler_AddCommand_NowSeconds();
+        AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(cmd);
+        i64 __attribute__((unused)) t1 = Amalgame_Compiler_AddCommand_NowSeconds();
+        i64 __attribute__((unused)) elapsedS = t1 - t0;
+        if (res->Exit != 0) {
+            Console_WriteError(code_string_concat(code_string_concat("  FAILED to compile ", srcLeaf), ":"));
+            Console_WriteError(res->Stdout);
+            continue;
+        }
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("  ✓ ", srcLeaf), " in "), Amalgame_Compiler_AddCommand_HumanDuration(elapsedS)));
+        if (isCxx) {
+            totalCxxKb = totalCxxKb + sizeKb;
+            totalCxxSec = totalCxxSec + elapsedS;
+        } else {
+            totalCKb = totalCKb + sizeKb;
+            totalCSec = totalCSec + elapsedS;
+        }
+    }
+    code_bool __attribute__((unused)) dirty = 0;
+    if (totalCKb > 0 && totalCSec > 0) {
+        Amalgame_Compiler_Calibration_Add(cal, "c", totalCKb, totalCSec, pkgVer);
+        dirty = 1;
+    }
+    if (totalCxxKb > 0 && totalCxxSec > 0) {
+        Amalgame_Compiler_Calibration_Add(cal, "cxx", totalCxxKb, totalCxxSec, pkgVer);
+        dirty = 1;
+    }
+    if (dirty) {
+        if (!Amalgame_Compiler_Calibration_Save(cal)) {
+            Console_WriteError(code_string_concat("  warning: could not save calibration to ", Amalgame_Compiler_PackageRegistry_CalibrationPath()));
+        }
+    }
+}
+
+i64 Amalgame_Compiler_AddCommand_NowSeconds() {
+    AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture("date +%s");
+    code_string __attribute__((unused)) raw = String_Trim(res->Stdout);
+    return String_ToInt(raw);
+}
+
+code_string Amalgame_Compiler_AddCommand_HumanDuration(i64 seconds) {
+    (void)seconds;
+    if (seconds < 60) {
+        return code_string_concat(String_FromInt(seconds), "s");
+    }
+    i64 __attribute__((unused)) m = seconds / 60;
+    i64 __attribute__((unused)) s = seconds % 60;
+    return code_string_concat(code_string_concat(code_string_concat(String_FromInt(m), "m"), String_FromInt(s)), "s");
 }
 
 AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec) {
@@ -20992,6 +21385,7 @@ AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compil
         Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, i);
         AmalgameList* __attribute__((unused)) sources = p->Sources;
         i64 __attribute__((unused)) sn = AmalgameList_count(sources);
+        code_string __attribute__((unused)) persistentDir = Amalgame_Compiler_PackageRegistry_PrecompileCacheDir(p->PkgDir);
         for (i64 j = 0; j < sn; j++) {
             code_string __attribute__((unused)) srcPath = (code_string)AmalgameList_get(sources, j);
             if (String_Length(srcPath) == 0) {
@@ -21001,6 +21395,11 @@ AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compil
             code_string __attribute__((unused)) srcLeaf = srcPath;
             if (lastSlash >= 0) {
                 srcLeaf = String_Substring(srcPath, lastSlash + 1, String_Length(srcPath) - lastSlash - 1);
+            }
+            code_string __attribute__((unused)) persistentObj = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(persistentDir, "/"), p->ClassName), "-"), srcLeaf), ".o");
+            if (File_Exists(persistentObj)) {
+                AmalgameList_add(out, (void*)(intptr_t)(persistentObj));
+                continue;
             }
             code_string __attribute__((unused)) objPath = code_string_concat(code_string_concat(code_string_concat(code_string_concat("/tmp/amc-pkg-", p->ClassName), "-"), srcLeaf), ".o");
             if (File_Exists(objPath)) {

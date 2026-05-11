@@ -224,6 +224,8 @@ public class Program {
         Console.WriteError("                See `amc explain --help`.")
         Console.WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test templates).")
         Console.WriteError("                See `amc new --help`.")
+        Console.WriteError("  package <X>   Package manager (alias `pkg`). Verbs: add / remove / list /")
+        Console.WriteError("                search / update / cache. See `amc package --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
@@ -425,17 +427,23 @@ public class Program {
     }
 
     // Pre-compile every installed package's vendored source(s)
-    // to .o files cached in /tmp. The same .o list is then linked
-    // into every test binary so packages with vendored deps (the
-    // SQLite amalgamation today, the DuckDB amalgamation tomorrow)
+    // to .o files. Each test binary then links the resulting .o
+    // list, so packages with vendored deps (SQLite C, DuckDB C++)
     // compile cleanly via `amc test`.
     //
-    // Compiler dispatch: gcc for .c (+ p.CFlags), g++ for
-    // .cpp/.cc/.cxx (+ p.CxxFlags). Same .o cache layout for both.
+    // Cache lookup order (since v0.5.4):
+    //   1. `<pkg-dir>/build/<platform>/<class>-<basename>.o`
+    //      — persistent, written by `amc package add` when the
+    //      manifest declares `[stdlib].precompile = true`. Survives
+    //      reboots, shared across all `amc test` invocations.
+    //   2. `/tmp/amc-pkg-<class>-<basename>.o`
+    //      — volatile, written here on the lazy path when (1) misses.
+    //      Wiped on reboot but cheap to rebuild.
+    //   3. Compile fresh.
     //
-    // `.o` cache layout: `/tmp/amc-pkg-<class>-<basename>.o`.
-    // Cheap reuse: if the .o already exists we skip the compile,
-    // saving 10s+ per test run on amalgamation-using projects.
+    // Compiler dispatch: gcc for .c (+ p.CFlags), g++ for
+    // .cpp/.cc/.cxx (+ p.CxxFlags). Same dispatch as
+    // AddCommand.PrecompilePackage so the two paths stay coherent.
     public static List<string> PreCompilePackageSources(PackageRegistry reg, string amcRuntime) {
         let out: List<string> = new List<string>()
         let n: int = reg.Packages.Count()
@@ -443,6 +451,10 @@ public class Program {
             let p: LoadedPackage = reg.Packages.Get(i)
             let sources: List<string> = p.Sources
             let sn: int = sources.Count()
+            // Compute the persistent precompile cache dir for this
+            // package (only used if .o is present there; not
+            // created here).
+            let persistentDir: string = PackageRegistry.PrecompileCacheDir(p.PkgDir)
             for j in 0..sn {
                 let srcPath: string = sources.Get(j)
                 if (String_Length(srcPath) == 0) { continue }
@@ -452,6 +464,12 @@ public class Program {
                 var srcLeaf: string = srcPath
                 if (lastSlash >= 0) {
                     srcLeaf = String_Substring(srcPath, lastSlash + 1, String_Length(srcPath) - lastSlash - 1)
+                }
+                // Persistent cache lookup first.
+                let persistentObj: string = persistentDir + "/" + p.ClassName + "-" + srcLeaf + ".o"
+                if (File.Exists(persistentObj)) {
+                    out.Add(persistentObj)
+                    continue
                 }
                 let objPath: string = "/tmp/amc-pkg-" + p.ClassName + "-" + srcLeaf + ".o"
                 if (File.Exists(objPath)) {
