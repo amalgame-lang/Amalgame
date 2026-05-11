@@ -440,6 +440,28 @@ before the next big language addition.
       no tags surfaces as `[FAIL] <crash> exit=N`. Convention is
       framework-free for v1; a richer Assert module + `test_*`
       auto-discovery is a possible v2.
+- [ ] **Unify all test runners under `amc test`** — the repo
+      still ships ~1.9k lines of bash in `tests/run_tests.sh`
+      (992), `tests/run_stdlib_tests.sh` (607), `tests/run_fmt_tests.sh`
+      (132), `tests/run_amc_new_tests.sh` (143), and `tests/run_all_tests.sh`
+      (57). Each implements its own discovery + compile + capture
+      + tally loop in shell, with subtle differences (some pass
+      `--lib`, some assert expected stdout, fmt runner round-trips
+      via the formatter, amc-new runner shells out to scaffold + build).
+      Goal: rewrite every check as `*_test.am` files emitting
+      `[PASS]/[FAIL]/[SKIP]` lines so `amc test ./tests/` drives
+      the whole suite, then drop the bash. Likely needs `amc test`
+      additions: per-file env (`AMC_FLAGS`), expected-stdout
+      assertions (or move them inside the test bodies), parallel
+      execution, a `--filter <glob>` flag, and a `--ci` output
+      mode matching the current bash tally. Also: the fmt and
+      amc-new runners exercise tooling other than the compiler
+      (formatter idempotency, project scaffolding) — those need
+      either dedicated `Amalgame.Test` helpers (e.g.
+      `Test.Format(file)`, `Test.Scaffold("exe", "/tmp/x")`) or a
+      runner mode that shells out and captures. Big win: one
+      test entry point, one runtime, runs on every platform amc
+      compiles for (today the bash runners assume POSIX).
 - [x] **`amc --lint`** (v0.3.3 unreachable, v0.3.4 unused/shadow)
       — `src/linter.am` walks the AST and flags:
       unreachable code after `return` / `throw` / `break` /
@@ -482,16 +504,54 @@ before the next big language addition.
       branch in `main.am`, and a sample roundtrip test that
       scaffolds + compiles a fresh project under `/tmp`.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
-- [x] **`amc package <action>`** (v0.5.0 → v0.5.2) — full package
+- [x] **`amc package <action>`** (v0.5.0 → v0.6.x) — full package
       manager. `add <git-url>@<tag>` clones + validates + records,
-      `remove` / `list` / `search` / `update` / `cache` round out
-      the CLI (PR #303 grouped them under `amc package`, alias
-      `amc pkg`). Storage at `~/.amalgame/packages/<host>/<owner>/
-      <repo>/<tag>_<sha>/`. `amalgame.toml` (deps) +
-      `amalgame.lock` (resolved SHAs) live in the project root.
-      `amc test` is package-aware: auto-installs missing deps
-      (v0.5.1) and links each package's `[stdlib].sources` `.c`
-      files into every test binary (v0.5.2).
+      `remove` / `list` / `search` / `versions` / `info` / `update`
+      / `cache` round out the CLI (PR #303 grouped them under
+      `amc package`, alias `amc pkg`). Storage at
+      `~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/`.
+      `amalgame.toml` (deps) + `amalgame.lock` (resolved SHAs)
+      live in the project root. `amc test` is package-aware:
+      auto-installs missing deps (v0.5.1) and links each
+      package's `[stdlib].sources` `.c` files into every test
+      binary (v0.5.2). Subsequent maturity work:
+        - **v0.5.3** — C++ packages pipeline, vendored amalgamation
+          builds, `cflags` / `cxxflags` / `libs` manifest fields.
+        - **v0.5.4** — `precompile-on-install` with persistent
+          `~/.amalgame/packages/.../build/<platform>/` cache, an
+          auto-learning ETA derived from `~/.amalgame/calibration.toml`,
+          and cross-platform `$HOME` resolution
+          (`PackageRegistry.AmalgameHome()` walks
+          `$AMALGAME_HOME` → `$HOME` → `$USERPROFILE`).
+        - **v0.5.5** — packages-index schema v2 (flat `[[version]]`
+          array), `amc package search` + `amc package versions`
+          render every indexed tag with `✓` / `✗` compat status
+          against the running amc, `← latest compatible` marker,
+          `--refresh` flag to bust the cache, `LoadedPackage.Tag`
+          displayed by `amc package list`, `@<tag>` safety suffix
+          for `remove`.
+        - **v0.5.6** — 30-min TTL on `~/.amalgame/cache/packages-index.toml`
+          (via `date -r`, POSIX + MSYS2 + Cygwin), serves stale
+          cache with a warning on network failure, downstream
+          Redis + MQTT test runners ported to the SQLite/DuckDB
+          symlink-trick (their CI had been silently SKIPping).
+        - **v0.6.0** — auto-resolve `amc package add <pkg>` (no
+          `@<tag>`) walks the index newest-last and picks the latest
+          compatible tag; `required-amalgame` learns five new
+          semver operators on top of `>=`: `>`, `<`, `<=`, `=`,
+          `^` (caret, npm/Cargo flavour with 0.x special-case),
+          `~` (tilde, locks major.minor).
+        - **v0.6.1** — `amc package info <name>` (description, url,
+          tier, license, category, maintainer, versions, install
+          status); `amc package outdated` (cross-references the
+          lockfile against the index, lists deps with a newer
+          compatible tag); `--no-versions` on `search` for faster
+          browse; `--json` on `versions` for scripting (jq / CI
+          compat probes, stable schema). Plus a help-text audit
+          pass: `add --help` now documents the shortname auto-
+          resolve form + `--no-precompile` + the full semver
+          operator set; the top-level `amc --help` verb list adds
+          `versions / info / outdated` (previously omitted).
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
@@ -946,6 +1006,13 @@ implementation effort.
       `Path.Extension`, `Path.Filename`, `Path.Directory`,
       `Path.Stem`, `Path.IsAbsolute`, `Path.Normalize` (Go
       filepath.Clean semantics, no FS access), `Path.Sep`.
+      **v0.6.1** lifts the `import Amalgame.Path` requirement
+      for `Combine` / `Sep` / `IsAbsolute` / `Normalize` (those
+      four method names match their runtime symbol 1:1, so the
+      cgen lowers `Path.X(...)` straight to `Path_X(...)`).
+      `Directory` / `Filename` / `Extension` / `Stem` still need
+      the import — they wrap `Path_Get*` and would mis-mangle
+      without the namespace dispatch.
 - [x] **`Amalgame.Logging`** (v0.4.12) — leveled stderr + optional
       file sink in `src/stdlib/logging.am` /
       `runtime/Amalgame_Logging.h`. `Log.SetMinLevel`,
