@@ -1,0 +1,313 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+import Amalgame.Formats.Toml
+
+// ═══════════════════════════════════════════════════════
+//  package_registry.am  —  v0.5 package-manager loader
+// ═══════════════════════════════════════════════════════
+//
+// PR 3b of the stdlib package-manager rollout. Reads
+// `amalgame.lock` from the user's project + each referenced
+// package's manifest from the global cache, exposes the
+// aggregated data so that PR 3c can plumb it into the resolver
+// and cgen (replacing today's hardcoded isStdlib + return-type
+// blocks).
+//
+// Design doc: docs/proposals/amalgame-package-manager.md
+//
+// This file does NOT touch resolver / cgen yet. It just loads.
+// PR 3c wires it through.
+//
+// Manifest contract — each external package ships an
+// `amalgame.toml` at its repo root with:
+//
+//   [package]
+//   name    = "amalgame-database-nosql-redis"
+//   version = "0.1.0"
+//   license = "Apache-2.0"
+//
+//   [stdlib]
+//   class     = "Redis"                                  # short class name as used in user code
+//   header    = "runtime/Amalgame_Database_Redis.h"      # path inside the package
+//   namespace = "Amalgame.Database.NoSQL.Redis"          # import namespace
+//
+//   [stdlib.functions]
+//   Open  = { returns = "AmalgameRedis*" }
+//   Close = { returns = "void" }
+//   Set   = { returns = "code_bool" }
+//   Get   = { returns = "code_string" }
+//   # ...
+//
+// `returns` is the C-level type that the cgen needs for its
+// return-type table. The Amalgame-level type used by the
+// resolver is derived by stripping a trailing `*` (so
+// `AmalgameRedis*` → `AmalgameRedis` for the resolver-side
+// declaration, matching today's pattern from PR 0).
+
+// One loaded package = its (Class, Header, ImportNamespace) +
+// a parallel list of (FuncName, CRetType). FuncName is the
+// short name as written in the manifest's [stdlib.functions]
+// table (e.g. `Open`); the resolver / cgen will combine it
+// with the class to produce `Redis_Open`.
+public class LoadedPackage {
+    public  Name:        string             // amalgame-database-nosql-redis
+    public  ClassName:   string             // Redis
+    public  Header:      string             // runtime/Amalgame_Database_Redis.h
+    public  Ns:          string             // Amalgame.Database.NoSQL.Redis
+    public  FuncNames:   List<string>       // ["Open", "Close", ...]
+    public  FuncRets:    List<string>       // ["AmalgameRedis*", "void", ...]
+
+    public LoadedPackage() {
+        this.Name      = ""
+        this.ClassName = ""
+        this.Header    = ""
+        this.Ns        = ""
+        this.FuncNames = new List<string>()
+        this.FuncRets  = new List<string>()
+    }
+}
+
+public class PackageRegistry {
+    public  Packages: List<LoadedPackage>
+
+    public PackageRegistry() {
+        this.Packages = new List<LoadedPackage>()
+    }
+
+    // Default constructor entry — `amalgame.lock` in cwd,
+    // cache at `$HOME/.amalgame/packages`. Returns an empty
+    // registry if no lock file is present (vanilla user
+    // compile, no external packages).
+    public static PackageRegistry Load() {
+        let cacheRoot: string = PackageRegistry.DefaultCacheRoot()
+        return PackageRegistry.LoadFrom("amalgame.lock", cacheRoot)
+    }
+
+    // Testable form — pass explicit paths so the test runner
+    // can point at a fixture without touching the user's real
+    // `~/.amalgame/`.
+    public static PackageRegistry LoadFrom(string lockPath, string cacheRoot) {
+        let reg = new PackageRegistry()
+        if (!File.Exists(lockPath)) { return reg }
+        let lockSrc: string = File.ReadAll(lockPath)
+        let lockDoc = Toml.Parse(lockSrc)
+        if (lockDoc.IsNull()) { return reg }
+
+        // [[package]] entries become a `package` array of tables.
+        let pkgsArr: TomlValue = lockDoc.Get("package")
+        if (!pkgsArr.IsArray()) { return reg }
+        let n: int = pkgsArr.Count()
+        for i in 0..n {
+            let entry: TomlValue = pkgsArr.At(i)
+            let nameVal: TomlValue = entry.Get("name")
+            let gitVal:  TomlValue = entry.Get("git")
+            let tagVal:  TomlValue = entry.Get("tag")
+            let revVal:  TomlValue = entry.Get("rev")
+            let pkgName: string = nameVal.AsString()
+            let pkgGit:  string = gitVal.AsString()
+            let pkgTag:  string = tagVal.AsString()
+            let pkgRev:  string = revVal.AsString()
+            if (String_Length(pkgName) == 0) { continue }
+            if (String_Length(pkgGit) == 0)  { continue }
+            if (String_Length(pkgTag) == 0)  { continue }
+            if (String_Length(pkgRev) < 8)   { continue }
+
+            // Compute cache dir: <cacheRoot>/<git>/<tag>_<short-sha>
+            let shortSha: string = String_Substring(pkgRev, 0, 8)
+            let pkgDir: string = cacheRoot + "/" + pkgGit + "/" + pkgTag + "_" + shortSha
+            let manifestPath: string = pkgDir + "/amalgame.toml"
+            if (!File.Exists(manifestPath)) { continue }
+            let manifestSrc: string = File.ReadAll(manifestPath)
+            let manifest = Toml.Parse(manifestSrc)
+            if (manifest.IsNull()) { continue }
+
+            // Build the LoadedPackage from the manifest's [stdlib]
+            // and [stdlib.functions] sections.
+            let stdlibTable: TomlValue = manifest.Get("stdlib")
+            if (!stdlibTable.IsTable()) { continue }
+            let classVal: TomlValue = stdlibTable.Get("class")
+            let headerVal: TomlValue = stdlibTable.Get("header")
+            let nsVal: TomlValue = stdlibTable.Get("namespace")
+            let clsName: string = classVal.AsString()
+            let hdr: string = headerVal.AsString()
+            let ns: string = nsVal.AsString()
+            if (String_Length(clsName) == 0) { continue }
+            if (String_Length(hdr) == 0)     { continue }
+
+            let lp = new LoadedPackage()
+            lp.Name      = pkgName
+            lp.ClassName = clsName
+            // Manifest's header path is relative to the package
+            // root; expose it as absolute so the cgen can emit
+            // `#include "<absolute path>"` and the resolver +
+            // user-binary gcc can find it without -I tweaking.
+            lp.Header    = pkgDir + "/" + hdr
+            lp.Ns        = ns
+
+            // Functions table — short name → return type.
+            let funcsTbl: TomlValue = stdlibTable.Get("functions")
+            if (funcsTbl.IsTable()) {
+                let funcKeys: List<string> = funcsTbl.Keys()
+                let fn: int = funcKeys.Count()
+                for j in 0..fn {
+                    let fName: string = funcKeys.Get(j)
+                    let fDef: TomlValue = funcsTbl.Get(fName)
+                    let fRet: TomlValue = fDef.Get("returns")
+                    let retStr: string = fRet.AsString()
+                    if (String_Length(retStr) == 0) { continue }
+                    lp.FuncNames.Add(fName)
+                    lp.FuncRets.Add(retStr)
+                }
+            }
+            reg.Packages.Add(lp)
+        }
+        return reg
+    }
+
+    // Convenience — list every class name across loaded packages.
+    // Used by the cgen's isStdlib check (PR 3c).
+    public List<string> ClassNames() {
+        let out: List<string> = new List<string>()
+        let n: int = this.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = this.Packages.Get(i)
+            out.Add(p.ClassName)
+        }
+        return out
+    }
+
+    // Headers each loaded package contributes — used by the
+    // cgen's prelude emission to include them in the user binary.
+    public List<string> Headers() {
+        let out: List<string> = new List<string>()
+        let n: int = this.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = this.Packages.Get(i)
+            out.Add(p.Header)
+        }
+        return out
+    }
+
+    // Default cache root resolution order:
+    //   1. `$AMALGAME_PACKAGES_DIR` env var if set (test/CI override)
+    //   2. `$HOME/.amalgame/packages` (normal user case)
+    //   3. `/tmp/amalgame-packages` (container / unset-HOME fallback)
+    public static string DefaultCacheRoot() {
+        let envOverride: string = Env_Get("AMALGAME_PACKAGES_DIR")
+        if (String_Length(envOverride) > 0) {
+            return envOverride
+        }
+        let home: string = Env_Get("HOME")
+        if (String_Length(home) > 0) {
+            return home + "/.amalgame/packages"
+        }
+        return "/tmp/amalgame-packages"
+    }
+
+    // Mangle a package class method into its canonical C symbol.
+    // Convention: dot-separated namespace + `_` + method name,
+    // dots replaced by `_`. Mirrors the namespace hierarchy so
+    // two packages with the same short class name don't collide
+    // at C link time:
+    //
+    //   ManglePackageSymbol("Amalgame.Database.NoSQL.Redis", "Open")
+    //     → "Amalgame_Database_NoSQL_Redis_Open"
+    //
+    // Core stdlib classes (Console / File / Math / …) keep their
+    // flat symbols (`Console_WriteLine`) because they're
+    // coordinated single-author code with no collision risk.
+    // External packages — where any third-party can publish a
+    // class called `Redis` — get the full mangling.
+    public static string ManglePackageSymbol(string ns, string method) {
+        let mangledNs: string = String_Replace(ns, ".", "_")
+        return mangledNs + "_" + method
+    }
+
+    // Strip a trailing `*` so a C-level type like `AmalgameRedis*`
+    // becomes the Amalgame-side type the resolver expects
+    // (`AmalgameRedis`). C primitives without a star pass through
+    // unchanged (`void`, `code_bool`, `code_string`, `i64`).
+    public static string AmalgameTypeFromC(string cType) {
+        let n: int = String_Length(cType)
+        if (n == 0) { return "" }
+        if (String_EndsWith(cType, "*")) {
+            return String_Substring(cType, 0, n - 1)
+        }
+        return cType
+    }
+
+    // ── amc version + compat check ────────────────────
+    //
+    // Single source of truth for the compiler's version string.
+    // Both main.am's --version output and amc add's required-
+    // amalgame check read from here so a release bump only needs
+    // one edit (this constant + tools/release.sh which already
+    // handles --version).
+    public static string AmcVersion() {
+        return "0.5.0"
+    }
+
+    // Parse a semver-ish version string into a (major, minor, patch)
+    // triple. Suffixes like `-dev`, `-rc.1`, `+build.42` are
+    // stripped — only the core triple matters for compat. Returns
+    // a List<int> of length 3; missing components default to 0.
+    public static List<int> ParseVersion(string v) {
+        let out: List<int> = new List<int>()
+        // Strip a `v` prefix if present (tag-style "v1.2.3").
+        var s: string = v
+        if (String_StartsWith(s, "v")) {
+            s = String_Substring(s, 1, String_Length(s) - 1)
+        }
+        // Strip pre-release / build metadata after `-` or `+`.
+        let dashIdx: int = String_IndexOf(s, "-")
+        if (dashIdx >= 0) {
+            s = String_Substring(s, 0, dashIdx)
+        }
+        let plusIdx: int = String_IndexOf(s, "+")
+        if (plusIdx >= 0) {
+            s = String_Substring(s, 0, plusIdx)
+        }
+        let parts: List<string> = String_Split(s, ".")
+        let n: int = parts.Count()
+        var maj: int = 0
+        var min: int = 0
+        var pat: int = 0
+        if (n >= 1) { maj = String_ToInt(parts.Get(0)) }
+        if (n >= 2) { min = String_ToInt(parts.Get(1)) }
+        if (n >= 3) { pat = String_ToInt(parts.Get(2)) }
+        out.Add(maj)
+        out.Add(min)
+        out.Add(pat)
+        return out
+    }
+
+    // Check whether the current amc version satisfies a constraint
+    // string from a package's `required-amalgame` field. Supports
+    // `>=X.Y.Z` only in v0.5 (every other operator is treated as
+    // "no constraint" — generous default so future syntax doesn't
+    // brick old amc binaries). Empty constraint → always true.
+    public static bool VersionSatisfies(string current, string constraint) {
+        if (String_Length(constraint) == 0) { return true }
+        var op: string = ""
+        var verPart: string = constraint
+        if (String_StartsWith(constraint, ">=")) {
+            op = ">="
+            verPart = String_Substring(constraint, 2, String_Length(constraint) - 2)
+        }
+        verPart = String_Trim(verPart)
+        if (op != ">=") {
+            // Unrecognised operator → don't block install.
+            return true
+        }
+        let cur: List<int> = PackageRegistry.ParseVersion(current)
+        let req: List<int> = PackageRegistry.ParseVersion(verPart)
+        // Tuple compare major → minor → patch.
+        if (cur.Get(0) != req.Get(0)) { return cur.Get(0) > req.Get(0) }
+        if (cur.Get(1) != req.Get(1)) { return cur.Get(1) > req.Get(1) }
+        return cur.Get(2) >= req.Get(2)
+    }
+}

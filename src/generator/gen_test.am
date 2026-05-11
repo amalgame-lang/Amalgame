@@ -182,6 +182,33 @@ public class Program {
         let newProg  = newPar.Parse()
         Console.WriteError("parsed: new_cmd.am")
 
+        // Toml stdlib — required by add_cmd.am for manifest parsing.
+        // Same chicken-and-egg pattern as json: must be parsed before
+        // any file that imports Amalgame.Formats.Toml.
+        let tomlPath = "./src/stdlib/toml.am"
+        let tomlSrc  = File.ReadAll(tomlPath)
+        let tomlLex  = new Lexer(tomlSrc, tomlPath)
+        let tomlToks = tomlLex.Tokenize()
+        let tomlPar  = new Parser(tomlToks)
+        let tomlProg = tomlPar.Parse()
+        Console.WriteError("parsed: stdlib/toml.am")
+
+        let addPath  = "./src/add_cmd.am"
+        let addSrc   = File.ReadAll(addPath)
+        let addLex   = new Lexer(addSrc, addPath)
+        let addToks  = addLex.Tokenize()
+        let addPar   = new Parser(addToks)
+        let addProg  = addPar.Parse()
+        Console.WriteError("parsed: add_cmd.am")
+
+        let prPath   = "./src/package_registry.am"
+        let prSrc    = File.ReadAll(prPath)
+        let prLex    = new Lexer(prSrc, prPath)
+        let prToks   = prLex.Tokenize()
+        let prPar    = new Parser(prToks)
+        let prProg   = prPar.Parse()
+        Console.WriteError("parsed: package_registry.am")
+
         let mainPath = "./src/main.am"
         let mainSrc  = File.ReadAll(mainPath)
         let mainLex  = new Lexer(mainSrc, mainPath)
@@ -205,6 +232,12 @@ public class Program {
         gen6.AddFilePass1(astProg)
         gen6.AddFilePass1(lexProg)
         gen6.AddFilePass1(parProg)
+        // Toml + PackageRegistry pulled up before cgen + resolver:
+        // those reference PackageRegistry as a parameter type
+        // (RegisterPackages(reg: PackageRegistry)) starting in PR
+        // 3c, so the struct typedef has to be emitted earlier.
+        gen6.AddFilePass1(tomlProg)
+        gen6.AddFilePass1(prProg)
         gen6.AddFilePass1(cgenProg)
         gen6.AddFilePass1(fmtProg)
         gen6.AddFilePass1(diagProg)
@@ -222,6 +255,7 @@ public class Program {
         gen6.AddFilePass1(genProg)
         gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(newProg)
+        gen6.AddFilePass1(addProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
         Console.WriteError("gen6: pass1 done, starting pass2")
@@ -229,6 +263,9 @@ public class Program {
         gen6.AddFilePass2(astProg)
         gen6.AddFilePass2(lexProg)
         gen6.AddFilePass2(parProg)
+        // Same reorder as Pass1: toml + pr before cgen + resolver.
+        gen6.AddFilePass2(tomlProg)
+        gen6.AddFilePass2(prProg)
         gen6.AddFilePass2(cgenProg)
         gen6.AddFilePass2(fmtProg)
         gen6.AddFilePass2(diagProg)
@@ -246,6 +283,7 @@ public class Program {
         gen6.AddFilePass2(genProg)
         gen6.AddFilePass2(expProg)
         gen6.AddFilePass2(newProg)
+        gen6.AddFilePass2(addProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")
         // Emit the C entry point that boots Amalgame's Program.Main.

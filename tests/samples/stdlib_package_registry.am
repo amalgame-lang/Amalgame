@@ -1,0 +1,148 @@
+// Stdlib test: PackageRegistry — loads an amalgame.lock + the
+// referenced packages' manifests from a fixture cache, verifies
+// the parsed shape. No network / no git. This is the unit test
+// for PR 3b; PR 3c plumbs the registry into resolver + cgen.
+
+namespace Tests
+
+import Amalgame.Collections
+import Amalgame.Compiler
+
+public class Program {
+    public static void Main(string[] args) {
+
+        let lockPath: string  = "tests/fixtures/pm/amalgame.lock"
+        let cacheRoot: string = "tests/fixtures/pm/cache"
+        let reg = PackageRegistry.LoadFrom(lockPath, cacheRoot)
+
+        // ── One package loaded ────────────────────────────
+
+        let count: int = reg.Packages.Count()
+        if (count == 1) {
+            Console.WriteLine("[PASS] one package")
+        } else {
+            Console.WriteLine("[FAIL] one package got " + String_FromInt(count))
+        }
+
+        let lp: LoadedPackage = reg.Packages.Get(0)
+
+        // ── Package metadata ──────────────────────────────
+
+        if (lp.Name == "fake-pkg") {
+            Console.WriteLine("[PASS] name")
+        } else {
+            Console.WriteLine("[FAIL] name got '" + lp.Name + "'")
+        }
+
+        if (lp.ClassName == "FakePkg") {
+            Console.WriteLine("[PASS] class name")
+        } else {
+            Console.WriteLine("[FAIL] class name got '" + lp.ClassName + "'")
+        }
+
+        if (lp.Ns == "Amalgame.Fake.FakePkg") {
+            Console.WriteLine("[PASS] namespace")
+        } else {
+            Console.WriteLine("[FAIL] namespace got '" + lp.Ns + "'")
+        }
+
+        // Header is package-relative in the manifest, absolutised
+        // by LoadFrom. We assert the leaf — the prefix depends on
+        // where the test is invoked from.
+        if (String_EndsWith(lp.Header, "runtime/fake_pkg.h")) {
+            Console.WriteLine("[PASS] header path")
+        } else {
+            Console.WriteLine("[FAIL] header path got '" + lp.Header + "'")
+        }
+
+        // ── Functions table ───────────────────────────────
+
+        let fnCount: int = lp.FuncNames.Count()
+        if (fnCount == 4) {
+            Console.WriteLine("[PASS] func count")
+        } else {
+            Console.WriteLine("[FAIL] func count got " + String_FromInt(fnCount))
+        }
+
+        // The manifest's [stdlib.functions] keys may parse in any
+        // order; search by name + verify the return type.
+        var initRet: string  = ""
+        var tickRet: string  = ""
+        var isOkRet: string  = ""
+        var closeRet: string = ""
+        for i in 0..fnCount {
+            let name: string = lp.FuncNames.Get(i)
+            let ret:  string = lp.FuncRets.Get(i)
+            if (name == "Init")  { initRet  = ret }
+            if (name == "Tick")  { tickRet  = ret }
+            if (name == "IsOk")  { isOkRet  = ret }
+            if (name == "Close") { closeRet = ret }
+        }
+        if (initRet == "AmalgameFakePkg*") {
+            Console.WriteLine("[PASS] Init returns pointer")
+        } else {
+            Console.WriteLine("[FAIL] Init got '" + initRet + "'")
+        }
+        if (tickRet == "i64") {
+            Console.WriteLine("[PASS] Tick returns i64")
+        } else {
+            Console.WriteLine("[FAIL] Tick got '" + tickRet + "'")
+        }
+        if (isOkRet == "code_bool") {
+            Console.WriteLine("[PASS] IsOk returns bool")
+        } else {
+            Console.WriteLine("[FAIL] IsOk got '" + isOkRet + "'")
+        }
+        if (closeRet == "void") {
+            Console.WriteLine("[PASS] Close returns void")
+        } else {
+            Console.WriteLine("[FAIL] Close got '" + closeRet + "'")
+        }
+
+        // ── Aggregate accessors ───────────────────────────
+
+        let classes: List<string> = reg.ClassNames()
+        let firstClass: string = classes.Get(0)
+        if (classes.Count() == 1 && firstClass == "FakePkg") {
+            Console.WriteLine("[PASS] ClassNames aggregate")
+        } else {
+            Console.WriteLine("[FAIL] ClassNames aggregate")
+        }
+
+        let headers: List<string> = reg.Headers()
+        let firstHdr: string = headers.Get(0)
+        let hdrEnds: bool = String_EndsWith(firstHdr, "runtime/fake_pkg.h")
+        if (headers.Count() == 1 && hdrEnds) {
+            Console.WriteLine("[PASS] Headers aggregate")
+        } else {
+            Console.WriteLine("[FAIL] Headers aggregate")
+        }
+
+        // ── C → Amalgame type derivation ──────────────────
+
+        let cType1: string = "AmalgameFakePkg*"
+        let aType1: string = PackageRegistry.AmalgameTypeFromC(cType1)
+        if (aType1 == "AmalgameFakePkg") {
+            Console.WriteLine("[PASS] strip star")
+        } else {
+            Console.WriteLine("[FAIL] strip star got '" + aType1 + "'")
+        }
+
+        let cType2: string = "code_bool"
+        let aType2: string = PackageRegistry.AmalgameTypeFromC(cType2)
+        if (aType2 == "code_bool") {
+            Console.WriteLine("[PASS] passthrough primitive")
+        } else {
+            Console.WriteLine("[FAIL] passthrough got '" + aType2 + "'")
+        }
+
+        // ── Missing lock path → empty registry ────────────
+
+        let emptyReg = PackageRegistry.LoadFrom("tests/fixtures/pm/__nonexistent__.lock", cacheRoot)
+        if (emptyReg.Packages.Count() == 0) {
+            Console.WriteLine("[PASS] missing lock empty")
+        } else {
+            Console.WriteLine("[FAIL] missing lock empty")
+        }
+    }
+}

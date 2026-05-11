@@ -20,16 +20,19 @@ SKIP_SELFHOST=" "
 BUILD_DIR=$(mktemp -d -t amc-stdlib-XXXXXX)
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
-# Pre-compile the vendored SQLite amalgamation once. Database tests
-# link against this .o — compiling 9MB of sqlite3.c per test would
-# add 10s × N tests; doing it here adds 10s total. Built with the
-# same flags as the test compile (-O2, -Iruntime so cross-references
-# work) and with -w to silence sqlite3.c's own warnings.
-SQLITE_OBJ="$BUILD_DIR/sqlite3.o"
-echo "── Pre-compiling vendored SQLite amalgamation ──"
-gcc -O2 -Iruntime -w -c runtime/Amalgame_Database/sqlite/sqlite3.c -o "$SQLITE_OBJ"
-echo "  built: $SQLITE_OBJ ($(stat -c%s "$SQLITE_OBJ" 2>/dev/null || stat -f%z "$SQLITE_OBJ") bytes)"
-echo ""
+# Note on Database / Messaging tests:
+#
+# Optional backends (Database.SQLite, Database.NoSQL.Redis,
+# Messaging.MQTT) live in their own external packages since v0.5.
+# Their tests live in those packages' repos and run on their
+# package CI — NOT here. The main repo's suite tests only the
+# compiler + the always-present core stdlib + the package-
+# manager pipeline.
+#
+# To exercise the external packages' tests:
+#   cd ../amalgame-database-sqlite       && ./tests/run_tests.sh "$AMC"
+#   cd ../amalgame-database-nosql-redis  && ./tests/run_tests.sh "$AMC"
+#   cd ../amalgame-messaging-mqtt        && ./tests/run_tests.sh "$AMC"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -78,11 +81,11 @@ run_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    # Always link the pre-compiled SQLite amalgamation. Adds ~1.5MB
-    # to the test binary but means Database tests work without
-    # special-casing — and non-Database tests get the link as
-    # dead-code that the loader skips.
-    gcc -O2 -Iruntime "$c_file" "$SQLITE_OBJ" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
+    # SQLite stopped being a default link target with the v0.5
+    # extraction — Database.SQLite is now an opt-in external
+    # package. Tests that need it go through `run_db_test` which
+    # adds the .o + sets cwd to $SQLITE_PROJ.
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -251,6 +254,145 @@ run_test "Json: encode escape"        "$SAMPLES/stdlib_json.am" "[PASS] encode e
 run_test "Json: round-trip nested"    "$SAMPLES/stdlib_json.am" "[PASS] round-trip nested"     "" "$JSON_LIB"
 run_test "Json: escape direct"        "$SAMPLES/stdlib_json.am" "[PASS] escape direct"         "" "$JSON_LIB"
 
+# ── Amalgame.Formats.Toml ──────────────────────────────
+# TOML 1.0 subset for v0.5 package-manager manifests. Same facade
+# pattern as Json: the .am stdlib file passes as a 5th-arg extra
+# input. Stdlib must be passed BEFORE the test file so the cgen
+# forward-declares Toml.* methods cleanly (gotcha — emission order
+# matters for static-class methods across compile units).
+echo ""
+echo "── Amalgame.Formats.Toml ───────────────────"
+TOML_LIB="src/stdlib/toml.am"
+run_test "Toml: parse empty"          "$SAMPLES/stdlib_toml.am" "[PASS] parse empty"          "" "$TOML_LIB"
+run_test "Toml: kv string"            "$SAMPLES/stdlib_toml.am" "[PASS] kv string"            "" "$TOML_LIB"
+run_test "Toml: kv int"               "$SAMPLES/stdlib_toml.am" "[PASS] kv int"               "" "$TOML_LIB"
+run_test "Toml: kv neg int"           "$SAMPLES/stdlib_toml.am" "[PASS] kv neg int"           "" "$TOML_LIB"
+run_test "Toml: kv bool true"         "$SAMPLES/stdlib_toml.am" "[PASS] kv bool true"         "" "$TOML_LIB"
+run_test "Toml: kv bool false"        "$SAMPLES/stdlib_toml.am" "[PASS] kv bool false"        "" "$TOML_LIB"
+run_test "Toml: string escapes"       "$SAMPLES/stdlib_toml.am" "[PASS] string escapes"       "" "$TOML_LIB"
+run_test "Toml: literal string"       "$SAMPLES/stdlib_toml.am" "[PASS] literal string"       "" "$TOML_LIB"
+run_test "Toml: comments tolerated"   "$SAMPLES/stdlib_toml.am" "[PASS] comments tolerated"   "" "$TOML_LIB"
+run_test "Toml: array strings"        "$SAMPLES/stdlib_toml.am" "[PASS] array strings"        "" "$TOML_LIB"
+run_test "Toml: array ints"           "$SAMPLES/stdlib_toml.am" "[PASS] array ints"           "" "$TOML_LIB"
+run_test "Toml: table"                "$SAMPLES/stdlib_toml.am" "[PASS] table"                "" "$TOML_LIB"
+run_test "Toml: nested table"         "$SAMPLES/stdlib_toml.am" "[PASS] nested table"         "" "$TOML_LIB"
+run_test "Toml: inline table"         "$SAMPLES/stdlib_toml.am" "[PASS] inline table"         "" "$TOML_LIB"
+run_test "Toml: manifest package.name" "$SAMPLES/stdlib_toml.am" "[PASS] manifest package.name" "" "$TOML_LIB"
+run_test "Toml: manifest stdlib.class" "$SAMPLES/stdlib_toml.am" "[PASS] manifest stdlib.class" "" "$TOML_LIB"
+run_test "Toml: manifest dep tag"     "$SAMPLES/stdlib_toml.am" "[PASS] manifest dep tag"     "" "$TOML_LIB"
+run_test "Toml: missing key is null"  "$SAMPLES/stdlib_toml.am" "[PASS] missing key chain is null" "" "$TOML_LIB"
+run_test "Toml: has present+absent"   "$SAMPLES/stdlib_toml.am" "[PASS] has present + absent" "" "$TOML_LIB"
+run_test "Toml: aot count"            "$SAMPLES/stdlib_toml.am" "[PASS] aot count"            "" "$TOML_LIB"
+run_test "Toml: aot entry 0"          "$SAMPLES/stdlib_toml.am" "[PASS] aot entry 0"          "" "$TOML_LIB"
+run_test "Toml: aot entry 1"          "$SAMPLES/stdlib_toml.am" "[PASS] aot entry 1"          "" "$TOML_LIB"
+run_test "Toml: roundtrip simple"     "$SAMPLES/stdlib_toml.am" "[PASS] roundtrip simple"     "" "$TOML_LIB"
+
+# ── PackageRegistry (v0.5 PR 3b) ───────────────────────
+# Loads amalgame.lock + cached package manifests, exposes them as
+# a typed registry. Test fixture lives under tests/fixtures/pm/
+# (no network, no git — just files on disk).
+echo ""
+echo "── PackageRegistry ─────────────────────────"
+PR_EXTRA="src/stdlib/toml.am src/package_registry.am"
+run_test "PR: one package"            "$SAMPLES/stdlib_package_registry.am" "[PASS] one package"        "" "$PR_EXTRA"
+run_test "PR: name"                   "$SAMPLES/stdlib_package_registry.am" "[PASS] name"               "" "$PR_EXTRA"
+run_test "PR: class name"             "$SAMPLES/stdlib_package_registry.am" "[PASS] class name"         "" "$PR_EXTRA"
+run_test "PR: namespace"              "$SAMPLES/stdlib_package_registry.am" "[PASS] namespace"          "" "$PR_EXTRA"
+run_test "PR: header path"            "$SAMPLES/stdlib_package_registry.am" "[PASS] header path"        "" "$PR_EXTRA"
+run_test "PR: func count"             "$SAMPLES/stdlib_package_registry.am" "[PASS] func count"         "" "$PR_EXTRA"
+run_test "PR: Init returns pointer"   "$SAMPLES/stdlib_package_registry.am" "[PASS] Init returns pointer"  "" "$PR_EXTRA"
+run_test "PR: Tick returns i64"       "$SAMPLES/stdlib_package_registry.am" "[PASS] Tick returns i64"      "" "$PR_EXTRA"
+run_test "PR: IsOk returns bool"      "$SAMPLES/stdlib_package_registry.am" "[PASS] IsOk returns bool"     "" "$PR_EXTRA"
+run_test "PR: Close returns void"     "$SAMPLES/stdlib_package_registry.am" "[PASS] Close returns void"    "" "$PR_EXTRA"
+run_test "PR: ClassNames aggregate"   "$SAMPLES/stdlib_package_registry.am" "[PASS] ClassNames aggregate"  "" "$PR_EXTRA"
+run_test "PR: Headers aggregate"      "$SAMPLES/stdlib_package_registry.am" "[PASS] Headers aggregate"     "" "$PR_EXTRA"
+run_test "PR: strip star"             "$SAMPLES/stdlib_package_registry.am" "[PASS] strip star"            "" "$PR_EXTRA"
+run_test "PR: passthrough primitive"  "$SAMPLES/stdlib_package_registry.am" "[PASS] passthrough primitive" "" "$PR_EXTRA"
+run_test "PR: missing lock empty"     "$SAMPLES/stdlib_package_registry.am" "[PASS] missing lock empty"    "" "$PR_EXTRA"
+
+# ── PackageManager e2e (full pipeline) ────────────────
+# Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
+# compiles a user program that imports a class only known to the
+# compiler via the fixture amalgame.lock + cached manifest, and
+# asserts the generated C has the right symbols + types + include.
+# AMALGAME_PACKAGES_DIR env var overrides the default cache root
+# so the test doesn't poke at ~/.amalgame/packages/.
+echo ""
+echo "── PackageManager e2e ──────────────────────"
+test_pm_e2e() {
+    local TMPDIR=$(mktemp -d -t pm-e2e-XXXXXX)
+    cat > "$TMPDIR/amalgame.lock" <<EOF
+[[package]]
+name = "fake-pkg"
+git  = "example.com/fake/fake-pkg"
+tag  = "v0.1.0"
+rev  = "deadbeefcafebabe0000000000000000000000ab"
+EOF
+    cat > "$TMPDIR/user.am" <<'USRAM'
+public class Program {
+    public static void Main() {
+        let r = FakePkg.Init()
+        let t: int = FakePkg.Tick(r)
+        let ok: bool = FakePkg.IsOk(r)
+        var okStr: string = "false"
+        if (ok) { okStr = "true" }
+        Console.WriteLine("e2e tick=" + String_FromInt(t) + " ok=" + okStr)
+        FakePkg.Close(r)
+    }
+}
+USRAM
+    local AMC_ABS="$(realpath ./amc)"
+    local CACHE_ABS="$(realpath tests/fixtures/pm/cache)"
+    local RUNTIME_ABS="$(realpath runtime)"
+    (cd "$TMPDIR" && AMALGAME_PACKAGES_DIR="$CACHE_ABS" "$AMC_ABS" -o out user.am) > "$TMPDIR/amc.log" 2>&1
+    local amc_exit=$?
+
+    check_e2e() {
+        local name="$1"; local pattern="$2"
+        printf "  %-38s" "$name"
+        if grep -qE "$pattern" "$TMPDIR/out.c"; then
+            echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
+        fi
+    }
+
+    if [ $amc_exit -ne 0 ]; then
+        printf "  %-38s${RED}FAIL${NC} (amc exited %d)\n" "PM e2e: amc compile" $amc_exit
+        FAIL=$((FAIL+1))
+        cat "$TMPDIR/amc.log" | head -5 | sed 's/^/    /'
+        rm -rf "$TMPDIR"; return
+    fi
+    printf "  %-38s${GREEN}PASS${NC}\n" "PM e2e: amc compile"; PASS=$((PASS+1))
+
+    check_e2e "PM e2e: header included"          "#include.*fake_pkg.h"
+    # v0.5+: C symbols are namespace-mangled. The fixture manifest
+    # declares namespace="Amalgame.Fake.FakePkg" so cgen emits
+    # Amalgame_Fake_FakePkg_<method> at call sites.
+    check_e2e "PM e2e: FakePkg.Init typed"       "AmalgameFakePkg\\* .*= Amalgame_Fake_FakePkg_Init"
+    check_e2e "PM e2e: FakePkg.Tick i64"         "i64 .*= Amalgame_Fake_FakePkg_Tick"
+    check_e2e "PM e2e: FakePkg.IsOk bool"        "code_bool .*= Amalgame_Fake_FakePkg_IsOk"
+    check_e2e "PM e2e: FakePkg.Close called"     "Amalgame_Fake_FakePkg_Close\\("
+
+    # Full round-trip: gcc + run.
+    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
+    printf "  %-38s" "PM e2e: gcc + run"
+    if [ -x "$TMPDIR/out" ]; then
+        local run_out=$("$TMPDIR/out" 2>&1)
+        if echo "$run_out" | grep -q "e2e tick=1 ok=true"; then
+            echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC} (run output: $run_out)"; FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${RED}FAIL${NC} (gcc failed)"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/gcc.log" | sed 's/^/    /'
+    fi
+
+    rm -rf "$TMPDIR"
+}
+test_pm_e2e
+
 # ── Amalgame.Random ────────────────────────────────────
 # Same extra-input pattern as Json — pulls in src/stdlib/random.am
 # alongside the test sample.
@@ -405,70 +547,13 @@ run_test "Service: install idempotent"      "$SAMPLES/stdlib_service.am" "[PASS]
 run_test "Service: should-stop after req"   "$SAMPLES/stdlib_service.am" "[PASS] should-stop after request"      "" "$SVC_LIB"
 run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS] sleep short-circuits when stopping" "" "$SVC_LIB"
 
-# ── Amalgame.Database ─────────────────────────────────
-# SQLite 3 via the vendored amalgamation. No facade .am — Db is in
-# the cgen's isStdlib short-circuit so Db.Open / Db.Exec / etc. lower
-# straight to the runtime helpers. Tests open an in-memory db.
-echo ""
-echo "── Amalgame.Database ───────────────────────"
-run_test "Db: open memory"                  "$SAMPLES/stdlib_database.am" "[PASS] open memory"               ""
-run_test "Db: create table"                 "$SAMPLES/stdlib_database.am" "[PASS] create table"              ""
-run_test "Db: insert"                       "$SAMPLES/stdlib_database.am" "[PASS] insert alice"              ""
-run_test "Db: last insert id 1"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 1"          ""
-run_test "Db: last insert id 3"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 3"          ""
-run_test "Db: changes counter"              "$SAMPLES/stdlib_database.am" "[PASS] changes 2"                 ""
-run_test "Db: query rows"                   "$SAMPLES/stdlib_database.am" "[PASS] query 3 rows"              ""
-run_test "Db: column text"                  "$SAMPLES/stdlib_database.am" "[PASS] alice name"                ""
-run_test "Db: update reflected"             "$SAMPLES/stdlib_database.am" "[PASS] alice age post-update"     ""
-run_test "Db: aggregate count"              "$SAMPLES/stdlib_database.am" "[PASS] aggregate count 2"         ""
-run_test "Db: error reported"               "$SAMPLES/stdlib_database.am" "[PASS] error reported"            ""
-run_test "Db: delete + verify"              "$SAMPLES/stdlib_database.am" "[PASS] delete leaves 2"           ""
-run_test "Db: close"                        "$SAMPLES/stdlib_database.am" "[PASS] closed"                    ""
+# Database / Messaging external-package tests run on the package
+# repos' own CI — not here. See the header note at the top of
+# this file for the per-package invocation.
 
-# ── Amalgame.Database.NoSQL.Redis ─────────────────────
-# RESP2 client over raw TCP. Gated on a TCP reachability probe so
-# the test suite runs cleanly without Redis installed — every case
-# becomes a SKIP rather than a failure. To exercise the round-trip,
-# start a Redis-compatible server on 127.0.0.1:6379 (e.g.
-# `docker run --rm -p 6379:6379 redis:7` or `redis-server &`).
-echo ""
-echo "── Amalgame.Database.NoSQL.Redis ───────────"
-REDIS_AVAILABLE=0
-if (echo > /dev/tcp/127.0.0.1/6379) 2>/dev/null; then
-    REDIS_AVAILABLE=1
-fi
-
-if [ "$REDIS_AVAILABLE" = "1" ]; then
-    run_test "Redis: open 6379"             "$SAMPLES/stdlib_redis.am" "[PASS] open 6379"             ""
-    run_test "Redis: ping"                  "$SAMPLES/stdlib_redis.am" "[PASS] ping"                  ""
-    run_test "Redis: set greeting"          "$SAMPLES/stdlib_redis.am" "[PASS] set greeting"          ""
-    run_test "Redis: get greeting"          "$SAMPLES/stdlib_redis.am" "[PASS] get greeting"          ""
-    run_test "Redis: get missing empty"     "$SAMPLES/stdlib_redis.am" "[PASS] get missing is empty"  ""
-    run_test "Redis: exists hit"            "$SAMPLES/stdlib_redis.am" "[PASS] exists hit"            ""
-    run_test "Redis: exists miss"           "$SAMPLES/stdlib_redis.am" "[PASS] exists miss"           ""
-    run_test "Redis: incr 1,2"              "$SAMPLES/stdlib_redis.am" "[PASS] incr 1,2"              ""
-    run_test "Redis: decr to 1"             "$SAMPLES/stdlib_redis.am" "[PASS] decr to 1"             ""
-    run_test "Redis: expire 60s"            "$SAMPLES/stdlib_redis.am" "[PASS] expire 60s"            ""
-    run_test "Redis: expire on missing"     "$SAMPLES/stdlib_redis.am" "[PASS] expire on missing"     ""
-    run_test "Redis: del 1"                 "$SAMPLES/stdlib_redis.am" "[PASS] del 1"                 ""
-    run_test "Redis: gone after del"        "$SAMPLES/stdlib_redis.am" "[PASS] gone after del"        ""
-    run_test "Redis: close"                 "$SAMPLES/stdlib_redis.am" "[PASS] closed"                ""
-else
-    run_skip "Redis: open 6379"             "no server on 127.0.0.1:6379"
-    run_skip "Redis: ping"                  "no server on 127.0.0.1:6379"
-    run_skip "Redis: set greeting"          "no server on 127.0.0.1:6379"
-    run_skip "Redis: get greeting"          "no server on 127.0.0.1:6379"
-    run_skip "Redis: get missing empty"     "no server on 127.0.0.1:6379"
-    run_skip "Redis: exists hit"            "no server on 127.0.0.1:6379"
-    run_skip "Redis: exists miss"           "no server on 127.0.0.1:6379"
-    run_skip "Redis: incr 1,2"              "no server on 127.0.0.1:6379"
-    run_skip "Redis: decr to 1"             "no server on 127.0.0.1:6379"
-    run_skip "Redis: expire 60s"            "no server on 127.0.0.1:6379"
-    run_skip "Redis: expire on missing"     "no server on 127.0.0.1:6379"
-    run_skip "Redis: del 1"                 "no server on 127.0.0.1:6379"
-    run_skip "Redis: gone after del"        "no server on 127.0.0.1:6379"
-    run_skip "Redis: close"                 "no server on 127.0.0.1:6379"
-fi
+# Database.NoSQL.Redis tests live in amalgame-database-nosql-redis,
+# Messaging.MQTT tests live in amalgame-messaging-mqtt. See the
+# header comment at the top of this file for invocation.
 
 # ── Summary ────────────────────────────────────────────
 echo ""

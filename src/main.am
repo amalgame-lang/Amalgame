@@ -57,8 +57,16 @@ public class AmalgameCompiler {
             }
         }
 
+        // ── Load v0.5 package registry ───────────────
+        // amalgame.lock in cwd (if present) lists installed
+        // external packages. Resolver + CGen each consume the
+        // registry to seed globals / isStdlib / return-types /
+        // #include emission. Empty lock → no-op everywhere.
+        let pkgReg = PackageRegistry.Load()
+
         // ── CGen init ─────────────────────────────────
         let gen = new CGen()
+        gen.RegisterPackages(pkgReg)
         gen.BeginMulti(nsPrefix)
 
         // ── Parse all files & Pass 1 ──────────────────
@@ -92,6 +100,9 @@ public class AmalgameCompiler {
         // ── Resolver pass ─────────────────────────────
         let resolver = new FullResolver()
         resolver.Sources = this.Diag.Sources
+        // Reuse the registry loaded above for CGen — keeps the two
+        // in lock-step on what packages exist.
+        resolver.RegisterPackages(pkgReg)
         let progCount = progs.Count()
         for ri in 0..progCount {
             resolver.Programs.Add(progs.Get(ri))
@@ -414,6 +425,10 @@ public class Program {
             Exit_Set(NewCommand.Run(argc))
             return
         }
+        if (Args_Get(1) == "add") {
+            Exit_Set(AddCommand.Run(argc))
+            return
+        }
 
         let inputFiles = new List<string>()
         var outputName = "a.out"
@@ -444,7 +459,7 @@ public class Program {
             } else if (a == "--verbose") {
                 verbose = true
             } else if (a == "--version") {
-                Console.WriteLine("amc 0.4.17 (self-hosted Amalgame compiler)")
+                Console.WriteLine("amc " + PackageRegistry.AmcVersion() + " (self-hosted Amalgame compiler)")
                 Exit_Set(0)
                 return
             } else if (a == "--help" || a == "-h") {
