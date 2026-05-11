@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-11T18:21:06+02:00
-Git rev:  029b1c34b34aee41fe6f6a2d213dd0bb71cd7ac5
-Branch:   feat/cpp-package-support
+Captured: 2026-05-11T19:16:10+02:00
+Git rev:  3be3d3dc4ae4cc3117b7e3fe325b86e80359cccd
+Branch:   release/v0.5.3
 Tests:    452 passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses

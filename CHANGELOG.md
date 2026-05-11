@@ -7,7 +7,7 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
-## [Unreleased] — v0.5.3
+## [v0.5.3] — 2026-05-11
 
 The **"C++-bearing packages"** release. Lays the wiring needed
 to ship vendored C++ amalgamations (DuckDB landing first) without
@@ -1857,6 +1857,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 
 [v0.5.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.0
 [v0.5.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.2
+[v0.5.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.3
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15

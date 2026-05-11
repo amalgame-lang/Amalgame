@@ -4026,7 +4026,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.5.2";
+    return "0.5.3";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
