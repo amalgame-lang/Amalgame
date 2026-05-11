@@ -26,7 +26,6 @@ import Amalgame.String
 //   - Multiline basic / literal strings (`"""..."""`)
 //   - Hex / octal / binary integer literals
 //   - Underscores in numeric literals (`1_000`)
-//   - Array of tables `[[foo]]`
 //   - Dotted-key assignment without `[header]` first (`a.b.c = 1`)
 //
 // The parser is single-pass, recursive-descent, no AST — emits a
@@ -383,16 +382,33 @@ public class Toml {
             if (p.HasError) { break }
             let c: string = p.Peek()
             if (c == "[") {
-                // Table header.
+                // Table header — either `[foo]` (regular) or `[[foo]]`
+                // (array-of-tables). The double-bracket form is the
+                // canonical way to express a sequence of homogeneously-
+                // structured entries (lock-file `[[package]]`, multi-
+                // entry config arrays, etc.).
                 p.Pos = p.Pos + 1
+                var isArrayHeader: bool = false
+                if (p.Peek() == "[") {
+                    isArrayHeader = true
+                    p.Pos = p.Pos + 1
+                }
                 p.SkipInlineSpace()
                 let path: List<string> = Toml.ReadHeaderPath(p)
                 if (path.Count() == 0) { p.Fail("empty table header") }
                 p.SkipInlineSpace()
                 if (p.Peek() != "]") { p.Fail("expected ']' after table header") }
                 else { p.Pos = p.Pos + 1 }
+                if (isArrayHeader) {
+                    if (p.Peek() != "]") { p.Fail("expected ']]' to close array-of-tables header") }
+                    else { p.Pos = p.Pos + 1 }
+                }
                 p.SkipInlineSpace()
-                current = Toml.NavigateOrCreate(root, path)
+                if (isArrayHeader) {
+                    current = Toml.AppendArrayTable(root, path)
+                } else {
+                    current = Toml.NavigateOrCreate(root, path)
+                }
             } else {
                 // key = value
                 let key: string = p.ReadKey()
@@ -451,6 +467,43 @@ public class Toml {
             }
         }
         return cur
+    }
+
+    // Array-of-tables (`[[foo]]`) — navigate the parent path as
+    // regular tables, then on the leaf segment get or create an
+    // array, append a fresh Table to it, return that Table as the
+    // new "current". Multiple `[[foo]]` blocks build foo as a
+    // growing array of tables.
+    public static TomlValue AppendArrayTable(TomlValue root, List<string> path) {
+        let n: int = path.Count()
+        if (n == 0) { return root }
+        // Navigate parent path (all but last segment).
+        var parent: TomlValue = root
+        let parentDepth: int = n - 1
+        for i in 0..parentDepth {
+            let seg: string = path.Get(i)
+            let existing: TomlValue = parent.Get(seg)
+            if (existing.IsTable()) {
+                parent = existing
+            } else {
+                let fresh = new TomlValue()
+                fresh.BecomeTable()
+                parent.SetEntry(seg, fresh)
+                parent = fresh
+            }
+        }
+        // Last segment: get/create an array, append a new table.
+        let lastSeg: string = path.Get(n - 1)
+        var arr: TomlValue = parent.Get(lastSeg)
+        if (!arr.IsArray()) {
+            arr = new TomlValue()
+            arr.BecomeArray()
+            parent.SetEntry(lastSeg, arr)
+        }
+        let newTable = new TomlValue()
+        newTable.BecomeTable()
+        arr.AppendItem(newTable)
+        return newTable
     }
 
     public static TomlValue ReadValue(TomlParser p) {
