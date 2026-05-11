@@ -76,7 +76,17 @@ time ./gen_test
 
 echo "=== Step 3: Compile amc ==="
 # main.am now emits its own int main() — no more amc_main.c wrapper needed.
+#
+# Bake build provenance into the binary so `amc --version` can show the
+# git short SHA + build date. Both fall back to "" when unavailable
+# (no git, dirty checkout outside a repo, etc.); the version handler
+# treats empty as "no build info" and skips the line — never emits a
+# half-rendered banner.
+AMC_GIT_REV=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "")
+AMC_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
 gcc -Iruntime \
+    -DAMC_GIT_REV="\"$AMC_GIT_REV\"" \
+    -DAMC_BUILD_DATE="\"$AMC_BUILD_DATE\"" \
     src/amc_lib.c \
     -lgc -lm -lcurl -o amc
 echo "✅ amc built $(date)"

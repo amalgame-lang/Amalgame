@@ -1240,6 +1240,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Crypto.h\"")
         this.Out.EmitLine("#include \"Amalgame_Logging.h\"")
         this.Out.EmitLine("#include \"Amalgame_Service.h\"")
+        this.Out.EmitLine("#include \"Amalgame_BuildInfo.h\"")
         // (Amalgame_Database_SQLite.h / Amalgame_Database_Redis.h
         //  / Amalgame_Messaging_MQTT.h all moved to their own
         //  packages — PackageRegistry emits the #include lines for
@@ -3209,10 +3210,22 @@ public class CGen {
                     let firstChar = String_Substring(tname, 0, 1)
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
+                        // Path.{Combine,Sep,IsAbsolute,Normalize} —
+                        // their runtime symbols match the method
+                        // name 1:1, so lower without requiring an
+                        // `import Amalgame.Path`. The other four
+                        // (Directory/Filename/Extension/Stem) wrap
+                        // `Path_Get*` and must still go through the
+                        // namespace dispatch below.
+                        if (tname == "Path") {
+                            if (mname == "Combine" || mname == "Sep" || mname == "IsAbsolute" || mname == "Normalize") {
+                                return "Path_" + mname
+                            }
+                        }
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }

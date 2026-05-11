@@ -225,7 +225,8 @@ public class Program {
         Console.WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test templates).")
         Console.WriteError("                See `amc new --help`.")
         Console.WriteError("  package <X>   Package manager (alias `pkg`). Verbs: add / remove / list /")
-        Console.WriteError("                search / update / cache. See `amc package --help`.")
+        Console.WriteError("                search / versions / info / outdated / notice / check /")
+        Console.WriteError("                update / cache. See `amc package --help`.")
     }
 
     // ── test subcommand ────────────────────────────────
@@ -633,7 +634,28 @@ public class Program {
             } else if (a == "--verbose") {
                 verbose = true
             } else if (a == "--version") {
-                Console.WriteLine("amc " + PackageRegistry.AmcVersion() + " (self-hosted Amalgame compiler)")
+                // Build provenance: rev + date are baked at link time
+                // by build_amc.sh via -DAMC_GIT_REV / -DAMC_BUILD_DATE.
+                // When the defines are missing (someone gcc'd the C
+                // snapshot directly), the helpers return "" and we
+                // skip the line — never emit a half-rendered banner.
+                let rev:  string = BuildInfo.GitRev()
+                let date: string = BuildInfo.BuildDate()
+                var head:  string = "amc " + PackageRegistry.AmcVersion()
+                var prov:  string = ""
+                if (String_Length(rev) > 0 && String_Length(date) > 0) {
+                    prov = " (commit " + rev + ", built " + date + ")"
+                } else if (String_Length(rev) > 0) {
+                    prov = " (commit " + rev + ")"
+                } else if (String_Length(date) > 0) {
+                    prov = " (built " + date + ")"
+                }
+                Console.WriteLine(head + prov)
+                Console.WriteLine("Self-hosted Amalgame compiler.")
+                Console.WriteLine("Copyright (c) 2026 Bastien Mouget. License: Apache-2.0.")
+                Console.WriteLine("Website:    https://amalgame.me")
+                Console.WriteLine("Repository: https://github.com/amalgame-lang/Amalgame")
+                Console.WriteLine("Issues:     https://github.com/amalgame-lang/Amalgame/issues")
                 Exit_Set(0)
                 return
             } else if (a == "--help" || a == "-h") {

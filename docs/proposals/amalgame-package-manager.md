@@ -222,6 +222,91 @@ verified_on = "2026-05-15"
 verified_by = "bmtbf"
 ```
 
+### 7.b. Index schema evolution: v1 → v2
+
+The v1 schema above (one `[[package]]` block per shortname, full
+stop) shipped with v0.5.0 and worked fine for `amc package add
+<name>@<tag>` — the resolver only needed to map `<shortname>` →
+git URL. But **`amc package search` and `amc package versions`
+needed a list of every tag known for a package, plus each tag's
+`required-amalgame` constraint**, without cloning every repo at
+search time. So v0.5.5 promoted the packages-index to schema v2.
+
+```toml
+schema-version = 1   # the index file format; bumped only on
+                     # breaking changes to the index TOML shape.
+                     # Schema v2 adds [[version]] but keeps
+                     # [[package]] unchanged, so the integer
+                     # version field stays at 1 (back-compat with
+                     # v0.5.4 amc, which ignores [[version]]).
+
+# [[package]] entries — unchanged from v1, one per shortname.
+
+[[package]]
+name        = "duckdb"
+url         = "github.com/amalgame-lang/amalgame-database-duckdb"
+description = "DuckDB binding — vendored C++ amalgamation (MIT)…"
+tier        = "official"
+maintainer  = "amalgame-lang"
+license     = "Apache-2.0"
+category    = "database"
+
+# [[version]] — NEW in v2 — flat array, one entry per
+# (shortname, tag) pair. Linked to [[package]] by the `package`
+# field. Append newest-last; amc walks the array and uses the
+# last-seen compatible entry for auto-resolve + search "latest
+# compatible" marker.
+
+[[version]]
+package           = "duckdb"
+tag               = "v0.1.0"
+required-amalgame = ">=0.5.3"
+
+[[version]]
+package           = "duckdb"
+tag               = "v0.1.1"
+required-amalgame = ">=0.5.4"
+```
+
+**Why a flat array instead of nesting under `[[package]]`?**
+
+TOML's `[[…]]` arrays can't be nested as cleanly as we'd like —
+a `[[package.version]]` syntax exists but breaks the
+human-readability we want for hand-edited PRs to the index repo.
+A flat `[[version]]` block linked by `package = "<shortname>"`
+keeps every entry self-contained and editable in isolation, at
+the cost of one extra string per row.
+
+**Why newest-last (instead of newest-first)?**
+
+PR diffs against the index are easier to review when each
+release adds one block at the end of the file instead of
+prepending and shifting everything. amc compensates by
+iterating the array forward, tracking the last-seen compatible
+entry, and reversing at render time for the user.
+
+**Compatibility matrix:**
+
+| amc version | Reads `[[package]]` | Reads `[[version]]` | Behaviour |
+|---|---|---|---|
+| ≤ v0.5.4 | ✓ | ignored | `amc package add foo@vX.Y.Z` works as before; no `search --version`. |
+| ≥ v0.5.5 | ✓ | ✓ | `search` / `versions` show compat status; `add` (no tag) auto-resolves in v0.6.0+. |
+
+Auto-resolve (v0.6.0+) reads `[[version]]` to pick the latest
+compatible tag when the user types `amc package add <name>`
+without `@<tag>`. The semver operator set
+(`>=`, `>`, `<`, `<=`, `=`, `^`, `~`, bare) tracks the npm /
+Cargo conventions; see `PackageRegistry.VersionSatisfies` for
+the full grammar.
+
+**Cache: 30-min TTL (v0.5.6+).** The index is cached at
+`~/.amalgame/cache/packages-index.toml` with mtime-based
+freshness (`date -r <file> +%s`). Older than 30 min → refresh
+on next `search` / `versions` / `add`. Network failure during
+refresh serves the stale cache with a warning on stderr (better
+than hard-failing when offline). `--refresh` forces a re-fetch
+unconditionally.
+
 ### 8. Validation at install — manifest sanity + supply-chain checks
 
 Every `amc add` runs these checks after clone, before writing the lock:
