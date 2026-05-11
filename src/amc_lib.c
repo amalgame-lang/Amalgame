@@ -19561,6 +19561,7 @@ code_string Amalgame_Compiler_AddCommand_CacheRoot();
 code_string Amalgame_Compiler_AddCommand_IndexCachePath();
 static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs);
 code_string Amalgame_Compiler_AddCommand_FetchIndex();
+i64 Amalgame_Compiler_AddCommand_EnsureInstalled();
 i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc);
 i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc);
 i64 Amalgame_Compiler_AddCommand_RunInstallSpec(code_string spec);
@@ -19913,6 +19914,59 @@ code_string Amalgame_Compiler_AddCommand_FetchIndex() {
         return "";
     }
     return File_ReadAll(cachePath);
+}
+
+i64 Amalgame_Compiler_AddCommand_EnsureInstalled() {
+    code_string __attribute__((unused)) lockPath = "amalgame.lock";
+    if (!File_Exists(lockPath)) {
+        return 0;
+    }
+    code_string __attribute__((unused)) lockSrc = File_ReadAll(lockPath);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) lockDoc = Amalgame_Compiler_Toml_Parse(lockSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(lockDoc)) {
+        return 0;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgs = Amalgame_Compiler_TomlValue_Get(lockDoc, "package");
+    if (!Amalgame_Compiler_TomlValue_IsArray(pkgs)) {
+        return 0;
+    }
+    code_string __attribute__((unused)) cacheRoot = Amalgame_Compiler_AddCommand_CacheRoot();
+    i64 __attribute__((unused)) n = Amalgame_Compiler_TomlValue_Count(pkgs);
+    i64 __attribute__((unused)) installed = 0;
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(pkgs, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) gitV = Amalgame_Compiler_TomlValue_Get(entry, "git");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) tagV = Amalgame_Compiler_TomlValue_Get(entry, "tag");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) revV = Amalgame_Compiler_TomlValue_Get(entry, "rev");
+        code_string __attribute__((unused)) gitS = Amalgame_Compiler_TomlValue_AsString(gitV);
+        code_string __attribute__((unused)) tagS = Amalgame_Compiler_TomlValue_AsString(tagV);
+        code_string __attribute__((unused)) revS = Amalgame_Compiler_TomlValue_AsString(revV);
+        if (String_Length(gitS) == 0 || String_Length(tagS) == 0) {
+            continue;
+        }
+        if (String_Length(revS) < 8) {
+            continue;
+        }
+        code_string __attribute__((unused)) shortSha = String_Substring(revS, 0, 8);
+        code_string __attribute__((unused)) pkgDir = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(cacheRoot, "/"), gitS), "/"), tagS), "_"), shortSha);
+        code_string __attribute__((unused)) manifestPath = code_string_concat(pkgDir, "/amalgame.toml");
+        if (File_Exists(manifestPath)) {
+            continue;
+        }
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Installing missing dep: ", gitS), "@"), tagS), "..."));
+        code_string __attribute__((unused)) amcPath0 = Args_Get(0);
+        code_string __attribute__((unused)) amcExe = amcPath0;
+        if (String_Length(amcExe) == 0) {
+            amcExe = "amc";
+        }
+        i64 __attribute__((unused)) exit = Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", amcExe), "' add '"), gitS), "@"), tagS), "'"));
+        if (exit != 0) {
+            Console_WriteError(code_string_concat(code_string_concat(code_string_concat("amc add failed for ", gitS), "@"), tagS));
+            return -1;
+        }
+        installed = installed + 1;
+    }
+    return installed;
 }
 
 i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc) {
@@ -20633,6 +20687,14 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
         dir = a;
         i = i + 1;
     }
+    i64 __attribute__((unused)) installed = Amalgame_Compiler_AddCommand_EnsureInstalled();
+    if (installed < 0) {
+        Console_WriteError("amc test: package install failed; aborting");
+        return 1;
+    }
+    if (installed > 0) {
+        Console_WriteLine(code_string_concat(code_string_concat("amc test: installed ", String_FromInt(installed)), " missing dep(s)"));
+    }
     code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", dir), " -name '*_test.am' -type f");
     AmalgameProcessResult* __attribute__((unused)) discovered = Process_RunCapture(findCmd);
     if (discovered->Exit != 0) {
@@ -20674,7 +20736,19 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
             compileFail = compileFail + 1;
             continue;
         }
-        code_string __attribute__((unused)) gccCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat("gcc -O2 -Iruntime ", outC), " -lgc -lm -lcurl -o "), outBin), " 2>&1");
+        code_string __attribute__((unused)) amcRuntime = Env_Get("AMC_RUNTIME");
+        if (String_Length(amcRuntime) == 0) {
+            i64 __attribute__((unused)) slashIdx = String_LastIndexOf(amcPath, "/");
+            if (slashIdx >= 0) {
+                code_string __attribute__((unused)) amcDir = String_Substring(amcPath, 0, slashIdx);
+                amcRuntime = code_string_concat(amcDir, "/runtime");
+            }
+        }
+        code_string __attribute__((unused)) gccCmd = "gcc -O2 -Iruntime";
+        if (String_Length(amcRuntime) > 0) {
+            gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -I'"), amcRuntime), "'");
+        }
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(gccCmd, " "), outC), " -lgc -lm -lcurl -o "), outBin), " 2>&1");
         AmalgameProcessResult* __attribute__((unused)) gcc = Process_RunCapture(gccCmd);
         if (gcc->Exit != 0) {
             Console_WriteLine("  [LINK-FAIL]");
