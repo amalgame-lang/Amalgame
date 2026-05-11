@@ -44,7 +44,8 @@ the current working directory.
 | ------ | ------- |
 | `add <git-url>@<tag> [--no-precompile]`  | Clone + validate + record dep. Accepts `<name>@<tag>` resolved via the curated index. `--no-precompile` (v0.5.4+) skips the install-time compile of `[stdlib].sources` even if the manifest declares `precompile = true`. |
 | `remove <name>`        | Drop dep from manifest + lockfile. |
-| `search <keyword>`     | Substring match against descriptions of cached + indexed packages. |
+| `search <keyword> [--refresh]` | Substring match against indexed packages. Each result lists known tags with compat status against the running amc. `--refresh` re-downloads the index (cache TTL: manual via `--refresh` or `cache clear`). |
+| `versions <name> [--refresh]`  | Shortcut: same output as `search` filtered to one package. |
 | `list`                 | Show installed packages with tier badge (official / community / unverified). |
 | `update [<name>]`      | Bump a single dep, or all if no name given. |
 | `cache <ls\|gc>`       | Inspect / prune `~/.amalgame/packages/`. |

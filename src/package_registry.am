@@ -71,6 +71,10 @@ public class LoadedPackage {
     public  ClassName:   string             // Redis
     public  Header:      string             // runtime/Amalgame_Database_Redis.h
     public  Ns:          string             // Amalgame.Database.NoSQL.Redis
+    // Git tag this install was resolved at (e.g. "v0.2.0"). Read
+    // from the amalgame.lock's [[package]] entry. Used by
+    // `amc package list` to surface the version to the user.
+    public  Tag:         string
     // Absolute path to the cache dir hosting this package's files
     // (`<cacheRoot>/<git>/<tag>_<sha>/`). Populated by LoadFrom.
     // Used by AmcTest to look up persistent precompile cache at
@@ -110,6 +114,7 @@ public class LoadedPackage {
         this.ClassName  = ""
         this.Header     = ""
         this.Ns         = ""
+        this.Tag        = ""
         this.PkgDir     = ""
         this.FuncNames  = new List<string>()
         this.FuncRets   = new List<string>()
@@ -205,6 +210,7 @@ public class PackageRegistry {
 
             let lp = new LoadedPackage()
             lp.Name      = pkgName
+            lp.Tag       = pkgTag
             lp.PkgDir    = pkgDir
             lp.ClassName = clsName
             // Manifest's header path is relative to the package
@@ -494,7 +500,7 @@ public class PackageRegistry {
     // one edit (this constant + tools/release.sh which already
     // handles --version).
     public static string AmcVersion() {
-        return "0.5.4"
+        return "0.5.5"
     }
 
     // Highest [package].schema-version this amc knows how to
