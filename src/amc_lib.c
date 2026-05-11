@@ -68,6 +68,11 @@ typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateComman
 typedef struct _Amalgame_Compiler_GenerateCommand Amalgame_Compiler_GenerateCommand;
 typedef struct _Amalgame_Compiler_ExplainCommand Amalgame_Compiler_ExplainCommand;
 typedef struct _Amalgame_Compiler_NewCommand Amalgame_Compiler_NewCommand;
+typedef enum _Amalgame_Compiler_TomlKind Amalgame_Compiler_TomlKind;
+typedef struct _Amalgame_Compiler_TomlValue Amalgame_Compiler_TomlValue;
+typedef struct _Amalgame_Compiler_TomlParser Amalgame_Compiler_TomlParser;
+typedef struct _Amalgame_Compiler_Toml Amalgame_Compiler_Toml;
+typedef struct _Amalgame_Compiler_AddCommand Amalgame_Compiler_AddCommand;
 typedef struct _Amalgame_Compiler_AmalgameCompiler Amalgame_Compiler_AmalgameCompiler;
 typedef struct _Amalgame_Compiler_Program Amalgame_Compiler_Program;
 
@@ -18354,6 +18359,1262 @@ static code_string Amalgame_Compiler_NewCommand_Basename(code_string p) {
     return p;
 }
 
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_TomlValue_new();
+Amalgame_Compiler_TomlParser* Amalgame_Compiler_TomlParser_new(code_string src);
+Amalgame_Compiler_Toml* Amalgame_Compiler_Toml_new();
+enum _Amalgame_Compiler_TomlKind {
+    Amalgame_Compiler_TomlKind_Null,
+    Amalgame_Compiler_TomlKind_Bool,
+    Amalgame_Compiler_TomlKind_Int,
+    Amalgame_Compiler_TomlKind_String,
+    Amalgame_Compiler_TomlKind_Array,
+    Amalgame_Compiler_TomlKind_Table
+};
+
+struct _Amalgame_Compiler_TomlValue {
+    Amalgame_Compiler_TomlKind Kind;
+    code_bool B;
+    i64 I;
+    code_string S;
+    AmalgameList* Items;
+    AmalgameList* TableKeys;
+    AmalgameList* TableVals;
+};
+
+code_bool Amalgame_Compiler_TomlValue_IsNull(Amalgame_Compiler_TomlValue* self);
+code_bool Amalgame_Compiler_TomlValue_IsBool(Amalgame_Compiler_TomlValue* self);
+code_bool Amalgame_Compiler_TomlValue_IsInt(Amalgame_Compiler_TomlValue* self);
+code_bool Amalgame_Compiler_TomlValue_IsString(Amalgame_Compiler_TomlValue* self);
+code_bool Amalgame_Compiler_TomlValue_IsArray(Amalgame_Compiler_TomlValue* self);
+code_bool Amalgame_Compiler_TomlValue_IsTable(Amalgame_Compiler_TomlValue* self);
+code_bool Amalgame_Compiler_TomlValue_AsBool(Amalgame_Compiler_TomlValue* self);
+i64 Amalgame_Compiler_TomlValue_AsInt(Amalgame_Compiler_TomlValue* self);
+code_string Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue* self);
+AmalgameList* Amalgame_Compiler_TomlValue_AsArray(Amalgame_Compiler_TomlValue* self);
+i64 Amalgame_Compiler_TomlValue_Count(Amalgame_Compiler_TomlValue* self);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_TomlValue_At(Amalgame_Compiler_TomlValue* self, i64 idx);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_TomlValue_Get(Amalgame_Compiler_TomlValue* self, code_string key);
+code_bool Amalgame_Compiler_TomlValue_Has(Amalgame_Compiler_TomlValue* self, code_string key);
+AmalgameList* Amalgame_Compiler_TomlValue_Keys(Amalgame_Compiler_TomlValue* self);
+void Amalgame_Compiler_TomlValue_SetBool(Amalgame_Compiler_TomlValue* self, code_bool v);
+void Amalgame_Compiler_TomlValue_SetInt(Amalgame_Compiler_TomlValue* self, i64 v);
+void Amalgame_Compiler_TomlValue_SetString(Amalgame_Compiler_TomlValue* self, code_string v);
+void Amalgame_Compiler_TomlValue_BecomeArray(Amalgame_Compiler_TomlValue* self);
+void Amalgame_Compiler_TomlValue_BecomeTable(Amalgame_Compiler_TomlValue* self);
+void Amalgame_Compiler_TomlValue_AppendItem(Amalgame_Compiler_TomlValue* self, Amalgame_Compiler_TomlValue* v);
+void Amalgame_Compiler_TomlValue_SetEntry(Amalgame_Compiler_TomlValue* self, code_string key, Amalgame_Compiler_TomlValue* v);
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_TomlValue_new() {
+    Amalgame_Compiler_TomlValue* self = (Amalgame_Compiler_TomlValue*) GC_MALLOC(sizeof(Amalgame_Compiler_TomlValue));
+    self->Kind = Amalgame_Compiler_TomlKind_Null;
+    self->B = 0;
+    self->I = 0;
+    self->S = "";
+    self->Items = AmalgameList_new();
+    self->TableKeys = AmalgameList_new();
+    self->TableVals = AmalgameList_new();
+    return self;
+}
+
+code_bool Amalgame_Compiler_TomlValue_IsNull(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_TomlKind_Null;
+}
+
+code_bool Amalgame_Compiler_TomlValue_IsBool(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_TomlKind_Bool;
+}
+
+code_bool Amalgame_Compiler_TomlValue_IsInt(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_TomlKind_Int;
+}
+
+code_bool Amalgame_Compiler_TomlValue_IsString(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_TomlKind_String;
+}
+
+code_bool Amalgame_Compiler_TomlValue_IsArray(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_TomlKind_Array;
+}
+
+code_bool Amalgame_Compiler_TomlValue_IsTable(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Kind == Amalgame_Compiler_TomlKind_Table;
+}
+
+code_bool Amalgame_Compiler_TomlValue_AsBool(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_TomlKind_Bool) {
+        return self->B;
+    }
+    return 0;
+}
+
+i64 Amalgame_Compiler_TomlValue_AsInt(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_TomlKind_Int) {
+        return self->I;
+    }
+    return 0;
+}
+
+code_string Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_TomlKind_String) {
+        return self->S;
+    }
+    return "";
+}
+
+AmalgameList* Amalgame_Compiler_TomlValue_AsArray(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->Items;
+}
+
+i64 Amalgame_Compiler_TomlValue_Count(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    if (self->Kind == Amalgame_Compiler_TomlKind_Array) {
+        return AmalgameList_count(self->Items);
+    }
+    if (self->Kind == Amalgame_Compiler_TomlKind_Table) {
+        return AmalgameList_count(self->TableKeys);
+    }
+    return 0;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_TomlValue_At(Amalgame_Compiler_TomlValue* self, i64 idx) {
+    (void)self;
+    (void)idx;
+    if (self->Kind != Amalgame_Compiler_TomlKind_Array) {
+        return Amalgame_Compiler_TomlValue_new();
+    }
+    if (idx < 0 || idx >= AmalgameList_count(self->Items)) {
+        return Amalgame_Compiler_TomlValue_new();
+    }
+    return (Amalgame_Compiler_TomlValue*)AmalgameList_get(self->Items, idx);
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_TomlValue_Get(Amalgame_Compiler_TomlValue* self, code_string key) {
+    (void)self;
+    (void)key;
+    if (self->Kind != Amalgame_Compiler_TomlKind_Table) {
+        return Amalgame_Compiler_TomlValue_new();
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(self->TableKeys);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->TableKeys, i), key)) {
+            return (Amalgame_Compiler_TomlValue*)AmalgameList_get(self->TableVals, i);
+        }
+    }
+    return Amalgame_Compiler_TomlValue_new();
+}
+
+code_bool Amalgame_Compiler_TomlValue_Has(Amalgame_Compiler_TomlValue* self, code_string key) {
+    (void)self;
+    (void)key;
+    if (self->Kind != Amalgame_Compiler_TomlKind_Table) {
+        return 0;
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(self->TableKeys);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->TableKeys, i), key)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+AmalgameList* Amalgame_Compiler_TomlValue_Keys(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    return self->TableKeys;
+}
+
+void Amalgame_Compiler_TomlValue_SetBool(Amalgame_Compiler_TomlValue* self, code_bool v) {
+    (void)self;
+    (void)v;
+    self->Kind = Amalgame_Compiler_TomlKind_Bool;
+    self->B = v;
+}
+
+void Amalgame_Compiler_TomlValue_SetInt(Amalgame_Compiler_TomlValue* self, i64 v) {
+    (void)self;
+    (void)v;
+    self->Kind = Amalgame_Compiler_TomlKind_Int;
+    self->I = v;
+}
+
+void Amalgame_Compiler_TomlValue_SetString(Amalgame_Compiler_TomlValue* self, code_string v) {
+    (void)self;
+    (void)v;
+    self->Kind = Amalgame_Compiler_TomlKind_String;
+    self->S = v;
+}
+
+void Amalgame_Compiler_TomlValue_BecomeArray(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    self->Kind = Amalgame_Compiler_TomlKind_Array;
+}
+
+void Amalgame_Compiler_TomlValue_BecomeTable(Amalgame_Compiler_TomlValue* self) {
+    (void)self;
+    self->Kind = Amalgame_Compiler_TomlKind_Table;
+}
+
+void Amalgame_Compiler_TomlValue_AppendItem(Amalgame_Compiler_TomlValue* self, Amalgame_Compiler_TomlValue* v) {
+    (void)self;
+    (void)v;
+    if (self->Kind != Amalgame_Compiler_TomlKind_Array) {
+        Amalgame_Compiler_TomlValue_BecomeArray(self);
+    }
+    AmalgameList_add(self->Items, (void*)(intptr_t)(v));
+}
+
+void Amalgame_Compiler_TomlValue_SetEntry(Amalgame_Compiler_TomlValue* self, code_string key, Amalgame_Compiler_TomlValue* v) {
+    (void)self;
+    (void)key;
+    (void)v;
+    if (self->Kind != Amalgame_Compiler_TomlKind_Table) {
+        Amalgame_Compiler_TomlValue_BecomeTable(self);
+    }
+    i64 __attribute__((unused)) n = AmalgameList_count(self->TableKeys);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->TableKeys, i), key)) {
+            AmalgameList_set(self->TableVals, i, (void*)(intptr_t)(v));
+            return;
+        }
+    }
+    AmalgameList_add(self->TableKeys, (void*)(intptr_t)(key));
+    AmalgameList_add(self->TableVals, (void*)(intptr_t)(v));
+}
+
+struct _Amalgame_Compiler_TomlParser {
+    code_string Src;
+    i64 Pos;
+    i64 Len;
+    code_bool HasError;
+    code_string ErrMsg;
+};
+
+void Amalgame_Compiler_TomlParser_Fail(Amalgame_Compiler_TomlParser* self, code_string msg);
+code_bool Amalgame_Compiler_TomlParser_AtEnd(Amalgame_Compiler_TomlParser* self);
+code_string Amalgame_Compiler_TomlParser_Peek(Amalgame_Compiler_TomlParser* self);
+code_string Amalgame_Compiler_TomlParser_PeekAt(Amalgame_Compiler_TomlParser* self, i64 offset);
+code_string Amalgame_Compiler_TomlParser_Advance(Amalgame_Compiler_TomlParser* self);
+void Amalgame_Compiler_TomlParser_SkipInlineSpace(Amalgame_Compiler_TomlParser* self);
+void Amalgame_Compiler_TomlParser_SkipBlankLines(Amalgame_Compiler_TomlParser* self);
+static code_bool Amalgame_Compiler_TomlParser_IsBareKeyChar(Amalgame_Compiler_TomlParser* self, code_string c);
+static code_bool Amalgame_Compiler_TomlParser_IsDigit(Amalgame_Compiler_TomlParser* self, code_string c);
+code_string Amalgame_Compiler_TomlParser_ReadKey(Amalgame_Compiler_TomlParser* self);
+code_string Amalgame_Compiler_TomlParser_ReadStringLiteral(Amalgame_Compiler_TomlParser* self);
+
+Amalgame_Compiler_TomlParser* Amalgame_Compiler_TomlParser_new(code_string src) {
+    Amalgame_Compiler_TomlParser* self = (Amalgame_Compiler_TomlParser*) GC_MALLOC(sizeof(Amalgame_Compiler_TomlParser));
+    self->Src = src;
+    self->Pos = 0;
+    self->Len = String_Length(src);
+    self->HasError = 0;
+    self->ErrMsg = "";
+    return self;
+}
+
+void Amalgame_Compiler_TomlParser_Fail(Amalgame_Compiler_TomlParser* self, code_string msg) {
+    (void)self;
+    (void)msg;
+    if (!self->HasError) {
+        self->HasError = 1;
+        self->ErrMsg = msg;
+    }
+}
+
+code_bool Amalgame_Compiler_TomlParser_AtEnd(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    return self->Pos >= self->Len;
+}
+
+code_string Amalgame_Compiler_TomlParser_Peek(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    if (Amalgame_Compiler_TomlParser_AtEnd(self)) {
+        return "";
+    }
+    return String_CharAt1(self->Src, self->Pos);
+}
+
+code_string Amalgame_Compiler_TomlParser_PeekAt(Amalgame_Compiler_TomlParser* self, i64 offset) {
+    (void)self;
+    (void)offset;
+    i64 __attribute__((unused)) p = self->Pos + offset;
+    if (p < 0 || p >= self->Len) {
+        return "";
+    }
+    return String_CharAt1(self->Src, p);
+}
+
+code_string Amalgame_Compiler_TomlParser_Advance(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(self);
+    self->Pos = self->Pos + 1;
+    return c;
+}
+
+void Amalgame_Compiler_TomlParser_SkipInlineSpace(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    while (!Amalgame_Compiler_TomlParser_AtEnd(self)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(self);
+        if (code_string_equals(c, " ") || code_string_equals(c, "\t")) {
+            self->Pos = self->Pos + 1;
+        } else if (code_string_equals(c, "#")) {
+            while (!Amalgame_Compiler_TomlParser_AtEnd(self) && !code_string_equals(Amalgame_Compiler_TomlParser_Peek(self), "\n")) {
+                self->Pos = self->Pos + 1;
+            }
+        } else {
+            return;
+        }
+    }
+}
+
+void Amalgame_Compiler_TomlParser_SkipBlankLines(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    while (!Amalgame_Compiler_TomlParser_AtEnd(self)) {
+        Amalgame_Compiler_TomlParser_SkipInlineSpace(self);
+        if (Amalgame_Compiler_TomlParser_AtEnd(self)) {
+            return;
+        }
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(self);
+        if (code_string_equals(c, "\n")) {
+            self->Pos = self->Pos + 1;
+        } else if (code_string_equals(c, "\\r")) {
+            self->Pos = self->Pos + 1;
+            if (!Amalgame_Compiler_TomlParser_AtEnd(self) && code_string_equals(Amalgame_Compiler_TomlParser_Peek(self), "\n")) {
+                self->Pos = self->Pos + 1;
+            }
+        } else {
+            return;
+        }
+    }
+}
+
+static code_bool Amalgame_Compiler_TomlParser_IsBareKeyChar(Amalgame_Compiler_TomlParser* self, code_string c) {
+    (void)self;
+    (void)c;
+    if (code_string_equals(c, "_")) {
+        return 1;
+    }
+    if (code_string_equals(c, "-")) {
+        return 1;
+    }
+    if (String_IndexOf("0123456789", c) >= 0) {
+        return 1;
+    }
+    if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) {
+        return 1;
+    }
+    if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static code_bool Amalgame_Compiler_TomlParser_IsDigit(Amalgame_Compiler_TomlParser* self, code_string c) {
+    (void)self;
+    (void)c;
+    if (String_IndexOf("0123456789", c) >= 0) {
+        return 1;
+    }
+    return 0;
+}
+
+code_string Amalgame_Compiler_TomlParser_ReadKey(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    Amalgame_Compiler_TomlParser_SkipInlineSpace(self);
+    code_string __attribute__((unused)) first = Amalgame_Compiler_TomlParser_Peek(self);
+    if (code_string_equals(first, "\"") || code_string_equals(first, "'")) {
+        return Amalgame_Compiler_TomlParser_ReadStringLiteral(self);
+    }
+    code_string __attribute__((unused)) name = "";
+    while (!Amalgame_Compiler_TomlParser_AtEnd(self)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(self);
+        if (Amalgame_Compiler_TomlParser_IsBareKeyChar(self, c)) {
+            name = code_string_concat(name, c);
+            self->Pos = self->Pos + 1;
+        } else {
+            break;
+        }
+    }
+    if (String_Length(name) == 0) {
+        Amalgame_Compiler_TomlParser_Fail(self, "expected key");
+    }
+    return name;
+}
+
+code_string Amalgame_Compiler_TomlParser_ReadStringLiteral(Amalgame_Compiler_TomlParser* self) {
+    (void)self;
+    code_string __attribute__((unused)) quote = Amalgame_Compiler_TomlParser_Advance(self);
+    code_string __attribute__((unused)) out = "";
+    code_bool __attribute__((unused)) literal = code_string_equals(quote, "'");
+    while (!Amalgame_Compiler_TomlParser_AtEnd(self)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(self);
+        if (code_string_equals(c, quote)) {
+            self->Pos = self->Pos + 1;
+            return out;
+        }
+        if (code_string_equals(c, "\n")) {
+            Amalgame_Compiler_TomlParser_Fail(self, "newline inside single-line string");
+            return out;
+        }
+        if (literal) {
+            out = code_string_concat(out, c);
+            self->Pos = self->Pos + 1;
+        } else if (code_string_equals(c, "\\")) {
+            self->Pos = self->Pos + 1;
+            code_string __attribute__((unused)) esc = Amalgame_Compiler_TomlParser_Peek(self);
+            self->Pos = self->Pos + 1;
+            if (code_string_equals(esc, "n")) {
+                out = code_string_concat(out, "\n");
+            } else if (code_string_equals(esc, "t")) {
+                out = code_string_concat(out, "\t");
+            } else if (code_string_equals(esc, "r")) {
+                out = code_string_concat(out, "\\r");
+            } else if (code_string_equals(esc, "\"")) {
+                out = code_string_concat(out, "\"");
+            } else if (code_string_equals(esc, "'")) {
+                out = code_string_concat(out, "'");
+            } else if (code_string_equals(esc, "\\")) {
+                out = code_string_concat(out, "\\");
+            } else {
+                out = code_string_concat(out, esc);
+            }
+        } else {
+            out = code_string_concat(out, c);
+            self->Pos = self->Pos + 1;
+        }
+    }
+    Amalgame_Compiler_TomlParser_Fail(self, "unterminated string");
+    return out;
+}
+
+struct _Amalgame_Compiler_Toml {
+};
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_Parse(code_string source);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ParseWithError(code_string source, Amalgame_Compiler_TomlParser* parser);
+static Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_RunParse(Amalgame_Compiler_TomlParser* p, code_string source);
+AmalgameList* Amalgame_Compiler_Toml_ReadHeaderPath(Amalgame_Compiler_TomlParser* p);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_NavigateOrCreate(Amalgame_Compiler_TomlValue* root, AmalgameList* path);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadValue(Amalgame_Compiler_TomlParser* p);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadArray(Amalgame_Compiler_TomlParser* p);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadInlineTable(Amalgame_Compiler_TomlParser* p);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadBool(Amalgame_Compiler_TomlParser* p);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadInt(Amalgame_Compiler_TomlParser* p);
+void Amalgame_Compiler_Toml_SkipWsAndNewlines(Amalgame_Compiler_TomlParser* p);
+code_string Amalgame_Compiler_Toml_Serialize(Amalgame_Compiler_TomlValue* doc);
+static code_string Amalgame_Compiler_Toml_WriteTable(Amalgame_Compiler_TomlValue* t, AmalgameList* path, code_string out);
+static code_string Amalgame_Compiler_Toml_WriteValue(Amalgame_Compiler_TomlValue* v);
+static code_string Amalgame_Compiler_Toml_EscapeString(code_string s);
+static code_string Amalgame_Compiler_Toml_JoinPath(AmalgameList* path);
+
+Amalgame_Compiler_Toml* Amalgame_Compiler_Toml_new() {
+    Amalgame_Compiler_Toml* self = (Amalgame_Compiler_Toml*) GC_MALLOC(sizeof(Amalgame_Compiler_Toml));
+    return self;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_Parse(code_string source) {
+    (void)source;
+    Amalgame_Compiler_TomlParser* __attribute__((unused)) p = Amalgame_Compiler_TomlParser_new(source);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) res = Amalgame_Compiler_Toml_RunParse(p, source);
+    if (p->HasError) {
+        return Amalgame_Compiler_TomlValue_new();
+    }
+    return res;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ParseWithError(code_string source, Amalgame_Compiler_TomlParser* parser) {
+    (void)source;
+    (void)parser;
+    return Amalgame_Compiler_Toml_RunParse(parser, source);
+}
+
+static Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_RunParse(Amalgame_Compiler_TomlParser* p, code_string source) {
+    (void)p;
+    (void)source;
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) root = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_BecomeTable(root);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) current = root;
+    Amalgame_Compiler_TomlParser_SkipBlankLines(p);
+    while (!Amalgame_Compiler_TomlParser_AtEnd(p)) {
+        if (p->HasError) {
+            break;
+        }
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
+        if (code_string_equals(c, "[")) {
+            p->Pos = p->Pos + 1;
+            Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+            AmalgameList* __attribute__((unused)) path = Amalgame_Compiler_Toml_ReadHeaderPath(p);
+            if (AmalgameList_count(path) == 0) {
+                Amalgame_Compiler_TomlParser_Fail(p, "empty table header");
+            }
+            Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+            if (!code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "]")) {
+                Amalgame_Compiler_TomlParser_Fail(p, "expected ']' after table header");
+            } else {
+                p->Pos = p->Pos + 1;
+            }
+            Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+            current = Amalgame_Compiler_Toml_NavigateOrCreate(root, path);
+        } else {
+            code_string __attribute__((unused)) key = Amalgame_Compiler_TomlParser_ReadKey(p);
+            Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+            if (!code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "=")) {
+                Amalgame_Compiler_TomlParser_Fail(p, code_string_concat(code_string_concat("expected '=' after key '", key), "'"));
+            } else {
+                p->Pos = p->Pos + 1;
+            }
+            Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) val = Amalgame_Compiler_Toml_ReadValue(p);
+            Amalgame_Compiler_TomlValue_SetEntry(current, key, val);
+        }
+        Amalgame_Compiler_TomlParser_SkipBlankLines(p);
+    }
+    return root;
+}
+
+AmalgameList* Amalgame_Compiler_Toml_ReadHeaderPath(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    code_bool __attribute__((unused)) first = 1;
+    while (!Amalgame_Compiler_TomlParser_AtEnd(p)) {
+        Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+        if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "]")) {
+            return out;
+        }
+        if (!first) {
+            if (!code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), ".")) {
+                Amalgame_Compiler_TomlParser_Fail(p, "expected '.' or ']' in table header");
+                return out;
+            }
+            p->Pos = p->Pos + 1;
+            Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+        }
+        code_string __attribute__((unused)) seg = Amalgame_Compiler_TomlParser_ReadKey(p);
+        if (String_Length(seg) == 0) {
+            return out;
+        }
+        AmalgameList_add(out, (void*)(intptr_t)(seg));
+        first = 0;
+    }
+    return out;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_NavigateOrCreate(Amalgame_Compiler_TomlValue* root, AmalgameList* path) {
+    (void)root;
+    (void)path;
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) cur = root;
+    i64 __attribute__((unused)) n = AmalgameList_count(path);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) seg = (code_string)AmalgameList_get(path, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) existing = Amalgame_Compiler_TomlValue_Get(cur, seg);
+        if (Amalgame_Compiler_TomlValue_IsTable(existing)) {
+            cur = existing;
+        } else {
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) fresh = Amalgame_Compiler_TomlValue_new();
+            Amalgame_Compiler_TomlValue_BecomeTable(fresh);
+            Amalgame_Compiler_TomlValue_SetEntry(cur, seg, fresh);
+            cur = fresh;
+        }
+    }
+    return cur;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadValue(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+    code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
+    if (code_string_equals(c, "\"") || code_string_equals(c, "'")) {
+        code_string __attribute__((unused)) s = Amalgame_Compiler_TomlParser_ReadStringLiteral(p);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_TomlValue_new();
+        Amalgame_Compiler_TomlValue_SetString(v, s);
+        return v;
+    }
+    if (code_string_equals(c, "[")) {
+        return Amalgame_Compiler_Toml_ReadArray(p);
+    }
+    if (code_string_equals(c, "{")) {
+        return Amalgame_Compiler_Toml_ReadInlineTable(p);
+    }
+    if (code_string_equals(c, "t") || code_string_equals(c, "f")) {
+        return Amalgame_Compiler_Toml_ReadBool(p);
+    }
+    code_bool __attribute__((unused)) isNumeric = 0;
+    if (code_string_equals(c, "-") || code_string_equals(c, "+")) {
+        isNumeric = 1;
+    }
+    if (String_IndexOf("0123456789", c) >= 0) {
+        isNumeric = 1;
+    }
+    if (isNumeric) {
+        return Amalgame_Compiler_Toml_ReadInt(p);
+    }
+    Amalgame_Compiler_TomlParser_Fail(p, code_string_concat(code_string_concat("unexpected character '", c), "' starting value"));
+    return Amalgame_Compiler_TomlValue_new();
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadArray(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    p->Pos = p->Pos + 1;
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) arr = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_BecomeArray(arr);
+    Amalgame_Compiler_Toml_SkipWsAndNewlines(p);
+    if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "]")) {
+        p->Pos = p->Pos + 1;
+        return arr;
+    }
+    while (!Amalgame_Compiler_TomlParser_AtEnd(p)) {
+        Amalgame_Compiler_Toml_SkipWsAndNewlines(p);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_Toml_ReadValue(p);
+        Amalgame_Compiler_TomlValue_AppendItem(arr, v);
+        Amalgame_Compiler_Toml_SkipWsAndNewlines(p);
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
+        if (code_string_equals(c, ",")) {
+            p->Pos = p->Pos + 1;
+            Amalgame_Compiler_Toml_SkipWsAndNewlines(p);
+            if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "]")) {
+                p->Pos = p->Pos + 1;
+                return arr;
+            }
+        } else if (code_string_equals(c, "]")) {
+            p->Pos = p->Pos + 1;
+            return arr;
+        } else {
+            Amalgame_Compiler_TomlParser_Fail(p, "expected ',' or ']' in array");
+            return arr;
+        }
+    }
+    Amalgame_Compiler_TomlParser_Fail(p, "unterminated array");
+    return arr;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadInlineTable(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    p->Pos = p->Pos + 1;
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) tbl = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_BecomeTable(tbl);
+    Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+    if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "}")) {
+        p->Pos = p->Pos + 1;
+        return tbl;
+    }
+    while (!Amalgame_Compiler_TomlParser_AtEnd(p)) {
+        Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+        code_string __attribute__((unused)) key = Amalgame_Compiler_TomlParser_ReadKey(p);
+        Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+        if (!code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "=")) {
+            Amalgame_Compiler_TomlParser_Fail(p, "expected '=' in inline table");
+            return tbl;
+        }
+        p->Pos = p->Pos + 1;
+        Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_Toml_ReadValue(p);
+        Amalgame_Compiler_TomlValue_SetEntry(tbl, key, v);
+        Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
+        if (code_string_equals(c, ",")) {
+            p->Pos = p->Pos + 1;
+        } else if (code_string_equals(c, "}")) {
+            p->Pos = p->Pos + 1;
+            return tbl;
+        } else {
+            Amalgame_Compiler_TomlParser_Fail(p, "expected ',' or '}' in inline table");
+            return tbl;
+        }
+    }
+    Amalgame_Compiler_TomlParser_Fail(p, "unterminated inline table");
+    return tbl;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadBool(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_TomlValue_new();
+    if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "t")) {
+        if (code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 0), "t") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 1), "r") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 2), "u") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 3), "e")) {
+            p->Pos = p->Pos + 4;
+            Amalgame_Compiler_TomlValue_SetBool(v, 1);
+            return v;
+        }
+    }
+    if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "f")) {
+        if (code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 0), "f") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 1), "a") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 2), "l") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 3), "s") && code_string_equals(Amalgame_Compiler_TomlParser_PeekAt(p, 4), "e")) {
+            p->Pos = p->Pos + 5;
+            Amalgame_Compiler_TomlValue_SetBool(v, 0);
+            return v;
+        }
+    }
+    Amalgame_Compiler_TomlParser_Fail(p, "expected 'true' or 'false'");
+    return v;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadInt(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    code_string __attribute__((unused)) raw = "";
+    code_string __attribute__((unused)) first = Amalgame_Compiler_TomlParser_Peek(p);
+    if (code_string_equals(first, "+") || code_string_equals(first, "-")) {
+        raw = code_string_concat(raw, first);
+        p->Pos = p->Pos + 1;
+    }
+    while (!Amalgame_Compiler_TomlParser_AtEnd(p)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
+        if (String_IndexOf("0123456789", c) >= 0) {
+            raw = code_string_concat(raw, c);
+            p->Pos = p->Pos + 1;
+        } else {
+            break;
+        }
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_TomlValue_new();
+    if (String_Length(raw) == 0 || code_string_equals(raw, "+") || code_string_equals(raw, "-")) {
+        Amalgame_Compiler_TomlParser_Fail(p, "expected digits");
+        return v;
+    }
+    Amalgame_Compiler_TomlValue_SetInt(v, String_ToInt(raw));
+    return v;
+}
+
+void Amalgame_Compiler_Toml_SkipWsAndNewlines(Amalgame_Compiler_TomlParser* p) {
+    (void)p;
+    while (!Amalgame_Compiler_TomlParser_AtEnd(p)) {
+        code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
+        if (code_string_equals(c, " ") || code_string_equals(c, "\t") || code_string_equals(c, "\n") || code_string_equals(c, "\\r")) {
+            p->Pos = p->Pos + 1;
+        } else if (code_string_equals(c, "#")) {
+            while (!Amalgame_Compiler_TomlParser_AtEnd(p) && !code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "\n")) {
+                p->Pos = p->Pos + 1;
+            }
+        } else {
+            return;
+        }
+    }
+}
+
+code_string Amalgame_Compiler_Toml_Serialize(Amalgame_Compiler_TomlValue* doc) {
+    (void)doc;
+    if (!Amalgame_Compiler_TomlValue_IsTable(doc)) {
+        return "";
+    }
+    code_string __attribute__((unused)) out = "";
+    AmalgameList* __attribute__((unused)) path = AmalgameList_new();
+    out = Amalgame_Compiler_Toml_WriteTable(doc, path, out);
+    return out;
+}
+
+static code_string Amalgame_Compiler_Toml_WriteTable(Amalgame_Compiler_TomlValue* t, AmalgameList* path, code_string out) {
+    (void)t;
+    (void)path;
+    (void)out;
+    code_string __attribute__((unused)) s = out;
+    AmalgameList* __attribute__((unused)) keys = Amalgame_Compiler_TomlValue_Keys(t);
+    i64 __attribute__((unused)) n = AmalgameList_count(keys);
+    if (AmalgameList_count(path) > 0) {
+        s = code_string_concat(code_string_concat(code_string_concat(s, "["), Amalgame_Compiler_Toml_JoinPath(path)), "]\n");
+    }
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) k = (code_string)AmalgameList_get(keys, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) v = Amalgame_Compiler_TomlValue_Get(t, k);
+        if (Amalgame_Compiler_TomlValue_IsTable(v)) {
+            continue;
+        }
+        s = code_string_concat(code_string_concat(code_string_concat(code_string_concat(s, k), " = "), Amalgame_Compiler_Toml_WriteValue(v)), "\n");
+    }
+    for (i64 j = 0; j < n; j++) {
+        code_string __attribute__((unused)) k2 = (code_string)AmalgameList_get(keys, j);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) v2 = Amalgame_Compiler_TomlValue_Get(t, k2);
+        if (!Amalgame_Compiler_TomlValue_IsTable(v2)) {
+            continue;
+        }
+        AmalgameList* __attribute__((unused)) childPath = AmalgameList_new();
+        i64 __attribute__((unused)) pn = AmalgameList_count(path);
+        for (i64 pi = 0; pi < pn; pi++) {
+            AmalgameList_add(childPath, (void*)(intptr_t)((code_string)AmalgameList_get(path, pi)));
+        }
+        AmalgameList_add(childPath, (void*)(intptr_t)(k2));
+        s = code_string_concat(s, "\n");
+        s = Amalgame_Compiler_Toml_WriteTable(v2, childPath, s);
+    }
+    return s;
+}
+
+static code_string Amalgame_Compiler_Toml_WriteValue(Amalgame_Compiler_TomlValue* v) {
+    (void)v;
+    if (Amalgame_Compiler_TomlValue_IsString(v)) {
+        return code_string_concat(code_string_concat("\"", Amalgame_Compiler_Toml_EscapeString(Amalgame_Compiler_TomlValue_AsString(v))), "\"");
+    }
+    if (Amalgame_Compiler_TomlValue_IsInt(v)) {
+        return String_FromInt(Amalgame_Compiler_TomlValue_AsInt(v));
+    }
+    if (Amalgame_Compiler_TomlValue_IsBool(v)) {
+        if (Amalgame_Compiler_TomlValue_AsBool(v)) {
+            return "true";
+        }
+        return "false";
+    }
+    if (Amalgame_Compiler_TomlValue_IsArray(v)) {
+        code_string __attribute__((unused)) out = "[";
+        AmalgameList* __attribute__((unused)) items = Amalgame_Compiler_TomlValue_AsArray(v);
+        i64 __attribute__((unused)) n = AmalgameList_count(items);
+        for (i64 i = 0; i < n; i++) {
+            if (i > 0) {
+                out = code_string_concat(out, ", ");
+            }
+            out = code_string_concat(out, Amalgame_Compiler_Toml_WriteValue((Amalgame_Compiler_TomlValue*)AmalgameList_get(items, i)));
+        }
+        out = code_string_concat(out, "]");
+        return out;
+    }
+    if (Amalgame_Compiler_TomlValue_IsTable(v)) {
+        code_string __attribute__((unused)) out = "{ ";
+        AmalgameList* __attribute__((unused)) keys = Amalgame_Compiler_TomlValue_Keys(v);
+        i64 __attribute__((unused)) n = AmalgameList_count(keys);
+        for (i64 i = 0; i < n; i++) {
+            if (i > 0) {
+                out = code_string_concat(out, ", ");
+            }
+            code_string __attribute__((unused)) k = (code_string)AmalgameList_get(keys, i);
+            out = code_string_concat(code_string_concat(code_string_concat(out, k), " = "), Amalgame_Compiler_Toml_WriteValue(Amalgame_Compiler_TomlValue_Get(v, k)));
+        }
+        out = code_string_concat(out, " }");
+        return out;
+    }
+    return "\"\"";
+}
+
+static code_string Amalgame_Compiler_Toml_EscapeString(code_string s) {
+    (void)s;
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) n = String_Length(s);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(s, i);
+        if (code_string_equals(c, "\\")) {
+            out = code_string_concat(out, "\\\\");
+        } else if (code_string_equals(c, "\"")) {
+            out = code_string_concat(out, "\\\"");
+        } else if (code_string_equals(c, "\n")) {
+            out = code_string_concat(out, "\\n");
+        } else if (code_string_equals(c, "\t")) {
+            out = code_string_concat(out, "\\t");
+        } else if (code_string_equals(c, "\\r")) {
+            out = code_string_concat(out, "\\r");
+        } else {
+            out = code_string_concat(out, c);
+        }
+    }
+    return out;
+}
+
+static code_string Amalgame_Compiler_Toml_JoinPath(AmalgameList* path) {
+    (void)path;
+    code_string __attribute__((unused)) out = "";
+    i64 __attribute__((unused)) n = AmalgameList_count(path);
+    for (i64 i = 0; i < n; i++) {
+        if (i > 0) {
+            out = code_string_concat(out, ".");
+        }
+        out = code_string_concat(out, (code_string)((code_string)AmalgameList_get(path, i)));
+    }
+    return out;
+}
+
+Amalgame_Compiler_AddCommand* Amalgame_Compiler_AddCommand_new();
+struct _Amalgame_Compiler_AddCommand {
+};
+
+void Amalgame_Compiler_AddCommand_PrintUsage();
+i64 Amalgame_Compiler_AddCommand_Run(i64 argc);
+AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec);
+code_bool Amalgame_Compiler_AddCommand_IsSafeUrl(code_string url);
+code_bool Amalgame_Compiler_AddCommand_IsSafeTag(code_string tag);
+code_string Amalgame_Compiler_AddCommand_SlugFromUrl(code_string url);
+code_string Amalgame_Compiler_AddCommand_StripAmalgamePrefix(code_string slug);
+code_string Amalgame_Compiler_AddCommand_StripV(code_string tag);
+code_string Amalgame_Compiler_AddCommand_CacheRoot();
+code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag);
+code_string Amalgame_Compiler_AddCommand_ExtractRevFromDirName(code_string dir);
+code_bool Amalgame_Compiler_AddCommand_UpdateProjectManifest(code_string depName, code_string url, code_string tag);
+code_bool Amalgame_Compiler_AddCommand_UpdateLockFile(code_string depName, code_string url, code_string tag, code_string rev);
+
+Amalgame_Compiler_AddCommand* Amalgame_Compiler_AddCommand_new() {
+    Amalgame_Compiler_AddCommand* self = (Amalgame_Compiler_AddCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_AddCommand));
+    return self;
+}
+
+void Amalgame_Compiler_AddCommand_PrintUsage() {
+    Console_WriteError("Usage: amc add <git-url>@<tag>");
+    Console_WriteError("");
+    Console_WriteError("Install an Amalgame package from a Git URL into the user cache");
+    Console_WriteError("and record it in amalgame.toml + amalgame.lock.");
+    Console_WriteError("");
+    Console_WriteError("Examples:");
+    Console_WriteError("  amc add github.com/amalgame-lang/amalgame-redis@v0.1.0");
+    Console_WriteError("  amc add gitlab.com/foo/bar@v1.2.3");
+    Console_WriteError("");
+    Console_WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/");
+    Console_WriteError("");
+    Console_WriteError("Validation performed on install:");
+    Console_WriteError("  - manifest amalgame.toml exists at repo root");
+    Console_WriteError("  - [package].name matches the URL repo slug");
+    Console_WriteError("  - [package].version matches the tag");
+    Console_WriteError("  - [package].license is declared");
+    Console_WriteError("");
+    Console_WriteError("Flags:");
+    Console_WriteError("  -h, --help    Print this help and exit.");
+}
+
+i64 Amalgame_Compiler_AddCommand_Run(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) spec = "";
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Amalgame_Compiler_AddCommand_PrintUsage();
+            return 0;
+        }
+        if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat("unknown flag: ", a));
+            Amalgame_Compiler_AddCommand_PrintUsage();
+            return 2;
+        }
+        if (String_Length(spec) == 0) {
+            spec = a;
+        } else {
+            Console_WriteError(code_string_concat("unexpected extra argument: ", a));
+            Amalgame_Compiler_AddCommand_PrintUsage();
+            return 2;
+        }
+        i = i + 1;
+    }
+    if (String_Length(spec) == 0) {
+        Console_WriteError("missing <git-url>@<tag>");
+        Amalgame_Compiler_AddCommand_PrintUsage();
+        return 2;
+    }
+    AmalgameList* __attribute__((unused)) parsed = Amalgame_Compiler_AddCommand_ParseSpec(spec);
+    if (AmalgameList_count(parsed) != 2) {
+        Console_WriteError(code_string_concat(code_string_concat("expected <git-url>@<tag> — got '", spec), "'"));
+        return 2;
+    }
+    code_string __attribute__((unused)) url = (code_string)AmalgameList_get(parsed, 0);
+    code_string __attribute__((unused)) tag = (code_string)AmalgameList_get(parsed, 1);
+    if (!Amalgame_Compiler_AddCommand_IsSafeUrl(url)) {
+        Console_WriteError(code_string_concat(code_string_concat("rejected url '", url), "' — only [A-Za-z0-9./_:-] allowed"));
+        return 2;
+    }
+    if (!Amalgame_Compiler_AddCommand_IsSafeTag(tag)) {
+        Console_WriteError(code_string_concat(code_string_concat("rejected tag '", tag), "' — only [A-Za-z0-9._+-] allowed"));
+        return 2;
+    }
+    code_string __attribute__((unused)) pkgName = Amalgame_Compiler_AddCommand_SlugFromUrl(url);
+    if (String_Length(pkgName) == 0) {
+        Console_WriteError(code_string_concat(code_string_concat("could not derive package name from url '", url), "'"));
+        return 2;
+    }
+    code_string __attribute__((unused)) depName = Amalgame_Compiler_AddCommand_StripAmalgamePrefix(pkgName);
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Resolving ", url), "@"), tag), "..."));
+    code_string __attribute__((unused)) cacheRoot = Amalgame_Compiler_AddCommand_CacheRoot();
+    code_string __attribute__((unused)) baseDir = code_string_concat(code_string_concat(cacheRoot, "/"), url);
+    i64 __attribute__((unused)) _mkdirExit = Process_Run(code_string_concat(code_string_concat("mkdir -p '", baseDir), "'"));
+    code_string __attribute__((unused)) existingDir = Amalgame_Compiler_AddCommand_FindExistingForTag(baseDir, tag);
+    code_string __attribute__((unused)) pkgDir = "";
+    code_string __attribute__((unused)) rev = "";
+    if (String_Length(existingDir) > 0) {
+        pkgDir = existingDir;
+        rev = Amalgame_Compiler_AddCommand_ExtractRevFromDirName(pkgDir);
+        Console_WriteLine(code_string_concat("Already cached at ", pkgDir));
+    } else {
+        code_string __attribute__((unused)) tmpDir = code_string_concat(code_string_concat(code_string_concat(baseDir, "/"), tag), "_clone");
+        i64 __attribute__((unused)) _wipe = Process_Run(code_string_concat(code_string_concat("rm -rf '", tmpDir), "'"));
+        Console_WriteLine(code_string_concat(code_string_concat("Cloning into ", tmpDir), "..."));
+        code_string __attribute__((unused)) cloneCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("git clone --depth 1 --branch '", tag), "' 'https://"), url), ".git' '"), tmpDir), "' 2>&1");
+        i64 __attribute__((unused)) cloneExit = Process_Run(cloneCmd);
+        if (cloneExit != 0) {
+            Console_WriteError(code_string_concat(code_string_concat("git clone failed (exit ", String_FromInt(cloneExit)), ")"));
+            i64 __attribute__((unused)) _wipe2 = Process_Run(code_string_concat(code_string_concat("rm -rf '", tmpDir), "'"));
+            return 1;
+        }
+        AmalgameProcessResult* __attribute__((unused)) revRes = Process_RunCapture(code_string_concat(code_string_concat("git -C '", tmpDir), "' rev-parse HEAD 2>&1"));
+        if (revRes->Exit != 0) {
+            Console_WriteError(code_string_concat("git rev-parse failed: ", revRes->Stdout));
+            i64 __attribute__((unused)) _wipe3 = Process_Run(code_string_concat(code_string_concat("rm -rf '", tmpDir), "'"));
+            return 1;
+        }
+        rev = String_Trim(revRes->Stdout);
+        if (String_Length(rev) < 7) {
+            Console_WriteError(code_string_concat(code_string_concat("invalid HEAD sha: '", rev), "'"));
+            i64 __attribute__((unused)) _wipe4 = Process_Run(code_string_concat(code_string_concat("rm -rf '", tmpDir), "'"));
+            return 1;
+        }
+        code_string __attribute__((unused)) shortSha = String_Substring(rev, 0, 8);
+        pkgDir = code_string_concat(code_string_concat(code_string_concat(code_string_concat(baseDir, "/"), tag), "_"), shortSha);
+        i64 __attribute__((unused)) mvExit = Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat("mv '", tmpDir), "' '"), pkgDir), "'"));
+        if (mvExit != 0) {
+            Console_WriteError("could not finalize cache directory");
+            return 1;
+        }
+        i64 __attribute__((unused)) _gitWipe = Process_Run(code_string_concat(code_string_concat("rm -rf '", pkgDir), "/.git'"));
+    }
+    code_string __attribute__((unused)) manifestPath = code_string_concat(pkgDir, "/amalgame.toml");
+    if (!File_Exists(manifestPath)) {
+        Console_WriteError(code_string_concat("not an Amalgame package: missing ", manifestPath));
+        return 1;
+    }
+    code_string __attribute__((unused)) manifestSrc = File_ReadAll(manifestPath);
+    Amalgame_Compiler_TomlParser* __attribute__((unused)) parser = Amalgame_Compiler_TomlParser_new(manifestSrc);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) manifest = Amalgame_Compiler_Toml_ParseWithError(manifestSrc, parser);
+    if (parser->HasError) {
+        Console_WriteError(code_string_concat("malformed amalgame.toml: ", parser->ErrMsg));
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgTable = Amalgame_Compiler_TomlValue_Get(manifest, "package");
+    if (!Amalgame_Compiler_TomlValue_IsTable(pkgTable)) {
+        Console_WriteError("amalgame.toml missing [package] table");
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) mfName = Amalgame_Compiler_TomlValue_Get(pkgTable, "name");
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) mfVer = Amalgame_Compiler_TomlValue_Get(pkgTable, "version");
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) mfLic = Amalgame_Compiler_TomlValue_Get(pkgTable, "license");
+    code_string __attribute__((unused)) mfNameStr = Amalgame_Compiler_TomlValue_AsString(mfName);
+    code_string __attribute__((unused)) mfVerStr = Amalgame_Compiler_TomlValue_AsString(mfVer);
+    code_string __attribute__((unused)) mfLicStr = Amalgame_Compiler_TomlValue_AsString(mfLic);
+    if (String_Length(mfNameStr) == 0) {
+        Console_WriteError("amalgame.toml missing [package].name");
+        return 1;
+    }
+    if (String_Length(mfVerStr) == 0) {
+        Console_WriteError("amalgame.toml missing [package].version");
+        return 1;
+    }
+    if (String_Length(mfLicStr) == 0) {
+        Console_WriteError("amalgame.toml missing [package].license — declare your distribution licence");
+        return 1;
+    }
+    if (!code_string_equals(mfNameStr, pkgName)) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("manifest name '", mfNameStr), "' does not match URL slug '"), pkgName), "'"));
+        return 1;
+    }
+    code_string __attribute__((unused)) expectedVer = Amalgame_Compiler_AddCommand_StripV(tag);
+    if (!code_string_equals(mfVerStr, expectedVer)) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("manifest version '", mfVerStr), "' does not match tag '"), tag), "' (expected version = '"), expectedVer), "')"));
+        return 1;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Validated ", mfNameStr), " v"), mfVerStr), " (licence "), mfLicStr), ")"));
+    Console_WriteLine(code_string_concat("Cached at ", pkgDir));
+    if (!Amalgame_Compiler_AddCommand_UpdateProjectManifest(depName, url, tag)) {
+        Console_WriteError("could not update amalgame.toml");
+        return 1;
+    }
+    if (!Amalgame_Compiler_AddCommand_UpdateLockFile(depName, url, tag, rev)) {
+        Console_WriteError("could not update amalgame.lock");
+        return 1;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("Added ", depName), " "), tag));
+    return 0;
+}
+
+AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec) {
+    (void)spec;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) atIdx = String_LastIndexOf(spec, "@");
+    if (atIdx <= 0 || atIdx >= String_Length(spec) - 1) {
+        return out;
+    }
+    code_string __attribute__((unused)) url = String_Substring(spec, 0, atIdx);
+    code_string __attribute__((unused)) tag = String_Substring(spec, atIdx + 1, String_Length(spec) - atIdx - 1);
+    code_string __attribute__((unused)) cleanUrl = url;
+    if (String_StartsWith(cleanUrl, "https://")) {
+        cleanUrl = String_Substring(cleanUrl, 8, String_Length(cleanUrl) - 8);
+    }
+    if (String_StartsWith(cleanUrl, "http://")) {
+        cleanUrl = String_Substring(cleanUrl, 7, String_Length(cleanUrl) - 7);
+    }
+    AmalgameList_add(out, (void*)(intptr_t)(cleanUrl));
+    AmalgameList_add(out, (void*)(intptr_t)(tag));
+    return out;
+}
+
+code_bool Amalgame_Compiler_AddCommand_IsSafeUrl(code_string url) {
+    (void)url;
+    i64 __attribute__((unused)) n = String_Length(url);
+    if (n == 0) {
+        return 0;
+    }
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(url, i);
+        code_bool __attribute__((unused)) ok = 0;
+        if (code_string_equals(c, ".") || code_string_equals(c, "/") || code_string_equals(c, "_") || code_string_equals(c, "-") || code_string_equals(c, ":")) {
+            ok = 1;
+        }
+        if (String_IndexOf("0123456789", c) >= 0) {
+            ok = 1;
+        }
+        if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) {
+            ok = 1;
+        }
+        if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0) {
+            ok = 1;
+        }
+        if (!ok) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+code_bool Amalgame_Compiler_AddCommand_IsSafeTag(code_string tag) {
+    (void)tag;
+    i64 __attribute__((unused)) n = String_Length(tag);
+    if (n == 0) {
+        return 0;
+    }
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) c = String_CharAt1(tag, i);
+        code_bool __attribute__((unused)) ok = 0;
+        if (code_string_equals(c, ".") || code_string_equals(c, "_") || code_string_equals(c, "-") || code_string_equals(c, "+")) {
+            ok = 1;
+        }
+        if (String_IndexOf("0123456789", c) >= 0) {
+            ok = 1;
+        }
+        if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) {
+            ok = 1;
+        }
+        if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0) {
+            ok = 1;
+        }
+        if (!ok) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+code_string Amalgame_Compiler_AddCommand_SlugFromUrl(code_string url) {
+    (void)url;
+    i64 __attribute__((unused)) slashIdx = String_LastIndexOf(url, "/");
+    if (slashIdx < 0) {
+        return url;
+    }
+    return String_Substring(url, slashIdx + 1, String_Length(url) - slashIdx - 1);
+}
+
+code_string Amalgame_Compiler_AddCommand_StripAmalgamePrefix(code_string slug) {
+    (void)slug;
+    if (String_StartsWith(slug, "amalgame-")) {
+        return String_Substring(slug, 9, String_Length(slug) - 9);
+    }
+    return slug;
+}
+
+code_string Amalgame_Compiler_AddCommand_StripV(code_string tag) {
+    (void)tag;
+    if (String_StartsWith(tag, "v")) {
+        return String_Substring(tag, 1, String_Length(tag) - 1);
+    }
+    return tag;
+}
+
+code_string Amalgame_Compiler_AddCommand_CacheRoot() {
+    code_string __attribute__((unused)) home = Env_Get("HOME");
+    if (String_Length(home) > 0) {
+        return code_string_concat(home, "/.amalgame/packages");
+    }
+    return "/tmp/amalgame-packages";
+}
+
+code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag) {
+    (void)baseDir;
+    (void)tag;
+    code_string __attribute__((unused)) prefix = code_string_concat(tag, "_");
+    code_string __attribute__((unused)) listCmd = code_string_concat(code_string_concat("ls -1 '", baseDir), "' 2>/dev/null");
+    AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(listCmd);
+    if (res->Exit != 0) {
+        return "";
+    }
+    AmalgameList* __attribute__((unused)) lines = String_Split(res->Stdout, "\n");
+    i64 __attribute__((unused)) n = AmalgameList_count(lines);
+    for (i64 i = 0; i < n; i++) {
+        code_string __attribute__((unused)) line = (code_string)AmalgameList_get(lines, i);
+        if (String_StartsWith(line, prefix)) {
+            return code_string_concat(code_string_concat(baseDir, "/"), line);
+        }
+    }
+    return "";
+}
+
+code_string Amalgame_Compiler_AddCommand_ExtractRevFromDirName(code_string dir) {
+    (void)dir;
+    i64 __attribute__((unused)) slash = String_LastIndexOf(dir, "/");
+    code_string __attribute__((unused)) leaf = String_Substring(dir, slash + 1, String_Length(dir) - slash - 1);
+    i64 __attribute__((unused)) under = String_LastIndexOf(leaf, "_");
+    if (under < 0) {
+        return "";
+    }
+    return String_Substring(leaf, under + 1, String_Length(leaf) - under - 1);
+}
+
+code_bool Amalgame_Compiler_AddCommand_UpdateProjectManifest(code_string depName, code_string url, code_string tag) {
+    (void)depName;
+    (void)url;
+    (void)tag;
+    code_string __attribute__((unused)) path = "amalgame.toml";
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = NULL;
+    if (File_Exists(path)) {
+        code_string __attribute__((unused)) src = File_ReadAll(path);
+        doc = Amalgame_Compiler_Toml_Parse(src);
+        if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+            Console_WriteError("could not parse existing amalgame.toml");
+            return 0;
+        }
+    } else {
+        doc = Amalgame_Compiler_TomlValue_new();
+        Amalgame_Compiler_TomlValue_BecomeTable(doc);
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) deps = Amalgame_Compiler_TomlValue_Get(doc, "dependencies");
+    if (!Amalgame_Compiler_TomlValue_IsTable(deps)) {
+        deps = Amalgame_Compiler_TomlValue_new();
+        Amalgame_Compiler_TomlValue_BecomeTable(deps);
+        Amalgame_Compiler_TomlValue_SetEntry(doc, "dependencies", deps);
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_BecomeTable(entry);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) gitVal = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_SetString(gitVal, url);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) tagVal = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_SetString(tagVal, tag);
+    Amalgame_Compiler_TomlValue_SetEntry(entry, "git", gitVal);
+    Amalgame_Compiler_TomlValue_SetEntry(entry, "tag", tagVal);
+    Amalgame_Compiler_TomlValue_SetEntry(deps, depName, entry);
+    code_string __attribute__((unused)) out = Amalgame_Compiler_Toml_Serialize(doc);
+    code_bool __attribute__((unused)) ok = File_WriteAll(path, out);
+    return ok;
+}
+
+code_bool Amalgame_Compiler_AddCommand_UpdateLockFile(code_string depName, code_string url, code_string tag, code_string rev) {
+    (void)depName;
+    (void)url;
+    (void)tag;
+    (void)rev;
+    code_string __attribute__((unused)) path = "amalgame.lock";
+    code_string __attribute__((unused)) out = "# amalgame.lock — auto-generated, commit me\n";
+    out = code_string_concat(out, "\n");
+    out = code_string_concat(out, "[[package]]\n");
+    out = code_string_concat(code_string_concat(code_string_concat(out, "name = \""), depName), "\"\n");
+    out = code_string_concat(code_string_concat(code_string_concat(out, "git  = \""), url), "\"\n");
+    out = code_string_concat(code_string_concat(code_string_concat(out, "tag  = \""), tag), "\"\n");
+    out = code_string_concat(code_string_concat(code_string_concat(out, "rev  = \""), rev), "\"\n");
+    code_bool __attribute__((unused)) ok = File_WriteAll(path, out);
+    return ok;
+}
+
 Amalgame_Compiler_AmalgameCompiler* Amalgame_Compiler_AmalgameCompiler_new();
 Amalgame_Compiler_Program* Amalgame_Compiler_Program_new();
 struct _Amalgame_Compiler_AmalgameCompiler {
@@ -18758,6 +20019,10 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "new")) {
         Exit_Set(Amalgame_Compiler_NewCommand_Run(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "add")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_Run(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();

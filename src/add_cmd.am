@@ -1,0 +1,430 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+import Amalgame.Formats.Toml
+
+// ═══════════════════════════════════════════════════════
+//  add_cmd.am  —  `amc add` subcommand
+// ═══════════════════════════════════════════════════════
+//
+// Installs a package from a Git URL + tag into the user-global
+// cache and records it in the project's `amalgame.toml` +
+// `amalgame.lock`. Implements PR 2 of the v0.5 package-manager
+// rollout — design doc:
+//   docs/proposals/amalgame-package-manager.md
+//
+//   amc add <git-url>@<tag>
+//
+//     git-url:  e.g. github.com/amalgame-lang/amalgame-redis
+//               (protocol stripped if present; https:// prepended)
+//     tag:      e.g. v0.1.0 (must match the package's
+//               [package].version in its manifest)
+//
+// What this PR ships:
+//   - Single-package install (no transitive deps yet)
+//   - Cache layout: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/
+//   - amalgame.toml dep entry insertion
+//   - amalgame.lock entry insertion with commit SHA pin
+//   - Manifest validation: name matches URL slug, version matches
+//     tag, license declared, has [package].name + version
+//   - Idempotency: re-running with the same spec is a no-op
+//
+// What's deferred to follow-up PRs within v0.5:
+//   - Transitive dep resolution (PR 2b)
+//   - Conflict / cycle detection (PR 2b)
+//   - amalgame-lang/packages-index shortname lookup (PR 2c)
+//   - amc remove / update / list / search (PR 2d)
+//   - Path deps `{ path = "../foo" }` (PR 2e)
+//   - sha256 tarball verification (post-v0.5; not needed for git
+//     deps since the commit SHA is already content-addressable)
+
+public class AddCommand {
+
+    public AddCommand() {}
+
+    public static void PrintUsage() {
+        Console.WriteError("Usage: amc add <git-url>@<tag>")
+        Console.WriteError("")
+        Console.WriteError("Install an Amalgame package from a Git URL into the user cache")
+        Console.WriteError("and record it in amalgame.toml + amalgame.lock.")
+        Console.WriteError("")
+        Console.WriteError("Examples:")
+        Console.WriteError("  amc add github.com/amalgame-lang/amalgame-redis@v0.1.0")
+        Console.WriteError("  amc add gitlab.com/foo/bar@v1.2.3")
+        Console.WriteError("")
+        Console.WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/")
+        Console.WriteError("")
+        Console.WriteError("Validation performed on install:")
+        Console.WriteError("  - manifest amalgame.toml exists at repo root")
+        Console.WriteError("  - [package].name matches the URL repo slug")
+        Console.WriteError("  - [package].version matches the tag")
+        Console.WriteError("  - [package].license is declared")
+        Console.WriteError("")
+        Console.WriteError("Flags:")
+        Console.WriteError("  -h, --help    Print this help and exit.")
+    }
+
+    public static int Run(int argc) {
+        var spec: string = ""
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                AddCommand.PrintUsage()
+                return 0
+            }
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                AddCommand.PrintUsage()
+                return 2
+            }
+            if (String_Length(spec) == 0) {
+                spec = a
+            } else {
+                Console.WriteError("unexpected extra argument: " + a)
+                AddCommand.PrintUsage()
+                return 2
+            }
+            i = i + 1
+        }
+        if (String_Length(spec) == 0) {
+            Console.WriteError("missing <git-url>@<tag>")
+            AddCommand.PrintUsage()
+            return 2
+        }
+
+        // ── 1. Parse spec ─────────────────────────────────
+        let parsed: List<string> = AddCommand.ParseSpec(spec)
+        if (parsed.Count() != 2) {
+            Console.WriteError("expected <git-url>@<tag> — got '" + spec + "'")
+            return 2
+        }
+        let url: string = parsed.Get(0)
+        let tag: string = parsed.Get(1)
+        if (!AddCommand.IsSafeUrl(url)) {
+            Console.WriteError("rejected url '" + url + "' — only [A-Za-z0-9./_:-] allowed")
+            return 2
+        }
+        if (!AddCommand.IsSafeTag(tag)) {
+            Console.WriteError("rejected tag '" + tag + "' — only [A-Za-z0-9._+-] allowed")
+            return 2
+        }
+
+        // Slug + name derivation from URL: last path segment.
+        let pkgName: string = AddCommand.SlugFromUrl(url)
+        if (String_Length(pkgName) == 0) {
+            Console.WriteError("could not derive package name from url '" + url + "'")
+            return 2
+        }
+        // Strip leading `amalgame-` from the displayed package name
+        // (the dep table uses the unprefixed handle, matching the
+        // Cargo / Go convention). Manifest validation still uses
+        // the full slug.
+        let depName: string = AddCommand.StripAmalgamePrefix(pkgName)
+
+        Console.WriteLine("Resolving " + url + "@" + tag + "...")
+
+        // ── 2. Cache path (before clone, sha unknown yet) ──
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let baseDir: string = cacheRoot + "/" + url
+        // Ensure the parent path exists (mkdir -p is the most
+        // portable option — no MkdirAll in the runtime IO surface).
+        let _mkdirExit: int = Process_Run("mkdir -p '" + baseDir + "'")
+
+        // ── 3. Clone if not yet cached ────────────────────
+        // We tag the directory by `<tag>_<short_sha>` once we know the
+        // SHA. To avoid cloning twice, we clone first to a tmp dir
+        // keyed by tag, look up the SHA, then rename. If a directory
+        // already exists for <tag>_* we reuse it.
+        let existingDir: string = AddCommand.FindExistingForTag(baseDir, tag)
+        var pkgDir: string = ""
+        var rev: string = ""
+        if (String_Length(existingDir) > 0) {
+            pkgDir = existingDir
+            rev = AddCommand.ExtractRevFromDirName(pkgDir)
+            Console.WriteLine("Already cached at " + pkgDir)
+        } else {
+            let tmpDir: string = baseDir + "/" + tag + "_clone"
+            // Wipe any stale tmp from a previous failed run.
+            let _wipe: int = Process_Run("rm -rf '" + tmpDir + "'")
+            Console.WriteLine("Cloning into " + tmpDir + "...")
+            let cloneCmd: string = "git clone --depth 1 --branch '" + tag + "' 'https://" + url + ".git' '" + tmpDir + "' 2>&1"
+            let cloneExit: int = Process_Run(cloneCmd)
+            if (cloneExit != 0) {
+                Console.WriteError("git clone failed (exit " + String_FromInt(cloneExit) + ")")
+                let _wipe2: int = Process_Run("rm -rf '" + tmpDir + "'")
+                return 1
+            }
+            // Resolve the SHA of the cloned tip.
+            let revRes = Process_RunCapture("git -C '" + tmpDir + "' rev-parse HEAD 2>&1")
+            if (revRes.Exit != 0) {
+                Console.WriteError("git rev-parse failed: " + revRes.Stdout)
+                let _wipe3: int = Process_Run("rm -rf '" + tmpDir + "'")
+                return 1
+            }
+            rev = String_Trim(revRes.Stdout)
+            if (String_Length(rev) < 7) {
+                Console.WriteError("invalid HEAD sha: '" + rev + "'")
+                let _wipe4: int = Process_Run("rm -rf '" + tmpDir + "'")
+                return 1
+            }
+            let shortSha: string = String_Substring(rev, 0, 8)
+            pkgDir = baseDir + "/" + tag + "_" + shortSha
+            // Move tmp → final
+            let mvExit: int = Process_Run("mv '" + tmpDir + "' '" + pkgDir + "'")
+            if (mvExit != 0) {
+                Console.WriteError("could not finalize cache directory")
+                return 1
+            }
+            // Drop the .git dir — we don't need it past validation.
+            let _gitWipe: int = Process_Run("rm -rf '" + pkgDir + "/.git'")
+        }
+
+        // ── 4. Read + validate package manifest ────────────
+        let manifestPath: string = pkgDir + "/amalgame.toml"
+        if (!File.Exists(manifestPath)) {
+            Console.WriteError("not an Amalgame package: missing " + manifestPath)
+            return 1
+        }
+        let manifestSrc: string = File.ReadAll(manifestPath)
+        let parser = new TomlParser(manifestSrc)
+        let manifest: TomlValue = Toml.ParseWithError(manifestSrc, parser)
+        if (parser.HasError) {
+            Console.WriteError("malformed amalgame.toml: " + parser.ErrMsg)
+            return 1
+        }
+        let pkgTable: TomlValue = manifest.Get("package")
+        if (!pkgTable.IsTable()) {
+            Console.WriteError("amalgame.toml missing [package] table")
+            return 1
+        }
+        let mfName: TomlValue = pkgTable.Get("name")
+        let mfVer: TomlValue  = pkgTable.Get("version")
+        let mfLic: TomlValue  = pkgTable.Get("license")
+        let mfNameStr: string = mfName.AsString()
+        let mfVerStr:  string = mfVer.AsString()
+        let mfLicStr:  string = mfLic.AsString()
+        if (String_Length(mfNameStr) == 0) {
+            Console.WriteError("amalgame.toml missing [package].name")
+            return 1
+        }
+        if (String_Length(mfVerStr) == 0) {
+            Console.WriteError("amalgame.toml missing [package].version")
+            return 1
+        }
+        if (String_Length(mfLicStr) == 0) {
+            Console.WriteError("amalgame.toml missing [package].license — declare your distribution licence")
+            return 1
+        }
+        if (mfNameStr != pkgName) {
+            Console.WriteError("manifest name '" + mfNameStr + "' does not match URL slug '" + pkgName + "'")
+            return 1
+        }
+        let expectedVer: string = AddCommand.StripV(tag)
+        if (mfVerStr != expectedVer) {
+            Console.WriteError("manifest version '" + mfVerStr + "' does not match tag '" + tag + "' (expected version = '" + expectedVer + "')")
+            return 1
+        }
+
+        Console.WriteLine("Validated " + mfNameStr + " v" + mfVerStr + " (licence " + mfLicStr + ")")
+        Console.WriteLine("Cached at " + pkgDir)
+
+        // ── 5. Update project's amalgame.toml ─────────────
+        if (!AddCommand.UpdateProjectManifest(depName, url, tag)) {
+            Console.WriteError("could not update amalgame.toml")
+            return 1
+        }
+
+        // ── 6. Update amalgame.lock ───────────────────────
+        if (!AddCommand.UpdateLockFile(depName, url, tag, rev)) {
+            Console.WriteError("could not update amalgame.lock")
+            return 1
+        }
+
+        Console.WriteLine("Added " + depName + " " + tag)
+        return 0
+    }
+
+    // ── Spec parsing ──────────────────────────────────
+
+    // "github.com/x/y@v1.0.0" → ["github.com/x/y", "v1.0.0"].
+    // Splits at the LAST `@` so URLs containing `@` (e.g. user@host
+    // SSH form, though we reject those upstream) don't trip us up.
+    public static List<string> ParseSpec(string spec) {
+        let out: List<string> = new List<string>()
+        let atIdx: int = String_LastIndexOf(spec, "@")
+        if (atIdx <= 0 || atIdx >= String_Length(spec) - 1) { return out }
+        let url: string = String_Substring(spec, 0, atIdx)
+        let tag: string = String_Substring(spec, atIdx + 1, String_Length(spec) - atIdx - 1)
+        // Strip a leading protocol scheme if present.
+        var cleanUrl: string = url
+        if (String_StartsWith(cleanUrl, "https://")) {
+            cleanUrl = String_Substring(cleanUrl, 8, String_Length(cleanUrl) - 8)
+        }
+        if (String_StartsWith(cleanUrl, "http://")) {
+            cleanUrl = String_Substring(cleanUrl, 7, String_Length(cleanUrl) - 7)
+        }
+        out.Add(cleanUrl)
+        out.Add(tag)
+        return out
+    }
+
+    public static bool IsSafeUrl(string url) {
+        let n: int = String_Length(url)
+        if (n == 0) { return false }
+        for i in 0..n {
+            let c: string = String_CharAt1(url, i)
+            var ok: bool = false
+            if (c == "." || c == "/" || c == "_" || c == "-" || c == ":") { ok = true }
+            if (String_IndexOf("0123456789", c) >= 0) { ok = true }
+            if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) { ok = true }
+            if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0) { ok = true }
+            if (!ok) { return false }
+        }
+        return true
+    }
+
+    public static bool IsSafeTag(string tag) {
+        let n: int = String_Length(tag)
+        if (n == 0) { return false }
+        for i in 0..n {
+            let c: string = String_CharAt1(tag, i)
+            var ok: bool = false
+            if (c == "." || c == "_" || c == "-" || c == "+") { ok = true }
+            if (String_IndexOf("0123456789", c) >= 0) { ok = true }
+            if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", c) >= 0) { ok = true }
+            if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0) { ok = true }
+            if (!ok) { return false }
+        }
+        return true
+    }
+
+    // Last path segment of the URL = package name.
+    public static string SlugFromUrl(string url) {
+        let slashIdx: int = String_LastIndexOf(url, "/")
+        if (slashIdx < 0) { return url }
+        return String_Substring(url, slashIdx + 1, String_Length(url) - slashIdx - 1)
+    }
+
+    // `amalgame-redis` → `redis` (the user-facing handle).
+    public static string StripAmalgamePrefix(string slug) {
+        if (String_StartsWith(slug, "amalgame-")) {
+            return String_Substring(slug, 9, String_Length(slug) - 9)
+        }
+        return slug
+    }
+
+    // `v0.1.0` → `0.1.0`. Tags conventionally carry the `v`
+    // prefix; manifest versions don't.
+    public static string StripV(string tag) {
+        if (String_StartsWith(tag, "v")) {
+            return String_Substring(tag, 1, String_Length(tag) - 1)
+        }
+        return tag
+    }
+
+    // ── Cache path management ─────────────────────────
+
+    public static string CacheRoot() {
+        let home: string = Env_Get("HOME")
+        if (String_Length(home) > 0) {
+            return home + "/.amalgame/packages"
+        }
+        return "/tmp/amalgame-packages"
+    }
+
+    // Look for an existing `<tag>_<sha>` directory under baseDir.
+    // Returns the absolute path if found, "" otherwise.
+    public static string FindExistingForTag(string baseDir, string tag) {
+        let prefix: string = tag + "_"
+        // Use shell to enumerate — Amalgame.IO doesn't expose readdir
+        // in v0.4 land.
+        let listCmd: string = "ls -1 '" + baseDir + "' 2>/dev/null"
+        let res = Process_RunCapture(listCmd)
+        if (res.Exit != 0) { return "" }
+        let lines: List<string> = String_Split(res.Stdout, "\n")
+        let n: int = lines.Count()
+        for i in 0..n {
+            let line: string = lines.Get(i)
+            if (String_StartsWith(line, prefix)) {
+                return baseDir + "/" + line
+            }
+        }
+        return ""
+    }
+
+    public static string ExtractRevFromDirName(string dir) {
+        let slash: int = String_LastIndexOf(dir, "/")
+        let leaf: string = String_Substring(dir, slash + 1, String_Length(dir) - slash - 1)
+        let under: int = String_LastIndexOf(leaf, "_")
+        if (under < 0) { return "" }
+        return String_Substring(leaf, under + 1, String_Length(leaf) - under - 1)
+    }
+
+    // ── Project manifest + lock writers ───────────────
+
+    // Append or update the [dependencies] entry. Reads the current
+    // manifest, parses it, mutates, re-serializes. If no manifest
+    // exists, creates a minimal one with the dep.
+    public static bool UpdateProjectManifest(string depName, string url, string tag) {
+        let path: string = "amalgame.toml"
+        var doc: TomlValue
+        if (File.Exists(path)) {
+            let src: string = File.ReadAll(path)
+            doc = Toml.Parse(src)
+            if (doc.IsNull()) {
+                Console.WriteError("could not parse existing amalgame.toml")
+                return false
+            }
+        } else {
+            doc = new TomlValue()
+            doc.BecomeTable()
+        }
+
+        // Ensure [dependencies] exists.
+        var deps: TomlValue = doc.Get("dependencies")
+        if (!deps.IsTable()) {
+            deps = new TomlValue()
+            deps.BecomeTable()
+            doc.SetEntry("dependencies", deps)
+        }
+
+        // Build the inline-table value: { git = "...", tag = "..." }
+        let entry = new TomlValue()
+        entry.BecomeTable()
+        let gitVal = new TomlValue()
+        gitVal.SetString(url)
+        let tagVal = new TomlValue()
+        tagVal.SetString(tag)
+        entry.SetEntry("git", gitVal)
+        entry.SetEntry("tag", tagVal)
+        deps.SetEntry(depName, entry)
+
+        let out: string = Toml.Serialize(doc)
+        let ok: bool = File.WriteAll(path, out)
+        return ok
+    }
+
+    // Lock entries are flat — one [[package]] table per resolved
+    // dep with name/git/tag/rev. The lock file is the source of
+    // truth at compile time.
+    public static bool UpdateLockFile(string depName, string url, string tag, string rev) {
+        let path: string = "amalgame.lock"
+        // For v0.5 PR 2: we just emit a fresh lock with the single
+        // entry. Transitive deps + merge logic land in PR 2b.
+        // If the lock already had entries we'd lose them; this is
+        // intentional for the simple-add path.
+        var out: string = "# amalgame.lock — auto-generated, commit me\n"
+        out = out + "\n"
+        out = out + "[[package]]\n"
+        out = out + "name = \"" + depName + "\"\n"
+        out = out + "git  = \"" + url + "\"\n"
+        out = out + "tag  = \"" + tag + "\"\n"
+        out = out + "rev  = \"" + rev + "\"\n"
+        let ok: bool = File.WriteAll(path, out)
+        return ok
+    }
+}
