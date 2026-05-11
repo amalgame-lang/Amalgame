@@ -248,6 +248,20 @@ public class Program {
             i = i + 1
         }
 
+        // v0.5.1: auto-install missing deps before running tests.
+        // amalgame.lock-declared packages that aren't in the cache
+        // get re-cloned here, so `git clone <repo> && amc test`
+        // works in one step. No-op when there's no lock file or
+        // every dep is already present.
+        let installed: int = AddCommand.EnsureInstalled()
+        if (installed < 0) {
+            Console.WriteError("amc test: package install failed; aborting")
+            return 1
+        }
+        if (installed > 0) {
+            Console.WriteLine("amc test: installed " + String_FromInt(installed) + " missing dep(s)")
+        }
+
         // Discovery: shell out to `find`. Works on POSIX and on
         // Windows MSYS2 (the only Windows path the repo CI exercises).
         let findCmd = "find " + dir + " -name '*_test.am' -type f"
@@ -295,10 +309,27 @@ public class Program {
                 compileFail = compileFail + 1
                 continue
             }
-            // Step 2 — gcc on the emitted .c. Same flags as
-            // tests/run_tests.sh so behavior matches the canonical
-            // runner.
-            let gccCmd = "gcc -O2 -Iruntime " + outC + " -lgc -lm -lcurl -o " + outBin + " 2>&1"
+            // Step 2 — gcc on the emitted .c. Locate amc's
+            // runtime/ headers so the test compile works in any
+            // cwd (not just the Amalgame source tree). Resolution
+            // order matches the package test runners' convention:
+            //   1. $AMC_RUNTIME env var if set
+            //   2. <dirname(amc)>/runtime
+            //   3. ./runtime (legacy, only valid in Amalgame's
+            //      own source tree)
+            var amcRuntime: string = Env_Get("AMC_RUNTIME")
+            if (String_Length(amcRuntime) == 0) {
+                let slashIdx: int = String_LastIndexOf(amcPath, "/")
+                if (slashIdx >= 0) {
+                    let amcDir: string = String_Substring(amcPath, 0, slashIdx)
+                    amcRuntime = amcDir + "/runtime"
+                }
+            }
+            var gccCmd: string = "gcc -O2 -Iruntime"
+            if (String_Length(amcRuntime) > 0) {
+                gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+            }
+            gccCmd = gccCmd + " " + outC + " -lgc -lm -lcurl -o " + outBin + " 2>&1"
             let gcc = Process.RunCapture(gccCmd)
             if (gcc.Exit != 0) {
                 Console.WriteLine("  [LINK-FAIL]")
