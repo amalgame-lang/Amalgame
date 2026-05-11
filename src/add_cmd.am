@@ -729,6 +729,8 @@ public class AddCommand {
         if (sub == "versions")  { return AddCommand.RunVersions(argc, 3) }
         if (sub == "info")      { return AddCommand.RunInfo(argc, 3) }
         if (sub == "outdated")  { return AddCommand.RunOutdated(argc, 3) }
+        if (sub == "notice")    { return AddCommand.RunNotice(argc, 3) }
+        if (sub == "check")     { return AddCommand.RunCheck(argc, 3) }
         if (sub == "list")      { return AddCommand.RunList(argc, 3) }
         if (sub == "remove")    { return AddCommand.RunRemove(argc, 3) }
         if (sub == "update")    { return AddCommand.RunUpdate(argc, 3) }
@@ -753,6 +755,9 @@ public class AddCommand {
         Console.WriteError("    [--json]                     Emit machine-readable JSON")
         Console.WriteError("  info <name> [--refresh]       Show description, url, license, versions, install")
         Console.WriteError("  outdated [--refresh]          List installed deps with a newer compatible tag")
+        Console.WriteError("  notice                        Aggregate licence + authorship of installed deps")
+        Console.WriteError("  check [--frozen]              Verify amalgame.lock matches the installed cache")
+        Console.WriteError("                                (--frozen exits 1 on mismatch — for CI)")
         Console.WriteError("  list                          Show installed deps")
         Console.WriteError("  remove <name>[@<tag>] [...]   Strip dep(s) from amalgame.toml + lock.")
         Console.WriteError("                                `@<tag>` is a safety check (refuses to remove")
@@ -1806,6 +1811,237 @@ public class AddCommand {
         }
         Console.WriteLine("")
         Console.WriteLine("Run `amc package update <name>@<tag>` to bump.")
+        return 0
+    }
+
+    // ── check verb ────────────────────────────────────
+    //
+    // Verify that every [[package]] entry in amalgame.lock has a
+    // corresponding intact cache directory under
+    // `~/.amalgame/packages/`. Two modes:
+    //
+    //   `amc package check`           informational; reports
+    //                                  missing entries on stderr,
+    //                                  exits 0 even on mismatch.
+    //                                  Suggests `amc package add`
+    //                                  to repair.
+    //
+    //   `amc package check --frozen`  CI mode; exits 1 on any
+    //                                  mismatch. Designed for the
+    //                                  fail-fast lane: catches a
+    //                                  PR that bumped the lockfile
+    //                                  without re-installing.
+    //
+    // What "match" means: the lock's git + tag + short-sha resolves
+    // to a path that exists on disk AND contains an `amalgame.toml`.
+    // The cache layout (`<host>/<owner>/<repo>/<tag>_<sha>/`) is the
+    // single source of truth — same path EnsureInstalled checks at
+    // `amc test` time. No SHA re-verification — that belongs to
+    // `amc package add`'s install-time validation.
+    public static int RunCheck(int argc, int startIdx) {
+        var frozen: bool = false
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package check [--frozen]")
+                Console.WriteError("")
+                Console.WriteError("Verify amalgame.lock matches the installed package cache.")
+                Console.WriteError("Reports any [[package]] entry whose cache dir is missing.")
+                Console.WriteError("")
+                Console.WriteError("--frozen   exit 1 on mismatch (for CI fail-fast). Without it,")
+                Console.WriteError("           the verb is informational and always exits 0.")
+                return 0
+            }
+            if (a == "--frozen") {
+                frozen = true
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                return 2
+            }
+            i = i + 1
+        }
+        let lockPath: string = "amalgame.lock"
+        if (!File.Exists(lockPath)) {
+            Console.WriteLine("No amalgame.lock in cwd — nothing to check.")
+            return 0
+        }
+        let lockSrc: string = File.ReadAll(lockPath)
+        let lockDoc = Toml.Parse(lockSrc)
+        if (lockDoc.IsNull()) {
+            Console.WriteError("amalgame.lock parse error")
+            return 1
+        }
+        let pkgs: TomlValue = lockDoc.Get("package")
+        if (!pkgs.IsArray()) {
+            Console.WriteLine("amalgame.lock has no [[package]] entries — nothing to check.")
+            return 0
+        }
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let n: int = pkgs.Count()
+        var ok:      int = 0
+        var missing: int = 0
+        for k in 0..n {
+            let entry: TomlValue = pkgs.At(k)
+            let gitS: string = entry.Get("git").AsString()
+            let tagS: string = entry.Get("tag").AsString()
+            let revS: string = entry.Get("rev").AsString()
+            if (String_Length(gitS) == 0 || String_Length(tagS) == 0) { continue }
+            if (String_Length(revS) < 8) { continue }
+            let shortSha: string = String_Substring(revS, 0, 8)
+            let pkgDir:   string = cacheRoot + "/" + gitS + "/" + tagS + "_" + shortSha
+            let manifest: string = pkgDir + "/amalgame.toml"
+            if (File.Exists(manifest)) {
+                Console.WriteLine("  ✓ " + gitS + " @ " + tagS + " (sha " + shortSha + ")")
+                ok = ok + 1
+            } else {
+                Console.WriteLine("  ✗ " + gitS + " @ " + tagS + " — cache dir missing")
+                Console.WriteLine("       expected: " + pkgDir + "/")
+                missing = missing + 1
+            }
+        }
+        Console.WriteLine("")
+        if (missing == 0) {
+            Console.WriteLine(String_FromInt(ok) + " of " + String_FromInt(ok) + " package(s) match amalgame.lock.")
+            return 0
+        }
+        Console.WriteLine(String_FromInt(missing) + " of " + String_FromInt(ok + missing) + " installed package(s) failed integrity check.")
+        Console.WriteLine("Run `amc package add <name>@<tag>` (or `amc test` for auto-repair) to re-install.")
+        if (frozen) {
+            return 1
+        }
+        return 0
+    }
+
+    // ── notice verb ───────────────────────────────────
+    //
+    // Generate a NOTICE-style listing of every installed package's
+    // licence + authorship. Output to stdout so users can pipe
+    // into NOTICE_DEPS.md / a packaging step:
+    //
+    //   amc package notice > NOTICE_DEPS.md
+    //
+    // Source of truth is each package's `amalgame.toml`
+    // ([package].name / version / license / description / authors),
+    // read from the cache dir on disk (LoadedPackage.PkgDir).
+    // Bare-name dependencies without a manifest in the cache are
+    // skipped with a stderr warning so the report stays clean.
+    public static int RunNotice(int argc, int startIdx) {
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package notice")
+                Console.WriteError("")
+                Console.WriteError("Aggregate licence + authorship of every package referenced")
+                Console.WriteError("from amalgame.lock. Output is plain text on stdout, ready to")
+                Console.WriteError("redirect into NOTICE_DEPS.md for downstream redistribution.")
+                Console.WriteError("")
+                Console.WriteError("For each package, the matching upstream LICENSE / NOTICE files")
+                Console.WriteError("at <PkgDir>/ contain the full licence text — this verb only")
+                Console.WriteError("aggregates the metadata, it does not embed the licence bodies.")
+                return 0
+            }
+            if (String_StartsWith(a, "-")) {
+                Console.WriteError("unknown flag: " + a)
+                return 2
+            }
+            i = i + 1
+        }
+        let reg = PackageRegistry.Load()
+        let np: int = reg.Packages.Count()
+        if (np == 0) {
+            Console.WriteError("No packages installed in this project.")
+            return 0
+        }
+        Console.WriteLine("# Third-party Amalgame packages referenced by this project")
+        Console.WriteLine("#")
+        Console.WriteLine("# Generated by `amc package notice` from amalgame.lock + each")
+        Console.WriteLine("# package's amalgame.toml. For the full licence text, consult")
+        Console.WriteLine("# the upstream LICENSE / NOTICE files in each repository.")
+        Console.WriteLine("")
+
+        let licenses: List<string> = new List<string>()
+        for k in 0..np {
+            let lp: LoadedPackage = reg.Packages.Get(k)
+            let manifestPath: string = lp.PkgDir + "/amalgame.toml"
+            if (!File.Exists(manifestPath)) {
+                Console.WriteError("warning: missing manifest for " + lp.Name + " — run `amc package add " + lp.Name + "@" + lp.Tag + "` to repair.")
+                continue
+            }
+            let src: string = File.ReadAll(manifestPath)
+            let doc = Toml.Parse(src)
+            if (doc.IsNull()) {
+                Console.WriteError("warning: unparseable manifest at " + manifestPath)
+                continue
+            }
+            let pkgTable: TomlValue = doc.Get("package")
+            if (!pkgTable.IsTable()) { continue }
+            let manifestName:    string = pkgTable.Get("name").AsString()
+            let manifestVersion: string = pkgTable.Get("version").AsString()
+            let manifestLicense: string = pkgTable.Get("license").AsString()
+            let manifestDesc:    string = pkgTable.Get("description").AsString()
+            // [package].authors is an array of strings in v1 manifests
+            // (matches Cargo); join with " · " for a compact one-line
+            // attribution.
+            var authorsJoined: string = ""
+            let authorsArr: TomlValue = pkgTable.Get("authors")
+            if (authorsArr.IsArray()) {
+                let an: int = authorsArr.Count()
+                for j in 0..an {
+                    let nameEntry: string = authorsArr.At(j).AsString()
+                    if (String_Length(nameEntry) == 0) { continue }
+                    if (String_Length(authorsJoined) > 0) {
+                        authorsJoined = authorsJoined + " · "
+                    }
+                    authorsJoined = authorsJoined + nameEntry
+                }
+            }
+            // Display the manifest's name + tag (lp.Tag holds the
+            // resolved git tag) since the manifest's [package].version
+            // tracks the package release, not the git tag literally.
+            var headline: string = "## " + manifestName + " " + lp.Tag
+            if (String_Length(manifestVersion) > 0 && manifestVersion != String_Substring(lp.Tag, 1, String_Length(lp.Tag) - 1)) {
+                // Tag is `v0.1.1`, version is `0.1.1` — match; only
+                // surface the version when they disagree (defensive).
+                headline = headline + " (manifest version " + manifestVersion + ")"
+            }
+            Console.WriteLine(headline)
+            Console.WriteLine("Source:    " + lp.Name)
+            if (String_Length(manifestLicense) > 0) {
+                Console.WriteLine("Licence:   " + manifestLicense)
+                // Track unique licences for the footer summary.
+                var seen: bool = false
+                let ln: int = licenses.Count()
+                for j in 0..ln {
+                    if (licenses.Get(j) == manifestLicense) { seen = true }
+                }
+                if (!seen) { licenses.Add(manifestLicense) }
+            } else {
+                Console.WriteLine("Licence:   (not declared — review upstream)")
+            }
+            if (String_Length(authorsJoined) > 0) {
+                Console.WriteLine("Authors:   " + authorsJoined)
+            }
+            if (String_Length(manifestDesc) > 0) {
+                Console.WriteLine("Summary:   " + manifestDesc)
+            }
+            Console.WriteLine("")
+        }
+
+        // Footer summary — count of packages + distinct licences.
+        let lc: int = licenses.Count()
+        var summary: string = "# " + String_FromInt(np) + " package(s)"
+        if (lc == 1) {
+            summary = summary + "; 1 distinct licence: " + licenses.Get(0)
+        } else if (lc > 1) {
+            summary = summary + "; " + String_FromInt(lc) + " distinct licences: "
+            for j in 0..lc {
+                if (j > 0) { summary = summary + ", " }
+                summary = summary + licenses.Get(j)
+            }
+        }
+        Console.WriteLine(summary)
         return 0
     }
 
