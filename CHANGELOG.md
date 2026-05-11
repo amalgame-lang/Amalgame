@@ -7,6 +7,62 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [Unreleased] — v0.5.3
+
+The **"C++-bearing packages"** release. Lays the wiring needed
+to ship vendored C++ amalgamations (DuckDB landing first) without
+forcing the user to know anything about g++ or libstdc++.
+
+### Package manager — manifest schema growth
+
+Four new optional keys land on `[stdlib]`:
+
+```toml
+[stdlib]
+sources  = ["foo.cpp"]                  # extension drives g++ vs gcc
+cflags   = "-DFOO=1"                    # extra flags for .c sources
+cxxflags = "-O3 -DNDEBUG -std=c++17"    # extra flags for .cpp/.cc/.cxx
+libs     = ["stdc++", "m"]              # bare names → -l<name> at link
+```
+
+Plus one on `[package]`:
+
+```toml
+[package]
+schema-version = 1   # rejects installs when amc supports < value
+```
+
+`PackageRegistry.LoadedPackage` carries the new fields; `amc package
+add` refuses to install a package declaring a higher
+`schema-version` than the running amc understands (parallel to the
+existing `required-amalgame` gate).
+
+### `amc test` — C/C++ dispatch
+
+`Program.PreCompilePackageSources` now switches between `gcc` and
+`g++` based on file extension (`.cpp` / `.cc` / `.cxx` → g++). When
+any installed package contributes a C++ source, `RunTest` switches
+the final-link compiler from `gcc` to `g++` so libstdc++ + C++
+static-init order resolve correctly (a plain `gcc -lstdc++` doesn't
+guarantee the latter). Per-package `cflags` / `cxxflags` get spliced
+into the per-source pre-compile; `libs` get spliced as `-l<name>` at
+the final link.
+
+### Standard library
+
+- `Amalgame.Database.DuckDB` — DuckDB binding, shipped as a new
+  external package `amalgame-lang/amalgame-database-duckdb` (vendored
+  C++ amalgamation, MIT). Embedded analytical (OLAP) database. See
+  the [stdlib chapter](docs/guide/04-stdlib.md#databaseduckdb--embedded-analytics-via-opt-in-package).
+
+### Gotchas retired
+
+- **`amc test` doesn't link C++ packages** — gone in v0.5.3 (this
+  release). The dispatch + per-package flags + libs make the path
+  symmetric to v0.5.2's C-only auto-link.
+
+---
+
 ## [v0.5.2] — 2026-05-11
 
 The **"package CLI polish + amc test linking"** release. Two

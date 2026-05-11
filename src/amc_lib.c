@@ -3752,6 +3752,9 @@ struct _Amalgame_Compiler_LoadedPackage {
     AmalgameList* FuncNames;
     AmalgameList* FuncRets;
     AmalgameList* Sources;
+    code_string CFlags;
+    code_string CxxFlags;
+    AmalgameList* Libs;
 };
 
 
@@ -3764,6 +3767,9 @@ Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new() {
     self->FuncNames = AmalgameList_new();
     self->FuncRets = AmalgameList_new();
     self->Sources = AmalgameList_new();
+    self->CFlags = "";
+    self->CxxFlags = "";
+    self->Libs = AmalgameList_new();
     return self;
 }
 
@@ -3775,10 +3781,14 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_Load();
 Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(code_string lockPath, code_string cacheRoot);
 AmalgameList* Amalgame_Compiler_PackageRegistry_ClassNames(Amalgame_Compiler_PackageRegistry* self);
 AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_PackageRegistry* self);
+code_bool Amalgame_Compiler_PackageRegistry_HasCxxSources(Amalgame_Compiler_PackageRegistry* self);
+AmalgameList* Amalgame_Compiler_PackageRegistry_CollectLibs(Amalgame_Compiler_PackageRegistry* self);
+code_bool Amalgame_Compiler_PackageRegistry_IsCxxSource(code_string path);
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot();
 code_string Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(code_string ns, code_string method);
 code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType);
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion();
+i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema();
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v);
 code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current, code_string constraint);
 
@@ -3843,6 +3853,14 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
         if (Amalgame_Compiler_TomlValue_IsNull(manifest)) {
             continue;
         }
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgTable = Amalgame_Compiler_TomlValue_Get(manifest, "package");
+        if (Amalgame_Compiler_TomlValue_IsTable(pkgTable)) {
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) schemaVal = Amalgame_Compiler_TomlValue_Get(pkgTable, "schema-version");
+            i64 __attribute__((unused)) schemaInt = Amalgame_Compiler_TomlValue_AsInt(schemaVal);
+            if (schemaInt > Amalgame_Compiler_PackageRegistry_SupportedManifestSchema()) {
+                continue;
+            }
+        }
         Amalgame_Compiler_TomlValue* __attribute__((unused)) stdlibTable = Amalgame_Compiler_TomlValue_Get(manifest, "stdlib");
         if (!Amalgame_Compiler_TomlValue_IsTable(stdlibTable)) {
             continue;
@@ -3872,6 +3890,21 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
                 code_string __attribute__((unused)) srcRel = Amalgame_Compiler_TomlValue_AsString(srcTv);
                 if (String_Length(srcRel) > 0) {
                     AmalgameList_add(lp->Sources, (void*)(intptr_t)(code_string_concat(code_string_concat(pkgDir, "/"), srcRel)));
+                }
+            }
+        }
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) cflagsVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "cflags");
+        lp->CFlags = Amalgame_Compiler_TomlValue_AsString(cflagsVal);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) cxxflagsVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "cxxflags");
+        lp->CxxFlags = Amalgame_Compiler_TomlValue_AsString(cxxflagsVal);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) libsArr = Amalgame_Compiler_TomlValue_Get(stdlibTable, "libs");
+        if (Amalgame_Compiler_TomlValue_IsArray(libsArr)) {
+            i64 __attribute__((unused)) ln = Amalgame_Compiler_TomlValue_Count(libsArr);
+            for (i64 li = 0; li < ln; li++) {
+                Amalgame_Compiler_TomlValue* __attribute__((unused)) libTv = Amalgame_Compiler_TomlValue_At(libsArr, li);
+                code_string __attribute__((unused)) libName = Amalgame_Compiler_TomlValue_AsString(libTv);
+                if (String_Length(libName) > 0) {
+                    AmalgameList_add(lp->Libs, (void*)(intptr_t)(libName));
                 }
             }
         }
@@ -3918,6 +3951,49 @@ AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_Packag
     return out;
 }
 
+code_bool Amalgame_Compiler_PackageRegistry_HasCxxSources(Amalgame_Compiler_PackageRegistry* self) {
+    (void)self;
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(self->Packages, i);
+        i64 __attribute__((unused)) sn = AmalgameList_count(p->Sources);
+        for (i64 j = 0; j < sn; j++) {
+            if (Amalgame_Compiler_PackageRegistry_IsCxxSource((code_string)AmalgameList_get(p->Sources, j))) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+AmalgameList* Amalgame_Compiler_PackageRegistry_CollectLibs(Amalgame_Compiler_PackageRegistry* self) {
+    (void)self;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) n = AmalgameList_count(self->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(self->Packages, i);
+        i64 __attribute__((unused)) ln = AmalgameList_count(p->Libs);
+        for (i64 j = 0; j < ln; j++) {
+            AmalgameList_add(out, (void*)(intptr_t)((code_string)AmalgameList_get(p->Libs, j)));
+        }
+    }
+    return out;
+}
+
+code_bool Amalgame_Compiler_PackageRegistry_IsCxxSource(code_string path) {
+    (void)path;
+    if (String_EndsWith(path, ".cpp")) {
+        return 1;
+    }
+    if (String_EndsWith(path, ".cc")) {
+        return 1;
+    }
+    if (String_EndsWith(path, ".cxx")) {
+        return 1;
+    }
+    return 0;
+}
+
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot() {
     code_string __attribute__((unused)) envOverride = Env_Get("AMALGAME_PACKAGES_DIR");
     if (String_Length(envOverride) > 0) {
@@ -3951,6 +4027,10 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     return "0.5.2";
+}
+
+i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
+    return 1;
 }
 
 AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v) {
@@ -19757,6 +19837,14 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
             return 1;
         }
     }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) mfSchema = Amalgame_Compiler_TomlValue_Get(pkgTable, "schema-version");
+    i64 __attribute__((unused)) mfSchemaInt = Amalgame_Compiler_TomlValue_AsInt(mfSchema);
+    i64 __attribute__((unused)) supported = Amalgame_Compiler_PackageRegistry_SupportedManifestSchema();
+    if (mfSchemaInt > supported) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amalgame-", mfNameStr), " "), tag), " requires manifest schema v"), String_FromInt(mfSchemaInt)));
+        Console_WriteError(code_string_concat(code_string_concat("       your amc supports up to v", String_FromInt(supported)), " — upgrade and retry"));
+        return 1;
+    }
     if (!code_string_equals(mfNameStr, pkgName)) {
         Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("manifest name '", mfNameStr), "' does not match URL slug '"), pkgName), "'"));
         return 1;
@@ -20778,6 +20866,8 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
     }
     Amalgame_Compiler_PackageRegistry* __attribute__((unused)) registry = Amalgame_Compiler_PackageRegistry_Load();
     AmalgameList* __attribute__((unused)) pkgObjs = Amalgame_Compiler_Program_PreCompilePackageSources(registry, amcRuntime);
+    code_bool __attribute__((unused)) hasCxx = Amalgame_Compiler_PackageRegistry_HasCxxSources(registry);
+    AmalgameList* __attribute__((unused)) pkgLibs = Amalgame_Compiler_PackageRegistry_CollectLibs(registry);
     code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", dir), " -name '*_test.am' -type f");
     AmalgameProcessResult* __attribute__((unused)) discovered = Process_RunCapture(findCmd);
     if (discovered->Exit != 0) {
@@ -20819,16 +20909,39 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
             compileFail = compileFail + 1;
             continue;
         }
-        code_string __attribute__((unused)) gccCmd = "gcc -O2 -Iruntime";
-        if (String_Length(amcRuntime) > 0) {
-            gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -I'"), amcRuntime), "'");
+        code_string __attribute__((unused)) gccCmd = "";
+        if (hasCxx) {
+            code_string __attribute__((unused)) compileCmd = "gcc -O2 -Iruntime";
+            if (String_Length(amcRuntime) > 0) {
+                compileCmd = code_string_concat(code_string_concat(code_string_concat(compileCmd, " -I'"), amcRuntime), "'");
+            }
+            code_string __attribute__((unused)) objOut = code_string_concat(outBin, ".o");
+            compileCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(compileCmd, " -c "), outC), " -o "), objOut), " 2>&1");
+            AmalgameProcessResult* __attribute__((unused)) stageA = Process_RunCapture(compileCmd);
+            if (stageA->Exit != 0) {
+                Console_WriteLine("  [LINK-FAIL]");
+                Console_Write(stageA->Stdout);
+                compileFail = compileFail + 1;
+                continue;
+            }
+            gccCmd = code_string_concat("g++ -O2 ", objOut);
+        } else {
+            gccCmd = "gcc -O2 -Iruntime";
+            if (String_Length(amcRuntime) > 0) {
+                gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -I'"), amcRuntime), "'");
+            }
+            gccCmd = code_string_concat(code_string_concat(gccCmd, " "), outC);
         }
-        gccCmd = code_string_concat(code_string_concat(gccCmd, " "), outC);
         i64 __attribute__((unused)) nObjs = AmalgameList_count(pkgObjs);
         for (i64 poi = 0; poi < nObjs; poi++) {
             gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)((code_string)AmalgameList_get(pkgObjs, poi))), "'");
         }
-        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -lgc -lm -lcurl -ldl -lpthread -o "), outBin), " 2>&1");
+        gccCmd = code_string_concat(gccCmd, " -lgc -lm -lcurl -ldl -lpthread");
+        i64 __attribute__((unused)) nLibs = AmalgameList_count(pkgLibs);
+        for (i64 plj = 0; plj < nLibs; plj++) {
+            gccCmd = code_string_concat(code_string_concat(gccCmd, " -l"), (code_string)((code_string)AmalgameList_get(pkgLibs, plj)));
+        }
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -o "), outBin), " 2>&1");
         AmalgameProcessResult* __attribute__((unused)) gcc = Process_RunCapture(gccCmd);
         if (gcc->Exit != 0) {
             Console_WriteLine("  [LINK-FAIL]");
@@ -20894,12 +21007,24 @@ AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compil
                 AmalgameList_add(out, (void*)(intptr_t)(objPath));
                 continue;
             }
-            code_string __attribute__((unused)) gcc = "gcc -O2";
-            if (String_Length(amcRuntime) > 0) {
-                gcc = code_string_concat(code_string_concat(code_string_concat(gcc, " -I'"), amcRuntime), "'");
+            code_bool __attribute__((unused)) isCxx = Amalgame_Compiler_PackageRegistry_IsCxxSource(srcPath);
+            code_string __attribute__((unused)) cmd = "";
+            if (isCxx) {
+                cmd = "g++ -O2";
+            } else {
+                cmd = "gcc -O2";
             }
-            gcc = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(gcc, " -w -c '"), srcPath), "' -o '"), objPath), "'");
-            AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(gcc);
+            if (String_Length(amcRuntime) > 0) {
+                cmd = code_string_concat(code_string_concat(code_string_concat(cmd, " -I'"), amcRuntime), "'");
+            }
+            if (isCxx && String_Length(p->CxxFlags) > 0) {
+                cmd = code_string_concat(code_string_concat(cmd, " "), p->CxxFlags);
+            }
+            if (!isCxx && String_Length(p->CFlags) > 0) {
+                cmd = code_string_concat(code_string_concat(cmd, " "), p->CFlags);
+            }
+            cmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(cmd, " -w -c '"), srcPath), "' -o '"), objPath), "'");
+            AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(cmd);
             if (res->Exit != 0) {
                 Console_WriteError(code_string_concat("amc test: failed to pre-compile ", srcPath));
                 Console_WriteError(res->Stdout);

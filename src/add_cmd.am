@@ -243,6 +243,20 @@ public class AddCommand {
                 return 1
             }
         }
+        // `schema-version` is optional; default 1. Packages
+        // declaring a higher value than this amc supports are
+        // rejected here — the loader (PackageRegistry.LoadFrom)
+        // will also silently skip them as a second line of defence,
+        // but emitting a clear error at install time avoids the
+        // "package installed but invisible at compile" trap.
+        let mfSchema: TomlValue = pkgTable.Get("schema-version")
+        let mfSchemaInt: int = mfSchema.AsInt()
+        let supported: int = PackageRegistry.SupportedManifestSchema()
+        if (mfSchemaInt > supported) {
+            Console.WriteError("amalgame-" + mfNameStr + " " + tag + " requires manifest schema v" + String_FromInt(mfSchemaInt))
+            Console.WriteError("       your amc supports up to v" + String_FromInt(supported) + " — upgrade and retry")
+            return 1
+        }
         if (mfNameStr != pkgName) {
             Console.WriteError("manifest name '" + mfNameStr + "' does not match URL slug '" + pkgName + "'")
             return 1
