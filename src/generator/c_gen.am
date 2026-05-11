@@ -105,6 +105,16 @@ public class CGen {
     // other's emit context.
     private InLambdaBody: bool
 
+    // v0.5 package-manager: each external package's class +
+    // functions feed the isStdlib check (ClassName), return-type
+    // table (Func → CRetType), and prelude #include emission
+    // (Header). Parallel lists, same pattern as the resolver
+    // (PR 3c). Empty lists = no installed packages = no-op.
+    public PkgClasses:    List<string>
+    public PkgFuncs:      List<string>
+    public PkgFuncCTypes: List<string>
+    public PkgHeaders:    List<string>
+
     public CGen() {
         this.Out            = new Emitter()
         this.NsPrefix       = ""
@@ -123,6 +133,10 @@ public class CGen {
         this.MethodRetRawTypes = new List<string>()
         this.LambdaCounter     = 0
         this.InLambdaBody      = false
+        this.PkgClasses        = new List<string>()
+        this.PkgFuncs          = new List<string>()
+        this.PkgFuncCTypes     = new List<string>()
+        this.PkgHeaders        = new List<string>()
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -896,6 +910,20 @@ public class CGen {
                 if (calleeStr == "Math_Random") { return "double" }
                 if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
                 if (calleeStr == "Math_SeedRandom") { return "void" }
+                // v0.5 package-manager: look up registered package
+                // funcs after the hardcoded SQLite/Redis/MQTT block.
+                // PR 4/5 will move SQLite/Redis/MQTT entries OUT of
+                // the hardcoded block and INTO PkgFuncs via their
+                // package manifests — once that lands the hardcoded
+                // block above shrinks back to just the core stdlib
+                // (Console/File/Math/String/List/Env/Process/Log/
+                // Service).
+                let pkgN: int = this.PkgFuncs.Count()
+                for pkgI in 0..pkgN {
+                    if (calleeStr == this.PkgFuncs.Get(pkgI)) {
+                        return this.PkgFuncCTypes.Get(pkgI)
+                    }
+                }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
                     // Collection method return types based on method name
@@ -1220,11 +1248,55 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Database_SQLite.h\"")
         this.Out.EmitLine("#include \"Amalgame_Database_Redis.h\"")
         this.Out.EmitLine("#include \"Amalgame_Messaging_MQTT.h\"")
+        // v0.5 package-manager: each installed external package
+        // contributes its runtime header to the prelude. Empty
+        // when no packages are installed; SQLite/Redis/MQTT stay
+        // hardcoded above through v0.5 until PR 4/5 extract them.
+        let pkgHdrN: int = this.PkgHeaders.Count()
+        for ph in 0..pkgHdrN {
+            this.Out.EmitLine("#include \"" + this.PkgHeaders.Get(ph) + "\"")
+        }
         this.Out.EmitBlank()
     }
 
     public void EmitNetHeader() {
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
+    }
+
+    // ── v0.5 package-manager hook ────────────────────
+    //
+    // Called by main.am after constructing the CGen — feeds it
+    // every class + function declared by installed external
+    // packages. Cached as parallel lists for the three downstream
+    // dispatch sites:
+    //   1. EmitPrelude   — adds an `#include "<header>"` line
+    //                       per package
+    //   2. isStdlib check (NodeKind.MEMBER static-call path) —
+    //                       extends the hardcoded class-name list
+    //   3. InferTypeFromExpr return-type table — maps
+    //                       `<Class>_<Func>` to its manifest-
+    //                       declared C return type
+    //
+    // Idempotent — re-registering same packages overwrites the
+    // earlier entries.
+    public void RegisterPackages(PackageRegistry reg) {
+        this.PkgClasses    = new List<string>()
+        this.PkgFuncs      = new List<string>()
+        this.PkgFuncCTypes = new List<string>()
+        this.PkgHeaders    = new List<string>()
+        let n: int = reg.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = reg.Packages.Get(i)
+            this.PkgClasses.Add(p.ClassName)
+            this.PkgHeaders.Add(p.Header)
+            let fn: int = p.FuncNames.Count()
+            for j in 0..fn {
+                let fName: string = p.FuncNames.Get(j)
+                let cType: string = p.FuncRets.Get(j)
+                this.PkgFuncs.Add(p.ClassName + "_" + fName)
+                this.PkgFuncCTypes.Add(cType)
+            }
+        }
     }
 
     private void EmitForwardDecl(AstNode decl) {
@@ -3122,7 +3194,18 @@ public class CGen {
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
                         // Stdlib classes are never namespace-prefixed
-                        let isStdlib = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "SQLite" || tname == "Redis" || tname == "MQTT"
+                        var isStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "SQLite" || tname == "Redis" || tname == "MQTT"
+                        if (!isStdlib) {
+                            // v0.5: also match classes installed via
+                            // `amc add`. Same call lowering rule —
+                            // ClassName.Method → ClassName_Method —
+                            // since packages declare their isStdlib
+                            // facade in the same flat-symbol style.
+                            let pkgClsN: int = this.PkgClasses.Count()
+                            for pci in 0..pkgClsN {
+                                if (this.PkgClasses.Get(pci) == tname) { isStdlib = true }
+                            }
+                        }
                         if (isStdlib) {
                             return tname + "_" + mname
                         }
