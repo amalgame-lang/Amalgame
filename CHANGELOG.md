@@ -7,6 +7,92 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [Unreleased] — v0.5.5
+
+The **"search-with-versions"** release. `amc package search` and a
+new `amc package versions <pkg>` verb show every indexed version
+of a package with **compat status** against the running amc — no
+more guessing which tag to pass to `amc package add`.
+
+### Index schema bump (packages-index v2)
+
+[`amalgame-lang/packages-index`](https://github.com/amalgame-lang/packages-index)
+gains a flat `[[version]]` array — one entry per (shortname, tag)
+pair, linked to `[[package]]` by the `package` field:
+
+```toml
+[[version]]
+package           = "duckdb"
+tag               = "v0.1.1"
+required-amalgame = ">=0.5.4"
+```
+
+amc reads these and shows compat per tag during `search` / `versions`
+without cloning any repo. Back-compat: amc v0.5.4 and older ignore
+the new array; the index keeps the existing `[[package]]` schema.
+
+DuckDB is now registered (was missing in the v0.5.3 / v0.5.4 index).
+
+### New: `amc package search` with versions inline
+
+```
+$ amc package search duckdb
+✓ duckdb — DuckDB binding — vendored C++ amalgamation (MIT)…
+    github.com/amalgame-lang/amalgame-database-duckdb (official, Apache-2.0)
+    versions:
+      v0.1.1 ✓ (needs amc >=0.5.4)  ← latest compatible
+      v0.1.0 ✓ (needs amc >=0.5.3)
+```
+
+Each tag shows `✓` / `✗` against the running amc. The newest
+compatible one gets a `← latest compatible` marker so the user
+knows which `add` invocation to type.
+
+### New: `amc package versions <name>`
+
+```
+$ amc package versions sqlite
+sqlite — github.com/amalgame-lang/amalgame-database-sqlite
+    versions:
+      v0.2.0 ✓ (needs amc >=0.5.0)  ← latest compatible
+```
+
+Shortcut for `search <name>` filtered to one package. Cheap
+discovery: "what versions of X work with my amc?"
+
+### `--refresh` for index cache
+
+`amc package search --refresh` (and `versions --refresh`) drop
+the cached `~/.amalgame/cache/packages-index.toml` before re-
+fetching. Useful when a new version was just published.
+
+### `amc package list` shows pinned version
+
+```
+$ amc package list
+1 package(s) installed:
+
+  DuckDB @ v0.1.1 — amalgame-database-duckdb
+    namespace: Amalgame.Database.DuckDB
+    header:    /home/.../runtime/Amalgame_Database_DuckDB.h
+```
+
+The tag now lives on `LoadedPackage.Tag`, populated by
+`PackageRegistry.LoadFrom` from the lockfile's `[[package]].tag`.
+
+### `amc package remove` accepts `@<tag>` safety suffix
+
+```
+$ amc package remove duckdb@v0.1.1   # safe: verify-then-strip
+$ amc package remove duckdb          # bare: strip whatever is pinned
+```
+
+When the `@<tag>` suffix is present, amc refuses to remove unless
+the installed tag matches. Protects against typo'ing the wrong
+version after an `amc package update`.
+
+---
+
 ## [v0.5.4] — 2026-05-11
 
 The **"precompile-on-install + cross-platform home"** release. Two
