@@ -1,8 +1,9 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-11 after shipping v0.4.15 (Database.SQLite
-> stdlib + governance: NOTICE.md / CONTRIBUTING.md / auto-close
-> external PRs / CLEANUP.sh removal).
+> Last refreshed 2026-05-11 after shipping v0.5.2 (package CLI
+> grouping under `amc package <action>`, `amc test` package-
+> aware + auto-link vendored sources). Rolls v0.5.0 + v0.5.1 +
+> v0.5.2 into one bootstrap snapshot.
 >
 > The block below is a self-contained prompt designed to bootstrap a
 > new Claude session with full context. Copy-paste it as your first
@@ -15,7 +16,7 @@ I'm working on Amalgame, a self-hosted programming language that
 transpiles to C. I keep the project in
 /home/neitsab/Développement/Amalgame.
 
-Current state (May 2026, v0.4.15):
+Current state (May 2026, v0.5.2):
 
 ═══════════════════════════════════════════════════════════════
   Compiler + bootstrap
@@ -36,8 +37,8 @@ Current state (May 2026, v0.4.15):
   chatgpt / gemini providers.
 - Test runner (./tests/run_all_tests.sh) drives ./amc directly.
   Build artefacts go to /tmp via mktemp; the source tree stays
-  clean. Currently **434 PASS / 0 FAIL / 0 SKIP** across the
-  core / stdlib / fmt / amc-new sub-suites.
+  clean. Currently **205 core / 219 stdlib / 12 fmt / 34 amc-new
+  = 470 PASS / 0 FAIL / 0 SKIP** across the sub-suites.
 - Multi-OS CI (.github/workflows/ci.yml) — Linux + macOS + Windows
   MSYS2. All three platforms gcc the snapshot/amc_lib.c then chain
   through build_amc.sh.
@@ -45,7 +46,7 @@ Current state (May 2026, v0.4.15):
   pin int-typed locals via `let n: int = …` when the codegen erases
   the return type to void* across a method-call boundary.
 - Releases automated on `v*` tag (.github/workflows/release.yml).
-  Latest is **v0.4.15** — see CHANGELOG.md for the per-release detail.
+  Latest is **v0.5.2** — see CHANGELOG.md for the per-release detail.
   develop → release/vX.Y.Z → develop → main → tag is the release flow.
   Both develop and main are protected (force-push + delete blocked,
   PR required, admin bypass allowed for owner-driven release flow).
@@ -56,19 +57,98 @@ Current state (May 2026, v0.4.15):
   serverPath value handled inline since v0.4.8.
 - Formatter: `amc fmt file.am` re-emits canonical source with
   comments preserved. Idempotent on every compiler source.
+- **`PackageRegistry.AmcVersion()` in src/package_registry.am** is
+  the single source of truth for the version string since v0.5.0.
+  `main.am`'s `--version` reads it; the manual-release flow no
+  longer has to hunt a literal in main.am. tools/release.sh still
+  bumps README + ROADMAP headers in lockstep.
+
+═══════════════════════════════════════════════════════════════
+  Package manager + ecosystem (v0.5 architectural shift)
+═══════════════════════════════════════════════════════════════
+
+v0.5 split the monolithic compiler bundle into a **lean core
+amc** plus an **opt-in package ecosystem**. The previously
+bundled SQLite / Redis / MQTT runtimes were extracted into their
+own GitHub repos; user code declares them in a manifest and amc
+clones them into a user-global cache.
+
+- **Manifest**: `amalgame.toml` in the project root — declares
+  `[package]` (name / version / license) and `[dependencies]`.
+  Each external package ships its own `amalgame.toml` exposing
+  a `[stdlib]` block with `class`, `header`, `namespace`,
+  optional `sources` (vendored `.c` paths), and a
+  `[stdlib.functions]` table mapping each public method to its
+  C return type.
+- **Lockfile**: `amalgame.lock` — pins every dep to a Git commit
+  SHA. Cache layout:
+    `~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/`
+- **CLI**: every package-manager verb lives under
+  `amc package <action>` (with `amc pkg` as a short alias —
+  dotnet-style grouping introduced in v0.5.1 / PR #303):
+    amc package add github.com/.../amalgame-database-sqlite@v0.2.0
+    amc package add redis@v0.2.0          # shortname via packages-index
+    amc package list                       # show installed deps
+    amc package remove <name>
+    amc package update <name>@<tag>
+    amc package search [keyword]
+    amc package cache clear [--all]
+- **3 inaugural external packages** (all under the
+  `amalgame-lang` org):
+    amalgame-database-sqlite        — vendors sqlite3.c
+                                       (public-domain, no
+                                       libsqlite3-dev anywhere)
+    amalgame-database-nosql-redis   — pure RESP2 over TCP, no
+                                       vendored C
+    amalgame-messaging-mqtt         — pure MQTT 3.1.1 over TCP,
+                                       no vendored C
+- **packages-index** (separate repo, `amalgame-lang/packages-index`)
+  is the curated official index. Community can PR there to
+  register a shortname → repo URL. `amc package search` /
+  `amc package add <shortname>` consume it.
+- **PackageRegistry** (src/package_registry.am) reads the lock
+  + manifests and feeds the resolver + cgen. Public type
+  `LoadedPackage` carries `Name`, `ClassName`, `Header`, `Ns`,
+  `FuncNames` / `FuncRets`, and `Sources: List<string>` (since
+  v0.5.2 — populated from the manifest's `[stdlib].sources`
+  array, absolute paths inside the cache dir).
+- **Namespace mangling** (PR #295) — C symbols emitted for
+  package class methods carry the full namespace path so two
+  unrelated packages exposing the same short class name can't
+  collide at link time:
+    `Redis.Open` → `Amalgame_Database_NoSQL_Redis_Open`
+  Done by the cgen via
+  `PackageRegistry.ManglePackageSymbol(ns, method)`. Core
+  stdlib classes (Console / File / Math / String / List / Env
+  / Process / Log / Service) keep flat `Class_Method` symbols
+  — single-author, no collision risk.
+- **`required-amalgame` gate** — each package's manifest can
+  declare `required-amalgame = ">=X.Y.Z"`. amc refuses to
+  install if its own version doesn't satisfy the constraint
+  (errors at install instead of mysteriously at gcc-link).
+  Helpers `PackageRegistry.ParseVersion` /
+  `VersionSatisfies` implement the check.
 
 ═══════════════════════════════════════════════════════════════
   Standard library — what's in
 ═══════════════════════════════════════════════════════════════
 
-Core (since v0.3.x): Console, File, Path (flat fn API), Math,
-String, List<T> / Map<K,V> / Set<T>, Http + HttpResponse, Tcp
-{Server,Client}, Udp, Args, Exit, Process (Run + RunCapture), Env.
+Core (since v0.3.x, always available, no manifest needed):
+Console, File, Path (flat fn API), Math, String, List<T> /
+Map<K,V> / Set<T>, Http + HttpResponse, Tcp {Server,Client},
+Udp, Args, Exit, Process (Run + RunCapture), Env.
 
-Namespace-facade stdlib (each under `namespace Amalgame.<Module>`):
+Namespace-facade stdlib bundled with amc (each under
+`namespace Amalgame.<Module>` or `Amalgame.Formats.<Format>`):
 
-- **Amalgame.Json** (v0.3.6) — schemaless JsonValue tree, parse +
-  serialize, accessors (AsInt/AsString/Get/At), encoder.
+- **Amalgame.Formats.Json** (renamed from Amalgame.Json in
+  v0.5.0) — schemaless JsonValue tree, parse + serialize,
+  accessors (AsInt/AsString/Get/At), encoder.
+- **Amalgame.Formats.Toml** (v0.5.0) — TOML 1.0 subset:
+  tables, nested tables, inline tables, arrays, basic + literal
+  strings, integers, booleans, `#` comments, `[[foo]]` array-of-
+  tables. Underpins the package-manager manifest + lockfile
+  parsing.
 - **Amalgame.Random** (v0.4.4) — PCG-32 + crypto-grade entropy
   (Random.SystemBytes).
 - **Amalgame.Encoding** (v0.4.4) — Base64 (RFC 4648 + URL-safe),
@@ -88,30 +168,36 @@ Namespace-facade stdlib (each under `namespace Amalgame.<Module>`):
   `Service.Install()` (SIGTERM/SIGINT on POSIX,
   SetConsoleCtrlHandler on Windows), `Service.ShouldStop()`,
   `Service.RequestStop()`, `Service.Sleep(ms)` (interruptible).
-- **Amalgame.Database.SQLite** (v0.4.15) — embedded SQL via the
-  vendored SQLite amalgamation at
-  runtime/Amalgame_Database/sqlite/sqlite3.{c,h} (public-domain
-  dedication, no libsqlite3-dev needed anywhere). Surface:
-  `SQLite.Open(path)`, `Close`, `IsOpen`, `Exec(sql) → bool`,
-  `QueryAll(sql) → List<List<string>>`, `LastInsertId`, `Changes`,
-  `LastError`. User binaries link sqlite3.c directly; the test
-  runner precompiles it to .o once at startup. Namespace is
-  `Amalgame.Database.SQLite` (not just `.Database`) so sibling
-  backends — DuckDB, Postgres, MySQL, Oracle, SQL Server,
-  MongoDB, Redis, Kafka, RabbitMQ — can land alongside under
-  `Amalgame.Database.<Engine>` / `Amalgame.Database.NoSQL.<Engine>`
-  / `Amalgame.Messaging.<Broker>` per the roadmap.
 
-The Console / File / Math / String / List / Env / Process / Log /
-Service / SQLite class names live in a hardcoded "isStdlib" list
-inside the cgen (src/generator/c_gen.am ~line 3102) so `Log.Info(
-"msg")` lowers directly to `Log_Info("msg")` — the runtime helper
-under runtime/Amalgame_Logging.h — without needing the user to
-import the facade .am source. The facade files (e.g.
-src/stdlib/logging.am) still exist as documentation + as test-
-runner inputs but are not required for the short-syntax usage.
-Other namespace-facades (Crypto, Json, Random, Encoding, DateTime,
-Path) require their .am file as a compile input today.
+**External packages** (install via `amc package add`, not
+bundled):
+
+- **Amalgame.Database.SQLite** — `amalgame-database-sqlite`.
+  Vendors `sqlite3.c` (public-domain). Surface:
+  `SQLite.Open(path)`, `Close`, `IsOpen`, `Exec(sql) → bool`,
+  `QueryAll(sql) → List<List<string>>`, `LastInsertId`,
+  `Changes`, `LastError`. Since v0.5.2, `amc test` auto-links
+  the vendored amalgamation; user binaries built by hand still
+  pass `sqlite3.c` to gcc directly.
+- **Amalgame.Database.NoSQL.Redis** — `amalgame-database-nosql-redis`.
+  Pure RESP2 over `Amalgame_Net.h` sockets. Surface:
+  `Redis.Open(host, port)`, `Close`, `IsOpen`, `LastError`,
+  `Ping`, `Set`, `Get`, `Del`, `Exists`, `Incr`, `Decr`,
+  `Expire`. Works against Redis / KeyDB / Dragonfly / Valkey.
+- **Amalgame.Messaging.MQTT** — `amalgame-messaging-mqtt`.
+  Pure MQTT 3.1.1 over TCP, no vendored client lib.
+
+The core-stdlib classes that lower to flat `Class_Method`
+symbols live in a small hardcoded list inside the cgen
+(src/generator/c_gen.am around line 3215): Console, File, Math,
+String, List, Env, Process, Log, Service. **External package
+classes are not in that list** — they go through the namespace-
+mangled path resolved by `PackageRegistry`, so a sibling
+package with a colliding short class name is handled cleanly.
+The facade files under src/stdlib/ (logging.am, service.am,
+…) still exist as documentation + test-runner inputs; the
+short-syntax `Log.Info("msg")` lowers directly to the runtime
+helper without requiring the user to import them.
 
 ═══════════════════════════════════════════════════════════════
   LSP — what's in
@@ -129,6 +215,7 @@ stdio JSON-RPC. Capabilities currently advertised:
 - callHierarchyProvider
 - inlayHintProvider
 - codeActionProvider
+- foldingRangeProvider (v0.4.17, slice 5)
 
 Slices closed:
 - Slice 1: diagnostics + hover + completion (v0.3.4–v0.3.5)
@@ -138,12 +225,47 @@ Slices closed:
 - Slice 3: rename + call hierarchy (v0.4.9)
 - Slice 4: inlay hints (inferred types on `let x = …`) + code
   actions ("Add type annotation" quick fix) (v0.4.10)
+- Slice 5: textDocument/foldingRange (v0.4.17). Token-driven
+  brace-pair matching for class / method / block bodies; runs
+  of `//` comments emitted as `kind:"comment"`; consecutive
+  `import …` statements as `kind:"imports"`. One- and two-line
+  blocks filtered so the gutter stays uncluttered.
 
 Next LSP slice tracked in ROADMAP_COMPLET.md: tighter
-selectionRange via a parser nameStart hook, textDocument/
-foldingRange (the +/- gutter markers for class/method bodies +
-block comments + import groups), more code actions wired to
-linter / typechecker diagnostics.
+selectionRange via a parser nameStart hook, more code actions
+wired to linter / typechecker diagnostics.
+
+═══════════════════════════════════════════════════════════════
+  `amc test` runner — what it does (v0.5.1 / v0.5.2 upgrades)
+═══════════════════════════════════════════════════════════════
+
+Two big upgrades since v0.5.0:
+
+1. **Package-aware (v0.5.1, PR #302)** — before discovery,
+   `RunTest` reads `amalgame.lock` and, for each
+   `[[package]]` entry, checks whether its cache dir exists.
+   Missing entries are `git clone`d via
+   `AddCommand.EnsureInstalled()` so a fresh
+   `git clone <repo> && amc test` works in one step with no
+   manual `amc package add`.
+
+2. **Auto-link vendored sources (v0.5.2, PR #304)** — each
+   loaded package's `[stdlib].sources` paths get gcc-compiled
+   to `/tmp/amc-pkg-<class>-<leaf>.c.o` once per run by
+   `Program.PreCompilePackageSources(registry, amcRuntime)`,
+   then spliced into every test binary's gcc invocation
+   alongside `-lgc -lm -lcurl -ldl -lpthread`. SQLite tests
+   now work out of the box; future vendoring backends (DuckDB,
+   bundled libpq, etc.) inherit the wiring for free.
+
+`amcRuntime` is resolved once up front:
+  1. `$AMC_RUNTIME` env var if set
+  2. else `<dirname(amc)>/runtime`
+  3. else fall back to `./runtime` (legacy in-tree path)
+
+The runner still parses `[PASS]` / `[FAIL]` / `[SKIP]` lines
+from each test binary's stdout, surfaces non-zero exit as
+crash, and aggregates a final tally.
 
 ═══════════════════════════════════════════════════════════════
   `amc new` scaffolder — what's in
@@ -191,25 +313,31 @@ project. Four templates:
   chore/*) skip the hook because their head.repo matches base.repo.
 - **No `Co-Authored-By: Claude …` trailers in any new commit** —
   the AI is a tool, not a co-author at law (NOTICE.md spells this
-  out). Some pre-2026-05-10 commits carry the trailer for
-  historical honesty; future commits omit it.
+  out). tools/release.sh stopped emitting the trailer in v0.4.17.
+  Some pre-2026-05-10 commits carry it for historical honesty.
 - Third-party licence audit lives in NOTICE.md: bdwgc (permissive),
-  libcurl (MIT/X), SQLite (PD), NSSM (PD), host compilers (GPL —
-  tools not output). All compatible with Apache-2.0 redistribution.
+  libcurl (MIT/X), NSSM (PD), host compilers (GPL — tools not
+  output). SQLite (PD) no longer ships with amc as of v0.5.0; it
+  lives in the amalgame-database-sqlite package with its own
+  NOTICE-equivalent block.
 
 ═══════════════════════════════════════════════════════════════
   Release flow (gitflow + tools/release.sh)
 ═══════════════════════════════════════════════════════════════
 
-Bump the version in src/main.am BEFORE every tag — the `--version`
-flag has a hardcoded string:
+Bump the version in src/package_registry.am BEFORE every tag —
+`PackageRegistry.AmcVersion()` is the single source of truth
+since v0.5.0:
 
-    Console.WriteLine("amc <X.Y.Z> (self-hosted Amalgame compiler)")
+    public static string AmcVersion() {
+        return "0.5.2"
+    }
 
-Use tools/release.sh which bumps every place the version lives
-(src/main.am, README.md "Current version" + "amc 0.4.X" probe,
-ROADMAP_COMPLET.md header), inserts a CHANGELOG stub, builds +
-tests + saves a snapshot, then walks:
+`main.am`'s `--version` reads from there; the manual flow only
+edits this one constant (+ README + ROADMAP headers). Use
+tools/release.sh which bumps every place the version lives,
+inserts a CHANGELOG stub, builds + tests + saves a snapshot,
+then walks:
 
     release/vX.Y.Z  →  develop  →  main  →  tag vX.Y.Z
 
@@ -226,7 +354,8 @@ If you do the release flow manually (the typical pattern in this
 session), the same gates apply by hand:
 
     git checkout -b release/vX.Y.Z
-    # edit src/main.am, README.md, ROADMAP_COMPLET.md, CHANGELOG.md
+    # edit src/package_registry.am AmcVersion(), README.md,
+    # ROADMAP_COMPLET.md, CHANGELOG.md
     ./build_amc.sh && ./tools/save-snapshot.sh
     git add … && git commit -m "release: vX.Y.Z" && git push
     gh pr create --base develop … && gh pr merge --squash --admin
@@ -278,7 +407,6 @@ Saved feedbacks under
    parser rejects `let xs: List<List<string>> = …`. Drop the
    outer annotation (cgen infers the AmalgameList* type) and
    annotate just the inner: `let row: List<string> = xs.Get(0)`.
-   Test sample tests/samples/stdlib_database.am does this.
 
 3. **Cross-namespace static-call return-type inference** — the
    cgen's isStdlib short-circuit skips MethodRetRawSet/Get for
@@ -291,15 +419,17 @@ Saved feedbacks under
    `foo.c` only. The test runner (and build.sh templates) do
    `gcc -O2 -Iruntime foo.c -lgc -lm -lcurl -o foo` as a
    separate step. `amc test` does the gcc step internally for
-   the suite case.
+   the suite case, and since v0.5.2 also splices any installed
+   package's vendored .c objects into that link.
 
-5. **`amc test` doesn't see Database tests** — its internal gcc
-   command doesn't link runtime/Amalgame_Database/sqlite/sqlite3.c.
-   Database tests live under tests/samples/ and are run by
-   tests/run_stdlib_tests.sh which precompiles a sqlite3.o once
-   and links it in. A future `amc test` enhancement could grep
-   the generated .c for sqlite3_ symbols and conditionally link
-   the amalgamation.
+5. ~~**`amc test` doesn't see Database tests**~~ — **RESOLVED in
+   v0.5.2 (PR #304).** Packages declaring `[stdlib].sources` in
+   their manifest get their vendored `.c` files pre-compiled to
+   `/tmp/amc-pkg-<class>-<leaf>.c.o` by
+   `Program.PreCompilePackageSources`, then linked into every
+   test binary alongside `-ldl -lpthread`. SQLite tests now
+   work out of the box from `amc test`; future vendoring
+   backends inherit the wiring automatically.
 
 6. **MemberTable.Set silent-no-op on duplicate** — important
    resolver invariant from v0.4.7 (PR #228). The parallel arrays
@@ -351,9 +481,10 @@ Saved feedbacks under
     runtime call brings in a fresh transitive dep, propagate the
     `-l<lib>` flag here as well.
 
-12. **Bump the `--version` string in `src/main.am` BEFORE every
-    tag** — see the release-flow section above. tools/release.sh
-    handles this automatically; the manual flow has to remember.
+12. **Bump the version constant BEFORE every tag** — single
+    source of truth is `PackageRegistry.AmcVersion()` in
+    src/package_registry.am since v0.5.0. tools/release.sh
+    handles it automatically; the manual flow has to remember.
 
 13. **One-time post-clone setup for `merge=ours`** —
     `.gitattributes` declares `merge=ours` for
@@ -367,39 +498,54 @@ Saved feedbacks under
     the generated files and you get conflict noise.
 
 14. **`linguist-vendored=true` on runtime/* in .gitattributes** —
-    keeps the vendored SQLite amalgamation (9MB sqlite3.c +
-    641KB sqlite3.h) out of GitHub's language stats. Without it,
-    Amalgame would show as "85% C" because of one upstream lib.
+    still set, even though SQLite no longer ships in the main
+    repo. The directive is cheap to leave in place; if a future
+    in-tree backend ever vendors an upstream lib again, the
+    language-stats fix is already wired up.
 
 ═══════════════════════════════════════════════════════════════
   Roadmap snapshot (next-up at the time of this refresh)
 ═══════════════════════════════════════════════════════════════
 
-Stdlib backlog tracked in ROADMAP_COMPLET.md:
+Package manager v0.5.x backlog (no breaking; patch releases):
 
-- **`Amalgame.Database.<Engine>` siblings — SQL backends**:
-  DuckDB (vendored amalgamation), PostgreSQL (dynamic-link
-  libpq), MySQL / MariaDB (dynamic-link libmariadbclient),
-  Oracle (Instant Client dynamic-link, proprietary download),
-  SQL Server (MS ODBC default + FreeTDS fallback).
-- **`Amalgame.Database.NoSQL.<Engine>`**: MongoDB (libmongoc +
-  libbson), Redis (pure-Amalgame RESP3 client ~300 LoC),
-  DynamoDB / Cosmos DB / Firestore (HTTP over Net.Http + Json),
-  Cassandra / ScyllaDB (CQL binary protocol).
-- **`Amalgame.Messaging.<Broker>`**: pure-Amalgame MQTT (~300
-  LoC) + NATS Core (~250 LoC), plus dynamic-link to Kafka
-  (librdkafka) + RabbitMQ (librabbitmq AMQP).
-- **`Amalgame.Database.SQLite` v2**: parameter binding via `?`
-  placeholders, typed column accessors (row.AsInt(0) /
-  row.AsBytes(2)), prepared statements, transactions.
+- Transitive dep resolution + cycle/conflict detection
+- Path deps (`{ path = "../foo" }`)
+- Semver range constraints (`^X.Y.Z`, `~X.Y.Z`)
+- `amc package vendor` (commit the cache into the repo for
+  offline reproducible builds)
+
+External-package backlog (each ships from its own repo):
+
+- **SQL backends**: DuckDB (vendored amalgamation), PostgreSQL
+  (dynamic-link libpq), MySQL / MariaDB (dynamic-link
+  libmariadbclient), Oracle (Instant Client, proprietary
+  download), SQL Server (MS ODBC default + FreeTDS fallback).
+- **NoSQL**: MongoDB (libmongoc + libbson), DynamoDB / Cosmos
+  DB / Firestore (HTTP over Net.Http + Json), Cassandra /
+  ScyllaDB (CQL binary protocol).
+- **Messaging**: NATS Core (~250 LoC, pure Amalgame), plus
+  dynamic-link to Kafka (librdkafka) + RabbitMQ (librabbitmq
+  AMQP).
+- **SQLite v2** (in `amalgame-database-sqlite`): parameter
+  binding via `?` placeholders, typed column accessors,
+  prepared statements, transactions.
+
+Compiler / tooling backlog:
+
+- **v0.6 — multi-version coexistence** (Cargo-style dual-link
+  enabled by the v0.5 namespace mangling — two packages can
+  depend on different majors of the same dep).
 - **`Amalgame.Service` v2**: native Windows SCM dispatcher
   (`StartServiceCtrlDispatcher` + `RegisterServiceCtrlHandler` +
   `SetServiceStatus`) — drops the NSSM dependency on Windows.
 - **`amc new --template service` v2**: macOS launchd .plist +
   install-macos.sh wrapper.
-- **LSP slice 5**: tighter `selectionRange` via parser nameStart
-  hook, `textDocument/foldingRange` (the +/- gutter markers),
-  more code actions wired to linter/typechecker diags.
+- **LSP slice 6**: tighter `selectionRange` via parser nameStart
+  hook, more code actions wired to linter/typechecker diags.
+- **ORM layer** (idea logged in ROADMAP_COMPLET.md — sits
+  above the SQL backend packages, would consume any
+  `Amalgame.Database.<Engine>`).
 
 ═══════════════════════════════════════════════════════════════
   Repo layout
@@ -422,16 +568,19 @@ Stdlib backlog tracked in ROADMAP_COMPLET.md:
     guide/                         ← user-facing 8-chapter book
       01-getting-started.md
       02-language-tour.md
-      03-cli-reference.md
-      04-stdlib.md                 ← every stdlib module
+      03-cli-reference.md          ← amc package <action> table
+      04-stdlib.md                 ← every stdlib module + the
+                                     3 external packages
       05-runtime-and-interop.md
       06-build-and-tooling.md
-      07-internals.md
+      07-internals.md              ← amc test pipeline, cgen,
+                                     PackageRegistry
       08-llm-commands.md
       README.md                    ← chapter index
     language/                      ← grammar.ebnf + grammar.md
     changelog/                     ← per-version PDF builds
-    proposals/                     ← design docs
+    proposals/
+      amalgame-package-manager.md  ← v0.5 design doc
     DEVELOPER_GUIDE.md
   editors/vscode/                  ← extension.js + grammar
   runtime/
@@ -448,16 +597,21 @@ Stdlib backlog tracked in ROADMAP_COMPLET.md:
     Amalgame_Crypto.h
     Amalgame_Logging.h
     Amalgame_Service.h
-    Amalgame_Database_SQLite.h     ← v0.4.15
-    Amalgame_Database/sqlite/
-        sqlite3.c, sqlite3.h       ← vendored amalgamation
+    # No Amalgame_Database_*.h here anymore — moved to the
+    # respective external packages' own runtime/ dirs.
   snapshot/
     amc_lib.c                      ← portable bootstrap source
     amc                            ← compiled snapshot binary
     INFO.md                        ← provenance
   src/
-    main.am                        ← CLI entry, gen_test injection
+    main.am                        ← CLI entry, RunTest + dispatch
     amc_lib.c                      ← generated; merge=ours
+    package_registry.am            ← v0.5 PackageRegistry +
+                                     LoadedPackage + AmcVersion
+    add_cmd.am                     ← amc package <action>
+                                     (add / remove / list /
+                                      search / update / cache)
+                                     + EnsureInstalled
     lexer/{token,lexer}.am
     parser/{ast,parser}.am
     generator/{c_gen,gen_test}.am  ← cgen + bootstrap driver
@@ -466,12 +620,13 @@ Stdlib backlog tracked in ROADMAP_COMPLET.md:
     resolver/{symbol,resolver}.am
     typechecker.am
     linter.am
-    lsp.am                         ← LSP server
+    lsp.am                         ← LSP server (slices 1-5)
     migrate.am / generate.am /
     explain.am                     ← LLM-driven commands (v0.4.0)
     new_cmd.am                     ← amc new scaffolder (4 templates)
     stdlib/
-      json.am
+      json.am                      ← namespace Amalgame.Formats.Json
+      toml.am                      ← namespace Amalgame.Formats.Toml
       random.am
       encoding.am
       datetime.am
@@ -481,10 +636,10 @@ Stdlib backlog tracked in ROADMAP_COMPLET.md:
       service.am                   ← v0.4.13
   tests/
     run_all_tests.sh               ← drives every sub-suite
-    run_tests.sh                   ← core + advanced
-    run_stdlib_tests.sh            ← stdlib modules
-    run_fmt_tests.sh
-    run_amc_new_tests.sh           ← amc new templates
+    run_tests.sh                   ← core + advanced (205)
+    run_stdlib_tests.sh            ← stdlib modules (219)
+    run_fmt_tests.sh               ← (12)
+    run_amc_new_tests.sh           ← amc new templates (34)
     samples/                       ← .am test fixtures
   stdlib/strings.am                ← legacy pure-Amalgame strings
   tools/
@@ -496,27 +651,37 @@ Stdlib backlog tracked in ROADMAP_COMPLET.md:
   TL;DR for the new session
 ═══════════════════════════════════════════════════════════════
 
-Pick up from v0.4.15. Develop is 3 commits ahead of main with
-post-release accumulation (CLEANUP.sh removal + 2 doc-PRs that
-expanded the database / messaging roadmap entries). Working tree
-clean, both branches synced to origin, all tags up to v0.4.15
-published. `~/.local/bin/amc` is updated to 0.4.15 (the LSP
-extension uses it).
+Pick up from v0.5.2. develop and main are both at v0.5.2,
+synced to origin, working tree clean, all tags up to v0.5.2
+published. `~/.local/bin/amc` is the user-installed copy (the
+VS Code extension reads it via `amalgame.serverPath`).
+
+The big architectural shift to know about: **amc is no longer
+a monolithic bundle**. SQLite / Redis / MQTT live in their own
+`amalgame-lang/amalgame-*` repos and install via
+`amc package add`. Manifest is `amalgame.toml`, lockfile is
+`amalgame.lock`, cache is `~/.amalgame/packages/`. Namespace
+mangling means two packages sharing a short class name don't
+collide at link time.
 
 Memory feedbacks already cover: répondre en français dans le
 chat / pas de Co-Authored-By trailer / édits autonomes après
 plan validé / features sur develop. Apply them by default.
 
 The most natural next directions are:
-1. **Cut v0.4.16** to roll the develop-side accumulation into a
-   real release (small — CLEANUP.sh + doc updates only).
-2. **LSP slice 5** — foldingRange is the user-explicitly-requested
-   piece, smallest scope.
-3. **Pick a sibling Database backend** to ship — PostgreSQL or
-   DuckDB are the natural follow-ons to SQLite. Redis as a NoSQL
-   would be smallest (pure-Amalgame, no native dep).
-4. **Pick a message broker** — MQTT first (smallest pure-Amalgame
-   implementation, ~300 LoC).
+1. **Ship a 4th external package** — DuckDB (vendored
+   amalgamation, mirrors SQLite shape) or PostgreSQL
+   (dynamic-link libpq, mirrors the dynamic-dep shape MQTT
+   doesn't exercise yet).
+2. **Transitive dep resolution** in `amc package add` — first
+   v0.5.x patch. Today's installer handles single-package only;
+   any package depending on another requires a manual second
+   `amc package add`.
+3. **Packages-index growth** — register more shortnames as
+   external packages land, so `amc package add duckdb@vX.Y.Z`
+   resolves without typing the full URL.
+4. **`amc package vendor`** — copy the cache into the project
+   for offline reproducible builds.
 
 Ask me which direction before diving in.
 ```
@@ -531,7 +696,7 @@ cd Amalgame
 git config merge.ours.driver true          # see gotcha #13 above
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh                              # builds ./amc from src/
-./tests/run_all_tests.sh                    # 434 PASS expected
+./tests/run_all_tests.sh                    # 470 PASS expected
 ```
 
 System deps (apt):

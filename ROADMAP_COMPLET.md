@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-11 · `amc 0.5.0` · self-hosted · 470/470 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem launch
+> Updated 2026-05-11 · `amc 0.5.3` · self-hosted · 482/482 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ package pipeline
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -96,9 +96,11 @@ Documented in [docs/guide/04-stdlib.md](docs/guide/04-stdlib.md).
   self-hosted `amc` for testing.
 - Tag-driven Release workflow (Linux .tar.gz + macOS .tar.gz + Windows
   .zip with bundled MinGW DLLs)
-- **263/263 tests** in CI under `./amc` (201 core + 50 stdlib + 12
-  fmt), zero SKIP. Suite grew significantly with the v0.4.0 LLM
-  features (most additions are hermetic — no real LLM calls).
+- **470/470 tests** in CI under `./amc` (205 core + 219 stdlib +
+  12 fmt + 34 amc-new), zero SKIP. Suite grew with the v0.4.0
+  LLM features (hermetic — no real LLM calls), the v0.4.x stdlib
+  pushes (Path / Logging / Service / Crypto / DateTime), and the
+  v0.5 package-manager work (lockfile / manifest / cache tests).
 - **Lambda v2.5** (PR #142) — non-int signatures unlocked.
   `xs.Map(x => x.Name)` over `List<Class>` works.
 - **Multi-line method chains** (PR #154) — fluent / LINQ-style code
@@ -550,16 +552,13 @@ before the next big language addition.
           this top-level fn in a class as `public static`" —
           recently emitted as a parse diagnostic). Per-diagnostic
           dispatcher that returns a `WorkspaceEdit`.
-        - **`textDocument/foldingRange`** — the +/- expand/collapse
-          markers in the gutter for collapsible regions: class
-          bodies, method bodies, multi-line `if`/`while`/`for`
-          blocks, multi-line block comments, multi-line `import`
-          groups, multi-line `match` arms. Walks the AST top-down,
-          emits `FoldingRange { startLine, endLine, kind }` per
-          region. `kind` is "region" by default; "comment" /
-          "imports" for the two special-cased categories. VS Code
-          renders the gutter chevrons automatically once the
-          server advertises `foldingRangeProvider: true`.
+        - **`textDocument/foldingRange`** — **DONE in slice 5**
+          (see the v0.4.17 `[x]` entry above). Token-driven
+          brace-pair matching for class / method / block bodies;
+          `kind:"comment"` for `//` runs; `kind:"imports"` for
+          consecutive `import` statements. Multi-line `if`/`while`/
+          `for` blocks are covered by the brace-pair logic;
+          multi-line `match` arms remain a v2 polish.
 - [ ] **`amc lsp` performance — workspace resolver caching.**
       Every hover / completion / definition call rebuilds the
       whole workspace resolver: parse the open file, walk every
@@ -691,12 +690,19 @@ implementation effort.
       keepalive, multi-topic SUBSCRIBE, MQTT 5, TLS, username/
       password auth, broker-side wildcards (`+`/`#`) exercised
       in tests are v2.
-- [ ] **Stdlib package manager — extract optional backends as
-      packages.** Triggered now that 3 optional backends are in
-      tree (SQLite, Redis, MQTT) and the monolithic-stdlib model
-      is starting to hurt (every new backend touches c_gen.am +
-      resolver.am + run_stdlib_tests.sh — those will become merge-
-      hot files).
+- [x] **Stdlib package manager — extract optional backends as
+      packages** (v0.5.0 → v0.5.2, PRs #284–#304). All three
+      inaugural backends extracted into stand-alone repos
+      under `amalgame-lang`:
+      [amalgame-database-sqlite](https://github.com/amalgame-lang/amalgame-database-sqlite),
+      [amalgame-database-nosql-redis](https://github.com/amalgame-lang/amalgame-database-nosql-redis),
+      [amalgame-messaging-mqtt](https://github.com/amalgame-lang/amalgame-messaging-mqtt).
+      `amc package add` / `remove` / `list` / `search` / `update`
+      / `cache` round out the CLI (alias `amc pkg`). `amc test`
+      auto-installs missing deps and links each package's
+      `[stdlib].sources` vendored C files into every test binary,
+      so SQLite "just works" with no manual gcc step. Original
+      design space (kept below for archaeology):
 
       **Release batching policy** — to avoid burning CI + release-
       flow cycles on every backend addition between now and the
@@ -791,11 +797,15 @@ implementation effort.
       compiling everything. Shared `Result` / `Rows` types
       consolidate into a common `Amalgame_Database.h` once a
       third engine lands and the pattern is clear.
-        - **DuckDB** — vendored amalgamation similar to SQLite
-          (single `duckdb.cpp` + `duckdb.h`, MIT licence).
-          OLAP-flavoured workloads; columnar storage + vectorised
-          execution. Surface mirrors SQLite (Open/Exec/QueryAll/…)
-          so callers swap engines without rewriting.
+        - [x] **DuckDB** (v0.5.3, `amalgame-database-duckdb`) —
+          vendored C++ amalgamation (`duckdb.cpp` + `duckdb.h`, MIT
+          licence). OLAP-flavoured workloads; columnar storage +
+          vectorised execution. Surface mirrors SQLite
+          (Open/Close/IsOpen/Exec/QueryAll/LastError) so callers
+          swap engines without rewriting. Shipped alongside the
+          v0.5.3 C++ pipeline (`[stdlib].sources` of type
+          `.cpp/.cc/.cxx` compile with g++, manifest gains
+          `cflags`/`cxxflags`/`libs`/`schema-version` keys).
         - **PostgreSQL** (`libpq` client) — link to system
           `libpq` (heavy to vendor — vendor only the headers,
           dynamic-link the .so/.dylib/.dll). Surface adds
@@ -840,6 +850,9 @@ implementation effort.
       Shared namespace prefix `Amalgame.Database.NoSQL.*` to keep
       it discoverable next to the SQL siblings; types and
       patterns deliberately diverge.
+      **Status**: **Redis shipped** as v0.2.0 (package
+      `amalgame-database-nosql-redis`, protocol-only). Mongo,
+      DynamoDB, Cassandra still pending — see sub-bullets below.
         - **MongoDB** — link to `libmongoc` + `libbson`
           (Apache-2.0). Surface: `Mongo.Connect(uri)`,
           `Mongo.InsertOne(collection, json)`,
@@ -869,6 +882,11 @@ implementation effort.
       durable storage". Covers pub/sub, work queues, event
       streams, the patterns that decouple services. Two families
       based on protocol complexity:
+
+      **Status**: **MQTT v3.1.1 shipped** as v0.2.0 (package
+      `amalgame-messaging-mqtt`, protocol-only, Connect / Publish
+      / Subscribe / Loop, QoS 0). Kafka, RabbitMQ, NATS, AMQP
+      still pending — see sub-bullets below.
 
       **Pure-Amalgame implementations** — implement the wire
       protocol in `.am`, no vendored library, no system package.
@@ -923,17 +941,17 @@ implementation effort.
       requirement on the caller (the Amalgame side stays
       synchronous; concurrency comes from running the consumer
       loop in a thread spawned by user code).
-- [ ] **`Amalgame.Path`** — cross-platform path manipulation.
-      Currently scattered in user code (string splits, hardcoded
-      separators). Exposes `Path.Join`, `Path.Parent`, `Path.Stem`,
-      `Path.Extension`, `Path.Normalize`, `Path.IsAbsolute`. Pure
-      Amalgame, no runtime header — handles Windows `\` ↔ POSIX
-      `/` and `..` resolution.
-- [ ] **`Amalgame.Logging`** — structured logging with levels
-      (Trace/Debug/Info/Warn/Error), pluggable sinks (stderr,
-      file, JSON-per-line for ingestion), context fields
-      (`logger.With("requestId", id)`). Pure Amalgame on top of
-      Console + File. ~200 LoC.
+- [x] **`Amalgame.Path`** (v0.4.11) — cross-platform path
+      manipulation in `src/stdlib/path.am`: `Path.Combine`,
+      `Path.Extension`, `Path.Filename`, `Path.Directory`,
+      `Path.Stem`, `Path.IsAbsolute`, `Path.Normalize` (Go
+      filepath.Clean semantics, no FS access), `Path.Sep`.
+- [x] **`Amalgame.Logging`** (v0.4.12) — leveled stderr + optional
+      file sink in `src/stdlib/logging.am` /
+      `runtime/Amalgame_Logging.h`. `Log.SetMinLevel`,
+      `Log.SetFile`, `Log.Debug/Info/Warn/Error`. Process-wide
+      singleton state in the runtime. Structured logging (context
+      fields, JSON-per-line) deferred to v2.
 - [ ] **`Amalgame.Net.WebSocket`** — RFC 6455 client (and later
       server). The existing `TcpServer` could host it but the
       handshake + framing isn't trivial. Useful for amc lsp over
@@ -950,6 +968,12 @@ implementation effort.
 - [ ] **Other serialization formats** — TOML (config files),
       YAML (CI configs), MessagePack (binary RPC). Json covers
       most needs but each has its niche.
+      **Status**: **TOML subset shipped** in
+      `src/stdlib/toml.am` (namespace `Amalgame.Formats.Toml`)
+      to back `amalgame.toml` manifest parsing — TOML 1.0 minus
+      dates/times, floats with exp, multiline strings, hex/oct/
+      bin ints, dotted-key assignment. YAML + MessagePack
+      still pending.
 - [ ] **DateTime v2** — local time + named timezones. Adds a
       `LocalTime` companion class wrapping `(instant, zoneId)`
       with a `Now`, `In(zone)`, breakdown into Y/M/D/h/m/s,

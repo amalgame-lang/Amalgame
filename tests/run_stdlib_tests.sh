@@ -309,6 +309,19 @@ run_test "PR: Headers aggregate"      "$SAMPLES/stdlib_package_registry.am" "[PA
 run_test "PR: strip star"             "$SAMPLES/stdlib_package_registry.am" "[PASS] strip star"            "" "$PR_EXTRA"
 run_test "PR: passthrough primitive"  "$SAMPLES/stdlib_package_registry.am" "[PASS] passthrough primitive" "" "$PR_EXTRA"
 run_test "PR: missing lock empty"     "$SAMPLES/stdlib_package_registry.am" "[PASS] missing lock empty"    "" "$PR_EXTRA"
+# v0.5.3 — manifest schema growth for C++-bearing packages.
+run_test "PR: cflags parsed"          "$SAMPLES/stdlib_package_registry.am" "[PASS] cflags parsed"         "" "$PR_EXTRA"
+run_test "PR: cxxflags parsed"        "$SAMPLES/stdlib_package_registry.am" "[PASS] cxxflags parsed"       "" "$PR_EXTRA"
+run_test "PR: libs count"             "$SAMPLES/stdlib_package_registry.am" "[PASS] libs count"            "" "$PR_EXTRA"
+run_test "PR: libs[0]"                "$SAMPLES/stdlib_package_registry.am" "[PASS] libs[0]"               "" "$PR_EXTRA"
+run_test "PR: libs[1]"                "$SAMPLES/stdlib_package_registry.am" "[PASS] libs[1]"               "" "$PR_EXTRA"
+run_test "PR: supports schema v1"     "$SAMPLES/stdlib_package_registry.am" "[PASS] supports schema v1"    "" "$PR_EXTRA"
+run_test "PR: detects .cpp"           "$SAMPLES/stdlib_package_registry.am" "[PASS] detects .cpp"          "" "$PR_EXTRA"
+run_test "PR: detects .cc"            "$SAMPLES/stdlib_package_registry.am" "[PASS] detects .cc"           "" "$PR_EXTRA"
+run_test "PR: detects .cxx"           "$SAMPLES/stdlib_package_registry.am" "[PASS] detects .cxx"          "" "$PR_EXTRA"
+run_test "PR: .c not cxx"             "$SAMPLES/stdlib_package_registry.am" "[PASS] .c not cxx"            "" "$PR_EXTRA"
+run_test "PR: no cxx sources"         "$SAMPLES/stdlib_package_registry.am" "[PASS] no cxx sources"        "" "$PR_EXTRA"
+run_test "PR: CollectLibs"            "$SAMPLES/stdlib_package_registry.am" "[PASS] CollectLibs"           "" "$PR_EXTRA"
 
 # ── PackageManager e2e (full pipeline) ────────────────
 # Validates Toml → PackageRegistry → Resolver → CGen end-to-end:

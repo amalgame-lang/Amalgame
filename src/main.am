@@ -277,6 +277,8 @@ public class Program {
         }
         let registry = PackageRegistry.Load()
         let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
+        let hasCxx: bool = registry.HasCxxSources()
+        let pkgLibs: List<string> = registry.CollectLibs()
 
         // Discovery: shell out to `find`. Works on POSIX and on
         // Windows MSYS2 (the only Windows path the repo CI exercises).
@@ -325,20 +327,58 @@ public class Program {
                 compileFail = compileFail + 1
                 continue
             }
-            // Step 2 — gcc on the emitted .c. Locate amc's
-            // runtime/ headers so the test compile works in any
-            // cwd (not just the Amalgame source tree). amcRuntime
-            // is resolved once before the test loop (see above).
-            var gccCmd: string = "gcc -O2 -Iruntime"
-            if (String_Length(amcRuntime) > 0) {
-                gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+            // Step 2 — compile + link the emitted .c. Locate amc's
+            // runtime/ headers so this works in any cwd (not just
+            // the Amalgame source tree). amcRuntime resolved once
+            // before the test loop (see above).
+            //
+            // Two-stage when any installed package ships C++:
+            //  (a) gcc -c <test>.c -o <test>.o  — compile as C, since
+            //      amc emits C-style void* conversions and string-
+            //      literal-to-char* casts that g++ rejects.
+            //  (b) g++ <test>.o pkg_objs... — link as C++ so libstdc++
+            //      + C++ static-init order resolve correctly. A plain
+            //      `gcc -lstdc++` link skips C++ init that some
+            //      amalgamations (DuckDB) need.
+            // Otherwise a single-step gcc link is the v0.5.2 path.
+            var gccCmd: string = ""
+            if (hasCxx) {
+                // Stage (a): gcc -c to .o
+                var compileCmd: string = "gcc -O2 -Iruntime"
+                if (String_Length(amcRuntime) > 0) {
+                    compileCmd = compileCmd + " -I'" + amcRuntime + "'"
+                }
+                let objOut: string = outBin + ".o"
+                compileCmd = compileCmd + " -c " + outC + " -o " + objOut + " 2>&1"
+                let stageA = Process.RunCapture(compileCmd)
+                if (stageA.Exit != 0) {
+                    Console.WriteLine("  [LINK-FAIL]")
+                    Console.Write(stageA.Stdout)
+                    compileFail = compileFail + 1
+                    continue
+                }
+                // Stage (b): g++ link
+                gccCmd = "g++ -O2 " + objOut
+            } else {
+                gccCmd = "gcc -O2 -Iruntime"
+                if (String_Length(amcRuntime) > 0) {
+                    gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+                }
+                gccCmd = gccCmd + " " + outC
             }
-            gccCmd = gccCmd + " " + outC
             let nObjs: int = pkgObjs.Count()
             for poi in 0..nObjs {
                 gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
             }
-            gccCmd = gccCmd + " -lgc -lm -lcurl -ldl -lpthread -o " + outBin + " 2>&1"
+            gccCmd = gccCmd + " -lgc -lm -lcurl -ldl -lpthread"
+            // Splice per-package libs (-l<name>). Each loaded
+            // package contributes zero or more bare names via
+            // its manifest's [stdlib].libs array.
+            let nLibs: int = pkgLibs.Count()
+            for plj in 0..nLibs {
+                gccCmd = gccCmd + " -l" + pkgLibs.Get(plj)
+            }
+            gccCmd = gccCmd + " -o " + outBin + " 2>&1"
             let gcc = Process.RunCapture(gccCmd)
             if (gcc.Exit != 0) {
                 Console.WriteLine("  [LINK-FAIL]")
@@ -384,14 +424,18 @@ public class Program {
         return 0
     }
 
-    // Pre-compile every installed package's vendored .c source(s)
+    // Pre-compile every installed package's vendored source(s)
     // to .o files cached in /tmp. The same .o list is then linked
     // into every test binary so packages with vendored deps (the
-    // SQLite amalgamation today) compile cleanly via `amc test`.
+    // SQLite amalgamation today, the DuckDB amalgamation tomorrow)
+    // compile cleanly via `amc test`.
     //
-    // `.o` cache layout: `/tmp/amc-pkg-<basename>.o`. Cheap reuse:
-    // if the .o already exists we skip the gcc -c, saving 10s+
-    // per test run on SQLite-using projects.
+    // Compiler dispatch: gcc for .c (+ p.CFlags), g++ for
+    // .cpp/.cc/.cxx (+ p.CxxFlags). Same .o cache layout for both.
+    //
+    // `.o` cache layout: `/tmp/amc-pkg-<class>-<basename>.o`.
+    // Cheap reuse: if the .o already exists we skip the compile,
+    // saving 10s+ per test run on amalgamation-using projects.
     public static List<string> PreCompilePackageSources(PackageRegistry reg, string amcRuntime) {
         let out: List<string> = new List<string>()
         let n: int = reg.Packages.Count()
@@ -414,15 +458,28 @@ public class Program {
                     out.Add(objPath)
                     continue
                 }
-                var gcc: string = "gcc -O2"
+                let isCxx: bool = PackageRegistry.IsCxxSource(srcPath)
+                var cmd: string = ""
+                if (isCxx) {
+                    cmd = "g++ -O2"
+                } else {
+                    cmd = "gcc -O2"
+                }
                 if (String_Length(amcRuntime) > 0) {
-                    gcc = gcc + " -I'" + amcRuntime + "'"
+                    cmd = cmd + " -I'" + amcRuntime + "'"
+                }
+                // Per-package flags. CFlags for C, CxxFlags for C++.
+                if (isCxx && String_Length(p.CxxFlags) > 0) {
+                    cmd = cmd + " " + p.CxxFlags
+                }
+                if (!isCxx && String_Length(p.CFlags) > 0) {
+                    cmd = cmd + " " + p.CFlags
                 }
                 // -w to silence the upstream code's own warnings;
-                // we don't want sqlite3.c warnings cluttering
+                // we don't want amalgamation warnings cluttering
                 // `amc test` output.
-                gcc = gcc + " -w -c '" + srcPath + "' -o '" + objPath + "'"
-                let res = Process.RunCapture(gcc)
+                cmd = cmd + " -w -c '" + srcPath + "' -o '" + objPath + "'"
+                let res = Process.RunCapture(cmd)
                 if (res.Exit != 0) {
                     Console.WriteError("amc test: failed to pre-compile " + srcPath)
                     Console.WriteError(res.Stdout)
@@ -434,6 +491,7 @@ public class Program {
         }
         return out
     }
+
 
     // ── fmt subcommand ─────────────────────────────────
     public static int RunFmt(int argc) {

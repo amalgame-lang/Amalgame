@@ -47,6 +47,18 @@ import Amalgame.Formats.Toml
 // resolver is derived by stripping a trailing `*` (so
 // `AmalgameRedis*` → `AmalgameRedis` for the resolver-side
 // declaration, matching today's pattern from PR 0).
+//
+// v0.5.3 — additional optional manifest keys for C++-bearing
+// packages (DuckDB amalgamation kicked these off):
+//
+//   [stdlib]
+//   sources  = ["duckdb.cpp"]            # any .cpp/.cc/.cxx
+//                                          gets g++ instead of gcc
+//   cflags   = "-O2"                     # extra flags for .c sources
+//   cxxflags = "-O3 -DNDEBUG -std=c++11" # extra flags for .cpp sources
+//   libs     = ["stdc++"]                # -l<x> appended to final link;
+//                                          also forces g++ as linker
+//                                          when any source is C++
 
 // One loaded package = its (Class, Header, ImportNamespace) +
 // a parallel list of (FuncName, CRetType). FuncName is the
@@ -60,13 +72,24 @@ public class LoadedPackage {
     public  Ns:          string             // Amalgame.Database.NoSQL.Redis
     public  FuncNames:   List<string>       // ["Open", "Close", ...]
     public  FuncRets:    List<string>       // ["AmalgameRedis*", "void", ...]
-    // Vendored .c sources the package contributes to the user
-    // binary at gcc-link time. Read from the manifest's optional
+    // Vendored .c / .cpp sources the package contributes to the
+    // user binary at link time. Read from the manifest's optional
     // top-level [stdlib].sources array; absolute paths (resolved
     // against the package's cache dir). Empty for pure-protocol
     // packages (Redis / MQTT). Non-empty for vendored ones
-    // (SQLite ships sqlite3.c here).
-    public  Sources:     List<string>       // absolute .c paths
+    // (SQLite ships sqlite3.c here, DuckDB ships duckdb.cpp).
+    public  Sources:     List<string>       // absolute source paths
+    // Extra flags spliced into the per-source pre-compile step.
+    // CFlags applies to .c, CxxFlags to .cpp/.cc/.cxx. Empty means
+    // "use the default `-O2 -w`". The DuckDB amalgamation wants
+    // e.g. `-O3 -DNDEBUG -std=c++11 -Wno-unused-parameter`.
+    public  CFlags:      string
+    public  CxxFlags:    string
+    // Extra `-l<name>` libs to append to the final link command.
+    // For pure-protocol packages this is typically empty; vendored
+    // C++ packages declare e.g. `["stdc++"]`; future dynamic-link
+    // packages (libpq) will declare `["pq"]`.
+    public  Libs:        List<string>
 
     public LoadedPackage() {
         this.Name      = ""
@@ -76,6 +99,9 @@ public class LoadedPackage {
         this.FuncNames = new List<string>()
         this.FuncRets  = new List<string>()
         this.Sources   = new List<string>()
+        this.CFlags    = ""
+        this.CxxFlags  = ""
+        this.Libs      = new List<string>()
     }
 }
 
@@ -133,6 +159,21 @@ public class PackageRegistry {
             let manifest = Toml.Parse(manifestSrc)
             if (manifest.IsNull()) { continue }
 
+            // Schema-version gate. Manifests declaring a higher
+            // [package].schema-version than this amc supports are
+            // skipped silently — the install path (add_cmd.am)
+            // gates with an explicit error message, this layer is
+            // just defence against a manifest sneaking through
+            // with keys we don't understand.
+            let pkgTable: TomlValue = manifest.Get("package")
+            if (pkgTable.IsTable()) {
+                let schemaVal: TomlValue = pkgTable.Get("schema-version")
+                let schemaInt: int = schemaVal.AsInt()
+                if (schemaInt > PackageRegistry.SupportedManifestSchema()) {
+                    continue
+                }
+            }
+
             // Build the LoadedPackage from the manifest's [stdlib]
             // and [stdlib.functions] sections.
             let stdlibTable: TomlValue = manifest.Get("stdlib")
@@ -168,6 +209,32 @@ public class PackageRegistry {
                     let srcRel: string = srcTv.AsString()
                     if (String_Length(srcRel) > 0) {
                         lp.Sources.Add(pkgDir + "/" + srcRel)
+                    }
+                }
+            }
+
+            // Optional per-package compile flags. CFlags applies
+            // to .c sources, CxxFlags to .cpp/.cc/.cxx — both
+            // spliced into the gcc/g++ pre-compile invocation by
+            // Program.PreCompilePackageSources.
+            let cflagsVal: TomlValue = stdlibTable.Get("cflags")
+            lp.CFlags = cflagsVal.AsString()
+            let cxxflagsVal: TomlValue = stdlibTable.Get("cxxflags")
+            lp.CxxFlags = cxxflagsVal.AsString()
+
+            // Optional `[stdlib].libs` — a list of bare lib names
+            // (no `-l` prefix). Appended as `-l<name>` to the
+            // final link command in Program.RunTest. C++-bearing
+            // packages typically declare `["stdc++"]`; dynamic-
+            // link packages (libpq) will declare `["pq"]`.
+            let libsArr: TomlValue = stdlibTable.Get("libs")
+            if (libsArr.IsArray()) {
+                let ln: int = libsArr.Count()
+                for li in 0..ln {
+                    let libTv: TomlValue = libsArr.At(li)
+                    let libName: string = libTv.AsString()
+                    if (String_Length(libName) > 0) {
+                        lp.Libs.Add(libName)
                     }
                 }
             }
@@ -214,6 +281,50 @@ public class PackageRegistry {
             out.Add(p.Header)
         }
         return out
+    }
+
+    // True iff any loaded package declares a C++ source. Used
+    // by `amc test` to switch the final-link compiler from gcc
+    // to g++ (needed for libstdc++ + correct C++ static-init
+    // ordering).
+    public bool HasCxxSources() {
+        let n: int = this.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = this.Packages.Get(i)
+            let sn: int = p.Sources.Count()
+            for j in 0..sn {
+                if (PackageRegistry.IsCxxSource(p.Sources.Get(j))) { return true }
+            }
+        }
+        return false
+    }
+
+    // Flatten every loaded package's [stdlib].libs list into a
+    // single list of bare lib names. Order is significant for
+    // static-link cycles but for our (small-N, dynamic) case it
+    // doesn't matter — gcc/g++ resolve left-to-right and our
+    // libs are leaves.
+    public List<string> CollectLibs() {
+        let out: List<string> = new List<string>()
+        let n: int = this.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = this.Packages.Get(i)
+            let ln: int = p.Libs.Count()
+            for j in 0..ln {
+                out.Add(p.Libs.Get(j))
+            }
+        }
+        return out
+    }
+
+    // True iff the path ends with a C++ source extension. Used
+    // by `amc test` to pick g++ over gcc for the per-source
+    // pre-compile and to switch the final-link compiler.
+    public static bool IsCxxSource(string path) {
+        if (String_EndsWith(path, ".cpp")) { return true }
+        if (String_EndsWith(path, ".cc"))  { return true }
+        if (String_EndsWith(path, ".cxx")) { return true }
+        return false
     }
 
     // Default cache root resolution order:
@@ -272,7 +383,20 @@ public class PackageRegistry {
     // one edit (this constant + tools/release.sh which already
     // handles --version).
     public static string AmcVersion() {
-        return "0.5.2"
+        return "0.5.3"
+    }
+
+    // Highest [package].schema-version this amc knows how to
+    // consume. Bumped whenever a new mandatory manifest key is
+    // added. Packages declaring a higher value are rejected at
+    // install time (with an explicit error) and silently skipped
+    // by LoadFrom (defence-in-depth).
+    //
+    //   v1 — initial schema (v0.5.0).
+    //   v1 still accepts the v0.5.3 additions cflags / cxxflags /
+    //   libs because they're optional — no version bump needed.
+    public static int SupportedManifestSchema() {
+        return 1
     }
 
     // Parse a semver-ish version string into a (major, minor, patch)
