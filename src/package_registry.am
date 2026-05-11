@@ -60,6 +60,13 @@ public class LoadedPackage {
     public  Ns:          string             // Amalgame.Database.NoSQL.Redis
     public  FuncNames:   List<string>       // ["Open", "Close", ...]
     public  FuncRets:    List<string>       // ["AmalgameRedis*", "void", ...]
+    // Vendored .c sources the package contributes to the user
+    // binary at gcc-link time. Read from the manifest's optional
+    // top-level [stdlib].sources array; absolute paths (resolved
+    // against the package's cache dir). Empty for pure-protocol
+    // packages (Redis / MQTT). Non-empty for vendored ones
+    // (SQLite ships sqlite3.c here).
+    public  Sources:     List<string>       // absolute .c paths
 
     public LoadedPackage() {
         this.Name      = ""
@@ -68,6 +75,7 @@ public class LoadedPackage {
         this.Ns        = ""
         this.FuncNames = new List<string>()
         this.FuncRets  = new List<string>()
+        this.Sources   = new List<string>()
     }
 }
 
@@ -147,6 +155,22 @@ public class PackageRegistry {
             // user-binary gcc can find it without -I tweaking.
             lp.Header    = pkgDir + "/" + hdr
             lp.Ns        = ns
+
+            // Vendored sources — optional `[stdlib].sources`
+            // array, paths relative to the package root. Same
+            // absolute-path treatment as the header field, so
+            // gcc just gets a usable path.
+            let sourcesArr: TomlValue = stdlibTable.Get("sources")
+            if (sourcesArr.IsArray()) {
+                let sn: int = sourcesArr.Count()
+                for si in 0..sn {
+                    let srcTv: TomlValue = sourcesArr.At(si)
+                    let srcRel: string = srcTv.AsString()
+                    if (String_Length(srcRel) > 0) {
+                        lp.Sources.Add(pkgDir + "/" + srcRel)
+                    }
+                }
+            }
 
             // Functions table — short name → return type.
             let funcsTbl: TomlValue = stdlibTable.Get("functions")

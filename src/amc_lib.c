@@ -3751,6 +3751,7 @@ struct _Amalgame_Compiler_LoadedPackage {
     code_string Ns;
     AmalgameList* FuncNames;
     AmalgameList* FuncRets;
+    AmalgameList* Sources;
 };
 
 
@@ -3762,6 +3763,7 @@ Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new() {
     self->Ns = "";
     self->FuncNames = AmalgameList_new();
     self->FuncRets = AmalgameList_new();
+    self->Sources = AmalgameList_new();
     return self;
 }
 
@@ -3862,6 +3864,17 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
         lp->ClassName = clsName;
         lp->Header = code_string_concat(code_string_concat(pkgDir, "/"), hdr);
         lp->Ns = ns;
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) sourcesArr = Amalgame_Compiler_TomlValue_Get(stdlibTable, "sources");
+        if (Amalgame_Compiler_TomlValue_IsArray(sourcesArr)) {
+            i64 __attribute__((unused)) sn = Amalgame_Compiler_TomlValue_Count(sourcesArr);
+            for (i64 si = 0; si < sn; si++) {
+                Amalgame_Compiler_TomlValue* __attribute__((unused)) srcTv = Amalgame_Compiler_TomlValue_At(sourcesArr, si);
+                code_string __attribute__((unused)) srcRel = Amalgame_Compiler_TomlValue_AsString(srcTv);
+                if (String_Length(srcRel) > 0) {
+                    AmalgameList_add(lp->Sources, (void*)(intptr_t)(code_string_concat(code_string_concat(pkgDir, "/"), srcRel)));
+                }
+            }
+        }
         Amalgame_Compiler_TomlValue* __attribute__((unused)) funcsTbl = Amalgame_Compiler_TomlValue_Get(stdlibTable, "functions");
         if (Amalgame_Compiler_TomlValue_IsTable(funcsTbl)) {
             AmalgameList* __attribute__((unused)) funcKeys = Amalgame_Compiler_TomlValue_Keys(funcsTbl);
@@ -20691,6 +20704,7 @@ struct _Amalgame_Compiler_Program {
 
 void Amalgame_Compiler_Program_PrintUsage();
 i64 Amalgame_Compiler_Program_RunTest(i64 argc);
+AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compiler_PackageRegistry* reg, code_string amcRuntime);
 i64 Amalgame_Compiler_Program_RunFmt(i64 argc);
 void Amalgame_Compiler_Program_Main(code_string* args);
 
@@ -20754,6 +20768,16 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
     if (installed > 0) {
         Console_WriteLine(code_string_concat(code_string_concat("amc test: installed ", String_FromInt(installed)), " missing dep(s)"));
     }
+    code_string __attribute__((unused)) amcPathForRt = Args_Get(0);
+    code_string __attribute__((unused)) amcRuntime = Env_Get("AMC_RUNTIME");
+    if (String_Length(amcRuntime) == 0) {
+        i64 __attribute__((unused)) slashIdx = String_LastIndexOf(amcPathForRt, "/");
+        if (slashIdx >= 0) {
+            amcRuntime = code_string_concat(String_Substring(amcPathForRt, 0, slashIdx), "/runtime");
+        }
+    }
+    Amalgame_Compiler_PackageRegistry* __attribute__((unused)) registry = Amalgame_Compiler_PackageRegistry_Load();
+    AmalgameList* __attribute__((unused)) pkgObjs = Amalgame_Compiler_Program_PreCompilePackageSources(registry, amcRuntime);
     code_string __attribute__((unused)) findCmd = code_string_concat(code_string_concat("find ", dir), " -name '*_test.am' -type f");
     AmalgameProcessResult* __attribute__((unused)) discovered = Process_RunCapture(findCmd);
     if (discovered->Exit != 0) {
@@ -20795,19 +20819,16 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
             compileFail = compileFail + 1;
             continue;
         }
-        code_string __attribute__((unused)) amcRuntime = Env_Get("AMC_RUNTIME");
-        if (String_Length(amcRuntime) == 0) {
-            i64 __attribute__((unused)) slashIdx = String_LastIndexOf(amcPath, "/");
-            if (slashIdx >= 0) {
-                code_string __attribute__((unused)) amcDir = String_Substring(amcPath, 0, slashIdx);
-                amcRuntime = code_string_concat(amcDir, "/runtime");
-            }
-        }
         code_string __attribute__((unused)) gccCmd = "gcc -O2 -Iruntime";
         if (String_Length(amcRuntime) > 0) {
             gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -I'"), amcRuntime), "'");
         }
-        gccCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(gccCmd, " "), outC), " -lgc -lm -lcurl -o "), outBin), " 2>&1");
+        gccCmd = code_string_concat(code_string_concat(gccCmd, " "), outC);
+        i64 __attribute__((unused)) nObjs = AmalgameList_count(pkgObjs);
+        for (i64 poi = 0; poi < nObjs; poi++) {
+            gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)((code_string)AmalgameList_get(pkgObjs, poi))), "'");
+        }
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -lgc -lm -lcurl -ldl -lpthread -o "), outBin), " 2>&1");
         AmalgameProcessResult* __attribute__((unused)) gcc = Process_RunCapture(gccCmd);
         if (gcc->Exit != 0) {
             Console_WriteLine("  [LINK-FAIL]");
@@ -20847,6 +20868,48 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
         return 1;
     }
     return 0;
+}
+
+AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compiler_PackageRegistry* reg, code_string amcRuntime) {
+    (void)reg;
+    (void)amcRuntime;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    i64 __attribute__((unused)) n = AmalgameList_count(reg->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, i);
+        AmalgameList* __attribute__((unused)) sources = p->Sources;
+        i64 __attribute__((unused)) sn = AmalgameList_count(sources);
+        for (i64 j = 0; j < sn; j++) {
+            code_string __attribute__((unused)) srcPath = (code_string)AmalgameList_get(sources, j);
+            if (String_Length(srcPath) == 0) {
+                continue;
+            }
+            i64 __attribute__((unused)) lastSlash = String_LastIndexOf(srcPath, "/");
+            code_string __attribute__((unused)) srcLeaf = srcPath;
+            if (lastSlash >= 0) {
+                srcLeaf = String_Substring(srcPath, lastSlash + 1, String_Length(srcPath) - lastSlash - 1);
+            }
+            code_string __attribute__((unused)) objPath = code_string_concat(code_string_concat(code_string_concat(code_string_concat("/tmp/amc-pkg-", p->ClassName), "-"), srcLeaf), ".o");
+            if (File_Exists(objPath)) {
+                AmalgameList_add(out, (void*)(intptr_t)(objPath));
+                continue;
+            }
+            code_string __attribute__((unused)) gcc = "gcc -O2";
+            if (String_Length(amcRuntime) > 0) {
+                gcc = code_string_concat(code_string_concat(code_string_concat(gcc, " -I'"), amcRuntime), "'");
+            }
+            gcc = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(gcc, " -w -c '"), srcPath), "' -o '"), objPath), "'");
+            AmalgameProcessResult* __attribute__((unused)) res = Process_RunCapture(gcc);
+            if (res->Exit != 0) {
+                Console_WriteError(code_string_concat("amc test: failed to pre-compile ", srcPath));
+                Console_WriteError(res->Stdout);
+                continue;
+            }
+            Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("Pre-compiled ", p->ClassName), " source: "), srcLeaf));
+            AmalgameList_add(out, (void*)(intptr_t)(objPath));
+        }
+    }
+    return out;
 }
 
 i64 Amalgame_Compiler_Program_RunFmt(i64 argc) {
