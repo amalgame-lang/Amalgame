@@ -17,23 +17,23 @@ typedef struct AmalgameFakePkg {
     i64 ticks;
 } AmalgameFakePkg;
 
-static inline AmalgameFakePkg* FakePkg_Init(void) {
+static inline AmalgameFakePkg* Amalgame_Fake_FakePkg_Init(void) {
     AmalgameFakePkg* p = (AmalgameFakePkg*) GC_MALLOC(sizeof(AmalgameFakePkg));
     p->ticks = 0;
     return p;
 }
 
-static inline i64 FakePkg_Tick(AmalgameFakePkg* p) {
+static inline i64 Amalgame_Fake_FakePkg_Tick(AmalgameFakePkg* p) {
     if (!p) return 0;
     p->ticks++;
     return p->ticks;
 }
 
-static inline code_bool FakePkg_IsOk(AmalgameFakePkg* p) {
+static inline code_bool Amalgame_Fake_FakePkg_IsOk(AmalgameFakePkg* p) {
     return p ? 1 : 0;
 }
 
-static inline void FakePkg_Close(AmalgameFakePkg* p) {
+static inline void Amalgame_Fake_FakePkg_Close(AmalgameFakePkg* p) {
     (void) p;  /* GC-managed, nothing to free */
 }
 

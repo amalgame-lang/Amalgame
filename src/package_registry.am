@@ -208,6 +208,25 @@ public class PackageRegistry {
         return "/tmp/amalgame-packages"
     }
 
+    // Mangle a package class method into its canonical C symbol.
+    // Convention: dot-separated namespace + `_` + method name,
+    // dots replaced by `_`. Mirrors the namespace hierarchy so
+    // two packages with the same short class name don't collide
+    // at C link time:
+    //
+    //   ManglePackageSymbol("Amalgame.Database.NoSQL.Redis", "Open")
+    //     → "Amalgame_Database_NoSQL_Redis_Open"
+    //
+    // Core stdlib classes (Console / File / Math / …) keep their
+    // flat symbols (`Console_WriteLine`) because they're
+    // coordinated single-author code with no collision risk.
+    // External packages — where any third-party can publish a
+    // class called `Redis` — get the full mangling.
+    public static string ManglePackageSymbol(string ns, string method) {
+        let mangledNs: string = String_Replace(ns, ".", "_")
+        return mangledNs + "_" + method
+    }
+
     // Strip a trailing `*` so a C-level type like `AmalgameRedis*`
     // becomes the Amalgame-side type the resolver expects
     // (`AmalgameRedis`). C primitives without a star pass through
