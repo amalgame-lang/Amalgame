@@ -456,28 +456,15 @@ public class Program {
             Exit_Set(NewCommand.Run(argc))
             return
         }
-        if (Args_Get(1) == "add") {
-            Exit_Set(AddCommand.Run(argc))
-            return
-        }
-        if (Args_Get(1) == "search") {
-            Exit_Set(AddCommand.RunSearch(argc))
-            return
-        }
-        if (Args_Get(1) == "list") {
-            Exit_Set(AddCommand.RunList(argc))
-            return
-        }
-        if (Args_Get(1) == "remove") {
-            Exit_Set(AddCommand.RunRemove(argc))
-            return
-        }
-        if (Args_Get(1) == "update") {
-            Exit_Set(AddCommand.RunUpdate(argc))
-            return
-        }
-        if (Args_Get(1) == "cache") {
-            Exit_Set(AddCommand.RunCache(argc))
+        // Package-manager commands live under `amc package <X>`
+        // (also accepts the short alias `amc pkg <X>`). Centralising
+        // every PM verb under one umbrella keeps the top-level
+        // command space clear for language ops (compile / fmt /
+        // test / lsp / migrate / generate / explain / new) and
+        // matches dotnet's / go-mod's grouping convention.
+        let v1: string = Args_Get(1)
+        if (v1 == "package" || v1 == "pkg") {
+            Exit_Set(AddCommand.RunPackage(argc))
             return
         }
 
