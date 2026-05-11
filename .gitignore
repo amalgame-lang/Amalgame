@@ -5,6 +5,13 @@ _build/
 *.so
 *.a
 
+# ── Package-manager scratch ──
+# amc itself doesn't consume any external package; any
+# amalgame.toml / amalgame.lock at the repo root is leftover
+# from hand-testing `amc add` inside the main repo.
+/amalgame.toml
+/amalgame.lock
+
 # ── Release artefacts ──
 # release.yml stages binaries here at tag time; nothing in this folder
 # should ever be committed (a stray amc-0.3.0-linux-x86_64.tar.gz used
