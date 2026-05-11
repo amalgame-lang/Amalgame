@@ -7,6 +7,64 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.5.2] — 2026-05-11
+
+The **"package CLI polish + amc test linking"** release. Two
+batches of work since v0.5.0 land under one tag (v0.5.1 was never
+cut as a standalone tag — its content is rolled into v0.5.2):
+
+### CLI grouping — `amc package <action>` (PR #303)
+
+The flat verbs `amc add` / `amc remove` / `amc search` / `amc list` /
+`amc update` / `amc cache` are now grouped under a single
+subcommand, dotnet-style, with `amc pkg` as a short alias:
+
+```
+amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.2.0
+amc package list
+amc package search redis
+amc pkg cache gc
+```
+
+**Breaking** vs v0.5.0: the flat forms are removed. Update any
+scripts or CI that called `amc add` to `amc package add`.
+
+### `amc test` is package-aware
+
+- **Auto-install missing deps** (PR #302) — before discovery, the
+  runner reads `amalgame.lock`, compares against the local cache,
+  and `git clone`s any missing tag into `~/.amalgame/packages/`.
+  No more "I cloned a fresh checkout and the tests fail until I
+  manually run `amc package add`".
+- **Auto-link vendored sources** (PR #304) — packages declaring
+  `[stdlib].sources` in their manifest get their `.c` files
+  pre-compiled to cached `/tmp/amc-pkg-*.o` objects, then spliced
+  into every test binary's `gcc` invocation alongside `-ldl
+  -lpthread`. SQLite tests now work out-of-the-box; future
+  vendoring backends (DuckDB etc.) get this for free.
+
+### Docs refresh (PR #305)
+
+- `03-cli-reference.md` documents the new `amc package <action>`
+  table.
+- `04-stdlib.md` SQLite section updated to the new install command
+  and explains the automatic linking.
+- `07-internals.md` `amc test` runner now documents the pre-compile
+  step + `amcRuntime` resolution + `-ldl -lpthread` link flags.
+- `ROADMAP_COMPLET.md` ticks the package-manager item off the
+  planned list.
+
+### Behind the scenes
+
+- `LoadedPackage` carries a `Sources: List<string>` field populated
+  from `[stdlib].sources` in each package's manifest.
+- New helper `Program.PreCompilePackageSources(registry,
+  amcRuntime)` walks the registry once per `amc test` run.
+- `RunTest` resolves `amcRuntime` once up front (env →
+  `dirname(amc)` → `./runtime`) instead of per-test-file.
+
+---
+
 ## [v0.5.0] — 2026-05-11
 
 The **"package manager + ecosystem launch"** release. v0.5 is the
@@ -1742,6 +1800,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
   (its `set -e` no longer trips on a half-failing suite).
 
 [v0.5.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.0
+[v0.5.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.2
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
