@@ -91,13 +91,14 @@ package maintainers, Homebrew, MSYS2, etc.) — not on Amalgame.
 
 ### Vendored in this repository
 
-These are included as source files inside the repo and ship in
-every release tarball. We must preserve their original notices /
-licence text, which lives in the files themselves.
+No vendored upstream sources ship in the main repo. Optional
+backends with vendored amalgamations (currently SQLite) live in
+their own opt-in packages, where they carry their own
+third-party-licence notice.
 
-| Component | Path | Licence | Source | What Amalgame must do |
-|-----------|------|---------|--------|------------------------|
-| **SQLite 3 amalgamation** (`sqlite3.c` + `sqlite3.h`) | `runtime/Amalgame_Database/sqlite/` | Public domain (explicit dedication, see header of `sqlite3.c`) | https://sqlite.org/amalgamation.html | None required by the dedication. We preserve the upstream file header as a courtesy and pin the version in commit messages. |
+| Package | Vendored content | Notice |
+|---------|------------------|--------|
+| `amalgame-lang/amalgame-database-sqlite` (since v0.1.0) | SQLite 3 amalgamation (public-domain dedication) | https://github.com/amalgame-lang/amalgame-database-sqlite/blob/main/NOTICE.md |
 
 ### Build-time tools not bundled in any release
 
