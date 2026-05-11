@@ -114,6 +114,10 @@ public class CGen {
     public PkgFuncs:      List<string>
     public PkgFuncCTypes: List<string>
     public PkgHeaders:    List<string>
+    // Parallel to PkgClasses: stores the namespace each registered
+    // class came from (e.g. "Amalgame.Database.NoSQL.Redis"), so
+    // the isStdlib short-circuit can mangle calls correctly.
+    public PkgClassNs:    List<string>
 
     public CGen() {
         this.Out            = new Emitter()
@@ -137,6 +141,7 @@ public class CGen {
         this.PkgFuncs          = new List<string>()
         this.PkgFuncCTypes     = new List<string>()
         this.PkgHeaders        = new List<string>()
+        this.PkgClassNs        = new List<string>()
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -1275,19 +1280,39 @@ public class CGen {
         this.PkgFuncs      = new List<string>()
         this.PkgFuncCTypes = new List<string>()
         this.PkgHeaders    = new List<string>()
+        this.PkgClassNs    = new List<string>()
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
             this.PkgClasses.Add(p.ClassName)
+            this.PkgClassNs.Add(p.Ns)
             this.PkgHeaders.Add(p.Header)
+            // C symbols use the full namespace-mangled form so
+            // packages can't collide at link time when two of them
+            // happen to expose the same short class name.
+            //   Redis.Open → Amalgame_Database_NoSQL_Redis_Open
             let fn: int = p.FuncNames.Count()
             for j in 0..fn {
                 let fName: string = p.FuncNames.Get(j)
                 let cType: string = p.FuncRets.Get(j)
-                this.PkgFuncs.Add(p.ClassName + "_" + fName)
+                let mangled: string = PackageRegistry.ManglePackageSymbol(p.Ns, fName)
+                this.PkgFuncs.Add(mangled)
                 this.PkgFuncCTypes.Add(cType)
             }
         }
+    }
+
+    // Look up the mangled-C-symbol prefix for a registered package
+    // class. Returns "" if the class isn't in the registry.
+    private string PkgClassMangledPrefix(string tname) {
+        let n: int = this.PkgClasses.Count()
+        for i in 0..n {
+            if (this.PkgClasses.Get(i) == tname) {
+                let ns: string = this.PkgClassNs.Get(i)
+                return String_Replace(ns, ".", "_")
+            }
+        }
+        return ""
     }
 
     private void EmitForwardDecl(AstNode decl) {
@@ -3184,21 +3209,20 @@ public class CGen {
                     let firstChar = String_Substring(tname, 0, 1)
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
-                        // Stdlib classes are never namespace-prefixed
-                        var isStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service"
-                        if (!isStdlib) {
-                            // v0.5: also match classes installed via
-                            // `amc add`. Same call lowering rule —
-                            // ClassName.Method → ClassName_Method —
-                            // since packages declare their isStdlib
-                            // facade in the same flat-symbol style.
-                            let pkgClsN: int = this.PkgClasses.Count()
-                            for pci in 0..pkgClsN {
-                                if (this.PkgClasses.Get(pci) == tname) { isStdlib = true }
-                            }
-                        }
-                        if (isStdlib) {
+                        // Core stdlib classes lower to the flat
+                        // `ClassName_Method` symbol — they're
+                        // single-author and have no collision risk.
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service"
+                        if (isCoreStdlib) {
                             return tname + "_" + mname
+                        }
+                        // v0.5 packages: namespace-mangled form so
+                        // two packages that happen to expose the
+                        // same short class name can't collide.
+                        //   Redis.Open → Amalgame_Database_NoSQL_Redis_Open
+                        let mangledPrefix: string = this.PkgClassMangledPrefix(tname)
+                        if (String_Length(mangledPrefix) > 0) {
+                            return mangledPrefix + "_" + mname
                         }
                         // Static call: ClassName.Method → Ns_ClassName_Method
                         return this.SymName(tname) + "_" + mname

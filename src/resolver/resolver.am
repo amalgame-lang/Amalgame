@@ -250,19 +250,24 @@ public class FullResolver {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
-            // Class name as type-global.
+            // Class name as type-global (kept SHORT — user code
+            // imports the namespace and refers to the class by
+            // its short name; the cgen mangles at call sites).
             this.DeclareGlobal(p.ClassName, "type", false)
             this.PkgClasses.Add(p.ClassName)
-            // Each function as a runtime global with its Amalgame-
-            // side return type derived from the manifest's `returns`.
+            // Each function as a runtime global. The C symbol is
+            // mangled with the full package namespace so two
+            // packages declaring the same short class can coexist
+            // without collision at link time.
+            //   Redis.Open → Amalgame_Database_NoSQL_Redis_Open
             let fn: int = p.FuncNames.Count()
             for j in 0..fn {
                 let fName: string = p.FuncNames.Get(j)
                 let cType: string = p.FuncRets.Get(j)
-                let fullName: string = p.ClassName + "_" + fName
+                let mangled: string = PackageRegistry.ManglePackageSymbol(p.Ns, fName)
                 let amType: string = PackageRegistry.AmalgameTypeFromC(cType)
-                this.DeclareGlobal(fullName, amType, false)
-                this.PkgFuncs.Add(fullName)
+                this.DeclareGlobal(mangled, amType, false)
+                this.PkgFuncs.Add(mangled)
                 this.PkgFuncCTypes.Add(cType)
             }
         }
