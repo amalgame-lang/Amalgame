@@ -433,6 +433,14 @@ public class Program {
             Exit_Set(AddCommand.RunSearch(argc))
             return
         }
+        if (Args_Get(1) == "list") {
+            Exit_Set(AddCommand.RunList(argc))
+            return
+        }
+        if (Args_Get(1) == "remove") {
+            Exit_Set(AddCommand.RunRemove(argc))
+            return
+        }
 
         let inputFiles = new List<string>()
         var outputName = "a.out"
