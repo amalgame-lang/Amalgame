@@ -448,7 +448,7 @@ lsp_exit='{"jsonrpc":"2.0","method":"exit"}'
 
 lsp_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
 
-run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1,"hoverProvider":true,"definitionProvider":true,"declarationProvider":true,"typeDefinitionProvider":true,"documentSymbolProvider":true,"workspaceSymbolProvider":true,"referencesProvider":true,"renameProvider":{"prepareProvider":true},"callHierarchyProvider":true,"inlayHintProvider":true,"codeActionProvider":true,"completionProvider":{"triggerCharacters":["."]}}' "$lsp_seq"
+run_lsp_check "lsp: initialize reply"   '"capabilities":{"textDocumentSync":1,"hoverProvider":true,"definitionProvider":true,"declarationProvider":true,"typeDefinitionProvider":true,"documentSymbolProvider":true,"workspaceSymbolProvider":true,"referencesProvider":true,"renameProvider":{"prepareProvider":true},"callHierarchyProvider":true,"inlayHintProvider":true,"codeActionProvider":true,"foldingRangeProvider":true,"completionProvider":{"triggerCharacters":["."]}}' "$lsp_seq"
 run_lsp_check "lsp: publishDiagnostics" '"method":"textDocument/publishDiagnostics"' "$lsp_seq"
 run_lsp_check "lsp: error in diag"      'thisDoesNotExist'                          "$lsp_seq"
 run_lsp_check "lsp: shutdown reply"     '"id":2,"result":null'                      "$lsp_seq"
@@ -465,6 +465,23 @@ lsp_query_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_ok"; lsp_frame "$lsp
 run_lsp_check "lsp: hover has contents"   '"id":3,"result":{"contents"'                  "$lsp_query_seq"
 run_lsp_check "lsp: completion has items" '"id":4,"result":{"isIncomplete":false,"items"' "$lsp_query_seq"
 run_lsp_check "lsp: completion lists Console" '"label":"Console"'                        "$lsp_query_seq"
+
+# foldingRange — a fixture with two imports, a 3-line comment
+# header, and a class with a nested method body. Exercises all
+# three fold flavours (region / comment / imports) in one shot.
+lsp_open_fold='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_fold.am","languageId":"amalgame","version":1,"text":"import Amalgame.Console\nimport Amalgame.String\n\n// header A\n// header B\n// header C\nclass Foo {\n    function Bar() {\n        let x = 1\n        let y = 2\n    }\n}\n"}}}'
+lsp_fold='{"jsonrpc":"2.0","id":5,"method":"textDocument/foldingRange","params":{"textDocument":{"uri":"file:///tmp/lsp_fold.am"}}}'
+
+lsp_fold_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_fold"; lsp_frame "$lsp_fold"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# Method body is lines 8..11 (1-indexed) → 7..9 (LSP, end-1 hides `}`).
+run_lsp_check "lsp: folding method body"   '"id":5,"result":[{"startLine":7,"endLine":9}'              "$lsp_fold_seq"
+# Class body is lines 7..12 → 6..10.
+run_lsp_check "lsp: folding class body"    '{"startLine":6,"endLine":10}'                              "$lsp_fold_seq"
+# 3-line comment header on lines 4..6 → 3..5.
+run_lsp_check "lsp: folding comment run"   '{"startLine":3,"endLine":5,"kind":"comment"}'              "$lsp_fold_seq"
+# 2-line import group on lines 1..2 → 0..1.
+run_lsp_check "lsp: folding import run"    '{"startLine":0,"endLine":1,"kind":"imports"}'              "$lsp_fold_seq"
 
 # ── amc migrate ────────────────────────────────────────
 echo ""
