@@ -18804,6 +18804,7 @@ Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ParseWithError(code_string s
 static Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_RunParse(Amalgame_Compiler_TomlParser* p, code_string source);
 AmalgameList* Amalgame_Compiler_Toml_ReadHeaderPath(Amalgame_Compiler_TomlParser* p);
 Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_NavigateOrCreate(Amalgame_Compiler_TomlValue* root, AmalgameList* path);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_AppendArrayTable(Amalgame_Compiler_TomlValue* root, AmalgameList* path);
 Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadValue(Amalgame_Compiler_TomlParser* p);
 Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadArray(Amalgame_Compiler_TomlParser* p);
 Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadInlineTable(Amalgame_Compiler_TomlParser* p);
@@ -18851,6 +18852,11 @@ static Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_RunParse(Amalgame_Com
         code_string __attribute__((unused)) c = Amalgame_Compiler_TomlParser_Peek(p);
         if (code_string_equals(c, "[")) {
             p->Pos = p->Pos + 1;
+            code_bool __attribute__((unused)) isArrayHeader = 0;
+            if (code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "[")) {
+                isArrayHeader = 1;
+                p->Pos = p->Pos + 1;
+            }
             Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
             AmalgameList* __attribute__((unused)) path = Amalgame_Compiler_Toml_ReadHeaderPath(p);
             if (AmalgameList_count(path) == 0) {
@@ -18862,8 +18868,19 @@ static Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_RunParse(Amalgame_Com
             } else {
                 p->Pos = p->Pos + 1;
             }
+            if (isArrayHeader) {
+                if (!code_string_equals(Amalgame_Compiler_TomlParser_Peek(p), "]")) {
+                    Amalgame_Compiler_TomlParser_Fail(p, "expected ']]' to close array-of-tables header");
+                } else {
+                    p->Pos = p->Pos + 1;
+                }
+            }
             Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
-            current = Amalgame_Compiler_Toml_NavigateOrCreate(root, path);
+            if (isArrayHeader) {
+                current = Amalgame_Compiler_Toml_AppendArrayTable(root, path);
+            } else {
+                current = Amalgame_Compiler_Toml_NavigateOrCreate(root, path);
+            }
         } else {
             code_string __attribute__((unused)) key = Amalgame_Compiler_TomlParser_ReadKey(p);
             Amalgame_Compiler_TomlParser_SkipInlineSpace(p);
@@ -18926,6 +18943,40 @@ Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_NavigateOrCreate(Amalgame_Co
         }
     }
     return cur;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_AppendArrayTable(Amalgame_Compiler_TomlValue* root, AmalgameList* path) {
+    (void)root;
+    (void)path;
+    i64 __attribute__((unused)) n = AmalgameList_count(path);
+    if (n == 0) {
+        return root;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) parent = root;
+    i64 __attribute__((unused)) parentDepth = n - 1;
+    for (i64 i = 0; i < parentDepth; i++) {
+        code_string __attribute__((unused)) seg = (code_string)AmalgameList_get(path, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) existing = Amalgame_Compiler_TomlValue_Get(parent, seg);
+        if (Amalgame_Compiler_TomlValue_IsTable(existing)) {
+            parent = existing;
+        } else {
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) fresh = Amalgame_Compiler_TomlValue_new();
+            Amalgame_Compiler_TomlValue_BecomeTable(fresh);
+            Amalgame_Compiler_TomlValue_SetEntry(parent, seg, fresh);
+            parent = fresh;
+        }
+    }
+    code_string __attribute__((unused)) lastSeg = (code_string)AmalgameList_get(path, n - 1);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) arr = Amalgame_Compiler_TomlValue_Get(parent, lastSeg);
+    if (!Amalgame_Compiler_TomlValue_IsArray(arr)) {
+        arr = Amalgame_Compiler_TomlValue_new();
+        Amalgame_Compiler_TomlValue_BecomeArray(arr);
+        Amalgame_Compiler_TomlValue_SetEntry(parent, lastSeg, arr);
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) newTable = Amalgame_Compiler_TomlValue_new();
+    Amalgame_Compiler_TomlValue_BecomeTable(newTable);
+    Amalgame_Compiler_TomlValue_AppendItem(arr, newTable);
+    return newTable;
 }
 
 Amalgame_Compiler_TomlValue* Amalgame_Compiler_Toml_ReadValue(Amalgame_Compiler_TomlParser* p) {
