@@ -19558,6 +19558,11 @@ code_string Amalgame_Compiler_AddCommand_SlugFromUrl(code_string url);
 code_string Amalgame_Compiler_AddCommand_DepNameFromSlug(code_string slug);
 code_string Amalgame_Compiler_AddCommand_StripV(code_string tag);
 code_string Amalgame_Compiler_AddCommand_CacheRoot();
+code_string Amalgame_Compiler_AddCommand_IndexCachePath();
+static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs);
+code_string Amalgame_Compiler_AddCommand_FetchIndex();
+i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc);
+code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec);
 code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag);
 code_string Amalgame_Compiler_AddCommand_ExtractRevFromDirName(code_string dir);
 code_bool Amalgame_Compiler_AddCommand_UpdateProjectManifest(code_string depName, code_string url, code_string tag);
@@ -19619,9 +19624,10 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc) {
         Amalgame_Compiler_AddCommand_PrintUsage();
         return 2;
     }
-    AmalgameList* __attribute__((unused)) parsed = Amalgame_Compiler_AddCommand_ParseSpec(spec);
+    code_string __attribute__((unused)) resolvedSpec = Amalgame_Compiler_AddCommand_ResolveShortname(spec);
+    AmalgameList* __attribute__((unused)) parsed = Amalgame_Compiler_AddCommand_ParseSpec(resolvedSpec);
     if (AmalgameList_count(parsed) != 2) {
-        Console_WriteError(code_string_concat(code_string_concat("expected <git-url>@<tag> — got '", spec), "'"));
+        Console_WriteError(code_string_concat(code_string_concat("expected <git-url>@<tag> or <shortname>@<tag> — got '", spec), "'"));
         return 2;
     }
     code_string __attribute__((unused)) url = (code_string)AmalgameList_get(parsed, 0);
@@ -19864,6 +19870,165 @@ code_string Amalgame_Compiler_AddCommand_CacheRoot() {
         return code_string_concat(home, "/.amalgame/packages");
     }
     return "/tmp/amalgame-packages";
+}
+
+code_string Amalgame_Compiler_AddCommand_IndexCachePath() {
+    code_string __attribute__((unused)) home = Env_Get("HOME");
+    if (String_Length(home) > 0) {
+        return code_string_concat(home, "/.amalgame/cache/packages-index.toml");
+    }
+    return "/tmp/amalgame-index.toml";
+}
+
+static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs) {
+    (void)lhs;
+    if (String_IndexOf(lhs, "/") >= 0) {
+        return 0;
+    }
+    if (String_IndexOf(lhs, ".") >= 0) {
+        return 0;
+    }
+    return String_Length(lhs) > 0;
+}
+
+code_string Amalgame_Compiler_AddCommand_FetchIndex() {
+    code_string __attribute__((unused)) cachePath = Amalgame_Compiler_AddCommand_IndexCachePath();
+    if (File_Exists(cachePath)) {
+        return File_ReadAll(cachePath);
+    }
+    code_string __attribute__((unused)) cacheDir = String_Substring(cachePath, 0, String_LastIndexOf(cachePath, "/"));
+    i64 __attribute__((unused)) _mkdir = Process_Run(code_string_concat(code_string_concat("mkdir -p '", cacheDir), "'"));
+    code_string __attribute__((unused)) indexUrl = "https://raw.githubusercontent.com/amalgame-lang/packages-index/main/packages.toml";
+    code_string __attribute__((unused)) cmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat("curl -fsSL '", indexUrl), "' -o '"), cachePath), "' 2>&1");
+    i64 __attribute__((unused)) exit = Process_Run(cmd);
+    if (exit != 0 || !File_Exists(cachePath)) {
+        return "";
+    }
+    return File_ReadAll(cachePath);
+}
+
+i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) keyword = "";
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc search [keyword]");
+            Console_WriteError("");
+            Console_WriteError("List packages in amalgame-lang/packages-index.");
+            Console_WriteError("With a keyword, filter by name + description substring.");
+            return 0;
+        }
+        if (String_Length(keyword) == 0) {
+            keyword = a;
+        }
+        i = i + 1;
+    }
+    code_string __attribute__((unused)) kw = String_ToLower(keyword);
+    code_string __attribute__((unused)) indexSrc = Amalgame_Compiler_AddCommand_FetchIndex();
+    if (String_Length(indexSrc) == 0) {
+        Console_WriteError("could not fetch packages-index");
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(indexSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        Console_WriteError("packages-index parse error");
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgArr = Amalgame_Compiler_TomlValue_Get(doc, "package");
+    if (!Amalgame_Compiler_TomlValue_IsArray(pkgArr)) {
+        Console_WriteError("packages-index has no [[package]] entries");
+        return 1;
+    }
+    i64 __attribute__((unused)) n = Amalgame_Compiler_TomlValue_Count(pkgArr);
+    i64 __attribute__((unused)) matches = 0;
+    for (i64 j = 0; j < n; j++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(pkgArr, j);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) nameTv = Amalgame_Compiler_TomlValue_Get(entry, "name");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) descTv = Amalgame_Compiler_TomlValue_Get(entry, "description");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) tierTv = Amalgame_Compiler_TomlValue_Get(entry, "tier");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) urlTv = Amalgame_Compiler_TomlValue_Get(entry, "url");
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) licTv = Amalgame_Compiler_TomlValue_Get(entry, "license");
+        code_string __attribute__((unused)) nameS = Amalgame_Compiler_TomlValue_AsString(nameTv);
+        code_string __attribute__((unused)) descS = Amalgame_Compiler_TomlValue_AsString(descTv);
+        code_string __attribute__((unused)) tierS = Amalgame_Compiler_TomlValue_AsString(tierTv);
+        code_string __attribute__((unused)) urlS = Amalgame_Compiler_TomlValue_AsString(urlTv);
+        code_string __attribute__((unused)) licS = Amalgame_Compiler_TomlValue_AsString(licTv);
+        code_bool __attribute__((unused)) skip = 0;
+        if (String_Length(kw) > 0) {
+            code_string __attribute__((unused)) nameL = String_ToLower(nameS);
+            code_string __attribute__((unused)) descL = String_ToLower(descS);
+            if (String_IndexOf(nameL, kw) < 0 && String_IndexOf(descL, kw) < 0) {
+                skip = 1;
+            }
+        }
+        if (skip) {
+            continue;
+        }
+        code_string __attribute__((unused)) badge = "  ";
+        if (code_string_equals(tierS, "official")) {
+            badge = "✓ ";
+        }
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(badge, nameS), " — "), descS));
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("    ", urlS), " ("), tierS), ", "), licS), ")"));
+        Console_WriteLine(code_string_concat(code_string_concat("    amc add ", nameS), "@<tag>"));
+        Console_WriteLine("");
+        matches = matches + 1;
+    }
+    if (matches == 0) {
+        if (String_Length(kw) > 0) {
+            Console_WriteLine(code_string_concat(code_string_concat("No packages match '", keyword), "'."));
+        } else {
+            Console_WriteLine("(packages-index is empty)");
+        }
+        return 1;
+    }
+    return 0;
+}
+
+code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec) {
+    (void)spec;
+    i64 __attribute__((unused)) atIdx = String_LastIndexOf(spec, "@");
+    if (atIdx <= 0) {
+        return spec;
+    }
+    i64 __attribute__((unused)) n = String_Length(spec);
+    code_string __attribute__((unused)) lhs = String_Substring(spec, 0, atIdx);
+    code_string __attribute__((unused)) rhs = String_Substring(spec, atIdx + 1, n - atIdx - 1);
+    if (!Amalgame_Compiler_AddCommand_IsShortname(lhs)) {
+        return spec;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat("Resolving shortname '", lhs), "' via amalgame-lang/packages-index..."));
+    code_string __attribute__((unused)) indexSrc = Amalgame_Compiler_AddCommand_FetchIndex();
+    if (String_Length(indexSrc) == 0) {
+        Console_WriteError(code_string_concat(code_string_concat("warning: could not fetch packages-index — passing '", lhs), "' through as URL"));
+        return spec;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(indexSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        Console_WriteError("warning: packages-index could not be parsed — passing through");
+        return spec;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgArr = Amalgame_Compiler_TomlValue_Get(doc, "package");
+    if (!Amalgame_Compiler_TomlValue_IsArray(pkgArr)) {
+        return spec;
+    }
+    i64 __attribute__((unused)) pkgN = Amalgame_Compiler_TomlValue_Count(pkgArr);
+    for (i64 i = 0; i < pkgN; i++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(pkgArr, i);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entryName = Amalgame_Compiler_TomlValue_Get(entry, "name");
+        if (code_string_equals(Amalgame_Compiler_TomlValue_AsString(entryName), lhs)) {
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) entryUrl = Amalgame_Compiler_TomlValue_Get(entry, "url");
+            Amalgame_Compiler_TomlValue* __attribute__((unused)) entryTier = Amalgame_Compiler_TomlValue_Get(entry, "tier");
+            code_string __attribute__((unused)) urlStr = Amalgame_Compiler_TomlValue_AsString(entryUrl);
+            code_string __attribute__((unused)) tierStr = Amalgame_Compiler_TomlValue_AsString(entryTier);
+            Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  → ", urlStr), " ("), tierStr), ")"));
+            return code_string_concat(code_string_concat(urlStr, "@"), rhs);
+        }
+    }
+    Console_WriteError(code_string_concat(code_string_concat("'", lhs), "' not found in packages-index — passing through as URL"));
+    return spec;
 }
 
 code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag) {
@@ -20362,6 +20527,10 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "add")) {
         Exit_Set(Amalgame_Compiler_AddCommand_Run(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "search")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_RunSearch(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
