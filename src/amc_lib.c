@@ -19550,7 +19550,7 @@ struct _Amalgame_Compiler_AddCommand {
 };
 
 void Amalgame_Compiler_AddCommand_PrintUsage();
-i64 Amalgame_Compiler_AddCommand_Run(i64 argc);
+i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx);
 AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec);
 code_bool Amalgame_Compiler_AddCommand_IsSafeUrl(code_string url);
 code_bool Amalgame_Compiler_AddCommand_IsSafeTag(code_string tag);
@@ -19561,14 +19561,16 @@ code_string Amalgame_Compiler_AddCommand_CacheRoot();
 code_string Amalgame_Compiler_AddCommand_IndexCachePath();
 static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs);
 code_string Amalgame_Compiler_AddCommand_FetchIndex();
+i64 Amalgame_Compiler_AddCommand_RunPackage(i64 argc);
+void Amalgame_Compiler_AddCommand_PrintPackageUsage();
 i64 Amalgame_Compiler_AddCommand_EnsureInstalled();
-i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc);
-i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc);
+i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc, i64 startIdx);
+i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc, i64 startIdx);
 i64 Amalgame_Compiler_AddCommand_RunInstallSpec(code_string spec);
-i64 Amalgame_Compiler_AddCommand_RunList(i64 argc);
-i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc);
+i64 Amalgame_Compiler_AddCommand_RunList(i64 argc, i64 startIdx);
+i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc, i64 startIdx);
 void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_TomlValue* depsTable, code_string lockPath);
-i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc);
+i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc, i64 startIdx);
 code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec);
 code_string Amalgame_Compiler_AddCommand_FindExistingForTag(code_string baseDir, code_string tag);
 code_string Amalgame_Compiler_AddCommand_ExtractRevFromDirName(code_string dir);
@@ -19581,14 +19583,14 @@ Amalgame_Compiler_AddCommand* Amalgame_Compiler_AddCommand_new() {
 }
 
 void Amalgame_Compiler_AddCommand_PrintUsage() {
-    Console_WriteError("Usage: amc add <git-url>@<tag>");
+    Console_WriteError("Usage: amc package add <git-url>@<tag>");
     Console_WriteError("");
     Console_WriteError("Install an Amalgame package from a Git URL into the user cache");
     Console_WriteError("and record it in amalgame.toml + amalgame.lock.");
     Console_WriteError("");
     Console_WriteError("Examples:");
-    Console_WriteError("  amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0");
-    Console_WriteError("  amc add gitlab.com/foo/bar@v1.2.3");
+    Console_WriteError("  amc package add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0");
+    Console_WriteError("  amc package add gitlab.com/foo/bar@v1.2.3");
     Console_WriteError("");
     Console_WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/");
     Console_WriteError("");
@@ -19602,10 +19604,11 @@ void Amalgame_Compiler_AddCommand_PrintUsage() {
     Console_WriteError("  -h, --help    Print this help and exit.");
 }
 
-i64 Amalgame_Compiler_AddCommand_Run(i64 argc) {
+i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
     (void)argc;
+    (void)startIdx;
     code_string __attribute__((unused)) spec = "";
-    i64 __attribute__((unused)) i = 2;
+    i64 __attribute__((unused)) i = startIdx;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
         if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
@@ -19916,6 +19919,57 @@ code_string Amalgame_Compiler_AddCommand_FetchIndex() {
     return File_ReadAll(cachePath);
 }
 
+i64 Amalgame_Compiler_AddCommand_RunPackage(i64 argc) {
+    (void)argc;
+    if (argc < 3) {
+        Amalgame_Compiler_AddCommand_PrintPackageUsage();
+        return 2;
+    }
+    code_string __attribute__((unused)) sub = Args_Get(2);
+    if (code_string_equals(sub, "-h") || code_string_equals(sub, "--help")) {
+        Amalgame_Compiler_AddCommand_PrintPackageUsage();
+        return 0;
+    }
+    if (code_string_equals(sub, "add")) {
+        return Amalgame_Compiler_AddCommand_Run(argc, 3);
+    }
+    if (code_string_equals(sub, "search")) {
+        return Amalgame_Compiler_AddCommand_RunSearch(argc, 3);
+    }
+    if (code_string_equals(sub, "list")) {
+        return Amalgame_Compiler_AddCommand_RunList(argc, 3);
+    }
+    if (code_string_equals(sub, "remove")) {
+        return Amalgame_Compiler_AddCommand_RunRemove(argc, 3);
+    }
+    if (code_string_equals(sub, "update")) {
+        return Amalgame_Compiler_AddCommand_RunUpdate(argc, 3);
+    }
+    if (code_string_equals(sub, "cache")) {
+        return Amalgame_Compiler_AddCommand_RunCache(argc, 3);
+    }
+    Console_WriteError(code_string_concat(code_string_concat("amc package: unknown subcommand '", sub), "'"));
+    Amalgame_Compiler_AddCommand_PrintPackageUsage();
+    return 2;
+}
+
+void Amalgame_Compiler_AddCommand_PrintPackageUsage() {
+    Console_WriteError("Usage: amc package <subcommand> [args...]");
+    Console_WriteError("       amc pkg     <subcommand> [args...]");
+    Console_WriteError("");
+    Console_WriteError("Subcommands:");
+    Console_WriteError("  add <name|url>@<tag>          Install a package");
+    Console_WriteError("  search [keyword]              List or filter packages-index");
+    Console_WriteError("  list                          Show installed deps");
+    Console_WriteError("  remove <name> [<name>...]     Strip dep(s) from amalgame.toml + lock");
+    Console_WriteError("  update <name>@<tag>           Bump a pinned tag");
+    Console_WriteError("  cache clear [--all]           Drop cached index / packages");
+    Console_WriteError("");
+    Console_WriteError("Example:");
+    Console_WriteError("  amc package add redis@v0.2.0");
+    Console_WriteError("  amc package list");
+}
+
 i64 Amalgame_Compiler_AddCommand_EnsureInstalled() {
     code_string __attribute__((unused)) lockPath = "amalgame.lock";
     if (!File_Exists(lockPath)) {
@@ -19959,9 +20013,9 @@ i64 Amalgame_Compiler_AddCommand_EnsureInstalled() {
         if (String_Length(amcExe) == 0) {
             amcExe = "amc";
         }
-        i64 __attribute__((unused)) exit = Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", amcExe), "' add '"), gitS), "@"), tagS), "'"));
+        i64 __attribute__((unused)) exit = Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", amcExe), "' package add '"), gitS), "@"), tagS), "'"));
         if (exit != 0) {
-            Console_WriteError(code_string_concat(code_string_concat(code_string_concat("amc add failed for ", gitS), "@"), tagS));
+            Console_WriteError(code_string_concat(code_string_concat(code_string_concat("amc package add failed for ", gitS), "@"), tagS));
             return -1;
         }
         installed = installed + 1;
@@ -19969,21 +20023,22 @@ i64 Amalgame_Compiler_AddCommand_EnsureInstalled() {
     return installed;
 }
 
-i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc) {
+i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc, i64 startIdx) {
     (void)argc;
-    if (argc < 3) {
-        Console_WriteError("Usage: amc cache <subcmd>");
+    (void)startIdx;
+    if (argc <= startIdx) {
+        Console_WriteError("Usage: amc package cache <subcmd>");
         Console_WriteError("");
         Console_WriteError("Subcommands:");
         Console_WriteError("  clear         drop the packages-index cache");
         Console_WriteError("  clear --all   also wipe ~/.amalgame/packages/");
         return 2;
     }
-    code_string __attribute__((unused)) sub = Args_Get(2);
+    code_string __attribute__((unused)) sub = Args_Get(startIdx);
     if (code_string_equals(sub, "clear")) {
         code_bool __attribute__((unused)) alsoPackages = 0;
         code_bool __attribute__((unused)) helpAsked = 0;
-        i64 __attribute__((unused)) i = 3;
+        i64 __attribute__((unused)) i = startIdx + 1;
         while (i < argc) {
             code_string __attribute__((unused)) a = Args_Get(i);
             if (code_string_equals(a, "--all")) {
@@ -20016,17 +20071,18 @@ i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc) {
     return 2;
 }
 
-i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc) {
+i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc, i64 startIdx) {
     (void)argc;
+    (void)startIdx;
     code_string __attribute__((unused)) spec = "";
-    i64 __attribute__((unused)) i = 2;
+    i64 __attribute__((unused)) i = startIdx;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
         if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
-            Console_WriteError("Usage: amc update <name>@<tag>");
+            Console_WriteError("Usage: amc package update <name>@<tag>");
             Console_WriteError("");
             Console_WriteError("Bump the pinned tag for the named dep. Equivalent to");
-            Console_WriteError("`amc remove <name>` followed by `amc add <name>@<tag>`.");
+            Console_WriteError("`amc package remove <name>` then `amc package add <name>@<tag>`.");
             return 0;
         }
         if (String_StartsWith(a, "-")) {
@@ -20061,7 +20117,7 @@ i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc) {
     }
     Amalgame_Compiler_TomlValue* __attribute__((unused)) deps = Amalgame_Compiler_TomlValue_Get(doc, "dependencies");
     if (!Amalgame_Compiler_TomlValue_IsTable(deps) || !Amalgame_Compiler_TomlValue_Has(deps, depName)) {
-        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", depName), "' is not a declared dependency. Use `amc add "), spec), "` to install it fresh."));
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", depName), "' is not a declared dependency. Use `amc package add "), spec), "` to install it fresh."));
         return 1;
     }
     Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_Get(deps, depName);
@@ -20094,11 +20150,12 @@ i64 Amalgame_Compiler_AddCommand_RunInstallSpec(code_string spec) {
     if (String_Length(amcPath) == 0) {
         amcPath = "amc";
     }
-    return Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", amcPath), "' add '"), url), "@"), tag), "'"));
+    return Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", amcPath), "' package add '"), url), "@"), tag), "'"));
 }
 
-i64 Amalgame_Compiler_AddCommand_RunList(i64 argc) {
+i64 Amalgame_Compiler_AddCommand_RunList(i64 argc, i64 startIdx) {
     (void)argc;
+    (void)startIdx;
     Amalgame_Compiler_PackageRegistry* __attribute__((unused)) reg = Amalgame_Compiler_PackageRegistry_Load();
     i64 __attribute__((unused)) n = AmalgameList_count(reg->Packages);
     if (n == 0) {
@@ -20118,17 +20175,18 @@ i64 Amalgame_Compiler_AddCommand_RunList(i64 argc) {
     return 0;
 }
 
-i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc) {
+i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc, i64 startIdx) {
     (void)argc;
+    (void)startIdx;
     AmalgameList* __attribute__((unused)) toRemove = AmalgameList_new();
-    i64 __attribute__((unused)) i = 2;
+    i64 __attribute__((unused)) i = startIdx;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
         if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
-            Console_WriteError("Usage: amc remove <dep-name> [<dep-name>...]");
+            Console_WriteError("Usage: amc package remove <dep-name> [<dep-name>...]");
             Console_WriteError("");
             Console_WriteError("Strip the named dep(s) from amalgame.toml + amalgame.lock.");
-            Console_WriteError("Cached package files are kept; `amc gc` (v0.5.x) cleans those.");
+            Console_WriteError("Cached package files are kept; `amc package gc` (v0.5.x) cleans those.");
             return 0;
         }
         if (String_StartsWith(a, "-")) {
@@ -20234,14 +20292,15 @@ void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_Toml
     code_bool __attribute__((unused)) _ok = File_WriteAll(lockPath, out);
 }
 
-i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc) {
+i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc, i64 startIdx) {
     (void)argc;
+    (void)startIdx;
     code_string __attribute__((unused)) keyword = "";
-    i64 __attribute__((unused)) i = 2;
+    i64 __attribute__((unused)) i = startIdx;
     while (i < argc) {
         code_string __attribute__((unused)) a = Args_Get(i);
         if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
-            Console_WriteError("Usage: amc search [keyword]");
+            Console_WriteError("Usage: amc package search [keyword]");
             Console_WriteError("");
             Console_WriteError("List packages in amalgame-lang/packages-index.");
             Console_WriteError("With a keyword, filter by name + description substring.");
@@ -20299,7 +20358,7 @@ i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc) {
         }
         Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(badge, nameS), " — "), descS));
         Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("    ", urlS), " ("), tierS), ", "), licS), ")"));
-        Console_WriteLine(code_string_concat(code_string_concat("    amc add ", nameS), "@<tag>"));
+        Console_WriteLine(code_string_concat(code_string_concat("    amc package add", nameS), "@<tag>"));
         Console_WriteLine("");
         matches = matches + 1;
     }
@@ -20872,28 +20931,9 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         Exit_Set(Amalgame_Compiler_NewCommand_Run(argc));
         return;
     }
-    if (code_string_equals(Args_Get(1), "add")) {
-        Exit_Set(Amalgame_Compiler_AddCommand_Run(argc));
-        return;
-    }
-    if (code_string_equals(Args_Get(1), "search")) {
-        Exit_Set(Amalgame_Compiler_AddCommand_RunSearch(argc));
-        return;
-    }
-    if (code_string_equals(Args_Get(1), "list")) {
-        Exit_Set(Amalgame_Compiler_AddCommand_RunList(argc));
-        return;
-    }
-    if (code_string_equals(Args_Get(1), "remove")) {
-        Exit_Set(Amalgame_Compiler_AddCommand_RunRemove(argc));
-        return;
-    }
-    if (code_string_equals(Args_Get(1), "update")) {
-        Exit_Set(Amalgame_Compiler_AddCommand_RunUpdate(argc));
-        return;
-    }
-    if (code_string_equals(Args_Get(1), "cache")) {
-        Exit_Set(Amalgame_Compiler_AddCommand_RunCache(argc));
+    code_string __attribute__((unused)) v1 = Args_Get(1);
+    if (code_string_equals(v1, "package") || code_string_equals(v1, "pkg")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_RunPackage(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
