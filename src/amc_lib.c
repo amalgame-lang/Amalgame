@@ -3905,6 +3905,10 @@ AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_Packag
 }
 
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot() {
+    code_string __attribute__((unused)) envOverride = Env_Get("AMALGAME_PACKAGES_DIR");
+    if (String_Length(envOverride) > 0) {
+        return envOverride;
+    }
     code_string __attribute__((unused)) home = Env_Get("HOME");
     if (String_Length(home) > 0) {
         return code_string_concat(home, "/.amalgame/packages");
