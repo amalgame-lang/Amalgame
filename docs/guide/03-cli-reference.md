@@ -42,7 +42,7 @@ the current working directory.
 
 | Action | Purpose |
 | ------ | ------- |
-| `add <git-url>@<tag>`  | Clone + validate + record dep. Accepts `<name>@<tag>` resolved via the curated index. |
+| `add <git-url>@<tag> [--no-precompile]`  | Clone + validate + record dep. Accepts `<name>@<tag>` resolved via the curated index. `--no-precompile` (v0.5.4+) skips the install-time compile of `[stdlib].sources` even if the manifest declares `precompile = true`. |
 | `remove <name>`        | Drop dep from manifest + lockfile. |
 | `search <keyword>`     | Substring match against descriptions of cached + indexed packages. |
 | `list`                 | Show installed packages with tier badge (official / community / unverified). |
@@ -98,6 +98,7 @@ Close = { returns = "void" }
 | `cflags`                         | `[stdlib]`  | v0.5.3 | Extra gcc flags for the package's `.c` sources                             |
 | `cxxflags`                       | `[stdlib]`  | v0.5.3 | Extra g++ flags for the package's `.cpp` / `.cc` / `.cxx` sources          |
 | `libs`                           | `[stdlib]`  | v0.5.3 | Bare lib names → `-l<name>` appended to every consumer's final link        |
+| `precompile`                     | `[stdlib]`  | v0.5.4 | When `true`, `amc package add` compiles sources at install time into `~/.amalgame/packages/.../build/<platform>/`. Subsequent `amc test`/`amc build` reuse the cached `.o`. Override with `--no-precompile`. |
 | `[stdlib.functions]`             | section     | v0.5.0 | `<Method> = { returns = "<C-type>" }` — populates the cgen's dispatch     |
 
 ## Options

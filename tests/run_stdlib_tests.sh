@@ -322,6 +322,16 @@ run_test "PR: detects .cxx"           "$SAMPLES/stdlib_package_registry.am" "[PA
 run_test "PR: .c not cxx"             "$SAMPLES/stdlib_package_registry.am" "[PASS] .c not cxx"            "" "$PR_EXTRA"
 run_test "PR: no cxx sources"         "$SAMPLES/stdlib_package_registry.am" "[PASS] no cxx sources"        "" "$PR_EXTRA"
 run_test "PR: CollectLibs"            "$SAMPLES/stdlib_package_registry.am" "[PASS] CollectLibs"           "" "$PR_EXTRA"
+# v0.5.4 — precompile flag + PkgDir + platform tag + Calibration.
+run_test "PR: precompile parsed"      "$SAMPLES/stdlib_package_registry.am" "[PASS] precompile parsed"     "" "$PR_EXTRA"
+run_test "PR: pkgdir populated"       "$SAMPLES/stdlib_package_registry.am" "[PASS] pkgdir populated"      "" "$PR_EXTRA"
+run_test "PR: platform tag shape"     "$SAMPLES/stdlib_package_registry.am" "[PASS] platform tag shape"    "" "$PR_EXTRA"
+run_test "PR: precompile cache path"  "$SAMPLES/stdlib_package_registry.am" "[PASS] precompile cache path" "" "$PR_EXTRA"
+run_test "PR: empty calib no eta"     "$SAMPLES/stdlib_package_registry.am" "[PASS] empty calibration no eta" "" "$PR_EXTRA"
+run_test "PR: sample counts"          "$SAMPLES/stdlib_package_registry.am" "[PASS] sample counts"         "" "$PR_EXTRA"
+run_test "PR: cxx eta"                "$SAMPLES/stdlib_package_registry.am" "[PASS] cxx eta"               "" "$PR_EXTRA"
+run_test "PR: c eta"                  "$SAMPLES/stdlib_package_registry.am" "[PASS] c eta"                 "" "$PR_EXTRA"
+run_test "PR: unknown lang no eta"    "$SAMPLES/stdlib_package_registry.am" "[PASS] unknown lang no eta"   "" "$PR_EXTRA"
 
 # ── PackageManager e2e (full pipeline) ────────────────
 # Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
