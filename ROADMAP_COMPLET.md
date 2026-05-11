@@ -480,9 +480,16 @@ before the next big language addition.
       branch in `main.am`, and a sample roundtrip test that
       scaffolds + compiles a fresh project under `/tmp`.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
-- [ ] **`amc add <pkg>`** — package manager (re-port of the
-      pre-self-host Vala implementation, available via the
-      `vala-bootstrap-final` git tag if revival is needed).
+- [x] **`amc package <action>`** (v0.5.0 → v0.5.2) — full package
+      manager. `add <git-url>@<tag>` clones + validates + records,
+      `remove` / `list` / `search` / `update` / `cache` round out
+      the CLI (PR #303 grouped them under `amc package`, alias
+      `amc pkg`). Storage at `~/.amalgame/packages/<host>/<owner>/
+      <repo>/<tag>_<sha>/`. `amalgame.toml` (deps) +
+      `amalgame.lock` (resolved SHAs) live in the project root.
+      `amc test` is package-aware: auto-installs missing deps
+      (v0.5.1) and links each package's `[stdlib].sources` `.c`
+      files into every test binary (v0.5.2).
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
@@ -740,6 +747,42 @@ implementation effort.
           delivery (MQTT 3.1.1).
       ~1 week of work; gates further DB / Messaging backends
       so we don't keep adding to the monolithic compiler tree.
+- [ ] **ORM layer(s) on top of the DB backends** — once the
+      package ecosystem has 2–3 SQL siblings (Postgres / DuckDB
+      alongside SQLite) the per-backend Open/Exec/QueryAll
+      surface starts wanting an ergonomic class-to-table layer.
+      Open design question: **one umbrella ORM** abstracting
+      every engine, or **per-family ORMs** (one for SQL, one
+      for NoSQL document stores, one for KV)?
+        - **Unified-ORM path** (à la Hibernate / SQLAlchemy /
+          Entity Framework) — one package
+          `amalgame-database-orm` providing a `[Table]`-style
+          decorator surface that dispatches to whatever
+          backend the user has installed (SQLite, Postgres,
+          MySQL, …). High consistency, but every SQL engine's
+          quirks (JSON columns, RETURNING, vendor functions)
+          leak into the abstraction.
+        - **Per-family path** (à la Diesel / Mongoid / RedisOM)
+          — separate `amalgame-database-orm-sql`,
+          `amalgame-database-orm-nosql`,
+          `amalgame-database-orm-kv` packages. Each focuses on
+          one paradigm's strengths. SQL ORM still dispatches
+          to SQLite / Postgres / MySQL backends via a thin
+          driver layer; NoSQL ORM targets Mongo / DynamoDB /
+          Cosmos. KV ORM (sometimes called "key-pattern
+          mapping") targets Redis / Memcached.
+        - **Middle ground**: one ORM crate per *backend* with
+          a shared protocol crate (`amalgame-database-orm-core`)
+          they all implement. Compatible with Cargo's split
+          between `diesel` core + `diesel_derives` + per-DB
+          backends.
+      Whatever shape lands first, it builds on top of the
+      backend packages — never inside them — so backends can
+      evolve their wire-level concerns independently of any
+      ORM choice. Tracked here to be discussed before any
+      backend's surface gets enriched in ways that lock in
+      an ORM shape (e.g. typed column accessors, prepared-
+      statement caches, transaction handles).
 - [ ] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
       extend the `Amalgame.Database.*` namespace with bindings to
       other relational engines. Each gets its own header

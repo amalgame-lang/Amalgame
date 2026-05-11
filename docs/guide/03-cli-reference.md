@@ -26,12 +26,33 @@ The runtime headers live in `runtime/` at the project root.
 | `test [<dir>]`         | Discover `*_test.am`, compile + run, aggregate         | `amc test --help` |
 | `lsp`                  | Workspace-aware LSP server over stdio JSON-RPC          | chap. 6 |
 | `new <name> [--template exe\|lib\|test]` | Scaffold a new project       | `amc new --help` |
+| `package <action>` (alias `pkg`) | Project package management (see below)        | `amc package --help` |
 | `migrate <file\|dir>`   | LLM-driven source-to-Amalgame translation               | chap. 8 |
 | `generate "<prompt>"`  | LLM-driven prose-to-Amalgame                            | chap. 8 |
 | `explain <file.am>`    | LLM-driven Amalgame-to-prose                            | chap. 8 |
 
 Each subcommand handles its own flags and exit codes; consult the
 referenced chapter or `--help` for the full surface.
+
+### `amc package <action>` (alias `amc pkg`)
+
+Project-local package operations. All actions read/write
+`amalgame.toml` (deps) and `amalgame.lock` (resolved Git SHAs) in
+the current working directory.
+
+| Action | Purpose |
+| ------ | ------- |
+| `add <git-url>@<tag>`  | Clone + validate + record dep. Accepts `<name>@<tag>` resolved via the curated index. |
+| `remove <name>`        | Drop dep from manifest + lockfile. |
+| `search <keyword>`     | Substring match against descriptions of cached + indexed packages. |
+| `list`                 | Show installed packages with tier badge (official / community / unverified). |
+| `update [<name>]`      | Bump a single dep, or all if no name given. |
+| `cache <ls\|gc>`       | Inspect / prune `~/.amalgame/packages/`. |
+
+`amc test` auto-installs any missing deps before running the suite,
+and links each package's `[stdlib].sources` vendored C objects into
+every test binary — backends like SQLite "just work" without manual
+`gcc` flags.
 
 ## Options
 
