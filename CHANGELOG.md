@@ -7,6 +7,77 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.4.17] — 2026-05-11
+
+The "Redis client + LSP folding" release. Closes the last
+explicitly-requested LSP slice (foldingRange, slice 5) and ships
+the second `Amalgame.Database.*` brick after SQLite — this time
+a pure-protocol client with no vendored lib, opening the NoSQL
+branch of the namespace. Also a small fix to the release-flow
+tooling so it stops emitting the `Co-Authored-By: Claude` trailer
+that contradicts the project's authorship policy. Suite grows to
+**438 PASS / 0 FAIL / 14 SKIP** (the 14 SKIP are Redis cases that
+need a running server; the runner gates on a TCP probe so they
+SKIP cleanly when no server is up).
+
+### Added
+
+- **`Amalgame.Database.NoSQL.Redis`** (PR #277) — pure-protocol
+  RESP2 client over raw TCP, no vendored client lib. The
+  runtime header (`runtime/Amalgame_Database_Redis.h`, ~340 LoC)
+  reuses the cross-platform socket layer from `Amalgame_Net.h`
+  so it works against Redis / KeyDB / Dragonfly / Valkey
+  unchanged. Surface: `Redis.Open(host, port)`, `Close`,
+  `IsOpen`, `LastError`, `Ping`, `Set`, `Get`, `Del`, `Exists`,
+  `Incr`, `Decr`, `Expire`. Namespace nested under
+  `Amalgame.Database.NoSQL.<Engine>` so siblings (Mongo,
+  Cassandra, DynamoDB) can land alongside. AUTH / SELECT,
+  pipelining, pub/sub, MULTI/EXEC transactions, SCAN, TLS,
+  binary values with embedded NULs deferred to v2.
+- **`amc lsp` foldingRange** (PR #276, slice 5) — token-driven
+  brace-pair matching for class / method / block bodies; plus
+  runs of `//` comments (`kind:"comment"`) and consecutive
+  `import …` statements (`kind:"imports"`). Filters one- and
+  two-line blocks so the gutter stays uncluttered. Capability
+  advertised as `foldingRangeProvider: true`; VS Code and other
+  LSP clients wire the chevron rendering automatically.
+
+### Changed
+
+- **`tools/release.sh`** (PR #275) — drop the hardcoded
+  `Co-Authored-By: Claude` trailer from the release-commit
+  message it generates. Aligns the script with the project's
+  authorship policy stated in `NOTICE.md` (AI is a tool, not
+  a co-author at law). The manual v0.4.16 release flow already
+  followed this; the patch makes the automated path do the
+  same so the next `./tools/release.sh` invocation stays
+  compliant without manual edits.
+
+### Roadmap
+
+- **v0.5 — stdlib package manager + DB-backend extraction.**
+  Once 3–4 optional backends are in tree (Redis is #2; DuckDB,
+  Postgres, MQTT are the natural next), the monolithic-stdlib
+  model starts hurting and a real package manager pays off.
+  Design space: manifest format (`package.am` /
+  `amalgame.toml`), `amc add <repo-url>` CLI that git-clones
+  into `~/.amalgame/packages/`, resolver search path,
+  cgen-plugin manifest replacing today's hardcoded isStdlib
+  list, linker flags + vendored .c amalgamations declared per
+  package. Inaugural packages: `amalgame-lang/amalgame-sqlite`
+  and `amalgame-lang/amalgame-redis`, both extracted from the
+  current monolithic stdlib as proof the design holds against
+  two distinct shapes (vendored amalgamation vs pure protocol).
+
+### Tests / infra
+
+- Suite grows to **438 PASS / 0 FAIL / 14 SKIP** (was 434).
+  +4 LSP cases for the new foldingRange handler, +14 Redis
+  cases gated on a TCP reachability probe.
+- Snapshot refreshed.
+
+---
+
 ## [v0.4.16] — 2026-05-11
 
 A small roll-up release that lands the post-v0.4.15 develop
@@ -1521,6 +1592,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
 [v0.4.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.14
