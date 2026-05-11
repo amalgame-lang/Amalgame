@@ -429,6 +429,10 @@ public class Program {
             Exit_Set(AddCommand.Run(argc))
             return
         }
+        if (Args_Get(1) == "search") {
+            Exit_Set(AddCommand.RunSearch(argc))
+            return
+        }
 
         let inputFiles = new List<string>()
         var outputName = "a.out"
