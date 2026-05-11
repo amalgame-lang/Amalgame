@@ -797,11 +797,15 @@ implementation effort.
       compiling everything. Shared `Result` / `Rows` types
       consolidate into a common `Amalgame_Database.h` once a
       third engine lands and the pattern is clear.
-        - **DuckDB** — vendored amalgamation similar to SQLite
-          (single `duckdb.cpp` + `duckdb.h`, MIT licence).
-          OLAP-flavoured workloads; columnar storage + vectorised
-          execution. Surface mirrors SQLite (Open/Exec/QueryAll/…)
-          so callers swap engines without rewriting.
+        - [x] **DuckDB** (v0.5.3, `amalgame-database-duckdb`) —
+          vendored C++ amalgamation (`duckdb.cpp` + `duckdb.h`, MIT
+          licence). OLAP-flavoured workloads; columnar storage +
+          vectorised execution. Surface mirrors SQLite
+          (Open/Close/IsOpen/Exec/QueryAll/LastError) so callers
+          swap engines without rewriting. Shipped alongside the
+          v0.5.3 C++ pipeline (`[stdlib].sources` of type
+          `.cpp/.cc/.cxx` compile with g++, manifest gains
+          `cflags`/`cxxflags`/`libs`/`schema-version` keys).
         - **PostgreSQL** (`libpq` client) — link to system
           `libpq` (heavy to vendor — vendor only the headers,
           dynamic-link the .so/.dylib/.dll). Surface adds

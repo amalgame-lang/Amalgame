@@ -2,14 +2,18 @@
 # PackageRegistry.LoadFrom looks at.
 
 [package]
-name    = "fake-pkg"
-version = "0.1.0"
-license = "Apache-2.0"
+name           = "fake-pkg"
+version        = "0.1.0"
+license        = "Apache-2.0"
+schema-version = 1
 
 [stdlib]
 class     = "FakePkg"
 header    = "runtime/fake_pkg.h"
 namespace = "Amalgame.Fake.FakePkg"
+cflags    = "-DFAKEPKG_BUILD=1"
+cxxflags  = "-std=c++11"
+libs      = ["stdc++", "m"]
 
 [stdlib.functions]
 Init  = { returns = "AmalgameFakePkg*" }

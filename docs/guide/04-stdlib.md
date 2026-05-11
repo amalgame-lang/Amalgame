@@ -872,6 +872,79 @@ too, reusing the same `[stdlib].sources` machinery.
 - **No explicit transactions.** Run `BEGIN` / `COMMIT` / `ROLLBACK`
   via `Exec` for now; a `db.Begin()` / `Commit()` API lands in v2.
 
+## Database.DuckDB — embedded analytics via opt-in package
+
+`namespace Amalgame.Database.DuckDB` is a [DuckDB](https://duckdb.org)
+binding — embedded analytical (OLAP) database, "SQLite for
+analytics". Shipped as an opt-in external package:
+**`amalgame-lang/amalgame-database-duckdb`**.
+
+```bash
+amc package add github.com/amalgame-lang/amalgame-database-duckdb@v0.1.0
+# or via the curated index:
+amc package add duckdb@v0.1.0
+```
+
+The package vendors the official DuckDB C++ amalgamation (MIT) —
+no `libduckdb-dev` needed on any platform. Requires **amc ≥ 0.5.3**
+(C++ source support in the package manager) and a C++17-capable
+`g++`. The amalgamation is ~25 MB so the first compile takes
+30–60 s; subsequent `amc test` runs hit the `/tmp/amc-pkg-*.o`
+cache and are fast.
+
+```amalgame
+namespace App
+
+import Amalgame.Collections
+import Amalgame.Database.DuckDB
+
+public class Program {
+    public static void Main(string[] args) {
+        let db = DuckDB.Open("")                       // "" = in-memory
+        DuckDB.Exec(db, "CREATE TABLE t (n INTEGER, kind VARCHAR)")
+        DuckDB.Exec(db, "INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'a')")
+
+        let rows = DuckDB.QueryAll(db, "SELECT kind, SUM(n) FROM t GROUP BY kind")
+        let firstRow: List<string> = rows.Get(0)
+        Console.WriteLine(firstRow.Get(0) + " → " + firstRow.Get(1))
+
+        DuckDB.Close(db)
+    }
+}
+```
+
+| Method                              | Returns               | Notes                                                                |
+|-------------------------------------|-----------------------|----------------------------------------------------------------------|
+| `DuckDB.Open(path: string)`         | `AmalgameDuckDB*`     | Empty string = transient in-memory; any path for persistent file     |
+| `DuckDB.IsOpen(db)`                 | `bool`                | Checks open + connect both succeeded                                 |
+| `DuckDB.Close(db)`                  | `void`                | Idempotent; no-op on already-closed handles                          |
+| `DuckDB.Exec(db, sql: string)`      | `bool`                | No-result SQL (DDL / DML). Returns false on error                    |
+| `DuckDB.QueryAll(db, sql: string)`  | `List<List<string>>`  | Rows × columns as text. Empty list on no rows OR error               |
+| `DuckDB.LastError(db)`              | `string`              | Snapshot of the most recent error message; empty if none             |
+
+**When to pick DuckDB vs SQLite:**
+
+- **DuckDB** — analytical workloads (GROUP BY, aggregates, joins
+  over millions of rows), Parquet/CSV/JSON ingest, columnar
+  storage, embedded data-science pipelines.
+- **SQLite** — OLTP, row-by-row writes, small footprint, decades
+  of stability.
+
+Both run in-process, both bind through `[stdlib].sources` and the
+v0.5.3 C++ pipeline (DuckDB) / C pipeline (SQLite). They coexist
+in the same project — the namespace mangling means `SQLite.Open`
+and `DuckDB.Open` lower to distinct C symbols (`Amalgame_Database_SQLite_Open`
+vs `Amalgame_Database_DuckDB_Open`) with no link collision.
+
+**v0.1 limitations:**
+
+- No parameter binding (passing user input requires manual SQL
+  escaping for now).
+- Text-only column accessors (numeric values come back as their
+  string repr).
+- No explicit transactions API (run `BEGIN`/`COMMIT` via `Exec`).
+- No prepared statements / no Parquet helpers (next milestones).
+
 ## What's missing
 
 - Bigger Math (trig, logs)
