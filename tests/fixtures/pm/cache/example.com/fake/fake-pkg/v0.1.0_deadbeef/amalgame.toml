@@ -8,12 +8,13 @@ license        = "Apache-2.0"
 schema-version = 1
 
 [stdlib]
-class     = "FakePkg"
-header    = "runtime/fake_pkg.h"
-namespace = "Amalgame.Fake.FakePkg"
-cflags    = "-DFAKEPKG_BUILD=1"
-cxxflags  = "-std=c++11"
-libs      = ["stdc++", "m"]
+class      = "FakePkg"
+header     = "runtime/fake_pkg.h"
+namespace  = "Amalgame.Fake.FakePkg"
+cflags     = "-DFAKEPKG_BUILD=1"
+cxxflags   = "-std=c++11"
+libs       = ["stdc++", "m"]
+precompile = true
 
 [stdlib.functions]
 Init  = { returns = "AmalgameFakePkg*" }

@@ -7,6 +7,81 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.5.4] — 2026-05-11
+
+The **"precompile-on-install + cross-platform home"** release. Two
+groups of work that share a single new helper, hence one PR.
+
+### Package manager — precompile-on-install
+
+Heavy C/C++ packages (DuckDB, future Postgres static builds) can
+now declare:
+
+```toml
+[stdlib]
+precompile = true
+```
+
+When that flag is set, `amc package add foo@vX.Y.Z` compiles each
+`[stdlib].sources` entry **at install time** into a persistent
+cache at:
+
+```
+~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/
+└─ build/<platform>/<class>-<basename>.o
+```
+
+`amc test` and `amc build` look there first (before the v0.5.2
+`/tmp/amc-pkg-*.o` lazy cache), so the 5-minute DuckDB compile is
+paid **once** at install instead of every fresh `amc test`. Survives
+reboots. Wiped by `amc package remove`.
+
+Opt-out: `amc package add foo@vX.Y.Z --no-precompile` to skip even
+if the manifest says yes (useful in CI batch installs where you
+want install separated from build).
+
+### Calibration — auto-learning ETA
+
+Each precompile writes a sample to `~/.amalgame/calibration.toml`:
+
+```toml
+[[sample]]
+lang      = "cxx"
+size_kb   = 25500
+elapsed_s = 167
+pkg_ver   = "amalgame-database-duckdb@v0.1.0"
+```
+
+Future `amc package add` reads these samples and shows an ETA
+derived from the weighted average (lang-bucketed) on this specific
+machine. No hardcoded "5 min" lie in manifests — the estimate
+self-corrects to your CPU over a few installs. First-time users
+get an honest "no ETA yet" message plus elapsed time after.
+
+### Cross-platform `$HOME` resolution
+
+`PackageRegistry.AmalgameHome()` resolves the user state dir in
+order:
+
+1. `$AMALGAME_HOME` (explicit override)
+2. `$HOME` (POSIX, MSYS2, Cygwin, WSL — always set)
+3. `$USERPROFILE` (Windows native cmd.exe / PowerShell)
+
+Fixes a pre-existing bug where amc fell back to `/tmp` on Windows
+natively (cmd.exe / PowerShell don't set `$HOME`). MSYS2-only CI
+wasn't exercising this. All path concatenation now goes through
+`Path_Combine` which handles both `/` and `\` separators.
+
+### Other
+
+- New `PackageRegistry.PlatformTag()` returns lowercased `os-arch`
+  (`linux-x86_64`, `macos-arm64`, `windows-x86_64`) so multi-OS
+  cache layouts don't collide on a shared `$HOME`.
+- 10 new stdlib tests cover precompile / PkgDir / platform tag /
+  Calibration round-trip (240 PASS total, up from 231).
+
+---
+
 ## [v0.5.3] — 2026-05-11
 
 The **"C++-bearing packages"** release. Lays the wiring needed
@@ -1858,6 +1933,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.5.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.0
 [v0.5.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.2
 [v0.5.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.3
+[v0.5.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.4
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
