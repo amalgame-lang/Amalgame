@@ -470,6 +470,44 @@ else
     run_skip "Redis: close"                 "no server on 127.0.0.1:6379"
 fi
 
+# ── Amalgame.Messaging.MQTT ──────────────────────────
+# Pure-protocol MQTT 3.1.1 client. Gated on a TCP reachability probe
+# (broker default port 1883) so the suite stays green without a
+# broker installed. To exercise the round-trip locally:
+#   docker run --rm -p 1883:1883 eclipse-mosquitto:2 \
+#     mosquitto -c /mosquitto-no-auth.conf
+# or `sudo apt install mosquitto && mosquitto &`.
+echo ""
+echo "── Amalgame.Messaging.MQTT ─────────────────"
+MQTT_AVAILABLE=0
+if (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null; then
+    MQTT_AVAILABLE=1
+fi
+
+if [ "$MQTT_AVAILABLE" = "1" ]; then
+    run_test "MQTT: open 1883"              "$SAMPLES/stdlib_mqtt.am" "[PASS] open 1883"              ""
+    run_test "MQTT: ping"                   "$SAMPLES/stdlib_mqtt.am" "[PASS] ping"                   ""
+    run_test "MQTT: subscribe greeting"     "$SAMPLES/stdlib_mqtt.am" "[PASS] subscribe greeting"     ""
+    run_test "MQTT: publish greeting"       "$SAMPLES/stdlib_mqtt.am" "[PASS] publish greeting"       ""
+    run_test "MQTT: received message"       "$SAMPLES/stdlib_mqtt.am" "[PASS] received message"       ""
+    run_test "MQTT: topic matches"          "$SAMPLES/stdlib_mqtt.am" "[PASS] topic matches"          ""
+    run_test "MQTT: payload matches"        "$SAMPLES/stdlib_mqtt.am" "[PASS] payload matches"        ""
+    run_test "MQTT: second message"         "$SAMPLES/stdlib_mqtt.am" "[PASS] second message"         ""
+    run_test "MQTT: wait timeout"           "$SAMPLES/stdlib_mqtt.am" "[PASS] wait timeout"           ""
+    run_test "MQTT: close"                  "$SAMPLES/stdlib_mqtt.am" "[PASS] closed"                 ""
+else
+    run_skip "MQTT: open 1883"              "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: ping"                   "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: subscribe greeting"     "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: publish greeting"       "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: received message"       "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: topic matches"          "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: payload matches"        "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: second message"         "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: wait timeout"           "no broker on 127.0.0.1:1883"
+    run_skip "MQTT: close"                  "no broker on 127.0.0.1:1883"
+fi
+
 # ── Summary ────────────────────────────────────────────
 echo ""
 echo "────────────────────────────────────────────"
