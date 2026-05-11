@@ -15,6 +15,7 @@
 #include "Amalgame_Logging.h"
 #include "Amalgame_Service.h"
 #include "Amalgame_Database_SQLite.h"
+#include "Amalgame_Database_Redis.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -3862,6 +3863,21 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "SQLite_Close")) {
                 return "void";
             }
+            if (code_string_equals(calleeStr, "Redis_Open")) {
+                return "AmalgameRedis*";
+            }
+            if (code_string_equals(calleeStr, "Redis_IsOpen") || code_string_equals(calleeStr, "Redis_Ping") || code_string_equals(calleeStr, "Redis_Set") || code_string_equals(calleeStr, "Redis_Exists") || code_string_equals(calleeStr, "Redis_Expire")) {
+                return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "Redis_Del") || code_string_equals(calleeStr, "Redis_Incr") || code_string_equals(calleeStr, "Redis_Decr")) {
+                return "i64";
+            }
+            if (code_string_equals(calleeStr, "Redis_Get") || code_string_equals(calleeStr, "Redis_LastError")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Redis_Close")) {
+                return "void";
+            }
             if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson") || code_string_equals(calleeStr, "Http_PostWithHeaders") || code_string_equals(calleeStr, "Http_Put") || code_string_equals(calleeStr, "Http_Delete") || code_string_equals(calleeStr, "Http_Patch")) {
                 return "AmalgameHttpResponse*";
             }
@@ -4278,6 +4294,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Logging.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_SQLite.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_Redis.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -6107,7 +6124,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
-                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "SQLite");
+                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "SQLite") || code_string_equals(tname, "Redis");
                     if (isStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8558,6 +8575,19 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_QueryAll", "List<List<string>>", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_LastInsertId", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_Changes", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Open", "AmalgameRedis", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_IsOpen", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_LastError", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Ping", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Set", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Get", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Del", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Exists", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Incr", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Decr", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Expire", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Sleep", "void", 0);
