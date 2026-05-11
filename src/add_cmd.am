@@ -221,6 +221,21 @@ public class AddCommand {
             Console.WriteError("amalgame.toml missing [package].license — declare your distribution licence")
             return 1
         }
+        // `required-amalgame` is optional; when present, gate the
+        // install on the running amc satisfying the constraint.
+        // Catches the "package needs newer compiler than installed"
+        // class of error up-front rather than via a mysterious
+        // gcc symbol-not-found at link time.
+        let mfReq: TomlValue = pkgTable.Get("required-amalgame")
+        let mfReqStr: string = mfReq.AsString()
+        if (String_Length(mfReqStr) > 0) {
+            let amc: string = PackageRegistry.AmcVersion()
+            if (!PackageRegistry.VersionSatisfies(amc, mfReqStr)) {
+                Console.WriteError("amalgame-" + mfNameStr + " " + tag + " requires amc " + mfReqStr)
+                Console.WriteError("       your amc is " + amc + " — upgrade and retry")
+                return 1
+            }
+        }
         if (mfNameStr != pkgName) {
             Console.WriteError("manifest name '" + mfNameStr + "' does not match URL slug '" + pkgName + "'")
             return 1

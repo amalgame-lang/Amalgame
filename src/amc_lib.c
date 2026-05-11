@@ -3778,6 +3778,9 @@ AmalgameList* Amalgame_Compiler_PackageRegistry_ClassNames(Amalgame_Compiler_Pac
 AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_PackageRegistry* self);
 code_string Amalgame_Compiler_PackageRegistry_DefaultCacheRoot();
 code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cType);
+code_string Amalgame_Compiler_PackageRegistry_AmcVersion();
+AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v);
+code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current, code_string constraint);
 
 Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new() {
     Amalgame_Compiler_PackageRegistry* self = (Amalgame_Compiler_PackageRegistry*) GC_MALLOC(sizeof(Amalgame_Compiler_PackageRegistry));
@@ -3926,6 +3929,72 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
         return String_Substring(cType, 0, n - 1);
     }
     return cType;
+}
+
+code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
+    return "0.5.0-dev";
+}
+
+AmalgameList* Amalgame_Compiler_PackageRegistry_ParseVersion(code_string v) {
+    (void)v;
+    AmalgameList* __attribute__((unused)) out = AmalgameList_new();
+    code_string __attribute__((unused)) s = v;
+    if (String_StartsWith(s, "v")) {
+        s = String_Substring(s, 1, String_Length(s) - 1);
+    }
+    i64 __attribute__((unused)) dashIdx = String_IndexOf(s, "-");
+    if (dashIdx >= 0) {
+        s = String_Substring(s, 0, dashIdx);
+    }
+    i64 __attribute__((unused)) plusIdx = String_IndexOf(s, "+");
+    if (plusIdx >= 0) {
+        s = String_Substring(s, 0, plusIdx);
+    }
+    AmalgameList* __attribute__((unused)) parts = String_Split(s, ".");
+    i64 __attribute__((unused)) n = AmalgameList_count(parts);
+    i64 __attribute__((unused)) maj = 0;
+    i64 __attribute__((unused)) min = 0;
+    i64 __attribute__((unused)) pat = 0;
+    if (n >= 1) {
+        maj = String_ToInt((code_string)AmalgameList_get(parts, 0));
+    }
+    if (n >= 2) {
+        min = String_ToInt((code_string)AmalgameList_get(parts, 1));
+    }
+    if (n >= 3) {
+        pat = String_ToInt((code_string)AmalgameList_get(parts, 2));
+    }
+    AmalgameList_add(out, (void*)(intptr_t)(maj));
+    AmalgameList_add(out, (void*)(intptr_t)(min));
+    AmalgameList_add(out, (void*)(intptr_t)(pat));
+    return out;
+}
+
+code_bool Amalgame_Compiler_PackageRegistry_VersionSatisfies(code_string current, code_string constraint) {
+    (void)current;
+    (void)constraint;
+    if (String_Length(constraint) == 0) {
+        return 1;
+    }
+    code_string __attribute__((unused)) op = "";
+    code_string __attribute__((unused)) verPart = constraint;
+    if (String_StartsWith(constraint, ">=")) {
+        op = ">=";
+        verPart = String_Substring(constraint, 2, String_Length(constraint) - 2);
+    }
+    verPart = String_Trim(verPart);
+    if (!code_string_equals(op, ">=")) {
+        return 1;
+    }
+    AmalgameList* __attribute__((unused)) cur = Amalgame_Compiler_PackageRegistry_ParseVersion(current);
+    AmalgameList* __attribute__((unused)) req = Amalgame_Compiler_PackageRegistry_ParseVersion(verPart);
+    if ((i64)AmalgameList_get(cur, 0) != (i64)AmalgameList_get(req, 0)) {
+        return (i64)AmalgameList_get(cur, 0) > (i64)AmalgameList_get(req, 0);
+    }
+    if ((i64)AmalgameList_get(cur, 1) != (i64)AmalgameList_get(req, 1)) {
+        return (i64)AmalgameList_get(cur, 1) > (i64)AmalgameList_get(req, 1);
+    }
+    return (i64)AmalgameList_get(cur, 2) >= (i64)AmalgameList_get(req, 2);
 }
 
 Amalgame_Compiler_Emitter* Amalgame_Compiler_Emitter_new();
@@ -11421,7 +11490,7 @@ static void Amalgame_Compiler_TypeChecker_CheckOneInterface(Amalgame_Compiler_Ty
         AmalgameList* __attribute__((unused)) parts = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, inner);
         i64 __attribute__((unused)) np = AmalgameList_count(parts);
         for (i64 ia = 0; ia < np; ia++) {
-            AmalgameList_add(self->SubstArgs, (void*)(intptr_t)((void*)AmalgameList_get(parts, ia)));
+            AmalgameList_add(self->SubstArgs, (void*)(intptr_t)((code_string)AmalgameList_get(parts, ia)));
         }
     }
     Amalgame_Compiler_AstNode* __attribute__((unused)) iface = Amalgame_Compiler_TypeChecker_FindInterface(self, ibase);
@@ -11577,7 +11646,7 @@ static code_string Amalgame_Compiler_TypeChecker_SubstType(Amalgame_Compiler_Typ
         if (i > 0) {
             newInner = code_string_concat(newInner, ",");
         }
-        newInner = code_string_concat(newInner, Amalgame_Compiler_TypeChecker_SubstType(self, (void*)AmalgameList_get(parts, i)));
+        newInner = code_string_concat(newInner, Amalgame_Compiler_TypeChecker_SubstType(self, (code_string)AmalgameList_get(parts, i)));
     }
     code_string __attribute__((unused)) result = code_string_concat(code_string_concat(code_string_concat(base, "<"), newInner), ">");
     if (nullable) {
@@ -19710,6 +19779,16 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc) {
         Console_WriteError("amalgame.toml missing [package].license — declare your distribution licence");
         return 1;
     }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) mfReq = Amalgame_Compiler_TomlValue_Get(pkgTable, "required-amalgame");
+    code_string __attribute__((unused)) mfReqStr = Amalgame_Compiler_TomlValue_AsString(mfReq);
+    if (String_Length(mfReqStr) > 0) {
+        code_string __attribute__((unused)) amc = Amalgame_Compiler_PackageRegistry_AmcVersion();
+        if (!Amalgame_Compiler_PackageRegistry_VersionSatisfies(amc, mfReqStr)) {
+            Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amalgame-", mfNameStr), " "), tag), " requires amc "), mfReqStr));
+            Console_WriteError(code_string_concat(code_string_concat("       your amc is ", amc), " — upgrade and retry"));
+            return 1;
+        }
+    }
     if (!code_string_equals(mfNameStr, pkgName)) {
         Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("manifest name '", mfNameStr), "' does not match URL slug '"), pkgName), "'"));
         return 1;
@@ -20374,7 +20453,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.4.17 (self-hosted Amalgame compiler)");
+            Console_WriteLine(code_string_concat(code_string_concat("amc ", Amalgame_Compiler_PackageRegistry_AmcVersion()), " (self-hosted Amalgame compiler)"));
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {
