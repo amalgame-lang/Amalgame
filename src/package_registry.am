@@ -248,7 +248,7 @@ public class PackageRegistry {
     // one edit (this constant + tools/release.sh which already
     // handles --version).
     public static string AmcVersion() {
-        return "0.5.0-dev"
+        return "0.5.0"
     }
 
     // Parse a semver-ish version string into a (major, minor, patch)
