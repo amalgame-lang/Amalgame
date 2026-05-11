@@ -19561,6 +19561,9 @@ code_string Amalgame_Compiler_AddCommand_CacheRoot();
 code_string Amalgame_Compiler_AddCommand_IndexCachePath();
 static code_bool Amalgame_Compiler_AddCommand_IsShortname(code_string lhs);
 code_string Amalgame_Compiler_AddCommand_FetchIndex();
+i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc);
+i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc);
+i64 Amalgame_Compiler_AddCommand_RunInstallSpec(code_string spec);
 i64 Amalgame_Compiler_AddCommand_RunList(i64 argc);
 i64 Amalgame_Compiler_AddCommand_RunRemove(i64 argc);
 void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_TomlValue* depsTable, code_string lockPath);
@@ -19910,6 +19913,134 @@ code_string Amalgame_Compiler_AddCommand_FetchIndex() {
         return "";
     }
     return File_ReadAll(cachePath);
+}
+
+i64 Amalgame_Compiler_AddCommand_RunCache(i64 argc) {
+    (void)argc;
+    if (argc < 3) {
+        Console_WriteError("Usage: amc cache <subcmd>");
+        Console_WriteError("");
+        Console_WriteError("Subcommands:");
+        Console_WriteError("  clear         drop the packages-index cache");
+        Console_WriteError("  clear --all   also wipe ~/.amalgame/packages/");
+        return 2;
+    }
+    code_string __attribute__((unused)) sub = Args_Get(2);
+    if (code_string_equals(sub, "clear")) {
+        code_bool __attribute__((unused)) alsoPackages = 0;
+        code_bool __attribute__((unused)) helpAsked = 0;
+        i64 __attribute__((unused)) i = 3;
+        while (i < argc) {
+            code_string __attribute__((unused)) a = Args_Get(i);
+            if (code_string_equals(a, "--all")) {
+                alsoPackages = 1;
+            }
+            if (code_string_equals(a, "-h")) {
+                helpAsked = 1;
+            }
+            if (code_string_equals(a, "--help")) {
+                helpAsked = 1;
+            }
+            i = i + 1;
+        }
+        if (helpAsked) {
+            Console_WriteError("Usage: amc cache clear [--all]");
+            return 0;
+        }
+        code_string __attribute__((unused)) idxPath = Amalgame_Compiler_AddCommand_IndexCachePath();
+        i64 __attribute__((unused)) _idxRm = Process_Run(code_string_concat(code_string_concat("rm -f '", idxPath), "'"));
+        Console_WriteLine(code_string_concat(code_string_concat("Cleared packages-index cache (", idxPath), ")"));
+        if (alsoPackages) {
+            code_string __attribute__((unused)) pkgRoot = Amalgame_Compiler_AddCommand_CacheRoot();
+            i64 __attribute__((unused)) _pkgRm = Process_Run(code_string_concat(code_string_concat("rm -rf '", pkgRoot), "'"));
+            Console_WriteLine(code_string_concat(code_string_concat("Cleared package cache (", pkgRoot), ")"));
+            Console_WriteLine("Run `amc add` again to reinstall each dep.");
+        }
+        return 0;
+    }
+    Console_WriteError(code_string_concat("unknown cache subcommand: ", sub));
+    return 2;
+}
+
+i64 Amalgame_Compiler_AddCommand_RunUpdate(i64 argc) {
+    (void)argc;
+    code_string __attribute__((unused)) spec = "";
+    i64 __attribute__((unused)) i = 2;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc update <name>@<tag>");
+            Console_WriteError("");
+            Console_WriteError("Bump the pinned tag for the named dep. Equivalent to");
+            Console_WriteError("`amc remove <name>` followed by `amc add <name>@<tag>`.");
+            return 0;
+        }
+        if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat("unknown flag: ", a));
+            return 2;
+        }
+        if (String_Length(spec) == 0) {
+            spec = a;
+        }
+        i = i + 1;
+    }
+    if (String_Length(spec) == 0) {
+        Console_WriteError("usage: amc update <name>@<tag>");
+        return 2;
+    }
+    i64 __attribute__((unused)) atIdx = String_LastIndexOf(spec, "@");
+    if (atIdx <= 0 || atIdx >= String_Length(spec) - 1) {
+        Console_WriteError(code_string_concat(code_string_concat("expected <name>@<tag> — got '", spec), "'"));
+        return 2;
+    }
+    code_string __attribute__((unused)) depName = String_Substring(spec, 0, atIdx);
+    code_string __attribute__((unused)) newTag = String_Substring(spec, atIdx + 1, String_Length(spec) - atIdx - 1);
+    if (!File_Exists("amalgame.toml")) {
+        Console_WriteError("no amalgame.toml in cwd — nothing to update");
+        return 1;
+    }
+    code_string __attribute__((unused)) tomlSrc = File_ReadAll("amalgame.toml");
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(tomlSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        Console_WriteError("amalgame.toml parse error");
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) deps = Amalgame_Compiler_TomlValue_Get(doc, "dependencies");
+    if (!Amalgame_Compiler_TomlValue_IsTable(deps) || !Amalgame_Compiler_TomlValue_Has(deps, depName)) {
+        Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", depName), "' is not a declared dependency. Use `amc add "), spec), "` to install it fresh."));
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_Get(deps, depName);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) gitV = Amalgame_Compiler_TomlValue_Get(entry, "git");
+    code_string __attribute__((unused)) gitUrl = Amalgame_Compiler_TomlValue_AsString(gitV);
+    if (String_Length(gitUrl) == 0) {
+        Console_WriteError(code_string_concat(code_string_concat("dependency '", depName), "' has no git url — manifest is malformed"));
+        return 1;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Updating ", depName), " → "), newTag), " (from "), gitUrl), ")"));
+    return Amalgame_Compiler_AddCommand_RunInstallSpec(code_string_concat(code_string_concat(gitUrl, "@"), newTag));
+}
+
+i64 Amalgame_Compiler_AddCommand_RunInstallSpec(code_string spec) {
+    (void)spec;
+    AmalgameList* __attribute__((unused)) parsed = Amalgame_Compiler_AddCommand_ParseSpec(spec);
+    if (AmalgameList_count(parsed) != 2) {
+        Console_WriteError(code_string_concat(code_string_concat("RunInstallSpec: malformed spec '", spec), "'"));
+        return 2;
+    }
+    code_string __attribute__((unused)) url = (code_string)AmalgameList_get(parsed, 0);
+    code_string __attribute__((unused)) tag = (code_string)AmalgameList_get(parsed, 1);
+    if (!Amalgame_Compiler_AddCommand_IsSafeUrl(url)) {
+        return 2;
+    }
+    if (!Amalgame_Compiler_AddCommand_IsSafeTag(tag)) {
+        return 2;
+    }
+    code_string __attribute__((unused)) amcPath = Args_Get(0);
+    if (String_Length(amcPath) == 0) {
+        amcPath = "amc";
+    }
+    return Process_Run(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("'", amcPath), "' add '"), url), "@"), tag), "'"));
 }
 
 i64 Amalgame_Compiler_AddCommand_RunList(i64 argc) {
@@ -20681,6 +20812,14 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     }
     if (code_string_equals(Args_Get(1), "remove")) {
         Exit_Set(Amalgame_Compiler_AddCommand_RunRemove(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "update")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_RunUpdate(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "cache")) {
+        Exit_Set(Amalgame_Compiler_AddCommand_RunCache(argc));
         return;
     }
     AmalgameList* __attribute__((unused)) inputFiles = AmalgameList_new();
