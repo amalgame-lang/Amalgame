@@ -16,6 +16,8 @@ AMC_SOURCES="src/lexer/token.am \
              src/lexer/lexer.am \
              src/parser/ast.am \
              src/parser/parser.am \
+             src/stdlib/toml.am \
+             src/package_registry.am \
              src/generator/c_gen.am \
              src/formatter/formatter.am \
              src/diagnostics.am \
@@ -31,7 +33,6 @@ AMC_SOURCES="src/lexer/token.am \
              src/stdlib/path.am \
              src/stdlib/logging.am \
              src/stdlib/service.am \
-             src/stdlib/toml.am \
              src/lsp.am \
              src/migrate.am \
              src/generate.am \

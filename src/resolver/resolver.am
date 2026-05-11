@@ -197,6 +197,14 @@ public class FullResolver {
     // Source map (path → text) — set by main; defaults to an empty SourceMap so
     // standalone uses (resolver tests) keep working without configuration.
     public  Sources:       SourceMap
+    // v0.5 package-manager: classes + functions contributed by
+    // external packages installed via `amc add`. Parallel lists
+    // (rather than a Map) so the resolver introspection tools
+    // already comfortable with parallel-array iteration keep
+    // working. Empty by default; populated via RegisterPackages.
+    public  PkgClasses:    List<string>
+    public  PkgFuncs:      List<string>
+    public  PkgFuncCTypes: List<string>
 
     public FullResolver() {
         this.GlobalNames   = new List<string>()
@@ -216,7 +224,48 @@ public class FullResolver {
         this.LambdaBoundary   = 0
         this.CurrentFile   = ""
         this.Sources       = new SourceMap()
+        this.PkgClasses    = new List<string>()
+        this.PkgFuncs      = new List<string>()
+        this.PkgFuncCTypes = new List<string>()
         this.RegisterBuiltins()
+    }
+
+    // ── v0.5 package-manager hook ────────────────────
+    //
+    // Called by main.am after constructing the resolver — feeds it
+    // every class + function declared by installed external
+    // packages. Declares the class name as a type-global and each
+    // `<Class>_<Func>` symbol with its Amalgame-side return type
+    // (C-level pointers stripped to opaque class names so the
+    // resolver treats them like SQLite_Open did pre-v0.5).
+    //
+    // Also remembers the cType for each function in parallel lists
+    // so PR 3d's cgen can consult them when deriving C return-type
+    // table entries without going back to the registry.
+    //
+    // Idempotent: re-registering same packages overwrites earlier
+    // entries (Amalgame-resolver's DeclareGlobal silently no-ops
+    // on duplicates — invariant from PR #228 / v0.4.7).
+    public void RegisterPackages(PackageRegistry reg) {
+        let n: int = reg.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = reg.Packages.Get(i)
+            // Class name as type-global.
+            this.DeclareGlobal(p.ClassName, "type", false)
+            this.PkgClasses.Add(p.ClassName)
+            // Each function as a runtime global with its Amalgame-
+            // side return type derived from the manifest's `returns`.
+            let fn: int = p.FuncNames.Count()
+            for j in 0..fn {
+                let fName: string = p.FuncNames.Get(j)
+                let cType: string = p.FuncRets.Get(j)
+                let fullName: string = p.ClassName + "_" + fName
+                let amType: string = PackageRegistry.AmalgameTypeFromC(cType)
+                this.DeclareGlobal(fullName, amType, false)
+                this.PkgFuncs.Add(fullName)
+                this.PkgFuncCTypes.Add(cType)
+            }
+        }
     }
 
     // ── Builtin registration ──────────────────────────
