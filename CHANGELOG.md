@@ -7,6 +7,106 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.6.1] — 2026-05-12
+
+The **"package-manager polish + ship-to-prod"** release. Eight QoL
+items landed on top of v0.6.0, plus a `--version` rework that
+embeds build provenance.
+
+### New `amc package` verbs
+
+- **`amc package info <name>`** — single-package detail view:
+  description, url, tier, licence, category, maintainer, every
+  indexed version with compat marker, and whether the package is
+  currently installed in this project (matched by URL slug
+  against `amalgame.lock`).
+- **`amc package outdated`** — cross-references the lockfile
+  against the index and lists installed deps with a newer
+  compatible tag, ready to feed into `amc package update`. Silent
+  on up-to-date deps (grep-friendly in CI); unindexed deps go to
+  stderr. Exit code stays 0 in non-error cases.
+- **`amc package notice`** — aggregates each installed package's
+  `[package].license / authors / description` from its cached
+  `amalgame.toml` into a NOTICE-style listing on stdout, ready to
+  redirect into `NOTICE_DEPS.md` for downstream commercial
+  redistribution / Apache-2.0 NOTICE propagation.
+- **`amc package check [--frozen]`** — verifies `amalgame.lock`
+  matches the installed cache. Bare form is informational
+  (always exits 0); `--frozen` exits 1 on mismatch — drop-in for
+  CI fail-fast lanes that catch a PR bumping the lockfile
+  without re-installing.
+
+### Flags on existing verbs
+
+- **`amc package search --no-versions`** — skip the per-package
+  versions block for faster browsing of long search results.
+- **`amc package versions --json`** — machine-readable output
+  (jq / CI compat probes); schema is stable.
+
+### Compiler / cgen
+
+- **`Path.{Combine,Sep,IsAbsolute,Normalize}`** now lower to
+  their flat runtime symbol without requiring
+  `import Amalgame.Path` — the four method names match the
+  runtime 1:1 so it's safe. `Directory` / `Filename` /
+  `Extension` / `Stem` still need the import (they wrap
+  `Path_Get*` and would mis-mangle without the namespace
+  dispatch). Removes ceremony from `amc`'s own code.
+
+### `amc --version` enriched
+
+Bakes the git short-SHA + UTC build timestamp at link time via
+`-DAMC_GIT_REV=...` / `-DAMC_BUILD_DATE=...` (`build_amc.sh`
+wires both; fall back to "" cleanly when the defines are
+absent). Banner now surfaces author / licence / website /
+repository / issues URLs:
+
+```
+amc 0.6.1 (commit abc12345, built 2026-05-12T01:23:45Z)
+Self-hosted Amalgame compiler.
+Copyright (c) 2026 Bastien Mouget. License: Apache-2.0.
+Website:    https://amalgame.me
+Repository: https://github.com/amalgame-lang/Amalgame
+Issues:     https://github.com/amalgame-lang/Amalgame/issues
+```
+
+New `runtime/Amalgame_BuildInfo.h` exposes the defines via
+inline `BuildInfo_GitRev` / `BuildInfo_BuildDate` helpers;
+`BuildInfo` joins the cgen's core-stdlib dispatch list so
+`BuildInfo.GitRev()` lowers without ceremony.
+
+### Help-text audit
+
+`amc package add --help` now documents the `<shortname>`
+auto-resolve form (v0.6.0), the `--no-precompile` flag (v0.5.4),
+and the full semver operator set on `required-amalgame`. The
+top-level `amc --help` verb list adds the new verbs (`versions`,
+`info`, `outdated`, `notice`, `check`). Fixes a stray
+`amc update` typo in `update`'s missing-arg error path. Drops
+the reference to the never-shipped `amc package gc` from
+`remove --help`. `PrintPackageUsage` surfaces the `[@<tag>]`
+safety suffix on `remove`.
+
+### Documentation
+
+- `ROADMAP_COMPLET.md` — per-release breakdown of the package-
+  manager entry (v0.5.3 → v0.6.1) + `Path.*` dispatch note +
+  new entry for unifying the ~1.9k lines of bash test runners
+  under `amc test`.
+- `docs/proposals/amalgame-package-manager.md` — documents the
+  packages-index schema v2 (`[[version]]` array), back-compat
+  matrix, ordering convention, and 30-min TTL.
+
+### External repos
+
+- `amalgame-database-nosql-redis` + `amalgame-messaging-mqtt` CI
+  matrix bumped to `[v0.6.0, v0.5.0]` — catches regressions on
+  the latest amc while keeping the baseline coverage.
+- `amalgame-database-sqlite` v0.2.1 orphan tag deleted (it was a
+  red CI history entry with no release attached).
+
+---
+
 ## [v0.6.0] — 2026-05-12
 
 The **"auto-resolve + semver constraints"** release. Two related
@@ -2108,6 +2208,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.5.5]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.5
 [v0.5.6]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.6
 [v0.6.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.0
+[v0.6.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.1
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
