@@ -225,5 +225,77 @@ public class Program {
         } else {
             Console.WriteLine("[FAIL] CollectLibs got " + String_FromInt(collected.Count()))
         }
+
+        // ── v0.5.4: precompile flag + PkgDir ──────────────
+
+        if (lp.Precompile) {
+            Console.WriteLine("[PASS] precompile parsed")
+        } else {
+            Console.WriteLine("[FAIL] precompile parsed")
+        }
+        // PkgDir is populated by LoadFrom with the absolute cache
+        // path (`<cacheRoot>/<git>/<tag>_<sha>`). Assert it ends
+        // with the expected suffix.
+        if (String_EndsWith(lp.PkgDir, "example.com/fake/fake-pkg/v0.1.0_deadbeef")) {
+            Console.WriteLine("[PASS] pkgdir populated")
+        } else {
+            Console.WriteLine("[FAIL] pkgdir got '" + lp.PkgDir + "'")
+        }
+
+        // ── v0.5.4: PlatformTag returns os-arch ───────────
+
+        let platform: string = PackageRegistry.PlatformTag()
+        if (String_Contains(platform, "-")) {
+            Console.WriteLine("[PASS] platform tag shape")
+        } else {
+            Console.WriteLine("[FAIL] platform tag got '" + platform + "'")
+        }
+
+        // ── v0.5.4: PrecompileCacheDir composition ────────
+
+        let cacheDir: string = PackageRegistry.PrecompileCacheDir("/tmp/fake-pkg")
+        if (String_StartsWith(cacheDir, "/tmp/fake-pkg/build/") && String_EndsWith(cacheDir, platform)) {
+            Console.WriteLine("[PASS] precompile cache path")
+        } else {
+            Console.WriteLine("[FAIL] precompile cache path got '" + cacheDir + "'")
+        }
+
+        // ── v0.5.4: Calibration in-memory round-trip ──────
+
+        let cal = new Calibration()
+        // Empty → no estimate available.
+        if (cal.EstimateSeconds("cxx", 25000) == -1) {
+            Console.WriteLine("[PASS] empty calibration no eta")
+        } else {
+            Console.WriteLine("[FAIL] empty calibration eta")
+        }
+        // Add samples for both languages.
+        cal.Add("cxx", 25000, 167, "duckdb@v0.1.0")
+        cal.Add("c",   9000,  31,  "sqlite@v0.2.0")
+        if (cal.SampleCount("cxx") == 1 && cal.SampleCount("c") == 1) {
+            Console.WriteLine("[PASS] sample counts")
+        } else {
+            Console.WriteLine("[FAIL] sample counts")
+        }
+        // Weighted rate: 25000 KB cxx → 167s ⇒ 25000 KB target ≈ 167s.
+        let etaCxx: int = cal.EstimateSeconds("cxx", 25000)
+        if (etaCxx == 167) {
+            Console.WriteLine("[PASS] cxx eta")
+        } else {
+            Console.WriteLine("[FAIL] cxx eta got " + String_FromInt(etaCxx))
+        }
+        // For C: 9000 KB → 31s ⇒ 1000 KB ≈ 3s (integer division).
+        let etaC: int = cal.EstimateSeconds("c", 1000)
+        if (etaC >= 2 && etaC <= 5) {
+            Console.WriteLine("[PASS] c eta")
+        } else {
+            Console.WriteLine("[FAIL] c eta got " + String_FromInt(etaC))
+        }
+        // Unknown language → no estimate.
+        if (cal.EstimateSeconds("rust", 1000) == -1) {
+            Console.WriteLine("[PASS] unknown lang no eta")
+        } else {
+            Console.WriteLine("[FAIL] unknown lang eta")
+        }
     }
 }

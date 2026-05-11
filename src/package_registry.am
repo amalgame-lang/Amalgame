@@ -2,6 +2,7 @@ namespace Amalgame.Compiler
 
 import Amalgame.Collections
 import Amalgame.IO
+import Amalgame.Path
 import Amalgame.Process
 import Amalgame.String
 import Amalgame.Formats.Toml
@@ -70,6 +71,11 @@ public class LoadedPackage {
     public  ClassName:   string             // Redis
     public  Header:      string             // runtime/Amalgame_Database_Redis.h
     public  Ns:          string             // Amalgame.Database.NoSQL.Redis
+    // Absolute path to the cache dir hosting this package's files
+    // (`<cacheRoot>/<git>/<tag>_<sha>/`). Populated by LoadFrom.
+    // Used by AmcTest to look up persistent precompile cache at
+    // `<PkgDir>/build/<platform>/` before falling back to /tmp.
+    public  PkgDir:      string
     public  FuncNames:   List<string>       // ["Open", "Close", ...]
     public  FuncRets:    List<string>       // ["AmalgameRedis*", "void", ...]
     // Vendored .c / .cpp sources the package contributes to the
@@ -90,18 +96,28 @@ public class LoadedPackage {
     // C++ packages declare e.g. `["stdc++"]`; future dynamic-link
     // packages (libpq) will declare `["pq"]`.
     public  Libs:        List<string>
+    // Whether `amc package add` should compile this package's
+    // sources (if any) right after install, caching .o files
+    // persistently at `<pkg-dir>/build/<platform>/`. Read from
+    // `[stdlib].precompile = true|false` in the manifest. Default
+    // false (back-compat with v0.5.3 packages). Packages with no
+    // `[stdlib].sources` ignore this flag — there's nothing to
+    // precompile.
+    public  Precompile:  bool
 
     public LoadedPackage() {
-        this.Name      = ""
-        this.ClassName = ""
-        this.Header    = ""
-        this.Ns        = ""
-        this.FuncNames = new List<string>()
-        this.FuncRets  = new List<string>()
-        this.Sources   = new List<string>()
-        this.CFlags    = ""
-        this.CxxFlags  = ""
-        this.Libs      = new List<string>()
+        this.Name       = ""
+        this.ClassName  = ""
+        this.Header     = ""
+        this.Ns         = ""
+        this.PkgDir     = ""
+        this.FuncNames  = new List<string>()
+        this.FuncRets   = new List<string>()
+        this.Sources    = new List<string>()
+        this.CFlags     = ""
+        this.CxxFlags   = ""
+        this.Libs       = new List<string>()
+        this.Precompile = false
     }
 }
 
@@ -189,6 +205,7 @@ public class PackageRegistry {
 
             let lp = new LoadedPackage()
             lp.Name      = pkgName
+            lp.PkgDir    = pkgDir
             lp.ClassName = clsName
             // Manifest's header path is relative to the package
             // root; expose it as absolute so the cgen can emit
@@ -238,6 +255,16 @@ public class PackageRegistry {
                     }
                 }
             }
+
+            // Optional `[stdlib].precompile` — when true, amc
+            // compiles the sources at `amc package add` time
+            // (persistent cache under <pkg-dir>/build/<platform>/)
+            // instead of lazily on first `amc test` (volatile /tmp
+            // cache). Heavy packages (DuckDB, future SQL backends)
+            // opt in; light pure-Amalgame packages (Redis, MQTT)
+            // omit the field and stay instant-install.
+            let precompileVal: TomlValue = stdlibTable.Get("precompile")
+            lp.Precompile = precompileVal.AsBool()
 
             // Functions table — short name → return type.
             let funcsTbl: TomlValue = stdlibTable.Get("functions")
@@ -327,20 +354,104 @@ public class PackageRegistry {
         return false
     }
 
+    // Resolve the user's amc home directory — the parent of
+    // `.amalgame/` which holds the package cache, the calibration
+    // file, and any future amc-local state.
+    //
+    // Resolution order:
+    //   1. `$AMALGAME_HOME`  — explicit override (CI, tests, sandboxed users)
+    //   2. `$HOME`           — POSIX, MSYS2, Cygwin, WSL (always set)
+    //   3. `$USERPROFILE`    — Windows native cmd.exe / PowerShell
+    //   4. `""`              — caller must error out with a clear message
+    //
+    // Note: the value points at the HOME-equivalent (e.g.
+    // `/home/alice` or `C:\Users\Alice`), not at `.amalgame/`
+    // itself — combine it with `.amalgame/<subdir>` via
+    // `Path_Combine` so the separator (`/` vs `\`) doesn't
+    // matter on Windows native shells.
+    public static string AmalgameHome() {
+        let override: string = Env_Get("AMALGAME_HOME")
+        if (String_Length(override) > 0) { return override }
+        let home: string = Env_Get("HOME")
+        if (String_Length(home) > 0) { return home }
+        let userProfile: string = Env_Get("USERPROFILE")
+        if (String_Length(userProfile) > 0) { return userProfile }
+        return ""
+    }
+
+    // Absolute path to the `.amalgame/` state dir. Created on
+    // demand by callers (Add / RunTest); not guaranteed to exist
+    // before they touch it. Returns empty string if home is
+    // unresolvable — callers should fail with a clear error.
+    public static string AmalgameStateDir() {
+        let home: string = PackageRegistry.AmalgameHome()
+        if (String_Length(home) == 0) { return "" }
+        return Path_Combine(home, ".amalgame")
+    }
+
     // Default cache root resolution order:
-    //   1. `$AMALGAME_PACKAGES_DIR` env var if set (test/CI override)
-    //   2. `$HOME/.amalgame/packages` (normal user case)
-    //   3. `/tmp/amalgame-packages` (container / unset-HOME fallback)
+    //   1. `$AMALGAME_PACKAGES_DIR` env var (test/CI override)
+    //   2. `<AmalgameHome()>/.amalgame/packages` (normal user case,
+    //      cross-platform via AmalgameHome's $HOME / $USERPROFILE chain)
+    //   3. `/tmp/amalgame-packages` (truly unresolvable home —
+    //      POSIX-flavoured fallback; on Windows this would still be
+    //      better than nothing because git-bash maps /tmp sensibly,
+    //      but if we reach here on native Windows the user has
+    //      bigger problems than the cache path)
     public static string DefaultCacheRoot() {
         let envOverride: string = Env_Get("AMALGAME_PACKAGES_DIR")
         if (String_Length(envOverride) > 0) {
             return envOverride
         }
-        let home: string = Env_Get("HOME")
-        if (String_Length(home) > 0) {
-            return home + "/.amalgame/packages"
+        let stateDir: string = PackageRegistry.AmalgameStateDir()
+        if (String_Length(stateDir) > 0) {
+            return Path_Combine(stateDir, "packages")
         }
         return "/tmp/amalgame-packages"
+    }
+
+    // Absolute path to the calibration file. amc reads it to ETA
+    // future precompiles, writes a new sample after every compile.
+    // See `Calibration` class below + `AddCommand.PrecompilePackage`.
+    public static string CalibrationPath() {
+        let stateDir: string = PackageRegistry.AmalgameStateDir()
+        if (String_Length(stateDir) == 0) { return "" }
+        return Path_Combine(stateDir, "calibration.toml")
+    }
+
+    // Compute the persistent precompile cache dir for a package.
+    // Layout:
+    //   <pkgDir>/build/<platform>/
+    // where `<platform>` is `linux-x86_64` / `macos-arm64` / …
+    // (lowercased `$(uname -s)-$(uname -m)`-equivalent). Cross-
+    // platform users (a single $HOME shared across Linux + macOS
+    // via NFS / Dropbox) don't collide.
+    public static string PrecompileCacheDir(string pkgDir) {
+        let p: string = PackageRegistry.PlatformTag()
+        let buildDir: string = Path_Combine(pkgDir, "build")
+        return Path_Combine(buildDir, p)
+    }
+
+    // Lowercased `<os>-<arch>` triple. Used as a directory name
+    // inside each package's cache so cross-platform users sharing
+    // a $HOME don't link the wrong .o.
+    public static string PlatformTag() {
+        // `uname -s` returns Linux / Darwin / MINGW64_NT-... etc.
+        // Normalise to short names matching the GitHub Releases
+        // artefact convention: linux / macos / windows.
+        let unameS: string = String_Trim(Process.RunCapture("uname -s").Stdout)
+        let unameM: string = String_Trim(Process.RunCapture("uname -m").Stdout)
+        var os: string = "unknown"
+        if (String_StartsWith(unameS, "Linux"))   { os = "linux" }
+        if (String_StartsWith(unameS, "Darwin"))  { os = "macos" }
+        if (String_StartsWith(unameS, "MINGW"))   { os = "windows" }
+        if (String_StartsWith(unameS, "MSYS"))    { os = "windows" }
+        if (String_StartsWith(unameS, "CYGWIN"))  { os = "windows" }
+        var arch: string = unameM
+        if (arch == "")           { arch = "unknown" }
+        if (arch == "amd64")      { arch = "x86_64" }
+        if (arch == "aarch64")    { arch = "arm64" }
+        return os + "-" + arch
     }
 
     // Mangle a package class method into its canonical C symbol.
@@ -438,6 +549,15 @@ public class PackageRegistry {
     // `>=X.Y.Z` only in v0.5 (every other operator is treated as
     // "no constraint" — generous default so future syntax doesn't
     // brick old amc binaries). Empty constraint → always true.
+    // Read the calibration file's raw TOML content. Returns ""
+    // if missing or unreadable so callers can short-circuit.
+    public static string ReadCalibrationFile() {
+        let path: string = PackageRegistry.CalibrationPath()
+        if (String_Length(path) == 0) { return "" }
+        if (!File.Exists(path)) { return "" }
+        return File.ReadAll(path)
+    }
+
     public static bool VersionSatisfies(string current, string constraint) {
         if (String_Length(constraint) == 0) { return true }
         var op: string = ""
@@ -457,5 +577,152 @@ public class PackageRegistry {
         if (cur.Get(0) != req.Get(0)) { return cur.Get(0) > req.Get(0) }
         if (cur.Get(1) != req.Get(1)) { return cur.Get(1) > req.Get(1) }
         return cur.Get(2) >= req.Get(2)
+    }
+}
+
+// One sample fed back into the calibration store after a
+// successful precompile. The fields are minimal — just enough
+// to build a (size → elapsed) rate per language. PkgVer is
+// kept for human-readable debugging via `amc package cache ls`
+// (planned).
+public class CalibrationSample {
+    public Lang:     string     // "c" or "cxx"
+    public SizeKb:   int        // total bytes / 1024, summed over package's [stdlib].sources
+    public ElapsedS: int        // wall time spent in gcc / g++, rounded to seconds
+    public PkgVer:   string     // "<pkg-name>@<tag>", e.g. "amalgame-database-duckdb@v0.1.0"
+
+    public CalibrationSample() {
+        this.Lang     = ""
+        this.SizeKb   = 0
+        this.ElapsedS = 0
+        this.PkgVer   = ""
+    }
+}
+
+// Local-machine compile-speed memory. Lives at
+// `<AmalgameStateDir()>/calibration.toml`. Append-on-compile,
+// read-for-ETA. Auto-corrects to the current machine over a few
+// installs — no manifest-side ETA lies needed.
+//
+// File format (TOML, schema-version 1):
+//
+//   schema-version = 1
+//
+//   [[sample]]
+//   lang      = "cxx"
+//   size_kb   = 25500
+//   elapsed_s = 167
+//   pkg_ver   = "amalgame-database-duckdb@v0.1.0"
+//
+// The estimate is a weighted average: total elapsed / total kb
+// across all samples of the matching language, then scaled to
+// the new target size. Coarse on purpose — the goal is "tell
+// the user the order of magnitude", not predict to the second.
+public class Calibration {
+    public Samples: List<CalibrationSample>
+
+    public Calibration() {
+        this.Samples = new List<CalibrationSample>()
+    }
+
+    // Load from disk; returns an empty Calibration if the file
+    // is missing, unreadable, or has the wrong schema-version.
+    // Silent on errors — calibration is best-effort, never
+    // blocks the user.
+    public static Calibration Load() {
+        let cal = new Calibration()
+        let raw: string = PackageRegistry.ReadCalibrationFile()
+        if (String_Length(raw) == 0) { return cal }
+        let doc = Toml.Parse(raw)
+        if (doc.IsNull()) { return cal }
+        // schema-version gate — refuse to load unknown schemas
+        // so we don't misinterpret future fields.
+        let schemaVal: TomlValue = doc.Get("schema-version")
+        if (schemaVal.AsInt() > 1) { return cal }
+        let arr: TomlValue = doc.Get("sample")
+        if (!arr.IsArray()) { return cal }
+        let n: int = arr.Count()
+        for i in 0..n {
+            let entry: TomlValue = arr.At(i)
+            let s = new CalibrationSample()
+            s.Lang     = entry.Get("lang").AsString()
+            s.SizeKb   = entry.Get("size_kb").AsInt()
+            s.ElapsedS = entry.Get("elapsed_s").AsInt()
+            s.PkgVer   = entry.Get("pkg_ver").AsString()
+            if (String_Length(s.Lang) == 0)    { continue }
+            if (s.SizeKb <= 0 || s.ElapsedS <= 0) { continue }
+            cal.Samples.Add(s)
+        }
+        return cal
+    }
+
+    // Append a sample (no dedup — multiple installs of the same
+    // version legitimately produce multiple data points, and the
+    // weighted average naturally re-weights). Call Save() after.
+    public void Add(string lang, int sizeKb, int elapsedS, string pkgVer) {
+        let s = new CalibrationSample()
+        s.Lang     = lang
+        s.SizeKb   = sizeKb
+        s.ElapsedS = elapsedS
+        s.PkgVer   = pkgVer
+        this.Samples.Add(s)
+    }
+
+    // Estimate compile time (seconds) for a target source of
+    // `lang` and `sizeKb`. Returns -1 if no samples exist for
+    // this language yet — caller should fall back to "no ETA".
+    public int EstimateSeconds(string lang, int sizeKb) {
+        var totalKb:  int = 0
+        var totalSec: int = 0
+        let n: int = this.Samples.Count()
+        for i in 0..n {
+            let s: CalibrationSample = this.Samples.Get(i)
+            if (s.Lang == lang) {
+                totalKb  = totalKb  + s.SizeKb
+                totalSec = totalSec + s.ElapsedS
+            }
+        }
+        if (totalKb <= 0) { return -1 }
+        return sizeKb * totalSec / totalKb
+    }
+
+    public int SampleCount(string lang) {
+        var n: int = 0
+        let len: int = this.Samples.Count()
+        for i in 0..len {
+            let s: CalibrationSample = this.Samples.Get(i)
+            if (s.Lang == lang) { n = n + 1 }
+        }
+        return n
+    }
+
+    // Serialise the current state and write to CalibrationPath().
+    // Creates `~/.amalgame/` on demand. Silently no-ops if home
+    // is unresolvable (no usable env vars).
+    public bool Save() {
+        let path: string = PackageRegistry.CalibrationPath()
+        if (String_Length(path) == 0) { return false }
+        let stateDir: string = PackageRegistry.AmalgameStateDir()
+        if (String_Length(stateDir) > 0) {
+            // Ensure parent dir exists; ignore failure (mkdir -p
+            // on an existing dir is fine, on a missing root is
+            // the actual error, surfaced by File.WriteAll below).
+            Process.RunCapture("mkdir -p '" + stateDir + "'")
+        }
+        var s: string = "# Amalgame calibration store — auto-managed by `amc package add`.\n"
+        s = s + "# Each precompile contributes a sample; the weighted average\n"
+        s = s + "# across samples of the same language drives ETA.\n"
+        s = s + "schema-version = 1\n\n"
+        let n: int = this.Samples.Count()
+        for i in 0..n {
+            let sm: CalibrationSample = this.Samples.Get(i)
+            s = s + "[[sample]]\n"
+            s = s + "lang      = \"" + sm.Lang + "\"\n"
+            s = s + "size_kb   = " + String_FromInt(sm.SizeKb) + "\n"
+            s = s + "elapsed_s = " + String_FromInt(sm.ElapsedS) + "\n"
+            s = s + "pkg_ver   = \"" + sm.PkgVer + "\"\n"
+            s = s + "\n"
+        }
+        return File.WriteAll(path, s)
     }
 }

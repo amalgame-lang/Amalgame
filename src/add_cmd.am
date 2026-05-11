@@ -69,12 +69,18 @@ public class AddCommand {
 
     public static int Run(int argc, int startIdx) {
         var spec: string = ""
+        var noPrecompile: bool = false
         var i: int = startIdx
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
                 AddCommand.PrintUsage()
                 return 0
+            }
+            if (a == "--no-precompile") {
+                noPrecompile = true
+                i = i + 1
+                continue
             }
             if (String_StartsWith(a, "-")) {
                 Console.WriteError("unknown flag: " + a)
@@ -270,6 +276,21 @@ public class AddCommand {
         Console.WriteLine("Validated " + mfNameStr + " v" + mfVerStr + " (licence " + mfLicStr + ")")
         Console.WriteLine("Cached at " + pkgDir)
 
+        // ── 4b. Optional precompile ───────────────────────
+        // If `[stdlib].precompile = true` and the user didn't pass
+        // `--no-precompile`, compile every `[stdlib].sources` entry
+        // into a persistent .o under `<pkg-dir>/build/<platform>/`.
+        // Subsequent `amc test` / `amc build` skip recompilation.
+        // No-op if the manifest doesn't declare `precompile = true`
+        // or doesn't ship sources.
+        if (!noPrecompile) {
+            let stdlibTblPre: TomlValue = manifest.Get("stdlib")
+            if (stdlibTblPre.IsTable() && stdlibTblPre.Get("precompile").AsBool()) {
+                let pkgVer: string = mfNameStr + "@" + tag
+                AddCommand.PrecompilePackage(pkgDir, stdlibTblPre, pkgVer)
+            }
+        }
+
         // ── 5. Update project's amalgame.toml ─────────────
         if (!AddCommand.UpdateProjectManifest(depName, url, tag)) {
             Console.WriteError("could not update amalgame.toml")
@@ -290,6 +311,172 @@ public class AddCommand {
 
         Console.WriteLine("Added " + depName + " " + tag)
         return 0
+    }
+
+    // ── Precompile ────────────────────────────────────
+    //
+    // Compile every `[stdlib].sources` entry into a persistent .o
+    // under `<pkg-dir>/build/<platform>/`. Called from Run when
+    // the package's manifest declares `[stdlib].precompile = true`
+    // and the user didn't pass `--no-precompile`.
+    //
+    // Errors are reported but never fatal — install succeeds even
+    // if a source fails to compile, because the user can still
+    // fall back to the lazy /tmp cache path on next `amc test`.
+    // A loud Console.WriteError makes the failure visible.
+    //
+    // After successful compile, a calibration sample is appended
+    // and the calibration store is saved. Future `amc package add`
+    // for similar-language sources gets an ETA derived from this.
+    public static void PrecompilePackage(string pkgDir, TomlValue stdlibTbl, string pkgVer) {
+        // Read the surface keys we need. Mirror PackageRegistry.LoadFrom
+        // but on the in-hand manifest (faster than re-resolving the lock).
+        let classVal: TomlValue = stdlibTbl.Get("class")
+        let className: string = classVal.AsString()
+        if (String_Length(className) == 0) { return }
+        let sourcesArr: TomlValue = stdlibTbl.Get("sources")
+        if (!sourcesArr.IsArray()) { return }
+        let sn: int = sourcesArr.Count()
+        if (sn == 0) { return }
+        let cflags: string   = stdlibTbl.Get("cflags").AsString()
+        let cxxflags: string = stdlibTbl.Get("cxxflags").AsString()
+
+        // Build the persistent cache dir.
+        let buildDir: string = PackageRegistry.PrecompileCacheDir(pkgDir)
+        let mkdirRes = Process.RunCapture("mkdir -p '" + buildDir + "'")
+        if (mkdirRes.Exit != 0) {
+            Console.WriteError("amc package add: could not create " + buildDir)
+            return
+        }
+
+        // Resolve amc's runtime/ for -I.
+        let amcPath0: string = Args_Get(0)
+        var amcRuntime: string = Env_Get("AMC_RUNTIME")
+        if (String_Length(amcRuntime) == 0) {
+            let slashIdx: int = String_LastIndexOf(amcPath0, "/")
+            if (slashIdx >= 0) {
+                amcRuntime = String_Substring(amcPath0, 0, slashIdx) + "/runtime"
+            }
+        }
+
+        // Load calibration once (cheap, file may be missing → empty).
+        let cal: Calibration = Calibration.Load()
+
+        // Track aggregate stats for the calibration sample. One
+        // sample per package per language — we sum sizes + elapsed
+        // across all sources of the same lang to get the rate.
+        var totalCKb:  int = 0
+        var totalCSec: int = 0
+        var totalCxxKb:  int = 0
+        var totalCxxSec: int = 0
+
+        for j in 0..sn {
+            let srcTv: TomlValue = sourcesArr.At(j)
+            let srcRel: string = srcTv.AsString()
+            if (String_Length(srcRel) == 0) { continue }
+            let srcAbs: string = pkgDir + "/" + srcRel
+            // Derive leaf for the .o name (avoid `/` in filename).
+            let lastSlash: int = String_LastIndexOf(srcAbs, "/")
+            var srcLeaf: string = srcAbs
+            if (lastSlash >= 0) {
+                srcLeaf = String_Substring(srcAbs, lastSlash + 1, String_Length(srcAbs) - lastSlash - 1)
+            }
+            let objPath: string = buildDir + "/" + className + "-" + srcLeaf + ".o"
+            if (File.Exists(objPath)) {
+                Console.WriteLine("  reused cache: " + srcLeaf)
+                continue
+            }
+            let sizeBytes: int = File.Size(srcAbs)
+            let sizeKb: int = sizeBytes / 1024
+            let isCxx: bool = PackageRegistry.IsCxxSource(srcAbs)
+            let lang: string = if (isCxx) { "cxx" } else { "c" }
+
+            // ETA from calibration, if we have any samples for this lang.
+            let etaSec: int = cal.EstimateSeconds(lang, sizeKb)
+            var header: string = "  Compiling " + srcLeaf + " (" + String_FromInt(sizeKb) + " KB " + lang + ")"
+            if (etaSec > 0) {
+                header = header + " — estimated " + AddCommand.HumanDuration(etaSec)
+            } else {
+                header = header + " — first " + lang + " compile on this machine, no ETA yet"
+            }
+            Console.WriteLine(header)
+
+            // Build the compile command. Mirror the same dispatch
+            // as Program.PreCompilePackageSources for consistency.
+            var cmd: string = ""
+            if (isCxx) {
+                cmd = "g++ -O2"
+            } else {
+                cmd = "gcc -O2"
+            }
+            if (String_Length(amcRuntime) > 0) {
+                cmd = cmd + " -I'" + amcRuntime + "'"
+            }
+            if (isCxx && String_Length(cxxflags) > 0) {
+                cmd = cmd + " " + cxxflags
+            }
+            if (!isCxx && String_Length(cflags) > 0) {
+                cmd = cmd + " " + cflags
+            }
+            cmd = cmd + " -w -c '" + srcAbs + "' -o '" + objPath + "' 2>&1"
+
+            // Time the compile.
+            let t0: int = AddCommand.NowSeconds()
+            let res = Process.RunCapture(cmd)
+            let t1: int = AddCommand.NowSeconds()
+            let elapsedS: int = t1 - t0
+
+            if (res.Exit != 0) {
+                Console.WriteError("  FAILED to compile " + srcLeaf + ":")
+                Console.WriteError(res.Stdout)
+                continue
+            }
+            Console.WriteLine("  ✓ " + srcLeaf + " in " + AddCommand.HumanDuration(elapsedS))
+
+            // Accumulate for calibration.
+            if (isCxx) {
+                totalCxxKb  = totalCxxKb  + sizeKb
+                totalCxxSec = totalCxxSec + elapsedS
+            } else {
+                totalCKb  = totalCKb  + sizeKb
+                totalCSec = totalCSec + elapsedS
+            }
+        }
+
+        // Append calibration samples — at most one per language per
+        // package, summarising the totals we accumulated above.
+        var dirty: bool = false
+        if (totalCKb > 0 && totalCSec > 0) {
+            cal.Add("c", totalCKb, totalCSec, pkgVer)
+            dirty = true
+        }
+        if (totalCxxKb > 0 && totalCxxSec > 0) {
+            cal.Add("cxx", totalCxxKb, totalCxxSec, pkgVer)
+            dirty = true
+        }
+        if (dirty) {
+            if (!cal.Save()) {
+                Console.WriteError("  warning: could not save calibration to " + PackageRegistry.CalibrationPath())
+            }
+        }
+    }
+
+    // Wall-clock seconds via `date +%s`. Coarse but enough for
+    // compile-time tracking — multi-second resolution is well
+    // below the typical compile durations we care about (>10s).
+    public static int NowSeconds() {
+        let res = Process.RunCapture("date +%s")
+        let raw: string = String_Trim(res.Stdout)
+        return String_ToInt(raw)
+    }
+
+    // Render a duration in seconds as `MmSSs` (e.g. `2m47s`) or
+    // `<NN>s` if under a minute. Display-only; no parsing back.
+    public static string HumanDuration(int seconds) {
+        if (seconds < 60) { return String_FromInt(seconds) + "s" }
+        let m: int = seconds / 60
+        let s: int = seconds % 60
+        return String_FromInt(m) + "m" + String_FromInt(s) + "s"
     }
 
     // ── Spec parsing ──────────────────────────────────
