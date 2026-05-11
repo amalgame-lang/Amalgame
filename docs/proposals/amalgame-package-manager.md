@@ -25,7 +25,7 @@ This works fine at N=3 backends. It will not at N=10:
 |---|---|
 | `c_gen.am` + `resolver.am` become merge-hot | 4+ parallel backend PRs in flight |
 | Compiler binary embeds every backend whether the user calls it or not | When SQLite-only users complain about 9MB of vendored sqlite3 they don't need |
-| Backends evolve at different cadences than the language | A bugfix in `amalgame-redis` shouldn't need a new amc release |
+| Backends evolve at different cadences than the language | A bugfix in `amalgame-database-nosql-redis` shouldn't need a new amc release |
 | External contributors can't ship a backend without committing to the core | Anyone wanting to publish `amalgame-postgres` today must PR against the compiler |
 | CI in the main repo grows linearly with backends — install redis-server, mosquitto, libpq, libmariadbclient, … | The 24 SKIP cases from v0.4.17 hint at this; multiply by 5 backends and CI complexity dominates |
 
@@ -81,13 +81,13 @@ Rejected:
 
 ### 2. Distribution — Git URL + tag
 
-`amc add github.com/amalgame-lang/amalgame-redis@v0.1.0`. No registry,
+`amc add github.com/amalgame-lang/amalgame-database-nosql-redis@v0.1.0`. No registry,
 no infra to operate. Follows the Go / Zig / Deno / Nimble / Crystal
 Shards pattern.
 
 ```toml
 [dependencies]
-redis = { git = "github.com/amalgame-lang/amalgame-redis", tag = "v0.1.0" }
+redis = { git = "github.com/amalgame-lang/amalgame-database-nosql-redis", tag = "v0.1.0" }
 ```
 
 Rejected:
@@ -109,7 +109,7 @@ reassigned (force-push); the SHA cannot.
 # amalgame.lock — auto-generated, committed
 [[package]]
 name   = "redis"
-git    = "github.com/amalgame-lang/amalgame-redis"
+git    = "github.com/amalgame-lang/amalgame-database-nosql-redis"
 tag    = "v0.1.0"
 rev    = "abc123def456..."   # SHA of the tagged commit
 sha256 = "..."               # tarball checksum
@@ -122,7 +122,7 @@ deps   = []
 ~/.amalgame/packages/
 └── github.com/
     └── amalgame-lang/
-        └── amalgame-redis/
+        └── amalgame-database-nosql-redis/
             ├── v0.1.0_abc123/         # one revision = one directory
             ├── v0.1.1_def456/
             └── current → v0.1.1_def456 (managed by amc)
@@ -145,10 +145,10 @@ git repos.
 
 Error UX:
 ```
-ERROR: version conflict on `amalgame-mqtt`:
+ERROR: version conflict on `amalgame-messaging-mqtt`:
   ├─ my-project requires v0.1.0 (direct)
-  └─ amalgame-mqtt-tls@v0.1.0 requires v0.2.0 (via transitive)
-Fix: update your direct dep to v0.2.0, OR pin amalgame-mqtt-tls to an
+  └─ amalgame-messaging-mqtt-tls@v0.1.0 requires v0.2.0 (via transitive)
+Fix: update your direct dep to v0.2.0, OR pin amalgame-messaging-mqtt-tls to an
      older version that wants v0.1.0.
 ```
 
@@ -203,7 +203,7 @@ search server, no API — `amc search redis` greps the local cache.
 
 [[package]]
 name        = "redis"
-url         = "github.com/amalgame-lang/amalgame-redis"
+url         = "github.com/amalgame-lang/amalgame-database-nosql-redis"
 description = "RESP2 client over raw TCP. No vendored lib."
 tier        = "official"
 maintainer  = "amalgame-lang"
@@ -258,7 +258,7 @@ Every `amc add` runs these checks after clone, before writing the lock:
 | **1** | `src/stdlib/toml.am` — TOML parser + serializer. Tests. Pure addition. | low |
 | **2** | `amc add <git-url>@<tag>` CLI. Clone, validate, write `amalgame.lock`. Doesn't yet affect compilation. | low |
 | **3** | Resolver + cgen read package manifests. Replace hardcoded `isStdlib` + return-type table with manifest-driven dispatch. **Core compiler touch.** | **high** |
-| **4** | Extract SQLite to `amalgame-lang/amalgame-sqlite` as the first inaugural package. Remove `runtime/Amalgame_Database_SQLite.h` + cgen/resolver hardcodes from the main repo. | medium — first real migration; may surface PR 3 bugs |
+| **4** | Extract SQLite to `amalgame-lang/amalgame-database-sqlite` as the first inaugural package. Remove `runtime/Amalgame_Database_SQLite.h` + cgen/resolver hardcodes from the main repo. | medium — first real migration; may surface PR 3 bugs |
 | **5** | Extract Redis + MQTT to their own repos. | low after PR 4 lands clean |
 
 Plus tooling around it:

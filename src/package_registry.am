@@ -26,7 +26,7 @@ import Amalgame.Formats.Toml
 // `amalgame.toml` at its repo root with:
 //
 //   [package]
-//   name    = "amalgame-redis"
+//   name    = "amalgame-database-nosql-redis"
 //   version = "0.1.0"
 //   license = "Apache-2.0"
 //
@@ -54,7 +54,7 @@ import Amalgame.Formats.Toml
 // table (e.g. `Open`); the resolver / cgen will combine it
 // with the class to produce `Redis_Open`.
 public class LoadedPackage {
-    public  Name:        string             // amalgame-redis
+    public  Name:        string             // amalgame-database-nosql-redis
     public  ClassName:   string             // Redis
     public  Header:      string             // runtime/Amalgame_Database_Redis.h
     public  Ns:          string             // Amalgame.Database.NoSQL.Redis

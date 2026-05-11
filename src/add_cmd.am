@@ -18,7 +18,7 @@ import Amalgame.Formats.Toml
 //
 //   amc add <git-url>@<tag>
 //
-//     git-url:  e.g. github.com/amalgame-lang/amalgame-redis
+//     git-url:  e.g. github.com/amalgame-lang/amalgame-database-sqlite
 //               (protocol stripped if present; https:// prepended)
 //     tag:      e.g. v0.1.0 (must match the package's
 //               [package].version in its manifest)
@@ -52,7 +52,7 @@ public class AddCommand {
         Console.WriteError("and record it in amalgame.toml + amalgame.lock.")
         Console.WriteError("")
         Console.WriteError("Examples:")
-        Console.WriteError("  amc add github.com/amalgame-lang/amalgame-redis@v0.1.0")
+        Console.WriteError("  amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.1.0")
         Console.WriteError("  amc add gitlab.com/foo/bar@v1.2.3")
         Console.WriteError("")
         Console.WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/")
@@ -119,11 +119,13 @@ public class AddCommand {
             Console.WriteError("could not derive package name from url '" + url + "'")
             return 2
         }
-        // Strip leading `amalgame-` from the displayed package name
-        // (the dep table uses the unprefixed handle, matching the
-        // Cargo / Go convention). Manifest validation still uses
-        // the full slug.
-        let depName: string = AddCommand.StripAmalgamePrefix(pkgName)
+        // Pick the user-facing dep handle. Convention: for
+        // `amalgame-<...>-leaf` repo names that mirror namespaces
+        // (e.g. `amalgame-database-sqlite` for `Amalgame.Database.SQLite`),
+        // collapse to the leaf so the user writes `sqlite = {...}`
+        // in their manifest. Third-party packages keep their slug.
+        // Manifest validation still checks against the full slug.
+        let depName: string = AddCommand.DepNameFromSlug(pkgName)
 
         Console.WriteLine("Resolving " + url + "@" + tag + "...")
 
@@ -309,12 +311,26 @@ public class AddCommand {
         return String_Substring(url, slashIdx + 1, String_Length(url) - slashIdx - 1)
     }
 
-    // `amalgame-redis` → `redis` (the user-facing handle).
-    public static string StripAmalgamePrefix(string slug) {
-        if (String_StartsWith(slug, "amalgame-")) {
-            return String_Substring(slug, 9, String_Length(slug) - 9)
+    // Derive the user-facing dep handle from a package's slug:
+    //   `amalgame-database-sqlite`     → `sqlite`
+    //   `amalgame-messaging-mqtt`      → `mqtt`
+    //   `amalgame-database-nosql-redis` → `redis`
+    //   `amalgame-redis` (single-seg)   → `redis`
+    //   `cool-thing` (3rd-party)        → `cool-thing` (passthrough)
+    //
+    // Rule: if slug starts with `amalgame-`, strip the prefix and
+    // collapse to the last dash-segment (the leaf of the namespace-
+    // mirrored repo name). Otherwise pass through unchanged.
+    public static string DepNameFromSlug(string slug) {
+        if (!String_StartsWith(slug, "amalgame-")) {
+            return slug
         }
-        return slug
+        let rest: string = String_Substring(slug, 9, String_Length(slug) - 9)
+        let lastDash: int = String_LastIndexOf(rest, "-")
+        if (lastDash < 0) {
+            return rest
+        }
+        return String_Substring(rest, lastDash + 1, String_Length(rest) - lastDash - 1)
     }
 
     // `v0.1.0` → `0.1.0`. Tags conventionally carry the `v`
