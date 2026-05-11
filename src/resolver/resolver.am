@@ -332,6 +332,14 @@ public class FullResolver {
         this.DeclareGlobal("Path_IsAbsolute",     "bool",   false)
         this.DeclareGlobal("Path_Normalize",      "string", false)
         this.DeclareGlobal("Path_Sep",            "string", false)
+        // BuildInfo — runtime helpers baked at link time
+        // (`-DAMC_GIT_REV=...` / `-DAMC_BUILD_DATE=...` in
+        // build_amc.sh). Both return "" when the defines aren't
+        // set, so callers can detect "no build info" and skip
+        // the banner line. Used by `amc --version`.
+        this.DeclareGlobal("BuildInfo",           "type",   false)
+        this.DeclareGlobal("BuildInfo_GitRev",    "string", false)
+        this.DeclareGlobal("BuildInfo_BuildDate", "string", false)
         // Logging stdlib — runtime helpers under the `Log_*` prefix so
         // `Log.Info(...)` in user code lowers to `Log_Info(...)` via the
         // cgen's isStdlib short-circuit, matching the Console/File/Math
