@@ -14,6 +14,7 @@
 #include "Amalgame_Crypto.h"
 #include "Amalgame_Logging.h"
 #include "Amalgame_Service.h"
+#include "Amalgame_BuildInfo.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -5848,6 +5849,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Crypto.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Logging.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_BuildInfo.h\"");
     i64 __attribute__((unused)) pkgHdrN = AmalgameList_count(self->PkgHeaders);
     for (i64 ph = 0; ph < pkgHdrN; ph++) {
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("#include \"", (code_string)AmalgameList_get(self->PkgHeaders, ph)), "\""));
@@ -7724,7 +7726,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                             return code_string_concat("Path_", mname);
                         }
                     }
-                    code_bool __attribute__((unused)) isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service");
+                    code_bool __attribute__((unused)) isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -10187,6 +10189,9 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Sep", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "BuildInfo", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "BuildInfo_GitRev", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "BuildInfo_BuildDate", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_SetMinLevel", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_GetMinLevel", "string", 0);
@@ -19975,6 +19980,8 @@ void Amalgame_Compiler_AddCommand_PrintVersionsJsonForPackage(Amalgame_Compiler_
 code_string Amalgame_Compiler_AddCommand_JsonEscape(code_string s);
 i64 Amalgame_Compiler_AddCommand_RunInfo(i64 argc, i64 startIdx);
 i64 Amalgame_Compiler_AddCommand_RunOutdated(i64 argc, i64 startIdx);
+i64 Amalgame_Compiler_AddCommand_RunCheck(i64 argc, i64 startIdx);
+i64 Amalgame_Compiler_AddCommand_RunNotice(i64 argc, i64 startIdx);
 code_string Amalgame_Compiler_AddCommand_LastUrlSegment(code_string url);
 code_string Amalgame_Compiler_AddCommand_ResolveLatestCompatible(code_string shortname);
 code_string Amalgame_Compiler_AddCommand_ResolveShortname(code_string spec);
@@ -20560,6 +20567,12 @@ i64 Amalgame_Compiler_AddCommand_RunPackage(i64 argc) {
     if (code_string_equals(sub, "outdated")) {
         return Amalgame_Compiler_AddCommand_RunOutdated(argc, 3);
     }
+    if (code_string_equals(sub, "notice")) {
+        return Amalgame_Compiler_AddCommand_RunNotice(argc, 3);
+    }
+    if (code_string_equals(sub, "check")) {
+        return Amalgame_Compiler_AddCommand_RunCheck(argc, 3);
+    }
     if (code_string_equals(sub, "list")) {
         return Amalgame_Compiler_AddCommand_RunList(argc, 3);
     }
@@ -20592,6 +20605,9 @@ void Amalgame_Compiler_AddCommand_PrintPackageUsage() {
     Console_WriteError("    [--json]                     Emit machine-readable JSON");
     Console_WriteError("  info <name> [--refresh]       Show description, url, license, versions, install");
     Console_WriteError("  outdated [--refresh]          List installed deps with a newer compatible tag");
+    Console_WriteError("  notice                        Aggregate licence + authorship of installed deps");
+    Console_WriteError("  check [--frozen]              Verify amalgame.lock matches the installed cache");
+    Console_WriteError("                                (--frozen exits 1 on mismatch — for CI)");
     Console_WriteError("  list                          Show installed deps");
     Console_WriteError("  remove <name>[@<tag>] [...]   Strip dep(s) from amalgame.toml + lock.");
     Console_WriteError("                                `@<tag>` is a safety check (refuses to remove");
@@ -21530,6 +21546,206 @@ i64 Amalgame_Compiler_AddCommand_RunOutdated(i64 argc, i64 startIdx) {
     return 0;
 }
 
+i64 Amalgame_Compiler_AddCommand_RunCheck(i64 argc, i64 startIdx) {
+    (void)argc;
+    (void)startIdx;
+    code_bool __attribute__((unused)) frozen = 0;
+    i64 __attribute__((unused)) i = startIdx;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc package check [--frozen]");
+            Console_WriteError("");
+            Console_WriteError("Verify amalgame.lock matches the installed package cache.");
+            Console_WriteError("Reports any [[package]] entry whose cache dir is missing.");
+            Console_WriteError("");
+            Console_WriteError("--frozen   exit 1 on mismatch (for CI fail-fast). Without it,");
+            Console_WriteError("           the verb is informational and always exits 0.");
+            return 0;
+        }
+        if (code_string_equals(a, "--frozen")) {
+            frozen = 1;
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat("unknown flag: ", a));
+            return 2;
+        }
+        i = i + 1;
+    }
+    code_string __attribute__((unused)) lockPath = "amalgame.lock";
+    if (!File_Exists(lockPath)) {
+        Console_WriteLine("No amalgame.lock in cwd — nothing to check.");
+        return 0;
+    }
+    code_string __attribute__((unused)) lockSrc = File_ReadAll(lockPath);
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) lockDoc = Amalgame_Compiler_Toml_Parse(lockSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(lockDoc)) {
+        Console_WriteError("amalgame.lock parse error");
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgs = Amalgame_Compiler_TomlValue_Get(lockDoc, "package");
+    if (!Amalgame_Compiler_TomlValue_IsArray(pkgs)) {
+        Console_WriteLine("amalgame.lock has no [[package]] entries — nothing to check.");
+        return 0;
+    }
+    code_string __attribute__((unused)) cacheRoot = Amalgame_Compiler_AddCommand_CacheRoot();
+    i64 __attribute__((unused)) n = Amalgame_Compiler_TomlValue_Count(pkgs);
+    i64 __attribute__((unused)) ok = 0;
+    i64 __attribute__((unused)) missing = 0;
+    for (i64 k = 0; k < n; k++) {
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) entry = Amalgame_Compiler_TomlValue_At(pkgs, k);
+        code_string __attribute__((unused)) gitS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "git"));
+        code_string __attribute__((unused)) tagS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "tag"));
+        code_string __attribute__((unused)) revS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "rev"));
+        if (String_Length(gitS) == 0 || String_Length(tagS) == 0) {
+            continue;
+        }
+        if (String_Length(revS) < 8) {
+            continue;
+        }
+        code_string __attribute__((unused)) shortSha = String_Substring(revS, 0, 8);
+        code_string __attribute__((unused)) pkgDir = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(cacheRoot, "/"), gitS), "/"), tagS), "_"), shortSha);
+        code_string __attribute__((unused)) manifest = code_string_concat(pkgDir, "/amalgame.toml");
+        if (File_Exists(manifest)) {
+            Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  ✓ ", gitS), " @ "), tagS), " (sha "), shortSha), ")"));
+            ok = ok + 1;
+        } else {
+            Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  ✗ ", gitS), " @ "), tagS), " — cache dir missing"));
+            Console_WriteLine(code_string_concat(code_string_concat("       expected: ", pkgDir), "/"));
+            missing = missing + 1;
+        }
+    }
+    Console_WriteLine("");
+    if (missing == 0) {
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(String_FromInt(ok), " of "), String_FromInt(ok)), " package(s) match amalgame.lock."));
+        return 0;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(String_FromInt(missing), " of "), String_FromInt(ok + missing)), " installed package(s) failed integrity check."));
+    Console_WriteLine("Run `amc package add <name>@<tag>` (or `amc test` for auto-repair) to re-install.");
+    if (frozen) {
+        return 1;
+    }
+    return 0;
+}
+
+i64 Amalgame_Compiler_AddCommand_RunNotice(i64 argc, i64 startIdx) {
+    (void)argc;
+    (void)startIdx;
+    i64 __attribute__((unused)) i = startIdx;
+    while (i < argc) {
+        code_string __attribute__((unused)) a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc package notice");
+            Console_WriteError("");
+            Console_WriteError("Aggregate licence + authorship of every package referenced");
+            Console_WriteError("from amalgame.lock. Output is plain text on stdout, ready to");
+            Console_WriteError("redirect into NOTICE_DEPS.md for downstream redistribution.");
+            Console_WriteError("");
+            Console_WriteError("For each package, the matching upstream LICENSE / NOTICE files");
+            Console_WriteError("at <PkgDir>/ contain the full licence text — this verb only");
+            Console_WriteError("aggregates the metadata, it does not embed the licence bodies.");
+            return 0;
+        }
+        if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat("unknown flag: ", a));
+            return 2;
+        }
+        i = i + 1;
+    }
+    Amalgame_Compiler_PackageRegistry* __attribute__((unused)) reg = Amalgame_Compiler_PackageRegistry_Load();
+    i64 __attribute__((unused)) np = AmalgameList_count(reg->Packages);
+    if (np == 0) {
+        Console_WriteError("No packages installed in this project.");
+        return 0;
+    }
+    Console_WriteLine("# Third-party Amalgame packages referenced by this project");
+    Console_WriteLine("#");
+    Console_WriteLine("# Generated by `amc package notice` from amalgame.lock + each");
+    Console_WriteLine("# package's amalgame.toml. For the full licence text, consult");
+    Console_WriteLine("# the upstream LICENSE / NOTICE files in each repository.");
+    Console_WriteLine("");
+    AmalgameList* __attribute__((unused)) licenses = AmalgameList_new();
+    for (i64 k = 0; k < np; k++) {
+        Amalgame_Compiler_LoadedPackage* __attribute__((unused)) lp = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, k);
+        code_string __attribute__((unused)) manifestPath = code_string_concat(lp->PkgDir, "/amalgame.toml");
+        if (!File_Exists(manifestPath)) {
+            Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("warning: missing manifest for ", lp->Name), " — run `amc package add "), lp->Name), "@"), lp->Tag), "` to repair."));
+            continue;
+        }
+        code_string __attribute__((unused)) src = File_ReadAll(manifestPath);
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) doc = Amalgame_Compiler_Toml_Parse(src);
+        if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+            Console_WriteError(code_string_concat("warning: unparseable manifest at ", manifestPath));
+            continue;
+        }
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) pkgTable = Amalgame_Compiler_TomlValue_Get(doc, "package");
+        if (!Amalgame_Compiler_TomlValue_IsTable(pkgTable)) {
+            continue;
+        }
+        code_string __attribute__((unused)) manifestName = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(pkgTable, "name"));
+        code_string __attribute__((unused)) manifestVersion = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(pkgTable, "version"));
+        code_string __attribute__((unused)) manifestLicense = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(pkgTable, "license"));
+        code_string __attribute__((unused)) manifestDesc = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(pkgTable, "description"));
+        code_string __attribute__((unused)) authorsJoined = "";
+        Amalgame_Compiler_TomlValue* __attribute__((unused)) authorsArr = Amalgame_Compiler_TomlValue_Get(pkgTable, "authors");
+        if (Amalgame_Compiler_TomlValue_IsArray(authorsArr)) {
+            i64 __attribute__((unused)) an = Amalgame_Compiler_TomlValue_Count(authorsArr);
+            for (i64 j = 0; j < an; j++) {
+                code_string __attribute__((unused)) nameEntry = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_At(authorsArr, j));
+                if (String_Length(nameEntry) == 0) {
+                    continue;
+                }
+                if (String_Length(authorsJoined) > 0) {
+                    authorsJoined = code_string_concat(authorsJoined, " · ");
+                }
+                authorsJoined = code_string_concat(authorsJoined, nameEntry);
+            }
+        }
+        code_string __attribute__((unused)) headline = code_string_concat(code_string_concat(code_string_concat("## ", manifestName), " "), lp->Tag);
+        if (String_Length(manifestVersion) > 0 && !code_string_equals(manifestVersion, String_Substring(lp->Tag, 1, String_Length(lp->Tag) - 1))) {
+            headline = code_string_concat(code_string_concat(code_string_concat(headline, " (manifest version "), manifestVersion), ")");
+        }
+        Console_WriteLine(headline);
+        Console_WriteLine(code_string_concat("Source:    ", lp->Name));
+        if (String_Length(manifestLicense) > 0) {
+            Console_WriteLine(code_string_concat("Licence:   ", manifestLicense));
+            code_bool __attribute__((unused)) seen = 0;
+            i64 __attribute__((unused)) ln = AmalgameList_count(licenses);
+            for (i64 j = 0; j < ln; j++) {
+                if ((code_string)AmalgameList_get(licenses, j) == manifestLicense) {
+                    seen = 1;
+                }
+            }
+            if (!seen) {
+                AmalgameList_add(licenses, (void*)(intptr_t)(manifestLicense));
+            }
+        } else {
+            Console_WriteLine("Licence:   (not declared — review upstream)");
+        }
+        if (String_Length(authorsJoined) > 0) {
+            Console_WriteLine(code_string_concat("Authors:   ", authorsJoined));
+        }
+        if (String_Length(manifestDesc) > 0) {
+            Console_WriteLine(code_string_concat("Summary:   ", manifestDesc));
+        }
+        Console_WriteLine("");
+    }
+    i64 __attribute__((unused)) lc = AmalgameList_count(licenses);
+    code_string __attribute__((unused)) summary = code_string_concat(code_string_concat("# ", String_FromInt(np)), " package(s)");
+    if (lc == 1) {
+        summary = code_string_concat(code_string_concat(summary, "; 1 distinct licence: "), (code_string)((code_string)AmalgameList_get(licenses, 0)));
+    } else if (lc > 1) {
+        summary = code_string_concat(code_string_concat(code_string_concat(summary, "; "), String_FromInt(lc)), " distinct licences: ");
+        for (i64 j = 0; j < lc; j++) {
+            if (j > 0) {
+                summary = code_string_concat(summary, ", ");
+            }
+            summary = code_string_concat(summary, (code_string)((code_string)AmalgameList_get(licenses, j)));
+        }
+    }
+    Console_WriteLine(summary);
+    return 0;
+}
+
 code_string Amalgame_Compiler_AddCommand_LastUrlSegment(code_string url) {
     (void)url;
     i64 __attribute__((unused)) n = String_Length(url);
@@ -21952,8 +22168,8 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test templates).");
     Console_WriteError("                See `amc new --help`.");
     Console_WriteError("  package <X>   Package manager (alias `pkg`). Verbs: add / remove / list /");
-    Console_WriteError("                search / versions / info / outdated / update / cache. See");
-    Console_WriteError("                `amc package --help`.");
+    Console_WriteError("                search / versions / info / outdated / notice / check /");
+    Console_WriteError("                update / cache. See `amc package --help`.");
 }
 
 i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
@@ -22279,7 +22495,23 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine(code_string_concat(code_string_concat("amc ", Amalgame_Compiler_PackageRegistry_AmcVersion()), " (self-hosted Amalgame compiler)"));
+            code_string __attribute__((unused)) rev = BuildInfo_GitRev();
+            code_string __attribute__((unused)) date = BuildInfo_BuildDate();
+            code_string __attribute__((unused)) head = code_string_concat("amc ", Amalgame_Compiler_PackageRegistry_AmcVersion());
+            code_string __attribute__((unused)) prov = "";
+            if (String_Length(rev) > 0 && String_Length(date) > 0) {
+                prov = code_string_concat(code_string_concat(code_string_concat(code_string_concat(" (commit ", rev), ", built "), date), ")");
+            } else if (String_Length(rev) > 0) {
+                prov = code_string_concat(code_string_concat(" (commit ", rev), ")");
+            } else if (String_Length(date) > 0) {
+                prov = code_string_concat(code_string_concat(" (built ", date), ")");
+            }
+            Console_WriteLine(code_string_concat(head, prov));
+            Console_WriteLine("Self-hosted Amalgame compiler.");
+            Console_WriteLine("Copyright (c) 2026 Bastien Mouget. License: Apache-2.0.");
+            Console_WriteLine("Website:    https://amalgame.me");
+            Console_WriteLine("Repository: https://github.com/amalgame-lang/Amalgame");
+            Console_WriteLine("Issues:     https://github.com/amalgame-lang/Amalgame/issues");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {

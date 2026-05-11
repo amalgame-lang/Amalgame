@@ -552,6 +552,21 @@ before the next big language addition.
           resolve form + `--no-precompile` + the full semver
           operator set; the top-level `amc --help` verb list adds
           `versions / info / outdated` (previously omitted).
+        - **v0.6.2** — `amc package notice` (aggregates each
+          installed package's `[package].license/authors/description`
+          into a NOTICE-style listing, ready to redirect into
+          `NOTICE_DEPS.md` for downstream commercial
+          redistribution); `amc package check [--frozen]`
+          (verifies amalgame.lock matches the installed cache —
+          `--frozen` exits 1 on mismatch for CI fail-fast lanes,
+          bare form is informational and always exits 0). Also:
+          `amc --version` now bakes the git short-SHA + UTC
+          build timestamp via `-DAMC_GIT_REV=...` /
+          `-DAMC_BUILD_DATE=...` (build_amc.sh wires both;
+          fall back to "" cleanly when the defines are absent),
+          and surfaces author / licence / website / repository /
+          issues URLs in the banner — debugging an ambiguous
+          binary is one `amc --version` away now.
 - [x] **`amc lsp` (diagnostics)** (v0.3.4) — minimal LSP 3.x server
       over stdio JSON-RPC. Implements lifecycle (`initialize` /
       `shutdown` / `exit`), document state (didOpen / didChange /
