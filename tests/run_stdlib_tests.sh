@@ -20,15 +20,33 @@ SKIP_SELFHOST=" "
 BUILD_DIR=$(mktemp -d -t amc-stdlib-XXXXXX)
 trap 'rm -rf "$BUILD_DIR"' EXIT
 
-# Pre-compile the vendored SQLite amalgamation once. Database tests
-# link against this .o — compiling 9MB of sqlite3.c per test would
-# add 10s × N tests; doing it here adds 10s total. Built with the
-# same flags as the test compile (-O2, -Iruntime so cross-references
-# work) and with -w to silence sqlite3.c's own warnings.
+# Install the SQLite package once (v0.5 ecosystem flow). It lives
+# outside this repo as `amalgame-lang/amalgame-database-sqlite`,
+# tagged at v0.1.0. The runner does `amc add` into a per-suite
+# project dir, then pre-compiles the package's vendored sqlite3.c
+# amalgamation for linking. After this block:
+#   $SQLITE_PROJ        — cwd for amc invocations that need SQLite
+#   $SQLITE_PKG_DIR     — cache path to the installed package
+#   $SQLITE_OBJ         — pre-compiled sqlite3.o
+#   $SQLITE_AVAILABLE   — 1 if the install succeeded, 0 otherwise
+SQLITE_PKG_URL="github.com/amalgame-lang/amalgame-database-sqlite"
+SQLITE_PKG_TAG="v0.1.0"
+SQLITE_PROJ="$BUILD_DIR/sqlite-proj"
 SQLITE_OBJ="$BUILD_DIR/sqlite3.o"
-echo "── Pre-compiling vendored SQLite amalgamation ──"
-gcc -O2 -Iruntime -w -c runtime/Amalgame_Database/sqlite/sqlite3.c -o "$SQLITE_OBJ"
-echo "  built: $SQLITE_OBJ ($(stat -c%s "$SQLITE_OBJ" 2>/dev/null || stat -f%z "$SQLITE_OBJ") bytes)"
+SQLITE_AVAILABLE=0
+mkdir -p "$SQLITE_PROJ"
+echo "── Installing $SQLITE_PKG_URL@$SQLITE_PKG_TAG ──"
+AMC_ABS="$(realpath "$AMC")"
+if (cd "$SQLITE_PROJ" && "$AMC_ABS" add "$SQLITE_PKG_URL@$SQLITE_PKG_TAG") > "$BUILD_DIR/sqlite-install.log" 2>&1; then
+    SQLITE_AVAILABLE=1
+    SQLITE_PKG_DIR=$(grep "^Cached at" "$BUILD_DIR/sqlite-install.log" | awk '{print $3}')
+    echo "  installed at $SQLITE_PKG_DIR"
+    echo "── Pre-compiling vendored sqlite3.c (one-shot per suite) ──"
+    gcc -O2 -Iruntime -w -c "$SQLITE_PKG_DIR/runtime/Amalgame_Database/sqlite/sqlite3.c" -o "$SQLITE_OBJ"
+    echo "  built: $SQLITE_OBJ"
+else
+    echo "  install failed — Database tests will SKIP. See $BUILD_DIR/sqlite-install.log"
+fi
 echo ""
 
 GREEN='\033[0;32m'
@@ -78,11 +96,11 @@ run_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    # Always link the pre-compiled SQLite amalgamation. Adds ~1.5MB
-    # to the test binary but means Database tests work without
-    # special-casing — and non-Database tests get the link as
-    # dead-code that the loader skips.
-    gcc -O2 -Iruntime "$c_file" "$SQLITE_OBJ" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
+    # SQLite stopped being a default link target with the v0.5
+    # extraction — Database.SQLite is now an opt-in external
+    # package. Tests that need it go through `run_db_test` which
+    # adds the .o + sets cwd to $SQLITE_PROJ.
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -112,6 +130,63 @@ run_test() {
     else
         echo -e "${GREEN}PASS${NC}"
         PASS=$((PASS + 1))
+    fi
+}
+
+# run_db_test — v0.5 wrapper for tests that depend on the
+# `amalgame-database-sqlite` external package. Replaces the
+# pre-v0.5 path where SQLite was part of the monolith and the
+# vanilla `run_test` worked.
+#
+# Skips cleanly if `amc add` failed at suite startup, runs amc
+# from $SQLITE_PROJ (so the project's `amalgame.lock` resolves
+# the SQLite dep), links the pre-compiled sqlite3.o.
+run_db_test() {
+    local name="$1"
+    local file="$2"
+    local expected="$3"
+
+    printf "  %-38s" "$name"
+
+    if [ "$SQLITE_AVAILABLE" != "1" ]; then
+        echo -e "${YELLOW}SKIP${NC} (amalgame-database-sqlite not installed)"
+        SKIP=$((SKIP + 1)); return
+    fi
+    if [ ! -f "$file" ]; then
+        echo -e "${YELLOW}SKIP${NC} (fixture not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    cp "$file" "$SQLITE_PROJ/test.am"
+    local out_base="$SQLITE_PROJ/test"
+    local RUNTIME_ABS="$(realpath runtime)"
+    local out
+    out=$(cd "$SQLITE_PROJ" && "$AMC_ABS" -o test test.am 2>&1)
+    local amc_exit=$?
+    if [ $amc_exit -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (amc exited $amc_exit)"
+        echo "$out" | head -3 | sed 's/^/    /'
+        FAIL=$((FAIL + 1)); return
+    fi
+    if [ ! -f "$out_base.c" ]; then
+        echo -e "${RED}FAIL${NC} (no .c emitted)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    gcc -O2 -I"$RUNTIME_ABS" "$out_base.c" "$SQLITE_OBJ" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
+    if [ ! -x "$out_base" ]; then
+        echo -e "${RED}FAIL${NC} (gcc link failed)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    local run_output
+    run_output=$("$out_base" 2>&1)
+    if echo "$run_output" | grep -qF "$expected"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (output mismatch)"
+        echo "    expected: $expected"
+        echo "    got:      $(echo "$run_output" | head -3 | tr '\n' '|')"
+        FAIL=$((FAIL + 1))
     fi
 }
 
@@ -547,19 +622,19 @@ run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS]
 # straight to the runtime helpers. Tests open an in-memory db.
 echo ""
 echo "── Amalgame.Database ───────────────────────"
-run_test "Db: open memory"                  "$SAMPLES/stdlib_database.am" "[PASS] open memory"               ""
-run_test "Db: create table"                 "$SAMPLES/stdlib_database.am" "[PASS] create table"              ""
-run_test "Db: insert"                       "$SAMPLES/stdlib_database.am" "[PASS] insert alice"              ""
-run_test "Db: last insert id 1"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 1"          ""
-run_test "Db: last insert id 3"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 3"          ""
-run_test "Db: changes counter"              "$SAMPLES/stdlib_database.am" "[PASS] changes 2"                 ""
-run_test "Db: query rows"                   "$SAMPLES/stdlib_database.am" "[PASS] query 3 rows"              ""
-run_test "Db: column text"                  "$SAMPLES/stdlib_database.am" "[PASS] alice name"                ""
-run_test "Db: update reflected"             "$SAMPLES/stdlib_database.am" "[PASS] alice age post-update"     ""
-run_test "Db: aggregate count"              "$SAMPLES/stdlib_database.am" "[PASS] aggregate count 2"         ""
-run_test "Db: error reported"               "$SAMPLES/stdlib_database.am" "[PASS] error reported"            ""
-run_test "Db: delete + verify"              "$SAMPLES/stdlib_database.am" "[PASS] delete leaves 2"           ""
-run_test "Db: close"                        "$SAMPLES/stdlib_database.am" "[PASS] closed"                    ""
+run_db_test "Db: open memory"                  "$SAMPLES/stdlib_database.am" "[PASS] open memory"               ""
+run_db_test "Db: create table"                 "$SAMPLES/stdlib_database.am" "[PASS] create table"              ""
+run_db_test "Db: insert"                       "$SAMPLES/stdlib_database.am" "[PASS] insert alice"              ""
+run_db_test "Db: last insert id 1"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 1"          ""
+run_db_test "Db: last insert id 3"             "$SAMPLES/stdlib_database.am" "[PASS] last insert id 3"          ""
+run_db_test "Db: changes counter"              "$SAMPLES/stdlib_database.am" "[PASS] changes 2"                 ""
+run_db_test "Db: query rows"                   "$SAMPLES/stdlib_database.am" "[PASS] query 3 rows"              ""
+run_db_test "Db: column text"                  "$SAMPLES/stdlib_database.am" "[PASS] alice name"                ""
+run_db_test "Db: update reflected"             "$SAMPLES/stdlib_database.am" "[PASS] alice age post-update"     ""
+run_db_test "Db: aggregate count"              "$SAMPLES/stdlib_database.am" "[PASS] aggregate count 2"         ""
+run_db_test "Db: error reported"               "$SAMPLES/stdlib_database.am" "[PASS] error reported"            ""
+run_db_test "Db: delete + verify"              "$SAMPLES/stdlib_database.am" "[PASS] delete leaves 2"           ""
+run_db_test "Db: close"                        "$SAMPLES/stdlib_database.am" "[PASS] closed"                    ""
 
 # ── Amalgame.Database.NoSQL.Redis ─────────────────────
 # RESP2 client over raw TCP. Gated on a TCP reachability probe so

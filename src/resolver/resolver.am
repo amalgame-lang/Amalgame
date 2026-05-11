@@ -345,22 +345,10 @@ public class FullResolver {
         // Service stdlib — same isStdlib short-circuit pattern as Log.
         this.DeclareGlobal("Service",             "type",   false)
         this.DeclareGlobal("Service_Install",     "void",   false)
-        // Database.SQLite stdlib — same isStdlib short-circuit
-        // pattern. Runtime ships the SQLite amalgamation at
-        // runtime/Amalgame_Database/sqlite/sqlite3.c; users link
-        // that file into their binary alongside the generated .c.
-        // The namespace convention `Amalgame.Database.<Engine>`
-        // leaves room for sibling backends (Postgres / DuckDB /
-        // MySQL / …) under `Amalgame.Database.<Engine>` later.
-        this.DeclareGlobal("SQLite",                "type",         false)
-        this.DeclareGlobal("SQLite_Open",           "AmalgameSQLite", false)
-        this.DeclareGlobal("SQLite_Close",          "void",         false)
-        this.DeclareGlobal("SQLite_IsOpen",         "bool",         false)
-        this.DeclareGlobal("SQLite_LastError",      "string",       false)
-        this.DeclareGlobal("SQLite_Exec",           "bool",         false)
-        this.DeclareGlobal("SQLite_QueryAll",       "List<List<string>>", false)
-        this.DeclareGlobal("SQLite_LastInsertId",   "int",          false)
-        this.DeclareGlobal("SQLite_Changes",        "int",          false)
+        // (Database.SQLite global declarations moved to package
+        //  amalgame-database-sqlite v0.1.0 — RegisterPackages
+        //  declares them dynamically when the user has done
+        //  `amc add github.com/amalgame-lang/amalgame-database-sqlite`.)
         this.DeclareGlobal("Redis",                 "type",         false)
         this.DeclareGlobal("Redis_Open",            "AmalgameRedis", false)
         this.DeclareGlobal("Redis_Close",           "void",         false)

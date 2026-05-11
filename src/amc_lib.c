@@ -14,7 +14,6 @@
 #include "Amalgame_Crypto.h"
 #include "Amalgame_Logging.h"
 #include "Amalgame_Service.h"
-#include "Amalgame_Database_SQLite.h"
 #include "Amalgame_Database_Redis.h"
 #include "Amalgame_Messaging_MQTT.h"
 
@@ -5030,24 +5029,6 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Service_Install") || code_string_equals(calleeStr, "Service_RequestStop") || code_string_equals(calleeStr, "Service_Sleep")) {
                 return "void";
             }
-            if (code_string_equals(calleeStr, "SQLite_Open")) {
-                return "AmalgameSQLite*";
-            }
-            if (code_string_equals(calleeStr, "SQLite_IsOpen") || code_string_equals(calleeStr, "SQLite_Exec")) {
-                return "code_bool";
-            }
-            if (code_string_equals(calleeStr, "SQLite_LastInsertId") || code_string_equals(calleeStr, "SQLite_Changes")) {
-                return "i64";
-            }
-            if (code_string_equals(calleeStr, "SQLite_LastError")) {
-                return "code_string";
-            }
-            if (code_string_equals(calleeStr, "SQLite_QueryAll")) {
-                return "AmalgameList*";
-            }
-            if (code_string_equals(calleeStr, "SQLite_Close")) {
-                return "void";
-            }
             if (code_string_equals(calleeStr, "Redis_Open")) {
                 return "AmalgameRedis*";
             }
@@ -5496,7 +5477,6 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Crypto.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Logging.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_SQLite.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_Redis.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Messaging_MQTT.h\"");
     i64 __attribute__((unused)) pkgHdrN = AmalgameList_count(self->PkgHeaders);
@@ -7354,7 +7334,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
-                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "SQLite") || code_string_equals(tname, "Redis") || code_string_equals(tname, "MQTT");
+                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "Redis") || code_string_equals(tname, "MQTT");
                     if (!isStdlib) {
                         i64 __attribute__((unused)) pkgClsN = AmalgameList_count(self->PkgClasses);
                         for (i64 pci = 0; pci < pkgClsN; pci++) {
@@ -9832,15 +9812,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Error", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Install", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite", "type", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_Open", "AmalgameSQLite", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_Close", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_IsOpen", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_LastError", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_Exec", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_QueryAll", "List<List<string>>", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_LastInsertId", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_Changes", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Open", "AmalgameRedis", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Close", "void", 0);
