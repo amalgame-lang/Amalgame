@@ -276,9 +276,7 @@ run "git add src/main.am README.md CHANGELOG.md src/amc_lib.c snapshot/amc_lib.c
 if ! $DRY_RUN; then
     git commit -m "release: $TAG
 
-$BODY
-
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+$BODY"
 else
     echo "    [dry-run] git commit -m 'release: $TAG' (body from CHANGELOG)"
 fi

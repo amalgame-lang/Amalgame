@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-11 · `amc 0.4.16` · self-hosted · 434/434 tests · multi-OS CI · GitHub Releases automation
+> Updated 2026-05-11 · `amc 0.4.17` · self-hosted · 438/438 tests · multi-OS CI · GitHub Releases automation
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -495,6 +495,12 @@ before the next big language addition.
       via `amalgame.serverPath` and `amalgame.enableLsp`.
 - [x] **`amc lsp` hover + global completion** (v0.3.5) — follow-up on top of v0.3.4
       diagnostics. Needs pos→symbol lookup on the AST.
+- [x] **`amc lsp` foldingRange** (slice 5) — token-driven brace-pair
+      matching for class / method / block bodies; `kind:"comment"`
+      runs for consecutive `//` lines; `kind:"imports"` runs for
+      consecutive `import …` statements. Filters one- and two-line
+      blocks so the gutter stays uncluttered. Capability advertised
+      as `foldingRangeProvider: true`.
 - [ ] **`amc lsp` navigation (v2)** — the next-tier features users
       hit fastest after diagnostics + completion are working:
         - **`textDocument/definition`** — jump to where a symbol is
@@ -649,6 +655,53 @@ implementation effort.
       `IsOpen`, `Exec(sql)`, `QueryAll(sql) → List<List<string>>`,
       `LastInsertId`, `Changes`, `LastError`. Parameter binding
       via `?` placeholders is the v2 ask.
+- [x] **`Amalgame.Database.NoSQL.Redis` v1** (v0.4.17) —
+      pure-protocol RESP2 client over raw TCP, no vendored client
+      lib. Speaks the wire format Redis / KeyDB / Dragonfly /
+      Valkey share. Runtime header
+      (`runtime/Amalgame_Database_Redis.h`, ~340 LoC) reuses the
+      cross-platform socket layer from `Amalgame_Net.h`. Surface:
+      `Redis.Open(host, port) → AmalgameRedis*`, `Close`,
+      `IsOpen`, `LastError`, `Ping`, `Set`, `Get`, `Del`,
+      `Exists`, `Incr`, `Decr`, `Expire`. Test fixture gates on a
+      TCP reachability probe — every case SKIPs cleanly if no
+      server is up, runs the round-trip otherwise. AUTH / SELECT,
+      pipelining, pub/sub, MULTI/EXEC, SCAN, TLS, binary values
+      with embedded NULs are v2.
+- [ ] **Stdlib package manager — extract DB backends as
+      packages.** Triggered once 3-4 optional backends are in
+      tree (Redis + DuckDB? + Postgres? + MQTT?) and the
+      monolithic-stdlib model starts hurting. Design space:
+        - **Manifest format** — `package.am` or `amalgame.toml`
+          listing name, version, runtime headers, link flags,
+          deps. Has to be parseable by the package manager
+          without bootstrapping the full Amalgame compiler.
+        - **CLI** — `amc add <repo-url>` git-clones the package
+          into `~/.amalgame/packages/<name>/` (and pins a
+          revision in a project-local lock file). `amc remove`,
+          `amc update`, `amc list` round out the surface.
+        - **Resolver path** — `import Amalgame.Foo.Bar` walks a
+          package search path; package manifest tells resolver
+          which globals to declare instead of today's hardcoded
+          list in `src/resolver/resolver.am`.
+        - **CGen plugin** — package manifest declares isStdlib
+          class names + return-type table per stdlib function,
+          replacing today's hardcoded blocks in
+          `src/generator/c_gen.am`.
+        - **Linker** — manifest declares native deps
+          (`-lcurl`, `-lz`, vendored amalgamation .c sources
+          to compile alongside the user binary).
+        - **Inaugural packages** — extract
+          `Amalgame.Database.SQLite` and
+          `Amalgame.Database.NoSQL.Redis` to
+          `amalgame-lang/amalgame-sqlite` and
+          `amalgame-lang/amalgame-redis`. Both already use the
+          runtime-header pattern so the migration is mostly
+          moving files + writing the manifest. Validates the
+          design against two distinct shapes (vendored .c
+          amalgamation vs pure-protocol header).
+      ~1 week of work; gates further DB / Messaging backends
+      so we don't keep adding to the monolithic compiler tree.
 - [ ] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
       extend the `Amalgame.Database.*` namespace with bindings to
       other relational engines. Each gets its own header

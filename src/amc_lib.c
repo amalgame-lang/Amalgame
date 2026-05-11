@@ -15,6 +15,7 @@
 #include "Amalgame_Logging.h"
 #include "Amalgame_Service.h"
 #include "Amalgame_Database_SQLite.h"
+#include "Amalgame_Database_Redis.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -3862,6 +3863,21 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "SQLite_Close")) {
                 return "void";
             }
+            if (code_string_equals(calleeStr, "Redis_Open")) {
+                return "AmalgameRedis*";
+            }
+            if (code_string_equals(calleeStr, "Redis_IsOpen") || code_string_equals(calleeStr, "Redis_Ping") || code_string_equals(calleeStr, "Redis_Set") || code_string_equals(calleeStr, "Redis_Exists") || code_string_equals(calleeStr, "Redis_Expire")) {
+                return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "Redis_Del") || code_string_equals(calleeStr, "Redis_Incr") || code_string_equals(calleeStr, "Redis_Decr")) {
+                return "i64";
+            }
+            if (code_string_equals(calleeStr, "Redis_Get") || code_string_equals(calleeStr, "Redis_LastError")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Redis_Close")) {
+                return "void";
+            }
             if (code_string_equals(calleeStr, "Http_Get") || code_string_equals(calleeStr, "Http_Post") || code_string_equals(calleeStr, "Http_GetWithHeaders") || code_string_equals(calleeStr, "Http_GetTimeout") || code_string_equals(calleeStr, "Http_PostJson") || code_string_equals(calleeStr, "Http_PostWithHeaders") || code_string_equals(calleeStr, "Http_Put") || code_string_equals(calleeStr, "Http_Delete") || code_string_equals(calleeStr, "Http_Patch")) {
                 return "AmalgameHttpResponse*";
             }
@@ -4278,6 +4294,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Logging.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_SQLite.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Database_Redis.h\"");
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
@@ -6107,7 +6124,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string __attribute__((unused)) firstChar = String_Substring(tname, 0, 1);
                 code_bool __attribute__((unused)) isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
                 if (isUpper) {
-                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "SQLite");
+                    code_bool __attribute__((unused)) isStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "SQLite") || code_string_equals(tname, "Redis");
                     if (isStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8558,6 +8575,19 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_QueryAll", "List<List<string>>", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_LastInsertId", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "SQLite_Changes", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Open", "AmalgameRedis", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_IsOpen", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_LastError", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Ping", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Set", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Get", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Del", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Exists", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Incr", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Decr", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Redis_Expire", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Sleep", "void", 0);
@@ -13408,6 +13438,8 @@ static code_string Amalgame_Compiler_LspServer_InlayHintJson(i64 line, i64 col, 
 static void Amalgame_Compiler_LspServer_HandleCodeAction(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 startLine, i64 startChr, i64 endLine, i64 endChr);
 static void Amalgame_Compiler_LspServer_CollectAnnotationFixes(Amalgame_Compiler_AstNode* node, Amalgame_Compiler_TypeChecker* tc, code_string uri, i64 sLine, i64 eLine, AmalgameList* out);
 static code_string Amalgame_Compiler_LspServer_AnnotationFixJson(code_string uri, i64 line, i64 col, code_string name, code_string typeStr);
+static void Amalgame_Compiler_LspServer_HandleFoldingRange(Amalgame_Compiler_LspServer* self, i64 id, code_string uri);
+static code_string Amalgame_Compiler_LspServer_FoldEntry(i64 startLine, i64 endLine, code_string kind);
 static void Amalgame_Compiler_LspServer_HandleWorkspaceSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string query);
 static code_string Amalgame_Compiler_LspServer_WorkspaceSymbolEntry(Amalgame_Compiler_AstNode* decl, code_string path, code_string lowerQuery);
 static void Amalgame_Compiler_LspServer_SendDefinitionLocation(Amalgame_Compiler_LspServer* self, i64 id, code_string path, i64 line, i64 col, code_string name);
@@ -13542,6 +13574,9 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
             i64 __attribute__((unused)) el = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(re, "line"));
             i64 __attribute__((unused)) ec = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(re, "character"));
             Amalgame_Compiler_LspServer_HandleCodeAction(self, id, uri, sl, sc, el, ec);
+        } else if (code_string_equals(method, "textDocument/foldingRange")) {
+            code_string __attribute__((unused)) uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
+            Amalgame_Compiler_LspServer_HandleFoldingRange(self, id, uri);
         }
     }
     return 0;
@@ -13636,7 +13671,7 @@ static void Amalgame_Compiler_LspServer_Send(Amalgame_Compiler_LspServer* self, 
 static void Amalgame_Compiler_LspServer_SendInit(Amalgame_Compiler_LspServer* self, i64 id) {
     (void)self;
     (void)id;
-    code_string __attribute__((unused)) body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}");
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}");
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
@@ -15005,6 +15040,100 @@ static code_string Amalgame_Compiler_LspServer_AnnotationFixJson(code_string uri
     code_string __attribute__((unused)) changes = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"", Amalgame_Compiler_Json_EscapeString(uri)), "\":["), edit), "]}");
     code_string __attribute__((unused)) title = code_string_concat("Add type annotation: ", typeStr);
     return code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"title\":\"", Amalgame_Compiler_Json_EscapeString(title)), "\",\"kind\":\"quickfix\",\"isPreferred\":true,\"edit\":{\"changes\":"), changes), "}}");
+}
+
+static void Amalgame_Compiler_LspServer_HandleFoldingRange(Amalgame_Compiler_LspServer* self, i64 id, code_string uri) {
+    (void)self;
+    (void)id;
+    (void)uri;
+    code_string __attribute__((unused)) source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
+    if (String_Length(source) == 0) {
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":[]}"));
+        return;
+    }
+    code_string __attribute__((unused)) path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    Amalgame_Compiler_Lexer* __attribute__((unused)) lex = Amalgame_Compiler_Lexer_new(source, path);
+    AmalgameList* __attribute__((unused)) toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    AmalgameList* __attribute__((unused)) folds = AmalgameList_new();
+    AmalgameList* __attribute__((unused)) braceStack = AmalgameList_new();
+    i64 __attribute__((unused)) commStart = 0;
+    i64 __attribute__((unused)) commEnd = 0;
+    i64 __attribute__((unused)) lastComm = -2;
+    i64 __attribute__((unused)) impStart = 0;
+    i64 __attribute__((unused)) impEnd = 0;
+    i64 __attribute__((unused)) lastImp = -2;
+    i64 __attribute__((unused)) nT = AmalgameList_count(toks);
+    for (i64 i = 0; i < nT; i++) {
+        Amalgame_Compiler_Token* __attribute__((unused)) t = (void*)AmalgameList_get(toks, i);
+        Amalgame_Compiler_TokenType __attribute__((unused)) ty = t->Type;
+        if (ty == Amalgame_Compiler_TokenType_LBRACE) {
+            AmalgameList_add(braceStack, (void*)(intptr_t)(t->Line));
+        }
+        if (ty == Amalgame_Compiler_TokenType_RBRACE) {
+            i64 __attribute__((unused)) depth = AmalgameList_count(braceStack);
+            if (depth > 0) {
+                i64 __attribute__((unused)) openLine = (i64)AmalgameList_get(braceStack, depth - 1);
+                AmalgameList_removeAt(braceStack, depth - 1);
+                i64 __attribute__((unused)) closeLine = t->Line;
+                if (closeLine > openLine + 1) {
+                    AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(openLine - 1, closeLine - 2, "")));
+                }
+            }
+        }
+        if (ty == Amalgame_Compiler_TokenType_COMMENT) {
+            if (t->Line == lastComm + 1) {
+                commEnd = t->Line;
+            } else {
+                if (commEnd > commStart) {
+                    AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(commStart - 1, commEnd - 1, "comment")));
+                }
+                commStart = t->Line;
+                commEnd = t->Line;
+            }
+            lastComm = t->Line;
+        }
+        if (ty == Amalgame_Compiler_TokenType_KW_IMPORT) {
+            if (t->Line == lastImp + 1) {
+                impEnd = t->Line;
+            } else {
+                if (impEnd > impStart) {
+                    AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(impStart - 1, impEnd - 1, "imports")));
+                }
+                impStart = t->Line;
+                impEnd = t->Line;
+            }
+            lastImp = t->Line;
+        }
+    }
+    if (commEnd > commStart) {
+        AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(commStart - 1, commEnd - 1, "comment")));
+    }
+    if (impEnd > impStart) {
+        AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(impStart - 1, impEnd - 1, "imports")));
+    }
+    code_string __attribute__((unused)) json = "[";
+    i64 __attribute__((unused)) fn = AmalgameList_count(folds);
+    for (i64 i = 0; i < fn; i++) {
+        if (i > 0) {
+            json = code_string_concat(json, ",");
+        }
+        json = code_string_concat(json, (code_string)((code_string)AmalgameList_get(folds, i)));
+    }
+    json = code_string_concat(json, "]");
+    code_string __attribute__((unused)) body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":"), json), "}");
+    Amalgame_Compiler_LspServer_Send(self, body);
+}
+
+static code_string Amalgame_Compiler_LspServer_FoldEntry(i64 startLine, i64 endLine, code_string kind) {
+    (void)startLine;
+    (void)endLine;
+    (void)kind;
+    code_string __attribute__((unused)) s = code_string_concat(code_string_concat(code_string_concat("{\"startLine\":", String_FromInt(startLine)), ",\"endLine\":"), String_FromInt(endLine));
+    if (String_Length(kind) > 0) {
+        s = code_string_concat(code_string_concat(code_string_concat(s, ",\"kind\":\""), kind), "\"");
+    }
+    s = code_string_concat(s, "}");
+    return s;
 }
 
 static void Amalgame_Compiler_LspServer_HandleWorkspaceSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string query) {
@@ -18634,7 +18763,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         } else if (code_string_equals(a, "--verbose")) {
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            Console_WriteLine("amc 0.4.16 (self-hosted Amalgame compiler)");
+            Console_WriteLine("amc 0.4.17 (self-hosted Amalgame compiler)");
             Exit_Set(0);
             return;
         } else if (code_string_equals(a, "--help") || code_string_equals(a, "-h")) {
