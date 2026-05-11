@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-11T12:40:12+02:00
-Git rev:  25d2936f8e56c1dddaf017b0c09981bea436762b
-Branch:   feat/extract-redis-mqtt
+Captured: 2026-05-11T13:10:47+02:00
+Git rev:  8b98d06835be9d46a601582ec4ff8177c7078728
+Branch:   release/v0.5.0
 Tests:    (skipped) passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses

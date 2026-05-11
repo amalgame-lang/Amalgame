@@ -7,6 +7,155 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.5.0] — 2026-05-11
+
+The **"package manager + ecosystem launch"** release. v0.5 is the
+biggest architectural shift since v0.3 self-hosting: the
+monolithic compiler bundle is split into a **lean core** plus an
+**opt-in package ecosystem**, with a real package-manager CLI,
+manifest format, lock file, and 3 inaugural external packages
+shipped alongside this release.
+
+### Headline: `amc add`
+
+```
+amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.2.0
+```
+
+…clones an external package, validates its manifest, writes the
+project's `amalgame.toml` + `amalgame.lock`, and from that point
+on `import Amalgame.Database.SQLite` Just Works in user code.
+
+### 3 inaugural external packages
+
+The previously bundled optional backends are now self-hosted in
+their own repos with their own CI, their own release cadence,
+their own tests:
+
+| Package | Replaces (pre-v0.5) | License |
+|---|---|---|
+| [`amalgame-lang/amalgame-database-sqlite@v0.2.0`](https://github.com/amalgame-lang/amalgame-database-sqlite) | bundled SQLite in v0.4.15 | Apache-2.0 over public-domain SQLite |
+| [`amalgame-lang/amalgame-database-nosql-redis@v0.2.0`](https://github.com/amalgame-lang/amalgame-database-nosql-redis) | bundled Redis in v0.4.17 | Apache-2.0 |
+| [`amalgame-lang/amalgame-messaging-mqtt@v0.2.0`](https://github.com/amalgame-lang/amalgame-messaging-mqtt) | bundled MQTT in v0.4.17 | Apache-2.0 |
+
+User-facing Amalgame source is **unchanged** — same
+`SQLite.Open(":memory:")` / `Redis.Set(r, k, v)` /
+`MQTT.Publish(m, t, p)`. Only difference: the dep is declared
+explicitly in `amalgame.toml` instead of being bundled.
+
+### Added — package manager pipeline
+
+- **`Amalgame.Formats.Toml`** (PR #283) — TOML 1.0 subset parser
+  + serializer. ~480 LoC pure Amalgame. Supports tables, nested
+  tables, inline tables, arrays, basic + literal strings,
+  integers, booleans, `#` comments, and `[[foo]]` array-of-
+  tables (PR #285, needed for the lock-file format).
+- **`Amalgame.Formats.*` umbrella** — `Amalgame.Json` migrated
+  to `Amalgame.Formats.Json`. Future XML / YAML / CSV / INI /
+  MessagePack / CBOR fit naturally. Breaking for v0.4.x users
+  but trivial find-replace; no compat shim.
+- **`amc add <git-url>@<tag>`** (PR #284) — package installer.
+  Cache layout `~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/`.
+  Idempotent (re-running is a no-op). Validates manifest at
+  install: `[package].name` matches URL slug, `version` matches
+  tag, `license` declared, `required-amalgame` constraint is
+  satisfied by the running compiler.
+- **`PackageRegistry`** (PR #286) — compiler-side loader reads
+  `amalgame.lock` + each cached manifest, exposes a typed
+  registry. Single source of truth for the resolver + cgen.
+- **Resolver wiring** (PR #287) — declares each package's class
+  + functions as globals so user code resolves cleanly without
+  any per-package hardcoding in `src/resolver/resolver.am`.
+- **CGen wiring** (PR #288) — isStdlib short-circuit consults
+  the registry; return-type table is manifest-driven; prelude
+  `#include` lines are emitted per installed package.
+- **End-to-end pipeline test** (PR #289) — fixture exercises
+  Toml → PackageRegistry → Resolver → CGen on a fake package
+  without any network call.
+- **Namespace-mangled C symbols** (PR #295) — package class
+  methods lower to the namespace-prefixed C name
+  (`Redis.Open` → `Amalgame_Database_NoSQL_Redis_Open`) so two
+  packages exposing the same short class can't collide at link
+  time. Core stdlib (Console / File / Math / …) keeps its flat
+  `Class_Method` symbols — single-author, no risk.
+- **`required-amalgame` compat gate** (PR #291) — package
+  manifests declare `required-amalgame = ">=X.Y.Z"`. amc
+  refuses to install if the running compiler version doesn't
+  satisfy it (errors at install instead of mysteriously at
+  gcc-link time).
+
+### Removed — optional backends moved to packages
+
+- `runtime/Amalgame_Database_SQLite.h` + the 9MB vendored
+  amalgamation (`runtime/Amalgame_Database/sqlite/sqlite3.{c,h}`)
+  → `amalgame-lang/amalgame-database-sqlite`
+- `runtime/Amalgame_Database_Redis.h`
+  → `amalgame-lang/amalgame-database-nosql-redis`
+- `runtime/Amalgame_Messaging_MQTT.h`
+  → `amalgame-lang/amalgame-messaging-mqtt`
+- All hardcoded isStdlib / return-type / DeclareGlobal entries
+  for the three classes — replaced by manifest-driven dispatch.
+- The corresponding test fixtures and runner blocks — moved to
+  each package's own `tests/run_tests.sh`.
+
+### Changed — architectural
+
+- **Main repo binary size** drops from ~470KB to ~370KB —
+  9MB of vendored SQLite no longer ships with amc.
+- **Main repo CI** tests only the compiler + core stdlib + the
+  package-manager pipeline. No external server dependency.
+  Clone-and-test runs green out of the box; no Redis, mosquitto,
+  or SQLite-dev install required.
+- **Each package** owns its own tests, CI workflow, release
+  cadence. Bug fixes ship from the package repo without a
+  compiler release.
+
+### Tests / infra
+
+- Main repo suite: **205 core / 219 stdlib / 12 fmt / 34 amc-new
+  = 470 PASS / 0 FAIL / 0 SKIP** (was 438/24 in v0.4.17 — the
+  SKIPs were Redis + MQTT cases waiting for a server, now those
+  live in the package repos).
+- 14 PRs landed (#282–#295). Develop accumulation per the v0.5
+  batching policy — no intermediate patch releases since v0.4.17.
+
+### Migration from v0.4.x
+
+User code at v0.4.17 today:
+
+```amalgame
+import Amalgame.Database.SQLite
+let db = SQLite.Open(":memory:")
+```
+
+…keeps working at v0.5.0 — but the dep must now be declared:
+
+```bash
+amc add github.com/amalgame-lang/amalgame-database-sqlite@v0.2.0
+```
+
+Same for Redis + MQTT. Json users update one import:
+`import Amalgame.Json` → `import Amalgame.Formats.Json`. No
+compat shim — pre-1.0 language, breaking renames are documented.
+
+### Design doc
+
+Full design captured in [`docs/proposals/amalgame-package-manager.md`](docs/proposals/amalgame-package-manager.md).
+
+### Roadmap — v0.5.x + v0.6
+
+- **v0.5.x** patch follow-ups (no breaking):
+  - Transitive dep resolution + cycle/conflict detection
+  - `amalgame-lang/packages-index` shortname lookup
+    (`amc add redis@v0.2.0`)
+  - `amc remove` / `update` / `list` / `search`
+  - Path deps (`{ path = "../foo" }`)
+  - Semver range constraints (`^X.Y.Z`, `~X.Y.Z`)
+- **v0.6**: multi-version coexistence (Cargo-style dual-link
+  enabled by the v0.5 mangling).
+
+---
+
 ## [v0.4.17] — 2026-05-11
 
 The "Redis client + LSP folding" release. Closes the last
@@ -1592,6 +1741,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.5.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.0
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
