@@ -152,10 +152,19 @@ if git ls-remote --tags origin "$TAG" 2>/dev/null | grep -q "$TAG"; then
 fi
 ok "tag $TAG is fresh"
 
-# Find current canonical version in src/main.am.
-CURRENT=$(grep -oE 'amc [0-9]+\.[0-9]+\.[0-9]+' src/main.am | head -1 | awk '{print $2}')
+# Find current canonical version. Single source of truth is the
+# `return "X.Y.Z"` literal inside `PackageRegistry.AmcVersion()`
+# in src/package_registry.am (before v0.5.0 it lived as a literal
+# in src/main.am — that older pattern is kept here as a fallback
+# for archaeological tags).
+CURRENT=$(grep -oE 'return "[0-9]+\.[0-9]+\.[0-9]+"' src/package_registry.am \
+          | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 if [ -z "$CURRENT" ]; then
-    fail "couldn't extract current version from src/main.am"
+    CURRENT=$(grep -oE 'amc [0-9]+\.[0-9]+\.[0-9]+' src/main.am \
+              | head -1 | awk '{print $2}')
+fi
+if [ -z "$CURRENT" ]; then
+    fail "couldn't extract current version from src/package_registry.am or src/main.am"
 fi
 if [ "$CURRENT" = "$VERSION" ]; then
     fail "target version equals current version ($CURRENT)"
@@ -175,8 +184,8 @@ step "Cutting release branch + bumping version"
 run "git checkout -b $RELEASE_BRANCH"
 ok "branch: $RELEASE_BRANCH"
 
-run "sed -i \"s/amc $CURRENT/amc $VERSION/g\" src/main.am"
-ok "src/main.am"
+run "sed -i \"s/return \\\"$CURRENT\\\"/return \\\"$VERSION\\\"/\" src/package_registry.am"
+ok "src/package_registry.am (AmcVersion bumped)"
 
 run "sed -i \"s|# amc $CURRENT|# amc $VERSION|g\" README.md"
 # README also has a "Current version: **vX.Y.Z**." line in the
@@ -271,7 +280,7 @@ if ! $DRY_RUN; then
     ' CHANGELOG.md | sed -E '/^$/N;/^\n$/D')
 fi
 
-run "git add src/main.am README.md CHANGELOG.md src/amc_lib.c snapshot/amc_lib.c snapshot/INFO.md"
+run "git add src/package_registry.am src/main.am README.md CHANGELOG.md src/amc_lib.c snapshot/amc_lib.c snapshot/INFO.md"
 
 if ! $DRY_RUN; then
     git commit -m "release: $TAG
