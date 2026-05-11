@@ -7,6 +7,54 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.6.0] — 2026-05-12
+
+The **"auto-resolve + semver constraints"** release. Two related
+package-manager improvements that mature the install surface
+toward what Cargo / npm users expect.
+
+### Auto-resolve `amc package add <pkg>` (no tag)
+
+```
+$ amc package add duckdb
+Auto-resolved 'duckdb' → 'duckdb@v0.1.1' (latest compatible with amc 0.6.0)
+Resolving shortname 'duckdb' via amalgame-lang/packages-index...
+  → github.com/amalgame-lang/amalgame-database-duckdb (official)
+…
+Added duckdb v0.1.1
+```
+
+Drop the `@<tag>` suffix on **indexed** shortnames — amc fetches
+the index, walks the package's `[[version]]` entries newest-last,
+and picks the first one whose `required-amalgame` is satisfied by
+the running amc. Full git URLs still need an explicit `@<tag>`
+(the index is the SoT for "what's known to amc"; unindexed repos
+opt out by design).
+
+### Semver constraints in `required-amalgame`
+
+`PackageRegistry.VersionSatisfies` learned more operators:
+
+| Operator | Example         | Semantics                          |
+| -------- | --------------- | ---------------------------------- |
+| `>=`     | `>=0.5.0`       | At least (existing)                |
+| `>`      | `>0.5.5`        | Strictly greater                   |
+| `<=`     | `<=0.5.5`       | At most                            |
+| `<`      | `<0.5.5`        | Strictly less                      |
+| `=`      | `=0.5.5`        | Exact match                        |
+| `^`      | `^0.5.3`        | Caret (locks major, or minor for 0.x) |
+| `~`      | `~1.2.3`        | Tilde (locks major.minor)          |
+| bare     | `0.5.0`         | Treated as `>=` (back-compat)      |
+
+Caret is the npm/Cargo flavour: `^1.2.3` ↔ `>=1.2.3, <2.0.0` for
+`major > 0`; `^0.Y.Z` ↔ `>=0.Y.Z, <0.(Y+1).0` because 0.x minor
+bumps may break; `^0.0.Z` ↔ `=0.0.Z`. Tilde always locks `major.minor`.
+
+19 new stdlib tests cover every operator + edge cases (caret 1.x
+/ 0.x / 0.0.x branches, tilde minor reject, bare-as-ge fallback).
+
+---
+
 ## [v0.5.6] — 2026-05-12
 
 The **"index TTL + QoL"** patch release.
@@ -2059,6 +2107,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.5.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.4
 [v0.5.5]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.5
 [v0.5.6]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.6
+[v0.6.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.0
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
