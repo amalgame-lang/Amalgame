@@ -7,7 +7,7 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
-## [Unreleased] — v0.6.0
+## [v0.6.0] — 2026-05-12
 
 The **"auto-resolve + semver constraints"** release. Two related
 package-manager improvements that mature the install surface
@@ -2107,6 +2107,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.5.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.4
 [v0.5.5]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.5
 [v0.5.6]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.6
+[v0.6.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.0
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
