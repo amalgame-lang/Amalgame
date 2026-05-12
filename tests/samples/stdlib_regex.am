@@ -1,0 +1,85 @@
+// Stdlib test: Amalgame.Regex — POSIX extended regex binding.
+// Covers Test (predicate), Match (single match with captures),
+// Replace (first occurrence), ReplaceAll (every non-overlapping
+// occurrence). PCRE-only features (`\d`, look-arounds,
+// non-greedy) are intentionally out of scope.
+
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── Test predicate ──
+        if (Regex.Test("[a-z]+", "Hello World")) {
+            Console.WriteLine("[PASS] test true")
+        } else {
+            Console.WriteLine("[FAIL] test true")
+        }
+        if (!Regex.Test("[0-9]+", "no digits here")) {
+            Console.WriteLine("[PASS] test false")
+        } else {
+            Console.WriteLine("[FAIL] test false")
+        }
+
+        // ── Full match + offsets ──
+        let m = Regex.Match("[a-z]+", "Hello World")
+        if (m.GetText() == "ello") {
+            Console.WriteLine("[PASS] match text")
+        } else {
+            Console.WriteLine("[FAIL] match text got '" + m.GetText() + "'")
+        }
+        if (m.GetStart() == 1 && m.GetEnd() == 5) {
+            Console.WriteLine("[PASS] match offsets")
+        } else {
+            Console.WriteLine("[FAIL] match offsets")
+        }
+
+        // ── Capture groups ──
+        let pair = Regex.Match("([a-z]+) ([a-z]+)", "alpha beta")
+        if (pair.GroupCount() == 2) {
+            Console.WriteLine("[PASS] group count")
+        } else {
+            Console.WriteLine("[FAIL] group count")
+        }
+        if (pair.GroupText(0) == "alpha" && pair.GroupText(1) == "beta") {
+            Console.WriteLine("[PASS] group text")
+        } else {
+            Console.WriteLine("[FAIL] group text")
+        }
+
+        // ── Replace first only ──
+        let r1: string = Regex.Replace("[0-9]+", "abc123def456", "X")
+        if (r1 == "abcXdef456") {
+            Console.WriteLine("[PASS] replace first")
+        } else {
+            Console.WriteLine("[FAIL] replace first got '" + r1 + "'")
+        }
+
+        // ── ReplaceAll, non-overlapping ──
+        let r2: string = Regex.ReplaceAll("[0-9]+", "abc123def456ghi789", "X")
+        if (r2 == "abcXdefXghiX") {
+            Console.WriteLine("[PASS] replace all")
+        } else {
+            Console.WriteLine("[FAIL] replace all got '" + r2 + "'")
+        }
+
+        // ── Anchors ──
+        if (Regex.Test("^Hello", "Hello World")) {
+            Console.WriteLine("[PASS] anchor start")
+        } else {
+            Console.WriteLine("[FAIL] anchor start")
+        }
+        if (Regex.Test("World$", "Hello World")) {
+            Console.WriteLine("[PASS] anchor end")
+        } else {
+            Console.WriteLine("[FAIL] anchor end")
+        }
+
+        // ── Alternation ──
+        if (Regex.Test("cat|dog", "the dog ran")) {
+            Console.WriteLine("[PASS] alternation")
+        } else {
+            Console.WriteLine("[FAIL] alternation")
+        }
+    }
+}

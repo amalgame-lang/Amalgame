@@ -628,6 +628,71 @@ run_test "FW: reset after read"      "$SAMPLES/stdlib_file_watch.am" "[PASS] res
 run_test "FW: exists when absent"    "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when absent"
 run_test "FW: detect recreate"       "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-recreate"
 
+# ── Amalgame.Formats.Yaml ─────────────────────────────
+# YAML 1.2 subset reader. Configs / CI files exercise mappings,
+# sequences, nested combinations, scalar typing, quoting,
+# comments, and the Has() / missing-key behaviour.
+echo ""
+echo "── Amalgame.Formats.Yaml ──────────────────"
+YAML_LIB="src/stdlib/yaml.am"
+run_test "Yaml: parse empty"        "$SAMPLES/stdlib_yaml.am" "[PASS] parse empty"        "" "$YAML_LIB"
+run_test "Yaml: kv is map"          "$SAMPLES/stdlib_yaml.am" "[PASS] kv is map"          "" "$YAML_LIB"
+run_test "Yaml: kv string"          "$SAMPLES/stdlib_yaml.am" "[PASS] kv string"          "" "$YAML_LIB"
+run_test "Yaml: scalar bool"        "$SAMPLES/stdlib_yaml.am" "[PASS] scalar bool"        "" "$YAML_LIB"
+run_test "Yaml: scalar int"         "$SAMPLES/stdlib_yaml.am" "[PASS] scalar int"         "" "$YAML_LIB"
+run_test "Yaml: scalar float"       "$SAMPLES/stdlib_yaml.am" "[PASS] scalar float"       "" "$YAML_LIB"
+run_test "Yaml: double quoted"      "$SAMPLES/stdlib_yaml.am" "[PASS] double quoted"      "" "$YAML_LIB"
+run_test "Yaml: single quoted"      "$SAMPLES/stdlib_yaml.am" "[PASS] single quoted"      "" "$YAML_LIB"
+run_test "Yaml: comment-strip"      "$SAMPLES/stdlib_yaml.am" "[PASS] comment-strip"      "" "$YAML_LIB"
+run_test "Yaml: post-blank line"    "$SAMPLES/stdlib_yaml.am" "[PASS] post-blank line"    "" "$YAML_LIB"
+run_test "Yaml: seq count"          "$SAMPLES/stdlib_yaml.am" "[PASS] seq count"          "" "$YAML_LIB"
+run_test "Yaml: seq content"        "$SAMPLES/stdlib_yaml.am" "[PASS] seq content"        "" "$YAML_LIB"
+run_test "Yaml: nested map"         "$SAMPLES/stdlib_yaml.am" "[PASS] nested map"         "" "$YAML_LIB"
+run_test "Yaml: nested string"      "$SAMPLES/stdlib_yaml.am" "[PASS] nested string"      "" "$YAML_LIB"
+run_test "Yaml: nested int"         "$SAMPLES/stdlib_yaml.am" "[PASS] nested int"         "" "$YAML_LIB"
+run_test "Yaml: seq-of-maps count"  "$SAMPLES/stdlib_yaml.am" "[PASS] seq-of-maps count"  "" "$YAML_LIB"
+run_test "Yaml: seq-of-maps alice"  "$SAMPLES/stdlib_yaml.am" "[PASS] seq-of-maps alice"  "" "$YAML_LIB"
+run_test "Yaml: has check"          "$SAMPLES/stdlib_yaml.am" "[PASS] has check"          "" "$YAML_LIB"
+run_test "Yaml: missing-key null"   "$SAMPLES/stdlib_yaml.am" "[PASS] missing-key null"   "" "$YAML_LIB"
+
+# ── Amalgame.DateTime breakdown ───────────────────────
+# UTC Year/Month/Day/Hour/Minute/Second accessors on Instant.
+# Named timezones (LocalTime, In(zone)) are deferred — needs a
+# tzdata shipping strategy. v0.7.1 ships the UTC half.
+echo ""
+echo "── Amalgame.DateTime breakdown ────────────"
+DT_LIB="src/stdlib/datetime.am"
+run_test "DT: epoch year"            "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] epoch year"            "" "$DT_LIB"
+run_test "DT: epoch month"           "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] epoch month"           "" "$DT_LIB"
+run_test "DT: epoch day"             "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] epoch day"             "" "$DT_LIB"
+run_test "DT: epoch hour"            "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] epoch hour"            "" "$DT_LIB"
+run_test "DT: epoch minute"          "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] epoch minute"          "" "$DT_LIB"
+run_test "DT: epoch second"          "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] epoch second"          "" "$DT_LIB"
+run_test "DT: known year"            "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] known year"            "" "$DT_LIB"
+run_test "DT: known month"           "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] known month"           "" "$DT_LIB"
+run_test "DT: known day"             "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] known day"             "" "$DT_LIB"
+run_test "DT: known hour"            "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] known hour"            "" "$DT_LIB"
+run_test "DT: format+parse roundtrip" "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] format+parse roundtrip" "" "$DT_LIB"
+run_test "DT: famous Unix timestamp" "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] famous Unix timestamp" "" "$DT_LIB"
+run_test "DT: famous minute+second"  "$SAMPLES/stdlib_datetime_breakdown.am" "[PASS] famous minute+second"  "" "$DT_LIB"
+
+# ── Amalgame.Regex ────────────────────────────────────
+# POSIX extended-regex (ERE) binding. PCRE-only features
+# (`\d`, look-arounds, non-greedy) are out of scope.
+echo ""
+echo "── Amalgame.Regex ─────────────────────────"
+run_test "Rx: test true"             "$SAMPLES/stdlib_regex.am" "[PASS] test true"
+run_test "Rx: test false"            "$SAMPLES/stdlib_regex.am" "[PASS] test false"
+run_test "Rx: match text"            "$SAMPLES/stdlib_regex.am" "[PASS] match text"
+run_test "Rx: match offsets"         "$SAMPLES/stdlib_regex.am" "[PASS] match offsets"
+run_test "Rx: group count"           "$SAMPLES/stdlib_regex.am" "[PASS] group count"
+run_test "Rx: group text"            "$SAMPLES/stdlib_regex.am" "[PASS] group text"
+run_test "Rx: replace first"         "$SAMPLES/stdlib_regex.am" "[PASS] replace first"
+run_test "Rx: replace all"           "$SAMPLES/stdlib_regex.am" "[PASS] replace all"
+run_test "Rx: anchor start"          "$SAMPLES/stdlib_regex.am" "[PASS] anchor start"
+run_test "Rx: anchor end"            "$SAMPLES/stdlib_regex.am" "[PASS] anchor end"
+run_test "Rx: alternation"           "$SAMPLES/stdlib_regex.am" "[PASS] alternation"
+
 # Database / Messaging external-package tests run on the package
 # repos' own CI — not here. See the header note at the top of
 # this file for the per-package invocation.
