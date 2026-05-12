@@ -118,6 +118,58 @@ static inline code_string DateTime_FormatIso(i64 nanos) {
 }
 
 /* ─────────────────────────────────────────────
+   UTC field breakdown
+   ─────────────────────────────────────────────
+   Each helper decomposes a nanos-since-epoch instant via
+   gmtime_r / gmtime_s and returns one calendar field. Cheap —
+   gmtime is a few dozen instructions — but if a caller needs
+   the full breakdown it pays 6× the cost over a single
+   `struct tm` extraction. Easy to consolidate later if
+   benchmarks complain.
+*/
+
+static inline int _amc_dt_breakdown(i64 nanos, struct tm* out) {
+    int64_t secs = (int64_t)(nanos / 1000000000LL);
+    time_t t = (time_t) secs;
+#ifdef _WIN32
+    return gmtime_s(out, &t) == 0 ? 1 : 0;
+#else
+    return gmtime_r(&t, out) != NULL ? 1 : 0;
+#endif
+}
+
+static inline i64 DateTime_Year(i64 nanos) {
+    struct tm tm_;
+    if (!_amc_dt_breakdown(nanos, &tm_)) { return 1970; }
+    return (i64)(tm_.tm_year + 1900);
+}
+static inline i64 DateTime_Month(i64 nanos) {
+    struct tm tm_;
+    if (!_amc_dt_breakdown(nanos, &tm_)) { return 1; }
+    return (i64)(tm_.tm_mon + 1);
+}
+static inline i64 DateTime_Day(i64 nanos) {
+    struct tm tm_;
+    if (!_amc_dt_breakdown(nanos, &tm_)) { return 1; }
+    return (i64) tm_.tm_mday;
+}
+static inline i64 DateTime_Hour(i64 nanos) {
+    struct tm tm_;
+    if (!_amc_dt_breakdown(nanos, &tm_)) { return 0; }
+    return (i64) tm_.tm_hour;
+}
+static inline i64 DateTime_Minute(i64 nanos) {
+    struct tm tm_;
+    if (!_amc_dt_breakdown(nanos, &tm_)) { return 0; }
+    return (i64) tm_.tm_min;
+}
+static inline i64 DateTime_Second(i64 nanos) {
+    struct tm tm_;
+    if (!_amc_dt_breakdown(nanos, &tm_)) { return 0; }
+    return (i64) tm_.tm_sec;
+}
+
+/* ─────────────────────────────────────────────
    ISO 8601 / RFC 3339 parsing (UTC subset)
    ─────────────────────────────────────────────
    Accepts: YYYY-MM-DDTHH:MM:SS[.frac][Z]

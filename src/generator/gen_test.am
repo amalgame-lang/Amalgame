@@ -204,6 +204,16 @@ public class Program {
         let tomlProg = tomlPar.Parse()
         Console.WriteError("parsed: stdlib/toml.am")
 
+        // YAML stdlib — config-file reader for CI / app manifests.
+        // Independent of toml; parsed alongside it for the bundle.
+        let yamlPath = "./src/stdlib/yaml.am"
+        let yamlSrc  = File.ReadAll(yamlPath)
+        let yamlLex  = new Lexer(yamlSrc, yamlPath)
+        let yamlToks = yamlLex.Tokenize()
+        let yamlPar  = new Parser(yamlToks)
+        let yamlProg = yamlPar.Parse()
+        Console.WriteError("parsed: stdlib/yaml.am")
+
         let addPath  = "./src/add_cmd.am"
         let addSrc   = File.ReadAll(addPath)
         let addLex   = new Lexer(addSrc, addPath)
@@ -248,6 +258,7 @@ public class Program {
         // (RegisterPackages(reg: PackageRegistry)) starting in PR
         // 3c, so the struct typedef has to be emitted earlier.
         gen6.AddFilePass1(tomlProg)
+        gen6.AddFilePass1(yamlProg)
         gen6.AddFilePass1(prProg)
         gen6.AddFilePass1(cgenProg)
         gen6.AddFilePass1(fmtProg)
@@ -277,6 +288,7 @@ public class Program {
         gen6.AddFilePass2(parProg)
         // Same reorder as Pass1: toml + pr before cgen + resolver.
         gen6.AddFilePass2(tomlProg)
+        gen6.AddFilePass2(yamlProg)
         gen6.AddFilePass2(prProg)
         gen6.AddFilePass2(cgenProg)
         gen6.AddFilePass2(fmtProg)
