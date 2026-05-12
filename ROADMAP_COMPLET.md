@@ -482,6 +482,18 @@ before the next big language addition.
       no tags surfaces as `[FAIL] <crash> exit=N`. Convention is
       framework-free for v1; a richer Assert module + `test_*`
       auto-discovery is a possible v2.
+- [ ] **`amc build` explicit subcommand** — today `amc -o foo
+      foo.am` is the user-facing compile path, but it's
+      undiscoverable: `amc --help` lists `fmt / test / lsp /
+      migrate / generate / explain / new / package` as
+      subcommands and the bare-args form lives in the catch-all
+      branch. Promote compilation to a first-class verb:
+      `amc build [-o <out>] [--lib] [--release] [--target …]
+      [-v] file.am [file.am …]`. The current bare-args path
+      stays as a deprecated alias for one release cycle, then
+      gets a "use `amc build`" diagnostic. Also lets `amc
+      build --watch` be the natural home for the v2 FileWatcher
+      (post-D) — recompile on save without external shell glue.
 - [ ] **Unify all test runners under `amc test`** — the repo
       still ships ~1.9k lines of bash in `tests/run_tests.sh`
       (992), `tests/run_stdlib_tests.sh` (607), `tests/run_fmt_tests.sh`
@@ -697,16 +709,26 @@ before the next big language addition.
       `serverPath.replace(/^~/, os.homedir())` before spawning.
       ~5 LoC, unblocks anyone who configures `amalgame.serverPath`
       with the natural shell-style value.
-- [ ] **Editor integration on install** — when a user installs
-      Amalgame (`install.sh`, future `amc-up` package script,
-      Homebrew formula, `.deb`/`.rpm`), automatically wire the
-      LSP into the editors present on the host:
+- [ ] **Editor integration on install + Windows MSI batteries-
+      included (priority for v1.0 readiness)** — when a user
+      installs Amalgame (`install.sh`, future `amc-up` package
+      script, Homebrew formula, `.deb`/`.rpm`, **Windows
+      `.msi`**), automatically wire the LSP into the editors
+      present on the host AND ship the framework so the install
+      is "download → write code immediately":
         - **VS Code / VS Code Insiders / VSCodium**: detect via
           `code --list-extensions`; if missing, install
           `editors/vscode/` from the local `.vsix` bundled in
           the release tarball, or publish to the Marketplace and
           install by ID. Set `amalgame.serverPath` to the resolved
           `amc` binary so the extension doesn't depend on `$PATH`.
+          **The MSI on Windows is the prime carrier** — bundles
+          MinGW gcc + libgc + libcurl + the VS Code `.vsix` +
+          `libamalgame.a` (post-F) + the `amc.exe` itself.
+          Post-install handler auto-installs the extension and
+          opens VS Code on a "Hello, Amalgame" sample. Goal:
+          single `.msi` download → working compiler + LSP in
+          ~30 s on a fresh Windows box.
         - **Neovim**: drop a `lspconfig` snippet into
           `~/.config/nvim/lua/amalgame_lsp.lua` and print the
           one-line `require("amalgame_lsp")` users add to
@@ -722,8 +744,11 @@ before the next big language addition.
       summary at the end ("VS Code: ✓ extension installed",
       "Neovim: snippet at <path>, source it from your init.lua").
       Bundle the `.vsix` in release tarballs (already bundling docs
-      since v0.4.0) so this works air-gapped. Open question:
-      auto-detect editors vs. interactive prompt.
+      since v0.4.0) so this works air-gapped. Pairs with the
+      bundled-stdlib item (post-F) — both ship in the same
+      installer payload. Open question: auto-detect editors vs.
+      interactive prompt — preference is opt-out (auto-detect by
+      default; `--no-editors` skips).
 - [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
 - [ ] **Inlay hints + code actions** — once hover/completion is in.
 
@@ -1103,9 +1128,35 @@ implementation effort.
       re-create flip for deterministic results (mtime-advance is
       hard to test reliably across filesystems). Covers the
       "reload a config file" / "rebuild on source change" 80%
-      use case. Directory-level recursive watches via inotify /
-      FSEvents / `ReadDirectoryChangesW` deferred — add when a
-      real consumer needs them.
+      use case.
+- [ ] **FileWatcher v2 — events + DirectoryWatcher + inotify** —
+      v1 is intentionally minimal; v2 fleshes it out:
+        - **Event types** — instead of a boolean `Changed()`,
+          expose `WatchEvent` records with `Kind`
+          (`Created` / `Modified` / `Deleted` / `Renamed`),
+          `Path`, `RenamedTo` (for Renamed only), `Timestamp`.
+          Polling backend infers Kind from the mtime/size/exist
+          flip; the platform-native backends below get the Kind
+          straight from the kernel.
+        - **DirectoryWatcher** — `new DirectoryWatcher(path,
+          recursive: bool)` returns events for every file in
+          the dir (or subtree). Polling backend walks the dir
+          and diffs the file-list snapshot; native backends
+          subscribe at the dir level.
+        - **Native backends** — `inotify` on Linux, `FSEvents`
+          on macOS, `ReadDirectoryChangesW` on Windows. The
+          polling backend stays as a portable fallback (and
+          the test default — exact, no kernel queue to drain).
+          Surface stays the same `WatchEvent` shape so user
+          code doesn't branch on platform.
+        - **Use cases unblocked** — `amc build --watch` (post-C),
+          `amc test --watch`, dev-server hot reload, config-
+          file reload across a whole dir, log tail tools.
+      Estimated ~1 day for the event-typed polling backend,
+      another ~1.5 days for the three native backends. Worth
+      splitting into two PRs (v2-events then v2-native) so
+      `amc build --watch` lands as soon as the events shape is
+      stable.
 - [x] **`Amalgame.Math` advanced — Vec3/Vec4/Mat4 (v0.7.0)** —
       `Amalgame.Math.Vec` ships scalar (no SIMD) implementations
       of `Vec3` (Add/Sub/Scale/Dot/Cross/Length/Normalize/Equals
@@ -1211,13 +1262,36 @@ implementation effort.
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
 - [x] GitHub Releases automation (tag-triggered)
+- [ ] **Replace external-package CIs with `release.sh` scripts** —
+      the package repos (`amalgame-database-sqlite` /
+      `amalgame-database-nosql-redis` / `amalgame-database-duckdb` /
+      `amalgame-messaging-mqtt`) currently run their CI via GitHub
+      Actions, which authenticate against a `GH_TOKEN` that expires
+      after 365 days. The token rotation is easy to forget and a
+      missed renewal stalls every package release without warning.
+      Plan: replace each `.github/workflows/ci.yml` with a local
+      `release.sh` the maintainer runs from a checked-out clone —
+      same test matrix, same artifact build, push tags + create
+      GitHub Releases via `gh` CLI (which uses the maintainer's
+      own auth, no shared token). Tradeoff: PRs from contributors
+      lose automatic CI feedback — accept it for the small package
+      repos (single-maintainer cadence), keep GH Actions on the
+      main `Amalgame` compiler repo where contributor velocity
+      matters.
 - [ ] Homebrew tap (formula draft in `install/homebrew/amalgame.rb`)
 - [ ] Homebrew core (after public adoption)
 - [ ] AUR / `.deb` / `.rpm` / Nix flake / winget / Scoop
-- [ ] `install.sh` universal one-liner
-- [ ] Windows packaged installer (.msi or .exe with bundled MinGW
-      gcc + libgc + libcurl, so end users don't need MSYS2). Sketched
-      in conversation; no script yet.
+- [ ] `install.sh` universal one-liner — installs amc binary +
+      bundled stdlib `libamalgame.a` (post-F) + auto-detects
+      editors and wires the LSP up (post-H).
+- [ ] **Windows packaged installer (.msi)** — bundled MinGW gcc +
+      libgc + libcurl so end users don't need MSYS2. Also ships
+      the VS Code extension `.vsix` and auto-installs it, sets
+      `amalgame.serverPath` to the resolved `amc.exe`, and drops
+      the bundled `libamalgame.a` (post-F) alongside. Goal: a
+      single `.msi` download → working compiler + LSP-equipped
+      VS Code immediately. Sketched in conversation; no script
+      yet. Pairs with the editor-integration roadmap entry below.
 - [x] **URL sweep** — old `BastienMOUGET/...` URLs scrubbed
       from `runtime/Amalgame_*.h`, `install/homebrew/amalgame.rb`,
       `install/windows/install.ps1` + `amalgame.iss` (post-PR #187 /
@@ -1266,7 +1340,14 @@ implementation effort.
   (`runtime/*.h`, all `static inline`, `-Iruntime` at link).
   Simple and bootstrap-friendly, but compile time grows with the
   stdlib and every external dep (`-lcurl`, `-lpcre`, `-lcrypto`…)
-  is passed by hand at link time. Alternatives to weigh:
+  is passed by hand at link time. The *current concrete pain*:
+  every `amc -o foo foo.am` re-parses + re-compiles every
+  stdlib `.am` (path.am, datetime.am, yaml.am, math_vec.am,
+  argparser.am, …) even when foo.am uses one of them. With ~10
+  stdlib modules in v0.7.1 and growing, that's a measurable
+  fraction of compile time and 100% wasted work.
+
+  Alternatives to weigh:
     - **A. Status quo — header-only inline.** Simplest; linker
       dead-code-elims; deps stay explicit per program.
     - **B. Static `libamalgame.a`.** Pre-compiled; users get
@@ -1278,17 +1359,115 @@ implementation effort.
       header-only but emit only runtime symbols actually used
       (transitively). Smallest binaries; narrow deps. Cost:
       symbol catalogue + a symbol-graph pass in the compiler.
-    - **E. Hybrid — primitives inline, modules in Amalgame.**
-      Keep `String_Length` & co. header-only. Write Json /
-      Regex / DateTime in `.am` under `stdlib/`, imported via
-      a real (not informational) module system. Lands well
-      with the "Module/import system" question above.
-  Bootstrap-curiosity → A is fine. Daily driver → D or E
-  (likely E once imports are physical).
+    - **E. Hybrid — primitives inline, user-facing modules
+      pre-compiled.** Keep `String_Length` & co. header-only
+      (they're needed during the compiler bootstrap so must
+      stay parsable by gcc alone). Pre-compile every
+      user-facing `.am` (path / datetime / yaml / regex /
+      math_vec / argparser / json / random / encoding / crypto
+      / logging / service) into a `libamalgame.a` bundled with
+      the amc binary; the gcc invocation for user code links it
+      automatically and skips re-parsing. Bootstrap unchanged:
+      `build_amc.sh` continues to ingest the .am sources to
+      build amc itself; the **bundled** stdlib lib is rebuilt
+      as a post-step from the same sources.
+  Bootstrap-curiosity → A is fine. Daily driver → E (chosen
+  direction per user request, see action item below); D is
+  complementary and can layer on top.
+
+- [ ] **Pre-compiled user-facing stdlib (option E above)** —
+      concrete action item. `tools/build-stdlib.sh` (or a
+      `build_amc.sh` post-step) compiles every user-facing
+      `src/stdlib/*.am` into a single `libamalgame.a` shipped
+      alongside the `amc` binary. `amc -o foo foo.am` discovers
+      the lib via `$AMALGAME_HOME/lib/libamalgame.a` (or
+      `<install_prefix>/lib/`) and links against it instead of
+      re-parsing the `.am` sources. Per-platform builds tracked
+      by the release workflow. `import Amalgame.Path` becomes
+      a *real* directive — it tells the resolver which symbols
+      to pull from the lib's symbol catalogue. The compiler-
+      internal `.am` files (lexer / parser / cgen / typechecker /
+      …) stay in the bootstrap pipeline; only the user-facing
+      facades migrate. Estimated 2–3 days: build script + the
+      "imports are physical" half of the module system. Pairs
+      with the F-bundled-with-installer item in Distribution
+      and the H-Windows-MSI installer below.
 - **Error vs. exception model** — `try/catch/throw` works in
   self-host via setjmp/longjmp. Worth considering a Rust-like
   `Result<T, E>` plus `?` operator for short-circuiting as a
   complementary path.
+- **Inline-C injection blocks** — proposal raised 2026-05-12.
+  Today the runtime is split between hand-written C
+  (`runtime/Amalgame_*.h`, ~3 000 LoC of POSIX + libc calls)
+  and Amalgame facades (`src/stdlib/*.am`). The C half is
+  necessary because Amalgame has no syntax to call `fopen` /
+  `curl_easy_perform` / `inotify_init1` / `regcomp` directly.
+  Goal: add a balisé inline-C block to Amalgame so the C-side
+  half can also be expressed in `.am` files:
+
+  ```
+  public class Path {
+      public static string Combine(a: string, b: string) {
+          @c {
+              // Variables typed from the Amalgame signature
+              // flow in transparently; the @out value flows
+              // back. Same GC root rules as user code.
+              size_t la = strlen(a), lb = strlen(b);
+              char* r = (char*) GC_MALLOC(la + lb + 2);
+              memcpy(r, a, la);
+              if (la > 0 && a[la - 1] != '/') { r[la++] = '/'; }
+              memcpy(r + la, b, lb);
+              r[la + lb] = '\0';
+              @out = r;
+          }
+      }
+  }
+  ```
+
+  Semantics:
+    - **Variables traverse the boundary both ways.** Every
+      Amalgame local in scope is visible inside `@c { ... }`
+      with its C representation (`code_string` / `i64` / struct
+      pointer). `@out = expr;` (one assignment per block)
+      provides the return value to the surrounding Amalgame
+      method.
+    - **Type checker treats the block as opaque** — return
+      type comes from the enclosing method signature; arg
+      types come from the enclosing scope. No inference inside.
+    - **Header includes go via `@c_include "<header.h>"`** at
+      file scope, so `<curl/curl.h>` and friends stay
+      explicit.
+    - **Link-time deps go via `@c_link "name"`** (passed as
+      `-lname` to gcc). Same mechanism as package manifests'
+      `[stdlib].libs`.
+    - **Sandbox / safety** — there isn't one. Inline-C can
+      crash the program, leak memory, and violate GC
+      invariants. Same shape as Rust's `unsafe { … }`. Doc
+      this prominently; lint-flag every `@c` block in
+      production-mode builds.
+
+  **Downstream impact** — every `Amalgame_*.h` runtime header
+  becomes a `Amalgame_*.am` file with the C body inlined. The
+  current `stdlib/` Amalgame-side facades collapse into the
+  same `.am` file as their runtime, simplifying every
+  Vec3/FileWatcher/Regex-style cross-file dance. Bigger:
+  third-party packages can ship a single `.am` per binding
+  instead of `runtime/header.h + stdlib/facade.am`.
+
+  **Scope** — major feature, probably v0.9 or v1.x. Touches
+  parser (tokenise inline-C as a black-box span), resolver
+  (skip type-check inside `@c {}`), cgen (splice the block
+  verbatim with variable-name remapping), and the package
+  manager (`@c_include` / `@c_link` need to round-trip through
+  manifests). ~3–5 days for an MVP; another ~1–2 weeks for
+  the docs + lint + GC-rules pass.
+
+  **Trade-off accepted** — Amalgame moves from "transpile to
+  C, never mix" toward Zig's / Vala's "I can drop into C when
+  I have to" model. Buys self-containment (the whole runtime
+  is in `.am`), at the cost of giving users a foot-gun. Net
+  positive once the language has tooling to discourage misuse
+  in everyday code.
 - **Single-threaded** — bdwgc is configured for the main thread. If
   Amalgame ever wants concurrency, the GC config and runtime helpers
   need a pass.

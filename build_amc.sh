@@ -48,6 +48,17 @@ AMC_SOURCES="src/lexer/token.am \
 #
 # If neither exists, build snapshot/amc from the tracked snapshot/amc_lib.c:
 #   gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+# Pre-flight: warn early if libgc-dev / libcurl headers are missing.
+# Both are required by the runtime — the snapshot-bootstrap recovery
+# step below will fail with "fatal error: gc.h" otherwise, which is
+# the single most common bootstrap failure on a fresh machine.
+if ! echo '#include <gc.h>' | gcc -E -x c - >/dev/null 2>&1; then
+    echo "WARNING: <gc.h> not found — libgc-dev / bdw-gc may be missing." >&2
+    echo "         Debian/Ubuntu: apt install libgc-dev" >&2
+    echo "         macOS:         brew install bdw-gc" >&2
+    echo "         MSYS2:         pacman -S mingw-w64-x86_64-gc" >&2
+fi
+
 if [ -x ./amc ]; then
     AMC=./amc
     echo "=== Step 1: Build gen_test (self-hosted via ./amc) ==="
@@ -56,8 +67,23 @@ elif [ -x ./snapshot/amc ]; then
     echo "=== Step 1: Build gen_test (recovery via ./snapshot/amc) ==="
 else
     echo "ERROR: no amc binary found (./amc nor ./snapshot/amc)." >&2
-    echo "Bootstrap from the tracked C snapshot:" >&2
-    echo "  gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc" >&2
+    echo "" >&2
+    echo "Bootstrap from the tracked C snapshot. Requires:" >&2
+    echo "  • libgc-dev   (Debian/Ubuntu: apt install libgc-dev)" >&2
+    echo "                (Fedora:        dnf install gc-devel)" >&2
+    echo "                (macOS Homebrew: brew install bdw-gc)" >&2
+    echo "                (MSYS2:         pacman -S mingw-w64-x86_64-gc)" >&2
+    echo "  • libcurl development headers (libcurl4-openssl-dev / curl-devel / curl)" >&2
+    echo "" >&2
+    echo "Then:" >&2
+    echo "  gcc -O2 -Iruntime \\" >&2
+    echo "      -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable \\" >&2
+    echo "      snapshot/amc_lib.c \\" >&2
+    echo "      -lgc -lm -lcurl -o snapshot/amc" >&2
+    echo "" >&2
+    echo "If gcc reports 'fatal error: gc.h: No such file or directory'," >&2
+    echo "libgc-dev isn't installed. If it reports 'cannot find -lgc' at link" >&2
+    echo "time, the shared library is missing — same package installs both." >&2
     exit 1
 fi
 # amc exits non-zero on resolver warnings (e.g. when a new builtin was just
