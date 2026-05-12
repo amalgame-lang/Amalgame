@@ -70,7 +70,7 @@ if [ ! -f gen_test.c ]; then
     echo "Step 1 failed: gen_test.c was not produced" >&2
     exit 1
 fi
-gcc -O2 -Iruntime gen_test.c -lgc -lm -lcurl -o gen_test
+gcc -O2 -Iruntime -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable gen_test.c -lgc -lm -lcurl -o gen_test
 
 echo "=== Step 2: Generate all bundles + amc_lib.c ==="
 time ./gen_test
@@ -83,9 +83,16 @@ echo "=== Step 3: Compile amc ==="
 # (no git, dirty checkout outside a repo, etc.); the version handler
 # treats empty as "no build info" and skips the line — never emits a
 # half-rendered banner.
+#
+# `-Wno-unused-*` keeps the build silent: v0.6.4 dropped the
+# per-variable `__attribute__((unused))` markers + the
+# `(void)param;` / `(void)self;` boilerplate the cgen used to emit
+# (shrunk amc_lib.c by ~25%). `amc --lint` is the canonical
+# "is this variable actually used" check now.
 AMC_GIT_REV=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "")
 AMC_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
 gcc -Iruntime \
+    -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable \
     -DAMC_GIT_REV="\"$AMC_GIT_REV\"" \
     -DAMC_BUILD_DATE="\"$AMC_BUILD_DATE\"" \
     src/amc_lib.c \

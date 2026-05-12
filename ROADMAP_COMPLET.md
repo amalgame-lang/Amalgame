@@ -279,13 +279,15 @@ before the next big language addition.
         - Match-arm guards on enum patterns (also partial).
       So the language work is partly already on the roadmap;
       this refactor is the prize once it lands.
-- [ ] **Extract repeated CGen helpers** — `EmitInterpolatedString`,
-      `EmitMatchExpr`, `EmitOneLambdaBody`, `EmitClosureArg`, and
-      `TryEmitListCall` all duplicate variants of the
-      `(void*)(intptr_t)X` boxing dance and the symmetric unbox.
-      Extract a typed `BoxScalar(expr, ctype)` / `UnboxScalar(expr,
-      ctype)` pair so the call-sites read as intent rather than
-      ceremony.
+- [x] **Extract repeated CGen helpers (resolved)** —
+      `BoxAsVoid(expr)` and `UnboxScalar(ctype, expr)` live at
+      the bottom of `src/generator/c_gen.am` and serve every
+      site that previously open-coded the `(void*)(intptr_t)X`
+      and `(T)(intptr_t)X` boxing dance. ~17 sites
+      consolidated; remaining `intptr_t` mentions in the file
+      are inside the helper bodies, in comments, or in the
+      lambda-body emitter that already routes through the
+      helpers. No code-quality regressions left here.
 - [x] **Reduce `void*` erasure (v0.6.3)** — `xs.Get(i)` on a
       local `List<T>` / `Map<K,V>` now infers the element /
       value type directly from the `__local__` and
@@ -347,24 +349,36 @@ before the next big language addition.
       implicit `int()` declaration. The `InstantResult`
       workaround in datetime.am could be reverted; left as-is
       since the explicit-parameter form is clearer regardless.
-- [ ] **Snapshot size — shrink C output** — `snapshot/amc_lib.c`
-      is now ~22 500 lines (grew with the v0.5 → v0.6 work).
-      Tracked in git for the bootstrap chain so every compiler PR
-      regenerates it and the diff dominates the review noise. The
-      `.gitattributes merge=ours` half of this item shipped
-      already (auto-resolves merge conflicts; we rebuild
-      post-merge anyway). The remaining half is to make the
-      cgen emit less verbose C — the per-method
-      `__attribute__((unused))` dance + redundant `(void)` casts
-      together add ~20% lines. Pure size win, no behaviour
-      change; estimated 1 day to wire `OutputBuffer` to omit
-      the attribute when the variable is provably read, and to
-      drop the `(void)args;` lines when `Main` has no args body.
-- [ ] **Profile compile time** — `./build_amc.sh` is ~5 s end-to-end,
-      and the largest cost is gen_test re-parsing every source on
-      every invocation. A serializable AST cache (file mtime →
-      pickled AST under `.amc-cache/`) could probably halve that.
-      Modest win but unblocks faster CI loops.
+- [x] **Snapshot size — shrink C output (v0.6.4)** —
+      `snapshot/amc_lib.c` shrunk from ~22 500 lines / 1.17 MB
+      down to ~21 360 lines / 1.06 MB (-7%/-9%). The cgen no
+      longer emits a `__attribute__((unused))` marker on every
+      `VAR_DECL` (3342 occurrences gone) nor `(void)self;` /
+      `(void)<param>;` boilerplate at the top of every method
+      body (~2000 lines gone). The build adds
+      `-Wno-unused-variable -Wno-unused-parameter
+      -Wno-unused-but-set-variable` to the gcc invocations
+      that ship the user binary — `amc --lint` is the
+      canonical "is this variable actually used" gate now.
+      The `.gitattributes merge=ours` half of this item
+      shipped earlier so PR review noise is doubly cut.
+- [x] **Profile compile time (v0.6.4)** — `amc --verbose` now
+      prints per-phase timings on stderr at the end of a
+      compile:
+      ```
+        parse:     154us
+        resolve:   199us
+        typecheck: 9us
+        cgen:      411us
+      ```
+      Powered by a single `Stopwatch` (`Amalgame.DateTime`)
+      that's `Reset()`'d at each phase boundary. Reveals the
+      hot spot without external profiling. `./build_amc.sh`
+      total wall time is now ~2s end-to-end (was ~5s when the
+      item was written), so the proposed AST-pickling cache is
+      no longer high-priority — would risk a serializer-bug
+      class for marginal gain. Revisit if a single-file compile
+      ever exceeds ~50ms on a representative project.
 - [x] **Linter coverage (v0.6.3)** — `amc --lint` now also
       flags:
         - **catch-binder unused** — `try { ... } catch e { ... }`
