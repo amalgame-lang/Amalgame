@@ -967,8 +967,17 @@ public class CGen {
                                     let urt = this.MethodRetGet(bare3, "Get")
                                     if (String_Length(urt) > 0) { return urt }
                                 }
-                                // Check local list elem type — not yet tracked per variable
-                                // Return void* as fallback
+                                // List<T> tracked at the var-decl site
+                                // (`let xs = new List<string>()` or `let
+                                // xs: List<string> = …`) — look up the elem
+                                // C type directly so `xs.Get(i)` returns
+                                // `code_string` instead of degrading to void*.
+                                // Same path for Map<K,V> stored under the
+                                // `__local_map__` pseudo-class.
+                                let listElem = this.ListElemGet("__local__", vn3)
+                                if (String_Length(listElem) > 0) { return listElem }
+                                let mapElem = this.ListElemGet("__local_map__", vn3)
+                                if (String_Length(mapElem) > 0) { return mapElem }
                             }
                             // <chain>.Get(...) — receiver is itself a call
                             // (e.g. changes.At(0).Get("text") in lsp.am).

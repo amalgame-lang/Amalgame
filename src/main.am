@@ -514,20 +514,28 @@ public class Program {
 
     // ── fmt subcommand ─────────────────────────────────
     public static int RunFmt(int argc) {
-        var write = false
-        let files = new List<string>()
-        var i = 2
-        while (i < argc) {
-            let a = Args_Get(i)
-            if (a == "-w" || a == "--write") {
-                write = true
-            } else if (String_EndsWith(a, ".am")) {
-                files.Add(a)
-            } else {
-                Console.WriteError("amc fmt: unknown argument '" + a + "'")
+        let ap = new ArgParser()
+        ap.Flag("-w").Flag("--write").Flag("-h").Flag("--help").Parse(argc, 2)
+        if (ap.HelpRequested()) {
+            Console.WriteError("Usage: amc fmt [-w|--write] <file.am>...")
+            Console.WriteError("")
+            Console.WriteError("Re-emit canonical formatting of Amalgame source files.")
+            Console.WriteError("Default: print to stdout. With -w, rewrite each file in place.")
+            return 0
+        }
+        if (String_Length(ap.GetUnknown()) > 0) {
+            Console.WriteError("amc fmt: unknown argument '" + ap.GetUnknown() + "'")
+            return 1
+        }
+        let write: bool = ap.HasFlag("-w") || ap.HasFlag("--write")
+        let files = ap.GetPositionals()
+        let fn: int = files.Count()
+        for j in 0..fn {
+            let f: string = files.Get(j)
+            if (!String_EndsWith(f, ".am")) {
+                Console.WriteError("amc fmt: unknown argument '" + f + "'")
                 return 1
             }
-            i = i + 1
         }
         if (files.Count() == 0) {
             Console.WriteError("amc fmt: no input .am files")

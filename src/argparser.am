@@ -1,0 +1,157 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  argparser.am  —  shared arg-parsing helper for subcommands
+// ═══════════════════════════════════════════════════════
+//
+// Reduces the duplicated `while (i < argc) { ... }` loops
+// scattered across `migrate.am`, `generate.am`, `explain.am`,
+// `main.am::RunFmt`/`RunTest`, and `add_cmd.am`. Three pieces of
+// machinery:
+//
+//   - Flags        (bool toggles like `-w`, `--frozen`)
+//   - Options      (one-value flags like `--from <name>`)
+//   - Positionals  (everything else that isn't a `-`-prefixed
+//                   token nor an option value)
+//
+// Unrecognised `-`-prefixed tokens land in `Unknown` so the
+// caller can render a single "unknown flag X" diagnostic
+// instead of duplicating the `String_StartsWith(a, "-")`
+// rejection at every site.
+//
+// API is fluent on the registration side and accessor-style on
+// the query side:
+//
+//   let ap = new ArgParser()
+//   ap.Flag("-w").Flag("--write")
+//     .Flag("-h").Flag("--help")
+//     .Parse(argc, 2)
+//
+//   if (ap.HelpRequested()) { print usage; return 0 }
+//   if (String_Length(ap.GetUnknown()) > 0) { unknown-flag err }
+//   let write = ap.HasFlag("-w") || ap.HasFlag("--write")
+//   let files = ap.GetPositionals()
+//
+// Lacks: short-flag clustering (`-vh`), `--key=value` form,
+// `--` end-of-flags marker. Add when a real subcommand needs it.
+
+public class ArgParser {
+    private RegisteredFlags:   List<string>
+    private SeenFlags:         List<string>      // append-only
+    private RegisteredOptions: List<string>
+    private OptionPairs:       List<string>      // "<name>=<value>" appended at parse time
+    private Positionals:       List<string>
+    private Unknown:           string            // first unrecognised flag, or ""
+
+    public ArgParser() {
+        this.RegisteredFlags   = new List<string>()
+        this.SeenFlags         = new List<string>()
+        this.RegisteredOptions = new List<string>()
+        this.OptionPairs       = new List<string>()
+        this.Positionals       = new List<string>()
+        this.Unknown           = ""
+    }
+
+    // Register a boolean flag. Caller queries with `HasFlag`.
+    public ArgParser Flag(string name) {
+        this.RegisteredFlags.Add(name)
+        return this
+    }
+
+    // Register an option that takes the *next* argv as its value.
+    // Caller queries with `GetOption`.
+    public ArgParser Option(string name) {
+        this.RegisteredOptions.Add(name)
+        return this
+    }
+
+    // Walk argv from `startIdx` to argc-1 and bucket each token.
+    // Returns `this` so the fluent chain can end with `.Parse(...)`.
+    public ArgParser Parse(int argc, int startIdx) {
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (this.IsRegisteredFlag(a)) {
+                this.SeenFlags.Add(a)
+                i = i + 1
+                continue
+            }
+            if (this.IsRegisteredOption(a)) {
+                if (i + 1 < argc) {
+                    this.OptionPairs.Add(a + "=" + Args_Get(i + 1))
+                    i = i + 2
+                } else {
+                    // Missing value — record the option name as
+                    // unknown so caller surfaces "option needs a
+                    // value" instead of silently succeeding.
+                    if (String_Length(this.Unknown) == 0) {
+                        this.Unknown = a
+                    }
+                    i = i + 1
+                }
+                continue
+            }
+            if (String_StartsWith(a, "-")) {
+                if (String_Length(this.Unknown) == 0) {
+                    this.Unknown = a
+                }
+                i = i + 1
+                continue
+            }
+            this.Positionals.Add(a)
+            i = i + 1
+        }
+        return this
+    }
+
+    public bool HasFlag(string name) {
+        let n: int = this.SeenFlags.Count()
+        for i in 0..n {
+            if (this.SeenFlags.Get(i) == name) { return true }
+        }
+        return false
+    }
+
+    // Returns "" if the option wasn't passed. Last occurrence
+    // wins when the user repeats `--foo X --foo Y` (Y returned).
+    public string GetOption(string name) {
+        let prefix: string = name + "="
+        let plen:   int    = String_Length(prefix)
+        var result: string = ""
+        let n: int = this.OptionPairs.Count()
+        for i in 0..n {
+            let v: string = this.OptionPairs.Get(i)
+            if (String_StartsWith(v, prefix)) {
+                result = String_Substring(v, plen, String_Length(v) - plen)
+            }
+        }
+        return result
+    }
+
+    public List<string> GetPositionals() { return this.Positionals }
+    public string       GetUnknown()     { return this.Unknown }
+
+    // Convenience for the universal `-h` / `--help` pair.
+    public bool HelpRequested() {
+        return this.HasFlag("-h") || this.HasFlag("--help")
+    }
+
+    private bool IsRegisteredFlag(string name) {
+        let n: int = this.RegisteredFlags.Count()
+        for i in 0..n {
+            if (this.RegisteredFlags.Get(i) == name) { return true }
+        }
+        return false
+    }
+
+    private bool IsRegisteredOption(string name) {
+        let n: int = this.RegisteredOptions.Count()
+        for i in 0..n {
+            if (this.RegisteredOptions.Get(i) == name) { return true }
+        }
+        return false
+    }
+}

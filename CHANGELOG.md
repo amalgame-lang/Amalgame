@@ -7,6 +7,79 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.6.3] — 2026-05-12
+
+The **"internal refactor"** patch release. Three items from the
+"Compiler — internal refactoring & optimization" backlog.
+
+### Reduce void* erasure on local containers
+
+cgen's element/value-type inference for `xs.Get(i)` on a local
+`List<T>` / `Map<K,V>` now consults the `__local__` /
+`__local_map__` registry that `TrackGenericLocal` already
+populates at the declaration site. Drops the
+`let n: string = xs.Get(0)` workaround at most call sites:
+
+```
+// Before
+let n = names.Get(0)   // names: List<string>
+// → void* n = (void*)AmalgameList_get(names, 0);
+
+// After
+let n = names.Get(0)
+// → code_string n = (code_string)AmalgameList_get(names, 0);
+```
+
+Class-method return types were already propagating since v0.5;
+the gap was specifically on the generic-collection accessors.
+
+### Linter coverage
+
+`amc --lint` learns two new diagnostics:
+
+- **catch-binder unused** — `try { ... } catch e { ... }` where
+  the binder isn't read warns `unused local 'e' (prefix with
+  '_' to silence)`. Same opt-out as other unused locals.
+- **`var`-declared-but-never-reassigned** — flags `var x = 0;
+  print(x)` where `x` is read but never reassigned, suggesting
+  `let` would communicate the immutability better. Picks up
+  every `=` / `+=` / `-=` / `*=` / `/=` / `%=` / `&=` / `|=` /
+  `^=` / `<<=` / `>>=` operator as a reassignment.
+
+Still TBD (each needs typecheck integration or a non-trivial
+walk): suspicious match (missing default + non-exhaustive
+enum), implicit fallthrough, dead `import`.
+
+### `ArgParser` framework
+
+`src/argparser.am` ships a fluent registration class for the
+subcommand arg loops that were duplicated across `migrate.am`,
+`generate.am`, `explain.am`, `main.am::RunFmt`/`RunTest`, and
+`add_cmd.am`:
+
+```
+let ap = new ArgParser()
+ap.Flag("-w").Flag("--write").Flag("-h").Flag("--help")
+  .Option("--from")
+  .Parse(argc, 2)
+
+if (ap.HelpRequested()) { ... }
+if (String_Length(ap.GetUnknown()) > 0) {
+    Console.WriteError("amc fmt: unknown argument '"
+        + ap.GetUnknown() + "'")
+}
+let write = ap.HasFlag("-w") || ap.HasFlag("--write")
+let files = ap.GetPositionals()
+```
+
+`RunFmt` migrated as the inaugural caller. Other subcommands
+can move to the framework incrementally without coordinating a
+big-bang rewrite. Lacks short-flag clustering (`-vh`),
+`--key=value` form, and `--` end-of-flags marker — add when a
+real caller needs them.
+
+---
+
 ## [v0.6.2] — 2026-05-12
 
 The **"compiler audit + parser bugfix"** patch release.
@@ -2255,6 +2328,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.6.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.0
 [v0.6.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.1
 [v0.6.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.2
+[v0.6.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.3
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
