@@ -286,13 +286,20 @@ before the next big language addition.
       Extract a typed `BoxScalar(expr, ctype)` / `UnboxScalar(expr,
       ctype)` pair so the call-sites read as intent rather than
       ceremony.
-- [ ] **Reduce `void*` erasure across method-call boundaries** —
-      every other contributor PR hits this and works around it with
-      `let x: T = chain.Get(i)` or by extracting a typed helper.
-      Either fix the inference (CGen knows the return type, just
-      forgets to propagate it across the boundary) or codify the
-      workaround patterns in `docs/guide/07-internals.md` so it's
-      not a paper cut every time.
+- [x] **Reduce `void*` erasure (v0.6.3)** — `xs.Get(i)` on a
+      local `List<T>` / `Map<K,V>` now infers the element /
+      value type directly from the `__local__` and
+      `__local_map__` registry that `TrackGenericLocal` already
+      populates at `let` / `var` declaration sites. Before:
+      `let n = names.Get(0)` degraded to `void* n = ...`. After:
+      `code_string n = (code_string)AmalgameList_get(names, 0)`.
+      Drops the need for the `let n: string = ...` workaround at
+      most call sites. Class-method return types were already
+      propagating via `MethodRetTypes` since v0.5.x — the gap
+      was specifically on the generic-collection accessors.
+      Chained calls on user classes (`x.Foo().Bar().Baz()`)
+      still propagate; verified via the new `ArgParser` fluent
+      registration API.
 - [x] **CGen: chained `obj.Field.Method()` /
       `obj.Method().Method()` (resolved)** — `EmitCalleeStr`
       now handles both shapes: when the receiver is a CALL, the
@@ -358,16 +365,45 @@ before the next big language addition.
       every invocation. A serializable AST cache (file mtime →
       pickled AST under `.amc-cache/`) could probably halve that.
       Modest win but unblocks faster CI loops.
-- [ ] **Linter coverage** — `amc --lint` flags unreachable code,
-      unused locals, shadowed names. Easy adds the framework already
-      supports: catch-binder unused, suspicious match (missing default
-      arm + non-exhaustive enum), implicit fallthrough, dead `import`,
-      `let` declared but never assigned past initialization.
-- [ ] **Reduce duplication in arg parsing across subcommands** —
-      `migrate.am`, `generate.am`, `explain.am`, and
-      `main.am::RunFmt`/`RunTest` each reimplement an args loop.
-      A shared `ArgParser` class with a fluent registration API
-      would cut ~150 lines and centralize the `--help` rendering.
+- [x] **Linter coverage (v0.6.3)** — `amc --lint` now also
+      flags:
+        - **catch-binder unused** — `try { ... } catch e { ... }`
+          where `e` isn't read warns "unused local 'e' (prefix
+          with '_' to silence)", same opt-out as other locals.
+          Implemented by declaring the binder in a fresh scope
+          around the catch body so the existing unused-local
+          pass catches it.
+        - **`var`-declared-but-never-reassigned** — flags
+          declarations that should have been `let` for clarity.
+          New `AssignedNames` append-only list (mirror of
+          `UsedNames`) tracks bare-identifier LHS of every `=` /
+          `+=` / `-=` / `*=` / `/=` / `%=` / `&=` / `|=` / `^=` /
+          `<<=` / `>>=` operation; at `PopScope`, mutable locals
+          with zero post-decl assignments warn.
+      Still TBD as separate items (each needs typecheck
+      integration or a non-trivial walk):
+        - suspicious match (missing default + non-exhaustive enum)
+        - implicit fallthrough
+        - dead `import`
+- [x] **`ArgParser` framework (v0.6.3)** — `src/argparser.am`
+      ships a fluent registration class:
+      ```
+      let ap = new ArgParser()
+      ap.Flag("-w").Flag("--write").Flag("-h").Flag("--help")
+        .Option("--from")
+        .Parse(argc, 2)
+      if (ap.HelpRequested()) { ... }
+      if (String_Length(ap.GetUnknown()) > 0) { unknown-flag err }
+      let write = ap.HasFlag("-w") || ap.HasFlag("--write")
+      let files = ap.GetPositionals()
+      ```
+      `RunFmt` migrated as the inaugural caller (~8 lines saved).
+      Migration of `RunTest`, `migrate.am`, `generate.am`,
+      `explain.am`, and the `add_cmd.am` per-verb loops is
+      incremental — each subcommand can move to the framework
+      independently. Lacks: short-flag clustering (`-vh`),
+      `--key=value` form, `--` end-of-flags marker (add when a
+      real subcommand needs them).
 - [x] **Promote ad-hoc JSON to a real `Amalgame.Json` module**
       (resolved). Phase 1 (module + 24 tests, v0.4.2). Phase 2
       (swap `lsp.am` request dispatcher to `Json.Parse`, swap
