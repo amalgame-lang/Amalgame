@@ -153,6 +153,17 @@ public class Program {
         let mpProg   = mpPar.Parse()
         Console.WriteError("parsed: stdlib/msgpack.am")
 
+        // BuildInfo — project G v0.7.4 POC: helpers ported from
+        // runtime/Amalgame_BuildInfo.h to AM with `@c { … }` blocks
+        // that read AMC_GIT_REV / AMC_BUILD_DATE at gcc time.
+        let biPath   = "./src/stdlib/amc_buildinfo.am"
+        let biSrc    = File.ReadAll(biPath)
+        let biLex    = new Lexer(biSrc, biPath)
+        let biToks   = biLex.Tokenize()
+        let biPar    = new Parser(biToks)
+        let biProg   = biPar.Parse()
+        Console.WriteError("parsed: stdlib/amc_buildinfo.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -284,6 +295,7 @@ public class Program {
         gen6.AddFilePass1(dtProg)
         gen6.AddFilePass1(crProg)
         gen6.AddFilePass1(mpProg)
+        gen6.AddFilePass1(biProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -315,6 +327,7 @@ public class Program {
         gen6.AddFilePass2(dtProg)
         gen6.AddFilePass2(crProg)
         gen6.AddFilePass2(mpProg)
+        gen6.AddFilePass2(biProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)

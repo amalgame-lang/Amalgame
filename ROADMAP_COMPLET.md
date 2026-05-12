@@ -1,13 +1,13 @@
 # Amalgame — Roadmap
 
 > **Upcoming priority sequence (2026-05-12 decision):**
-> `v0.7.4 = G (inline-C blocks)` → `v0.7.5 = F (libamalgame pre-compile)` → `v0.7.6+ stdlib in .am only`.
+> `v0.7.4 = G (inline-C blocks)` ✅ shipped → `v0.7.5 = F (libamalgame pre-compile)` → `v0.7.6+ stdlib in .am only`.
 > No new `runtime/Amalgame_*.h` after v0.7.3 — every new stdlib module lands as a `.am` file
-> using `@c { ... }` blocks for low-level glue once G ships. Migration cost of existing `.h`
-> files stays bounded because we stop adding to that pile now. See "Open design questions"
-> for the G + F details.
+> using `@c { ... }` blocks for low-level glue. Migration cost of existing `.h` files stays
+> bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
+> for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-12 · `amc 0.7.3` · self-hosted · 602/602 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client
+> Updated 2026-05-12 · `amc 0.7.4` · self-hosted · 610/610 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`)
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -1389,6 +1389,57 @@ implementation effort.
 
 ---
 
+## Runtime → AM migrations (project G follow-up, optional)
+
+Project G (v0.7.4) shipped `@c { … }` + `@c_include` + `@c_link`
+and migrated **1 POC**: `runtime/Amalgame_BuildInfo.h` →
+`src/stdlib/amc_buildinfo.am`. The remaining `runtime/Amalgame_*.h`
+headers stay in C unless someone actively rétro-migrates them.
+This is a backlog of the ones that *could* migrate once project F
+(`libamalgame.a` pre-compile, v0.7.5) lands and makes the
+ergonomics painless for users.
+
+Candidates ranked by migration value × low risk:
+
+- [ ] **`Amalgame_DateTime.h`** — small, mostly wraps `clock()` /
+      `time()` / `gmtime_r()`. ~120 LoC of glue → AM with 1-2 `@c {}`
+      blocks per helper. Good warm-up candidate.
+- [ ] **`Amalgame_Logging.h`** — log levels + optional file output.
+      No third-party dep. ~80 LoC C, trivial to migrate.
+- [ ] **`Amalgame_Crypto.h`** — SHA-256 + HMAC-SHA-256, pure-C
+      implementation already (no OpenSSL). ~300 LoC but mechanical;
+      the bit-twiddling stays inside one big `@c {}` per primitive.
+- [ ] **`Amalgame_Random.h`** — PCG-32 + `getentropy` / `BCryptGenRandom`
+      wrapper. The PCG step could even move to pure Amalgame (the
+      `src/stdlib/random.am` facade already does most of it); only
+      the OS-entropy syscall needs `@c_include` + `@c {}`.
+- [ ] **`Amalgame_Service.h`** — daemon primitives (POSIX fork/setsid +
+      Windows SCM stub). Touches `@c_include "<unistd.h>"` /
+      `"<windows.h>"`; manageable.
+- [ ] **`Amalgame_FileWatch.h`** — inotify (Linux) / FSEvents (macOS) /
+      ReadDirectoryChangesW (Windows) bindings. Useful real-world test
+      of `@c_include` cross-platform conditional compilation.
+
+Non-candidates (stay in C):
+
+- `_runtime.h` — foundation (GC roots, exception model, `code_string`).
+  Bootstrap-critical, can't be migrated.
+- `Amalgame_String.h` / `Amalgame_Collections.h` — perf-critical
+  primitives that the compiler itself uses heavily. Migration would
+  add a function-call boundary per `String_Length` / `List.Get` and
+  show up in `amc` self-host timings.
+- `Amalgame_Net.h` — libcurl + winsock2 bindings, ~600 LoC. Possible
+  but the C body is mostly libcurl boilerplate; the migration gain is
+  small relative to the churn risk.
+- `Amalgame_Compress.h` — zlib bindings, ditto.
+- `Amalgame_Regex.h` — POSIX regex bindings, ditto.
+
+Each migration is its own PR (small, isolated, easy to revert) and
+should include a benchmark snapshot in the description so we catch
+the rare case where `@c {}` boundary costs hurt a hot path.
+
+---
+
 ## Open design questions
 
 - **`?.` chaining cost** — current emit double-evaluates the receiver.
@@ -1461,6 +1512,15 @@ implementation effort.
   `Result<T, E>` plus `?` operator for short-circuiting as a
   complementary path.
 - **Inline-C injection blocks** — proposal raised 2026-05-12.
+  ✅ **SHIPPED in v0.7.4 (project G)** — commits `776bc74`
+  (phase 1+2: lexer/parser/cgen MVP + BuildInfo POC migration)
+  and `0c75802` (phase 3: `@c_include` + `@c_link` directives).
+  `@out = expr;` was NOT implemented — the body just uses a plain
+  C `return …;` against the enclosing method's declared type, which
+  turned out cleaner. Migration backlog for the remaining runtime
+  headers is tracked in the "Runtime → AM migrations" section
+  above. The original proposal text below is kept for context.
+
   Today the runtime is split between hand-written C
   (`runtime/Amalgame_*.h`, ~3 000 LoC of POSIX + libc calls)
   and Amalgame facades (`src/stdlib/*.am`). The C half is

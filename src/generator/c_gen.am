@@ -1401,6 +1401,24 @@ public class CGen {
         let k = decl.Kind
         if (k == NodeKind.ENUM_DECL) { this.EmitEnum(decl) }
         if (k == NodeKind.CLASS_DECL) { this.EmitClass(decl) }
+        if (k == NodeKind.INLINE_C_INCLUDE) {
+            // `@c_include "<h.h>"` → `#include <h.h>`; quoted form when
+            // the argument starts with anything other than `<`. The user
+            // controls the bracket style by what they pass.
+            let arg = decl.Str
+            if (String_Length(arg) > 0 && String_Substring(arg, 0, 1) == "<") {
+                this.Out.EmitLine("#include " + arg)
+            } else {
+                this.Out.EmitLine("#include \"" + arg + "\"")
+            }
+        }
+        if (k == NodeKind.INLINE_C_LINK) {
+            // `@c_link "name"` — for v0.7.4 MVP we surface it as a comment
+            // so the user knows which `-l<name>` to pass at gcc time.
+            // `amc test` may thread these into its internal gcc command
+            // in a follow-up; `amc -o` doesn't link at all today.
+            this.Out.EmitLine("/* link: -l" + decl.Str + " */")
+        }
     }
 
     private void EmitEnum(AstNode en) {
@@ -2146,6 +2164,25 @@ public class CGen {
             this.Out.EmitLine("}")
             this.Out.EmitLine("memcpy(&_am_ex.env, &_am_prev_env_" + suffix + ", sizeof(jmp_buf));")
             if (stmt.Cond != null) { this.EmitBlock(stmt.Cond) }
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            return
+        }
+        if (k == NodeKind.INLINE_C) {
+            // `@c { … }` — splice the raw C body inside a compound statement
+            // so any `int x = …;` declarations stay scoped to the block. The
+            // body is emitted line-by-line; the lexer captured it verbatim,
+            // and the user is responsible for writing valid C.
+            this.Out.EmitLine("{ /* inline-C */")
+            this.Out.Indent_()
+            let body = stmt.Str
+            if (String_Length(body) > 0) {
+                let lines: List<string> = String_Split(body, "\n")
+                let count = lines.Count()
+                for i in 0..count {
+                    this.Out.EmitLine(lines.Get(i))
+                }
+            }
             this.Out.Dedent()
             this.Out.EmitLine("}")
             return
@@ -3293,7 +3330,12 @@ public class CGen {
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                        // BuildInfo used to be in this list (its body was a
+                        // runtime header). Since v0.7.4 it's an AM class
+                        // (src/stdlib/amc_buildinfo.am) bundled under the
+                        // Amalgame.Compiler namespace, so it now goes
+                        // through the normal namespace-mangled dispatch.
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }

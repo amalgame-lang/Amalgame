@@ -181,6 +181,10 @@ public class Formatter {
             this.EmitEnum(n)
         } else if (k == NodeKind.VAR_DECL) {
             this.EmitVarDecl(n, true)
+        } else if (k == NodeKind.INLINE_C_INCLUDE) {
+            this.Line("@c_include \"" + n.Str + "\"")
+        } else if (k == NodeKind.INLINE_C_LINK) {
+            this.Line("@c_link \"" + n.Str + "\"")
         } else {
             this.Line("// TODO: top-level kind " + this.KindName(k) + "")
         }
@@ -429,6 +433,8 @@ public class Formatter {
             this.EmitTry(n)
         } else if (k == NodeKind.THROW_STMT) {
             this.EmitThrow(n)
+        } else if (k == NodeKind.INLINE_C) {
+            this.EmitInlineC(n)
         } else if (k == NodeKind.BLOCK) {
             this.EmitBlock(n)
         } else {
@@ -463,6 +469,24 @@ public class Formatter {
     private void EmitThrow(AstNode n) {
         if (n.Left == null) { this.Line("throw"); return }
         this.Line("throw " + this.EmitExpr(n.Left))
+    }
+
+    // Re-emit an inline-C block as `@c { … }` preserving the body verbatim.
+    // Each body line lands on its own output line so the formatter stays
+    // idempotent (split → reassemble → identical bytes for a stored body).
+    private void EmitInlineC(AstNode n) {
+        let body = n.Str
+        if (String_Length(body) == 0) {
+            this.Line("@c {}")
+            return
+        }
+        this.Line("@c {")
+        let lines: List<string> = String_Split(body, "\n")
+        let count = lines.Count()
+        for i in 0..count {
+            this.Line(lines.Get(i))
+        }
+        this.Line("}")
     }
 
     private void EmitBlock(AstNode n) {

@@ -1,0 +1,41 @@
+namespace App
+
+// `@c_include "<ctype.h>"` pulls a libc header that the Amalgame
+// runtime prelude doesn't bring in by default, making `toupper` /
+// `isalpha` visible inside `@c { … }` bodies below.
+@c_include "<ctype.h>"
+
+// `@c_link "m"` is a hint to the user / build script: this module
+// expects libm at link time. For v0.7.4 the cgen surfaces it as a
+// `/* link: -l<name> */` comment in the emitted .c — `amc test` may
+// later thread it into the internal gcc command. `-lm` is already
+// linked by the test harness, so the comment is the only artefact
+// we assert on here.
+@c_link "m"
+
+public class CaseTools {
+    public static int ToUpperByte(int b) {
+        @c {
+            return (int) toupper((int) b);
+        }
+    }
+
+    public static bool IsAlphaByte(int b) {
+        @c {
+            return isalpha((int) b) != 0;
+        }
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        Console.WriteLine("a→" + String.FromInt(CaseTools.ToUpperByte(97)))
+        Console.WriteLine("z→" + String.FromInt(CaseTools.ToUpperByte(122)))
+        if (CaseTools.IsAlphaByte(65)) {
+            Console.WriteLine("A is alpha")
+        }
+        if (!CaseTools.IsAlphaByte(48)) {
+            Console.WriteLine("0 is not alpha")
+        }
+    }
+}

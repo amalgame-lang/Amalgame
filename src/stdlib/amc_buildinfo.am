@@ -1,0 +1,35 @@
+namespace Amalgame.Compiler
+
+// ── BuildInfo ───────────────────────────────────────────
+//
+// Pinned build provenance, surfaced by `amc --version`.
+//
+// The two values are baked in at compile time via
+// `-DAMC_GIT_REV=...` and `-DAMC_BUILD_DATE=...` from
+// `build_amc.sh`. When the defines are absent (e.g. someone
+// gcc's the C snapshot directly outside the build script),
+// the helpers return the empty string — callers must treat
+// empty as "no build info baked in" and skip the banner
+// line rather than emit a half-rendered one.
+//
+// This module is the project G v0.7.4 inline-C POC: the
+// per-helper bodies are `@c { … }` blocks that splice the
+// macro read directly into the emitted C. Prior to v0.7.4
+// the same logic lived as two `static inline` helpers in
+// `runtime/Amalgame_BuildInfo.h`; that header is now
+// trimmed down to just the `#ifndef` guards for the macros
+// themselves so an undefined-build still compiles to "".
+
+public class BuildInfo {
+    public static string GitRev() {
+        @c {
+            return AMC_GIT_REV;
+        }
+    }
+
+    public static string BuildDate() {
+        @c {
+            return AMC_BUILD_DATE;
+        }
+    }
+}

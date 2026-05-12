@@ -1,15 +1,78 @@
 # Continuation prompt — start a new chat with this
 
-> Last refreshed 2026-05-12 after shipping v0.5.3 → v0.6.0 in a
-> single overnight sprint. Five releases roll into one snapshot:
-> v0.5.3 (C++ packages pipeline), v0.5.4 (precompile-on-install +
-> calibration), v0.5.5 (search/versions with compat status), v0.5.6
-> (index cache TTL + runner fixes), v0.6.0 (auto-resolve
-> add-without-tag + semver operators).
+> **Last refreshed 2026-05-12 PM** — 8 more releases shipped on top
+> of v0.6.0 in a single afternoon sprint: v0.6.1 (PM polish: info /
+> outdated / --no-versions / --json / Path.* core dispatch),
+> v0.6.2 (audit + free-fn parser diagnostic), v0.6.3 (void* erasure
+> reduction + linter coverage + ArgParser framework), v0.6.4 (cgen
+> cleanup -9% snapshot + `--verbose` phase timings), v0.7.0
+> (Vec3/Vec4/Mat4 + FileWatcher), v0.7.1 (YAML + DateTime UTC
+> breakdown + Regex), v0.7.2 (Compress zlib + MessagePack codec
+> + chained-call cgen fix), v0.7.3 (WebSocket RFC 6455 client).
+> Test count: 509 → **602 PASS**. Last commit on develop:
+> `1ad1760 release: v0.7.3 (#352)`. Last tag: `v0.7.3`.
 >
-> The block below is a self-contained prompt designed to bootstrap a
-> new Claude session with full context. Copy-paste it as your first
-> message in a fresh conversation.
+> **DECISION recorded at top of `ROADMAP_COMPLET.md`**: no new
+> `runtime/Amalgame_*.h` after v0.7.3. Sequence is now
+> **v0.7.4 = project G** (inline-C `@c { ... }` blocks: parser +
+> cgen + 1-header POC migration) → **v0.7.5 = project F**
+> (`libamalgame.a` pre-compile of user-facing stdlib `.am`
+> modules). From v0.7.6+ every new stdlib lands as `.am` only.
+>
+> ## Persistent todos (don't lose these)
+>
+> - **DOCS-TODO** — guide chapters for v0.7.0–v0.7.3 features:
+>   Vec/Mat, FileWatcher, YAML, DateTime breakdown, Regex,
+>   Compress, MessagePack, WebSocket. Update `docs/guide/`
+>   when the Documentation phase starts.
+> - **BUG TRACKER** — parser precedence bug spotted in v0.7.2
+>   work: `(a + b) % 256` parses as `a + (b % 256)` despite
+>   the parens. Workaround documented in `msgpack.am`'s
+>   `ByteOf` (intermediate local). Tracking entry in
+>   `ROADMAP_COMPLET.md` under "Compiler — polish".
+> - **WS deferred** — wss:// TLS, binary opcodes, continuation
+>   frames, per-message-deflate, HTTP subprotocols. Wait for a
+>   real consumer.
+>
+> ## Plan for v0.7.4 (project G — start here)
+>
+> 1. **Phase 1 (MVP parser + cgen)** —
+>    - Lexer: tokenise `@c {` as a raw-C span marker; the body
+>      bytes flow through opaque until the matching `}` (count
+>      nested braces).
+>    - Parser: produce `NodeKind.INLINE_C` with the raw body
+>      stored in `Str`. Detect `@out = …;` syntax inside.
+>    - Resolver: treat the block as opaque — return type comes
+>      from the enclosing method signature; arg types from the
+>      surrounding scope.
+>    - CGen: splice the body verbatim. Wrap with a compound
+>      statement so locals are correctly scoped. Map
+>      `@out = expr;` to `return (RT) expr;` where RT is the
+>      enclosing method's declared return.
+>    - Tests: 3-4 fixtures (`@c { return strlen(s); }` style).
+>
+> 2. **Phase 2 (POC migration)** —
+>    `runtime/Amalgame_BuildInfo.h` is the smallest candidate
+>    (10 useful lines, 2 inline helpers + 2 defines). Migrate
+>    it to `src/stdlib/amc_buildinfo.am` with `@c {}` blocks
+>    for the `return AMC_GIT_REV;` parts. Verify
+>    `amc --version` still works + 602 tests still green.
+>
+> 3. **Phase 3 (extensions)** —
+>    `@c_include "<header.h>"` at file scope (for std libc
+>    headers). `@c_link "name"` (passed as `-lname` to gcc).
+>    Doc warning that inline-C is `unsafe`-like.
+>
+> ## Build state
+>
+> - `./amc --version`: `amc 0.7.3 (commit 577d67ea, built 2026-05-12T19:05:38Z)`
+> - `./build_amc.sh`: ~2s end-to-end
+> - `./tests/run_all_tests.sh`: 602/602 PASS (205 core + 351 stdlib + 12 fmt + 34 amc-new)
+> - libgc-dev + libcurl4-openssl-dev + zlib1g-dev required for the bootstrap
+>
+> The block below is the v0.6.0-era prompt — kept for the
+> compiler/bootstrap context which is still accurate. Read it
+> after the above for the "how the codebase is laid out" view.
 
 ---
 

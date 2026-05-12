@@ -119,16 +119,23 @@ jobs:
         with:
           msystem: MINGW64
           update: true
+          # libsystre gives POSIX <regex.h> on MINGW64 (Linux glibc and
+          # macOS libSystem ship it natively, Windows doesn't). It
+          # depends on libtre transitively, no need to spell it out.
+          # zlib is needed by Amalgame_Compress.h (added v0.7.2); it
+          # usually comes in via curl but -lz is explicit at link.
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-gc
             mingw-w64-x86_64-curl
+            mingw-w64-x86_64-libsystre
+            mingw-w64-x86_64-zlib
 
       - name: Compile amc from tracked amc_lib.c
         run: |
           gcc -O2 -Iruntime \
               src/amc_lib.c \
-              -lgc -lm -lcurl -lws2_32 -lbcrypt -o amc.exe
+              -lgc -lm -lcurl -lz -lsystre -ltre -lws2_32 -lbcrypt -o amc.exe
 
       - name: Verify amc reports its version
         run: ./amc.exe --version
@@ -136,7 +143,7 @@ jobs:
       - name: Smoke compile a sample
         run: |
           ./amc.exe tests/samples/hello.am -o /tmp/hello
-          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -lws2_32 -lbcrypt -o /tmp/hello.exe
+          gcc -Iruntime /tmp/hello.c -lgc -lm -lcurl -lz -lsystre -ltre -lws2_32 -lbcrypt -o /tmp/hello.exe
           /tmp/hello.exe
 
       - name: Upload generated artifacts on failure
