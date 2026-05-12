@@ -125,6 +125,7 @@ public class Resolver {
         builtins.Add("Regex")
         builtins.Add("Match")
         builtins.Add("Compress")
+        builtins.Add("WebSocket")
         builtins.Add("String")
         builtins.Add("Http")
         // Primitive types
