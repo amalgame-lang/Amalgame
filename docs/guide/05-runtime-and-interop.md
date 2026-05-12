@@ -167,6 +167,105 @@ Less elegant, but works for one-off bindings: put the helper in the
 runtime header, then write a thin Amalgame wrapper class that just
 forwards. The CGen will emit normal C calls.
 
+### 3. Inline-C blocks — `@c { … }` (v0.7.4+)
+
+Since v0.7.4 (project G) Amalgame has a balisé inline-C block that
+lets a method body drop straight into C without a runtime-header
+detour. The body bytes flow through the lexer opaquely until the
+matching `}`, the resolver / typechecker / linter treat the node
+as opaque, and the cgen splices the source verbatim inside a
+compound statement (`{ … }`) so any locals declared in the block
+stay scoped to it.
+
+```kotlin
+namespace App
+
+public class CTools {
+    public static int CLen(string s) {
+        @c {
+            return (int) strlen(s);
+        }
+    }
+
+    public static int Doubled(int x) {
+        @c {
+            int local = x;
+            return local + local;
+        }
+    }
+}
+```
+
+Two companion **file-scope directives** are recognised at the top
+of any `.am` file, before / between class declarations:
+
+- **`@c_include "<header.h>"`** — emits the corresponding C
+  `#include` at the top of the generated `.c`. Angle form when
+  the argument starts with `<`, quoted form otherwise:
+  ```kotlin
+  @c_include "<ctype.h>"      // → #include <ctype.h>
+  @c_include "my_local.h"     // → #include "my_local.h"
+  ```
+  The runtime prelude already pulls in `<stdio.h>` / `<stdlib.h>` /
+  `<string.h>` / `<stdint.h>` / `<math.h>` / `<gc.h>` — only
+  reach for `@c_include` when you need something the prelude
+  doesn't bring in.
+
+- **`@c_link "name"`** — surfaces as a `/* link: -lname */`
+  comment in the emitted `.c`. The MVP doesn't thread it into
+  `amc test`'s internal gcc step (you still pass `-l<name>`
+  yourself for `amc -o` workflows); the comment is there so
+  `grep '^/\* link:' yourfile.c` gives you the full link line.
+
+**Body semantics:**
+
+- Every Amalgame parameter in scope is visible inside the block
+  with its C representation (`code_string` / `i64` / struct pointer).
+- The C `return` statement returns from the enclosing Amalgame
+  method (because the splice lives inside the method body, not a
+  nested function). Use it the same way you'd use a regular
+  Amalgame `return`.
+- The body must contain valid C — the Amalgame frontend doesn't
+  parse inside `{ … }`. Strings, char literals, single- and
+  block-comments are recognised by the lexer's brace-counting so
+  a `}` inside `"abc}def"` / `'}'` / `/* … */` doesn't close the
+  block early.
+
+**Sandbox / safety:** there isn't one. Inline-C can crash the
+program, leak memory, and violate GC invariants. Treat `@c { … }`
+the same way you'd treat Rust's `unsafe { … }` — reach for it
+when you have to, document why, and isolate the unsafe surface
+behind a typed Amalgame wrapper.
+
+**Migration pattern.** The smallest existing example is the
+build-info POC (commit `776bc74`):
+
+```kotlin
+// src/stdlib/amc_buildinfo.am
+namespace Amalgame.Compiler
+
+public class BuildInfo {
+    public static string GitRev() {
+        @c { return AMC_GIT_REV; }
+    }
+
+    public static string BuildDate() {
+        @c { return AMC_BUILD_DATE; }
+    }
+}
+```
+
+This replaced two `static inline` helpers in
+`runtime/Amalgame_BuildInfo.h`. The same shape works for any
+runtime header that just wraps libc / OS calls — see the
+"Runtime → AM migrations" section of `ROADMAP_COMPLET.md` for
+the rétro-migration candidates.
+
+> `@out = expr;` from the original v0.7.4 proposal was **dropped**.
+> Bodies use plain C `return …;` against the method's declared
+> return type, which is cleaner and avoids a hidden boundary
+> rewrite.
+
 ## ABI notes
 
 - The compiler does **not** mangle types into symbol names — only the

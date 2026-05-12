@@ -176,6 +176,44 @@ It does **not** touch the filesystem — so `..` past a symlink may
 resolve incorrectly relative to the real path. Use a filesystem-
 resolving helper if you need that.
 
+## IO.FileWatcher — single-file mtime polling
+
+`runtime/Amalgame_FileWatch.h`
+
+Watches one file and reports when its modification time changes.
+Implementation is plain `stat(2)` / `_stat64` polling — no
+inotify / FSEvents / `ReadDirectoryChangesW`. The caller drives
+the poll loop; `Changed()` returns true once per detected mtime
+advance (or appearance / disappearance of the path) and then
+snapshots the new state for the next round.
+
+Recursive directory watches are out of scope for v1; the polling
+MVP covers the "reload a config file" and "rebuild on source
+change" cases that motivate ~80% of users.
+
+```kotlin
+let w = new FileWatcher("/etc/app/config.toml")
+while (!Service.ShouldStop()) {
+    if (w.Changed()) {
+        Console.WriteLine("config changed, reloading…")
+        reload()
+    }
+    Service.Sleep(500)
+}
+```
+
+| Method                          | Returns  | Notes                                                       |
+|---------------------------------|----------|-------------------------------------------------------------|
+| `new FileWatcher(path: string)` |          | Snapshots mtime at construction                             |
+| `Changed()`                     | `bool`   | True once after each mtime advance / appear / disappear     |
+| `Exists()`                      | `bool`   | Cheap `stat()` probe — distinct from `Changed()`            |
+| `GetPath()`                     | `string` | The path passed at construction                             |
+
+`Changed()` does **not** debounce — if the watched file is written
+by a sequence of small writes, you may observe several true
+returns in a row. The polling interval is yours to choose; 250–500ms
+is the typical config-reload sweet spot.
+
 ## Math — arithmetic
 
 `runtime/Amalgame_Math.h`
@@ -208,6 +246,75 @@ Math.SeedRandom(42)
 let dice = Math.RandomInt(1, 6)
 let h = Math.Sqrt(3.0 * 3.0 + 4.0 * 4.0)
 ```
+
+## Math.Vec — 3D math primitives (Vec3, Vec4, Mat4)
+
+`runtime/Amalgame_Math_Vec.h` · canonical declarations in [stdlib/math_vec.am](../../src/stdlib/math_vec.am)
+
+Scalar (no-SIMD) implementations of the three primitives you reach
+for in game / graphics code: a 3-component float vector, a
+4-component (homogeneous) vector, and a 4×4 column-major matrix.
+All instances are heap-allocated; chained ops return fresh objects
+rather than mutating their inputs.
+
+Conventions: matrices are **column-major** (OpenGL — feed directly
+to `glUniformMatrix4fv` without transposing). `Vec4.W` is the
+homogeneous coordinate (1 = position, 0 = direction). Rotations are
+in radians.
+
+```kotlin
+import Amalgame.Math.Vec
+
+let a: Vec3 = new Vec3(3.0, 4.0, 0.0)
+Console.WriteLine(String.FromFloat(a.Length()))          // 5.0
+let n: Vec3 = a.Normalize()                              // (0.6, 0.8, 0)
+
+// Rotate (1, 0, 0, 1) 90° around Z → (0, 1, 0, 1)
+let rz: Mat4 = Mat4.RotateZ(3.14159265 / 2.0)
+let p:  Vec4 = rz.TransformVec4(new Vec4(1.0, 0.0, 0.0, 1.0))
+```
+
+### Vec3
+
+| Method                            | Returns | Notes                         |
+|-----------------------------------|---------|-------------------------------|
+| `new Vec3(x, y, z)`               | `Vec3`  |                               |
+| `GetX() / GetY() / GetZ()`        | `float` |                               |
+| `Add(other)` / `Sub(other)`       | `Vec3`  | Component-wise                |
+| `Scale(k: float)`                 | `Vec3`  |                               |
+| `Dot(other)`                      | `float` |                               |
+| `Cross(other)`                    | `Vec3`  | Right-handed                  |
+| `Length()`                        | `float` | Euclidean                     |
+| `Normalize()`                     | `Vec3`  | Returns `(0,0,0)` if length 0 |
+| `Equals(other)`                   | `bool`  | Exact float equality          |
+
+### Vec4
+
+| Method                            | Returns | Notes                         |
+|-----------------------------------|---------|-------------------------------|
+| `new Vec4(x, y, z, w)`            | `Vec4`  |                               |
+| `GetX() / GetY() / GetZ() / GetW()` | `float` |                             |
+| `Add(other)` / `Sub(other)`       | `Vec4`  |                               |
+| `Scale(k: float)`                 | `Vec4`  |                               |
+| `Dot(other)`                      | `float` | 4-component dot               |
+
+### Mat4
+
+| Method                                       | Returns | Notes                                   |
+|----------------------------------------------|---------|-----------------------------------------|
+| `new Mat4()`                                 | `Mat4`  | All zeros                               |
+| `Mat4.Identity()`                            | `Mat4`  |                                         |
+| `Mat4.Translate(tx, ty, tz)`                 | `Mat4`  |                                         |
+| `Mat4.Scale(sx, sy, sz)`                     | `Mat4`  |                                         |
+| `Mat4.RotateX(angleRad) / RotateY / RotateZ` | `Mat4`  | Radians                                 |
+| `Get(col, row)`                              | `float` | `M[col * 4 + row]` storage              |
+| `Set(col, row, v: float)`                    | `void`  |                                         |
+| `Multiply(other)`                            | `Mat4`  | `this * other`                          |
+| `TransformVec4(v)`                           | `Vec4`  | `M * v` (column-major application)      |
+
+> No `Vec3` × `Mat4` shortcut — promote to `Vec4(x, y, z, 1.0)`
+> first if you want positional transform, or `Vec4(x, y, z, 0.0)`
+> for direction. Mirrors how shaders handle it anyway.
 
 ## Collections — List, Map, Set
 
@@ -303,6 +410,60 @@ for a later release.
 
 > Net is the most experimental subset — APIs may evolve.
 
+## Net.WebSocket — RFC 6455 client (text frames, plain TCP)
+
+`runtime/Amalgame_WebSocket.h`
+
+Minimal client speaking RFC 6455 over plain TCP — enough to talk
+to any `ws://` endpoint that exchanges text messages. The handshake
+(SHA-1 + base64 of the `Sec-WebSocket-Accept` value) is computed
+in-runtime so the header is self-contained; no OpenSSL or external
+crypto library at this stage.
+
+**v0.7.3 scope:**
+- `ws://host:port/path` — plain TCP
+- Client → Server framing with the RFC-required mask
+- Text frames (opcode `0x1`)
+- Auto-pong reply to server Ping (`0x9`)
+- Close handshake (`0x8`)
+
+**Deferred:** `wss://` TLS, binary frames (`0x2`),
+continuation frames (multi-fragment messages), per-message-deflate
+negotiation, HTTP subprotocols (`Sec-WebSocket-Protocol`).
+
+```kotlin
+let ws = WebSocket.Connect("echo.websocket.org", 80, "/")
+if (ws == null) {
+    Console.WriteError("connect failed")
+    return
+}
+
+WebSocket.SendText(ws, "hello")
+let reply: string = WebSocket.ReceiveText(ws)
+Console.WriteLine(reply)
+
+WebSocket.Close(ws)
+```
+
+| Method                                                       | Returns         | Notes                                                |
+|--------------------------------------------------------------|-----------------|------------------------------------------------------|
+| `WebSocket.Connect(host: string, port: int, path: string)`   | `WebSocket*`    | `null` on DNS / refused / 101 / accept-key mismatch  |
+| `WebSocket.SendText(ws, text: string)`                       | `bool`          | False on write error                                 |
+| `WebSocket.ReceiveText(ws)`                                  | `string`        | `null` on close / read error; `""` on non-text frame |
+| `WebSocket.Close(ws)`                                        | `void`          | Sends Close frame + closes socket                    |
+| `WebSocket.IsConnected(ws)`                                  | `bool`          | False after Close / error                            |
+| `WebSocket.GetHost(ws) / GetPort(ws)`                        | `string` / `int`| Echoed from the connect args                         |
+| `WebSocket.AcceptKey(clientKey: string)`                     | `string`        | Exposed for tests / manual verification              |
+
+**Frame size cap:** the receiver refuses payloads larger than
+16 MiB to prevent a malicious / buggy server from forcing an OOM.
+Adjust the cap in the runtime header if your protocol legitimately
+exceeds that.
+
+**Binary frames** (opcode `0x2`) are reported as `""` rather than
+NULL — callers that need to distinguish "close" from "non-text"
+should pair `ReceiveText` with an `IsConnected` check.
+
 ## Args / Exit — process
 
 Set up at `int main()` time and accessible from Amalgame:
@@ -374,6 +535,119 @@ if (r.Ok) {
 > (`let v: JsonValue = r.Value; let kn: JsonValue = v.Get("k");
 > kn.AsString()`) until the codegen fix lands. Same workaround as
 > the JSON test sample in `tests/samples/stdlib_json.am`.
+
+## Formats.Yaml — YAML 1.2 subset reader
+
+`src/stdlib/yaml.am` · pure-Amalgame parser, no runtime header
+
+Indent-driven block-style parser sized for config-file use — same
+spirit as the existing TOML reader, same `YamlValue` tree shape
+as `JsonValue` and `TomlValue` so callers walk the same accessor
+surface across formats.
+
+**Coverage:** top-level + nested block mappings, block sequences
+(`- item`), bool / int / float / plain / single-quoted / double-
+quoted scalars, `#` comments, blank lines.
+
+**Out of scope** (returns plain-string on parse, no error raised):
+anchors / aliases, multi-doc separators (`---`/`...`), flow style
+(`[1, 2]`, `{a: b}`), multiline scalars (`>`, `|`), tags (`!!str`).
+
+```kotlin
+import Amalgame.Formats.Yaml
+
+let src: string = "server:\n  host: localhost\n  port: 8080\ntags:\n  - red\n  - blue\n"
+let doc: YamlValue = Yaml.Parse(src)
+let srv: YamlValue = doc.Get("server")
+Console.WriteLine(srv.Get("host").AsString())   // localhost
+Console.WriteLine(String.FromInt(srv.Get("port").AsInt()))  // 8080
+
+let tags: YamlValue = doc.Get("tags")
+Console.WriteLine(tags.At(0).AsString())        // red
+```
+
+### Yaml
+
+| Method                       | Returns      | Notes                                            |
+|------------------------------|--------------|--------------------------------------------------|
+| `Yaml.Parse(src: string)`    | `YamlValue`  | Null-kind for empty input; never throws          |
+
+### YamlValue
+
+| Method                           | Returns           | Notes                                |
+|----------------------------------|-------------------|--------------------------------------|
+| `IsNull() / IsBool() / IsInt() / IsFloat() / IsString() / IsArray() / IsMap()` | `bool` |  |
+| `AsBool() / AsInt() / AsFloat() / AsString()` | scalar | Falsy default on kind mismatch       |
+| `Count()`                        | `int`             | Array length or map key count        |
+| `At(idx: int)`                   | `YamlValue`       | Array access — Null-kind on OOB      |
+| `Get(key: string)`               | `YamlValue`       | Map access — Null-kind on miss       |
+| `Has(key: string)`               | `bool`            | Distinguishes empty value from absence |
+| `Keys()`                         | `List<string>`    | Insertion order                      |
+
+Best-effort parse: malformed scalars become plain-string values
+rather than aborting. Tabs in indentation are silently treated as
+one space (YAML 1.2 forbids them, but a config reader shouldn't
+crash on a stray tab).
+
+## Formats.MsgPack — MessagePack 1.0 subset codec
+
+`src/stdlib/msgpack.am` · pure-Amalgame, no runtime header
+
+Binary codec on top of the existing `JsonValue` tree. Same shape
+in, smaller bytes out — callers can switch wire formats with a
+one-line rename:
+
+```kotlin
+let bytes: List<int> = MsgPack.EncodeJson(jv)
+let jv2:   JsonValue = MsgPack.DecodeJson(bytes)
+```
+
+**Coverage:** nil, bool, positive / negative fixint, int 8 / 16 / 32,
+fixstr + str 8 / 16 (≤ 65 535 bytes), fixarray + array 16 (≤ 65 535
+entries), fixmap + map 16. Covers >95% of typical config / RPC
+payloads.
+
+**Out of scope** (encoder silently falls back, decoder returns
+null): int 64 / uint 64, float 32 / 64 (JsonValue floats truncate
+to int — round-trip works for whole numbers only), str 32 / array 32 /
+map 32, bin / ext / timestamps.
+
+```kotlin
+import Amalgame.Formats.MsgPack
+import Amalgame.Json
+import Amalgame.Collections
+
+// Build a JsonValue
+let m = new JsonValue()
+let keys = new List<string>()
+let vals = new List<JsonValue>()
+let v1 = new JsonValue() v1.SetInt(10)
+let v2 = new JsonValue() v2.SetString("world")
+keys.Add("a") vals.Add(v1)
+keys.Add("b") vals.Add(v2)
+m.SetObject(keys, vals)
+
+// Encode → decode round-trip
+let bytes: List<int> = MsgPack.EncodeJson(m)
+let back:  JsonValue = MsgPack.DecodeJson(bytes)
+Console.WriteLine(String.FromInt(back.Get("a").AsInt()))  // 10
+Console.WriteLine(back.Get("b").AsString())               // world
+```
+
+| Method                                       | Returns       | Notes                                    |
+|----------------------------------------------|---------------|------------------------------------------|
+| `MsgPack.EncodeJson(value: JsonValue)`       | `List<int>`   | Byte buffer ready for socket / file      |
+| `MsgPack.DecodeJson(bytes: List<int>)`       | `JsonValue`   | Null-kind on truncated / unsupported     |
+
+> **ASCII-only strings.** The decoder reconstructs payload bytes
+> through a printable-7-bit lookup table — non-ASCII bytes round-
+> trip to `?`. Fine for JSON-style payloads; use the raw byte-list
+> path for arbitrary binary. (UTF-8 support tracked alongside the
+> upstream String byte-iter work.)
+
+> **Encoder int fallback.** Values outside the int 32 range
+> currently truncate to their low 32 bits rather than emit int 64
+> — easy follow-up once a callsite needs it.
 
 ## Random — PRNG and OS entropy
 
@@ -606,6 +880,45 @@ Use Stopwatch — not `Instant.Now()` differences — for measuring
 elapsed time. The monotonic clock is unaffected by NTP
 adjustments and manual clock changes.
 
+### UTC breakdown (v0.7.1)
+
+Six new instance methods on `Instant` decompose a nanos-since-epoch
+into individual UTC calendar fields. Each call routes through
+`gmtime_r` / `gmtime_s` and returns one field — cheap (a few dozen
+instructions per call), but a caller needing the full breakdown
+pays roughly 6× the cost of a single `struct tm` extraction. Easy
+to consolidate into a `Breakdown()` struct accessor later if
+benchmarks complain.
+
+```kotlin
+import Amalgame.DateTime
+
+// 2009-02-13T23:31:30Z — the famous "billion seconds" timestamp
+let t: Instant = Instant.FromUnixSeconds(1234567890)
+Console.WriteLine(String.FromInt(t.Year()))    // 2009
+Console.WriteLine(String.FromInt(t.Month()))   // 2   (1-based, Jan = 1)
+Console.WriteLine(String.FromInt(t.Day()))     // 13  (1-based)
+Console.WriteLine(String.FromInt(t.Hour()))    // 23
+Console.WriteLine(String.FromInt(t.Minute()))  // 31
+Console.WriteLine(String.FromInt(t.Second()))  // 30
+```
+
+| Method        | Returns | Range  | Notes                                  |
+|---------------|---------|--------|----------------------------------------|
+| `Year()`      | `int`   | full   | UTC calendar year                      |
+| `Month()`     | `int`   | 1..12  | 1 = January                            |
+| `Day()`       | `int`   | 1..31  | Day of month                           |
+| `Hour()`      | `int`   | 0..23  |                                        |
+| `Minute()`    | `int`   | 0..59  |                                        |
+| `Second()`    | `int`   | 0..60  | 60 only on the rare leap-second tick   |
+
+All fields are UTC, matching the rest of v1 `DateTime`. Local time
+/ named-timezone breakdown still tracks the `LocalTime` companion
+class deferred from the roadmap. If `gmtime_r` rejects the input
+(beyond the i64-nanosecond window of ~1678–2262) the helpers
+return a sentinel value: `Year()` falls back to `1970`, the others
+to `1`/`0` — predictable rather than crashing.
+
 ### Limitations to know about
 
 - **UTC only.** No timezones, no local-time conversion, no DST
@@ -684,6 +997,117 @@ Either is handled transparently inside the runtime.
   information against a determined attacker. For verifying signatures
   / MACs against untrusted input, compare via a manual byte-by-byte
   loop that always runs to completion.
+
+## Regex — POSIX extended regular expressions
+
+`runtime/Amalgame_Regex.h`
+
+Thin binding over POSIX `regex.h` (`regcomp` + `regexec`) — available
+on every POSIX platform and MinGW, no third-party PCRE dependency.
+
+**Syntax: POSIX extended (ERE).** Day-to-day: `.` `*` `+` `?`
+`^` `$` `[...]` `(...)` `|` `{n,m}`.
+
+**Out of scope** (PCRE territory): `\d` / `\w` / `\s` shorthand,
+look-arounds, non-greedy modifiers (`*?` / `+?`), named captures,
+Unicode property classes. Reach for `Process.Run("grep -P …")`
+or a future PCRE2 package if you need them.
+
+```kotlin
+if (Regex.Test("[0-9]+", input)) {
+    let m = Regex.Match("([a-z]+) ([a-z]+)", "alpha beta")
+    Console.WriteLine(m.GetText())            // "alpha beta"
+    Console.WriteLine(m.GroupText(0))         // "alpha"
+    Console.WriteLine(m.GroupText(1))         // "beta"
+}
+
+let masked: string = Regex.ReplaceAll("[0-9]+", "abc123def456", "X")
+// → "abcXdefX"
+```
+
+### Top-level
+
+| Method                                                   | Returns  | Notes                                        |
+|----------------------------------------------------------|----------|----------------------------------------------|
+| `Regex.Test(pattern: string, subject: string)`           | `bool`   | True iff pattern matches anywhere; cheap     |
+| `Regex.Match(pattern, subject)`                          | `Match*` | `null` if no match or bad pattern            |
+| `Regex.Replace(pattern, subject, replacement)`           | `string` | First occurrence only; `\1` stays literal    |
+| `Regex.ReplaceAll(pattern, subject, replacement)`        | `string` | Every non-overlapping occurrence             |
+
+### Match
+
+| Method                          | Returns  | Notes                                        |
+|---------------------------------|----------|----------------------------------------------|
+| `GetText()`                     | `string` | The full match                               |
+| `GetStart() / GetEnd()`         | `int`    | Byte offsets in subject                      |
+| `GroupCount()`                  | `int`    | Number of capture groups (0..16)             |
+| `GroupText(idx: int)`           | `string` | 0-indexed; `""` for out-of-range             |
+| `GroupStart(idx) / GroupEnd(idx)` | `int`  | `-1` for out-of-range                        |
+
+`GroupText(0)` is the **first parenthesised group**, not the full
+match — for the full match use `GetText()`. POSIX caps captures
+at 16 here (`AMALGAME_REGEX_MAX_GROUPS`), enough for the config-
+extraction and template-tokenisation cases that motivate the API.
+
+> Captures aren't expanded in `Replace` / `ReplaceAll`. A `\1` in
+> the replacement string stays literal. If you need back-refs in
+> the substitution, do the loop yourself with `Match` + string
+> concatenation for now.
+
+## Compress — gzip + raw-deflate via zlib
+
+`runtime/Amalgame_Compress.h` · links `-lz`
+
+Two codec pairs backed by zlib:
+
+- **`Gzip` / `Gunzip`** — RFC 1952 gzip wrapper. Same bytes
+  `gzip -c` would write, correct `1f 8b` magic, suitable for
+  `.gz` files and HTTP `Content-Encoding: gzip`.
+- **`Deflate` / `Inflate`** — RFC 1951 raw deflate. No header,
+  smaller, suitable for embedded protocols (WebSocket
+  per-message-deflate, custom binary RPCs).
+
+Byte buffers flow through as `List<int>` with each entry in
+`[0, 255]` — same convention as `Crypto.Sha256` and
+`Random.SystemBytes`, so a `File.ReadBytes(...)` pipes straight
+through without an intermediate format. String helpers wrap the
+UTF-8 byte path for the common "compress this text" case.
+
+No structured errors in v1: a malformed input or zlib internal
+failure returns an **empty list**. Callers that need to
+distinguish "truncated" from "bad checksum" can fall back to
+`Process.Run("gunzip")` until the `Result<T, E>` proposal lands.
+
+```kotlin
+import Amalgame.Collections
+
+// String round-trip
+let payload: string = "Hello, Amalgame compression!"
+let gz: List<int> = Compress.GzipString(payload)
+let back: string  = Compress.GunzipString(gz)             // == payload
+
+// Raw byte buffers
+let bytes: List<int> = File.ReadBytes("config.json")      // when available
+let z: List<int>     = Compress.Gzip(bytes)
+File.WriteBytes("config.json.gz", z)
+
+// Embedded-protocol raw deflate
+let frame: List<int> = Compress.Deflate(message_bytes)
+let msg:   List<int> = Compress.Inflate(frame)
+```
+
+| Method                                | Returns      | Notes                                              |
+|---------------------------------------|--------------|----------------------------------------------------|
+| `Compress.Gzip(bytes: List<int>)`     | `List<int>`  | RFC 1952 gzip wrapper                              |
+| `Compress.Gunzip(bytes: List<int>)`   | `List<int>`  | Counterpart of `Gzip`                              |
+| `Compress.Deflate(bytes: List<int>)`  | `List<int>`  | RFC 1951 raw deflate (no header)                   |
+| `Compress.Inflate(bytes: List<int>)`  | `List<int>`  | Counterpart of `Deflate`                           |
+| `Compress.GzipString(s: string)`      | `List<int>`  | UTF-8 bytes of `s` → gzip                          |
+| `Compress.GunzipString(bytes)`        | `string`     | Decompress + interpret as UTF-8 string             |
+
+Compression level is fixed at zlib's `Z_DEFAULT_COMPRESSION` (~6).
+Users that need to tune for speed or ratio can shell out for now;
+exposing a level argument is a one-line follow-up.
 
 ## Logging — leveled stderr + optional file sink
 
