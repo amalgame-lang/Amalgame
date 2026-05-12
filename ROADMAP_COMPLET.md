@@ -1,6 +1,13 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-12 · `amc 0.7.2` · self-hosted · 598/598 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack
+> **Upcoming priority sequence (2026-05-12 decision):**
+> `v0.7.4 = G (inline-C blocks)` → `v0.7.5 = F (libamalgame pre-compile)` → `v0.7.6+ stdlib in .am only`.
+> No new `runtime/Amalgame_*.h` after v0.7.3 — every new stdlib module lands as a `.am` file
+> using `@c { ... }` blocks for low-level glue once G ships. Migration cost of existing `.h`
+> files stays bounded because we stop adding to that pile now. See "Open design questions"
+> for the G + F details.
+
+> Updated 2026-05-12 · `amc 0.7.3` · self-hosted · 602/602 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -1143,19 +1150,30 @@ implementation effort.
       `Log.SetFile`, `Log.Debug/Info/Warn/Error`. Process-wide
       singleton state in the runtime. Structured logging (context
       fields, JSON-per-line) deferred to v2.
-- [ ] **`Amalgame.Net.WebSocket` — DEFERRED to v0.7.3** —
-      RFC 6455 client (and later server). The existing
-      `TcpServer` could host it but the handshake + framing
-      isn't trivial. Useful for amc lsp over websocket
-      transport, bidirectional service comms, etc.
-      **Scope estimate**: ~1 day done right (TCP + HTTP upgrade
-      handshake + SHA-1 Sec-WebSocket-Accept + frame parser
-      with masking + ping/pong). Skipped from v0.7.2 because
-      integration-testing it needs a live WS server (or a mock
-      one with `Process.RunCapture`-style harness), which is
-      its own piece of work. Plan: dedicate v0.7.3 to it and
-      pair the client landing with a tiny test harness using
-      a Python `websockets` stand-in spawned by the runner.
+- [x] **`Amalgame.Net.WebSocket` — RFC 6455 client (v0.7.3)** —
+      `runtime/Amalgame_WebSocket.h` ships: TCP connect, HTTP
+      upgrade handshake, SHA-1 Sec-WebSocket-Accept derivation,
+      Base64 encoder, frame parser with mask/unmask, auto-Pong
+      reply to Ping, Close handshake. API:
+      `WebSocket.Connect(host, port, path) → WebSocket?`,
+      `ws.SendText(s) → bool`, `ws.ReceiveText() → string?`,
+      `ws.Close()`, `ws.IsConnected()`. Helper exposed:
+      `WebSocket.AcceptKey(clientKey)` for independent
+      handshake verification.
+      4 stdlib tests cover the RFC 6455 §1.3 canonical
+      Sec-WebSocket-Accept test vector
+      (`dGhlIHNhbXBsZSBub25jZQ==` →
+      `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`), empty-input edge case,
+      and error paths (refused TCP + DNS failure). Live-server
+      integration test deferred — a Python `websockets`
+      stand-in is the planned harness, opt-in for hosts that
+      have the module.
+      Out of scope (next iterations):
+        - `wss://` TLS (TcpTls or OpenSSL binding)
+        - Binary opcodes (0x2)
+        - Continuation frames (multi-fragment messages)
+        - per-message-deflate negotiation
+        - HTTP subprotocols (`Sec-WebSocket-Protocol`)
 - [x] **Filesystem watcher — v1 single-file polling (v0.7.0)** —
       `Amalgame.IO.FileWatcher` watches one file via `stat(2)`
       mtime polling. Cross-platform (POSIX + Windows via
