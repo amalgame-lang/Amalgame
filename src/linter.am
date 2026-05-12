@@ -220,6 +220,10 @@ public class Linter {
             if (stmt.Left != null) { this.LintExpr(stmt.Left) }
             return
         }
+        if (k == NodeKind.INLINE_C) {
+            // Raw C body — no Amalgame identifiers to track.
+            return
+        }
         if (k == NodeKind.IF_STMT) {
             // match-as-statement reuses IF_STMT with Name="__match__".
             if (stmt.Name == "__match__") {

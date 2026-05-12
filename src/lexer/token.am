@@ -102,6 +102,13 @@ public enum TokenType {
     SEMICOLON
     AT
 
+    // Inline-C raw block: `@c { ... }` — body captured verbatim by lexer.
+    // Token.Value carries the raw C source between the matching braces
+    // (outer `{` / `}` excluded). Nested braces, strings, char literals,
+    // and `//` / `/* */` comments inside the body are skipped so the
+    // matching `}` is correctly detected.
+    INLINE_C
+
     // Special
     NEWLINE
     COMMENT

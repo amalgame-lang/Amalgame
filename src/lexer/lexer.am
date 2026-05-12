@@ -176,6 +176,139 @@ public class Lexer {
         this.AddToken(TokenType.STRING, value)
     }
 
+    // After the `@` has been consumed, decide whether this is the start of an
+    // inline-C block (`@c { ... }`) or a bare `@` (used by `@inline`-style
+    // decorators). The rule: literally the letter `c`, then any number of
+    // spaces/tabs, then `{`. Anything else falls back to emitting `@` alone.
+    private void TryReadInlineCOrAt(int startCol) {
+        let len = String_Length(this.Source)
+        if (this.CharAt(this.Pos) == "c") {
+            var look = this.Pos + 1
+            while (look < len) {
+                let lc = String_Substring(this.Source, look, 1)
+                if (lc == " " || lc == "\t") { look = look + 1 }
+                else { break }
+            }
+            if (look < len && String_Substring(this.Source, look, 1) == "{") {
+                let consumed = look - this.Pos
+                for k in 0..consumed { this.Advance() }
+                this.Advance() // consume the opening `{`
+                this.ReadInlineCBody(startCol)
+                return
+            }
+        }
+        this.AddToken(TokenType.AT, "@")
+    }
+
+    // Scan the body of an `@c { … }` block verbatim into a single INLINE_C
+    // token. Tracks brace depth (starting at 1 since the caller consumed the
+    // opening `{`) and stops on the matching `}`. C string / char literals
+    // and `//` / `/* */` comments are skipped so braces inside them don't
+    // confuse the count. Newlines bump `this.Line` so later error messages
+    // remain accurate. The closing `}` is consumed but not added to the body.
+    private void ReadInlineCBody(int startCol) {
+        let startLine = this.Line
+        var body = ""
+        var depth = 1
+        let len = String_Length(this.Source)
+        while (this.Pos < len && depth > 0) {
+            let c = this.CharAt(this.Pos)
+            if (c == "\"") {
+                body = body + c
+                this.Advance()
+                while (this.Pos < len) {
+                    let sc = this.CharAt(this.Pos)
+                    body = body + sc
+                    this.Advance()
+                    if (sc == "\\" && this.Pos < len) {
+                        body = body + this.CharAt(this.Pos)
+                        this.Advance()
+                    } else if (sc == "\"") {
+                        break
+                    } else if (sc == "\n") {
+                        this.Line   = this.Line + 1
+                        this.Column = 1
+                    }
+                }
+                continue
+            }
+            if (c == "'") {
+                body = body + c
+                this.Advance()
+                while (this.Pos < len) {
+                    let sc = this.CharAt(this.Pos)
+                    body = body + sc
+                    this.Advance()
+                    if (sc == "\\" && this.Pos < len) {
+                        body = body + this.CharAt(this.Pos)
+                        this.Advance()
+                    } else if (sc == "'") {
+                        break
+                    }
+                }
+                continue
+            }
+            if (c == "/" && this.CharAt(this.Pos + 1) == "/") {
+                body = body + c
+                this.Advance()
+                while (this.Pos < len && this.CharAt(this.Pos) != "\n") {
+                    body = body + this.CharAt(this.Pos)
+                    this.Advance()
+                }
+                continue
+            }
+            if (c == "/" && this.CharAt(this.Pos + 1) == "*") {
+                body = body + c
+                this.Advance()
+                body = body + this.CharAt(this.Pos)
+                this.Advance()
+                while (this.Pos < len) {
+                    let cc = this.CharAt(this.Pos)
+                    body = body + cc
+                    this.Advance()
+                    if (cc == "\n") {
+                        this.Line   = this.Line + 1
+                        this.Column = 1
+                    }
+                    if (cc == "*" && this.Pos < len && this.CharAt(this.Pos) == "/") {
+                        body = body + this.CharAt(this.Pos)
+                        this.Advance()
+                        break
+                    }
+                }
+                continue
+            }
+            if (c == "{") {
+                depth = depth + 1
+                body  = body + c
+                this.Advance()
+                continue
+            }
+            if (c == "}") {
+                depth = depth - 1
+                if (depth == 0) {
+                    this.Advance()
+                    let tok = new Token(TokenType.INLINE_C, body, startLine, startCol, this.Filename)
+                    this.Tokens.Add(tok)
+                    return
+                }
+                body = body + c
+                this.Advance()
+                continue
+            }
+            if (c == "\n") {
+                this.Line   = this.Line + 1
+                this.Column = 1
+            }
+            body = body + c
+            this.Advance()
+        }
+        // Unterminated inline-C block — emit what we have, mirroring the
+        // triple-quoted-string fallback above so the parser still makes progress.
+        let tok = new Token(TokenType.INLINE_C, body, startLine, startCol, this.Filename)
+        this.Tokens.Add(tok)
+    }
+
     private int HexNibble(string ch) {
         if (ch == "0") { return 0 }
         if (ch == "1") { return 1 }
@@ -284,7 +417,7 @@ public class Lexer {
                 this.AddToken(TokenType.OP_PERCENT_EQ, "%=") }
             else { this.AddToken(TokenType.OP_PERCENT, "%") }
         }
-        else if (c == "@") { this.AddToken(TokenType.AT,         "@") }
+        else if (c == "@") { this.TryReadInlineCOrAt(startCol) }
         else if (c == "(") { this.AddToken(TokenType.LPAREN,     "(") }
         else if (c == ")") { this.AddToken(TokenType.RPAREN,     ")") }
         else if (c == "{") { this.AddToken(TokenType.LBRACE,     "{") }
