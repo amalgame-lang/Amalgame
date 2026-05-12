@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-12 · `amc 0.6.1` · self-hosted · 509/509 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date
+> Updated 2026-05-12 · `amc 0.6.2` · self-hosted · 509/509 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -249,9 +249,16 @@ stays green; each one needs its own fix.
       `import X.Y` as an `Ast.Ident` on `prog.Args` (a slot the
       Program node didn't otherwise use), and `EmitProgram` re-emits
       them between `namespace` and the first top-level decl.
-- [ ] **`while(ptr != null)` GC issue** — existing workaround uses
-      `for i in 0..N`. Investigate whether it's a real GC bug or
-      just a CGen mis-detection.
+- [x] **`while(ptr != null)` GC issue (resolved)** — minimal
+      repro traversing a 3-node linked list with `while (cur !=
+      null) { ...; cur = cur.Tail }` now counts correctly and
+      doesn't get GC'd mid-loop. Was a cgen mis-detection rather
+      than a GC bug: the typed local plus the `!=` against a
+      typed `null` lowers cleanly to a `while (cur != NULL)`
+      with the field deref bound to the locale's type. Existing
+      `for i in 0..N` workarounds can be unwound where the
+      sequence is unbounded; left in place where the bound is
+      meaningful documentation.
 
 ### Compiler — internal refactoring & optimization
 
@@ -286,74 +293,66 @@ before the next big language addition.
       forgets to propagate it across the boundary) or codify the
       workaround patterns in `docs/guide/07-internals.md` so it's
       not a paper cut every time.
-- [ ] **CGen: chained `obj.Field.Method()` / `obj.Method().Method()`
-      lowers as a name-mash.** Repro:
-      `o.Field.Get()` emits `o->Field_Get()` (should be
-      `Inner_Get(o->Field)`); `o.GetInner().Get()` emits
-      `App_Outer_GetInner(o)_Get()` (should be
-      `Inner_Get(App_Outer_GetInner(o))`). Root cause:
-      `EmitCalleeStr` (`src/generator/c_gen.am:3003-3004`)
-      fallback returns `target + "_" + mname` where `target` is
-      already a complete C expression — concatenating a `_method`
-      suffix gives an invalid identifier. Fix is non-trivial:
-      callers (mostly `EmitCallExpr`) assume the callee is a
-      bare function name they can call as `<name>(args)` —
-      changing the contract to "if the receiver is a chain,
-      route through `Type_Method(<expr>, args)`" needs a typed
-      lookup of `callee.Left`'s return type and a small refactor
-      of every call site that consumes `EmitCalleeStr`.
-      Workaround: extract intermediate locals
-      (`let mid: T = obj.Field; mid.Method()`). Already applied
-      in `src/lsp.am`, `src/migrate.am`, and the JSON test
-      sample; comments inline cite this item.
-- [ ] **Parser: `expr >> N` inside a `let` drops the shift.**
-      Surfaced while writing `Amalgame.Random` (2026-05-09). Repro:
-      `let x: int = r >> 8` lowers to `i64 x = r;` — the shift
-      operator is silently dropped. The mask form of the same
-      expression (`expr & N`) lowers correctly. Likely a precedence
-      or look-ahead bug where `>>` collides with the closing
-      `>` of a generic parameter (`List<List<int>>` style).
-      Workarounds: replace with division by a power of two
-      (`let x: int = r / 256`) — used by `Random.Bytes` and
-      `Random.Float`. Found cases dropping `& 255` *outside* a
-      surrounding `(expr >> N) & 255`, lowering it as a stray
-      statement-level `_unknown_ & 255;`. Same call extracted to
-      named locals fixes both. Next step: build a minimal repro
-      file and grep the parser/cgen for the lowering of
-      `BinaryExpr(>>, …)` inside `LetStmt` initializers.
-- [ ] **Parser: top-level free functions in a stdlib namespace
-      don't emit a definition.** `public List<int> SystemBytes(n)`
-      at file scope (no enclosing class) parses without error but
-      cgen emits a bare `SystemBytes(...)` call site without ever
-      defining the function. Workaround: hang the function on a
-      class as a `public static` method (matches the existing
-      facade pattern in `Amalgame.Json`). Worth supporting because
-      free helpers are a natural fit for utility modules.
-- [ ] **CGen: constructor forward-decls don't precede call
-      sites.** Surfaced while writing `Amalgame.DateTime`
-      (2026-05-09). If class A's constructor calls `new B(...)`
-      and B is declared later in the same file, the bootstrap
-      cgen emits A's constructor body before B's `_new`
-      function, triggering an implicit declaration warning that
-      then conflicts with the real signature ("conflicting types
-      for B_new"). gcc still tolerates it as a warning so the
-      build limps through, but the produced binary may be wrong
-      if the compiler picks `int()` semantics for the implicit
-      decl. Workaround applied in datetime.am: `InstantResult`
-      takes the initial Instant as a constructor parameter
-      instead of building one inline. Real fix is to forward-
-      declare every `<Class>_new` signature at the top of pass2
-      output, before any class body emits.
-- [ ] **Snapshot size** — `snapshot/amc_lib.c` is ~12 500 lines,
-      tracked in git for the bootstrap chain. Each compiler PR
-      regenerates it and the diff dominates the review noise. Two
-      mitigations:
-      (a) shrink the C output (the per-method `__attribute__((unused))`
-          dance + redundant `(void)` casts add ~20%);
-      (b) `.gitattributes` `merge=ours` on `snapshot/amc_lib.c` so
-          merge conflicts auto-resolve (we always rebuild the
-          snapshot post-merge anyway — see PR #146 / #149 / #155
-          conflict resolutions).
+- [x] **CGen: chained `obj.Field.Method()` /
+      `obj.Method().Method()` (resolved)** — `EmitCalleeStr`
+      now handles both shapes: when the receiver is a CALL, the
+      inner return type is looked up via `InferTypeFromExpr` and
+      the outer method lowers as `RetType_Method(<expr>, ...)`
+      (c_gen.am ~3260); when the receiver is a MEMBER, the
+      field's typed value flows through `TryEmitListCall` and
+      the existing MEMBER → method-of-field-type path. Verified
+      via repro `o.Field.Get()` (Inner_Get of o->Field) and
+      `o.GetInner().Get()` (Inner_Get of App_Outer_GetInner(o)) —
+      both produce valid C and the right runtime value. The
+      intermediate-local workarounds in `lsp.am` / `migrate.am`
+      could be inlined now but the indirection costs nothing
+      and helps readability, so leaving them.
+- [x] **Parser: `expr >> N` inside a `let` (resolved)** —
+      `let x: int = r >> 8` now lowers correctly to a C
+      `i64 x = r >> 8;`, repro from the original `Amalgame.Random`
+      surfacing context passes. The shift operator is no longer
+      dropped; verified via runtime repro returning the expected
+      value. The `r / 256` workarounds in `Random.Bytes` /
+      `Random.Float` could be reverted to `r >> 8` form now —
+      cosmetic only, leaving them for a future cleanup pass.
+- [x] **Parser: top-level free functions now reject with a
+      clear diagnostic (resolved)** — the parser already caught
+      `fn name(...)` at file scope; the TS/C-style equivalent
+      `public List<int> Helper(int n) { ... }` slipped through
+      and produced a call site against an undefined symbol
+      (gcc `-Wimplicit-function-declaration`). `ParseDecl` now
+      lookaheads up to 16 tokens for an `IDENT (` pair before
+      any `{ / ; / }` punctuator and emits the same "Top-level
+      functions aren't supported, hang it on a class" error as
+      the `fn` form, then skips past the body. Verified via the
+      original `public List<int> MakeBytes(int n) { ... }`
+      repro — `amc --check` now reports "Top-level functions
+      aren't supported (got 'MakeBytes' at 2:8). Wrap it inside
+      a class as `public static`." instead of silently
+      generating broken C. Full free-fn support stays out of
+      scope (everything hangs on a class; matches the
+      `Amalgame.Json` / `Amalgame.Path` facade pattern).
+- [x] **CGen: constructor forward-decls (resolved)** — pass2
+      now emits every `<Class>_new` signature in a forward-decl
+      header block at the top of the C output, before any class
+      body. Cross-class `new B(...)` calls in `A_new` therefore
+      see the right signature instead of falling back to an
+      implicit `int()` declaration. The `InstantResult`
+      workaround in datetime.am could be reverted; left as-is
+      since the explicit-parameter form is clearer regardless.
+- [ ] **Snapshot size — shrink C output** — `snapshot/amc_lib.c`
+      is now ~22 500 lines (grew with the v0.5 → v0.6 work).
+      Tracked in git for the bootstrap chain so every compiler PR
+      regenerates it and the diff dominates the review noise. The
+      `.gitattributes merge=ours` half of this item shipped
+      already (auto-resolves merge conflicts; we rebuild
+      post-merge anyway). The remaining half is to make the
+      cgen emit less verbose C — the per-method
+      `__attribute__((unused))` dance + redundant `(void)` casts
+      together add ~20% lines. Pure size win, no behaviour
+      change; estimated 1 day to wire `OutputBuffer` to omit
+      the attribute when the variable is provably read, and to
+      drop the `(void)args;` lines when `Main` has no args body.
 - [ ] **Profile compile time** — `./build_amc.sh` is ~5 s end-to-end,
       and the largest cost is gen_test re-parsing every source on
       every invocation. A serializable AST cache (file mtime →
@@ -407,26 +406,19 @@ before the next big language addition.
       bodies (37 cases on `lexer.am` via the LSP) — is tracked
       as an open compiler internal item below.
 
-- [ ] **Typechecker: spurious return-type mismatch in IF-body
-      RETURN of enum members.** Investigation (2026-05-09): the
-      reported `got` type is variable across the 37 `lexer.am`
-      sites — sometimes `void`, sometimes `string`, sometimes
-      `int`. For
-      `if (word == "if") { return TokenType.KW_IF }` the LSP
-      reports `got 'string'`, which matches the type of the
-      `"if"` LITERAL_STRING in the surrounding condition. That
-      strongly suggests `CheckReturn` is reading the wrong
-      `stmt.Left` when the RETURN is nested inside an IF body —
-      either a parse-tree shape mismatch on single-stmt
-      `{ return ... }` blocks, or a NodeKey collision in the
-      `ExprType` map (the SetType/GetType pair desyncs Keys vs
-      Vals on update — see typechecker.am:162). Doesn't
-      reproduce on minimal cross-file repros (a 2-file
-      `enum_def.am` + `enum_use.am` passes both `--check` and
-      the LSP probe with 0 diagnostics). Next step: instrument
-      `CheckReturn` to log `(stmt.Line, stmt.Left.Kind,
-      stmt.Left.Name, GetType result)` for each return on
-      `lexer.am`, compare to expected.
+- [x] **Typechecker: spurious return-type mismatch in IF-body
+      RETURN of enum members (resolved)** — a focused repro
+      (Lexer.Classify returning `Tok.KW_IF` / `Tok.KW_LET` /
+      `Tok.EOF` from three single-stmt IF bodies) now passes
+      both `amc --check` and runtime. The NodeKey hash fix that
+      landed alongside null-safety (`Kind` joining the
+      `line:col:name:str` tuple in typechecker.am) cleared the
+      slot collisions the original 37-case lexer.am report
+      depended on. Investigation (2026-05-09): the spurious
+      `got 'string'` for `return TokenType.KW_IF` was the
+      surrounding `"if"` literal bleeding via the colliding
+      NodeKey; with Kind now part of the key the leak path is
+      closed.
 
 ---
 
