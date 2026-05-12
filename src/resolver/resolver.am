@@ -394,6 +394,53 @@ public class FullResolver {
         this.DeclareGlobal("Math_SeedRandom","void",   false)
         this.DeclareGlobal("Math_Random",    "float",  false)
         this.DeclareGlobal("Math_RandomInt", "int",    false)
+        // FileWatcher — single-file mtime poll, runtime in
+        // runtime/Amalgame_FileWatch.h.
+        this.DeclareGlobal("FileWatcher",         "type",        false)
+        this.DeclareGlobal("FileWatcher_new",     "FileWatcher", false)
+        this.DeclareGlobal("FileWatcher_GetPath", "string",      false)
+        this.DeclareGlobal("FileWatcher_Changed", "bool",        false)
+        this.DeclareGlobal("FileWatcher_Exists",  "bool",        false)
+        // Math.Vec / Mat4 — runtime helpers behind the public
+        // Amalgame.Math.Vec facade in src/stdlib/math_vec.am. All
+        // operations heap-allocate via GC_MALLOC and return fresh
+        // values, so users can chain without aliasing concerns.
+        // Type globals first so `new Vec3(...)` resolves.
+        this.DeclareGlobal("Vec3",                "type",  false)
+        this.DeclareGlobal("Vec4",                "type",  false)
+        this.DeclareGlobal("Mat4",                "type",  false)
+        this.DeclareGlobal("Vec3_new",            "Vec3",  false)
+        this.DeclareGlobal("Vec3_GetX",           "float", false)
+        this.DeclareGlobal("Vec3_GetY",           "float", false)
+        this.DeclareGlobal("Vec3_GetZ",           "float", false)
+        this.DeclareGlobal("Vec3_Add",            "Vec3",  false)
+        this.DeclareGlobal("Vec3_Sub",            "Vec3",  false)
+        this.DeclareGlobal("Vec3_Scale",          "Vec3",  false)
+        this.DeclareGlobal("Vec3_Dot",            "float", false)
+        this.DeclareGlobal("Vec3_Cross",          "Vec3",  false)
+        this.DeclareGlobal("Vec3_Length",         "float", false)
+        this.DeclareGlobal("Vec3_Normalize",      "Vec3",  false)
+        this.DeclareGlobal("Vec3_Equals",         "bool",  false)
+        this.DeclareGlobal("Vec4_new",            "Vec4",  false)
+        this.DeclareGlobal("Vec4_GetX",           "float", false)
+        this.DeclareGlobal("Vec4_GetY",           "float", false)
+        this.DeclareGlobal("Vec4_GetZ",           "float", false)
+        this.DeclareGlobal("Vec4_GetW",           "float", false)
+        this.DeclareGlobal("Vec4_Add",            "Vec4",  false)
+        this.DeclareGlobal("Vec4_Sub",            "Vec4",  false)
+        this.DeclareGlobal("Vec4_Scale",          "Vec4",  false)
+        this.DeclareGlobal("Vec4_Dot",            "float", false)
+        this.DeclareGlobal("Mat4_new",            "Mat4",  false)
+        this.DeclareGlobal("Mat4_Identity",       "Mat4",  false)
+        this.DeclareGlobal("Mat4_Get",            "float", false)
+        this.DeclareGlobal("Mat4_Set",            "void",  false)
+        this.DeclareGlobal("Mat4_Multiply",       "Mat4",  false)
+        this.DeclareGlobal("Mat4_Translate",      "Mat4",  false)
+        this.DeclareGlobal("Mat4_Scale",          "Mat4",  false)
+        this.DeclareGlobal("Mat4_RotateX",        "Mat4",  false)
+        this.DeclareGlobal("Mat4_RotateY",        "Mat4",  false)
+        this.DeclareGlobal("Mat4_RotateZ",        "Mat4",  false)
+        this.DeclareGlobal("Mat4_TransformVec4",  "Vec4",  false)
         // Random — runtime helpers behind the public Amalgame.Random
         // facade in src/stdlib/random.am.
         this.DeclareGlobal("Random_PcgOutput",     "int", false)

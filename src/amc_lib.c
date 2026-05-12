@@ -6,6 +6,8 @@
 #include "Amalgame_Collections.h"
 #include "Amalgame_IO.h"
 #include "Amalgame_Math.h"
+#include "Amalgame_Math_Vec.h"
+#include "Amalgame_FileWatch.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
@@ -5009,6 +5011,18 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         if (String_StartsWith(tname, "Set<") || code_string_equals(tname, "Set")) {
             return "AmalgameSet*";
         }
+        if (code_string_equals(tname, "Vec3")) {
+            return "AmalgameVec3*";
+        }
+        if (code_string_equals(tname, "Vec4")) {
+            return "AmalgameVec4*";
+        }
+        if (code_string_equals(tname, "Mat4")) {
+            return "AmalgameMat4*";
+        }
+        if (code_string_equals(tname, "FileWatcher")) {
+            return "AmalgameFileWatcher*";
+        }
         if (Amalgame_Compiler_CGen_IsEnum(self, tname)) {
             return Amalgame_Compiler_CGen_SymName(self, tname);
         }
@@ -5168,6 +5182,39 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             }
             if (code_string_equals(calleeStr, "Math_Max") || code_string_equals(calleeStr, "Math_Min")) {
                 return "i64";
+            }
+            if (code_string_equals(calleeStr, "Vec3_new") || code_string_equals(calleeStr, "Vec3_Add") || code_string_equals(calleeStr, "Vec3_Sub") || code_string_equals(calleeStr, "Vec3_Scale") || code_string_equals(calleeStr, "Vec3_Cross") || code_string_equals(calleeStr, "Vec3_Normalize")) {
+                return "AmalgameVec3*";
+            }
+            if (code_string_equals(calleeStr, "Vec3_Length") || code_string_equals(calleeStr, "Vec3_Dot") || code_string_equals(calleeStr, "Vec3_GetX") || code_string_equals(calleeStr, "Vec3_GetY") || code_string_equals(calleeStr, "Vec3_GetZ")) {
+                return "double";
+            }
+            if (code_string_equals(calleeStr, "Vec3_Equals")) {
+                return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "Vec4_new") || code_string_equals(calleeStr, "Vec4_Add") || code_string_equals(calleeStr, "Vec4_Sub") || code_string_equals(calleeStr, "Vec4_Scale") || code_string_equals(calleeStr, "Mat4_TransformVec4")) {
+                return "AmalgameVec4*";
+            }
+            if (code_string_equals(calleeStr, "Vec4_Dot") || code_string_equals(calleeStr, "Vec4_GetX") || code_string_equals(calleeStr, "Vec4_GetY") || code_string_equals(calleeStr, "Vec4_GetZ") || code_string_equals(calleeStr, "Vec4_GetW")) {
+                return "double";
+            }
+            if (code_string_equals(calleeStr, "Mat4_new") || code_string_equals(calleeStr, "Mat4_Identity") || code_string_equals(calleeStr, "Mat4_Multiply") || code_string_equals(calleeStr, "Mat4_Translate") || code_string_equals(calleeStr, "Mat4_Scale") || code_string_equals(calleeStr, "Mat4_RotateX") || code_string_equals(calleeStr, "Mat4_RotateY") || code_string_equals(calleeStr, "Mat4_RotateZ")) {
+                return "AmalgameMat4*";
+            }
+            if (code_string_equals(calleeStr, "Mat4_Get")) {
+                return "double";
+            }
+            if (code_string_equals(calleeStr, "Mat4_Set")) {
+                return "void";
+            }
+            if (code_string_equals(calleeStr, "FileWatcher_new")) {
+                return "AmalgameFileWatcher*";
+            }
+            if (code_string_equals(calleeStr, "FileWatcher_GetPath")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "FileWatcher_Changed") || code_string_equals(calleeStr, "FileWatcher_Exists")) {
+                return "code_bool";
             }
             if (code_string_equals(calleeStr, "Math_IsPrime") || code_string_equals(calleeStr, "Math_IsNaN") || code_string_equals(calleeStr, "Math_IsInf") || code_string_equals(calleeStr, "Math_IsFinite") || code_string_equals(calleeStr, "Math_ApproxEq")) {
                 return "code_bool";
@@ -5533,6 +5580,8 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Collections.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_IO.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math_Vec.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_FileWatch.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
@@ -6884,6 +6933,18 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
             } else {
                 if (String_StartsWith(tname, "Set<") || code_string_equals(tname, "Set")) {
                     newCall = "AmalgameSet_new()";
+                } else if (code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "FileWatcher")) {
+                    newCall = code_string_concat(tname, "_new(");
+                    i64 argc = AmalgameList_count(expr->Args);
+                    for (i64 i = 0; i < argc; i++) {
+                        Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i);
+                        if (i > 0) {
+                            newCall = code_string_concat(newCall, ", ");
+                        }
+                        newCall = code_string_concat(newCall, Amalgame_Compiler_CGen_EmitExprStr(self, arg));
+                    }
+                    newCall = code_string_concat(newCall, ")");
+                    return newCall;
                 } else {
                     newCall = code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_new(");
                     i64 argc = AmalgameList_count(expr->Args);
@@ -7362,7 +7423,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                             return code_string_concat("Path_", mname);
                         }
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -7375,6 +7436,9 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string varType = Amalgame_Compiler_CGen_LocalTypeGet(self, tname);
                 code_string bareType = String_Replace(varType, "*", "");
                 if (String_Length(bareType) > 0) {
+                    if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameFileWatcher")) {
+                        return code_string_concat(code_string_concat(String_Replace(bareType, "Amalgame", ""), "_"), mname);
+                    }
                     if (code_string_equals(bareType, "code_string")) {
                         return code_string_concat("String_", mname);
                     }
@@ -7495,6 +7559,18 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (code_string_equals(t, "Set")) {
         return "AmalgameSet*";
+    }
+    if (code_string_equals(t, "Vec3")) {
+        return "AmalgameVec3*";
+    }
+    if (code_string_equals(t, "Vec4")) {
+        return "AmalgameVec4*";
+    }
+    if (code_string_equals(t, "Mat4")) {
+        return "AmalgameMat4*";
+    }
+    if (code_string_equals(t, "FileWatcher")) {
+        return "AmalgameFileWatcher*";
     }
     if (Amalgame_Compiler_CGen_IsEnum(self, t)) {
         return Amalgame_Compiler_CGen_SymName(self, t);
@@ -9007,6 +9083,10 @@ static void Amalgame_Compiler_Resolver_RegisterBuiltins(Amalgame_Compiler_Resolv
     AmalgameList_add(builtins, (void*)(intptr_t)("File"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Path"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Math"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("Vec3"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("Vec4"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("Mat4"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("FileWatcher"));
     AmalgameList_add(builtins, (void*)(intptr_t)("String"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Http"));
     AmalgameList_add(builtins, (void*)(intptr_t)("int"));
@@ -9639,6 +9719,46 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_new", "FileWatcher", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_GetPath", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_Changed", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_Exists", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_new", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetX", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetY", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetZ", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Add", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Sub", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Scale", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Dot", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Cross", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Length", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Normalize", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Equals", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_new", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetX", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetY", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetZ", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetW", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Add", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Sub", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Scale", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Dot", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_new", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Identity", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Get", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Set", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Multiply", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Translate", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Scale", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateX", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateY", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateZ", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_TransformVec4", "Vec4", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgOutput", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgAdvance", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_CombineHiLo", "int", 0);

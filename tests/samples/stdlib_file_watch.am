@@ -1,0 +1,72 @@
+// Stdlib test: Amalgame.IO.FileWatcher — single-file mtime
+// polling. Tests are mtime-free where possible (file
+// disappearance / reappearance gives a deterministic Changed()
+// flip without depending on filesystem timestamp resolution).
+
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+
+        let testPath: string = "/tmp/amc_fw_test.txt"
+
+        // Clean slate.
+        if (File.Exists(testPath)) {
+            let _r: bool = File.Delete(testPath)
+        }
+        File.WriteAll(testPath, "v1")
+
+        // ── Exists / GetPath on a present file ──
+        let w = new FileWatcher(testPath)
+        if (w.Exists()) {
+            Console.WriteLine("[PASS] exists when present")
+        } else {
+            Console.WriteLine("[FAIL] exists when present")
+        }
+        if (w.GetPath() == testPath) {
+            Console.WriteLine("[PASS] getpath")
+        } else {
+            Console.WriteLine("[FAIL] getpath")
+        }
+
+        // ── Changed() returns false on the immediate next call ──
+        if (!w.Changed()) {
+            Console.WriteLine("[PASS] no-change-on-init")
+        } else {
+            Console.WriteLine("[FAIL] no-change-on-init")
+        }
+
+        // ── Delete → Changed() flips true ──
+        let _rm1: bool = File.Delete(testPath)
+        if (w.Changed()) {
+            Console.WriteLine("[PASS] detect-delete")
+        } else {
+            Console.WriteLine("[FAIL] detect-delete")
+        }
+
+        // ── After a true Changed(), next Changed() is false ──
+        if (!w.Changed()) {
+            Console.WriteLine("[PASS] reset-after-read")
+        } else {
+            Console.WriteLine("[FAIL] reset-after-read")
+        }
+
+        // ── Exists() reflects deletion ──
+        if (!w.Exists()) {
+            Console.WriteLine("[PASS] exists when absent")
+        } else {
+            Console.WriteLine("[FAIL] exists when absent")
+        }
+
+        // ── Re-create → Changed() flips true again ──
+        File.WriteAll(testPath, "v2")
+        if (w.Changed()) {
+            Console.WriteLine("[PASS] detect-recreate")
+        } else {
+            Console.WriteLine("[FAIL] detect-recreate")
+        }
+
+        // Cleanup.
+        let _rm2: bool = File.Delete(testPath)
+    }
+}

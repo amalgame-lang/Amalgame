@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-12 · `amc 0.6.4` · self-hosted · 509/509 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling
+> Updated 2026-05-12 · `amc 0.7.0` · self-hosted · 532/532 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -1081,15 +1081,32 @@ implementation effort.
       server). The existing `TcpServer` could host it but the
       handshake + framing isn't trivial. Useful for amc lsp over
       websocket transport, bidirectional service comms, etc.
-- [ ] **Filesystem watcher** — extend `Amalgame.IO` with
-      `File.Watch(path, callback)` backed by `inotify` on Linux,
-      `FSEvents` on macOS, `ReadDirectoryChangesW` on Windows.
-      Useful for `amc test --watch`, dev-server hot reload, and
-      generally anything dev-tools-shaped.
-- [ ] **`Amalgame.Math` advanced** — vectors (`Vec2/3/4`), matrices
-      (`Mat4`), complex numbers, bigint. Currently `Math.*` is
-      scalar-only. Easy to start with `Vec3` for game/graphics
-      use cases; `BigInt` is a bigger project (no GMP dep wanted).
+- [x] **Filesystem watcher — v1 single-file polling (v0.7.0)** —
+      `Amalgame.IO.FileWatcher` watches one file via `stat(2)`
+      mtime polling. Cross-platform (POSIX + Windows via
+      `_stat64`). API: `new FileWatcher(path)`, `w.Exists()`,
+      `w.Changed()` (true the first call after the mtime advances
+      or the file appears/disappears; false afterwards until the
+      next change), `w.GetPath()`. Tests in
+      `tests/samples/stdlib_file_watch.am` use the delete /
+      re-create flip for deterministic results (mtime-advance is
+      hard to test reliably across filesystems). Covers the
+      "reload a config file" / "rebuild on source change" 80%
+      use case. Directory-level recursive watches via inotify /
+      FSEvents / `ReadDirectoryChangesW` deferred — add when a
+      real consumer needs them.
+- [x] **`Amalgame.Math` advanced — Vec3/Vec4/Mat4 (v0.7.0)** —
+      `Amalgame.Math.Vec` ships scalar (no SIMD) implementations
+      of `Vec3` (Add/Sub/Scale/Dot/Cross/Length/Normalize/Equals
+      + GetX/Y/Z), `Vec4` (Add/Sub/Scale/Dot + GetX/Y/Z/W), and
+      `Mat4` (Identity/Translate/Scale/RotateX/Y/Z/Multiply/
+      TransformVec4/Get/Set). Matrices are 4×4 column-major
+      (OpenGL convention) so `glUniformMatrix4fv` works without
+      transposition. All operations heap-allocate via GC_MALLOC
+      so chained calls don't alias their inputs. 16 stdlib tests
+      cover every method. Complex numbers + BigInt deferred —
+      different concerns (no GMP dep wanted), revisit when a
+      real consumer needs them.
 - [ ] **Other serialization formats** — TOML (config files),
       YAML (CI configs), MessagePack (binary RPC). Json covers
       most needs but each has its niche.
