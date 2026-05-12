@@ -10,6 +10,7 @@
 #include "Amalgame_FileWatch.h"
 #include "Amalgame_Regex.h"
 #include "Amalgame_Compress.h"
+#include "Amalgame_WebSocket.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
@@ -4562,7 +4563,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.7.2";
+    return "0.7.3";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -5672,6 +5673,9 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         if (code_string_equals(tname, "Match")) {
             return "AmalgameRegexMatch*";
         }
+        if (code_string_equals(tname, "WebSocket")) {
+            return "AmalgameWebSocket*";
+        }
         if (Amalgame_Compiler_CGen_IsEnum(self, tname)) {
             return Amalgame_Compiler_CGen_SymName(self, tname);
         }
@@ -5885,6 +5889,21 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             }
             if (code_string_equals(calleeStr, "Compress_GunzipString")) {
                 return "code_string";
+            }
+            if (code_string_equals(calleeStr, "WebSocket_Connect")) {
+                return "AmalgameWebSocket*";
+            }
+            if (code_string_equals(calleeStr, "WebSocket_SendText") || code_string_equals(calleeStr, "WebSocket_IsConnected")) {
+                return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "WebSocket_ReceiveText") || code_string_equals(calleeStr, "WebSocket_GetHost") || code_string_equals(calleeStr, "WebSocket_AcceptKey")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "WebSocket_GetPort")) {
+                return "i64";
+            }
+            if (code_string_equals(calleeStr, "WebSocket_Close")) {
+                return "void";
             }
             if (code_string_equals(calleeStr, "Math_IsPrime") || code_string_equals(calleeStr, "Math_IsNaN") || code_string_equals(calleeStr, "Math_IsInf") || code_string_equals(calleeStr, "Math_IsFinite") || code_string_equals(calleeStr, "Math_ApproxEq")) {
                 return "code_bool";
@@ -6254,6 +6273,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_FileWatch.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Regex.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Compress.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_WebSocket.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
@@ -7605,7 +7625,7 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
             } else {
                 if (String_StartsWith(tname, "Set<") || code_string_equals(tname, "Set")) {
                     newCall = "AmalgameSet_new()";
-                } else if (code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "FileWatcher")) {
+                } else if (code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "FileWatcher") || code_string_equals(tname, "WebSocket")) {
                     newCall = code_string_concat(tname, "_new(");
                     i64 argc = AmalgameList_count(expr->Args);
                     for (i64 i = 0; i < argc; i++) {
@@ -8095,7 +8115,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                             return code_string_concat("Path_", mname);
                         }
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8108,7 +8128,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string varType = Amalgame_Compiler_CGen_LocalTypeGet(self, tname);
                 code_string bareType = String_Replace(varType, "*", "");
                 if (String_Length(bareType) > 0) {
-                    if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameFileWatcher")) {
+                    if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameFileWatcher") || code_string_equals(bareType, "AmalgameWebSocket")) {
                         return code_string_concat(code_string_concat(String_Replace(bareType, "Amalgame", ""), "_"), mname);
                     }
                     if (code_string_equals(bareType, "AmalgameRegexMatch")) {
@@ -8254,6 +8274,9 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (code_string_equals(t, "Match")) {
         return "AmalgameRegexMatch*";
+    }
+    if (code_string_equals(t, "WebSocket")) {
+        return "AmalgameWebSocket*";
     }
     if (Amalgame_Compiler_CGen_IsEnum(self, t)) {
         return Amalgame_Compiler_CGen_SymName(self, t);
@@ -9773,6 +9796,7 @@ static void Amalgame_Compiler_Resolver_RegisterBuiltins(Amalgame_Compiler_Resolv
     AmalgameList_add(builtins, (void*)(intptr_t)("Regex"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Match"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Compress"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("WebSocket"));
     AmalgameList_add(builtins, (void*)(intptr_t)("String"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Http"));
     AmalgameList_add(builtins, (void*)(intptr_t)("int"));
@@ -10405,6 +10429,15 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Connect", "WebSocket", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_SendText", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_ReceiveText", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_IsConnected", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_GetHost", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_GetPort", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_AcceptKey", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gzip", "List<int>", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gunzip", "List<int>", 0);

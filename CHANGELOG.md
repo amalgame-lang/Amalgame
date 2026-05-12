@@ -7,6 +7,107 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.3] — 2026-05-12
+
+The **"WebSocket + final `.h` runtime"** patch release. 4 new
+tests on top of v0.7.2 (598 → **602 PASS**). Marks the freeze
+on new `runtime/Amalgame_*.h` headers — every stdlib module
+from v0.7.6 onwards will land as a `.am` file via project G
+(inline-C `@c { ... }` blocks).
+
+### `Amalgame.Net.WebSocket` — RFC 6455 client
+
+```
+let ws = WebSocket.Connect("echo.websocket.org", 80, "/")
+if (ws != null && ws.IsConnected()) {
+    let _ = ws.SendText("hello")
+    let reply: string = ws.ReceiveText()
+    Console.WriteLine(reply)         // "hello"
+    ws.Close()
+}
+```
+
+Surface:
+- **`WebSocket.Connect(host, port, path) → WebSocket?`** — TCP
+  open + HTTP upgrade handshake (GET + Sec-WebSocket-Key/Accept
+  with SHA-1 + Base64 verify). Returns `null` on any failure
+  (refused TCP / DNS / HTTP non-101 / Sec-WebSocket-Accept
+  mismatch).
+- **`ws.SendText(s) → bool`** — client → server text frame
+  (opcode 0x1, FIN set, masked per RFC).
+- **`ws.ReceiveText() → string?`** — blocks for one server → client
+  frame; transparently replies to Ping (0x9) with Pong (0xa) and
+  reads the next non-control frame; returns `null` on Close
+  (0x8) or read error; returns `""` for binary / continuation
+  frames so callers can opt to ignore them.
+- **`ws.Close()`** — sends a Close frame and shuts the TCP fd.
+- **`ws.IsConnected()` / `ws.GetHost()` / `ws.GetPort()`** —
+  trivial accessors.
+- **`WebSocket.AcceptKey(clientKey) → string`** — derives the
+  Sec-WebSocket-Accept value. Exposed so test fixtures (and
+  third-party WS-aware code) can verify the handshake without
+  reaching into the runtime.
+
+Implementation lives in `runtime/Amalgame_WebSocket.h`,
+self-contained: SHA-1 (FIPS 180-4) and Base64 (RFC 4648) are
+inlined there since `Amalgame.Crypto` only ships SHA-256.
+Frame parser handles both masked + unmasked server → client
+frames defensively; payload size capped at 16 MiB so a buggy /
+malicious server can't OOM the client.
+
+Out of scope (next iterations):
+- **`wss://` TLS** — needs an OpenSSL binding or a TcpTls
+  layer; gets its own release.
+- **Binary opcodes (0x2)** — same machinery, returns
+  `List<int>` instead of `string`. Wait for a real consumer.
+- **Continuation frames** — multi-fragment messages aren't
+  reassembled in v1 (each frame is a complete message). Add
+  when a real protocol needs them.
+- **per-message-deflate negotiation** — handshake-level
+  optimisation; pairs with `Amalgame.Compress` once a
+  `Sec-WebSocket-Extensions: permessage-deflate` consumer
+  shows up.
+- **HTTP subprotocols** (`Sec-WebSocket-Protocol`) — easy add
+  to `Connect()`'s signature when needed.
+
+### 4 stdlib tests
+
+- **RFC 6455 §1.3 canonical Sec-WebSocket-Accept** —
+  client key `"dGhlIHNhbXBsZSBub25jZQ=="` must produce
+  `"s3pPLMBiTxaQ9kYGzzhZRbK+xOo="`. Exercises the SHA-1 + Base64
+  pair end-to-end without a live server.
+- **Empty client key edge case** — AcceptKey("") returns a
+  28-char base64 string (not a crash).
+- **`WebSocket.Connect` to refused port** — returns `null`
+  (well-defined "no server" path).
+- **`WebSocket.Connect` to bogus DNS** — returns `null` on
+  `getaddrinfo` failure.
+
+Live-server integration testing via Python `websockets` is
+opt-in; the runner skips it silently when the module isn't
+installed. A dedicated WS-server harness lands in a follow-up
+once a real consumer (LSP-over-WS?) needs end-to-end coverage.
+
+### Roadmap reorientation
+
+The freeze on new `runtime/Amalgame_*.h` headers takes effect
+this release. The two follow-ups are:
+
+- **v0.7.4 = project G — inline-C blocks (`@c { ... }`)** —
+  major language feature. Once shipped, every stdlib module
+  can be written as a `.am` file with C-level glue inlined,
+  collapsing the `runtime/header.h + stdlib/facade.am` dance.
+- **v0.7.5 = project F — `libamalgame.a` pre-compile** — the
+  user-facing stdlib `.am` modules pre-compiled into a static
+  library shipped with the amc binary. Today every `amc -o
+  foo foo.am` re-parses ~10 `.am` stdlib modules; F drops
+  that overhead.
+
+Both projects are detailed in the "Open design questions"
+section.
+
+---
+
 ## [v0.7.2] — 2026-05-12
 
 The **"stdlib expansion 3"** patch release. 23 new tests on top
@@ -2678,6 +2779,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.7.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.0
 [v0.7.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.1
 [v0.7.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.2
+[v0.7.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.3
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
