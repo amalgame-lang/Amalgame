@@ -7,6 +7,107 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.1] — 2026-05-12
+
+The **"stdlib expansion 2"** patch release — second installment
+of the v1.0-bound stdlib fill-in. 43 new tests on top of v0.7.0
+(532 → **575 PASS**).
+
+### `Amalgame.Formats.Yaml` — YAML 1.2 subset reader
+
+CI / app config use case:
+
+```
+let cfg = Yaml.Parse(File.ReadAll("app.yml"))
+let port: int = cfg.Get("server").Get("port").AsInt()
+let envs = cfg.Get("environments")  // YamlValue (Array)
+let firstEnv = envs.At(0).Get("name").AsString()
+```
+
+Coverage:
+- Block mappings (nested arbitrarily deep).
+- Block sequences of scalars and of maps.
+- Typed scalars: bool (`true` / `false`), int, float, plain
+  string, single- and double-quoted strings (with `\n` / `\t` /
+  `\\` / `\"` escapes in double quotes; `''` → `'` in single).
+- Comments (`#` to end of line, with the leading-space rule
+  for inline comments).
+- Blank-line tolerance.
+- Missing-key returns a Null-kind `YamlValue` so chains like
+  `cfg.Get("a").Get("b").AsString()` stay readable.
+
+Out of scope (raise an error or fall back to plain string —
+not the goal of a config-reader subset): anchors / aliases,
+multi-doc `---`, flow style `[1,2]` / `{a: b}`, multiline
+scalars (folded `>`, literal `|`), tags (`!!str`).
+
+`YamlValue` tree mirrors `TomlValue` shape so callers can
+switch formats with a one-line `Toml.Parse` ↔ `Yaml.Parse`
+rename.
+
+### `Amalgame.DateTime` — UTC breakdown accessors
+
+`Instant` gains six new methods:
+
+```
+let i = Instant.Now()
+Console.WriteLine(String_FromInt(i.Year())  + "-"
+                + String_FromInt(i.Month()) + "-"
+                + String_FromInt(i.Day())   + " "
+                + String_FromInt(i.Hour()))
+```
+
+`Year()` / `Month()` (1–12) / `Day()` (1–31) / `Hour()` (0–23) /
+`Minute()` (0–59) / `Second()` (0–60 with leap-second tick) —
+all UTC, via `gmtime_r` / `gmtime_s`.
+
+Named timezones (`LocalTime`, `In(zone)`, `strftime`-ish
+formatter, `+HH:MM` offset parsing) stay deferred — needs a
+tzdata shipping strategy (bundle IANA vs. OS delegate via
+POSIX `TZ` env / `/usr/share/zoneinfo` / Windows
+`GetDynamicTimeZoneInformation`). The UTC half covers the
+typical server-side / logging use case.
+
+### `Amalgame.Regex` — POSIX extended-regex binding
+
+```
+Regex.Test("[0-9]+", "abc")                    // false
+let m = Regex.Match("([a-z]+) ([a-z]+)", "foo bar")
+m.GroupText(0)                                  // "foo"
+m.GroupText(1)                                  // "bar"
+Regex.ReplaceAll("[0-9]+", "a1b2c3", "X")       // "aXbXcX"
+```
+
+Surface:
+- `Regex.Test(pat, subj) → bool` — cheap predicate; skips the
+  match-result allocation.
+- `Regex.Match(pat, subj) → Match*` (or `null` on no-match) —
+  with `GetText` / `GetStart` / `GetEnd` / `GroupCount` /
+  `GroupText(i)` / `GroupStart(i)` / `GroupEnd(i)` for the
+  parenthesised groups (up to 16, indices 0..N-1).
+- `Regex.Replace(pat, subj, repl)` — first occurrence; `\1`
+  capture-expansion stays literal in v1.
+- `Regex.ReplaceAll(pat, subj, repl)` — every non-overlapping
+  occurrence, zero-length-match safe (steps past the match by
+  at least one byte to avoid spinning on patterns like `^` or
+  `.*`).
+
+Syntax is POSIX extended (ERE) — the standard suspects work:
+`. * + ? ^ $ [...] ( ) | {n,m}`. PCRE-only features (`\d` /
+`\w` / `\s` shorthand, look-arounds, non-greedy modifiers,
+named captures, Unicode property classes) are out of scope —
+bind libpcre2 in a future package when a real consumer needs
+them. `regex.h` is in libc everywhere we ship (POSIX, MinGW)
+so no third-party dependency.
+
+### Wiring recipe
+
+Three places to register a new builtin runtime-backed type
+follows from v0.7.0 — see commits `7360d4c` (v0.6.4 BuildInfo)
+and `56b03c4` (v0.7.0 Vec/FileWatcher) for the pattern.
+
+---
+
 ## [v0.7.0] — 2026-05-12
 
 The **"stdlib expansion 1"** minor release — first installment of
@@ -2476,6 +2577,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.6.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.3
 [v0.6.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.4
 [v0.7.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.0
+[v0.7.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.1
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
