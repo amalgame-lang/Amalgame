@@ -500,7 +500,7 @@ public class PackageRegistry {
     // one edit (this constant + tools/release.sh which already
     // handles --version).
     public static string AmcVersion() {
-        return "0.6.3"
+        return "0.6.4"
     }
 
     // Highest [package].schema-version this amc knows how to

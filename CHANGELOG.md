@@ -7,6 +7,64 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.6.4] — 2026-05-12
+
+The **"cgen cleanup + profile"** patch release.
+
+### Snapshot C output shrunk (-9%)
+
+`amc_lib.c` goes from 22 860 → 21 361 lines (-1 499 lines) and
+1.17 MB → 1.06 MB (-9%). Two source changes:
+
+- cgen no longer emits a `__attribute__((unused))` marker on
+  every `VAR_DECL` (3 342 occurrences gone).
+- cgen no longer emits `(void)self;` / `(void)<param>;`
+  boilerplate at the top of every method body (~2 000 lines
+  gone).
+
+The gcc invocations (`build_amc.sh` + `main.am` user-compile
+flow) now pass `-Wno-unused-variable -Wno-unused-parameter
+-Wno-unused-but-set-variable` instead. `amc --lint` is the
+canonical "is this variable actually used" gate — it already
+flagged unused locals, shadowing, the v0.6.3 catch-binder, and
+var-never-reassigned. The trade is: gcc warnings hidden at
+build, linter handles correctness; in exchange, every PR review
+diff on the checked-in snapshot is meaningfully smaller, and
+`compile + link` is a hair faster.
+
+### Compile-time phase profiling
+
+`amc --verbose foo.am` now prints per-phase timings on stderr:
+
+```
+  parse:     154us
+  resolve:   199us
+  typecheck: 9us
+  cgen:      411us
+Compiling: 1 file(s)
+Generated: foo.c (30 lines) [Library]
+Build OK
+```
+
+Powered by a single `Stopwatch` (`Amalgame.DateTime`) reset at
+each phase boundary. Reveals the hot spot without external
+profiling.
+
+`./build_amc.sh` total wall time is now ~2 s end-to-end (was ~5 s
+when the AST-cache roadmap entry was originally written), so the
+proposed pickled-AST cache is no longer high-priority — would
+risk a serializer-bug class for marginal gain. Revisit if a
+single-file compile ever exceeds ~50 ms.
+
+### Internal: Box/Unbox helpers consolidated
+
+Audit confirmed `BoxAsVoid(expr)` and `UnboxScalar(ctype, expr)`
+already serve every site that previously open-coded the
+`(void*)(intptr_t)X` dance. Roadmap entry recoché [x] — no code
+change.
+
+---
+
 ## [v0.6.3] — 2026-05-12
 
 The **"internal refactor"** patch release. Three items from the
@@ -2329,6 +2387,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.6.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.1
 [v0.6.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.2
 [v0.6.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.3
+[v0.6.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.4
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
