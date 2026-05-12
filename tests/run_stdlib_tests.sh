@@ -589,6 +589,45 @@ run_test "Service: install idempotent"      "$SAMPLES/stdlib_service.am" "[PASS]
 run_test "Service: should-stop after req"   "$SAMPLES/stdlib_service.am" "[PASS] should-stop after request"      "" "$SVC_LIB"
 run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS] sleep short-circuits when stopping" "" "$SVC_LIB"
 
+# ── Amalgame.Math.Vec ─────────────────────────────────
+# Vec3 / Vec4 / Mat4 for game/graphics math. Pure runtime
+# (no syscalls); deterministic so tests are exact except for
+# the trig-derived Mat4.RotateZ result which uses an epsilon.
+echo ""
+echo "── Amalgame.Math.Vec ───────────────────────"
+MV_LIB="src/stdlib/math_vec.am"
+run_test "Vec: vec3 ctor"           "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 ctor"            "" "$MV_LIB"
+run_test "Vec: vec3 add"            "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 add"             "" "$MV_LIB"
+run_test "Vec: vec3 sub"            "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 sub"             "" "$MV_LIB"
+run_test "Vec: vec3 scale"          "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 scale"           "" "$MV_LIB"
+run_test "Vec: vec3 dot"            "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 dot"             "" "$MV_LIB"
+run_test "Vec: vec3 cross"          "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 cross"           "" "$MV_LIB"
+run_test "Vec: vec3 length"         "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 length"          "" "$MV_LIB"
+run_test "Vec: vec3 normalize"      "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 normalize"       "" "$MV_LIB"
+run_test "Vec: vec3 equals"         "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 equals"          "" "$MV_LIB"
+run_test "Vec: vec3 not-equals"     "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 not-equals"      "" "$MV_LIB"
+run_test "Vec: vec4 dot"            "$SAMPLES/stdlib_math_vec.am" "[PASS] vec4 dot"             "" "$MV_LIB"
+run_test "Vec: mat4 identity"       "$SAMPLES/stdlib_math_vec.am" "[PASS] mat4 identity"        "" "$MV_LIB"
+run_test "Vec: mat4 identity off"   "$SAMPLES/stdlib_math_vec.am" "[PASS] mat4 identity off-diagonal" "" "$MV_LIB"
+run_test "Vec: mat4 translate"      "$SAMPLES/stdlib_math_vec.am" "[PASS] mat4 translate*id"    "" "$MV_LIB"
+run_test "Vec: mat4 scale"          "$SAMPLES/stdlib_math_vec.am" "[PASS] mat4 scale"           "" "$MV_LIB"
+run_test "Vec: mat4 rotateZ"        "$SAMPLES/stdlib_math_vec.am" "[PASS] mat4 rotateZ"         "" "$MV_LIB"
+
+# ── Amalgame.IO.FileWatcher ───────────────────────────
+# Single-file mtime polling. The mtime-advance path is hard to
+# test deterministically (depends on the filesystem's mtime
+# granularity), so this suite exercises the file-presence flip
+# instead — delete and re-create give a guaranteed Changed() bump.
+echo ""
+echo "── Amalgame.IO.FileWatcher ────────────────"
+run_test "FW: exists when present"   "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when present"
+run_test "FW: getpath"               "$SAMPLES/stdlib_file_watch.am" "[PASS] getpath"
+run_test "FW: no-change-on-init"     "$SAMPLES/stdlib_file_watch.am" "[PASS] no-change-on-init"
+run_test "FW: detect delete"         "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-delete"
+run_test "FW: reset after read"      "$SAMPLES/stdlib_file_watch.am" "[PASS] reset-after-read"
+run_test "FW: exists when absent"    "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when absent"
+run_test "FW: detect recreate"       "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-recreate"
+
 # Database / Messaging external-package tests run on the package
 # repos' own CI — not here. See the header note at the top of
 # this file for the per-package invocation.

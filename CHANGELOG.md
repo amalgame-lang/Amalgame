@@ -7,6 +7,93 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.0] — 2026-05-12
+
+The **"stdlib expansion 1"** minor release — first installment of
+the v1.0-bound stdlib fill-in. 23 new tests on top of v0.6.4
+(509 → **532 PASS**).
+
+### `Amalgame.Math.Vec` — Vec3 / Vec4 / Mat4
+
+Scalar 3D math primitives for game / graphics / linear-algebra
+use cases. Runtime in `runtime/Amalgame_Math_Vec.h`; facade in
+`src/stdlib/math_vec.am`. The cgen short-circuits method calls
+to the runtime helpers directly so user code reads at the right
+level of abstraction without paying the namespace-dispatch cost.
+
+```
+let a = new Vec3(1.0, 2.0, 3.0)
+let b = new Vec3(4.0, 5.0, 6.0)
+let c = a.Cross(b)                // (-3, 6, -3)
+let m = Mat4.RotateZ(Math.Pi() / 4.0)
+let p = m.TransformVec4(new Vec4(1.0, 0.0, 0.0, 1.0))
+```
+
+Coverage:
+- **Vec3** — ctor + GetX/Y/Z + Add/Sub/Scale/Dot/Cross/Length/
+  Normalize/Equals.
+- **Vec4** — ctor + GetX/Y/Z/W + Add/Sub/Scale/Dot.
+- **Mat4** — Identity/Translate/Scale/RotateX/Y/Z/Multiply/
+  TransformVec4/Get/Set. Column-major (OpenGL convention) so
+  `glUniformMatrix4fv` works without transposition.
+
+All operations heap-allocate via GC_MALLOC so chained calls
+don't alias their inputs (functional style — `a.Add(b)` returns
+a fresh `Vec3*`, leaving `a` and `b` untouched).
+
+16 stdlib tests cover every method, including a verified
+RotateZ(π/2) on (1, 0, 0, 1) → (0, 1, 0, 1).
+
+Complex numbers and BigInt are deferred — different scope (no
+GMP dep wanted); revisit when a real consumer needs them.
+
+### `Amalgame.IO.FileWatcher` — single-file mtime polling
+
+```
+let w = new FileWatcher("/etc/foo.toml")
+while (!Service.ShouldStop()) {
+    if (w.Changed()) { reload() }
+    // sleep loop
+}
+```
+
+Cross-platform via `stat(2)` / `_stat64`. API:
+- `new FileWatcher(path)` — snapshot the initial mtime.
+- `w.Exists()` — true iff the file is currently present.
+- `w.Changed()` — true the first call after the mtime advances
+  (or the file appears / disappears); false on subsequent calls
+  until the next change. After a true return, the watcher's
+  internal snapshot is updated to the new mtime so the polling
+  loop self-resets without extra bookkeeping.
+- `w.GetPath()` — the path passed at construction.
+
+Covers the "reload a config file" / "rebuild on source change"
+80% use case. Directory-level recursive watches via `inotify` /
+`FSEvents` / `ReadDirectoryChangesW` are deferred — add when a
+real consumer needs them; the polling MVP works on every
+filesystem amc compiles for.
+
+7 stdlib tests use the delete / re-create flip for
+deterministic results (mtime-advance granularity varies across
+filesystems).
+
+### Wiring
+
+Three places to register a new builtin runtime-backed type in
+the bootstrap pipeline (`Vec3`/`Vec4`/`Mat4`/`FileWatcher` all
+follow the same recipe — see commit `56b03c4` for the diff):
+
+1. `src/resolver/symbol.am` — add to the `builtins` list.
+2. `src/resolver/resolver.am` — `DeclareGlobal("Type", "type", false)`
+   plus one `DeclareGlobal` per runtime helper.
+3. `src/generator/c_gen.am` — entries in `TypeToC`,
+   `InferTypeFromExpr` (NEW_EXPR + CALL paths), `NEW_EXPR`
+   emitter (new-keyword short-circuit), `isCoreStdlib`
+   (static-call dispatch), `bareType`-strip path (instance-call
+   dispatch), and an `#include` line in the auto-emitted prelude.
+
+---
+
 ## [v0.6.4] — 2026-05-12
 
 The **"cgen cleanup + profile"** patch release.
@@ -2388,6 +2475,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.6.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.2
 [v0.6.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.3
 [v0.6.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.4
+[v0.7.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.0
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
