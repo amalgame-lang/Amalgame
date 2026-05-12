@@ -9,6 +9,7 @@
 #include "Amalgame_Math_Vec.h"
 #include "Amalgame_FileWatch.h"
 #include "Amalgame_Regex.h"
+#include "Amalgame_Compress.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
@@ -75,6 +76,8 @@ typedef struct _Amalgame_Compiler_Instant Amalgame_Compiler_Instant;
 typedef struct _Amalgame_Compiler_Stopwatch Amalgame_Compiler_Stopwatch;
 typedef struct _Amalgame_Compiler_Sha256 Amalgame_Compiler_Sha256;
 typedef struct _Amalgame_Compiler_Hmac Amalgame_Compiler_Hmac;
+typedef struct _Amalgame_Compiler_MsgPackCursor Amalgame_Compiler_MsgPackCursor;
+typedef struct _Amalgame_Compiler_MsgPack Amalgame_Compiler_MsgPack;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -4559,7 +4562,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.7.1";
+    return "0.7.2";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -5877,6 +5880,12 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "Match_GetStart") || code_string_equals(calleeStr, "Match_GetEnd") || code_string_equals(calleeStr, "Match_GroupCount") || code_string_equals(calleeStr, "Match_GroupStart") || code_string_equals(calleeStr, "Match_GroupEnd")) {
                 return "i64";
             }
+            if (code_string_equals(calleeStr, "Compress_Gzip") || code_string_equals(calleeStr, "Compress_Gunzip") || code_string_equals(calleeStr, "Compress_Deflate") || code_string_equals(calleeStr, "Compress_Inflate") || code_string_equals(calleeStr, "Compress_GzipString")) {
+                return "AmalgameList*";
+            }
+            if (code_string_equals(calleeStr, "Compress_GunzipString")) {
+                return "code_string";
+            }
             if (code_string_equals(calleeStr, "Math_IsPrime") || code_string_equals(calleeStr, "Math_IsNaN") || code_string_equals(calleeStr, "Math_IsInf") || code_string_equals(calleeStr, "Math_IsFinite") || code_string_equals(calleeStr, "Math_ApproxEq")) {
                 return "code_bool";
             }
@@ -6244,6 +6253,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math_Vec.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_FileWatch.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Regex.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Compress.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
@@ -8085,7 +8095,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                             return code_string_concat("Path_", mname);
                         }
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8115,6 +8125,11 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string retT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, callee->Left);
                 code_string bareR = String_Replace(retT, "*", "");
                 if (String_Length(bareR) > 0) {
+                    if (code_string_equals(bareR, "AmalgameList") || code_string_equals(bareR, "AmalgameMap") || code_string_equals(bareR, "AmalgameSet")) {
+                        code_string first = String_Substring(mname, 0, 1);
+                        code_string rest = String_Substring(mname, 1, String_Length(mname) - 1);
+                        return code_string_concat(code_string_concat(code_string_concat(bareR, "_"), String_ToLower(first)), rest);
+                    }
                     return code_string_concat(code_string_concat(bareR, "_"), mname);
                 }
             }
@@ -9757,6 +9772,7 @@ static void Amalgame_Compiler_Resolver_RegisterBuiltins(Amalgame_Compiler_Resolv
     AmalgameList_add(builtins, (void*)(intptr_t)("FileWatcher"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Regex"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Match"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("Compress"));
     AmalgameList_add(builtins, (void*)(intptr_t)("String"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Http"));
     AmalgameList_add(builtins, (void*)(intptr_t)("int"));
@@ -10389,6 +10405,13 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gzip", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gunzip", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Deflate", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Inflate", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_GzipString", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_GunzipString", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Test", "bool", 0);
@@ -14903,6 +14926,372 @@ code_string Amalgame_Compiler_Hmac_Sha256Hex(AmalgameList* key, AmalgameList* ms
 
 code_string Amalgame_Compiler_Hmac_Sha256OfStrings(code_string key, code_string msg) {
     return Crypto_HmacSha256OfStrings(key, msg);
+}
+
+Amalgame_Compiler_MsgPackCursor* Amalgame_Compiler_MsgPackCursor_new(AmalgameList* bytes);
+Amalgame_Compiler_MsgPack* Amalgame_Compiler_MsgPack_new();
+struct _Amalgame_Compiler_MsgPackCursor {
+    AmalgameList* Bytes;
+    i64 Pos;
+};
+
+code_bool Amalgame_Compiler_MsgPackCursor_AtEnd(Amalgame_Compiler_MsgPackCursor* self);
+i64 Amalgame_Compiler_MsgPackCursor_Read(Amalgame_Compiler_MsgPackCursor* self);
+
+Amalgame_Compiler_MsgPackCursor* Amalgame_Compiler_MsgPackCursor_new(AmalgameList* bytes) {
+    Amalgame_Compiler_MsgPackCursor* self = (Amalgame_Compiler_MsgPackCursor*) GC_MALLOC(sizeof(Amalgame_Compiler_MsgPackCursor));
+    self->Bytes = bytes;
+    self->Pos = 0;
+    return self;
+}
+
+code_bool Amalgame_Compiler_MsgPackCursor_AtEnd(Amalgame_Compiler_MsgPackCursor* self) {
+    return self->Pos >= AmalgameList_count(self->Bytes);
+}
+
+i64 Amalgame_Compiler_MsgPackCursor_Read(Amalgame_Compiler_MsgPackCursor* self) {
+    if (Amalgame_Compiler_MsgPackCursor_AtEnd(self)) {
+        return 0;
+    }
+    i64 b = (i64)AmalgameList_get(self->Bytes, self->Pos);
+    self->Pos = self->Pos + 1;
+    return b;
+}
+
+struct _Amalgame_Compiler_MsgPack {
+};
+
+AmalgameList* Amalgame_Compiler_MsgPack_EncodeJson(Amalgame_Compiler_JsonValue* value);
+static void Amalgame_Compiler_MsgPack_EncodeJsonInto(Amalgame_Compiler_JsonValue* value, AmalgameList* out);
+static void Amalgame_Compiler_MsgPack_EncodeInt(i64 v, AmalgameList* out);
+static void Amalgame_Compiler_MsgPack_EncodeString(code_string s, AmalgameList* out);
+static void Amalgame_Compiler_MsgPack_EncodeArrayHeader(i64 n, AmalgameList* out);
+static void Amalgame_Compiler_MsgPack_EncodeMapHeader(i64 n, AmalgameList* out);
+static i64 Amalgame_Compiler_MsgPack_ByteOf(i64 v, i64 byteIdx);
+static i64 Amalgame_Compiler_MsgPack_Pow256(i64 n);
+static i64 Amalgame_Compiler_MsgPack_ByteOfChar(code_string c);
+static code_string Amalgame_Compiler_MsgPack_AsciiTable();
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_DecodeJson(AmalgameList* bytes);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_DecodeOne(Amalgame_Compiler_MsgPackCursor* c);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadStrInto(Amalgame_Compiler_MsgPackCursor* c, i64 n);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadArrayInto(Amalgame_Compiler_MsgPackCursor* c, i64 n);
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadMapInto(Amalgame_Compiler_MsgPackCursor* c, i64 n);
+
+Amalgame_Compiler_MsgPack* Amalgame_Compiler_MsgPack_new() {
+    Amalgame_Compiler_MsgPack* self = (Amalgame_Compiler_MsgPack*) GC_MALLOC(sizeof(Amalgame_Compiler_MsgPack));
+    return self;
+}
+
+AmalgameList* Amalgame_Compiler_MsgPack_EncodeJson(Amalgame_Compiler_JsonValue* value) {
+    AmalgameList* out = AmalgameList_new();
+    Amalgame_Compiler_MsgPack_EncodeJsonInto(value, out);
+    return out;
+}
+
+static void Amalgame_Compiler_MsgPack_EncodeJsonInto(Amalgame_Compiler_JsonValue* value, AmalgameList* out) {
+    if (Amalgame_Compiler_JsonValue_IsNull(value)) {
+        AmalgameList_add(out, (void*)(intptr_t)(192));
+        return;
+    }
+    if (Amalgame_Compiler_JsonValue_IsBool(value)) {
+        if (Amalgame_Compiler_JsonValue_AsBool(value)) {
+            AmalgameList_add(out, (void*)(intptr_t)(195));
+        } else {
+            AmalgameList_add(out, (void*)(intptr_t)(194));
+        }
+        return;
+    }
+    if (Amalgame_Compiler_JsonValue_IsInt(value)) {
+        Amalgame_Compiler_MsgPack_EncodeInt(Amalgame_Compiler_JsonValue_AsInt(value), out);
+        return;
+    }
+    if (Amalgame_Compiler_JsonValue_IsString(value)) {
+        Amalgame_Compiler_MsgPack_EncodeString(Amalgame_Compiler_JsonValue_AsString(value), out);
+        return;
+    }
+    if (Amalgame_Compiler_JsonValue_IsArray(value)) {
+        AmalgameList* items = Amalgame_Compiler_JsonValue_AsArray(value);
+        i64 n = AmalgameList_count(items);
+        Amalgame_Compiler_MsgPack_EncodeArrayHeader(n, out);
+        for (i64 i = 0; i < n; i++) {
+            Amalgame_Compiler_MsgPack_EncodeJsonInto((Amalgame_Compiler_JsonValue*)AmalgameList_get(items, i), out);
+        }
+        return;
+    }
+    if (Amalgame_Compiler_JsonValue_IsObject(value)) {
+        AmalgameList* keys = Amalgame_Compiler_JsonValue_Keys(value);
+        i64 n = AmalgameList_count(keys);
+        Amalgame_Compiler_MsgPack_EncodeMapHeader(n, out);
+        for (i64 i = 0; i < n; i++) {
+            code_string k = (code_string)AmalgameList_get(keys, i);
+            Amalgame_Compiler_MsgPack_EncodeString(k, out);
+            Amalgame_Compiler_MsgPack_EncodeJsonInto(Amalgame_Compiler_JsonValue_Get(value, k), out);
+        }
+        return;
+    }
+    AmalgameList_add(out, (void*)(intptr_t)(192));
+}
+
+static void Amalgame_Compiler_MsgPack_EncodeInt(i64 v, AmalgameList* out) {
+    if (v >= 0 && v <= 127) {
+        AmalgameList_add(out, (void*)(intptr_t)(v));
+        return;
+    }
+    if (v < 0 && v >= -32) {
+        AmalgameList_add(out, (void*)(intptr_t)(256 + v));
+        return;
+    }
+    if (v >= -128 && v <= 127) {
+        AmalgameList_add(out, (void*)(intptr_t)(208));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 0)));
+        return;
+    }
+    if (v >= -32768 && v <= 32767) {
+        AmalgameList_add(out, (void*)(intptr_t)(209));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 1)));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 0)));
+        return;
+    }
+    if (v >= -2147483648 && v <= 2147483647) {
+        AmalgameList_add(out, (void*)(intptr_t)(210));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 3)));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 2)));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 1)));
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 0)));
+        return;
+    }
+    AmalgameList_add(out, (void*)(intptr_t)(210));
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 3)));
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 2)));
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 1)));
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 0)));
+}
+
+static void Amalgame_Compiler_MsgPack_EncodeString(code_string s, AmalgameList* out) {
+    i64 n = String_Length(s);
+    if (n <= 31) {
+        AmalgameList_add(out, (void*)(intptr_t)(160 + n));
+    } else if (n <= 255) {
+        AmalgameList_add(out, (void*)(intptr_t)(217));
+        AmalgameList_add(out, (void*)(intptr_t)(n));
+    } else if (n <= 65535) {
+        AmalgameList_add(out, (void*)(intptr_t)(218));
+        AmalgameList_add(out, (void*)(intptr_t)(n / 256 % 256));
+        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+    } else {
+        AmalgameList_add(out, (void*)(intptr_t)(218));
+        AmalgameList_add(out, (void*)(intptr_t)(255));
+        AmalgameList_add(out, (void*)(intptr_t)(255));
+    }
+    i64 cap = n;
+    if (cap > 65535) {
+        cap = 65535;
+    }
+    for (i64 i = 0; i < cap; i++) {
+        code_string ch = String_Substring(s, i, 1);
+        AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfChar(ch)));
+    }
+}
+
+static void Amalgame_Compiler_MsgPack_EncodeArrayHeader(i64 n, AmalgameList* out) {
+    if (n <= 15) {
+        AmalgameList_add(out, (void*)(intptr_t)(144 + n));
+        return;
+    }
+    if (n <= 65535) {
+        AmalgameList_add(out, (void*)(intptr_t)(220));
+        AmalgameList_add(out, (void*)(intptr_t)(n / 256 % 256));
+        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+        return;
+    }
+    AmalgameList_add(out, (void*)(intptr_t)(220));
+    AmalgameList_add(out, (void*)(intptr_t)(255));
+    AmalgameList_add(out, (void*)(intptr_t)(255));
+}
+
+static void Amalgame_Compiler_MsgPack_EncodeMapHeader(i64 n, AmalgameList* out) {
+    if (n <= 15) {
+        AmalgameList_add(out, (void*)(intptr_t)(128 + n));
+        return;
+    }
+    if (n <= 65535) {
+        AmalgameList_add(out, (void*)(intptr_t)(222));
+        AmalgameList_add(out, (void*)(intptr_t)(n / 256 % 256));
+        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+        return;
+    }
+    AmalgameList_add(out, (void*)(intptr_t)(222));
+    AmalgameList_add(out, (void*)(intptr_t)(255));
+    AmalgameList_add(out, (void*)(intptr_t)(255));
+}
+
+static i64 Amalgame_Compiler_MsgPack_ByteOf(i64 v, i64 byteIdx) {
+    i64 shifted = v / Amalgame_Compiler_MsgPack_Pow256(byteIdx);
+    i64 withOffset = shifted + 16777216;
+    return withOffset % 256;
+}
+
+static i64 Amalgame_Compiler_MsgPack_Pow256(i64 n) {
+    i64 r = 1;
+    i64 i = 0;
+    while (i < n) {
+        r = r * 256;
+        i = i + 1;
+    }
+    return r;
+}
+
+static i64 Amalgame_Compiler_MsgPack_ByteOfChar(code_string c) {
+    code_string table = Amalgame_Compiler_MsgPack_AsciiTable();
+    i64 idx = String_IndexOf(table, c);
+    if (idx < 0) {
+        return 63;
+    }
+    return idx + 32;
+}
+
+static code_string Amalgame_Compiler_MsgPack_AsciiTable() {
+    return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+}
+
+Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_DecodeJson(AmalgameList* bytes) {
+    Amalgame_Compiler_MsgPackCursor* cursor = Amalgame_Compiler_MsgPackCursor_new(bytes);
+    return Amalgame_Compiler_MsgPack_DecodeOne(cursor);
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_DecodeOne(Amalgame_Compiler_MsgPackCursor* c) {
+    if (Amalgame_Compiler_MsgPackCursor_AtEnd(c)) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    i64 b = Amalgame_Compiler_MsgPackCursor_Read(c);
+    if (b == 192) {
+        return Amalgame_Compiler_JsonValue_new();
+    }
+    if (b == 194) {
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        Amalgame_Compiler_JsonValue_SetBool(v, 0);
+        return v;
+    }
+    if (b == 195) {
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        Amalgame_Compiler_JsonValue_SetBool(v, 1);
+        return v;
+    }
+    if (b >= 0 && b <= 127) {
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        Amalgame_Compiler_JsonValue_SetInt(v, b);
+        return v;
+    }
+    if (b >= 224) {
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        Amalgame_Compiler_JsonValue_SetInt(v, b - 256);
+        return v;
+    }
+    if (b >= 160 && b <= 191) {
+        i64 n = b - 160;
+        return Amalgame_Compiler_MsgPack_ReadStrInto(c, n);
+    }
+    if (b >= 144 && b <= 159) {
+        i64 n = b - 144;
+        return Amalgame_Compiler_MsgPack_ReadArrayInto(c, n);
+    }
+    if (b >= 128 && b <= 143) {
+        i64 n = b - 128;
+        return Amalgame_Compiler_MsgPack_ReadMapInto(c, n);
+    }
+    if (b == 208) {
+        i64 raw = Amalgame_Compiler_MsgPackCursor_Read(c);
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        if (raw >= 128) {
+            Amalgame_Compiler_JsonValue_SetInt(v, raw - 256);
+        } else {
+            Amalgame_Compiler_JsonValue_SetInt(v, raw);
+        }
+        return v;
+    }
+    if (b == 209) {
+        i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 raw = hi * 256 + lo;
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        if (raw >= 32768) {
+            Amalgame_Compiler_JsonValue_SetInt(v, raw - 65536);
+        } else {
+            Amalgame_Compiler_JsonValue_SetInt(v, raw);
+        }
+        return v;
+    }
+    if (b == 210) {
+        i64 b3 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 b2 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 b1 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 b0 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 raw = b3 * 16777216 + b2 * 65536 + b1 * 256 + b0;
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        if (raw >= 2147483648) {
+            Amalgame_Compiler_JsonValue_SetInt(v, raw - 4294967296);
+        } else {
+            Amalgame_Compiler_JsonValue_SetInt(v, raw);
+        }
+        return v;
+    }
+    if (b == 217) {
+        i64 n = Amalgame_Compiler_MsgPackCursor_Read(c);
+        return Amalgame_Compiler_MsgPack_ReadStrInto(c, n);
+    }
+    if (b == 218) {
+        i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
+        return Amalgame_Compiler_MsgPack_ReadStrInto(c, hi * 256 + lo);
+    }
+    if (b == 220) {
+        i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
+        return Amalgame_Compiler_MsgPack_ReadArrayInto(c, hi * 256 + lo);
+    }
+    if (b == 222) {
+        i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
+        i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
+        return Amalgame_Compiler_MsgPack_ReadMapInto(c, hi * 256 + lo);
+    }
+    return Amalgame_Compiler_JsonValue_new();
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadStrInto(Amalgame_Compiler_MsgPackCursor* c, i64 n) {
+    code_string table = Amalgame_Compiler_MsgPack_AsciiTable();
+    code_string s = "";
+    for (i64 i = 0; i < n; i++) {
+        i64 b = Amalgame_Compiler_MsgPackCursor_Read(c);
+        if (b >= 32 && b <= 126) {
+            s = code_string_concat(s, String_Substring(table, b - 32, 1));
+        } else {
+            s = code_string_concat(s, "?");
+        }
+    }
+    Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetString(v, s);
+    return v;
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadArrayInto(Amalgame_Compiler_MsgPackCursor* c, i64 n) {
+    Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetArray(v, AmalgameList_new());
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_JsonValue* elem = Amalgame_Compiler_MsgPack_DecodeOne(c);
+        Amalgame_Compiler_JsonValue_AppendItem(v, elem);
+    }
+    return v;
+}
+
+static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadMapInto(Amalgame_Compiler_MsgPackCursor* c, i64 n) {
+    Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+    Amalgame_Compiler_JsonValue_SetObject(v, AmalgameList_new(), AmalgameList_new());
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_JsonValue* k = Amalgame_Compiler_MsgPack_DecodeOne(c);
+        Amalgame_Compiler_JsonValue* val = Amalgame_Compiler_MsgPack_DecodeOne(c);
+        Amalgame_Compiler_JsonValue_AppendEntry(v, Amalgame_Compiler_JsonValue_AsString(k), val);
+    }
+    return v;
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -21934,7 +22323,7 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
         for (i64 poi = 0; poi < nObjs; poi++) {
             gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)AmalgameList_get(pkgObjs, poi)), "'");
         }
-        gccCmd = code_string_concat(gccCmd, " -lgc -lm -lcurl -ldl -lpthread");
+        gccCmd = code_string_concat(gccCmd, " -lgc -lm -lcurl -lz -ldl -lpthread");
         i64 nLibs = AmalgameList_count(pkgLibs);
         for (i64 plj = 0; plj < nLibs; plj++) {
             gccCmd = code_string_concat(code_string_concat(gccCmd, " -l"), (code_string)AmalgameList_get(pkgLibs, plj));

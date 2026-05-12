@@ -929,6 +929,9 @@ public class CGen {
                 if (calleeStr == "Regex_Replace" || calleeStr == "Regex_ReplaceAll") { return "code_string" }
                 if (calleeStr == "Match_GetText" || calleeStr == "Match_GroupText") { return "code_string" }
                 if (calleeStr == "Match_GetStart" || calleeStr == "Match_GetEnd" || calleeStr == "Match_GroupCount" || calleeStr == "Match_GroupStart" || calleeStr == "Match_GroupEnd") { return "i64" }
+                // Compress (zlib) runtime helpers.
+                if (calleeStr == "Compress_Gzip" || calleeStr == "Compress_Gunzip" || calleeStr == "Compress_Deflate" || calleeStr == "Compress_Inflate" || calleeStr == "Compress_GzipString") { return "AmalgameList*" }
+                if (calleeStr == "Compress_GunzipString") { return "code_string" }
                 if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
                 if (calleeStr == "Math_Random") { return "double" }
                 if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
@@ -1272,6 +1275,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Math_Vec.h\"")
         this.Out.EmitLine("#include \"Amalgame_FileWatch.h\"")
         this.Out.EmitLine("#include \"Amalgame_Regex.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Compress.h\"")
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
@@ -3280,7 +3284,7 @@ public class CGen {
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -3334,6 +3338,16 @@ public class CGen {
                     let retT = this.InferTypeFromExpr(callee.Left)
                     let bareR = String_Replace(retT, "*", "")
                     if (String_Length(bareR) > 0) {
+                        // AmalgameList / Map / Set runtime helpers use
+                        // camelCase first-letter (Add → add, Count →
+                        // count, etc.), unlike user classes which keep
+                        // PascalCase. Downcase mname's first letter for
+                        // chained calls landing on a collection.
+                        if (bareR == "AmalgameList" || bareR == "AmalgameMap" || bareR == "AmalgameSet") {
+                            let first: string = String_Substring(mname, 0, 1)
+                            let rest:  string = String_Substring(mname, 1, String_Length(mname) - 1)
+                            return bareR + "_" + String_ToLower(first) + rest
+                        }
                         return bareR + "_" + mname
                     }
                 }

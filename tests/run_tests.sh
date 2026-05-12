@@ -61,7 +61,7 @@ run_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -289,7 +289,7 @@ run_lib_link_test() {
         sed 's/^/    /' "$tmpdir/err" | head -5
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
     fi
-    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lcurl -o "$tmpdir/app" 2>"$tmpdir/err"; then
+    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lcurl -lz -o "$tmpdir/app" 2>"$tmpdir/err"; then
         echo -e "${RED}FAIL${NC} (link)"
         sed 's/^/    /' "$tmpdir/err" | head -5
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
@@ -938,7 +938,7 @@ run_multifile_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
