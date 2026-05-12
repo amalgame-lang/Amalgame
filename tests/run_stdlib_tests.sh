@@ -85,7 +85,7 @@ run_test() {
     # extraction — Database.SQLite is now an opt-in external
     # package. Tests that need it go through `run_db_test` which
     # adds the .o + sets cwd to $SQLITE_PROJ.
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -ldl -lpthread -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -ldl -lpthread -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -417,7 +417,7 @@ USRAM
     check_e2e "PM e2e: FakePkg.Close called"     "Amalgame_Fake_FakePkg_Close\\("
 
     # Full round-trip: gcc + run.
-    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
+    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -lz -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
     printf "  %-38s" "PM e2e: gcc + run"
     if [ -x "$TMPDIR/out" ]; then
         local run_out=$("$TMPDIR/out" 2>&1)
@@ -692,6 +692,41 @@ run_test "Rx: replace all"           "$SAMPLES/stdlib_regex.am" "[PASS] replace 
 run_test "Rx: anchor start"          "$SAMPLES/stdlib_regex.am" "[PASS] anchor start"
 run_test "Rx: anchor end"            "$SAMPLES/stdlib_regex.am" "[PASS] anchor end"
 run_test "Rx: alternation"           "$SAMPLES/stdlib_regex.am" "[PASS] alternation"
+
+# ── Amalgame.Compress ─────────────────────────────────
+# zlib gzip + raw deflate codec. Round-trip tests so we don't
+# pin a specific zlib-version's exact byte layout.
+echo ""
+echo "── Amalgame.Compress ──────────────────────"
+run_test "Cz: gzip non-empty"        "$SAMPLES/stdlib_compress.am" "[PASS] gzip non-empty"
+run_test "Cz: gzip roundtrip"        "$SAMPLES/stdlib_compress.am" "[PASS] gzip roundtrip"
+run_test "Cz: gzip magic"            "$SAMPLES/stdlib_compress.am" "[PASS] gzip magic"
+run_test "Cz: deflate non-empty"     "$SAMPLES/stdlib_compress.am" "[PASS] deflate non-empty"
+run_test "Cz: deflate length"        "$SAMPLES/stdlib_compress.am" "[PASS] deflate length"
+run_test "Cz: deflate roundtrip"     "$SAMPLES/stdlib_compress.am" "[PASS] deflate roundtrip"
+run_test "Cz: gzip shrinks"          "$SAMPLES/stdlib_compress.am" "[PASS] gzip shrinks"
+run_test "Cz: gzip large roundtrip"  "$SAMPLES/stdlib_compress.am" "[PASS] gzip large roundtrip"
+run_test "Cz: gzip empty roundtrip"  "$SAMPLES/stdlib_compress.am" "[PASS] gzip empty roundtrip"
+
+# ── Amalgame.Formats.MsgPack ──────────────────────────
+# MessagePack 1.0 subset codec via JsonValue.
+echo ""
+echo "── Amalgame.Formats.MsgPack ───────────────"
+MP_LIB="src/stdlib/json.am src/stdlib/msgpack.am"
+run_test "MP: encode nil"            "$SAMPLES/stdlib_msgpack.am" "[PASS] encode nil"            "" "$MP_LIB"
+run_test "MP: decode nil"            "$SAMPLES/stdlib_msgpack.am" "[PASS] decode nil"            "" "$MP_LIB"
+run_test "MP: encode true"           "$SAMPLES/stdlib_msgpack.am" "[PASS] encode true"           "" "$MP_LIB"
+run_test "MP: decode true"           "$SAMPLES/stdlib_msgpack.am" "[PASS] decode true"           "" "$MP_LIB"
+run_test "MP: encode fixint"         "$SAMPLES/stdlib_msgpack.am" "[PASS] encode fixint"         "" "$MP_LIB"
+run_test "MP: decode fixint"         "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixint"         "" "$MP_LIB"
+run_test "MP: roundtrip negfix"      "$SAMPLES/stdlib_msgpack.am" "[PASS] roundtrip negfix"      "" "$MP_LIB"
+run_test "MP: roundtrip int16"       "$SAMPLES/stdlib_msgpack.am" "[PASS] roundtrip int16"       "" "$MP_LIB"
+run_test "MP: encode fixstr"         "$SAMPLES/stdlib_msgpack.am" "[PASS] encode fixstr"         "" "$MP_LIB"
+run_test "MP: decode fixstr"         "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixstr"         "" "$MP_LIB"
+run_test "MP: encode fixarray"       "$SAMPLES/stdlib_msgpack.am" "[PASS] encode fixarray"       "" "$MP_LIB"
+run_test "MP: decode fixarray"       "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixarray"       "" "$MP_LIB"
+run_test "MP: decode fixmap shape"   "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixmap shape"   "" "$MP_LIB"
+run_test "MP: decode fixmap values"  "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixmap values"  "" "$MP_LIB"
 
 # Database / Messaging external-package tests run on the package
 # repos' own CI — not here. See the header note at the top of

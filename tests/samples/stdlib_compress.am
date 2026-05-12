@@ -1,0 +1,89 @@
+// Stdlib test: Amalgame.Compress — zlib gzip + raw-deflate
+// codec. Tests are round-trip (compress → decompress → expect
+// equality with the original) to avoid pinning a specific
+// zlib-version's exact byte layout.
+
+namespace Tests
+
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── Gzip round-trip on a short string ──
+        let original: string = "Hello, Amalgame compression!"
+        let gz: List<int> = Compress.GzipString(original)
+        if (gz.Count() > 0) {
+            Console.WriteLine("[PASS] gzip non-empty")
+        } else {
+            Console.WriteLine("[FAIL] gzip non-empty")
+        }
+        let back: string = Compress.GunzipString(gz)
+        if (back == original) {
+            Console.WriteLine("[PASS] gzip roundtrip")
+        } else {
+            Console.WriteLine("[FAIL] gzip roundtrip got: " + back)
+        }
+
+        // ── Gzip magic bytes (1f 8b) ──
+        let m0: int = gz.Get(0)
+        let m1: int = gz.Get(1)
+        if (m0 == 31 && m1 == 139) {
+            Console.WriteLine("[PASS] gzip magic")
+        } else {
+            Console.WriteLine("[FAIL] gzip magic")
+        }
+
+        // ── Raw deflate round-trip ──
+        let bytes = new List<int>()
+        bytes.Add(72) bytes.Add(101) bytes.Add(108) bytes.Add(108) bytes.Add(111)
+        let dfl = Compress.Deflate(bytes)
+        if (dfl.Count() > 0) { Console.WriteLine("[PASS] deflate non-empty") }
+        let infl = Compress.Inflate(dfl)
+        if (infl.Count() == bytes.Count()) {
+            Console.WriteLine("[PASS] deflate length")
+        } else {
+            Console.WriteLine("[FAIL] deflate length got " + String_FromInt(infl.Count()))
+        }
+        var equal: bool = true
+        let bn: int = bytes.Count()
+        for i in 0..bn {
+            let want: int = bytes.Get(i)
+            let got: int  = infl.Get(i)
+            if (want != got) { equal = false }
+        }
+        if (equal) {
+            Console.WriteLine("[PASS] deflate roundtrip")
+        } else {
+            Console.WriteLine("[FAIL] deflate roundtrip")
+        }
+
+        // ── Compression actually shrinks repetitive input ──
+        var bigStr: string = ""
+        for i in 0..100 {
+            bigStr = bigStr + "abc123abc123"
+        }
+        let bigGz = Compress.GzipString(bigStr)
+        if (bigGz.Count() < String_Length(bigStr)) {
+            Console.WriteLine("[PASS] gzip shrinks")
+        } else {
+            Console.WriteLine("[FAIL] gzip shrinks: input " + String_FromInt(String_Length(bigStr)) + ", output " + String_FromInt(bigGz.Count()))
+        }
+        let bigBack: string = Compress.GunzipString(bigGz)
+        if (bigBack == bigStr) {
+            Console.WriteLine("[PASS] gzip large roundtrip")
+        } else {
+            Console.WriteLine("[FAIL] gzip large roundtrip")
+        }
+
+        // ── Empty input ──
+        let empty = new List<int>()
+        let gzEmpty = Compress.Gzip(empty)
+        let backEmpty = Compress.Gunzip(gzEmpty)
+        if (backEmpty.Count() == 0) {
+            Console.WriteLine("[PASS] gzip empty roundtrip")
+        } else {
+            Console.WriteLine("[FAIL] gzip empty roundtrip")
+        }
+    }
+}

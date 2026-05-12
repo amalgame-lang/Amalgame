@@ -142,6 +142,17 @@ public class Program {
         let crProg   = crPar.Parse()
         Console.WriteError("parsed: stdlib/crypto.am")
 
+        // MessagePack — binary codec on top of JsonValue. Lives
+        // here next to crypto so the gen6 pass1/pass2 sees Json
+        // first (msgpack imports it).
+        let mpPath   = "./src/stdlib/msgpack.am"
+        let mpSrc    = File.ReadAll(mpPath)
+        let mpLex    = new Lexer(mpSrc, mpPath)
+        let mpToks   = mpLex.Tokenize()
+        let mpPar    = new Parser(mpToks)
+        let mpProg   = mpPar.Parse()
+        Console.WriteError("parsed: stdlib/msgpack.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -272,6 +283,7 @@ public class Program {
         gen6.AddFilePass1(encProg)
         gen6.AddFilePass1(dtProg)
         gen6.AddFilePass1(crProg)
+        gen6.AddFilePass1(mpProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -302,6 +314,7 @@ public class Program {
         gen6.AddFilePass2(encProg)
         gen6.AddFilePass2(dtProg)
         gen6.AddFilePass2(crProg)
+        gen6.AddFilePass2(mpProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)

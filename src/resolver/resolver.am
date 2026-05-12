@@ -394,6 +394,15 @@ public class FullResolver {
         this.DeclareGlobal("Math_SeedRandom","void",   false)
         this.DeclareGlobal("Math_Random",    "float",  false)
         this.DeclareGlobal("Math_RandomInt", "int",    false)
+        // Compress — zlib binding (gzip + raw deflate).
+        // Runtime in runtime/Amalgame_Compress.h.
+        this.DeclareGlobal("Compress",             "type",         false)
+        this.DeclareGlobal("Compress_Gzip",        "List<int>",    false)
+        this.DeclareGlobal("Compress_Gunzip",      "List<int>",    false)
+        this.DeclareGlobal("Compress_Deflate",     "List<int>",    false)
+        this.DeclareGlobal("Compress_Inflate",     "List<int>",    false)
+        this.DeclareGlobal("Compress_GzipString",  "List<int>",    false)
+        this.DeclareGlobal("Compress_GunzipString","string",       false)
         // Regex — POSIX regex.h binding. Runtime in
         // runtime/Amalgame_Regex.h.
         this.DeclareGlobal("Regex",                "type",        false)

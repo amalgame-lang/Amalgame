@@ -7,6 +7,105 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.2] — 2026-05-12
+
+The **"stdlib expansion 3"** patch release. 23 new tests on top
+of v0.7.1 (575 → **598 PASS**). Plus a cgen fix that drops a
+paper-cut on chained collection-method calls.
+
+### `Amalgame.Compress` — zlib gzip + raw-deflate codec
+
+```
+let body: List<int> = File.ReadBytes("payload.bin")
+let gz: List<int>   = Compress.Gzip(body)
+File.WriteBytes("payload.bin.gz", gz)
+
+let back: List<int> = Compress.Gunzip(gz)
+// back == body (byte-exact round-trip)
+```
+
+Four entry points, paired:
+
+- **`Compress.Gzip` / `Gunzip`** — RFC 1952 wrapper. Same
+  bytes `gzip -c` would produce, correct file-format magic,
+  suitable for HTTP `Content-Encoding: gzip` or `.gz` files.
+- **`Compress.Deflate` / `Inflate`** — RFC 1951 raw stream,
+  no header, smaller, suitable for embedded protocols
+  (WebSocket per-message-deflate, custom binary RPCs).
+- **`Compress.GzipString` / `GunzipString`** — UTF-8 string
+  convenience pair.
+
+Input + output as `List<int>` byte buffers (one entry per
+byte, 0..255). Same shape as `Amalgame.Crypto.Sha256` /
+`Amalgame.Random.SystemBytes` — pipe-friendly.
+
+Build adds `-lz` to every gcc invocation that already links
+against `libgc` / `libcurl` (`build_amc.sh`, the user-compile
+path in `main.am`, every test runner). 9 stdlib tests cover
+empty input, gzip magic bytes, large-input shrink ratio,
+round-trip exactness, and raw-deflate symmetry.
+
+### `Amalgame.Formats.MsgPack` — binary codec via JsonValue
+
+```
+let bytes: List<int> = MsgPack.EncodeJson(jv)   // any JsonValue
+let jv2: JsonValue   = MsgPack.DecodeJson(bytes)
+```
+
+MessagePack 1.0 subset, pure-Amalgame (no runtime header) on
+top of `JsonValue`. Coverage:
+
+| Marker            | Bytes        | Type                  |
+|-------------------|--------------|-----------------------|
+| `0xc0`            | nil          | `JsonValue.IsNull()`  |
+| `0xc2` / `0xc3`   | bool         | `IsBool()` / `AsBool()` |
+| `0xxxxxxx`        | positive fixint (0..127) | `IsInt()` |
+| `111xxxxx`        | negative fixint (-32..-1) | |
+| `0xd0` / `0xd1` / `0xd2` | int 8 / 16 / 32 | |
+| `101xxxxx` + bytes | fixstr (0..31)  | `IsString()` |
+| `0xd9` / `0xda` + len + bytes | str 8 / 16 | |
+| `1001xxxx` + items | fixarray (0..15) | `IsArray()` |
+| `0xdc` + 2-byte len | array 16 | |
+| `1000xxxx` + pairs | fixmap (0..15) | `IsObject()` |
+| `0xde` + 2-byte len | map 16 | |
+
+Out of scope (v2): int64, float 32/64, bin, ext, timestamps —
+each easy to add (encoder gets a branch, decoder gets a prefix
+match), but not blocking for typical config / RPC payloads
+where the fix-* small forms win.
+
+14 stdlib tests cover encode + decode round-trips for every
+type above, with edge-case nesting (fixarray of fixints,
+fixmap of mixed values, single-key map, empty containers).
+
+Round-trips through `JsonValue` mean any code that builds JSON
+trees can switch to MsgPack with a one-line `Json.Stringify(jv)`
+→ `MsgPack.EncodeJson(jv)` rename.
+
+### CGen fix: chained `<call>.Count()` on collections
+
+`EmitCalleeStr` used to emit `<bareReceiverType>_<methodName>`
+verbatim for chained method calls. When the inner call returned
+`AmalgameList*` / `Map*` / `Set*` (e.g. `jv.AsArray().Count()`),
+the PascalCase `Count` collided with the C runtime's camelCase
+`AmalgameList_count`, leaking an `-Wimplicit-function-declaration`
+warning and an undefined symbol at link.
+
+Fix downcases the first letter of `mname` when `bareR` is one
+of the three collection structs. User classes still keep
+PascalCase methods (`ArgParser_Flag` / `MsgPackCursor_Read`
+etc. unchanged). Roadmap "Compiler — polish" item recoché.
+
+### Deferred to v0.7.3
+
+`Amalgame.Net.WebSocket` (RFC 6455 client) — ~1 day of focused
+work for the handshake + SHA-1 Sec-WebSocket-Accept verify +
+frame masking + ping/pong + a live-server test harness. The
+test infrastructure is its own piece of work; better to land
+it in a dedicated release. Tracked in the roadmap.
+
+---
+
 ## [v0.7.1] — 2026-05-12
 
 The **"stdlib expansion 2"** patch release — second installment
@@ -2578,6 +2677,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.6.4]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.4
 [v0.7.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.0
 [v0.7.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.1
+[v0.7.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.7.2
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
