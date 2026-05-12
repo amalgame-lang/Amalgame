@@ -100,6 +100,18 @@ public class Parser {
                 if (this.IsEnd()) { break }
             }
             parseLastPos = this.Pos
+            // File-scope `@c_include "<h.h>"` / `@c_link "lib"` directives
+            // are recognised before ParseDecl so the leading `@` doesn't
+            // get swallowed by ParseDecoratorList as a class decorator.
+            if (this.CheckType(TokenType.AT)) {
+                let nextTok = this.Peek(1)
+                if (nextTok.Type == TokenType.IDENTIFIER && (nextTok.Value == "c_include" || nextTok.Value == "c_link")) {
+                    let directive = this.ParseInlineCDirective()
+                    prog.Children.Add(directive)
+                    this.SkipNewlines()
+                    continue
+                }
+            }
             let curVal = this.Current().Value
             let decl = this.ParseDecl()
             let dk = decl.Kind
@@ -109,6 +121,22 @@ public class Parser {
             this.SkipNewlines()
         }
         return prog
+    }
+
+    // Parse `@c_include "<header.h>"` or `@c_link "libname"` at file scope.
+    // Caller (Parse) has already peeked the `@` + IDENT to confirm the
+    // shape, so we just advance through both tokens and expect a STRING.
+    private AstNode ParseInlineCDirective() {
+        let atTok  = this.Advance()      // consume `@`
+        let kwTok  = this.Advance()      // consume `c_include` or `c_link`
+        if (!this.CheckType(TokenType.STRING)) {
+            return this.Unknown()
+        }
+        let strTok = this.Advance()
+        if (kwTok.Value == "c_include") {
+            return Ast.InlineCInclude(strTok.Value, atTok.Line, atTok.Column)
+        }
+        return Ast.InlineCLink(strTok.Value, atTok.Line, atTok.Column)
     }
 
     public bool HasErrors() {
@@ -750,6 +778,10 @@ public class Parser {
         let tok = this.Current()
         let v   = tok.Value
 
+        // Inline-C raw blocks come in as a single INLINE_C token from the
+        // lexer; dispatch by type since the value carries the raw body.
+        if (tok.Type == TokenType.INLINE_C) { return this.ParseInlineC() }
+
         if (v == "let" || v == "var") { return this.ParseVarDecl() }
         if (v == "return") { return this.ParseReturn() }
         if (v == "if") { return this.ParseIf() }
@@ -812,6 +844,13 @@ public class Parser {
             n.Left = this.ParseExpr()
         }
         return n
+    }
+
+    // `@c { ... }` — inline-C raw block. The lexer already captured the body
+    // as the token value; here we just wrap it in an AST node.
+    private AstNode ParseInlineC() {
+        let tok = this.Advance()
+        return Ast.InlineC(tok.Value, tok.Line, tok.Column)
     }
 
     // ── VarDecl ───────────────────────────────────────

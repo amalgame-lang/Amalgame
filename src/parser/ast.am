@@ -35,6 +35,22 @@ public enum NodeKind {
     THIS_EXPR
     INDEX_EXPR
     LIST_COMP
+    // Inline-C raw block (`@c { … }`). `Str` holds the verbatim C source
+    // between the matching braces (outer `{`/`}` excluded). The resolver
+    // treats it as opaque; the cgen splices it inside a compound statement
+    // so locals stay scoped.
+    INLINE_C
+    // `@c_include "<header.h>"` at file scope. `Str` is the verbatim
+    // include argument (with the surrounding angle brackets or quotes
+    // preserved). CGen emits a corresponding `#include` line at the top
+    // of the generated .c.
+    INLINE_C_INCLUDE
+    // `@c_link "name"` at file scope. `Str` is the library name without
+    // the `-l` prefix. CGen records it; for MVP it surfaces as a
+    // comment in the emitted .c so the user knows which `-l<name>`
+    // flag to pass at link time. (Phase-3+ may thread it into
+    // `amc test`'s internal gcc command.)
+    INLINE_C_LINK
 }
 
 // ── Single AstNode type — all fields, used by kind ───
@@ -202,5 +218,23 @@ public class Ast {
 
     public static AstNode This(int line, int col) {
         return new AstNode(NodeKind.THIS_EXPR, line, col)
+    }
+
+    public static AstNode InlineC(string body, int line, int col) {
+        let n = new AstNode(NodeKind.INLINE_C, line, col)
+        n.Str = body
+        return n
+    }
+
+    public static AstNode InlineCInclude(string arg, int line, int col) {
+        let n = new AstNode(NodeKind.INLINE_C_INCLUDE, line, col)
+        n.Str = arg
+        return n
+    }
+
+    public static AstNode InlineCLink(string lib, int line, int col) {
+        let n = new AstNode(NodeKind.INLINE_C_LINK, line, col)
+        n.Str = lib
+        return n
     }
 }
