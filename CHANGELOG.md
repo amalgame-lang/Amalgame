@@ -7,6 +7,51 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.6.2] — 2026-05-12
+
+The **"compiler audit + parser bugfix"** patch release.
+
+### Roadmap audit
+
+Six items in the "Compiler — internal refactoring & optimization"
+section had been silently resolved by intervening compiler work
+(NodeKey fix, cgen chained-call handling, constructor forward-
+decl pass) but were never re-checked. Audit pass verified each
+via local repros and marked them `[x]`:
+
+- `>> N` inside a `let` no longer drops the shift operator.
+- Constructor forward-declarations now precede call sites.
+- `while (cur != null)` traverses a linked list without GC drama.
+- Typechecker return-type for enum members in IF bodies is
+  correct (NodeKey fix from null-safety closed the leak).
+- Chained `obj.Field.M()` and `obj.M().M()` both lower right.
+- `Snapshot size` item (b) — `.gitattributes merge=ours` —
+  shipped already; split the remaining "shrink C output" half
+  into its own item.
+
+### Parser: diagnose TS-style free functions
+
+`public List<int> Helper(int n) { ... }` at file scope used to
+parse without complaint; the cgen then emitted the call site as
+`Helper(...)` against no definition, leaking a
+`-Wimplicit-function-declaration` warning into the user binary.
+The parser already caught the `fn name(...)` form; this release
+extends the same lookahead-and-diagnose pattern to TS/C-style
+return-type-then-name signatures:
+
+```
+$ amc --check helper.am
+Top-level functions aren't supported (got 'Helper' at 2:8).
+Wrap it inside a class as `public static`.
+```
+
+`ParseDecl` scans the next ~16 tokens for an `IDENT (` pair
+before any `{ / ; / }` punctuator and emits the error, then
+skips past the body. False positives only on top-level bare
+calls (already invalid Amalgame).
+
+---
+
 ## [v0.6.1] — 2026-05-12
 
 The **"package-manager polish + ship-to-prod"** release. Eight QoL
@@ -2209,6 +2254,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.5.6]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.6
 [v0.6.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.0
 [v0.6.1]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.1
+[v0.6.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.6.2
 [v0.4.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.17
 [v0.4.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.16
 [v0.4.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.4.15
