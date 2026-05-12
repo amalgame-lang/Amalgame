@@ -394,6 +394,21 @@ public class FullResolver {
         this.DeclareGlobal("Math_SeedRandom","void",   false)
         this.DeclareGlobal("Math_Random",    "float",  false)
         this.DeclareGlobal("Math_RandomInt", "int",    false)
+        // Regex — POSIX regex.h binding. Runtime in
+        // runtime/Amalgame_Regex.h.
+        this.DeclareGlobal("Regex",                "type",        false)
+        this.DeclareGlobal("Match",                "type",        false)
+        this.DeclareGlobal("Regex_Test",           "bool",        false)
+        this.DeclareGlobal("Regex_Match",          "Match",       false)
+        this.DeclareGlobal("Regex_Replace",        "string",      false)
+        this.DeclareGlobal("Regex_ReplaceAll",     "string",      false)
+        this.DeclareGlobal("Match_GetText",        "string",      false)
+        this.DeclareGlobal("Match_GetStart",       "int",         false)
+        this.DeclareGlobal("Match_GetEnd",         "int",         false)
+        this.DeclareGlobal("Match_GroupCount",     "int",         false)
+        this.DeclareGlobal("Match_GroupText",      "string",      false)
+        this.DeclareGlobal("Match_GroupStart",     "int",         false)
+        this.DeclareGlobal("Match_GroupEnd",       "int",         false)
         // FileWatcher — single-file mtime poll, runtime in
         // runtime/Amalgame_FileWatch.h.
         this.DeclareGlobal("FileWatcher",         "type",        false)
@@ -457,6 +472,12 @@ public class FullResolver {
         this.DeclareGlobal("DateTime_FormatIso",         "string", false)
         this.DeclareGlobal("DateTime_ParseIsoNanos",     "int",    false)
         this.DeclareGlobal("DateTime_IsParseError",      "bool",   false)
+        this.DeclareGlobal("DateTime_Year",              "int",    false)
+        this.DeclareGlobal("DateTime_Month",             "int",    false)
+        this.DeclareGlobal("DateTime_Day",               "int",    false)
+        this.DeclareGlobal("DateTime_Hour",              "int",    false)
+        this.DeclareGlobal("DateTime_Minute",            "int",    false)
+        this.DeclareGlobal("DateTime_Second",            "int",    false)
         // Crypto — runtime helpers behind the public Amalgame.Crypto
         // facade in src/stdlib/crypto.am (SHA-256 + HMAC-SHA-256).
         this.DeclareGlobal("Crypto_Sha256",                  "List<int>", false)
