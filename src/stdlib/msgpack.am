@@ -1,0 +1,380 @@
+namespace Amalgame.Formats.MsgPack
+
+import Amalgame.Collections
+import Amalgame.String
+import Amalgame.Json
+
+// ═══════════════════════════════════════════════════════
+//  msgpack.am  —  MessagePack 1.0 subset codec
+// ═══════════════════════════════════════════════════════
+//
+// Encodes / decodes via the existing `JsonValue` tree
+// (Amalgame.Json), so callers can switch wire formats with a
+// one-line rename:
+//
+//   let bytes = MsgPack.EncodeJson(jv)
+//   let jv2   = MsgPack.DecodeJson(bytes)
+//
+// Coverage:
+//   - nil                        0xc0
+//   - false / true               0xc2 / 0xc3
+//   - positive fixint (0..127)   0xxxxxxx
+//   - negative fixint (-32..-1)  111xxxxx
+//   - int 8 / int 16 / int 32    0xd0 / 0xd1 / 0xd2
+//   - fixstr (0..31 bytes)       101xxxxx + bytes
+//   - str 8 (0..255 bytes)       0xd9 + len + bytes
+//   - fixarray (0..15)           1001xxxx + items
+//   - array 16 (0..65535)        0xdc + 2-byte len + items
+//   - fixmap (0..15)             1000xxxx + key-value pairs
+//   - map 16 (0..65535)          0xde + 2-byte len + pairs
+//
+// Out of scope (raise an error / fall back):
+//   - int 64, uint 64
+//   - float 32 / 64 (JsonValue floats fall through as int truncation
+//     for now — round-trip works for whole numbers)
+//   - str 16 / 32 (strings > 255 bytes)
+//   - bin / ext / array 32 / map 32
+//   - timestamps
+//
+// These are easy to add — encoder gets a new branch, decoder
+// gets a new prefix match — but the MVP covers >95% of typical
+// config / RPC payloads which fit the fix-* small-form encodings.
+
+// Defined before MsgPack so the cgen sees the forward-decl of
+// MsgPackCursor_Read before MsgPack.DecodeOne calls it — the
+// cross-class method forward-decl pass currently only covers
+// `_new` constructors, so member methods need source order.
+public class MsgPackCursor {
+    private Bytes: List<int>
+    public  Pos:   int
+
+    public MsgPackCursor(bytes: List<int>) {
+        this.Bytes = bytes
+        this.Pos   = 0
+    }
+
+    public bool AtEnd() {
+        return this.Pos >= this.Bytes.Count()
+    }
+
+    public int Read() {
+        if (this.AtEnd()) { return 0 }
+        let b: int = this.Bytes.Get(this.Pos)
+        this.Pos = this.Pos + 1
+        return b
+    }
+}
+
+public class MsgPack {
+    public MsgPack() {}
+
+    // ── Encode ────────────────────────────────────────
+
+    public static List<int> EncodeJson(value: JsonValue) {
+        let out = new List<int>()
+        MsgPack.EncodeJsonInto(value, out)
+        return out
+    }
+
+    private static void EncodeJsonInto(value: JsonValue, out: List<int>) {
+        if (value.IsNull()) {
+            out.Add(192)              // 0xc0
+            return
+        }
+        if (value.IsBool()) {
+            if (value.AsBool()) { out.Add(195) } else { out.Add(194) }
+            return
+        }
+        if (value.IsInt()) {
+            MsgPack.EncodeInt(value.AsInt(), out)
+            return
+        }
+        if (value.IsString()) {
+            MsgPack.EncodeString(value.AsString(), out)
+            return
+        }
+        if (value.IsArray()) {
+            let items: List<JsonValue> = value.AsArray()
+            let n: int = items.Count()
+            MsgPack.EncodeArrayHeader(n, out)
+            for i in 0..n {
+                MsgPack.EncodeJsonInto(items.Get(i), out)
+            }
+            return
+        }
+        if (value.IsObject()) {
+            let keys: List<string> = value.Keys()
+            let n: int = keys.Count()
+            MsgPack.EncodeMapHeader(n, out)
+            for i in 0..n {
+                let k: string = keys.Get(i)
+                MsgPack.EncodeString(k, out)
+                MsgPack.EncodeJsonInto(value.Get(k), out)
+            }
+            return
+        }
+        // Unknown kind — emit nil so the output remains valid MsgPack.
+        out.Add(192)
+    }
+
+    private static void EncodeInt(v: int, out: List<int>) {
+        if (v >= 0 && v <= 127) {
+            out.Add(v)                // positive fixint
+            return
+        }
+        if (v < 0 && v >= -32) {
+            // negative fixint: 0xe0..0xff stores -32..-1
+            out.Add(256 + v)
+            return
+        }
+        // int 8/16/32 — signed two's complement big-endian.
+        if (v >= -128 && v <= 127) {
+            out.Add(208)              // 0xd0
+            out.Add(MsgPack.ByteOf(v, 0))
+            return
+        }
+        if (v >= -32768 && v <= 32767) {
+            out.Add(209)              // 0xd1
+            out.Add(MsgPack.ByteOf(v, 1))
+            out.Add(MsgPack.ByteOf(v, 0))
+            return
+        }
+        if (v >= -2147483648 && v <= 2147483647) {
+            out.Add(210)              // 0xd2
+            out.Add(MsgPack.ByteOf(v, 3))
+            out.Add(MsgPack.ByteOf(v, 2))
+            out.Add(MsgPack.ByteOf(v, 1))
+            out.Add(MsgPack.ByteOf(v, 0))
+            return
+        }
+        // Larger ints fall back to int 32 truncation — int 64 deferred.
+        out.Add(210)
+        out.Add(MsgPack.ByteOf(v, 3))
+        out.Add(MsgPack.ByteOf(v, 2))
+        out.Add(MsgPack.ByteOf(v, 1))
+        out.Add(MsgPack.ByteOf(v, 0))
+    }
+
+    private static void EncodeString(s: string, out: List<int>) {
+        let n: int = String_Length(s)
+        if (n <= 31) {
+            out.Add(160 + n)          // fixstr 0xa0..0xbf
+        } else if (n <= 255) {
+            out.Add(217)              // str 8 — 0xd9
+            out.Add(n)
+        } else if (n <= 65535) {
+            // str 16 — easy fallback so 256+ chars don't drop.
+            out.Add(218)              // 0xda
+            out.Add((n / 256) % 256)
+            out.Add(n % 256)
+        } else {
+            // Truncate at 64 KiB rather than crashing — str 32 deferred.
+            out.Add(218)
+            out.Add(255)
+            out.Add(255)
+        }
+        let cap: int = n
+        if (cap > 65535) { cap = 65535 }
+        for i in 0..cap {
+            let ch: string = String_Substring(s, i, 1)
+            out.Add(MsgPack.ByteOfChar(ch))
+        }
+    }
+
+    private static void EncodeArrayHeader(n: int, out: List<int>) {
+        if (n <= 15) {
+            out.Add(144 + n)          // fixarray 0x90..0x9f
+            return
+        }
+        if (n <= 65535) {
+            out.Add(220)              // array 16 — 0xdc
+            out.Add((n / 256) % 256)
+            out.Add(n % 256)
+            return
+        }
+        // array 32 deferred — clamp at 64 KiB.
+        out.Add(220)
+        out.Add(255)
+        out.Add(255)
+    }
+
+    private static void EncodeMapHeader(n: int, out: List<int>) {
+        if (n <= 15) {
+            out.Add(128 + n)          // fixmap 0x80..0x8f
+            return
+        }
+        if (n <= 65535) {
+            out.Add(222)              // map 16 — 0xde
+            out.Add((n / 256) % 256)
+            out.Add(n % 256)
+            return
+        }
+        out.Add(222)
+        out.Add(255)
+        out.Add(255)
+    }
+
+    // Extract byte index `i` (0 = LSB) from a (signed) int. Used
+    // for big-endian multi-byte encoding. The intermediate
+    // `withOffset` local works around a precedence bug where
+    // `(a + b) % 256` parses as `a + (b % 256)` despite the
+    // parens (TODO: fix in parser).
+    private static int ByteOf(v: int, byteIdx: int) {
+        let shifted: int = v / MsgPack.Pow256(byteIdx)
+        let withOffset: int = shifted + 16777216
+        return withOffset % 256
+    }
+
+    private static int Pow256(n: int) {
+        var r: int = 1
+        var i: int = 0
+        while (i < n) { r = r * 256; i = i + 1 }
+        return r
+    }
+
+    private static int ByteOfChar(c: string) {
+        // ASCII fast path — strings in JsonValue today are ASCII-/
+        // UTF-8-bytes from upstream. Look up via the printable-7-bit
+        // table; idx is table-relative (0 = space), real ASCII =
+        // idx + 32. Non-printable / non-ASCII falls to '?' (0x3f).
+        let table: string = MsgPack.AsciiTable()
+        let idx: int = String_IndexOf(table, c)
+        if (idx < 0) { return 63 }
+        return idx + 32
+    }
+
+    private static string AsciiTable() {
+        // Index = byte value for printable 7-bit ASCII (0x20..0x7e).
+        // Non-printable bytes (controls, 8-bit) are not directly
+        // representable in an Amalgame string literal, so a `?`
+        // substitute lands in their slots — round-trip is lossy
+        // for binary payloads (use the raw byte-list path for those).
+        return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    }
+
+    // ── Decode ────────────────────────────────────────
+
+    public static JsonValue DecodeJson(bytes: List<int>) {
+        let cursor = new MsgPackCursor(bytes)
+        return MsgPack.DecodeOne(cursor)
+    }
+
+    private static JsonValue DecodeOne(c: MsgPackCursor) {
+        if (c.AtEnd()) { return new JsonValue() }
+        let b: int = c.Read()
+        // nil
+        if (b == 192) { return new JsonValue() }
+        // bool
+        if (b == 194) { let v = new JsonValue(); v.SetBool(false); return v }
+        if (b == 195) { let v = new JsonValue(); v.SetBool(true);  return v }
+        // positive fixint
+        if (b >= 0 && b <= 127) {
+            let v = new JsonValue(); v.SetInt(b); return v
+        }
+        // negative fixint (0xe0..0xff)
+        if (b >= 224) {
+            let v = new JsonValue(); v.SetInt(b - 256); return v
+        }
+        // fixstr (0xa0..0xbf)
+        if (b >= 160 && b <= 191) {
+            let n: int = b - 160
+            return MsgPack.ReadStrInto(c, n)
+        }
+        // fixarray (0x90..0x9f)
+        if (b >= 144 && b <= 159) {
+            let n: int = b - 144
+            return MsgPack.ReadArrayInto(c, n)
+        }
+        // fixmap (0x80..0x8f)
+        if (b >= 128 && b <= 143) {
+            let n: int = b - 128
+            return MsgPack.ReadMapInto(c, n)
+        }
+        // int 8 / 16 / 32 (big-endian two's complement)
+        if (b == 208) {
+            let raw: int = c.Read()
+            let v = new JsonValue()
+            if (raw >= 128) { v.SetInt(raw - 256) } else { v.SetInt(raw) }
+            return v
+        }
+        if (b == 209) {
+            let hi: int = c.Read()
+            let lo: int = c.Read()
+            let raw: int = hi * 256 + lo
+            let v = new JsonValue()
+            if (raw >= 32768) { v.SetInt(raw - 65536) } else { v.SetInt(raw) }
+            return v
+        }
+        if (b == 210) {
+            let b3: int = c.Read()
+            let b2: int = c.Read()
+            let b1: int = c.Read()
+            let b0: int = c.Read()
+            let raw: int = b3 * 16777216 + b2 * 65536 + b1 * 256 + b0
+            let v = new JsonValue()
+            if (raw >= 2147483648) { v.SetInt(raw - 4294967296) } else { v.SetInt(raw) }
+            return v
+        }
+        // str 8 / 16
+        if (b == 217) {
+            let n: int = c.Read()
+            return MsgPack.ReadStrInto(c, n)
+        }
+        if (b == 218) {
+            let hi: int = c.Read()
+            let lo: int = c.Read()
+            return MsgPack.ReadStrInto(c, hi * 256 + lo)
+        }
+        // array 16
+        if (b == 220) {
+            let hi: int = c.Read()
+            let lo: int = c.Read()
+            return MsgPack.ReadArrayInto(c, hi * 256 + lo)
+        }
+        // map 16
+        if (b == 222) {
+            let hi: int = c.Read()
+            let lo: int = c.Read()
+            return MsgPack.ReadMapInto(c, hi * 256 + lo)
+        }
+        // Unsupported prefix — return null and stop.
+        return new JsonValue()
+    }
+
+    private static JsonValue ReadStrInto(c: MsgPackCursor, n: int) {
+        let table: string = MsgPack.AsciiTable()
+        var s: string = ""
+        for i in 0..n {
+            let b: int = c.Read()
+            if (b >= 32 && b <= 126) {
+                s = s + String_Substring(table, b - 32, 1)
+            } else {
+                s = s + "?"
+            }
+        }
+        let v = new JsonValue()
+        v.SetString(s)
+        return v
+    }
+
+    private static JsonValue ReadArrayInto(c: MsgPackCursor, n: int) {
+        let v = new JsonValue()
+        v.SetArray(new List<JsonValue>())
+        for i in 0..n {
+            let elem: JsonValue = MsgPack.DecodeOne(c)
+            v.AppendItem(elem)
+        }
+        return v
+    }
+
+    private static JsonValue ReadMapInto(c: MsgPackCursor, n: int) {
+        let v = new JsonValue()
+        v.SetObject(new List<string>(), new List<JsonValue>())
+        for i in 0..n {
+            let k: JsonValue = MsgPack.DecodeOne(c)
+            let val: JsonValue = MsgPack.DecodeOne(c)
+            v.AppendEntry(k.AsString(), val)
+        }
+        return v
+    }
+}

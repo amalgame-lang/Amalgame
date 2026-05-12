@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-12 · `amc 0.7.1` · self-hosted · 575/575 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex
+> Updated 2026-05-12 · `amc 0.7.2` · self-hosted · 598/598 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -259,6 +259,28 @@ stays green; each one needs its own fix.
       `for i in 0..N` workarounds can be unwound where the
       sequence is unbounded; left in place where the bound is
       meaningful documentation.
+- [ ] **Parser: `(a + b) % 256` ignores parens, parses as
+      `a + (b % 256)`** — surfaced 2026-05-12 in `msgpack.am`.
+      Repro: `let a = 500; let b = 65536; (a + b) % 256` returns
+      `500` (= `a + (b % 256)` = `500 + 0`) instead of the
+      expected `244` (= `66036 % 256`). The same expression
+      assigned via an intermediate local works: `let sum = a +
+      b; sum % 256` → `244`. Workaround in msgpack.am's ByteOf
+      is to use the intermediate local. Likely the `%` operator
+      binds tighter than `+` in `ParseExpr` and doesn't honour
+      the paren grouping in the AST shape it returns. Repro fixture
+      worth dropping into `tests/samples/` once we touch this.
+- [x] **CGen: `<call>.Count()` on `AmalgameList*` lowered to
+      `_Count` instead of `_count` (resolved v0.7.2)** — the
+      chained-call dispatch in `EmitCalleeStr` (case
+      `lk == NodeKind.CALL` ~ line 3337) used to emit
+      `<bareR>_<mname>` verbatim. When the receiver was an
+      `AmalgameList*` / `Map*` / `Set*` returned from another
+      call (e.g. `jv.AsArray().Count()`), the PascalCase
+      `Count` collided with the C runtime's camelCase
+      `AmalgameList_count`. Fix downcases the first letter of
+      `mname` when `bareR` is one of the three collection
+      types. User classes still keep PascalCase methods.
 
 ### Compiler — internal refactoring & optimization
 
@@ -782,7 +804,15 @@ before the next big language addition.
         package when a real consumer needs them. 11 stdlib
         tests cover predicate / match / captures / replace /
         anchors / alternation.
-      - [ ] `Amalgame.Compress` — gzip, deflate (zip later).
+      - [x] `Amalgame.Compress` (v0.7.2) — zlib binding. Gzip /
+        Gunzip (RFC 1952 wrapper) for `.gz` files / HTTP
+        `Content-Encoding: gzip`, plus Deflate / Inflate (raw
+        RFC 1951) for embedded protocols. Input + output as
+        `List<int>` byte buffers; GzipString / GunzipString
+        helpers for UTF-8 strings. 9 stdlib tests cover empty
+        input, magic-byte verification, large input, and round-
+        trips. Zip archive support stays deferred (different
+        scope — central directory + per-file headers).
       - [ ] `Amalgame.Threading` — at minimum a thread pool +
         Mutex/Channel; needs runtime-side care around libgc.
       Each is a small project on its own; ship as separate PRs
@@ -1113,10 +1143,19 @@ implementation effort.
       `Log.SetFile`, `Log.Debug/Info/Warn/Error`. Process-wide
       singleton state in the runtime. Structured logging (context
       fields, JSON-per-line) deferred to v2.
-- [ ] **`Amalgame.Net.WebSocket`** — RFC 6455 client (and later
-      server). The existing `TcpServer` could host it but the
-      handshake + framing isn't trivial. Useful for amc lsp over
-      websocket transport, bidirectional service comms, etc.
+- [ ] **`Amalgame.Net.WebSocket` — DEFERRED to v0.7.3** —
+      RFC 6455 client (and later server). The existing
+      `TcpServer` could host it but the handshake + framing
+      isn't trivial. Useful for amc lsp over websocket
+      transport, bidirectional service comms, etc.
+      **Scope estimate**: ~1 day done right (TCP + HTTP upgrade
+      handshake + SHA-1 Sec-WebSocket-Accept + frame parser
+      with masking + ping/pong). Skipped from v0.7.2 because
+      integration-testing it needs a live WS server (or a mock
+      one with `Process.RunCapture`-style harness), which is
+      its own piece of work. Plan: dedicate v0.7.3 to it and
+      pair the client landing with a tiny test harness using
+      a Python `websockets` stand-in spawned by the runner.
 - [x] **Filesystem watcher — v1 single-file polling (v0.7.0)** —
       `Amalgame.IO.FileWatcher` watches one file via `stat(2)`
       mtime polling. Cross-platform (POSIX + Windows via
@@ -1181,9 +1220,16 @@ implementation effort.
           `---`, flow style `[1,2]`, multiline scalars
           (folded/literal), tags. 19 stdlib tests cover the
           shapes a typical CI / app config exercises.
-      MessagePack (binary RPC) still pending — different
-      shape (writer-heavy, length-prefixed), revisit when a
-      real consumer needs it.
+      - **MessagePack 1.0 subset** (v0.7.2) — pure-Amalgame
+        codec on top of JsonValue. `MsgPack.EncodeJson(jv)` →
+        `List<int>`; `MsgPack.DecodeJson(bytes)` → `JsonValue`.
+        Coverage: nil, bool, fixint (positive + negative), int8/
+        int16/int32, fixstr / str8 / str16, fixarray / array16,
+        fixmap / map16. Out of scope (v2): int64 / float / bin /
+        ext / timestamps. 14 stdlib tests cover encode + decode
+        round-trips. Round-trips through Json mean any code that
+        builds JsonValue trees can switch to MsgPack with a
+        one-line rename.
 - [x] **DateTime v2 — UTC breakdown (v0.7.1)** — Instant now
       exposes `Year()` / `Month()` / `Day()` / `Hour()` /
       `Minute()` / `Second()` accessors that decompose the

@@ -66,7 +66,7 @@ run_idempotence() {
 run_semantic() {
     local name="$1"
     local file="$2"
-    local libs="${3:--lgc -lm -lcurl}"
+    local libs="${3:--lgc -lm -lcurl -lz}"
 
     printf "  %-34s" "$name"
 

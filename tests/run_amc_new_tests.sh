@@ -53,7 +53,7 @@ assert_file "$TMP/exetest/.gitignore"
 # .c bundle; gcc links it (mirrors what the generated build.sh does).
 "$AMC" "$TMP/exetest/src/main.am" -o "$TMP/exetest/exetest" > /dev/null 2>&1
 if [ -f "$TMP/exetest/exetest.c" ]; then
-    gcc -O2 -Iruntime "$TMP/exetest/exetest.c" -lgc -lm -lcurl -o "$TMP/exetest/exetest" 2>/dev/null
+    gcc -O2 -Iruntime "$TMP/exetest/exetest.c" -lgc -lm -lcurl -lz -o "$TMP/exetest/exetest" 2>/dev/null
     if [ -x "$TMP/exetest/exetest" ]; then
         output=$("$TMP/exetest/exetest" 2>&1)
         if echo "$output" | grep -q "Hello from exetest"; then

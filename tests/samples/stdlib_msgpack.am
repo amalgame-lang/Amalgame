@@ -1,0 +1,158 @@
+// Stdlib test: Amalgame.Formats.MsgPack — MessagePack 1.0
+// subset round-trip via JsonValue.
+
+namespace Tests
+
+import Amalgame.Collections
+import Amalgame.Json
+import Amalgame.Formats.MsgPack
+
+public class Program {
+    public static void Main(string[] args) {
+
+        // ── nil ──
+        let jvNil = new JsonValue()
+        let bNil: List<int> = MsgPack.EncodeJson(jvNil)
+        if (bNil.Count() == 1 && bNil.Get(0) == 192) {
+            Console.WriteLine("[PASS] encode nil")
+        } else {
+            Console.WriteLine("[FAIL] encode nil")
+        }
+        let backNil = MsgPack.DecodeJson(bNil)
+        if (backNil.IsNull()) {
+            Console.WriteLine("[PASS] decode nil")
+        } else {
+            Console.WriteLine("[FAIL] decode nil")
+        }
+
+        // ── bool ──
+        let jvT = new JsonValue()
+        jvT.SetBool(true)
+        let bT: List<int> = MsgPack.EncodeJson(jvT)
+        if (bT.Count() == 1 && bT.Get(0) == 195) {
+            Console.WriteLine("[PASS] encode true")
+        } else {
+            Console.WriteLine("[FAIL] encode true")
+        }
+        let backT = MsgPack.DecodeJson(bT)
+        if (backT.IsBool() && backT.AsBool()) {
+            Console.WriteLine("[PASS] decode true")
+        } else {
+            Console.WriteLine("[FAIL] decode true")
+        }
+
+        // ── positive fixint ──
+        let jv42 = new JsonValue()
+        jv42.SetInt(42)
+        let b42: List<int> = MsgPack.EncodeJson(jv42)
+        if (b42.Count() == 1 && b42.Get(0) == 42) {
+            Console.WriteLine("[PASS] encode fixint")
+        } else {
+            Console.WriteLine("[FAIL] encode fixint")
+        }
+        let back42 = MsgPack.DecodeJson(b42)
+        if (back42.IsInt() && back42.AsInt() == 42) {
+            Console.WriteLine("[PASS] decode fixint")
+        } else {
+            Console.WriteLine("[FAIL] decode fixint")
+        }
+
+        // ── negative fixint ──
+        let jvNeg = new JsonValue()
+        jvNeg.SetInt(-5)
+        let bNeg: List<int> = MsgPack.EncodeJson(jvNeg)
+        let backNeg = MsgPack.DecodeJson(bNeg)
+        if (backNeg.IsInt() && backNeg.AsInt() == -5) {
+            Console.WriteLine("[PASS] roundtrip negfix")
+        } else {
+            Console.WriteLine("[FAIL] roundtrip negfix")
+        }
+
+        // ── int 16 (256 > fixint < 32768) ──
+        let jv500 = new JsonValue()
+        jv500.SetInt(500)
+        let b500: List<int> = MsgPack.EncodeJson(jv500)
+        let back500 = MsgPack.DecodeJson(b500)
+        if (back500.IsInt() && back500.AsInt() == 500) {
+            Console.WriteLine("[PASS] roundtrip int16")
+        } else {
+            Console.WriteLine("[FAIL] roundtrip int16 got " + String_FromInt(back500.AsInt()))
+        }
+
+        // ── fixstr ──
+        let jvS = new JsonValue()
+        jvS.SetString("hello")
+        let bS: List<int> = MsgPack.EncodeJson(jvS)
+        // 0xa5 (fixstr length 5) + 'h' 'e' 'l' 'l' 'o'
+        if (bS.Count() == 6 && bS.Get(0) == 165) {
+            Console.WriteLine("[PASS] encode fixstr")
+        } else {
+            Console.WriteLine("[FAIL] encode fixstr")
+        }
+        let backS = MsgPack.DecodeJson(bS)
+        if (backS.IsString() && backS.AsString() == "hello") {
+            Console.WriteLine("[PASS] decode fixstr")
+        } else {
+            Console.WriteLine("[FAIL] decode fixstr got '" + backS.AsString() + "'")
+        }
+
+        // ── fixarray ──
+        let arr = new JsonValue()
+        let items = new List<JsonValue>()
+        let i1 = new JsonValue() i1.SetInt(1) items.Add(i1)
+        let i2 = new JsonValue() i2.SetInt(2) items.Add(i2)
+        let i3 = new JsonValue() i3.SetInt(3) items.Add(i3)
+        arr.SetArray(items)
+        let bArr: List<int> = MsgPack.EncodeJson(arr)
+        // 0x93 (fixarray 3) + 0x01 + 0x02 + 0x03
+        if (bArr.Count() == 4 && bArr.Get(0) == 147) {
+            Console.WriteLine("[PASS] encode fixarray")
+        } else {
+            Console.WriteLine("[FAIL] encode fixarray count=" + String_FromInt(bArr.Count()))
+        }
+        let backArr = MsgPack.DecodeJson(bArr)
+        if (backArr.IsArray()) {
+            let elems: List<JsonValue> = backArr.AsArray()
+            if (elems.Count() == 3) {
+                let e0: JsonValue = elems.Get(0)
+                let e2: JsonValue = elems.Get(2)
+                if (e0.AsInt() == 1 && e2.AsInt() == 3) {
+                    Console.WriteLine("[PASS] decode fixarray")
+                } else {
+                    Console.WriteLine("[FAIL] decode fixarray values")
+                }
+            } else {
+                Console.WriteLine("[FAIL] decode fixarray count")
+            }
+        } else {
+            Console.WriteLine("[FAIL] decode fixarray kind")
+        }
+
+        // ── fixmap ──
+        let m = new JsonValue()
+        let keys = new List<string>()
+        let vals = new List<JsonValue>()
+        let v1 = new JsonValue() v1.SetInt(10)
+        let v2 = new JsonValue() v2.SetString("world")
+        keys.Add("a") vals.Add(v1)
+        keys.Add("b") vals.Add(v2)
+        m.SetObject(keys, vals)
+        let bM: List<int> = MsgPack.EncodeJson(m)
+        let backM = MsgPack.DecodeJson(bM)
+        if (backM.IsObject()) {
+            let backKeys: List<string> = backM.Keys()
+            if (backKeys.Count() == 2) {
+                Console.WriteLine("[PASS] decode fixmap shape")
+                if (backM.Get("a").AsInt() == 10 && backM.Get("b").AsString() == "world") {
+                    Console.WriteLine("[PASS] decode fixmap values")
+                } else {
+                    Console.WriteLine("[FAIL] decode fixmap values")
+                }
+            } else {
+                Console.WriteLine("[FAIL] decode fixmap count")
+            }
+        } else {
+            Console.WriteLine("[FAIL] decode fixmap kind")
+        }
+    }
+}
