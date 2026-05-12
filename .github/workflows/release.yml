@@ -142,17 +142,23 @@ jobs:
         with:
           msystem: MINGW64
           update: true
+          # libsystre wraps libtre to provide POSIX <regex.h> on MINGW64
+          # (Linux glibc + macOS libSystem ship it natively, Windows
+          # doesn't — needed since v0.7.1 by Amalgame_Regex.h). zlib is
+          # needed by Amalgame_Compress.h since v0.7.2.
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-gc
             mingw-w64-x86_64-curl
+            mingw-w64-x86_64-libsystre
+            mingw-w64-x86_64-zlib
             zip
 
       - name: Build amc.exe from tracked amc_lib.c
         run: |
           gcc -O2 -Iruntime \
               src/amc_lib.c \
-              -lgc -lm -lcurl -lws2_32 -lbcrypt -o amc.exe
+              -lgc -lm -lcurl -lz -lsystre -ltre -lws2_32 -lbcrypt -o amc.exe
 
       - name: Determine version
         id: ver
@@ -177,7 +183,8 @@ jobs:
           cp docs/language/grammar.ebnf      "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md  "dist/$NAME/share/amalgame/docs/guide/"
           # Bundle the MinGW DLLs the binary actually links against, so users
-          # can run amc.exe without a separate MSYS2 install.
+          # can run amc.exe without a separate MSYS2 install. libsystre +
+          # libtre added v0.7.4 for POSIX <regex.h> (see install: above).
           for dll in libgc-1.dll libcurl-4.dll libwinpthread-1.dll \
                      libgcc_s_seh-1.dll libstdc++-6.dll \
                      zlib1.dll libssl-3-x64.dll libcrypto-3-x64.dll \
@@ -186,7 +193,8 @@ jobs:
                      libnghttp2-14.dll libnghttp3-9.dll libngtcp2-16.dll \
                      libngtcp2_crypto_quictls.dll \
                      libiconv-2.dll libintl-8.dll libunistring-5.dll \
-                     libzstd.dll; do
+                     libzstd.dll \
+                     libsystre-0.dll libtre-5.dll; do
             if [ -f "/mingw64/bin/$dll" ]; then
               cp "/mingw64/bin/$dll" "dist/$NAME/"
             fi
