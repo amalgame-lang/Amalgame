@@ -233,6 +233,24 @@ public class Instant {
         return DateTime_FormatIso(this.nanos)
     }
 
+    // ── UTC breakdown ─────────────────────────────────
+    //
+    // Decompose this instant into calendar fields, UTC-only.
+    // Month is 1–12, Day is 1–31, Hour 0–23, Minute 0–59,
+    // Second 0–60 (60 for the rare leap-second tick the
+    // platform's gmtime exposes).
+    //
+    // For local-time / named-timezone breakdowns, see the
+    // deferred `Amalgame.DateTime.LocalTime` work — needs a
+    // tzdata shipping strategy (IANA bundle vs. OS delegation).
+
+    public int Year()   { return DateTime_Year(this.nanos) }
+    public int Month()  { return DateTime_Month(this.nanos) }
+    public int Day()    { return DateTime_Day(this.nanos) }
+    public int Hour()   { return DateTime_Hour(this.nanos) }
+    public int Minute() { return DateTime_Minute(this.nanos) }
+    public int Second() { return DateTime_Second(this.nanos) }
+
     // ── Arithmetic ───────────────────────────────────
 
     public Instant Add(d: Duration) {

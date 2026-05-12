@@ -8,6 +8,7 @@
 #include "Amalgame_Math.h"
 #include "Amalgame_Math_Vec.h"
 #include "Amalgame_FileWatch.h"
+#include "Amalgame_Regex.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
@@ -29,6 +30,10 @@ typedef enum _Amalgame_Compiler_TomlKind Amalgame_Compiler_TomlKind;
 typedef struct _Amalgame_Compiler_TomlValue Amalgame_Compiler_TomlValue;
 typedef struct _Amalgame_Compiler_TomlParser Amalgame_Compiler_TomlParser;
 typedef struct _Amalgame_Compiler_Toml Amalgame_Compiler_Toml;
+typedef enum _Amalgame_Compiler_YamlKind Amalgame_Compiler_YamlKind;
+typedef struct _Amalgame_Compiler_YamlValue Amalgame_Compiler_YamlValue;
+typedef struct _Amalgame_Compiler_YamlParser Amalgame_Compiler_YamlParser;
+typedef struct _Amalgame_Compiler_Yaml Amalgame_Compiler_Yaml;
 typedef struct _Amalgame_Compiler_LoadedPackage Amalgame_Compiler_LoadedPackage;
 typedef struct _Amalgame_Compiler_PackageRegistry Amalgame_Compiler_PackageRegistry;
 typedef struct _Amalgame_Compiler_CalibrationSample Amalgame_Compiler_CalibrationSample;
@@ -3551,6 +3556,644 @@ static code_string Amalgame_Compiler_Toml_JoinPath(AmalgameList* path) {
     return out;
 }
 
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlValue_new();
+Amalgame_Compiler_YamlParser* Amalgame_Compiler_YamlParser_new(code_string src);
+Amalgame_Compiler_Yaml* Amalgame_Compiler_Yaml_new();
+enum _Amalgame_Compiler_YamlKind {
+    Amalgame_Compiler_YamlKind_Null,
+    Amalgame_Compiler_YamlKind_Bool,
+    Amalgame_Compiler_YamlKind_Int,
+    Amalgame_Compiler_YamlKind_Float,
+    Amalgame_Compiler_YamlKind_String,
+    Amalgame_Compiler_YamlKind_Array,
+    Amalgame_Compiler_YamlKind_Map
+};
+
+struct _Amalgame_Compiler_YamlValue {
+    Amalgame_Compiler_YamlKind Kind;
+    code_bool B;
+    i64 I;
+    double F;
+    code_string S;
+    AmalgameList* Items;
+    AmalgameList* MapKeys;
+    AmalgameList* MapVals;
+};
+
+code_bool Amalgame_Compiler_YamlValue_IsNull(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_IsBool(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_IsInt(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_IsFloat(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_IsString(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_IsArray(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_IsMap(Amalgame_Compiler_YamlValue* self);
+code_bool Amalgame_Compiler_YamlValue_AsBool(Amalgame_Compiler_YamlValue* self);
+i64 Amalgame_Compiler_YamlValue_AsInt(Amalgame_Compiler_YamlValue* self);
+double Amalgame_Compiler_YamlValue_AsFloat(Amalgame_Compiler_YamlValue* self);
+code_string Amalgame_Compiler_YamlValue_AsString(Amalgame_Compiler_YamlValue* self);
+i64 Amalgame_Compiler_YamlValue_Count(Amalgame_Compiler_YamlValue* self);
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlValue_At(Amalgame_Compiler_YamlValue* self, i64 idx);
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlValue_Get(Amalgame_Compiler_YamlValue* self, code_string key);
+code_bool Amalgame_Compiler_YamlValue_Has(Amalgame_Compiler_YamlValue* self, code_string key);
+AmalgameList* Amalgame_Compiler_YamlValue_Keys(Amalgame_Compiler_YamlValue* self);
+void Amalgame_Compiler_YamlValue_SetBool(Amalgame_Compiler_YamlValue* self, code_bool v);
+void Amalgame_Compiler_YamlValue_SetInt(Amalgame_Compiler_YamlValue* self, i64 v);
+void Amalgame_Compiler_YamlValue_SetFloat(Amalgame_Compiler_YamlValue* self, double v);
+void Amalgame_Compiler_YamlValue_SetString(Amalgame_Compiler_YamlValue* self, code_string v);
+void Amalgame_Compiler_YamlValue_MakeArray(Amalgame_Compiler_YamlValue* self);
+void Amalgame_Compiler_YamlValue_MakeMap(Amalgame_Compiler_YamlValue* self);
+void Amalgame_Compiler_YamlValue_ArrayAdd(Amalgame_Compiler_YamlValue* self, Amalgame_Compiler_YamlValue* v);
+void Amalgame_Compiler_YamlValue_MapPut(Amalgame_Compiler_YamlValue* self, code_string k, Amalgame_Compiler_YamlValue* v);
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlValue_new() {
+    Amalgame_Compiler_YamlValue* self = (Amalgame_Compiler_YamlValue*) GC_MALLOC(sizeof(Amalgame_Compiler_YamlValue));
+    self->Kind = Amalgame_Compiler_YamlKind_Null;
+    self->B = 0;
+    self->I = 0;
+    self->F = 0.0;
+    self->S = "";
+    self->Items = AmalgameList_new();
+    self->MapKeys = AmalgameList_new();
+    self->MapVals = AmalgameList_new();
+    return self;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsNull(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_Null;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsBool(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_Bool;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsInt(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_Int;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsFloat(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_Float;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsString(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_String;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsArray(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_Array;
+}
+
+code_bool Amalgame_Compiler_YamlValue_IsMap(Amalgame_Compiler_YamlValue* self) {
+    return self->Kind == Amalgame_Compiler_YamlKind_Map;
+}
+
+code_bool Amalgame_Compiler_YamlValue_AsBool(Amalgame_Compiler_YamlValue* self) {
+    if (self->Kind == Amalgame_Compiler_YamlKind_Bool) {
+        return self->B;
+    }
+    return 0;
+}
+
+i64 Amalgame_Compiler_YamlValue_AsInt(Amalgame_Compiler_YamlValue* self) {
+    if (self->Kind == Amalgame_Compiler_YamlKind_Int) {
+        return self->I;
+    }
+    return 0;
+}
+
+double Amalgame_Compiler_YamlValue_AsFloat(Amalgame_Compiler_YamlValue* self) {
+    if (self->Kind == Amalgame_Compiler_YamlKind_Float) {
+        return self->F;
+    }
+    if (self->Kind == Amalgame_Compiler_YamlKind_Int) {
+        return self->I;
+    }
+    return 0.0;
+}
+
+code_string Amalgame_Compiler_YamlValue_AsString(Amalgame_Compiler_YamlValue* self) {
+    if (self->Kind == Amalgame_Compiler_YamlKind_String) {
+        return self->S;
+    }
+    return "";
+}
+
+i64 Amalgame_Compiler_YamlValue_Count(Amalgame_Compiler_YamlValue* self) {
+    if (self->Kind == Amalgame_Compiler_YamlKind_Array) {
+        return AmalgameList_count(self->Items);
+    }
+    if (self->Kind == Amalgame_Compiler_YamlKind_Map) {
+        return AmalgameList_count(self->MapKeys);
+    }
+    return 0;
+}
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlValue_At(Amalgame_Compiler_YamlValue* self, i64 idx) {
+    if (self->Kind != Amalgame_Compiler_YamlKind_Array) {
+        return Amalgame_Compiler_YamlValue_new();
+    }
+    if (idx < 0 || idx >= AmalgameList_count(self->Items)) {
+        return Amalgame_Compiler_YamlValue_new();
+    }
+    return (Amalgame_Compiler_YamlValue*)AmalgameList_get(self->Items, idx);
+}
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlValue_Get(Amalgame_Compiler_YamlValue* self, code_string key) {
+    if (self->Kind != Amalgame_Compiler_YamlKind_Map) {
+        return Amalgame_Compiler_YamlValue_new();
+    }
+    i64 n = AmalgameList_count(self->MapKeys);
+    Amalgame_Compiler_YamlValue* result = Amalgame_Compiler_YamlValue_new();
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->MapKeys, i), key)) {
+            result = (Amalgame_Compiler_YamlValue*)AmalgameList_get(self->MapVals, i);
+        }
+    }
+    return result;
+}
+
+code_bool Amalgame_Compiler_YamlValue_Has(Amalgame_Compiler_YamlValue* self, code_string key) {
+    if (self->Kind != Amalgame_Compiler_YamlKind_Map) {
+        return 0;
+    }
+    i64 n = AmalgameList_count(self->MapKeys);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->MapKeys, i), key)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+AmalgameList* Amalgame_Compiler_YamlValue_Keys(Amalgame_Compiler_YamlValue* self) {
+    return self->MapKeys;
+}
+
+void Amalgame_Compiler_YamlValue_SetBool(Amalgame_Compiler_YamlValue* self, code_bool v) {
+    self->Kind = Amalgame_Compiler_YamlKind_Bool;
+    self->B = v;
+}
+
+void Amalgame_Compiler_YamlValue_SetInt(Amalgame_Compiler_YamlValue* self, i64 v) {
+    self->Kind = Amalgame_Compiler_YamlKind_Int;
+    self->I = v;
+}
+
+void Amalgame_Compiler_YamlValue_SetFloat(Amalgame_Compiler_YamlValue* self, double v) {
+    self->Kind = Amalgame_Compiler_YamlKind_Float;
+    self->F = v;
+}
+
+void Amalgame_Compiler_YamlValue_SetString(Amalgame_Compiler_YamlValue* self, code_string v) {
+    self->Kind = Amalgame_Compiler_YamlKind_String;
+    self->S = v;
+}
+
+void Amalgame_Compiler_YamlValue_MakeArray(Amalgame_Compiler_YamlValue* self) {
+    self->Kind = Amalgame_Compiler_YamlKind_Array;
+}
+
+void Amalgame_Compiler_YamlValue_MakeMap(Amalgame_Compiler_YamlValue* self) {
+    self->Kind = Amalgame_Compiler_YamlKind_Map;
+}
+
+void Amalgame_Compiler_YamlValue_ArrayAdd(Amalgame_Compiler_YamlValue* self, Amalgame_Compiler_YamlValue* v) {
+    AmalgameList_add(self->Items, (void*)(intptr_t)(v));
+}
+
+void Amalgame_Compiler_YamlValue_MapPut(Amalgame_Compiler_YamlValue* self, code_string k, Amalgame_Compiler_YamlValue* v) {
+    AmalgameList_add(self->MapKeys, (void*)(intptr_t)(k));
+    AmalgameList_add(self->MapVals, (void*)(intptr_t)(v));
+}
+
+struct _Amalgame_Compiler_YamlParser {
+    AmalgameList* Lines;
+    i64 Pos;
+};
+
+AmalgameList* Amalgame_Compiler_YamlParser_SplitLines(code_string src);
+i64 Amalgame_Compiler_YamlParser_LineIndent(code_string line);
+code_string Amalgame_Compiler_YamlParser_StripTrailingComment(code_string line);
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseScalar(code_string raw);
+code_bool Amalgame_Compiler_YamlParser_IsDigits(code_string s);
+code_bool Amalgame_Compiler_YamlParser_IsIntLiteral(code_string s);
+i64 Amalgame_Compiler_YamlParser_Pow10(i64 n);
+static code_bool Amalgame_Compiler_YamlParser_SkipBlank(Amalgame_Compiler_YamlParser* self);
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseBlock(Amalgame_Compiler_YamlParser* self, i64 baseIndent);
+static Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseSequence(Amalgame_Compiler_YamlParser* self, i64 indent);
+static Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseMapping(Amalgame_Compiler_YamlParser* self, i64 indent);
+static code_bool Amalgame_Compiler_YamlParser_LooksLikeMappingLine(Amalgame_Compiler_YamlParser* self, code_string line);
+static void Amalgame_Compiler_YamlParser_AddMappingPair(Amalgame_Compiler_YamlParser* self, Amalgame_Compiler_YamlValue* m, i64 curIndent, code_string line);
+static code_string Amalgame_Compiler_YamlParser_UnquoteKey(Amalgame_Compiler_YamlParser* self, code_string raw);
+static i64 Amalgame_Compiler_YamlParser_FindMappingColon(Amalgame_Compiler_YamlParser* self, code_string line);
+
+Amalgame_Compiler_YamlParser* Amalgame_Compiler_YamlParser_new(code_string src) {
+    Amalgame_Compiler_YamlParser* self = (Amalgame_Compiler_YamlParser*) GC_MALLOC(sizeof(Amalgame_Compiler_YamlParser));
+    self->Lines = Amalgame_Compiler_YamlParser_SplitLines(src);
+    self->Pos = 0;
+    return self;
+}
+
+AmalgameList* Amalgame_Compiler_YamlParser_SplitLines(code_string src) {
+    AmalgameList* out = AmalgameList_new();
+    code_string cur = "";
+    i64 n = String_Length(src);
+    i64 i = 0;
+    while (i < n) {
+        code_string c = String_Substring(src, i, 1);
+        if (code_string_equals(c, "\n")) {
+            AmalgameList_add(out, (void*)(intptr_t)(cur));
+            cur = "";
+        } else if (!code_string_equals(c, "\\r")) {
+            cur = code_string_concat(cur, c);
+        }
+        i = i + 1;
+    }
+    if (String_Length(cur) > 0) {
+        AmalgameList_add(out, (void*)(intptr_t)(cur));
+    }
+    return out;
+}
+
+i64 Amalgame_Compiler_YamlParser_LineIndent(code_string line) {
+    i64 n = String_Length(line);
+    if (n == 0) {
+        return -1;
+    }
+    i64 i = 0;
+    while (i < n) {
+        code_string c = String_Substring(line, i, 1);
+        if (!code_string_equals(c, " ") && !code_string_equals(c, "\t")) {
+            break;
+        }
+        i = i + 1;
+    }
+    if (i == n) {
+        return -1;
+    }
+    if (code_string_equals(String_Substring(line, i, 1), "#")) {
+        return -1;
+    }
+    return i;
+}
+
+code_string Amalgame_Compiler_YamlParser_StripTrailingComment(code_string line) {
+    i64 n = String_Length(line);
+    code_bool inSingle = 0;
+    code_bool inDouble = 0;
+    i64 i = 0;
+    while (i < n) {
+        code_string c = String_Substring(line, i, 1);
+        if (!inDouble && code_string_equals(c, "'")) {
+            inSingle = !inSingle;
+        } else if (!inSingle && code_string_equals(c, "\"")) {
+            inDouble = !inDouble;
+        } else if (!inSingle && !inDouble) {
+            if (code_string_equals(c, "#") && i > 0) {
+                code_string prev = String_Substring(line, i - 1, 1);
+                if (code_string_equals(prev, " ") || code_string_equals(prev, "\t")) {
+                    return String_TrimEnd(String_Substring(line, 0, i - 1));
+                }
+            }
+        }
+        i = i + 1;
+    }
+    return line;
+}
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseScalar(code_string raw) {
+    Amalgame_Compiler_YamlValue* v = Amalgame_Compiler_YamlValue_new();
+    code_string t = String_Trim(raw);
+    i64 n = String_Length(t);
+    if (n == 0) {
+        Amalgame_Compiler_YamlValue_SetString(v, "");
+        return v;
+    }
+    code_string first = String_Substring(t, 0, 1);
+    code_string last = String_Substring(t, n - 1, 1);
+    if (n >= 2 && code_string_equals(first, "\"") && code_string_equals(last, "\"")) {
+        code_string inner = String_Substring(t, 1, n - 2);
+        code_string unesc = "";
+        i64 m = String_Length(inner);
+        i64 i = 0;
+        while (i < m) {
+            code_string c = String_Substring(inner, i, 1);
+            if (code_string_equals(c, "\\") && i + 1 < m) {
+                code_string e = String_Substring(inner, i + 1, 1);
+                if (code_string_equals(e, "n")) {
+                    unesc = code_string_concat(unesc, "\n");
+                } else if (code_string_equals(e, "t")) {
+                    unesc = code_string_concat(unesc, "\t");
+                } else if (code_string_equals(e, "\\")) {
+                    unesc = code_string_concat(unesc, "\\");
+                } else if (code_string_equals(e, "\"")) {
+                    unesc = code_string_concat(unesc, "\"");
+                } else {
+                    unesc = code_string_concat(unesc, e);
+                }
+                i = i + 2;
+            } else {
+                unesc = code_string_concat(unesc, c);
+                i = i + 1;
+            }
+        }
+        Amalgame_Compiler_YamlValue_SetString(v, unesc);
+        return v;
+    }
+    if (n >= 2 && code_string_equals(first, "'") && code_string_equals(last, "'")) {
+        code_string inner = String_Substring(t, 1, n - 2);
+        Amalgame_Compiler_YamlValue_SetString(v, String_Replace(inner, "''", "'"));
+        return v;
+    }
+    if (code_string_equals(t, "true") || code_string_equals(t, "True")) {
+        Amalgame_Compiler_YamlValue_SetBool(v, 1);
+        return v;
+    }
+    if (code_string_equals(t, "false") || code_string_equals(t, "False")) {
+        Amalgame_Compiler_YamlValue_SetBool(v, 0);
+        return v;
+    }
+    if (code_string_equals(t, "null") || code_string_equals(t, "~")) {
+        return v;
+    }
+    if (String_Contains(t, ".")) {
+        code_string rest = t;
+        code_bool neg = 0;
+        if (String_StartsWith(rest, "-")) {
+            neg = 1;
+            rest = String_Substring(rest, 1, String_Length(rest) - 1);
+        } else if (String_StartsWith(rest, "+")) {
+            rest = String_Substring(rest, 1, String_Length(rest) - 1);
+        }
+        i64 dotIdx = String_IndexOf(rest, ".");
+        if (dotIdx > 0) {
+            code_string head = String_Substring(rest, 0, dotIdx);
+            code_string tail = String_Substring(rest, dotIdx + 1, String_Length(rest) - dotIdx - 1);
+            if (Amalgame_Compiler_YamlParser_IsDigits(head) && Amalgame_Compiler_YamlParser_IsDigits(tail)) {
+                i64 combined = String_ToInt(code_string_concat(head, tail));
+                i64 scale = Amalgame_Compiler_YamlParser_Pow10(String_Length(tail));
+                double f = combined * 1.0 / scale * 1.0;
+                if (neg) {
+                    f = 0.0 - f;
+                }
+                Amalgame_Compiler_YamlValue_SetFloat(v, f);
+                return v;
+            }
+        }
+    }
+    if (Amalgame_Compiler_YamlParser_IsIntLiteral(t)) {
+        Amalgame_Compiler_YamlValue_SetInt(v, String_ToInt(t));
+        return v;
+    }
+    Amalgame_Compiler_YamlValue_SetString(v, t);
+    return v;
+}
+
+code_bool Amalgame_Compiler_YamlParser_IsDigits(code_string s) {
+    i64 n = String_Length(s);
+    if (n == 0) {
+        return 0;
+    }
+    code_string digits = "0123456789";
+    i64 i = 0;
+    while (i < n) {
+        code_string c = String_Substring(s, i, 1);
+        if (String_IndexOf(digits, c) < 0) {
+            return 0;
+        }
+        i = i + 1;
+    }
+    return 1;
+}
+
+code_bool Amalgame_Compiler_YamlParser_IsIntLiteral(code_string s) {
+    i64 n = String_Length(s);
+    if (n == 0) {
+        return 0;
+    }
+    i64 start = 0;
+    code_string first = String_Substring(s, 0, 1);
+    if (code_string_equals(first, "-") || code_string_equals(first, "+")) {
+        start = 1;
+    }
+    if (start == n) {
+        return 0;
+    }
+    return Amalgame_Compiler_YamlParser_IsDigits(String_Substring(s, start, n - start));
+}
+
+i64 Amalgame_Compiler_YamlParser_Pow10(i64 n) {
+    i64 r = 1;
+    i64 i = 0;
+    while (i < n) {
+        r = r * 10;
+        i = i + 1;
+    }
+    return r;
+}
+
+static code_bool Amalgame_Compiler_YamlParser_SkipBlank(Amalgame_Compiler_YamlParser* self) {
+    i64 n = AmalgameList_count(self->Lines);
+    while (self->Pos < n) {
+        code_string line = (code_string)AmalgameList_get(self->Lines, self->Pos);
+        if (Amalgame_Compiler_YamlParser_LineIndent(line) >= 0) {
+            return 1;
+        }
+        self->Pos = self->Pos + 1;
+    }
+    return 0;
+}
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseBlock(Amalgame_Compiler_YamlParser* self, i64 baseIndent) {
+    if (!Amalgame_Compiler_YamlParser_SkipBlank(self)) {
+        return Amalgame_Compiler_YamlValue_new();
+    }
+    code_string firstLine = (code_string)AmalgameList_get(self->Lines, self->Pos);
+    i64 firstIndent = Amalgame_Compiler_YamlParser_LineIndent(firstLine);
+    if (firstIndent < baseIndent) {
+        return Amalgame_Compiler_YamlValue_new();
+    }
+    code_string trimmed = String_TrimStart(Amalgame_Compiler_YamlParser_StripTrailingComment(firstLine));
+    if (String_StartsWith(trimmed, "- ") || code_string_equals(trimmed, "-")) {
+        return Amalgame_Compiler_YamlParser_ParseSequence(self, firstIndent);
+    }
+    return Amalgame_Compiler_YamlParser_ParseMapping(self, firstIndent);
+}
+
+static Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseSequence(Amalgame_Compiler_YamlParser* self, i64 indent) {
+    Amalgame_Compiler_YamlValue* arr = Amalgame_Compiler_YamlValue_new();
+    Amalgame_Compiler_YamlValue_MakeArray(arr);
+    i64 n = AmalgameList_count(self->Lines);
+    while (self->Pos < n) {
+        if (!Amalgame_Compiler_YamlParser_SkipBlank(self)) {
+            return arr;
+        }
+        code_string line = (code_string)AmalgameList_get(self->Lines, self->Pos);
+        i64 li = Amalgame_Compiler_YamlParser_LineIndent(line);
+        if (li < indent) {
+            return arr;
+        }
+        if (li > indent) {
+            return arr;
+        }
+        code_string trimmed = String_TrimStart(Amalgame_Compiler_YamlParser_StripTrailingComment(line));
+        if (!String_StartsWith(trimmed, "-")) {
+            return arr;
+        }
+        code_string after = String_Substring(trimmed, 1, String_Length(trimmed) - 1);
+        code_string rest = String_TrimStart(after);
+        self->Pos = self->Pos + 1;
+        if (String_Length(rest) == 0) {
+            Amalgame_Compiler_YamlValue* nested = Amalgame_Compiler_YamlParser_ParseBlock(self, indent + 1);
+            Amalgame_Compiler_YamlValue_ArrayAdd(arr, nested);
+            continue;
+        }
+        if (Amalgame_Compiler_YamlParser_LooksLikeMappingLine(self, rest)) {
+            Amalgame_Compiler_YamlValue* m = Amalgame_Compiler_YamlValue_new();
+            Amalgame_Compiler_YamlValue_MakeMap(m);
+            Amalgame_Compiler_YamlParser_AddMappingPair(self, m, indent + 2, rest);
+            while (self->Pos < n) {
+                if (!Amalgame_Compiler_YamlParser_SkipBlank(self)) {
+                    break;
+                }
+                i64 li2 = Amalgame_Compiler_YamlParser_LineIndent((code_string)AmalgameList_get(self->Lines, self->Pos));
+                if (li2 <= indent) {
+                    break;
+                }
+                code_string l2 = String_TrimStart(Amalgame_Compiler_YamlParser_StripTrailingComment((code_string)AmalgameList_get(self->Lines, self->Pos)));
+                if (!Amalgame_Compiler_YamlParser_LooksLikeMappingLine(self, l2)) {
+                    break;
+                }
+                self->Pos = self->Pos + 1;
+                Amalgame_Compiler_YamlParser_AddMappingPair(self, m, li2, l2);
+            }
+            Amalgame_Compiler_YamlValue_ArrayAdd(arr, m);
+        } else {
+            Amalgame_Compiler_YamlValue_ArrayAdd(arr, Amalgame_Compiler_YamlParser_ParseScalar(rest));
+        }
+    }
+    return arr;
+}
+
+static Amalgame_Compiler_YamlValue* Amalgame_Compiler_YamlParser_ParseMapping(Amalgame_Compiler_YamlParser* self, i64 indent) {
+    Amalgame_Compiler_YamlValue* m = Amalgame_Compiler_YamlValue_new();
+    Amalgame_Compiler_YamlValue_MakeMap(m);
+    i64 n = AmalgameList_count(self->Lines);
+    while (self->Pos < n) {
+        if (!Amalgame_Compiler_YamlParser_SkipBlank(self)) {
+            return m;
+        }
+        code_string line = (code_string)AmalgameList_get(self->Lines, self->Pos);
+        i64 li = Amalgame_Compiler_YamlParser_LineIndent(line);
+        if (li < indent) {
+            return m;
+        }
+        if (li > indent) {
+            return m;
+        }
+        code_string trimmed = String_TrimStart(Amalgame_Compiler_YamlParser_StripTrailingComment(line));
+        if (!Amalgame_Compiler_YamlParser_LooksLikeMappingLine(self, trimmed)) {
+            return m;
+        }
+        self->Pos = self->Pos + 1;
+        Amalgame_Compiler_YamlParser_AddMappingPair(self, m, indent, trimmed);
+    }
+    return m;
+}
+
+static code_bool Amalgame_Compiler_YamlParser_LooksLikeMappingLine(Amalgame_Compiler_YamlParser* self, code_string line) {
+    i64 n = String_Length(line);
+    code_bool inSingle = 0;
+    code_bool inDouble = 0;
+    i64 i = 0;
+    while (i < n) {
+        code_string c = String_Substring(line, i, 1);
+        if (!inDouble && code_string_equals(c, "'")) {
+            inSingle = !inSingle;
+        } else if (!inSingle && code_string_equals(c, "\"")) {
+            inDouble = !inDouble;
+        } else if (!inSingle && !inDouble && code_string_equals(c, ":")) {
+            if (i + 1 == n) {
+                return 1;
+            }
+            code_string next = String_Substring(line, i + 1, 1);
+            if (code_string_equals(next, " ") || code_string_equals(next, "\t")) {
+                return 1;
+            }
+        }
+        i = i + 1;
+    }
+    return 0;
+}
+
+static void Amalgame_Compiler_YamlParser_AddMappingPair(Amalgame_Compiler_YamlParser* self, Amalgame_Compiler_YamlValue* m, i64 curIndent, code_string line) {
+    i64 colonIdx = Amalgame_Compiler_YamlParser_FindMappingColon(self, line);
+    if (colonIdx < 0) {
+        return;
+    }
+    code_string rawKey = String_Trim(String_Substring(line, 0, colonIdx));
+    code_string key = Amalgame_Compiler_YamlParser_UnquoteKey(self, rawKey);
+    code_string rest = String_Trim(String_Substring(line, colonIdx + 1, String_Length(line) - colonIdx - 1));
+    if (String_Length(rest) == 0) {
+        Amalgame_Compiler_YamlValue* nested = Amalgame_Compiler_YamlParser_ParseBlock(self, curIndent + 1);
+        Amalgame_Compiler_YamlValue_MapPut(m, key, nested);
+    } else {
+        Amalgame_Compiler_YamlValue_MapPut(m, key, Amalgame_Compiler_YamlParser_ParseScalar(rest));
+    }
+}
+
+static code_string Amalgame_Compiler_YamlParser_UnquoteKey(Amalgame_Compiler_YamlParser* self, code_string raw) {
+    i64 n = String_Length(raw);
+    if (n < 2) {
+        return raw;
+    }
+    code_string first = String_Substring(raw, 0, 1);
+    code_string last = String_Substring(raw, n - 1, 1);
+    if (code_string_equals(first, "\"") && code_string_equals(last, "\"") || code_string_equals(first, "'") && code_string_equals(last, "'")) {
+        return String_Substring(raw, 1, n - 2);
+    }
+    return raw;
+}
+
+static i64 Amalgame_Compiler_YamlParser_FindMappingColon(Amalgame_Compiler_YamlParser* self, code_string line) {
+    i64 n = String_Length(line);
+    code_bool inSingle = 0;
+    code_bool inDouble = 0;
+    i64 i = 0;
+    while (i < n) {
+        code_string c = String_Substring(line, i, 1);
+        if (!inDouble && code_string_equals(c, "'")) {
+            inSingle = !inSingle;
+        } else if (!inSingle && code_string_equals(c, "\"")) {
+            inDouble = !inDouble;
+        } else if (!inSingle && !inDouble && code_string_equals(c, ":")) {
+            if (i + 1 == n) {
+                return i;
+            }
+            code_string next = String_Substring(line, i + 1, 1);
+            if (code_string_equals(next, " ") || code_string_equals(next, "\t")) {
+                return i;
+            }
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
+struct _Amalgame_Compiler_Yaml {
+};
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_Yaml_Parse(code_string src);
+
+Amalgame_Compiler_Yaml* Amalgame_Compiler_Yaml_new() {
+    Amalgame_Compiler_Yaml* self = (Amalgame_Compiler_Yaml*) GC_MALLOC(sizeof(Amalgame_Compiler_Yaml));
+    return self;
+}
+
+Amalgame_Compiler_YamlValue* Amalgame_Compiler_Yaml_Parse(code_string src) {
+    Amalgame_Compiler_YamlParser* p = Amalgame_Compiler_YamlParser_new(src);
+    return Amalgame_Compiler_YamlParser_ParseBlock(p, 0);
+}
+
 Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new();
 Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_new();
 Amalgame_Compiler_CalibrationSample* Amalgame_Compiler_CalibrationSample_new();
@@ -5023,6 +5666,9 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         if (code_string_equals(tname, "FileWatcher")) {
             return "AmalgameFileWatcher*";
         }
+        if (code_string_equals(tname, "Match")) {
+            return "AmalgameRegexMatch*";
+        }
         if (Amalgame_Compiler_CGen_IsEnum(self, tname)) {
             return Amalgame_Compiler_CGen_SymName(self, tname);
         }
@@ -5215,6 +5861,21 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             }
             if (code_string_equals(calleeStr, "FileWatcher_Changed") || code_string_equals(calleeStr, "FileWatcher_Exists")) {
                 return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "Regex_Match")) {
+                return "AmalgameRegexMatch*";
+            }
+            if (code_string_equals(calleeStr, "Regex_Test")) {
+                return "code_bool";
+            }
+            if (code_string_equals(calleeStr, "Regex_Replace") || code_string_equals(calleeStr, "Regex_ReplaceAll")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Match_GetText") || code_string_equals(calleeStr, "Match_GroupText")) {
+                return "code_string";
+            }
+            if (code_string_equals(calleeStr, "Match_GetStart") || code_string_equals(calleeStr, "Match_GetEnd") || code_string_equals(calleeStr, "Match_GroupCount") || code_string_equals(calleeStr, "Match_GroupStart") || code_string_equals(calleeStr, "Match_GroupEnd")) {
+                return "i64";
             }
             if (code_string_equals(calleeStr, "Math_IsPrime") || code_string_equals(calleeStr, "Math_IsNaN") || code_string_equals(calleeStr, "Math_IsInf") || code_string_equals(calleeStr, "Math_IsFinite") || code_string_equals(calleeStr, "Math_ApproxEq")) {
                 return "code_bool";
@@ -5582,6 +6243,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math_Vec.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_FileWatch.h\"");
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Regex.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
@@ -7423,7 +8085,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                             return code_string_concat("Path_", mname);
                         }
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "BuildInfo") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -7438,6 +8100,9 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 if (String_Length(bareType) > 0) {
                     if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameFileWatcher")) {
                         return code_string_concat(code_string_concat(String_Replace(bareType, "Amalgame", ""), "_"), mname);
+                    }
+                    if (code_string_equals(bareType, "AmalgameRegexMatch")) {
+                        return code_string_concat("Match_", mname);
                     }
                     if (code_string_equals(bareType, "code_string")) {
                         return code_string_concat("String_", mname);
@@ -7571,6 +8236,9 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (code_string_equals(t, "FileWatcher")) {
         return "AmalgameFileWatcher*";
+    }
+    if (code_string_equals(t, "Match")) {
+        return "AmalgameRegexMatch*";
     }
     if (Amalgame_Compiler_CGen_IsEnum(self, t)) {
         return Amalgame_Compiler_CGen_SymName(self, t);
@@ -9087,6 +9755,8 @@ static void Amalgame_Compiler_Resolver_RegisterBuiltins(Amalgame_Compiler_Resolv
     AmalgameList_add(builtins, (void*)(intptr_t)("Vec4"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Mat4"));
     AmalgameList_add(builtins, (void*)(intptr_t)("FileWatcher"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("Regex"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("Match"));
     AmalgameList_add(builtins, (void*)(intptr_t)("String"));
     AmalgameList_add(builtins, (void*)(intptr_t)("Http"));
     AmalgameList_add(builtins, (void*)(intptr_t)("int"));
@@ -9719,6 +10389,19 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match", "type", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Test", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Match", "Match", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Replace", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_ReplaceAll", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetText", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetStart", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetEnd", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupCount", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupText", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupStart", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupEnd", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_new", "FileWatcher", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_GetPath", "string", 0);
@@ -9771,6 +10454,12 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_FormatIso", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_ParseIsoNanos", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_IsParseError", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Year", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Month", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Day", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Hour", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Minute", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Second", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256", "List<int>", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256Hex", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256OfString", "string", 0);
@@ -14017,6 +14706,12 @@ i64 Amalgame_Compiler_Instant_UnixNanos(Amalgame_Compiler_Instant* self);
 i64 Amalgame_Compiler_Instant_UnixMillis(Amalgame_Compiler_Instant* self);
 i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self);
 code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_Year(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_Month(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_Day(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_Hour(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_Minute(Amalgame_Compiler_Instant* self);
+i64 Amalgame_Compiler_Instant_Second(Amalgame_Compiler_Instant* self);
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d);
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Subtract(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d);
 Amalgame_Compiler_Duration* Amalgame_Compiler_Instant_Since(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Instant* other);
@@ -14075,6 +14770,30 @@ i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self) {
 
 code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self) {
     return DateTime_FormatIso(self->nanos);
+}
+
+i64 Amalgame_Compiler_Instant_Year(Amalgame_Compiler_Instant* self) {
+    return DateTime_Year(self->nanos);
+}
+
+i64 Amalgame_Compiler_Instant_Month(Amalgame_Compiler_Instant* self) {
+    return DateTime_Month(self->nanos);
+}
+
+i64 Amalgame_Compiler_Instant_Day(Amalgame_Compiler_Instant* self) {
+    return DateTime_Day(self->nanos);
+}
+
+i64 Amalgame_Compiler_Instant_Hour(Amalgame_Compiler_Instant* self) {
+    return DateTime_Hour(self->nanos);
+}
+
+i64 Amalgame_Compiler_Instant_Minute(Amalgame_Compiler_Instant* self) {
+    return DateTime_Minute(self->nanos);
+}
+
+i64 Amalgame_Compiler_Instant_Second(Amalgame_Compiler_Instant* self) {
+    return DateTime_Second(self->nanos);
 }
 
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d) {

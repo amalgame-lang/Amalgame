@@ -809,6 +809,7 @@ public class CGen {
             if (tname == "Vec4") { return "AmalgameVec4*" }
             if (tname == "Mat4") { return "AmalgameMat4*" }
             if (tname == "FileWatcher") { return "AmalgameFileWatcher*" }
+            if (tname == "Match") { return "AmalgameRegexMatch*" }
             if (this.IsEnum(tname)) { return this.SymName(tname) }
             return this.SymName(tname) + "*"
         }
@@ -922,6 +923,12 @@ public class CGen {
                 if (calleeStr == "FileWatcher_new") { return "AmalgameFileWatcher*" }
                 if (calleeStr == "FileWatcher_GetPath") { return "code_string" }
                 if (calleeStr == "FileWatcher_Changed" || calleeStr == "FileWatcher_Exists") { return "code_bool" }
+                // Regex runtime helpers.
+                if (calleeStr == "Regex_Match") { return "AmalgameRegexMatch*" }
+                if (calleeStr == "Regex_Test") { return "code_bool" }
+                if (calleeStr == "Regex_Replace" || calleeStr == "Regex_ReplaceAll") { return "code_string" }
+                if (calleeStr == "Match_GetText" || calleeStr == "Match_GroupText") { return "code_string" }
+                if (calleeStr == "Match_GetStart" || calleeStr == "Match_GetEnd" || calleeStr == "Match_GroupCount" || calleeStr == "Match_GroupStart" || calleeStr == "Match_GroupEnd") { return "i64" }
                 if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
                 if (calleeStr == "Math_Random") { return "double" }
                 if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
@@ -1264,6 +1271,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Math.h\"")
         this.Out.EmitLine("#include \"Amalgame_Math_Vec.h\"")
         this.Out.EmitLine("#include \"Amalgame_FileWatch.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Regex.h\"")
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
@@ -3272,7 +3280,7 @@ public class CGen {
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -3298,6 +3306,10 @@ public class CGen {
                         // header naming.
                         if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameFileWatcher") {
                             return String_Replace(bareType, "Amalgame", "") + "_" + mname
+                        }
+                        // Regex.Match struct → `Match_<method>` runtime.
+                        if (bareType == "AmalgameRegexMatch") {
+                            return "Match_" + mname
                         }
                         // `s.Length()` on a string variable should call
                         // `String_Length(s)`, not `code_string_Length(s)`.
@@ -3458,6 +3470,7 @@ public class CGen {
         if (t == "Vec4") { return "AmalgameVec4*" }
         if (t == "Mat4") { return "AmalgameMat4*" }
         if (t == "FileWatcher") { return "AmalgameFileWatcher*" }
+        if (t == "Match") { return "AmalgameRegexMatch*" }
         if (this.IsEnum(t)) {
             return this.SymName(t)
         }

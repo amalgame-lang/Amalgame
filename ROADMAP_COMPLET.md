@@ -1,6 +1,6 @@
 # Amalgame — Roadmap
 
-> Updated 2026-05-12 · `amc 0.7.0` · self-hosted · 532/532 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher
+> Updated 2026-05-12 · `amc 0.7.1` · self-hosted · 575/575 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -744,8 +744,19 @@ before the next big language addition.
         + RFC 2104), pure-C runtime header, no external dep
         (PR #213). Constant-time compare deferred — caller's
         responsibility documented in the guide.
-      - [ ] `Amalgame.Regex` — PCRE-style or RE2 binding, capture
-        groups exposed as `Match` records.
+      - [x] `Amalgame.Regex` (v0.7.1) — POSIX extended-regex
+        binding in `runtime/Amalgame_Regex.h` (no third-party
+        PCRE / RE2 dep). Surface: `Regex.Test(pat, subj)`,
+        `Regex.Match(pat, subj)` → `Match*` with `GetText` /
+        `GetStart` / `GetEnd` / `GroupCount` / `GroupText(i)` /
+        `GroupStart(i)` / `GroupEnd(i)`, `Regex.Replace(pat,
+        subj, repl)`, `Regex.ReplaceAll(...)` (zero-length-
+        match safe). PCRE-only features (`\d` / `\w` / look-
+        arounds / non-greedy / named captures / Unicode property
+        classes) are out of scope — bind libpcre2 in a future
+        package when a real consumer needs them. 11 stdlib
+        tests cover predicate / match / captures / replace /
+        anchors / alternation.
       - [ ] `Amalgame.Compress` — gzip, deflate (zip later).
       - [ ] `Amalgame.Threading` — at minimum a thread pool +
         Mutex/Channel; needs runtime-side care around libgc.
@@ -1107,25 +1118,39 @@ implementation effort.
       cover every method. Complex numbers + BigInt deferred —
       different concerns (no GMP dep wanted), revisit when a
       real consumer needs them.
-- [ ] **Other serialization formats** — TOML (config files),
-      YAML (CI configs), MessagePack (binary RPC). Json covers
-      most needs but each has its niche.
-      **Status**: **TOML subset shipped** in
-      `src/stdlib/toml.am` (namespace `Amalgame.Formats.Toml`)
-      to back `amalgame.toml` manifest parsing — TOML 1.0 minus
-      dates/times, floats with exp, multiline strings, hex/oct/
-      bin ints, dotted-key assignment. YAML + MessagePack
-      still pending.
-- [ ] **DateTime v2** — local time + named timezones. Adds a
-      `LocalTime` companion class wrapping `(instant, zoneId)`
-      with a `Now`, `In(zone)`, breakdown into Y/M/D/h/m/s,
-      and `strftime`-ish formatter. Needs a way to ship tzdata:
-      either bundle a stripped IANA dataset in the runtime, or
-      delegate to the OS (POSIX `TZ` env + `/usr/share/zoneinfo`,
-      Windows `GetDynamicTimeZoneInformation`). Also covers
-      explicit `+HH:MM` offsets in Parse, currently rejected.
-      Wait until a real consumer needs it — the v1 UTC API
-      already covers most server-side use cases.
+- [x] **Other serialization formats — TOML + YAML (v0.7.1)** —
+      Two of three covered:
+        - **TOML** subset (v0.5.x) — `src/stdlib/toml.am`
+          (`Amalgame.Formats.Toml`), backs `amalgame.toml`
+          manifest parsing.
+        - **YAML 1.2** subset (v0.7.1) — `src/stdlib/yaml.am`
+          (`Amalgame.Formats.Yaml`). Block mappings, block
+          sequences, scalars (bool/int/float/quoted/plain),
+          comments. Out of scope: anchors/aliases, multi-doc
+          `---`, flow style `[1,2]`, multiline scalars
+          (folded/literal), tags. 19 stdlib tests cover the
+          shapes a typical CI / app config exercises.
+      MessagePack (binary RPC) still pending — different
+      shape (writer-heavy, length-prefixed), revisit when a
+      real consumer needs it.
+- [x] **DateTime v2 — UTC breakdown (v0.7.1)** — Instant now
+      exposes `Year()` / `Month()` / `Day()` / `Hour()` /
+      `Minute()` / `Second()` accessors that decompose the
+      nanosecond-since-epoch value into UTC calendar fields via
+      `gmtime_r` / `gmtime_s`. Covers the "format my timestamp
+      to YYYY-MM-DD HH:MM:SS in arbitrary order" use case
+      without an external library. 13 stdlib tests cover the
+      epoch, a known 2026-05-12 timestamp, the famous
+      `1234567890` Unix moment, and a Format/Parse round-trip.
+
+      **Deferred — named timezones**: `LocalTime` companion
+      class wrapping `(instant, zoneId)`, `In(zone)` method,
+      `strftime`-ish formatter, `+HH:MM` offset parsing. Needs
+      a tzdata shipping strategy (bundle IANA vs. OS delegate
+      via POSIX `TZ` + `/usr/share/zoneinfo` / Windows
+      `GetDynamicTimeZoneInformation`). Picks up when a real
+      consumer needs it — server-side UTC + the breakdown above
+      cover most cases.
 - [ ] **`Amalgame.UI` / Forms toolkit (cross-platform GUI)** —
       backs the `amc new <name> --template forms` scaffolder. SDL2
       binding under the hood (universally available on Linux/macOS/

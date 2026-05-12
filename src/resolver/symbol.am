@@ -122,6 +122,8 @@ public class Resolver {
         builtins.Add("Vec4")
         builtins.Add("Mat4")
         builtins.Add("FileWatcher")
+        builtins.Add("Regex")
+        builtins.Add("Match")
         builtins.Add("String")
         builtins.Add("Http")
         // Primitive types
