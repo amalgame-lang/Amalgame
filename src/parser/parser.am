@@ -291,6 +291,50 @@ public class Parser {
             return this.Unknown()
         }
 
+        // TS/C-style free function at file scope:
+        //   public List<int> Helper(int n) { ... }
+        //   void DoThing() { ... }
+        // Parses without complaint today and the cgen emits the
+        // call site as `Helper(...)` against no definition, leaking
+        // an `-Wimplicit-function-declaration` warning into the
+        // user binary. Same root cause as the `fn` keyword case
+        // above: free functions aren't supported, hang the helper
+        // on a class as `public static` instead. Detect by
+        // scanning the next ~16 tokens for an `IDENT (` pair
+        // before any `{` / `;` / `}` punctuator — the `IDENT (`
+        // pattern is the signature start. False positive only on
+        // top-level bare calls (already invalid Amalgame).
+        let startTok = this.Current()
+        var foundFreeFn: bool = false
+        var freeFnName:  string = "<anonymous>"
+        var lookI: int = 0
+        while (lookI < 16 && !this.IsEnd()) {
+            let t  = this.Peek(lookI)
+            let t1 = this.Peek(lookI + 1)
+            let tv: string = t.Value
+            if (t.Type == TokenType.IDENTIFIER && t1.Value == "(") {
+                freeFnName  = t.Value
+                foundFreeFn = true
+                break
+            }
+            if (tv == "{" || tv == ";" || tv == "}") { break }
+            lookI = lookI + 1
+        }
+        if (foundFreeFn) {
+            this.Errors.Add("Top-level functions aren't supported (got '" + freeFnName + "' at " + String_FromInt(startTok.Line) + ":" + String_FromInt(startTok.Column) + "). Wrap it inside a class as `public static`.")
+            while (!this.IsEnd() && !this.CheckValue("{")) { this.Advance() }
+            if (this.CheckValue("{")) {
+                this.Advance()
+                var depth: int = 1
+                while (!this.IsEnd() && depth > 0) {
+                    if (this.CheckValue("{")) { depth = depth + 1 }
+                    else if (this.CheckValue("}")) { depth = depth - 1 }
+                    this.Advance()
+                }
+            }
+            return this.Unknown()
+        }
+
         this.Advance()
         return this.Unknown()
     }

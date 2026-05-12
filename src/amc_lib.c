@@ -1437,6 +1437,43 @@ static Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_ParseDecl(Amalgame_Co
         }
         return Amalgame_Compiler_Parser_Unknown(self);
     }
+    Amalgame_Compiler_Token* __attribute__((unused)) startTok = Amalgame_Compiler_Parser_Current(self);
+    code_bool __attribute__((unused)) foundFreeFn = 0;
+    code_string __attribute__((unused)) freeFnName = "<anonymous>";
+    i64 __attribute__((unused)) lookI = 0;
+    while (lookI < 16 && !Amalgame_Compiler_Parser_IsEnd(self)) {
+        Amalgame_Compiler_Token* __attribute__((unused)) t = Amalgame_Compiler_Parser_Peek(self, lookI);
+        Amalgame_Compiler_Token* __attribute__((unused)) t1 = Amalgame_Compiler_Parser_Peek(self, lookI + 1);
+        code_string __attribute__((unused)) tv = t->Value;
+        if (t->Type == Amalgame_Compiler_TokenType_IDENTIFIER && code_string_equals(t1->Value, "(")) {
+            freeFnName = t->Value;
+            foundFreeFn = 1;
+            break;
+        }
+        if (code_string_equals(tv, "{") || code_string_equals(tv, ";") || code_string_equals(tv, "}")) {
+            break;
+        }
+        lookI = lookI + 1;
+    }
+    if (foundFreeFn) {
+        AmalgameList_add(self->Errors, (void*)(intptr_t)(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("Top-level functions aren't supported (got '", freeFnName), "' at "), String_FromInt(startTok->Line)), ":"), String_FromInt(startTok->Column)), "). Wrap it inside a class as `public static`.")));
+        while (!Amalgame_Compiler_Parser_IsEnd(self) && !Amalgame_Compiler_Parser_CheckValue(self, "{")) {
+            Amalgame_Compiler_Parser_Advance(self);
+        }
+        if (Amalgame_Compiler_Parser_CheckValue(self, "{")) {
+            Amalgame_Compiler_Parser_Advance(self);
+            i64 __attribute__((unused)) depth = 1;
+            while (!Amalgame_Compiler_Parser_IsEnd(self) && depth > 0) {
+                if (Amalgame_Compiler_Parser_CheckValue(self, "{")) {
+                    depth = depth + 1;
+                } else if (Amalgame_Compiler_Parser_CheckValue(self, "}")) {
+                    depth = depth - 1;
+                }
+                Amalgame_Compiler_Parser_Advance(self);
+            }
+        }
+        return Amalgame_Compiler_Parser_Unknown(self);
+    }
     Amalgame_Compiler_Parser_Advance(self);
     return Amalgame_Compiler_Parser_Unknown(self);
 }
