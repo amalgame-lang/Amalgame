@@ -13,11 +13,14 @@ hack on the compiler itself, jump to chapter 7.
 3. [CLI reference](03-cli-reference.md) — every `amc` flag, exit codes,
    typical workflows, debugging tips.
 4. [Standard library](04-stdlib.md) — `Console`, `File`, `Path`,
-   `Math`, `String`, `List`/`Map`/`Set`, `Http`, `Tcp`, `Json`,
-   `Random`, `Encoding`, `DateTime`, `Crypto`, `Logging`,
-   `Service`, `Database.SQLite`.
+   `IO.FileWatcher`, `Math`, `Math.Vec` (Vec3/Vec4/Mat4), `String`,
+   `List`/`Map`/`Set`, `Http`, `Tcp`, `Net.WebSocket`, `Json`,
+   `Formats.Yaml`, `Formats.MsgPack`, `Random`, `Encoding`,
+   `DateTime`, `Crypto`, `Regex`, `Compress`, `Logging`, `Service`,
+   `Database.SQLite`, `Database.DuckDB`.
 5. [Runtime & C interop](05-runtime-and-interop.md) — memory model,
-   bdwgc, mapping types to C, calling C from Amalgame.
+   bdwgc, mapping types to C, calling C from Amalgame, inline-C
+   blocks (`@c { … }`) since v0.7.4.
 6. [Build & tooling](06-build-and-tooling.md) — `build_amc.sh`,
    the snapshot bootstrap, CI, releases.
 7. [Compiler internals](07-internals.md) — how `amc` is structured,

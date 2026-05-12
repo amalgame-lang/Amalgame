@@ -332,14 +332,12 @@ public class FullResolver {
         this.DeclareGlobal("Path_IsAbsolute",     "bool",   false)
         this.DeclareGlobal("Path_Normalize",      "string", false)
         this.DeclareGlobal("Path_Sep",            "string", false)
-        // BuildInfo — runtime helpers baked at link time
-        // (`-DAMC_GIT_REV=...` / `-DAMC_BUILD_DATE=...` in
-        // build_amc.sh). Both return "" when the defines aren't
-        // set, so callers can detect "no build info" and skip
-        // the banner line. Used by `amc --version`.
-        this.DeclareGlobal("BuildInfo",           "type",   false)
-        this.DeclareGlobal("BuildInfo_GitRev",    "string", false)
-        this.DeclareGlobal("BuildInfo_BuildDate", "string", false)
+        // BuildInfo lives in src/stdlib/amc_buildinfo.am since v0.7.4 —
+        // the resolver picks it up from the class declaration like any
+        // other AM class. The macros `AMC_GIT_REV` / `AMC_BUILD_DATE`
+        // are still wired by build_amc.sh; both return "" when the
+        // defines aren't set, so callers detect "no build info" and
+        // skip the banner line. Used by `amc --version`.
         // Logging stdlib — runtime helpers under the `Log_*` prefix so
         // `Log.Info(...)` in user code lowers to `Log_Info(...)` via the
         // cgen's isStdlib short-circuit, matching the Console/File/Math
@@ -1002,6 +1000,10 @@ public class FullResolver {
         }
         if (k == NodeKind.THROW_STMT) {
             if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+            return
+        }
+        if (k == NodeKind.INLINE_C) {
+            // Raw C splice — opaque to the Amalgame frontend by design.
             return
         }
         if (k == NodeKind.ASSIGN) {

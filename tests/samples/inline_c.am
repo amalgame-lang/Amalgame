@@ -1,0 +1,56 @@
+namespace App
+
+// `@c { … }` lets the body be spliced verbatim into the emitted C inside a
+// compound statement. The Amalgame front-end treats the block as opaque —
+// the user is responsible for writing valid C and for the return path.
+
+public class CTools {
+    // Return-value case: body issues a C `return` against the enclosing
+    // method's declared type.
+    public static int CLen(string s) {
+        @c {
+            return (int) strlen(s);
+        }
+    }
+
+    // Multi-statement body with a local declaration. The compound wrap
+    // keeps `local` scoped to the block.
+    public static int Doubled(int x) {
+        @c {
+            int local = x;
+            return local + local;
+        }
+    }
+
+    // Brace torture-test: a `}` inside a C string literal, a char literal,
+    // a line comment and a block comment must all be ignored when counting
+    // the matching outer brace.
+    public static string Braces() {
+        @c {
+            const char* msg = "ab}c{de";
+            char brace = '}';
+            (void) brace;
+            // closing } in a comment
+            /* and another } here */
+            return (code_string) msg;
+        }
+    }
+
+    // Void method: side-effect only.
+    public static void PrintBang() {
+        @c {
+            printf("!");
+            fflush(stdout);
+        }
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        Console.WriteLine("len=" + String.FromInt(CTools.CLen("inline-C")))
+        Console.WriteLine("doubled=" + String.FromInt(CTools.Doubled(21)))
+        Console.WriteLine("braces=" + CTools.Braces())
+        CTools.PrintBang()
+        Console.WriteLine("done")
+    }
+}

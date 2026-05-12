@@ -718,6 +718,10 @@ public class TypeChecker {
             return
         }
         if (k == NodeKind.BREAK_STMT || k == NodeKind.CONTINUE_STMT) { return }
+        if (k == NodeKind.INLINE_C) {
+            // Inline-C is unchecked by design — body is raw C.
+            return
+        }
         if (k == NodeKind.TRY_STMT) {
             if (stmt.Body != null) { this.CheckBlock(stmt.Body) }
             if (stmt.Else != null) {
