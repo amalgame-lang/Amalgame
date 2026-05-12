@@ -42,6 +42,12 @@ public class AmalgameCompiler {
         if (this.Verbose) {
             Console.WriteLine("Compiling: " + String_FromInt(inputCount) + " file(s)")
         }
+        // Phase stopwatch — surfaced via `--verbose` so users
+        // building large projects can see where the time goes
+        // (parse vs resolve vs typecheck vs cgen). No-op cost
+        // when verbose is off — the Reset()/Elapsed() calls
+        // amortize to a couple of syscalls.
+        let phaseSw = new Stopwatch()
 
         // ── Detect namespace from first file ──────────
         let firstPath = inputFiles.Get(0)
@@ -96,6 +102,10 @@ public class AmalgameCompiler {
         if (!parseOk) {
             return
         }
+        if (this.Verbose) {
+            let phaseD = phaseSw.Reset()
+            Console.WriteError("  parse:     " + phaseD.Format())
+        }
 
         // ── Resolver pass ─────────────────────────────
         let resolver = new FullResolver()
@@ -115,6 +125,10 @@ public class AmalgameCompiler {
                 // Non-fatal: continue to catch more errors
             }
         }
+        if (this.Verbose) {
+            let phaseD = phaseSw.Reset()
+            Console.WriteError("  resolve:   " + phaseD.Format())
+        }
 
         // ── TypeChecker pass ──────────────────────────
         // Walk every parsed program so cross-file uses (e.g. a class in
@@ -129,6 +143,10 @@ public class AmalgameCompiler {
         if (tc.HasErrors()) {
             Console.WriteError(tc.FormatErrors())
             this.ExitCode = 1
+        }
+        if (this.Verbose) {
+            let phaseD = phaseSw.Reset()
+            Console.WriteError("  typecheck: " + phaseD.Format())
         }
 
         // ── Linter pass (optional) ────────────────────
@@ -186,6 +204,10 @@ public class AmalgameCompiler {
 
         let mode = if (isLibrary) { "Library" } else { "Executable" }
         Console.WriteLine("Generated: " + outC + " (" + String_FromInt(lineCount) + " lines) [" + mode + "]")
+        if (this.Verbose) {
+            let phaseD = phaseSw.Reset()
+            Console.WriteError("  cgen:      " + phaseD.Format())
+        }
         this.Diag.PrintCompileOk("Build")
     }
 }
@@ -347,7 +369,7 @@ public class Program {
             var gccCmd: string = ""
             if (hasCxx) {
                 // Stage (a): gcc -c to .o
-                var compileCmd: string = "gcc -O2 -Iruntime"
+                var compileCmd: string = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
                 if (String_Length(amcRuntime) > 0) {
                     compileCmd = compileCmd + " -I'" + amcRuntime + "'"
                 }
@@ -363,7 +385,7 @@ public class Program {
                 // Stage (b): g++ link
                 gccCmd = "g++ -O2 " + objOut
             } else {
-                gccCmd = "gcc -O2 -Iruntime"
+                gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
                 if (String_Length(amcRuntime) > 0) {
                     gccCmd = gccCmd + " -I'" + amcRuntime + "'"
                 }
