@@ -387,7 +387,6 @@ public class CGen {
         this.Out.EmitLine(sigLine)
         this.Out.Indent_()
         this.Out.EmitLine(envName + "* __env = (" + envName + "*)__envRaw;")
-        this.Out.EmitLine("(void)__env;")
         // Unpack params using their annotated type when available.
         for pi in 0..pn {
             let p = lam.Params.Get(pi)
@@ -1803,19 +1802,20 @@ public class CGen {
         let isStatic = method.Flag2
         if (!isStatic) {
             this.LocalTypeSet("self", className + "*")
-            // Suppress -Wunused-parameter if self is not referenced
-            this.Out.EmitLine("(void)self;")
+            // The user-side build passes -Wno-unused-parameter so we
+            // don't need the `(void)self;` boilerplate any more —
+            // dropping it shrinks amc_lib.c by ~500 lines on its own.
         }
-        // Seed with parameters and suppress unused warnings.
-        // Generic params (List<T>, Map<K,V>) also seed the elem-type
-        // table so `xs.Get(i)` / `m.Get(k)` inside the body lower with
-        // a typed cast instead of falling back to void*.
+        // Seed with parameters. Generic params (List<T>, Map<K,V>)
+        // also seed the elem-type table so `xs.Get(i)` / `m.Get(k)`
+        // inside the body lower with a typed cast instead of falling
+        // back to void*. Unused-parameter warnings are silenced by
+        // the gcc flag.
         let pcount = method.Params.Count()
         for i in 0..pcount {
             let p = method.Params.Get(i)
             this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
             this.TrackGenericLocal(p.Name, p.Str)
-            this.Out.EmitLine("(void)" + p.Name + ";")
         }
         if (method.Body != null) {
             this.EmitBlock(method.Body)
@@ -2093,7 +2093,7 @@ public class CGen {
             this.Out.EmitLine("} else {")
             this.Out.Indent_()
             if (String_Length(stmt.Name) > 0) {
-                this.Out.EmitLine("void* __attribute__((unused)) " + stmt.Name + " = _am_ex.value;")
+                this.Out.EmitLine("void* " + stmt.Name + " = _am_ex.value;")
                 this.LocalTypeSet(stmt.Name, "void*")
             }
             this.Out.EmitLine("_am_ex.active = 0;")
@@ -2161,7 +2161,7 @@ public class CGen {
                     let vnode = stmt.Children.Get(i)
                     let vname = vnode.Name
                     let idxStr = String_FromInt(i)
-                    this.Out.EmitLine("__auto_type __attribute__((unused)) " + vname + " = " + tmpName + "._" + idxStr + ";")
+                    this.Out.EmitLine("__auto_type " + vname + " = " + tmpName + "._" + idxStr + ";")
                     // Infer element type from tuple type string "(int,string,bool)"
                     var elemType = "void*"
                     if (String_Length(tupleRetType) > 2 && String_StartsWith(tupleRetType, "(")) {
@@ -2269,7 +2269,7 @@ public class CGen {
             }
             // Emit the declaration — for void* from List.Get(), emit a typed cast
             let rhs = this.EmitExprStr(stmt.Left)
-            var decl = t + " __attribute__((unused)) " + stmt.Name + " = " + rhs + ";"
+            var decl = t + " " + stmt.Name + " = " + rhs + ";"
             // If inferred void* but we have a typed cast available, upgrade the variable type
             if (t == "void*") {
                 // Check if rhs already contains a typed cast like "(SomeType*)AmalgameList_get"
@@ -2282,7 +2282,7 @@ public class CGen {
                         if (String_Length(castT) > 0) {
                             t = castT
                             this.LocalTypeSet(stmt.Name, t)
-                            decl = t + " __attribute__((unused)) " + stmt.Name + " = " + rhs + ";"
+                            decl = t + " " + stmt.Name + " = " + rhs + ";"
                         }
                     }
                 }
