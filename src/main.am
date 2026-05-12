@@ -395,7 +395,7 @@ public class Program {
             for poi in 0..nObjs {
                 gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
             }
-            gccCmd = gccCmd + " -lgc -lm -lcurl -ldl -lpthread"
+            gccCmd = gccCmd + " -lgc -lm -lcurl -lz -ldl -lpthread"
             // Splice per-package libs (-l<name>). Each loaded
             // package contributes zero or more bare names via
             // its manifest's [stdlib].libs array.

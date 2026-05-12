@@ -124,6 +124,7 @@ public class Resolver {
         builtins.Add("FileWatcher")
         builtins.Add("Regex")
         builtins.Add("Match")
+        builtins.Add("Compress")
         builtins.Add("String")
         builtins.Add("Http")
         // Primitive types
