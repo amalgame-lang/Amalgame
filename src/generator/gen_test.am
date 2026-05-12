@@ -182,6 +182,17 @@ public class Program {
         let newProg  = newPar.Parse()
         Console.WriteError("parsed: new_cmd.am")
 
+        // ArgParser: shared arg-parsing helper used by main.am
+        // (v0.6.3+). Parsed before main.am so the ArgParser class
+        // is in scope at resolve time. Independent of toml/add_cmd.
+        let apPath  = "./src/argparser.am"
+        let apSrc   = File.ReadAll(apPath)
+        let apLex   = new Lexer(apSrc, apPath)
+        let apToks  = apLex.Tokenize()
+        let apPar   = new Parser(apToks)
+        let apProg  = apPar.Parse()
+        Console.WriteError("parsed: argparser.am")
+
         // Toml stdlib — required by add_cmd.am for manifest parsing.
         // Same chicken-and-egg pattern as json: must be parsed before
         // any file that imports Amalgame.Formats.Toml.
@@ -255,6 +266,7 @@ public class Program {
         gen6.AddFilePass1(genProg)
         gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(newProg)
+        gen6.AddFilePass1(apProg)
         gen6.AddFilePass1(addProg)
         gen6.AddFilePass1(mainProg)
         gen6.EmitSeparator()
@@ -283,6 +295,7 @@ public class Program {
         gen6.AddFilePass2(genProg)
         gen6.AddFilePass2(expProg)
         gen6.AddFilePass2(newProg)
+        gen6.AddFilePass2(apProg)
         gen6.AddFilePass2(addProg)
         gen6.AddFilePass2(mainProg)
         Console.WriteError("gen6: pass2 done")

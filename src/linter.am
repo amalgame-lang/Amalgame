@@ -55,15 +55,28 @@ public class Linter {
     private LocalLines:    List<int>
     private LocalCols:     List<int>
     private LocalIsParam:  List<bool>
+    // True iff the local was declared with `var` (mutable). Used
+    // to flag `var x = …` declarations that never get reassigned —
+    // suggest `let` instead. Always false for params and `for`-loop
+    // binders since they aren't user-typed `var` declarations.
+    private LocalIsMut:    List<bool>
     // For each local, the UsedNames count at its declaration
     // — anything appended after this index is a candidate use.
     private LocalUseSnap:  List<int>
+    // Same trick for AssignedNames: snapshot at decl time, anything
+    // appended later is a candidate reassignment.
+    private LocalAssignSnap: List<int>
     // Stack of LocalNames sizes captured at each PushScope.
     private ScopeStarts:   List<int>
     // Append-only list of identifier names seen as reads. Reset
     // to a fresh list at the start of every method we lint, to
     // bound memory and keep snapshots meaningful per-method.
     private UsedNames:     List<string>
+    // Append-only list of identifier names seen as the LHS of an
+    // ASSIGN statement (LHS must be a bare IDENTIFIER — `xs[i] = …`
+    // and `obj.field = …` don't reassign the local itself). Same
+    // per-method reset as UsedNames.
+    private AssignedNames: List<string>
 
     public Linter() {
         this.Warnings    = new List<LintWarning>()
@@ -72,9 +85,12 @@ public class Linter {
         this.LocalLines    = new List<int>()
         this.LocalCols     = new List<int>()
         this.LocalIsParam  = new List<bool>()
+        this.LocalIsMut    = new List<bool>()
         this.LocalUseSnap  = new List<int>()
+        this.LocalAssignSnap = new List<int>()
         this.ScopeStarts   = new List<int>()
         this.UsedNames     = new List<string>()
+        this.AssignedNames = new List<string>()
     }
 
     public void Lint(AstNode prog) {
@@ -127,7 +143,8 @@ public class Linter {
 
     private void LintMethod(AstNode method) {
         // Reset usage state per method so snapshots are local.
-        this.UsedNames = new List<string>()
+        this.UsedNames     = new List<string>()
+        this.AssignedNames = new List<string>()
         this.PushScope()
         let pn = method.Params.Count()
         for i in 0..pn {
@@ -178,12 +195,19 @@ public class Linter {
         if (k == NodeKind.VAR_DECL) {
             // Resolve RHS first so `let x = x + 1` doesn't see itself.
             if (stmt.Left != null) { this.LintExpr(stmt.Left) }
-            this.DeclareLocal(stmt.Name, stmt.Line, stmt.Column, false)
+            // Flag carries the `var` (true) vs `let` (false) bit
+            // from the parser. Drives the var-never-reassigned check.
+            this.DeclareLocalMut(stmt.Name, stmt.Line, stmt.Column, false, stmt.Flag)
             return
         }
         if (k == NodeKind.ASSIGN) {
-            // Treat both sides as reads — keeps MVP simple and
-            // avoids false positives for var-only counters.
+            // Treat both sides as reads — keeps the unused-local
+            // check simple and avoids false positives for `var`-only
+            // counters. Separately track bare-identifier LHS as a
+            // reassignment so var-never-reassigned can fire.
+            if (stmt.Left != null && stmt.Left.Kind == NodeKind.IDENTIFIER) {
+                this.AssignedNames.Add(stmt.Left.Name)
+            }
             if (stmt.Left  != null) { this.LintExpr(stmt.Left) }
             if (stmt.Right != null) { this.LintExpr(stmt.Right) }
             return
@@ -229,7 +253,19 @@ public class Linter {
         }
         if (k == NodeKind.TRY_STMT) {
             if (stmt.Body != null) { this.LintBlockOrStmt(stmt.Body) }
-            if (stmt.Else != null) { this.LintBlockOrStmt(stmt.Else) }
+            // Catch binder lives in the catch block's scope. Declare
+            // it in a fresh scope wrapping the catch body so an
+            // unused-local warning fires when the user never reads
+            // the bound exception (e.g. `catch (e) { Console.WriteLine("oops") }`).
+            // Same `_` prefix opt-out as other locals.
+            if (stmt.Else != null) {
+                this.PushScope()
+                if (String_Length(stmt.Name) > 0) {
+                    this.DeclareLocal(stmt.Name, stmt.Line, stmt.Column, false)
+                }
+                this.LintBlockOrStmt(stmt.Else)
+                this.PopScope()
+            }
             if (stmt.Cond != null) { this.LintBlockOrStmt(stmt.Cond) }
             return
         }
@@ -238,10 +274,42 @@ public class Linter {
             return
         }
         // Statement-position expression (e.g. a bare call): walk
-        // it so identifier reads still mark used.
+        // it so identifier reads still mark used. Special-case
+        // BINARY assignment ops (`=`, `+=`, etc.) — the parser
+        // models these as `Ast.Binary(left, "=", right, ...)`
+        // rather than a dedicated NodeKind.ASSIGN, so the linter
+        // must inspect the op string to detect reassignment for
+        // the var-never-reassigned check.
+        if (k == NodeKind.BINARY && this.IsAssignOp(stmt.Str)) {
+            if (stmt.Left != null && stmt.Left.Kind == NodeKind.IDENTIFIER) {
+                this.AssignedNames.Add(stmt.Left.Name)
+            }
+            if (stmt.Left  != null) { this.LintExpr(stmt.Left) }
+            if (stmt.Right != null) { this.LintExpr(stmt.Right) }
+            return
+        }
         if (k == NodeKind.CALL || k == NodeKind.MEMBER || k == NodeKind.BINARY || k == NodeKind.UNARY || k == NodeKind.IDENTIFIER) {
             this.LintExpr(stmt)
         }
+    }
+
+    // True for `=` and its compound cousins (`+=`, `-=`, `*=`,
+    // `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`). Centralised so
+    // the LintStmt assignment branch stays in sync with the
+    // parser's ParseAssign op list.
+    private bool IsAssignOp(string op) {
+        if (op == "=")  { return true }
+        if (op == "+=") { return true }
+        if (op == "-=") { return true }
+        if (op == "*=") { return true }
+        if (op == "/=") { return true }
+        if (op == "%=") { return true }
+        if (op == "&=") { return true }
+        if (op == "|=") { return true }
+        if (op == "^=") { return true }
+        if (op == "<<=") { return true }
+        if (op == ">>=") { return true }
+        return false
     }
 
     private void LintBlockOrStmt(AstNode n) {
@@ -353,15 +421,24 @@ public class Linter {
         // its name was read (appeared in UsedNames) at any point
         // after its declaration. Pop back to `mark` afterwards.
         while (this.LocalNames.Count() > mark) {
-            let last    = this.LocalNames.Count() - 1
-            let name    = this.LocalNames.Get(last)
-            let line    = this.LocalLines.Get(last)
-            let col     = this.LocalCols.Get(last)
-            let isParam = this.LocalIsParam.Get(last)
-            let snap    = this.LocalUseSnap.Get(last)
+            let last      = this.LocalNames.Count() - 1
+            let name      = this.LocalNames.Get(last)
+            let line      = this.LocalLines.Get(last)
+            let col       = this.LocalCols.Get(last)
+            let isParam   = this.LocalIsParam.Get(last)
+            let isMut     = this.LocalIsMut.Get(last)
+            let snap      = this.LocalUseSnap.Get(last)
+            let assignSnap = this.LocalAssignSnap.Get(last)
             if (!isParam && !String_StartsWith(name, "_")) {
                 if (!this.UsedAfter(name, snap)) {
                     let w = new LintWarning("unused local '" + name + "' (prefix with '_' to silence)", this.Filename, line, col)
+                    this.Warnings.Add(w)
+                } else if (isMut && !this.AssignedAfter(name, assignSnap)) {
+                    // Var was declared with `var` but never reassigned
+                    // after its initializer — `let` would communicate
+                    // the immutability and let downstream readers stop
+                    // looking for a mutation site.
+                    let w = new LintWarning("'" + name + "' is declared `var` but never reassigned — use `let`", this.Filename, line, col)
                     this.Warnings.Add(w)
                 }
             }
@@ -369,11 +446,21 @@ public class Linter {
             this.LocalLines.RemoveAt(last)
             this.LocalCols.RemoveAt(last)
             this.LocalIsParam.RemoveAt(last)
+            this.LocalIsMut.RemoveAt(last)
             this.LocalUseSnap.RemoveAt(last)
+            this.LocalAssignSnap.RemoveAt(last)
         }
     }
 
     private void DeclareLocal(string name, int line, int col, bool isParam) {
+        // Default `isMut` to false — callers that have a real `var`
+        // declaration use `DeclareLocalMut` instead. Params and
+        // for-loop binders are always treated as immutable for the
+        // purposes of the var-never-reassigned check.
+        this.DeclareLocalMut(name, line, col, isParam, false)
+    }
+
+    private void DeclareLocalMut(string name, int line, int col, bool isParam, bool isMut) {
         if (this.IsShadowing(name)) {
             let w = new LintWarning("'" + name + "' shadows an enclosing binding", this.Filename, line, col)
             this.Warnings.Add(w)
@@ -382,7 +469,9 @@ public class Linter {
         this.LocalLines.Add(line)
         this.LocalCols.Add(col)
         this.LocalIsParam.Add(isParam)
+        this.LocalIsMut.Add(isMut)
         this.LocalUseSnap.Add(this.UsedNames.Count())
+        this.LocalAssignSnap.Add(this.AssignedNames.Count())
     }
 
     // True iff `name` is declared in any scope strictly outside
@@ -410,6 +499,20 @@ public class Linter {
         while (i < n) {
             let u = this.UsedNames.Get(i)
             if (u == name) { return true }
+            i = i + 1
+        }
+        return false
+    }
+
+    // Same shape as UsedAfter, applied to AssignedNames. True iff
+    // the local was reassigned at least once after its decl (i.e.
+    // is genuinely mutated, not just initialised).
+    private bool AssignedAfter(string name, int fromIdx) {
+        let n = this.AssignedNames.Count()
+        var i = fromIdx
+        while (i < n) {
+            let a = this.AssignedNames.Get(i)
+            if (a == name) { return true }
             i = i + 1
         }
         return false
