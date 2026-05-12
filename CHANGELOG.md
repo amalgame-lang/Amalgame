@@ -7,6 +7,160 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.4] — 2026-05-12
+
+The **"project G — inline-C blocks"** patch release. Adds a balisé
+`@c { … }` block to Amalgame so methods can drop into C without a
+runtime-header detour, plus file-scope `@c_include "<h.h>"` and
+`@c_link "name"` directives. First POC migration:
+`runtime/Amalgame_BuildInfo.h` → `src/stdlib/amc_buildinfo.am`. 8
+new tests on top of v0.7.3 (602 → **610 PASS**). docs/guide chapters
+4 + 5 caught up with everything shipped since v0.7.0.
+
+### Inline-C blocks — `@c { … }`
+
+```
+public class CTools {
+    public static int CLen(string s) {
+        @c {
+            return (int) strlen(s);
+        }
+    }
+}
+```
+
+- **Lexer** scans the body verbatim, tracking nested-brace depth
+  while skipping `}` inside C string literals (`"…"`), char literals
+  (`'…'`), and `//` / `/* … */` comments — so braces in those
+  contexts never close the block early.
+- **Parser** dispatches the new `INLINE_C` token by type at the
+  top of `ParseStmt` and produces a leaf `NodeKind.INLINE_C` node
+  holding the body in `.Str`.
+- **Resolver / typechecker / linter** treat the block as opaque
+  by design — no symbols to resolve, no types to check.
+- **CGen** splices the body inside a compound statement
+  (`{ /* inline-C */ … }`) so any `int x = …;` declarations stay
+  scoped to the block. The body's plain C `return …;` returns from
+  the enclosing Amalgame method (the original proposal's
+  `@out = expr;` was dropped — `return` is cleaner).
+- **Formatter** re-emits `@c { … }` line-by-line so `amc fmt`
+  round-trips inline-C blocks.
+
+### File-scope directives — `@c_include` / `@c_link`
+
+```
+namespace App
+
+@c_include "<ctype.h>"
+@c_link "m"
+
+public class CaseTools {
+    public static int ToUpperByte(int b) {
+        @c {
+            return (int) toupper((int) b);
+        }
+    }
+}
+```
+
+- **`@c_include "<header.h>"`** — emits `#include <header.h>` at
+  the top of the generated `.c` (angle form when the argument
+  starts with `<`, quoted form otherwise).
+- **`@c_link "name"`** — surfaces as a `/* link: -lname */`
+  comment in the emitted `.c` for the MVP. Threading the libs
+  into `amc test`'s internal gcc step is a follow-up.
+
+Both directives parse at file scope between class / enum
+declarations; the parser peeks `@` + IDENT before falling through
+to `ParseDecl` so the leading `@` doesn't get swallowed by the
+decorator path.
+
+### BuildInfo POC migration
+
+```
+// src/stdlib/amc_buildinfo.am
+namespace Amalgame.Compiler
+
+public class BuildInfo {
+    public static string GitRev() {
+        @c { return AMC_GIT_REV; }
+    }
+
+    public static string BuildDate() {
+        @c { return AMC_BUILD_DATE; }
+    }
+}
+```
+
+`runtime/Amalgame_BuildInfo.h` shrank from 38 to 28 lines — only
+the two `#ifndef AMC_GIT_REV` / `AMC_BUILD_DATE` guards remain.
+`BuildInfo` removed from the cgen's `isCoreStdlib` list so the
+call site lowers through the regular namespace-mangled dispatch
+and matches the AM-emitted `Amalgame_Compiler_BuildInfo_GitRev`
+symbol. `amc --version` still prints `commit … built …` as
+before, now driven by AM code.
+
+### CI — Windows MSYS2 unblocked
+
+POSIX `<regex.h>` (since v0.7.1) and zlib link (since v0.7.2) were
+never wired into the Windows MSYS2 CI job. Pre-existing legacy bug
+fixed by adding `mingw-w64-x86_64-libsystre` + `mingw-w64-x86_64-zlib`
+to the MSYS2 install and `-lz -lsystre -ltre` to both gcc invocations
+(snapshot bootstrap + smoke sample compile). Windows CI green again.
+
+### Roadmap
+
+New section in `ROADMAP_COMPLET.md` — **"Runtime → AM migrations
+(project G follow-up, optional)"** — listing 6 candidates that
+*could* migrate post-v0.7.6 once project F (`libamalgame.a`
+pre-compile) lands and makes the user-side ergonomics painless:
+`DateTime`, `Logging`, `Crypto`, `Random`, `Service`, `FileWatch`.
+Headers that stay in C are explicitly enumerated too (the
+foundation, perf-critical primitives, vendor bindings).
+
+The original "Inline-C injection blocks" design item under "Open
+design questions" is now marked **SHIPPED in v0.7.4** with commit
+refs.
+
+### docs/guide catch-up
+
+Chapter 4 (stdlib) gained eight new sections covering everything
+shipped between v0.7.0 and v0.7.4 that the chapter hadn't been
+updated to cover yet: `IO.FileWatcher`, `Math.Vec` (Vec3/Vec4/Mat4),
+`Net.WebSocket`, `Formats.Yaml`, `Formats.MsgPack`, `Regex`,
+`Compress`, plus a new `### UTC breakdown` subsection inside
+DateTime documenting `Year()`/`Month()`/`Day()`/`Hour()`/`Minute()`/
+`Second()` (v0.7.1).
+
+Chapter 5 (runtime & C interop) gained a new option 3 under
+"Calling C from Amalgame" walking through the inline-C surface,
+the unsafe-like sandbox warning, and the BuildInfo POC as the
+canonical migration example.
+
+### Tests
+
+- 4 new `inline-C: …` fixtures in `tests/samples/inline_c.am`
+  (return value, multi-stmt with local, brace torture, void
+  side-effect).
+- 4 new `inline-C dir: …` fixtures in
+  `tests/samples/inline_c_directives.am` (`@c_include "<ctype.h>"`
+  + `@c_link "m"` driving `toupper` / `isalpha`).
+- Suite goes from 602 → **610 PASS** (213 core + 351 stdlib + 12
+  fmt + 34 amc-new), 0 FAIL, 0 SKIP.
+
+### Migration notes
+
+Existing callers of `BuildInfo.GitRev()` / `BuildInfo.BuildDate()`
+(both internal to `amc --version` today) are unaffected — the call
+site is unchanged, only the emitted symbol moves from
+`BuildInfo_GitRev` to `Amalgame_Compiler_BuildInfo_GitRev`. Third-
+party callers don't exist for this API.
+
+The `runtime/Amalgame_BuildInfo.h` header still ships so the macro
+guards (`#ifndef AMC_GIT_REV` / `AMC_BUILD_DATE`) remain in scope
+for the inline-C bodies. Anyone vendoring that header in their own
+project should keep it.
+
 ## [v0.7.3] — 2026-05-12
 
 The **"WebSocket + final `.h` runtime"** patch release. 4 new

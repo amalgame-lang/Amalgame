@@ -1,13 +1,13 @@
 # Amalgame — Roadmap
 
 > **Upcoming priority sequence (2026-05-12 decision):**
-> `v0.7.4 = G (inline-C blocks)` → `v0.7.5 = F (libamalgame pre-compile)` → `v0.7.6+ stdlib in .am only`.
+> `v0.7.4 = G (inline-C blocks)` ✅ shipped → `v0.7.5 = F (libamalgame pre-compile)` → `v0.7.6+ stdlib in .am only`.
 > No new `runtime/Amalgame_*.h` after v0.7.3 — every new stdlib module lands as a `.am` file
-> using `@c { ... }` blocks for low-level glue once G ships. Migration cost of existing `.h`
-> files stays bounded because we stop adding to that pile now. See "Open design questions"
-> for the G + F details.
+> using `@c { ... }` blocks for low-level glue. Migration cost of existing `.h` files stays
+> bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
+> for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-12 · `amc 0.7.3` · self-hosted · 602/602 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client
+> Updated 2026-05-12 · `amc 0.7.4` · self-hosted · 610/610 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`)
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
