@@ -728,6 +728,19 @@ run_test "MP: decode fixarray"       "$SAMPLES/stdlib_msgpack.am" "[PASS] decode
 run_test "MP: decode fixmap shape"   "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixmap shape"   "" "$MP_LIB"
 run_test "MP: decode fixmap values"  "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixmap values"  "" "$MP_LIB"
 
+# ── Amalgame.Net.WebSocket ────────────────────────────
+# RFC 6455 client. Tests focus on in-process helpers:
+# Sec-WebSocket-Accept SHA-1+Base64 against the canonical RFC
+# test vector, plus error paths (refused / DNS failure) which
+# don't need a live server. Integration testing against a real
+# WS endpoint is opt-in and out-of-band (Python `websockets`).
+echo ""
+echo "── Amalgame.Net.WebSocket ─────────────────"
+run_test "WS: accept key RFC vector"  "$SAMPLES/stdlib_websocket.am" "[PASS] accept key RFC vector"
+run_test "WS: accept key empty input" "$SAMPLES/stdlib_websocket.am" "[PASS] accept key empty input"
+run_test "WS: connect refused"        "$SAMPLES/stdlib_websocket.am" "[PASS] connect refused"
+run_test "WS: dns failure"            "$SAMPLES/stdlib_websocket.am" "[PASS] dns failure"
+
 # Database / Messaging external-package tests run on the package
 # repos' own CI — not here. See the header note at the top of
 # this file for the per-package invocation.

@@ -810,6 +810,7 @@ public class CGen {
             if (tname == "Mat4") { return "AmalgameMat4*" }
             if (tname == "FileWatcher") { return "AmalgameFileWatcher*" }
             if (tname == "Match") { return "AmalgameRegexMatch*" }
+            if (tname == "WebSocket") { return "AmalgameWebSocket*" }
             if (this.IsEnum(tname)) { return this.SymName(tname) }
             return this.SymName(tname) + "*"
         }
@@ -932,6 +933,12 @@ public class CGen {
                 // Compress (zlib) runtime helpers.
                 if (calleeStr == "Compress_Gzip" || calleeStr == "Compress_Gunzip" || calleeStr == "Compress_Deflate" || calleeStr == "Compress_Inflate" || calleeStr == "Compress_GzipString") { return "AmalgameList*" }
                 if (calleeStr == "Compress_GunzipString") { return "code_string" }
+                // WebSocket (RFC 6455) runtime helpers.
+                if (calleeStr == "WebSocket_Connect") { return "AmalgameWebSocket*" }
+                if (calleeStr == "WebSocket_SendText" || calleeStr == "WebSocket_IsConnected") { return "code_bool" }
+                if (calleeStr == "WebSocket_ReceiveText" || calleeStr == "WebSocket_GetHost" || calleeStr == "WebSocket_AcceptKey") { return "code_string" }
+                if (calleeStr == "WebSocket_GetPort") { return "i64" }
+                if (calleeStr == "WebSocket_Close") { return "void" }
                 if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
                 if (calleeStr == "Math_Random") { return "double" }
                 if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
@@ -1276,6 +1283,7 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_FileWatch.h\"")
         this.Out.EmitLine("#include \"Amalgame_Regex.h\"")
         this.Out.EmitLine("#include \"Amalgame_Compress.h\"")
+        this.Out.EmitLine("#include \"Amalgame_WebSocket.h\"")
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
@@ -2761,11 +2769,12 @@ public class CGen {
                 } else {
                     if (String_StartsWith(tname, "Set<") || tname == "Set") {
                         newCall = "AmalgameSet_new()"
-                    } else if (tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "FileWatcher") {
-                        // Math.Vec / Mat / FileWatcher runtime helpers
-                        // — skip the namespace-mangled symbol so
-                        // `new Vec3(x,y,z)` lowers to `Vec3_new(...)`
-                        // against the dedicated runtime header.
+                    } else if (tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "FileWatcher" || tname == "WebSocket") {
+                        // Math.Vec / Mat / FileWatcher / WebSocket
+                        // runtime helpers — skip the namespace-
+                        // mangled symbol so `new Vec3(x,y,z)` lowers
+                        // to `Vec3_new(...)` against the dedicated
+                        // runtime header.
                         newCall = tname + "_new("
                         let argc = expr.Args.Count()
                         for i in 0..argc {
@@ -3284,7 +3293,7 @@ public class CGen {
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -3308,7 +3317,7 @@ public class CGen {
                         // `v.Length()` on a `Vec3*` lowers to
                         // `Vec3_Length(v)`, matching the runtime
                         // header naming.
-                        if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameFileWatcher") {
+                        if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameFileWatcher" || bareType == "AmalgameWebSocket") {
                             return String_Replace(bareType, "Amalgame", "") + "_" + mname
                         }
                         // Regex.Match struct → `Match_<method>` runtime.
@@ -3485,6 +3494,7 @@ public class CGen {
         if (t == "Mat4") { return "AmalgameMat4*" }
         if (t == "FileWatcher") { return "AmalgameFileWatcher*" }
         if (t == "Match") { return "AmalgameRegexMatch*" }
+        if (t == "WebSocket") { return "AmalgameWebSocket*" }
         if (this.IsEnum(t)) {
             return this.SymName(t)
         }

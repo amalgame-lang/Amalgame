@@ -394,6 +394,17 @@ public class FullResolver {
         this.DeclareGlobal("Math_SeedRandom","void",   false)
         this.DeclareGlobal("Math_Random",    "float",  false)
         this.DeclareGlobal("Math_RandomInt", "int",    false)
+        // WebSocket — RFC 6455 client (text frames).
+        // Runtime in runtime/Amalgame_WebSocket.h.
+        this.DeclareGlobal("WebSocket",            "type",         false)
+        this.DeclareGlobal("WebSocket_Connect",    "WebSocket",    false)
+        this.DeclareGlobal("WebSocket_SendText",   "bool",         false)
+        this.DeclareGlobal("WebSocket_ReceiveText","string",       false)
+        this.DeclareGlobal("WebSocket_Close",      "void",         false)
+        this.DeclareGlobal("WebSocket_IsConnected","bool",         false)
+        this.DeclareGlobal("WebSocket_GetHost",    "string",       false)
+        this.DeclareGlobal("WebSocket_GetPort",    "int",          false)
+        this.DeclareGlobal("WebSocket_AcceptKey",  "string",       false)
         // Compress — zlib binding (gzip + raw deflate).
         // Runtime in runtime/Amalgame_Compress.h.
         this.DeclareGlobal("Compress",             "type",         false)
