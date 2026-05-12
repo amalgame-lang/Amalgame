@@ -118,6 +118,10 @@ public class Resolver {
         builtins.Add("File")
         builtins.Add("Path")
         builtins.Add("Math")
+        builtins.Add("Vec3")
+        builtins.Add("Vec4")
+        builtins.Add("Mat4")
+        builtins.Add("FileWatcher")
         builtins.Add("String")
         builtins.Add("Http")
         // Primitive types

@@ -802,6 +802,13 @@ public class CGen {
             if (String_StartsWith(tname, "List<") || tname == "List") { return "AmalgameList*" }
             if (String_StartsWith(tname, "Map<")  || tname == "Map")  { return "AmalgameMap*" }
             if (String_StartsWith(tname, "Set<")  || tname == "Set")  { return "AmalgameSet*" }
+            // Math.Vec / Mat — runtime-allocated pointer types.
+            // Skip SymName so the inferred type matches the actual
+            // C return of `Vec3_new` etc.
+            if (tname == "Vec3") { return "AmalgameVec3*" }
+            if (tname == "Vec4") { return "AmalgameVec4*" }
+            if (tname == "Mat4") { return "AmalgameMat4*" }
+            if (tname == "FileWatcher") { return "AmalgameFileWatcher*" }
             if (this.IsEnum(tname)) { return this.SymName(tname) }
             return this.SymName(tname) + "*"
         }
@@ -900,6 +907,21 @@ public class CGen {
                 // Math stdlib return types
                 if (calleeStr == "Math_Sqrt" || calleeStr == "Math_Abs" || calleeStr == "Math_Floor" || calleeStr == "Math_Ceil" || calleeStr == "Math_Round" || calleeStr == "Math_Pow" || calleeStr == "Math_Log") { return "double" }
                 if (calleeStr == "Math_Max" || calleeStr == "Math_Min") { return "i64" }
+                // Math.Vec / Mat4 runtime helpers — fresh pointer-
+                // typed values returned from each op. Length / Dot /
+                // GetX/Y/Z return doubles; Equals returns bool.
+                if (calleeStr == "Vec3_new" || calleeStr == "Vec3_Add" || calleeStr == "Vec3_Sub" || calleeStr == "Vec3_Scale" || calleeStr == "Vec3_Cross" || calleeStr == "Vec3_Normalize") { return "AmalgameVec3*" }
+                if (calleeStr == "Vec3_Length" || calleeStr == "Vec3_Dot" || calleeStr == "Vec3_GetX" || calleeStr == "Vec3_GetY" || calleeStr == "Vec3_GetZ") { return "double" }
+                if (calleeStr == "Vec3_Equals") { return "code_bool" }
+                if (calleeStr == "Vec4_new" || calleeStr == "Vec4_Add" || calleeStr == "Vec4_Sub" || calleeStr == "Vec4_Scale" || calleeStr == "Mat4_TransformVec4") { return "AmalgameVec4*" }
+                if (calleeStr == "Vec4_Dot" || calleeStr == "Vec4_GetX" || calleeStr == "Vec4_GetY" || calleeStr == "Vec4_GetZ" || calleeStr == "Vec4_GetW") { return "double" }
+                if (calleeStr == "Mat4_new" || calleeStr == "Mat4_Identity" || calleeStr == "Mat4_Multiply" || calleeStr == "Mat4_Translate" || calleeStr == "Mat4_Scale" || calleeStr == "Mat4_RotateX" || calleeStr == "Mat4_RotateY" || calleeStr == "Mat4_RotateZ") { return "AmalgameMat4*" }
+                if (calleeStr == "Mat4_Get") { return "double" }
+                if (calleeStr == "Mat4_Set") { return "void" }
+                // FileWatcher runtime helpers.
+                if (calleeStr == "FileWatcher_new") { return "AmalgameFileWatcher*" }
+                if (calleeStr == "FileWatcher_GetPath") { return "code_string" }
+                if (calleeStr == "FileWatcher_Changed" || calleeStr == "FileWatcher_Exists") { return "code_bool" }
                 if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
                 if (calleeStr == "Math_Random") { return "double" }
                 if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
@@ -1240,6 +1262,8 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Collections.h\"")
         this.Out.EmitLine("#include \"Amalgame_IO.h\"")
         this.Out.EmitLine("#include \"Amalgame_Math.h\"")
+        this.Out.EmitLine("#include \"Amalgame_Math_Vec.h\"")
+        this.Out.EmitLine("#include \"Amalgame_FileWatch.h\"")
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
@@ -2725,6 +2749,20 @@ public class CGen {
                 } else {
                     if (String_StartsWith(tname, "Set<") || tname == "Set") {
                         newCall = "AmalgameSet_new()"
+                    } else if (tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "FileWatcher") {
+                        // Math.Vec / Mat / FileWatcher runtime helpers
+                        // — skip the namespace-mangled symbol so
+                        // `new Vec3(x,y,z)` lowers to `Vec3_new(...)`
+                        // against the dedicated runtime header.
+                        newCall = tname + "_new("
+                        let argc = expr.Args.Count()
+                        for i in 0..argc {
+                            let arg = expr.Args.Get(i)
+                            if (i > 0) { newCall = newCall + ", " }
+                            newCall = newCall + this.EmitExprStr(arg)
+                        }
+                        newCall = newCall + ")"
+                        return newCall
                     } else {
                         newCall = this.SymName(tname) + "_new("
                         let argc = expr.Args.Count()
@@ -3234,7 +3272,7 @@ public class CGen {
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "BuildInfo" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -3253,6 +3291,14 @@ public class CGen {
                     let varType = this.LocalTypeGet(tname)
                     let bareType = String_Replace(varType, "*", "")
                     if (String_Length(bareType) > 0) {
+                        // Math.Vec / Mat / FileWatcher runtime helpers
+                        // — strip the "Amalgame" struct prefix so
+                        // `v.Length()` on a `Vec3*` lowers to
+                        // `Vec3_Length(v)`, matching the runtime
+                        // header naming.
+                        if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameFileWatcher") {
+                            return String_Replace(bareType, "Amalgame", "") + "_" + mname
+                        }
                         // `s.Length()` on a string variable should call
                         // `String_Length(s)`, not `code_string_Length(s)`.
                         // `code_string` is the legacy C typedef (the
@@ -3404,6 +3450,14 @@ public class CGen {
         if (t == "List") { return "AmalgameList*" }
         if (t == "Map")  { return "AmalgameMap*" }
         if (t == "Set")  { return "AmalgameSet*" }
+        // Math.Vec / Mat — runtime-allocated pointer types defined
+        // in runtime/Amalgame_Math_Vec.h. Skip SymName mangling so
+        // user code typing `let v: Vec3 = ...` lowers to the
+        // canonical struct pointer rather than `Amalgame_Compiler_Vec3*`.
+        if (t == "Vec3") { return "AmalgameVec3*" }
+        if (t == "Vec4") { return "AmalgameVec4*" }
+        if (t == "Mat4") { return "AmalgameMat4*" }
+        if (t == "FileWatcher") { return "AmalgameFileWatcher*" }
         if (this.IsEnum(t)) {
             return this.SymName(t)
         }
