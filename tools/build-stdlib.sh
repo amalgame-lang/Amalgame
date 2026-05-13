@@ -81,11 +81,15 @@ build_one() {
     fi
     printf "  %-12s " "$mod"
     if ! "$AMC" --lib --quiet -o "$BUILD/$mod" "$src" $ext_flags > /tmp/amc-stdlib-$mod.log 2>&1; then
-        echo "amc FAIL (see /tmp/amc-stdlib-$mod.log)"
+        echo "amc FAIL"
+        echo "  ── amc log ──"
+        sed 's/^/  /' /tmp/amc-stdlib-$mod.log
         exit 1
     fi
     if ! gcc -O2 -Iruntime $CPPFLAGS -c "$BUILD/$mod.c" -o "$BUILD/$mod.o" 2> /tmp/gcc-stdlib-$mod.log; then
-        echo "gcc FAIL (see /tmp/gcc-stdlib-$mod.log)"
+        echo "gcc FAIL"
+        echo "  ── gcc log ──"
+        sed 's/^/  /' /tmp/gcc-stdlib-$mod.log
         exit 1
     fi
     local bytes
