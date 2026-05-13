@@ -15,9 +15,7 @@
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
 #include "Amalgame_Random.h"
-#include "Amalgame_DateTime.h"
 #include "Amalgame_Crypto.h"
-#include "Amalgame_Logging.h"
 #include "Amalgame_Service.h"
 #include "Amalgame_BuildInfo.h"
 
@@ -71,6 +69,13 @@ typedef struct _Amalgame_Compiler_Random Amalgame_Compiler_Random;
 typedef struct _Amalgame_Compiler_Base64 Amalgame_Compiler_Base64;
 typedef struct _Amalgame_Compiler_Hex Amalgame_Compiler_Hex;
 typedef struct _Amalgame_Compiler_Url Amalgame_Compiler_Url;
+/* inline-C top-level */
+
+    #include <time.h>
+    #ifdef _WIN32
+        #include <windows.h>
+    #endif
+
 typedef struct _Amalgame_Compiler_DateTime Amalgame_Compiler_DateTime;
 typedef struct _Amalgame_Compiler_DateTimeUtil Amalgame_Compiler_DateTimeUtil;
 typedef struct _Amalgame_Compiler_Duration Amalgame_Compiler_Duration;
@@ -82,6 +87,12 @@ typedef struct _Amalgame_Compiler_Hmac Amalgame_Compiler_Hmac;
 typedef struct _Amalgame_Compiler_MsgPackCursor Amalgame_Compiler_MsgPackCursor;
 typedef struct _Amalgame_Compiler_MsgPack Amalgame_Compiler_MsgPack;
 typedef struct _Amalgame_Compiler_BuildInfo Amalgame_Compiler_BuildInfo;
+/* inline-C top-level */
+
+    #include <time.h>
+    static int   Amalgame_Logging_MinLevel = 1;     /* default Info */
+    static char* Amalgame_Logging_FilePath = NULL;  /* NULL = disabled */
+
 typedef struct _Amalgame_Compiler_Log Amalgame_Compiler_Log;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
@@ -1314,6 +1325,13 @@ Amalgame_Compiler_AstNode* Amalgame_Compiler_Parser_Parse(Amalgame_Compiler_Pars
             }
         }
         parseLastPos = self->Pos;
+        if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_INLINE_C)) {
+            Amalgame_Compiler_Token* tok = Amalgame_Compiler_Parser_Advance(self);
+            Amalgame_Compiler_AstNode* node = Amalgame_Compiler_Ast_InlineC(tok->Value, tok->Line, tok->Column);
+            AmalgameList_add(prog->Children, (void*)(intptr_t)(node));
+            Amalgame_Compiler_Parser_SkipNewlines(self);
+            continue;
+        }
         if (Amalgame_Compiler_Parser_CheckType(self, Amalgame_Compiler_TokenType_AT)) {
             Amalgame_Compiler_Token* nextTok = Amalgame_Compiler_Parser_Peek(self, 1);
             if (nextTok->Type == Amalgame_Compiler_TokenType_IDENTIFIER && code_string_equals(nextTok->Value, "c_include") || code_string_equals(nextTok->Value, "c_link")) {
@@ -6479,9 +6497,7 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Random.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_DateTime.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Crypto.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Logging.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_BuildInfo.h\"");
     i64 pkgHdrN = AmalgameList_count(self->PkgHeaders);
@@ -6635,6 +6651,17 @@ static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self,
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
         code_string name = Amalgame_Compiler_CGen_SymName(self, decl->Name);
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("typedef struct _", name), " "), name), ";"));
+    }
+    if (k == Amalgame_Compiler_NodeKind_INLINE_C) {
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, "/* inline-C top-level */");
+        code_string body = decl->Str;
+        if (String_Length(body) > 0) {
+            AmalgameList* lines = String_Split(body, "\n");
+            i64 count = AmalgameList_count(lines);
+            for (i64 i = 0; i < count; i++) {
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, (code_string)AmalgameList_get(lines, i));
+            }
+        }
     }
 }
 

@@ -100,6 +100,20 @@ public class Parser {
                 if (this.IsEnd()) { break }
             }
             parseLastPos = this.Pos
+            // File-scope `@c { … }` raw block — emitted verbatim near
+            // the top of the generated .c (after the runtime prelude
+            // includes, before any class typedef). Used for module-
+            // level state globals, `#include`s the runtime prelude
+            // doesn't bring in, or any other C the @c blocks inside
+            // method bodies will reach for. The lexer already merged
+            // the body bytes into a single INLINE_C token.
+            if (this.CheckType(TokenType.INLINE_C)) {
+                let tok = this.Advance()
+                let node = Ast.InlineC(tok.Value, tok.Line, tok.Column)
+                prog.Children.Add(node)
+                this.SkipNewlines()
+                continue
+            }
             // File-scope `@c_include "<h.h>"` / `@c_link "lib"` directives
             // are recognised before ParseDecl so the leading `@` doesn't
             // get swallowed by ParseDecoratorList as a class decorator.
