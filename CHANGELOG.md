@@ -7,6 +7,61 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.10] — 2026-05-13
+
+The **"LSP signature help"** release. Two tooltip-side UX
+improvements for the editor integration land.
+
+### New: `textDocument/signatureHelp`
+
+The LSP server now publishes the `signatureHelpProvider`
+capability with trigger characters `(` and `,`. When the user
+is typing inside an active call (`foo.bar(|x, y)`), the editor
+asks the server for the active method's signature; we return:
+
+- `signatures[0].label` = `name(p1: t1, p2: t2): ret`
+- `signatures[0].parameters[]` = per-param `[start, end]` offsets
+  so the client can bold the active parameter
+- `activeParameter` = index based on how many `,` the user has
+  already typed (one per completed arg)
+
+v1 finds the called method by name across the workspace via the
+new `FindMethodDeclByName` helper — first match wins. Overloading
+is not expressed in Amalgame, so a workspace-order scan is
+unambiguous for well-formed code.
+
+### Improved: `textDocument/hover`
+
+When the hovered identifier resolves to a method (declaration
+site, MEMBER receiver, or IDENTIFIER call-site), the tooltip
+now shows the **full signature** — `name(p1: t1, …): ret` —
+instead of just the inferred type. Falls through to the old
+type-only display for non-method nodes.
+
+### Internals
+
+- New static helpers on `LspServer`:
+  - `FormatMethodSignatureMarkdown(METHOD_DECL)` — shared
+    formatter used by hover + signatureHelp.
+  - `FindMethodDeclByName(prog, name)` — workspace-wide
+    method lookup.
+  - `FindCallAtPosition(root, line, col)` — deepest CALL
+    whose line/col precedes the cursor.
+  - `CallCalleeName(call)` — extract the function name from a
+    CALL's `Left` (IDENTIFIER or MEMBER).
+
+### Deferred
+
+- Per-call-site dispatch resolution (resolve the exact
+  overload the typechecker would pick) — not needed today
+  since Amalgame doesn't have method overloading, but the hook
+  is the same place to wire in once overloading lands.
+- Doc-comment extraction in tooltips — when the parser starts
+  attaching `///` doc comments to METHOD_DECL nodes, surface
+  them as the body of the markdown response.
+
+---
+
 ## [v0.7.9] — 2026-05-13
 
 The **"build / run / watch"** release. Three first-class compile
