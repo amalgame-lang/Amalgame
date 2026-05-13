@@ -179,10 +179,8 @@ jobs:
 
       - name: Pre-compile user-facing stdlib (libamalgame.a)
         run: |
-          # tools/build-stdlib.sh invokes ./amc; rename amc.exe → amc for it.
-          cp amc.exe amc
+          # tools/build-stdlib.sh auto-detects ./amc vs ./amc.exe.
           ./tools/build-stdlib.sh
-          rm -f amc
 
       - name: Determine version
         id: ver
