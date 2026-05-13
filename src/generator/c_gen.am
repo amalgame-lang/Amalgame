@@ -3466,7 +3466,10 @@ public class CGen {
                         // (src/stdlib/amc_buildinfo.am) bundled under the
                         // Amalgame.Compiler namespace, so it now goes
                         // through the normal namespace-mangled dispatch.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Log" || tname == "Service" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                        // Log is the next migration (post-v0.7.5) — it
+                        // lives in src/stdlib/logging.am with `@c { … }`
+                        // bodies, same namespace-mangled dispatch.
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Service" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }

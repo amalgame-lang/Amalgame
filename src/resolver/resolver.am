@@ -338,21 +338,12 @@ public class FullResolver {
         // are still wired by build_amc.sh; both return "" when the
         // defines aren't set, so callers detect "no build info" and
         // skip the banner line. Used by `amc --version`.
-        // Logging stdlib — runtime helpers under the `Log_*` prefix so
-        // `Log.Info(...)` in user code lowers to `Log_Info(...)` via the
-        // cgen's isStdlib short-circuit, matching the Console/File/Math
-        // convention. The facade in src/stdlib/logging.am is now
-        // optional sugar; user code reaches the same runtime helpers
-        // directly when amc auto-includes Amalgame_Logging.h.
-        this.DeclareGlobal("Log",             "type",   false)
-        this.DeclareGlobal("Log_SetMinLevel", "void",   false)
-        this.DeclareGlobal("Log_GetMinLevel", "string", false)
-        this.DeclareGlobal("Log_SetFile",     "void",   false)
-        this.DeclareGlobal("Log_GetFile",     "string", false)
-        this.DeclareGlobal("Log_Debug",       "void",   false)
-        this.DeclareGlobal("Log_Info",        "void",   false)
-        this.DeclareGlobal("Log_Warn",        "void",   false)
-        this.DeclareGlobal("Log_Error",       "void",   false)
+        // Logging lives in src/stdlib/logging.am since the post-v0.7.5
+        // migration — the class is now declared in AM with `@c { … }`
+        // bodies sharing state through the trimmed
+        // `runtime/Amalgame_Logging.h` (state globals only). The
+        // resolver picks the class up from the AM declaration like any
+        // other bundled module.
         // Service stdlib — same isStdlib short-circuit pattern as Log.
         this.DeclareGlobal("Service",             "type",   false)
         this.DeclareGlobal("Service_Install",     "void",   false)
