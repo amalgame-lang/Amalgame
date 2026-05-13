@@ -5,9 +5,6 @@
 #include "Amalgame_String.h"
 #include "Amalgame_Collections.h"
 #include "Amalgame_IO.h"
-#include "Amalgame_Regex.h"
-#include "Amalgame_Compress.h"
-#include "Amalgame_WebSocket.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
@@ -4133,7 +4130,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.7.7";
+    return "0.7.8";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -5778,9 +5775,6 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_String.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Collections.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_IO.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Regex.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Compress.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_WebSocket.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
@@ -14010,11 +14004,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "1f80f3d2";
+    return "14dd9ea5";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T19:07:46Z";
+    return "2026-05-13T20:00:14Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
