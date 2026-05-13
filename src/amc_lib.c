@@ -71,6 +71,8 @@ typedef struct _Amalgame_Compiler_Random Amalgame_Compiler_Random;
 typedef struct _Amalgame_Compiler_Base64 Amalgame_Compiler_Base64;
 typedef struct _Amalgame_Compiler_Hex Amalgame_Compiler_Hex;
 typedef struct _Amalgame_Compiler_Url Amalgame_Compiler_Url;
+typedef struct _Amalgame_Compiler_DateTime Amalgame_Compiler_DateTime;
+typedef struct _Amalgame_Compiler_DateTimeUtil Amalgame_Compiler_DateTimeUtil;
 typedef struct _Amalgame_Compiler_Duration Amalgame_Compiler_Duration;
 typedef struct _Amalgame_Compiler_InstantResult Amalgame_Compiler_InstantResult;
 typedef struct _Amalgame_Compiler_Instant Amalgame_Compiler_Instant;
@@ -10837,17 +10839,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_BytesToI64", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_TimeSeedNanos", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_SystemBytes", "List<int>", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_NowNanos", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_NowMonotonicNanos", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_FormatIso", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_ParseIsoNanos", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_IsParseError", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Year", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Month", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Day", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Hour", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Minute", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "DateTime_Second", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256", "List<int>", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256Hex", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256OfString", "string", 0);
@@ -14934,10 +14925,315 @@ static i64 Amalgame_Compiler_Url_HexValue(code_string c) {
     return -1;
 }
 
+Amalgame_Compiler_DateTime* Amalgame_Compiler_DateTime_new();
+Amalgame_Compiler_DateTimeUtil* Amalgame_Compiler_DateTimeUtil_new();
 Amalgame_Compiler_Duration* Amalgame_Compiler_Duration_new(i64 nanos);
 Amalgame_Compiler_InstantResult* Amalgame_Compiler_InstantResult_new();
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_new(i64 nanos);
 Amalgame_Compiler_Stopwatch* Amalgame_Compiler_Stopwatch_new();
+struct _Amalgame_Compiler_DateTime {
+};
+
+i64 Amalgame_Compiler_DateTime_NowNanos();
+i64 Amalgame_Compiler_DateTime_NowMonotonicNanos();
+i64 Amalgame_Compiler_DateTime_ParseErrorSentinel();
+code_bool Amalgame_Compiler_DateTime_IsParseError(i64 nanos);
+
+Amalgame_Compiler_DateTime* Amalgame_Compiler_DateTime_new() {
+    Amalgame_Compiler_DateTime* self = (Amalgame_Compiler_DateTime*) GC_MALLOC(sizeof(Amalgame_Compiler_DateTime));
+    return self;
+}
+
+i64 Amalgame_Compiler_DateTime_NowNanos() {
+    { /* inline-C */
+        
+                #ifdef _WIN32
+                    FILETIME ft;
+                    GetSystemTimeAsFileTime(&ft);
+                    ULARGE_INTEGER u;
+                    u.LowPart  = ft.dwLowDateTime;
+                    u.HighPart = ft.dwHighDateTime;
+                    int64_t ticks = (int64_t) u.QuadPart - 116444736000000000LL;
+                    return (i64)(ticks * 100LL);
+                #else
+                    struct timespec ts;
+                    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) return 0;
+                    return (i64)((int64_t) ts.tv_sec * 1000000000LL + (int64_t) ts.tv_nsec);
+                #endif
+                
+    }
+}
+
+i64 Amalgame_Compiler_DateTime_NowMonotonicNanos() {
+    { /* inline-C */
+        
+                #ifdef _WIN32
+                    LARGE_INTEGER counter, freq;
+                    QueryPerformanceCounter(&counter);
+                    QueryPerformanceFrequency(&freq);
+                    if (freq.QuadPart == 0) return (i64) GetTickCount64() * 1000000LL;
+                    return (i64)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
+                #else
+                    struct timespec ts;
+                    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+                    return (i64)((int64_t) ts.tv_sec * 1000000000LL + (int64_t) ts.tv_nsec);
+                #endif
+                
+    }
+}
+
+i64 Amalgame_Compiler_DateTime_ParseErrorSentinel() {
+    return -9223372036854775807 - 1;
+}
+
+code_bool Amalgame_Compiler_DateTime_IsParseError(i64 nanos) {
+    return nanos == Amalgame_Compiler_DateTime_ParseErrorSentinel();
+}
+
+struct _Amalgame_Compiler_DateTimeUtil {
+};
+
+code_bool Amalgame_Compiler_DateTimeUtil_IsDigit(code_string c);
+i64 Amalgame_Compiler_DateTimeUtil_DigitVal(code_string c);
+code_string Amalgame_Compiler_DateTimeUtil_PadZero(code_string s, i64 width);
+AmalgameList* Amalgame_Compiler_DateTimeUtil_CivilFromDays(i64 days);
+i64 Amalgame_Compiler_DateTimeUtil_DaysFromCivil(i64 year, i64 month, i64 day);
+AmalgameList* Amalgame_Compiler_DateTimeUtil_Breakdown(i64 nanos);
+code_string Amalgame_Compiler_DateTimeUtil_FormatIso(i64 nanos);
+i64 Amalgame_Compiler_DateTimeUtil_ParseIsoNanos(code_string s);
+
+Amalgame_Compiler_DateTimeUtil* Amalgame_Compiler_DateTimeUtil_new() {
+    Amalgame_Compiler_DateTimeUtil* self = (Amalgame_Compiler_DateTimeUtil*) GC_MALLOC(sizeof(Amalgame_Compiler_DateTimeUtil));
+    return self;
+}
+
+code_bool Amalgame_Compiler_DateTimeUtil_IsDigit(code_string c) {
+    if (String_Length(c) == 0) {
+        return 0;
+    }
+    return String_IndexOf("0123456789", c) >= 0;
+}
+
+i64 Amalgame_Compiler_DateTimeUtil_DigitVal(code_string c) {
+    return String_ToInt(c);
+}
+
+code_string Amalgame_Compiler_DateTimeUtil_PadZero(code_string s, i64 width) {
+    code_string out = s;
+    while (String_Length(out) < width) {
+        out = code_string_concat("0", out);
+    }
+    return out;
+}
+
+AmalgameList* Amalgame_Compiler_DateTimeUtil_CivilFromDays(i64 days) {
+    i64 z = days + 719468;
+    i64 era = 0;
+    if (z >= 0) {
+        era = z / 146097;
+    } else {
+        i64 znum = z - 146096;
+        era = znum / 146097;
+    }
+    i64 doe = z - era * 146097;
+    i64 yoeNum = doe - doe / 1460 + doe / 36524 - doe / 146096;
+    i64 yoe = yoeNum / 365;
+    i64 y = yoe + era * 400;
+    i64 yoeTerm = 365 * yoe + yoe / 4 - yoe / 100;
+    i64 doy = doe - yoeTerm;
+    i64 mpNum = 5 * doy + 2;
+    i64 mp = mpNum / 153;
+    i64 mpTermNum = 153 * mp + 2;
+    i64 mpTerm = mpTermNum / 5;
+    i64 d = doy - mpTerm + 1;
+    i64 m = 0;
+    if (mp < 10) {
+        m = mp + 3;
+    } else {
+        m = mp - 9;
+    }
+    if (m <= 2) {
+        y = y + 1;
+    }
+    AmalgameList* out = AmalgameList_new();
+    AmalgameList_add(out, (void*)(intptr_t)(y));
+    AmalgameList_add(out, (void*)(intptr_t)(m));
+    AmalgameList_add(out, (void*)(intptr_t)(d));
+    return out;
+}
+
+i64 Amalgame_Compiler_DateTimeUtil_DaysFromCivil(i64 year, i64 month, i64 day) {
+    i64 y = year;
+    if (month <= 2) {
+        y = y - 1;
+    }
+    i64 era = 0;
+    if (y >= 0) {
+        era = y / 400;
+    } else {
+        i64 yneg = y - 399;
+        era = yneg / 400;
+    }
+    i64 yoe = y - era * 400;
+    i64 monthShift = 0;
+    if (month > 2) {
+        monthShift = month - 3;
+    } else {
+        monthShift = month + 9;
+    }
+    i64 doyNum = 153 * monthShift + 2;
+    i64 doy = doyNum / 5 + day - 1;
+    i64 doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+
+AmalgameList* Amalgame_Compiler_DateTimeUtil_Breakdown(i64 nanos) {
+    i64 secs = nanos / 1000000000;
+    i64 frac = nanos - secs * 1000000000;
+    if (frac < 0) {
+        secs = secs - 1;
+        frac = frac + 1000000000;
+    }
+    i64 days = secs / 86400;
+    i64 sod = secs - days * 86400;
+    if (sod < 0) {
+        days = days - 1;
+        sod = sod + 86400;
+    }
+    AmalgameList* ymd = Amalgame_Compiler_DateTimeUtil_CivilFromDays(days);
+    i64 hour = sod / 3600;
+    i64 minute = sod / 60 % 60;
+    i64 second = sod % 60;
+    AmalgameList* out = AmalgameList_new();
+    AmalgameList_add(out, (void*)(intptr_t)((i64)AmalgameList_get(ymd, 0)));
+    AmalgameList_add(out, (void*)(intptr_t)((i64)AmalgameList_get(ymd, 1)));
+    AmalgameList_add(out, (void*)(intptr_t)((i64)AmalgameList_get(ymd, 2)));
+    AmalgameList_add(out, (void*)(intptr_t)(hour));
+    AmalgameList_add(out, (void*)(intptr_t)(minute));
+    AmalgameList_add(out, (void*)(intptr_t)(second));
+    AmalgameList_add(out, (void*)(intptr_t)(frac));
+    return out;
+}
+
+code_string Amalgame_Compiler_DateTimeUtil_FormatIso(i64 nanos) {
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(nanos);
+    code_string yS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 0)), 4);
+    code_string moS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 1)), 2);
+    code_string dS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 2)), 2);
+    code_string hS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 3)), 2);
+    code_string miS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 4)), 2);
+    code_string sS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 5)), 2);
+    code_string fS = Amalgame_Compiler_DateTimeUtil_PadZero(String_FromInt((i64)AmalgameList_get(parts, 6)), 9);
+    return code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(yS, "-"), moS), "-"), dS), "T"), hS), ":"), miS), ":"), sS), "."), fS), "Z");
+}
+
+i64 Amalgame_Compiler_DateTimeUtil_ParseIsoNanos(code_string s) {
+    i64 err = Amalgame_Compiler_DateTime_ParseErrorSentinel();
+    if (String_Length(s) < 19) {
+        return err;
+    }
+    for (i64 i = 0; i < 19; i++) {
+        code_string c = String_CharAt1(s, i);
+        if (i == 4 || i == 7) {
+            if (!code_string_equals(c, "-")) {
+                return err;
+            }
+        } else {
+            if (i == 10) {
+                if (!code_string_equals(c, "T") && !code_string_equals(c, "t")) {
+                    return err;
+                }
+            } else {
+                if (i == 13 || i == 16) {
+                    if (!code_string_equals(c, ":")) {
+                        return err;
+                    }
+                } else {
+                    if (!Amalgame_Compiler_DateTimeUtil_IsDigit(c)) {
+                        return err;
+                    }
+                }
+            }
+        }
+    }
+    i64 y0 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 0));
+    i64 y1 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 1));
+    i64 y2 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 2));
+    i64 y3 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 3));
+    i64 year = y0 * 1000 + y1 * 100 + y2 * 10 + y3;
+    i64 mo0 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 5));
+    i64 mo1 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 6));
+    i64 month = mo0 * 10 + mo1;
+    i64 d0 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 8));
+    i64 d1 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 9));
+    i64 day = d0 * 10 + d1;
+    i64 h0 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 11));
+    i64 h1 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 12));
+    i64 hour = h0 * 10 + h1;
+    i64 mi0 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 14));
+    i64 mi1 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 15));
+    i64 minute = mi0 * 10 + mi1;
+    i64 s0 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 17));
+    i64 s1 = Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, 18));
+    i64 second = s0 * 10 + s1;
+    if (month < 1 || month > 12) {
+        return err;
+    }
+    if (day < 1 || day > 31) {
+        return err;
+    }
+    if (hour < 0 || hour > 23) {
+        return err;
+    }
+    if (minute < 0 || minute > 59) {
+        return err;
+    }
+    if (second < 0 || second > 60) {
+        return err;
+    }
+    if (second == 60) {
+        second = 59;
+    }
+    i64 pos = 19;
+    i64 fracNs = 0;
+    i64 totalLen = String_Length(s);
+    if (pos < totalLen && code_string_equals(String_CharAt1(s, pos), ".")) {
+        pos = pos + 1;
+        i64 fracStart = pos;
+        while (pos < totalLen && Amalgame_Compiler_DateTimeUtil_IsDigit(String_CharAt1(s, pos))) {
+            pos = pos + 1;
+        }
+        i64 flen = pos - fracStart;
+        if (flen == 0) {
+            return err;
+        }
+        i64 copy = flen;
+        if (copy > 9) {
+            copy = 9;
+        }
+        for (i64 i = 0; i < copy; i++) {
+            fracNs = fracNs * 10 + Amalgame_Compiler_DateTimeUtil_DigitVal(String_CharAt1(s, fracStart + i));
+        }
+        for (i64 i = copy; i < 9; i++) {
+            fracNs = fracNs * 10;
+        }
+    }
+    if (pos >= totalLen) {
+        return err;
+    }
+    code_string zChar = String_CharAt1(s, pos);
+    if (!code_string_equals(zChar, "Z") && !code_string_equals(zChar, "z")) {
+        return err;
+    }
+    pos = pos + 1;
+    if (pos != totalLen) {
+        return err;
+    }
+    i64 days = Amalgame_Compiler_DateTimeUtil_DaysFromCivil(year, month, day);
+    i64 secs = days * 86400 + hour * 3600 + minute * 60 + second;
+    return secs * 1000000000 + fracNs;
+}
+
 struct _Amalgame_Compiler_Duration {
     i64 nanos;
 };
@@ -15123,7 +15419,7 @@ Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_new(i64 nanos) {
 }
 
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Now() {
-    i64 n = DateTime_NowNanos();
+    i64 n = Amalgame_Compiler_DateTime_NowNanos();
     return Amalgame_Compiler_Instant_new(n);
 }
 
@@ -15141,8 +15437,8 @@ Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_FromUnixNanos(i64 ns) {
 
 Amalgame_Compiler_InstantResult* Amalgame_Compiler_Instant_Parse(code_string s) {
     Amalgame_Compiler_InstantResult* res = Amalgame_Compiler_InstantResult_new();
-    i64 n = DateTime_ParseIsoNanos(s);
-    if (DateTime_IsParseError(n)) {
+    i64 n = Amalgame_Compiler_DateTimeUtil_ParseIsoNanos(s);
+    if (Amalgame_Compiler_DateTime_IsParseError(n)) {
         res->Ok = 0;
         res->Error = "invalid ISO 8601 / RFC 3339 timestamp (UTC subset only — must end with Z)";
         return res;
@@ -15166,31 +15462,37 @@ i64 Amalgame_Compiler_Instant_UnixSeconds(Amalgame_Compiler_Instant* self) {
 }
 
 code_string Amalgame_Compiler_Instant_Format(Amalgame_Compiler_Instant* self) {
-    return DateTime_FormatIso(self->nanos);
+    return Amalgame_Compiler_DateTimeUtil_FormatIso(self->nanos);
 }
 
 i64 Amalgame_Compiler_Instant_Year(Amalgame_Compiler_Instant* self) {
-    return DateTime_Year(self->nanos);
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(self->nanos);
+    return (i64)AmalgameList_get(parts, 0);
 }
 
 i64 Amalgame_Compiler_Instant_Month(Amalgame_Compiler_Instant* self) {
-    return DateTime_Month(self->nanos);
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(self->nanos);
+    return (i64)AmalgameList_get(parts, 1);
 }
 
 i64 Amalgame_Compiler_Instant_Day(Amalgame_Compiler_Instant* self) {
-    return DateTime_Day(self->nanos);
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(self->nanos);
+    return (i64)AmalgameList_get(parts, 2);
 }
 
 i64 Amalgame_Compiler_Instant_Hour(Amalgame_Compiler_Instant* self) {
-    return DateTime_Hour(self->nanos);
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(self->nanos);
+    return (i64)AmalgameList_get(parts, 3);
 }
 
 i64 Amalgame_Compiler_Instant_Minute(Amalgame_Compiler_Instant* self) {
-    return DateTime_Minute(self->nanos);
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(self->nanos);
+    return (i64)AmalgameList_get(parts, 4);
 }
 
 i64 Amalgame_Compiler_Instant_Second(Amalgame_Compiler_Instant* self) {
-    return DateTime_Second(self->nanos);
+    AmalgameList* parts = Amalgame_Compiler_DateTimeUtil_Breakdown(self->nanos);
+    return (i64)AmalgameList_get(parts, 5);
 }
 
 Amalgame_Compiler_Instant* Amalgame_Compiler_Instant_Add(Amalgame_Compiler_Instant* self, Amalgame_Compiler_Duration* d) {
@@ -15235,18 +15537,18 @@ Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_
 
 Amalgame_Compiler_Stopwatch* Amalgame_Compiler_Stopwatch_new() {
     Amalgame_Compiler_Stopwatch* self = (Amalgame_Compiler_Stopwatch*) GC_MALLOC(sizeof(Amalgame_Compiler_Stopwatch));
-    self->startNanos = DateTime_NowMonotonicNanos();
+    self->startNanos = Amalgame_Compiler_DateTime_NowMonotonicNanos();
     return self;
 }
 
 Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Elapsed(Amalgame_Compiler_Stopwatch* self) {
-    i64 now = DateTime_NowMonotonicNanos();
+    i64 now = Amalgame_Compiler_DateTime_NowMonotonicNanos();
     i64 diff = now - self->startNanos;
     return Amalgame_Compiler_Duration_new(diff);
 }
 
 Amalgame_Compiler_Duration* Amalgame_Compiler_Stopwatch_Reset(Amalgame_Compiler_Stopwatch* self) {
-    i64 now = DateTime_NowMonotonicNanos();
+    i64 now = Amalgame_Compiler_DateTime_NowMonotonicNanos();
     i64 diff = now - self->startNanos;
     self->startNanos = now;
     return Amalgame_Compiler_Duration_new(diff);
@@ -15715,29 +16017,39 @@ Amalgame_Compiler_Log* Amalgame_Compiler_Log_new() {
 }
 
 void Amalgame_Compiler_Log_SetMinLevel(code_string name) {
+    i64 level = 1;
+    if (String_Length(name) > 0) {
+        code_string ch = String_CharAt1(name, 0);
+        if (code_string_equals(ch, "d") || code_string_equals(ch, "D")) {
+            level = 0;
+        } else if (code_string_equals(ch, "i") || code_string_equals(ch, "I")) {
+            level = 1;
+        } else if (code_string_equals(ch, "w") || code_string_equals(ch, "W")) {
+            level = 2;
+        } else if (code_string_equals(ch, "e") || code_string_equals(ch, "E")) {
+            level = 3;
+        }
+    }
     { /* inline-C */
-        
-                    if (!name || !name[0]) { Amalgame_Logging_MinLevel = 1; return; }
-                    char ch = name[0];
-                    if (ch == 'd' || ch == 'D') { Amalgame_Logging_MinLevel = 0; return; }
-                    if (ch == 'i' || ch == 'I') { Amalgame_Logging_MinLevel = 1; return; }
-                    if (ch == 'w' || ch == 'W') { Amalgame_Logging_MinLevel = 2; return; }
-                    if (ch == 'e' || ch == 'E') { Amalgame_Logging_MinLevel = 3; return; }
-                    Amalgame_Logging_MinLevel = 1;
-                
+         Amalgame_Logging_MinLevel = (int) level; 
     }
 }
 
 code_string Amalgame_Compiler_Log_GetMinLevel() {
+    i64 l = 0;
     { /* inline-C */
-        
-                    int l = Amalgame_Logging_MinLevel;
-                    if (l == 0) return "debug";
-                    if (l == 1) return "info";
-                    if (l == 2) return "warn";
-                    return "error";
-                
+         l = (i64) Amalgame_Logging_MinLevel; 
     }
+    if (l == 0) {
+        return "debug";
+    }
+    if (l == 1) {
+        return "info";
+    }
+    if (l == 2) {
+        return "warn";
+    }
+    return "error";
 }
 
 void Amalgame_Compiler_Log_SetFile(code_string path) {
