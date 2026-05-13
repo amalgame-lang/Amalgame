@@ -1294,9 +1294,14 @@ public class CGen {
         // FileWatcher migrated to AM (post-v0.7.5); runtime header
         // dropped. Its libc include (<sys/stat.h>) lives in a
         // top-level @c {} block in src/stdlib/io_filewatcher.am.
-        this.Out.EmitLine("#include \"Amalgame_Regex.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Compress.h\"")
-        this.Out.EmitLine("#include \"Amalgame_WebSocket.h\"")
+        // Regex / Compress / WebSocket runtime headers moved out to
+        // their own external packages in v0.7.8 — install with
+        // `amc package add regex compress net-websocket` if your
+        // code uses them. The `isCoreStdlib` flat-mangling check
+        // for `Regex.Method` / `Compress.Method` / `WebSocket.Method`
+        // stays in place, so call sites still lower to `Regex_Method`
+        // — the package's runtime header supplies the matching symbol
+        // via PkgHeaders below.
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")

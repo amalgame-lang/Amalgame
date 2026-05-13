@@ -5,6 +5,8 @@
   "fileTypes": ["am"],
   "patterns": [
     { "include": "#comments" },
+    { "include": "#c-block" },
+    { "include": "#c-directives" },
     { "include": "#strings" },
     { "include": "#numbers" },
     { "include": "#decorators" },
@@ -15,6 +17,53 @@
     { "include": "#identifiers" }
   ],
   "repository": {
+    "c-block": {
+      "comment": "Inline-C blocks (v0.7.4+). Highlight body as C — @c { ... }. Nested braces inside the body are handled by the recursive c-block-inner pattern so a method-scope `if (...) { ... }` doesn't terminate the outer @c block early.",
+      "begin": "(@c)(\\s*)(\\{)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.embed-c.amalgame" },
+        "3": { "name": "punctuation.section.embedded.begin.amalgame" }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": { "name": "punctuation.section.embedded.end.amalgame" }
+      },
+      "name": "meta.embedded.block.c",
+      "contentName": "source.c",
+      "patterns": [
+        { "include": "#c-block-inner" },
+        { "include": "source.c" }
+      ]
+    },
+    "c-block-inner": {
+      "comment": "Recursive helper for #c-block: consumes one level of balanced braces inside the embedded C body, then defers to source.c for the actual highlighting.",
+      "begin": "\\{",
+      "end": "\\}",
+      "patterns": [
+        { "include": "#c-block-inner" },
+        { "include": "source.c" }
+      ]
+    },
+    "c-directives": {
+      "patterns": [
+        {
+          "comment": "@c_include \"<header.h>\" / @c_include \"local.h\" — file-scope directive.",
+          "match": "(@c_include)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.other.embed-c.amalgame" },
+            "2": { "name": "string.quoted.double.amalgame" }
+          }
+        },
+        {
+          "comment": "@c_link \"libname\" — file-scope directive (passes -lname to gcc).",
+          "match": "(@c_link)\\s+(\"[^\"]*\")",
+          "captures": {
+            "1": { "name": "keyword.other.embed-c.amalgame" },
+            "2": { "name": "string.quoted.double.amalgame" }
+          }
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {

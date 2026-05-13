@@ -594,38 +594,6 @@ run_test "Path: normalize root"      "$SAMPLES/stdlib_path.am" "[PASS] normalize
 run_test "Path: normalize parent"    "$SAMPLES/stdlib_path.am" "[PASS] normalize parent"    "" "$PATH_LIB"
 run_test "Path: sep length"          "$SAMPLES/stdlib_path.am" "[PASS] sep length"          "" "$PATH_LIB"
 
-# ── Amalgame.Regex ────────────────────────────────────
-# POSIX extended-regex (ERE) binding. PCRE-only features
-# (`\d`, look-arounds, non-greedy) are out of scope.
-echo ""
-echo "── Amalgame.Regex ─────────────────────────"
-run_test "Rx: test true"             "$SAMPLES/stdlib_regex.am" "[PASS] test true"
-run_test "Rx: test false"            "$SAMPLES/stdlib_regex.am" "[PASS] test false"
-run_test "Rx: match text"            "$SAMPLES/stdlib_regex.am" "[PASS] match text"
-run_test "Rx: match offsets"         "$SAMPLES/stdlib_regex.am" "[PASS] match offsets"
-run_test "Rx: group count"           "$SAMPLES/stdlib_regex.am" "[PASS] group count"
-run_test "Rx: group text"            "$SAMPLES/stdlib_regex.am" "[PASS] group text"
-run_test "Rx: replace first"         "$SAMPLES/stdlib_regex.am" "[PASS] replace first"
-run_test "Rx: replace all"           "$SAMPLES/stdlib_regex.am" "[PASS] replace all"
-run_test "Rx: anchor start"          "$SAMPLES/stdlib_regex.am" "[PASS] anchor start"
-run_test "Rx: anchor end"            "$SAMPLES/stdlib_regex.am" "[PASS] anchor end"
-run_test "Rx: alternation"           "$SAMPLES/stdlib_regex.am" "[PASS] alternation"
-
-# ── Amalgame.Compress ─────────────────────────────────
-# zlib gzip + raw deflate codec. Round-trip tests so we don't
-# pin a specific zlib-version's exact byte layout.
-echo ""
-echo "── Amalgame.Compress ──────────────────────"
-run_test "Cz: gzip non-empty"        "$SAMPLES/stdlib_compress.am" "[PASS] gzip non-empty"
-run_test "Cz: gzip roundtrip"        "$SAMPLES/stdlib_compress.am" "[PASS] gzip roundtrip"
-run_test "Cz: gzip magic"            "$SAMPLES/stdlib_compress.am" "[PASS] gzip magic"
-run_test "Cz: deflate non-empty"     "$SAMPLES/stdlib_compress.am" "[PASS] deflate non-empty"
-run_test "Cz: deflate length"        "$SAMPLES/stdlib_compress.am" "[PASS] deflate length"
-run_test "Cz: deflate roundtrip"     "$SAMPLES/stdlib_compress.am" "[PASS] deflate roundtrip"
-run_test "Cz: gzip shrinks"          "$SAMPLES/stdlib_compress.am" "[PASS] gzip shrinks"
-run_test "Cz: gzip large roundtrip"  "$SAMPLES/stdlib_compress.am" "[PASS] gzip large roundtrip"
-run_test "Cz: gzip empty roundtrip"  "$SAMPLES/stdlib_compress.am" "[PASS] gzip empty roundtrip"
-
 # ── Amalgame.Formats.MsgPack ──────────────────────────
 # MessagePack 1.0 subset codec via JsonValue.
 echo ""
@@ -645,19 +613,6 @@ run_test "MP: encode fixarray"       "$SAMPLES/stdlib_msgpack.am" "[PASS] encode
 run_test "MP: decode fixarray"       "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixarray"       "" "$MP_LIB"
 run_test "MP: decode fixmap shape"   "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixmap shape"   "" "$MP_LIB"
 run_test "MP: decode fixmap values"  "$SAMPLES/stdlib_msgpack.am" "[PASS] decode fixmap values"  "" "$MP_LIB"
-
-# ── Amalgame.Net.WebSocket ────────────────────────────
-# RFC 6455 client. Tests focus on in-process helpers:
-# Sec-WebSocket-Accept SHA-1+Base64 against the canonical RFC
-# test vector, plus error paths (refused / DNS failure) which
-# don't need a live server. Integration testing against a real
-# WS endpoint is opt-in and out-of-band (Python `websockets`).
-echo ""
-echo "── Amalgame.Net.WebSocket ─────────────────"
-run_test "WS: accept key RFC vector"  "$SAMPLES/stdlib_websocket.am" "[PASS] accept key RFC vector"
-run_test "WS: accept key empty input" "$SAMPLES/stdlib_websocket.am" "[PASS] accept key empty input"
-run_test "WS: connect refused"        "$SAMPLES/stdlib_websocket.am" "[PASS] connect refused"
-run_test "WS: dns failure"            "$SAMPLES/stdlib_websocket.am" "[PASS] dns failure"
 
 # Database / Messaging external-package tests run on the package
 # repos' own CI — not here. See the header note at the top of

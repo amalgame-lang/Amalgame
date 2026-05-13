@@ -834,6 +834,7 @@ public class AddCommand {
         // arg to each method tells it where to start the scan.
         if (sub == "add")       { return AddCommand.Run(argc, 3) }
         if (sub == "search")    { return AddCommand.RunSearch(argc, 3) }
+        if (sub == "suggest")   { return AddCommand.RunSuggest(argc, 3) }
         if (sub == "versions")  { return AddCommand.RunVersions(argc, 3) }
         if (sub == "info")      { return AddCommand.RunInfo(argc, 3) }
         if (sub == "outdated")  { return AddCommand.RunOutdated(argc, 3) }
@@ -859,6 +860,8 @@ public class AddCommand {
         Console.WriteError("    [--no-precompile]            Skip install-time compile (manifest opt-in)")
         Console.WriteError("  search [keyword] [--refresh]  List or filter packages-index with version compat")
         Console.WriteError("    [--no-versions]              Skip the per-package versions block (faster)")
+        Console.WriteError("  suggest <name|ns> [--json]    Suggest packages that match a class or namespace")
+        Console.WriteError("    [--refresh]                  (intended for LSP / `using X;` quickfix integration)")
         Console.WriteError("  versions <name> [--refresh]   Show all indexed versions of a single package")
         Console.WriteError("    [--json]                     Emit machine-readable JSON")
         Console.WriteError("  info <name> [--refresh]       Show description, url, license, versions, install")
@@ -1625,6 +1628,255 @@ public class AddCommand {
         }
         out = out + "  ]\n}"
         Console.WriteLine(out)
+    }
+
+    // ── suggest verb (v0.7.8+) ────────────────────────
+    //
+    // LSP / IDE integration helper. Given an Amalgame symbol that
+    // didn't resolve in the user's project (e.g. `import
+    // Amalgame.Crypto` flags `Crypto` as unknown, or `let c: Crypto`
+    // hits a missing-type diagnostic), suggest packages from the
+    // curated index that expose a matching class or namespace.
+    //
+    // Matching heuristic (fuzzy on purpose — the LSP can't always
+    // tell the user's exact intent):
+    //   1. Last segment of a dotted namespace (`Amalgame.Crypto`
+    //      → `crypto`, `Amalgame.IO.FileWatcher` → `filewatcher`).
+    //   2. Lower-cased class name as-is (`Crypto` → `crypto`).
+    //   3. Substring on the package name (`crypt` → `crypto`).
+    //   4. Substring on the package description (last-ditch).
+    //
+    // The first three are scored higher and emitted first; the
+    // description-substring fallback only fires when the name
+    // matches produced zero results.
+    //
+    // Output:
+    //   - Default: human-readable, same shape as `search` but
+    //     framed as suggestions (one-shot, no exhaustive listing).
+    //   - --json: stable machine-readable schema for the LSP:
+    //       [{ "name": "...", "url": "...", "description": "...",
+    //          "tier": "...", "license": "...", "category": "...",
+    //          "latest_compatible_tag": "v0.1.0" | "",
+    //          "match_reason": "namespace-tail" | "class-name"
+    //                       | "name-substring" | "description-substring" }]
+    public static int RunSuggest(int argc, int startIdx) {
+        var query: string = ""
+        var refresh: bool = false
+        var jsonOut: bool = false
+        var i: int = startIdx
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc package suggest <name|namespace> [--json] [--refresh]")
+                Console.WriteError("")
+                Console.WriteError("Suggest packages from the curated index that match a class")
+                Console.WriteError("or namespace. Intended for LSP `using X;` quickfix integration.")
+                Console.WriteError("")
+                Console.WriteError("Examples:")
+                Console.WriteError("  amc package suggest Crypto --json")
+                Console.WriteError("  amc package suggest Amalgame.IO.FileWatcher")
+                Console.WriteError("  amc package suggest yaml")
+                return 0
+            }
+            if (a == "--refresh") {
+                refresh = true
+            } else if (a == "--json") {
+                jsonOut = true
+            } else if (String_Length(query) == 0) {
+                query = a
+            }
+            i = i + 1
+        }
+        if (String_Length(query) == 0) {
+            Console.WriteError("amc package suggest: missing <name|namespace> argument")
+            Console.WriteError("Run `amc package suggest --help` for usage.")
+            return 2
+        }
+        // Derive the lookup keys from the query.
+        //   "Amalgame.IO.FileWatcher" → tail = "filewatcher"
+        //   "Crypto"                   → tail = "crypto" (same)
+        //   "yaml"                     → tail = "yaml"
+        var tail: string = query
+        let lastDot: int = String_LastIndexOf(query, ".")
+        if (lastDot >= 0 && lastDot + 1 < String_Length(query)) {
+            tail = String_Substring(query, lastDot + 1, String_Length(query) - lastDot - 1)
+        }
+        let tailL: string = String_ToLower(tail)
+        let queryL: string = String_ToLower(query)
+
+        if (refresh) {
+            let cachePath: string = AddCommand.IndexCachePath()
+            if (File.Exists(cachePath)) {
+                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+            }
+        }
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            if (jsonOut) {
+                Console.WriteLine("[]")
+            } else {
+                Console.WriteError("could not fetch packages-index")
+            }
+            return 1
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            if (jsonOut) {
+                Console.WriteLine("[]")
+            } else {
+                Console.WriteError("packages-index parse error")
+            }
+            return 1
+        }
+        let pkgArr: TomlValue = doc.Get("package")
+        if (!pkgArr.IsArray()) {
+            if (jsonOut) {
+                Console.WriteLine("[]")
+            } else {
+                Console.WriteError("packages-index has no [[package]] entries")
+            }
+            return 1
+        }
+        let verArr: TomlValue = doc.Get("version")
+        let amcVer: string = PackageRegistry.AmcVersion()
+
+        // Two passes: high-confidence matches first (exact name or
+        // tail==name), substring matches second. Description-
+        // substring is only consulted when both name passes are empty.
+        let matchedNames: List<string>   = new List<string>()
+        let matchedReasons: List<string> = new List<string>()
+        let n: int = pkgArr.Count()
+        for j in 0..n {
+            let entry: TomlValue = pkgArr.At(j)
+            let nameS:  string = entry.Get("name").AsString()
+            let nameL:  string = String_ToLower(nameS)
+            if (nameL == tailL && lastDot >= 0) {
+                matchedNames.Add(nameS)
+                matchedReasons.Add("namespace-tail")
+            } else if (nameL == queryL || nameL == tailL) {
+                matchedNames.Add(nameS)
+                matchedReasons.Add("class-name")
+            }
+        }
+        // Second pass: substring on name (only if no exact match found).
+        if (matchedNames.Count() == 0) {
+            for j in 0..n {
+                let entry: TomlValue = pkgArr.At(j)
+                let nameS:  string = entry.Get("name").AsString()
+                let nameL:  string = String_ToLower(nameS)
+                if (String_IndexOf(nameL, tailL) >= 0) {
+                    matchedNames.Add(nameS)
+                    matchedReasons.Add("name-substring")
+                }
+            }
+        }
+        // Third pass: substring on description (only if name match
+        // gave nothing). Lowest signal, surfaced last.
+        if (matchedNames.Count() == 0) {
+            for j in 0..n {
+                let entry: TomlValue = pkgArr.At(j)
+                let nameS:  string = entry.Get("name").AsString()
+                let descL:  string = String_ToLower(entry.Get("description").AsString())
+                if (String_IndexOf(descL, tailL) >= 0) {
+                    matchedNames.Add(nameS)
+                    matchedReasons.Add("description-substring")
+                }
+            }
+        }
+
+        let mc: int = matchedNames.Count()
+        if (jsonOut) {
+            var out: string = "["
+            if (mc == 0) {
+                Console.WriteLine(out + "]")
+                return 0
+            }
+            for k in 0..mc {
+                let nm: string = matchedNames.Get(k)
+                let reason: string = matchedReasons.Get(k)
+                let entry: TomlValue = AddCommand.FindPackageByName(pkgArr, nm)
+                let descS:  string = entry.Get("description").AsString()
+                let tierS:  string = entry.Get("tier").AsString()
+                let urlS:   string = entry.Get("url").AsString()
+                let licS:   string = entry.Get("license").AsString()
+                let catS:   string = entry.Get("category").AsString()
+                let latest: string = AddCommand.LatestCompatibleTag(verArr, nm, amcVer)
+                var item: string = "\n  {"
+                item = item + "\"name\": \""        + AddCommand.JsonEscape(nm)   + "\","
+                item = item + "\"url\": \""         + AddCommand.JsonEscape(urlS) + "\","
+                item = item + "\"description\": \"" + AddCommand.JsonEscape(descS)+ "\","
+                item = item + "\"tier\": \""        + AddCommand.JsonEscape(tierS)+ "\","
+                item = item + "\"license\": \""     + AddCommand.JsonEscape(licS) + "\","
+                item = item + "\"category\": \""    + AddCommand.JsonEscape(catS) + "\","
+                item = item + "\"latest_compatible_tag\": \"" + AddCommand.JsonEscape(latest) + "\","
+                item = item + "\"match_reason\": \"" + AddCommand.JsonEscape(reason) + "\"}"
+                if (k + 1 < mc) {
+                    item = item + ","
+                }
+                out = out + item
+            }
+            out = out + "\n]"
+            Console.WriteLine(out)
+            return 0
+        }
+        // Human-readable fallback.
+        if (mc == 0) {
+            Console.WriteLine("No packages match '" + query + "'.")
+            Console.WriteLine("Run `amc package search` to browse the full curated index.")
+            return 1
+        }
+        Console.WriteLine("Suggestions for '" + query + "':")
+        Console.WriteLine("")
+        for k in 0..mc {
+            let nm: string = matchedNames.Get(k)
+            let entry: TomlValue = AddCommand.FindPackageByName(pkgArr, nm)
+            let descS:  string = entry.Get("description").AsString()
+            let urlS:   string = entry.Get("url").AsString()
+            let latest: string = AddCommand.LatestCompatibleTag(verArr, nm, amcVer)
+            Console.WriteLine("  " + nm + " — " + descS)
+            Console.WriteLine("    " + urlS)
+            if (String_Length(latest) > 0) {
+                Console.WriteLine("    install: amc package add " + nm + "@" + latest)
+            } else {
+                Console.WriteLine("    install: amc package add " + nm + "  (no compatible tag indexed yet)")
+            }
+            Console.WriteLine("")
+        }
+        return 0
+    }
+
+    // Walk the [[package]] array and return the entry whose `name`
+    // matches `target`. Returns a null TomlValue when not found.
+    public static TomlValue FindPackageByName(TomlValue pkgArr, string target) {
+        let n: int = pkgArr.Count()
+        for i in 0..n {
+            let entry: TomlValue = pkgArr.At(i)
+            if (entry.Get("name").AsString() == target) {
+                return entry
+            }
+        }
+        return new TomlValue()
+    }
+
+    // Latest tag for `pkgName` whose `required-amalgame` is satisfied
+    // by `amcVer`. Returns "" when none of the indexed tags qualify
+    // (or no tags at all). Same iteration / "newest = last" convention
+    // used everywhere else in the index.
+    public static string LatestCompatibleTag(TomlValue verArr, string pkgName, string amcVer) {
+        if (!verArr.IsArray()) { return "" }
+        let n: int = verArr.Count()
+        var found: string = ""
+        for i in 0..n {
+            let entry: TomlValue = verArr.At(i)
+            if (entry.Get("package").AsString() != pkgName) { continue }
+            let tag: string = entry.Get("tag").AsString()
+            let req: string = entry.Get("required-amalgame").AsString()
+            if (String_Length(tag) == 0) { continue }
+            if (String_Length(req) == 0 || PackageRegistry.VersionSatisfies(amcVer, req)) {
+                found = tag
+            }
+        }
+        return found
     }
 
     // Minimal JSON string escape: backslash, double-quote, and the
