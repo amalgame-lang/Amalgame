@@ -164,6 +164,40 @@ public class Program {
         let biProg   = biPar.Parse()
         Console.WriteError("parsed: stdlib/amc_buildinfo.am")
 
+        // Logging — post-v0.7.5 migration: every Log.* method body
+        // is now an `@c { … }` block writing to stderr / the
+        // optional file sink, with the two state globals declared
+        // in a top-level @c {} in logging.am itself.
+        let lgPath   = "./src/stdlib/logging.am"
+        let lgSrc    = File.ReadAll(lgPath)
+        let lgLex    = new Lexer(lgSrc, lgPath)
+        let lgToks   = lgLex.Tokenize()
+        let lgPar    = new Parser(lgToks)
+        let lgProg   = lgPar.Parse()
+        Console.WriteError("parsed: stdlib/logging.am")
+
+        // FileWatcher — post-v0.7.5 migration: class with two
+        // @c { … } blocks for stat()/_stat64 calls; everything
+        // else (fields, comparisons, control flow) is pure AM.
+        let fwPath   = "./src/stdlib/io_filewatcher.am"
+        let fwSrc    = File.ReadAll(fwPath)
+        let fwLex    = new Lexer(fwSrc, fwPath)
+        let fwToks   = fwLex.Tokenize()
+        let fwPar    = new Parser(fwToks)
+        let fwProg   = fwPar.Parse()
+        Console.WriteError("parsed: stdlib/io_filewatcher.am")
+
+        // Service — post-v0.7.5 migration: signal handler / atomic
+        // flag / nanosleep in a top-level @c { } block, the four
+        // class methods are thin @c bridges to the OS primitives.
+        let svPath   = "./src/stdlib/service.am"
+        let svSrc    = File.ReadAll(svPath)
+        let svLex    = new Lexer(svSrc, svPath)
+        let svToks   = svLex.Tokenize()
+        let svPar    = new Parser(svToks)
+        let svProg   = svPar.Parse()
+        Console.WriteError("parsed: stdlib/service.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -296,6 +330,9 @@ public class Program {
         gen6.AddFilePass1(crProg)
         gen6.AddFilePass1(mpProg)
         gen6.AddFilePass1(biProg)
+        gen6.AddFilePass1(lgProg)
+        gen6.AddFilePass1(fwProg)
+        gen6.AddFilePass1(svProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -328,6 +365,9 @@ public class Program {
         gen6.AddFilePass2(crProg)
         gen6.AddFilePass2(mpProg)
         gen6.AddFilePass2(biProg)
+        gen6.AddFilePass2(lgProg)
+        gen6.AddFilePass2(fwProg)
+        gen6.AddFilePass2(svProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)

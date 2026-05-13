@@ -338,24 +338,15 @@ public class FullResolver {
         // are still wired by build_amc.sh; both return "" when the
         // defines aren't set, so callers detect "no build info" and
         // skip the banner line. Used by `amc --version`.
-        // Logging stdlib — runtime helpers under the `Log_*` prefix so
-        // `Log.Info(...)` in user code lowers to `Log_Info(...)` via the
-        // cgen's isStdlib short-circuit, matching the Console/File/Math
-        // convention. The facade in src/stdlib/logging.am is now
-        // optional sugar; user code reaches the same runtime helpers
-        // directly when amc auto-includes Amalgame_Logging.h.
-        this.DeclareGlobal("Log",             "type",   false)
-        this.DeclareGlobal("Log_SetMinLevel", "void",   false)
-        this.DeclareGlobal("Log_GetMinLevel", "string", false)
-        this.DeclareGlobal("Log_SetFile",     "void",   false)
-        this.DeclareGlobal("Log_GetFile",     "string", false)
-        this.DeclareGlobal("Log_Debug",       "void",   false)
-        this.DeclareGlobal("Log_Info",        "void",   false)
-        this.DeclareGlobal("Log_Warn",        "void",   false)
-        this.DeclareGlobal("Log_Error",       "void",   false)
-        // Service stdlib — same isStdlib short-circuit pattern as Log.
-        this.DeclareGlobal("Service",             "type",   false)
-        this.DeclareGlobal("Service_Install",     "void",   false)
+        // Logging lives in src/stdlib/logging.am since the post-v0.7.5
+        // migration — the class is now declared in AM with `@c { … }`
+        // bodies sharing state through the trimmed
+        // `runtime/Amalgame_Logging.h` (state globals only). The
+        // resolver picks the class up from the AM declaration like any
+        // other bundled module.
+        // Service lives in src/stdlib/service.am since post-v0.7.5
+        // (signal handler + nanosleep wrapped in @c {} blocks; rest
+        // is pure AM). Class picked up from the bundled .am source.
         // (Database.SQLite global declarations moved to package
         //  amalgame-database-sqlite v0.1.0 — RegisterPackages
         //  declares them dynamically when the user has done
@@ -370,28 +361,11 @@ public class FullResolver {
         // Environment variables (Env.Get / Env.Has)
         this.DeclareGlobal("Env_Get",             "string", false)
         this.DeclareGlobal("Env_Has",             "bool",   false)
-        // Math
+        // Math — migrated to AM (post-v0.7.5). The class itself
+        // is still declared here so `import Amalgame.Math` sees
+        // the type, but the flat `Math_X` runtime symbols are gone
+        // — callers use the qualified `Math.X(...)` form.
         this.DeclareGlobal("Math",           "type",   false)
-        this.DeclareGlobal("Math_Sqrt",      "float",  false)
-        this.DeclareGlobal("Math_Abs",       "float",  false)
-        this.DeclareGlobal("Math_AbsI",      "int",    false)
-        this.DeclareGlobal("Math_PowI",      "int",    false)
-        this.DeclareGlobal("Math_Pow",       "float",  false)
-        this.DeclareGlobal("Math_Floor",     "float",  false)
-        this.DeclareGlobal("Math_Ceil",      "float",  false)
-        this.DeclareGlobal("Math_Round",     "float",  false)
-        this.DeclareGlobal("Math_MaxI",      "int",    false)
-        this.DeclareGlobal("Math_MinI",      "int",    false)
-        this.DeclareGlobal("Math_MaxF",      "float",  false)
-        this.DeclareGlobal("Math_MinF",      "float",  false)
-        this.DeclareGlobal("Math_ClampI",    "int",    false)
-        this.DeclareGlobal("Math_Gcd",       "int",    false)
-        this.DeclareGlobal("Math_IsPrime",   "bool",   false)
-        this.DeclareGlobal("Math_IsFinite",  "bool",   false)
-        this.DeclareGlobal("Math_IsNaN",     "bool",   false)
-        this.DeclareGlobal("Math_SeedRandom","void",   false)
-        this.DeclareGlobal("Math_Random",    "float",  false)
-        this.DeclareGlobal("Math_RandomInt", "int",    false)
         // WebSocket — RFC 6455 client (text frames).
         // Runtime in runtime/Amalgame_WebSocket.h.
         this.DeclareGlobal("WebSocket",            "type",         false)
@@ -427,13 +401,9 @@ public class FullResolver {
         this.DeclareGlobal("Match_GroupText",      "string",      false)
         this.DeclareGlobal("Match_GroupStart",     "int",         false)
         this.DeclareGlobal("Match_GroupEnd",       "int",         false)
-        // FileWatcher — single-file mtime poll, runtime in
-        // runtime/Amalgame_FileWatch.h.
-        this.DeclareGlobal("FileWatcher",         "type",        false)
-        this.DeclareGlobal("FileWatcher_new",     "FileWatcher", false)
-        this.DeclareGlobal("FileWatcher_GetPath", "string",      false)
-        this.DeclareGlobal("FileWatcher_Changed", "bool",        false)
-        this.DeclareGlobal("FileWatcher_Exists",  "bool",        false)
+        // FileWatcher lives in src/stdlib/io_filewatcher.am since
+        // the post-v0.7.5 runtime header migration — the resolver
+        // picks the class up from the bundled AM source.
         // Math.Vec / Mat4 — runtime helpers behind the public
         // Amalgame.Math.Vec facade in src/stdlib/math_vec.am. All
         // operations heap-allocate via GC_MALLOC and return fresh
@@ -474,36 +444,22 @@ public class FullResolver {
         this.DeclareGlobal("Mat4_RotateY",        "Mat4",  false)
         this.DeclareGlobal("Mat4_RotateZ",        "Mat4",  false)
         this.DeclareGlobal("Mat4_TransformVec4",  "Vec4",  false)
-        // Random — runtime helpers behind the public Amalgame.Random
-        // facade in src/stdlib/random.am.
-        this.DeclareGlobal("Random_PcgOutput",     "int", false)
-        this.DeclareGlobal("Random_PcgAdvance",    "int", false)
-        this.DeclareGlobal("Random_CombineHiLo",   "int", false)
-        this.DeclareGlobal("Random_PrepInc",       "int", false)
-        this.DeclareGlobal("Random_BytesToI64",    "int", false)
-        this.DeclareGlobal("Random_TimeSeedNanos", "int", false)
-        this.DeclareGlobal("Random_SystemBytes",   "List<int>", false)
-        // DateTime — runtime helpers behind the public
-        // Amalgame.DateTime facade in src/stdlib/datetime.am.
-        this.DeclareGlobal("DateTime_NowNanos",          "int",    false)
-        this.DeclareGlobal("DateTime_NowMonotonicNanos", "int",    false)
-        this.DeclareGlobal("DateTime_FormatIso",         "string", false)
-        this.DeclareGlobal("DateTime_ParseIsoNanos",     "int",    false)
-        this.DeclareGlobal("DateTime_IsParseError",      "bool",   false)
-        this.DeclareGlobal("DateTime_Year",              "int",    false)
-        this.DeclareGlobal("DateTime_Month",             "int",    false)
-        this.DeclareGlobal("DateTime_Day",               "int",    false)
-        this.DeclareGlobal("DateTime_Hour",              "int",    false)
-        this.DeclareGlobal("DateTime_Minute",            "int",    false)
-        this.DeclareGlobal("DateTime_Second",            "int",    false)
-        // Crypto — runtime helpers behind the public Amalgame.Crypto
-        // facade in src/stdlib/crypto.am (SHA-256 + HMAC-SHA-256).
-        this.DeclareGlobal("Crypto_Sha256",                  "List<int>", false)
-        this.DeclareGlobal("Crypto_Sha256Hex",               "string",    false)
-        this.DeclareGlobal("Crypto_Sha256OfString",          "string",    false)
-        this.DeclareGlobal("Crypto_HmacSha256",              "List<int>", false)
-        this.DeclareGlobal("Crypto_HmacSha256Hex",           "string",    false)
-        this.DeclareGlobal("Crypto_HmacSha256OfStrings",     "string",    false)
+        // Random — migrated post-v0.7.5: PCG step + entropy source
+        // moved into a top-level @c { } block inside src/stdlib/random.am.
+        // The runtime header is gone; the public API (NextUInt32,
+        // IntRange, Float, Bool, Bytes…) is pure AM bridging to the
+        // four @c helpers via tiny calls.
+        // DateTime — migrated post-v0.7.5 to pure Amalgame in
+        // src/stdlib/datetime.am. Only 4 minimal `@c {}` blocks
+        // survive (clock primitives + `INT64_MIN` sentinel
+        // access); the calendar arithmetic, ISO 8601 format /
+        // parse, and field breakdown are all native AM now. The
+        // resolver picks up the class declarations directly from
+        // the bundled .am.
+        // Crypto — migrated post-v0.7.5: the SHA-256 compression
+        // function + HMAC ipad/opad live in a top-level @c { } block
+        // inside src/stdlib/crypto.am. Public Sha256.* / Hmac.*
+        // methods bridge through small @c blocks.
         // String
         this.DeclareGlobal("String_Length",     "int",    false)
         this.DeclareGlobal("String_IsEmpty",    "bool",   false)

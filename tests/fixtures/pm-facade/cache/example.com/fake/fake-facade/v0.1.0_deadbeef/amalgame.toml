@@ -1,0 +1,18 @@
+# Manifest for the fake-facade fixture — exercises the
+# `[stdlib].facade` schema added by the project F follow-up.
+# The package ships a pure-Amalgame facade compiled into a
+# per-package archive at <pkgDir>/build/<platform>/libamalgame-
+# pkg-FakeFacade.a; the runtime header is an empty stub since
+# the facade carries the full API surface.
+
+[package]
+name           = "fake-facade"
+version        = "0.1.0"
+license        = "Apache-2.0"
+schema-version = 1
+
+[stdlib]
+class     = "FakeFacade"
+header    = "facade-stub.h"
+namespace = "Amalgame.Fake.FakeFacade"
+facade    = "facade.am"

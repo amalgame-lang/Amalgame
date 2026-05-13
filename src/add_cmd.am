@@ -323,9 +323,21 @@ public class AddCommand {
         // or doesn't ship sources.
         if (!noPrecompile) {
             let stdlibTblPre: TomlValue = manifest.Get("stdlib")
-            if (stdlibTblPre.IsTable() && stdlibTblPre.Get("precompile").AsBool()) {
-                let pkgVer: string = mfNameStr + "@" + tag
-                AddCommand.PrecompilePackage(pkgDir, stdlibTblPre, pkgVer)
+            if (stdlibTblPre.IsTable()) {
+                if (stdlibTblPre.Get("precompile").AsBool()) {
+                    let pkgVer: string = mfNameStr + "@" + tag
+                    AddCommand.PrecompilePackage(pkgDir, stdlibTblPre, pkgVer)
+                }
+                // Project F follow-up: `[stdlib].facade = "facade.am"`
+                // opts the package into a pure-AM facade that gets
+                // pre-compiled into a per-package archive at
+                // <pkgDir>/build/<platform>/libamalgame-pkg-<class>.a.
+                // Independent of `precompile = true` — a pure-AM
+                // package may have a facade and no C sources.
+                let facadeRel: string = stdlibTblPre.Get("facade").AsString()
+                if (String_Length(facadeRel) > 0) {
+                    AddCommand.PrecompileFacade(pkgDir, stdlibTblPre)
+                }
             }
         }
 
@@ -497,6 +509,102 @@ public class AddCommand {
                 Console.WriteError("  warning: could not save calibration to " + PackageRegistry.CalibrationPath())
             }
         }
+    }
+
+    // ── PrecompileFacade ──────────────────────────────────────
+    //
+    // Compile the package's `[stdlib].facade = "facade.am"` pure-AM
+    // file into a per-package archive at
+    // `<pkgDir>/build/<platform>/libamalgame-pkg-<class>.a`.
+    // Mirrors what `tools/build-stdlib.sh` does for the integrated
+    // stdlib, but per-package and driven at `amc package add` time.
+    //
+    // Three-step pipeline:
+    //   1. amc --lib --quiet <facade.am> -o <buildDir>/<class>-facade
+    //        → emits <class>-facade.c
+    //   2. gcc -O2 -Iruntime -c <class>-facade.c -o <class>-facade.o
+    //   3. ar  rcs libamalgame-pkg-<class>.a <class>-facade.o
+    //
+    // On any step's failure: report and return — install still
+    // succeeds (the user can fall back to non-external mode by
+    // ignoring the facade, or re-run `amc package add` later).
+    public static void PrecompileFacade(string pkgDir, TomlValue stdlibTbl) {
+        let className: string = stdlibTbl.Get("class").AsString()
+        if (String_Length(className) == 0) { return }
+        let facadeRel: string = stdlibTbl.Get("facade").AsString()
+        if (String_Length(facadeRel) == 0) { return }
+
+        let facadeAbs: string = pkgDir + "/" + facadeRel
+        if (!File.Exists(facadeAbs)) {
+            Console.WriteError("  facade source not found: " + facadeAbs)
+            return
+        }
+
+        // Persistent cache dir — same shape as PrecompilePackage so
+        // both artefacts live side-by-side under <pkgDir>/build/<plat>.
+        let buildDir: string = PackageRegistry.PrecompileCacheDir(pkgDir)
+        let mkdirRes = Process.RunCapture("mkdir -p '" + buildDir + "'")
+        if (mkdirRes.Exit != 0) {
+            Console.WriteError("amc package add: could not create " + buildDir)
+            return
+        }
+
+        // Resolve amc's path (for the --lib subprocess) and runtime/
+        // dir (for the gcc -I flag) — same dance as PrecompilePackage.
+        let amcPath: string = Args_Get(0)
+        var amcRuntime: string = Env_Get("AMC_RUNTIME")
+        if (String_Length(amcRuntime) == 0) {
+            let slashIdx: int = String_LastIndexOf(amcPath, "/")
+            if (slashIdx >= 0) {
+                amcRuntime = String_Substring(amcPath, 0, slashIdx) + "/runtime"
+            }
+        }
+
+        let baseOut: string = buildDir + "/" + className + "-facade"
+        let cFile:   string = baseOut + ".c"
+        let oFile:   string = baseOut + ".o"
+        let archive: string = buildDir + "/libamalgame-pkg-" + className + ".a"
+
+        Console.WriteLine("  Compiling facade " + facadeRel + " → libamalgame-pkg-" + className + ".a")
+
+        // Step 1 — amc --lib --quiet
+        let amcCmd: string = amcPath + " --lib --quiet '" + facadeAbs + "' -o '" + baseOut + "' 2>&1"
+        let amcRes = Process.RunCapture(amcCmd)
+        if (amcRes.Exit != 0) {
+            Console.WriteError("  FAILED to compile facade (amc):")
+            Console.WriteError(amcRes.Stdout)
+            return
+        }
+
+        // Step 2 — gcc -c
+        var gccCmd: string = "gcc -O2 -Iruntime"
+        if (String_Length(amcRuntime) > 0) {
+            gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+        }
+        gccCmd = gccCmd + " -w -c '" + cFile + "' -o '" + oFile + "' 2>&1"
+        let gccRes = Process.RunCapture(gccCmd)
+        if (gccRes.Exit != 0) {
+            Console.WriteError("  FAILED to compile facade (gcc):")
+            Console.WriteError(gccRes.Stdout)
+            return
+        }
+
+        // Step 3 — ar rcs (clobber any stale archive first; ar's
+        // default rcs adds to an existing archive, which would
+        // accumulate stale members across reinstalls).
+        let rmRes = Process.RunCapture("rm -f '" + archive + "' 2>&1")
+        if (rmRes.Exit != 0) {
+            Console.WriteError("  warning: could not remove stale archive " + archive)
+        }
+        let arCmd: string = "ar rcs '" + archive + "' '" + oFile + "' 2>&1"
+        let arRes = Process.RunCapture(arCmd)
+        if (arRes.Exit != 0) {
+            Console.WriteError("  FAILED to archive facade (ar):")
+            Console.WriteError(arRes.Stdout)
+            return
+        }
+        let arSize: int = File.Size(archive)
+        Console.WriteLine("  ✓ libamalgame-pkg-" + className + ".a (" + String_FromInt(arSize) + " bytes)")
     }
 
     // Wall-clock seconds via `date +%s`. Coarse but enough for
