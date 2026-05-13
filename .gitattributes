@@ -26,3 +26,19 @@ src/amc_lib.c         merge=ours
 snapshot/amc_lib.c    linguist-generated=true
 src/amc_lib.c         linguist-generated=true
 runtime/*             linguist-vendored=true
+
+# Force LF line endings for source / build artefacts on every
+# platform. Without this, Windows clones with `core.autocrlf=true`
+# get CRLF in .am / .sh files, and the Amalgame lexer's line
+# counter drifts (CR is whitespace, but mixed CRLF + standalone CR
+# in long strings shifts the reported source positions). Surfaced
+# in v0.7.5 release.yml when toml.am's parse fail-reported lines
+# 788/801 on a 787-line file. Affected suffixes:
+*.am          text eol=lf
+*.sh          text eol=lf
+*.c           text eol=lf
+*.h           text eol=lf
+*.md          text eol=lf
+*.toml        text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
