@@ -539,18 +539,20 @@ before the next big language addition.
       no tags surfaces as `[FAIL] <crash> exit=N`. Convention is
       framework-free for v1; a richer Assert module + `test_*`
       auto-discovery is a possible v2.
-- [ ] **`amc build` explicit subcommand** — today `amc -o foo
-      foo.am` is the user-facing compile path, but it's
-      undiscoverable: `amc --help` lists `fmt / test / lsp /
-      migrate / generate / explain / new / package` as
-      subcommands and the bare-args form lives in the catch-all
-      branch. Promote compilation to a first-class verb:
-      `amc build [-o <out>] [--lib] [--release] [--target …]
-      [-v] file.am [file.am …]`. The current bare-args path
-      stays as a deprecated alias for one release cycle, then
-      gets a "use `amc build`" diagnostic. Also lets `amc
-      build --watch` be the natural home for the v2 FileWatcher
-      (post-D) — recompile on save without external shell glue.
+- [x] **`amc build / run / watch`** (v0.7.9) — first-class
+      compile verbs. `amc build [-o <out>] [-v] <entry.am>` runs
+      amc + gcc-link in one step (factors the link logic out of
+      `amc test`'s internal runner, plus links `lib/libamalgame.a`
+      when shipped). `amc run [-o <out>] [-v] <entry.am>
+      [-- args…]` chains a build with `Process.Run`; args after
+      `--` pass through to the user binary's argv. `amc watch
+      [-o <out>] [--run] [-v] <entry.am>` polls the entry's mtime
+      every 500 ms (vendored `@c {}` block calling `stat()` /
+      `_stat64`) and rebuilds on change. The bare-args form
+      `amc foo.am -o foo` still works (no gcc step) for users
+      who want to splice their own gcc command. Transitive-import
+      watching is deferred until the `FileWatcher` package gains
+      an event-based mode (post-D).
 - [ ] **Unify all test runners under `amc test`** — the repo
       still ships ~1.9k lines of bash in `tests/run_tests.sh`
       (992), `tests/run_stdlib_tests.sh` (607), `tests/run_fmt_tests.sh`
