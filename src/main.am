@@ -12,6 +12,9 @@ import Amalgame.String
 @c {
     #include <time.h>
     #include <sys/stat.h>
+    #ifndef _WIN32
+        #include <unistd.h>
+    #endif
     #ifdef _WIN32
         #include <windows.h>
     #endif
@@ -351,6 +354,37 @@ public class AmalgameCompiler {
 
 // ── CLI entry point — replaces the old amc_main.c ──────────
 public class Program {
+    // Resolve amc's own executable path through the kernel so commands
+    // that need a sibling runtime/ or lib/ directory (`amc build`,
+    // `amc run`) keep working when the binary is invoked through PATH
+    // with no leading `/` in argv[0]. Linux exposes the canonical path
+    // via the `/proc/self/exe` symlink; Windows via GetModuleFileNameA.
+    // macOS (no /proc) returns "" and the caller falls back to argv[0]
+    // — Homebrew installs an absolute symlink so the legacy path is
+    // already canonical there.
+    public static string ResolveSelfPath() {
+        @c {
+            #ifdef _WIN32
+                char buf[4096];
+                DWORD n = GetModuleFileNameA(NULL, buf, sizeof(buf));
+                if (n == 0 || n >= sizeof(buf)) { return (code_string) ""; }
+                /* Normalise backslashes so dirname / Substring split work. */
+                for (DWORD i = 0; i < n; i++) { if (buf[i] == '\\') buf[i] = '/'; }
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #else
+                char buf[4096];
+                ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+                if (n <= 0) { return (code_string) ""; }
+                buf[n] = '\0';
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #endif
+        }
+    }
+
     public static void PrintUsage() {
         Console.WriteError("Usage: amc [options] file1.am [file2.am ...] -o <output>")
         Console.WriteError("       amc fmt [-w] file.am [file.am ...]")
@@ -833,7 +867,16 @@ public class Program {
             Console.WriteLine("amc build: installed " + String_FromInt(installed) + " missing dep(s)")
         }
 
-        let amcPath: string = Args_Get(0)
+        // Resolve amc's own absolute path. Args_Get(0) carries whatever
+        // the shell put in argv[0] — when amc is launched via PATH that's
+        // the bare name "amc", which makes the dirname() lookup below
+        // collapse to nothing. /proc/self/exe is the kernel-resolved
+        // canonical path on Linux and (some) BSDs; macOS/Windows fall
+        // through to Args_Get(0) until the equivalent is wired.
+        var amcPath: string = Program.ResolveSelfPath()
+        if (String_Length(amcPath) == 0) {
+            amcPath = Args_Get(0)
+        }
         var amcRuntime: string = Env_Get("AMC_RUNTIME")
         if (String_Length(amcRuntime) == 0) {
             let slashIdx: int = String_LastIndexOf(amcPath, "/")
