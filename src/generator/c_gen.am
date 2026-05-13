@@ -819,7 +819,9 @@ public class CGen {
             if (tname == "Vec3") { return "AmalgameVec3*" }
             if (tname == "Vec4") { return "AmalgameVec4*" }
             if (tname == "Mat4") { return "AmalgameMat4*" }
-            if (tname == "FileWatcher") { return "AmalgameFileWatcher*" }
+            // FileWatcher migrated to AM (post-v0.7.5); the type
+            // now lowers via the bundled-namespace mangling, no
+            // special case needed here.
             if (tname == "Match") { return "AmalgameRegexMatch*" }
             if (tname == "WebSocket") { return "AmalgameWebSocket*" }
             if (this.IsEnum(tname)) { return this.SymName(tname) }
@@ -939,10 +941,9 @@ public class CGen {
                 if (calleeStr == "Mat4_new" || calleeStr == "Mat4_Identity" || calleeStr == "Mat4_Multiply" || calleeStr == "Mat4_Translate" || calleeStr == "Mat4_Scale" || calleeStr == "Mat4_RotateX" || calleeStr == "Mat4_RotateY" || calleeStr == "Mat4_RotateZ") { return "AmalgameMat4*" }
                 if (calleeStr == "Mat4_Get") { return "double" }
                 if (calleeStr == "Mat4_Set") { return "void" }
-                // FileWatcher runtime helpers.
-                if (calleeStr == "FileWatcher_new") { return "AmalgameFileWatcher*" }
-                if (calleeStr == "FileWatcher_GetPath") { return "code_string" }
-                if (calleeStr == "FileWatcher_Changed" || calleeStr == "FileWatcher_Exists") { return "code_bool" }
+                // FileWatcher migrated to AM (post-v0.7.5) — runtime
+                // helpers no longer exist; the namespace-mangled
+                // class method names lower via the regular dispatch.
                 // Regex runtime helpers.
                 if (calleeStr == "Regex_Match") { return "AmalgameRegexMatch*" }
                 if (calleeStr == "Regex_Test") { return "code_bool" }
@@ -1299,20 +1300,26 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_IO.h\"")
         this.Out.EmitLine("#include \"Amalgame_Math.h\"")
         this.Out.EmitLine("#include \"Amalgame_Math_Vec.h\"")
-        this.Out.EmitLine("#include \"Amalgame_FileWatch.h\"")
+        // FileWatcher migrated to AM (post-v0.7.5); runtime header
+        // dropped. Its libc include (<sys/stat.h>) lives in a
+        // top-level @c {} block in src/stdlib/io_filewatcher.am.
         this.Out.EmitLine("#include \"Amalgame_Regex.h\"")
         this.Out.EmitLine("#include \"Amalgame_Compress.h\"")
         this.Out.EmitLine("#include \"Amalgame_WebSocket.h\"")
         this.Out.EmitLine("#include \"Amalgame_Net.h\"")
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Random.h\"")
+        // Random migrated to AM (post-v0.7.5); PCG helpers + entropy
+        // source live in a top-level @c {} in src/stdlib/random.am.
         // DateTime + Logging: runtime headers dropped after the
         // top-level `@c { … }` extension (post-v0.7.5). Their state
         // globals + libc includes now live in the .am files
         // themselves (src/stdlib/datetime.am, src/stdlib/logging.am).
-        this.Out.EmitLine("#include \"Amalgame_Crypto.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Service.h\"")
+        // Crypto migrated to AM (post-v0.7.5); SHA-256 + HMAC live
+        // in a top-level @c {} in src/stdlib/crypto.am.
+        // Service migrated to AM (post-v0.7.5); the signal-handler
+        // state + handler function live in a top-level @c {} in
+        // src/stdlib/service.am.
         this.Out.EmitLine("#include \"Amalgame_BuildInfo.h\"")
         // (Amalgame_Database_SQLite.h / Amalgame_Database_Redis.h
         //  / Amalgame_Messaging_MQTT.h all moved to their own
@@ -2937,12 +2944,13 @@ public class CGen {
                 } else {
                     if (String_StartsWith(tname, "Set<") || tname == "Set") {
                         newCall = "AmalgameSet_new()"
-                    } else if (tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "FileWatcher" || tname == "WebSocket") {
-                        // Math.Vec / Mat / FileWatcher / WebSocket
-                        // runtime helpers — skip the namespace-
-                        // mangled symbol so `new Vec3(x,y,z)` lowers
-                        // to `Vec3_new(...)` against the dedicated
-                        // runtime header.
+                    } else if (tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "WebSocket") {
+                        // Math.Vec / Mat / WebSocket runtime helpers —
+                        // skip the namespace-mangled symbol so
+                        // `new Vec3(x,y,z)` lowers to `Vec3_new(...)`
+                        // against the dedicated runtime header.
+                        // FileWatcher used to be in this list before
+                        // its post-v0.7.5 AM migration.
                         newCall = tname + "_new("
                         let argc = expr.Args.Count()
                         for i in 0..argc {
@@ -3487,7 +3495,7 @@ public class CGen {
                         // Log is the next migration (post-v0.7.5) — it
                         // lives in src/stdlib/logging.am with `@c { … }`
                         // bodies, same namespace-mangled dispatch.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Service" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -3506,12 +3514,13 @@ public class CGen {
                     let varType = this.LocalTypeGet(tname)
                     let bareType = String_Replace(varType, "*", "")
                     if (String_Length(bareType) > 0) {
-                        // Math.Vec / Mat / FileWatcher runtime helpers
-                        // — strip the "Amalgame" struct prefix so
+                        // Math.Vec / Mat / WebSocket runtime helpers —
+                        // strip the "Amalgame" struct prefix so
                         // `v.Length()` on a `Vec3*` lowers to
                         // `Vec3_Length(v)`, matching the runtime
-                        // header naming.
-                        if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameFileWatcher" || bareType == "AmalgameWebSocket") {
+                        // header naming. FileWatcher dropped after
+                        // its post-v0.7.5 AM migration.
+                        if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameWebSocket") {
                             return String_Replace(bareType, "Amalgame", "") + "_" + mname
                         }
                         // Regex.Match struct → `Match_<method>` runtime.
@@ -3686,7 +3695,8 @@ public class CGen {
         if (t == "Vec3") { return "AmalgameVec3*" }
         if (t == "Vec4") { return "AmalgameVec4*" }
         if (t == "Mat4") { return "AmalgameMat4*" }
-        if (t == "FileWatcher") { return "AmalgameFileWatcher*" }
+        // FileWatcher migrated to AM (post-v0.7.5); falls through
+        // to the regular namespace-mangled lowering below.
         if (t == "Match") { return "AmalgameRegexMatch*" }
         if (t == "WebSocket") { return "AmalgameWebSocket*" }
         if (this.IsEnum(t)) {

@@ -344,9 +344,9 @@ public class FullResolver {
         // `runtime/Amalgame_Logging.h` (state globals only). The
         // resolver picks the class up from the AM declaration like any
         // other bundled module.
-        // Service stdlib — same isStdlib short-circuit pattern as Log.
-        this.DeclareGlobal("Service",             "type",   false)
-        this.DeclareGlobal("Service_Install",     "void",   false)
+        // Service lives in src/stdlib/service.am since post-v0.7.5
+        // (signal handler + nanosleep wrapped in @c {} blocks; rest
+        // is pure AM). Class picked up from the bundled .am source.
         // (Database.SQLite global declarations moved to package
         //  amalgame-database-sqlite v0.1.0 — RegisterPackages
         //  declares them dynamically when the user has done
@@ -418,13 +418,9 @@ public class FullResolver {
         this.DeclareGlobal("Match_GroupText",      "string",      false)
         this.DeclareGlobal("Match_GroupStart",     "int",         false)
         this.DeclareGlobal("Match_GroupEnd",       "int",         false)
-        // FileWatcher — single-file mtime poll, runtime in
-        // runtime/Amalgame_FileWatch.h.
-        this.DeclareGlobal("FileWatcher",         "type",        false)
-        this.DeclareGlobal("FileWatcher_new",     "FileWatcher", false)
-        this.DeclareGlobal("FileWatcher_GetPath", "string",      false)
-        this.DeclareGlobal("FileWatcher_Changed", "bool",        false)
-        this.DeclareGlobal("FileWatcher_Exists",  "bool",        false)
+        // FileWatcher lives in src/stdlib/io_filewatcher.am since
+        // the post-v0.7.5 runtime header migration — the resolver
+        // picks the class up from the bundled AM source.
         // Math.Vec / Mat4 — runtime helpers behind the public
         // Amalgame.Math.Vec facade in src/stdlib/math_vec.am. All
         // operations heap-allocate via GC_MALLOC and return fresh
@@ -465,15 +461,11 @@ public class FullResolver {
         this.DeclareGlobal("Mat4_RotateY",        "Mat4",  false)
         this.DeclareGlobal("Mat4_RotateZ",        "Mat4",  false)
         this.DeclareGlobal("Mat4_TransformVec4",  "Vec4",  false)
-        // Random — runtime helpers behind the public Amalgame.Random
-        // facade in src/stdlib/random.am.
-        this.DeclareGlobal("Random_PcgOutput",     "int", false)
-        this.DeclareGlobal("Random_PcgAdvance",    "int", false)
-        this.DeclareGlobal("Random_CombineHiLo",   "int", false)
-        this.DeclareGlobal("Random_PrepInc",       "int", false)
-        this.DeclareGlobal("Random_BytesToI64",    "int", false)
-        this.DeclareGlobal("Random_TimeSeedNanos", "int", false)
-        this.DeclareGlobal("Random_SystemBytes",   "List<int>", false)
+        // Random — migrated post-v0.7.5: PCG step + entropy source
+        // moved into a top-level @c { } block inside src/stdlib/random.am.
+        // The runtime header is gone; the public API (NextUInt32,
+        // IntRange, Float, Bool, Bytes…) is pure AM bridging to the
+        // four @c helpers via tiny calls.
         // DateTime — migrated post-v0.7.5 to pure Amalgame in
         // src/stdlib/datetime.am. Only 4 minimal `@c {}` blocks
         // survive (clock primitives + `INT64_MIN` sentinel
@@ -481,14 +473,10 @@ public class FullResolver {
         // parse, and field breakdown are all native AM now. The
         // resolver picks up the class declarations directly from
         // the bundled .am.
-        // Crypto — runtime helpers behind the public Amalgame.Crypto
-        // facade in src/stdlib/crypto.am (SHA-256 + HMAC-SHA-256).
-        this.DeclareGlobal("Crypto_Sha256",                  "List<int>", false)
-        this.DeclareGlobal("Crypto_Sha256Hex",               "string",    false)
-        this.DeclareGlobal("Crypto_Sha256OfString",          "string",    false)
-        this.DeclareGlobal("Crypto_HmacSha256",              "List<int>", false)
-        this.DeclareGlobal("Crypto_HmacSha256Hex",           "string",    false)
-        this.DeclareGlobal("Crypto_HmacSha256OfStrings",     "string",    false)
+        // Crypto — migrated post-v0.7.5: the SHA-256 compression
+        // function + HMAC ipad/opad live in a top-level @c { } block
+        // inside src/stdlib/crypto.am. Public Sha256.* / Hmac.*
+        // methods bridge through small @c blocks.
         // String
         this.DeclareGlobal("String_Length",     "int",    false)
         this.DeclareGlobal("String_IsEmpty",    "bool",   false)

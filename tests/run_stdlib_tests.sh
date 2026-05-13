@@ -620,13 +620,18 @@ run_test "Vec: mat4 rotateZ"        "$SAMPLES/stdlib_math_vec.am" "[PASS] mat4 r
 # instead — delete and re-create give a guaranteed Changed() bump.
 echo ""
 echo "── Amalgame.IO.FileWatcher ────────────────"
-run_test "FW: exists when present"   "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when present"
-run_test "FW: getpath"               "$SAMPLES/stdlib_file_watch.am" "[PASS] getpath"
-run_test "FW: no-change-on-init"     "$SAMPLES/stdlib_file_watch.am" "[PASS] no-change-on-init"
-run_test "FW: detect delete"         "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-delete"
-run_test "FW: reset after read"      "$SAMPLES/stdlib_file_watch.am" "[PASS] reset-after-read"
-run_test "FW: exists when absent"    "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when absent"
-run_test "FW: detect recreate"       "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-recreate"
+# Post-v0.7.5 migration: the FileWatcher class moved from a
+# runtime/Amalgame_FileWatch.h header to src/stdlib/io_filewatcher.am,
+# so the tests now have to bundle that source like the other AM
+# stdlib modules do.
+FW_LIB="src/stdlib/io_filewatcher.am"
+run_test "FW: exists when present"   "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when present"  "" "$FW_LIB"
+run_test "FW: getpath"               "$SAMPLES/stdlib_file_watch.am" "[PASS] getpath"              "" "$FW_LIB"
+run_test "FW: no-change-on-init"     "$SAMPLES/stdlib_file_watch.am" "[PASS] no-change-on-init"    "" "$FW_LIB"
+run_test "FW: detect delete"         "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-delete"        "" "$FW_LIB"
+run_test "FW: reset after read"      "$SAMPLES/stdlib_file_watch.am" "[PASS] reset-after-read"     "" "$FW_LIB"
+run_test "FW: exists when absent"    "$SAMPLES/stdlib_file_watch.am" "[PASS] exists when absent"   "" "$FW_LIB"
+run_test "FW: detect recreate"       "$SAMPLES/stdlib_file_watch.am" "[PASS] detect-recreate"      "" "$FW_LIB"
 
 # ── Amalgame.Formats.Yaml ─────────────────────────────
 # YAML 1.2 subset reader. Configs / CI files exercise mappings,
