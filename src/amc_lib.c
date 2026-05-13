@@ -80,6 +80,7 @@ typedef struct _Amalgame_Compiler_Hmac Amalgame_Compiler_Hmac;
 typedef struct _Amalgame_Compiler_MsgPackCursor Amalgame_Compiler_MsgPackCursor;
 typedef struct _Amalgame_Compiler_MsgPack Amalgame_Compiler_MsgPack;
 typedef struct _Amalgame_Compiler_BuildInfo Amalgame_Compiler_BuildInfo;
+typedef struct _Amalgame_Compiler_Log Amalgame_Compiler_Log;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -8432,7 +8433,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                     if (String_Length(externalMangled) > 0) {
                         return code_string_concat(code_string_concat(externalMangled, "_"), mname);
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Service") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -10732,15 +10733,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Sep", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log", "type", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_SetMinLevel", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_GetMinLevel", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_SetFile", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_GetFile", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Debug", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Info", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Warn", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Log_Error", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Install", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
@@ -15700,6 +15692,174 @@ code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     { /* inline-C */
         
                     return AMC_BUILD_DATE;
+                
+    }
+}
+
+Amalgame_Compiler_Log* Amalgame_Compiler_Log_new();
+struct _Amalgame_Compiler_Log {
+};
+
+void Amalgame_Compiler_Log_SetMinLevel(code_string name);
+code_string Amalgame_Compiler_Log_GetMinLevel();
+void Amalgame_Compiler_Log_SetFile(code_string path);
+code_string Amalgame_Compiler_Log_GetFile();
+void Amalgame_Compiler_Log_Debug(code_string msg);
+void Amalgame_Compiler_Log_Info(code_string msg);
+void Amalgame_Compiler_Log_Warn(code_string msg);
+void Amalgame_Compiler_Log_Error(code_string msg);
+
+Amalgame_Compiler_Log* Amalgame_Compiler_Log_new() {
+    Amalgame_Compiler_Log* self = (Amalgame_Compiler_Log*) GC_MALLOC(sizeof(Amalgame_Compiler_Log));
+    return self;
+}
+
+void Amalgame_Compiler_Log_SetMinLevel(code_string name) {
+    { /* inline-C */
+        
+                    if (!name || !name[0]) { Amalgame_Logging_MinLevel = 1; return; }
+                    char ch = name[0];
+                    if (ch == 'd' || ch == 'D') { Amalgame_Logging_MinLevel = 0; return; }
+                    if (ch == 'i' || ch == 'I') { Amalgame_Logging_MinLevel = 1; return; }
+                    if (ch == 'w' || ch == 'W') { Amalgame_Logging_MinLevel = 2; return; }
+                    if (ch == 'e' || ch == 'E') { Amalgame_Logging_MinLevel = 3; return; }
+                    Amalgame_Logging_MinLevel = 1;
+                
+    }
+}
+
+code_string Amalgame_Compiler_Log_GetMinLevel() {
+    { /* inline-C */
+        
+                    int l = Amalgame_Logging_MinLevel;
+                    if (l == 0) return "debug";
+                    if (l == 1) return "info";
+                    if (l == 2) return "warn";
+                    return "error";
+                
+    }
+}
+
+void Amalgame_Compiler_Log_SetFile(code_string path) {
+    { /* inline-C */
+        
+                    if (Amalgame_Logging_FilePath) {
+                        free(Amalgame_Logging_FilePath);
+                        Amalgame_Logging_FilePath = NULL;
+                    }
+                    if (path && path[0]) {
+                        size_t n = strlen(path);
+                        Amalgame_Logging_FilePath = (char*) malloc(n + 1);
+                        if (Amalgame_Logging_FilePath) memcpy(Amalgame_Logging_FilePath, path, n + 1);
+                    }
+                
+    }
+}
+
+code_string Amalgame_Compiler_Log_GetFile() {
+    { /* inline-C */
+        
+                    return Amalgame_Logging_FilePath ? Amalgame_Logging_FilePath : "";
+                
+    }
+}
+
+void Amalgame_Compiler_Log_Debug(code_string msg) {
+    { /* inline-C */
+        
+                    if (Amalgame_Logging_MinLevel > 0) return;
+                    time_t t = time(NULL);
+                    struct tm tm;
+                #ifdef _WIN32
+                    gmtime_s(&tm, &t);
+                #else
+                    gmtime_r(&t, &tm);
+                #endif
+                    char ts[32];
+                    strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+                    fprintf(stderr, "%s %s %s\n", ts, "DEBUG", msg ? msg : "");
+                    if (Amalgame_Logging_FilePath) {
+                        FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                        if (f) {
+                            fprintf(f, "%s %s %s\n", ts, "DEBUG", msg ? msg : "");
+                            fclose(f);
+                        }
+                    }
+                
+    }
+}
+
+void Amalgame_Compiler_Log_Info(code_string msg) {
+    { /* inline-C */
+        
+                    if (Amalgame_Logging_MinLevel > 1) return;
+                    time_t t = time(NULL);
+                    struct tm tm;
+                #ifdef _WIN32
+                    gmtime_s(&tm, &t);
+                #else
+                    gmtime_r(&t, &tm);
+                #endif
+                    char ts[32];
+                    strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+                    fprintf(stderr, "%s %s %s\n", ts, "INFO ", msg ? msg : "");
+                    if (Amalgame_Logging_FilePath) {
+                        FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                        if (f) {
+                            fprintf(f, "%s %s %s\n", ts, "INFO ", msg ? msg : "");
+                            fclose(f);
+                        }
+                    }
+                
+    }
+}
+
+void Amalgame_Compiler_Log_Warn(code_string msg) {
+    { /* inline-C */
+        
+                    if (Amalgame_Logging_MinLevel > 2) return;
+                    time_t t = time(NULL);
+                    struct tm tm;
+                #ifdef _WIN32
+                    gmtime_s(&tm, &t);
+                #else
+                    gmtime_r(&t, &tm);
+                #endif
+                    char ts[32];
+                    strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+                    fprintf(stderr, "%s %s %s\n", ts, "WARN ", msg ? msg : "");
+                    if (Amalgame_Logging_FilePath) {
+                        FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                        if (f) {
+                            fprintf(f, "%s %s %s\n", ts, "WARN ", msg ? msg : "");
+                            fclose(f);
+                        }
+                    }
+                
+    }
+}
+
+void Amalgame_Compiler_Log_Error(code_string msg) {
+    { /* inline-C */
+        
+                    if (Amalgame_Logging_MinLevel > 3) return;
+                    time_t t = time(NULL);
+                    struct tm tm;
+                #ifdef _WIN32
+                    gmtime_s(&tm, &t);
+                #else
+                    gmtime_r(&t, &tm);
+                #endif
+                    char ts[32];
+                    strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+                    fprintf(stderr, "%s %s %s\n", ts, "ERROR", msg ? msg : "");
+                    if (Amalgame_Logging_FilePath) {
+                        FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                        if (f) {
+                            fprintf(f, "%s %s %s\n", ts, "ERROR", msg ? msg : "");
+                            fclose(f);
+                        }
+                    }
                 
     }
 }

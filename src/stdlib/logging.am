@@ -8,15 +8,22 @@ namespace Amalgame.Logging
 // sink appends every emitted line (no rotation in v1; that's
 // tracked alongside the `service` template work).
 //
-// Configuration is process-wide singleton state held in the
-// runtime — same pattern as `Exit_Set` / `Exit_Get`. Sufficient
-// for CLIs and single-threaded servers; a mutex is the v2 ask
-// once a real multi-threaded user lands.
+// Configuration is process-wide singleton state held in two file-
+// scope C globals declared in `runtime/Amalgame_Logging.h`
+// (`Amalgame_Logging_MinLevel` + `Amalgame_Logging_FilePath`).
+// Sufficient for CLIs and single-threaded servers; a mutex is the
+// v2 ask once a real multi-threaded user lands.
 //
 // Level names are case-insensitive on the first letter — "debug",
 // "DEBUG", "Debug" all map to the same code. Unknown names
 // default to Info silently; logging itself should never crash
 // a process.
+//
+// History: ported from `runtime/Amalgame_Logging.h` (8 static
+// inline helpers, ~80 LoC of C) to AM with `@c { … }` blocks in
+// the post-v0.7.5 migration pass. The trimmed runtime header
+// still declares the two state globals so the @c blocks can
+// share them across compilation units / call sites.
 
 public class Log {
     public Log() {}
@@ -29,12 +36,26 @@ public class Log {
     //   Log.SetMinLevel("debug")    // emit everything
     //   Log.SetMinLevel("warn")     // hide Debug + Info
     public static void SetMinLevel(name: string) {
-        Log_SetMinLevel(name)
+        @c {
+            if (!name || !name[0]) { Amalgame_Logging_MinLevel = 1; return; }
+            char ch = name[0];
+            if (ch == 'd' || ch == 'D') { Amalgame_Logging_MinLevel = 0; return; }
+            if (ch == 'i' || ch == 'I') { Amalgame_Logging_MinLevel = 1; return; }
+            if (ch == 'w' || ch == 'W') { Amalgame_Logging_MinLevel = 2; return; }
+            if (ch == 'e' || ch == 'E') { Amalgame_Logging_MinLevel = 3; return; }
+            Amalgame_Logging_MinLevel = 1;
+        }
     }
 
     // Lower-case canonical name of the current minimum level.
     public static string GetMinLevel() {
-        return Log_GetMinLevel()
+        @c {
+            int l = Amalgame_Logging_MinLevel;
+            if (l == 0) return "debug";
+            if (l == 1) return "info";
+            if (l == 2) return "warn";
+            return "error";
+        }
     }
 
     // Set (or clear) the file sink. Pass empty string to disable.
@@ -42,18 +63,123 @@ public class Log {
     // than holding a stream open but robust against external
     // log rotation, which is the typical production setup.
     public static void SetFile(path: string) {
-        Log_SetFile(path)
+        @c {
+            if (Amalgame_Logging_FilePath) {
+                free(Amalgame_Logging_FilePath);
+                Amalgame_Logging_FilePath = NULL;
+            }
+            if (path && path[0]) {
+                size_t n = strlen(path);
+                Amalgame_Logging_FilePath = (char*) malloc(n + 1);
+                if (Amalgame_Logging_FilePath) memcpy(Amalgame_Logging_FilePath, path, n + 1);
+            }
+        }
     }
 
     // Current file sink path, or empty string if disabled.
     public static string GetFile() {
-        return Log_GetFile()
+        @c {
+            return Amalgame_Logging_FilePath ? Amalgame_Logging_FilePath : "";
+        }
     }
 
     // ── Emit ─────────────────────────────────────────────
+    //
+    // Each body is a standalone @c block so the level / label is
+    // wired straight into the fprintf without an intermediate
+    // helper. The UTC timestamp + optional file-sink append are
+    // the only state-mutating side effects. Logging is not a
+    // perf-critical path; second-resolution `time(NULL)` is fine.
 
-    public static void Debug(msg: string) { Log_Debug(msg) }
-    public static void Info(msg: string)  { Log_Info(msg)  }
-    public static void Warn(msg: string)  { Log_Warn(msg)  }
-    public static void Error(msg: string) { Log_Error(msg) }
+    public static void Debug(msg: string) {
+        @c {
+            if (Amalgame_Logging_MinLevel > 0) return;
+            time_t t = time(NULL);
+            struct tm tm;
+        #ifdef _WIN32
+            gmtime_s(&tm, &t);
+        #else
+            gmtime_r(&t, &tm);
+        #endif
+            char ts[32];
+            strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+            fprintf(stderr, "%s %s %s\n", ts, "DEBUG", msg ? msg : "");
+            if (Amalgame_Logging_FilePath) {
+                FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                if (f) {
+                    fprintf(f, "%s %s %s\n", ts, "DEBUG", msg ? msg : "");
+                    fclose(f);
+                }
+            }
+        }
+    }
+
+    public static void Info(msg: string) {
+        @c {
+            if (Amalgame_Logging_MinLevel > 1) return;
+            time_t t = time(NULL);
+            struct tm tm;
+        #ifdef _WIN32
+            gmtime_s(&tm, &t);
+        #else
+            gmtime_r(&t, &tm);
+        #endif
+            char ts[32];
+            strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+            fprintf(stderr, "%s %s %s\n", ts, "INFO ", msg ? msg : "");
+            if (Amalgame_Logging_FilePath) {
+                FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                if (f) {
+                    fprintf(f, "%s %s %s\n", ts, "INFO ", msg ? msg : "");
+                    fclose(f);
+                }
+            }
+        }
+    }
+
+    public static void Warn(msg: string) {
+        @c {
+            if (Amalgame_Logging_MinLevel > 2) return;
+            time_t t = time(NULL);
+            struct tm tm;
+        #ifdef _WIN32
+            gmtime_s(&tm, &t);
+        #else
+            gmtime_r(&t, &tm);
+        #endif
+            char ts[32];
+            strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+            fprintf(stderr, "%s %s %s\n", ts, "WARN ", msg ? msg : "");
+            if (Amalgame_Logging_FilePath) {
+                FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                if (f) {
+                    fprintf(f, "%s %s %s\n", ts, "WARN ", msg ? msg : "");
+                    fclose(f);
+                }
+            }
+        }
+    }
+
+    public static void Error(msg: string) {
+        @c {
+            if (Amalgame_Logging_MinLevel > 3) return;
+            time_t t = time(NULL);
+            struct tm tm;
+        #ifdef _WIN32
+            gmtime_s(&tm, &t);
+        #else
+            gmtime_r(&t, &tm);
+        #endif
+            char ts[32];
+            strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", &tm);
+            fprintf(stderr, "%s %s %s\n", ts, "ERROR", msg ? msg : "");
+            if (Amalgame_Logging_FilePath) {
+                FILE* f = fopen(Amalgame_Logging_FilePath, "a");
+                if (f) {
+                    fprintf(f, "%s %s %s\n", ts, "ERROR", msg ? msg : "");
+                    fclose(f);
+                }
+            }
+        }
+    }
 }

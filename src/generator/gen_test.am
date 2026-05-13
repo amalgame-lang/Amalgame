@@ -164,6 +164,18 @@ public class Program {
         let biProg   = biPar.Parse()
         Console.WriteError("parsed: stdlib/amc_buildinfo.am")
 
+        // Logging — post-v0.7.5 migration: every Log.* method body
+        // is now an `@c { … }` block writing to stderr / the
+        // optional file sink, with the two state globals declared
+        // in the trimmed runtime/Amalgame_Logging.h.
+        let lgPath   = "./src/stdlib/logging.am"
+        let lgSrc    = File.ReadAll(lgPath)
+        let lgLex    = new Lexer(lgSrc, lgPath)
+        let lgToks   = lgLex.Tokenize()
+        let lgPar    = new Parser(lgToks)
+        let lgProg   = lgPar.Parse()
+        Console.WriteError("parsed: stdlib/logging.am")
+
         let lspPath  = "./src/lsp.am"
         let lspSrc   = File.ReadAll(lspPath)
         let lspLex   = new Lexer(lspSrc, lspPath)
@@ -296,6 +308,7 @@ public class Program {
         gen6.AddFilePass1(crProg)
         gen6.AddFilePass1(mpProg)
         gen6.AddFilePass1(biProg)
+        gen6.AddFilePass1(lgProg)
         gen6.AddFilePass1(lspProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -328,6 +341,7 @@ public class Program {
         gen6.AddFilePass2(crProg)
         gen6.AddFilePass2(mpProg)
         gen6.AddFilePass2(biProg)
+        gen6.AddFilePass2(lgProg)
         gen6.AddFilePass2(lspProg)
         gen6.AddFilePass2(migProg)
         gen6.AddFilePass2(genProg)
