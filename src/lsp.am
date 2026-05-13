@@ -101,6 +101,11 @@ public class LspServer {
                 let line: int    = pos.Get("line").AsInt()
                 let chr: int     = pos.Get("character").AsInt()
                 this.HandleHover(id, uri, line, chr)
+            } else if (method == "textDocument/signatureHelp") {
+                let uri: string  = td.Get("uri").AsString()
+                let line: int    = pos.Get("line").AsInt()
+                let chr: int     = pos.Get("character").AsInt()
+                this.HandleSignatureHelp(id, uri, line, chr)
             } else if (method == "textDocument/completion") {
                 let uri: string  = td.Get("uri").AsString()
                 let line: int    = pos.Get("line").AsInt()
@@ -290,7 +295,7 @@ public class LspServer {
         // box to the actual identifier span.
         // callHierarchyProvider: true → Shift+Alt+H "Show Call
         // Hierarchy", supports both incoming and outgoing calls.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]}}}}"
         this.Send(body)
     }
 
@@ -471,6 +476,27 @@ public class LspServer {
             this.SendNullResult(id)
             return
         }
+        // v0.7.10+: if the hovered name resolves to a method
+        // declared anywhere in the workspace, render the full
+        // signature (params + return type) instead of just the
+        // inferred type. Covers three cases:
+        //   - hovering on the method's declaration site
+        //   - hovering on a MEMBER receiver (`obj.method`)
+        //   - hovering on an IDENTIFIER call-site (`foo`)
+        // Multiple methods sharing a name are disambiguated by
+        // workspace iteration order — first-match wins. Good
+        // enough for v1; the typechecker's per-call dispatch
+        // resolution can refine this later.
+        if (String_Length(node.Name) > 0 && node.Kind != NodeKind.LITERAL_STRING && node.Kind != NodeKind.LITERAL_INT) {
+            let method: AstNode? = LspServer.FindMethodDeclByName(prog, node.Name)
+            if (method != null) {
+                let sigMd: string = LspServer.FormatMethodSignatureMarkdown(method)
+                let bodySig = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + Json.EscapeString(sigMd) + "\"}}}"
+                this.Send(bodySig)
+                return
+            }
+        }
+
         let typeStr = tc.LookupNodeType(node)
         if (typeStr == "?" || String_Length(typeStr) == 0) {
             // No inferred type for this node — common for declarations,
@@ -481,6 +507,116 @@ public class LspServer {
         }
         let content = "**" + node.Name + "**: `" + typeStr + "`"
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"" + Json.EscapeString(content) + "\"}}}"
+        this.Send(body)
+    }
+
+    // ── Signature help (v0.7.10+) ───────────────────────
+    //
+    // Triggered by the LSP client typing `(` or `,` inside a
+    // function call. Returns the active method's signature with
+    // the active parameter highlighted, so the editor renders a
+    // floating popup matching the call shape.
+    //
+    // v1 strategy:
+    //   1. Locate the innermost CALL whose Line ≤ cursor line.
+    //      Approximation — without a `)` column on the AST, we
+    //      rely on DFS depth + line ordering. Handles the common
+    //      case of typing inside an active call.
+    //   2. Pull the callee name from CALL.Left (IDENTIFIER /
+    //      MEMBER) and resolve it via FindMethodDeclByName.
+    //   3. Compute activeParameter = number of completed args
+    //      below the cursor (one per `,` already typed).
+    //
+    // Out of scope for v1: multi-signature dispatch (Amalgame has
+    // no overloading), generic-type-arg parameters, default-value
+    // hints.
+    private void HandleSignatureHelp(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let call: AstNode? = LspServer.FindCallAtPosition(prog, targetLine, targetCol)
+        if (call == null) {
+            this.SendNullResult(id)
+            return
+        }
+        let calleeName: string = LspServer.CallCalleeName(call)
+        if (String_Length(calleeName) == 0) {
+            this.SendNullResult(id)
+            return
+        }
+        let method: AstNode? = LspServer.FindMethodDeclByName(prog, calleeName)
+        if (method == null) {
+            this.SendNullResult(id)
+            return
+        }
+
+        // Format the signature label + per-parameter ranges so the
+        // client can bold the active param. Label looks like
+        // `name(p1: t1, p2: t2): ret`.
+        var label: string = method.Name + "("
+        let pn: int = method.Params.Count()
+        let starts: List<int> = new List<int>()
+        let ends:   List<int> = new List<int>()
+        for i in 0..pn {
+            let p: AstNode = method.Params.Get(i)
+            if (i > 0) { label = label + ", " }
+            let startCol: int = String_Length(label)
+            var paramLabel: string = p.Name
+            if (String_Length(p.Str) > 0) {
+                paramLabel = paramLabel + ": " + p.Str
+            }
+            label = label + paramLabel
+            starts.Add(startCol)
+            ends.Add(String_Length(label))
+        }
+        label = label + ")"
+        if (String_Length(method.Str) > 0 && method.Str != "void") {
+            label = label + ": " + method.Str
+        }
+
+        // Active parameter: count how many of the call's already-
+        // typed args end before the cursor. Each comma the user has
+        // typed bumps the index by one. We approximate by counting
+        // call.Args entries whose end line/col is at or before the
+        // cursor — typing the comma after arg N puts us on param N.
+        var active: int = 0
+        let an: int = call.Args.Count()
+        for ai in 0..an {
+            let a: AstNode = call.Args.Get(ai)
+            // Approx end of an arg: its own line + (column +
+            // name length). For complex args (nested calls,
+            // binary ops) we just use the arg's start position
+            // — close enough for v1.
+            if (a.Line < targetLine || (a.Line == targetLine && a.Column < targetCol)) {
+                active = ai
+            }
+        }
+        if (active > pn - 1) { active = pn - 1 }
+        if (active < 0) { active = 0 }
+
+        // Build the SignatureInformation JSON. parameters[] uses
+        // [startCol, endCol] offsets into `label` so the client
+        // bolds the right span.
+        var paramsJson: string = "["
+        for i in 0..pn {
+            if (i > 0) { paramsJson = paramsJson + "," }
+            paramsJson = paramsJson + "{\"label\":[" + String_FromInt(starts.Get(i)) + "," + String_FromInt(ends.Get(i)) + "]}"
+        }
+        paramsJson = paramsJson + "]"
+
+        let result: string = "{\"signatures\":[{\"label\":\"" + Json.EscapeString(label) + "\",\"parameters\":" + paramsJson + "}],\"activeSignature\":0,\"activeParameter\":" + String_FromInt(active) + "}"
+        let body: string = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + result + "}"
         this.Send(body)
     }
 
@@ -2376,6 +2512,101 @@ public class LspServer {
         var best: AstNode? = null
         best = LspServer.FindNodeWalk(root, line, col, best)
         return best
+    }
+
+    // ── Method signature formatting (v0.7.10+) ──────────
+    //
+    // FormatMethodSignatureMarkdown — renders a METHOD_DECL as
+    // markdown for hover / signatureHelp tooltips. Shape mirrors
+    // a declaration line: `name(p1: t1, p2: t2): retType`. void
+    // return is implicit; we drop the ": void" suffix to keep the
+    // popup tight.
+    public static string FormatMethodSignatureMarkdown(AstNode method) {
+        var sig: string = method.Name + "("
+        let n: int = method.Params.Count()
+        for i in 0..n {
+            let p: AstNode = method.Params.Get(i)
+            if (i > 0) { sig = sig + ", " }
+            sig = sig + p.Name
+            if (String_Length(p.Str) > 0) {
+                sig = sig + ": " + p.Str
+            }
+        }
+        sig = sig + ")"
+        if (String_Length(method.Str) > 0 && method.Str != "void") {
+            sig = sig + ": " + method.Str
+        }
+        return "```amalgame\n" + sig + "\n```"
+    }
+
+    // FindMethodDeclByName — walks every CLASS_DECL in `prog`
+    // looking for a METHOD_DECL whose `Name` matches the target.
+    // Returns the first match (workspace-order). Good enough for
+    // hover / signatureHelp v1; method overloading isn't expressed
+    // in Amalgame so first-match is unambiguous in well-formed
+    // workspaces.
+    public static AstNode? FindMethodDeclByName(AstNode prog, string methodName) {
+        if (prog == null) { return null }
+        let topN: int = prog.Children.Count()
+        for ti in 0..topN {
+            let top: AstNode = prog.Children.Get(ti)
+            if (top.Kind != NodeKind.CLASS_DECL) { continue }
+            let mn: int = top.Children.Count()
+            for mi in 0..mn {
+                let m: AstNode = top.Children.Get(mi)
+                if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                if (m.Name == methodName) { return m }
+            }
+        }
+        return null
+    }
+
+    // FindCallAtPosition — pick the deepest CALL node whose Line
+    // is ≤ cursor line (and Column ≤ cursor col when same line).
+    // Approximation of "innermost call whose argument list spans
+    // the cursor"; sufficient for textDocument/signatureHelp where
+    // the LSP client triggers on `(` / `,` keystrokes inside an
+    // active call.
+    public static AstNode? FindCallAtPosition(AstNode root, int line, int col) {
+        if (root == null) { return null }
+        var best: AstNode? = null
+        best = LspServer.FindCallWalk(root, line, col, best)
+        return best
+    }
+
+    private static AstNode? FindCallWalk(AstNode node, int line, int col, AstNode? best) {
+        var current = best
+        if (node.Kind == NodeKind.CALL) {
+            if (line > node.Line || (line == node.Line && col >= node.Column)) {
+                current = node
+            }
+        }
+        if (node.Left  != null) { current = LspServer.FindCallWalk(node.Left,  line, col, current) }
+        if (node.Right != null) { current = LspServer.FindCallWalk(node.Right, line, col, current) }
+        if (node.Cond  != null) { current = LspServer.FindCallWalk(node.Cond,  line, col, current) }
+        if (node.Body  != null) { current = LspServer.FindCallWalk(node.Body,  line, col, current) }
+        if (node.Else  != null) { current = LspServer.FindCallWalk(node.Else,  line, col, current) }
+        let cn: int = node.Children.Count()
+        for ci in 0..cn { current = LspServer.FindCallWalk(node.Children.Get(ci), line, col, current) }
+        let pn: int = node.Params.Count()
+        for pi in 0..pn { current = LspServer.FindCallWalk(node.Params.Get(pi), line, col, current) }
+        let an: int = node.Args.Count()
+        for ai in 0..an { current = LspServer.FindCallWalk(node.Args.Get(ai), line, col, current) }
+        return current
+    }
+
+    // CallCalleeName — extract the function/method short name a
+    // CALL node references. Handles bare IDENTIFIER receivers
+    // (`foo(x)`) and MEMBER receivers (`obj.method(x)` /
+    // `Class.method(x)`). Returns "" when the receiver shape
+    // isn't recognised.
+    public static string CallCalleeName(AstNode call) {
+        if (call == null) { return "" }
+        if (call.Left == null) { return "" }
+        let l = call.Left
+        if (l.Kind == NodeKind.IDENTIFIER) { return l.Name }
+        if (l.Kind == NodeKind.MEMBER)     { return l.Name }
+        return ""
     }
 
     private static AstNode? FindNodeWalk(AstNode node, int line, int col, AstNode? best) {
