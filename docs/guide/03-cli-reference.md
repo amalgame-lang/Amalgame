@@ -22,6 +22,9 @@ The runtime headers live in `runtime/` at the project root.
 
 | Command | Purpose | Reference |
 | ------- | ------- | --------- |
+| `build [-o <out>] [-v] <entry.am>` | Compile + gcc-link a runnable binary in one step (v0.7.9+) | `amc build --help` |
+| `run [-o <out>] [-v] <entry.am> [-- args…]` | Build, then exec the binary (v0.7.9+) | `amc run --help` |
+| `watch [-o <out>] [--run] [-v] <entry.am>` | Build now, then poll mtime and rebuild on change (v0.7.9+) | `amc watch --help` |
 | `fmt [-w] file.am`     | Idempotent formatter (stdout, or `-w` in-place)        | `amc fmt --help` |
 | `test [<dir>]`         | Discover `*_test.am`, compile + run, aggregate         | `amc test --help` |
 | `lsp`                  | Workspace-aware LSP server over stdio JSON-RPC          | chap. 6 |
@@ -201,14 +204,58 @@ gcc -Iruntime -c mylib.c -o mylib.o
 Auto-detection: a file without any `Program.Main` is treated as a
 library automatically (no `--lib` flag needed).
 
+## `amc build / run / watch` (since v0.7.9)
+
+The first-class compile verb. `amc build` runs amc on the entry
+file **and** invokes gcc with the right flags (runtime headers,
+`lib/libamalgame.a`, installed package facade archives, vendored
+package `.o` files, `[stdlib].libs` declared by each package).
+The result is a runnable binary — no separate gcc step.
+
+```bash
+amc build hello.am             # produces ./hello
+amc build -o myapp src/main.am # explicit output
+amc build -v hello.am          # verbose: prints the gcc command
+```
+
+`amc run` chains a build with `Process.Run` on the resulting
+binary. Args after the `--` sentinel pass through to the user
+program's argv:
+
+```bash
+amc run hello.am               # build then run, no user args
+amc run server.am -- --port 8080 --verbose
+```
+
+`amc watch` builds once, then polls the entry's mtime every
+500 ms and rebuilds on change. With `--run`, it also re-execs
+the binary after each successful rebuild — handy for dev loops:
+
+```bash
+amc watch --run server.am      # rebuild + restart on save
+amc watch hello.am             # rebuild only (manual ./hello to run)
+```
+
+v1 watches only the entry file explicitly named on the command
+line. Transitive imports are out of scope until the
+`Amalgame.IO.FileWatcher` package gains an event-based mode
+(post-D in the roadmap).
+
+The bare-args form `amc foo.am -o foo` still works (emits `foo.c`
+only — no gcc step) and stays supported for the edge cases where
+users want to splice their own gcc command (CI cross-compile,
+custom flags, embedded targets).
+
 ## Typical workflows
 
 ### Smoke-test a single file
 
 ```bash
-amc foo.am -o /tmp/foo
-gcc -Iruntime /tmp/foo.c -lgc -lm -lcurl -o /tmp/foo
-/tmp/foo
+amc build hello.am && ./hello   # since v0.7.9
+# OR the explicit two-step form
+amc hello.am -o hello
+gcc -Iruntime hello.c -lgc -lm -lcurl -lz -o hello
+./hello
 ```
 
 ### Type-check on save (editor integration)
@@ -219,6 +266,17 @@ echo $?     # 0 = OK, 1 = errors printed on stderr
 ```
 
 ### Build a multi-file project
+
+Since v0.7.9 the single-entry `amc build` covers most cases —
+amc resolves `import` statements transitively from the entry,
+so you typically only need:
+
+```bash
+amc build src/main.am          # → ./main
+```
+
+For older v0.7.x (or when you want explicit control over the
+file list), the two-step form still works:
 
 ```bash
 amc \

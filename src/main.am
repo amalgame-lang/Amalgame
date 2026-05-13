@@ -11,6 +11,7 @@ import Amalgame.String
 // smallest possible variant here.
 @c {
     #include <time.h>
+    #include <sys/stat.h>
     #ifdef _WIN32
         #include <windows.h>
     #endif
@@ -363,6 +364,15 @@ public class Program {
         Console.WriteError("  --help        Print this help")
         Console.WriteError("")
         Console.WriteError("Subcommands:")
+        Console.WriteError("  build <f.am>  Compile + link a runnable binary in one step.")
+        Console.WriteError("                Default output is the entry's stem (foo.am → ./foo).")
+        Console.WriteError("                Flags: -o <out>, --verbose. See `amc build --help`.")
+        Console.WriteError("  run <f.am>    Build, then exec the resulting binary. Args after `--`")
+        Console.WriteError("                are forwarded to the user binary's argv.")
+        Console.WriteError("                See `amc run --help`.")
+        Console.WriteError("  watch <f.am>  Build now, then poll the entry's mtime every 500 ms")
+        Console.WriteError("                and rebuild on change. With --run, re-exec after each")
+        Console.WriteError("                rebuild. See `amc watch --help`.")
         Console.WriteError("  fmt           Format Amalgame source. Default: print to stdout.")
         Console.WriteError("                With -w, rewrite files in place.")
         Console.WriteError("  test [<dir>]  Discover *_test.am, compile + run each, aggregate")
@@ -681,6 +691,438 @@ public class Program {
     }
 
 
+    // ── build / run / watch (v0.7.9+) ───────────────────
+    //
+    // `amc build <entry.am>` is the first-class compile verb.
+    // Under the hood it shares the gcc-link logic that `amc test`
+    // already uses, plus an explicit link against `lib/libamalgame.a`
+    // when it's shipped alongside amc — so packages that reference
+    // bundled-stdlib classes (Json / Toml) resolve at link time
+    // without the user knowing the magic.
+    //
+    // The bare-args form `amc -o out file.am` still works (no
+    // gcc step, .c emission only) — keeping the surface for the
+    // edge cases where users want to splice their own gcc command
+    // (CI cross-compile, custom flags).
+    //
+    // Returns 0 on success, non-zero on amc-compile / gcc-link
+    // failure. Errors are printed to stderr inline.
+    public static int BuildOneBinary(
+        string amcPath,
+        string entryAm,
+        string outBin,
+        string amcRuntime,
+        string libamalgameA,
+        List<string> pkgObjs,
+        List<string> facadeArs,
+        List<string> pkgLibs,
+        bool hasCxx,
+        bool verbose
+    ) {
+        let outC: string = outBin + ".c"
+        var quietFlag: string = " --quiet"
+        if (verbose) { quietFlag = " --verbose" }
+        let amcCmd: string = amcPath + " " + entryAm + " -o " + outBin + quietFlag
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) {
+            Console.WriteError("  [COMPILE-FAIL] amc exited " + String_FromInt(cr.Exit))
+            Console.Write(cr.Stdout)
+            return 1
+        }
+        if (verbose) {
+            Console.WriteLine("  amc → " + outC)
+        }
+
+        var gccCmd: string = ""
+        if (hasCxx) {
+            // C++ package present (DuckDB etc.) — two-stage link.
+            // Stage A: gcc -c on the cgen-emitted .c. amc emits C-style
+            // void* casts and string-literal-to-char* coercions that
+            // g++ rejects with -fpermissive warnings as errors, so
+            // we compile as C first.
+            var compileCmd: string = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
+            if (String_Length(amcRuntime) > 0) {
+                compileCmd = compileCmd + " -I'" + amcRuntime + "'"
+            }
+            let objOut: string = outBin + ".o"
+            compileCmd = compileCmd + " -c " + outC + " -o " + objOut + " 2>&1"
+            let stageA = Process.RunCapture(compileCmd)
+            if (stageA.Exit != 0) {
+                Console.WriteError("  [LINK-FAIL] gcc -c exited " + String_FromInt(stageA.Exit))
+                Console.Write(stageA.Stdout)
+                return 1
+            }
+            gccCmd = "g++ -O2 " + objOut
+        } else {
+            gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
+            if (String_Length(amcRuntime) > 0) {
+                gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+            }
+            gccCmd = gccCmd + " " + outC
+        }
+        // Per-package vendored .o (SQLite, DuckDB).
+        let nObjs: int = pkgObjs.Count()
+        for poi in 0..nObjs {
+            gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
+        }
+        // Per-package facade archives (libamalgame-pkg-<class>.a).
+        let nFAr: int = facadeArs.Count()
+        for fai in 0..nFAr {
+            gccCmd = gccCmd + " '" + facadeArs.Get(fai) + "'"
+        }
+        // Bundled stdlib archive — only link when it's actually
+        // shipped alongside amc (source-tree build OR installed
+        // release). Skip silently when missing so the build path
+        // stays usable in minimal /usr/local/bin-only setups, but
+        // future packages that reference Json / Toml symbols may
+        // fail to link without it.
+        if (String_Length(libamalgameA) > 0) {
+            gccCmd = gccCmd + " '" + libamalgameA + "'"
+        }
+        gccCmd = gccCmd + " -lgc -lm -lcurl -lz -ldl -lpthread"
+        let nLibs: int = pkgLibs.Count()
+        for plj in 0..nLibs {
+            gccCmd = gccCmd + " -l" + pkgLibs.Get(plj)
+        }
+        gccCmd = gccCmd + " -o " + outBin + " 2>&1"
+        if (verbose) {
+            Console.WriteLine("  gcc: " + gccCmd)
+        }
+        let gcc = Process.RunCapture(gccCmd)
+        if (gcc.Exit != 0) {
+            Console.WriteError("  [LINK-FAIL] gcc exited " + String_FromInt(gcc.Exit))
+            Console.Write(gcc.Stdout)
+            return 1
+        }
+        return 0
+    }
+
+    // BuildEntry — full pipeline for a single entry .am. Resolves
+    // amc's runtime/ dir, loads the package registry, pre-compiles
+    // vendored package sources, then delegates to BuildOneBinary.
+    // Returns the exit code from BuildOneBinary; the caller decides
+    // whether to chain a subsequent `Process.Run` (amc run).
+    public static int BuildEntry(string entryAm, string outBin, bool verbose) {
+        if (!File.Exists(entryAm)) {
+            Console.WriteError("amc build: entry file not found: " + entryAm)
+            return 2
+        }
+
+        // v0.5.1: auto-install lock-listed packages missing from the
+        // cache. Same behaviour as `amc test`.
+        let installed: int = AddCommand.EnsureInstalled()
+        if (installed < 0) {
+            Console.WriteError("amc build: package install failed; aborting")
+            return 1
+        }
+        if (installed > 0 && verbose) {
+            Console.WriteLine("amc build: installed " + String_FromInt(installed) + " missing dep(s)")
+        }
+
+        let amcPath: string = Args_Get(0)
+        var amcRuntime: string = Env_Get("AMC_RUNTIME")
+        if (String_Length(amcRuntime) == 0) {
+            let slashIdx: int = String_LastIndexOf(amcPath, "/")
+            if (slashIdx >= 0) {
+                amcRuntime = String_Substring(amcPath, 0, slashIdx) + "/runtime"
+            }
+        }
+
+        // libamalgame.a — try `<amcDir>/lib/libamalgame.a` first
+        // (release layout + dev source tree), fall back to "" if
+        // missing.
+        var libamalgameA: string = ""
+        let slashIdx2: int = String_LastIndexOf(amcPath, "/")
+        if (slashIdx2 >= 0) {
+            let candidate: string = String_Substring(amcPath, 0, slashIdx2) + "/lib/libamalgame.a"
+            if (File.Exists(candidate)) {
+                libamalgameA = candidate
+            }
+        }
+
+        let registry = PackageRegistry.Load()
+        let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
+        let hasCxx: bool = registry.HasCxxSources()
+        let pkgLibs: List<string> = registry.CollectLibs()
+        let facadeArs: List<string> = registry.CollectFacadeArchives()
+
+        let rc: int = Program.BuildOneBinary(
+            amcPath, entryAm, outBin, amcRuntime, libamalgameA,
+            pkgObjs, facadeArs, pkgLibs, hasCxx, verbose
+        )
+        return rc
+    }
+
+    // ── build subcommand (v0.7.9+) ──────────────────────
+    //
+    // `amc build [-o <out>] [--verbose] <entry.am>` — Cargo-style
+    // compile verb. Default output is the entry file's stem
+    // (`foo.am` → `./foo`). Builds against the full package +
+    // bundled-stdlib link chain, so the resulting binary runs
+    // standalone without an external gcc invocation.
+    public static int RunBuild(int argc) {
+        var entryAm: string = ""
+        var outBin: string = ""
+        var verbose: bool = false
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc build [-o <out>] [--verbose] <entry.am>")
+                Console.WriteError("")
+                Console.WriteError("Compile + link a runnable binary in one step.")
+                Console.WriteError("Equivalent to `amc -o out entry.am` plus the gcc invocation")
+                Console.WriteError("(runtime headers, libamalgame.a, installed packages, libs).")
+                return 0
+            }
+            if (a == "-o" && i + 1 < argc) {
+                outBin = Args_Get(i + 1)
+                i = i + 2
+            } else if (a == "-v" || a == "--verbose") {
+                verbose = true
+                i = i + 1
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc build: unknown option '" + a + "'")
+                return 1
+            } else {
+                if (String_Length(entryAm) > 0) {
+                    Console.WriteError("amc build: only one entry .am file is supported; got '" + entryAm + "' and '" + a + "'")
+                    return 1
+                }
+                entryAm = a
+                i = i + 1
+            }
+        }
+        if (String_Length(entryAm) == 0) {
+            Console.WriteError("amc build: missing entry .am argument")
+            Console.WriteError("Usage: amc build [-o <out>] [--verbose] <entry.am>")
+            return 2
+        }
+        // Default output: strip directory + ".am" suffix from entry.
+        if (String_Length(outBin) == 0) {
+            outBin = entryAm
+            let lastSlash: int = String_LastIndexOf(outBin, "/")
+            if (lastSlash >= 0) {
+                outBin = String_Substring(outBin, lastSlash + 1, String_Length(outBin) - lastSlash - 1)
+            }
+            if (String_EndsWith(outBin, ".am")) {
+                outBin = String_Substring(outBin, 0, String_Length(outBin) - 3)
+            }
+            outBin = "./" + outBin
+        }
+        let rc: int = Program.BuildEntry(entryAm, outBin, verbose)
+        if (rc == 0) {
+            Console.WriteLine("✓ Built " + outBin)
+        }
+        return rc
+    }
+
+    // ── run subcommand (v0.7.9+) ────────────────────────
+    //
+    // `amc run [-o <out>] [--verbose] <entry.am> [-- args...]` —
+    // build the binary, then exec it. Args after the `--` sentinel
+    // are forwarded to the user binary's argv; everything before
+    // configures the build itself.
+    public static int RunRun(int argc) {
+        var entryAm: string = ""
+        var outBin: string = ""
+        var verbose: bool = false
+        let userArgs: List<string> = new List<string>()
+        var sawSep: bool = false
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (sawSep) {
+                userArgs.Add(a)
+                i = i + 1
+                continue
+            }
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc run [-o <out>] [--verbose] <entry.am> [-- args...]")
+                Console.WriteError("")
+                Console.WriteError("Build the binary, then run it. Args after the `--` sentinel")
+                Console.WriteError("are forwarded to the resulting program's argv.")
+                return 0
+            }
+            if (a == "--") {
+                sawSep = true
+                i = i + 1
+            } else if (a == "-o" && i + 1 < argc) {
+                outBin = Args_Get(i + 1)
+                i = i + 2
+            } else if (a == "-v" || a == "--verbose") {
+                verbose = true
+                i = i + 1
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc run: unknown option '" + a + "'")
+                return 1
+            } else {
+                if (String_Length(entryAm) > 0) {
+                    Console.WriteError("amc run: only one entry .am file is supported; got '" + entryAm + "' and '" + a + "'")
+                    return 1
+                }
+                entryAm = a
+                i = i + 1
+            }
+        }
+        if (String_Length(entryAm) == 0) {
+            Console.WriteError("amc run: missing entry .am argument")
+            Console.WriteError("Usage: amc run [-o <out>] [--verbose] <entry.am> [-- args...]")
+            return 2
+        }
+        if (String_Length(outBin) == 0) {
+            outBin = entryAm
+            let lastSlash: int = String_LastIndexOf(outBin, "/")
+            if (lastSlash >= 0) {
+                outBin = String_Substring(outBin, lastSlash + 1, String_Length(outBin) - lastSlash - 1)
+            }
+            if (String_EndsWith(outBin, ".am")) {
+                outBin = String_Substring(outBin, 0, String_Length(outBin) - 3)
+            }
+            outBin = "./" + outBin
+        }
+        let buildRc: int = Program.BuildEntry(entryAm, outBin, verbose)
+        if (buildRc != 0) {
+            return buildRc
+        }
+        // Assemble the run command. User args are passed through.
+        var runCmd: string = outBin
+        let na: int = userArgs.Count()
+        for ai in 0..na {
+            let ua: string = userArgs.Get(ai)
+            // Naive single-quote escape: every arg gets its own
+            // pair of single quotes. Doesn't handle embedded
+            // single quotes; consumers needing that should script
+            // around amc run directly.
+            runCmd = runCmd + " '" + ua + "'"
+        }
+        return Process.Run(runCmd)
+    }
+
+    // ── watch subcommand (v0.7.9+) ──────────────────────
+    //
+    // `amc watch [-o <out>] [--run] [--verbose] <entry.am>` —
+    // build the binary now, then poll every 500 ms for mtime
+    // changes on the entry file (v1 only watches the single file
+    // explicitly named; transitive imports are deferred to
+    // FileWatcher v2). When the file changes, rebuild and
+    // (optionally) re-run. Ctrl-C to exit.
+    public static int RunWatch(int argc) {
+        var entryAm: string = ""
+        var outBin: string = ""
+        var verbose: bool = false
+        var runAfter: bool = false
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc watch [-o <out>] [--run] [--verbose] <entry.am>")
+                Console.WriteError("")
+                Console.WriteError("Build now, then poll <entry.am>'s mtime every 500 ms.")
+                Console.WriteError("On change: rebuild (and re-run with --run). Ctrl-C to exit.")
+                Console.WriteError("v1 watches only the explicit entry file; transitive imports")
+                Console.WriteError("come post-D when the FileWatcher event-loop lands.")
+                return 0
+            }
+            if (a == "-o" && i + 1 < argc) {
+                outBin = Args_Get(i + 1)
+                i = i + 2
+            } else if (a == "-v" || a == "--verbose") {
+                verbose = true
+                i = i + 1
+            } else if (a == "--run") {
+                runAfter = true
+                i = i + 1
+            } else if (String_StartsWith(a, "-")) {
+                Console.WriteError("amc watch: unknown option '" + a + "'")
+                return 1
+            } else {
+                if (String_Length(entryAm) > 0) {
+                    Console.WriteError("amc watch: only one entry .am file is supported")
+                    return 1
+                }
+                entryAm = a
+                i = i + 1
+            }
+        }
+        if (String_Length(entryAm) == 0) {
+            Console.WriteError("amc watch: missing entry .am argument")
+            return 2
+        }
+        if (String_Length(outBin) == 0) {
+            outBin = entryAm
+            let lastSlash: int = String_LastIndexOf(outBin, "/")
+            if (lastSlash >= 0) {
+                outBin = String_Substring(outBin, lastSlash + 1, String_Length(outBin) - lastSlash - 1)
+            }
+            if (String_EndsWith(outBin, ".am")) {
+                outBin = String_Substring(outBin, 0, String_Length(outBin) - 3)
+            }
+            outBin = "./" + outBin
+        }
+
+        Console.WriteLine("amc watch: " + entryAm + " → " + outBin)
+        let _rc1: int = Program.BuildAndMaybeRun(entryAm, outBin, verbose, runAfter)
+        var lastMtime: int = Program.FileMtimeNs(entryAm)
+        Console.WriteLine("  (watching for changes, Ctrl-C to exit)")
+        while (true) {
+            Program.SleepMs(500)
+            let cur: int = Program.FileMtimeNs(entryAm)
+            if (cur != lastMtime && cur > 0) {
+                lastMtime = cur
+                Console.WriteLine("")
+                Console.WriteLine("── change detected, rebuilding")
+                let _rc2: int = Program.BuildAndMaybeRun(entryAm, outBin, verbose, runAfter)
+            }
+        }
+        return 0
+    }
+
+    private static int BuildAndMaybeRun(string entryAm, string outBin, bool verbose, bool runAfter) {
+        let rc: int = Program.BuildEntry(entryAm, outBin, verbose)
+        if (rc != 0) { return rc }
+        Console.WriteLine("✓ Built " + outBin)
+        if (runAfter) {
+            Console.WriteLine("── running")
+            return Process.Run(outBin)
+        }
+        return 0
+    }
+
+    // mtime in nanoseconds, 0 on stat failure (missing file). Used
+    // by watch to detect changes without dragging in the full
+    // FileWatcher facade (which is now an external package).
+    private static int FileMtimeNs(string path) {
+        @c {
+        #ifdef _WIN32
+            struct _stat64 st;
+            if (_stat64(path, &st) != 0) return 0;
+            return (i64)((int64_t) st.st_mtime * 1000000000LL);
+        #else
+            struct stat st;
+            if (stat(path, &st) != 0) return 0;
+            #ifdef __APPLE__
+                return (i64)((int64_t) st.st_mtimespec.tv_sec * 1000000000LL + (int64_t) st.st_mtimespec.tv_nsec);
+            #else
+                return (i64)((int64_t) st.st_mtim.tv_sec * 1000000000LL + (int64_t) st.st_mtim.tv_nsec);
+            #endif
+        #endif
+        }
+    }
+
+    private static void SleepMs(int ms) {
+        @c {
+        #ifdef _WIN32
+            Sleep((DWORD) ms);
+        #else
+            struct timespec ts;
+            ts.tv_sec  = (time_t)(ms / 1000);
+            ts.tv_nsec = (long)((ms % 1000) * 1000000L);
+            nanosleep(&ts, NULL);
+        #endif
+        }
+    }
+
     // ── fmt subcommand ─────────────────────────────────
     public static int RunFmt(int argc) {
         let ap = new ArgParser()
@@ -739,6 +1181,18 @@ public class Program {
         if (argc < 2) {
             Program.PrintUsage()
             Exit_Set(1)
+            return
+        }
+        if (Args_Get(1) == "build") {
+            Exit_Set(Program.RunBuild(argc))
+            return
+        }
+        if (Args_Get(1) == "run") {
+            Exit_Set(Program.RunRun(argc))
+            return
+        }
+        if (Args_Get(1) == "watch") {
+            Exit_Set(Program.RunWatch(argc))
             return
         }
         if (Args_Get(1) == "fmt") {

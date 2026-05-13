@@ -65,6 +65,7 @@ typedef struct _Amalgame_Compiler_AddCommand Amalgame_Compiler_AddCommand;
 /* inline-C top-level */
 
     #include <time.h>
+    #include <sys/stat.h>
     #ifdef _WIN32
         #include <windows.h>
     #endif
@@ -4130,7 +4131,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.7.8";
+    return "0.7.9";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -14004,11 +14005,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "14dd9ea5";
+    return "031b46cb";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T20:00:14Z";
+    return "2026-05-13T20:27:31Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -21316,6 +21317,14 @@ struct _Amalgame_Compiler_Program {
 void Amalgame_Compiler_Program_PrintUsage();
 i64 Amalgame_Compiler_Program_RunTest(i64 argc);
 AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compiler_PackageRegistry* reg, code_string amcRuntime);
+i64 Amalgame_Compiler_Program_BuildOneBinary(code_string amcPath, code_string entryAm, code_string outBin, code_string amcRuntime, code_string libamalgameA, AmalgameList* pkgObjs, AmalgameList* facadeArs, AmalgameList* pkgLibs, code_bool hasCxx, code_bool verbose);
+i64 Amalgame_Compiler_Program_BuildEntry(code_string entryAm, code_string outBin, code_bool verbose);
+i64 Amalgame_Compiler_Program_RunBuild(i64 argc);
+i64 Amalgame_Compiler_Program_RunRun(i64 argc);
+i64 Amalgame_Compiler_Program_RunWatch(i64 argc);
+static i64 Amalgame_Compiler_Program_BuildAndMaybeRun(code_string entryAm, code_string outBin, code_bool verbose, code_bool runAfter);
+static i64 Amalgame_Compiler_Program_FileMtimeNs(code_string path);
+static void Amalgame_Compiler_Program_SleepMs(i64 ms);
 i64 Amalgame_Compiler_Program_RunFmt(i64 argc);
 void Amalgame_Compiler_Program_Main(code_string* args);
 
@@ -21341,6 +21350,15 @@ void Amalgame_Compiler_Program_PrintUsage() {
     Console_WriteError("  --help        Print this help");
     Console_WriteError("");
     Console_WriteError("Subcommands:");
+    Console_WriteError("  build <f.am>  Compile + link a runnable binary in one step.");
+    Console_WriteError("                Default output is the entry's stem (foo.am → ./foo).");
+    Console_WriteError("                Flags: -o <out>, --verbose. See `amc build --help`.");
+    Console_WriteError("  run <f.am>    Build, then exec the resulting binary. Args after `--`");
+    Console_WriteError("                are forwarded to the user binary's argv.");
+    Console_WriteError("                See `amc run --help`.");
+    Console_WriteError("  watch <f.am>  Build now, then poll the entry's mtime every 500 ms");
+    Console_WriteError("                and rebuild on change. With --run, re-exec after each");
+    Console_WriteError("                rebuild. See `amc watch --help`.");
     Console_WriteError("  fmt           Format Amalgame source. Default: print to stdout.");
     Console_WriteError("                With -w, rewrite files in place.");
     Console_WriteError("  test [<dir>]  Discover *_test.am, compile + run each, aggregate");
@@ -21571,6 +21589,356 @@ AmalgameList* Amalgame_Compiler_Program_PreCompilePackageSources(Amalgame_Compil
     return out;
 }
 
+i64 Amalgame_Compiler_Program_BuildOneBinary(code_string amcPath, code_string entryAm, code_string outBin, code_string amcRuntime, code_string libamalgameA, AmalgameList* pkgObjs, AmalgameList* facadeArs, AmalgameList* pkgLibs, code_bool hasCxx, code_bool verbose) {
+    code_string outC = code_string_concat(outBin, ".c");
+    code_string quietFlag = " --quiet";
+    if (verbose) {
+        quietFlag = " --verbose";
+    }
+    code_string amcCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(amcPath, " "), entryAm), " -o "), outBin), quietFlag);
+    AmalgameProcessResult* cr = Process_RunCapture(amcCmd);
+    if (cr->Exit != 0) {
+        Console_WriteError(code_string_concat("  [COMPILE-FAIL] amc exited ", String_FromInt(cr->Exit)));
+        Console_Write(cr->Stdout);
+        return 1;
+    }
+    if (verbose) {
+        Console_WriteLine(code_string_concat("  amc → ", outC));
+    }
+    code_string gccCmd = "";
+    if (hasCxx) {
+        code_string compileCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime";
+        if (String_Length(amcRuntime) > 0) {
+            compileCmd = code_string_concat(code_string_concat(code_string_concat(compileCmd, " -I'"), amcRuntime), "'");
+        }
+        code_string objOut = code_string_concat(outBin, ".o");
+        compileCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(compileCmd, " -c "), outC), " -o "), objOut), " 2>&1");
+        AmalgameProcessResult* stageA = Process_RunCapture(compileCmd);
+        if (stageA->Exit != 0) {
+            Console_WriteError(code_string_concat("  [LINK-FAIL] gcc -c exited ", String_FromInt(stageA->Exit)));
+            Console_Write(stageA->Stdout);
+            return 1;
+        }
+        gccCmd = code_string_concat("g++ -O2 ", objOut);
+    } else {
+        gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime";
+        if (String_Length(amcRuntime) > 0) {
+            gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -I'"), amcRuntime), "'");
+        }
+        gccCmd = code_string_concat(code_string_concat(gccCmd, " "), outC);
+    }
+    i64 nObjs = AmalgameList_count(pkgObjs);
+    for (i64 poi = 0; poi < nObjs; poi++) {
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)AmalgameList_get(pkgObjs, poi)), "'");
+    }
+    i64 nFAr = AmalgameList_count(facadeArs);
+    for (i64 fai = 0; fai < nFAr; fai++) {
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)AmalgameList_get(facadeArs, fai)), "'");
+    }
+    if (String_Length(libamalgameA) > 0) {
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), libamalgameA), "'");
+    }
+    gccCmd = code_string_concat(gccCmd, " -lgc -lm -lcurl -lz -ldl -lpthread");
+    i64 nLibs = AmalgameList_count(pkgLibs);
+    for (i64 plj = 0; plj < nLibs; plj++) {
+        gccCmd = code_string_concat(code_string_concat(gccCmd, " -l"), (code_string)AmalgameList_get(pkgLibs, plj));
+    }
+    gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -o "), outBin), " 2>&1");
+    if (verbose) {
+        Console_WriteLine(code_string_concat("  gcc: ", gccCmd));
+    }
+    AmalgameProcessResult* gcc = Process_RunCapture(gccCmd);
+    if (gcc->Exit != 0) {
+        Console_WriteError(code_string_concat("  [LINK-FAIL] gcc exited ", String_FromInt(gcc->Exit)));
+        Console_Write(gcc->Stdout);
+        return 1;
+    }
+    return 0;
+}
+
+i64 Amalgame_Compiler_Program_BuildEntry(code_string entryAm, code_string outBin, code_bool verbose) {
+    if (!File_Exists(entryAm)) {
+        Console_WriteError(code_string_concat("amc build: entry file not found: ", entryAm));
+        return 2;
+    }
+    i64 installed = Amalgame_Compiler_AddCommand_EnsureInstalled();
+    if (installed < 0) {
+        Console_WriteError("amc build: package install failed; aborting");
+        return 1;
+    }
+    if (installed > 0 && verbose) {
+        Console_WriteLine(code_string_concat(code_string_concat("amc build: installed ", String_FromInt(installed)), " missing dep(s)"));
+    }
+    code_string amcPath = Args_Get(0);
+    code_string amcRuntime = Env_Get("AMC_RUNTIME");
+    if (String_Length(amcRuntime) == 0) {
+        i64 slashIdx = String_LastIndexOf(amcPath, "/");
+        if (slashIdx >= 0) {
+            amcRuntime = code_string_concat(String_Substring(amcPath, 0, slashIdx), "/runtime");
+        }
+    }
+    code_string libamalgameA = "";
+    i64 slashIdx2 = String_LastIndexOf(amcPath, "/");
+    if (slashIdx2 >= 0) {
+        code_string candidate = code_string_concat(String_Substring(amcPath, 0, slashIdx2), "/lib/libamalgame.a");
+        if (File_Exists(candidate)) {
+            libamalgameA = candidate;
+        }
+    }
+    Amalgame_Compiler_PackageRegistry* registry = Amalgame_Compiler_PackageRegistry_Load();
+    AmalgameList* pkgObjs = Amalgame_Compiler_Program_PreCompilePackageSources(registry, amcRuntime);
+    code_bool hasCxx = Amalgame_Compiler_PackageRegistry_HasCxxSources(registry);
+    AmalgameList* pkgLibs = Amalgame_Compiler_PackageRegistry_CollectLibs(registry);
+    AmalgameList* facadeArs = Amalgame_Compiler_PackageRegistry_CollectFacadeArchives(registry);
+    i64 rc = Amalgame_Compiler_Program_BuildOneBinary(amcPath, entryAm, outBin, amcRuntime, libamalgameA, pkgObjs, facadeArs, pkgLibs, hasCxx, verbose);
+    return rc;
+}
+
+i64 Amalgame_Compiler_Program_RunBuild(i64 argc) {
+    code_string entryAm = "";
+    code_string outBin = "";
+    code_bool verbose = 0;
+    i64 i = 2;
+    while (i < argc) {
+        code_string a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc build [-o <out>] [--verbose] <entry.am>");
+            Console_WriteError("");
+            Console_WriteError("Compile + link a runnable binary in one step.");
+            Console_WriteError("Equivalent to `amc -o out entry.am` plus the gcc invocation");
+            Console_WriteError("(runtime headers, libamalgame.a, installed packages, libs).");
+            return 0;
+        }
+        if (code_string_equals(a, "-o") && i + 1 < argc) {
+            outBin = Args_Get(i + 1);
+            i = i + 2;
+        } else if (code_string_equals(a, "-v") || code_string_equals(a, "--verbose")) {
+            verbose = 1;
+            i = i + 1;
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc build: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(entryAm) > 0) {
+                Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amc build: only one entry .am file is supported; got '", entryAm), "' and '"), a), "'"));
+                return 1;
+            }
+            entryAm = a;
+            i = i + 1;
+        }
+    }
+    if (String_Length(entryAm) == 0) {
+        Console_WriteError("amc build: missing entry .am argument");
+        Console_WriteError("Usage: amc build [-o <out>] [--verbose] <entry.am>");
+        return 2;
+    }
+    if (String_Length(outBin) == 0) {
+        outBin = entryAm;
+        i64 lastSlash = String_LastIndexOf(outBin, "/");
+        if (lastSlash >= 0) {
+            outBin = String_Substring(outBin, lastSlash + 1, String_Length(outBin) - lastSlash - 1);
+        }
+        if (String_EndsWith(outBin, ".am")) {
+            outBin = String_Substring(outBin, 0, String_Length(outBin) - 3);
+        }
+        outBin = code_string_concat("./", outBin);
+    }
+    i64 rc = Amalgame_Compiler_Program_BuildEntry(entryAm, outBin, verbose);
+    if (rc == 0) {
+        Console_WriteLine(code_string_concat("✓ Built ", outBin));
+    }
+    return rc;
+}
+
+i64 Amalgame_Compiler_Program_RunRun(i64 argc) {
+    code_string entryAm = "";
+    code_string outBin = "";
+    code_bool verbose = 0;
+    AmalgameList* userArgs = AmalgameList_new();
+    code_bool sawSep = 0;
+    i64 i = 2;
+    while (i < argc) {
+        code_string a = Args_Get(i);
+        if (sawSep) {
+            AmalgameList_add(userArgs, (void*)(intptr_t)(a));
+            i = i + 1;
+            continue;
+        }
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc run [-o <out>] [--verbose] <entry.am> [-- args...]");
+            Console_WriteError("");
+            Console_WriteError("Build the binary, then run it. Args after the `--` sentinel");
+            Console_WriteError("are forwarded to the resulting program's argv.");
+            return 0;
+        }
+        if (code_string_equals(a, "--")) {
+            sawSep = 1;
+            i = i + 1;
+        } else if (code_string_equals(a, "-o") && i + 1 < argc) {
+            outBin = Args_Get(i + 1);
+            i = i + 2;
+        } else if (code_string_equals(a, "-v") || code_string_equals(a, "--verbose")) {
+            verbose = 1;
+            i = i + 1;
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc run: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(entryAm) > 0) {
+                Console_WriteError(code_string_concat(code_string_concat(code_string_concat(code_string_concat("amc run: only one entry .am file is supported; got '", entryAm), "' and '"), a), "'"));
+                return 1;
+            }
+            entryAm = a;
+            i = i + 1;
+        }
+    }
+    if (String_Length(entryAm) == 0) {
+        Console_WriteError("amc run: missing entry .am argument");
+        Console_WriteError("Usage: amc run [-o <out>] [--verbose] <entry.am> [-- args...]");
+        return 2;
+    }
+    if (String_Length(outBin) == 0) {
+        outBin = entryAm;
+        i64 lastSlash = String_LastIndexOf(outBin, "/");
+        if (lastSlash >= 0) {
+            outBin = String_Substring(outBin, lastSlash + 1, String_Length(outBin) - lastSlash - 1);
+        }
+        if (String_EndsWith(outBin, ".am")) {
+            outBin = String_Substring(outBin, 0, String_Length(outBin) - 3);
+        }
+        outBin = code_string_concat("./", outBin);
+    }
+    i64 buildRc = Amalgame_Compiler_Program_BuildEntry(entryAm, outBin, verbose);
+    if (buildRc != 0) {
+        return buildRc;
+    }
+    code_string runCmd = outBin;
+    i64 na = AmalgameList_count(userArgs);
+    for (i64 ai = 0; ai < na; ai++) {
+        code_string ua = (code_string)AmalgameList_get(userArgs, ai);
+        runCmd = code_string_concat(code_string_concat(code_string_concat(runCmd, " '"), ua), "'");
+    }
+    return Process_Run(runCmd);
+}
+
+i64 Amalgame_Compiler_Program_RunWatch(i64 argc) {
+    code_string entryAm = "";
+    code_string outBin = "";
+    code_bool verbose = 0;
+    code_bool runAfter = 0;
+    i64 i = 2;
+    while (i < argc) {
+        code_string a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc watch [-o <out>] [--run] [--verbose] <entry.am>");
+            Console_WriteError("");
+            Console_WriteError("Build now, then poll <entry.am>'s mtime every 500 ms.");
+            Console_WriteError("On change: rebuild (and re-run with --run). Ctrl-C to exit.");
+            Console_WriteError("v1 watches only the explicit entry file; transitive imports");
+            Console_WriteError("come post-D when the FileWatcher event-loop lands.");
+            return 0;
+        }
+        if (code_string_equals(a, "-o") && i + 1 < argc) {
+            outBin = Args_Get(i + 1);
+            i = i + 2;
+        } else if (code_string_equals(a, "-v") || code_string_equals(a, "--verbose")) {
+            verbose = 1;
+            i = i + 1;
+        } else if (code_string_equals(a, "--run")) {
+            runAfter = 1;
+            i = i + 1;
+        } else if (String_StartsWith(a, "-")) {
+            Console_WriteError(code_string_concat(code_string_concat("amc watch: unknown option '", a), "'"));
+            return 1;
+        } else {
+            if (String_Length(entryAm) > 0) {
+                Console_WriteError("amc watch: only one entry .am file is supported");
+                return 1;
+            }
+            entryAm = a;
+            i = i + 1;
+        }
+    }
+    if (String_Length(entryAm) == 0) {
+        Console_WriteError("amc watch: missing entry .am argument");
+        return 2;
+    }
+    if (String_Length(outBin) == 0) {
+        outBin = entryAm;
+        i64 lastSlash = String_LastIndexOf(outBin, "/");
+        if (lastSlash >= 0) {
+            outBin = String_Substring(outBin, lastSlash + 1, String_Length(outBin) - lastSlash - 1);
+        }
+        if (String_EndsWith(outBin, ".am")) {
+            outBin = String_Substring(outBin, 0, String_Length(outBin) - 3);
+        }
+        outBin = code_string_concat("./", outBin);
+    }
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("amc watch: ", entryAm), " → "), outBin));
+    i64 _rc1 = Amalgame_Compiler_Program_BuildAndMaybeRun(entryAm, outBin, verbose, runAfter);
+    i64 lastMtime = Amalgame_Compiler_Program_FileMtimeNs(entryAm);
+    Console_WriteLine("  (watching for changes, Ctrl-C to exit)");
+    while (1) {
+        Amalgame_Compiler_Program_SleepMs(500);
+        i64 cur = Amalgame_Compiler_Program_FileMtimeNs(entryAm);
+        if (cur != lastMtime && cur > 0) {
+            lastMtime = cur;
+            Console_WriteLine("");
+            Console_WriteLine("── change detected, rebuilding");
+            i64 _rc2 = Amalgame_Compiler_Program_BuildAndMaybeRun(entryAm, outBin, verbose, runAfter);
+        }
+    }
+    return 0;
+}
+
+static i64 Amalgame_Compiler_Program_BuildAndMaybeRun(code_string entryAm, code_string outBin, code_bool verbose, code_bool runAfter) {
+    i64 rc = Amalgame_Compiler_Program_BuildEntry(entryAm, outBin, verbose);
+    if (rc != 0) {
+        return rc;
+    }
+    Console_WriteLine(code_string_concat("✓ Built ", outBin));
+    if (runAfter) {
+        Console_WriteLine("── running");
+        return Process_Run(outBin);
+    }
+    return 0;
+}
+
+static i64 Amalgame_Compiler_Program_FileMtimeNs(code_string path) {
+    { /* inline-C */
+        
+                #ifdef _WIN32
+                    struct _stat64 st;
+                    if (_stat64(path, &st) != 0) return 0;
+                    return (i64)((int64_t) st.st_mtime * 1000000000LL);
+                #else
+                    struct stat st;
+                    if (stat(path, &st) != 0) return 0;
+                    #ifdef __APPLE__
+                        return (i64)((int64_t) st.st_mtimespec.tv_sec * 1000000000LL + (int64_t) st.st_mtimespec.tv_nsec);
+                    #else
+                        return (i64)((int64_t) st.st_mtim.tv_sec * 1000000000LL + (int64_t) st.st_mtim.tv_nsec);
+                    #endif
+                #endif
+                
+    }
+}
+
+static void Amalgame_Compiler_Program_SleepMs(i64 ms) {
+    { /* inline-C */
+        
+                #ifdef _WIN32
+                    Sleep((DWORD) ms);
+                #else
+                    struct timespec ts;
+                    ts.tv_sec  = (time_t)(ms / 1000);
+                    ts.tv_nsec = (long)((ms % 1000) * 1000000L);
+                    nanosleep(&ts, NULL);
+                #endif
+                
+    }
+}
+
 i64 Amalgame_Compiler_Program_RunFmt(i64 argc) {
     Amalgame_Compiler_ArgParser* ap = Amalgame_Compiler_ArgParser_new();
     Amalgame_Compiler_ArgParser_Parse(Amalgame_Compiler_ArgParser_Flag(Amalgame_Compiler_ArgParser_Flag(Amalgame_Compiler_ArgParser_Flag(Amalgame_Compiler_ArgParser_Flag(ap, "-w"), "--write"), "-h"), "--help"), argc, 2);
@@ -21628,6 +21996,18 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     if (argc < 2) {
         Amalgame_Compiler_Program_PrintUsage();
         Exit_Set(1);
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "build")) {
+        Exit_Set(Amalgame_Compiler_Program_RunBuild(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "run")) {
+        Exit_Set(Amalgame_Compiler_Program_RunRun(argc));
+        return;
+    }
+    if (code_string_equals(Args_Get(1), "watch")) {
+        Exit_Set(Amalgame_Compiler_Program_RunWatch(argc));
         return;
     }
     if (code_string_equals(Args_Get(1), "fmt")) {
