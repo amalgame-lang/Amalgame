@@ -1,17 +1,38 @@
 ; ═══════════════════════════════════════════════════════════
 ;  Amalgame Language — Inno Setup Script
-;  Produces a Windows .exe installer
+;  Produces a Windows .exe installer matching the XDG-style
+;  layout amc looks for: <prefix>\bin\amc.exe plus
+;  <prefix>\share\amalgame\{runtime, lib, docs}.
 ;
 ;  Requirements: Inno Setup 6+ (https://jrsoftware.org/isinfo.php)
 ;
-;  Usage:
-;    iscc amalgame.iss
+;  Source files: Inno Setup is run AFTER the release.yml Windows
+;  job has staged the artifacts. Point the staging dir at the
+;  extracted release tree:
 ;
-;  Output: Output\amalgame-0.3.0-setup.exe
+;    iscc /DAmcVersion=0.8.1 ^
+;         /DAmcStageDir=..\..\dist\amc-0.8.1-windows-x86_64 ^
+;         amalgame.iss
+;
+;  Layout under {app} after install:
+;    {app}\bin\amc.exe + bundled MinGW DLLs
+;    {app}\share\amalgame\runtime\_runtime.h + Amalgame_*.h
+;    {app}\share\amalgame\lib\libamalgame.a
+;    {app}\share\amalgame\docs\language\grammar.ebnf
+;    {app}\share\amalgame\docs\guide\02-language-tour.md
+;    {app}\README.md + LICENSE
+;
+;  Output: Output\amalgame-<version>-setup.exe
 ; ═══════════════════════════════════════════════════════════
 
+#ifndef AmcVersion
+  #define AmcVersion "0.8.1"
+#endif
+#ifndef AmcStageDir
+  #define AmcStageDir "..\..\dist\amc-" + AmcVersion + "-windows-x86_64"
+#endif
+
 #define AppName      "Amalgame"
-#define AppVersion   "0.3.0"
 #define AppPublisher "Bastien MOUGET"
 #define AppURL       "https://github.com/amalgame-lang/Amalgame"
 #define AppExe       "amc.exe"
@@ -19,7 +40,7 @@
 [Setup]
 AppId={{F3A2B1C4-7E8D-4F9A-B3C2-1D5E6F7A8B9C}
 AppName={#AppName}
-AppVersion={#AppVersion}
+AppVersion={#AmcVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
@@ -29,7 +50,7 @@ DefaultGroupName=Amalgame
 AllowNoIcons=yes
 LicenseFile=..\..\LICENSE
 OutputDir=Output
-OutputBaseFilename=amalgame-{#AppVersion}-setup
+OutputBaseFilename=amalgame-{#AmcVersion}-setup
 SetupIconFile=assets\amalgame.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -47,41 +68,42 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 
 [Tasks]
-Name: "addtopath";      Description: "Add amc to PATH (recommended)"; GroupDescription: "Configuration:"; Flags: checked
-Name: "desktopicon";    Description: "Create a desktop shortcut for documentation"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "addtopath";   Description: "Add amc to PATH (recommended)";   GroupDescription: "Configuration:"; Flags: checked
+Name: "desktopicon"; Description: "Create a desktop shortcut for documentation"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
-; Main binary
-Source: "..\..\build-windows\amc.exe";          DestDir: "{app}\bin"; Flags: ignoreversion
+; ── Binary + bundled MinGW DLLs ───────────────────────────
+; release.yml stages amc.exe and the DLL set under bin/ so the
+; Windows loader picks them up automatically (same dir as the exe).
+Source: "{#AmcStageDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Runtime header (needed by compiled programs)
-Source: "..\..\src\transpiler\runtime\_runtime.h"; DestDir: "{app}\runtime"; Flags: ignoreversion
+; ── Runtime headers + libamalgame.a + LLM prompt docs ─────
+; amc resolves these via <bin>\..\share\amalgame\{runtime,lib} —
+; matches Program.ResolveRuntimeDir / ResolveLibAmalgameA so no
+; AMC_RUNTIME env override is needed.
+Source: "{#AmcStageDir}\share\amalgame\runtime\*"; DestDir: "{app}\share\amalgame\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#AmcStageDir}\share\amalgame\lib\*";     DestDir: "{app}\share\amalgame\lib";     Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#AmcStageDir}\share\amalgame\docs\*";    DestDir: "{app}\share\amalgame\docs";    Flags: ignoreversion recursesubdirs createallsubdirs
 
-; MinGW GCC bundle (bundled for convenience)
-Source: "gcc-bundle\*"; DestDir: "{app}\gcc"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: GccBundleExists
-
-; Documentation
-Source: "..\..\docs\DEVELOPER_GUIDE.md"; DestDir: "{app}\docs"; Flags: ignoreversion
-Source: "..\..\README.md";               DestDir: "{app}";      Flags: ignoreversion
-
-; Uninstaller
-Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+; ── Top-level docs + license ──────────────────────────────
+Source: "..\..\README.md";          DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\LICENSE";            DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\docs\guide\01-getting-started.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\..\docs\DEVELOPER_GUIDE.md";          DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Amalgame Documentation"; Filename: "{app}\docs\DEVELOPER_GUIDE.md"
+Name: "{group}\Amalgame README";        Filename: "{app}\README.md"
+Name: "{group}\Amalgame Getting Started"; Filename: "{app}\docs\01-getting-started.md"
 Name: "{group}\Uninstall Amalgame";     Filename: "{uninstallexe}"
-Name: "{userdesktop}\Amalgame Docs";    Filename: "{app}\docs\DEVELOPER_GUIDE.md"; Tasks: desktopicon
+Name: "{userdesktop}\Amalgame Docs";    Filename: "{app}\docs\01-getting-started.md"; Tasks: desktopicon
 
-[Registry]
-; AMC_RUNTIME environment variable
-Root: HKCU; Subkey: "Environment"; ValueType: string; ValueName: "AMC_RUNTIME"; ValueData: "{app}\runtime"; Flags: preservestringtype uninsdeletevalue
+; Note: no [Registry] entry for AMC_RUNTIME. Amalgame v0.8.1+ probes
+; <bin>\..\share\amalgame\runtime via GetModuleFileNameA, which
+; resolves to {app}\share\amalgame\runtime — the layout above.
+; Older amc versions still work via the AMC_RUNTIME env override
+; (set it manually if you're pinning amc < 0.8.1).
 
 [Code]
-function GccBundleExists(): Boolean;
-begin
-  Result := DirExists(ExpandConstant('{src}\gcc-bundle'));
-end;
-
 procedure AddToPath(Path: string);
 var
   CurrentPath: string;
@@ -127,26 +149,19 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
-    if IsTaskSelected('addtopath') then begin
+    if IsTaskSelected('addtopath') then
       AddToPath(ExpandConstant('{app}\bin'));
-      // Also add bundled GCC if present
-      if GccBundleExists() then
-        AddToPath(ExpandConstant('{app}\gcc\bin'));
-    end;
   end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usPostUninstall then begin
+  if CurUninstallStep = usPostUninstall then
     RemoveFromPath(ExpandConstant('{app}\bin'));
-    RemoveFromPath(ExpandConstant('{app}\gcc\bin'));
-  end;
 end;
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 
 [Messages]
-; Customize the welcome page
 WelcomeLabel2=This will install [name/ver] on your computer.%n%nAmalgame is a modern programming language that transpiles to C — bringing the best of Kotlin, Rust, F# and Go to your fingertips.%n%nClick Next to continue.
