@@ -4131,7 +4131,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.7.9";
+    return "0.7.10";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -14005,11 +14005,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "031b46cb";
+    return "c115bf55";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T20:27:31Z";
+    return "2026-05-13T20:47:24Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -14037,6 +14037,7 @@ code_string Amalgame_Compiler_LspServer_FindWorkspaceRoot(code_string startPath)
 code_string Amalgame_Compiler_LspServer_Dirname(code_string path);
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source);
 static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
+static void Amalgame_Compiler_LspServer_HandleSignatureHelp(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
 static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServer* self, i64 id);
 static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character);
 static code_string Amalgame_Compiler_LspServer_BareTypeName(code_string raw);
@@ -14091,6 +14092,11 @@ code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri);
 static code_string Amalgame_Compiler_LspServer_PercentDecode(code_string s);
 static i64 Amalgame_Compiler_LspServer_HexDigit(code_string c);
 Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col);
+code_string Amalgame_Compiler_LspServer_FormatMethodSignatureMarkdown(Amalgame_Compiler_AstNode* method);
+Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindMethodDeclByName(Amalgame_Compiler_AstNode* prog, code_string methodName);
+Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindCallAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col);
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindCallWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best);
+code_string Amalgame_Compiler_LspServer_CallCalleeName(Amalgame_Compiler_AstNode* call);
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best);
 static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNode* node, i64 line, i64 col);
 
@@ -14145,6 +14151,11 @@ i64 Amalgame_Compiler_LspServer_Run(Amalgame_Compiler_LspServer* self) {
             i64 line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "line"));
             i64 chr = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "character"));
             Amalgame_Compiler_LspServer_HandleHover(self, id, uri, line, chr);
+        } else if (code_string_equals(method, "textDocument/signatureHelp")) {
+            code_string uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
+            i64 line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "line"));
+            i64 chr = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "character"));
+            Amalgame_Compiler_LspServer_HandleSignatureHelp(self, id, uri, line, chr);
         } else if (code_string_equals(method, "textDocument/completion")) {
             code_string uri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(td, "uri"));
             i64 line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(pos, "line"));
@@ -14286,7 +14297,7 @@ static void Amalgame_Compiler_LspServer_Send(Amalgame_Compiler_LspServer* self, 
 }
 
 static void Amalgame_Compiler_LspServer_SendInit(Amalgame_Compiler_LspServer* self, i64 id) {
-    code_string body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]}}}}");
+    code_string body = code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]}}}}");
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
@@ -14449,6 +14460,15 @@ static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer*
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
         return;
     }
+    if (String_Length(node->Name) > 0 && node->Kind != Amalgame_Compiler_NodeKind_LITERAL_STRING && node->Kind != Amalgame_Compiler_NodeKind_LITERAL_INT) {
+        Amalgame_Compiler_AstNode* method = Amalgame_Compiler_LspServer_FindMethodDeclByName(prog, node->Name);
+        if (method != NULL) {
+            code_string sigMd = Amalgame_Compiler_LspServer_FormatMethodSignatureMarkdown(method);
+            code_string bodySig = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\""), Amalgame_Compiler_Json_EscapeString(sigMd)), "\"}}}");
+            Amalgame_Compiler_LspServer_Send(self, bodySig);
+            return;
+        }
+    }
     code_string typeStr = Amalgame_Compiler_TypeChecker_LookupNodeType(tc, node);
     if (code_string_equals(typeStr, "?") || String_Length(typeStr) == 0) {
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
@@ -14456,6 +14476,84 @@ static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer*
     }
     code_string content = code_string_concat(code_string_concat(code_string_concat(code_string_concat("**", node->Name), "**: `"), typeStr), "`");
     code_string body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\""), Amalgame_Compiler_Json_EscapeString(content)), "\"}}}");
+    Amalgame_Compiler_LspServer_Send(self, body);
+}
+
+static void Amalgame_Compiler_LspServer_HandleSignatureHelp(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
+    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
+    if (String_Length(source) == 0) {
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        return;
+    }
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    prog->Str2 = path;
+    i64 targetLine = line + 1;
+    i64 targetCol = character + 1;
+    Amalgame_Compiler_AstNode* call = Amalgame_Compiler_LspServer_FindCallAtPosition(prog, targetLine, targetCol);
+    if (call == NULL) {
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        return;
+    }
+    code_string calleeName = Amalgame_Compiler_LspServer_CallCalleeName(call);
+    if (String_Length(calleeName) == 0) {
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        return;
+    }
+    Amalgame_Compiler_AstNode* method = Amalgame_Compiler_LspServer_FindMethodDeclByName(prog, calleeName);
+    if (method == NULL) {
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        return;
+    }
+    code_string label = code_string_concat(method->Name, "(");
+    i64 pn = AmalgameList_count(method->Params);
+    AmalgameList* starts = AmalgameList_new();
+    AmalgameList* ends = AmalgameList_new();
+    for (i64 i = 0; i < pn; i++) {
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
+        if (i > 0) {
+            label = code_string_concat(label, ", ");
+        }
+        i64 startCol = String_Length(label);
+        code_string paramLabel = p->Name;
+        if (String_Length(p->Str) > 0) {
+            paramLabel = code_string_concat(code_string_concat(paramLabel, ": "), p->Str);
+        }
+        label = code_string_concat(label, paramLabel);
+        AmalgameList_add(starts, (void*)(intptr_t)(startCol));
+        AmalgameList_add(ends, (void*)(intptr_t)(String_Length(label)));
+    }
+    label = code_string_concat(label, ")");
+    if (String_Length(method->Str) > 0 && !code_string_equals(method->Str, "void")) {
+        label = code_string_concat(code_string_concat(label, ": "), method->Str);
+    }
+    i64 active = 0;
+    i64 an = AmalgameList_count(call->Args);
+    for (i64 ai = 0; ai < an; ai++) {
+        Amalgame_Compiler_AstNode* a = (Amalgame_Compiler_AstNode*)AmalgameList_get(call->Args, ai);
+        if (a->Line < targetLine || a->Line == targetLine && a->Column < targetCol) {
+            active = ai;
+        }
+    }
+    if (active > pn - 1) {
+        active = pn - 1;
+    }
+    if (active < 0) {
+        active = 0;
+    }
+    code_string paramsJson = "[";
+    for (i64 i = 0; i < pn; i++) {
+        if (i > 0) {
+            paramsJson = code_string_concat(paramsJson, ",");
+        }
+        paramsJson = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(paramsJson, "{\"label\":["), String_FromInt((i64)AmalgameList_get(starts, i))), ","), String_FromInt((i64)AmalgameList_get(ends, i))), "]}");
+    }
+    paramsJson = code_string_concat(paramsJson, "]");
+    code_string result = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"signatures\":[{\"label\":\"", Amalgame_Compiler_Json_EscapeString(label)), "\",\"parameters\":"), paramsJson), "}],\"activeSignature\":0,\"activeParameter\":"), String_FromInt(active)), "}");
+    code_string body = code_string_concat(code_string_concat(code_string_concat(code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id)), ",\"result\":"), result), "}");
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
@@ -16191,6 +16289,113 @@ Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeAtPosition(Amalga
     Amalgame_Compiler_AstNode* best = NULL;
     best = Amalgame_Compiler_LspServer_FindNodeWalk(root, line, col, best);
     return best;
+}
+
+code_string Amalgame_Compiler_LspServer_FormatMethodSignatureMarkdown(Amalgame_Compiler_AstNode* method) {
+    code_string sig = code_string_concat(method->Name, "(");
+    i64 n = AmalgameList_count(method->Params);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
+        if (i > 0) {
+            sig = code_string_concat(sig, ", ");
+        }
+        sig = code_string_concat(sig, p->Name);
+        if (String_Length(p->Str) > 0) {
+            sig = code_string_concat(code_string_concat(sig, ": "), p->Str);
+        }
+    }
+    sig = code_string_concat(sig, ")");
+    if (String_Length(method->Str) > 0 && !code_string_equals(method->Str, "void")) {
+        sig = code_string_concat(code_string_concat(sig, ": "), method->Str);
+    }
+    return code_string_concat(code_string_concat("```amalgame\n", sig), "\n```");
+}
+
+Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindMethodDeclByName(Amalgame_Compiler_AstNode* prog, code_string methodName) {
+    if (prog == NULL) {
+        return NULL;
+    }
+    i64 topN = AmalgameList_count(prog->Children);
+    for (i64 ti = 0; ti < topN; ti++) {
+        Amalgame_Compiler_AstNode* top = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, ti);
+        if (top->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
+            continue;
+        }
+        i64 mn = AmalgameList_count(top->Children);
+        for (i64 mi = 0; mi < mn; mi++) {
+            Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(top->Children, mi);
+            if (m->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
+                continue;
+            }
+            if (code_string_equals(m->Name, methodName)) {
+                return m;
+            }
+        }
+    }
+    return NULL;
+}
+
+Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindCallAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col) {
+    if (root == NULL) {
+        return NULL;
+    }
+    Amalgame_Compiler_AstNode* best = NULL;
+    best = Amalgame_Compiler_LspServer_FindCallWalk(root, line, col, best);
+    return best;
+}
+
+static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindCallWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best) {
+    Amalgame_Compiler_AstNode* current = best;
+    if (node->Kind == Amalgame_Compiler_NodeKind_CALL) {
+        if (line > node->Line || line == node->Line && col >= node->Column) {
+            current = node;
+        }
+    }
+    if (node->Left != NULL) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk(node->Left, line, col, current);
+    }
+    if (node->Right != NULL) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk(node->Right, line, col, current);
+    }
+    if (node->Cond != NULL) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk(node->Cond, line, col, current);
+    }
+    if (node->Body != NULL) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk(node->Body, line, col, current);
+    }
+    if (node->Else != NULL) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk(node->Else, line, col, current);
+    }
+    i64 cn = AmalgameList_count(node->Children);
+    for (i64 ci = 0; ci < cn; ci++) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, ci), line, col, current);
+    }
+    i64 pn = AmalgameList_count(node->Params);
+    for (i64 pi = 0; pi < pn; pi++) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, pi), line, col, current);
+    }
+    i64 an = AmalgameList_count(node->Args);
+    for (i64 ai = 0; ai < an; ai++) {
+        current = Amalgame_Compiler_LspServer_FindCallWalk((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, ai), line, col, current);
+    }
+    return current;
+}
+
+code_string Amalgame_Compiler_LspServer_CallCalleeName(Amalgame_Compiler_AstNode* call) {
+    if (call == NULL) {
+        return "";
+    }
+    if (call->Left == NULL) {
+        return "";
+    }
+    Amalgame_Compiler_AstNode* l = call->Left;
+    if (l->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
+        return l->Name;
+    }
+    if (l->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
+        return l->Name;
+    }
+    return "";
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best) {
