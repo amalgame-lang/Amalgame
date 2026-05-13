@@ -22,7 +22,8 @@ hack on the compiler itself, jump to chapter 7.
    bdwgc, mapping types to C, calling C from Amalgame, inline-C
    blocks (`@c { … }`) since v0.7.4.
 6. [Build & tooling](06-build-and-tooling.md) — `build_amc.sh`,
-   the snapshot bootstrap, CI, releases.
+   the snapshot bootstrap, CI, releases, and the
+   `amc dap` debugger (v0.8.0+).
 7. [Compiler internals](07-internals.md) — how `amc` is structured,
    adding a builtin, adding a syntax form, adding a CGen rule.
 8. [LLM commands](08-llm-commands.md) — `amc migrate`, `amc generate`,

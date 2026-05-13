@@ -278,14 +278,14 @@ public class NewCommand {
         }
         let launchJson:   string = NewCommand.VscodeLaunchJson(base)
         let settingsJson: string = NewCommand.VscodeSettingsJson()
+        let tasksJson:    string = NewCommand.VscodeTasksJson()
         if (!NewCommand.WriteFile(path + "/.vscode/launch.json",   launchJson))   { return 1 }
         if (!NewCommand.WriteFile(path + "/.vscode/settings.json", settingsJson)) { return 1 }
-        Console.WriteLine("  + .vscode/launch.json + settings.json (F5 = `amc dap` debug)")
+        if (!NewCommand.WriteFile(path + "/.vscode/tasks.json",    tasksJson))    { return 1 }
+        Console.WriteLine("  + .vscode/launch.json + settings.json + tasks.json (F5 rebuilds with -g)")
         if (template == "lib" || template == "test") {
             Console.WriteLine("  note: '" + template + "' templates have no default runnable binary;")
             Console.WriteLine("        edit .vscode/launch.json `program` before F5.")
-        } else {
-            Console.WriteLine("  build with `amc build -g src/main.am` for DWARF; then F5 in VS Code.")
         }
         return 0
     }
@@ -317,7 +317,8 @@ public class NewCommand {
         s = s + "      \"program\": \"" + wsf + "/" + base + "\",\n"
         s = s + "      \"args\": [],\n"
         s = s + "      \"cwd\": \"" + wsf + "\",\n"
-        s = s + "      \"stopOnEntry\": false\n"
+        s = s + "      \"stopOnEntry\": false,\n"
+        s = s + "      \"preLaunchTask\": \"amc: build (debug)\"\n"
         s = s + "    },\n"
         s = s + "    {\n"
         s = s + "      \"type\": \"amc\",\n"
@@ -326,7 +327,8 @@ public class NewCommand {
         s = s + "      \"program\": \"" + wsf + "/" + base + ".exe\",\n"
         s = s + "      \"args\": [],\n"
         s = s + "      \"cwd\": \"" + wsf + "\",\n"
-        s = s + "      \"stopOnEntry\": false\n"
+        s = s + "      \"stopOnEntry\": false,\n"
+        s = s + "      \"preLaunchTask\": \"amc: build (debug)\"\n"
         s = s + "    }\n"
         s = s + "  ]\n"
         s = s + "}\n"
@@ -337,6 +339,40 @@ public class NewCommand {
         var s: string = ""
         s = s + "{\n"
         s = s + "  \"amalgame.enableLsp\": true\n"
+        s = s + "}\n"
+        return s
+    }
+
+    // tasks.json — drives the `preLaunchTask` in launch.json so F5
+    // always re-builds with -g before handing off to amc dap. Without
+    // this, users hit the classic "F5 runs but no breakpoint stops"
+    // pitfall when the binary on disk is a release build (no DWARF).
+    // The `build (debug)` task wraps `./build.sh -g` so it picks up
+    // the same flag-forwarding the scaffold's build.sh already does.
+    // `revealProblems: "onProblem"` keeps the terminal silent on
+    // success — F5 stays a one-keystroke flow.
+    private static string VscodeTasksJson() {
+        var s: string = ""
+        s = s + "{\n"
+        s = s + "  \"version\": \"2.0.0\",\n"
+        s = s + "  \"tasks\": [\n"
+        s = s + "    {\n"
+        s = s + "      \"label\": \"amc: build (debug)\",\n"
+        s = s + "      \"type\": \"shell\",\n"
+        s = s + "      \"command\": \"./build.sh\",\n"
+        s = s + "      \"args\": [\"-g\"],\n"
+        s = s + "      \"group\": { \"kind\": \"build\", \"isDefault\": true },\n"
+        s = s + "      \"presentation\": { \"reveal\": \"silent\", \"clear\": true },\n"
+        s = s + "      \"problemMatcher\": []\n"
+        s = s + "    },\n"
+        s = s + "    {\n"
+        s = s + "      \"label\": \"amc: build (release)\",\n"
+        s = s + "      \"type\": \"shell\",\n"
+        s = s + "      \"command\": \"./build.sh\",\n"
+        s = s + "      \"presentation\": { \"reveal\": \"silent\", \"clear\": true },\n"
+        s = s + "      \"problemMatcher\": []\n"
+        s = s + "    }\n"
+        s = s + "  ]\n"
         s = s + "}\n"
         return s
     }
@@ -409,9 +445,21 @@ public class NewCommand {
         s = s + "## Build & run\n"
         s = s + "\n"
         s = s + "```\n"
-        s = s + "./build.sh\n"
+        s = s + "./build.sh         # release build (-O2)\n"
         s = s + "./" + name + "\n"
         s = s + "```\n"
+        s = s + "\n"
+        s = s + "## Debug\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "./build.sh -g      # debug build (-O0 -g, DWARF for `amc dap`)\n"
+        s = s + "lldb-18 ./" + name + "    # then `breakpoint set --file src/main.am --line 5` etc.\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "If you scaffolded with `amc new --vscode`, F5 in VS Code\n"
+        s = s + "rebuilds with `-g` automatically (via the `preLaunchTask`\n"
+        s = s + "in `.vscode/launch.json`) and stops on breakpoints set in\n"
+        s = s + "`src/main.am` directly.\n"
         s = s + "\n"
         s = s + "## Test\n"
         s = s + "\n"
@@ -772,6 +820,19 @@ public class NewCommand {
         s = s + "\n"
         s = s + "- **Linux / macOS:** `./build.sh && ./" + name + "`\n"
         s = s + "- **Windows:**       `.\\build.ps1 ; .\\" + name + ".exe`\n"
+        s = s + "\n"
+        s = s + "## Debug (any OS)\n"
+        s = s + "\n"
+        s = s + "Add `-g` (or any flag) to forward `-O0 -g` to `amc build`. The\n"
+        s = s + "cgen emits `#line` directives so debuggers stop on `.am` source\n"
+        s = s + "lines directly — no source maps needed.\n"
+        s = s + "\n"
+        s = s + "- **Linux / macOS:** `./build.sh -g` then `lldb-18 ./" + name + "`\n"
+        s = s + "- **Windows:**       `.\\build.ps1 -g` then `gdb ./" + name + ".exe`\n"
+        s = s + "\n"
+        s = s + "If you scaffolded with `amc new --vscode`, F5 in VS Code\n"
+        s = s + "rebuilds with `-g` automatically (via the `preLaunchTask`)\n"
+        s = s + "and stops on breakpoints set in `src/main.am`.\n"
         s = s + "\n"
         s = s + "## Linux — install under systemd\n"
         s = s + "\n"
