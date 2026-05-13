@@ -23,10 +23,126 @@ import Amalgame.Collections
 // session IDs, salts). Use the seeded constructor for tests and
 // simulations.
 //
-// The actual PCG step (state advance + output transform) lives in
-// runtime/Amalgame_Random.h — those operations rely on uint64
-// wrap-around, which is well-defined unsigned but UB on Amalgame's
-// signed `int`. The runtime helpers do the casts safely.
+// History: the PCG step + OS entropy primitives lived in
+// `runtime/Amalgame_Random.h` before the post-v0.7.5 migration.
+// Now everything is in this single .am file — the bit-twiddling
+// helpers (uint64 wrap-around, signed shift UB workarounds) live
+// in a top-level `@c { … }` block; the high-level public API
+// (IntRange / Float / Bool / Bytes) is pure Amalgame.
+
+@c {
+    #include <stdint.h>
+    #include <string.h>
+    #ifdef _WIN32
+        #include <windows.h>
+        #include <bcrypt.h>
+        /* Link with -lbcrypt on Windows (MSYS2/MinGW); see ci.yml. */
+    #else
+        #include <unistd.h>
+        #include <fcntl.h>
+        #if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) \
+            || defined(__OpenBSD__) || defined(__NetBSD__)
+            #include <sys/random.h>
+        #endif
+    #endif
+
+    /* PCG XSH-RR 64/32 step — stateless. The multiplier
+     * 6364136223846793005ULL and the shifts rely on uint64
+     * wrap-around (well-defined unsigned, UB on signed i64),
+     * which is why the algorithm sits behind these @c bridges
+     * rather than in raw AM. */
+    static i64 amalgame_pcg_output(i64 state) {
+        uint64_t old = (uint64_t) state;
+        uint32_t xs  = (uint32_t)(((old >> 18u) ^ old) >> 27u);
+        uint32_t rot = (uint32_t)(old >> 59u);
+        uint32_t out = (xs >> rot) | (xs << ((32u - rot) & 31u));
+        return (i64) out;
+    }
+
+    static i64 amalgame_pcg_advance(i64 state, i64 inc) {
+        uint64_t s = (uint64_t) state;
+        uint64_t i = (uint64_t) inc;
+        return (i64)(s * 6364136223846793005ULL + i);
+    }
+
+    /* Combine two 32-bit halves into a full-range i64. The
+     * obvious `(hi << 32) | lo` is UB on signed i64 when bit 31
+     * of hi is set, so we go through uint64. */
+    static i64 amalgame_combine_hi_lo(i64 hi, i64 lo) {
+        return (i64)(((uint64_t)(uint32_t) hi << 32u) |
+                      (uint64_t)(uint32_t) lo);
+    }
+
+    /* Make `inc` always-odd. Equivalent to `(seed << 1) | 1`
+     * but safe when the input has bit 62 or 63 set. */
+    static i64 amalgame_prep_inc(i64 seed) {
+        return (i64)(((uint64_t) seed << 1u) | 1u);
+    }
+
+    /* Read 8 consecutive bytes from `bytes` starting at
+     * `offset`, fold them big-endian into an i64. */
+    static i64 amalgame_bytes_to_i64(AmalgameList* bytes, i64 offset) {
+        uint64_t r = 0;
+        int sz = AmalgameList_count(bytes);
+        for (i64 i = 0; i < 8; i++) {
+            int idx = (int)(offset + i);
+            unsigned int b = 0;
+            if (idx >= 0 && idx < sz) {
+                b = (unsigned int)(intptr_t) AmalgameList_get(bytes, idx);
+            }
+            r = (r << 8u) | (uint64_t)(b & 0xFFu);
+        }
+        return (i64) r;
+    }
+
+    /* OS entropy source — crypto-grade. Fills `out` with `n`
+     * bytes from getentropy / /dev/urandom (POSIX) or
+     * BCryptGenRandom (Windows). On hard failure zeroes the
+     * buffer rather than silently returning a partial fill. */
+    static void amalgame_system_bytes_fill(AmalgameList* out, i64 n) {
+        if (n <= 0) return;
+        unsigned char* buf = (unsigned char*) GC_MALLOC_ATOMIC((size_t) n);
+        int ok = 0;
+
+    #ifdef _WIN32
+        NTSTATUS st = BCryptGenRandom(
+            NULL, buf, (ULONG) n, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (st == 0) ok = 1;
+    #else
+        size_t got = 0;
+        while (got < (size_t) n) {
+            size_t chunk = (size_t) n - got;
+            if (chunk > 256) chunk = 256;
+            if (getentropy(buf + got, chunk) == 0) {
+                got += chunk;
+            } else {
+                break;
+            }
+        }
+        if (got == (size_t) n) ok = 1;
+
+        if (!ok) {
+            int fd = open("/dev/urandom", O_RDONLY);
+            if (fd >= 0) {
+                size_t got2 = 0;
+                while (got2 < (size_t) n) {
+                    ssize_t r = read(fd, buf + got2, (size_t) n - got2);
+                    if (r <= 0) break;
+                    got2 += (size_t) r;
+                }
+                close(fd);
+                if (got2 == (size_t) n) ok = 1;
+            }
+        }
+    #endif
+
+        if (!ok) memset(buf, 0, (size_t) n);
+
+        for (i64 i = 0; i < n; i++) {
+            AmalgameList_add(out, (void*)(intptr_t)(unsigned int) buf[i]);
+        }
+    }
+}
 
 public class Random {
     private state: int
@@ -34,65 +150,72 @@ public class Random {
 
     public Random(seed: int) {
         // Standard PCG init: state starts at 0, inc must be odd
-        // (Random_PrepInc enforces that by setting the LSB).
-        // Two burn-in advances mix the seed into both fields.
+        // (the @c helper enforces that by setting the LSB). Two
+        // burn-in advances mix the seed into both fields.
         this.state = 0
-        this.inc   = Random_PrepInc(seed)
-        this.state = Random_PcgAdvance(this.state, this.inc)
+        var incV: int = 0
+        @c { incV = amalgame_prep_inc(seed); }
+        this.inc = incV
+        var s1: int = 0
+        @c { s1 = amalgame_pcg_advance(self->state, self->inc); }
+        this.state = s1
         this.state = this.state + seed
-        this.state = Random_PcgAdvance(this.state, this.inc)
+        var s2: int = 0
+        @c { s2 = amalgame_pcg_advance(self->state, self->inc); }
+        this.state = s2
     }
 
     // 16 bytes of OS entropy → 64-bit seed for the constructor
     // path, plus 64 more bits XOR'd into state to reach 128 bits
-    // of effective entropy in the (state, inc) pair. SystemBytes
-    // is crypto-grade on POSIX (getentropy / /dev/urandom) and
-    // Windows (BCryptGenRandom).
+    // of effective entropy in the (state, inc) pair.
     public static Random FromSystem() {
-        let bytes:  List<int> = Random.SystemBytes(16)
-        let seedA:  int       = Random_BytesToI64(bytes, 0)
-        let seedB:  int       = Random_BytesToI64(bytes, 8)
-        let r:      Random    = new Random(seedA)
+        let bytes: List<int> = Random.SystemBytes(16)
+        var seedA: int = 0
+        var seedB: int = 0
+        @c {
+            seedA = amalgame_bytes_to_i64(bytes, 0);
+            seedB = amalgame_bytes_to_i64(bytes, 8);
+        }
+        let r: Random = new Random(seedA)
         r.state = r.state ^ seedB
         return r
     }
 
     // Crypto-grade entropy passthrough — n bytes ∈ [0, 255].
-    // Use when you don't need a Random instance at all: salts,
-    // one-shot IDs, nonces. Matches the underlying OS source
-    // guarantees (getentropy on POSIX, BCryptGenRandom on Windows).
     public static List<int> SystemBytes(n: int) {
-        return Random_SystemBytes(n)
+        let out: List<int> = new List<int>()
+        @c { amalgame_system_bytes_fill(out, n); }
+        return out
     }
 
     // ── Core step ────────────────────────────────────
     //
-    // Returns a value in [0, 2^32 - 1] as an `int`. All higher-
-    // level methods build on this single primitive.
+    // Returns a value in [0, 2^32 - 1] as an `int`.
     public int NextUInt32() {
-        let out: int = Random_PcgOutput(this.state)
-        this.state = Random_PcgAdvance(this.state, this.inc)
+        var out: int = 0
+        @c { out = amalgame_pcg_output(self->state); }
+        var s: int = 0
+        @c { s = amalgame_pcg_advance(self->state, self->inc); }
+        this.state = s
         return out
     }
 
     // ── Public API ───────────────────────────────────
 
-    // Full-range 64-bit signed int (i.e. all 2^64 values reachable).
-    // Combines two 32-bit draws via Random_CombineHiLo to avoid the
-    // signed shift UB you'd hit in pure Amalgame.
+    // Full-range 64-bit signed int. Combines two 32-bit draws
+    // through the @c helper to avoid the signed-shift UB you'd
+    // hit in pure Amalgame.
     public int NextInt() {
         let hi: int = this.NextUInt32()
         let lo: int = this.NextUInt32()
-        return Random_CombineHiLo(hi, lo)
+        var combined: int = 0
+        @c { combined = amalgame_combine_hi_lo(hi, lo); }
+        return combined
     }
 
-    // [min, max). Half-open interval, idiomatic in modern stdlibs.
-    // If min >= max, returns min — caller passed a degenerate range.
-    //
-    // Uses simple modulo, which has slight bias when (max - min) is
-    // not a power of two. For typical ranges this is undetectable;
-    // unbiased sampling can be layered on top of NextUInt32 by
-    // callers who need it.
+    // [min, max). Half-open. Pure-AM modulo path; the slight
+    // bias when `(max - min)` isn't a power of two is the same
+    // as before — fine for typical ranges.
     public int IntRange(min: int, max: int) {
         if (min >= max) { return min }
         let span: int = max - min
@@ -101,33 +224,21 @@ public class Random {
         return min + off
     }
 
-    // [0.0, 1.0). 32 bits of precision — fits comfortably in
-    // double's 53-bit mantissa with no rounding. (We'd ideally
-    // truncate via `>> 8` and divide by 2^24, but the parser
-    // currently drops `>> 8` inside a let; dividing the full
-    // 32-bit draw by 2^32 is equivalent up to a shift in
-    // representation.)
+    // [0.0, 1.0). 32 bits of precision.
     public float Float() {
         let raw: int = this.NextUInt32()
         return raw / 4294967296.0
     }
 
-    // Coin flip. PCG's low bit is sound, so the simple LSB test is
-    // fine — no need to draw a full 32 bits for a single bit.
+    // Coin flip. PCG's low bit is sound, so the simple LSB test
+    // is fine.
     public bool Bool() {
         let raw:    int = this.NextUInt32()
         let parity: int = raw & 1
         return parity == 1
     }
 
-    // n random bytes ∈ [0, 255]. Generates 4 bytes per PCG step
-    // rather than one, so this is roughly 4× faster than calling
-    // NextUInt32 once per byte. For n ≤ 0 returns an empty list.
-    //
-    // The byte slices are extracted into named locals first; the
-    // current parser doesn't always preserve `&` precedence across
-    // a method-call argument list, so `out.Add(r & 255)` can lower
-    // to `out.Add(r) & 255` and lose the mask.
+    // n random bytes ∈ [0, 255]. Generates 4 bytes per PCG step.
     public List<int> Bytes(n: int) {
         let out: List<int> = new List<int>()
         if (n <= 0) { return out }
@@ -135,11 +246,6 @@ public class Random {
         while (produced < n) {
             let r:     int = this.NextUInt32()
             let avail: int = n - produced
-            // Right-shift to slice each successive byte. Earlier
-            // versions divided by 256 / 65536 / 16777216 because
-            // the parser dropped `expr >> N` inside `let`; that's
-            // fixed (PR landing this comment), so the shifts now
-            // emit as written.
             let b0: int = r & 255
             out.Add(b0)
             if (avail >= 2) {
@@ -162,4 +268,3 @@ public class Random {
         return out
     }
 }
-

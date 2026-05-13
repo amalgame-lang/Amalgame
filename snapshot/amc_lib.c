@@ -7,16 +7,12 @@
 #include "Amalgame_IO.h"
 #include "Amalgame_Math.h"
 #include "Amalgame_Math_Vec.h"
-#include "Amalgame_FileWatch.h"
 #include "Amalgame_Regex.h"
 #include "Amalgame_Compress.h"
 #include "Amalgame_WebSocket.h"
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
-#include "Amalgame_Random.h"
-#include "Amalgame_Crypto.h"
-#include "Amalgame_Service.h"
 #include "Amalgame_BuildInfo.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
@@ -65,6 +61,120 @@ typedef struct _Amalgame_Compiler_JsonError Amalgame_Compiler_JsonError;
 typedef struct _Amalgame_Compiler_JsonResult Amalgame_Compiler_JsonResult;
 typedef struct _Amalgame_Compiler_JsonParser Amalgame_Compiler_JsonParser;
 typedef struct _Amalgame_Compiler_Json Amalgame_Compiler_Json;
+/* inline-C top-level */
+
+    #include <stdint.h>
+    #include <string.h>
+    #ifdef _WIN32
+        #include <windows.h>
+        #include <bcrypt.h>
+        /* Link with -lbcrypt on Windows (MSYS2/MinGW); see ci.yml. */
+    #else
+        #include <unistd.h>
+        #include <fcntl.h>
+        #if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) \
+            || defined(__OpenBSD__) || defined(__NetBSD__)
+            #include <sys/random.h>
+        #endif
+    #endif
+
+    /* PCG XSH-RR 64/32 step — stateless. The multiplier
+     * 6364136223846793005ULL and the shifts rely on uint64
+     * wrap-around (well-defined unsigned, UB on signed i64),
+     * which is why the algorithm sits behind these @c bridges
+     * rather than in raw AM. */
+    static i64 amalgame_pcg_output(i64 state) {
+        uint64_t old = (uint64_t) state;
+        uint32_t xs  = (uint32_t)(((old >> 18u) ^ old) >> 27u);
+        uint32_t rot = (uint32_t)(old >> 59u);
+        uint32_t out = (xs >> rot) | (xs << ((32u - rot) & 31u));
+        return (i64) out;
+    }
+
+    static i64 amalgame_pcg_advance(i64 state, i64 inc) {
+        uint64_t s = (uint64_t) state;
+        uint64_t i = (uint64_t) inc;
+        return (i64)(s * 6364136223846793005ULL + i);
+    }
+
+    /* Combine two 32-bit halves into a full-range i64. The
+     * obvious `(hi << 32) | lo` is UB on signed i64 when bit 31
+     * of hi is set, so we go through uint64. */
+    static i64 amalgame_combine_hi_lo(i64 hi, i64 lo) {
+        return (i64)(((uint64_t)(uint32_t) hi << 32u) |
+                      (uint64_t)(uint32_t) lo);
+    }
+
+    /* Make `inc` always-odd. Equivalent to `(seed << 1) | 1`
+     * but safe when the input has bit 62 or 63 set. */
+    static i64 amalgame_prep_inc(i64 seed) {
+        return (i64)(((uint64_t) seed << 1u) | 1u);
+    }
+
+    /* Read 8 consecutive bytes from `bytes` starting at
+     * `offset`, fold them big-endian into an i64. */
+    static i64 amalgame_bytes_to_i64(AmalgameList* bytes, i64 offset) {
+        uint64_t r = 0;
+        int sz = AmalgameList_count(bytes);
+        for (i64 i = 0; i < 8; i++) {
+            int idx = (int)(offset + i);
+            unsigned int b = 0;
+            if (idx >= 0 && idx < sz) {
+                b = (unsigned int)(intptr_t) AmalgameList_get(bytes, idx);
+            }
+            r = (r << 8u) | (uint64_t)(b & 0xFFu);
+        }
+        return (i64) r;
+    }
+
+    /* OS entropy source — crypto-grade. Fills `out` with `n`
+     * bytes from getentropy / /dev/urandom (POSIX) or
+     * BCryptGenRandom (Windows). On hard failure zeroes the
+     * buffer rather than silently returning a partial fill. */
+    static void amalgame_system_bytes_fill(AmalgameList* out, i64 n) {
+        if (n <= 0) return;
+        unsigned char* buf = (unsigned char*) GC_MALLOC_ATOMIC((size_t) n);
+        int ok = 0;
+
+    #ifdef _WIN32
+        NTSTATUS st = BCryptGenRandom(
+            NULL, buf, (ULONG) n, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (st == 0) ok = 1;
+    #else
+        size_t got = 0;
+        while (got < (size_t) n) {
+            size_t chunk = (size_t) n - got;
+            if (chunk > 256) chunk = 256;
+            if (getentropy(buf + got, chunk) == 0) {
+                got += chunk;
+            } else {
+                break;
+            }
+        }
+        if (got == (size_t) n) ok = 1;
+
+        if (!ok) {
+            int fd = open("/dev/urandom", O_RDONLY);
+            if (fd >= 0) {
+                size_t got2 = 0;
+                while (got2 < (size_t) n) {
+                    ssize_t r = read(fd, buf + got2, (size_t) n - got2);
+                    if (r <= 0) break;
+                    got2 += (size_t) r;
+                }
+                close(fd);
+                if (got2 == (size_t) n) ok = 1;
+            }
+        }
+    #endif
+
+        if (!ok) memset(buf, 0, (size_t) n);
+
+        for (i64 i = 0; i < n; i++) {
+            AmalgameList_add(out, (void*)(intptr_t)(unsigned int) buf[i]);
+        }
+    }
+
 typedef struct _Amalgame_Compiler_Random Amalgame_Compiler_Random;
 typedef struct _Amalgame_Compiler_Base64 Amalgame_Compiler_Base64;
 typedef struct _Amalgame_Compiler_Hex Amalgame_Compiler_Hex;
@@ -82,6 +192,211 @@ typedef struct _Amalgame_Compiler_Duration Amalgame_Compiler_Duration;
 typedef struct _Amalgame_Compiler_InstantResult Amalgame_Compiler_InstantResult;
 typedef struct _Amalgame_Compiler_Instant Amalgame_Compiler_Instant;
 typedef struct _Amalgame_Compiler_Stopwatch Amalgame_Compiler_Stopwatch;
+/* inline-C top-level */
+
+    #include <stdint.h>
+    #include <string.h>
+
+    /* SHA-256 core (FIPS 180-4 §6.2). Block size 64 bytes,
+     * output 32 bytes, 8×32-bit state words H0..H7. */
+    typedef struct {
+        uint32_t H[8];
+        uint64_t bits;
+        uint8_t  buf[64];
+        size_t   buf_len;
+    } amalgame_crypto_sha256_ctx;
+
+    static const uint32_t amalgame_crypto_sha256_K[64] = {
+        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
+        0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+        0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u,
+        0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+        0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu,
+        0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+        0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u,
+        0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+        0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u,
+        0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+        0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u,
+        0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+        0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u,
+        0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+        0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u,
+        0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u
+    };
+
+    static uint32_t amalgame_crypto_rotr32(uint32_t x, unsigned n) {
+        return (x >> n) | (x << ((32u - n) & 31u));
+    }
+
+    static void amalgame_crypto_sha256_init(amalgame_crypto_sha256_ctx* c) {
+        c->H[0] = 0x6a09e667u; c->H[1] = 0xbb67ae85u;
+        c->H[2] = 0x3c6ef372u; c->H[3] = 0xa54ff53au;
+        c->H[4] = 0x510e527fu; c->H[5] = 0x9b05688cu;
+        c->H[6] = 0x1f83d9abu; c->H[7] = 0x5be0cd19u;
+        c->bits = 0;
+        c->buf_len = 0;
+    }
+
+    static void amalgame_crypto_sha256_block(amalgame_crypto_sha256_ctx* c,
+                                              const uint8_t* p) {
+        uint32_t W[64];
+        for (int i = 0; i < 16; i++) {
+            W[i] = ((uint32_t)p[4*i+0] << 24) |
+                   ((uint32_t)p[4*i+1] << 16) |
+                   ((uint32_t)p[4*i+2] <<  8) |
+                   ((uint32_t)p[4*i+3]      );
+        }
+        for (int i = 16; i < 64; i++) {
+            uint32_t s0 = amalgame_crypto_rotr32(W[i-15], 7) ^
+                          amalgame_crypto_rotr32(W[i-15], 18) ^ (W[i-15] >> 3);
+            uint32_t s1 = amalgame_crypto_rotr32(W[i-2], 17) ^
+                          amalgame_crypto_rotr32(W[i-2], 19) ^ (W[i-2] >> 10);
+            W[i] = W[i-16] + s0 + W[i-7] + s1;
+        }
+        uint32_t a = c->H[0], b = c->H[1], cc = c->H[2], d = c->H[3];
+        uint32_t e = c->H[4], f = c->H[5], g  = c->H[6], h = c->H[7];
+        for (int i = 0; i < 64; i++) {
+            uint32_t S1 = amalgame_crypto_rotr32(e, 6) ^ amalgame_crypto_rotr32(e, 11) ^ amalgame_crypto_rotr32(e, 25);
+            uint32_t ch = (e & f) ^ ((~e) & g);
+            uint32_t t1 = h + S1 + ch + amalgame_crypto_sha256_K[i] + W[i];
+            uint32_t S0 = amalgame_crypto_rotr32(a, 2) ^ amalgame_crypto_rotr32(a, 13) ^ amalgame_crypto_rotr32(a, 22);
+            uint32_t mj = (a & b) ^ (a & cc) ^ (b & cc);
+            uint32_t t2 = S0 + mj;
+            h = g; g = f; f = e; e = d + t1;
+            d = cc; cc = b; b = a; a = t1 + t2;
+        }
+        c->H[0] += a; c->H[1] += b; c->H[2] += cc; c->H[3] += d;
+        c->H[4] += e; c->H[5] += f; c->H[6] += g;  c->H[7] += h;
+    }
+
+    static void amalgame_crypto_sha256_update(amalgame_crypto_sha256_ctx* c,
+                                               const uint8_t* data,
+                                               size_t len) {
+        c->bits += (uint64_t) len * 8u;
+        if (c->buf_len > 0) {
+            size_t fill = 64 - c->buf_len;
+            if (fill > len) fill = len;
+            memcpy(c->buf + c->buf_len, data, fill);
+            c->buf_len += fill;
+            data += fill;
+            len  -= fill;
+            if (c->buf_len == 64) {
+                amalgame_crypto_sha256_block(c, c->buf);
+                c->buf_len = 0;
+            }
+        }
+        while (len >= 64) {
+            amalgame_crypto_sha256_block(c, data);
+            data += 64;
+            len  -= 64;
+        }
+        if (len > 0) {
+            memcpy(c->buf, data, len);
+            c->buf_len = len;
+        }
+    }
+
+    static void amalgame_crypto_sha256_final(amalgame_crypto_sha256_ctx* c,
+                                              uint8_t out[32]) {
+        uint8_t pad[64];
+        pad[0] = 0x80u;
+        memset(pad + 1, 0, 63);
+        size_t pad_len = (c->buf_len < 56) ? (56 - c->buf_len)
+                                           : (120 - c->buf_len);
+        amalgame_crypto_sha256_update(c, pad, pad_len);
+        c->bits -= (uint64_t) pad_len * 8u;
+        uint8_t lenbe[8];
+        uint64_t b = c->bits;
+        for (int i = 0; i < 8; i++) lenbe[7 - i] = (uint8_t)(b >> (8 * i));
+        amalgame_crypto_sha256_update(c, lenbe, 8);
+        for (int i = 0; i < 8; i++) {
+            uint32_t w = c->H[i];
+            out[4*i+0] = (uint8_t)(w >> 24);
+            out[4*i+1] = (uint8_t)(w >> 16);
+            out[4*i+2] = (uint8_t)(w >>  8);
+            out[4*i+3] = (uint8_t)(w      );
+        }
+    }
+
+    static void amalgame_crypto_sha256_raw(const uint8_t* data, size_t len,
+                                            uint8_t out[32]) {
+        amalgame_crypto_sha256_ctx c;
+        amalgame_crypto_sha256_init(&c);
+        amalgame_crypto_sha256_update(&c, data, len);
+        amalgame_crypto_sha256_final(&c, out);
+    }
+
+    /* HMAC-SHA-256 (RFC 2104).
+     * - block size 64 (matches SHA-256 input block)
+     * - if key > 64 bytes, replace with SHA-256(key)
+     * - inner = SHA-256( (key^ipad) || msg )
+     * - outer = SHA-256( (key^opad) || inner )  */
+    static void amalgame_crypto_hmac_sha256_raw(const uint8_t* key, size_t klen,
+                                                 const uint8_t* msg, size_t mlen,
+                                                 uint8_t out[32]) {
+        uint8_t k[64];
+        if (klen > 64) {
+            amalgame_crypto_sha256_raw(key, klen, k);
+            memset(k + 32, 0, 32);
+        } else {
+            memcpy(k, key, klen);
+            if (klen < 64) memset(k + klen, 0, 64 - klen);
+        }
+        uint8_t ki[64], ko[64];
+        for (int i = 0; i < 64; i++) {
+            ki[i] = k[i] ^ 0x36u;
+            ko[i] = k[i] ^ 0x5cu;
+        }
+        uint8_t inner[32];
+        amalgame_crypto_sha256_ctx c;
+        amalgame_crypto_sha256_init(&c);
+        amalgame_crypto_sha256_update(&c, ki, 64);
+        amalgame_crypto_sha256_update(&c, msg, mlen);
+        amalgame_crypto_sha256_final(&c, inner);
+
+        amalgame_crypto_sha256_init(&c);
+        amalgame_crypto_sha256_update(&c, ko, 64);
+        amalgame_crypto_sha256_update(&c, inner, 32);
+        amalgame_crypto_sha256_final(&c, out);
+    }
+
+    /* AmalgameList<int> → byte buffer. Caller owns nothing — the
+     * buffer is GC-allocated. */
+    static uint8_t* amalgame_crypto_list_to_bytes(AmalgameList* l, size_t* out_len) {
+        int n = AmalgameList_count(l);
+        if (n < 0) n = 0;
+        *out_len = (size_t) n;
+        uint8_t* buf = (uint8_t*) GC_MALLOC_ATOMIC((size_t)(n > 0 ? n : 1));
+        for (int i = 0; i < n; i++) {
+            unsigned int b = (unsigned int)(intptr_t) AmalgameList_get(l, i);
+            buf[i] = (uint8_t)(b & 0xFFu);
+        }
+        return buf;
+    }
+
+    /* 32-byte digest → AmalgameList<int>, each entry in [0, 255]. */
+    static AmalgameList* amalgame_crypto_bytes_to_list(const uint8_t* data,
+                                                       size_t len) {
+        AmalgameList* out = AmalgameList_newWithCapacity((int) len);
+        for (size_t i = 0; i < len; i++) {
+            AmalgameList_add(out, (void*)(intptr_t)(unsigned int) data[i]);
+        }
+        return out;
+    }
+
+    /* Lowercase hex of `len` bytes; NUL-terminated, 2*len chars. */
+    static code_string amalgame_crypto_bytes_to_hex(const uint8_t* data, size_t len) {
+        static const char hexd[] = "0123456789abcdef";
+        char* buf = (char*) GC_MALLOC(2 * len + 1);
+        for (size_t i = 0; i < len; i++) {
+            buf[2*i+0] = hexd[(data[i] >> 4) & 0x0Fu];
+            buf[2*i+1] = hexd[ data[i]       & 0x0Fu];
+        }
+        buf[2*len] = 0;
+        return buf;
+    }
+
 typedef struct _Amalgame_Compiler_Sha256 Amalgame_Compiler_Sha256;
 typedef struct _Amalgame_Compiler_Hmac Amalgame_Compiler_Hmac;
 typedef struct _Amalgame_Compiler_MsgPackCursor Amalgame_Compiler_MsgPackCursor;
@@ -94,6 +409,55 @@ typedef struct _Amalgame_Compiler_BuildInfo Amalgame_Compiler_BuildInfo;
     static char* Amalgame_Logging_FilePath = NULL;  /* NULL = disabled */
 
 typedef struct _Amalgame_Compiler_Log Amalgame_Compiler_Log;
+/* inline-C top-level */
+
+    #include <sys/stat.h>
+    #ifdef _WIN32
+        #define amalgame_fw_stat _stat64
+        #define amalgame_fw_stat_struct struct __stat64
+    #else
+        #define amalgame_fw_stat stat
+        #define amalgame_fw_stat_struct struct stat
+    #endif
+
+    /* Return current mtime, or -1 if the file is absent /
+     * unreadable. Doesn't follow symlinks differently from
+     * stat(2). */
+    static int64_t amalgame_fw_mtime(code_string path) {
+        if (!path) return -1;
+        amalgame_fw_stat_struct st;
+        if (amalgame_fw_stat(path, &st) != 0) return -1;
+        return (int64_t) st.st_mtime;
+    }
+
+typedef struct _Amalgame_Compiler_FileWatcher Amalgame_Compiler_FileWatcher;
+/* inline-C top-level */
+
+    #include <signal.h>
+    #ifdef _WIN32
+        #include <windows.h>
+        static volatile LONG Amalgame_Service_Stopping = 0;
+
+        static BOOL WINAPI Amalgame_Service_OnCtrl(DWORD ctrlType) {
+            /* Catch CTRL_C, CTRL_BREAK, CTRL_CLOSE, CTRL_LOGOFF,
+             * CTRL_SHUTDOWN. Returning TRUE tells Windows we handled
+             * it — the process is not terminated; the main loop
+             * notices the flag on next ShouldStop. */
+            (void) ctrlType;
+            InterlockedExchange(&Amalgame_Service_Stopping, 1);
+            return TRUE;
+        }
+    #else
+        #include <time.h>
+        static volatile sig_atomic_t Amalgame_Service_Stopping = 0;
+
+        static void Amalgame_Service_OnSignal(int sig) {
+            (void) sig;
+            Amalgame_Service_Stopping = 1;
+        }
+    #endif
+
+typedef struct _Amalgame_Compiler_Service Amalgame_Compiler_Service;
 typedef struct _Amalgame_Compiler_LspServer Amalgame_Compiler_LspServer;
 typedef struct _Amalgame_Compiler_MigrateResult Amalgame_Compiler_MigrateResult;
 typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateCommand;
@@ -5882,9 +6246,6 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         if (code_string_equals(tname, "Mat4")) {
             return "AmalgameMat4*";
         }
-        if (code_string_equals(tname, "FileWatcher")) {
-            return "AmalgameFileWatcher*";
-        }
         if (code_string_equals(tname, "Match")) {
             return "AmalgameRegexMatch*";
         }
@@ -6078,15 +6439,6 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             }
             if (code_string_equals(calleeStr, "Mat4_Set")) {
                 return "void";
-            }
-            if (code_string_equals(calleeStr, "FileWatcher_new")) {
-                return "AmalgameFileWatcher*";
-            }
-            if (code_string_equals(calleeStr, "FileWatcher_GetPath")) {
-                return "code_string";
-            }
-            if (code_string_equals(calleeStr, "FileWatcher_Changed") || code_string_equals(calleeStr, "FileWatcher_Exists")) {
-                return "code_bool";
             }
             if (code_string_equals(calleeStr, "Regex_Match")) {
                 return "AmalgameRegexMatch*";
@@ -6489,16 +6841,12 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_IO.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math_Vec.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_FileWatch.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Regex.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Compress.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_WebSocket.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Random.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Crypto.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Service.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_BuildInfo.h\"");
     i64 pkgHdrN = AmalgameList_count(self->PkgHeaders);
     for (i64 ph = 0; ph < pkgHdrN; ph++) {
@@ -7961,7 +8309,7 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
             } else {
                 if (String_StartsWith(tname, "Set<") || code_string_equals(tname, "Set")) {
                     newCall = "AmalgameSet_new()";
-                } else if (code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "FileWatcher") || code_string_equals(tname, "WebSocket")) {
+                } else if (code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "WebSocket")) {
                     newCall = code_string_concat(tname, "_new(");
                     i64 argc = AmalgameList_count(expr->Args);
                     for (i64 i = 0; i < argc; i++) {
@@ -8462,7 +8810,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                     if (String_Length(externalMangled) > 0) {
                         return code_string_concat(code_string_concat(externalMangled, "_"), mname);
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Service") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8475,7 +8823,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string varType = Amalgame_Compiler_CGen_LocalTypeGet(self, tname);
                 code_string bareType = String_Replace(varType, "*", "");
                 if (String_Length(bareType) > 0) {
-                    if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameFileWatcher") || code_string_equals(bareType, "AmalgameWebSocket")) {
+                    if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameWebSocket")) {
                         return code_string_concat(code_string_concat(String_Replace(bareType, "Amalgame", ""), "_"), mname);
                     }
                     if (code_string_equals(bareType, "AmalgameRegexMatch")) {
@@ -8615,9 +8963,6 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (code_string_equals(t, "Mat4")) {
         return "AmalgameMat4*";
-    }
-    if (code_string_equals(t, "FileWatcher")) {
-        return "AmalgameFileWatcher*";
     }
     if (code_string_equals(t, "Match")) {
         return "AmalgameRegexMatch*";
@@ -10762,8 +11107,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Sep", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service", "type", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Install", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Sleep", "void", 0);
@@ -10819,11 +11162,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupText", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupStart", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupEnd", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher", "type", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_new", "FileWatcher", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_GetPath", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_Changed", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "FileWatcher_Exists", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4", "type", 0);
@@ -10859,19 +11197,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateY", "Mat4", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateZ", "Mat4", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_TransformVec4", "Vec4", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgOutput", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PcgAdvance", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_CombineHiLo", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_PrepInc", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_BytesToI64", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_TimeSeedNanos", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Random_SystemBytes", "List<int>", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256", "List<int>", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256Hex", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_Sha256OfString", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_HmacSha256", "List<int>", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_HmacSha256Hex", "string", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Crypto_HmacSha256OfStrings", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
@@ -14415,36 +14740,69 @@ AmalgameList* Amalgame_Compiler_Random_Bytes(Amalgame_Compiler_Random* self, i64
 Amalgame_Compiler_Random* Amalgame_Compiler_Random_new(i64 seed) {
     Amalgame_Compiler_Random* self = (Amalgame_Compiler_Random*) GC_MALLOC(sizeof(Amalgame_Compiler_Random));
     self->state = 0;
-    self->inc = Random_PrepInc(seed);
-    self->state = Random_PcgAdvance(self->state, self->inc);
+    i64 incV = 0;
+    { /* inline-C */
+         incV = amalgame_prep_inc(seed); 
+    }
+    self->inc = incV;
+    i64 s1 = 0;
+    { /* inline-C */
+         s1 = amalgame_pcg_advance(self->state, self->inc); 
+    }
+    self->state = s1;
     self->state = self->state + seed;
-    self->state = Random_PcgAdvance(self->state, self->inc);
+    i64 s2 = 0;
+    { /* inline-C */
+         s2 = amalgame_pcg_advance(self->state, self->inc); 
+    }
+    self->state = s2;
     return self;
 }
 
 Amalgame_Compiler_Random* Amalgame_Compiler_Random_FromSystem() {
     AmalgameList* bytes = Amalgame_Compiler_Random_SystemBytes(16);
-    i64 seedA = Random_BytesToI64(bytes, 0);
-    i64 seedB = Random_BytesToI64(bytes, 8);
+    i64 seedA = 0;
+    i64 seedB = 0;
+    { /* inline-C */
+        
+                    seedA = amalgame_bytes_to_i64(bytes, 0);
+                    seedB = amalgame_bytes_to_i64(bytes, 8);
+                
+    }
     Amalgame_Compiler_Random* r = Amalgame_Compiler_Random_new(seedA);
     r->state = r->state ^ seedB;
     return r;
 }
 
 AmalgameList* Amalgame_Compiler_Random_SystemBytes(i64 n) {
-    return Random_SystemBytes(n);
+    AmalgameList* out = AmalgameList_new();
+    { /* inline-C */
+         amalgame_system_bytes_fill(out, n); 
+    }
+    return out;
 }
 
 i64 Amalgame_Compiler_Random_NextUInt32(Amalgame_Compiler_Random* self) {
-    i64 out = Random_PcgOutput(self->state);
-    self->state = Random_PcgAdvance(self->state, self->inc);
+    i64 out = 0;
+    { /* inline-C */
+         out = amalgame_pcg_output(self->state); 
+    }
+    i64 s = 0;
+    { /* inline-C */
+         s = amalgame_pcg_advance(self->state, self->inc); 
+    }
+    self->state = s;
     return out;
 }
 
 i64 Amalgame_Compiler_Random_NextInt(Amalgame_Compiler_Random* self) {
     i64 hi = Amalgame_Compiler_Random_NextUInt32(self);
     i64 lo = Amalgame_Compiler_Random_NextUInt32(self);
-    return Random_CombineHiLo(hi, lo);
+    i64 combined = 0;
+    { /* inline-C */
+         combined = amalgame_combine_hi_lo(hi, lo); 
+    }
+    return combined;
 }
 
 i64 Amalgame_Compiler_Random_IntRange(Amalgame_Compiler_Random* self, i64 min, i64 max) {
@@ -15596,15 +15954,42 @@ Amalgame_Compiler_Sha256* Amalgame_Compiler_Sha256_new() {
 }
 
 AmalgameList* Amalgame_Compiler_Sha256_Bytes(AmalgameList* data) {
-    return Crypto_Sha256(data);
+    AmalgameList* out = AmalgameList_new();
+    { /* inline-C */
+        
+                    size_t len; uint8_t* buf = amalgame_crypto_list_to_bytes(data, &len);
+                    uint8_t digest[32];
+                    amalgame_crypto_sha256_raw(buf, len, digest);
+                    out = amalgame_crypto_bytes_to_list(digest, 32);
+                
+    }
+    return out;
 }
 
 code_string Amalgame_Compiler_Sha256_Hex(AmalgameList* data) {
-    return Crypto_Sha256Hex(data);
+    code_string out = "";
+    { /* inline-C */
+        
+                    size_t len; uint8_t* buf = amalgame_crypto_list_to_bytes(data, &len);
+                    uint8_t digest[32];
+                    amalgame_crypto_sha256_raw(buf, len, digest);
+                    out = amalgame_crypto_bytes_to_hex(digest, 32);
+                
+    }
+    return out;
 }
 
 code_string Amalgame_Compiler_Sha256_OfString(code_string s) {
-    return Crypto_Sha256OfString(s);
+    code_string out = "";
+    { /* inline-C */
+        
+                    if (!s) s = "";
+                    uint8_t digest[32];
+                    amalgame_crypto_sha256_raw((const uint8_t*) s, strlen(s), digest);
+                    out = amalgame_crypto_bytes_to_hex(digest, 32);
+                
+    }
+    return out;
 }
 
 struct _Amalgame_Compiler_Hmac {
@@ -15620,15 +16005,46 @@ Amalgame_Compiler_Hmac* Amalgame_Compiler_Hmac_new() {
 }
 
 AmalgameList* Amalgame_Compiler_Hmac_Sha256(AmalgameList* key, AmalgameList* msg) {
-    return Crypto_HmacSha256(key, msg);
+    AmalgameList* out = AmalgameList_new();
+    { /* inline-C */
+        
+                    size_t klen; uint8_t* kbuf = amalgame_crypto_list_to_bytes(key, &klen);
+                    size_t mlen; uint8_t* mbuf = amalgame_crypto_list_to_bytes(msg, &mlen);
+                    uint8_t digest[32];
+                    amalgame_crypto_hmac_sha256_raw(kbuf, klen, mbuf, mlen, digest);
+                    out = amalgame_crypto_bytes_to_list(digest, 32);
+                
+    }
+    return out;
 }
 
 code_string Amalgame_Compiler_Hmac_Sha256Hex(AmalgameList* key, AmalgameList* msg) {
-    return Crypto_HmacSha256Hex(key, msg);
+    code_string out = "";
+    { /* inline-C */
+        
+                    size_t klen; uint8_t* kbuf = amalgame_crypto_list_to_bytes(key, &klen);
+                    size_t mlen; uint8_t* mbuf = amalgame_crypto_list_to_bytes(msg, &mlen);
+                    uint8_t digest[32];
+                    amalgame_crypto_hmac_sha256_raw(kbuf, klen, mbuf, mlen, digest);
+                    out = amalgame_crypto_bytes_to_hex(digest, 32);
+                
+    }
+    return out;
 }
 
 code_string Amalgame_Compiler_Hmac_Sha256OfStrings(code_string key, code_string msg) {
-    return Crypto_HmacSha256OfStrings(key, msg);
+    code_string out = "";
+    { /* inline-C */
+        
+                    if (!key) key = "";
+                    if (!msg) msg = "";
+                    uint8_t digest[32];
+                    amalgame_crypto_hmac_sha256_raw((const uint8_t*) key, strlen(key),
+                                                     (const uint8_t*) msg, strlen(msg), digest);
+                    out = amalgame_crypto_bytes_to_hex(digest, 32);
+                
+    }
+    return out;
 }
 
 Amalgame_Compiler_MsgPackCursor* Amalgame_Compiler_MsgPackCursor_new(AmalgameList* bytes);
@@ -16199,6 +16615,134 @@ void Amalgame_Compiler_Log_Error(code_string msg) {
                             fclose(f);
                         }
                     }
+                
+    }
+}
+
+Amalgame_Compiler_FileWatcher* Amalgame_Compiler_FileWatcher_new(code_string path);
+struct _Amalgame_Compiler_FileWatcher {
+    code_string path;
+    i64 lastMtime;
+};
+
+code_string Amalgame_Compiler_FileWatcher_GetPath(Amalgame_Compiler_FileWatcher* self);
+code_bool Amalgame_Compiler_FileWatcher_Changed(Amalgame_Compiler_FileWatcher* self);
+code_bool Amalgame_Compiler_FileWatcher_Exists(Amalgame_Compiler_FileWatcher* self);
+
+Amalgame_Compiler_FileWatcher* Amalgame_Compiler_FileWatcher_new(code_string path) {
+    Amalgame_Compiler_FileWatcher* self = (Amalgame_Compiler_FileWatcher*) GC_MALLOC(sizeof(Amalgame_Compiler_FileWatcher));
+    self->path = path;
+    i64 m = -1;
+    { /* inline-C */
+         m = (i64) amalgame_fw_mtime(path); 
+    }
+    self->lastMtime = m;
+    return self;
+}
+
+code_string Amalgame_Compiler_FileWatcher_GetPath(Amalgame_Compiler_FileWatcher* self) {
+    return self->path;
+}
+
+code_bool Amalgame_Compiler_FileWatcher_Changed(Amalgame_Compiler_FileWatcher* self) {
+    i64 cur = -1;
+    { /* inline-C */
+         cur = (i64) amalgame_fw_mtime(self->path); 
+    }
+    if (cur != self->lastMtime) {
+        self->lastMtime = cur;
+        return 1;
+    }
+    return 0;
+}
+
+code_bool Amalgame_Compiler_FileWatcher_Exists(Amalgame_Compiler_FileWatcher* self) {
+    i64 m = -1;
+    { /* inline-C */
+         m = (i64) amalgame_fw_mtime(self->path); 
+    }
+    return m >= 0;
+}
+
+Amalgame_Compiler_Service* Amalgame_Compiler_Service_new();
+struct _Amalgame_Compiler_Service {
+};
+
+void Amalgame_Compiler_Service_Install();
+code_bool Amalgame_Compiler_Service_ShouldStop();
+void Amalgame_Compiler_Service_RequestStop();
+void Amalgame_Compiler_Service_Sleep(i64 ms);
+
+Amalgame_Compiler_Service* Amalgame_Compiler_Service_new() {
+    Amalgame_Compiler_Service* self = (Amalgame_Compiler_Service*) GC_MALLOC(sizeof(Amalgame_Compiler_Service));
+    return self;
+}
+
+void Amalgame_Compiler_Service_Install() {
+    { /* inline-C */
+        
+                #ifdef _WIN32
+                    SetConsoleCtrlHandler(Amalgame_Service_OnCtrl, TRUE);
+                #else
+                    /* Best-effort: ignore errors. A failure here just means
+                     * the shutdown path falls back to whatever the default
+                     * disposition is (typically: SIGTERM kills the process
+                     * abruptly). The service still runs; it just won't
+                     * clean-shutdown. */
+                    struct sigaction sa;
+                    sa.sa_handler = Amalgame_Service_OnSignal;
+                    sigemptyset(&sa.sa_mask);
+                    sa.sa_flags = 0;  /* not SA_RESTART — let blocking syscalls return EINTR */
+                    sigaction(SIGTERM, &sa, NULL);
+                    sigaction(SIGINT,  &sa, NULL);
+                #endif
+                
+    }
+}
+
+code_bool Amalgame_Compiler_Service_ShouldStop() {
+    { /* inline-C */
+         return Amalgame_Service_Stopping ? 1 : 0; 
+    }
+}
+
+void Amalgame_Compiler_Service_RequestStop() {
+    { /* inline-C */
+        
+                #ifdef _WIN32
+                    InterlockedExchange(&Amalgame_Service_Stopping, 1);
+                #else
+                    Amalgame_Service_Stopping = 1;
+                #endif
+                
+    }
+}
+
+void Amalgame_Compiler_Service_Sleep(i64 ms) {
+    { /* inline-C */
+        
+                    if (ms <= 0) return;
+                #ifdef _WIN32
+                    /* Slice the sleep into 100ms chunks so a
+                     * SetConsoleCtrlHandler call mid-sleep can interrupt
+                     * within bounded latency. Windows has no portable
+                     * `nanosleep`-equivalent that's interruptible by a
+                     * Ctrl-handler callback, so polling is the cleanest
+                     * path. */
+                    i64 remaining = ms;
+                    while (remaining > 0) {
+                        if (Amalgame_Service_Stopping) return;
+                        DWORD chunk = remaining > 100 ? 100 : (DWORD) remaining;
+                        Sleep(chunk);
+                        remaining -= chunk;
+                    }
+                #else
+                    if (Amalgame_Service_Stopping) return;
+                    struct timespec ts;
+                    ts.tv_sec  = (time_t) (ms / 1000);
+                    ts.tv_nsec = (long)   ((ms % 1000) * 1000000L);
+                    nanosleep(&ts, NULL);
+                #endif
                 
     }
 }
