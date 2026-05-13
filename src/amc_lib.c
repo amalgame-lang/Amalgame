@@ -13,7 +13,6 @@
 #include "Amalgame_Net.h"
 #include "Amalgame_Console.h"
 #include "Amalgame_Process.h"
-#include "Amalgame_BuildInfo.h"
 
 typedef enum _Amalgame_Compiler_TokenType Amalgame_Compiler_TokenType;
 typedef struct _Amalgame_Compiler_Token Amalgame_Compiler_Token;
@@ -6847,7 +6846,6 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_BuildInfo.h\"");
     i64 pkgHdrN = AmalgameList_count(self->PkgHeaders);
     for (i64 ph = 0; ph < pkgHdrN; ph++) {
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat("#include \"", (code_string)AmalgameList_get(self->PkgHeaders, ph)), "\""));
@@ -16426,19 +16424,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    { /* inline-C */
-        
-                    return AMC_GIT_REV;
-                
-    }
+    return "120401c2";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    { /* inline-C */
-        
-                    return AMC_BUILD_DATE;
-                
-    }
+    return "2026-05-13T09:02:50Z";
 }
 
 Amalgame_Compiler_Log* Amalgame_Compiler_Log_new();
