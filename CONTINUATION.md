@@ -1,104 +1,150 @@
 # Continuation prompt — start a new chat with this
 
-> **Last refreshed 2026-05-13 PM** — five tags shipped since
-> v0.7.5, all reflected on develop tip:
+> **Last refreshed 2026-05-14 (night)** — **v0.8.1 just tagged.**
+> Two tags shipped this session (v0.8.0 then v0.8.1); the
+> debugger now works end-to-end from a fresh `install.sh` with
+> no env-var hacks.
 >
-> 1. **v0.7.6** — stdlib purity arc + per-package facade pipeline
->    + Math.h/Math_Vec.h migration. Five-PR bundle: Logging,
->    DateTime, FileWatcher, Service, Random, Crypto, BuildInfo
->    moved from runtime/`Amalgame_*.h` to pure-AM `src/stdlib/`
->    with `@c { … }` blocks only for OS-bound primitives. The
->    file-scope `@c { … }` extension (#373) made it possible.
->    Per-package facade pipeline (#377) lets a package declare
->    `[stdlib].facade = "facade.am"` and get precompiled to
->    `libamalgame-pkg-<class>.a` at `amc package add` time.
+> ### v0.8.1 (polish the debugger) ✅ tagged
+> Four PRs landed on top of v0.8.0 to make the DAP usable
+> without any "ahh I forgot the env var" friction.
 >
-> 2. **v0.7.7 (framework split)** — Five facade modules become
->    stand-alone external packages on `amalgame-lang/`:
->    `amalgame-datetime`, `amalgame-logging`, `amalgame-service`,
->    `amalgame-io-filewatcher`, `amalgame-yaml`. amc's cgen
->    gained a 2-pass `RegisterExternalProg` split so a facade
->    package referencing its own classes (e.g.
->    `InstantResult.GetValue() → Instant`) lowers to the right
->    mangled name. `amc new --template service` scaffold now
->    drops an `amalgame.toml` with the two deps declared.
+> 1. **PR #395 — `amc new --vscode`** opt-in flag. Scaffolds
+>    `.vscode/launch.json` (two configurations: POSIX +
+>    Windows `.exe`, F5 dropdown picks) and
+>    `.vscode/settings.json`. Opt-in keeps Neovim / Helix /
+>    IntelliJ projects clean. Advertised in `amc --help` on
+>    the `new` line.
 >
-> 3. **v0.7.8 (bundled-runtime trim)** — Three C-header binding
->    modules become external packages: `amalgame-regex`,
->    `amalgame-compress`, `amalgame-net-websocket`. amc's
->    bundled `runtime/Amalgame_*.h` shrinks from 9 to 6 (only
->    the bootstrap surface needed by amc itself stays:
->    `_runtime.h`, `String`, `Collections`, `Console`, `IO`,
->    `Net`, `Process`).
+> 2. **PR #396 — `Program.ResolveSelfPath()` + scaffold
+>    cleanup**. Fix: `amc build` derived `runtime/` from
+>    `dirname(argv[0])`. When amc is launched via PATH,
+>    argv[0] is the bare `amc`, dirname collapses, and gcc
+>    never gets `-I'<runtime>'` → `_runtime.h: fichier ou
+>    dossier de ce type`. `ResolveSelfPath()` reads
+>    `/proc/self/exe` (Linux) / `GetModuleFileNameA`
+>    (Windows); macOS falls back to argv[0] until
+>    `_NSGetExecutablePath` lands. Same PR rewrites
+>    `BuildShExe` / `BuildShService` / `BuildPs1Service`
+>    templates into two-line wrappers around `amc build`
+>    that forward `"$@"` (so `./build.sh -g` propagates).
 >
-> 4. **v0.7.9 (build / run / watch)** — Three first-class
->    compile verbs land. `amc build [-o <out>] [-v] <entry.am>`
->    runs amc + gcc-link in one step, including
->    `lib/libamalgame.a`, package facade archives, vendored .o,
->    and `[stdlib].libs`. `amc run [-o <out>] [-v] <entry.am>
->    [-- args…]` chains build + exec. `amc watch [--run]
->    <entry.am>` polls mtime every 500 ms via vendored
->    `stat()` / `_stat64` `@c { }` block; no FileWatcher
->    package dependency. Bare-args `amc foo.am -o foo` keeps
->    its v0.7.x behaviour (no gcc step).
+> 3. **PR #397 — `tasks.json` + `preLaunchTask` + `amc test`
+>    path fix + READMEs**. Scaffold now drops
+>    `tasks.json` ("amc: build (debug)" + "release"); both
+>    launch configs carry `preLaunchTask: "amc: build
+>    (debug)"`. F5 rebuilds with `-g` automatically — no more
+>    "F5 runs but no breakpoint stops" when the binary on
+>    disk is release. `amc test` got the same
+>    `/proc/self/exe` fix BuildEntry got in PR #396 (was
+>    missed). Generated READMEs gain a "Debug" section.
 >
-> 5. **v0.7.10 (LSP signature help + hover)** — New LSP
->    capability `signatureHelpProvider` with triggerCharacters
->    `(` and `,`. Hover on a method name now renders the full
->    signature (`name(p1: t1, …): ret`) instead of just the
->    inferred return type. Four new helpers on `LspServer` —
->    `FormatMethodSignatureMarkdown` / `FindMethodDeclByName` /
->    `FindCallAtPosition` / `CallCalleeName`.
+> 4. **PR #398 — XDG install layout, cross-OS**. All three
+>    install paths now share the same tree:
+>    `<prefix>/{bin/amc[.exe], share/amalgame/{runtime,lib,docs}}`.
+>    `install/install.sh` (Linux / macOS / FreeBSD) does a
+>    flat `cp -r dist/$NAME/* $PREFIX/` from the staged
+>    tarball — no more partial `_runtime.h`-only copy, no
+>    forced `AMC_RUNTIME` in shell rc. `install/windows/
+>    amalgame.iss` got rebuilt (was pinned to `0.3.0` with
+>    broken paths). `.github/workflows/release.yml` stages
+>    the matching XDG tree on all 3 OS jobs. New helpers
+>    `Program.ResolveRuntimeDir(amcPath)` +
+>    `Program.ResolveLibAmalgameA(amcPath)` probe a stable
+>    chain: `$AMC_RUNTIME / $AMC_LIB` →
+>    `<bin>/../share/amalgame/{runtime, lib}` →
+>    `<bin>/{runtime, lib}` (legacy). No env var required.
+>    Inno Setup `[Registry]` AMC_RUNTIME write gone.
 >
-> **Ecosystem now: 13 official external packages**:
+> ### v0.8.0 (debug adapter) ✅ tagged earlier this session
+>
+> Recap for context:
+> - **`amc dap`** — thin DAP proxy (`src/dap.am`, ~130 lines).
+>   Detects `lldb-dap` (LLVM 18+ today, gdb --dap pending
+>   v0.8.2), `execvp()`s into it. Transparent — no in-amc
+>   message copy ("Approche C" in ROADMAP_COMPLET.md).
+> - **`amc build --debug` / `amc run --debug`** (alias `-g`)
+>   swap `-O2` for `-O0 -g` on gcc/g++. Watch builds keep
+>   `-O2`.
+> - **`#line N "foo.am"` directives** at every statement
+>   whose source line differs from the previous. gcc + clang
+>   honour these → DWARF carries `.am` filenames + line
+>   numbers natively. No source maps needed.
+> - **VS Code extension v0.3.0** registers `amc` debug type +
+>   `DebugAdapterDescriptorFactory` that spawns `amc dap`.
+>
+> ### Ecosystem and bundled stdlib (unchanged since v0.7.10)
+>
+> **13 official external packages**:
 > - *Pure-AM facades* — math, math-vec, random, encoding, crypto,
 >   datetime, logging, service, io-filewatcher, yaml
 > - *C-header bindings* — regex, compress, net-websocket
 > - *Database / messaging legacy* — sqlite, redis, mqtt, duckdb
 >
 > **Bundled stdlib remaining**: `runtime/_runtime.h` +
-> `Amalgame_{String,Collections,Console,IO,Net,Process}.h` (the
-> bootstrap surface amc itself uses), and `src/stdlib/`
+> `Amalgame_{String,Collections,Console,IO,Net,Process}.h`
+> (bootstrap surface amc itself uses), and `src/stdlib/`
 > `{json,toml,msgpack,path,amc_buildinfo.am.in}`. msgpack stays
-> bundled until a cgen ABI bug is fixed (see "Known issues").
+> bundled until a cgen ABI bug is fixed (see "Persistent todos"
+> below).
 >
 > **Tests**: 451/451 PASS in amc + 85/85 across the 8 packages
-> with local runners. Last tag: **`v0.7.10`** (CI green on all
-> 3 OS; release page live).
+> with local runners. Last tag: **`v0.8.1`**.
 >
-> **DECISION recorded at top of `ROADMAP_COMPLET.md`**: no new
-> `runtime/Amalgame_*.h` after v0.7.3. Going forward, new C
-> bindings ship as standalone external packages (`amalgame-X`
-> with `[stdlib].header = "runtime/Amalgame_X.h"`).
+> **DECISIONS recorded at top of `ROADMAP_COMPLET.md`**:
+> - No new `runtime/Amalgame_*.h` after v0.7.3 — new C
+>   bindings ship as standalone external packages.
+> - **DAP strategy is hybride C→A** — v0.8.x stays on the
+>   transparent proxy; the bridge-MI migration ("Approche A":
+>   pretty-print AmalgameList*/AmalgameMap*, filter runtime
+>   frames, decode closures) is explicitly tracked as future
+>   work, not a nice-to-have.
 
-## Resume here — v0.8.0 trajectory
+## Resume here — v0.8.2 trajectory
 
-Three independent items, pick any order:
+Pick any order; (1) and (2) pair naturally as a "DAP polish"
+release. (3) unblocks the 14th external package.
 
-1. **DAP (debug adapter)** — new `amc dap` subcommand running a
-   DAP server over stdio. Strategy: amc adds a `--debug` flag
-   that passes `-g` to gcc, then the `amc dap` server wraps
-   gdb-mi (or lldb) and translates between DAP and gdb's
-   protocol. Lets VS Code / Neovim debug an Amalgame binary
-   with breakpoints, step in/over/out, variable inspection.
-   Scope: ~6-10h depending on completeness.
+1. **macOS canonical-path resolution** — mirror PR #396's
+   `/proc/self/exe` fix using `_NSGetExecutablePath` from
+   `<mach-o/dyld.h>` in `Program.ResolveSelfPath()`. ~5 lines
+   of `@c {}` block. Removes the last edge case where
+   `amc build` can't find runtime/ via PATH on macOS.
 
-2. **Facade ABI cgen fix** (blocks msgpack extraction). When a
-   package's `facade.am` calls its own static methods via
-   `ClassName.X()`, `EmitCalleeStr` hits `PkgClassMangledPrefix`
-   (which returns the namespace) before the `SymName` fallback
-   (which would include the class name). Symbol mismatch +
-   gcc implicit-int fallback → runtime segfault. Fix: check
-   `IsLocalClass(tname)` **before** `PkgClassMangledPrefix` in
-   `EmitCalleeStr` (line 3515) + mirror in `TypeToC` (line 3793).
-   Then extract `amalgame-msgpack` as the 14th package.
+2. **`gdb --dap` fallback in `src/dap.am`** — Linux + Windows
+   MSYS2 users get a second backend after lldb-dap. Probe
+   order: keep the existing `lldb-dap*` chain, then try
+   `gdb` (parse `gdb --version` first line for ≥ 14). When
+   picked, `execvp("gdb", ["gdb", "--dap", NULL])`. ~30
+   lines. Pair with (1) for a v0.8.2 release.
 
-3. **LSP package discovery code action** — `amc package suggest
-   <namespace> --json` is already shipped (v0.7.7). Wire
-   `textDocument/codeAction` to detect unresolved-import
+3. **Facade ABI cgen fix** (blocks msgpack extraction). When
+   a package's `facade.am` calls its own static methods via
+   `ClassName.X()`, `EmitCalleeStr` hits
+   `PkgClassMangledPrefix` (returns the namespace) before
+   the `SymName` fallback (would include the class name).
+   Symbol mismatch + gcc implicit-int → runtime segfault.
+   Fix: check `IsLocalClass(tname)` **before**
+   `PkgClassMangledPrefix` in `EmitCalleeStr` (line 3515) +
+   mirror in `TypeToC` (line 3793). Then extract
+   `amalgame-msgpack` as the 14th package.
+
+4. **LSP package discovery code action** — `amc package
+   suggest <namespace> --json` is already shipped (v0.7.7).
+   Wire `textDocument/codeAction` to detect unresolved-import
    diagnostics, call `amc package suggest`, and offer
-   "Install package X for Amalgame.Y" quickfixes. Pattern
-   Visual Studio `using X;`.
+   "Install package X for Amalgame.Y" quickfixes. Pattern:
+   Visual Studio's `using X;` lightbulb.
+
+5. **Approche A — DAP message-rewriting bridge** (after 1–4
+   ship). When pretty-printing `AmalgameList*` / `AmalgameMap*`
+   or filtering `Amalgame_*` / `_runtime.h` frames is the
+   thing that makes a real session annoying. Swap `execvp`
+   for fork+pipe+`poll()` and rewrite messages on the way
+   through; the transparent proxy stays available behind
+   `amc dap --raw`. ~6-10h. Explicit dette technique in
+   `project_dap_strategy.md` auto-memory and
+   `ROADMAP_COMPLET.md` so it doesn't get forgotten.
 
 ## Persistent todos (don't lose these)
 

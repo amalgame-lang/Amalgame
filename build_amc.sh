@@ -139,3 +139,10 @@ echo "✅ amc built $(date)"
 #    the .am source — the lib supplies the symbols at link time. ──
 echo "=== Step 4: Build lib/libamalgame.a ==="
 ./tools/build-stdlib.sh
+
+# End-user install is `install/install.sh` (downloads the release
+# tarball) or `install/windows/*.iss` (Inno Setup). Both lay things
+# out under <prefix>/share/amalgame/{runtime,lib}, matching the
+# XDG-style lookup chain in amc's Program.ResolveRuntimeDir /
+# ResolveLibAmalgameA. Don't reinvent that here — this script is the
+# contributor's dev build, not an installer.

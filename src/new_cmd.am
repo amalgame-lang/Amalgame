@@ -26,7 +26,7 @@ public class NewCommand {
     public NewCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc new <name> [--template <kind>] [--force]")
+        Console.WriteError("Usage: amc new <name> [--template <kind>] [--vscode] [--force]")
         Console.WriteError("")
         Console.WriteError("Scaffold a new Amalgame project named <name>.")
         Console.WriteError("")
@@ -40,14 +40,19 @@ public class NewCommand {
         Console.WriteError("")
         Console.WriteError("Flags:")
         Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service.")
+        Console.WriteError("  --vscode             Also write .vscode/launch.json + settings.json")
+        Console.WriteError("                       so F5 launches the binary under `amc dap` with")
+        Console.WriteError("                       breakpoints on the .am sources. Opt-in to avoid")
+        Console.WriteError("                       polluting projects edited in other editors.")
         Console.WriteError("  --force              Overwrite if <name>/ already exists.")
         Console.WriteError("  -h, --help           Print this help and exit.")
     }
 
     public static int Run(int argc) {
-        var name:     string = ""
-        var template: string = "exe"
-        var force:    bool   = false
+        var name:       string = ""
+        var template:   string = "exe"
+        var force:      bool   = false
+        var wantVscode: bool   = false
 
         var i: int = 2
         while (i < argc) {
@@ -58,6 +63,8 @@ public class NewCommand {
             }
             if (a == "--force") {
                 force = true
+            } else if (a == "--vscode") {
+                wantVscode = true
             } else if (a == "--template") {
                 if (i + 1 >= argc) {
                     Console.WriteError("amc new: --template needs a value")
@@ -112,16 +119,23 @@ public class NewCommand {
             return 1
         }
 
+        var rc: int = 0
         if (template == "exe") {
-            return NewCommand.ScaffoldExe(name, baseName)
+            rc = NewCommand.ScaffoldExe(name, baseName)
+        } else if (template == "lib") {
+            rc = NewCommand.ScaffoldLib(name, baseName)
+        } else if (template == "service") {
+            rc = NewCommand.ScaffoldService(name, baseName)
+        } else {
+            rc = NewCommand.ScaffoldTest(name, baseName)
         }
-        if (template == "lib") {
-            return NewCommand.ScaffoldLib(name, baseName)
+        if (rc != 0) { return rc }
+        // Opt-in VS Code wiring. Only after the template succeeded —
+        // no partial scaffolds with a stray .vscode/.
+        if (wantVscode) {
+            return NewCommand.WriteVscodeConfig(name, baseName, template)
         }
-        if (template == "service") {
-            return NewCommand.ScaffoldService(name, baseName)
-        }
-        return NewCommand.ScaffoldTest(name, baseName)
+        return 0
     }
 
     // ── Templates ─────────────────────────────────────
@@ -245,6 +259,124 @@ public class NewCommand {
         return 0
     }
 
+    // ── VS Code wiring (opt-in, --vscode flag) ────────
+    // Writes .vscode/launch.json + .vscode/settings.json so F5 in
+    // VS Code launches the project's binary under `amc dap` with
+    // .am-level breakpoints. Opt-in only — projects edited in
+    // other editors (Neovim, Helix, IntelliJ) stay clean.
+    //
+    // launch.json hard-codes program = ${workspaceFolder}/<base>,
+    // which matches the build.sh output for exe + service. For
+    // lib/test the file lands as well but the user has to point
+    // `program` at whatever binary they actually want to debug —
+    // we print a hint when that's the case.
+    private static int WriteVscodeConfig(string path, string base, string template) {
+        let vsDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/.vscode"))
+        if (vsDir != 0) {
+            Console.WriteError("amc new: failed to create .vscode/ subdirectory")
+            return 1
+        }
+        let launchJson:   string = NewCommand.VscodeLaunchJson(base)
+        let settingsJson: string = NewCommand.VscodeSettingsJson()
+        let tasksJson:    string = NewCommand.VscodeTasksJson()
+        if (!NewCommand.WriteFile(path + "/.vscode/launch.json",   launchJson))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/.vscode/settings.json", settingsJson)) { return 1 }
+        if (!NewCommand.WriteFile(path + "/.vscode/tasks.json",    tasksJson))    { return 1 }
+        Console.WriteLine("  + .vscode/launch.json + settings.json + tasks.json (F5 rebuilds with -g)")
+        if (template == "lib" || template == "test") {
+            Console.WriteLine("  note: '" + template + "' templates have no default runnable binary;")
+            Console.WriteLine("        edit .vscode/launch.json `program` before F5.")
+        }
+        return 0
+    }
+
+    // Two configurations so the user can F5 on either OS without
+    // hand-editing the file. `program` differs only by the `.exe`
+    // suffix Windows MinGW links produce; `cwd`, `args` and the
+    // `amc` debug type are invariant. The VS Code F5 dropdown
+    // surfaces the pretty `name` so users see "(Linux/macOS)" vs
+    // "(Windows)" and pick accordingly.
+    //
+    // VS Code's substitution syntax is ${workspaceFolder}, which
+    // collides with Amalgame's `"text {var}"` interpolation —
+    // `{workspaceFolder}` would resolve as an identifier lookup.
+    // Sentinel locals `lb`/`rb` are the documented workaround
+    // (CONTINUATION.md gotcha #7).
+    private static string VscodeLaunchJson(string base) {
+        let lb: string = "{"
+        let rb: string = "}"
+        let wsf: string = "$" + lb + "workspaceFolder" + rb
+        var s: string = ""
+        s = s + "{\n"
+        s = s + "  \"version\": \"0.2.0\",\n"
+        s = s + "  \"configurations\": [\n"
+        s = s + "    {\n"
+        s = s + "      \"type\": \"amc\",\n"
+        s = s + "      \"request\": \"launch\",\n"
+        s = s + "      \"name\": \"Debug " + base + " (Linux/macOS)\",\n"
+        s = s + "      \"program\": \"" + wsf + "/" + base + "\",\n"
+        s = s + "      \"args\": [],\n"
+        s = s + "      \"cwd\": \"" + wsf + "\",\n"
+        s = s + "      \"stopOnEntry\": false,\n"
+        s = s + "      \"preLaunchTask\": \"amc: build (debug)\"\n"
+        s = s + "    },\n"
+        s = s + "    {\n"
+        s = s + "      \"type\": \"amc\",\n"
+        s = s + "      \"request\": \"launch\",\n"
+        s = s + "      \"name\": \"Debug " + base + " (Windows)\",\n"
+        s = s + "      \"program\": \"" + wsf + "/" + base + ".exe\",\n"
+        s = s + "      \"args\": [],\n"
+        s = s + "      \"cwd\": \"" + wsf + "\",\n"
+        s = s + "      \"stopOnEntry\": false,\n"
+        s = s + "      \"preLaunchTask\": \"amc: build (debug)\"\n"
+        s = s + "    }\n"
+        s = s + "  ]\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string VscodeSettingsJson() {
+        var s: string = ""
+        s = s + "{\n"
+        s = s + "  \"amalgame.enableLsp\": true\n"
+        s = s + "}\n"
+        return s
+    }
+
+    // tasks.json — drives the `preLaunchTask` in launch.json so F5
+    // always re-builds with -g before handing off to amc dap. Without
+    // this, users hit the classic "F5 runs but no breakpoint stops"
+    // pitfall when the binary on disk is a release build (no DWARF).
+    // The `build (debug)` task wraps `./build.sh -g` so it picks up
+    // the same flag-forwarding the scaffold's build.sh already does.
+    // `revealProblems: "onProblem"` keeps the terminal silent on
+    // success — F5 stays a one-keystroke flow.
+    private static string VscodeTasksJson() {
+        var s: string = ""
+        s = s + "{\n"
+        s = s + "  \"version\": \"2.0.0\",\n"
+        s = s + "  \"tasks\": [\n"
+        s = s + "    {\n"
+        s = s + "      \"label\": \"amc: build (debug)\",\n"
+        s = s + "      \"type\": \"shell\",\n"
+        s = s + "      \"command\": \"./build.sh\",\n"
+        s = s + "      \"args\": [\"-g\"],\n"
+        s = s + "      \"group\": { \"kind\": \"build\", \"isDefault\": true },\n"
+        s = s + "      \"presentation\": { \"reveal\": \"silent\", \"clear\": true },\n"
+        s = s + "      \"problemMatcher\": []\n"
+        s = s + "    },\n"
+        s = s + "    {\n"
+        s = s + "      \"label\": \"amc: build (release)\",\n"
+        s = s + "      \"type\": \"shell\",\n"
+        s = s + "      \"command\": \"./build.sh\",\n"
+        s = s + "      \"presentation\": { \"reveal\": \"silent\", \"clear\": true },\n"
+        s = s + "      \"problemMatcher\": []\n"
+        s = s + "    }\n"
+        s = s + "  ]\n"
+        s = s + "}\n"
+        return s
+    }
+
     // ── File contents ─────────────────────────────────
 
     private static string MainAmExe(string name) {
@@ -285,47 +417,22 @@ public class NewCommand {
     }
 
     private static string BuildShExe(string name) {
-        // Build the shell script in pieces. Curly braces in shell
-        // expansions like ${VAR:-default} collide with Amalgame's
-        // string-interpolation parser, so we substitute via a sentinel
-        // (LB / RB) and run a final replacement pass.
-        let lb: string = "{"
-        let rb: string = "}"
+        // `amc build` (v0.7.9+) handles runtime/, libamalgame.a,
+        // package facades and the gcc link line on its own — no need
+        // to rebuild the discovery logic in a per-project script.
+        // Extra flags forward via `"$@"`, so `./build.sh -g` triggers
+        // the v0.8.0 debug build (DWARF, -O0, ready for `amc dap`).
         var s: string = ""
         s = s + "#!/bin/bash\n"
-        s = s + "# Build script for " + name + ". Compiles src/main.am to a native\n"
-        s = s + "# binary named `" + name + "` in the project root.\n"
+        s = s + "# Build script for " + name + ". Wraps `amc build`.\n"
         s = s + "#\n"
-        s = s + "# amc emits the .c bundle; gcc links it against the Amalgame\n"
-        s = s + "# runtime headers. Set AMALGAME_HOME if your runtime/ lives\n"
-        s = s + "# outside the install default.\n"
+        s = s + "# Usage:\n"
+        s = s + "#   ./build.sh         # release build (-O2)\n"
+        s = s + "#   ./build.sh -g      # debug build (-O0 -g, for `amc dap`)\n"
+        s = s + "#   ./build.sh --verbose  # show the underlying gcc command\n"
         s = s + "set -e\n"
         s = s + "cd \"$(dirname \"$0\")\"\n"
-        s = s + "\n"
-        s = s + "# Locate runtime/ (env override, install dirs, then the\n"
-        s = s + "# Amalgame repo if amc is on PATH).\n"
-        s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n"
-        s = s + "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n"
-        s = s + "  done\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n"
-        s = s + "  if [ -n \"$AMC_BIN\" ]; then\n"
-        s = s + "    cand=$(dirname \"$AMC_BIN\")\n"
-        s = s + "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n"
-        s = s + "  fi\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir> (the dir\"\n"
-        s = s + "  echo \"          containing runtime/), or install Amalgame globally.\"\n"
-        s = s + "  exit 1\n"
-        s = s + "fi\n"
-        s = s + "\n"
-        s = s + "amc src/main.am -o " + name + "\n"
-        s = s + "gcc -O2 -I\"$RUNTIME/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + "\n"
-        s = s + "echo \"built ./" + name + "\"\n"
+        s = s + "amc build src/main.am -o ./" + name + " \"$@\"\n"
         return s
     }
 
@@ -338,9 +445,21 @@ public class NewCommand {
         s = s + "## Build & run\n"
         s = s + "\n"
         s = s + "```\n"
-        s = s + "./build.sh\n"
+        s = s + "./build.sh         # release build (-O2)\n"
         s = s + "./" + name + "\n"
         s = s + "```\n"
+        s = s + "\n"
+        s = s + "## Debug\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "./build.sh -g      # debug build (-O0 -g, DWARF for `amc dap`)\n"
+        s = s + "lldb-18 ./" + name + "    # then `breakpoint set --file src/main.am --line 5` etc.\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "If you scaffolded with `amc new --vscode`, F5 in VS Code\n"
+        s = s + "rebuilds with `-g` automatically (via the `preLaunchTask`\n"
+        s = s + "in `.vscode/launch.json`) and stops on breakpoints set in\n"
+        s = s + "`src/main.am` directly.\n"
         s = s + "\n"
         s = s + "## Test\n"
         s = s + "\n"
@@ -562,41 +681,20 @@ public class NewCommand {
     }
 
     private static string BuildShService(string name) {
-        // Curly braces in shell parameter expansions (${VAR:-default})
-        // collide with Amalgame's string interpolation parser, so we
-        // substitute via sentinels and run a final replacement.
-        let lb: string = "{"
-        let rb: string = "}"
+        // `amc build` (v0.7.9+) handles runtime/, libamalgame.a, package
+        // facades and the gcc link line on its own. The service template
+        // also depends on Amalgame.Logging + Amalgame.Service, which
+        // amc auto-installs from the manifest on the first run.
         var s: string = ""
         s = s + "#!/usr/bin/env bash\n"
-        s = s + "# build.sh — compile " + name + " to a native binary.\n"
-        s = s + "# Same locate-the-runtime logic as the exe template:\n"
-        s = s + "# env override (AMALGAME_HOME), system install dirs, or\n"
-        s = s + "# the repo amc points to.\n"
+        s = s + "# build.sh — compile " + name + " via `amc build`.\n"
+        s = s + "#\n"
+        s = s + "# Usage:\n"
+        s = s + "#   ./build.sh         # release build (-O2)\n"
+        s = s + "#   ./build.sh -g      # debug build (-O0 -g, for `amc dap`)\n"
         s = s + "set -euo pipefail\n"
         s = s + "cd \"$(dirname \"$0\")\"\n"
-        s = s + "\n"
-        s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n"
-        s = s + "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n"
-        s = s + "  done\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n"
-        s = s + "  if [ -n \"$AMC_BIN\" ]; then\n"
-        s = s + "    cand=$(dirname \"$AMC_BIN\")\n"
-        s = s + "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n"
-        s = s + "  fi\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir>.\" >&2\n"
-        s = s + "  exit 1\n"
-        s = s + "fi\n"
-        s = s + "\n"
-        s = s + "amc src/main.am -o " + name + "\n"
-        s = s + "gcc -O2 -I\"$RUNTIME/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + "\n"
-        s = s + "echo \"built ./" + name + "\"\n"
+        s = s + "amc build src/main.am -o ./" + name + " \"$@\"\n"
         return s
     }
 
@@ -608,30 +706,17 @@ public class NewCommand {
     // AMALGAME_HOME points at the directory containing `runtime/`.
     private static string BuildPs1Service(string name) {
         var s: string = ""
-        s = s + "# build.ps1 — compile " + name + " on Windows via MinGW gcc.\n"
+        s = s + "# build.ps1 — compile " + name + " on Windows via `amc build`.\n"
         s = s + "#\n"
         s = s + "# Run from a PowerShell where `amc.exe` and a MinGW `gcc.exe`\n"
-        s = s + "# are on PATH. The MSYS2 mingw64 shell installs both with:\n"
+        s = s + "# are on PATH. MSYS2 mingw64 installs both with:\n"
         s = s + "#   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl\n"
+        s = s + "#\n"
+        s = s + "# Pass -g (or any flag) and it forwards to `amc build` for a\n"
+        s = s + "# debug DWARF build that pairs with `amc dap` under VS Code.\n"
         s = s + "$ErrorActionPreference = 'Stop'\n"
         s = s + "Set-Location $PSScriptRoot\n"
-        s = s + "\n"
-        s = s + "$runtime = $env:AMALGAME_HOME\n"
-        s = s + "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n"
-        s = s + "  $amc = (Get-Command amc -ErrorAction SilentlyContinue)\n"
-        s = s + "  if ($amc) {\n"
-        s = s + "    $cand = Split-Path -Parent $amc.Path\n"
-        s = s + "    if (Test-Path \"$cand/runtime\") { $runtime = $cand }\n"
-        s = s + "  }\n"
-        s = s + "}\n"
-        s = s + "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n"
-        s = s + "  Write-Error \"build.ps1: runtime/ not found. Set `$env:AMALGAME_HOME.\"\n"
-        s = s + "  exit 1\n"
-        s = s + "}\n"
-        s = s + "\n"
-        s = s + "& amc src/main.am -o " + name + "\n"
-        s = s + "& gcc -O2 -I\"$runtime/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + ".exe\n"
-        s = s + "Write-Host \"built ./" + name + ".exe\"\n"
+        s = s + "& amc build src/main.am -o ./" + name + ".exe @args\n"
         return s
     }
 
@@ -735,6 +820,19 @@ public class NewCommand {
         s = s + "\n"
         s = s + "- **Linux / macOS:** `./build.sh && ./" + name + "`\n"
         s = s + "- **Windows:**       `.\\build.ps1 ; .\\" + name + ".exe`\n"
+        s = s + "\n"
+        s = s + "## Debug (any OS)\n"
+        s = s + "\n"
+        s = s + "Add `-g` (or any flag) to forward `-O0 -g` to `amc build`. The\n"
+        s = s + "cgen emits `#line` directives so debuggers stop on `.am` source\n"
+        s = s + "lines directly — no source maps needed.\n"
+        s = s + "\n"
+        s = s + "- **Linux / macOS:** `./build.sh -g` then `lldb-18 ./" + name + "`\n"
+        s = s + "- **Windows:**       `.\\build.ps1 -g` then `gdb ./" + name + ".exe`\n"
+        s = s + "\n"
+        s = s + "If you scaffolded with `amc new --vscode`, F5 in VS Code\n"
+        s = s + "rebuilds with `-g` automatically (via the `preLaunchTask`)\n"
+        s = s + "and stops on breakpoints set in `src/main.am`.\n"
         s = s + "\n"
         s = s + "## Linux — install under systemd\n"
         s = s + "\n"
