@@ -237,29 +237,41 @@ the same way you'd treat Rust's `unsafe { … }` — reach for it
 when you have to, document why, and isolate the unsafe surface
 behind a typed Amalgame wrapper.
 
-**Migration pattern.** The smallest existing example is the
-build-info POC (commit `776bc74`):
+**File-scope `@c { … }` blocks (v0.7.5+).** A second `@c { … }`
+form lives at the top level of a `.am` file (between/before class
+declarations). The body is spliced into the emitted `.c` outside
+any function, which lets a module:
 
-```kotlin
-// src/stdlib/amc_buildinfo.am
-namespace Amalgame.Compiler
+- declare process-wide state globals (mutex, fd, init flag);
+- pull in libc / OS headers via raw `#include` lines (instead of
+  `@c_include`);
+- define helper static functions that several class methods then
+  share.
 
-public class BuildInfo {
-    public static string GitRev() {
-        @c { return AMC_GIT_REV; }
+```amalgame
+namespace Amalgame.Logging
+
+@c {
+    #include <stdio.h>
+    static int g_min_level = 1;
+    static FILE *g_sink = NULL;
+}
+
+public class Log {
+    public static void SetMinLevel(s: string) {
+        @c { g_min_level = parse_level(s); }
     }
-
-    public static string BuildDate() {
-        @c { return AMC_BUILD_DATE; }
-    }
+    // … etc.
 }
 ```
 
-This replaced two `static inline` helpers in
-`runtime/Amalgame_BuildInfo.h`. The same shape works for any
-runtime header that just wraps libc / OS calls — see the
-"Runtime → AM migrations" section of `ROADMAP_COMPLET.md` for
-the rétro-migration candidates.
+This was the enabling feature for the v0.7.6 stdlib purity arc:
+runtime headers shrunk from 18 to 9 as eight modules — Logging,
+DateTime, FileWatcher, Service, Random, Crypto, BuildInfo,
+Math + Math.Vec — migrated to pure-AM modules with `@c { … }`
+blocks for the OS-bound primitives. v0.7.7 then moved those same
+modules out of the bundled stdlib into external packages on
+`amalgame-lang/` — see chapter 4 for the table.
 
 > `@out = expr;` from the original v0.7.4 proposal was **dropped**.
 > Bodies use plain C `return …;` against the method's declared
