@@ -385,6 +385,49 @@ public class Program {
         }
     }
 
+    // Resolve the runtime/ directory amc should use to find _runtime.h
+    // and the Amalgame_*.h shims. Checked in priority order:
+    //   1. $AMC_RUNTIME env override (explicit, wins outright)
+    //   2. <bin>/../share/amalgame/runtime   (XDG/UNIX install layout —
+    //      ~/.local/share/amalgame, /usr/local/share/amalgame,
+    //      /opt/homebrew/share/amalgame, /mingw64/share/amalgame, …)
+    //   3. <bin>/runtime                     (legacy + dev source tree)
+    // Returns "" if none of the candidates contain `_runtime.h`.
+    public static string ResolveRuntimeDir(string amcPath) {
+        let envDir: string = Env_Get("AMC_RUNTIME")
+        if (String_Length(envDir) > 0 && File.Exists(envDir + "/_runtime.h")) {
+            return envDir
+        }
+        let slashIdx: int = String_LastIndexOf(amcPath, "/")
+        if (slashIdx < 0) { return "" }
+        let binDir: string = String_Substring(amcPath, 0, slashIdx)
+        let xdg: string = binDir + "/../share/amalgame/runtime"
+        if (File.Exists(xdg + "/_runtime.h")) { return xdg }
+        let legacy: string = binDir + "/runtime"
+        if (File.Exists(legacy + "/_runtime.h")) { return legacy }
+        return ""
+    }
+
+    // Resolve libamalgame.a — companion archive to runtime/, holds the
+    // user-facing stdlib (Json/Toml/MsgPack/Path) so package authors
+    // don't have to bundle those .am sources. Same probe order as
+    // ResolveRuntimeDir; returns "" if missing (link still succeeds
+    // for projects that don't import the bundled stdlib classes).
+    public static string ResolveLibAmalgameA(string amcPath) {
+        let envDir: string = Env_Get("AMC_LIB")
+        if (String_Length(envDir) > 0 && File.Exists(envDir + "/libamalgame.a")) {
+            return envDir + "/libamalgame.a"
+        }
+        let slashIdx: int = String_LastIndexOf(amcPath, "/")
+        if (slashIdx < 0) { return "" }
+        let binDir: string = String_Substring(amcPath, 0, slashIdx)
+        let xdg: string = binDir + "/../share/amalgame/lib/libamalgame.a"
+        if (File.Exists(xdg)) { return xdg }
+        let legacy: string = binDir + "/lib/libamalgame.a"
+        if (File.Exists(legacy)) { return legacy }
+        return ""
+    }
+
     public static void PrintUsage() {
         Console.WriteError("Usage: amc [options] file1.am [file2.am ...] -o <output>")
         Console.WriteError("       amc fmt [-w] file.am [file.am ...]")
@@ -483,13 +526,7 @@ public class Program {
         if (String_Length(amcPathForRt) == 0) {
             amcPathForRt = Args_Get(0)
         }
-        var amcRuntime: string = Env_Get("AMC_RUNTIME")
-        if (String_Length(amcRuntime) == 0) {
-            let slashIdx: int = String_LastIndexOf(amcPathForRt, "/")
-            if (slashIdx >= 0) {
-                amcRuntime = String_Substring(amcPathForRt, 0, slashIdx) + "/runtime"
-            }
-        }
+        let amcRuntime: string = Program.ResolveRuntimeDir(amcPathForRt)
         let registry = PackageRegistry.Load()
         let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
         let hasCxx: bool = registry.HasCxxSources()
@@ -887,25 +924,8 @@ public class Program {
         if (String_Length(amcPath) == 0) {
             amcPath = Args_Get(0)
         }
-        var amcRuntime: string = Env_Get("AMC_RUNTIME")
-        if (String_Length(amcRuntime) == 0) {
-            let slashIdx: int = String_LastIndexOf(amcPath, "/")
-            if (slashIdx >= 0) {
-                amcRuntime = String_Substring(amcPath, 0, slashIdx) + "/runtime"
-            }
-        }
-
-        // libamalgame.a — try `<amcDir>/lib/libamalgame.a` first
-        // (release layout + dev source tree), fall back to "" if
-        // missing.
-        var libamalgameA: string = ""
-        let slashIdx2: int = String_LastIndexOf(amcPath, "/")
-        if (slashIdx2 >= 0) {
-            let candidate: string = String_Substring(amcPath, 0, slashIdx2) + "/lib/libamalgame.a"
-            if (File.Exists(candidate)) {
-                libamalgameA = candidate
-            }
-        }
+        let amcRuntime: string = Program.ResolveRuntimeDir(amcPath)
+        let libamalgameA: string = Program.ResolveLibAmalgameA(amcPath)
 
         let registry = PackageRegistry.Load()
         let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
