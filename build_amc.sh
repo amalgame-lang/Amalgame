@@ -127,3 +127,10 @@ gcc -Iruntime \
     src/amc_lib.c \
     -lgc -lm -lcurl -lz -o amc
 echo "✅ amc built $(date)"
+
+# ── Step 4: Pre-compile the user-facing stdlib into lib/libamalgame.a
+#    (project F, v0.7.5+). User programs that import these modules can
+#    then pass `--external src/stdlib/<mod>.am` instead of bundling
+#    the .am source — the lib supplies the symbols at link time. ──
+echo "=== Step 4: Build lib/libamalgame.a ==="
+./tools/build-stdlib.sh

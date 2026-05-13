@@ -19,11 +19,17 @@
 # Usage:
 #   ./tools/build-stdlib.sh
 #
-# v0.7.5 MVP scope: only modules with no cross-module dependencies
-# are included (random, encoding, crypto, datetime, logging, path,
-# service). The Formats.* family (Json, Toml, Yaml, MsgPack) and
-# Math.Vec are tracked separately because they need either
-# inter-module symbol resolution or runtime-header tweaks first.
+# Modules covered:
+#   - Standalone (no cross-stdlib references):
+#     random, encoding, crypto, datetime, logging, path, service,
+#     json, toml, yaml
+#   - Cross-stdlib (uses `--external` to thread other modules through):
+#     msgpack (references Json's JsonValue)
+#
+# Math.Vec stays out — its real impl lives in
+# `runtime/Amalgame_Math_Vec.h` (the AM file is a facade stub for
+# the resolver). Same shape as path / logging / service for the
+# v0.7.4-style isCoreStdlib dispatch path.
 
 set -e
 cd "$(dirname "$0")/.."
@@ -40,30 +46,60 @@ if [ ! -x ./amc ]; then
     exit 1
 fi
 
-# v0.7.5 MVP scope. Modules listed here are all standalone — no
-# import statements pulling in other stdlib classes by reference.
-MODULES="random encoding crypto datetime logging path service"
+# Standalone modules — no cross-stdlib references. amc compiles
+# each one in isolation.
+MODULES_STANDALONE="random encoding crypto datetime logging path service json toml yaml"
+
+# Cross-stdlib modules — passed `--external <dep.am>` so the cgen
+# routes inter-module references through the dependency's own
+# namespace mangling instead of re-emitting a duplicate symbol.
+# Entry format: "module|external1,external2,..."
+MODULES_CROSS="msgpack|json"
 
 mkdir -p "$OUT"
 rm -f "$OUT/libamalgame.a"
 
-for mod in $MODULES; do
-    src="src/stdlib/$mod.am"
+build_one() {
+    local mod="$1"
+    local externs="$2"
+    local src="src/stdlib/$mod.am"
     if [ ! -f "$src" ]; then
         echo "  skip $mod (file not found)"
-        continue
+        return 0
+    fi
+    local ext_flags=""
+    if [ -n "$externs" ]; then
+        IFS=',' read -ra deps <<< "$externs"
+        for d in "${deps[@]}"; do
+            ext_flags="$ext_flags --external src/stdlib/$d.am"
+        done
     fi
     printf "  %-12s " "$mod"
-    if ! ./amc --lib --quiet -o "$BUILD/$mod" "$src" > /tmp/amc-stdlib-$mod.log 2>&1; then
+    if ! ./amc --lib --quiet -o "$BUILD/$mod" "$src" $ext_flags > /tmp/amc-stdlib-$mod.log 2>&1; then
         echo "amc FAIL (see /tmp/amc-stdlib-$mod.log)"
         exit 1
     fi
-    if ! gcc -O2 -Iruntime -c "$BUILD/$mod.c" -o "$BUILD/$mod.o" 2> /tmp/gcc-stdlib-$mod.log; then
+    if ! gcc -O2 -Iruntime $CPPFLAGS -c "$BUILD/$mod.c" -o "$BUILD/$mod.o" 2> /tmp/gcc-stdlib-$mod.log; then
         echo "gcc FAIL (see /tmp/gcc-stdlib-$mod.log)"
         exit 1
     fi
+    local bytes
     bytes=$(stat -c%s "$BUILD/$mod.o" 2>/dev/null || stat -f%z "$BUILD/$mod.o")
-    echo "$bytes bytes"
+    if [ -n "$externs" ]; then
+        echo "$bytes bytes (deps: $externs)"
+    else
+        echo "$bytes bytes"
+    fi
+}
+
+for mod in $MODULES_STANDALONE; do
+    build_one "$mod" ""
+done
+
+for entry in $MODULES_CROSS; do
+    mod="${entry%%|*}"
+    deps="${entry#*|}"
+    build_one "$mod" "$deps"
 done
 
 ar rcs "$OUT/libamalgame.a" "$BUILD"/*.o

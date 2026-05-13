@@ -1,0 +1,45 @@
+// Project F end-to-end fixture (v0.7.5+).
+//
+// Exercises the `--external <module.am>` path: the resolver +
+// typechecker see Random / Hex / MsgPack via their .am sources,
+// but the cgen emits forward decls only — definitions land at
+// link time from lib/libamalgame.a (pre-built by
+// tools/build-stdlib.sh).
+//
+// Compiled by tests/run_tests.sh as:
+//   ./amc -o <out> tests/samples/external_libamalgame.am \
+//       --external src/stdlib/random.am \
+//       --external src/stdlib/encoding.am \
+//       --external src/stdlib/json.am \
+//       --external src/stdlib/msgpack.am
+//   gcc -O2 -Iruntime <out>.c lib/libamalgame.a \
+//       -lgc -lm -lcurl -lz -o <out>
+
+namespace App
+
+import Amalgame.Random
+import Amalgame.Encoding
+import Amalgame.Formats.Json
+import Amalgame.Formats.MsgPack
+import Amalgame.Collections
+
+public class Program {
+    public static void Main(string[] args) {
+        // Random — seeded reproducible
+        let r: Random = new Random(7)
+        let n: int    = r.NextUInt32()
+        Console.WriteLine("rnd: " + String.FromInt(n))
+
+        // Encoding — deadbeef bytes
+        let bytes: List<int> = new List<int>()
+        bytes.Add(222) bytes.Add(173) bytes.Add(190) bytes.Add(239)
+        Console.WriteLine("hex: " + Hex.Encode(bytes))
+
+        // MsgPack via Json — round-trip a fixint
+        let v: JsonValue = new JsonValue()
+        v.SetInt(42)
+        let mp: List<int> = MsgPack.EncodeJson(v)
+        let back: JsonValue = MsgPack.DecodeJson(mp)
+        Console.WriteLine("mp: " + String.FromInt(back.AsInt()))
+    }
+}
