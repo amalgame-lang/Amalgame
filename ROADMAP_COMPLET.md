@@ -206,6 +206,34 @@ These samples trigger bugs in the self-hosted compiler. They're
 marked SKIP in `tests/run_tests.sh` (`SKIP_SELFHOST`) so the suite
 stays green; each one needs its own fix.
 
+- [ ] **Facade-package ABI bug — same-class static dispatch
+      vs PkgClassMangledPrefix** (v0.7.8 known issue, blocks
+      msgpack extraction in v0.8.0). When a package's `facade.am`
+      calls its own static methods via `ClassName.X()` syntax
+      (e.g. `MsgPack.DecodeOne(c)` inside `MsgPack.DecodeJson`):
+      - `AddFilePass1` registers `MsgPack` in `LocalClasses`
+      - `PackageRegistry.Load()` also adds it to `PkgClasses` (the
+        running amc has its own package registered in
+        `amalgame.lock` during the precompile-on-add step)
+      - `EmitCalleeStr` checks `PkgClassMangledPrefix` **before**
+        the `SymName` (LocalClass) fallback, so the call lowers to
+        `Amalgame_Formats_MsgPack_DecodeOne` (namespace only,
+        SQLite-style)
+      - …but the function is **defined** as
+        `Amalgame_Formats_MsgPack_MsgPack_DecodeOne` (namespace +
+        class, facade-style)
+      - gcc accepts the implicit-int declaration, sign-extends the
+        return into a pointer, runtime segfault on first deref.
+      - **Fix**: check `IsLocalClass(tname)` **before**
+        `PkgClassMangledPrefix` in `EmitCalleeStr` (line 3515).
+        Same precedence change needed in `TypeToC` (line 3793)
+        for return-type / let-annotation paths if they hit the
+        same conflict.
+      - **Workaround until fixed**: facades use `this.X()` or
+        private inline helpers; never `ClassName.X()` within the
+        same class. The 5 facades shipped in v0.7.7 follow this
+        accidentally, which is why they work.
+
 - [x] **`Type.Variant` patterns in match** — `ParseMatchPattern`
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
       which the existing CGen MEMBER branch lowers to `Type_Variant`.

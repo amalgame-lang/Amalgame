@@ -1,12 +1,46 @@
 # 4 · Standard library
 
-The stdlib is a thin façade over the C runtime headers in `runtime/`.
-All static methods are accessible by their `Class.Method(args)` form
-and are mapped to `Class_Method(args)` in the emitted C — so what's
-listed here is exactly what's linked.
+The stdlib is a thin façade over the C runtime headers in `runtime/`
+and the pure-AM modules in `src/stdlib/`. All static methods are
+accessible by their `Class.Method(args)` form and are mapped to
+`Class_Method(args)` in the emitted C — so what's listed here is
+exactly what's linked.
 
-This chapter documents the public API. For implementation details
-see the headers themselves: `runtime/Amalgame_*.h`.
+This chapter documents the public API of the **bundled** stdlib —
+the modules shipped with every amc binary. For implementation
+details see the headers themselves: `runtime/Amalgame_*.h`.
+
+## Ecosystem packages (since v0.7.7)
+
+The framework split shipped in v0.7.7 moved ten user-facing modules
+out of the bundled stdlib into stand-alone packages on
+`amalgame-lang/`. They're versioned independently and installed
+once with `amc package add <shortname>`:
+
+| Module                       | Package shortname  | Repo                                                                                       |
+| ---------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| `Amalgame.Math`              | `math`             | [amalgame-math](https://github.com/amalgame-lang/amalgame-math)                            |
+| `Amalgame.Math.Vec`          | `math-vec`         | [amalgame-math-vec](https://github.com/amalgame-lang/amalgame-math-vec)                    |
+| `Amalgame.Random`            | `random`           | [amalgame-random](https://github.com/amalgame-lang/amalgame-random)                        |
+| `Amalgame.Encoding`          | `encoding`         | [amalgame-encoding](https://github.com/amalgame-lang/amalgame-encoding)                    |
+| `Amalgame.Crypto`            | `crypto`           | [amalgame-crypto](https://github.com/amalgame-lang/amalgame-crypto)                        |
+| `Amalgame.DateTime`          | `datetime`         | [amalgame-datetime](https://github.com/amalgame-lang/amalgame-datetime)                    |
+| `Amalgame.Logging`           | `logging`          | [amalgame-logging](https://github.com/amalgame-lang/amalgame-logging)                      |
+| `Amalgame.Service`           | `service`          | [amalgame-service](https://github.com/amalgame-lang/amalgame-service)                      |
+| `Amalgame.IO.FileWatcher`    | `io-filewatcher`   | [amalgame-io-filewatcher](https://github.com/amalgame-lang/amalgame-io-filewatcher)        |
+| `Amalgame.Formats.Yaml`      | `yaml`             | [amalgame-yaml](https://github.com/amalgame-lang/amalgame-yaml)                            |
+
+Each package has its own README documenting its surface; they
+follow the same `Class.Method(args)` style as the bundled stdlib.
+
+```bash
+amc package add datetime logging        # picks the latest tag
+amc package add yaml@v0.1.0             # explicit version
+```
+
+`amc package add` reads `amalgame.toml`'s `[dependencies]` (or
+creates it) and writes the pinned tag + commit-rev into
+`amalgame.lock`.
 
 ## Console — terminal IO
 
@@ -175,146 +209,6 @@ Path.Normalize("/")           // "/"
 It does **not** touch the filesystem — so `..` past a symlink may
 resolve incorrectly relative to the real path. Use a filesystem-
 resolving helper if you need that.
-
-## IO.FileWatcher — single-file mtime polling
-
-`runtime/Amalgame_FileWatch.h`
-
-Watches one file and reports when its modification time changes.
-Implementation is plain `stat(2)` / `_stat64` polling — no
-inotify / FSEvents / `ReadDirectoryChangesW`. The caller drives
-the poll loop; `Changed()` returns true once per detected mtime
-advance (or appearance / disappearance of the path) and then
-snapshots the new state for the next round.
-
-Recursive directory watches are out of scope for v1; the polling
-MVP covers the "reload a config file" and "rebuild on source
-change" cases that motivate ~80% of users.
-
-```kotlin
-let w = new FileWatcher("/etc/app/config.toml")
-while (!Service.ShouldStop()) {
-    if (w.Changed()) {
-        Console.WriteLine("config changed, reloading…")
-        reload()
-    }
-    Service.Sleep(500)
-}
-```
-
-| Method                          | Returns  | Notes                                                       |
-|---------------------------------|----------|-------------------------------------------------------------|
-| `new FileWatcher(path: string)` |          | Snapshots mtime at construction                             |
-| `Changed()`                     | `bool`   | True once after each mtime advance / appear / disappear     |
-| `Exists()`                      | `bool`   | Cheap `stat()` probe — distinct from `Changed()`            |
-| `GetPath()`                     | `string` | The path passed at construction                             |
-
-`Changed()` does **not** debounce — if the watched file is written
-by a sequence of small writes, you may observe several true
-returns in a row. The polling interval is yours to choose; 250–500ms
-is the typical config-reload sweet spot.
-
-## Math — arithmetic
-
-`runtime/Amalgame_Math.h`
-
-| Method                       | Returns | Notes                       |
-| ---------------------------- | ------- | --------------------------- |
-| `Math.Sqrt(x: float)`        | float   | `sqrt`                      |
-| `Math.Abs(x: float)`         | float   |                             |
-| `Math.AbsI(x: int)`          | int     |                             |
-| `Math.Pow(x: float, y: float)` | float | `pow`                       |
-| `Math.PowI(x: int, y: int)`  | int     |                             |
-| `Math.Floor(x: float)`       | float   |                             |
-| `Math.Ceil(x: float)`        | float   |                             |
-| `Math.Round(x: float)`       | float   | round-half-away-from-zero   |
-| `Math.MaxI(a, b) : int`      |         |                             |
-| `Math.MinI(a, b) : int`      |         |                             |
-| `Math.MaxF(a, b) : float`    |         |                             |
-| `Math.MinF(a, b) : float`    |         |                             |
-| `Math.ClampI(x, lo, hi)`     | int     |                             |
-| `Math.Gcd(a, b)`             | int     |                             |
-| `Math.IsPrime(n)`            | bool    |                             |
-| `Math.IsFinite(x)`           | bool    |                             |
-| `Math.IsNaN(x)`              | bool    |                             |
-| `Math.SeedRandom(seed)`      | void    |                             |
-| `Math.Random()`              | float   | [0.0, 1.0)                  |
-| `Math.RandomInt(lo, hi)`     | int     | [lo, hi]                    |
-
-```kotlin
-Math.SeedRandom(42)
-let dice = Math.RandomInt(1, 6)
-let h = Math.Sqrt(3.0 * 3.0 + 4.0 * 4.0)
-```
-
-## Math.Vec — 3D math primitives (Vec3, Vec4, Mat4)
-
-`runtime/Amalgame_Math_Vec.h` · canonical declarations in [stdlib/math_vec.am](../../src/stdlib/math_vec.am)
-
-Scalar (no-SIMD) implementations of the three primitives you reach
-for in game / graphics code: a 3-component float vector, a
-4-component (homogeneous) vector, and a 4×4 column-major matrix.
-All instances are heap-allocated; chained ops return fresh objects
-rather than mutating their inputs.
-
-Conventions: matrices are **column-major** (OpenGL — feed directly
-to `glUniformMatrix4fv` without transposing). `Vec4.W` is the
-homogeneous coordinate (1 = position, 0 = direction). Rotations are
-in radians.
-
-```kotlin
-import Amalgame.Math.Vec
-
-let a: Vec3 = new Vec3(3.0, 4.0, 0.0)
-Console.WriteLine(String.FromFloat(a.Length()))          // 5.0
-let n: Vec3 = a.Normalize()                              // (0.6, 0.8, 0)
-
-// Rotate (1, 0, 0, 1) 90° around Z → (0, 1, 0, 1)
-let rz: Mat4 = Mat4.RotateZ(3.14159265 / 2.0)
-let p:  Vec4 = rz.TransformVec4(new Vec4(1.0, 0.0, 0.0, 1.0))
-```
-
-### Vec3
-
-| Method                            | Returns | Notes                         |
-|-----------------------------------|---------|-------------------------------|
-| `new Vec3(x, y, z)`               | `Vec3`  |                               |
-| `GetX() / GetY() / GetZ()`        | `float` |                               |
-| `Add(other)` / `Sub(other)`       | `Vec3`  | Component-wise                |
-| `Scale(k: float)`                 | `Vec3`  |                               |
-| `Dot(other)`                      | `float` |                               |
-| `Cross(other)`                    | `Vec3`  | Right-handed                  |
-| `Length()`                        | `float` | Euclidean                     |
-| `Normalize()`                     | `Vec3`  | Returns `(0,0,0)` if length 0 |
-| `Equals(other)`                   | `bool`  | Exact float equality          |
-
-### Vec4
-
-| Method                            | Returns | Notes                         |
-|-----------------------------------|---------|-------------------------------|
-| `new Vec4(x, y, z, w)`            | `Vec4`  |                               |
-| `GetX() / GetY() / GetZ() / GetW()` | `float` |                             |
-| `Add(other)` / `Sub(other)`       | `Vec4`  |                               |
-| `Scale(k: float)`                 | `Vec4`  |                               |
-| `Dot(other)`                      | `float` | 4-component dot               |
-
-### Mat4
-
-| Method                                       | Returns | Notes                                   |
-|----------------------------------------------|---------|-----------------------------------------|
-| `new Mat4()`                                 | `Mat4`  | All zeros                               |
-| `Mat4.Identity()`                            | `Mat4`  |                                         |
-| `Mat4.Translate(tx, ty, tz)`                 | `Mat4`  |                                         |
-| `Mat4.Scale(sx, sy, sz)`                     | `Mat4`  |                                         |
-| `Mat4.RotateX(angleRad) / RotateY / RotateZ` | `Mat4`  | Radians                                 |
-| `Get(col, row)`                              | `float` | `M[col * 4 + row]` storage              |
-| `Set(col, row, v: float)`                    | `void`  |                                         |
-| `Multiply(other)`                            | `Mat4`  | `this * other`                          |
-| `TransformVec4(v)`                           | `Vec4`  | `M * v` (column-major application)      |
-
-> No `Vec3` × `Mat4` shortcut — promote to `Vec4(x, y, z, 1.0)`
-> first if you want positional transform, or `Vec4(x, y, z, 0.0)`
-> for direction. Mirrors how shaders handle it anyway.
 
 ## Collections — List, Map, Set
 
@@ -536,59 +430,6 @@ if (r.Ok) {
 > kn.AsString()`) until the codegen fix lands. Same workaround as
 > the JSON test sample in `tests/samples/stdlib_json.am`.
 
-## Formats.Yaml — YAML 1.2 subset reader
-
-`src/stdlib/yaml.am` · pure-Amalgame parser, no runtime header
-
-Indent-driven block-style parser sized for config-file use — same
-spirit as the existing TOML reader, same `YamlValue` tree shape
-as `JsonValue` and `TomlValue` so callers walk the same accessor
-surface across formats.
-
-**Coverage:** top-level + nested block mappings, block sequences
-(`- item`), bool / int / float / plain / single-quoted / double-
-quoted scalars, `#` comments, blank lines.
-
-**Out of scope** (returns plain-string on parse, no error raised):
-anchors / aliases, multi-doc separators (`---`/`...`), flow style
-(`[1, 2]`, `{a: b}`), multiline scalars (`>`, `|`), tags (`!!str`).
-
-```kotlin
-import Amalgame.Formats.Yaml
-
-let src: string = "server:\n  host: localhost\n  port: 8080\ntags:\n  - red\n  - blue\n"
-let doc: YamlValue = Yaml.Parse(src)
-let srv: YamlValue = doc.Get("server")
-Console.WriteLine(srv.Get("host").AsString())   // localhost
-Console.WriteLine(String.FromInt(srv.Get("port").AsInt()))  // 8080
-
-let tags: YamlValue = doc.Get("tags")
-Console.WriteLine(tags.At(0).AsString())        // red
-```
-
-### Yaml
-
-| Method                       | Returns      | Notes                                            |
-|------------------------------|--------------|--------------------------------------------------|
-| `Yaml.Parse(src: string)`    | `YamlValue`  | Null-kind for empty input; never throws          |
-
-### YamlValue
-
-| Method                           | Returns           | Notes                                |
-|----------------------------------|-------------------|--------------------------------------|
-| `IsNull() / IsBool() / IsInt() / IsFloat() / IsString() / IsArray() / IsMap()` | `bool` |  |
-| `AsBool() / AsInt() / AsFloat() / AsString()` | scalar | Falsy default on kind mismatch       |
-| `Count()`                        | `int`             | Array length or map key count        |
-| `At(idx: int)`                   | `YamlValue`       | Array access — Null-kind on OOB      |
-| `Get(key: string)`               | `YamlValue`       | Map access — Null-kind on miss       |
-| `Has(key: string)`               | `bool`            | Distinguishes empty value from absence |
-| `Keys()`                         | `List<string>`    | Insertion order                      |
-
-Best-effort parse: malformed scalars become plain-string values
-rather than aborting. Tabs in indentation are silently treated as
-one space (YAML 1.2 forbids them, but a config reader shouldn't
-crash on a stray tab).
-
 ## Formats.MsgPack — MessagePack 1.0 subset codec
 
 `src/stdlib/msgpack.am` · pure-Amalgame, no runtime header
@@ -648,355 +489,6 @@ Console.WriteLine(back.Get("b").AsString())               // world
 > **Encoder int fallback.** Values outside the int 32 range
 > currently truncate to their low 32 bits rather than emit int 64
 > — easy follow-up once a callsite needs it.
-
-## Random — PRNG and OS entropy
-
-`Amalgame.Random` exposes a small, statistically strong PRNG
-(PCG XSH-RR 64/32) plus a passthrough to the OS entropy pool for
-crypto-grade needs. The PRNG step itself runs in the C runtime
-(`runtime/Amalgame_Random.h`) — the deliberate `uint64`
-wrap-around it relies on is well-defined unsigned but UB on
-Amalgame's signed `int`, so we keep the multiply behind a
-runtime helper.
-
-```kotlin
-import Amalgame.Random
-import Amalgame.Collections
-
-// Reproducible: same seed → same stream
-let r1 = new Random(42)
-let n  = r1.NextInt()
-
-// Unguessable: 16 bytes pulled from the OS entropy pool
-let r2 = Random.FromSystem()
-let f  = r2.Float()                  // [0.0, 1.0)
-let d6 = r2.IntRange(1, 7)           // [1, 7) = a six-sided die
-let coin = r2.Bool()
-let bs: List<int> = r2.Bytes(32)     // 32 bytes ∈ [0, 255]
-
-// Shortcut when you don't want to keep a Random instance around
-let salt: List<int> = Random.SystemBytes(16)
-```
-
-### Constructor + factories
-
-| Form                       | Purpose                                          |
-|----------------------------|--------------------------------------------------|
-| `new Random(seed)`         | Reproducible stream from a 64-bit seed.          |
-| `Random.FromSystem()`      | Unguessable seed from 16 bytes of OS entropy.    |
-| `Random.SystemBytes(n)`    | Static — n crypto-grade bytes ∈ [0, 255]. No instance needed. |
-
-### Methods on a Random instance
-
-| Method                  | Returns                              |
-|-------------------------|--------------------------------------|
-| `NextUInt32()`          | `int` ∈ [0, 2^32 - 1]                |
-| `NextInt()`             | `int`, full 64-bit range             |
-| `IntRange(min, max)`    | `int` ∈ [min, max) (half-open)       |
-| `Float()`               | `float` ∈ [0.0, 1.0)                 |
-| `Bool()`                | `bool`                               |
-| `Bytes(n)`              | `List<int>`, n entries ∈ [0, 255]    |
-
-**Reproducibility.** Two `new Random(seed)` instances with the
-same seed always produce identical streams across runs and across
-OSes. Use that for tests, simulations, and any "deterministic
-shuffle" needs.
-
-**OS entropy backend.** `FromSystem()` and `SystemBytes()` use:
-
-- POSIX (Linux, macOS, BSDs): `getentropy(3)` — falls back to
-  reading `/dev/urandom` if `getentropy` is unavailable.
-- Windows: `BCryptGenRandom` with the system-preferred RNG.
-
-If both paths fail (rare: chrooted POSIX without `/dev/urandom`,
-or no Windows crypto provider), the buffer is filled with zeros
-rather than returning a partial fill — the caller sees a
-deterministic-but-useless result instead of garbage.
-
-**Modulo bias in `IntRange`.** `IntRange(min, max)` uses simple
-modulo on a 32-bit draw. The bias is undetectable for ranges much
-smaller than 2^32 (i.e. anything you'd actually pass at the
-language level). Callers needing unbiased output for very large
-spans can layer rejection sampling on top of `NextUInt32()`.
-
-> The legacy `Math.SeedRandom` / `Math.Random` / `Math.RandomInt`
-> helpers stay for compatibility but are not recommended — they
-> use a single global state, an 8-bit-output LCG, and have no
-> crypto path. New code should reach for `Amalgame.Random`.
-
-## Encoding — Base64, Hex, percent-encoding
-
-`Amalgame.Encoding` ships three small static facades for the
-bread-and-butter byte/text transcodings: `Base64` (RFC 4648),
-`Hex`, and `Url` (percent-encoding per RFC 3986). All three are
-pure Amalgame — no runtime header, no syscalls.
-
-```kotlin
-import Amalgame.Encoding
-import Amalgame.Collections
-
-// ── Base64 ──
-let bytes: List<int> = new List<int>()
-bytes.Add(72); bytes.Add(105)               // "Hi"
-let s: string = Base64.Encode(bytes)        // "SGk="
-let back: List<int> = Base64.Decode(s)      // [72, 105]
-
-// URL-safe variant (swaps + / for - _)
-let token: string = Base64.EncodeUrl(bytes) // "SGk="
-let raw:   List<int> = Base64.DecodeUrl(token)
-
-// ── Hex ──
-let h: string = Hex.Encode(bytes)            // "4869" (lowercase)
-let H: string = Hex.EncodeUpper(bytes)       // "4869"
-let bytes2: List<int> = Hex.Decode("48 69")  // [] (rejects spaces)
-let bytes3: List<int> = Hex.Decode("4869")   // [72, 105]
-
-// ── Url (percent-encoding) ──
-Url.Encode("hello world")           // "hello%20world"
-Url.Encode("a/b?c=1")               // "a/b?c=1"   — path-safe chars kept
-Url.EncodeComponent("a/b?c=1")      // "a%2Fb%3Fc%3D1"
-Url.Decode("a%2Fb%3Fc%3D1")         // "a/b?c=1"
-```
-
-### Base64
-
-| Method                | Returns                     |
-|-----------------------|-----------------------------|
-| `Encode(bytes)`       | `string` — RFC 4648 §4 alphabet, `=` padding |
-| `Decode(s)`           | `List<int>` — empty on invalid chars |
-| `EncodeUrl(bytes)`    | `string` — URL-safe alphabet (`-_` for `+/`) |
-| `DecodeUrl(s)`        | `List<int>` — counterpart of EncodeUrl |
-| `IsValid(s)`          | `bool` — true if `s` decodes cleanly under standard alphabet |
-
-Both decoders accept padded *or* unpadded input. Whitespace
-inside the encoded body is **not** stripped — strict mode by
-default. Trim or pre-clean upstream if your input may have
-embedded newlines (e.g. PEM blocks).
-
-### Hex
-
-| Method               | Returns                                |
-|----------------------|----------------------------------------|
-| `Encode(bytes)`      | `string` — lowercase, no separator     |
-| `EncodeUpper(bytes)` | `string` — uppercase                   |
-| `Decode(s)`          | `List<int>` — accepts mixed case; empty on odd-length or invalid char |
-| `IsValid(s)`         | `bool` — even-length + all hex chars   |
-
-### Url
-
-| Method                  | Returns                                   |
-|-------------------------|-------------------------------------------|
-| `Encode(s)`             | `string` — preserves the unreserved set + path-safe gen/sub-delims (`/?#&=+:@,;`) |
-| `EncodeComponent(s)`    | `string` — also escapes the path-safe set; matches JS `encodeURIComponent` |
-| `Decode(s)`             | `string` — RFC-strict; `+` is **not** mapped to space |
-
-`Decode` is intentionally strict on `+`. Form-encoded payloads
-(`application/x-www-form-urlencoded`) are a separate spec layered
-on top — pre-substitute `+` → space yourself if you're parsing a
-form body, or wait for a dedicated `Form` decoder.
-
-> The byte → char round-trips here all assume `bytes` ∈ [0, 255]
-> per entry. `Random.Bytes(n)` and `Random.SystemBytes(n)` already
-> return values in that range, so encoding entropy as Base64/Hex
-> works without an extra cast layer.
-
-## DateTime — Instant, Duration, Stopwatch
-
-`Amalgame.DateTime` ships three small classes — `Instant`,
-`Duration`, and `Stopwatch` — plus an `InstantResult` shape for
-parse fallout. v1 is **UTC-only**: explicit `+HH:MM` offsets in
-ISO 8601 input are rejected, and there is no concept of local
-time, named timezones, or DST. The roadmap tracks those as
-follow-ups; the current API is small enough that adding a
-parallel `LocalTime` later won't churn existing call sites.
-
-```kotlin
-import Amalgame.DateTime
-
-let now: Instant = Instant.Now()
-Console.WriteLine(now.Format())          // 2026-05-09T22:30:00.123456789Z
-
-// ISO 8601 round-trip (UTC subset)
-let r: InstantResult = Instant.Parse("2026-01-15T08:00:00.5Z")
-if (r.Ok) {
-    let v: Instant = r.Value
-    Console.WriteLine(v.UnixSeconds())   // 1768464000
-}
-
-// Arithmetic with Duration
-let later: Instant = now.Add(Duration.FromMinutes(30))
-let elapsed: Duration = later.Since(now)
-Console.WriteLine(elapsed.Format())      // 30m0s
-
-// Stopwatch over the monotonic clock — immune to wall-clock jumps
-let sw: Stopwatch = new Stopwatch()
-heavyComputation()
-Console.WriteLine("took " + sw.Elapsed().Format())
-```
-
-### Instant
-
-| Method                       | Returns           | Notes                              |
-|------------------------------|-------------------|------------------------------------|
-| `new Instant(nanos)`         | `Instant`         | Direct ns-since-epoch constructor  |
-| `Instant.Now()`              | `Instant`         | Wall clock (NTP-affected)          |
-| `Instant.FromUnixSeconds(s)` | `Instant`         |                                    |
-| `Instant.FromUnixMillis(ms)` | `Instant`         |                                    |
-| `Instant.FromUnixNanos(ns)`  | `Instant`         |                                    |
-| `Instant.Parse(s)`           | `InstantResult`   | RFC 3339 / ISO 8601, UTC only      |
-| `UnixSeconds()`              | `int`             |                                    |
-| `UnixMillis()`               | `int`             |                                    |
-| `UnixNanos()`                | `int`             |                                    |
-| `Format()`                   | `string`          | Fixed 9-digit fraction + `Z`       |
-| `Add(d)` / `Subtract(d)`     | `Instant`         | Shift by Duration                  |
-| `Since(other)`               | `Duration`        | `this - other`                     |
-| `IsBefore` / `IsAfter` / `Equals` | `bool`       |                                    |
-
-### Duration
-
-| Method                             | Returns       |
-|------------------------------------|---------------|
-| `new Duration(nanos)`              | `Duration`    |
-| `Duration.FromSeconds / Millis / Minutes / Hours / Days` | `Duration` |
-| `Nanos / Millis / Seconds`         | `int`         |
-| `SecondsFloat()`                   | `float`       |
-| `Plus / Minus / Times / Negate`    | `Duration`    |
-| `IsZero / IsNegative`              | `bool`        |
-| `Format()`                         | `string`      |
-
-`Format()` emits Go-style human readable shorthand: `0s`,
-`500ns`, `1us`, `1ms`, `5s`, `2m5s`, `1h2m5s`. Negative
-durations get a leading `-`.
-
-### Stopwatch
-
-| Method                  | Returns       |
-|-------------------------|---------------|
-| `new Stopwatch()`       | captures the monotonic clock |
-| `Elapsed()`             | `Duration` since construction |
-| `Reset()`               | `Duration` since last start, then rewinds to now |
-
-Use Stopwatch — not `Instant.Now()` differences — for measuring
-elapsed time. The monotonic clock is unaffected by NTP
-adjustments and manual clock changes.
-
-### UTC breakdown (v0.7.1)
-
-Six new instance methods on `Instant` decompose a nanos-since-epoch
-into individual UTC calendar fields. Each call routes through
-`gmtime_r` / `gmtime_s` and returns one field — cheap (a few dozen
-instructions per call), but a caller needing the full breakdown
-pays roughly 6× the cost of a single `struct tm` extraction. Easy
-to consolidate into a `Breakdown()` struct accessor later if
-benchmarks complain.
-
-```kotlin
-import Amalgame.DateTime
-
-// 2009-02-13T23:31:30Z — the famous "billion seconds" timestamp
-let t: Instant = Instant.FromUnixSeconds(1234567890)
-Console.WriteLine(String.FromInt(t.Year()))    // 2009
-Console.WriteLine(String.FromInt(t.Month()))   // 2   (1-based, Jan = 1)
-Console.WriteLine(String.FromInt(t.Day()))     // 13  (1-based)
-Console.WriteLine(String.FromInt(t.Hour()))    // 23
-Console.WriteLine(String.FromInt(t.Minute()))  // 31
-Console.WriteLine(String.FromInt(t.Second()))  // 30
-```
-
-| Method        | Returns | Range  | Notes                                  |
-|---------------|---------|--------|----------------------------------------|
-| `Year()`      | `int`   | full   | UTC calendar year                      |
-| `Month()`     | `int`   | 1..12  | 1 = January                            |
-| `Day()`       | `int`   | 1..31  | Day of month                           |
-| `Hour()`      | `int`   | 0..23  |                                        |
-| `Minute()`    | `int`   | 0..59  |                                        |
-| `Second()`    | `int`   | 0..60  | 60 only on the rare leap-second tick   |
-
-All fields are UTC, matching the rest of v1 `DateTime`. Local time
-/ named-timezone breakdown still tracks the `LocalTime` companion
-class deferred from the roadmap. If `gmtime_r` rejects the input
-(beyond the i64-nanosecond window of ~1678–2262) the helpers
-return a sentinel value: `Year()` falls back to `1970`, the others
-to `1`/`0` — predictable rather than crashing.
-
-### Limitations to know about
-
-- **UTC only.** No timezones, no local-time conversion, no DST
-  handling. Track 1: a future `LocalTime` companion class.
-- **Parse strict on `Z`.** Inputs like `2026-05-09T22:30:00+02:00`
-  return `Ok=false`. If you need offset support, normalize to
-  UTC at the source for now.
-- **Leap seconds.** A `:60` second in parse input is accepted
-  (per ISO 8601) but clamped to `:59` internally — strict
-  leap-second handling needs a UTC↔TAI table that we don't
-  ship. In practice, almost no public timestamp source will
-  feed you a `:60` value anyway (most use UTC-SLS or smear).
-- **i64 nanoseconds.** Range is roughly **1678-09-21 → 2262-04-11**.
-  Outside that window, arithmetic silently wraps. Fine for the
-  decade or two ahead; the API can grow a `Date` (no time of
-  day, larger range) if applications outside this window become
-  a thing.
-
-## Crypto — SHA-256 and HMAC-SHA-256
-
-`namespace Amalgame.Crypto` exposes two static facades — `Sha256`
-for the bare hash and `Hmac` for keyed authentication. Both go
-straight to `runtime/Amalgame_Crypto.h`, which holds the SHA-256
-compression function (FIPS 180-4 §6.2) and the HMAC ipad/opad
-construction (RFC 2104) in pure C. No external crypto library
-dependency — the runtime header is self-contained, ~150 lines.
-
-Bytes flow through as `List<int>` with each entry in `[0, 255]`
-(the runtime masks to 8 bits anyway, so any int list works).
-String-input convenience methods hash the UTF-8 byte
-representation directly. All hex output is lowercase (RFC 4648
-hex is case-insensitive on decode, so this matches the de-facto
-modern convention).
-
-```kotlin
-import Amalgame.Crypto
-
-// ── SHA-256 ─────────────────────────────────────────
-let h1: string = Sha256.OfString("hello")        // hex (most common)
-let raw: List<int> = Sha256.Bytes(some_bytes)    // 32 raw bytes
-let h2: string = Sha256.Hex(some_bytes)          // hex of bytes input
-
-// ── HMAC-SHA-256 ────────────────────────────────────
-let mac: string = Hmac.Sha256OfStrings(api_key, payload)
-let mac_raw: List<int> = Hmac.Sha256(key_bytes, msg_bytes)
-let mac_hex: string = Hmac.Sha256Hex(key_bytes, msg_bytes)
-```
-
-### Sha256
-
-| Method                          | Returns        | Notes                                     |
-|---------------------------------|----------------|-------------------------------------------|
-| `Sha256.Bytes(data: List<int>)` | `List<int>`    | Raw 32-byte digest                        |
-| `Sha256.Hex(data: List<int>)`   | `string`       | Lowercase hex of the 32-byte digest       |
-| `Sha256.OfString(s: string)`    | `string`       | UTF-8 bytes of `s` → digest → hex         |
-
-### Hmac
-
-| Method                                                | Returns      |
-|-------------------------------------------------------|--------------|
-| `Hmac.Sha256(key: List<int>, msg: List<int>)`         | `List<int>`  |
-| `Hmac.Sha256Hex(key: List<int>, msg: List<int>)`      | `string`     |
-| `Hmac.Sha256OfStrings(key: string, msg: string)`      | `string`     |
-
-Keys longer than the SHA-256 block size (64 bytes) are hashed down
-to 32 bytes per RFC 2104 §2; keys shorter than 64 are zero-padded.
-Either is handled transparently inside the runtime.
-
-### Caveats
-
-- **SHA-256 only for now.** No SHA-1 (insecure for new uses anyway),
-  SHA-512, MD5, or Blake. Add as needed.
-- **Constant-time comparison** of MAC values is the caller's
-  responsibility. Amalgame's `string ==` and `List<int>` comparison
-  short-circuit on the first byte mismatch, which leaks timing
-  information against a determined attacker. For verifying signatures
-  / MACs against untrusted input, compare via a manual byte-by-byte
-  loop that always runs to completion.
 
 ## Regex — POSIX extended regular expressions
 
@@ -1108,102 +600,6 @@ let msg:   List<int> = Compress.Inflate(frame)
 Compression level is fixed at zlib's `Z_DEFAULT_COMPRESSION` (~6).
 Users that need to tune for speed or ratio can shell out for now;
 exposing a level argument is a one-line follow-up.
-
-## Logging — leveled stderr + optional file sink
-
-`namespace Amalgame.Logging` exposes a `public class Log` facade
-with four levels (Debug, Info, Warn, Error). Emits to stderr with
-a UTC ISO 8601 timestamp + fixed-width label, plus an optional
-file sink that appends every line. Configuration is process-wide
-singleton state held in the runtime (same pattern as `Exit.Set`
-/ `Exit.Get`).
-
-```kotlin
-import Amalgame.Logging
-
-Log.SetMinLevel("info")             // default; "debug"/"info"/"warn"/"error"
-Log.SetFile("/var/log/app.log")     // optional; empty string disables
-
-Log.Debug("got 42 items")           // suppressed unless min level <= debug
-Log.Info("server ready on :8080")
-Log.Warn("retry attempt 3")
-Log.Error("connection refused")
-```
-
-Output looks like:
-
-```
-2026-05-10T20:42:33Z INFO  server ready on :8080
-2026-05-10T20:42:35Z WARN  retry attempt 3
-2026-05-10T20:42:38Z ERROR connection refused
-```
-
-| Method                              | Returns  | Notes                                                            |
-|-------------------------------------|----------|------------------------------------------------------------------|
-| `Log.SetMinLevel(name: string)`     | `void`   | "debug" / "info" / "warn" / "error"; case-insensitive on 1st char|
-| `Log.GetMinLevel()`                 | `string` | Lower-case canonical name of the current minimum                 |
-| `Log.SetFile(path: string)`         | `void`   | Empty string disables the file sink                              |
-| `Log.GetFile()`                     | `string` | Empty string when no sink                                        |
-| `Log.Debug(msg: string)`            | `void`   |                                                                  |
-| `Log.Info(msg: string)`             | `void`   |                                                                  |
-| `Log.Warn(msg: string)`             | `void`   |                                                                  |
-| `Log.Error(msg: string)`            | `void`   |                                                                  |
-
-**Level name parsing** is case-insensitive on the first letter —
-`"DEBUG"`, `"Debug"`, `"debug"` all map to the same code. Unknown
-names default to `"info"` silently; logging itself should never
-crash a process.
-
-**File sink** reopens on each emit — slower than holding a stream
-open but robust against external log rotation, which is the
-typical production setup. Single-process, thread-unsafe v1 — fine
-for CLIs and single-threaded servers. A mutex is the v2 ask once
-a real multi-threaded user lands.
-
-## Service — long-running process primitives
-
-`namespace Amalgame.Service` wraps POSIX `signal()` + `nanosleep()`
-(Linux/macOS) and `SetConsoleCtrlHandler` + `Sleep()` (Windows)
-behind one unified surface. Callers don't branch on platform.
-
-The typical service loop pattern:
-
-```kotlin
-import Amalgame.Service
-import Amalgame.Logging
-
-public class Program {
-    public static int Main(List<string> args) {
-        Log.SetMinLevel("info")
-        Log.Info("starting")
-        Service.Install()
-        while (!Service.ShouldStop()) {
-            // one unit of work
-            Service.Sleep(5000)
-        }
-        Log.Info("shutting down cleanly")
-        return 0
-    }
-}
-```
-
-| Method                       | Returns | Notes                                                                       |
-|------------------------------|---------|-----------------------------------------------------------------------------|
-| `Service.Install()`          | `void`  | Register SIGTERM/SIGINT handler (or `SetConsoleCtrlHandler` on Windows)     |
-| `Service.ShouldStop()`       | `bool`  | True after the OS has delivered a shutdown signal                           |
-| `Service.RequestStop()`      | `void`  | Programmatic shutdown trigger — flips the same flag                         |
-| `Service.Sleep(ms: int)`     | `void`  | Returns early when `ShouldStop()` becomes true                              |
-
-**Shutdown semantics**: the flag is `sig_atomic_t` on POSIX and
-`LONG` + `InterlockedExchange` on Windows. Async-signal-safe on
-POSIX, atomic on Windows; no mutex needed for v1 single-process
-scope. POSIX `Service.Sleep` uses `nanosleep` and is naturally
-interruptible by signal delivery via EINTR. The Windows path
-slices into 100ms chunks (no portable equivalent of nanosleep-
-with-EINTR for console signals).
-
-**Reinstalling** — calling `Service.Install()` more than once is
-safe; the OS just replaces the existing handler.
 
 ## Database.SQLite — embedded SQL via opt-in package
 
