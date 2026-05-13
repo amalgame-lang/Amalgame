@@ -7,6 +7,139 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.5] — 2026-05-13
+
+The **"project F — libamalgame.a pre-compile"** patch release.
+Ships the second half of the v0.7.4 decision: every user-facing
+stdlib module (`src/stdlib/*.am`) is now pre-compiled into a
+single `lib/libamalgame.a` archive shipped alongside the `amc`
+binary. User programs that import these modules pass them via
+`--external <mod.am>` and link against the archive — the
+generated `.c` shrinks by up to 10×, the amc step is ~30%
+faster, and the namespace mangling stays consistent across
+modules.
+
+### --external `<file.am>` (project F POC, expanded)
+
+PR #360 introduced the flag in a 2-module POC (random,
+encoding). This release expands it to cover all 11 standalone +
+cross-dependent user-facing modules: **random, encoding, crypto,
+datetime, logging, path, service, json, toml, yaml, msgpack**.
+
+Files passed via `--external` are parsed for resolver +
+typechecker visibility (so call sites still type-check), but
+the cgen emits forward declarations only — class definitions
+land at link time from `lib/libamalgame.a`. The cgen tracks each
+file's own namespace prefix in a new `ExternalClasses` /
+`ExternalClassNsArr` table so call sites lower through the
+file's mangling (`Amalgame_Random_Random_new`), not the bundle's
+global `NsPrefix` (which used to produce `App_Random_new` and
+only worked by accident when the bundled .am files happened to
+share a root namespace).
+
+### Cgen — InferTypeFromExpr fix for cross-stdlib deps
+
+`let v = new JsonValue()` inside `msgpack.am` (compiled with
+`--external src/stdlib/json.am`) now infers
+`Amalgame_Formats_Json_JsonValue*` instead of the namespace-
+collided `Amalgame_Formats_MsgPack_JsonValue*`. Was the last
+hold-out preventing msgpack from round-tripping through the lib
+path.
+
+### tools/build-stdlib.sh — 11 modules, 197 KB archive
+
+Pre-compiles each user-facing standalone stdlib module:
+
+```
+amc --lib --quiet -o $BUILD/<mod>  src/stdlib/<mod>.am
+gcc -O2 -Iruntime -c $BUILD/<mod>.c -o $BUILD/<mod>.o
+```
+
+then `ar rcs lib/libamalgame.a $BUILD/*.o`. Cross-stdlib modules
+(today: just **msgpack** which references Json's `JsonValue`)
+get `--external src/stdlib/<dep>.am` threaded through so the
+cgen routes inter-module references correctly. Reads `$CPPFLAGS`
+for the gcc step so macOS release.yml can splice in homebrew
+prefix includes.
+
+Resulting archive is **197 KB** on Linux x86_64. Math.Vec stays
+out — its real impl lives in `runtime/Amalgame_Math_Vec.h` (the
+AM file is a facade stub for the resolver, same shape as
+path/logging/service in v0.7.4 before BuildInfo migrated).
+
+### build_amc.sh — Step 4 auto-builds libamalgame.a
+
+After the amc binary is up, `build_amc.sh` invokes
+`tools/build-stdlib.sh` as Step 4 so a normal `./build_amc.sh`
+run also produces `lib/libamalgame.a`. From a clean clone the
+expected output ends with:
+
+```
+=== Step 4: Build lib/libamalgame.a ===
+✓ lib/libamalgame.a (197346 bytes)
+```
+
+### release.yml — bundle libamalgame.a per OS
+
+Each platform job copies `lib/libamalgame.a` into the staged
+release archive's `lib/` directory (alongside `runtime/`). macOS
+and Windows jobs gained a **"Pre-compile user-facing stdlib"**
+step since neither runs `build_amc.sh` end-to-end — they each
+call `tools/build-stdlib.sh` directly after the amc binary is
+built. Result: every Linux / macOS / Windows release artefact
+now ships with the pre-compiled stdlib lib.
+
+### Bench (msgpack + json from user code)
+
+| Path                                | user .c size       | amc time       |
+|-------------------------------------|--------------------|----------------|
+| Legacy (bundle .am into user.c)     | 1337 lines         | 147 ms         |
+| `libamalgame.a` (--external + link) | 145 lines (-90 %)  | 99 ms (-32 %)  |
+
+Gcc step is similarly faster — it digests an order of magnitude
+less code. Bonus correctness: the legacy path bundled cross-
+module symbols under the *root file's* `NsPrefix`, which only
+happened to work because the existing tests pass .am files in a
+specific order. The new path uses each module's own namespace,
+so cross-module refs stay consistent.
+
+### Tests
+
+- New `run_external_test` helper in `tests/run_tests.sh`
+  (`--external` + `lib/libamalgame.a` link, asserts substring).
+- New fixture `tests/samples/external_libamalgame.am` exercises
+  random + encoding + json + msgpack through the lib path
+  end-to-end.
+- 3 new e2e tests: `libamalgame.a: random` /
+  `libamalgame.a: encoding` / `libamalgame.a: msgpack`.
+- Existing 610 tests unchanged — they keep the legacy "bundle .am
+  as input" path so both compilation modes stay covered.
+- Suite: 610 → **613 PASS** (216 core + 351 stdlib + 12 fmt + 34
+  amc-new), 0 FAIL, 0 SKIP.
+
+### Roadmap
+
+`ROADMAP_COMPLET.md` banner marks project F as shipped.
+
+### Migration notes
+
+The legacy "pass `src/stdlib/<mod>.am` as an input" path still
+works — `--external` is opt-in. To opt into the lib path:
+
+```
+amc -o myapp myapp.am --external src/stdlib/random.am
+gcc -Iruntime myapp.c lib/libamalgame.a -lgc -lm -lcurl -lz -o myapp
+```
+
+Released artefacts ship `lib/libamalgame.a` in the same
+directory layout as the binary, so an installed
+`<install_prefix>/amc` has its lib at
+`<install_prefix>/lib/libamalgame.a`.
+
+External packages (`amc package add sqlite`, …) keep their own
+precompile-on-install cache from v0.5.4 — that pathway is
+unchanged.
+
 ## [v0.7.4] — 2026-05-12
 
 The **"project G — inline-C blocks"** patch release. Adds a balisé
