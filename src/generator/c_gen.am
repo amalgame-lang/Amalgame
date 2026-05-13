@@ -813,12 +813,9 @@ public class CGen {
             if (String_StartsWith(tname, "List<") || tname == "List") { return "AmalgameList*" }
             if (String_StartsWith(tname, "Map<")  || tname == "Map")  { return "AmalgameMap*" }
             if (String_StartsWith(tname, "Set<")  || tname == "Set")  { return "AmalgameSet*" }
-            // Math.Vec / Mat — runtime-allocated pointer types.
-            // Skip SymName so the inferred type matches the actual
-            // C return of `Vec3_new` etc.
-            if (tname == "Vec3") { return "AmalgameVec3*" }
-            if (tname == "Vec4") { return "AmalgameVec4*" }
-            if (tname == "Mat4") { return "AmalgameMat4*" }
+            // Math.Vec / Mat4 migrated to AM (post-v0.7.5); the
+            // types lower via the bundled-namespace mangling, no
+            // special case needed here.
             // FileWatcher migrated to AM (post-v0.7.5); the type
             // now lowers via the bundled-namespace mangling, no
             // special case needed here.
@@ -927,20 +924,13 @@ public class CGen {
                 if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
                 if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
                 if (calleeStr == "TcpConn_Receive") { return "code_string" }
-                // Math stdlib return types
-                if (calleeStr == "Math_Sqrt" || calleeStr == "Math_Abs" || calleeStr == "Math_Floor" || calleeStr == "Math_Ceil" || calleeStr == "Math_Round" || calleeStr == "Math_Pow" || calleeStr == "Math_Log") { return "double" }
-                if (calleeStr == "Math_Max" || calleeStr == "Math_Min") { return "i64" }
-                // Math.Vec / Mat4 runtime helpers — fresh pointer-
-                // typed values returned from each op. Length / Dot /
-                // GetX/Y/Z return doubles; Equals returns bool.
-                if (calleeStr == "Vec3_new" || calleeStr == "Vec3_Add" || calleeStr == "Vec3_Sub" || calleeStr == "Vec3_Scale" || calleeStr == "Vec3_Cross" || calleeStr == "Vec3_Normalize") { return "AmalgameVec3*" }
-                if (calleeStr == "Vec3_Length" || calleeStr == "Vec3_Dot" || calleeStr == "Vec3_GetX" || calleeStr == "Vec3_GetY" || calleeStr == "Vec3_GetZ") { return "double" }
-                if (calleeStr == "Vec3_Equals") { return "code_bool" }
-                if (calleeStr == "Vec4_new" || calleeStr == "Vec4_Add" || calleeStr == "Vec4_Sub" || calleeStr == "Vec4_Scale" || calleeStr == "Mat4_TransformVec4") { return "AmalgameVec4*" }
-                if (calleeStr == "Vec4_Dot" || calleeStr == "Vec4_GetX" || calleeStr == "Vec4_GetY" || calleeStr == "Vec4_GetZ" || calleeStr == "Vec4_GetW") { return "double" }
-                if (calleeStr == "Mat4_new" || calleeStr == "Mat4_Identity" || calleeStr == "Mat4_Multiply" || calleeStr == "Mat4_Translate" || calleeStr == "Mat4_Scale" || calleeStr == "Mat4_RotateX" || calleeStr == "Mat4_RotateY" || calleeStr == "Mat4_RotateZ") { return "AmalgameMat4*" }
-                if (calleeStr == "Mat4_Get") { return "double" }
-                if (calleeStr == "Mat4_Set") { return "void" }
+                // Math + Math.Vec migrated to AM (post-v0.7.5);
+                // their runtime helpers no longer exist. Math.X /
+                // Vec3.X / Vec4.X / Mat4.X lower via the regular
+                // namespace-mangled dispatch (Amalgame_Math_Math_*
+                // / Amalgame_Math_Vec_Vec3_* etc.) and the cgen
+                // infers their return types from the .am method
+                // signatures, no hardcoded entries needed.
                 // FileWatcher migrated to AM (post-v0.7.5) — runtime
                 // helpers no longer exist; the namespace-mangled
                 // class method names lower via the regular dispatch.
@@ -959,10 +949,10 @@ public class CGen {
                 if (calleeStr == "WebSocket_ReceiveText" || calleeStr == "WebSocket_GetHost" || calleeStr == "WebSocket_AcceptKey") { return "code_string" }
                 if (calleeStr == "WebSocket_GetPort") { return "i64" }
                 if (calleeStr == "WebSocket_Close") { return "void" }
-                if (calleeStr == "Math_IsPrime" || calleeStr == "Math_IsNaN" || calleeStr == "Math_IsInf" || calleeStr == "Math_IsFinite" || calleeStr == "Math_ApproxEq") { return "code_bool" }
-                if (calleeStr == "Math_Random") { return "double" }
-                if (calleeStr == "Math_RandomInt" || calleeStr == "Math_AbsI" || calleeStr == "Math_PowI" || calleeStr == "Math_Gcd" || calleeStr == "Math_Lcm" || calleeStr == "Math_Clamp" || calleeStr == "Math_MaxI" || calleeStr == "Math_MinI" || calleeStr == "Math_ClampI") { return "i64" }
-                if (calleeStr == "Math_SeedRandom") { return "void" }
+                // Math_X flat-name return types — gone after the
+                // post-v0.7.5 Math.h → math.am migration. The
+                // `Math.IsPrime(n)` form now lowers to a normal
+                // namespace-mangled call.
                 // v0.5 package-manager: look up registered package
                 // funcs after the hardcoded SQLite/Redis/MQTT block.
                 // PR 4/5 will move SQLite/Redis/MQTT entries OUT of
@@ -1200,9 +1190,9 @@ public class CGen {
         if (cName == "String_ToFloat") { return "double" }
         if (cName == "String_IsEmpty" || cName == "String_Contains" || cName == "String_StartsWith" || cName == "String_EndsWith" || cName == "String_ToBool") { return "code_bool" }
         if (String_StartsWith(cName, "String_")) { return "code_string" }
-        if (cName == "Math_Sqrt" || cName == "Math_Abs" || cName == "Math_Pow" || cName == "Math_Floor" || cName == "Math_Ceil" || cName == "Math_Round" || cName == "Math_Random") { return "double" }
-        if (cName == "Math_AbsI" || cName == "Math_PowI" || cName == "Math_RandomInt" || cName == "Math_Gcd" || cName == "Math_MaxI" || cName == "Math_MinI" || cName == "Math_ClampI") { return "i64" }
-        if (cName == "Math_IsPrime" || cName == "Math_IsNaN" || cName == "Math_IsFinite") { return "code_bool" }
+        // Math_X flat-name return types — gone post-v0.7.5 Math.h
+        // migration. Math.X qualified calls lower via namespace
+        // mangling, return type comes from the AM signature.
         if (cName == "File_ReadAll") { return "code_string" }
         if (cName == "File_Exists" || cName == "File_WriteAll" || cName == "File_AppendAll" || cName == "File_Delete") { return "code_bool" }
         if (cName == "File_Size" || cName == "Args_Count" || cName == "Exit_Get") { return "i64" }
@@ -1298,8 +1288,9 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_String.h\"")
         this.Out.EmitLine("#include \"Amalgame_Collections.h\"")
         this.Out.EmitLine("#include \"Amalgame_IO.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Math.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Math_Vec.h\"")
+        // Math + Math_Vec migrated to AM (post-v0.7.5); runtime
+        // headers dropped. Their libm includes live in top-level
+        // @c {} blocks in src/stdlib/math.am + math_vec.am.
         // FileWatcher migrated to AM (post-v0.7.5); runtime header
         // dropped. Its libc include (<sys/stat.h>) lives in a
         // top-level @c {} block in src/stdlib/io_filewatcher.am.
@@ -2946,13 +2937,14 @@ public class CGen {
                 } else {
                     if (String_StartsWith(tname, "Set<") || tname == "Set") {
                         newCall = "AmalgameSet_new()"
-                    } else if (tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "WebSocket") {
-                        // Math.Vec / Mat / WebSocket runtime helpers —
-                        // skip the namespace-mangled symbol so
-                        // `new Vec3(x,y,z)` lowers to `Vec3_new(...)`
-                        // against the dedicated runtime header.
-                        // FileWatcher used to be in this list before
-                        // its post-v0.7.5 AM migration.
+                    } else if (tname == "WebSocket") {
+                        // WebSocket runtime helper — skip the
+                        // namespace-mangled symbol so `new WebSocket(...)`
+                        // lowers to `WebSocket_new(...)` against the
+                        // dedicated runtime header. FileWatcher used
+                        // to be in this list before its post-v0.7.5
+                        // AM migration; Vec3/Vec4/Mat4 same post the
+                        // Math_Vec.h migration.
                         newCall = tname + "_new("
                         let argc = expr.Args.Count()
                         for i in 0..argc {
@@ -3497,7 +3489,7 @@ public class CGen {
                         // Log is the next migration (post-v0.7.5) — it
                         // lives in src/stdlib/logging.am with `@c { … }`
                         // bodies, same namespace-mangled dispatch.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "Math" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Vec3" || tname == "Vec4" || tname == "Mat4" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -3516,13 +3508,13 @@ public class CGen {
                     let varType = this.LocalTypeGet(tname)
                     let bareType = String_Replace(varType, "*", "")
                     if (String_Length(bareType) > 0) {
-                        // Math.Vec / Mat / WebSocket runtime helpers —
-                        // strip the "Amalgame" struct prefix so
-                        // `v.Length()` on a `Vec3*` lowers to
-                        // `Vec3_Length(v)`, matching the runtime
-                        // header naming. FileWatcher dropped after
-                        // its post-v0.7.5 AM migration.
-                        if (bareType == "AmalgameVec3" || bareType == "AmalgameVec4" || bareType == "AmalgameMat4" || bareType == "AmalgameWebSocket") {
+                        // WebSocket runtime helper — strip the
+                        // "Amalgame" struct prefix so `ws.Send()`
+                        // on a `WebSocket*` lowers to `WebSocket_Send`,
+                        // matching the runtime header naming.
+                        // Vec3/Vec4/Mat4 used to be in this list
+                        // before their post-v0.7.5 AM migration.
+                        if (bareType == "AmalgameWebSocket") {
                             return String_Replace(bareType, "Amalgame", "") + "_" + mname
                         }
                         // Regex.Match struct → `Match_<method>` runtime.
@@ -3690,15 +3682,9 @@ public class CGen {
         if (t == "List") { return "AmalgameList*" }
         if (t == "Map")  { return "AmalgameMap*" }
         if (t == "Set")  { return "AmalgameSet*" }
-        // Math.Vec / Mat — runtime-allocated pointer types defined
-        // in runtime/Amalgame_Math_Vec.h. Skip SymName mangling so
-        // user code typing `let v: Vec3 = ...` lowers to the
-        // canonical struct pointer rather than `Amalgame_Compiler_Vec3*`.
-        if (t == "Vec3") { return "AmalgameVec3*" }
-        if (t == "Vec4") { return "AmalgameVec4*" }
-        if (t == "Mat4") { return "AmalgameMat4*" }
-        // FileWatcher migrated to AM (post-v0.7.5); falls through
-        // to the regular namespace-mangled lowering below.
+        // Vec3 / Vec4 / Mat4 migrated to AM (post-v0.7.5); fall
+        // through to the regular namespace-mangled lowering below.
+        // FileWatcher migrated to AM (post-v0.7.5); same path.
         if (t == "Match") { return "AmalgameRegexMatch*" }
         if (t == "WebSocket") { return "AmalgameWebSocket*" }
         if (this.IsEnum(t)) {

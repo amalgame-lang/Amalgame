@@ -1,66 +1,281 @@
 namespace Amalgame.Math.Vec
 
 // ═══════════════════════════════════════════════════════
-//  math_vec.am  —  Vec3, Vec4, Mat4 for game/graphics math
+//  math_vec.am — Vec3 / Vec4 / Mat4 (post-v0.7.5 migration)
 // ═══════════════════════════════════════════════════════
 //
-// These are *thin* facades over the C structs defined in
-// `runtime/Amalgame_Math_Vec.h`. Each method is recognised by
-// the cgen short-circuit as a runtime helper (Vec3, Vec4, Mat4
-// are in the isCoreStdlib dispatch list), so the method call
-// site lowers straight to `Vec3_Length(v)` rather than
-// `Amalgame_Math_Vec_Vec3_Length(v)`.
+// Pure-Amalgame impl replacing `runtime/Amalgame_Math_Vec.h`.
+// Vec3 / Vec4 carry their components as AM `float` fields (= C
+// `double`); Mat4 stores 16 doubles in column-major order via a
+// 16-method dispatch over named fields (M00..M33). The two
+// `@c { return ... }` blocks delegate to libm `sqrt` (Vec3.Length)
+// and `cos`/`sin` (Mat4.Rotate*) — no AM equivalent exists for
+// those primitives.
 //
-// Stored as pointer-to-struct on the Amalgame side (`Vec3*`,
-// `Mat4*`); GC-allocated by each helper so chained ops don't
-// alias their inputs.
+// Symbol mangling: `new Vec3(x,y,z)` lowers to
+// `Amalgame_Math_Vec_Vec3_new(x,y,z)` via the standard package-
+// class namespace path; the v0.7.4-era isCoreStdlib shortcut for
+// Vec3/Vec4/Mat4 is gone.
 //
 // Conventions:
 //   - Matrices are 4×4 column-major (OpenGL convention).
-//   - `Vec4.W` is the homogeneous coordinate (1 = position,
+//   - Vec4.W is the homogeneous coordinate (1 = position,
 //     0 = direction).
-//   - Rotations are in radians (use `Math.Pi() / 4` etc.).
-//
-// File is documentation-only; the runtime header is the source
-// of truth for behaviour. Tests in `tests/samples/stdlib_math_vec.am`.
+//   - Rotations are in radians.
+
+@c {
+    #include <math.h>
+}
 
 public class Vec3 {
-    public Vec3(x: float, y: float, z: float) {}
-    public float GetX()                  { return 0.0 }
-    public float GetY()                  { return 0.0 }
-    public float GetZ()                  { return 0.0 }
-    public Vec3 Add(other: Vec3)         { return this }
-    public Vec3 Sub(other: Vec3)         { return this }
-    public Vec3 Scale(k: float)          { return this }
-    public float Dot(other: Vec3)        { return 0.0 }
-    public Vec3 Cross(other: Vec3)       { return this }
-    public float Length()                { return 0.0 }
-    public Vec3 Normalize()              { return this }
-    public bool Equals(other: Vec3)      { return false }
+    public X: float
+    public Y: float
+    public Z: float
+
+    public Vec3(x: float, y: float, z: float) {
+        this.X = x
+        this.Y = y
+        this.Z = z
+    }
+
+    public float GetX() { return this.X }
+    public float GetY() { return this.Y }
+    public float GetZ() { return this.Z }
+
+    public Vec3 Add(other: Vec3) {
+        return new Vec3(this.X + other.X, this.Y + other.Y, this.Z + other.Z)
+    }
+    public Vec3 Sub(other: Vec3) {
+        return new Vec3(this.X - other.X, this.Y - other.Y, this.Z - other.Z)
+    }
+    public Vec3 Scale(k: float) {
+        return new Vec3(this.X * k, this.Y * k, this.Z * k)
+    }
+    public float Dot(other: Vec3) {
+        return this.X * other.X + this.Y * other.Y + this.Z * other.Z
+    }
+    public Vec3 Cross(other: Vec3) {
+        let cx: float = this.Y * other.Z - this.Z * other.Y
+        let cy: float = this.Z * other.X - this.X * other.Z
+        let cz: float = this.X * other.Y - this.Y * other.X
+        return new Vec3(cx, cy, cz)
+    }
+    public float Length() {
+        let s: float = this.X * this.X + this.Y * this.Y + this.Z * this.Z
+        @c { return sqrt(s); }
+    }
+    public Vec3 Normalize() {
+        let l: float = this.Length()
+        if (l == 0.0) { return new Vec3(0.0, 0.0, 0.0) }
+        return new Vec3(this.X / l, this.Y / l, this.Z / l)
+    }
+    public bool Equals(other: Vec3) {
+        return this.X == other.X && this.Y == other.Y && this.Z == other.Z
+    }
 }
 
 public class Vec4 {
-    public Vec4(x: float, y: float, z: float, w: float) {}
-    public float GetX()                  { return 0.0 }
-    public float GetY()                  { return 0.0 }
-    public float GetZ()                  { return 0.0 }
-    public float GetW()                  { return 0.0 }
-    public Vec4 Add(other: Vec4)         { return this }
-    public Vec4 Sub(other: Vec4)         { return this }
-    public Vec4 Scale(k: float)          { return this }
-    public float Dot(other: Vec4)        { return 0.0 }
+    public X: float
+    public Y: float
+    public Z: float
+    public W: float
+
+    public Vec4(x: float, y: float, z: float, w: float) {
+        this.X = x
+        this.Y = y
+        this.Z = z
+        this.W = w
+    }
+
+    public float GetX() { return this.X }
+    public float GetY() { return this.Y }
+    public float GetZ() { return this.Z }
+    public float GetW() { return this.W }
+
+    public Vec4 Add(other: Vec4) {
+        return new Vec4(this.X + other.X, this.Y + other.Y, this.Z + other.Z, this.W + other.W)
+    }
+    public Vec4 Sub(other: Vec4) {
+        return new Vec4(this.X - other.X, this.Y - other.Y, this.Z - other.Z, this.W - other.W)
+    }
+    public Vec4 Scale(k: float) {
+        return new Vec4(this.X * k, this.Y * k, this.Z * k, this.W * k)
+    }
+    public float Dot(other: Vec4) {
+        return this.X * other.X + this.Y * other.Y + this.Z * other.Z + this.W * other.W
+    }
 }
 
+// Column-major 4×4 matrix. Sixteen named float fields (M<col><row>)
+// keep the on-disk layout identical to OpenGL's `glUniformMatrix4fv`
+// expectations — col 0 is the X basis (M00, M01, M02, M03), col 3
+// is the translation (M30, M31, M32, M33 with M33 = 1 for affine).
+//
+// Why 16 fields rather than `M: List<float>`: matrix arithmetic
+// touches every cell; an inline field set is one C struct member
+// access whereas List.Get(i) is an AmalgameList_get function call.
+// The math is hot — keep it flat.
 public class Mat4 {
-    public Mat4() {}
-    public static Mat4 Identity()         { return new Mat4() }
-    public static Mat4 Translate(tx: float, ty: float, tz: float) { return new Mat4() }
-    public static Mat4 Scale(sx: float, sy: float, sz: float)     { return new Mat4() }
-    public static Mat4 RotateX(angleRad: float)                   { return new Mat4() }
-    public static Mat4 RotateY(angleRad: float)                   { return new Mat4() }
-    public static Mat4 RotateZ(angleRad: float)                   { return new Mat4() }
-    public float Get(col: int, row: int)                          { return 0.0 }
-    public void  Set(col: int, row: int, v: float)                {}
-    public Mat4  Multiply(other: Mat4)                            { return this }
-    public Vec4  TransformVec4(v: Vec4)                           { return v }
+    public M00: float
+    public M01: float
+    public M02: float
+    public M03: float
+    public M10: float
+    public M11: float
+    public M12: float
+    public M13: float
+    public M20: float
+    public M21: float
+    public M22: float
+    public M23: float
+    public M30: float
+    public M31: float
+    public M32: float
+    public M33: float
+
+    public Mat4() {
+        this.M00 = 0.0
+        this.M01 = 0.0
+        this.M02 = 0.0
+        this.M03 = 0.0
+        this.M10 = 0.0
+        this.M11 = 0.0
+        this.M12 = 0.0
+        this.M13 = 0.0
+        this.M20 = 0.0
+        this.M21 = 0.0
+        this.M22 = 0.0
+        this.M23 = 0.0
+        this.M30 = 0.0
+        this.M31 = 0.0
+        this.M32 = 0.0
+        this.M33 = 0.0
+    }
+
+    public static Mat4 Identity() {
+        let m = new Mat4()
+        m.M00 = 1.0
+        m.M11 = 1.0
+        m.M22 = 1.0
+        m.M33 = 1.0
+        return m
+    }
+
+    public static Mat4 Translate(tx: float, ty: float, tz: float) {
+        let m: Mat4 = Mat4.Identity()
+        m.M30 = tx
+        m.M31 = ty
+        m.M32 = tz
+        return m
+    }
+
+    public static Mat4 Scale(sx: float, sy: float, sz: float) {
+        let m = new Mat4()
+        m.M00 = sx
+        m.M11 = sy
+        m.M22 = sz
+        m.M33 = 1.0
+        return m
+    }
+
+    public static Mat4 RotateX(angleRad: float) {
+        var c: float = 0.0
+        var s: float = 0.0
+        @c { c = cos(angleRad); }
+        @c { s = sin(angleRad); }
+        let m: Mat4 = Mat4.Identity()
+        m.M11 = c
+        m.M12 = s
+        m.M21 = -s
+        m.M22 = c
+        return m
+    }
+    public static Mat4 RotateY(angleRad: float) {
+        var c: float = 0.0
+        var s: float = 0.0
+        @c { c = cos(angleRad); }
+        @c { s = sin(angleRad); }
+        let m: Mat4 = Mat4.Identity()
+        m.M00 = c
+        m.M02 = -s
+        m.M20 = s
+        m.M22 = c
+        return m
+    }
+    public static Mat4 RotateZ(angleRad: float) {
+        var c: float = 0.0
+        var s: float = 0.0
+        @c { c = cos(angleRad); }
+        @c { s = sin(angleRad); }
+        let m: Mat4 = Mat4.Identity()
+        m.M00 = c
+        m.M01 = s
+        m.M10 = -s
+        m.M11 = c
+        return m
+    }
+
+    // Get / Set provide a 2-D array-style API on top of the
+    // 16 named fields; the column-major (col, row) order matches
+    // the original C runtime helper.
+    public float Get(col: int, row: int) {
+        let idx: int = col * 4 + row
+        if (idx ==  0) { return this.M00 }
+        if (idx ==  1) { return this.M01 }
+        if (idx ==  2) { return this.M02 }
+        if (idx ==  3) { return this.M03 }
+        if (idx ==  4) { return this.M10 }
+        if (idx ==  5) { return this.M11 }
+        if (idx ==  6) { return this.M12 }
+        if (idx ==  7) { return this.M13 }
+        if (idx ==  8) { return this.M20 }
+        if (idx ==  9) { return this.M21 }
+        if (idx == 10) { return this.M22 }
+        if (idx == 11) { return this.M23 }
+        if (idx == 12) { return this.M30 }
+        if (idx == 13) { return this.M31 }
+        if (idx == 14) { return this.M32 }
+        return this.M33
+    }
+    public void Set(col: int, row: int, v: float) {
+        let idx: int = col * 4 + row
+        if (idx ==  0) { this.M00 = v; return }
+        if (idx ==  1) { this.M01 = v; return }
+        if (idx ==  2) { this.M02 = v; return }
+        if (idx ==  3) { this.M03 = v; return }
+        if (idx ==  4) { this.M10 = v; return }
+        if (idx ==  5) { this.M11 = v; return }
+        if (idx ==  6) { this.M12 = v; return }
+        if (idx ==  7) { this.M13 = v; return }
+        if (idx ==  8) { this.M20 = v; return }
+        if (idx ==  9) { this.M21 = v; return }
+        if (idx == 10) { this.M22 = v; return }
+        if (idx == 11) { this.M23 = v; return }
+        if (idx == 12) { this.M30 = v; return }
+        if (idx == 13) { this.M31 = v; return }
+        if (idx == 14) { this.M32 = v; return }
+        this.M33 = v
+    }
+
+    public Mat4 Multiply(other: Mat4) {
+        let r = new Mat4()
+        for col in 0..4 {
+            for row in 0..4 {
+                var sum: float = 0.0
+                for k in 0..4 {
+                    sum = sum + this.Get(k, row) * other.Get(col, k)
+                }
+                r.Set(col, row, sum)
+            }
+        }
+        return r
+    }
+
+    public Vec4 TransformVec4(v: Vec4) {
+        let rx: float = this.M00 * v.X + this.M10 * v.Y + this.M20 * v.Z + this.M30 * v.W
+        let ry: float = this.M01 * v.X + this.M11 * v.Y + this.M21 * v.Z + this.M31 * v.W
+        let rz: float = this.M02 * v.X + this.M12 * v.Y + this.M22 * v.Z + this.M32 * v.W
+        let rw: float = this.M03 * v.X + this.M13 * v.Y + this.M23 * v.Z + this.M33 * v.W
+        return new Vec4(rx, ry, rz, rw)
+    }
 }

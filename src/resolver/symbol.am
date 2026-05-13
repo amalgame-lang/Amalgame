@@ -155,11 +155,8 @@ public class Resolver {
         builtins.Add("File_Exists")
         builtins.Add("File_Delete")
         builtins.Add("File_Size")
-        // Math stdlib
-        builtins.Add("Math_Sqrt")
-        builtins.Add("Math_Abs")
-        builtins.Add("Math_Max")
-        builtins.Add("Math_Min")
+        // Math migrated to AM post-v0.7.5 — flat `Math_X` runtime
+        // helpers are gone, callers use qualified `Math.X(...)`.
         // Special
         builtins.Add("null")
         builtins.Add("true")
