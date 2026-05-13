@@ -61,6 +61,22 @@ if ! echo '#include <gc.h>' | gcc -E -x c - >/dev/null 2>&1; then
     echo "         MSYS2:         pacman -S mingw-w64-x86_64-gc" >&2
 fi
 
+# ── Step 0: Substitute build provenance into amc_buildinfo.am.
+#    The template lives at src/stdlib/amc_buildinfo.am.in with
+#    `__GIT_REV__` / `__BUILD_DATE__` placeholders; sed replaces
+#    them with the real values (or empty strings when unavailable)
+#    and emits the generated .am next to the template. Both values
+#    flow as literal AM strings — no `-D` preprocessor mechanism,
+#    no `@c { }`, pure Amalgame for `amc --version`.
+echo "=== Step 0: Stamp build provenance into amc_buildinfo.am ==="
+BI_GIT_REV=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "")
+BI_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+sed -e "s|__GIT_REV__|$BI_GIT_REV|g" \
+    -e "s|__BUILD_DATE__|$BI_BUILD_DATE|g" \
+    src/stdlib/amc_buildinfo.am.in > src/stdlib/amc_buildinfo.am
+echo "  rev:  $BI_GIT_REV"
+echo "  date: $BI_BUILD_DATE"
+
 if [ -x ./amc ]; then
     AMC=./amc
     echo "=== Step 1: Build gen_test (self-hosted via ./amc) ==="
@@ -107,23 +123,19 @@ time ./gen_test
 echo "=== Step 3: Compile amc ==="
 # main.am now emits its own int main() — no more amc_main.c wrapper needed.
 #
-# Bake build provenance into the binary so `amc --version` can show the
-# git short SHA + build date. Both fall back to "" when unavailable
-# (no git, dirty checkout outside a repo, etc.); the version handler
-# treats empty as "no build info" and skips the line — never emits a
-# half-rendered banner.
-#
 # `-Wno-unused-*` keeps the build silent: v0.6.4 dropped the
 # per-variable `__attribute__((unused))` markers + the
 # `(void)param;` / `(void)self;` boilerplate the cgen used to emit
 # (shrunk amc_lib.c by ~25%). `amc --lint` is the canonical
 # "is this variable actually used" check now.
-AMC_GIT_REV=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "")
-AMC_BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+#
+# Build provenance (git rev + build date) is no longer threaded
+# through `-DAMC_*` macros — Step 0 above stamped the values
+# directly into `src/stdlib/amc_buildinfo.am` as AM literal
+# strings, which are already baked into the amc_lib.c we're
+# about to link.
 gcc -Iruntime \
     -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable \
-    -DAMC_GIT_REV="\"$AMC_GIT_REV\"" \
-    -DAMC_BUILD_DATE="\"$AMC_BUILD_DATE\"" \
     src/amc_lib.c \
     -lgc -lm -lcurl -lz -o amc
 echo "✅ amc built $(date)"

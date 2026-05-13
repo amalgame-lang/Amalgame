@@ -1320,7 +1320,9 @@ public class CGen {
         // Service migrated to AM (post-v0.7.5); the signal-handler
         // state + handler function live in a top-level @c {} in
         // src/stdlib/service.am.
-        this.Out.EmitLine("#include \"Amalgame_BuildInfo.h\"")
+        // BuildInfo migrated to AM (post-v0.7.5); the AMC_GIT_REV /
+        // AMC_BUILD_DATE `#ifndef` guards live in a top-level @c {}
+        // in src/stdlib/amc_buildinfo.am.
         // (Amalgame_Database_SQLite.h / Amalgame_Database_Redis.h
         //  / Amalgame_Messaging_MQTT.h all moved to their own
         //  packages — PackageRegistry emits the #include lines for

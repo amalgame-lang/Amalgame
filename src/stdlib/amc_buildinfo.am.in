@@ -1,0 +1,32 @@
+namespace Amalgame.Compiler
+
+// ── BuildInfo ───────────────────────────────────────────
+//
+// Pinned build provenance, surfaced by `amc --version`.
+//
+// This file is a **template**. `build_amc.sh` runs a `sed`
+// substitution against the `__GIT_REV__` / `__BUILD_DATE__`
+// placeholders below and emits the real `src/stdlib/amc_buildinfo.am`
+// next to it. The generated file is gitignored — it changes every
+// build, but only by the literals it pins. When git rev / build date
+// are unavailable (no `.git`, sandbox builds, …) the script
+// substitutes empty strings; the `amc --version` handler treats `""`
+// as "no build info baked in" and skips the banner line rather than
+// emit a half-rendered one.
+//
+// History: started life in v0.7.4 (project G POC) as a `@c { … }`
+// block reading two `-DAMC_GIT_REV=...` macros baked at gcc time;
+// the post-v0.7.5 top-level-@c{} extension dropped the runtime
+// shim around the macros; this round eliminates the macros entirely
+// — the .am file is now **100% pure Amalgame** with literal strings
+// substituted at build time. No `@c { }`, no preprocessor mechanism.
+
+public class BuildInfo {
+    public static string GitRev() {
+        return "__GIT_REV__"
+    }
+
+    public static string BuildDate() {
+        return "__BUILD_DATE__"
+    }
+}
