@@ -1,0 +1,23 @@
+// facade.am — pure-Amalgame API for the fake-facade fixture.
+//
+// Compiled by `amc package add` (via AddCommand.PrecompileFacade)
+// through the three-step pipeline:
+//
+//   amc --lib --quiet facade.am -o build/<plat>/FakeFacade-facade
+//   gcc -c build/<plat>/FakeFacade-facade.c -o ...FakeFacade-facade.o
+//   ar  rcs build/<plat>/libamalgame-pkg-FakeFacade.a ...FakeFacade-facade.o
+//
+// User code that imports Amalgame.Fake.FakeFacade gets forward
+// decls only — the symbols resolve at link time from the archive.
+
+namespace Amalgame.Fake.FakeFacade
+
+public class FakeFacade {
+    public static int Make(int x) {
+        return x + 1
+    }
+
+    public static int Twice(int x) {
+        return x * 2
+    }
+}

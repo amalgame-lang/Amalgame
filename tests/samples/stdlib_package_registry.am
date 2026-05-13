@@ -242,6 +242,17 @@ public class Program {
             Console.WriteLine("[FAIL] pkgdir got '" + lp.PkgDir + "'")
         }
 
+        // ── Project F follow-up: Facade defaults to empty ─
+        // The fake-pkg fixture doesn't declare [stdlib].facade, so
+        // LoadFrom should leave Facade as "". A non-empty value
+        // would mean the manifest accidentally introduced the key
+        // or LoadFrom set it from a different field.
+        if (String_Length(lp.Facade) == 0) {
+            Console.WriteLine("[PASS] facade empty for fake-pkg")
+        } else {
+            Console.WriteLine("[FAIL] facade got '" + lp.Facade + "'")
+        }
+
         // ── v0.5.4: PlatformTag returns os-arch ───────────
 
         let platform: string = PackageRegistry.PlatformTag()

@@ -1,0 +1,10 @@
+# amalgame.lock — fixture for the facade pipeline e2e test.
+# Points at a synthetic fake-facade package (no real git remote)
+# that ships a pure-Amalgame `[stdlib].facade` alongside a stub
+# runtime header. Used by run_stdlib_tests.sh::test_pm_facade_e2e.
+
+[[package]]
+name = "fake-facade"
+git  = "example.com/fake/fake-facade"
+tag  = "v0.1.0"
+rev  = "deadbeefcafebabe0000000000000000000000ab"

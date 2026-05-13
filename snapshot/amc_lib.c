@@ -4786,6 +4786,7 @@ struct _Amalgame_Compiler_LoadedPackage {
     code_string CxxFlags;
     AmalgameList* Libs;
     code_bool Precompile;
+    code_string Facade;
 };
 
 
@@ -4804,6 +4805,7 @@ Amalgame_Compiler_LoadedPackage* Amalgame_Compiler_LoadedPackage_new() {
     self->CxxFlags = "";
     self->Libs = AmalgameList_new();
     self->Precompile = 0;
+    self->Facade = "";
     return self;
 }
 
@@ -4816,6 +4818,8 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
 AmalgameList* Amalgame_Compiler_PackageRegistry_ClassNames(Amalgame_Compiler_PackageRegistry* self);
 AmalgameList* Amalgame_Compiler_PackageRegistry_Headers(Amalgame_Compiler_PackageRegistry* self);
 code_bool Amalgame_Compiler_PackageRegistry_HasCxxSources(Amalgame_Compiler_PackageRegistry* self);
+code_string Amalgame_Compiler_PackageRegistry_FacadeArchivePath(Amalgame_Compiler_LoadedPackage* p);
+AmalgameList* Amalgame_Compiler_PackageRegistry_CollectFacadeArchives(Amalgame_Compiler_PackageRegistry* self);
 AmalgameList* Amalgame_Compiler_PackageRegistry_CollectLibs(Amalgame_Compiler_PackageRegistry* self);
 code_bool Amalgame_Compiler_PackageRegistry_IsCxxSource(code_string path);
 code_string Amalgame_Compiler_PackageRegistry_AmalgameHome();
@@ -4953,6 +4957,11 @@ Amalgame_Compiler_PackageRegistry* Amalgame_Compiler_PackageRegistry_LoadFrom(co
         }
         Amalgame_Compiler_TomlValue* precompileVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "precompile");
         lp->Precompile = Amalgame_Compiler_TomlValue_AsBool(precompileVal);
+        Amalgame_Compiler_TomlValue* facadeVal = Amalgame_Compiler_TomlValue_Get(stdlibTable, "facade");
+        code_string facadeRel = Amalgame_Compiler_TomlValue_AsString(facadeVal);
+        if (String_Length(facadeRel) > 0) {
+            lp->Facade = code_string_concat(code_string_concat(pkgDir, "/"), facadeRel);
+        }
         Amalgame_Compiler_TomlValue* funcsTbl = Amalgame_Compiler_TomlValue_Get(stdlibTable, "functions");
         if (Amalgame_Compiler_TomlValue_IsTable(funcsTbl)) {
             AmalgameList* funcKeys = Amalgame_Compiler_TomlValue_Keys(funcsTbl);
@@ -5006,6 +5015,27 @@ code_bool Amalgame_Compiler_PackageRegistry_HasCxxSources(Amalgame_Compiler_Pack
         }
     }
     return 0;
+}
+
+code_string Amalgame_Compiler_PackageRegistry_FacadeArchivePath(Amalgame_Compiler_LoadedPackage* p) {
+    code_string buildDir = Amalgame_Compiler_PackageRegistry_PrecompileCacheDir(p->PkgDir);
+    return code_string_concat(code_string_concat(code_string_concat(buildDir, "/libamalgame-pkg-"), p->ClassName), ".a");
+}
+
+AmalgameList* Amalgame_Compiler_PackageRegistry_CollectFacadeArchives(Amalgame_Compiler_PackageRegistry* self) {
+    AmalgameList* out = AmalgameList_new();
+    i64 n = AmalgameList_count(self->Packages);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_LoadedPackage* p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(self->Packages, i);
+        if (String_Length(p->Facade) == 0) {
+            continue;
+        }
+        code_string archive = Amalgame_Compiler_PackageRegistry_FacadeArchivePath(p);
+        if (File_Exists(archive)) {
+            AmalgameList_add(out, (void*)(intptr_t)(archive));
+        }
+    }
+    return out;
 }
 
 AmalgameList* Amalgame_Compiler_PackageRegistry_CollectLibs(Amalgame_Compiler_PackageRegistry* self) {
@@ -16424,11 +16454,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "120401c2";
+    return "d49e305b";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T09:02:50Z";
+    return "2026-05-13T10:03:18Z";
 }
 
 Amalgame_Compiler_Log* Amalgame_Compiler_Log_new();
@@ -21501,6 +21531,7 @@ struct _Amalgame_Compiler_AddCommand {
 void Amalgame_Compiler_AddCommand_PrintUsage();
 i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx);
 void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame_Compiler_TomlValue* stdlibTbl, code_string pkgVer);
+void Amalgame_Compiler_AddCommand_PrecompileFacade(code_string pkgDir, Amalgame_Compiler_TomlValue* stdlibTbl);
 i64 Amalgame_Compiler_AddCommand_NowSeconds();
 code_string Amalgame_Compiler_AddCommand_HumanDuration(i64 seconds);
 AmalgameList* Amalgame_Compiler_AddCommand_ParseSpec(code_string spec);
@@ -21763,9 +21794,15 @@ i64 Amalgame_Compiler_AddCommand_Run(i64 argc, i64 startIdx) {
     Console_WriteLine(code_string_concat("Cached at ", pkgDir));
     if (!noPrecompile) {
         Amalgame_Compiler_TomlValue* stdlibTblPre = Amalgame_Compiler_TomlValue_Get(manifest, "stdlib");
-        if (Amalgame_Compiler_TomlValue_IsTable(stdlibTblPre) && Amalgame_Compiler_TomlValue_AsBool(Amalgame_Compiler_TomlValue_Get(stdlibTblPre, "precompile"))) {
-            code_string pkgVer = code_string_concat(code_string_concat(mfNameStr, "@"), tag);
-            Amalgame_Compiler_AddCommand_PrecompilePackage(pkgDir, stdlibTblPre, pkgVer);
+        if (Amalgame_Compiler_TomlValue_IsTable(stdlibTblPre)) {
+            if (Amalgame_Compiler_TomlValue_AsBool(Amalgame_Compiler_TomlValue_Get(stdlibTblPre, "precompile"))) {
+                code_string pkgVer = code_string_concat(code_string_concat(mfNameStr, "@"), tag);
+                Amalgame_Compiler_AddCommand_PrecompilePackage(pkgDir, stdlibTblPre, pkgVer);
+            }
+            code_string facadeRel = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(stdlibTblPre, "facade"));
+            if (String_Length(facadeRel) > 0) {
+                Amalgame_Compiler_AddCommand_PrecompileFacade(pkgDir, stdlibTblPre);
+            }
         }
     }
     if (!Amalgame_Compiler_AddCommand_UpdateProjectManifest(depName, url, tag)) {
@@ -21894,6 +21931,72 @@ void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame
             Console_WriteError(code_string_concat("  warning: could not save calibration to ", Amalgame_Compiler_PackageRegistry_CalibrationPath()));
         }
     }
+}
+
+void Amalgame_Compiler_AddCommand_PrecompileFacade(code_string pkgDir, Amalgame_Compiler_TomlValue* stdlibTbl) {
+    code_string className = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(stdlibTbl, "class"));
+    if (String_Length(className) == 0) {
+        return;
+    }
+    code_string facadeRel = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(stdlibTbl, "facade"));
+    if (String_Length(facadeRel) == 0) {
+        return;
+    }
+    code_string facadeAbs = code_string_concat(code_string_concat(pkgDir, "/"), facadeRel);
+    if (!File_Exists(facadeAbs)) {
+        Console_WriteError(code_string_concat("  facade source not found: ", facadeAbs));
+        return;
+    }
+    code_string buildDir = Amalgame_Compiler_PackageRegistry_PrecompileCacheDir(pkgDir);
+    AmalgameProcessResult* mkdirRes = Process_RunCapture(code_string_concat(code_string_concat("mkdir -p '", buildDir), "'"));
+    if (mkdirRes->Exit != 0) {
+        Console_WriteError(code_string_concat("amc package add: could not create ", buildDir));
+        return;
+    }
+    code_string amcPath = Args_Get(0);
+    code_string amcRuntime = Env_Get("AMC_RUNTIME");
+    if (String_Length(amcRuntime) == 0) {
+        i64 slashIdx = String_LastIndexOf(amcPath, "/");
+        if (slashIdx >= 0) {
+            amcRuntime = code_string_concat(String_Substring(amcPath, 0, slashIdx), "/runtime");
+        }
+    }
+    code_string baseOut = code_string_concat(code_string_concat(code_string_concat(buildDir, "/"), className), "-facade");
+    code_string cFile = code_string_concat(baseOut, ".c");
+    code_string oFile = code_string_concat(baseOut, ".o");
+    code_string archive = code_string_concat(code_string_concat(code_string_concat(buildDir, "/libamalgame-pkg-"), className), ".a");
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  Compiling facade ", facadeRel), " → libamalgame-pkg-"), className), ".a"));
+    code_string amcCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(amcPath, " --lib --quiet '"), facadeAbs), "' -o '"), baseOut), "' 2>&1");
+    AmalgameProcessResult* amcRes = Process_RunCapture(amcCmd);
+    if (amcRes->Exit != 0) {
+        Console_WriteError("  FAILED to compile facade (amc):");
+        Console_WriteError(amcRes->Stdout);
+        return;
+    }
+    code_string gccCmd = "gcc -O2 -Iruntime";
+    if (String_Length(amcRuntime) > 0) {
+        gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " -I'"), amcRuntime), "'");
+    }
+    gccCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(gccCmd, " -w -c '"), cFile), "' -o '"), oFile), "' 2>&1");
+    AmalgameProcessResult* gccRes = Process_RunCapture(gccCmd);
+    if (gccRes->Exit != 0) {
+        Console_WriteError("  FAILED to compile facade (gcc):");
+        Console_WriteError(gccRes->Stdout);
+        return;
+    }
+    AmalgameProcessResult* rmRes = Process_RunCapture(code_string_concat(code_string_concat("rm -f '", archive), "' 2>&1"));
+    if (rmRes->Exit != 0) {
+        Console_WriteError(code_string_concat("  warning: could not remove stale archive ", archive));
+    }
+    code_string arCmd = code_string_concat(code_string_concat(code_string_concat(code_string_concat("ar rcs '", archive), "' '"), oFile), "' 2>&1");
+    AmalgameProcessResult* arRes = Process_RunCapture(arCmd);
+    if (arRes->Exit != 0) {
+        Console_WriteError("  FAILED to archive facade (ar):");
+        Console_WriteError(arRes->Stdout);
+        return;
+    }
+    i64 arSize = File_Size(archive);
+    Console_WriteLine(code_string_concat(code_string_concat(code_string_concat(code_string_concat("  ✓ libamalgame-pkg-", className), ".a ("), String_FromInt(arSize)), " bytes)"));
 }
 
 i64 Amalgame_Compiler_AddCommand_NowSeconds() {
@@ -23513,6 +23616,15 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         }
     }
     Amalgame_Compiler_PackageRegistry* pkgReg = Amalgame_Compiler_PackageRegistry_Load();
+    if (!self->IsLib) {
+        i64 pkgCount = AmalgameList_count(pkgReg->Packages);
+        for (i64 pi = 0; pi < pkgCount; pi++) {
+            Amalgame_Compiler_LoadedPackage* lp = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(pkgReg->Packages, pi);
+            if (String_Length(lp->Facade) > 0) {
+                AmalgameList_add(self->ExternalFiles, (void*)(intptr_t)(lp->Facade));
+            }
+        }
+    }
     Amalgame_Compiler_CGen* gen = Amalgame_Compiler_CGen_new();
     Amalgame_Compiler_CGen_RegisterPackages(gen, pkgReg);
     Amalgame_Compiler_CGen_BeginMulti(gen, nsPrefix);
@@ -23731,6 +23843,7 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
     AmalgameList* pkgObjs = Amalgame_Compiler_Program_PreCompilePackageSources(registry, amcRuntime);
     code_bool hasCxx = Amalgame_Compiler_PackageRegistry_HasCxxSources(registry);
     AmalgameList* pkgLibs = Amalgame_Compiler_PackageRegistry_CollectLibs(registry);
+    AmalgameList* facadeArs = Amalgame_Compiler_PackageRegistry_CollectFacadeArchives(registry);
     code_string findCmd = code_string_concat(code_string_concat("find ", dir), " -name '*_test.am' -type f");
     AmalgameProcessResult* discovered = Process_RunCapture(findCmd);
     if (discovered->Exit != 0) {
@@ -23798,6 +23911,10 @@ i64 Amalgame_Compiler_Program_RunTest(i64 argc) {
         i64 nObjs = AmalgameList_count(pkgObjs);
         for (i64 poi = 0; poi < nObjs; poi++) {
             gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)AmalgameList_get(pkgObjs, poi)), "'");
+        }
+        i64 nFAr = AmalgameList_count(facadeArs);
+        for (i64 fai = 0; fai < nFAr; fai++) {
+            gccCmd = code_string_concat(code_string_concat(code_string_concat(gccCmd, " '"), (code_string)AmalgameList_get(facadeArs, fai)), "'");
         }
         gccCmd = code_string_concat(gccCmd, " -lgc -lm -lcurl -lz -ldl -lpthread");
         i64 nLibs = AmalgameList_count(pkgLibs);

@@ -73,6 +73,27 @@ public class AmalgameCompiler {
         // #include emission. Empty lock → no-op everywhere.
         let pkgReg = PackageRegistry.Load()
 
+        // Project F follow-up: any LoadedPackage that declares a
+        // `[stdlib].facade = "facade.am"` ships a pure-AM facade
+        // that we auto-promote to `--external` so the cgen emits
+        // forward decls only — the definitions land at link time
+        // from the per-package `libamalgame-pkg-<class>.a` archive
+        // (built by `amc package add`, spliced by `amc test`).
+        // Skipped under `--lib` to avoid a self-reference loop when
+        // `amc package add` itself runs `amc --lib facade.am` to
+        // precompile the facade — at that point the package is in
+        // the registry but we must NOT add its facade as external
+        // to its own compile.
+        if (!this.IsLib) {
+            let pkgCount: int = pkgReg.Packages.Count()
+            for pi in 0..pkgCount {
+                let lp: LoadedPackage = pkgReg.Packages.Get(pi)
+                if (String_Length(lp.Facade) > 0) {
+                    this.ExternalFiles.Add(lp.Facade)
+                }
+            }
+        }
+
         // ── CGen init ─────────────────────────────────
         let gen = new CGen()
         gen.RegisterPackages(pkgReg)
@@ -353,6 +374,12 @@ public class Program {
         let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
         let hasCxx: bool = registry.HasCxxSources()
         let pkgLibs: List<string> = registry.CollectLibs()
+        // Project F follow-up: per-package facade archives
+        // (libamalgame-pkg-<class>.a) live alongside the precompiled
+        // .o files at <pkgDir>/build/<platform>/. Auto-link each one
+        // so user tests resolve the AM facade symbols without
+        // bundling the facade source on every compile.
+        let facadeArs: List<string> = registry.CollectFacadeArchives()
 
         // Discovery: shell out to `find`. Works on POSIX and on
         // Windows MSYS2 (the only Windows path the repo CI exercises).
@@ -443,6 +470,15 @@ public class Program {
             let nObjs: int = pkgObjs.Count()
             for poi in 0..nObjs {
                 gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
+            }
+            // Splice per-package facade archives. Each ar archive
+            // contributes one .o whose symbols satisfy the forward
+            // decls the cgen emitted (because the facade was
+            // auto-registered as `--external` — see
+            // AmalgameCompiler.Run).
+            let nFAr: int = facadeArs.Count()
+            for fai in 0..nFAr {
+                gccCmd = gccCmd + " '" + facadeArs.Get(fai) + "'"
             }
             gccCmd = gccCmd + " -lgc -lm -lcurl -lz -ldl -lpthread"
             // Splice per-package libs (-l<name>). Each loaded
