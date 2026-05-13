@@ -1,15 +1,21 @@
-// Amalgame VS Code extension — LSP client.
+// Amalgame VS Code extension — LSP client + DAP adapter.
 //
-// Spawns the amc binary in `lsp` mode and pipes stdio through
-// vscode-languageclient. The server publishes diagnostics on
-// every didOpen/didChange (Full sync); this client renders them
-// as squigglies in the editor.
+// LSP: spawns `amc lsp` and pipes stdio through vscode-languageclient.
+// Server publishes diagnostics on every didOpen/didChange (Full sync);
+// this client renders them as squigglies in the editor.
+// Disable via `"amalgame.enableLsp": false`.
 //
-// Disable via `"amalgame.enableLsp": false` in settings to fall
-// back to syntax-only highlighting.
+// DAP (v0.3.0+): registers a DebugAdapterDescriptorFactory for the
+// `amc` debug type. When VS Code starts a debug session of type
+// `amc`, this returns a DebugAdapterExecutable that spawns
+// `amc dap` (path overridable via `amalgame.dapServerPath`).
+// The package.json contribution carries `program`/`args` as a
+// fallback so the debug type still works if the factory fails to
+// register.
 
 const os = require('os');
-const { workspace, window } = require('vscode');
+const vscode = require('vscode');
+const { workspace, window } = vscode;
 const { LanguageClient, TransportKind, Trace } = require('vscode-languageclient/node');
 
 let client;
@@ -30,6 +36,32 @@ function resolveServerPath(raw) {
 
 function activate(context) {
     const config = workspace.getConfiguration('amalgame');
+
+    // ── DAP adapter registration ──────────────────────────
+    // Register before the LSP early-return so the debug type
+    // works even when the user disables the LSP. The factory
+    // reads the current `amalgame.dapServerPath` (falling back
+    // to `amalgame.serverPath`, then literal `amc`) every time
+    // a debug session starts — so changing the setting takes
+    // effect on the next F5 without a reload.
+    const dapChannel = window.createOutputChannel('Amalgame DAP');
+    const factory = {
+        createDebugAdapterDescriptor(_session, _executable) {
+            const cfg = workspace.getConfiguration('amalgame');
+            const rawDap = (cfg.get('dapServerPath', '') || '').trim();
+            const rawLsp = (cfg.get('serverPath', 'amc') || '').trim();
+            const raw = rawDap || rawLsp || 'amc';
+            const resolved = resolveServerPath(raw);
+            dapChannel.appendLine(`[dap] launching adapter: ${resolved} dap`);
+            return new vscode.DebugAdapterExecutable(resolved, ['dap']);
+        }
+    };
+    context.subscriptions.push(
+        vscode.debug.registerDebugAdapterDescriptorFactory('amc', factory)
+    );
+    dapChannel.appendLine('[dap] DebugAdapterDescriptorFactory registered for type "amc"');
+
+    // ── LSP client startup ────────────────────────────────
     if (!config.get('enableLsp', true)) {
         return;
     }

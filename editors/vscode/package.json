@@ -1,8 +1,8 @@
 {
   "name": "amalgame",
   "displayName": "Amalgame",
-  "description": "Syntax highlighting + LSP client for the Amalgame programming language (.am files).",
-  "version": "0.2.2",
+  "description": "Syntax highlighting + LSP client + DAP debugger for the Amalgame programming language (.am files).",
+  "version": "0.3.0",
   "publisher": "BastienMOUGET",
   "license": "MIT",
   "repository": {
@@ -12,10 +12,12 @@
   "engines": {
     "vscode": "^1.75.0"
   },
-  "categories": ["Programming Languages"],
+  "categories": ["Programming Languages", "Debuggers"],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:amalgame"
+    "onLanguage:amalgame",
+    "onDebugResolve:amc",
+    "onDebugDynamicConfigurations:amc"
   ],
   "contributes": {
     "languages": [
@@ -45,9 +47,80 @@
           "type": "boolean",
           "default": true,
           "description": "Enable the LSP client. Disable to fall back to syntax-only highlighting."
+        },
+        "amalgame.dapServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the amc binary used as the DAP server (`amc dap`). Empty string falls back to `amalgame.serverPath`. Set this if your debug builds need a different amc than your LSP."
         }
       }
-    }
+    },
+    "breakpoints": [
+      { "language": "amalgame" }
+    ],
+    "debuggers": [
+      {
+        "type": "amc",
+        "label": "Amalgame",
+        "languages": ["amalgame"],
+        "program": "amc",
+        "args": ["dap"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to the compiled binary. Build first with `amc build -g <entry.am>`.",
+                "default": "${workspaceFolder}/${fileBasenameNoExtension}"
+              },
+              "args": {
+                "type": "array",
+                "description": "Arguments passed to the debugged program.",
+                "items": { "type": "string" },
+                "default": []
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory at launch.",
+                "default": "${workspaceFolder}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Pause on the program's first statement.",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "amc",
+            "request": "launch",
+            "name": "Debug Amalgame",
+            "program": "${workspaceFolder}/${fileBasenameNoExtension}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Amalgame: Launch",
+            "description": "Launch and debug an Amalgame binary (build first with `amc build -g`).",
+            "body": {
+              "type": "amc",
+              "request": "launch",
+              "name": "${1:Debug Amalgame}",
+              "program": "^\"\\${workspaceFolder}/${2:bin}\"",
+              "args": [],
+              "cwd": "^\"\\${workspaceFolder}\"",
+              "stopOnEntry": false
+            }
+          }
+        ]
+      }
+    ]
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
