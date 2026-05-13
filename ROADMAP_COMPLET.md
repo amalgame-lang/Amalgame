@@ -1,13 +1,13 @@
 # Amalgame — Roadmap
 
-> **Upcoming priority sequence (2026-05-12 decision):**
-> `v0.7.4 = G (inline-C blocks)` ✅ shipped → `v0.7.5 = F (libamalgame pre-compile)` ✅ shipped → `v0.7.6+ stdlib in .am only`.
+> **Upcoming priority sequence (2026-05-13 decision):**
+> `v0.7.4 = G (inline-C blocks)` ✅ shipped → `v0.7.5 = F (libamalgame pre-compile)` ✅ shipped → `v0.7.6 = stdlib purity + per-package facade pipeline + Math.h/Math_Vec.h migration` ✅ shipped → `v0.8.0+ framework split` (extract user-facing stdlib into external `amalgame-*` packages).
 > No new `runtime/Amalgame_*.h` after v0.7.3 — every new stdlib module lands as a `.am` file
 > using `@c { ... }` blocks for low-level glue. Migration cost of existing `.h` files stays
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-13 · `amc 0.7.5` · self-hosted · 613/613 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + `lib/libamalgame.a` pre-compiled stdlib via `--external`
+> Updated 2026-05-13 · `amc 0.7.6` · self-hosted · 621/621 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + `lib/libamalgame.a` pre-compiled stdlib via `--external` + per-package facade pipeline (`[stdlib].facade`) for external packages
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see

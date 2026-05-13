@@ -7,6 +7,67 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.6] — 2026-05-13
+
+The **"stdlib purity arc + per-package facade pipeline"** release.
+Bundles seven PRs accumulated since v0.7.5:
+
+- `#371` Logging migrated runtime → AM (first post-G migration).
+- `#372` DateTime migrated to pure AM (Hinnant civil-from-days,
+  ISO 8601 format/parse). Two `@c {}` for clock syscalls only.
+- `#373` `@c { … }` extended to **file scope** for state globals
+  + libc includes. Drops `Amalgame_Logging.h` + `Amalgame_DateTime.h`.
+- `#374` FileWatcher / Service / Random / Crypto migrated;
+  their runtime headers deleted.
+- `#375` BuildInfo 100 % pure AM via build-time literal
+  substitution (`build_amc.sh` Step 0 + `amc_buildinfo.am.in`).
+  `runtime/Amalgame_BuildInfo.h` deleted.
+- `#377` **Per-package facade pipeline** — manifests can declare
+  `[stdlib].facade = "facade.am"`. `amc package add` precompiles
+  the facade through `amc --lib` + `gcc -c` + `ar rcs` into
+  `<pkg-cache>/build/<platform>/libamalgame-pkg-<class>.a`.
+  User builds auto-pass `--external <facade>` and auto-link the
+  archive (same mechanism as `lib/libamalgame.a` for the
+  integrated stdlib, but per-external-package).
+- `#378` Math.h + Math_Vec.h migrated to pure AM, runtime
+  headers deleted. `Math.X(...)` and `Vec3.X / Vec4.X / Mat4.X`
+  now lower via namespace mangling (no more `isCoreStdlib`
+  short-circuit). The v0.5-era LCG primitives
+  (`Math_Random` / `Math_SeedRandom`) are gone — `Amalgame.Random`
+  (PCG-32 + crypto entropy) replaces them.
+
+### Net result
+
+- `runtime/Amalgame_*.h` count: **18 → 9** files (eight removed
+  this arc: Logging, DateTime, FileWatch, Service, Random,
+  Crypto, BuildInfo, Math, Math_Vec). The remaining 9 are all
+  justified by perf (foundation `_runtime.h`, String/Collections)
+  or vendor bindings (Net libcurl, Compress zlib, Regex POSIX,
+  Console/IO/Process/WebSocket thin syscall wrappers).
+- Tests: **613 → 621 PASS** / 0 FAIL / 0 SKIP.
+- Five new external packages live (`amalgame-encoding`,
+  `amalgame-crypto`, `amalgame-random`, `amalgame-math`,
+  `amalgame-math-vec`) all opt in to the facade pipeline. They
+  ship pure-AM facades for the same modules amc still bundles —
+  v0.7.6 keeps both paths working; v0.8.0+ will remove the
+  bundled copies once the packages stabilise on the curated index.
+
+### Breaking changes
+
+- **`Math_Sqrt(x)` / `Math_AbsI(x)` etc. flat-name calls removed.**
+  Callers use the qualified `Math.Sqrt(x)` / `Math.AbsI(x)` form
+  exposed by `src/stdlib/math.am`.
+- **`Math_Random` / `Math_SeedRandom` / `Math_RandomInt`** —
+  the runtime LCG primitives — are gone. Use
+  `import Amalgame.Random` + `new Random(seed)` / `Random.SystemBytes(n)`.
+- `Vec3` / `Vec4` / `Mat4` symbol naming: the C-level mangled
+  name changes from `Vec3_X` (runtime header form) to
+  `Amalgame_Math_Vec_Vec3_X` (namespace form). User AM code is
+  unaffected; only handwritten C consumers of the runtime
+  symbols need updating.
+
+---
+
 ## [v0.7.5] — 2026-05-13
 
 The **"project F — libamalgame.a pre-compile"** patch release.
