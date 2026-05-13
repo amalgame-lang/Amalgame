@@ -14010,11 +14010,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "a9dce87e";
+    return "1f80f3d2";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T15:57:16Z";
+    return "2026-05-13T19:07:46Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -18839,6 +18839,9 @@ void Amalgame_Compiler_AddCommand_RebuildLockFromTomlDeps(Amalgame_Compiler_Toml
 i64 Amalgame_Compiler_AddCommand_RunSearch(i64 argc, i64 startIdx);
 void Amalgame_Compiler_AddCommand_PrintVersionsForPackage(Amalgame_Compiler_TomlValue* verArr, code_string pkgName, code_string amcVer);
 void Amalgame_Compiler_AddCommand_PrintVersionsJsonForPackage(Amalgame_Compiler_TomlValue* verArr, code_string pkgName, code_string urlS, code_string amcVer);
+i64 Amalgame_Compiler_AddCommand_RunSuggest(i64 argc, i64 startIdx);
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_AddCommand_FindPackageByName(Amalgame_Compiler_TomlValue* pkgArr, code_string target);
+code_string Amalgame_Compiler_AddCommand_LatestCompatibleTag(Amalgame_Compiler_TomlValue* verArr, code_string pkgName, code_string amcVer);
 code_string Amalgame_Compiler_AddCommand_JsonEscape(code_string s);
 i64 Amalgame_Compiler_AddCommand_RunInfo(i64 argc, i64 startIdx);
 i64 Amalgame_Compiler_AddCommand_RunOutdated(i64 argc, i64 startIdx);
@@ -19477,6 +19480,9 @@ i64 Amalgame_Compiler_AddCommand_RunPackage(i64 argc) {
     if (code_string_equals(sub, "search")) {
         return Amalgame_Compiler_AddCommand_RunSearch(argc, 3);
     }
+    if (code_string_equals(sub, "suggest")) {
+        return Amalgame_Compiler_AddCommand_RunSuggest(argc, 3);
+    }
     if (code_string_equals(sub, "versions")) {
         return Amalgame_Compiler_AddCommand_RunVersions(argc, 3);
     }
@@ -19520,6 +19526,8 @@ void Amalgame_Compiler_AddCommand_PrintPackageUsage() {
     Console_WriteError("    [--no-precompile]            Skip install-time compile (manifest opt-in)");
     Console_WriteError("  search [keyword] [--refresh]  List or filter packages-index with version compat");
     Console_WriteError("    [--no-versions]              Skip the per-package versions block (faster)");
+    Console_WriteError("  suggest <name|ns> [--json]    Suggest packages that match a class or namespace");
+    Console_WriteError("    [--refresh]                  (intended for LSP / `using X;` quickfix integration)");
     Console_WriteError("  versions <name> [--refresh]   Show all indexed versions of a single package");
     Console_WriteError("    [--json]                     Emit machine-readable JSON");
     Console_WriteError("  info <name> [--refresh]       Show description, url, license, versions, install");
@@ -20177,6 +20185,212 @@ void Amalgame_Compiler_AddCommand_PrintVersionsJsonForPackage(Amalgame_Compiler_
     }
     out = code_string_concat(out, "  ]\n}");
     Console_WriteLine(out);
+}
+
+i64 Amalgame_Compiler_AddCommand_RunSuggest(i64 argc, i64 startIdx) {
+    code_string query = "";
+    code_bool refresh = 0;
+    code_bool jsonOut = 0;
+    i64 i = startIdx;
+    while (i < argc) {
+        code_string a = Args_Get(i);
+        if (code_string_equals(a, "-h") || code_string_equals(a, "--help")) {
+            Console_WriteError("Usage: amc package suggest <name|namespace> [--json] [--refresh]");
+            Console_WriteError("");
+            Console_WriteError("Suggest packages from the curated index that match a class");
+            Console_WriteError("or namespace. Intended for LSP `using X;` quickfix integration.");
+            Console_WriteError("");
+            Console_WriteError("Examples:");
+            Console_WriteError("  amc package suggest Crypto --json");
+            Console_WriteError("  amc package suggest Amalgame.IO.FileWatcher");
+            Console_WriteError("  amc package suggest yaml");
+            return 0;
+        }
+        if (code_string_equals(a, "--refresh")) {
+            refresh = 1;
+        } else if (code_string_equals(a, "--json")) {
+            jsonOut = 1;
+        } else if (String_Length(query) == 0) {
+            query = a;
+        }
+        i = i + 1;
+    }
+    if (String_Length(query) == 0) {
+        Console_WriteError("amc package suggest: missing <name|namespace> argument");
+        Console_WriteError("Run `amc package suggest --help` for usage.");
+        return 2;
+    }
+    code_string tail = query;
+    i64 lastDot = String_LastIndexOf(query, ".");
+    if (lastDot >= 0 && lastDot + 1 < String_Length(query)) {
+        tail = String_Substring(query, lastDot + 1, String_Length(query) - lastDot - 1);
+    }
+    code_string tailL = String_ToLower(tail);
+    code_string queryL = String_ToLower(query);
+    if (refresh) {
+        code_string cachePath = Amalgame_Compiler_AddCommand_IndexCachePath();
+        if (File_Exists(cachePath)) {
+            i64 _rm = Process_Run(code_string_concat(code_string_concat("rm -f '", cachePath), "'"));
+        }
+    }
+    code_string indexSrc = Amalgame_Compiler_AddCommand_FetchIndex();
+    if (String_Length(indexSrc) == 0) {
+        if (jsonOut) {
+            Console_WriteLine("[]");
+        } else {
+            Console_WriteError("could not fetch packages-index");
+        }
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* doc = Amalgame_Compiler_Toml_Parse(indexSrc);
+    if (Amalgame_Compiler_TomlValue_IsNull(doc)) {
+        if (jsonOut) {
+            Console_WriteLine("[]");
+        } else {
+            Console_WriteError("packages-index parse error");
+        }
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* pkgArr = Amalgame_Compiler_TomlValue_Get(doc, "package");
+    if (!Amalgame_Compiler_TomlValue_IsArray(pkgArr)) {
+        if (jsonOut) {
+            Console_WriteLine("[]");
+        } else {
+            Console_WriteError("packages-index has no [[package]] entries");
+        }
+        return 1;
+    }
+    Amalgame_Compiler_TomlValue* verArr = Amalgame_Compiler_TomlValue_Get(doc, "version");
+    code_string amcVer = Amalgame_Compiler_PackageRegistry_AmcVersion();
+    AmalgameList* matchedNames = AmalgameList_new();
+    AmalgameList* matchedReasons = AmalgameList_new();
+    i64 n = Amalgame_Compiler_TomlValue_Count(pkgArr);
+    for (i64 j = 0; j < n; j++) {
+        Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_TomlValue_At(pkgArr, j);
+        code_string nameS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "name"));
+        code_string nameL = String_ToLower(nameS);
+        if (code_string_equals(nameL, tailL) && lastDot >= 0) {
+            AmalgameList_add(matchedNames, (void*)(intptr_t)(nameS));
+            AmalgameList_add(matchedReasons, (void*)(intptr_t)("namespace-tail"));
+        } else if (code_string_equals(nameL, queryL) || code_string_equals(nameL, tailL)) {
+            AmalgameList_add(matchedNames, (void*)(intptr_t)(nameS));
+            AmalgameList_add(matchedReasons, (void*)(intptr_t)("class-name"));
+        }
+    }
+    if (AmalgameList_count(matchedNames) == 0) {
+        for (i64 j = 0; j < n; j++) {
+            Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_TomlValue_At(pkgArr, j);
+            code_string nameS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "name"));
+            code_string nameL = String_ToLower(nameS);
+            if (String_IndexOf(nameL, tailL) >= 0) {
+                AmalgameList_add(matchedNames, (void*)(intptr_t)(nameS));
+                AmalgameList_add(matchedReasons, (void*)(intptr_t)("name-substring"));
+            }
+        }
+    }
+    if (AmalgameList_count(matchedNames) == 0) {
+        for (i64 j = 0; j < n; j++) {
+            Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_TomlValue_At(pkgArr, j);
+            code_string nameS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "name"));
+            code_string descL = String_ToLower(Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "description")));
+            if (String_IndexOf(descL, tailL) >= 0) {
+                AmalgameList_add(matchedNames, (void*)(intptr_t)(nameS));
+                AmalgameList_add(matchedReasons, (void*)(intptr_t)("description-substring"));
+            }
+        }
+    }
+    i64 mc = AmalgameList_count(matchedNames);
+    if (jsonOut) {
+        code_string out = "[";
+        if (mc == 0) {
+            Console_WriteLine(code_string_concat(out, "]"));
+            return 0;
+        }
+        for (i64 k = 0; k < mc; k++) {
+            code_string nm = (code_string)AmalgameList_get(matchedNames, k);
+            code_string reason = (code_string)AmalgameList_get(matchedReasons, k);
+            Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_AddCommand_FindPackageByName(pkgArr, nm);
+            code_string descS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "description"));
+            code_string tierS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "tier"));
+            code_string urlS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "url"));
+            code_string licS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "license"));
+            code_string catS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "category"));
+            code_string latest = Amalgame_Compiler_AddCommand_LatestCompatibleTag(verArr, nm, amcVer);
+            code_string item = "\n  {";
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"name\": \""), Amalgame_Compiler_AddCommand_JsonEscape(nm)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"url\": \""), Amalgame_Compiler_AddCommand_JsonEscape(urlS)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"description\": \""), Amalgame_Compiler_AddCommand_JsonEscape(descS)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"tier\": \""), Amalgame_Compiler_AddCommand_JsonEscape(tierS)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"license\": \""), Amalgame_Compiler_AddCommand_JsonEscape(licS)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"category\": \""), Amalgame_Compiler_AddCommand_JsonEscape(catS)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"latest_compatible_tag\": \""), Amalgame_Compiler_AddCommand_JsonEscape(latest)), "\",");
+            item = code_string_concat(code_string_concat(code_string_concat(item, "\"match_reason\": \""), Amalgame_Compiler_AddCommand_JsonEscape(reason)), "\"}");
+            if (k + 1 < mc) {
+                item = code_string_concat(item, ",");
+            }
+            out = code_string_concat(out, item);
+        }
+        out = code_string_concat(out, "\n]");
+        Console_WriteLine(out);
+        return 0;
+    }
+    if (mc == 0) {
+        Console_WriteLine(code_string_concat(code_string_concat("No packages match '", query), "'."));
+        Console_WriteLine("Run `amc package search` to browse the full curated index.");
+        return 1;
+    }
+    Console_WriteLine(code_string_concat(code_string_concat("Suggestions for '", query), "':"));
+    Console_WriteLine("");
+    for (i64 k = 0; k < mc; k++) {
+        code_string nm = (code_string)AmalgameList_get(matchedNames, k);
+        Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_AddCommand_FindPackageByName(pkgArr, nm);
+        code_string descS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "description"));
+        code_string urlS = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "url"));
+        code_string latest = Amalgame_Compiler_AddCommand_LatestCompatibleTag(verArr, nm, amcVer);
+        Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("  ", nm), " — "), descS));
+        Console_WriteLine(code_string_concat("    ", urlS));
+        if (String_Length(latest) > 0) {
+            Console_WriteLine(code_string_concat(code_string_concat(code_string_concat("    install: amc package add ", nm), "@"), latest));
+        } else {
+            Console_WriteLine(code_string_concat(code_string_concat("    install: amc package add ", nm), "  (no compatible tag indexed yet)"));
+        }
+        Console_WriteLine("");
+    }
+    return 0;
+}
+
+Amalgame_Compiler_TomlValue* Amalgame_Compiler_AddCommand_FindPackageByName(Amalgame_Compiler_TomlValue* pkgArr, code_string target) {
+    i64 n = Amalgame_Compiler_TomlValue_Count(pkgArr);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_TomlValue_At(pkgArr, i);
+        if (code_string_equals(Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "name")), target)) {
+            return entry;
+        }
+    }
+    return Amalgame_Compiler_TomlValue_new();
+}
+
+code_string Amalgame_Compiler_AddCommand_LatestCompatibleTag(Amalgame_Compiler_TomlValue* verArr, code_string pkgName, code_string amcVer) {
+    if (!Amalgame_Compiler_TomlValue_IsArray(verArr)) {
+        return "";
+    }
+    i64 n = Amalgame_Compiler_TomlValue_Count(verArr);
+    code_string found = "";
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_TomlValue* entry = Amalgame_Compiler_TomlValue_At(verArr, i);
+        if (!code_string_equals(Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "package")), pkgName)) {
+            continue;
+        }
+        code_string tag = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "tag"));
+        code_string req = Amalgame_Compiler_TomlValue_AsString(Amalgame_Compiler_TomlValue_Get(entry, "required-amalgame"));
+        if (String_Length(tag) == 0) {
+            continue;
+        }
+        if (String_Length(req) == 0 || Amalgame_Compiler_PackageRegistry_VersionSatisfies(amcVer, req)) {
+            found = tag;
+        }
+    }
+    return found;
 }
 
 code_string Amalgame_Compiler_AddCommand_JsonEscape(code_string s) {
