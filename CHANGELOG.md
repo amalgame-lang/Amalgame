@@ -7,6 +7,72 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.8] — 2026-05-13
+
+The **"bundled-runtime trim"** release. Three runtime-header
+modules move out of amc's bundled tree into stand-alone external
+packages — same pattern as the v0.7.7 framework split, but for
+C-header bindings rather than `.am` facades.
+
+### Three new external packages (all v0.1.0)
+
+- [`amalgame-regex`](https://github.com/amalgame-lang/amalgame-regex)
+  — POSIX extended-regex binding (Test / Match / MatchAll /
+  Replace). Available on every POSIX + MSYS2 host.
+- [`amalgame-compress`](https://github.com/amalgame-lang/amalgame-compress)
+  — zlib gzip + raw-deflate codec (Gzip / Gunzip / Deflate /
+  Inflate over `List<int>` buffers).
+- [`amalgame-net-websocket`](https://github.com/amalgame-lang/amalgame-net-websocket)
+  — RFC 6455 WebSocket client (text frames, plain TCP, in-process
+  SHA-1 + Base64 — no OpenSSL dep).
+
+### Bundled `runtime/Amalgame_*.h` shrinks
+
+Before v0.7.8: 9 runtime headers shipped with amc. After: 6
+headers (the bootstrap surface).
+
+```
+runtime/
+├── _runtime.h           (GC, exception, code_string — irréductible)
+├── Amalgame_String.h    (compiler hot path)
+├── Amalgame_Collections.h
+├── Amalgame_Console.h
+├── Amalgame_IO.h        (+ Path_*)
+├── Amalgame_Net.h       (HTTP for migrate.am AI providers)
+└── Amalgame_Process.h   (gcc invocation, env)
+```
+
+The three removed headers ship in their respective external
+packages. amc's cgen `isCoreStdlib` mapping for `Regex.X` /
+`Compress.X` / `WebSocket.X` stays in place — call sites still
+lower to flat `Regex_X` etc., and the package's runtime header
+contributes the matching symbol via `PkgHeaders` → `#include`.
+
+### Migration
+
+User code calling `Regex.X` / `Compress.X` / `WebSocket.X` must
+add the matching package once:
+
+```bash
+amc package add regex compress net-websocket
+```
+
+The package is required from v0.7.8 onwards. On v0.7.7 it's a
+no-op (header already bundled).
+
+### Known gotcha
+
+The cgen has a latent **facade-package ABI bug** when a facade
+`.am` calls its own static methods via `ClassName.X()` syntax.
+The bug fires when the package's own class is in
+`amalgame.lock` at compile time — `PkgClassMangledPrefix`
+collides with the file-scope `SymName` path, producing a
+function-decl with the wrong mangling and a runtime segfault.
+No currently-released facade hits the pattern; tracking for
+v0.8.0 as the prerequisite to extract msgpack.
+
+---
+
 ## [v0.7.7] — 2026-05-13
 
 The **"framework split"** release. Five user-facing stdlib modules
