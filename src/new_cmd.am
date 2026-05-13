@@ -26,7 +26,7 @@ public class NewCommand {
     public NewCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc new <name> [--template <kind>] [--force]")
+        Console.WriteError("Usage: amc new <name> [--template <kind>] [--vscode] [--force]")
         Console.WriteError("")
         Console.WriteError("Scaffold a new Amalgame project named <name>.")
         Console.WriteError("")
@@ -40,14 +40,19 @@ public class NewCommand {
         Console.WriteError("")
         Console.WriteError("Flags:")
         Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service.")
+        Console.WriteError("  --vscode             Also write .vscode/launch.json + settings.json")
+        Console.WriteError("                       so F5 launches the binary under `amc dap` with")
+        Console.WriteError("                       breakpoints on the .am sources. Opt-in to avoid")
+        Console.WriteError("                       polluting projects edited in other editors.")
         Console.WriteError("  --force              Overwrite if <name>/ already exists.")
         Console.WriteError("  -h, --help           Print this help and exit.")
     }
 
     public static int Run(int argc) {
-        var name:     string = ""
-        var template: string = "exe"
-        var force:    bool   = false
+        var name:       string = ""
+        var template:   string = "exe"
+        var force:      bool   = false
+        var wantVscode: bool   = false
 
         var i: int = 2
         while (i < argc) {
@@ -58,6 +63,8 @@ public class NewCommand {
             }
             if (a == "--force") {
                 force = true
+            } else if (a == "--vscode") {
+                wantVscode = true
             } else if (a == "--template") {
                 if (i + 1 >= argc) {
                     Console.WriteError("amc new: --template needs a value")
@@ -112,16 +119,23 @@ public class NewCommand {
             return 1
         }
 
+        var rc: int = 0
         if (template == "exe") {
-            return NewCommand.ScaffoldExe(name, baseName)
+            rc = NewCommand.ScaffoldExe(name, baseName)
+        } else if (template == "lib") {
+            rc = NewCommand.ScaffoldLib(name, baseName)
+        } else if (template == "service") {
+            rc = NewCommand.ScaffoldService(name, baseName)
+        } else {
+            rc = NewCommand.ScaffoldTest(name, baseName)
         }
-        if (template == "lib") {
-            return NewCommand.ScaffoldLib(name, baseName)
+        if (rc != 0) { return rc }
+        // Opt-in VS Code wiring. Only after the template succeeded —
+        // no partial scaffolds with a stray .vscode/.
+        if (wantVscode) {
+            return NewCommand.WriteVscodeConfig(name, baseName, template)
         }
-        if (template == "service") {
-            return NewCommand.ScaffoldService(name, baseName)
-        }
-        return NewCommand.ScaffoldTest(name, baseName)
+        return 0
     }
 
     // ── Templates ─────────────────────────────────────
@@ -243,6 +257,88 @@ public class NewCommand {
         Console.WriteLine("  cd " + path)
         Console.WriteLine("  amc test tests/")
         return 0
+    }
+
+    // ── VS Code wiring (opt-in, --vscode flag) ────────
+    // Writes .vscode/launch.json + .vscode/settings.json so F5 in
+    // VS Code launches the project's binary under `amc dap` with
+    // .am-level breakpoints. Opt-in only — projects edited in
+    // other editors (Neovim, Helix, IntelliJ) stay clean.
+    //
+    // launch.json hard-codes program = ${workspaceFolder}/<base>,
+    // which matches the build.sh output for exe + service. For
+    // lib/test the file lands as well but the user has to point
+    // `program` at whatever binary they actually want to debug —
+    // we print a hint when that's the case.
+    private static int WriteVscodeConfig(string path, string base, string template) {
+        let vsDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/.vscode"))
+        if (vsDir != 0) {
+            Console.WriteError("amc new: failed to create .vscode/ subdirectory")
+            return 1
+        }
+        let launchJson:   string = NewCommand.VscodeLaunchJson(base)
+        let settingsJson: string = NewCommand.VscodeSettingsJson()
+        if (!NewCommand.WriteFile(path + "/.vscode/launch.json",   launchJson))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/.vscode/settings.json", settingsJson)) { return 1 }
+        Console.WriteLine("  + .vscode/launch.json + settings.json (F5 = `amc dap` debug)")
+        if (template == "lib" || template == "test") {
+            Console.WriteLine("  note: '" + template + "' templates have no default runnable binary;")
+            Console.WriteLine("        edit .vscode/launch.json `program` before F5.")
+        } else {
+            Console.WriteLine("  build with `amc build -g src/main.am` for DWARF; then F5 in VS Code.")
+        }
+        return 0
+    }
+
+    // Two configurations so the user can F5 on either OS without
+    // hand-editing the file. `program` differs only by the `.exe`
+    // suffix Windows MinGW links produce; `cwd`, `args` and the
+    // `amc` debug type are invariant. The VS Code F5 dropdown
+    // surfaces the pretty `name` so users see "(Linux/macOS)" vs
+    // "(Windows)" and pick accordingly.
+    //
+    // VS Code's substitution syntax is ${workspaceFolder}, which
+    // collides with Amalgame's `"text {var}"` interpolation —
+    // `{workspaceFolder}` would resolve as an identifier lookup.
+    // Sentinel locals `lb`/`rb` are the documented workaround
+    // (CONTINUATION.md gotcha #7).
+    private static string VscodeLaunchJson(string base) {
+        let lb: string = "{"
+        let rb: string = "}"
+        let wsf: string = "$" + lb + "workspaceFolder" + rb
+        var s: string = ""
+        s = s + "{\n"
+        s = s + "  \"version\": \"0.2.0\",\n"
+        s = s + "  \"configurations\": [\n"
+        s = s + "    {\n"
+        s = s + "      \"type\": \"amc\",\n"
+        s = s + "      \"request\": \"launch\",\n"
+        s = s + "      \"name\": \"Debug " + base + " (Linux/macOS)\",\n"
+        s = s + "      \"program\": \"" + wsf + "/" + base + "\",\n"
+        s = s + "      \"args\": [],\n"
+        s = s + "      \"cwd\": \"" + wsf + "\",\n"
+        s = s + "      \"stopOnEntry\": false\n"
+        s = s + "    },\n"
+        s = s + "    {\n"
+        s = s + "      \"type\": \"amc\",\n"
+        s = s + "      \"request\": \"launch\",\n"
+        s = s + "      \"name\": \"Debug " + base + " (Windows)\",\n"
+        s = s + "      \"program\": \"" + wsf + "/" + base + ".exe\",\n"
+        s = s + "      \"args\": [],\n"
+        s = s + "      \"cwd\": \"" + wsf + "\",\n"
+        s = s + "      \"stopOnEntry\": false\n"
+        s = s + "    }\n"
+        s = s + "  ]\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string VscodeSettingsJson() {
+        var s: string = ""
+        s = s + "{\n"
+        s = s + "  \"amalgame.enableLsp\": true\n"
+        s = s + "}\n"
+        return s
     }
 
     // ── File contents ─────────────────────────────────
