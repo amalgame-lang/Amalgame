@@ -151,19 +151,23 @@ run_test "IO: Path.GetExtension"      "$SAMPLES/stdlib_io.am"     "ext: .am"
 run_test "IO: Path.GetFilename"       "$SAMPLES/stdlib_io.am"     "file: hello.am"
 
 # ── Amalgame.Math ──────────────────────────────────────
+# Post-v0.7.5: Math migrated from runtime/Amalgame_Math.h to a
+# pure-AM facade at src/stdlib/math.am, with `@c { ... }` blocks
+# delegating to libm primitives. Tests pull math.am in as an
+# extra input via the 5th arg to run_test, same pattern as Json.
 echo ""
 echo "── Amalgame.Math ───────────────────────────"
-run_test "Math: Sqrt(16)"             "$SAMPLES/stdlib_math.am"   "sqrt(16) = 4"
-run_test "Math: PowI(2,10)"           "$SAMPLES/stdlib_math.am"   "pow(2,10) = 1024"
-run_test "Math: AbsI(-42)"            "$SAMPLES/stdlib_math.am"   "abs(-42) = 42"
-run_test "Math: MaxI(10,42)"          "$SAMPLES/stdlib_math.am"   "max = 42"
-run_test "Math: MinI(10,42)"          "$SAMPLES/stdlib_math.am"   "min = 10"
-run_test "Math: ClampI(150,0,100)"    "$SAMPLES/stdlib_math.am"   "clamp = 100"
-run_test "Math: Gcd(48,18)"           "$SAMPLES/stdlib_math.am"   "gcd(48,18) = 6"
-run_test "Math: IsPrime(17)=true"     "$SAMPLES/stdlib_math.am"   "prime(17) = true"
-run_test "Math: IsPrime(18)=false"    "$SAMPLES/stdlib_math.am"   "prime(18) = false"
-run_test "Math: IsFinite(1.0)"        "$SAMPLES/stdlib_math.am"   "finite = true"
-run_test "Math: SeedRandom"           "$SAMPLES/stdlib_math.am"   "rand seeded: ok"
+MATH_LIB="src/stdlib/math.am"
+run_test "Math: Sqrt(16)"             "$SAMPLES/stdlib_math.am"   "sqrt(16) = 4"        "" "$MATH_LIB"
+run_test "Math: PowI(2,10)"           "$SAMPLES/stdlib_math.am"   "pow(2,10) = 1024"    "" "$MATH_LIB"
+run_test "Math: AbsI(-42)"            "$SAMPLES/stdlib_math.am"   "abs(-42) = 42"       "" "$MATH_LIB"
+run_test "Math: MaxI(10,42)"          "$SAMPLES/stdlib_math.am"   "max = 42"            "" "$MATH_LIB"
+run_test "Math: MinI(10,42)"          "$SAMPLES/stdlib_math.am"   "min = 10"            "" "$MATH_LIB"
+run_test "Math: ClampI(150,0,100)"    "$SAMPLES/stdlib_math.am"   "clamp = 100"         "" "$MATH_LIB"
+run_test "Math: Gcd(48,18)"           "$SAMPLES/stdlib_math.am"   "gcd(48,18) = 6"      "" "$MATH_LIB"
+run_test "Math: IsPrime(17)=true"     "$SAMPLES/stdlib_math.am"   "prime(17) = true"    "" "$MATH_LIB"
+run_test "Math: IsPrime(18)=false"    "$SAMPLES/stdlib_math.am"   "prime(18) = false"   "" "$MATH_LIB"
+run_test "Math: IsFinite(1.0)"        "$SAMPLES/stdlib_math.am"   "finite = true"       "" "$MATH_LIB"
 
 # ── Amalgame.String ────────────────────────────────────
 echo ""
@@ -739,7 +743,10 @@ run_test "Service: sleep short-circuits"    "$SAMPLES/stdlib_service.am" "[PASS]
 # the trig-derived Mat4.RotateZ result which uses an epsilon.
 echo ""
 echo "── Amalgame.Math.Vec ───────────────────────"
-MV_LIB="src/stdlib/math_vec.am"
+# math_vec.am calls Math.Abs in normalization checks — pass both
+# math.am and math_vec.am so the bundle resolves Math + Vec3+Vec4+Mat4
+# under the same namespace prefix.
+MV_LIB="src/stdlib/math.am src/stdlib/math_vec.am"
 run_test "Vec: vec3 ctor"           "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 ctor"            "" "$MV_LIB"
 run_test "Vec: vec3 add"            "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 add"             "" "$MV_LIB"
 run_test "Vec: vec3 sub"            "$SAMPLES/stdlib_math_vec.am" "[PASS] vec3 sub"             "" "$MV_LIB"
@@ -783,7 +790,10 @@ run_test "FW: detect recreate"       "$SAMPLES/stdlib_file_watch.am" "[PASS] det
 # comments, and the Has() / missing-key behaviour.
 echo ""
 echo "── Amalgame.Formats.Yaml ──────────────────"
-YAML_LIB="src/stdlib/yaml.am"
+# stdlib_yaml.am uses Math.Abs for the float-precision check;
+# bundle math.am alongside yaml.am so the namespace dispatch
+# finds it under the same prefix.
+YAML_LIB="src/stdlib/math.am src/stdlib/yaml.am"
 run_test "Yaml: parse empty"        "$SAMPLES/stdlib_yaml.am" "[PASS] parse empty"        "" "$YAML_LIB"
 run_test "Yaml: kv is map"          "$SAMPLES/stdlib_yaml.am" "[PASS] kv is map"          "" "$YAML_LIB"
 run_test "Yaml: kv string"          "$SAMPLES/stdlib_yaml.am" "[PASS] kv string"          "" "$YAML_LIB"

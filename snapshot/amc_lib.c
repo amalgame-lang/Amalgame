@@ -5,8 +5,6 @@
 #include "Amalgame_String.h"
 #include "Amalgame_Collections.h"
 #include "Amalgame_IO.h"
-#include "Amalgame_Math.h"
-#include "Amalgame_Math_Vec.h"
 #include "Amalgame_Regex.h"
 #include "Amalgame_Compress.h"
 #include "Amalgame_WebSocket.h"
@@ -6266,15 +6264,6 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         if (String_StartsWith(tname, "Set<") || code_string_equals(tname, "Set")) {
             return "AmalgameSet*";
         }
-        if (code_string_equals(tname, "Vec3")) {
-            return "AmalgameVec3*";
-        }
-        if (code_string_equals(tname, "Vec4")) {
-            return "AmalgameVec4*";
-        }
-        if (code_string_equals(tname, "Mat4")) {
-            return "AmalgameMat4*";
-        }
         if (code_string_equals(tname, "Match")) {
             return "AmalgameRegexMatch*";
         }
@@ -6439,36 +6428,6 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
             if (code_string_equals(calleeStr, "TcpConn_Receive")) {
                 return "code_string";
             }
-            if (code_string_equals(calleeStr, "Math_Sqrt") || code_string_equals(calleeStr, "Math_Abs") || code_string_equals(calleeStr, "Math_Floor") || code_string_equals(calleeStr, "Math_Ceil") || code_string_equals(calleeStr, "Math_Round") || code_string_equals(calleeStr, "Math_Pow") || code_string_equals(calleeStr, "Math_Log")) {
-                return "double";
-            }
-            if (code_string_equals(calleeStr, "Math_Max") || code_string_equals(calleeStr, "Math_Min")) {
-                return "i64";
-            }
-            if (code_string_equals(calleeStr, "Vec3_new") || code_string_equals(calleeStr, "Vec3_Add") || code_string_equals(calleeStr, "Vec3_Sub") || code_string_equals(calleeStr, "Vec3_Scale") || code_string_equals(calleeStr, "Vec3_Cross") || code_string_equals(calleeStr, "Vec3_Normalize")) {
-                return "AmalgameVec3*";
-            }
-            if (code_string_equals(calleeStr, "Vec3_Length") || code_string_equals(calleeStr, "Vec3_Dot") || code_string_equals(calleeStr, "Vec3_GetX") || code_string_equals(calleeStr, "Vec3_GetY") || code_string_equals(calleeStr, "Vec3_GetZ")) {
-                return "double";
-            }
-            if (code_string_equals(calleeStr, "Vec3_Equals")) {
-                return "code_bool";
-            }
-            if (code_string_equals(calleeStr, "Vec4_new") || code_string_equals(calleeStr, "Vec4_Add") || code_string_equals(calleeStr, "Vec4_Sub") || code_string_equals(calleeStr, "Vec4_Scale") || code_string_equals(calleeStr, "Mat4_TransformVec4")) {
-                return "AmalgameVec4*";
-            }
-            if (code_string_equals(calleeStr, "Vec4_Dot") || code_string_equals(calleeStr, "Vec4_GetX") || code_string_equals(calleeStr, "Vec4_GetY") || code_string_equals(calleeStr, "Vec4_GetZ") || code_string_equals(calleeStr, "Vec4_GetW")) {
-                return "double";
-            }
-            if (code_string_equals(calleeStr, "Mat4_new") || code_string_equals(calleeStr, "Mat4_Identity") || code_string_equals(calleeStr, "Mat4_Multiply") || code_string_equals(calleeStr, "Mat4_Translate") || code_string_equals(calleeStr, "Mat4_Scale") || code_string_equals(calleeStr, "Mat4_RotateX") || code_string_equals(calleeStr, "Mat4_RotateY") || code_string_equals(calleeStr, "Mat4_RotateZ")) {
-                return "AmalgameMat4*";
-            }
-            if (code_string_equals(calleeStr, "Mat4_Get")) {
-                return "double";
-            }
-            if (code_string_equals(calleeStr, "Mat4_Set")) {
-                return "void";
-            }
             if (code_string_equals(calleeStr, "Regex_Match")) {
                 return "AmalgameRegexMatch*";
             }
@@ -6503,18 +6462,6 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
                 return "i64";
             }
             if (code_string_equals(calleeStr, "WebSocket_Close")) {
-                return "void";
-            }
-            if (code_string_equals(calleeStr, "Math_IsPrime") || code_string_equals(calleeStr, "Math_IsNaN") || code_string_equals(calleeStr, "Math_IsInf") || code_string_equals(calleeStr, "Math_IsFinite") || code_string_equals(calleeStr, "Math_ApproxEq")) {
-                return "code_bool";
-            }
-            if (code_string_equals(calleeStr, "Math_Random")) {
-                return "double";
-            }
-            if (code_string_equals(calleeStr, "Math_RandomInt") || code_string_equals(calleeStr, "Math_AbsI") || code_string_equals(calleeStr, "Math_PowI") || code_string_equals(calleeStr, "Math_Gcd") || code_string_equals(calleeStr, "Math_Lcm") || code_string_equals(calleeStr, "Math_Clamp") || code_string_equals(calleeStr, "Math_MaxI") || code_string_equals(calleeStr, "Math_MinI") || code_string_equals(calleeStr, "Math_ClampI")) {
-                return "i64";
-            }
-            if (code_string_equals(calleeStr, "Math_SeedRandom")) {
                 return "void";
             }
             i64 pkgN = AmalgameList_count(self->PkgFuncs);
@@ -6751,15 +6698,6 @@ static code_string Amalgame_Compiler_CGen_BuiltinCallReturnType(Amalgame_Compile
     if (String_StartsWith(cName, "String_")) {
         return "code_string";
     }
-    if (code_string_equals(cName, "Math_Sqrt") || code_string_equals(cName, "Math_Abs") || code_string_equals(cName, "Math_Pow") || code_string_equals(cName, "Math_Floor") || code_string_equals(cName, "Math_Ceil") || code_string_equals(cName, "Math_Round") || code_string_equals(cName, "Math_Random")) {
-        return "double";
-    }
-    if (code_string_equals(cName, "Math_AbsI") || code_string_equals(cName, "Math_PowI") || code_string_equals(cName, "Math_RandomInt") || code_string_equals(cName, "Math_Gcd") || code_string_equals(cName, "Math_MaxI") || code_string_equals(cName, "Math_MinI") || code_string_equals(cName, "Math_ClampI")) {
-        return "i64";
-    }
-    if (code_string_equals(cName, "Math_IsPrime") || code_string_equals(cName, "Math_IsNaN") || code_string_equals(cName, "Math_IsFinite")) {
-        return "code_bool";
-    }
     if (code_string_equals(cName, "File_ReadAll")) {
         return "code_string";
     }
@@ -6868,8 +6806,6 @@ static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_String.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Collections.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_IO.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math.h\"");
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Math_Vec.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Regex.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Compress.h\"");
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_WebSocket.h\"");
@@ -8337,7 +8273,7 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
             } else {
                 if (String_StartsWith(tname, "Set<") || code_string_equals(tname, "Set")) {
                     newCall = "AmalgameSet_new()";
-                } else if (code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "WebSocket")) {
+                } else if (code_string_equals(tname, "WebSocket")) {
                     newCall = code_string_concat(tname, "_new(");
                     i64 argc = AmalgameList_count(expr->Args);
                     for (i64 i = 0; i < argc; i++) {
@@ -8838,7 +8774,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                     if (String_Length(externalMangled) > 0) {
                         return code_string_concat(code_string_concat(externalMangled, "_"), mname);
                     }
-                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
+                    code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
                     }
@@ -8851,7 +8787,7 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 code_string varType = Amalgame_Compiler_CGen_LocalTypeGet(self, tname);
                 code_string bareType = String_Replace(varType, "*", "");
                 if (String_Length(bareType) > 0) {
-                    if (code_string_equals(bareType, "AmalgameVec3") || code_string_equals(bareType, "AmalgameVec4") || code_string_equals(bareType, "AmalgameMat4") || code_string_equals(bareType, "AmalgameWebSocket")) {
+                    if (code_string_equals(bareType, "AmalgameWebSocket")) {
                         return code_string_concat(code_string_concat(String_Replace(bareType, "Amalgame", ""), "_"), mname);
                     }
                     if (code_string_equals(bareType, "AmalgameRegexMatch")) {
@@ -8982,15 +8918,6 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (code_string_equals(t, "Set")) {
         return "AmalgameSet*";
-    }
-    if (code_string_equals(t, "Vec3")) {
-        return "AmalgameVec3*";
-    }
-    if (code_string_equals(t, "Vec4")) {
-        return "AmalgameVec4*";
-    }
-    if (code_string_equals(t, "Mat4")) {
-        return "AmalgameMat4*";
     }
     if (code_string_equals(t, "Match")) {
         return "AmalgameRegexMatch*";
@@ -10569,10 +10496,6 @@ static void Amalgame_Compiler_Resolver_RegisterBuiltins(Amalgame_Compiler_Resolv
     AmalgameList_add(builtins, (void*)(intptr_t)("File_Exists"));
     AmalgameList_add(builtins, (void*)(intptr_t)("File_Delete"));
     AmalgameList_add(builtins, (void*)(intptr_t)("File_Size"));
-    AmalgameList_add(builtins, (void*)(intptr_t)("Math_Sqrt"));
-    AmalgameList_add(builtins, (void*)(intptr_t)("Math_Abs"));
-    AmalgameList_add(builtins, (void*)(intptr_t)("Math_Max"));
-    AmalgameList_add(builtins, (void*)(intptr_t)("Math_Min"));
     AmalgameList_add(builtins, (void*)(intptr_t)("null"));
     AmalgameList_add(builtins, (void*)(intptr_t)("true"));
     AmalgameList_add(builtins, (void*)(intptr_t)("false"));
@@ -11141,26 +11064,6 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Get", "string", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Has", "bool", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math", "type", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Sqrt", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Abs", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_AbsI", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_PowI", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Pow", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Floor", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Ceil", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Round", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_MaxI", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_MinI", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_MaxF", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_MinF", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_ClampI", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Gcd", "int", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_IsPrime", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_IsFinite", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_IsNaN", "bool", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_SeedRandom", "void", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_Random", "float", 0);
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math_RandomInt", "int", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket", "type", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Connect", "WebSocket", 0);
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_SendText", "bool", 0);
@@ -16454,11 +16357,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "d49e305b";
+    return "bd9f36f4";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T10:03:18Z";
+    return "2026-05-13T12:51:02Z";
 }
 
 Amalgame_Compiler_Log* Amalgame_Compiler_Log_new();

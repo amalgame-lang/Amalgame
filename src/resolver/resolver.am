@@ -361,28 +361,11 @@ public class FullResolver {
         // Environment variables (Env.Get / Env.Has)
         this.DeclareGlobal("Env_Get",             "string", false)
         this.DeclareGlobal("Env_Has",             "bool",   false)
-        // Math
+        // Math — migrated to AM (post-v0.7.5). The class itself
+        // is still declared here so `import Amalgame.Math` sees
+        // the type, but the flat `Math_X` runtime symbols are gone
+        // — callers use the qualified `Math.X(...)` form.
         this.DeclareGlobal("Math",           "type",   false)
-        this.DeclareGlobal("Math_Sqrt",      "float",  false)
-        this.DeclareGlobal("Math_Abs",       "float",  false)
-        this.DeclareGlobal("Math_AbsI",      "int",    false)
-        this.DeclareGlobal("Math_PowI",      "int",    false)
-        this.DeclareGlobal("Math_Pow",       "float",  false)
-        this.DeclareGlobal("Math_Floor",     "float",  false)
-        this.DeclareGlobal("Math_Ceil",      "float",  false)
-        this.DeclareGlobal("Math_Round",     "float",  false)
-        this.DeclareGlobal("Math_MaxI",      "int",    false)
-        this.DeclareGlobal("Math_MinI",      "int",    false)
-        this.DeclareGlobal("Math_MaxF",      "float",  false)
-        this.DeclareGlobal("Math_MinF",      "float",  false)
-        this.DeclareGlobal("Math_ClampI",    "int",    false)
-        this.DeclareGlobal("Math_Gcd",       "int",    false)
-        this.DeclareGlobal("Math_IsPrime",   "bool",   false)
-        this.DeclareGlobal("Math_IsFinite",  "bool",   false)
-        this.DeclareGlobal("Math_IsNaN",     "bool",   false)
-        this.DeclareGlobal("Math_SeedRandom","void",   false)
-        this.DeclareGlobal("Math_Random",    "float",  false)
-        this.DeclareGlobal("Math_RandomInt", "int",    false)
         // WebSocket — RFC 6455 client (text frames).
         // Runtime in runtime/Amalgame_WebSocket.h.
         this.DeclareGlobal("WebSocket",            "type",         false)
