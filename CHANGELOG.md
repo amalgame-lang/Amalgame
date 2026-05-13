@@ -7,6 +7,54 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.9] — 2026-05-13
+
+The **"build / run / watch"** release. Three first-class compile
+verbs land, factoring the gcc-link logic that `amc test` has
+been carrying internally since v0.5.
+
+### New subcommands
+
+- **`amc build [-o <out>] [-v] <entry.am>`** — runs amc + gcc
+  in one step. Output defaults to the entry's stem
+  (`hello.am` → `./hello`). Links `lib/libamalgame.a` when
+  shipped alongside amc, plus every installed package's facade
+  archive / vendored `.o` / `[stdlib].libs`.
+- **`amc run [-o <out>] [-v] <entry.am> [-- args…]`** — build
+  then exec. Args after the `--` sentinel forward to the user
+  binary's argv.
+- **`amc watch [-o <out>] [--run] [-v] <entry.am>`** — build
+  now, then poll the entry's mtime every 500 ms and rebuild on
+  change. With `--run`, re-exec after each rebuild. mtime
+  polling is a small vendored `@c { }` block calling `stat()` /
+  `_stat64` — no FileWatcher package dependency.
+
+### Internals
+
+- New `Program.BuildOneBinary` static helper factors the
+  amc + gcc invocation that `RunTest` was carrying inline.
+  Returns the exit code; same gcc flags either way (runtime
+  `-I`, two-stage C++ link when any package ships `.cpp`,
+  package `.o` / facade archives / `-l<lib>`).
+- New `Program.BuildEntry` orchestrates the full pipeline:
+  `EnsureInstalled`, `PreCompilePackageSources`,
+  `CollectFacadeArchives`, `CollectLibs`, then `BuildOneBinary`.
+
+### Backwards compatibility
+
+The bare-args form `amc foo.am -o foo` keeps its v0.7.x
+behaviour: emit `foo.c`, no gcc step. Users who want to splice
+their own gcc command (CI cross-compile, custom flags) can rely
+on it staying stable.
+
+### Migration note
+
+`amc watch` watches only the entry file explicitly named on the
+command line in v1. Transitive imports come post-D when the
+`Amalgame.IO.FileWatcher` package gains an event-based mode.
+
+---
+
 ## [v0.7.8] — 2026-05-13
 
 The **"bundled-runtime trim"** release. Three runtime-header
