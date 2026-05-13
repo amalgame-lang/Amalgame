@@ -325,6 +325,7 @@ run_test "PR: CollectLibs"            "$SAMPLES/stdlib_package_registry.am" "[PA
 # v0.5.4 — precompile flag + PkgDir + platform tag + Calibration.
 run_test "PR: precompile parsed"      "$SAMPLES/stdlib_package_registry.am" "[PASS] precompile parsed"     "" "$PR_EXTRA"
 run_test "PR: pkgdir populated"       "$SAMPLES/stdlib_package_registry.am" "[PASS] pkgdir populated"      "" "$PR_EXTRA"
+run_test "PR: facade empty default"   "$SAMPLES/stdlib_package_registry.am" "[PASS] facade empty for fake-pkg" "" "$PR_EXTRA"
 run_test "PR: platform tag shape"     "$SAMPLES/stdlib_package_registry.am" "[PASS] platform tag shape"    "" "$PR_EXTRA"
 run_test "PR: precompile cache path"  "$SAMPLES/stdlib_package_registry.am" "[PASS] precompile cache path" "" "$PR_EXTRA"
 run_test "PR: empty calib no eta"     "$SAMPLES/stdlib_package_registry.am" "[PASS] empty calibration no eta" "" "$PR_EXTRA"
@@ -434,6 +435,149 @@ USRAM
     rm -rf "$TMPDIR"
 }
 test_pm_e2e
+
+# ── PackageManager facade e2e (project F follow-up) ───
+# Exercises `[stdlib].facade = "facade.am"` end-to-end:
+#   1. Copy the read-only fixture cache into a tmpdir.
+#   2. Pre-build the per-package archive at
+#      <pkgDir>/build/<plat>/libamalgame-pkg-FakeFacade.a using
+#      the same three-step pipeline AddCommand.PrecompileFacade
+#      uses (amc --lib + gcc -c + ar rcs).
+#   3. Compile user.am with the registry pointing at the tmp cache.
+#      AmalgameCompiler.Run auto-promotes the facade to --external,
+#      so the cgen emits forward decls only (no facade body in out.c).
+#   4. gcc + link user.c against the per-package archive.
+#   5. Run the binary, assert the expected stdout.
+#
+# Validates both halves of the project F follow-up: the precompile
+# pipeline that ships the archive, and the auto-consume pipeline
+# that picks it up at user-build time.
+echo ""
+echo "── PackageManager facade e2e ───────────────"
+test_pm_facade_e2e() {
+    local TMPDIR=$(mktemp -d -t pm-facade-e2e-XXXXXX)
+    cp -r tests/fixtures/pm-facade/cache "$TMPDIR/cache"
+    cp tests/fixtures/pm-facade/amalgame.lock "$TMPDIR/amalgame.lock"
+
+    local PKG_DIR="$TMPDIR/cache/example.com/fake/fake-facade/v0.1.0_deadbeef"
+    # Mirror PackageRegistry.PlatformTag() — keep in sync.
+    local PLAT
+    case "$(uname -s)" in
+        Linux*)               PLAT="linux-$(uname -m)" ;;
+        Darwin*)              PLAT="macos-$(uname -m)" ;;
+        MINGW*|MSYS*|CYGWIN*) PLAT="windows-$(uname -m)" ;;
+        *)                    PLAT="unknown-$(uname -m)" ;;
+    esac
+    # Normalise amd64 / aarch64 to the same shortform PlatformTag uses.
+    PLAT="${PLAT/amd64/x86_64}"
+    PLAT="${PLAT/aarch64/arm64}"
+    local BUILD_DIR="$PKG_DIR/build/$PLAT"
+    mkdir -p "$BUILD_DIR"
+
+    local AMC_ABS="$(realpath ./amc)"
+    local RUNTIME_ABS="$(realpath runtime)"
+
+    # ── Pre-build the per-package archive ─────────────
+    local BASE="$BUILD_DIR/FakeFacade-facade"
+    local ARCHIVE="$BUILD_DIR/libamalgame-pkg-FakeFacade.a"
+
+    printf "  %-38s" "facade e2e: amc --lib"
+    if "$AMC_ABS" --lib --quiet "$PKG_DIR/facade.am" -o "$BASE" > "$TMPDIR/precompile.log" 2>&1; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/precompile.log" | sed 's/^/    /'
+        rm -rf "$TMPDIR"; return
+    fi
+
+    printf "  %-38s" "facade e2e: gcc -c"
+    if gcc -O2 -I"$RUNTIME_ABS" -w -c "$BASE.c" -o "$BASE.o" > "$TMPDIR/gcc.log" 2>&1; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/gcc.log" | sed 's/^/    /'
+        rm -rf "$TMPDIR"; return
+    fi
+
+    printf "  %-38s" "facade e2e: ar rcs"
+    if ar rcs "$ARCHIVE" "$BASE.o" 2> "$TMPDIR/ar.log"; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/ar.log" | sed 's/^/    /'
+        rm -rf "$TMPDIR"; return
+    fi
+
+    printf "  %-38s" "facade e2e: archive exists"
+    if [ -s "$ARCHIVE" ]; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC} (missing $ARCHIVE)"; FAIL=$((FAIL+1))
+        rm -rf "$TMPDIR"; return
+    fi
+
+    # ── User code that imports the facade ─────────────
+    cat > "$TMPDIR/user.am" <<'USRAM'
+namespace UserApp
+
+public class Program {
+    public static void Main() {
+        let v: int = FakeFacade.Make(41)
+        let w: int = FakeFacade.Twice(v)
+        Console.WriteLine("got " + String_FromInt(w))
+    }
+}
+USRAM
+
+    local CACHE_ABS="$TMPDIR/cache"
+    (cd "$TMPDIR" && AMALGAME_PACKAGES_DIR="$CACHE_ABS" "$AMC_ABS" -o out user.am --quiet) \
+        > "$TMPDIR/usercompile.log" 2>&1
+    local amc_exit=$?
+
+    printf "  %-38s" "facade e2e: amc compile"
+    if [ $amc_exit -eq 0 ]; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC} (amc exited $amc_exit)"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/usercompile.log" | sed 's/^/    /'
+        rm -rf "$TMPDIR"; return
+    fi
+
+    # The cgen should emit forward decls only for the facade class,
+    # never its method bodies — they live in the archive.
+    printf "  %-38s" "facade e2e: forward decl emitted"
+    if grep -q "Amalgame_Fake_FakeFacade_FakeFacade_Make(i64 x);" "$TMPDIR/out.c"; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
+    fi
+    printf "  %-38s" "facade e2e: body NOT emitted"
+    if ! grep -q "return x \* 2;" "$TMPDIR/out.c"; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC} (facade body leaked into out.c)"; FAIL=$((FAIL+1))
+    fi
+
+    # Full round-trip: gcc + run with the per-package archive.
+    printf "  %-38s" "facade e2e: gcc + run"
+    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" "$ARCHIVE" \
+        -lgc -lm -lcurl -lz -ldl -lpthread -o "$TMPDIR/out" \
+        2> "$TMPDIR/link.log"
+    if [ -x "$TMPDIR/out" ]; then
+        local run_out=$("$TMPDIR/out" 2>&1)
+        if [ "$run_out" = "got 84" ]; then
+            echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+        else
+            echo -e "${RED}FAIL${NC} (got: $run_out)"; FAIL=$((FAIL+1))
+        fi
+    else
+        echo -e "${RED}FAIL${NC} (gcc link failed)"; FAIL=$((FAIL+1))
+        head -5 "$TMPDIR/link.log" | sed 's/^/    /'
+    fi
+
+    rm -rf "$TMPDIR"
+}
+test_pm_facade_e2e
 
 # ── Amalgame.Random ────────────────────────────────────
 # Same extra-input pattern as Json — pulls in src/stdlib/random.am
