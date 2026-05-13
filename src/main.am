@@ -4,6 +4,72 @@ import Amalgame.Collections
 import Amalgame.IO
 import Amalgame.String
 
+// Minimal monotonic-clock timer kept in amc itself. The full
+// `Stopwatch` class moved out of the bundled stdlib into the
+// `amalgame-datetime` package in v0.7.7; amc still needs a
+// stopwatch for its `--verbose` phase timing, so we vendor the
+// smallest possible variant here.
+@c {
+    #include <time.h>
+    #ifdef _WIN32
+        #include <windows.h>
+    #endif
+}
+
+public class MonoTimer {
+    private startNs: int
+
+    public MonoTimer() {
+        this.startNs = MonoTimer.NowNs()
+    }
+
+    // Returns a formatted "Xms" / "X.Ys" string for the time
+    // since the previous Reset() (or construction). Resets the
+    // start so successive calls measure inter-phase deltas.
+    public string Reset() {
+        let now: int = MonoTimer.NowNs()
+        let diff: int = now - this.startNs
+        this.startNs = now
+        return MonoTimer.Format(diff)
+    }
+
+    private static int NowNs() {
+        @c {
+        #ifdef _WIN32
+            LARGE_INTEGER counter, freq;
+            QueryPerformanceFrequency(&freq);
+            QueryPerformanceCounter(&counter);
+            return (i64)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
+        #else
+            struct timespec ts;
+            if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+            return (i64)((int64_t) ts.tv_sec * 1000000000LL + (int64_t) ts.tv_nsec);
+        #endif
+        }
+    }
+
+    private static string Format(nanos: int) {
+        if (nanos < 1000) {
+            return String_FromInt(nanos) + "ns"
+        }
+        if (nanos < 1000000) {
+            return String_FromInt(nanos / 1000) + "us"
+        }
+        if (nanos < 1000000000) {
+            return String_FromInt(nanos / 1000000) + "ms"
+        }
+        let s:  int = nanos / 1000000000
+        let ms: int = (nanos % 1000000000) / 1000000
+        return String_FromInt(s) + "." + MonoTimer.Pad3(ms) + "s"
+    }
+
+    private static string Pad3(n: int) {
+        if (n < 10)  { return "00" + String_FromInt(n) }
+        if (n < 100) { return "0" + String_FromInt(n) }
+        return String_FromInt(n)
+    }
+}
+
 // Bootstrap compiler entry point
 public class AmalgameCompiler {
     private Diag:    DiagnosticFormatter
@@ -50,7 +116,7 @@ public class AmalgameCompiler {
         // (parse vs resolve vs typecheck vs cgen). No-op cost
         // when verbose is off — the Reset()/Elapsed() calls
         // amortize to a couple of syscalls.
-        let phaseSw = new Stopwatch()
+        let phaseSw = new MonoTimer()
 
         // ── Detect namespace from first file ──────────
         let firstPath = inputFiles.Get(0)
@@ -160,8 +226,7 @@ public class AmalgameCompiler {
             return
         }
         if (this.Verbose) {
-            let phaseD = phaseSw.Reset()
-            Console.WriteError("  parse:     " + phaseD.Format())
+            Console.WriteError("  parse:     " + phaseSw.Reset())
         }
 
         // ── Resolver pass ─────────────────────────────
@@ -190,8 +255,7 @@ public class AmalgameCompiler {
             }
         }
         if (this.Verbose) {
-            let phaseD = phaseSw.Reset()
-            Console.WriteError("  resolve:   " + phaseD.Format())
+            Console.WriteError("  resolve:   " + phaseSw.Reset())
         }
 
         // ── TypeChecker pass ──────────────────────────
@@ -215,8 +279,7 @@ public class AmalgameCompiler {
             this.ExitCode = 1
         }
         if (this.Verbose) {
-            let phaseD = phaseSw.Reset()
-            Console.WriteError("  typecheck: " + phaseD.Format())
+            Console.WriteError("  typecheck: " + phaseSw.Reset())
         }
 
         // ── Linter pass (optional) ────────────────────
@@ -275,8 +338,7 @@ public class AmalgameCompiler {
         let mode = if (isLibrary) { "Library" } else { "Executable" }
         Console.WriteLine("Generated: " + outC + " (" + String_FromInt(lineCount) + " lines) [" + mode + "]")
         if (this.Verbose) {
-            let phaseD = phaseSw.Reset()
-            Console.WriteError("  cgen:      " + phaseD.Format())
+            Console.WriteError("  cgen:      " + phaseSw.Reset())
         }
         this.Diag.PrintCompileOk("Build")
     }
