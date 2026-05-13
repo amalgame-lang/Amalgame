@@ -1381,12 +1381,21 @@ public class CGen {
     // so later struct references compile. The class body + methods
     // are intentionally NOT emitted — they're resolved at link time
     // from libamalgame.a.
+    //
+    // Two-pass: pass 1 registers every external class so that pass 2
+    // can resolve cross-class references (e.g. `InstantResult.GetValue`
+    // returning `Instant`) via TypeToC → ExternalClassMangled. Without
+    // this split, the second class in iteration order isn't yet
+    // registered when the first class's method sigs reference it,
+    // and the forward decl falls back to the consumer's namespace.
     public void RegisterExternalProg(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
+        // Pass 1: register every external class + emit typedef forward
+        // decl. Method sigs are deferred to pass 2.
         for i in 0..n {
             let decl: AstNode = kids.Get(i)
             if (decl.Kind == NodeKind.CLASS_DECL) {
@@ -1394,9 +1403,15 @@ public class CGen {
                 this.ExternalClassNsArr.Add(nsPrefix)
                 let mangled: string = nsPrefix + "_" + decl.Name
                 this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* external */")
-                // Method forward declarations — gcc needs them to type
-                // call sites correctly (otherwise it falls back to int
-                // and miscasts pointers, segfaulting at runtime).
+            }
+        }
+        // Pass 2: emit method forward decls. All external classes are
+        // now in the registry, so cross-class return/param types lower
+        // to the correct mangled name.
+        for i in 0..n {
+            let decl: AstNode = kids.Get(i)
+            if (decl.Kind == NodeKind.CLASS_DECL) {
+                let mangled: string = nsPrefix + "_" + decl.Name
                 let members: List<AstNode> = decl.Children
                 let mc: int = members.Count()
                 for mi in 0..mc {

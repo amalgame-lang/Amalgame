@@ -451,10 +451,10 @@ run_test "inline-C dir: isalpha no"   "$SAMPLES/inline_c_directives.am"  "0 is n
 # Project F (v0.7.5+) — `--external <mod.am>` + link against
 # pre-compiled lib/libamalgame.a. Skips if the lib hasn't been
 # built yet (build_amc.sh's Step 4 produces it).
+# v0.7.7: random / encoding moved to external packages (no longer
+# in libamalgame.a). msgpack stays bundled — only test left here.
 LIBA_SAMPLE="$SAMPLES/external_libamalgame.am"
-LIBA_EXTS="src/stdlib/random.am src/stdlib/encoding.am src/stdlib/json.am src/stdlib/msgpack.am"
-run_external_test "libamalgame.a: random"   "$LIBA_SAMPLE"  "rnd: 4046551126"  "$LIBA_EXTS"
-run_external_test "libamalgame.a: encoding" "$LIBA_SAMPLE"  "hex: deadbeef"    "$LIBA_EXTS"
+LIBA_EXTS="src/stdlib/json.am src/stdlib/msgpack.am"
 run_external_test "libamalgame.a: msgpack"  "$LIBA_SAMPLE"  "mp: 42"           "$LIBA_EXTS"
 
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
