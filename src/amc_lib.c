@@ -5099,6 +5099,8 @@ struct _Amalgame_Compiler_CGen {
     AmalgameList* PkgFuncCTypes;
     AmalgameList* PkgHeaders;
     AmalgameList* PkgClassNs;
+    AmalgameList* ExternalClasses;
+    AmalgameList* ExternalClassNsArr;
 };
 
 code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
@@ -5137,6 +5139,10 @@ static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGe
 static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self);
 void Amalgame_Compiler_CGen_EmitNetHeader(Amalgame_Compiler_CGen* self);
 void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalgame_Compiler_PackageRegistry* reg);
+void Amalgame_Compiler_CGen_RegisterExternalProg(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog);
+static code_string Amalgame_Compiler_CGen_ExternalMethodSig(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* method, code_string mangledClass, code_string shortClassName);
+code_string Amalgame_Compiler_CGen_ExternalClassMangled(Amalgame_Compiler_CGen* self, code_string tname);
+static code_bool Amalgame_Compiler_CGen_IsExternalClass(Amalgame_Compiler_CGen* self, code_string tname);
 static code_string Amalgame_Compiler_CGen_PkgClassMangledPrefix(Amalgame_Compiler_CGen* self, code_string tname);
 static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl);
 static void Amalgame_Compiler_CGen_EmitDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl);
@@ -5191,6 +5197,8 @@ Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
     self->PkgFuncCTypes = AmalgameList_new();
     self->PkgHeaders = AmalgameList_new();
     self->PkgClassNs = AmalgameList_new();
+    self->ExternalClasses = AmalgameList_new();
+    self->ExternalClassNsArr = AmalgameList_new();
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Status", "i64");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Body", "code_string");
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameHttpResponse", "Error", "code_string");
@@ -6503,6 +6511,88 @@ void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalg
     }
 }
 
+void Amalgame_Compiler_CGen_RegisterExternalProg(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
+    code_string ns = prog->Str;
+    if (String_Length(ns) == 0) {
+        return;
+    }
+    code_string nsPrefix = String_Replace(ns, ".", "_");
+    AmalgameList* kids = prog->Children;
+    i64 n = AmalgameList_count(kids);
+    for (i64 i = 0; i < n; i++) {
+        Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i);
+        if (decl->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) {
+            AmalgameList_add(self->ExternalClasses, (void*)(intptr_t)(decl->Name));
+            AmalgameList_add(self->ExternalClassNsArr, (void*)(intptr_t)(nsPrefix));
+            code_string mangled = code_string_concat(code_string_concat(nsPrefix, "_"), decl->Name);
+            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(code_string_concat(code_string_concat(code_string_concat("typedef struct _", mangled), " "), mangled), "; /* external */"));
+            AmalgameList* members = decl->Children;
+            i64 mc = AmalgameList_count(members);
+            for (i64 mi = 0; mi < mc; mi++) {
+                Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(members, mi);
+                if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+                    code_string sig = Amalgame_Compiler_CGen_ExternalMethodSig(self, m, mangled, decl->Name);
+                    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(sig, ";"));
+                }
+            }
+        }
+    }
+}
+
+static code_string Amalgame_Compiler_CGen_ExternalMethodSig(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* method, code_string mangledClass, code_string shortClassName) {
+    code_bool isCtor = code_string_equals(method->Name, shortClassName);
+    code_string retTypeRaw = method->Str;
+    code_string retType = "";
+    if (String_StartsWith(retTypeRaw, "(")) {
+        retType = Amalgame_Compiler_CGen_TupleStructName(self, retTypeRaw);
+    } else {
+        retType = Amalgame_Compiler_CGen_TypeToC(self, retTypeRaw);
+    }
+    code_string sig = "";
+    if (isCtor) {
+        sig = code_string_concat(code_string_concat(code_string_concat(mangledClass, "* "), mangledClass), "_new(");
+    } else {
+        sig = code_string_concat(code_string_concat(code_string_concat(code_string_concat(code_string_concat(retType, " "), mangledClass), "_"), method->Name), "(");
+    }
+    code_bool isStatic = method->Flag2;
+    code_bool first = 1;
+    if (!isStatic && !isCtor) {
+        sig = code_string_concat(code_string_concat(sig, mangledClass), "* self");
+        first = 0;
+    }
+    i64 pcount = AmalgameList_count(method->Params);
+    for (i64 i = 0; i < pcount; i++) {
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
+        if (!first) {
+            sig = code_string_concat(sig, ", ");
+        }
+        sig = code_string_concat(code_string_concat(code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str)), " "), p->Name);
+        first = 0;
+    }
+    sig = code_string_concat(sig, ")");
+    return sig;
+}
+
+code_string Amalgame_Compiler_CGen_ExternalClassMangled(Amalgame_Compiler_CGen* self, code_string tname) {
+    i64 n = AmalgameList_count(self->ExternalClasses);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->ExternalClasses, i), tname)) {
+            return code_string_concat(code_string_concat((code_string)AmalgameList_get(self->ExternalClassNsArr, i), "_"), tname);
+        }
+    }
+    return "";
+}
+
+static code_bool Amalgame_Compiler_CGen_IsExternalClass(Amalgame_Compiler_CGen* self, code_string tname) {
+    i64 n = AmalgameList_count(self->ExternalClasses);
+    for (i64 i = 0; i < n; i++) {
+        if (code_string_equals((code_string)AmalgameList_get(self->ExternalClasses, i), tname)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static code_string Amalgame_Compiler_CGen_PkgClassMangledPrefix(Amalgame_Compiler_CGen* self, code_string tname) {
     i64 n = AmalgameList_count(self->PkgClasses);
     for (i64 i = 0; i < n; i++) {
@@ -7001,7 +7091,7 @@ static code_string Amalgame_Compiler_CGen_EmitIfBranch(Amalgame_Compiler_CGen* s
     if (block->Kind == Amalgame_Compiler_NodeKind_BLOCK) {
         AmalgameList* kids = block->Children;
         if (AmalgameList_count(kids) > 0) {
-            return Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(kids, 0));
+            return Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, 0));
         }
         return "0";
     }
@@ -7850,7 +7940,14 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                     newCall = code_string_concat(newCall, ")");
                     return newCall;
                 } else {
-                    newCall = code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_new(");
+                    code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
+                    code_string ctorPrefix = "";
+                    if (String_Length(externalMangled) > 0) {
+                        ctorPrefix = externalMangled;
+                    } else {
+                        ctorPrefix = Amalgame_Compiler_CGen_SymName(self, tname);
+                    }
+                    newCall = code_string_concat(ctorPrefix, "_new(");
                     i64 argc = AmalgameList_count(expr->Args);
                     for (i64 i = 0; i < argc; i++) {
                         Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i);
@@ -8327,6 +8424,10 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                             return code_string_concat("Path_", mname);
                         }
                     }
+                    code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
+                    if (String_Length(externalMangled) > 0) {
+                        return code_string_concat(code_string_concat(externalMangled, "_"), mname);
+                    }
                     code_bool isCoreStdlib = code_string_equals(tname, "Console") || code_string_equals(tname, "File") || code_string_equals(tname, "Math") || code_string_equals(tname, "String") || code_string_equals(tname, "List") || code_string_equals(tname, "Env") || code_string_equals(tname, "Process") || code_string_equals(tname, "Log") || code_string_equals(tname, "Service") || code_string_equals(tname, "Vec3") || code_string_equals(tname, "Vec4") || code_string_equals(tname, "Mat4") || code_string_equals(tname, "Regex") || code_string_equals(tname, "Compress") || code_string_equals(tname, "WebSocket");
                     if (isCoreStdlib) {
                         return code_string_concat(code_string_concat(tname, "_"), mname);
@@ -8492,6 +8593,10 @@ static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, 
     }
     if (Amalgame_Compiler_CGen_IsEnum(self, t)) {
         return Amalgame_Compiler_CGen_SymName(self, t);
+    }
+    code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, t);
+    if (String_Length(externalMangled) > 0) {
+        return code_string_concat(externalMangled, "*");
     }
     code_string sym = Amalgame_Compiler_CGen_SymName(self, t);
     if (String_Length(t) == 1) {
@@ -11034,7 +11139,7 @@ static void Amalgame_Compiler_FullResolver_CollectClassMembers(Amalgame_Compiler
     AmalgameList* kids = cls->Children;
     i64 members = AmalgameList_count(kids);
     for (i64 i = 0; i < members; i++) {
-        Amalgame_Compiler_FullResolver_CollectClassMember(self, name, (void*)AmalgameList_get(kids, i));
+        Amalgame_Compiler_FullResolver_CollectClassMember(self, name, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i));
     }
 }
 
@@ -11053,7 +11158,7 @@ static void Amalgame_Compiler_FullResolver_CollectEnumMembers(Amalgame_Compiler_
     AmalgameList* kids = en->Children;
     i64 count = AmalgameList_count(kids);
     for (i64 i = 0; i < count; i++) {
-        Amalgame_Compiler_FullResolver_CollectEnumMember(self, name, (void*)AmalgameList_get(kids, i));
+        Amalgame_Compiler_FullResolver_CollectEnumMember(self, name, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i));
     }
 }
 
@@ -11339,7 +11444,7 @@ static void Amalgame_Compiler_FullResolver_ResolveArmBody(Amalgame_Compiler_Full
         AmalgameList* kids = body->Children;
         i64 count = AmalgameList_count(kids);
         for (i64 i = 0; i < count; i++) {
-            Amalgame_Compiler_FullResolver_ResolveStmt(self, (void*)AmalgameList_get(kids, i));
+            Amalgame_Compiler_FullResolver_ResolveStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i));
         }
     } else {
         Amalgame_Compiler_FullResolver_ResolveStmt(self, body);
@@ -12635,7 +12740,7 @@ static code_string Amalgame_Compiler_TypeChecker_CheckIfBranch(Amalgame_Compiler
     if (block->Kind == Amalgame_Compiler_NodeKind_BLOCK) {
         AmalgameList* kids = block->Children;
         if (AmalgameList_count(kids) > 0) {
-            void* first = (void*)AmalgameList_get(kids, 0);
+            Amalgame_Compiler_AstNode* first = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, 0);
             Amalgame_Compiler_TypeChecker_CheckExpr(self, first);
             return Amalgame_Compiler_TypeChecker_GetType(self, first);
         }
@@ -22295,6 +22400,7 @@ struct _Amalgame_Compiler_AmalgameCompiler {
     code_bool LintMode;
     code_bool Verbose;
     i64 ExitCode;
+    AmalgameList* ExternalFiles;
 };
 
 void Amalgame_Compiler_AmalgameCompiler_SetLib(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
@@ -22302,6 +22408,7 @@ void Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(Amalgame_Compiler_AmalgameC
 void Amalgame_Compiler_AmalgameCompiler_SetLintMode(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
 void Amalgame_Compiler_AmalgameCompiler_SetVerbose(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
 void Amalgame_Compiler_AmalgameCompiler_SetColor(Amalgame_Compiler_AmalgameCompiler* self, code_bool v);
+void Amalgame_Compiler_AmalgameCompiler_SetExternalFiles(Amalgame_Compiler_AmalgameCompiler* self, AmalgameList* files);
 i64 Amalgame_Compiler_AmalgameCompiler_GetExitCode(Amalgame_Compiler_AmalgameCompiler* self);
 void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* self, AmalgameList* inputFiles, code_string outputName);
 
@@ -22313,6 +22420,7 @@ Amalgame_Compiler_AmalgameCompiler* Amalgame_Compiler_AmalgameCompiler_new() {
     self->LintMode = 0;
     self->Verbose = 0;
     self->ExitCode = 0;
+    self->ExternalFiles = AmalgameList_new();
     return self;
 }
 
@@ -22334,6 +22442,10 @@ void Amalgame_Compiler_AmalgameCompiler_SetVerbose(Amalgame_Compiler_AmalgameCom
 
 void Amalgame_Compiler_AmalgameCompiler_SetColor(Amalgame_Compiler_AmalgameCompiler* self, code_bool v) {
     Amalgame_Compiler_DiagnosticFormatter_EnableColor(self->Diag, v);
+}
+
+void Amalgame_Compiler_AmalgameCompiler_SetExternalFiles(Amalgame_Compiler_AmalgameCompiler* self, AmalgameList* files) {
+    self->ExternalFiles = files;
 }
 
 i64 Amalgame_Compiler_AmalgameCompiler_GetExitCode(Amalgame_Compiler_AmalgameCompiler* self) {
@@ -22386,6 +22498,25 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
         }
         Amalgame_Compiler_CGen_AddFilePass1(gen, prog);
     }
+    AmalgameList* externalProgs = AmalgameList_new();
+    i64 externalCount = AmalgameList_count(self->ExternalFiles);
+    for (i64 ei = 0; ei < externalCount; ei++) {
+        code_string epath = (code_string)AmalgameList_get(self->ExternalFiles, ei);
+        code_string esrc = File_ReadAll(epath);
+        Amalgame_Compiler_DiagnosticFormatter_LoadSource(self->Diag, epath, esrc);
+        Amalgame_Compiler_Lexer* elex = Amalgame_Compiler_Lexer_new(esrc, epath);
+        AmalgameList* etoks = Amalgame_Compiler_Lexer_Tokenize(elex);
+        Amalgame_Compiler_Parser* epar = Amalgame_Compiler_Parser_new(etoks);
+        Amalgame_Compiler_AstNode* eprog = Amalgame_Compiler_Parser_Parse(epar);
+        AmalgameList_add(externalProgs, (void*)(intptr_t)(eprog));
+        if (Amalgame_Compiler_Parser_HasErrors(epar)) {
+            Console_WriteError(code_string_concat("amc: parse errors in external ", epath));
+            Console_WriteError(Amalgame_Compiler_Parser_GetErrors(epar));
+            self->ExitCode = 1;
+            parseOk = 0;
+        }
+        Amalgame_Compiler_CGen_RegisterExternalProg(gen, eprog);
+    }
     if (!parseOk) {
         return;
     }
@@ -22399,6 +22530,10 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     i64 progCount = AmalgameList_count(progs);
     for (i64 ri = 0; ri < progCount; ri++) {
         AmalgameList_add(resolver->Programs, (void*)(intptr_t)((Amalgame_Compiler_AstNode*)AmalgameList_get(progs, ri)));
+    }
+    i64 extCount = AmalgameList_count(externalProgs);
+    for (i64 ei2 = 0; ei2 < extCount; ei2++) {
+        AmalgameList_add(resolver->Programs, (void*)(intptr_t)((Amalgame_Compiler_AstNode*)AmalgameList_get(externalProgs, ei2)));
     }
     Amalgame_Compiler_FullResolver_ResolvePrograms(resolver);
     if (Amalgame_Compiler_FullResolver_HasErrors(resolver)) {
@@ -22415,6 +22550,9 @@ void Amalgame_Compiler_AmalgameCompiler_Run(Amalgame_Compiler_AmalgameCompiler* 
     tc->Sources = self->Diag->Sources;
     for (i64 ti = 0; ti < progCount; ti++) {
         Amalgame_Compiler_TypeChecker_Check(tc, (Amalgame_Compiler_AstNode*)AmalgameList_get(progs, ti));
+    }
+    for (i64 ti2 = 0; ti2 < extCount; ti2++) {
+        Amalgame_Compiler_TypeChecker_Check(tc, (Amalgame_Compiler_AstNode*)AmalgameList_get(externalProgs, ti2));
     }
     if (Amalgame_Compiler_TypeChecker_HasErrors(tc)) {
         Console_WriteError(Amalgame_Compiler_TypeChecker_FormatErrors(tc));
@@ -22747,7 +22885,7 @@ i64 Amalgame_Compiler_Program_RunFmt(i64 argc) {
     AmalgameList* files = Amalgame_Compiler_ArgParser_GetPositionals(ap);
     i64 fn = AmalgameList_count(files);
     for (i64 j = 0; j < fn; j++) {
-        code_string f = (void*)AmalgameList_get(files, j);
+        code_string f = (code_string)AmalgameList_get(files, j);
         if (!String_EndsWith(f, ".am")) {
             Console_WriteError(code_string_concat(code_string_concat("amc fmt: unknown argument '", f), "'"));
             return 1;
@@ -22759,14 +22897,14 @@ i64 Amalgame_Compiler_Program_RunFmt(i64 argc) {
     }
     i64 n = AmalgameList_count(files);
     for (i64 j = 0; j < n; j++) {
-        void* path = (void*)AmalgameList_get(files, j);
+        code_string path = (code_string)AmalgameList_get(files, j);
         code_string src = File_ReadAll(path);
         Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(src, path);
         AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
         Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
         Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
         if (Amalgame_Compiler_Parser_HasErrors(par)) {
-            Console_WriteError(code_string_concat("amc fmt: parse errors in ", (code_string)(path)));
+            Console_WriteError(code_string_concat("amc fmt: parse errors in ", path));
             Console_WriteError(Amalgame_Compiler_Parser_GetErrors(par));
             return 1;
         }
@@ -22823,6 +22961,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         return;
     }
     AmalgameList* inputFiles = AmalgameList_new();
+    AmalgameList* externalFiles = AmalgameList_new();
     code_string outputName = "a.out";
     code_bool isLib = 0;
     code_bool checkOnly = 0;
@@ -22835,6 +22974,9 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         if (code_string_equals(a, "-o") && i + 1 < argc) {
             i = i + 1;
             outputName = Args_Get(i);
+        } else if (code_string_equals(a, "--external") && i + 1 < argc) {
+            i = i + 1;
+            AmalgameList_add(externalFiles, (void*)(intptr_t)(Args_Get(i)));
         } else if (code_string_equals(a, "--lib")) {
             isLib = 1;
         } else if (code_string_equals(a, "--check")) {
@@ -22894,6 +23036,7 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
     Amalgame_Compiler_AmalgameCompiler_SetLintMode(compiler, lintMode);
     Amalgame_Compiler_AmalgameCompiler_SetColor(compiler, useColor);
     Amalgame_Compiler_AmalgameCompiler_SetVerbose(compiler, verbose);
+    Amalgame_Compiler_AmalgameCompiler_SetExternalFiles(compiler, externalFiles);
     Amalgame_Compiler_AmalgameCompiler_Run(compiler, inputFiles, outputName);
     Exit_Set(Amalgame_Compiler_AmalgameCompiler_GetExitCode(compiler));
 }
