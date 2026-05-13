@@ -118,12 +118,10 @@ static inline void Console_Flush(void) {
     fflush(stdout);
 }
 
-/* Math constants — only if Amalgame_Math.h not included */
-#ifndef AMALGAME_MATH_H
-#define Math_PI    3.14159265358979323846
-#define Math_Max(a,b) ((a)>(b)?(a):(b))
-#define Math_Min(a,b) ((a)<(b)?(a):(b))
-#endif
+/* Math constants used to live here as fallback macros for users
+ * who didn't #include "Amalgame_Math.h". With Math.h migrated to
+ * src/stdlib/math.am (post-v0.7.5), the macros are gone — callers
+ * use Math.PI() / Math.MaxF() etc. as qualified method calls. */
 
 /* List generique */
 typedef struct {

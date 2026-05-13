@@ -60,6 +60,23 @@ import Amalgame.Formats.Toml
 //   libs     = ["stdc++"]                # -l<x> appended to final link;
 //                                          also forces g++ as linker
 //                                          when any source is C++
+//
+// post-v0.7.5 — optional `[stdlib].facade` key for packages that
+// ship a pure-Amalgame `.am` facade alongside their C runtime.
+// When set, `amc package add` precompiles the facade through
+// `amc --lib` + gcc + ar and caches the resulting
+// `libamalgame-pkg-<class>.a` at `<pkgDir>/build/<platform>/`.
+// User builds (`amc -o foo foo.am`, `amc test`) auto-pass
+// `--external <facade>` and link against the archive — the cgen
+// emits forward decls only for the facade's classes, mirroring
+// how `lib/libamalgame.a` handles the integrated stdlib.
+//
+//   [stdlib]
+//   facade = "facade.am"                 # path inside the package
+//
+// Optional; packages that don't ship a facade keep the v0.5.x
+// behaviour where amc resolves their classes through the runtime
+// header alone.
 
 // One loaded package = its (Class, Header, ImportNamespace) +
 // a parallel list of (FuncName, CRetType). FuncName is the
@@ -108,6 +125,18 @@ public class LoadedPackage {
     // `[stdlib].sources` ignore this flag — there's nothing to
     // precompile.
     public  Precompile:  bool
+    // Optional `.am` facade source. Set from the manifest's
+    // `[stdlib].facade = "path/to/facade.am"` key — same shape as
+    // `header`, resolved to an absolute path against the package's
+    // cache dir. When non-empty, `amc package add` compiles the
+    // facade through `amc --lib` + gcc + ar at install time and
+    // caches the resulting `libamalgame-pkg-<class>.a` at
+    // `<pkgDir>/build/<platform>/`. `amc test` / `amc -o` then
+    // auto-pass `--external <facade>` and link the per-package
+    // archive instead of re-parsing the facade source on every
+    // user build. Same shape as `lib/libamalgame.a` for the
+    // integrated stdlib (project F v0.7.5).
+    public  Facade:      string
 
     public LoadedPackage() {
         this.Name       = ""
@@ -123,6 +152,7 @@ public class LoadedPackage {
         this.CxxFlags   = ""
         this.Libs       = new List<string>()
         this.Precompile = false
+        this.Facade     = ""
     }
 }
 
@@ -272,6 +302,22 @@ public class PackageRegistry {
             let precompileVal: TomlValue = stdlibTable.Get("precompile")
             lp.Precompile = precompileVal.AsBool()
 
+            // Optional `[stdlib].facade` — relative path inside
+            // the package to a pure-Amalgame `.am` facade file.
+            // When present, `amc package add` compiles it through
+            // `amc --lib` + gcc -c + ar rcs and caches the resulting
+            // `libamalgame-pkg-<class>.a` at
+            // `<pkgDir>/build/<platform>/`. `amc test` / `amc -o`
+            // then auto-pass `--external <facade>` so the cgen
+            // emits forward decls only, and link against the
+            // per-package archive — same shape as
+            // `lib/libamalgame.a` for the integrated stdlib.
+            let facadeVal: TomlValue = stdlibTable.Get("facade")
+            let facadeRel: string = facadeVal.AsString()
+            if (String_Length(facadeRel) > 0) {
+                lp.Facade = pkgDir + "/" + facadeRel
+            }
+
             // Functions table — short name → return type.
             let funcsTbl: TomlValue = stdlibTable.Get("functions")
             if (funcsTbl.IsTable()) {
@@ -330,6 +376,34 @@ public class PackageRegistry {
             }
         }
         return false
+    }
+
+    // Resolve the per-package facade archive path:
+    //   <pkgDir>/build/<platform>/libamalgame-pkg-<class>.a
+    // Doesn't check whether the file exists — callers that care
+    // (Program.RunTest, the user's gcc step) check separately.
+    public static string FacadeArchivePath(LoadedPackage p) {
+        let buildDir: string = PackageRegistry.PrecompileCacheDir(p.PkgDir)
+        return buildDir + "/libamalgame-pkg-" + p.ClassName + ".a"
+    }
+
+    // Collect facade archive paths from every loaded package that
+    // declares a `[stdlib].facade` AND has an on-disk archive (the
+    // archive may be missing if `amc package add` ran with
+    // `--no-precompile` or pre-dates this feature). Caller splices
+    // each path into the gcc link line — see Program.RunTest.
+    public List<string> CollectFacadeArchives() {
+        let out: List<string> = new List<string>()
+        let n: int = this.Packages.Count()
+        for i in 0..n {
+            let p: LoadedPackage = this.Packages.Get(i)
+            if (String_Length(p.Facade) == 0) { continue }
+            let archive: string = PackageRegistry.FacadeArchivePath(p)
+            if (File.Exists(archive)) {
+                out.Add(archive)
+            }
+        }
+        return out
     }
 
     // Flatten every loaded package's [stdlib].libs list into a
@@ -500,7 +574,7 @@ public class PackageRegistry {
     // one edit (this constant + tools/release.sh which already
     // handles --version).
     public static string AmcVersion() {
-        return "0.7.5"
+        return "0.7.6"
     }
 
     // Highest [package].schema-version this amc knows how to

@@ -53,7 +53,7 @@ fi
 
 # Standalone modules — no cross-stdlib references. amc compiles
 # each one in isolation.
-MODULES_STANDALONE="random encoding crypto datetime logging path service json toml yaml"
+MODULES_STANDALONE="random encoding crypto datetime logging path service json toml yaml math"
 
 # Cross-stdlib modules — passed `--external <dep.am>` so the cgen
 # routes inter-module references through the dependency's own

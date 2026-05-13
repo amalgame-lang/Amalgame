@@ -1,0 +1,80 @@
+namespace Amalgame.IO.FileWatcher
+
+// ── FileWatcher ───────────────────────────────────────
+//
+// Single-file mtime polling. Cross-platform via stat() / _stat64
+// in the libc; the caller drives the poll loop. `Changed()`
+// returns true the first call after the file's mtime advances
+// (or it appears / disappears), then false until the next change.
+//
+//     let w = new FileWatcher("/etc/foo.toml")
+//     while (true) {
+//         if (w.Changed()) { reload() }
+//         Process_Sleep(500)
+//     }
+//
+// Recursive directory watches (inotify / FSEvents /
+// ReadDirectoryChangesW) are out of scope for v1.
+//
+// History: ported from `runtime/Amalgame_FileWatch.h` (~90 LoC of
+// C) to AM with two `@c { … }` blocks for the `stat(2)` primitive.
+// Everything else is pure Amalgame.
+
+@c {
+    #include <sys/stat.h>
+    #ifdef _WIN32
+        #define amalgame_fw_stat _stat64
+        #define amalgame_fw_stat_struct struct __stat64
+    #else
+        #define amalgame_fw_stat stat
+        #define amalgame_fw_stat_struct struct stat
+    #endif
+
+    /* Return current mtime, or -1 if the file is absent /
+     * unreadable. Doesn't follow symlinks differently from
+     * stat(2). */
+    static int64_t amalgame_fw_mtime(code_string path) {
+        if (!path) return -1;
+        amalgame_fw_stat_struct st;
+        if (amalgame_fw_stat(path, &st) != 0) return -1;
+        return (int64_t) st.st_mtime;
+    }
+}
+
+public class FileWatcher {
+    private path:      string
+    private lastMtime: int
+
+    public FileWatcher(path: string) {
+        this.path = path
+        var m: int = -1
+        @c { m = (i64) amalgame_fw_mtime(path); }
+        this.lastMtime = m
+    }
+
+    public string GetPath() {
+        return this.path
+    }
+
+    // True iff the file's mtime has advanced (or the file appeared /
+    // disappeared) since the previous call. Updates the internal
+    // snapshot so the next call compares against the latest state.
+    public bool Changed() {
+        var cur: int = -1
+        @c { cur = (i64) amalgame_fw_mtime(self->path); }
+        if (cur != this.lastMtime) {
+            this.lastMtime = cur
+            return true
+        }
+        return false
+    }
+
+    // True iff the file currently exists (stat succeeded). Distinct
+    // from `Changed()` so callers can tell "file is missing right
+    // now" from "file changed".
+    public bool Exists() {
+        var m: int = -1
+        @c { m = (i64) amalgame_fw_mtime(self->path); }
+        return m >= 0
+    }
+}

@@ -34,6 +34,39 @@ namespace Amalgame.Service
 // not a per-thread token. If you spawn worker threads, they all
 // observe the same flag, which is what you want for "the whole
 // service is shutting down".
+//
+// History: implementation moved from `runtime/Amalgame_Service.h`
+// to AM (post-v0.7.5). The OS primitives — `sigaction` / signal
+// handler / `nanosleep` / `SetConsoleCtrlHandler` / `Sleep` —
+// have no AM equivalent and stay in `@c { … }` blocks. The shared
+// state global (atomic stopping flag) + handler function live in
+// the top-level `@c { … }` block below.
+
+@c {
+    #include <signal.h>
+    #ifdef _WIN32
+        #include <windows.h>
+        static volatile LONG Amalgame_Service_Stopping = 0;
+
+        static BOOL WINAPI Amalgame_Service_OnCtrl(DWORD ctrlType) {
+            /* Catch CTRL_C, CTRL_BREAK, CTRL_CLOSE, CTRL_LOGOFF,
+             * CTRL_SHUTDOWN. Returning TRUE tells Windows we handled
+             * it — the process is not terminated; the main loop
+             * notices the flag on next ShouldStop. */
+            (void) ctrlType;
+            InterlockedExchange(&Amalgame_Service_Stopping, 1);
+            return TRUE;
+        }
+    #else
+        #include <time.h>
+        static volatile sig_atomic_t Amalgame_Service_Stopping = 0;
+
+        static void Amalgame_Service_OnSignal(int sig) {
+            (void) sig;
+            Amalgame_Service_Stopping = 1;
+        }
+    #endif
+}
 
 public class Service {
     public Service() {}
@@ -43,14 +76,30 @@ public class Service {
     // once on the same process — the OS just re-registers the same
     // handler.
     public static void Install() {
-        Service_Install()
+        @c {
+        #ifdef _WIN32
+            SetConsoleCtrlHandler(Amalgame_Service_OnCtrl, TRUE);
+        #else
+            /* Best-effort: ignore errors. A failure here just means
+             * the shutdown path falls back to whatever the default
+             * disposition is (typically: SIGTERM kills the process
+             * abruptly). The service still runs; it just won't
+             * clean-shutdown. */
+            struct sigaction sa;
+            sa.sa_handler = Amalgame_Service_OnSignal;
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;  /* not SA_RESTART — let blocking syscalls return EINTR */
+            sigaction(SIGTERM, &sa, NULL);
+            sigaction(SIGINT,  &sa, NULL);
+        #endif
+        }
     }
 
     // True after the OS has delivered a shutdown signal. The loop
     // body should check this on every iteration and exit promptly.
     // Calling repeatedly is cheap (single memory read).
     public static bool ShouldStop() {
-        return Service_ShouldStop()
+        @c { return Amalgame_Service_Stopping ? 1 : 0; }
     }
 
     // Programmatic shutdown request — flip the flag without waiting
@@ -58,7 +107,13 @@ public class Service {
     // (admin HTTP endpoint, watchdog timer, fatal error in a sub-
     // task). The next `ShouldStop()` call returns true.
     public static void RequestStop() {
-        Service_RequestStop()
+        @c {
+        #ifdef _WIN32
+            InterlockedExchange(&Amalgame_Service_Stopping, 1);
+        #else
+            Amalgame_Service_Stopping = 1;
+        #endif
+        }
     }
 
     // Sleep for `ms` milliseconds, returning early if a shutdown
@@ -67,6 +122,29 @@ public class Service {
     // 100ms chunks so a Ctrl-handler callback interrupts within
     // bounded latency.
     public static void Sleep(ms: int) {
-        Service_Sleep(ms)
+        @c {
+            if (ms <= 0) return;
+        #ifdef _WIN32
+            /* Slice the sleep into 100ms chunks so a
+             * SetConsoleCtrlHandler call mid-sleep can interrupt
+             * within bounded latency. Windows has no portable
+             * `nanosleep`-equivalent that's interruptible by a
+             * Ctrl-handler callback, so polling is the cleanest
+             * path. */
+            i64 remaining = ms;
+            while (remaining > 0) {
+                if (Amalgame_Service_Stopping) return;
+                DWORD chunk = remaining > 100 ? 100 : (DWORD) remaining;
+                Sleep(chunk);
+                remaining -= chunk;
+            }
+        #else
+            if (Amalgame_Service_Stopping) return;
+            struct timespec ts;
+            ts.tv_sec  = (time_t) (ms / 1000);
+            ts.tv_nsec = (long)   ((ms % 1000) * 1000000L);
+            nanosleep(&ts, NULL);
+        #endif
+        }
     }
 }
