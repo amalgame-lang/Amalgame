@@ -40,9 +40,14 @@ trap 'rm -rf "$BUILD"' EXIT
 
 echo "── libamalgame.a — pre-compile user-facing stdlib modules ──"
 
-# Sanity: amc must exist.
-if [ ! -x ./amc ]; then
-    echo "ERROR: ./amc not found. Run ./build_amc.sh first." >&2
+# Sanity: amc must exist. Windows / MSYS2 produces amc.exe — pick
+# whichever is on disk so we don't have to rename across platforms.
+if [ -x ./amc ]; then
+    AMC=./amc
+elif [ -x ./amc.exe ]; then
+    AMC=./amc.exe
+else
+    echo "ERROR: neither ./amc nor ./amc.exe found. Run ./build_amc.sh first." >&2
     exit 1
 fi
 
@@ -75,7 +80,7 @@ build_one() {
         done
     fi
     printf "  %-12s " "$mod"
-    if ! ./amc --lib --quiet -o "$BUILD/$mod" "$src" $ext_flags > /tmp/amc-stdlib-$mod.log 2>&1; then
+    if ! "$AMC" --lib --quiet -o "$BUILD/$mod" "$src" $ext_flags > /tmp/amc-stdlib-$mod.log 2>&1; then
         echo "amc FAIL (see /tmp/amc-stdlib-$mod.log)"
         exit 1
     fi
