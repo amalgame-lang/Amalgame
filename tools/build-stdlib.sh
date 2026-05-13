@@ -82,6 +82,12 @@ build_one() {
     printf "  %-12s " "$mod"
     if ! "$AMC" --lib --quiet -o "$BUILD/$mod" "$src" $ext_flags > /tmp/amc-stdlib-$mod.log 2>&1; then
         echo "amc FAIL"
+        echo "  ── source diagnostics ──"
+        wc -l "$src" | sed 's/^/  /'
+        # Hex-dump the line(s) the lexer flagged so we can spot CRLF
+        # drift, BOMs, or other invisible content shifts between
+        # checkout platforms.
+        echo "  md5: $(md5sum "$src" 2>/dev/null || md5 -q "$src" 2>/dev/null)"
         echo "  ── amc log ──"
         sed 's/^/  /' /tmp/amc-stdlib-$mod.log
         exit 1
