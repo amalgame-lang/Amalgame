@@ -119,6 +119,15 @@ public class CGen {
     // the isStdlib short-circuit can mangle calls correctly.
     public PkgClassNs:    List<string>
 
+    // Project F (v0.7.5+): external files registered via --external.
+    // Short class names + their own mangled-ns prefix. Call sites
+    // route through ExternalClassMangled() before the regular
+    // SymName / isCoreStdlib / PkgClassMangledPrefix paths. Class
+    // definitions (struct body + methods) are NOT emitted for these
+    // — they land at link time from libamalgame.a.
+    public ExternalClasses:    List<string>
+    public ExternalClassNsArr: List<string>
+
     public CGen() {
         this.Out            = new Emitter()
         this.NsPrefix       = ""
@@ -142,6 +151,8 @@ public class CGen {
         this.PkgFuncCTypes     = new List<string>()
         this.PkgHeaders        = new List<string>()
         this.PkgClassNs        = new List<string>()
+        this.ExternalClasses   = new List<string>()
+        this.ExternalClassNsArr = new List<string>()
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -1353,6 +1364,100 @@ public class CGen {
                 this.PkgFuncCTypes.Add(cType)
             }
         }
+    }
+
+    // Project F: index every CLASS_DECL in the external prog with the
+    // file's own namespace, and emit the matching forward-decl typedef
+    // so later struct references compile. The class body + methods
+    // are intentionally NOT emitted — they're resolved at link time
+    // from libamalgame.a.
+    public void RegisterExternalProg(AstNode prog) {
+        let ns: string = prog.Str
+        if (String_Length(ns) == 0) { return }
+        let nsPrefix: string = String_Replace(ns, ".", "_")
+        let kids: List<AstNode> = prog.Children
+        let n: int = kids.Count()
+        for i in 0..n {
+            let decl: AstNode = kids.Get(i)
+            if (decl.Kind == NodeKind.CLASS_DECL) {
+                this.ExternalClasses.Add(decl.Name)
+                this.ExternalClassNsArr.Add(nsPrefix)
+                let mangled: string = nsPrefix + "_" + decl.Name
+                this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* external */")
+                // Method forward declarations — gcc needs them to type
+                // call sites correctly (otherwise it falls back to int
+                // and miscasts pointers, segfaulting at runtime).
+                let members: List<AstNode> = decl.Children
+                let mc: int = members.Count()
+                for mi in 0..mc {
+                    let m: AstNode = members.Get(mi)
+                    if (m.Kind == NodeKind.METHOD_DECL) {
+                        let sig: string = this.ExternalMethodSig(m, mangled, decl.Name)
+                        this.Out.EmitLine(sig + ";")
+                    }
+                }
+            }
+        }
+    }
+
+    // Build a C function-pointer signature for an external method.
+    // Used by RegisterExternalProg so the host .c gets the right
+    // forward decls without going through SymName / MethodSig
+    // (which assume the bundle-wide NsPrefix).
+    private string ExternalMethodSig(AstNode method, string mangledClass, string shortClassName) {
+        let isCtor: bool = method.Name == shortClassName
+        let retTypeRaw: string = method.Str
+        var retType: string = ""
+        if (String_StartsWith(retTypeRaw, "(")) {
+            retType = this.TupleStructName(retTypeRaw)
+        } else {
+            retType = this.TypeToC(retTypeRaw)
+        }
+        var sig: string = ""
+        if (isCtor) {
+            sig = mangledClass + "* " + mangledClass + "_new("
+        } else {
+            sig = retType + " " + mangledClass + "_" + method.Name + "("
+        }
+        let isStatic: bool = method.Flag2
+        var first: bool = true
+        if (!isStatic && !isCtor) {
+            sig   = sig + mangledClass + "* self"
+            first = false
+        }
+        let pcount: int = method.Params.Count()
+        for i in 0..pcount {
+            let p: AstNode = method.Params.Get(i)
+            if (!first) { sig = sig + ", " }
+            sig   = sig + this.TypeToC(p.Str) + " " + p.Name
+            first = false
+        }
+        sig = sig + ")"
+        return sig
+    }
+
+    // Returns the full mangled C name for an external class
+    // (e.g. "Random" → "Amalgame_Random_Random"), or "" if the
+    // short name isn't registered as external.
+    public string ExternalClassMangled(string tname) {
+        let n = this.ExternalClasses.Count()
+        for i in 0..n {
+            if (this.ExternalClasses.Get(i) == tname) {
+                return this.ExternalClassNsArr.Get(i) + "_" + tname
+            }
+        }
+        return ""
+    }
+
+    // True iff the short class name was registered via
+    // RegisterExternalProg — used by EmitClass / EmitForwardDecl to
+    // skip definition emission for externally-supplied classes.
+    private bool IsExternalClass(string tname) {
+        let n = this.ExternalClasses.Count()
+        for i in 0..n {
+            if (this.ExternalClasses.Get(i) == tname) { return true }
+        }
+        return false
     }
 
     // Look up the mangled-C-symbol prefix for a registered package
@@ -2822,7 +2927,16 @@ public class CGen {
                         newCall = newCall + ")"
                         return newCall
                     } else {
-                        newCall = this.SymName(tname) + "_new("
+                        // Project F: external classes use their file's
+                        // own mangled prefix, not the bundle's NsPrefix.
+                        let externalMangled: string = this.ExternalClassMangled(tname)
+                        var ctorPrefix: string = ""
+                        if (String_Length(externalMangled) > 0) {
+                            ctorPrefix = externalMangled
+                        } else {
+                            ctorPrefix = this.SymName(tname)
+                        }
+                        newCall = ctorPrefix + "_new("
                         let argc = expr.Args.Count()
                         for i in 0..argc {
                             let arg = expr.Args.Get(i)
@@ -3327,6 +3441,15 @@ public class CGen {
                                 return "Path_" + mname
                             }
                         }
+                        // Project F (v0.7.5+): external classes registered via
+                        // `--external <file.am>` route through the file's own
+                        // namespace mangling (`Amalgame_Random_Random_*`),
+                        // not the bundle's global NsPrefix. Checked before
+                        // isCoreStdlib so the same names can coexist.
+                        let externalMangled: string = this.ExternalClassMangled(tname)
+                        if (String_Length(externalMangled) > 0) {
+                            return externalMangled + "_" + mname
+                        }
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're
                         // single-author and have no collision risk.
@@ -3539,6 +3662,14 @@ public class CGen {
         if (t == "WebSocket") { return "AmalgameWebSocket*" }
         if (this.IsEnum(t)) {
             return this.SymName(t)
+        }
+        // Project F: external classes use their own ns-mangled name
+        // so `let r: Random = …` lowers to `Amalgame_Random_Random* r`,
+        // matching the typedef emitted by RegisterExternalProg + the
+        // symbol exported by libamalgame.a.
+        let externalMangled: string = this.ExternalClassMangled(t)
+        if (String_Length(externalMangled) > 0) {
+            return externalMangled + "*"
         }
         let sym = this.SymName(t)
         // Single uppercase letter = generic type parameter → use void*
