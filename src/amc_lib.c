@@ -5161,7 +5161,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 }
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
-    return "0.7.5";
+    return "0.7.6";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -16357,11 +16357,11 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 }
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
-    return "bd9f36f4";
+    return "bb68721e";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
-    return "2026-05-13T12:51:02Z";
+    return "2026-05-13T13:17:54Z";
 }
 
 Amalgame_Compiler_Log* Amalgame_Compiler_Log_new();
