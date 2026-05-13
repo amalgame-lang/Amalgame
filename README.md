@@ -51,7 +51,7 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.7.10**.
+Current version: **v0.8.0**.
 
 ## Language at a glance
 
@@ -232,6 +232,14 @@ error[resolver]: Unknown symbol 'someUndefinedThing'
   type) and `textDocument/completion` (every global symbol the
   resolver knows about, including types declared in any sibling
   `.am` file under the workspace root).
+- **`amc dap`** (v0.8.0+) — Debug Adapter Protocol proxy. Detects
+  a DAP-native backend on the host (`lldb-dap` from LLVM 18+,
+  `gdb --dap` from gdb 14+) and `execvp()`s into it. Combined
+  with `amc build -g` and the cgen's `#line` directives,
+  breakpoints set on `.am` source files resolve natively via
+  DWARF — no source-map files, no path translation. Works in
+  VS Code (the bundled extension declares the `amc` debug
+  type), Neovim, Helix, or any DAP-aware editor.
 - **`amc migrate <file|dir>`** — LLM-assisted source-to-Amalgame
   migration. Auto-detects 21 source languages by extension
   (TS, Python, Java, C#, Go, Rust, …). Provider auto-selection from

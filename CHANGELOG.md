@@ -7,6 +7,110 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.0] — 2026-05-13
+
+The **"debug adapter"** release. Three changes ship together to
+make `.am` source-level debugging Just Work in any DAP-capable
+editor (VS Code, Neovim, Helix, …).
+
+### New: `amc dap` — DAP proxy over stdio
+
+`amc dap` is a thin Debug Adapter Protocol proxy. It detects a
+DAP-native backend on the host (`lldb-dap` from LLVM 18+ today,
+`gdb --dap` from gdb 14+ planned for v0.8.1) and `execvp()`s
+into it. After the exec, stdin/stdout — already wired by the
+DAP client to its JSON-RPC pipes — flow directly to the backend
+with no in-amc copy. No message parsing, no path rewriting at
+this layer; everything resolves natively via DWARF + the new
+`#line` directives below.
+
+Detection order (first hit wins):
+
+1. `lldb-dap` (unsuffixed, if a generic `lldb` distro package
+   installed it)
+2. `lldb-dap-{20,19,18}` (Debian/Ubuntu LLVM versioned aliases)
+3. `/usr/lib/llvm-{20,19,18}/bin/lldb-dap` (full apt.llvm.org path)
+
+Backend args (`--port`, `--comm-file`, …) pass through: `amc dap
+--port 12345` is equivalent to `lldb-dap --port 12345`. If no
+backend is found, prints an install hint per OS and exits 127.
+
+**v0.9.0+ trajectory (Approche A, see ROADMAP_COMPLET.md):**
+swap `execvp` for a fork + pipe + `poll()` loop and start
+rewriting messages on the way through — pretty-print
+`AmalgameList*`/`AmalgameMap*`, filter Amalgame runtime
+frames, decode closures. The proxy stays as a fallback
+(e.g. `amc dap --raw`).
+
+### New: `amc build --debug` / `amc run --debug` (alias `-g`)
+
+When set, the build pipeline swaps `-O2` for `-O0 -g` on the
+gcc/g++ invocation (both the single-stage and C++ two-stage
+paths). DWARF debug info is now embedded so `lldb` /
+`lldb-dap` can map breakpoints, inspect locals, and walk the
+stack. Watch builds (`amc watch`) keep `-O2` by default —
+no overhead penalty for the non-debug hot loop.
+
+### New: `#line` directives in cgen output
+
+For every statement whose source line differs from the
+previous one, the cgen now emits a `#line N "foo.am"`
+directive before the lowered C. gcc + clang both honour these
+and embed the `.am` filename + line number in DWARF
+(`DW_AT_decl_file` / `DW_AT_decl_line`). Result: debuggers see
+the user's `.am` sources directly — `breakpoint set --file
+foo.am --line 5` binds to the right address with no source
+map files, no path translation in the proxy.
+
+This also improves gcc error messages on debug builds: `-Werror`
+warnings reference `foo.am:line` instead of `foo.c:line`.
+
+### Setup
+
+LLVM 18+ install on Debian/Ubuntu (the same recipe used to
+develop this release):
+
+```bash
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh
+sudo ./llvm.sh 18
+sudo apt install -y lldb-18
+# lldb-dap-18 ends up in /usr/bin and /usr/lib/llvm-18/bin
+```
+
+macOS: `xcode-select --install` (lldb-dap ships with Xcode
+Command Line Tools 14+). Windows: pending v0.8.1 `gdb --dap`
+support, install gdb 14+ via MSYS2.
+
+### VS Code `launch.json`
+
+```jsonc
+{
+  "type": "amc",
+  "request": "launch",
+  "name": "Debug current .am",
+  "program": "${workspaceFolder}/${fileBasenameNoExtension}",
+  "args": []
+}
+```
+
+Pair with a custom adapter type in `package.json`:
+
+```jsonc
+"debuggers": [{
+  "type": "amc",
+  "label": "Amalgame",
+  "program": "amc",
+  "args": ["dap"]
+}]
+```
+
+This will be folded into `editors/vscode/` in a follow-up; for
+v0.8.0, copying the snippets into a fresh `.vscode/launch.json`
+is enough to attach.
+
+---
+
 ## [v0.7.10] — 2026-05-13
 
 The **"LSP signature help"** release. Two tooltip-side UX
