@@ -381,47 +381,22 @@ public class NewCommand {
     }
 
     private static string BuildShExe(string name) {
-        // Build the shell script in pieces. Curly braces in shell
-        // expansions like ${VAR:-default} collide with Amalgame's
-        // string-interpolation parser, so we substitute via a sentinel
-        // (LB / RB) and run a final replacement pass.
-        let lb: string = "{"
-        let rb: string = "}"
+        // `amc build` (v0.7.9+) handles runtime/, libamalgame.a,
+        // package facades and the gcc link line on its own — no need
+        // to rebuild the discovery logic in a per-project script.
+        // Extra flags forward via `"$@"`, so `./build.sh -g` triggers
+        // the v0.8.0 debug build (DWARF, -O0, ready for `amc dap`).
         var s: string = ""
         s = s + "#!/bin/bash\n"
-        s = s + "# Build script for " + name + ". Compiles src/main.am to a native\n"
-        s = s + "# binary named `" + name + "` in the project root.\n"
+        s = s + "# Build script for " + name + ". Wraps `amc build`.\n"
         s = s + "#\n"
-        s = s + "# amc emits the .c bundle; gcc links it against the Amalgame\n"
-        s = s + "# runtime headers. Set AMALGAME_HOME if your runtime/ lives\n"
-        s = s + "# outside the install default.\n"
+        s = s + "# Usage:\n"
+        s = s + "#   ./build.sh         # release build (-O2)\n"
+        s = s + "#   ./build.sh -g      # debug build (-O0 -g, for `amc dap`)\n"
+        s = s + "#   ./build.sh --verbose  # show the underlying gcc command\n"
         s = s + "set -e\n"
         s = s + "cd \"$(dirname \"$0\")\"\n"
-        s = s + "\n"
-        s = s + "# Locate runtime/ (env override, install dirs, then the\n"
-        s = s + "# Amalgame repo if amc is on PATH).\n"
-        s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n"
-        s = s + "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n"
-        s = s + "  done\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n"
-        s = s + "  if [ -n \"$AMC_BIN\" ]; then\n"
-        s = s + "    cand=$(dirname \"$AMC_BIN\")\n"
-        s = s + "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n"
-        s = s + "  fi\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir> (the dir\"\n"
-        s = s + "  echo \"          containing runtime/), or install Amalgame globally.\"\n"
-        s = s + "  exit 1\n"
-        s = s + "fi\n"
-        s = s + "\n"
-        s = s + "amc src/main.am -o " + name + "\n"
-        s = s + "gcc -O2 -I\"$RUNTIME/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + "\n"
-        s = s + "echo \"built ./" + name + "\"\n"
+        s = s + "amc build src/main.am -o ./" + name + " \"$@\"\n"
         return s
     }
 
@@ -658,41 +633,20 @@ public class NewCommand {
     }
 
     private static string BuildShService(string name) {
-        // Curly braces in shell parameter expansions (${VAR:-default})
-        // collide with Amalgame's string interpolation parser, so we
-        // substitute via sentinels and run a final replacement.
-        let lb: string = "{"
-        let rb: string = "}"
+        // `amc build` (v0.7.9+) handles runtime/, libamalgame.a, package
+        // facades and the gcc link line on its own. The service template
+        // also depends on Amalgame.Logging + Amalgame.Service, which
+        // amc auto-installs from the manifest on the first run.
         var s: string = ""
         s = s + "#!/usr/bin/env bash\n"
-        s = s + "# build.sh — compile " + name + " to a native binary.\n"
-        s = s + "# Same locate-the-runtime logic as the exe template:\n"
-        s = s + "# env override (AMALGAME_HOME), system install dirs, or\n"
-        s = s + "# the repo amc points to.\n"
+        s = s + "# build.sh — compile " + name + " via `amc build`.\n"
+        s = s + "#\n"
+        s = s + "# Usage:\n"
+        s = s + "#   ./build.sh         # release build (-O2)\n"
+        s = s + "#   ./build.sh -g      # debug build (-O0 -g, for `amc dap`)\n"
         s = s + "set -euo pipefail\n"
         s = s + "cd \"$(dirname \"$0\")\"\n"
-        s = s + "\n"
-        s = s + "RUNTIME=\"$" + lb + "AMALGAME_HOME:-" + rb + "\"\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  for d in /usr/local/share/amalgame /usr/share/amalgame; do\n"
-        s = s + "    [ -d \"$d/runtime\" ] && RUNTIME=\"$d\" && break\n"
-        s = s + "  done\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  AMC_BIN=$(command -v amc 2>/dev/null || true)\n"
-        s = s + "  if [ -n \"$AMC_BIN\" ]; then\n"
-        s = s + "    cand=$(dirname \"$AMC_BIN\")\n"
-        s = s + "    [ -d \"$cand/runtime\" ] && RUNTIME=\"$cand\"\n"
-        s = s + "  fi\n"
-        s = s + "fi\n"
-        s = s + "if [ -z \"$RUNTIME\" ] || [ ! -d \"$RUNTIME/runtime\" ]; then\n"
-        s = s + "  echo \"build.sh: runtime/ not found. Set AMALGAME_HOME=<dir>.\" >&2\n"
-        s = s + "  exit 1\n"
-        s = s + "fi\n"
-        s = s + "\n"
-        s = s + "amc src/main.am -o " + name + "\n"
-        s = s + "gcc -O2 -I\"$RUNTIME/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + "\n"
-        s = s + "echo \"built ./" + name + "\"\n"
+        s = s + "amc build src/main.am -o ./" + name + " \"$@\"\n"
         return s
     }
 
@@ -704,30 +658,17 @@ public class NewCommand {
     // AMALGAME_HOME points at the directory containing `runtime/`.
     private static string BuildPs1Service(string name) {
         var s: string = ""
-        s = s + "# build.ps1 — compile " + name + " on Windows via MinGW gcc.\n"
+        s = s + "# build.ps1 — compile " + name + " on Windows via `amc build`.\n"
         s = s + "#\n"
         s = s + "# Run from a PowerShell where `amc.exe` and a MinGW `gcc.exe`\n"
-        s = s + "# are on PATH. The MSYS2 mingw64 shell installs both with:\n"
+        s = s + "# are on PATH. MSYS2 mingw64 installs both with:\n"
         s = s + "#   pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl\n"
+        s = s + "#\n"
+        s = s + "# Pass -g (or any flag) and it forwards to `amc build` for a\n"
+        s = s + "# debug DWARF build that pairs with `amc dap` under VS Code.\n"
         s = s + "$ErrorActionPreference = 'Stop'\n"
         s = s + "Set-Location $PSScriptRoot\n"
-        s = s + "\n"
-        s = s + "$runtime = $env:AMALGAME_HOME\n"
-        s = s + "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n"
-        s = s + "  $amc = (Get-Command amc -ErrorAction SilentlyContinue)\n"
-        s = s + "  if ($amc) {\n"
-        s = s + "    $cand = Split-Path -Parent $amc.Path\n"
-        s = s + "    if (Test-Path \"$cand/runtime\") { $runtime = $cand }\n"
-        s = s + "  }\n"
-        s = s + "}\n"
-        s = s + "if (-not $runtime -or -not (Test-Path \"$runtime/runtime\")) {\n"
-        s = s + "  Write-Error \"build.ps1: runtime/ not found. Set `$env:AMALGAME_HOME.\"\n"
-        s = s + "  exit 1\n"
-        s = s + "}\n"
-        s = s + "\n"
-        s = s + "& amc src/main.am -o " + name + "\n"
-        s = s + "& gcc -O2 -I\"$runtime/runtime\" " + name + ".c -lgc -lm -lcurl -o " + name + ".exe\n"
-        s = s + "Write-Host \"built ./" + name + ".exe\"\n"
+        s = s + "& amc build src/main.am -o ./" + name + ".exe @args\n"
         return s
     }
 

@@ -139,3 +139,36 @@ echo "✅ amc built $(date)"
 #    the .am source — the lib supplies the symbols at link time. ──
 echo "=== Step 4: Build lib/libamalgame.a ==="
 ./tools/build-stdlib.sh
+
+# ── Step 5: Optional install into ~/.local/bin/ ─────────────────────
+#
+# Opt-in via `./build_amc.sh --install` (or `AMC_INSTALL=1 ./build_amc.sh`).
+# Copies amc + runtime/ + lib/ so `amc build` resolves them from the
+# user's PATH install rather than the in-tree dev paths. Idempotent —
+# moves any existing runtime/ and lib/ to *.bak before overwriting so
+# the previous install is recoverable.
+#
+# Skipped by default to keep the bootstrap loop fast and to avoid
+# touching the user's $HOME without an explicit ask.
+if [ "${1:-}" = "--install" ] || [ "${AMC_INSTALL:-0}" = "1" ]; then
+    echo "=== Step 5: Install to ~/.local/bin ==="
+    mkdir -p "$HOME/.local/bin"
+    if [ -d "$HOME/.local/bin/runtime" ] && [ ! -L "$HOME/.local/bin/runtime" ]; then
+        rm -rf "$HOME/.local/bin/runtime.bak"
+        mv "$HOME/.local/bin/runtime" "$HOME/.local/bin/runtime.bak"
+        echo "  moved old runtime/ to runtime.bak"
+    fi
+    if [ -d "$HOME/.local/bin/lib" ] && [ ! -L "$HOME/.local/bin/lib" ]; then
+        rm -rf "$HOME/.local/bin/lib.bak"
+        mv "$HOME/.local/bin/lib" "$HOME/.local/bin/lib.bak"
+        echo "  moved old lib/ to lib.bak"
+    fi
+    cp -f ./amc          "$HOME/.local/bin/amc"
+    cp -r ./runtime      "$HOME/.local/bin/runtime"
+    cp -r ./lib          "$HOME/.local/bin/lib"
+    echo "  installed: $HOME/.local/bin/{amc,runtime/,lib/}"
+    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then
+        echo "  warning: $HOME/.local/bin is not on \$PATH — add it to ~/.bashrc:"
+        echo "           export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
+fi
