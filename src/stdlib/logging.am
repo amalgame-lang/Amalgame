@@ -36,26 +36,31 @@ public class Log {
     //   Log.SetMinLevel("debug")    // emit everything
     //   Log.SetMinLevel("warn")     // hide Debug + Info
     public static void SetMinLevel(name: string) {
-        @c {
-            if (!name || !name[0]) { Amalgame_Logging_MinLevel = 1; return; }
-            char ch = name[0];
-            if (ch == 'd' || ch == 'D') { Amalgame_Logging_MinLevel = 0; return; }
-            if (ch == 'i' || ch == 'I') { Amalgame_Logging_MinLevel = 1; return; }
-            if (ch == 'w' || ch == 'W') { Amalgame_Logging_MinLevel = 2; return; }
-            if (ch == 'e' || ch == 'E') { Amalgame_Logging_MinLevel = 3; return; }
-            Amalgame_Logging_MinLevel = 1;
+        // Pure-AM level decode — case-insensitive on the first
+        // letter, "info" on anything else. The only thing that
+        // must touch C is the write to the shared state global,
+        // so the @c block is one line.
+        var level: int = 1
+        if (String_Length(name) > 0) {
+            let ch: string = String_CharAt1(name, 0)
+            if (ch == "d" || ch == "D") { level = 0 }
+            else if (ch == "i" || ch == "I") { level = 1 }
+            else if (ch == "w" || ch == "W") { level = 2 }
+            else if (ch == "e" || ch == "E") { level = 3 }
         }
+        @c { Amalgame_Logging_MinLevel = (int) level; }
     }
 
     // Lower-case canonical name of the current minimum level.
     public static string GetMinLevel() {
-        @c {
-            int l = Amalgame_Logging_MinLevel;
-            if (l == 0) return "debug";
-            if (l == 1) return "info";
-            if (l == 2) return "warn";
-            return "error";
-        }
+        // Read the shared state global through a tiny @c bridge,
+        // then map the integer to a name in pure AM.
+        var l: int = 0
+        @c { l = (i64) Amalgame_Logging_MinLevel; }
+        if (l == 0) { return "debug" }
+        if (l == 1) { return "info" }
+        if (l == 2) { return "warn" }
+        return "error"
     }
 
     // Set (or clear) the file sink. Pass empty string to disable.
