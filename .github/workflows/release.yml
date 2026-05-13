@@ -51,10 +51,15 @@ jobs:
         run: |
           NAME="amc-${{ steps.ver.outputs.version }}-linux-x86_64"
           mkdir -p "dist/$NAME/runtime"
+          mkdir -p "dist/$NAME/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
           cp amc                                          "dist/$NAME/"
           cp runtime/*.h                                  "dist/$NAME/runtime/"
+          # Project F (v0.7.5+): pre-compiled user-facing stdlib.
+          # build_amc.sh ran tools/build-stdlib.sh as Step 4, so
+          # lib/libamalgame.a is already on disk.
+          cp lib/libamalgame.a                             "dist/$NAME/lib/"
           cp README.md LICENSE                            "dist/$NAME/"
           # Bundle the LLM-prompt source docs so `amc migrate / generate /
           # explain` find them at <exec-dir>/../share/amalgame/docs/...
@@ -94,6 +99,16 @@ jobs:
               src/amc_lib.c \
               -lgc -lm -lcurl -o amc
 
+      - name: Pre-compile user-facing stdlib (libamalgame.a)
+        run: |
+          GC_PREFIX=$(brew --prefix bdw-gc)
+          CURL_PREFIX=$(brew --prefix curl)
+          # tools/build-stdlib.sh defaults to plain `gcc -O2 -Iruntime`;
+          # the macOS runner needs the homebrew prefixes spliced in.
+          export CPPFLAGS="-I$GC_PREFIX/include -I$CURL_PREFIX/include"
+          export LDFLAGS="-L$GC_PREFIX/lib -L$CURL_PREFIX/lib"
+          ./tools/build-stdlib.sh
+
       - name: Determine version
         id: ver
         run: |
@@ -108,10 +123,12 @@ jobs:
         run: |
           NAME="amc-${{ steps.ver.outputs.version }}-macos-arm64"
           mkdir -p "dist/$NAME/runtime"
+          mkdir -p "dist/$NAME/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
           cp amc                                          "dist/$NAME/"
           cp runtime/*.h                                  "dist/$NAME/runtime/"
+          cp lib/libamalgame.a                             "dist/$NAME/lib/"
           cp README.md LICENSE                            "dist/$NAME/"
           # See linux job for rationale (LLM-prompt source docs).
           cp docs/language/grammar.ebnf      "dist/$NAME/share/amalgame/docs/language/"
@@ -160,6 +177,13 @@ jobs:
               src/amc_lib.c \
               -lgc -lm -lcurl -lz -lsystre -ltre -lws2_32 -lbcrypt -o amc.exe
 
+      - name: Pre-compile user-facing stdlib (libamalgame.a)
+        run: |
+          # tools/build-stdlib.sh invokes ./amc; rename amc.exe → amc for it.
+          cp amc.exe amc
+          ./tools/build-stdlib.sh
+          rm -f amc
+
       - name: Determine version
         id: ver
         run: |
@@ -174,10 +198,12 @@ jobs:
         run: |
           NAME="amc-${{ steps.ver.outputs.version }}-windows-x86_64"
           mkdir -p "dist/$NAME/runtime"
+          mkdir -p "dist/$NAME/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
           cp amc.exe                                      "dist/$NAME/"
           cp runtime/*.h                                  "dist/$NAME/runtime/"
+          cp lib/libamalgame.a                            "dist/$NAME/lib/"
           cp README.md LICENSE                            "dist/$NAME/"
           # See linux job for rationale (LLM-prompt source docs).
           cp docs/language/grammar.ebnf      "dist/$NAME/share/amalgame/docs/language/"

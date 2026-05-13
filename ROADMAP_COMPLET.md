@@ -1,13 +1,13 @@
 # Amalgame — Roadmap
 
 > **Upcoming priority sequence (2026-05-12 decision):**
-> `v0.7.4 = G (inline-C blocks)` ✅ shipped → `v0.7.5 = F (libamalgame pre-compile)` → `v0.7.6+ stdlib in .am only`.
+> `v0.7.4 = G (inline-C blocks)` ✅ shipped → `v0.7.5 = F (libamalgame pre-compile)` ✅ shipped → `v0.7.6+ stdlib in .am only`.
 > No new `runtime/Amalgame_*.h` after v0.7.3 — every new stdlib module lands as a `.am` file
 > using `@c { ... }` blocks for low-level glue. Migration cost of existing `.h` files stays
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-12 · `amc 0.7.4` · self-hosted · 610/610 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`)
+> Updated 2026-05-13 · `amc 0.7.5` · self-hosted · 613/613 tests · multi-OS CI · GitHub Releases automation · package manager + ecosystem (incl. DuckDB) + C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + Vec3/Vec4/Mat4 + FileWatcher + YAML + DateTime UTC breakdown + Regex + Compress + MessagePack + WebSocket client + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + `lib/libamalgame.a` pre-compiled stdlib via `--external`
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -1437,6 +1437,52 @@ Non-candidates (stay in C):
 Each migration is its own PR (small, isolated, easy to revert) and
 should include a benchmark snapshot in the description so we catch
 the rare case where `@c {}` boundary costs hurt a hot path.
+
+---
+
+## Project F follow-up — per-package `libamalgame-pkg-<name>.a`
+
+Project F (v0.7.5) shipped `lib/libamalgame.a` for the **integrated**
+user-facing stdlib. The same `--external` mechanism could extend to
+**external packages** (`amc package add sqlite/duckdb/redis/mqtt`)
+that ship an AM facade alongside their C runtime.
+
+Status today (post-v0.7.5):
+
+- **Integrated stdlib** (random, encoding, json, …) — pre-compiled
+  in `lib/libamalgame.a`, linked via `--external`. ✅
+- **External packages — C runtime** — already pre-compiled at
+  `amc package add` time (v0.5.4, `[stdlib].precompile = true` in
+  the manifest), cached at
+  `~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/build/<platform>/`. ✅
+- **External packages — AM facade** — re-parsed on every `amc -o`
+  in the user's project, even when the package author shipped a
+  thin facade `.am` next to the runtime header. ❌
+
+Sketch of the extension:
+
+- [ ] **`tools/build-package-stdlib.sh`** (or extend
+      `tools/build-stdlib.sh` with a `--package <slug>` flag) —
+      compile the package's facade `.am` into
+      `~/.amalgame/packages/<…>/build/<platform>/libamalgame-pkg-<slug>.a`
+      at `amc package add` time, alongside the existing runtime-`.o`
+      cache. Reuse the same `amc --lib --quiet -o … && gcc -c &&
+      ar rcs` shape.
+- [ ] **Manifest** — opt-in via `[stdlib].facade = "facade.am"` in
+      `amalgame.toml`, mirroring the existing `[stdlib].sources` /
+      `precompile` flags.
+- [ ] **`amc test` / `amc -o`** — when a registered package has a
+      pre-compiled facade lib, auto-pass `--external <package>/facade.am`
+      and link against the per-package archive (same gcc step that
+      already pulls in the runtime `.o` cache).
+- [ ] **Resolver / cgen** — no change needed: the `--external`
+      pipeline shipped in v0.7.5 already routes inter-namespace
+      mangling correctly.
+
+Estimated ~1 day. Becomes worth doing as soon as a community package
+ships a facade that's expensive enough to re-parse to make it visible
+in `amc -o` timings (today's 4 official packages — SQLite, Redis,
+MQTT, DuckDB — are mostly thin C bindings, so the gain is small).
 
 ---
 

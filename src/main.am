@@ -12,14 +12,16 @@ public class AmalgameCompiler {
     private LintMode: bool
     private Verbose: bool
     private ExitCode: int
+    private ExternalFiles: List<string>
 
     public AmalgameCompiler() {
-        this.Diag      = new DiagnosticFormatter()
-        this.IsLib     = false
-        this.CheckOnly = false
-        this.LintMode  = false
-        this.Verbose   = false
-        this.ExitCode  = 0
+        this.Diag          = new DiagnosticFormatter()
+        this.IsLib         = false
+        this.CheckOnly     = false
+        this.LintMode      = false
+        this.Verbose       = false
+        this.ExitCode      = 0
+        this.ExternalFiles = new List<string>()
     }
 
     public void SetLib(bool v)       { this.IsLib     = v }
@@ -27,6 +29,7 @@ public class AmalgameCompiler {
     public void SetLintMode(bool v)  { this.LintMode  = v }
     public void SetVerbose(bool v)   { this.Verbose   = v }
     public void SetColor(bool v)     { this.Diag.EnableColor(v) }
+    public void SetExternalFiles(List<string> files) { this.ExternalFiles = files }
     public int  GetExitCode()        { return this.ExitCode }
 
     // ── Main compile pipeline ─────────────────────────
@@ -95,6 +98,39 @@ public class AmalgameCompiler {
             }
             gen.AddFilePass1(prog)
         }
+        // Project F (v0.7.5+): external files (passed via `--external
+        // <file.am>`) are parsed for resolver + typechecker visibility,
+        // but the cgen emits forward declarations only — definitions
+        // land at link time from libamalgame.a. The cgen tracks each
+        // file's namespace so call sites in the primary files lower
+        // through the file's own mangled prefix rather than the
+        // bundle's global NsPrefix.
+        let externalProgs  = new List<AstNode>()
+        let externalCount  = this.ExternalFiles.Count()
+        for ei in 0..externalCount {
+            let epath = this.ExternalFiles.Get(ei)
+            let esrc  = File.ReadAll(epath)
+            this.Diag.LoadSource(epath, esrc)
+            let elex  = new Lexer(esrc, epath)
+            let etoks = elex.Tokenize()
+            let epar  = new Parser(etoks)
+            let eprog = epar.Parse()
+            externalProgs.Add(eprog)
+            if (epar.HasErrors()) {
+                Console.WriteError("amc: parse errors in external " + epath)
+                Console.WriteError(epar.GetErrors())
+                this.ExitCode = 1
+                parseOk = false
+            }
+            // RegisterExternalProg both indexes the file's classes (so
+            // call-site mangling can look them up) and emits the
+            // matching `typedef struct _Mangled Mangled;` forward
+            // declarations using the file's own namespace. No
+            // AddFilePass1 here — that would re-emit forward decls
+            // under the bundle's global NsPrefix and produce a
+            // duplicate / wrong-prefix typedef.
+            gen.RegisterExternalProg(eprog)
+        }
         // Don't continue past resolve/typecheck/cgen if the parser
         // refused part of the input — the AST is incomplete and
         // downstream phases would just chain spurious errors off
@@ -116,6 +152,13 @@ public class AmalgameCompiler {
         let progCount = progs.Count()
         for ri in 0..progCount {
             resolver.Programs.Add(progs.Get(ri))
+        }
+        // External programs participate in resolution exactly like
+        // primary ones — the resolver needs to see their classes so
+        // call sites can be checked.
+        let extCount = externalProgs.Count()
+        for ei2 in 0..extCount {
+            resolver.Programs.Add(externalProgs.Get(ei2))
         }
         resolver.ResolvePrograms()
         if (resolver.HasErrors()) {
@@ -139,6 +182,12 @@ public class AmalgameCompiler {
         tc.Sources = this.Diag.Sources
         for ti in 0..progCount {
             tc.Check(progs.Get(ti))
+        }
+        // External programs are type-checked too so referenced
+        // signatures stay consistent; cgen will still skip their
+        // emission in pass 2.
+        for ti2 in 0..extCount {
+            tc.Check(externalProgs.Get(ti2))
         }
         if (tc.HasErrors()) {
             Console.WriteError(tc.FormatErrors())
@@ -635,13 +684,14 @@ public class Program {
             return
         }
 
-        let inputFiles = new List<string>()
-        var outputName = "a.out"
-        var isLib      = false
-        var checkOnly  = false
-        var lintMode   = false
-        var useColor   = false
-        var verbose    = true
+        let inputFiles    = new List<string>()
+        let externalFiles = new List<string>()
+        var outputName    = "a.out"
+        var isLib         = false
+        var checkOnly     = false
+        var lintMode      = false
+        var useColor      = false
+        var verbose       = true
 
         var i = 1
         while (i < argc) {
@@ -649,6 +699,15 @@ public class Program {
             if (a == "-o" && i + 1 < argc) {
                 i = i + 1
                 outputName = Args_Get(i)
+            } else if (a == "--external" && i + 1 < argc) {
+                // Project F (v0.7.5+): the file is parsed for resolver
+                // visibility but its class definitions are NOT emitted in
+                // the output .c — they're expected to land at link time
+                // from libamalgame.a. Call sites in primary files lower
+                // through the file's own namespace mangling rather than
+                // the bundle's NsPrefix.
+                i = i + 1
+                externalFiles.Add(Args_Get(i))
             } else if (a == "--lib") {
                 isLib = true
             } else if (a == "--check") {
@@ -715,6 +774,7 @@ public class Program {
         compiler.SetLintMode(lintMode)
         compiler.SetColor(useColor)
         compiler.SetVerbose(verbose)
+        compiler.SetExternalFiles(externalFiles)
         compiler.Run(inputFiles, outputName)
         Exit_Set(compiler.GetExitCode())
     }

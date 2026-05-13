@@ -94,6 +94,62 @@ run_test() {
     fi
 }
 
+# Project F (v0.7.5+) end-to-end driver. Compile `$file` with one
+# or more `--external <mod>` flags, then link the user .c against
+# `lib/libamalgame.a` (pre-built by tools/build-stdlib.sh) instead
+# of bundling the stdlib AM source. Asserts the expected substring
+# appears in stdout.
+#
+#   $1 = test name
+#   $2 = .am sample
+#   $3 = expected substring in stdout
+#   $4 = space-separated list of stdlib .am paths to pass --external
+run_external_test() {
+    local name="$1"
+    local file="$2"
+    local expected="$3"
+    local externals="$4"
+
+    printf "  %-38s" "$name"
+
+    if [ ! -f "$file" ]; then
+        echo -e "${YELLOW}SKIP${NC} (file not found)"
+        SKIP=$((SKIP + 1)); return
+    fi
+    if [ ! -f lib/libamalgame.a ]; then
+        echo -e "${YELLOW}SKIP${NC} (lib/libamalgame.a missing — run tools/build-stdlib.sh)"
+        SKIP=$((SKIP + 1)); return
+    fi
+
+    local ext_args=""
+    for e in $externals; do ext_args="$ext_args --external $e"; done
+
+    local out_base="$BUILD_DIR/$(basename "${file%.am}")"
+    output=$("$AMC" -o "$out_base" $ext_args "$file" 2>&1)
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (amc exited non-zero)"
+        echo "$output" | grep -E "error|Error" | head -5 | sed 's/^/    /'
+        FAIL=$((FAIL + 1)); return
+    fi
+    local c_file="${out_base}.c"
+    gcc -O2 -Iruntime "$c_file" lib/libamalgame.a -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    if [ ! -x "$out_base" ]; then
+        echo -e "${RED}FAIL${NC} (gcc/link failed)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    local run_output
+    run_output=$("$out_base" 2>&1)
+    if echo "$run_output" | grep -qF "$expected"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (output mismatch)"
+        echo "    expected : $expected"
+        echo "    got      : $(echo "$run_output" | head -3 | tr '\n' '|')"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 run_lib_test() {
     local name="$1"
     local file="$2"
@@ -391,6 +447,15 @@ run_test "inline-C dir: toupper"      "$SAMPLES/inline_c_directives.am"  "a→65
 run_test "inline-C dir: toupper z"    "$SAMPLES/inline_c_directives.am"  "z→90"
 run_test "inline-C dir: isalpha yes"  "$SAMPLES/inline_c_directives.am"  "A is alpha"
 run_test "inline-C dir: isalpha no"   "$SAMPLES/inline_c_directives.am"  "0 is not alpha"
+
+# Project F (v0.7.5+) — `--external <mod.am>` + link against
+# pre-compiled lib/libamalgame.a. Skips if the lib hasn't been
+# built yet (build_amc.sh's Step 4 produces it).
+LIBA_SAMPLE="$SAMPLES/external_libamalgame.am"
+LIBA_EXTS="src/stdlib/random.am src/stdlib/encoding.am src/stdlib/json.am src/stdlib/msgpack.am"
+run_external_test "libamalgame.a: random"   "$LIBA_SAMPLE"  "rnd: 4046551126"  "$LIBA_EXTS"
+run_external_test "libamalgame.a: encoding" "$LIBA_SAMPLE"  "hex: deadbeef"    "$LIBA_EXTS"
+run_external_test "libamalgame.a: msgpack"  "$LIBA_SAMPLE"  "mp: 42"           "$LIBA_EXTS"
 
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
