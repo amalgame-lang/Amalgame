@@ -9,21 +9,26 @@ namespace Amalgame.Logging
 // tracked alongside the `service` template work).
 //
 // Configuration is process-wide singleton state held in two file-
-// scope C globals declared in `runtime/Amalgame_Logging.h`
-// (`Amalgame_Logging_MinLevel` + `Amalgame_Logging_FilePath`).
-// Sufficient for CLIs and single-threaded servers; a mutex is the
-// v2 ask once a real multi-threaded user lands.
+// scope C globals declared in the top-level `@c { … }` block
+// just below. Sufficient for CLIs and single-threaded servers;
+// a mutex is the v2 ask once a real multi-threaded user lands.
 //
 // Level names are case-insensitive on the first letter — "debug",
 // "DEBUG", "Debug" all map to the same code. Unknown names
 // default to Info silently; logging itself should never crash
 // a process.
 //
-// History: ported from `runtime/Amalgame_Logging.h` (8 static
-// inline helpers, ~80 LoC of C) to AM with `@c { … }` blocks in
-// the post-v0.7.5 migration pass. The trimmed runtime header
-// still declares the two state globals so the @c blocks can
-// share them across compilation units / call sites.
+// History: the implementation was a `runtime/Amalgame_Logging.h`
+// header with 8 static inline helpers (~80 LoC of C) before the
+// v0.7.5 migration. After the second pass, the header is gone
+// entirely — state globals + libc include both live below in
+// this file-scope `@c { … }` block.
+
+@c {
+    #include <time.h>
+    static int   Amalgame_Logging_MinLevel = 1;     /* default Info */
+    static char* Amalgame_Logging_FilePath = NULL;  /* NULL = disabled */
+}
 
 public class Log {
     public Log() {}

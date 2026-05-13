@@ -1307,9 +1307,11 @@ public class CGen {
         this.Out.EmitLine("#include \"Amalgame_Console.h\"")
         this.Out.EmitLine("#include \"Amalgame_Process.h\"")
         this.Out.EmitLine("#include \"Amalgame_Random.h\"")
-        this.Out.EmitLine("#include \"Amalgame_DateTime.h\"")
+        // DateTime + Logging: runtime headers dropped after the
+        // top-level `@c { … }` extension (post-v0.7.5). Their state
+        // globals + libc includes now live in the .am files
+        // themselves (src/stdlib/datetime.am, src/stdlib/logging.am).
         this.Out.EmitLine("#include \"Amalgame_Crypto.h\"")
-        this.Out.EmitLine("#include \"Amalgame_Logging.h\"")
         this.Out.EmitLine("#include \"Amalgame_Service.h\"")
         this.Out.EmitLine("#include \"Amalgame_BuildInfo.h\"")
         // (Amalgame_Database_SQLite.h / Amalgame_Database_Redis.h
@@ -1507,6 +1509,22 @@ public class CGen {
         if (k == NodeKind.CLASS_DECL) {
             let name = this.SymName(decl.Name)
             this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+        }
+        if (k == NodeKind.INLINE_C) {
+            // File-scope `@c { … }` raw block. Emit the body verbatim
+            // here in Pass 1 so any `static` state globals or extra
+            // libc includes land before the class typedefs / method
+            // bodies that reference them. EmitDecl below skips this
+            // kind in Pass 2.
+            this.Out.EmitLine("/* inline-C top-level */")
+            let body = decl.Str
+            if (String_Length(body) > 0) {
+                let lines: List<string> = String_Split(body, "\n")
+                let count = lines.Count()
+                for i in 0..count {
+                    this.Out.EmitLine(lines.Get(i))
+                }
+            }
         }
     }
 
