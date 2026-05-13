@@ -308,7 +308,11 @@ public class AmalgameCompiler {
         // ── Codegen pass ──────────────────────────────
         gen.EmitSeparator()
         for j in 0..inputCount {
-            gen.AddFilePass2(progs.Get(j))
+            // Pass the source path so the cgen emits `#line N "foo.am"`
+            // directives at each statement — DWARF then carries .am
+            // filenames + line numbers, and `amc dap` can forward
+            // breakpoints natively without rewriting source paths.
+            gen.AddFilePass2(progs.Get(j), inputFiles.Get(j))
         }
 
         // ── Write output .c ───────────────────────────
@@ -379,6 +383,8 @@ public class Program {
         Console.WriteError("                [PASS]/[FAIL]/[SKIP] lines from their stdout.")
         Console.WriteError("  lsp           Run a minimal LSP server (stdio JSON-RPC).")
         Console.WriteError("                v1 publishes diagnostics on didOpen/didChange.")
+        Console.WriteError("  dap           Run a DAP proxy over stdio (forwards to lldb-dap / gdb --dap).")
+        Console.WriteError("                Use `amc build -g entry.am` first to embed DWARF info.")
         Console.WriteError("  migrate <f>   Migrate a source file or directory to Amalgame via LLM.")
         Console.WriteError("                Auto-uses claude-api when ANTHROPIC_API_KEY is set, else")
         Console.WriteError("                shells out to the local `claude` CLI. See `amc migrate --help`.")
@@ -717,7 +723,8 @@ public class Program {
         List<string> facadeArs,
         List<string> pkgLibs,
         bool hasCxx,
-        bool verbose
+        bool verbose,
+        bool debug
     ) {
         let outC: string = outBin + ".c"
         var quietFlag: string = " --quiet"
@@ -733,6 +740,12 @@ public class Program {
             Console.WriteLine("  amc → " + outC)
         }
 
+        // v0.8.0+: --debug swaps -O2 for -O0 -g so gcc emits DWARF
+        // line tables + frame info; the `amc dap` adapter needs that
+        // to map breakpoints on .am files (via the #line directives
+        // amc already emits in the .c) to runtime addresses.
+        var optFlag: string = "-O2"
+        if (debug) { optFlag = "-O0 -g" }
         var gccCmd: string = ""
         if (hasCxx) {
             // C++ package present (DuckDB etc.) — two-stage link.
@@ -740,7 +753,7 @@ public class Program {
             // void* casts and string-literal-to-char* coercions that
             // g++ rejects with -fpermissive warnings as errors, so
             // we compile as C first.
-            var compileCmd: string = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
+            var compileCmd: string = "gcc " + optFlag + " -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
             if (String_Length(amcRuntime) > 0) {
                 compileCmd = compileCmd + " -I'" + amcRuntime + "'"
             }
@@ -752,9 +765,9 @@ public class Program {
                 Console.Write(stageA.Stdout)
                 return 1
             }
-            gccCmd = "g++ -O2 " + objOut
+            gccCmd = "g++ " + optFlag + " " + objOut
         } else {
-            gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
+            gccCmd = "gcc " + optFlag + " -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
             if (String_Length(amcRuntime) > 0) {
                 gccCmd = gccCmd + " -I'" + amcRuntime + "'"
             }
@@ -802,7 +815,7 @@ public class Program {
     // vendored package sources, then delegates to BuildOneBinary.
     // Returns the exit code from BuildOneBinary; the caller decides
     // whether to chain a subsequent `Process.Run` (amc run).
-    public static int BuildEntry(string entryAm, string outBin, bool verbose) {
+    public static int BuildEntry(string entryAm, string outBin, bool verbose, bool debug) {
         if (!File.Exists(entryAm)) {
             Console.WriteError("amc build: entry file not found: " + entryAm)
             return 2
@@ -848,7 +861,7 @@ public class Program {
 
         let rc: int = Program.BuildOneBinary(
             amcPath, entryAm, outBin, amcRuntime, libamalgameA,
-            pkgObjs, facadeArs, pkgLibs, hasCxx, verbose
+            pkgObjs, facadeArs, pkgLibs, hasCxx, verbose, debug
         )
         return rc
     }
@@ -864,15 +877,18 @@ public class Program {
         var entryAm: string = ""
         var outBin: string = ""
         var verbose: bool = false
+        var debug: bool = false
         var i: int = 2
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc build [-o <out>] [--verbose] <entry.am>")
+                Console.WriteError("Usage: amc build [-o <out>] [-g|--debug] [--verbose] <entry.am>")
                 Console.WriteError("")
                 Console.WriteError("Compile + link a runnable binary in one step.")
                 Console.WriteError("Equivalent to `amc -o out entry.am` plus the gcc invocation")
                 Console.WriteError("(runtime headers, libamalgame.a, installed packages, libs).")
+                Console.WriteError("")
+                Console.WriteError("  -g, --debug    swap -O2 for -O0 -g (DWARF for amc dap)")
                 return 0
             }
             if (a == "-o" && i + 1 < argc) {
@@ -880,6 +896,9 @@ public class Program {
                 i = i + 2
             } else if (a == "-v" || a == "--verbose") {
                 verbose = true
+                i = i + 1
+            } else if (a == "-g" || a == "--debug") {
+                debug = true
                 i = i + 1
             } else if (String_StartsWith(a, "-")) {
                 Console.WriteError("amc build: unknown option '" + a + "'")
@@ -895,7 +914,7 @@ public class Program {
         }
         if (String_Length(entryAm) == 0) {
             Console.WriteError("amc build: missing entry .am argument")
-            Console.WriteError("Usage: amc build [-o <out>] [--verbose] <entry.am>")
+            Console.WriteError("Usage: amc build [-o <out>] [-g|--debug] [--verbose] <entry.am>")
             return 2
         }
         // Default output: strip directory + ".am" suffix from entry.
@@ -910,7 +929,7 @@ public class Program {
             }
             outBin = "./" + outBin
         }
-        let rc: int = Program.BuildEntry(entryAm, outBin, verbose)
+        let rc: int = Program.BuildEntry(entryAm, outBin, verbose, debug)
         if (rc == 0) {
             Console.WriteLine("✓ Built " + outBin)
         }
@@ -927,6 +946,7 @@ public class Program {
         var entryAm: string = ""
         var outBin: string = ""
         var verbose: bool = false
+        var debug: bool = false
         let userArgs: List<string> = new List<string>()
         var sawSep: bool = false
         var i: int = 2
@@ -938,7 +958,7 @@ public class Program {
                 continue
             }
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc run [-o <out>] [--verbose] <entry.am> [-- args...]")
+                Console.WriteError("Usage: amc run [-o <out>] [-g|--debug] [--verbose] <entry.am> [-- args...]")
                 Console.WriteError("")
                 Console.WriteError("Build the binary, then run it. Args after the `--` sentinel")
                 Console.WriteError("are forwarded to the resulting program's argv.")
@@ -952,6 +972,9 @@ public class Program {
                 i = i + 2
             } else if (a == "-v" || a == "--verbose") {
                 verbose = true
+                i = i + 1
+            } else if (a == "-g" || a == "--debug") {
+                debug = true
                 i = i + 1
             } else if (String_StartsWith(a, "-")) {
                 Console.WriteError("amc run: unknown option '" + a + "'")
@@ -981,7 +1004,7 @@ public class Program {
             }
             outBin = "./" + outBin
         }
-        let buildRc: int = Program.BuildEntry(entryAm, outBin, verbose)
+        let buildRc: int = Program.BuildEntry(entryAm, outBin, verbose, debug)
         if (buildRc != 0) {
             return buildRc
         }
@@ -1079,7 +1102,7 @@ public class Program {
     }
 
     private static int BuildAndMaybeRun(string entryAm, string outBin, bool verbose, bool runAfter) {
-        let rc: int = Program.BuildEntry(entryAm, outBin, verbose)
+        let rc: int = Program.BuildEntry(entryAm, outBin, verbose, false)
         if (rc != 0) { return rc }
         Console.WriteLine("✓ Built " + outBin)
         if (runAfter) {
@@ -1206,6 +1229,11 @@ public class Program {
         if (Args_Get(1) == "lsp") {
             let server = new LspServer()
             Exit_Set(server.Run())
+            return
+        }
+        if (Args_Get(1) == "dap") {
+            let dap = new DapServer()
+            Exit_Set(dap.Run())
             return
         }
         if (Args_Get(1) == "migrate") {

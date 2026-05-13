@@ -105,6 +105,17 @@ public class CGen {
     // other's emit context.
     private InLambdaBody: bool
 
+    // v0.8.0+: per-statement `#line N "foo.am"` directives so gcc/clang
+    // record .am line numbers in DWARF (via DW_AT_decl_file +
+    // DW_AT_decl_line on each insn). `amc dap` then forwards plain
+    // DAP messages to gdb/lldb-dap and breakpoints on .am sources
+    // resolve natively — no path rewriting on the wire. Each
+    // AddFilePass2 caller sets CurrentSource to the file's path;
+    // EmitStmt emits the directive when the source line changes
+    // (avoids spamming consecutive identical directives).
+    private CurrentSource:   string
+    private LastLineEmitted: int
+
     // v0.5 package-manager: each external package's class +
     // functions feed the isStdlib check (ClassName), return-type
     // table (Func → CRetType), and prelude #include emission
@@ -153,6 +164,8 @@ public class CGen {
         this.PkgClassNs        = new List<string>()
         this.ExternalClasses   = new List<string>()
         this.ExternalClassNsArr = new List<string>()
+        this.CurrentSource     = ""
+        this.LastLineEmitted   = -1
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -214,7 +227,13 @@ public class CGen {
         this.Out.EmitBlank()
     }
 
-    public void AddFilePass2(AstNode prog) {
+    public void AddFilePass2(AstNode prog, string sourcePath) {
+        // v0.8.0+: track the current source path so EmitStmt can prefix
+        // each lowered statement with `#line N "<path>"`. Reset the
+        // last-line cache per file so the first statement always
+        // emits a directive.
+        this.CurrentSource   = sourcePath
+        this.LastLineEmitted = -1
         // Phase A0 — forward-declare every class's `_new(...)` constructor
         // signature, BEFORE any class body is emitted. Without this, a
         // constructor whose body calls `new B(...)` on a class declared
@@ -2276,7 +2295,22 @@ public class CGen {
         }
     }
 
+    // v0.8.0+: emit a `#line N "path"` directive when the source line
+    // changes from the previous statement (avoids spamming consecutive
+    // identical directives). gcc/clang pick up the file/line pair into
+    // DWARF, so amc dap can set .am-relative breakpoints natively.
+    // Path embedded as-is — gcc records DW_AT_comp_dir from the build
+    // CWD, so debuggers resolve relative paths against the build dir.
+    private void EmitLineDirective(AstNode stmt) {
+        if (stmt.Line <= 0) { return }
+        if (String_Length(this.CurrentSource) == 0) { return }
+        if (stmt.Line == this.LastLineEmitted) { return }
+        this.Out.EmitLine("#line " + String_FromInt(stmt.Line) + " \"" + this.CurrentSource + "\"")
+        this.LastLineEmitted = stmt.Line
+    }
+
     private void EmitStmt(AstNode stmt) {
+        this.EmitLineDirective(stmt)
         let k = stmt.Kind
         if (k == NodeKind.TRY_STMT) {
             // try { … } catch e { … } [finally { … }] — setjmp/longjmp pattern

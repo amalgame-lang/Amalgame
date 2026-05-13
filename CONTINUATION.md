@@ -1,170 +1,127 @@
 # Continuation prompt — start a new chat with this
 
-> **Last refreshed 2026-05-13 AM** — two big arcs landed since the
-> v0.7.3 tag:
+> **Last refreshed 2026-05-13 PM** — five tags shipped since
+> v0.7.5, all reflected on develop tip:
 >
-> 1. **v0.7.4 (project G)** — `@c { … }` inline-C blocks shipped as
->    method bodies + file-scope `@c_include` / `@c_link` directives.
->    POC migration: `runtime/Amalgame_BuildInfo.h` → AM.
->    v0.7.4 GitHub Release published with 5 artefacts.
+> 1. **v0.7.6** — stdlib purity arc + per-package facade pipeline
+>    + Math.h/Math_Vec.h migration. Five-PR bundle: Logging,
+>    DateTime, FileWatcher, Service, Random, Crypto, BuildInfo
+>    moved from runtime/`Amalgame_*.h` to pure-AM `src/stdlib/`
+>    with `@c { … }` blocks only for OS-bound primitives. The
+>    file-scope `@c { … }` extension (#373) made it possible.
+>    Per-package facade pipeline (#377) lets a package declare
+>    `[stdlib].facade = "facade.am"` and get precompiled to
+>    `libamalgame-pkg-<class>.a` at `amc package add` time.
 >
-> 2. **v0.7.5 (project F)** — `tools/build-stdlib.sh` + `--external`
->    flag pre-compile the 11 user-facing AM stdlib modules into
->    `lib/libamalgame.a` (~200 KB) bundled with every per-OS release.
->    Knock-on: file-scope `@c { … }` extension lets stdlib state
->    globals live in the .am file itself. v0.7.5 GitHub Release
->    published with 5 artefacts.
+> 2. **v0.7.7 (framework split)** — Five facade modules become
+>    stand-alone external packages on `amalgame-lang/`:
+>    `amalgame-datetime`, `amalgame-logging`, `amalgame-service`,
+>    `amalgame-io-filewatcher`, `amalgame-yaml`. amc's cgen
+>    gained a 2-pass `RegisterExternalProg` split so a facade
+>    package referencing its own classes (e.g.
+>    `InstantResult.GetValue() → Instant`) lowers to the right
+>    mangled name. `amc new --template service` scaffold now
+>    drops an `amalgame.toml` with the two deps declared.
 >
-> After v0.7.5, the user pushed a **stdlib purity arc** — migrate
-> every remaining `runtime/Amalgame_*.h` shell into pure-AM modules
-> with `@c { … }` only where there's no AM equivalent (syscalls,
-> uint-wrap bit twiddling, `-D` macro reads). Five PRs merged on
-> develop without a tag:
+> 3. **v0.7.8 (bundled-runtime trim)** — Three C-header binding
+>    modules become external packages: `amalgame-regex`,
+>    `amalgame-compress`, `amalgame-net-websocket`. amc's
+>    bundled `runtime/Amalgame_*.h` shrinks from 9 to 6 (only
+>    the bootstrap surface needed by amc itself stays:
+>    `_runtime.h`, `String`, `Collections`, `Console`, `IO`,
+>    `Net`, `Process`).
 >
-> - **#371 Logging v1** — first runtime → AM migration on the post-G
->   path.
-> - **#372 DateTime pure AM + Logging tighten** — Hinnant
->   `civil_from_days` / `days_from_civil` calendar algorithms,
->   ISO 8601 format/parse, sentinel — all pure AM. Two `@c { … }`
->   only for clock syscalls.
-> - **#373 `@c { … }` at file scope** — project G extension. Lets
->   state globals + libc includes live in the .am. Drops
->   `Amalgame_Logging.h` + `Amalgame_DateTime.h`.
-> - **#374 FileWatcher / Service / Random / Crypto** — four modules
->   migrated; their runtime headers (`Amalgame_FileWatch.h` /
->   `_Service.h` / `_Random.h` / `_Crypto.h`) deleted.
-> - **#375 BuildInfo 100% pure AM** — `src/stdlib/amc_buildinfo.am.in`
->   template + `build_amc.sh` Step 0 `sed` substitution. The
->   `-DAMC_GIT_REV=…` mechanism is gone; literal AM strings replace
->   the macro reads. `runtime/Amalgame_BuildInfo.h` deleted.
+> 4. **v0.7.9 (build / run / watch)** — Three first-class
+>    compile verbs land. `amc build [-o <out>] [-v] <entry.am>`
+>    runs amc + gcc-link in one step, including
+>    `lib/libamalgame.a`, package facade archives, vendored .o,
+>    and `[stdlib].libs`. `amc run [-o <out>] [-v] <entry.am>
+>    [-- args…]` chains build + exec. `amc watch [--run]
+>    <entry.am>` polls mtime every 500 ms via vendored
+>    `stat()` / `_stat64` `@c { }` block; no FileWatcher
+>    package dependency. Bare-args `amc foo.am -o foo` keeps
+>    its v0.7.x behaviour (no gcc step).
 >
-> **Net result**: `runtime/Amalgame_*.h` count **18 → 11** files
-> across the arc. Remaining shells:
+> 5. **v0.7.10 (LSP signature help + hover)** — New LSP
+>    capability `signatureHelpProvider` with triggerCharacters
+>    `(` and `,`. Hover on a method name now renders the full
+>    signature (`name(p1: t1, …): ret`) instead of just the
+>    inferred return type. Four new helpers on `LspServer` —
+>    `FormatMethodSignatureMarkdown` / `FindMethodDeclByName` /
+>    `FindCallAtPosition` / `CallCalleeName`.
 >
-> - `_runtime.h` (foundation: GC, exception model, `code_string`)
-> - `Amalgame_String.h` / `Amalgame_Collections.h` (perf-critical
->   primitives the compiler itself uses)
-> - `Amalgame_Console.h` / `Amalgame_IO.h` / `Amalgame_Math.h` /
->   `Amalgame_Math_Vec.h` / `Amalgame_Process.h` / `Amalgame_WebSocket.h`
->   (simple wrappers; pure-AM migration possible but low value)
-> - `Amalgame_Net.h` (libcurl + winsock2 bindings)
-> - `Amalgame_Compress.h` (zlib bindings)
-> - `Amalgame_Regex.h` (POSIX regex bindings)
+> **Ecosystem now: 13 official external packages**:
+> - *Pure-AM facades* — math, math-vec, random, encoding, crypto,
+>   datetime, logging, service, io-filewatcher, yaml
+> - *C-header bindings* — regex, compress, net-websocket
+> - *Database / messaging legacy* — sqlite, redis, mqtt, duckdb
 >
-> Tests: 610 → **613 PASS** (+3 from project F e2e in #361, then
-> stable). Last commit on develop:
-> `a623f91 feat(stdlib): BuildInfo 100% pure AM via build-time literal substitution (#375)`.
-> Last tag: **`v0.7.5`** (CI green on all 3 OS; release page live).
+> **Bundled stdlib remaining**: `runtime/_runtime.h` +
+> `Amalgame_{String,Collections,Console,IO,Net,Process}.h` (the
+> bootstrap surface amc itself uses), and `src/stdlib/`
+> `{json,toml,msgpack,path,amc_buildinfo.am.in}`. msgpack stays
+> bundled until a cgen ABI bug is fixed (see "Known issues").
 >
-> **WIP branch parked**: `feat/libamalgame-pkg` carries one
-> uncommitted-style commit (`d49e305 wip(pm): manifest [stdlib].facade
-> schema for project F follow-up`). See "Resume here" below.
+> **Tests**: 451/451 PASS in amc + 85/85 across the 8 packages
+> with local runners. Last tag: **`v0.7.10`** (CI green on all
+> 3 OS; release page live).
 >
 > **DECISION recorded at top of `ROADMAP_COMPLET.md`**: no new
-> `runtime/Amalgame_*.h` after v0.7.3. Project G shipped in v0.7.4
-> (inline-C blocks + 1-header POC). Project F shipped in v0.7.5
-> (`libamalgame.a` pre-compile of user-facing stdlib `.am` modules).
-> Post-v0.7.5 stdlib purity arc shipped on develop (5 PRs, no tag).
-> Eligible runtime headers all migrated; 11 shells remain (listed
-> above), all justified by perf or vendor-binding reasons.
+> `runtime/Amalgame_*.h` after v0.7.3. Going forward, new C
+> bindings ship as standalone external packages (`amalgame-X`
+> with `[stdlib].header = "runtime/Amalgame_X.h"`).
 
-## Resume here — project F follow-up
+## Resume here — v0.8.0 trajectory
 
-`feat/libamalgame-pkg` branch (`d49e305`) parks Step 1 of a
-multi-step extension. The goal: extend project F's `--external`
-pre-compile pattern from the **integrated** stdlib
-(`lib/libamalgame.a`) to **external packages**
-(`amc package add sqlite/duckdb/redis/mqtt`) so their AM facades
-also build into per-package archives and skip re-parsing on every
-`amc -o`. Roadmap entry under "Project F follow-up — per-package
-`libamalgame-pkg-<name>.a`" in `ROADMAP_COMPLET.md`.
+Three independent items, pick any order:
 
-**Already done (committed on the branch)**:
+1. **DAP (debug adapter)** — new `amc dap` subcommand running a
+   DAP server over stdio. Strategy: amc adds a `--debug` flag
+   that passes `-g` to gcc, then the `amc dap` server wraps
+   gdb-mi (or lldb) and translates between DAP and gdb's
+   protocol. Lets VS Code / Neovim debug an Amalgame binary
+   with breakpoints, step in/over/out, variable inspection.
+   Scope: ~6-10h depending on completeness.
 
-- `LoadedPackage.Facade` field on `src/package_registry.am`.
-- `PackageRegistry.LoadFrom` reads `[stdlib].facade = "path/to/facade.am"`
-  from the manifest TOML and stores the absolute path.
-- File-header comment documents the new opt-in key.
-- Build green, no behaviour change for existing packages
-  (none declare `facade`).
+2. **Facade ABI cgen fix** (blocks msgpack extraction). When a
+   package's `facade.am` calls its own static methods via
+   `ClassName.X()`, `EmitCalleeStr` hits `PkgClassMangledPrefix`
+   (which returns the namespace) before the `SymName` fallback
+   (which would include the class name). Symbol mismatch +
+   gcc implicit-int fallback → runtime segfault. Fix: check
+   `IsLocalClass(tname)` **before** `PkgClassMangledPrefix` in
+   `EmitCalleeStr` (line 3515) + mirror in `TypeToC` (line 3793).
+   Then extract `amalgame-msgpack` as the 14th package.
 
-**To do next session (Steps 2–4)**:
-
-1. **`PrecompileFacade(pkgDir, stdlibTbl)`** in `src/add_cmd.am` —
-   model after `PrecompilePackage` (line 369ish). For each
-   `[stdlib].facade` path:
-   - `amc --lib --quiet <facade.am> -o <buildDir>/<class>-facade`
-   - `gcc -O2 -Iruntime -c <buildDir>/<class>-facade.c -o <buildDir>/<class>-facade.o`
-   - `ar rcs <buildDir>/libamalgame-pkg-<class>.a <buildDir>/<class>-facade.o`
-   `buildDir` is the existing `PackageRegistry.PrecompileCacheDir(pkgDir)`.
-2. **Run-time wiring** in `add_cmd.am::Run()` — after the existing
-   `PrecompilePackage` call (around line 324), if
-   `stdlibTbl.Get("facade").AsString()` is non-empty AND
-   `!noPrecompile`, invoke `PrecompileFacade(pkgDir, stdlibTbl)`.
-3. **Auto-consume in `amc test` / `amc -o`** (the harder half) —
-   when a `LoadedPackage` in the registry has `Facade` set:
-   - Pass `--external <Facade>` to `amc` so the cgen emits forward
-     decls only (already wired by project F).
-   - Append `<buildDir>/libamalgame-pkg-<class>.a` to the gcc link
-     line in `Program.RunTest` and `amc -o`'s gcc step (the same
-     way `lib/libamalgame.a` gets appended for the integrated
-     stdlib).
-4. **Test fixture** under `tests/fixtures/pm/` — a synthetic
-   package manifest with `[stdlib].facade = "facade.am"` + a
-   tiny `facade.am`. Verify end-to-end:
-   - `amc package add <fixture>` produces
-     `<pkgDir>/build/<platform>/libamalgame-pkg-<class>.a`.
-   - User code imports the package's namespace, `amc test`
-     auto-discovers + uses the archive.
-5. **Commit + PR** to develop (no release; bundle with future
-   work toward the next tag).
-
-Estimated effort: **2-3 hours** for steps 2-4 + commit/PR. The
-four existing packages stay unchanged (they don't declare
-`facade`), so risk to the established ecosystem is minimal.
-
-Setup to resume:
-
-```sh
-git checkout feat/libamalgame-pkg
-git pull origin feat/libamalgame-pkg
-./build_amc.sh && ./amc --version
-# step 2: edit src/add_cmd.am to add PrecompileFacade method
-```
-
-`amc --version` should report `amc 0.7.5 (commit a623f91… etc)`
-or the freshly-rebuilt rev of `feat/libamalgame-pkg`.
+3. **LSP package discovery code action** — `amc package suggest
+   <namespace> --json` is already shipped (v0.7.7). Wire
+   `textDocument/codeAction` to detect unresolved-import
+   diagnostics, call `amc package suggest`, and offer
+   "Install package X for Amalgame.Y" quickfixes. Pattern
+   Visual Studio `using X;`.
 
 ## Persistent todos (don't lose these)
 
-- **DOCS-TODO** — `docs/guide/` chapter 4 (stdlib) + chapter 5
-  (runtime & C interop) need a refresh covering the post-v0.7.5
-  arc: file-scope `@c { … }` extension (#373), the 7 migrations
-  (Logging, DateTime, FileWatcher, Service, Random, Crypto,
-  BuildInfo), and the `runtime/Amalgame_*.h` 18→11 reduction.
-  The v0.7.0–v0.7.4 chapter additions already landed (`#355`).
-- **BUG TRACKER** — two pre-existing cgen bugs hit during the
-  DateTime migration:
+- **BUG TRACKER** — pre-existing cgen bugs hit during the
+  DateTime migration (still unfixed, working around at call
+  sites):
   - **Parens lost on mixed `* + /`** — `(153 * monthShift + 2) / 5`
     lowers to `153 * monthShift + 2 / 5`. Workaround: extract a
-    numerator local. Same shape as the v0.7.2 gotcha
-    `(a + b) % 256` → `a + (b % 256)`.
+    numerator local.
   - **Multi-line expression continuation broken** — the parser
     closes the statement at the newline even with a binary
-    operator at end-of-line; the next line becomes an orphan
-    `_unknown_`. Workaround: write the expression on a single
-    line or use intermediate locals.
+    operator at end-of-line. Workaround: single-line expr or
+    intermediate locals.
+- **Facade-package ABI bug** — see "Resume here" item 2 above.
+  Documented in `ROADMAP_COMPLET.md` under "Compiler open bugs".
 - **WS deferred** — wss:// TLS, binary opcodes, continuation
-  frames, per-message-deflate, HTTP subprotocols. Wait for a
-  real consumer.
+  frames, per-message-deflate, HTTP subprotocols. The
+  `amalgame-net-websocket` package owns this now; bump
+  package version when a real consumer lands.
 - **AMM draft** — PR #370 (closed superseded) seeded
   `docs/memory-management/` with five design documents for a
-  hypothetical bdwgc → automatic-lifetime replacement. The files
+  hypothetical bdwgc → automatic-lifetime replacement. Files
   live on develop tip; review/iterate when ready.
-- **Accumulated PRs since v0.7.5**: 5 features merged (#371-#375)
-  without a tag. When ready, the next release (v0.7.6 or v0.8.0
-  for the architectural shift) bundles the stdlib purity arc +
-  whatever lands from `feat/libamalgame-pkg`.
 
 ## Plan for v0.7.4 (project G — historical, shipped)
 >

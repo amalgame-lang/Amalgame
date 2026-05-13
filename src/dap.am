@@ -1,0 +1,129 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.IO
+import Amalgame.Process
+import Amalgame.String
+
+// `@c { … }` blocks below need execvp / perror / malloc visible.
+// _runtime.h already brings in <stdio.h>, <stdlib.h>, <string.h>; we
+// only need <unistd.h> for execvp.
+@c_include "<unistd.h>"
+
+// ═══════════════════════════════════════════════════════
+//  dap.am  —  amc dap: Debug Adapter Protocol proxy
+// ═══════════════════════════════════════════════════════
+//
+// v0.8.0 strategy: thin proxy. The Amalgame binary holds an `execvp()`
+// to whichever DAP-native backend the host provides (lldb-dap on
+// Linux+macOS, gdb --dap on systems with gdb ≥ 14). Once exec'd the
+// kernel replaces our process image; stdin/stdout — already wired by
+// the DAP client (VS Code, Neovim, etc.) to its JSON-RPC pipes —
+// flow directly to the backend with no in-amc copy. The cgen-emitted
+// `#line N "foo.am"` directives let the backend's DWARF reader
+// resolve .am source paths natively, so the client can set
+// breakpoints on .am files and they bind to the right C address
+// without any message rewriting on the wire.
+//
+// Forward path for v0.9.0+ (Approche A, see project_dap_strategy.md
+// in auto-memory + ROADMAP_COMPLET.md): swap execvp for a fork +
+// pipe2 + poll() loop and rewrite messages on the way through —
+// pretty-print AmalgameList*/AmalgameMap*, filter Amalgame_*/runtime
+// frames, decode closures. The proxy stays as a fallback (e.g.
+// `amc dap --raw`) so users can still drop into the native backend.
+
+public class DapServer {
+
+    public DapServer() {
+    }
+
+    public int Run() {
+        let exe: string = this.DetectBackend()
+        if (String_Length(exe) == 0) {
+            Console.WriteError("amc dap: no DAP backend found in PATH.")
+            Console.WriteError("")
+            Console.WriteError("Install one of the following debug adapters:")
+            Console.WriteError("  Linux:   apt install lldb-18  (from https://apt.llvm.org/)")
+            Console.WriteError("           → /usr/lib/llvm-18/bin/lldb-dap")
+            Console.WriteError("  macOS:   xcode-select --install  (lldb-dap ships with Xcode CLT 14+)")
+            Console.WriteError("  Windows: pacman -S mingw-w64-x86_64-gdb  (gdb 14+ has --dap, MSYS2)")
+            Console.WriteError("")
+            Console.WriteError("Then re-run `amc dap`. Use `amc build -g entry.am` first to embed")
+            Console.WriteError("DWARF debug info so breakpoints can target .am source lines.")
+            return 127
+        }
+        // The exec replaces our process image. If it succeeds, the
+        // function below never returns. If it fails (binary present
+        // but unrunnable, perms, etc.), it returns 127 with a perror
+        // message on stderr.
+        return this.ExecBackend(exe)
+    }
+
+    // Probe a list of likely binary names + paths. The first hit
+    // wins. `command -v` is POSIX; macOS/Linux/MSYS2 all have it.
+    // Versioned suffixes (`lldb-dap-18`, `-19`, …) are how the
+    // Debian/Ubuntu LLVM packages name the binary — apt-installed
+    // LLVM 18 lives at /usr/bin/lldb-dap-18 and there's no
+    // unsuffixed alias unless the user installs `lldb` from the
+    // distro's own package.
+    private string DetectBackend() {
+        let cands: List<string> = new List<string>()
+        cands.Add("lldb-dap")
+        cands.Add("lldb-dap-20")
+        cands.Add("lldb-dap-19")
+        cands.Add("lldb-dap-18")
+        cands.Add("/usr/lib/llvm-20/bin/lldb-dap")
+        cands.Add("/usr/lib/llvm-19/bin/lldb-dap")
+        cands.Add("/usr/lib/llvm-18/bin/lldb-dap")
+        let n: int = cands.Count()
+        for i in 0..n {
+            let c: string = cands.Get(i)
+            let probe = Process.RunCapture("command -v '" + c + "' 2>/dev/null")
+            if (probe.Exit == 0 && String_Length(probe.Stdout) > 0) {
+                // Strip the trailing newline `command -v` writes
+                var s: string = probe.Stdout
+                let last: int = String_Length(s) - 1
+                if (last >= 0) {
+                    let tail: string = String_Substring(s, last, 1)
+                    if (tail == "\n") {
+                        s = String_Substring(s, 0, last)
+                    }
+                }
+                return s
+            }
+        }
+        return ""
+    }
+
+    // Replace this process with the backend. argv[0] is the resolved
+    // backend path; argv[1..] forwards `amc dap`'s own argv from
+    // index 2 onward, so the user can pass DAP-server options
+    // (--port, --comm-file, etc.) like `amc dap --port 12345`.
+    // On success this never returns; on execvp failure it prints
+    // and returns 127.
+    private int ExecBackend(string exe) {
+        @c {
+            int parentArgc = code_argc;
+            char** parentArgv = code_argv;
+            // argv layout: [backend_path, forwarded_args..., NULL]
+            int fwd = parentArgc - 2;
+            if (fwd < 0) { fwd = 0; }
+            int n = 1 + fwd + 1;
+            char** argv = (char**) malloc(sizeof(char*) * (size_t) n);
+            if (argv == NULL) {
+                fprintf(stderr, "amc dap: out of memory building argv\n");
+                return 127;
+            }
+            argv[0] = (char*) exe;
+            for (int i = 0; i < fwd; i++) {
+                argv[1 + i] = parentArgv[2 + i];
+            }
+            argv[n - 1] = (char*) 0;
+            execvp((const char*) exe, argv);
+            // execvp returns only on error.
+            perror("amc dap: execvp");
+            free(argv);
+            return 127;
+        }
+    }
+}
