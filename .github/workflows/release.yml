@@ -50,24 +50,32 @@ jobs:
       - name: Stage release artifacts
         run: |
           NAME="amc-${{ steps.ver.outputs.version }}-linux-x86_64"
-          mkdir -p "dist/$NAME/runtime"
-          mkdir -p "dist/$NAME/lib"
+          # XDG-style layout (v0.8.1+): the tarball mirrors the
+          # install-prefix tree so installers (install/install.sh,
+          # install/windows/amalgame.iss) can `cp -r $NAME/* $PREFIX/`
+          # with no per-file rewiring. amc's Program.ResolveRuntimeDir /
+          # ResolveLibAmalgameA probe <bin>/../share/amalgame/{runtime,lib}
+          # — match that exactly so $AMC_RUNTIME stays an opt-in
+          # override, not a hard requirement.
+          mkdir -p "dist/$NAME/bin"
+          mkdir -p "dist/$NAME/share/amalgame/runtime"
+          mkdir -p "dist/$NAME/share/amalgame/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
-          cp amc                                          "dist/$NAME/"
-          cp runtime/*.h                                  "dist/$NAME/runtime/"
+          cp amc                              "dist/$NAME/bin/"
+          cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
           # Project F (v0.7.5+): pre-compiled user-facing stdlib.
           # build_amc.sh ran tools/build-stdlib.sh as Step 4, so
           # lib/libamalgame.a is already on disk.
-          cp lib/libamalgame.a                             "dist/$NAME/lib/"
-          cp README.md LICENSE                            "dist/$NAME/"
+          cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          cp README.md LICENSE                "dist/$NAME/"
           # Bundle the LLM-prompt source docs so `amc migrate / generate /
           # explain` find them at <exec-dir>/../share/amalgame/docs/...
           # (LoadDocsHeader lookup #1). Without these, the LLM commands
           # fall back to an inline conventions block — still functional
           # but the model loses access to the canonical grammar.
-          cp docs/language/grammar.ebnf      "dist/$NAME/share/amalgame/docs/language/"
-          cp docs/guide/02-language-tour.md  "dist/$NAME/share/amalgame/docs/guide/"
+          cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
+          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
           (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
           ls -lh dist/
@@ -122,17 +130,18 @@ jobs:
       - name: Stage release artifacts
         run: |
           NAME="amc-${{ steps.ver.outputs.version }}-macos-arm64"
-          mkdir -p "dist/$NAME/runtime"
-          mkdir -p "dist/$NAME/lib"
+          # XDG-style layout — see linux job for rationale.
+          mkdir -p "dist/$NAME/bin"
+          mkdir -p "dist/$NAME/share/amalgame/runtime"
+          mkdir -p "dist/$NAME/share/amalgame/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
-          cp amc                                          "dist/$NAME/"
-          cp runtime/*.h                                  "dist/$NAME/runtime/"
-          cp lib/libamalgame.a                             "dist/$NAME/lib/"
-          cp README.md LICENSE                            "dist/$NAME/"
-          # See linux job for rationale (LLM-prompt source docs).
-          cp docs/language/grammar.ebnf      "dist/$NAME/share/amalgame/docs/language/"
-          cp docs/guide/02-language-tour.md  "dist/$NAME/share/amalgame/docs/guide/"
+          cp amc                              "dist/$NAME/bin/"
+          cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
+          cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          cp README.md LICENSE                "dist/$NAME/"
+          cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
+          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
           (cd dist && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
           ls -lh dist/
@@ -195,17 +204,22 @@ jobs:
       - name: Stage release artifacts
         run: |
           NAME="amc-${{ steps.ver.outputs.version }}-windows-x86_64"
-          mkdir -p "dist/$NAME/runtime"
-          mkdir -p "dist/$NAME/lib"
+          # XDG-style layout — see linux job for rationale.
+          # Note: DLLs live alongside amc.exe in bin/ so the Windows
+          # loader's default search path picks them up automatically
+          # (current dir + PATH dirs; "bin/" being the only PATH dir
+          # we install into keeps the resolution unambiguous).
+          mkdir -p "dist/$NAME/bin"
+          mkdir -p "dist/$NAME/share/amalgame/runtime"
+          mkdir -p "dist/$NAME/share/amalgame/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
-          cp amc.exe                                      "dist/$NAME/"
-          cp runtime/*.h                                  "dist/$NAME/runtime/"
-          cp lib/libamalgame.a                            "dist/$NAME/lib/"
-          cp README.md LICENSE                            "dist/$NAME/"
-          # See linux job for rationale (LLM-prompt source docs).
-          cp docs/language/grammar.ebnf      "dist/$NAME/share/amalgame/docs/language/"
-          cp docs/guide/02-language-tour.md  "dist/$NAME/share/amalgame/docs/guide/"
+          cp amc.exe                          "dist/$NAME/bin/"
+          cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
+          cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          cp README.md LICENSE                "dist/$NAME/"
+          cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
+          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
           # Bundle the MinGW DLLs the binary actually links against, so users
           # can run amc.exe without a separate MSYS2 install. libsystre +
           # libtre added v0.7.4 for POSIX <regex.h> (see install: above).
@@ -220,7 +234,7 @@ jobs:
                      libzstd.dll \
                      libsystre-0.dll libtre-5.dll; do
             if [ -f "/mingw64/bin/$dll" ]; then
-              cp "/mingw64/bin/$dll" "dist/$NAME/"
+              cp "/mingw64/bin/$dll" "dist/$NAME/bin/"
             fi
           done
           (cd dist && zip -r "$NAME.zip" "$NAME")
