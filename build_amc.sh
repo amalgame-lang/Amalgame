@@ -17,7 +17,6 @@ AMC_SOURCES="src/lexer/token.am \
              src/parser/ast.am \
              src/parser/parser.am \
              src/stdlib/toml.am \
-             src/stdlib/yaml.am \
              src/package_registry.am \
              src/generator/c_gen.am \
              src/formatter/formatter.am \
@@ -27,14 +26,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/typechecker.am \
              src/linter.am \
              src/stdlib/json.am \
-             src/stdlib/random.am \
-             src/stdlib/encoding.am \
-             src/stdlib/datetime.am \
-             src/stdlib/crypto.am \
              src/stdlib/msgpack.am \
-             src/stdlib/path.am \
-             src/stdlib/logging.am \
-             src/stdlib/service.am \
              src/stdlib/amc_buildinfo.am \
              src/lsp.am \
              src/migrate.am \

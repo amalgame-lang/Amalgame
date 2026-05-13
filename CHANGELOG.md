@@ -7,6 +7,75 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.7.7] — 2026-05-13
+
+The **"framework split"** release. Five user-facing stdlib modules
+move from the bundled `lib/libamalgame.a` into stand-alone external
+packages on `amalgame-lang/`, leaving amc itself slimmer
+(`libamalgame.a` 215 KB → 91 KB) and exposing the same modules as
+versioned-and-installable Cargo-style deps.
+
+### Five new external packages (all v0.1.0)
+
+- [`amalgame-datetime`](https://github.com/amalgame-lang/amalgame-datetime)
+  — Instant / Duration / Stopwatch + ISO 8601 round-trip.
+- [`amalgame-logging`](https://github.com/amalgame-lang/amalgame-logging)
+  — 4-level leveled stderr + optional file sink.
+- [`amalgame-service`](https://github.com/amalgame-lang/amalgame-service)
+  — SIGTERM/SIGINT handler + ShouldStop polling + interruptible Sleep.
+- [`amalgame-io-filewatcher`](https://github.com/amalgame-lang/amalgame-io-filewatcher)
+  — Single-file mtime polling.
+- [`amalgame-yaml`](https://github.com/amalgame-lang/amalgame-yaml)
+  — YAML 1.2 subset reader (block mappings, sequences, scalars).
+
+(The five packages from v0.7.6 — `amalgame-{math,math-vec,encoding,
+crypto,random}` — were already external; v0.7.7 just removes the
+now-redundant `src/stdlib/<mod>.am` source from amc.)
+
+### Compiler
+
+- **cgen**: `RegisterExternalProg` split into a 2-pass walk —
+  pass 1 registers every external class in the file, pass 2 emits
+  the method forward declarations. Fixes cross-class signatures
+  (e.g. `InstantResult.GetValue()` returning `Instant`) that
+  previously fell back to the consumer's namespace prefix because
+  the second class wasn't yet registered when the first class's
+  methods were processed.
+- **`amc new --template service`**: scaffold now drops an
+  `amalgame.toml` declaring the two external deps so
+  `amc package add logging service` Just Works on a fresh project.
+
+### Bundled stdlib after the split
+
+`lib/libamalgame.a` now only contains the bootstrap deps:
+`json`, `toml`, `path`, `amc_buildinfo`, plus `msgpack` (deferred
+to v0.8.0 — its public API references `JsonValue` and waits for
+the bundled-stdlib forward-decl resolution work in the cgen).
+
+### Other
+
+- `MonoTimer` vendored into `src/main.am` for `--verbose` phase
+  timing (Stopwatch is no longer bundled).
+- `tests/run_stdlib_tests.sh` trimmed to the bootstrap modules
+  (random / encoding / crypto / datetime / logging / service /
+  filewatcher / yaml / math / math-vec tests live in their
+  packages' repos and run on package CI).
+
+### Migration notes
+
+User code importing `Amalgame.DateTime`, `Amalgame.Logging`,
+`Amalgame.Service`, `Amalgame.IO.FileWatcher`, or
+`Amalgame.Formats.Yaml` must add the matching package once:
+
+```bash
+amc package add datetime logging service io-filewatcher yaml
+```
+
+`amalgame.toml` gets a `[dependencies]` entry per package; the
+lock + cache are populated by `amc package add` at install time.
+
+---
+
 ## [v0.7.6] — 2026-05-13
 
 The **"stdlib purity arc + per-package facade pipeline"** release.

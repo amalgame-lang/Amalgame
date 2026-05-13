@@ -51,14 +51,22 @@ else
     exit 1
 fi
 
+# Post-v0.7.7 stdlib split: only the bootstrap deps stay bundled
+# in `lib/libamalgame.a`. Everything else (random/encoding/crypto/
+# datetime/logging/service/io-filewatcher/yaml/math/math-vec) lives
+# in external packages on amalgame-lang/. See README "Ecosystem".
+#
 # Standalone modules — no cross-stdlib references. amc compiles
 # each one in isolation.
-MODULES_STANDALONE="random encoding crypto datetime logging path service json toml yaml math"
+MODULES_STANDALONE="path json toml"
 
 # Cross-stdlib modules — passed `--external <dep.am>` so the cgen
 # routes inter-module references through the dependency's own
 # namespace mangling instead of re-emitting a duplicate symbol.
 # Entry format: "module|external1,external2,..."
+#
+# msgpack stays bundled until amc's cgen learns to resolve bundled-
+# stdlib class names from external packages (deferred to v0.8.0).
 MODULES_CROSS="msgpack|json"
 
 mkdir -p "$OUT"
