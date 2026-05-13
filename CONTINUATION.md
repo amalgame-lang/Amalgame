@@ -1,62 +1,77 @@
 # Continuation prompt — start a new chat with this
 
-> **Last refreshed 2026-05-14** — v0.8.0 shipped, two PRs
-> already merged on develop toward v0.8.1.
+> **Last refreshed 2026-05-14 (night)** — **v0.8.1 just tagged.**
+> Two tags shipped this session (v0.8.0 then v0.8.1); the
+> debugger now works end-to-end from a fresh `install.sh` with
+> no env-var hacks.
 >
-> ### v0.8.0 (debug adapter) ✅ tagged
-> Three changes ship together so `.am` source-level debugging
-> Just Works in any DAP-capable editor (VS Code, Neovim, Helix):
+> ### v0.8.1 (polish the debugger) ✅ tagged
+> Four PRs landed on top of v0.8.0 to make the DAP usable
+> without any "ahh I forgot the env var" friction.
 >
-> 1. **`amc dap`** — thin Debug Adapter Protocol proxy
->    (`src/dap.am`, ~130 lines). Detects a DAP-native backend
->    (`lldb-dap` from LLVM 18+, `gdb --dap` from gdb 14+
->    planned for v0.8.2) and `execvp()`s into it. The DAP
->    client's stdin/stdout flow directly to the backend — no
->    in-amc message copy, no Amalgame-specific rewriting at
->    this layer ("Approche C" in the strategy table at the
->    top of ROADMAP_COMPLET.md).
-> 2. **`amc build --debug`** / **`amc run --debug`** (alias
->    `-g`) — swap `-O2` for `-O0 -g` on the gcc/g++
->    invocation (both single-stage and C++ two-stage paths).
->    Watch builds keep `-O2`.
-> 3. **`#line N "foo.am"` directives** at every statement
->    whose source line differs from the previous one. gcc +
->    clang honour these and embed `.am` filenames + line
->    numbers in DWARF (`DW_AT_decl_file` / `DW_AT_decl_line`).
->    `breakpoint set --file foo.am --line N` binds to the
->    right address natively — no source map files.
->
-> Also: VS Code extension v0.3.0 (`editors/vscode/`)
-> registers an `amc` debug type via `contributes.debuggers`
-> + a `DebugAdapterDescriptorFactory` that spawns `amc dap`
-> with `amalgame.dapServerPath` (falls back to
-> `amalgame.serverPath`, then literal `amc`).
->
-> ### develop tip — two PRs landed toward v0.8.1
->
-> 4. **PR #395 — `amc new --vscode`** (opt-in flag). Scaffolds
+> 1. **PR #395 — `amc new --vscode`** opt-in flag. Scaffolds
 >    `.vscode/launch.json` (two configurations: POSIX +
->    Windows `.exe`, picked via F5 dropdown) and
->    `.vscode/settings.json`. The flag is documented in
->    `amc --help` and `amc new --help`. Skipping it keeps
->    the project clean for Neovim/Helix/IntelliJ users.
+>    Windows `.exe`, F5 dropdown picks) and
+>    `.vscode/settings.json`. Opt-in keeps Neovim / Helix /
+>    IntelliJ projects clean. Advertised in `amc --help` on
+>    the `new` line.
 >
-> 5. **PR #396 — `Program.ResolveSelfPath()` + scaffold
->    cleanup + `--install` step**. Fix: `amc build` derived
->    `runtime/` from `dirname(argv[0])`. When amc is launched
->    via PATH, argv[0] is the bare `amc`, dirname collapses,
->    and gcc never gets `-I'<runtime>'` → `_runtime.h: fichier
->    ou dossier de ce type` at link time. The new
->    `Program.ResolveSelfPath()` reads `/proc/self/exe` on
->    Linux and `GetModuleFileNameA` on Windows; macOS falls
->    back to argv[0] until `_NSGetExecutablePath` lands.
->    Same PR rewrites `BuildShExe` / `BuildShService` /
->    `BuildPs1Service` templates: they used to reimplement
->    the runtime-discovery logic inline (40+ bash lines).
->    Now: `amc build src/main.am -o ./<name> "$@"` — forwards
->    `-g` for debug builds. Plus an opt-in `./build_amc.sh
->    --install` step copies `amc` + `runtime/` + `lib/` to
->    `~/.local/bin/` with `*.bak` rollback.
+> 2. **PR #396 — `Program.ResolveSelfPath()` + scaffold
+>    cleanup**. Fix: `amc build` derived `runtime/` from
+>    `dirname(argv[0])`. When amc is launched via PATH,
+>    argv[0] is the bare `amc`, dirname collapses, and gcc
+>    never gets `-I'<runtime>'` → `_runtime.h: fichier ou
+>    dossier de ce type`. `ResolveSelfPath()` reads
+>    `/proc/self/exe` (Linux) / `GetModuleFileNameA`
+>    (Windows); macOS falls back to argv[0] until
+>    `_NSGetExecutablePath` lands. Same PR rewrites
+>    `BuildShExe` / `BuildShService` / `BuildPs1Service`
+>    templates into two-line wrappers around `amc build`
+>    that forward `"$@"` (so `./build.sh -g` propagates).
+>
+> 3. **PR #397 — `tasks.json` + `preLaunchTask` + `amc test`
+>    path fix + READMEs**. Scaffold now drops
+>    `tasks.json` ("amc: build (debug)" + "release"); both
+>    launch configs carry `preLaunchTask: "amc: build
+>    (debug)"`. F5 rebuilds with `-g` automatically — no more
+>    "F5 runs but no breakpoint stops" when the binary on
+>    disk is release. `amc test` got the same
+>    `/proc/self/exe` fix BuildEntry got in PR #396 (was
+>    missed). Generated READMEs gain a "Debug" section.
+>
+> 4. **PR #398 — XDG install layout, cross-OS**. All three
+>    install paths now share the same tree:
+>    `<prefix>/{bin/amc[.exe], share/amalgame/{runtime,lib,docs}}`.
+>    `install/install.sh` (Linux / macOS / FreeBSD) does a
+>    flat `cp -r dist/$NAME/* $PREFIX/` from the staged
+>    tarball — no more partial `_runtime.h`-only copy, no
+>    forced `AMC_RUNTIME` in shell rc. `install/windows/
+>    amalgame.iss` got rebuilt (was pinned to `0.3.0` with
+>    broken paths). `.github/workflows/release.yml` stages
+>    the matching XDG tree on all 3 OS jobs. New helpers
+>    `Program.ResolveRuntimeDir(amcPath)` +
+>    `Program.ResolveLibAmalgameA(amcPath)` probe a stable
+>    chain: `$AMC_RUNTIME / $AMC_LIB` →
+>    `<bin>/../share/amalgame/{runtime, lib}` →
+>    `<bin>/{runtime, lib}` (legacy). No env var required.
+>    Inno Setup `[Registry]` AMC_RUNTIME write gone.
+>
+> ### v0.8.0 (debug adapter) ✅ tagged earlier this session
+>
+> Recap for context:
+> - **`amc dap`** — thin DAP proxy (`src/dap.am`, ~130 lines).
+>   Detects `lldb-dap` (LLVM 18+ today, gdb --dap pending
+>   v0.8.2), `execvp()`s into it. Transparent — no in-amc
+>   message copy ("Approche C" in ROADMAP_COMPLET.md).
+> - **`amc build --debug` / `amc run --debug`** (alias `-g`)
+>   swap `-O2` for `-O0 -g` on gcc/g++. Watch builds keep
+>   `-O2`.
+> - **`#line N "foo.am"` directives** at every statement
+>   whose source line differs from the previous. gcc + clang
+>   honour these → DWARF carries `.am` filenames + line
+>   numbers natively. No source maps needed.
+> - **VS Code extension v0.3.0** registers `amc` debug type +
+>   `DebugAdapterDescriptorFactory` that spawns `amc dap`.
 >
 > ### Ecosystem and bundled stdlib (unchanged since v0.7.10)
 >
@@ -67,44 +82,41 @@
 > - *Database / messaging legacy* — sqlite, redis, mqtt, duckdb
 >
 > **Bundled stdlib remaining**: `runtime/_runtime.h` +
-> `Amalgame_{String,Collections,Console,IO,Net,Process}.h` (the
-> bootstrap surface amc itself uses), and `src/stdlib/`
+> `Amalgame_{String,Collections,Console,IO,Net,Process}.h`
+> (bootstrap surface amc itself uses), and `src/stdlib/`
 > `{json,toml,msgpack,path,amc_buildinfo.am.in}`. msgpack stays
 > bundled until a cgen ABI bug is fixed (see "Persistent todos"
 > below).
 >
 > **Tests**: 451/451 PASS in amc + 85/85 across the 8 packages
-> with local runners. Last tag: **`v0.8.0`** (CI green on all
-> 3 OS; release page live). develop tip carries 0.8.1-dev
-> via PR #395 + #396.
+> with local runners. Last tag: **`v0.8.1`**.
 >
-> **DECISION recorded at top of `ROADMAP_COMPLET.md`**: no new
-> `runtime/Amalgame_*.h` after v0.7.3. Going forward, new C
-> bindings ship as standalone external packages.
-> Also: **DAP strategy is hybride C→A** — v0.8.x stays on the
-> transparent proxy; the bridge-MI migration ("Approche A":
-> pretty-print AmalgameList*/AmalgameMap*, filter runtime
-> frames, decode closures) is explicitly tracked as future
-> work, not a nice-to-have.
+> **DECISIONS recorded at top of `ROADMAP_COMPLET.md`**:
+> - No new `runtime/Amalgame_*.h` after v0.7.3 — new C
+>   bindings ship as standalone external packages.
+> - **DAP strategy is hybride C→A** — v0.8.x stays on the
+>   transparent proxy; the bridge-MI migration ("Approche A":
+>   pretty-print AmalgameList*/AmalgameMap*, filter runtime
+>   frames, decode closures) is explicitly tracked as future
+>   work, not a nice-to-have.
 
-## Resume here — v0.8.1 trajectory
+## Resume here — v0.8.2 trajectory
 
-Either tag v0.8.1 now (the two PRs already on develop are
-shippable as-is) or batch more before the next tag. The
-backlog, in rough order of leverage:
+Pick any order; (1) and (2) pair naturally as a "DAP polish"
+release. (3) unblocks the 14th external package.
 
 1. **macOS canonical-path resolution** — mirror PR #396's
    `/proc/self/exe` fix using `_NSGetExecutablePath` from
-   `<mach-o/dyld.h>`. Quick, ~5 lines of `@c {}` block, makes
-   amc launched via Homebrew's pinned absolute symlink path
-   unnecessary as a workaround. Pair this with the v0.8.1 tag.
+   `<mach-o/dyld.h>` in `Program.ResolveSelfPath()`. ~5 lines
+   of `@c {}` block. Removes the last edge case where
+   `amc build` can't find runtime/ via PATH on macOS.
 
 2. **`gdb --dap` fallback in `src/dap.am`** — Linux + Windows
-   MSYS2 users get a second backend. Probe order after
-   `lldb-dap-*`: `gdb` with version ≥ 14 (parses
-   `gdb --version` first line). When picked, the execvp call
-   becomes `execvp("gdb", ["gdb", "--dap", NULL])`. ~30 lines.
-   Pairs with the macOS fix in v0.8.1.
+   MSYS2 users get a second backend after lldb-dap. Probe
+   order: keep the existing `lldb-dap*` chain, then try
+   `gdb` (parse `gdb --version` first line for ≥ 14). When
+   picked, `execvp("gdb", ["gdb", "--dap", NULL])`. ~30
+   lines. Pair with (1) for a v0.8.2 release.
 
 3. **Facade ABI cgen fix** (blocks msgpack extraction). When
    a package's `facade.am` calls its own static methods via

@@ -7,6 +7,119 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.1] — 2026-05-14
+
+The **"polish the debugger"** release. Four PRs land together to
+make the v0.8.0 DAP work flawlessly from a fresh install — no
+`AMC_RUNTIME` hack, no missing breakpoints, no surprise rebuild
+gotchas, no broken `amc test` after PATH installs.
+
+### New: `amc new --vscode` opt-in flag (PR #395)
+
+`amc new <name> --vscode` writes `.vscode/launch.json` (two
+configurations: POSIX + Windows `.exe`, picked via F5 dropdown)
+and `.vscode/settings.json` alongside the regular template
+scaffold. Opt-in so projects edited in Neovim / Helix / IntelliJ
+stay clean. Top-level `amc --help` advertises the flag on the
+`new` line for discoverability.
+
+### Improved: `.vscode/tasks.json` with `preLaunchTask` (PR #397)
+
+The scaffold now also drops `.vscode/tasks.json` with two tasks
+("amc: build (debug)" and "amc: build (release)"), and both
+`launch.json` configurations carry `preLaunchTask: "amc: build
+(debug)"`. F5 rebuilds with `-g` automatically — fixes the
+classic "F5 runs but no breakpoint stops" pitfall when the
+binary on disk is a release build.
+
+The generated `README.md` (exe + service templates) gains a
+"Debug" section covering `./build.sh -g`, an `lldb` session,
+and the VS Code F5 flow.
+
+### Fixed: `amc build` / `amc test` via $PATH install (PR #396 + #397)
+
+`amc build` and `amc test` derived `runtime/` from
+`dirname(argv[0])`. When amc is launched through `$PATH` —
+which is the standard install case — `argv[0]` is the bare name
+`amc`, dirname collapses, and gcc never gets `-I'<runtime>'` →
+`fatal error: _runtime.h: fichier ou dossier de ce type`.
+
+New helper `Program.ResolveSelfPath()` reads `/proc/self/exe` on
+Linux and `GetModuleFileNameA` on Windows for the kernel-resolved
+canonical executable path. macOS still uses `argv[0]` (Homebrew
+ships an absolute symlink so the legacy lookup already works
+there); `_NSGetExecutablePath` is queued for v0.8.2.
+
+The scaffolds also stop reimplementing the runtime-discovery
+logic. `BuildShExe`, `BuildShService` and `BuildPs1Service` are
+now two-line wrappers around `amc build`, forwarding `"$@"` so
+`./build.sh -g` propagates straight to the debug build.
+
+### Fixed: XDG-style install layout, cross-OS (PR #398)
+
+`install/install.sh` used to copy `_runtime.h` alone (missing
+every `Amalgame_*.h`), skip `libamalgame.a` entirely, and force
+`AMC_RUNTIME` into the user's shell rc as a hack to compensate.
+The Windows Inno Setup script (`install/windows/amalgame.iss`)
+was worse: pinned to `0.3.0`, broken paths (`build-windows/`,
+`src/transpiler/`), no `libamalgame.a`, registry-writing
+`AMC_RUNTIME`.
+
+All three install paths now share one tree shape:
+
+```
+<prefix>/
+├── bin/
+│   └── amc(.exe) [+ MinGW DLLs on Windows]
+└── share/amalgame/
+    ├── runtime/      _runtime.h + Amalgame_*.h
+    ├── lib/          libamalgame.a
+    └── docs/         grammar + language tour (for amc migrate / explain / generate)
+```
+
+`<prefix>` is `/usr/local` (Linux system), `~/.local` (Linux/macOS
+user — auto-fallback when /usr/local isn't writable), `brew
+--prefix` (macOS Homebrew, auto-detected), or `C:\Program
+Files\Amalgame` (Windows installer).
+
+amc gains two helpers — `Program.ResolveRuntimeDir(amcPath)` and
+`Program.ResolveLibAmalgameA(amcPath)` — that probe a stable
+chain:
+
+1. `$AMC_RUNTIME` / `$AMC_LIB` env override
+2. `<bin>/../share/amalgame/{runtime, lib}` ← XDG install
+3. `<bin>/{runtime, lib}` ← legacy + dev source tree
+
+No env var is required for the standard layout. The Inno Setup
+registry write for `AMC_RUNTIME` is gone.
+
+`release.yml` stages the matching XDG tree, so installers do a
+flat `cp -r dist/$NAME/* $PREFIX/` with no per-file rewiring.
+
+### Build state
+
+- `./amc --version` → `amc 0.8.1 (commit <sha>, built <ts>)`
+- `./build_amc.sh` ≈ 3 s end-to-end
+- `./tests/run_all_tests.sh` → 451 / 451 PASS (214 core + 191
+  stdlib + 12 fmt + 34 amc-new)
+- snapshot/amc_lib.c regenerated; snapshot/amc rebuilds in one
+  gcc step from the tracked .c
+
+### Setup notes
+
+LLVM 18+ for `amc dap` (unchanged from v0.8.0):
+
+```bash
+wget https://apt.llvm.org/llvm.sh
+chmod +x llvm.sh && sudo ./llvm.sh 18
+sudo apt install -y lldb-18
+```
+
+macOS: `xcode-select --install`. Windows: pending the
+`gdb --dap` fallback queued for v0.8.2.
+
+---
+
 ## [v0.8.0] — 2026-05-13
 
 The **"debug adapter"** release. Three changes ship together to
