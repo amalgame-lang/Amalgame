@@ -823,6 +823,14 @@ public class CGen {
             if (tname == "Match") { return "AmalgameRegexMatch*" }
             if (tname == "WebSocket") { return "AmalgameWebSocket*" }
             if (this.IsEnum(tname)) { return this.SymName(tname) }
+            // Project F: external classes infer to their file's own
+            // mangled name (e.g. `Amalgame_Formats_Json_JsonValue*`)
+            // even when the inference comes from a `new JsonValue()`
+            // in a different namespace.
+            let externalMangled: string = this.ExternalClassMangled(tname)
+            if (String_Length(externalMangled) > 0) {
+                return externalMangled + "*"
+            }
             return this.SymName(tname) + "*"
         }
         // method call returning a known type — check callee

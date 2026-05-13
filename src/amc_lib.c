@@ -5873,6 +5873,10 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CG
         if (Amalgame_Compiler_CGen_IsEnum(self, tname)) {
             return Amalgame_Compiler_CGen_SymName(self, tname);
         }
+        code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
+        if (String_Length(externalMangled) > 0) {
+            return code_string_concat(externalMangled, "*");
+        }
         return code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "*");
     }
     if (k == Amalgame_Compiler_NodeKind_CALL) {
