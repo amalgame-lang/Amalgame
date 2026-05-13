@@ -196,8 +196,14 @@ public class NewCommand {
         let installPs1: string = NewCommand.InstallPs1Service(base)
         let readme:     string = NewCommand.ReadmeService(base)
         let gitignore:  string = NewCommand.GitignoreService(base)
+        // Project F follow-up (v0.7.7): Logging + Service moved out of
+        // bundled stdlib into external packages. The scaffold ships a
+        // ready-to-use amalgame.toml so `amc package add` populates the
+        // lock + cache before first build.
+        let manifest:   string = NewCommand.ManifestService(base)
 
         if (!NewCommand.WriteFile(path + "/src/main.am",            mainAm))     { return 1 }
+        if (!NewCommand.WriteFile(path + "/amalgame.toml",          manifest))   { return 1 }
         if (!NewCommand.WriteFile(path + "/" + base + ".service",   unit))       { return 1 }
         if (!NewCommand.WriteFile(path + "/install.sh",             installSh))  { return 1 }
         if (!NewCommand.WriteFile(path + "/build.sh",               buildSh))    { return 1 }
@@ -210,6 +216,7 @@ public class NewCommand {
 
         Console.WriteLine("Scaffolded '" + base + "' (service template).")
         Console.WriteLine("  cd " + path)
+        Console.WriteLine("  amc package add logging service     # fetch external deps (one-off)")
         Console.WriteLine("  Linux:    ./build.sh && sudo ./install.sh")
         Console.WriteLine("            sudo journalctl -fu " + base)
         Console.WriteLine("  Windows:  .\\build.ps1 ; Start-Process powershell -Verb runAs install.ps1")
@@ -476,6 +483,23 @@ public class NewCommand {
         return s
     }
 
+    private static string ManifestService(string name) {
+        var s: string = ""
+        s = s + "# Project manifest — declares external package deps.\n"
+        s = s + "# `amc package add logging service` populates amalgame.lock\n"
+        s = s + "# and caches the package facades.\n"
+        s = s + "\n"
+        s = s + "[package]\n"
+        s = s + "name        = \"" + name + "\"\n"
+        s = s + "version     = \"0.1.0\"\n"
+        s = s + "description = \"Long-running Amalgame service scaffolded by `amc new --template service`.\"\n"
+        s = s + "\n"
+        s = s + "[dependencies]\n"
+        s = s + "logging = { git = \"github.com/amalgame-lang/amalgame-logging\", tag = \"v0.1.0\" }\n"
+        s = s + "service = { git = \"github.com/amalgame-lang/amalgame-service\", tag = \"v0.1.0\" }\n"
+        return s
+    }
+
     private static string SystemdUnit(string name) {
         var s: string = ""
         s = s + "[Unit]\n"
@@ -696,6 +720,13 @@ public class NewCommand {
         s = s + "\n"
         s = s + "A long-running Amalgame daemon scaffolded by `amc new " + name + " --template service`.\n"
         s = s + "Uses `Amalgame.Service` for signal-aware shutdown and `Amalgame.Logging` for stderr / journal output.\n"
+        s = s + "Both are external packages — install them once with:\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "amc package add logging service\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "(They're already declared in `amalgame.toml`; `add` fetches + locks them.)\n"
         s = s + "\n"
         s = s + "## Run in the foreground (any OS)\n"
         s = s + "\n"
@@ -774,6 +805,7 @@ public class NewCommand {
         s = s + "\n"
         s = s + "```\n"
         s = s + name + "/\n"
+        s = s + "├── amalgame.toml           # project manifest — declares logging + service deps\n"
         s = s + "├── src/main.am             # daemon entry point — edit OnTick() here\n"
         s = s + "├── " + name + ".service      # systemd unit (Linux)\n"
         s = s + "├── install.sh              # build + deploy under systemd (Linux)\n"
