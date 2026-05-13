@@ -22,13 +22,14 @@ The runtime headers live in `runtime/` at the project root.
 
 | Command | Purpose | Reference |
 | ------- | ------- | --------- |
-| `build [-o <out>] [-v] <entry.am>` | Compile + gcc-link a runnable binary in one step (v0.7.9+) | `amc build --help` |
-| `run [-o <out>] [-v] <entry.am> [-- args…]` | Build, then exec the binary (v0.7.9+) | `amc run --help` |
+| `build [-o <out>] [-g] [-v] <entry.am>` | Compile + gcc-link a runnable binary in one step (v0.7.9+). `-g`/`--debug` swaps `-O2` for `-O0 -g` (DWARF for `amc dap`) since v0.8.0. | `amc build --help` |
+| `run [-o <out>] [-g] [-v] <entry.am> [-- args…]` | Build, then exec the binary (v0.7.9+) | `amc run --help` |
 | `watch [-o <out>] [--run] [-v] <entry.am>` | Build now, then poll mtime and rebuild on change (v0.7.9+) | `amc watch --help` |
 | `fmt [-w] file.am`     | Idempotent formatter (stdout, or `-w` in-place)        | `amc fmt --help` |
 | `test [<dir>]`         | Discover `*_test.am`, compile + run, aggregate         | `amc test --help` |
 | `lsp`                  | Workspace-aware LSP server over stdio JSON-RPC          | chap. 6 |
-| `new <name> [--template exe\|lib\|test]` | Scaffold a new project       | `amc new --help` |
+| `dap`                  | DAP proxy over stdio — forwards to `lldb-dap`/`gdb --dap` (v0.8.0+) | chap. 6 |
+| `new <name> [--template exe\|lib\|test\|service] [--vscode]` | Scaffold a new project. `--vscode` adds `.vscode/launch.json` + `settings.json` (v0.8.1+). | `amc new --help` |
 | `package <action>` (alias `pkg`) | Project package management (see below)        | `amc package --help` |
 | `migrate <file\|dir>`   | LLM-driven source-to-Amalgame translation               | chap. 8 |
 | `generate "<prompt>"`  | LLM-driven prose-to-Amalgame                            | chap. 8 |
@@ -216,7 +217,16 @@ The result is a runnable binary — no separate gcc step.
 amc build hello.am             # produces ./hello
 amc build -o myapp src/main.am # explicit output
 amc build -v hello.am          # verbose: prints the gcc command
+amc build -g hello.am          # debug build (-O0 -g for `amc dap`)
 ```
+
+The `-g` / `--debug` flag (v0.8.0+) swaps `-O2` for `-O0 -g` on
+both the single-stage gcc link and the C++ two-stage path
+(DuckDB etc.). The cgen emits `#line N "foo.am"` directives at
+every statement, so DWARF carries `.am` filenames and line
+numbers — debuggers set breakpoints on `.am` source directly,
+no source maps. See `amc dap` in chapter 6 and the debugger
+workflow at the end of chapter 6.
 
 `amc run` chains a build with `Process.Run` on the resulting
 binary. Args after the `--` sentinel pass through to the user

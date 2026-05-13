@@ -189,3 +189,74 @@ debugging via:
 ```bash
 echo -e 'Content-Length: 41\r\n\r\n{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./amc lsp
 ```
+
+## Debugging `.am` programs (`amc dap`, since v0.8.0)
+
+`amc dap` is a Debug Adapter Protocol proxy. It detects a
+DAP-native backend on the host (`lldb-dap` from LLVM 18+ today,
+`gdb --dap` from gdb 14+ planned for v0.8.1) and `execvp()`s
+into it. stdin/stdout — already wired by the DAP client to its
+JSON-RPC pipes — flow directly to the backend with no in-amc
+copy. No source map files: cgen emits `#line N "foo.am"`
+directives so DWARF carries the `.am` filenames and line
+numbers natively.
+
+### Prerequisites
+
+| OS      | Install one of                                                        |
+| ------- | --------------------------------------------------------------------- |
+| Linux   | `lldb-dap` from LLVM 18+ (`wget https://apt.llvm.org/llvm.sh && sudo ./llvm.sh 18 && sudo apt install -y lldb-18`) |
+| macOS   | Xcode Command Line Tools 14+ (`xcode-select --install`)                |
+| Windows | gdb 14+ via MSYS2 (`pacman -S mingw-w64-x86_64-gdb`) — pending v0.8.1 |
+
+### Workflow — VS Code (recommended)
+
+1. Scaffold a project with the wiring already in place:
+   ```bash
+   amc new myapp --vscode      # writes .vscode/launch.json + settings.json
+   ```
+2. Build with DWARF:
+   ```bash
+   cd myapp && ./build.sh -g   # forwards -g to `amc build`
+   ```
+3. In VS Code: open `src/main.am`, click in the gutter to set a
+   breakpoint, press **F5**. The F5 dropdown surfaces two
+   pre-baked configurations — pick "Debug myapp (Linux/macOS)"
+   or "(Windows)" depending on your platform.
+
+The Amalgame VS Code extension (v0.3.0+) registers the `amc`
+debug type and exposes a `DebugAdapterDescriptorFactory` that
+spawns `amc dap` with the path from `amalgame.dapServerPath`
+(or `amalgame.serverPath` as fallback). Logs land in the
+"Amalgame DAP" output channel.
+
+### Workflow — lldb CLI (no VS Code needed)
+
+```bash
+amc build -g hello.am
+lldb-18 ./hello
+(lldb) breakpoint set --file hello.am --line 5
+(lldb) run
+(lldb) frame variable     # locals visible by name + Amalgame type
+(lldb) next               # step over
+(lldb) continue
+```
+
+The DWARF `DW_AT_decl_file` / `DW_AT_decl_line` fields point at
+`hello.am`, so lldb resolves the `.am` source line to a real
+instruction address with no extra setup.
+
+### Strategy & limits
+
+v0.8.0 ships the transparent proxy (Approche C in
+`ROADMAP_COMPLET.md`). It's intentionally minimal — no
+Amalgame-specific pretty-printers, no frame filtering, no
+closure decoding. The `AmalgameList*` / `AmalgameMap*` types
+show as opaque pointers; runtime frames (`Amalgame_*` /
+`_runtime.h`) interleave with user frames in the stack trace.
+
+The post-v0.8.x trajectory ("Approche A") replaces the
+`execvp` with a fork + pipe + `poll()` bridge and rewrites
+messages on the way through — pretty-print collections, filter
+runtime frames, decode closures. The proxy stays as a fallback
+(`amc dap --raw` is the planned flag).

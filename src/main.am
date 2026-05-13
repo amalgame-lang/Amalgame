@@ -475,7 +475,14 @@ public class Program {
         // cached in /tmp. The .o files get linked into every test
         // binary so SQLite (and any future vendoring backend)
         // links cleanly without the user doing gcc by hand.
-        let amcPathForRt: string = Args_Get(0)
+        // Resolve amc's canonical path via /proc/self/exe (Linux) /
+        // GetModuleFileNameA (Windows) so runtime/ discovery works
+        // when amc is invoked via PATH — argv[0] is then just "amc"
+        // and the dirname() fallback collapses. Same fix as BuildEntry.
+        var amcPathForRt: string = Program.ResolveSelfPath()
+        if (String_Length(amcPathForRt) == 0) {
+            amcPathForRt = Args_Get(0)
+        }
         var amcRuntime: string = Env_Get("AMC_RUNTIME")
         if (String_Length(amcRuntime) == 0) {
             let slashIdx: int = String_LastIndexOf(amcPathForRt, "/")
@@ -519,7 +526,10 @@ public class Program {
             }
         }
 
-        let amcPath = Args_Get(0)
+        var amcPath: string = Program.ResolveSelfPath()
+        if (String_Length(amcPath) == 0) {
+            amcPath = Args_Get(0)
+        }
         var pass        = 0
         var fail        = 0
         var skip        = 0
