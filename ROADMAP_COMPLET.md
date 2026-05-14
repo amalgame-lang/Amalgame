@@ -1383,20 +1383,44 @@ implementation effort.
       `GetDynamicTimeZoneInformation`). Picks up when a real
       consumer needs it — server-side UTC + the breakdown above
       cover most cases.
-- [ ] **`Amalgame.UI` / Forms toolkit (cross-platform GUI)** —
-      backs the `amc new <name> --template forms` scaffolder. SDL2
-      binding under the hood (universally available on Linux/macOS/
-      Windows, MIT-equivalent license, packageable via apt / brew /
-      MSYS2). Public surface in two layers: a thin
-      `Amalgame.UI.Window` / `Surface` / `Event` API that mirrors
-      SDL's event loop, and a `Forms` layer above it
-      (`Window`, `Button`, `TextField`, `Layout`, theming hooks) so
-      everyday apps don't reach for raw event handling. Open design
-      questions: retained vs immediate mode, accessibility surface
-      (ATK / NSAccessibility / UIAutomation), how to ship the SDL
-      runtime in release tarballs (link static? bundle the .so/dylib/
-      DLL alongside the binary?). ~600 LoC stdlib + ~400 LoC runtime
-      (mostly SDL passthrough).
+- [x] **`Amalgame.UI` / Forms toolkit (cross-platform GUI)** —
+      **shipped 2026-05-14** as two external packages:
+
+      - `amalgame-ui-sdl` **v0.1.0** — thin SDL2/SDL3 binding.
+        Surface: `Window` (create/close/title/resize), `Event`
+        (Quit/MouseDown/MouseUp/MouseMove/KeyDown/KeyUp/
+        WindowResize), `Surface` (Clear/Present/FillRect/
+        DrawRect/DrawLine/DrawPixel), `Font` (LoadDefault
+        cross-OS probe, DrawText, MeasureWidth), `Color`,
+        `Rect`, `OSTheme.DetectOS()` (macOS `defaults` /
+        Windows registry / Linux `gsettings color-scheme`).
+        Backend chosen at compile time via
+        `-DAMALGAME_UI_USE_SDL3` (default SDL2).
+
+      - `amalgame-ui-forms` **v0.1.0** — retained-mode GUI
+        toolkit on top of ui-sdl. Single concrete `Widget`
+        class with a `Kind` tag (class-with-tag pattern
+        because amc 0.8.x's typechecker rejects subclass
+        upcasts), 9 kinds: Label, Button, CheckBox,
+        RadioButton (+ Group exclusivity), TextBox (focus +
+        printable-ASCII typing + backspace), Panel, ListBox,
+        ComboBox, MenuBar. `Form` container with 4 layouts
+        (StackVertical, StackHorizontal, Grid, Absolute).
+        Theme.Light/Dark/FromOS palette. `Application.Run`
+        blocking event loop with mouse-down hit-testing,
+        keyboard focus dispatch, layout repack on resize.
+
+      `amc new <name> --template forms` scaffolds a ready-to-
+      build sample app (Form + Label + Button + StackVertical
+      + `Application.Run`) wired against both packages.
+      Requires amc 0.8.7+ (cross-package facade deps fix in
+      `amc --lib`) and SDL2 dev headers on the build host
+      (apt/brew/pacman one-liner in the scaffolded README).
+
+      Deferred: accessibility (ATK / NSAccessibility /
+      UIAutomation), HiDPI scaling factor probe, static-link
+      SDL build variant, font fallback chain for non-Latin
+      scripts.
 - [x] **`Amalgame.Service` v1 — POSIX signals + Windows console**
       (PR #256, v0.4.13). `Service.Install` / `ShouldStop` /
       `RequestStop` / `Sleep`. POSIX `signal()` + `nanosleep()`;
