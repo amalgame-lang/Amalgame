@@ -2752,9 +2752,22 @@ public class CGen {
             return target + "->" + expr.Name
         }
         if (k == NodeKind.BINARY) {
-            let left  = this.EmitExprStr(expr.Left)
+            var left  = this.EmitExprStr(expr.Left)
             let op    = expr.Str
-            let right = this.EmitExprStr(expr.Right)
+            var right = this.EmitExprStr(expr.Right)
+            // Preserve source precedence: any sub-BINARY operand
+            // gets wrapped in parens at the C level. C's precedence
+            // table doesn't always match the source's nesting (e.g.
+            // `(h - 2*pad - gap) / n` would otherwise emit as
+            // `h - 2*pad - gap / n`, evaluating `gap / n` first).
+            // Belt-and-braces — over-parenthesising is harmless and
+            // matches what pretty-printers like clang-format do.
+            if (expr.Left != null && expr.Left.Kind == NodeKind.BINARY) {
+                left = "(" + left + ")"
+            }
+            if (expr.Right != null && expr.Right.Kind == NodeKind.BINARY) {
+                right = "(" + right + ")"
+            }
             if (op == "==" || op == "!=") {
                 // Infer LHS type to decide: string → code_string_equals, else → C == / !=
                 let ltype = this.InferTypeFromExpr(expr.Left)
