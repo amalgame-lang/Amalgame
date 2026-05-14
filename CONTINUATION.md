@@ -1,9 +1,116 @@
 # Continuation prompt — start a new chat with this
 
-> **Last refreshed 2026-05-14 (night)** — **v0.8.1 just tagged.**
-> Two tags shipped this session (v0.8.0 then v0.8.1); the
-> debugger now works end-to-end from a fresh `install.sh` with
-> no env-var hacks.
+> **Last refreshed 2026-05-14 (late night)** — **v0.8.10 tagged.**
+> The big push this day shipped the **GUI toolkit ecosystem**
+> (ui-sdl + ui-forms as two new external packages) and the amc
+> support around it. Released amc tags this session:
+> v0.8.7 → v0.8.10, plus ui-sdl v0.1.0 + ui-forms v0.1.0 → v0.1.4.
+>
+> ### v0.8.10 (close 2 cgen bugs + SDL2 in installer) ✅ tagged
+>
+> 1. **PR #447 — cgen bugs #4 + #5 closed**. Two of the six
+>    bugs surfaced by ui-forms development:
+>    - **#4 parens lost on mixed `* + /`** — `EmitExprStr`
+>      BINARY branch now wraps any sub-BINARY operand in
+>      parens. `(h - 2*pad - gap*(n-1)) / n` lowers correctly
+>      instead of left-associating against C precedence.
+>    - **#5 `return null` rejected by the typechecker** —
+>      `IsAssignable` accepts null for any target that isn't a
+>      primitive value type (new `IsPrimitiveValue` helper).
+>      Drops the `@c { return NULL; }` workaround pattern.
+>
+>    4 cgen bugs remain open in ROADMAP under "Cgen/typechecker
+>    bugs surfaced by amalgame-ui-forms" (#1 forward-decl
+>    ordering, #2 chained calls cross-pkg, #3 field=type
+>    shadow, #6 let scope flat). Intra-package smoke tests no
+>    longer trigger any of them — may already be collateral-
+>    fixed by #4 + #5, or need a cross-package repro.
+>
+> 2. **PR #446 — install.sh installs SDL2 by default**.
+>    libsdl2-dev + libsdl2-ttf-dev are now pulled in alongside
+>    libgc + libcurl + zlib on apt/dnf/pacman/zypper/brew/pkg.
+>    ~5 MB footprint; opt out with `AMC_NO_GUI=1 ./install.sh`
+>    for minimal installs. GUI users no longer have to install
+>    SDL manually before `amc new --template forms`.
+>
+> 3. **PR #450 — register-package.sh latest-run-only**.
+>    Re-tagging a package after a CI fix left the historical
+>    failure in `gh run list`, blocking the script from
+>    registering the freshly-green tag. Now checks `--limit 1`
+>    so only the latest run gates registration.
+>
+> ### v0.8.9 (tag fix + install hints) ✅ tagged
+>
+> 1. **PR #442 — `amc new --template forms` tags fixed**.
+>    Scaffolded `amalgame.toml` hardcoded `v0.0.6-dev` for both
+>    packages — those never existed on GitHub. Bumped to the
+>    published stable tags (ui-sdl v0.1.0 + ui-forms v0.1.1).
+>
+> 2. **PR #443 — SDL2 install hints**. install.sh post-success
+>    prints OS-specific SDL2 install snippets; Homebrew formula
+>    gains sdl2 + sdl2_ttf as runtime deps. (Superseded by
+>    PR #446 in v0.8.10, which installs them by default.)
+>
+> ### v0.8.8 (forms scaffolder + multi-spec) ✅ tagged
+>
+> 1. **PR #436 — `amc new --template forms`**. Scaffolds a
+>    GUI project: `src/main.am` (Form + Label + Button +
+>    StackVertical), `amalgame.toml` (deps on ui-sdl + ui-forms),
+>    `build.sh` (amc emit .c → gcc link facade archives + SDL2
+>    pkg-config), `README.md` (apt/brew/pacman install snippets).
+>    Sample opens a 320×240 window via `Application.Run`.
+>
+> 2. **PR #437 — `amc package add` multi-spec**. Accepts
+>    several positional args; runs the existing per-package
+>    install pipeline (extracted into `RunOne`) for each in
+>    order. Stops on first failure so the user sees the
+>    broken spec, not a cascade.
+>
+> 3. Plus: XDG runtime probe in PrecompileFacade + PrecompilePackage
+>    (used to look only under `<bin>/runtime`, the legacy in-
+>    tree path; XDG `<bin>/../share/amalgame/runtime/` is now
+>    checked first).
+>
+> ### v0.8.7 (amc --lib cross-package facade deps) ✅ tagged
+>
+> 1. **PR #433** — `amc --lib facade.am` now loads every
+>    LoadedPackage's facade as `--external`, not just none.
+>    Pre-v0.8.7 the path skipped the whole loop, so facades
+>    importing other packages (ui-forms → ui-sdl) hit
+>    'Unknown symbol' at the resolver. Self-package still
+>    skipped (matched on namespace) to avoid the
+>    forward-decl-instead-of-definition loop.
+>
+> ### GUI toolkit summary (ui-sdl + ui-forms)
+>
+> Shipped at v0.1.0 (then patched up to v0.1.4). Two-package
+> split:
+>
+> - **ui-sdl v0.1.0** — thin SDL2/SDL3 binding. Surface:
+>   Window (create/close/size/title/event poll), Event
+>   (Quit/MouseDown/MouseUp/MouseMove/KeyDown/KeyUp/Resize),
+>   Surface (Clear/Present/FillRect/DrawRect/DrawLine/DrawPixel),
+>   Font (LoadDefault cross-OS probe + DrawText + MeasureWidth/
+>   Height), Color, Rect, OSTheme.DetectOS (returns
+>   "light"/"dark" from macOS defaults / Windows registry /
+>   gsettings). Backend chosen at compile time via
+>   `-DAMALGAME_UI_USE_SDL3` (default SDL2).
+>
+> - **ui-forms v0.1.4** — retained-mode GUI toolkit on top of
+>   ui-sdl. Single concrete `Widget` class with a `Kind` tag
+>   (class-with-tag pattern — amc 0.8.x's typechecker rejects
+>   subclass upcasts). 9 kinds: Label, Button, CheckBox,
+>   RadioButton, TextBox (focus + printable-ASCII typing +
+>   backspace), Panel, ListBox, ComboBox, MenuBar. Form
+>   container with 4 layouts (StackVertical/StackHorizontal/
+>   Grid/Absolute). Theme.Light/Dark/FromOS palette.
+>   `Application.Run` blocking event loop with mouse-down
+>   hit-testing, keyboard focus dispatch, layout repack on
+>   resize. Label + Button text centered horizontally +
+>   vertically (font.MeasureHeight + MeasureWidth).
+>
+> Scaffold: `amc new <name> --template forms` (lands in
+> v0.8.9+). Sample app: 320×240 window with Label + Button.
 >
 > ### v0.8.1 (polish the debugger) ✅ tagged
 > Four PRs landed on top of v0.8.0 to make the DAP usable
@@ -106,8 +213,9 @@
 > bundled until a cgen ABI bug is fixed (see "Persistent todos"
 > below).
 >
-> **Tests**: 451/451 PASS in amc + 85/85 across the 8 packages
-> with local runners. Last tag: **`v0.8.1`**.
+> **Tests**: 451/451 PASS in amc + 85/85 across the 9+ packages
+> with local runners. Last tag: **`v0.8.10`** (plus ui-sdl
+> v0.1.0 + ui-forms v0.1.4 on the external side).
 >
 > **DECISIONS recorded at top of `ROADMAP_COMPLET.md`**:
 > - No new `runtime/Amalgame_*.h` after v0.7.3 — new C
@@ -118,25 +226,41 @@
 >   frames, decode closures) is explicitly tracked as future
 >   work, not a nice-to-have.
 
-## Resume here — v0.8.2 trajectory
+## Resume here — post-v0.8.10 trajectory
 
-Pick any order; (1) and (2) pair naturally as a "DAP polish"
-release. (3) unblocks the 14th external package.
+The GUI ecosystem ships. Picking up next session, the
+priorities in rough order:
 
-1. **macOS canonical-path resolution** — mirror PR #396's
+1. **Remaining 4 cgen bugs** surfaced by ui-forms. #4 + #5
+   closed in v0.8.10; #1 #2 #3 #6 still open under
+   "Cgen/typechecker bugs surfaced by amalgame-ui-forms" in
+   `ROADMAP_COMPLET.md`. Intra-pkg smoke tests don't repro
+   them anymore — write minimal cross-package test cases
+   before claiming any of them is dead.
+   - **#1 forward-decl ordering** — type-of-type referenced
+     before its declaration.
+   - **#2 chained calls cross-pkg** — `pkg.A().B()` flattens
+     to a missing intermediate cast when A returns an
+     external incomplete typedef.
+   - **#3 field shadows type name** — class `Foo { Foo Foo }`
+     rejected; rename field workaround.
+   - **#6 let scope flat** — `let x` inside `if {}` leaks
+     into the enclosing block.
+
+2. **macOS canonical-path resolution** — mirror PR #396's
    `/proc/self/exe` fix using `_NSGetExecutablePath` from
    `<mach-o/dyld.h>` in `Program.ResolveSelfPath()`. ~5 lines
    of `@c {}` block. Removes the last edge case where
    `amc build` can't find runtime/ via PATH on macOS.
 
-2. **`gdb --dap` fallback in `src/dap.am`** — Linux + Windows
+3. **`gdb --dap` fallback in `src/dap.am`** — Linux + Windows
    MSYS2 users get a second backend after lldb-dap. Probe
    order: keep the existing `lldb-dap*` chain, then try
    `gdb` (parse `gdb --version` first line for ≥ 14). When
    picked, `execvp("gdb", ["gdb", "--dap", NULL])`. ~30
-   lines. Pair with (1) for a v0.8.2 release.
+   lines.
 
-3. **Facade ABI cgen fix** (blocks msgpack extraction). When
+4. **Facade ABI cgen fix** (blocks msgpack extraction). When
    a package's `facade.am` calls its own static methods via
    `ClassName.X()`, `EmitCalleeStr` hits
    `PkgClassMangledPrefix` (returns the namespace) before
@@ -147,31 +271,39 @@ release. (3) unblocks the 14th external package.
    mirror in `TypeToC` (line 3793). Then extract
    `amalgame-msgpack` as the 14th package.
 
-4. **LSP package discovery code action** — `amc package
+5. **LSP package discovery code action** — `amc package
    suggest <namespace> --json` is already shipped (v0.7.7).
    Wire `textDocument/codeAction` to detect unresolved-import
    diagnostics, call `amc package suggest`, and offer
    "Install package X for Amalgame.Y" quickfixes. Pattern:
    Visual Studio's `using X;` lightbulb.
 
-5. **Approche A — DAP message-rewriting bridge** (after 1–4
-   ship). When pretty-printing `AmalgameList*` / `AmalgameMap*`
-   or filtering `Amalgame_*` / `_runtime.h` frames is the
-   thing that makes a real session annoying. Swap `execvp`
-   for fork+pipe+`poll()` and rewrite messages on the way
+6. **HiDPI scaling in ui-forms** — item 6 of the original
+   GUI plan, partially deferred. SDL2 gives us
+   logical-vs-physical resolution; widget metrics need a
+   `Theme.ScaleFactor` multiplier and Font sizes need to
+   honor it. ~3-4h once we have a HiDPI test box.
+
+7. **2D/3D graphics + WYSIWYG VS Code form designer** —
+   future scope, captured in ROADMAP_COMPLET.md
+   "GUI future scope" section. Don't start until v0.8.x
+   compiler bugs are closed.
+
+8. **Approche A — DAP message-rewriting bridge** (long-term).
+   Pretty-print `AmalgameList*` / `AmalgameMap*`, filter
+   `Amalgame_*` / `_runtime.h` frames. Swap `execvp` for
+   fork+pipe+`poll()` and rewrite messages on the way
    through; the transparent proxy stays available behind
    `amc dap --raw`. ~6-10h. Explicit dette technique in
-   `project_dap_strategy.md` auto-memory and
-   `ROADMAP_COMPLET.md` so it doesn't get forgotten.
+   `project_dap_strategy.md` auto-memory.
 
 ## Persistent todos (don't lose these)
 
 - **BUG TRACKER** — pre-existing cgen bugs hit during the
-  DateTime migration (still unfixed, working around at call
-  sites):
-  - **Parens lost on mixed `* + /`** — `(153 * monthShift + 2) / 5`
-    lowers to `153 * monthShift + 2 / 5`. Workaround: extract a
-    numerator local.
+  DateTime migration:
+  - ~~**Parens lost on mixed `* + /`**~~ — **FIXED in v0.8.10**
+    (PR #447). `EmitExprStr` BINARY branch wraps sub-BINARY
+    operands. Workaround locals can be removed at leisure.
   - **Multi-line expression continuation broken** — the parser
     closes the statement at the newline even with a binary
     operator at end-of-line. Workaround: single-line expr or
