@@ -239,6 +239,88 @@ stays green; each one needs its own fix.
         same class. The 5 facades shipped in v0.7.7 follow this
         accidentally, which is why they work.
 
+### Cgen/typechecker bugs surfaced by amalgame-ui-forms (v0.0.3 → v0.0.5)
+
+Six bugs hit while shipping ui-forms Widget/Form/Application/
+Layout/CheckBox/RadioButton/TextBox/Panel. Each one has a local
+workaround documented in-context (commit messages + facade.am
+comments), so the package CI is green — but the cgen/typechecker
+still needs the proper fix. Fix order can be opportunistic; none
+of these block a release on its own.
+
+- [ ] **Forward-decl ordering across class boundaries** —
+      a method on class A that calls a method on class B,
+      where B is declared **after** A in the same source file,
+      emits `B_Foo(...)` without a forward declaration. gcc
+      then treats it as `int B_Foo()`-implicit and bails on
+      type conflict when the real definition is emitted later.
+      Hit while wiring `Layout.Apply(Form)` calling
+      `form.ChildCount()`. **Workaround**: drop the inter-
+      class reference (Layout.Apply takes `List<Widget>`
+      instead of `Form`). **Fix**: emit method forward decls
+      in a single pre-class block at the top of the .c
+      instead of grouping them per-class, or do a 2-pass
+      emit (collect signatures, then write definitions).
+
+- [ ] **Chained method calls on cross-package types** —
+      `form.GetChild(i).GetX()` where `GetChild` returns a
+      Widget* from the current package and `GetX()` is also
+      defined on Widget. The cgen emits
+      `Form_GetChild(form, i) Widget_GetX` instead of
+      `Widget_GetX(Form_GetChild(form, i))` — the inner call's
+      return-value cast is dropped, so gcc reads `_GetX` as a
+      standalone token after the function call.
+      **Workaround**: stage the receiver in an intermediate
+      local (`let w: Widget = form.GetChild(i); w.GetX()`).
+      **Fix**: in the CALL emit path, propagate the
+      method-return cast when the call is itself the receiver
+      of another call. Likely in `EmitCalleeStr` around the
+      method-chain path.
+
+- [ ] **Field name == type name shadowing** —
+      `public Layout: Layout` (field `Layout` of type
+      `Layout`) generates correct struct emission, but
+      assignments (`self->Layout = x`) and reads
+      (`self->Layout`) silently no-op or hit the typedef
+      rather than the struct member. Symptom in ui-forms
+      v0.0.4: `SetLayout` ran but `ApplyLayout` saw a null
+      LayoutRef, so children stayed at construction bounds.
+      **Workaround**: rename the field
+      (`Layout` → `LayoutRef`). **Fix**: cgen `EmitFieldRef`
+      should mangle by struct-relative offset, not by name
+      lookup that prefers the typedef.
+
+- [ ] **Parens lost on mixed `* + /`** —
+      *Already tracked* in CONTINUATION.md "Persistent todos".
+      Reproduces in Layout.Apply: `(h - 2 * pad - totalGap) / n`
+      lowers as `h - 2 * pad - totalGap / n`, producing
+      different results than the source intended. Hit twice
+      during ui-forms v0.0.4 layout math. **Workaround**:
+      extract sub-expressions into named locals
+      (`let avail = h - 2 * pad - totalGap; let ch = avail / n`).
+      **Fix**: cgen `EmitBinary` should wrap left/right in
+      parens whenever the operator precedence levels differ.
+
+- [ ] **`return null` rejected by typechecker for non-primitive
+      return types** — `public Widget FindIt() { ... return null }`
+      fails with `Return type mismatch: expected 'Widget', got
+      'null'`, even though NULL is the documented sentinel for
+      class types at the C level. **Workaround**:
+      `@c { return NULL; }` block at the trailing fallback.
+      **Fix**: typechecker `CheckReturn` should treat `null` as
+      assignable to any class-pointer return type.
+
+- [ ] **`let` scope flattened to function level** — every
+      `let` in a method body lowers as a top-of-function C
+      declaration, so two `let x: T = ...` in *different*
+      `if`/`while` blocks collide at the C level with
+      `redefinition of x`. Hit during ui-forms v0.0.5 tests
+      (RadioButton block declared r0, r2; Form.Resize block
+      reused the same names). **Workaround**: rename locals
+      across blocks. **Fix**: resolver should track block
+      scope and let the cgen emit per-block C scopes
+      (`{` … `}` around each block's locals).
+
 - [x] **`Type.Variant` patterns in match** — `ParseMatchPattern`
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
       which the existing CGen MEMBER branch lowers to `Type_Variant`.
