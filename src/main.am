@@ -496,7 +496,7 @@ public class Program {
         Console.WriteError("                Same provider auto-selection as migrate. See `amc generate --help`.")
         Console.WriteError("  explain <f>   Read an Amalgame file and emit a natural-language explanation.")
         Console.WriteError("                See `amc explain --help`.")
-        Console.WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test / service).")
+        Console.WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test / service / forms).")
         Console.WriteError("                Pass --vscode to also wire .vscode/launch.json +")
         Console.WriteError("                settings.json (F5 = `amc dap` debug). See `amc new --help`.")
         Console.WriteError("  package <X>   Package manager (alias `pkg`). Verbs: add / remove / list /")

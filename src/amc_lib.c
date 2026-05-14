@@ -21420,12 +21420,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "ab8e3491";
+    return "b54e4fd2";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-14T18:43:04Z";
+    return "2026-05-14T20:16:43Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -34688,7 +34688,7 @@ void Amalgame_Compiler_Program_PrintUsage() {
     #line 498 "./src/main.am"
     Console_WriteError("                See `amc explain --help`.");
     #line 499 "./src/main.am"
-    Console_WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test / service).");
+    Console_WriteError("  new <name>    Scaffold a new Amalgame project (exe / lib / test / service / forms).");
     #line 500 "./src/main.am"
     Console_WriteError("                Pass --vscode to also wire .vscode/launch.json +");
     #line 501 "./src/main.am"
