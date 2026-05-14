@@ -260,13 +260,45 @@ This downloads the `.zip` from GitHub Releases, installs to `%LOCALAPPDATA%\Amal
 
 ### Option B — Inno Setup `.exe` installer (recommended for general public)
 
-The GitHub Actions workflow (`release-windows.yml`) builds `amalgame-0.3.0-windows-setup.exe` automatically when you push a tag.
+GitHub Actions builds the XDG-style release tarball
+(`amc-<ver>-windows-x86_64.zip`) on tag push. The `.exe` setup is
+built **separately on a Windows host with Inno Setup 6+ installed**,
+pointing at the staged tarball:
+
+```cmd
+:: 1. Download + extract the .zip from the GitHub Release
+::    so dist\amc-<ver>-windows-x86_64\bin\amc.exe exists
+
+:: 2. (Optional) Stage a MinGW-w64 toolchain so `amc build` works
+::    without a separate MSYS2 install on the end-user box:
+::      install\windows\gcc-bundle\
+::        ├─ bin\gcc.exe
+::        ├─ bin\*.dll
+::        └─ ... (lib/, libexec/, etc.)
+::    Download a portable release from https://winlibs.com/
+::    (e.g. winlibs-x86_64-posix-seh-gcc-13.2.0-mingw-w64ucrt-*.zip),
+::    extract its `mingw64\` content into `install\windows\gcc-bundle\`.
+::    The .iss preprocessor auto-detects bin\gcc.exe and conditionally
+::    ships the tree under {app}\gcc + prepends {app}\gcc\bin to PATH.
+::    Skip this step if you want a minimal installer (~20 MB instead
+::    of ~200 MB) and accept that end users must install MSYS2/MinGW
+::    themselves before running `amc build`.
+
+:: 3. Run iscc, pointing at the staged tarball
+cd install\windows
+iscc /DAmcVersion=0.8.1 ^
+     /DAmcStageDir=..\..\dist\amc-0.8.1-windows-x86_64 ^
+     amalgame.iss
+```
 
 The `.exe` installer:
-- Installs `amc.exe` and the runtime header
-- Optionally bundles MinGW GCC
-- Adds `amc` to PATH
-- Sets `AMC_RUNTIME` environment variable
+- Installs `amc.exe` + the bundled MinGW runtime DLLs to `{app}\bin`
+- Installs the XDG tree `{app}\share\amalgame\{runtime,lib,docs}`
+  (`Program.ResolveRuntimeDir` picks it up — **no AMC_RUNTIME env
+  variable needed** as of v0.8.1+)
+- Optionally bundles a MinGW-w64 toolchain under `{app}\gcc` when
+  `install\windows\gcc-bundle\bin\gcc.exe` exists at build time
+- Adds `{app}\bin` (and `{app}\gcc\bin` if bundled) to user PATH
 - Provides a proper uninstaller via Windows Add/Remove Programs
 
 ### Option C — winget (Windows Package Manager)
