@@ -7,6 +7,90 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.8] — 2026-05-14
+
+Toolkit-day release. Five features lining up the
+[amalgame-ui-sdl](https://github.com/amalgame-lang/amalgame-ui-sdl)
++ [amalgame-ui-forms](https://github.com/amalgame-lang/amalgame-ui-forms)
+v0.1.0 ecosystem release:
+
+### Added: `amc new --template forms`
+
+Scaffold a ready-to-build GUI project on top of ui-sdl + ui-forms:
+
+```sh
+amc new my-app --template forms
+cd my-app
+sudo apt install libsdl2-dev libsdl2-ttf-dev libgc-dev
+amc package add ui-sdl ui-forms
+./build.sh && ./my-app
+```
+
+The scaffolded `src/main.am` opens a 320×240 window with a Label
++ Button + StackVertical layout via `Application.Run`. Files
+also include `amalgame.toml` declaring the package deps, a
+`build.sh` that pre-compiles the facade archives and links
+against SDL2 via pkg-config, plus a README with the apt / brew /
+pacman install snippets.
+
+### Added: `amc package add` accepts multiple specs
+
+`amc package add ui-sdl ui-forms` used to bail with 'unexpected
+extra argument: ui-forms'. Now collects positional specs into a
+list and installs them sequentially. First failure stops the
+run so the user sees the broken spec; multi-spec runs print a
+'── Installing X (N/M) ──' header per package.
+
+### Fixed: `PrecompileFacade` resolves runtime/ via the XDG layout
+
+Pre-v0.8.8 the facade pre-compile probed only `<bin>/runtime`
+for amc's runtime/_runtime.h — the legacy source-tree path.
+Installed via `install.sh` (XDG layout: `<bin>/../share/
+amalgame/runtime/`), facade pre-compile failed with
+`_runtime.h: No such file`. Now probes the XDG path first,
+falling back to the legacy path. Same fix applied to
+`PrecompilePackage`.
+
+### Added: `PrecompileFacade` splices `[stdlib].cflags` into gcc
+
+Packages that need extra `-I` flags (typically SDL or other
+system libraries via pkg-config) can now declare them in the
+manifest:
+
+```toml
+[stdlib]
+class   = "Window"
+header  = "runtime/Amalgame_UI.h"
+facade  = "facade.am"
+libs    = ["SDL2", "SDL2_ttf"]
+cflags  = "$(pkg-config --cflags sdl2 SDL2_ttf)"
+```
+
+The string is spliced into the gcc invocation verbatim; popen
+runs it through `/bin/sh -c`, so command substitution works
+natively. Cross-platform when `pkg-config` is installed (Linux
++ macOS + MSYS2).
+
+### Added: `amc --help` mentions the `forms` template
+
+The top-level `amc --help` line for `new <name>` used to list
+only `exe / lib / test / service`; `forms` is now in there too
+so users discover it without having to run `amc new --help`
+separately.
+
+### Patch surface
+
+- `src/main.am` — top-level help line
+- `src/new_cmd.am` — ScaffoldForms + Main/Manifest/BuildSh/
+  Readme generators, --template forms accepted
+- `src/add_cmd.am` — Run() parses multi-spec, RunOne extracts
+  the per-package install. PrecompileFacade + PrecompilePackage
+  probe XDG runtime path. PrecompileFacade splices cflags.
+
+421/421 tests pass.
+
+---
+
 ## [v0.8.7] — 2026-05-14
 
 **Cross-package facade deps in `amc --lib`** — unblocks packages

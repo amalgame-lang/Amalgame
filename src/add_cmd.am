@@ -420,13 +420,26 @@ public class AddCommand {
             return
         }
 
-        // Resolve amc's runtime/ for -I.
-        let amcPath0: string = Args_Get(0)
+        // Resolve amc's runtime/ for -I. Same probe order as
+        // PrecompileFacade: $AMC_RUNTIME → XDG install path
+        // → legacy in-tree.
+        //
+        // Use ResolveSelfPath so that even when argv[0] is the
+        // bare 'amc' (PATH lookup), we get the canonical absolute
+        // path via /proc/self/exe — necessary because the XDG
+        // probe walks ..  from the binary's dir.
+        let amcPath0: string = AddCommand.ResolveSelfPath()
         var amcRuntime: string = Env_Get("AMC_RUNTIME")
         if (String_Length(amcRuntime) == 0) {
             let slashIdx: int = String_LastIndexOf(amcPath0, "/")
             if (slashIdx >= 0) {
-                amcRuntime = String_Substring(amcPath0, 0, slashIdx) + "/runtime"
+                let amcDir0: string = String_Substring(amcPath0, 0, slashIdx)
+                let xdgPath0: string = amcDir0 + "/../share/amalgame/runtime"
+                if (File.Exists(xdgPath0 + "/_runtime.h")) {
+                    amcRuntime = xdgPath0
+                } else {
+                    amcRuntime = amcDir0 + "/runtime"
+                }
             }
         }
 
@@ -572,12 +585,29 @@ public class AddCommand {
 
         // Resolve amc's path (for the --lib subprocess) and runtime/
         // dir (for the gcc -I flag) — same dance as PrecompilePackage.
-        let amcPath: string = Args_Get(0)
+        // Probe order matches Program.ResolveRuntimeDir in main.am:
+        //   1. $AMC_RUNTIME env var
+        //   2. <bin>/../share/amalgame/runtime  (XDG install layout
+        //      since amc v0.8.1, used by install.sh + the release
+        //      tarballs)
+        //   3. <bin>/runtime                    (legacy in-tree path,
+        //      kept for source checkouts)
+        //
+        // ResolveSelfPath gives us the canonical absolute path via
+        // /proc/self/exe so the XDG `..` walk works even when amc
+        // is invoked as a bare 'amc' through PATH.
+        let amcPath: string = AddCommand.ResolveSelfPath()
         var amcRuntime: string = Env_Get("AMC_RUNTIME")
         if (String_Length(amcRuntime) == 0) {
             let slashIdx: int = String_LastIndexOf(amcPath, "/")
             if (slashIdx >= 0) {
-                amcRuntime = String_Substring(amcPath, 0, slashIdx) + "/runtime"
+                let amcDir: string = String_Substring(amcPath, 0, slashIdx)
+                let xdgPath: string = amcDir + "/../share/amalgame/runtime"
+                if (File.Exists(xdgPath + "/_runtime.h")) {
+                    amcRuntime = xdgPath
+                } else {
+                    amcRuntime = amcDir + "/runtime"
+                }
             }
         }
 
@@ -598,9 +628,26 @@ public class AddCommand {
         }
 
         // Step 2 — gcc -c
-        var gccCmd: string = "gcc -O2 -Iruntime"
+        // Includes:
+        //   -I'<pkgDir>/runtime'  for the package's own
+        //                          Amalgame_*.h headers (the
+        //                          facade.am's @c { #include ... }
+        //                          block resolves against this).
+        //   -I'<amcRuntime>'      for the bundled _runtime.h +
+        //                          Amalgame_{String,Collections,…}.h.
+        //   -Iruntime             legacy in-tree fall-through; kept
+        //                          for compatibility with old layouts.
+        // Plus any system -I supplied by `[stdlib].cflags` in the
+        // package manifest (used by SDL-based packages to splice
+        // `$(pkg-config --cflags sdl2 SDL2_ttf)`).
+        var gccCmd: string = "gcc -O2 -Iruntime -I'" + pkgDir + "/runtime'"
         if (String_Length(amcRuntime) > 0) {
             gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+        }
+        let cflagsVal: TomlValue = stdlibTbl.Get("cflags")
+        let cflagsStr: string = cflagsVal.AsString()
+        if (String_Length(cflagsStr) > 0) {
+            gccCmd = gccCmd + " " + cflagsStr
         }
         gccCmd = gccCmd + " -w -c '" + cFile + "' -o '" + oFile + "' 2>&1"
         let gccRes = Process.RunCapture(gccCmd)
@@ -631,6 +678,34 @@ public class AddCommand {
     // Wall-clock seconds via `date +%s`. Coarse but enough for
     // compile-time tracking — multi-second resolution is well
     // below the typical compile durations we care about (>10s).
+    // Mirror of Program.ResolveSelfPath. The bootstrap pipeline
+    // compiles add_cmd.am for gen_test without main.am in scope,
+    // so cross-class references to Program.* trip 'undefined
+    // reference' at link time. Duplicating the @c block here is
+    // cheap (Linux readlink + Windows GetModuleFileNameA) and
+    // avoids untangling the bootstrap dependency graph.
+    public static string ResolveSelfPath() {
+        @c {
+            #ifdef _WIN32
+                char buf[4096];
+                DWORD n = GetModuleFileNameA(NULL, buf, sizeof(buf));
+                if (n == 0 || n >= sizeof(buf)) { return (code_string) ""; }
+                for (DWORD i = 0; i < n; i++) { if (buf[i] == '\\') buf[i] = '/'; }
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #else
+                char buf[4096];
+                ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+                if (n <= 0) { return (code_string) ""; }
+                buf[n] = '\0';
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #endif
+        }
+    }
+
     public static int NowSeconds() {
         let res = Process.RunCapture("date +%s")
         let raw: string = String_Trim(res.Stdout)
