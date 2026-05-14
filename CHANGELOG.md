@@ -7,6 +7,41 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.6] — 2026-05-14
+
+**Real fix** for the Windows sample-scaffold bug we *thought* we
+fixed in v0.8.5.
+
+### Fixed: `amc new` no longer shells to `mkdir -p` (PR #425)
+
+v0.8.5 patched `amalgame.iss` to call `amc.exe` directly (bypassing
+`cmd.exe /c` wrapping) — that closed one half of the symptom. But
+the directories still landed as `'MyFirstApp'` (with literal single
+quotes) and `-p`, because the **real** bug was inside `amc new`:
+
+- `Process.Run("mkdir -p " + ShellEscape(name))` — cmd.exe's
+  built-in `mkdir` has no `-p` flag, so cmd interpreted `-p` as a
+  literal directory name to create alongside the actual one.
+- `ShellEscape(name)` wraps the project name in single quotes for
+  POSIX `sh`; cmd doesn't strip single quotes → the folder name
+  ended up as `'MyFirstApp'` (with literal quotes).
+
+Fix in two parts:
+
+1. **New `File.Mkdir(path)` runtime helper** (`Amalgame_IO.h`) —
+   cross-platform recursive directory creation. POSIX
+   `mkdir(0755)` / Windows `_mkdir`. Walks the path, ignores
+   `EEXIST`, handles drive letters + leading slashes. Idempotent.
+2. **Six call sites in `src/new_cmd.am`** switched from
+   `Process.Run("mkdir -p " + ShellEscape(...))` to
+   `File.Mkdir(...)`. Linux scaffold output is byte-identical
+   pre/post fix.
+
+amc 0.8.6 is otherwise byte-identical to 0.8.5 on Linux / macOS;
+only the Windows `amc new` scaffold behaviour changed.
+
+---
+
 ## [v0.8.5] — 2026-05-14
 
 **Hotfix** for v0.8.4 Windows sample scaffold.
