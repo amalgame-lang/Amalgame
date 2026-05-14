@@ -1,8 +1,10 @@
 # Windows Code Signing — Plan & Status
 
-> Status as of 2026-05-14: **unsigned**. SmartScreen warns on every
-> first run; some corporate antivirus products refuse `amc.exe`
-> outright or prompt on every invocation.
+> **Status as of 2026-05-14**: SignPath Foundation OSS Program
+> application **submitted**, awaiting review (typical turnaround
+> 1-2 weeks). Releases still ship **unsigned** in the meantime —
+> SmartScreen warns on every first run, some corporate antivirus
+> products refuse `amc.exe` outright or prompt on every invocation.
 
 This doc captures the problem, the planned fix (SignPath.io OSS
 program), interim mitigations, and the wiring code that lands once
@@ -62,37 +64,45 @@ that has to ship physically), so the SignPath free tier is a
 
 ### Eligibility (rough)
 
-- Public repo on GitHub or GitLab
+- Public repo on GitHub or GitLab ✓
 - OSI-approved license — Amalgame is Apache-2.0 ✓
-- Active development with at least a handful of releases
-- "Meaningful community traction" — informally ~30 ★, project
-  >3 months old. **Amalgame is too young right now** (1 ★, started
-  2026-04-23). Re-apply once we cross ~30 ★.
+- Active development with regular releases — 30+ tagged releases
+  since 2026-04-23 ✓
+- "Meaningful community traction" — informally ~30 ★ + a few
+  months of history. Amalgame applied early on **activity merit**
+  (30 releases in 3 weeks, full multi-OS CI green, documented
+  signing plan in repo) despite the low star count (1). Outcome
+  pending.
 
-### Application checklist (when ready)
+### Application submitted — what we filled in
 
-URL: <https://about.signpath.io/product/open-source>
+URL: <https://signpath.org/apply> (HubSpot-embedded form)
 
-Fill out:
-- Project name: **Amalgame**
-- Tagline: **Self-hosted programming language that compiles to C**
-- Homepage: <https://amalgame.me>
-- Source repo: <https://github.com/amalgame-lang/Amalgame>
-- License: Apache-2.0
-- Maintainer / signing-authority contact: Bastien Mouget
-- Build system: **GitHub Actions** (`release.yml`)
-- Artifacts to sign:
-  - `amalgame-<version>-setup.exe`
-  - `amc.exe` (inside `amc-<version>-windows-x86_64.zip`)
-  - Optionally: the bundled MinGW DLLs (less critical — they're
-    already signed by Microsoft via the original MinGW build, but
-    re-signing avoids any "mismatched certs" weirdness)
-- Notes for review: mention that we already publish multi-platform
-  releases on every tag, that the project is self-hosted, that the
-  install pipeline is documented in `install/PUBLISHING.md`.
+Submitted values:
 
-Review typically takes **1–2 weeks**. They may come back with
-follow-up questions; respond promptly.
+| Field | Value |
+|---|---|
+| Project name | Amalgame |
+| Tagline | A self-hosted, statically-typed programming language that compiles to portable C. |
+| Homepage | <https://amalgame.me> |
+| Source repository | <https://github.com/amalgame-lang/Amalgame> |
+| License | Apache-2.0 |
+| Maintainer | Bastien Mouget — sole maintainer & copyright holder |
+| Build system | GitHub Actions (`.github/workflows/release.yml`) |
+| Release frequency | 1-3/week during v0.8.x stabilization; long-term bi-weekly |
+| Privacy Policy URL | <https://github.com/amalgame-lang/Amalgame#privacy> |
+| Maintainer type | Individual |
+
+Artifacts to sign (declared in the "Why does your project need code signing?" field):
+
+- `amalgame-<version>-setup.exe` (Inno Setup installer, ~104 MB)
+- `amc.exe` (compiler binary, ~500 KB, bundled inside both the
+  `.exe` installer and the `.zip` tarball)
+- The bundled MinGW DLLs (already MS-signed, but re-signing under
+  our publisher avoids cert-mismatch heuristics in some AVs)
+
+If SignPath comes back with follow-up questions or asks to wait
+for more traction, that response goes here (TBD).
 
 ### After approval — CI wiring
 
@@ -253,8 +263,15 @@ under a "Windows: SmartScreen first-run warning" subsection.
 
 Open issues / decisions to keep in sight:
 
-- [ ] Apply to SignPath OSS once Amalgame crosses ~30 ★ on GitHub
-  (or once a contributor / sponsor explicitly pushes for it).
+- [x] Apply to SignPath OSS — **done 2026-05-14**, awaiting review.
+- [ ] Receive SignPath approval (or decline). If declined, decide
+  between (a) Sectigo OV ~70 EUR/year as a stop-gap, (b) waiting
+  on ★ growth before re-applying, (c) EV cert direct.
+- [ ] After approval: paste the SignPath-provided org-id, project
+  slug, signing-policy slug, artifact-configuration slug, and
+  `SIGNPATH_API_TOKEN` into `release.yml` + GitHub secrets.
+- [ ] Verify the first signed release on a clean Win 11 box
+  (use `~/win-vm/test-installer.sh` with snapshot rollback).
 - [ ] Decide whether to ALSO sign the bundled MinGW DLLs. The
   binaries are already signed by the MinGW project, but our
   re-distribution puts our name on the package. Probably yes —
@@ -264,6 +281,17 @@ Open issues / decisions to keep in sight:
   trivial, but for raw tarballs we'd need a separate
   `.tar.gz.asc` GPG signature — file under a "L1 hardening"
   follow-up).
+
+### Application timeline log
+
+| Date | Event |
+|---|---|
+| 2026-05-14 | docs/CODE_SIGNING.md initial draft (PR #424) |
+| 2026-05-14 | README Privacy section added (PR #428, #429) for the form's Privacy Policy URL field |
+| 2026-05-14 | AI-provider data-transfer disclosure added to Privacy section (PR #430, #431) |
+| 2026-05-14 | **SignPath OSS application submitted** |
+| _pending_ | SignPath review response |
+| _pending_ | CI wiring + first signed release |
 
 ---
 
