@@ -51,7 +51,7 @@ header-only layer over libc, libgc (Boehm GC) and libcurl.
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.8.1**.
+Current version: **v0.8.2**.
 
 ## Language at a glance
 
