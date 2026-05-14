@@ -62,6 +62,7 @@ jobs:
           mkdir -p "dist/$NAME/share/amalgame/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
+          mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
           cp amc                              "dist/$NAME/bin/"
           cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
           # Project F (v0.7.5+): pre-compiled user-facing stdlib.
@@ -76,6 +77,11 @@ jobs:
           # but the model loses access to the canonical grammar.
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          # Latest VS Code extension .vsix — install.sh /
+          # amalgame.iss auto-install it on detected editors so users
+          # land on a working LSP + debug setup without extra steps.
+          LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
+          cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
           (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
           ls -lh dist/
@@ -136,12 +142,15 @@ jobs:
           mkdir -p "dist/$NAME/share/amalgame/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
+          mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
           cp amc                              "dist/$NAME/bin/"
           cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
           cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
+          cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
           (cd dist && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
           ls -lh dist/
@@ -214,12 +223,15 @@ jobs:
           mkdir -p "dist/$NAME/share/amalgame/lib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
+          mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
           cp amc.exe                          "dist/$NAME/bin/"
           cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
           cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
+          cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
           # Bundle the MinGW DLLs the binary actually links against, so users
           # can run amc.exe without a separate MSYS2 install. libsystre +
           # libtre added v0.7.4 for POSIX <regex.h> (see install: above).
