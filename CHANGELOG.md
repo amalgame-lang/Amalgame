@@ -7,6 +7,34 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.5] — 2026-05-14
+
+**Hotfix** for v0.8.4 Windows sample scaffold.
+
+### Fixed: scaffold created `'MyFirstApp'` + `-p` instead of `MyFirstApp` (PR #421)
+
+The Windows installer's sample-scaffold post-install step invoked
+`amc.exe` through `cmd.exe /c cd /d "..." && "..." new MyFirstApp
+--vscode`. With the bundled `amc.exe` living under
+`C:\Program Files\Amalgame\bin\` (path contains a space → must be
+quoted), cmd's documented but quirky `/c` parsing of multiple
+internal double-quote pairs re-tokenised the call and amc ended
+up receiving its name argument wrapped in literal single quotes.
+Result: `%USERPROFILE%\Amalgame\samples\` ended up with a
+`'MyFirstApp'` directory and a stray `-p` one, while a usable
+`MyFirstApp\` was never created.
+
+Fix: drop the `cmd.exe` wrap entirely. Inno Setup's `Exec()`
+takes a `WorkingDir` as its third parameter, so the Pascal code
+now calls `amc.exe` directly with `cwd = ParentDir`. No shell,
+no quoting surface, no mangled args.
+
+amc 0.8.5 is otherwise byte-identical to 0.8.4 (same compiler,
+same stdlib, same DLLs). Linux / macOS tarballs unchanged —
+this hotfix only touches `install/windows/amalgame.iss`.
+
+---
+
 ## [v0.8.4] — 2026-05-14
 
 **Hotfix** for v0.8.3 Windows installer.
