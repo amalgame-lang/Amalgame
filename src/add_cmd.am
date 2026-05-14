@@ -46,10 +46,11 @@ public class AddCommand {
     public AddCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc package add <name|url>[@<tag>] [--no-precompile]")
+        Console.WriteError("Usage: amc package add <spec>... [--no-precompile]")
         Console.WriteError("")
-        Console.WriteError("Install an Amalgame package into the user cache and record it")
-        Console.WriteError("in amalgame.toml + amalgame.lock.")
+        Console.WriteError("Install one or more Amalgame packages into the user cache and")
+        Console.WriteError("record them in amalgame.toml + amalgame.lock. Multiple specs")
+        Console.WriteError("install in order and stop on the first failure.")
         Console.WriteError("")
         Console.WriteError("Two spec forms:")
         Console.WriteError("  <shortname>[@<tag>]   resolved via amalgame-lang/packages-index.")
@@ -63,6 +64,7 @@ public class AddCommand {
         Console.WriteError("  amc package add duckdb                              # auto-resolve")
         Console.WriteError("  amc package add sqlite@v0.2.0")
         Console.WriteError("  amc package add github.com/foo/bar@v1.2.3")
+        Console.WriteError("  amc package add ui-sdl ui-forms                     # multi-spec")
         Console.WriteError("")
         Console.WriteError("Cache: ~/.amalgame/packages/<host>/<owner>/<repo>/<tag>_<sha>/")
         Console.WriteError("")
@@ -84,7 +86,7 @@ public class AddCommand {
     }
 
     public static int Run(int argc, int startIdx) {
-        var spec: string = ""
+        var specs: List<string> = new List<string>()
         var noPrecompile: bool = false
         var i: int = startIdx
         while (i < argc) {
@@ -103,20 +105,39 @@ public class AddCommand {
                 AddCommand.PrintUsage()
                 return 2
             }
-            if (String_Length(spec) == 0) {
-                spec = a
-            } else {
-                Console.WriteError("unexpected extra argument: " + a)
-                AddCommand.PrintUsage()
-                return 2
-            }
+            // Multi-spec: collect positional args as separate
+            // packages. `amc package add ui-sdl ui-forms` is
+            // equivalent to running RunOne twice in sequence;
+            // the loop bails on the first install error so the
+            // user sees the failing package, not a cascade.
+            specs.Add(a)
             i = i + 1
         }
-        if (String_Length(spec) == 0) {
+        if (specs.Count() == 0) {
             Console.WriteError("missing <git-url>@<tag> or <shortname>")
             AddCommand.PrintUsage()
             return 2
         }
+
+        let nSpecs: int = specs.Count()
+        var si: int = 0
+        while (si < nSpecs) {
+            let s: string = specs.Get(si)
+            if (nSpecs > 1) {
+                Console.WriteLine("── Installing " + s + " (" + String_FromInt(si + 1) + "/" + String_FromInt(nSpecs) + ") ──")
+            }
+            let rc: int = AddCommand.RunOne(s, noPrecompile)
+            if (rc != 0) { return rc }
+            si = si + 1
+        }
+        return 0
+    }
+
+    // Install a single package. Extracted from Run() so the
+    // dispatcher can loop over multiple specs without breaking
+    // the existing flow (auto-resolve → clone → validate →
+    // precompile → toml update → lock rebuild).
+    public static int RunOne(string spec, bool noPrecompile) {
 
         // ── 1a. Auto-resolve tag if user dropped @<tag> ───
         // `amc package add duckdb` (no tag) → fetch index, pick
