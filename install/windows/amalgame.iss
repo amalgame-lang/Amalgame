@@ -84,17 +84,21 @@ MinVersion=10.0
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 
+; Inno Setup tasks are selected by default — there is NO `checked` flag,
+; only `unchecked` to opt OUT of the default selection. The previous
+; `Flags: checked` was a no-op latent bug (silently ignored by ISCC...
+; until v6.7 which now hard-errors on unknown flags).
 [Tasks]
-Name: "addtopath";    Description: "Add amc to PATH (recommended)";              GroupDescription: "Configuration:"; Flags: checked
-Name: "vscode_ext";   Description: "Install the Amalgame VS Code extension if VS Code is detected"; GroupDescription: "Configuration:"; Flags: checked
-Name: "samplescaffold"; Description: "Create a sample project at %USERPROFILE%\Amalgame\samples\MyFirstApp"; GroupDescription: "Configuration:"; Flags: checked
+Name: "addtopath";    Description: "Add amc to PATH (recommended)";                                                  GroupDescription: "Configuration:"
+Name: "vscode_ext";   Description: "Install the Amalgame VS Code extension if VS Code is detected";                  GroupDescription: "Configuration:"
+Name: "samplescaffold"; Description: "Create a sample project at %USERPROFILE%\Amalgame\samples\MyFirstApp";         GroupDescription: "Configuration:"
 #ifdef IncludeGccBundle
 ; Auto-deselected by InitializeWizard() when gcc.exe is already on PATH
 ; (typical MSYS2 / MinGW / Cygwin installs). User can re-check the box
 ; to force an isolated bundled toolchain.
-Name: "usebundledgcc"; Description: "Install bundled MinGW gcc (uncheck if MSYS2/MinGW is already installed)"; GroupDescription: "Toolchain:"; Flags: checked
+Name: "usebundledgcc"; Description: "Install bundled MinGW gcc (uncheck if MSYS2/MinGW is already installed)";       GroupDescription: "Toolchain:"
 #endif
-Name: "desktopicon";  Description: "Create a desktop shortcut for documentation"; GroupDescription: "Shortcuts:";    Flags: unchecked
+Name: "desktopicon";  Description: "Create a desktop shortcut for documentation";                                    GroupDescription: "Shortcuts:";    Flags: unchecked
 
 [Files]
 ; ── Binary + bundled MinGW DLLs ───────────────────────────
