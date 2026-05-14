@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo.svg" alt="Amalgame logo" width="240" />
+
 # Amalgame
 
 A self-hosted programming language that compiles to C.
