@@ -356,6 +356,19 @@ static inline void code_runtime_init_args(int argc, char** argv) {
     code_argv = argv;
 }
 
+/* Build the AmalgameList<string> the generated `int main()` passes to
+ * `Program.Main(List<string> args)` user code. argv[0] is the program
+ * name (already reachable via Args.Get(0)); skip it so `args` matches
+ * the .NET/Kotlin convention where `args[0]` is the first user arg. */
+static inline AmalgameList* code_runtime_args_list(void) {
+    int n = code_argc > 0 ? code_argc - 1 : 0;
+    AmalgameList* l = AmalgameList_newWithCapacity(n > 0 ? n : 8);
+    for (int i = 1; i < code_argc; i++) {
+        AmalgameList_add(l, (void*) code_argv[i]);
+    }
+    return l;
+}
+
 /* Args (zero-indexed; index 0 is the program name like in C). */
 static inline i64 Args_Count(void) {
     return (i64)code_argc;
