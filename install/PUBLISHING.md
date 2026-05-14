@@ -260,45 +260,53 @@ This downloads the `.zip` from GitHub Releases, installs to `%LOCALAPPDATA%\Amal
 
 ### Option B — Inno Setup `.exe` installer (recommended for general public)
 
-GitHub Actions builds the XDG-style release tarball
-(`amc-<ver>-windows-x86_64.zip`) on tag push. The `.exe` setup is
-built **separately on a Windows host with Inno Setup 6+ installed**,
-pointing at the staged tarball:
+Built automatically by `.github/workflows/release.yml` on every
+`v*` tag push. The `build-windows-installer` job:
+
+1. Downloads the staged Windows tarball from `build-windows`
+2. Downloads winlibs MinGW-w64 (UCRT runtime, GCC 13.2.0) and
+   unpacks it under `install/windows/gcc-bundle/` so the .iss
+   `#if FileExists("gcc-bundle\bin\gcc.exe")` opt-in fires
+3. `choco install innosetup` then `ISCC.exe amalgame.iss`
+4. Uploads `amalgame-<ver>-setup.exe` as a workflow artifact,
+   which the `publish` job attaches to the GitHub Release
+   alongside the tarballs
+
+The published `.exe` ships the full toolchain, so a Windows user
+who downloads it gets `amc.exe` + `gcc.exe` + the VS Code
+extension + a sample project in one ~100 MB setup.
+
+To build locally (e.g. testing changes to the `.iss` before
+tagging), on a Windows host with Inno Setup 6+:
 
 ```cmd
-:: 1. Download + extract the .zip from the GitHub Release
-::    so dist\amc-<ver>-windows-x86_64\bin\amc.exe exists
+:: 1. Download + extract the matching tarball
+cd %TEMP%
+curl -LO https://github.com/amalgame-lang/Amalgame/releases/download/v0.8.2/amc-0.8.2-windows-x86_64.zip
+tar -xf amc-0.8.2-windows-x86_64.zip -C C:\path\to\repo\dist
 
-:: 2. (Optional) Stage a MinGW-w64 toolchain so `amc build` works
-::    without a separate MSYS2 install on the end-user box:
-::      install\windows\gcc-bundle\
-::        ├─ bin\gcc.exe
-::        ├─ bin\*.dll
-::        └─ ... (lib/, libexec/, etc.)
-::    Download a portable release from https://winlibs.com/
-::    (e.g. winlibs-x86_64-posix-seh-gcc-13.2.0-mingw-w64ucrt-*.zip),
-::    extract its `mingw64\` content into `install\windows\gcc-bundle\`.
-::    The .iss preprocessor auto-detects bin\gcc.exe and conditionally
-::    ships the tree under {app}\gcc + prepends {app}\gcc\bin to PATH.
-::    Skip this step if you want a minimal installer (~20 MB instead
-::    of ~200 MB) and accept that end users must install MSYS2/MinGW
-::    themselves before running `amc build`.
+:: 2. (Optional) Stage winlibs under install\windows\gcc-bundle\
+::    so the resulting setup ships gcc + gdb out of the box.
 
-:: 3. Run iscc, pointing at the staged tarball
+:: 3. Run iscc
 cd install\windows
-iscc /DAmcVersion=0.8.1 ^
-     /DAmcStageDir=..\..\dist\amc-0.8.1-windows-x86_64 ^
+iscc /DAmcVersion=0.8.2 ^
+     /DAmcStageDir=..\..\dist\amc-0.8.2-windows-x86_64 ^
      amalgame.iss
 ```
 
 The `.exe` installer:
 - Installs `amc.exe` + the bundled MinGW runtime DLLs to `{app}\bin`
-- Installs the XDG tree `{app}\share\amalgame\{runtime,lib,docs}`
+- Installs the XDG tree `{app}\share\amalgame\{runtime,lib,docs,editors}`
   (`Program.ResolveRuntimeDir` picks it up — **no AMC_RUNTIME env
   variable needed** as of v0.8.1+)
-- Optionally bundles a MinGW-w64 toolchain under `{app}\gcc` when
-  `install\windows\gcc-bundle\bin\gcc.exe` exists at build time
+- Bundles a MinGW-w64 toolchain under `{app}\gcc` when staged;
+  the wizard auto-deselects the option if `where gcc` succeeds on
+  the host (avoids duplicating an existing MSYS2/MinGW install)
 - Adds `{app}\bin` (and `{app}\gcc\bin` if bundled) to user PATH
+- Installs the Amalgame VS Code extension into any detected
+  variant (code, code-insiders, codium, code-oss)
+- Scaffolds `MyFirstApp` at `%USERPROFILE%\Amalgame\samples\`
 - Provides a proper uninstaller via Windows Add/Remove Programs
 
 ### Option C — winget (Windows Package Manager)

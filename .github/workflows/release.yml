@@ -307,9 +307,94 @@ jobs:
             dist/*.sha256
           retention-days: 7
 
+  # Builds the Inno Setup .exe installer on top of the staged Windows tarball.
+  # Runs natively on windows-latest (default pwsh) so choco + ISCC.exe work
+  # without the msys2 wrapper the build-windows job uses. The installer
+  # bundles a winlibs MinGW-w64 toolchain so `amc build` works on a fresh
+  # box without MSYS2 — the same opt-in path documented in PUBLISHING.md.
+  build-windows-installer:
+    name: Build Windows .exe installer
+    runs-on: windows-latest
+    needs: build-windows
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: ver
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref }}".Replace("refs/tags/", "")
+          if ("$ref" -eq "${{ github.ref }}") { $ref = "${{ github.event.inputs.tag }}" }
+          $version = $ref -replace '^v',''
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Building installer for amc-$version"
+
+      - name: Download Windows zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-x86_64
+          path: dist/
+
+      - name: Extract Windows zip into staging tree
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist/*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath dist
+          Get-ChildItem dist -Directory
+
+      - name: Download winlibs MinGW-w64 (gcc-bundle source)
+        shell: pwsh
+        run: |
+          # UCRT runtime, POSIX threads, SEH exceptions, GCC 13.2.0 —
+          # matches what the build-windows job actually links against
+          # (MSYS2 MINGW64), so the bundled gcc produces ABI-compatible
+          # binaries with the bundled DLLs in {app}\bin.
+          $url = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/13.2.0posix-17.0.6-11.0.1-ucrt-r5/winlibs-x86_64-posix-seh-gcc-13.2.0-mingw-w64ucrt-11.0.1-r5.zip'
+          Invoke-WebRequest -Uri $url -OutFile mingw.zip -UseBasicParsing
+          Expand-Archive mingw.zip -DestinationPath winlibs-tmp
+          # winlibs.zip extracts to mingw64/{bin,lib,...} — move it under
+          # install/windows/gcc-bundle so amalgame.iss's #if FileExists
+          # check picks it up.
+          Move-Item winlibs-tmp\mingw64 install\windows\gcc-bundle
+          Remove-Item -Recurse -Force winlibs-tmp, mingw.zip
+          Test-Path install\windows\gcc-bundle\bin\gcc.exe
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress --version=6.2.2
+
+      - name: Build amalgame-<ver>-setup.exe
+        shell: pwsh
+        working-directory: install\windows
+        run: |
+          $version = "${{ steps.ver.outputs.version }}"
+          $stage = "..\..\dist\amc-$version-windows-x86_64"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
+          Get-ChildItem Output
+
+      - name: Hash the installer for checksums
+        shell: pwsh
+        working-directory: install\windows\Output
+        run: |
+          Get-ChildItem *.exe | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Encoding ascii "$($_.Name).sha256"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-installer
+          path: |
+            install/windows/Output/*.exe
+            install/windows/Output/*.sha256
+          retention-days: 7
+
   publish:
     name: Publish GitHub Release
-    needs: [build-linux, build-macos, build-windows]
+    needs: [build-linux, build-macos, build-windows, build-windows-installer]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -344,4 +429,5 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.exe
             dist/checksums.sha256
