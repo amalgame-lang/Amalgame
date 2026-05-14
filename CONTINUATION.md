@@ -164,6 +164,18 @@ release. (3) unblocks the 14th external package.
   frames, per-message-deflate, HTTP subprotocols. The
   `amalgame-net-websocket` package owns this now; bump
   package version when a real consumer lands.
+- **Registering a package on packages-index** — use
+  `./tools/register-package.sh <shortname> <tag>` after the
+  package's own CI is green on the tagged ref. The script
+  validates the tag exists, reads the package's manifest to
+  pull `required-amalgame`, and opens a PR on
+  `amalgame-lang/packages-index` appending the
+  `[[version]]` entry. Replaces the per-repo
+  `.github/workflows/index-pr.yml` pattern (which required a
+  PACKAGES_INDEX_PAT secret on every package repo) — with the
+  script the credentials live in the developer's `gh auth`
+  session. Don't add `.github/workflows/index-pr.yml` to new
+  packages; just run the script.
 - **AMM draft** — PR #370 (closed superseded) seeded
   `docs/memory-management/` with five design documents for a
   hypothetical bdwgc → automatic-lifetime replacement. Files
