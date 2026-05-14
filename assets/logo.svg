@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-label="Amalgame">
+  <title>Amalgame</title>
+  <desc>Paon faisant la roue : 7 plumes polychromes convergeant vers un œil central porteur d'un A. Métaphore de la synthèse des meilleures features de tous les langages.</desc>
+
+  <g id="paon">
+
+    <g id="plumes-spines" fill="none" stroke-linecap="round" stroke-width="2.5">
+      <line x1="166.2" y1="230.9" x2="64.8"  y2="203.8" stroke="#3B82F6"/>
+      <line x1="173.2" y1="217.5" x2="92.7"  y2="150.0" stroke="#06B6D4"/>
+      <line x1="185.2" y1="208.3" x2="140.8" y2="113.1" stroke="#10B981"/>
+      <line x1="200"   y1="205"   x2="200"   y2="100"   stroke="#1A1A2E"/>
+      <line x1="214.8" y1="208.3" x2="259.2" y2="113.1" stroke="#F59E0B"/>
+      <line x1="226.8" y1="217.5" x2="307.3" y2="150.0" stroke="#EC4899"/>
+      <line x1="233.8" y1="230.9" x2="335.2" y2="203.8" stroke="#8B5CF6"/>
+    </g>
+
+    <g id="plumes-ocelli">
+      <g id="ocellus-1">
+        <circle cx="64.8"  cy="203.8" r="18" fill="#3B82F6"/>
+        <circle cx="64.8"  cy="203.8" r="11" fill="#F7F4EE"/>
+        <circle cx="64.8"  cy="203.8" r="5"  fill="#1A1A2E"/>
+      </g>
+      <g id="ocellus-2">
+        <circle cx="92.7"  cy="150.0" r="18" fill="#06B6D4"/>
+        <circle cx="92.7"  cy="150.0" r="11" fill="#F7F4EE"/>
+        <circle cx="92.7"  cy="150.0" r="5"  fill="#1A1A2E"/>
+      </g>
+      <g id="ocellus-3">
+        <circle cx="140.8" cy="113.1" r="18" fill="#10B981"/>
+        <circle cx="140.8" cy="113.1" r="11" fill="#F7F4EE"/>
+        <circle cx="140.8" cy="113.1" r="5"  fill="#1A1A2E"/>
+      </g>
+      <g id="ocellus-4-centre">
+        <circle cx="200"   cy="100"   r="18" fill="#1A1A2E"/>
+        <circle cx="200"   cy="100"   r="11" fill="#F7F4EE"/>
+        <circle cx="200"   cy="100"   r="5"  fill="#1A1A2E"/>
+      </g>
+      <g id="ocellus-5">
+        <circle cx="259.2" cy="113.1" r="18" fill="#F59E0B"/>
+        <circle cx="259.2" cy="113.1" r="11" fill="#F7F4EE"/>
+        <circle cx="259.2" cy="113.1" r="5"  fill="#1A1A2E"/>
+      </g>
+      <g id="ocellus-6">
+        <circle cx="307.3" cy="150.0" r="18" fill="#EC4899"/>
+        <circle cx="307.3" cy="150.0" r="11" fill="#F7F4EE"/>
+        <circle cx="307.3" cy="150.0" r="5"  fill="#1A1A2E"/>
+      </g>
+      <g id="ocellus-7">
+        <circle cx="335.2" cy="203.8" r="18" fill="#8B5CF6"/>
+        <circle cx="335.2" cy="203.8" r="11" fill="#F7F4EE"/>
+        <circle cx="335.2" cy="203.8" r="5"  fill="#1A1A2E"/>
+      </g>
+    </g>
+
+    <g id="centre-eye-A">
+      <circle cx="200" cy="240" r="32" fill="#F7F4EE" stroke="#1A1A2E" stroke-width="2.5"/>
+      <path d="M 187 257 L 200 222 L 213 257"
+            fill="none" stroke="#1A1A2E" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="192" y1="246" x2="208" y2="246"
+            stroke="#1A1A2E" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+  </g>
+</svg>

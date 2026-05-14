@@ -7,6 +7,32 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.3] — 2026-05-14
+
+The **"peacock"** release. Cosmetic but long-overdue: Amalgame
+finally has a logo. A peacock wheel of 7 polychrome plumes
+converging on a central eye-as-`A` — metaphor for the synthesis
+of best features from many languages.
+
+### Wired everywhere (PR #415)
+
+- `assets/logo.svg` — source-of-truth SVG, 400×300 viewBox
+- `README.md` — banner above the title (240 px wide)
+- `install/windows/assets/amalgame.ico` — multi-resolution
+  16/32/48/64/128/256 ICO so Windows Add/Remove Programs, the
+  setup wizard window, and the taskbar all show the right glyph;
+  `amalgame.iss` `SetupIconFile` re-enabled (had been commented
+  out in v0.8.2 because the asset wasn't committed)
+- `editors/vscode/icon.png` — 256×256 PNG referenced from
+  `editors/vscode/package.json`'s `icon` field; `vsce package`
+  picks it up automatically so the bundled `.vsix` and the
+  future Marketplace listing both carry it
+
+No runtime / compiler changes — pure branding. amc 0.8.3 reports
+the bumped version but behaves identically to 0.8.2.
+
+---
+
 ## [v0.8.2] — 2026-05-14
 
 The **"batteries-included onboarding"** release. A fresh developer
