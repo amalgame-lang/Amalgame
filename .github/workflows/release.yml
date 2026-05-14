@@ -278,23 +278,30 @@ jobs:
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
           LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
           cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
-          # Bundle the MinGW DLLs the binary actually links against, so users
-          # can run amc.exe without a separate MSYS2 install. libsystre +
-          # libtre added v0.7.4 for POSIX <regex.h> (see install: above).
-          for dll in libgc-1.dll libcurl-4.dll libwinpthread-1.dll \
-                     libgcc_s_seh-1.dll libstdc++-6.dll \
-                     zlib1.dll libssl-3-x64.dll libcrypto-3-x64.dll \
-                     libbrotlicommon.dll libbrotlidec.dll \
-                     libidn2-0.dll libpsl-5.dll libssh2-1.dll \
-                     libnghttp2-14.dll libnghttp3-9.dll libngtcp2-16.dll \
-                     libngtcp2_crypto_quictls.dll \
-                     libiconv-2.dll libintl-8.dll libunistring-5.dll \
-                     libzstd.dll \
-                     libsystre-0.dll libtre-5.dll; do
-            if [ -f "/mingw64/bin/$dll" ]; then
-              cp "/mingw64/bin/$dll" "dist/$NAME/bin/"
-            fi
-          done
+          # Bundle every MinGW DLL the binary transitively links against,
+          # so users can run amc.exe without a separate MSYS2 install.
+          # Dynamic resolution via `ldd` — previous hardcoded list broke
+          # whenever MSYS2 renamed a transitive dep (e.g. v0.8.3 shipped
+          # libngtcp2_crypto_quictls.dll, but the runner's curl now needs
+          # libngtcp2_crypto_ossl-0.dll). Recursive walk: amc.exe → its
+          # /mingw64/bin/ deps → each new dep's /mingw64/bin/ deps, until
+          # the closure converges.
+          copy_mingw_deps() {
+            local bin="$1"
+            ldd "$bin" 2>/dev/null | awk '/\/mingw64\/bin\// {print $3}' | \
+              while read -r dep; do
+                local base
+                base=$(basename "$dep")
+                local target="dist/$NAME/bin/$base"
+                if [ ! -f "$target" ]; then
+                  cp "$dep" "$target"
+                  copy_mingw_deps "$target"
+                fi
+              done
+          }
+          copy_mingw_deps amc.exe
+          echo "Bundled $(ls "dist/$NAME/bin/"*.dll 2>/dev/null | wc -l) MinGW DLLs:"
+          ls "dist/$NAME/bin/"*.dll | xargs -n1 basename | sort
           (cd dist && zip -r "$NAME.zip" "$NAME")
           (cd dist && sha256sum "$NAME.zip" > "$NAME.zip.sha256")
           ls -lh dist/

@@ -7,6 +7,40 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.4] — 2026-05-14
+
+**Hotfix** for v0.8.3 Windows installer.
+
+### Fixed: setup.exe crashed at sample-scaffold step (PR #418)
+
+When a user ran the v0.8.3 setup on a fresh Windows install, the
+final task — running `amc.exe new MyFirstApp --vscode` to scaffold
+the sample project — exploded with:
+
+> The code execution cannot proceed because libngtcp2_crypto_ossl-0.dll
+> was not found. Reinstalling the program may fix this problem.
+
+Root cause: `release.yml` shipped a hardcoded list of MinGW DLLs
+the binary "should" link against. MSYS2 silently renamed the
+ngtcp2-crypto package from `libngtcp2_crypto_quictls.dll` to
+`libngtcp2_crypto_ossl-0.dll` (libcurl switched from QuicTLS to
+plain OpenSSL for HTTP/3). The hardcoded list still referenced
+the old name → the new DLL never landed in the tarball → amc.exe
+launched but immediately failed to resolve its imports.
+
+Fixed by replacing the static list with a recursive `ldd` walker
+in the Windows build job: start from `amc.exe`, follow every
+`/mingw64/bin/` dependency, recurse into each freshly-copied DLL,
+converge at fixed-point. Future MSYS2 renames can't silently
+break us again.
+
+amc 0.8.4 is otherwise byte-identical to 0.8.3 (same compiler,
+same stdlib, same VS Code extension). If you already grabbed the
+Linux / macOS tarballs from v0.8.3, no need to re-download —
+this hotfix only changes which Windows DLLs ship.
+
+---
+
 ## [v0.8.3] — 2026-05-14
 
 The **"peacock"** release. Cosmetic but long-overdue: Amalgame
