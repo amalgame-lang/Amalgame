@@ -218,8 +218,37 @@ public class TypeChecker {
         if (this.GenericBase(eBase) == this.GenericBase(aBase)) { return true }
         // null → any nullable
         if (actual == "null" && String_EndsWith(expected, "?")) { return true }
+        // null → any class/string/collection type (everything that
+        // lowers to a pointer at the C level — its sentinel is NULL).
+        // Reject only when the target is a primitive value type
+        // where null has no representation.
+        if (actual == "null" && !this.IsPrimitiveValue(eBase)) { return true }
         // numeric widening
         if (this.IsNumericWiden(eBase, aBase)) { return true }
+        return false
+    }
+
+    // Value-type primitives where `null` is not assignable (no NULL
+    // sentinel at the C level). Everything else (string, classes,
+    // List<T>, Map<K,V>, Set<T>, custom enums via boxed pointers)
+    // accepts null as the legitimate "no value" marker.
+    private bool IsPrimitiveValue(string t) {
+        if (t == "int")    { return true }
+        if (t == "i64")    { return true }
+        if (t == "i32")    { return true }
+        if (t == "i16")    { return true }
+        if (t == "i8")     { return true }
+        if (t == "u64")    { return true }
+        if (t == "u32")    { return true }
+        if (t == "u16")    { return true }
+        if (t == "u8")     { return true }
+        if (t == "float")  { return true }
+        if (t == "double") { return true }
+        if (t == "f32")    { return true }
+        if (t == "f64")    { return true }
+        if (t == "bool")   { return true }
+        if (t == "char")   { return true }
+        if (t == "void")   { return true }
         return false
     }
 
