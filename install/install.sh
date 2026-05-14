@@ -193,7 +193,10 @@ if [ "${AMC_NO_GCC:-0}" != "1" ]; then
 fi
 
 # Runtime libraries — libgc (Boehm GC), libcurl, zlib (libm is part
-# of glibc / libSystem so it never needs explicit install).
+# of glibc / libSystem so it never needs explicit install). SDL2 +
+# SDL2_ttf are pulled in for the `amc new --template forms` GUI
+# workflow — set AMC_NO_GUI=1 to skip them on minimal installs.
+INSTALL_GUI="${AMC_NO_GUI:-0}"
 if [ "${AMC_NO_DEPS:-0}" != "1" ]; then
     header "Checking runtime dependencies..."
     case "$OS" in
@@ -204,17 +207,39 @@ if [ "${AMC_NO_DEPS:-0}" != "1" ]; then
                     dpkg -s libgc-dev &>/dev/null || missing+=("libgc-dev")
                     dpkg -s libcurl4-openssl-dev &>/dev/null || missing+=("libcurl4-openssl-dev")
                     dpkg -s zlib1g-dev &>/dev/null || missing+=("zlib1g-dev")
+                    if [ "$INSTALL_GUI" != "1" ]; then
+                        dpkg -s libsdl2-dev     &>/dev/null || missing+=("libsdl2-dev")
+                        dpkg -s libsdl2-ttf-dev &>/dev/null || missing+=("libsdl2-ttf-dev")
+                    fi
                     if [ ${#missing[@]} -gt 0 ]; then
                         info "Installing: ${missing[*]}"
                         sudo apt-get install -y "${missing[@]}"
                     fi
                     ;;
-                dnf)    sudo dnf install -y gc-devel libcurl-devel zlib-devel 2>/dev/null || true ;;
-                pacman) sudo pacman -S --noconfirm gc curl zlib 2>/dev/null || true ;;
-                zypper) sudo zypper install -y libgc-devel libcurl-devel zlib-devel 2>/dev/null || true ;;
+                dnf)
+                    sudo dnf install -y gc-devel libcurl-devel zlib-devel 2>/dev/null || true
+                    if [ "$INSTALL_GUI" != "1" ]; then
+                        sudo dnf install -y SDL2-devel SDL2_ttf-devel 2>/dev/null || true
+                    fi
+                    ;;
+                pacman)
+                    sudo pacman -S --noconfirm gc curl zlib 2>/dev/null || true
+                    if [ "$INSTALL_GUI" != "1" ]; then
+                        sudo pacman -S --noconfirm sdl2 sdl2_ttf 2>/dev/null || true
+                    fi
+                    ;;
+                zypper)
+                    sudo zypper install -y libgc-devel libcurl-devel zlib-devel 2>/dev/null || true
+                    if [ "$INSTALL_GUI" != "1" ]; then
+                        sudo zypper install -y libSDL2-devel libSDL2_ttf-devel 2>/dev/null || true
+                    fi
+                    ;;
                 *)
                     warn "Unknown package manager — install manually:"
                     warn "  libgc-dev libcurl4-openssl-dev zlib1g-dev (Debian names)"
+                    if [ "$INSTALL_GUI" != "1" ]; then
+                        warn "  libsdl2-dev libsdl2-ttf-dev (for the forms template)"
+                    fi
                     ;;
             esac
             success "Runtime dependencies ready"
@@ -223,14 +248,25 @@ if [ "${AMC_NO_DEPS:-0}" != "1" ]; then
             if command -v brew &>/dev/null; then
                 brew list bdw-gc &>/dev/null || brew install bdw-gc
                 brew list curl   &>/dev/null || brew install curl
+                if [ "$INSTALL_GUI" != "1" ]; then
+                    brew list sdl2     &>/dev/null || brew install sdl2
+                    brew list sdl2_ttf &>/dev/null || brew install sdl2_ttf
+                fi
             else
                 warn "Homebrew not found — install it at https://brew.sh then run:"
-                warn "  brew install bdw-gc curl"
+                if [ "$INSTALL_GUI" != "1" ]; then
+                    warn "  brew install bdw-gc curl sdl2 sdl2_ttf"
+                else
+                    warn "  brew install bdw-gc curl"
+                fi
             fi
             success "Runtime dependencies ready"
             ;;
         FreeBSD)
             sudo pkg install -y boehm-gc curl 2>/dev/null || true
+            if [ "$INSTALL_GUI" != "1" ]; then
+                sudo pkg install -y sdl2 sdl2_ttf 2>/dev/null || true
+            fi
             ;;
     esac
 fi
@@ -533,21 +569,8 @@ echo -e "    ${CYAN}amc new myapp --vscode${NC}     # scaffold an executable (F5
 echo -e "    ${CYAN}cd myapp && ./build.sh${NC}      # release build"
 echo -e "    ${CYAN}./build.sh -g${NC}               # debug build (DWARF, for \`amc dap\`)"
 echo ""
-echo "  Build a GUI app (SDL2-backed):"
+echo "  Build a GUI app (SDL2 already installed above):"
 echo -e "    ${CYAN}amc new myapp --template forms${NC}"
-case "$OS" in
-    Linux)
-        case "$PKG_MGR" in
-            apt)    echo -e "    ${CYAN}sudo apt install libsdl2-dev libsdl2-ttf-dev${NC}" ;;
-            dnf)    echo -e "    ${CYAN}sudo dnf install SDL2-devel SDL2_ttf-devel${NC}" ;;
-            pacman) echo -e "    ${CYAN}sudo pacman -S sdl2 sdl2_ttf${NC}" ;;
-            zypper) echo -e "    ${CYAN}sudo zypper install libSDL2-devel libSDL2_ttf-devel${NC}" ;;
-            *)      echo -e "    ${CYAN}# install SDL2 + SDL2_ttf via your package manager${NC}" ;;
-        esac
-        ;;
-    Darwin) echo -e "    ${CYAN}brew install sdl2 sdl2_ttf${NC}" ;;
-    *)      echo -e "    ${CYAN}# install SDL2 + SDL2_ttf development headers${NC}" ;;
-esac
 echo -e "    ${CYAN}cd myapp && amc package add ui-sdl ui-forms && ./build.sh${NC}"
 echo ""
 echo "  Online documentation (full user guide):"
