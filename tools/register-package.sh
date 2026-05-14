@@ -112,11 +112,13 @@ echo "→ tag $TAG present, required-amalgame=\"$PKG_REQ\""
 # refName matches refs/tags/<TAG>. We require AT LEAST ONE
 # completed run with conclusion=success on the ci.yml workflow.
 echo "→ checking CI status for $GH_SLUG@$TAG..."
+# Only consider the latest run on the tag — retagging or
+# re-running can leave historical failures around even after
+# the package is fixed, but those shouldn't block a register.
 CI_STATUS=$(gh run list --repo "$GH_SLUG" --branch "$TAG" --workflow ci.yml \
-    --limit 5 --json status,conclusion 2>/dev/null \
+    --limit 1 --json status,conclusion 2>/dev/null \
     || echo "[]")
 
-# Parse: look for any run with status=completed AND conclusion=success.
 HAS_GREEN=$(echo "$CI_STATUS" | grep -c '"conclusion":"success"' || true)
 HAS_FAIL=$(echo "$CI_STATUS"  | grep -c '"conclusion":"failure"' || true)
 HAS_PENDING=$(echo "$CI_STATUS" | grep -c '"status":"in_progress"\|"status":"queued"' || true)
