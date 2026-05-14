@@ -290,25 +290,21 @@ of these block a release on its own.
       should mangle by struct-relative offset, not by name
       lookup that prefers the typedef.
 
-- [ ] **Parens lost on mixed `* + /`** —
-      *Already tracked* in CONTINUATION.md "Persistent todos".
-      Reproduces in Layout.Apply: `(h - 2 * pad - totalGap) / n`
-      lowers as `h - 2 * pad - totalGap / n`, producing
-      different results than the source intended. Hit twice
-      during ui-forms v0.0.4 layout math. **Workaround**:
-      extract sub-expressions into named locals
-      (`let avail = h - 2 * pad - totalGap; let ch = avail / n`).
-      **Fix**: cgen `EmitBinary` should wrap left/right in
-      parens whenever the operator precedence levels differ.
+- [x] **Parens lost on mixed `* + /`** — **fixed 2026-05-14**.
+      cgen `EmitExprStr` BINARY branch now wraps any sub-BINARY
+      operand in parens (belt-and-braces over-parenthesising;
+      matches clang-format's pretty-print convention). Repro
+      `let avail = (h - 2*pad - gap*(n-1)) / n` lowers correctly.
+      421/421 tests still pass.
 
-- [ ] **`return null` rejected by typechecker for non-primitive
-      return types** — `public Widget FindIt() { ... return null }`
-      fails with `Return type mismatch: expected 'Widget', got
-      'null'`, even though NULL is the documented sentinel for
-      class types at the C level. **Workaround**:
-      `@c { return NULL; }` block at the trailing fallback.
-      **Fix**: typechecker `CheckReturn` should treat `null` as
-      assignable to any class-pointer return type.
+- [x] **`return null` rejected by typechecker for non-primitive
+      return types** — **fixed 2026-05-14**. `IsAssignable`
+      now accepts `null` for any target that isn't a primitive
+      value type (int/float/bool/char/void). New helper
+      `IsPrimitiveValue` enumerates the rejection set; everything
+      else (classes, strings, List/Map/Set) takes null as the
+      legitimate NULL sentinel. Drops the `@c { return NULL; }`
+      workaround from facade.am files (see ui-forms cleanup pass).
 
 - [ ] **`let` scope flattened to function level** — every
       `let` in a method body lowers as a top-of-function C
