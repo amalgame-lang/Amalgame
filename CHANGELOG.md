@@ -7,6 +7,72 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.10] — 2026-05-14
+
+Bug-fix release closing 2 of the 6 cgen/typechecker bugs that
+surfaced while shipping amalgame-ui-forms v0.0.x (tracked in
+ROADMAP_COMPLET.md under 'Cgen/typechecker bugs surfaced by
+amalgame-ui-forms'), plus the install.sh SDL2 auto-install
+landed earlier on develop.
+
+### Fixed: parens lost on mixed `* + /`
+
+The cgen's `EmitExprStr` BINARY branch now wraps any sub-
+BINARY operand in parens. `(h - 2*pad - gap*(n-1)) / n` used
+to lower as `h - 2*pad - gap*(n-1) / n` and evaluate left-
+associatively against C precedence, producing the wrong int.
+Belt-and-braces over-parenthesising; matches what pretty-
+printers like clang-format do.
+
+This was the parens-lost bug listed in CONTINUATION.md
+"Persistent todos" since the DateTime migration and worked-
+around in five places across ui-forms + amc-bundled stdlib.
+
+### Fixed: `return null` rejected by the typechecker
+
+`IsAssignable` now accepts `null` for any target type that
+isn't a primitive value (int/i64/i32/i16/i8/u*/float/double/
+f32/f64/bool/char/void). The new `IsPrimitiveValue` helper
+enumerates the rejection set; everything else (classes,
+strings, List/Map/Set, custom enums via boxed pointers) takes
+null as the legitimate NULL sentinel — `return null` from a
+`public Widget FindIt()` method now type-checks straight
+through without the `@c { return NULL; }` workaround.
+
+### Added: install.sh installs SDL2 + SDL2_ttf by default
+
+Previously, the GUI workflow (`amc new --template forms`)
+required a manual extra step to install SDL2 dev headers after
+install.sh finished. Now apt / dnf / pacman / zypper / brew /
+pkg install libsdl2-dev + libsdl2-ttf-dev alongside libgc +
+libcurl + zlib — adds ~5 MB to the install footprint, near-
+zero cost for non-GUI users.
+
+Skip with `AMC_NO_GUI=1 ./install.sh` for minimal installs.
+Post-success hint trimmed to a one-liner so the output stays
+tidy.
+
+### Patch surface
+
+- `src/generator/c_gen.am` — EmitExprStr BINARY branch wraps
+  sub-BINARY operands.
+- `src/typechecker.am` — IsAssignable null path + new
+  IsPrimitiveValue helper.
+- `install/install.sh` — SDL2 in the apt/dnf/pacman/zypper/
+  brew/pkg install lists; AMC_NO_GUI=1 opt-out.
+
+Test suite stays green: 421/421 PASS.
+
+The 4 remaining cgen bugs (#1 forward-decl ordering, #2
+chained calls cross-pkg, #3 field=type shadowing, #6 let
+scope flattened) didn't reproduce in intra-package smoke
+tests on the current amc — they may already be collateral-
+fixed by #4 + #5, or they need a cross-package setup the
+ui-forms tests exercised originally. Will investigate when
+the next package consumer hits one.
+
+---
+
 ## [v0.8.9] — 2026-05-14
 
 Two post-toolkit fixes to round off v0.8.8:
