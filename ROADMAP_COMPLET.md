@@ -1413,10 +1413,53 @@ implementation effort.
       `amc --lib`) and SDL2 dev headers on the build host
       (apt/brew/pacman one-liner in the scaffolded README).
 
-      Deferred: accessibility (ATK / NSAccessibility /
+      Deferred (small): accessibility (ATK / NSAccessibility /
       UIAutomation), HiDPI scaling factor probe, static-link
       SDL build variant, font fallback chain for non-Latin
       scripts.
+
+      **GUI future scope (long-term, not on any release):**
+
+      - **2D drawing primitives expansion** — current `Surface`
+        covers FillRect / DrawRect / DrawLine / DrawPixel.
+        Add: rotated/scaled blits, alpha-blended fills,
+        gradients (linear/radial), polylines, polygons,
+        Bezier curves, image loading (`Surface.LoadFromFile`
+        for PNG/JPG via SDL_image). Path: extend
+        `runtime/Amalgame_UI.h` + facade `Surface` class in
+        ui-sdl; or split into `amalgame-ui-gfx2d` if API grows
+        large.
+
+      - **3D graphics binding** — separate package
+        `amalgame-ui-gl` exposing OpenGL 3.3 core (Window
+        becomes a GL context provider, new `GLProgram`,
+        `GLBuffer`, `GLTexture`, `GLVertexArray` classes).
+        Considered: Vulkan binding `amalgame-ui-vk`, but only
+        once OpenGL surface stabilizes — Vulkan's verbosity
+        argues for a higher-level wrapper than 1:1 binding.
+        ui-sdl gains a `Window.GLAttachContext()` helper.
+
+      - **WYSIWYG VS Code form designer** — visual canvas
+        extension (TypeScript inside `amalgame-vscode`) that
+        renders a Form preview from `.am` source, lets the
+        user drag widgets onto a grid + edit properties in a
+        side panel, then writes the changes back to the source
+        as `Widget` constructor calls + Layout decisions. Round-
+        trips: parse the `.am` via amc's LSP (already shipped),
+        edit the AST visually, regenerate the relevant Form
+        constructor body. Pattern: Visual Studio's Windows
+        Forms designer or Qt Creator's `.ui` files (but
+        Amalgame's source is the canonical form, no separate
+        `.ui` file). Requires: stable widget set (✓ shipped),
+        LSP form-node detection (TBD), and a reliable
+        re-serialization story (the hard part — preserving
+        user-written code around generated regions).
+
+      These three items are tracked here so they don't drop
+      out of context, but are explicitly **not** on the
+      v0.8.x → v0.9.x roadmap. Pick them up after the
+      remaining 4 cgen bugs from ui-forms close and a real
+      external consumer asks for 2D/3D primitives.
 - [x] **`Amalgame.Service` v1 — POSIX signals + Windows console**
       (PR #256, v0.4.13). `Service.Install` / `ShouldStop` /
       `RequestStop` / `Sleep`. POSIX `signal()` + `nanosleep()`;
