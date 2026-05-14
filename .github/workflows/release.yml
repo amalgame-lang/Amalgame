@@ -360,10 +360,24 @@ jobs:
           Remove-Item -Recurse -Force winlibs-tmp, mingw.zip
           Test-Path install\windows\gcc-bundle\bin\gcc.exe
 
-      - name: Install Inno Setup 6
+      - name: Locate preinstalled Inno Setup
+        id: iscc
         shell: pwsh
         run: |
-          choco install innosetup -y --no-progress --version=6.2.2
+          # windows-latest ships Inno Setup 6 preinstalled (currently v6.7.1).
+          # Both 32-bit and 64-bit Program Files locations are checked since
+          # GitHub has historically used both across image generations.
+          $candidates = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            Write-Error "ISCC.exe not found on the runner. Image may have dropped it — fall back to: choco install innosetup -y --force"
+            exit 1
+          }
+          Write-Host "Using $iscc"
+          "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Build amalgame-<ver>-setup.exe
         shell: pwsh
@@ -371,8 +385,7 @@ jobs:
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $stage = "..\..\dist\amc-$version-windows-x86_64"
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
+          & "${{ steps.iscc.outputs.path }}" "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
           Get-ChildItem Output
 
       - name: Hash the installer for checksums
