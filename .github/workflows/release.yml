@@ -13,6 +13,31 @@ on:
         default: 'v0.0.0-test'
 
 jobs:
+  # The .vsix is gitignored (binary blob shouldn't live in the repo), so we
+  # build it once with vsce here and share through an artifact. The three
+  # platform jobs download it and drop it under share/amalgame/editors/vscode/
+  # in their respective tarballs so install.sh / amalgame.iss can auto-install
+  # the extension without a network round-trip.
+  build-vsix:
+    name: Build VS Code extension .vsix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: vsce package
+        working-directory: editors/vscode
+        run: |
+          npm install --no-audit --no-fund
+          npx --yes @vscode/vsce package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension-vsix
+          path: editors/vscode/amalgame-*.vsix
+          retention-days: 7
+
   # Each platform builds its own amc binary, packages it with the runtime
   # header + docs, and uploads the resulting archive as a workflow artifact.
   # The final job downloads everything and creates the GitHub Release.
@@ -20,9 +45,16 @@ jobs:
   build-linux:
     name: Build (Linux x86_64)
     runs-on: ubuntu-latest
+    needs: build-vsix
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download VS Code extension .vsix
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-extension-vsix
+          path: editors/vscode/
 
       - name: Install build dependencies
         run: |
@@ -97,9 +129,16 @@ jobs:
   build-macos:
     name: Build (macOS arm64)
     runs-on: macos-latest
+    needs: build-vsix
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download VS Code extension .vsix
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-extension-vsix
+          path: editors/vscode/
 
       - name: Install build dependencies
         run: brew install bdw-gc curl
@@ -166,12 +205,19 @@ jobs:
   build-windows:
     name: Build (Windows x86_64)
     runs-on: windows-latest
+    needs: build-vsix
     timeout-minutes: 15
     defaults:
       run:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download VS Code extension .vsix
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-extension-vsix
+          path: editors/vscode/
 
       - uses: msys2/setup-msys2@v2
         with:
