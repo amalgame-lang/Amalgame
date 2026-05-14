@@ -351,6 +351,20 @@ explicitly by the user:
   upstream GitHub repository.
 - `amc package search` / `amc package versions` fetch the curated
   index from the same source (cached locally for 30 min).
+- `amc migrate`, `amc generate`, `amc explain` are LLM-driven
+  helpers that send your source code (or natural-language prompt)
+  to a third-party AI provider that **you select via the
+  `--provider` flag and authenticate against with your own API
+  key**: Anthropic (Claude), OpenAI (ChatGPT), or Google (Gemini),
+  controlled by `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
+  `GEMINI_API_KEY` environment variables. If none of these are
+  set, the commands fall back to invoking a locally-installed
+  `claude` CLI (which makes its own network calls under Anthropic's
+  terms). **Don't use these commands on confidential or NDA-bound
+  source code unless you have audited the chosen provider's data
+  retention and training-opt-out policy.** Amalgame itself never
+  routes the request through a server we control — it's a direct
+  HTTPS call from your machine to the provider.
 
 The `amalgame.me` website serves static documentation and does not
 set tracking cookies. No personal data is collected by Amalgame as
