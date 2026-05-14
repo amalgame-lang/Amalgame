@@ -263,9 +263,15 @@ begin
   if DirExists(SampleDir) then Exit;
   ForceDirectories(ParentDir);
   AmcExe := ExpandConstant('{app}\bin\amc.exe');
-  Exec('cmd.exe',
-       '/c cd /d "' + ParentDir + '" && "' + AmcExe + '" new MyFirstApp --vscode',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Call amc.exe directly with WorkingDir = ParentDir. The previous
+  // version wrapped this in `cmd.exe /c cd /d "..." && "..." new ...`
+  // — cmd's documented but bizarre quote handling for /c with embedded
+  // double quotes around an exe path containing spaces (e.g.
+  // `C:\Program Files\Amalgame\bin\amc.exe`) re-tokenised the params
+  // and amc ended up creating `'MyFirstApp'` (with literal quotes) and
+  // a stray `-p` directory. Going direct dodges the whole problem.
+  Exec(AmcExe, 'new MyFirstApp --vscode', ParentDir,
+       SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
