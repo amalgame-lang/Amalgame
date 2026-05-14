@@ -339,6 +339,23 @@ gh pr create --base develop
 CI runs on every push and pull request. Releases are produced by
 pushing a `v*` tag — see `.github/workflows/release.yml`.
 
+## Privacy
+
+The `amc` compiler runs entirely on the user's machine. It does not
+phone home, collect telemetry, log usage statistics, or transmit any
+data to external servers. The only network operations are initiated
+explicitly by the user:
+
+- `amc package add <name>` fetches a package + its index entry from
+  `github.com/amalgame-lang/packages-index` and the package's
+  upstream GitHub repository.
+- `amc package search` / `amc package versions` fetch the curated
+  index from the same source (cached locally for 30 min).
+
+The `amalgame.me` website serves static documentation and does not
+set tracking cookies. No personal data is collected by Amalgame as
+a project.
+
 ## License
 
 [Apache License 2.0](LICENSE) © Bastien Mouget
