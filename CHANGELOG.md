@@ -7,6 +7,35 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.9] — 2026-05-14
+
+Two post-toolkit fixes to round off v0.8.8:
+
+### Fixed: `amc new --template forms` points at the published tags
+
+v0.8.8's scaffolder hardcoded `tag = "v0.0.6-dev"` for both
+`amalgame-ui-sdl` and `amalgame-ui-forms` — those tags never
+existed on GitHub, so `amc package add` bailed on the clone
+step. Now ships v0.1.0 / v0.1.1 (the first stable tags pushed
+right after v0.8.8 cut). Scaffolded projects build end-to-end
+from the `./build.sh` line.
+
+### Added: SDL2 install hints in `install.sh` + Homebrew formula
+
+- `install.sh` post-success now prints an OS-specific SDL2
+  install snippet (apt / dnf / pacman / zypper / brew) right
+  after the exe/lib hint, so users discover the GUI workflow
+  without reading the README.
+- Homebrew formula gains `sdl2` + `sdl2_ttf` as runtime deps;
+  ~5 MB combined and the install is otherwise a no-op for
+  non-GUI users.
+- Windows installer (`amalgame.iss`) stays unchanged — SDL2
+  on Windows means MSYS2 or vcpkg, which is too heavy to
+  bundle. The forms template README documents the manual
+  setup for that platform.
+
+---
+
 ## [v0.8.8] — 2026-05-14
 
 Toolkit-day release. Five features lining up the
