@@ -15,6 +15,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
+#ifdef _WIN32
+  #include <direct.h>  /* _mkdir */
+#endif
 
 /* ─────────────────────────────────────────────
    Console
@@ -101,6 +104,50 @@ static inline i64 File_Size(code_string path) {
     struct stat st;
     if (stat(path, &st) != 0) return -1;
     return (i64) st.st_size;
+}
+
+/* Cross-platform recursive mkdir — equivalent to POSIX `mkdir -p`.
+ * On Windows we shell out to cmd.exe via Process_Run elsewhere, but
+ * `mkdir -p name` runs `mkdir -p` literally there (cmd's mkdir has
+ * no -p), creating folders called `-p` and `'name'`. So callers that
+ * need cross-platform behaviour must use this helper instead.
+ * Walks the path, mkdir-ing each prefix segment. Idempotent: if a
+ * segment already exists, EEXIST is ignored. */
+static inline code_bool File_Mkdir(code_string path) {
+    if (!path || !*path) return false;
+    size_t len = strlen(path);
+    char* buf = (char*) GC_MALLOC(len + 1);
+    memcpy(buf, path, len + 1);
+
+    /* Skip the leading non-data prefix so we don't try to mkdir("")
+     * or mkdir("C:"). Relative paths start their first segment at
+     * index 0 (we still skip i=0 in the walk by starting at 1).  */
+    size_t start = 1;
+#ifdef _WIN32
+    if (len >= 2 && buf[1] == ':') {
+        start = (len >= 3 && (buf[2] == '\\' || buf[2] == '/')) ? 3 : 2;
+    } else if (len >= 1 && (buf[0] == '/' || buf[0] == '\\')) {
+        start = 1;
+    }
+#else
+    if (buf[0] == '/') start = 1;
+#endif
+
+    for (size_t i = start; i <= len; i++) {
+        char c = (i < len) ? buf[i] : '\0';
+        if (i == len || c == '/' || c == '\\') {
+            buf[i] = '\0';
+            int rc;
+#ifdef _WIN32
+            rc = _mkdir(buf);
+#else
+            rc = mkdir(buf, 0755);
+#endif
+            buf[i] = c;
+            if (rc != 0 && errno != EEXIST) return false;
+        }
+    }
+    return true;
 }
 
 /* ─────────────────────────────────────────────

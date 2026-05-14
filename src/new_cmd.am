@@ -113,9 +113,12 @@ public class NewCommand {
             return 1
         }
 
-        let mkExit: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(name))
-        if (mkExit != 0) {
-            Console.WriteError("amc new: failed to create directory '" + name + "' (mkdir exited " + String_FromInt(mkExit) + ")")
+        // Cross-platform — shelling to `mkdir -p` breaks on Windows
+        // cmd (no -p flag) and creates literal `-p` + `'name'` dirs.
+        // File.Mkdir uses the runtime POSIX `mkdir(0755)` / Windows
+        // `_mkdir` recursive walker. Idempotent.
+        if (!File.Mkdir(name)) {
+            Console.WriteError("amc new: failed to create directory '" + name + "'")
             return 1
         }
 
@@ -141,9 +144,7 @@ public class NewCommand {
     // ── Templates ─────────────────────────────────────
 
     private static int ScaffoldExe(string path, string base) {
-        let srcDir: int    = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/src"))
-        let testDir: int   = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/tests"))
-        if (srcDir != 0 || testDir != 0) {
+        if (!File.Mkdir(path + "/src") || !File.Mkdir(path + "/tests")) {
             Console.WriteError("amc new: failed to create subdirectories")
             return 1
         }
@@ -168,8 +169,7 @@ public class NewCommand {
     }
 
     private static int ScaffoldLib(string path, string base) {
-        let srcDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/src"))
-        if (srcDir != 0) {
+        if (!File.Mkdir(path + "/src")) {
             Console.WriteError("amc new: failed to create src/ subdirectory")
             return 1
         }
@@ -192,8 +192,7 @@ public class NewCommand {
     }
 
     private static int ScaffoldService(string path, string base) {
-        let srcDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/src"))
-        if (srcDir != 0) {
+        if (!File.Mkdir(path + "/src")) {
             Console.WriteError("amc new: failed to create src/ subdirectory")
             return 1
         }
@@ -239,8 +238,7 @@ public class NewCommand {
     }
 
     private static int ScaffoldTest(string path, string base) {
-        let testDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/tests"))
-        if (testDir != 0) {
+        if (!File.Mkdir(path + "/tests")) {
             Console.WriteError("amc new: failed to create tests/ subdirectory")
             return 1
         }
@@ -271,8 +269,7 @@ public class NewCommand {
     // `program` at whatever binary they actually want to debug —
     // we print a hint when that's the case.
     private static int WriteVscodeConfig(string path, string base, string template) {
-        let vsDir: int = Process.Run("mkdir -p " + NewCommand.ShellEscape(path + "/.vscode"))
-        if (vsDir != 0) {
+        if (!File.Mkdir(path + "/.vscode")) {
             Console.WriteError("amc new: failed to create .vscode/ subdirectory")
             return 1
         }
