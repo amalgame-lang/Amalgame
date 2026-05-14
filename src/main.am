@@ -333,10 +333,25 @@ public class AmalgameCompiler {
         let hasMain  = String_Contains(genSrc, mainFunc)
         let isLibrary = this.IsLib || !hasMain
         if (!isLibrary) {
+            // Pick the argv-conversion expression matching Main's
+            // declared parameter type. The generated signature is the
+            // grep cue: `Main(AmalgameList*` for `List<string> args`,
+            // `Main(code_string*` for the legacy `string[] args`, no
+            // arg at all when the user wrote `Main()`. Without this
+            // detection the cast `(code_string*)argv` silently aliased
+            // argv as an AmalgameList* and Main saw raw stack pointers
+            // via args.size/args.data — debugger showed it as hex,
+            // any access crashed (see fix/main-args-list-type).
+            var argsExpr: string = ""
+            if (String_Contains(genSrc, mainFunc + "(AmalgameList*")) {
+                argsExpr = "code_runtime_args_list()"
+            } else if (String_Contains(genSrc, mainFunc + "(code_string*")) {
+                argsExpr = "(code_string*)argv"
+            }
             File.AppendAll(outC, "\nint main(int argc, char** argv) {\n")
             File.AppendAll(outC, "    GC_INIT();\n")
             File.AppendAll(outC, "    code_runtime_init_args(argc, argv);\n")
-            File.AppendAll(outC, "    " + mainFunc + "((code_string*)argv);\n")
+            File.AppendAll(outC, "    " + mainFunc + "(" + argsExpr + ");\n")
             File.AppendAll(outC, "    return code_exit_code;\n")
             File.AppendAll(outC, "}\n")
         } else {
