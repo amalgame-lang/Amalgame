@@ -21420,12 +21420,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "d31176a2";
+    return "7e44c3d9";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-14T20:33:04Z";
+    return "2026-05-14T20:53:06Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -29820,9 +29820,9 @@ static code_string Amalgame_Compiler_NewCommand_ManifestForms(code_string name) 
     #line 1094 "./src/new_cmd.am"
     s = code_string_concat(s, "[dependencies]\n");
     #line 1095 "./src/new_cmd.am"
-    s = code_string_concat(s, "ui-sdl   = { git = \"github.com/amalgame-lang/amalgame-ui-sdl\",   tag = \"v0.0.6-dev\" }\n");
+    s = code_string_concat(s, "ui-sdl   = { git = \"github.com/amalgame-lang/amalgame-ui-sdl\",   tag = \"v0.1.0\" }\n");
     #line 1096 "./src/new_cmd.am"
-    s = code_string_concat(s, "ui-forms = { git = \"github.com/amalgame-lang/amalgame-ui-forms\", tag = \"v0.0.6-dev\" }\n");
+    s = code_string_concat(s, "ui-forms = { git = \"github.com/amalgame-lang/amalgame-ui-forms\", tag = \"v0.1.1\" }\n");
     #line 1097 "./src/new_cmd.am"
     return s;
 }
