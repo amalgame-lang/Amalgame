@@ -149,16 +149,28 @@ public class AmalgameCompiler {
         // forward decls only — the definitions land at link time
         // from the per-package `libamalgame-pkg-<class>.a` archive
         // (built by `amc package add`, spliced by `amc test`).
-        // Skipped under `--lib` to avoid a self-reference loop when
-        // `amc package add` itself runs `amc --lib facade.am` to
-        // precompile the facade — at that point the package is in
-        // the registry but we must NOT add its facade as external
-        // to its own compile.
-        if (!this.IsLib) {
-            let pkgCount: int = pkgReg.Packages.Count()
-            for pi in 0..pkgCount {
-                let lp: LoadedPackage = pkgReg.Packages.Get(pi)
-                if (String_Length(lp.Facade) > 0) {
+        //
+        // In `--lib` mode the package whose facade we're compiling
+        // would loop forever if added as its own external (forward
+        // decls instead of definitions). Pre-v0.8.7 we worked
+        // around that by skipping the whole loop under `--lib`,
+        // which left cross-package AM deps unresolvable — a facade
+        // importing another package's facade got `Unknown symbol`
+        // from the resolver. Now we skip ONLY the self-package,
+        // identified by matching its registered namespace against
+        // the one detected on line 128.
+        let pkgCount: int = pkgReg.Packages.Count()
+        for pi in 0..pkgCount {
+            let lp: LoadedPackage = pkgReg.Packages.Get(pi)
+            if (String_Length(lp.Facade) > 0) {
+                var isSelf: bool = false
+                if (this.IsLib) {
+                    let lpPrefix: string = String_Replace(lp.Ns, ".", "_")
+                    if (lpPrefix == nsPrefix) {
+                        isSelf = true
+                    }
+                }
+                if (!isSelf) {
                     this.ExternalFiles.Add(lp.Facade)
                 }
             }

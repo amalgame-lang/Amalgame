@@ -7,6 +7,42 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.7] — 2026-05-14
+
+**Cross-package facade deps in `amc --lib`** — unblocks packages
+whose `facade.am` imports another external package's facade
+(e.g. `amalgame-ui-forms` reaching for `Color` / `OSTheme` from
+`amalgame-ui-sdl`).
+
+### Fixed: `amc --lib` now resolves cross-package types
+
+Pre-v0.8.7 the `--lib` path skipped the whole "auto-add every
+loaded package's `[stdlib].facade` as `--external`" loop. The
+work-around was justified for a single-package facade (compiling
+ui-sdl's `facade.am` with itself listed as external would force
+forward decls and break the precompile), but it left consumers
+without forward decls for **other** packages — the resolver
+bailed on `Unknown symbol 'OSTheme'` and the cgen mangled
+`Amalgame_UI_SDL_Color*` parameters as `Amalgame_UI_Forms_Color*`.
+
+The fix narrows the skip to the self-package only, identified by
+matching the registered namespace (`lp.Ns`) against the one
+detected from the input file. Other packages still load as
+`--external`, so cross-package types resolve cleanly to forward
+decls.
+
+`amc --lib facade.am` now works end-to-end for facades with deps
+on other external packages. `amc package add` consumes the fix
+implicitly — no manifest changes required.
+
+### Patch surface
+
+- `src/main.am` — single branch reworked (`if (!this.IsLib)` →
+  per-package self-check via `lpPrefix == nsPrefix`).
+- Test suite stays green: 451/451 PASS.
+
+---
+
 ## [v0.8.6] — 2026-05-14
 
 **Real fix** for the Windows sample-scaffold bug we *thought* we
