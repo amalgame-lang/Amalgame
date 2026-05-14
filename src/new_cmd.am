@@ -1092,8 +1092,8 @@ public class NewCommand {
         s = s + "description = \"Amalgame GUI app scaffolded by `amc new --template forms`.\"\n"
         s = s + "\n"
         s = s + "[dependencies]\n"
-        s = s + "ui-sdl   = { git = \"github.com/amalgame-lang/amalgame-ui-sdl\",   tag = \"v0.0.6-dev\" }\n"
-        s = s + "ui-forms = { git = \"github.com/amalgame-lang/amalgame-ui-forms\", tag = \"v0.0.6-dev\" }\n"
+        s = s + "ui-sdl   = { git = \"github.com/amalgame-lang/amalgame-ui-sdl\",   tag = \"v0.1.0\" }\n"
+        s = s + "ui-forms = { git = \"github.com/amalgame-lang/amalgame-ui-forms\", tag = \"v0.1.1\" }\n"
         return s
     }
 
