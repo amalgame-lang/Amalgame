@@ -66,9 +66,7 @@ AllowNoIcons=yes
 LicenseFile=..\..\LICENSE
 OutputDir=Output
 OutputBaseFilename=amalgame-{#AmcVersion}-setup
-; SetupIconFile is left out until a real assets\amalgame.ico is
-; committed. Drop one here (256x256, multi-resolution preferred) and
-; uncomment:    SetupIconFile=assets\amalgame.ico
+SetupIconFile=assets\amalgame.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
