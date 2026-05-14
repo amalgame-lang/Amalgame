@@ -31,6 +31,13 @@ class Amalgame < Formula
   depends_on "bdw-gc"
   depends_on "curl"    # for Amalgame.Net HTTP support
 
+  # Optional, only used by `amc new --template forms` projects that
+  # depend on amalgame-ui-sdl + amalgame-ui-forms. Brew installs are
+  # cheap enough (<5 MB) that we pull them in by default; users who
+  # don't want them can `brew uninstall sdl2 sdl2_ttf` after.
+  depends_on "sdl2"
+  depends_on "sdl2_ttf"
+
   # GCC is provided by macOS Xcode tools or can be installed separately
   # depends_on "gcc" — optional, user likely already has it
 
