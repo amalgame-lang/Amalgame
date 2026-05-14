@@ -533,6 +533,23 @@ echo -e "    ${CYAN}amc new myapp --vscode${NC}     # scaffold an executable (F5
 echo -e "    ${CYAN}cd myapp && ./build.sh${NC}      # release build"
 echo -e "    ${CYAN}./build.sh -g${NC}               # debug build (DWARF, for \`amc dap\`)"
 echo ""
+echo "  Build a GUI app (SDL2-backed):"
+echo -e "    ${CYAN}amc new myapp --template forms${NC}"
+case "$OS" in
+    Linux)
+        case "$PKG_MGR" in
+            apt)    echo -e "    ${CYAN}sudo apt install libsdl2-dev libsdl2-ttf-dev${NC}" ;;
+            dnf)    echo -e "    ${CYAN}sudo dnf install SDL2-devel SDL2_ttf-devel${NC}" ;;
+            pacman) echo -e "    ${CYAN}sudo pacman -S sdl2 sdl2_ttf${NC}" ;;
+            zypper) echo -e "    ${CYAN}sudo zypper install libSDL2-devel libSDL2_ttf-devel${NC}" ;;
+            *)      echo -e "    ${CYAN}# install SDL2 + SDL2_ttf via your package manager${NC}" ;;
+        esac
+        ;;
+    Darwin) echo -e "    ${CYAN}brew install sdl2 sdl2_ttf${NC}" ;;
+    *)      echo -e "    ${CYAN}# install SDL2 + SDL2_ttf development headers${NC}" ;;
+esac
+echo -e "    ${CYAN}cd myapp && amc package add ui-sdl ui-forms && ./build.sh${NC}"
+echo ""
 echo "  Online documentation (full user guide):"
 echo -e "    ${CYAN}https://github.com/$REPO/tree/main/docs/guide${NC}"
 echo ""
