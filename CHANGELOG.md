@@ -7,6 +7,120 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.2] — 2026-05-14
+
+The **"batteries-included onboarding"** release. A fresh developer
+running `install.sh` (POSIX) or the `.exe` (Windows) now lands on a
+ready-to-code setup: gcc on PATH, runtime libs in place, VS Code
+extension installed, Neovim / Helix LSP wired, and a sample
+project at `~/Amalgame/samples/MyFirstApp` (or
+`%USERPROFILE%\Amalgame\samples\MyFirstApp`) they can open with
+VS Code and F5-debug immediately. Plus a long-standing data-layer
+bug on `Main(List<string> args)` that made `args` unusable.
+
+### Fixed: Windows `gcc-bundle` opt-in restored (regression PR #398)
+
+The XDG-layout cleanup in v0.8.1 dropped the `gcc-bundle/` block
+from `install/windows/amalgame.iss`. Without it, a Windows user
+who installed via the `.exe` ended up with a working `amc.exe`
+but a broken `amc build` — no `gcc.exe` on PATH unless they had
+MSYS2 separately.
+
+Restored as a compile-time opt-in via `#if FileExists("gcc-bundle\\bin\\gcc.exe")`:
+when the maintainer drops a MinGW-w64 toolchain under
+`install/windows/gcc-bundle/` before running `iscc`, the resulting
+`.exe` ships gcc + gdb at `{app}\gcc` and prepends `{app}\gcc\bin`
+to user PATH. `PUBLISHING.md` documents the staging step
+(`winlibs.com` archive).
+
+Bonus: the wizard auto-deselects the bundled gcc task when
+`where gcc` succeeds on the host, so users who already have
+MSYS2 / MinGW / Cygwin don't get a duplicate ~200 MB toolchain.
+They can re-check the box to force an isolated install.
+
+### New: VS Code extension auto-installed by both installers
+
+`release.yml` now stages the latest `editors/vscode/amalgame-*.vsix`
+(`sort -V`) under `share/amalgame/editors/vscode/`. Both
+installers pick it up:
+
+- **POSIX** — `install.sh` detects every variant on PATH
+  (`code`, `code-insiders`, `codium`, `code-oss`) and runs
+  `--install-extension … --force` against each. Idempotent.
+- **Windows** — `amalgame.iss` `samplescaffold` task + a new
+  `vscode_ext` checkbox triggers the same `cmd /c code
+  --install-extension` from the Pascal `[Code]` section.
+
+Opt out of the editor wiring entirely with `AMC_NO_EDITORS=1`.
+
+### New: Neovim + Helix LSP auto-wiring (POSIX)
+
+`install.sh` drops a self-contained module at
+`~/.config/nvim/lua/amalgame_lsp.lua` (with `lspconfig.amalgame`
++ `vim.filetype.add({ extension = { am = "amalgame" }})`) and
+prints the one-line `require('amalgame_lsp')` the user adds to
+`init.lua`. Doesn't touch `init.lua` itself — too many competing
+setups to safely edit.
+
+For Helix, appends a `[[language]]` + `[language-server.amalgame-lsp]`
+block to `~/.config/helix/languages.toml`, idempotent via grep
+guard.
+
+### New: sample project scaffold at `~/Amalgame/samples/MyFirstApp`
+
+After deps + editor wiring, both installers run `amc new
+MyFirstApp --vscode` so the user has somewhere to F5 into without
+first having to learn `amc new`. The Windows `.iss` adds it as a
+wizard task (default checked, opt-out friendly), and the `FinishedLabel`
+points the user at the path + the GitHub online docs URL.
+
+The POSIX installer's final summary now includes `code
+$SAMPLE_DIR` as the first suggested command and bumps the docs
+link to the full guide (`tree/main/docs/guide`, not just the
+README).
+
+Opt out with `AMC_NO_SAMPLE=1`.
+
+### Fixed: macOS xcode-select hard-blocks the install
+
+Previously the missing Xcode Command Line Tools surfaced as a
+silent warn during `install.sh`, then a confusing build failure
+later at the user's first `amc build`. Now the script short-
+circuits with a three-step actionable message ("run
+`xcode-select --install`, accept Apple's GUI, re-run me") if
+`xcode-select -p` fails. The Apple GUI dialog itself remains
+unavoidable — it's a system policy, not something a script can
+bypass.
+
+### Fixed: `Main(List<string> args)` saw garbage instead of args
+
+The C entry point emitted by `src/main.am` was casting `argv`
+(a `char**`) to `code_string*` and passing it to user code
+declared as `Main(AmalgameList* args)`. The pointer happened to
+be reachable, but reading `args.size` / `args.data` dereferenced
+raw stack memory: in the VS Code debug pane `args` showed up as a
+naked hex address (no struct fields), and any access from
+Amalgame returned garbage or crashed.
+
+Fix (PR #402):
+
+- New `code_runtime_args_list()` helper in `runtime/_runtime.h`
+  builds a proper `List<string>` from `argv[1..]`. Program name
+  is left on `Args.Get(0)` for callers who want it — matches
+  the .NET / Kotlin convention.
+- The cgen detects the declared signature by grepping the
+  emitted forward decl: `Main(AmalgameList*` → fixed path;
+  `Main(code_string*` → legacy `(code_string*)argv` cast kept
+  for amc's own Main + the older test samples.
+
+Inline pretty-printing (`args = ["first", "second"]` directly in
+the debug pane) still requires the DAP message-rewriting bridge
+tracked as "Approche A" in `ROADMAP_COMPLET.md` — but the data
+layer is now correct and the variables pane can navigate the
+struct.
+
+---
+
 ## [v0.8.1] — 2026-05-14
 
 The **"polish the debugger"** release. Four PRs land together to
