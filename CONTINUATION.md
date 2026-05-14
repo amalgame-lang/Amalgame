@@ -73,13 +73,31 @@
 > - **VS Code extension v0.3.0** registers `amc` debug type +
 >   `DebugAdapterDescriptorFactory` that spawns `amc dap`.
 >
-> ### Ecosystem and bundled stdlib (unchanged since v0.7.10)
+> ### Ecosystem and bundled stdlib (updated 2026-05-14)
 >
-> **13 official external packages**:
+> **15 official external packages**:
 > - *Pure-AM facades* — math, math-vec, random, encoding, crypto,
->   datetime, logging, service, io-filewatcher, yaml
-> - *C-header bindings* — regex, compress, net-websocket
+>   datetime, logging, service, io-filewatcher, yaml,
+>   **ui-forms** (new, v0.1.0)
+> - *C-header bindings* — regex, compress, net-websocket,
+>   **ui-sdl** (new, v0.1.0)
 > - *Database / messaging legacy* — sqlite, redis, mqtt, duckdb
+>
+> **GUI toolkit shipped 2026-05-14**: ui-sdl + ui-forms cover
+> the full Window/Event/Surface/Font + retained-mode widget
+> stack (Form + 9 widget kinds + 4 layouts + theming).
+> Scaffolder: `amc new <name> --template forms`. Sample app
+> opens a 320×240 window with a Label + Button via
+> `Application.Run`. Requires SDL2 + SDL2_ttf dev headers
+> (libsdl2-dev on Debian; brew install sdl2 sdl2_ttf on macOS).
+>
+> **amc 0.8.7+ unblocks**: cross-package facade deps in
+> `amc --lib` (PR #433) — let ui-forms's facade.am pull
+> Color/Window/Event from ui-sdl via `import Amalgame.UI.SDL`.
+> Without this fix the resolver bailed on cross-pkg types.
+> Also on develop (next release): `amc package add` accepts
+> multiple specs (PR #437) — `amc package add ui-sdl ui-forms`
+> instead of two invocations.
 >
 > **Bundled stdlib remaining**: `runtime/_runtime.h` +
 > `Amalgame_{String,Collections,Console,IO,Net,Process}.h`
@@ -164,6 +182,18 @@ release. (3) unblocks the 14th external package.
   frames, per-message-deflate, HTTP subprotocols. The
   `amalgame-net-websocket` package owns this now; bump
   package version when a real consumer lands.
+- **Registering a package on packages-index** — use
+  `./tools/register-package.sh <shortname> <tag>` after the
+  package's own CI is green on the tagged ref. The script
+  validates the tag exists, reads the package's manifest to
+  pull `required-amalgame`, and opens a PR on
+  `amalgame-lang/packages-index` appending the
+  `[[version]]` entry. Replaces the per-repo
+  `.github/workflows/index-pr.yml` pattern (which required a
+  PACKAGES_INDEX_PAT secret on every package repo) — with the
+  script the credentials live in the developer's `gh auth`
+  session. Don't add `.github/workflows/index-pr.yml` to new
+  packages; just run the script.
 - **AMM draft** — PR #370 (closed superseded) seeded
   `docs/memory-management/` with five design documents for a
   hypothetical bdwgc → automatic-lifetime replacement. Files

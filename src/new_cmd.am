@@ -15,6 +15,7 @@ import Amalgame.String
 //   amc new <name> --template lib        # library skeleton
 //   amc new <name> --template test       # test-only bundle
 //   amc new <name> --template service    # long-running daemon
+//   amc new <name> --template forms      # GUI app (ui-sdl + ui-forms)
 //
 // Creates a `<name>/` directory with starter files: source skeleton,
 // .gitignore, README.md, build.sh. The output is intentionally
@@ -37,9 +38,12 @@ public class NewCommand {
         Console.WriteError("  service  Long-running daemon. signal-aware shutdown loop using")
         Console.WriteError("           Amalgame.Service + Amalgame.Logging, a systemd unit, and")
         Console.WriteError("           an install.sh wired for /usr/local/bin + systemctl.")
+        Console.WriteError("  forms    GUI app on top of amalgame-ui-sdl + amalgame-ui-forms.")
+        Console.WriteError("           Opens a 320x240 window with a Label + Button via SDL2.")
+        Console.WriteError("           Requires libsdl2-dev + libsdl2-ttf-dev on the build host.")
         Console.WriteError("")
         Console.WriteError("Flags:")
-        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service.")
+        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service, forms.")
         Console.WriteError("  --vscode             Also write .vscode/launch.json + settings.json")
         Console.WriteError("                       so F5 launches the binary under `amc dap` with")
         Console.WriteError("                       breakpoints on the .am sources. Opt-in to avoid")
@@ -92,8 +96,8 @@ public class NewCommand {
             NewCommand.PrintUsage()
             return 1
         }
-        if (template != "exe" && template != "lib" && template != "test" && template != "service") {
-            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service)")
+        if (template != "exe" && template != "lib" && template != "test" && template != "service" && template != "forms") {
+            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service / forms)")
             return 1
         }
         // Accept a path like `path/to/myproj` — IsSafeName only
@@ -129,6 +133,8 @@ public class NewCommand {
             rc = NewCommand.ScaffoldLib(name, baseName)
         } else if (template == "service") {
             rc = NewCommand.ScaffoldService(name, baseName)
+        } else if (template == "forms") {
+            rc = NewCommand.ScaffoldForms(name, baseName)
         } else {
             rc = NewCommand.ScaffoldTest(name, baseName)
         }
@@ -234,6 +240,33 @@ public class NewCommand {
         Console.WriteLine("            sudo journalctl -fu " + base)
         Console.WriteLine("  Windows:  .\\build.ps1 ; Start-Process powershell -Verb runAs install.ps1")
         Console.WriteLine("            (uses NSSM under the hood; auto-downloaded if missing)")
+        return 0
+    }
+
+    private static int ScaffoldForms(string path, string base) {
+        if (!File.Mkdir(path + "/src")) {
+            Console.WriteError("amc new: failed to create src/ subdirectory")
+            return 1
+        }
+
+        let mainAm:    string = NewCommand.MainAmForms(base)
+        let manifest:  string = NewCommand.ManifestForms(base)
+        let buildSh:   string = NewCommand.BuildShForms(base)
+        let readme:    string = NewCommand.ReadmeForms(base)
+        let gitignore: string = NewCommand.GitignoreCommon()
+
+        if (!NewCommand.WriteFile(path + "/src/main.am",   mainAm))    { return 1 }
+        if (!NewCommand.WriteFile(path + "/amalgame.toml", manifest))  { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.sh",      buildSh))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore",    gitignore)) { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md",     readme))    { return 1 }
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/build.sh"))
+
+        Console.WriteLine("Scaffolded '" + base + "' (forms template).")
+        Console.WriteLine("  cd " + path)
+        Console.WriteLine("  amc package add ui-sdl ui-forms     # fetch external deps (one-off)")
+        Console.WriteLine("  sudo apt install libsdl2-dev libsdl2-ttf-dev   # Linux build deps")
+        Console.WriteLine("  ./build.sh && ./" + base)
         return 0
     }
 
@@ -1011,5 +1044,165 @@ public class NewCommand {
             i = i - 1
         }
         return p
+    }
+
+    // ── Forms template generators ─────────────────────
+
+    private static string MainAmForms(string name) {
+        var s: string = ""
+        s = s + "import Amalgame.UI.Forms\n"
+        s = s + "\n"
+        s = s + "// Scaffolded by `amc new --template forms`.\n"
+        s = s + "// A 320x240 window with a Label + Button arranged via\n"
+        s = s + "// StackVertical. Application.Run handles the SDL event\n"
+        s = s + "// loop, renders each frame, returns when the window's\n"
+        s = s + "// close button is hit.\n"
+        s = s + "//\n"
+        s = s + "// Theme.FromOS picks Light or Dark automatically based\n"
+        s = s + "// on the host appearance setting (macOS / Windows /\n"
+        s = s + "// gsettings on Linux).\n"
+        s = s + "\n"
+        s = s + "class Program {\n"
+        s = s + "    public static void Main() {\n"
+        s = s + "        let form: Form = new Form(\"" + name + "\", 320, 240)\n"
+        s = s + "\n"
+        s = s + "        let title:   Widget = Widget.Label(\"Hello from Amalgame!\", 0, 0, 0, 0)\n"
+        s = s + "        let confirm: Widget = Widget.Button(\"OK\", 0, 0, 0, 0)\n"
+        s = s + "\n"
+        s = s + "        form.Add(title)\n"
+        s = s + "        form.Add(confirm)\n"
+        s = s + "        form.SetLayout(Layout.StackVertical(10, 10))\n"
+        s = s + "\n"
+        s = s + "        Application.Run(form)\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string ManifestForms(string name) {
+        var s: string = ""
+        s = s + "# Project manifest — declares external package deps.\n"
+        s = s + "# Run `amc package add ui-sdl ui-forms` once to populate\n"
+        s = s + "# amalgame.lock and cache the package facades, then\n"
+        s = s + "# `./build.sh` to compile + link against SDL2.\n"
+        s = s + "\n"
+        s = s + "[package]\n"
+        s = s + "name        = \"" + name + "\"\n"
+        s = s + "version     = \"0.1.0\"\n"
+        s = s + "description = \"Amalgame GUI app scaffolded by `amc new --template forms`.\"\n"
+        s = s + "\n"
+        s = s + "[dependencies]\n"
+        s = s + "ui-sdl   = { git = \"github.com/amalgame-lang/amalgame-ui-sdl\",   tag = \"v0.0.6-dev\" }\n"
+        s = s + "ui-forms = { git = \"github.com/amalgame-lang/amalgame-ui-forms\", tag = \"v0.0.6-dev\" }\n"
+        return s
+    }
+
+    private static string BuildShForms(string name) {
+        // `${VAR:-default}` collides with Amalgame's `"{var}"`
+        // string interpolation, so we splice the braces via lb/rb
+        // sentinels (CONTINUATION.md gotcha #7).
+        let lb: string = "{"
+        let rb: string = "}"
+        let amcVar:   string = "$" + lb + "AMC:-$(command -v amc)" + rb
+        let amcLibVar: string = "$" + lb + "AMC_LIB:-$AMC_DIR/../share/amalgame/lib/libamalgame.a" + rb
+        let pkgVar:   string = "$" + lb + "AMALGAME_PACKAGES_DIR:-$HOME/.amalgame/packages" + rb
+        var s: string = ""
+        s = s + "#!/bin/sh\n"
+        s = s + "# Build script for the `" + name + "` GUI app.\n"
+        s = s + "#\n"
+        s = s + "# Step 1: amc compiles src/main.am to build/<name>.c\n"
+        s = s + "#         (resolves the ui-sdl / ui-forms imports via\n"
+        s = s + "#         amalgame.lock + your local package cache).\n"
+        s = s + "# Step 2: gcc links the generated .c against the per-\n"
+        s = s + "#         package facade archives (built by\n"
+        s = s + "#         `amc package add ui-sdl ui-forms`) plus\n"
+        s = s + "#         SDL2 + SDL2_ttf via pkg-config.\n"
+        s = s + "#\n"
+        s = s + "# Requires: amc 0.8.7+ + libsdl2-dev + libsdl2-ttf-dev.\n"
+        s = s + "set -eu\n"
+        s = s + "\n"
+        s = s + "NAME=" + name + "\n"
+        s = s + "AMC=" + amcVar + "\n"
+        s = s + "AMC_DIR=$(cd \"$(dirname \"$AMC\")\" && pwd)\n"
+        s = s + "if [ -d \"$AMC_DIR/runtime\" ]; then\n"
+        s = s + "  AMC_RUNTIME=\"$AMC_DIR/runtime\"\n"
+        s = s + "else\n"
+        s = s + "  AMC_RUNTIME=\"$AMC_DIR/../share/amalgame/runtime\"\n"
+        s = s + "fi\n"
+        s = s + "AMC_LIB=" + amcLibVar + "\n"
+        s = s + "PKG_CACHE=" + pkgVar + "\n"
+        s = s + "\n"
+        s = s + "# Find the precompiled per-package facade archives.\n"
+        s = s + "PLAT=$(uname -s | tr 'A-Z' 'a-z')-$(uname -m)\n"
+        s = s + "find_archive() {\n"
+        s = s + "  find \"$PKG_CACHE/github.com/amalgame-lang/$1\" \\\n"
+        s = s + "    -path \"*/build/$PLAT/libamalgame-pkg-*.a\" 2>/dev/null | head -1\n"
+        s = s + "}\n"
+        s = s + "FORMS_AR=$(find_archive amalgame-ui-forms)\n"
+        s = s + "SDL_AR=$(find_archive amalgame-ui-sdl)\n"
+        s = s + "if [ -z \"$FORMS_AR\" ] || [ -z \"$SDL_AR\" ]; then\n"
+        s = s + "  echo \"ERROR: missing facade archive. Did you run 'amc package add ui-sdl ui-forms'?\"\n"
+        s = s + "  exit 1\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "SDL_CFLAGS=$(pkg-config --cflags sdl2 SDL2_ttf)\n"
+        s = s + "SDL_LIBS=$(pkg-config --libs sdl2 SDL2_ttf)\n"
+        s = s + "\n"
+        s = s + "mkdir -p build\n"
+        s = s + "\"$AMC\" -o build/$NAME src/main.am --quiet\n"
+        s = s + "gcc -O2 -I\"$AMC_RUNTIME\" $SDL_CFLAGS build/$NAME.c \\\n"
+        s = s + "  \"$FORMS_AR\" \"$SDL_AR\" \"$AMC_LIB\" \\\n"
+        s = s + "  -lgc -lm -lcurl -lz -ldl -lpthread $SDL_LIBS -o $NAME\n"
+        s = s + "echo \"Built ./$NAME — run it now.\"\n"
+        return s
+    }
+
+    private static string ReadmeForms(string name) {
+        var s: string = ""
+        s = s + "# " + name + "\n"
+        s = s + "\n"
+        s = s + "GUI app built with the [Amalgame](https://amalgame.me)\n"
+        s = s + "language and the `amalgame-ui-forms` toolkit.\n"
+        s = s + "\n"
+        s = s + "## First run\n"
+        s = s + "\n"
+        s = s + "Install the SDL2 development headers (one-off, per machine):\n"
+        s = s + "\n"
+        s = s + "```sh\n"
+        s = s + "# Debian / Ubuntu\n"
+        s = s + "sudo apt install libsdl2-dev libsdl2-ttf-dev libgc-dev\n"
+        s = s + "\n"
+        s = s + "# macOS (Homebrew)\n"
+        s = s + "brew install sdl2 sdl2_ttf bdw-gc\n"
+        s = s + "\n"
+        s = s + "# Arch / Manjaro\n"
+        s = s + "sudo pacman -S sdl2 sdl2_ttf gc\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "Fetch the package deps and build:\n"
+        s = s + "\n"
+        s = s + "```sh\n"
+        s = s + "amc package add ui-sdl ui-forms\n"
+        s = s + "./build.sh\n"
+        s = s + "./" + name + "\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "A 320x240 window with a Label and a Button will open.\n"
+        s = s + "Click the close button (or the OK button — it flips\n"
+        s = s + "to the accent color) to exit.\n"
+        s = s + "\n"
+        s = s + "## Next steps\n"
+        s = s + "\n"
+        s = s + "- Add more widgets with `Widget.CheckBox / RadioButton /\n"
+        s = s + "  TextBox / Panel`.\n"
+        s = s + "- Try other layouts: `Layout.StackHorizontal`,\n"
+        s = s + "  `Layout.Grid(rows, cols, spacing, padding)`,\n"
+        s = s + "  `Layout.Absolute()`.\n"
+        s = s + "- Detect the host theme: `Theme.FromOS()` picks Light or\n"
+        s = s + "  Dark automatically.\n"
+        s = s + "\n"
+        s = s + "Full surface in the `amalgame-ui-forms` README\n"
+        s = s + "(github.com/amalgame-lang/amalgame-ui-forms).\n"
+        return s
     }
 }
