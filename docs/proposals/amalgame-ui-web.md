@@ -1,9 +1,30 @@
 # Proposal: `Amalgame.UI.Web` — Webview-based UI toolkit strategy
 
-**Status:** design (2026-05-15). Supersedes the SDL-based `ui-forms` and
-the Tk-based `amalgame-ui-tk` exploration started earlier the same day.
+**Status:** v0.0.3 shipped 2026-05-15 — package at
+[`amalgame-lang/amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web).
+Supersedes the SDL-based `ui-forms` and the never-published Tk-based
+`amalgame-ui-tk` exploration. Both sunsets carry a banner pointing
+here. Requires amc ≥ 0.8.12 (typed-param lambdas + cross-package
+chains + Closure type).
+
 **Author:** v0.8.x cycle, post `ui-forms` cgen bug-bash.
-**Tracking PRs:** TBD (this doc only).
+
+**Tracking PRs:**
+- amc v0.8.11 — typed-param lambdas + Closure type + cgen brace
+  literal (#452, #453).
+- amc v0.8.12 — cross-package chained calls + inline lambda as
+  argument outside Map/Filter (#456).
+- ui-web v0.0.1 (window MVP) → v0.0.2 (Bind IPC) → v0.0.3 (Element /
+  Page builder API). PR #1 on the package repo merged the
+  cumulative branch to main; tagged `v0.0.3`.
+
+**Shipped milestones**
+
+| Version | Surface | Notes |
+|---------|---------|-------|
+| v0.0.1  | Window MVP — IsValid / SetTitle / SetSize / Navigate / SetHtml / Init / Eval / Run / Terminate / Destroy + WindowHint | Wraps `webview/webview` v0.12.0 vendored at `runtime/vendor/webview/`. |
+| v0.0.2  | + Window.Bind(name, handler: Closure) + Unbind | C trampoline + 64-slot registry. Handler signature `(req: string) => "..."` returning JSON. |
+| v0.0.3  | + Element / Page builder + Html.Escape + Json.EncodeString | Fluent chain API, auto-Bind via Page.ApplyTo, layout primitives (Stack / Row / Heading / Label / Button / Input / Pre). |
 
 ## Problem
 
@@ -163,39 +184,110 @@ dropdowns). This is acceptable for most productive apps but is not OS
 native. If true native menus are a v1 requirement, scope `1.1` to add
 Win32 + NSMenu + GtkMenuBar — see "Menubar option" below.
 
-## v2 scope — what we add
+## Theme strategy
 
-v2 reaches feature parity with Tauri / Wails. None of v2 breaks v1 APIs.
+**Decision (2026-05-15):** the default theme is the **OS theme** —
+light or dark, auto-detected. Users override by shipping their own
+stylesheets / images / assets next to the app; nothing more
+prescriptive than that.
 
-### v2 capability additions and effort estimates
+### Three layers, simplest first
+
+1. **OS default, zero config.** Modern webview engines (WebView2,
+   WKWebView, WebKitGTK) honor the `prefers-color-scheme` CSS media
+   query natively from the OS — when the user toggles dark mode at
+   the system level, the webview reflects it without app code.
+   `Amalgame.UI.Web` ships a tiny baseline stylesheet that the
+   builder API (`Page.ApplyTo`) injects when the page has no custom
+   CSS attached. The baseline uses `@media (prefers-color-scheme:
+   dark) { ... }` so all four cases (Windows light/dark, macOS
+   light/dark, GNOME light/dark) just work.
+   For backends needing more than a CSS hint, the runtime weak
+   symbol `Amalgame_UI_DetectOSTheme()` (shipped via
+   `amalgame-ui-sdl`) probes macOS `defaults`, the Windows registry,
+   and Linux `gsettings color-scheme` — usable from `@c { … }`
+   blocks if a non-webview signal is needed.
+
+2. **External stylesheet override.** Two facade helpers shipped in
+   v0.0.4:
+
+   ```amalgame
+   page.SetStylesheet("file:///abs/path/style.css")  // replaces baseline
+   page.AddCss("file:///abs/path/extra.css")          // augments baseline
+   ```
+
+   The user keeps everything (colors, typography, layout polish) in
+   normal CSS files alongside the app binary. Webview's same-origin
+   rules mean `file://` URLs work without a custom protocol — for
+   complex asset trees, switch to `am://` (v0.1.0, see native bundle
+   below).
+
+3. **External assets — images, fonts, icons.** Layered on stylesheet
+   loading. `Page.AddAsset(path)` registers a file to be served
+   alongside the page (either via `file://` URL or, post-v0.1.0, via
+   the `am://` custom scheme handler). Referenced from the user's
+   CSS / HTML normally.
+
+### What the baseline stylesheet covers
+
+System fonts via the `system-ui` / `-apple-system` / `Segoe UI` /
+sans-serif stack. Light/dark color swap for body / text / links.
+Reasonable margins, button padding, input borders that match the
+OS look on each platform. ~100 lines of CSS, no opinions beyond
+"don't look terrible on first load".
+
+Users who want a designed app override everything via
+`SetStylesheet`; the baseline isn't trying to be a design system.
+
+## v0.1.0 scope — bundled native OS integration
+
+v0.1.0 is the **"v1 MVP"** of this proposal: the milestone at which
+`Amalgame.UI.Web` covers ~95% of productive desktop apps and reaches
+feature parity with Tauri / Wails. The previous draft of this doc
+spread these additions across v0.1.x → v0.3.x mini-releases; current
+plan (decided 2026-05-15) is to **bundle them as one large milestone**
+because they share infrastructure (per-OS C glue per feature, no
+useful subset of them on its own).
+
+The non-webview surface — i.e. every native OS object the user
+expects from a productive desktop app, *not* the document content
+(which stays HTML/CSS):
+
+### Bundled native OS additions and effort estimates
 
 | Feature | Estimated effort | Cumulative |
 |---|---|---|
-| Custom URL scheme (`am://` asset resolver) | ~1 week × 3 OSes = 3 weeks | 3 |
-| Native menubar (Win32 + NSMenu + GtkMenuBar) | ~2 weeks × 3 OSes = 6 weeks | 9 |
-| Native dialogs (file open/save, message box) | ~3 days × 3 OSes = 2 weeks | 11 |
+| Native menubar (Win32 + NSMenu + GtkMenuBar) | ~2 weeks × 3 OSes = 6 weeks | 6 |
+| Native dialogs (file open/save, message box, color picker) | ~3 days × 3 OSes = 2 weeks | 8 |
+| Custom URL scheme (`am://` asset resolver) | ~1 week × 3 OSes = 3 weeks | 11 |
 | System tray + native notifications | ~1 week × 3 OSes = 3 weeks | 14 |
 | Multi-window orchestration | ~2 weeks | 16 |
-| Typed IPC channel (binary, not just JSON) | ~1 week | 17 |
+| Typed IPC channel (binary MessagePack via amalgame-msgpack) | ~1 week | 17 |
 | Auto-update integration | ~1 week × 3 OSes = 3 weeks | 20 |
 | OS-native drag-and-drop | ~1 week | 21 |
+| Window chrome (borderless, custom titlebar / traffic lights) | ~2 weeks | 23 |
 
-**Total v2 effort: ~20-25 focused engineering weeks (~2-3 months
-full-time, spreadable over multiple minor releases v0.9.x → v0.11.x).**
+**Total v0.1.0 effort: ~20-23 focused engineering weeks** (~5-6
+months part-time). Can be sequenced in 3 PRs per OS-touching item
+to merge incrementally without holding the whole milestone hostage
+to a Windows-only blocker.
 
-### Menubar option (v1.1)
+**None of v0.1.0 breaks the v0.0.x API.** New surface, no existing
+method signature changes — see the "Migration" section below.
 
-The menubar can be pulled forward into a v1.1 release if app
-ergonomics demand it. This is the single most-requested feature
-likely to surface from users coming from Tk or native toolkits. Cost:
-~6 weeks of focused work for all 3 platforms.
+### Menubar option pulled forward (v0.0.5)
 
-## Migration v1 → v2 — non-breaking, additive
+If menu ergonomics block a real user before the full v0.1.0 bundle
+is ready, the menubar can ship in v0.0.5 alone. It's the single
+most-requested OS-native feature for users coming from Tk / native
+toolkits. Cost: ~6 weeks for all 3 platforms.
+
+## Migration v0.0.x → v0.1.0 — non-breaking, additive
 
 This is the central guarantee of the proposal: **no Amalgame app
-written against the v1 API will break in v2.**
+written against the v0.0.x API will break in v0.1.0.**
 
-### v1 API surface (proposed)
+### v0.0.x API surface (shipped)
 
 ```
 module Amalgame.UI.Web
@@ -220,7 +312,7 @@ fn Window.eval(window: Window, js: Str) -> Unit
 fn App.run(window: Window) -> Unit
 ```
 
-### v2 additive surface
+### v0.1.0 additive surface
 
 ```
 # Menus (v1.1 or v2)
@@ -284,23 +376,24 @@ signatures do not change. App developers who never call `set_menu` or
   - Fedora: `dnf install webkit2gtk4.1-devel`
   - Arch: `pacman -S webkit2gtk-4.1`
 
-## Implementation plan
+## Implementation status
 
-1. **Bind `webview/webview`** — vendor the library into
-   `amalgame-ui-web/native/webview/`. Write the C-side glue
-   (`amalgame_ui_web.c`) that exposes the minimal API to Amalgame.
-   Target: ~200 lines of C.
-2. **Amalgame-side wrapper** — write `Amalgame.UI.Web` module with
-   the v1 API surface above. Target: ~400 lines of Amalgame.
-3. **Sample app** — `my-first-ui-app` example with a single window
-   loading a local `index.html`, two-way IPC demo (button calls
-   Amalgame, Amalgame updates a DOM node).
-4. **Installer updates** — add WebView2 bootstrapper to
-   `amalgame.iss`; document Linux dependencies in `INSTALL.md`.
-5. **CI** — add a smoke test that builds the sample app on Linux
-   (headless WebKitGTK is feasible via `Xvfb`).
-
-Target ship: v0.9.0.
+| Step | Status |
+|---|---|
+| Vendor `webview/webview` v0.12.0 under `runtime/vendor/webview/` (single C++ TU `webview.cc` triggering the C++ impl) | ✅ shipped v0.0.1 |
+| C glue `runtime/Amalgame_UI_Web.{h,c}` — 64-slot table + minimal API (~200 LOC) | ✅ shipped v0.0.1 |
+| Amalgame facade — Window class (10 methods) + WindowHint constants (~250 LOC) | ✅ shipped v0.0.1 |
+| Sample apps `tests/spike.am` + `tests/spike_bind.am` + `tests/spike_builder.am` + reusable `tests/build_spike.sh` | ✅ shipped v0.0.1 → v0.0.3 |
+| Linux deployment notes in `README.md` (WebKitGTK install per distro family) | ✅ shipped v0.0.1 |
+| Bind IPC: trampoline + `Window.Bind` / `Unbind` (~150 LOC C + 30 LOC AM) | ✅ shipped v0.0.2 |
+| Builder API: Element + Page + Html.Escape + Json.EncodeString (~320 LOC AM) | ✅ shipped v0.0.3 |
+| Listed on `amalgame-lang/packages-index` so `amc package add ui-web` works | ✅ PR #18 merged |
+| `amalgame.iss` WebView2 bootstrapper for Win10 < 1803 | ⏳ deferred — checking deploy on real machine first |
+| CI smoke test on Linux (headless WebKitGTK via Xvfb) | ⏳ v0.0.4 — repo is fresh, no Actions wired yet |
+| `Element.Bind(name)` — read DOM state from AM | ⏳ v0.0.4 candidate |
+| Theme strategy implementation (baseline CSS + SetStylesheet) | ⏳ v0.0.4 candidate (this doc just landed the spec) |
+| `amc new --template ui-web-form` scaffold | ⏳ v0.0.4 candidate |
+| Bundled native OS additions (menubar, dialogs, tray, …) | ⏳ v0.1.0 milestone |
 
 ## Appendix — LVGL as a fallback
 
