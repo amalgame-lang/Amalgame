@@ -1,0 +1,24 @@
+// Typed lambda params (since v0.8.11). The multi-param form
+// `(x: T) => ...` accepts optional `:type` annotations on each
+// param. Without them the param falls back to the legacy i64
+// boxing. With them, c_gen emits a typed cast at the lambda's
+// C entry — required for callbacks where the C trampoline
+// passes pointer-shaped data (e.g. `code_string`).
+//
+// Tests three shapes:
+//   1. (x: string) => string      string identity + concat
+//   2. (x: int) => int            same as bare `x => x*2` form
+//   3. (x: string, y: int) => string   mixed types
+
+class Program {
+    public static void Main() {
+        let greet = (name: string) => "hello, " + name + "!"
+        Console.WriteLine(greet("amalgame"))
+
+        let triple = (x: int) => x * 3
+        Console.WriteLine("triple(7) = " + String_FromInt(triple(7)))
+
+        let labeled = (tag: string, n: int) => tag + "=" + String_FromInt(n)
+        Console.WriteLine(labeled("count", 42))
+    }
+}
