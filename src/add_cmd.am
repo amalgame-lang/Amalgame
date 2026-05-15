@@ -326,9 +326,22 @@ public class AddCommand {
             Console.WriteError("manifest name '" + mfNameStr + "' does not match URL slug '" + pkgName + "'")
             return 1
         }
+        // Accept either the bare version ("0.0.4") or the same with a
+        // `-dev` pre-release suffix ("0.0.4-dev"). Several packages —
+        // including amalgame-ui-web — never bump the manifest from
+        // "<next>-dev" to the release-bare form before tagging because
+        // their release flow is "tag once at the end of the dev cycle";
+        // failing the install in that case is more noise than safety.
+        // Versions that don't match even after stripping `-dev` (e.g.
+        // 0.0.5-dev at tag v0.0.4) stay a hard failure since they
+        // suggest the manifest belongs to a different release entirely.
         let expectedVer: string = AddCommand.StripV(tag)
-        if (mfVerStr != expectedVer) {
-            Console.WriteError("manifest version '" + mfVerStr + "' does not match tag '" + tag + "' (expected version = '" + expectedVer + "')")
+        var mfBase: string = mfVerStr
+        if (String_EndsWith(mfBase, "-dev")) {
+            mfBase = String_Substring(mfBase, 0, String_Length(mfBase) - 4)
+        }
+        if (mfBase != expectedVer) {
+            Console.WriteError("manifest version '" + mfVerStr + "' does not match tag '" + tag + "' (expected '" + expectedVer + "' or '" + expectedVer + "-dev')")
             return 1
         }
 
