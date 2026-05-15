@@ -2508,6 +2508,17 @@ public class CGen {
                 }
                 this.Out.EmitLine("AmalgameClosure* " + stmt.Name + " = AmalgameClosure_new((void*)" + fnName + ", " + envVar + ");")
                 this.LocalTypeSet(stmt.Name, "AmalgameClosure*")
+                // Track the lambda's return type so the call site emits
+                // the right cast/unbox instead of always assuming i64.
+                // Expression-bodied lambdas: infer from lam.Left. Block-
+                // bodied lambdas leave it blank → call site falls back
+                // to the legacy `UnboxScalar("i64", …)` path.
+                if (lam.Left != null) {
+                    let retC = this.InferTypeFromExpr(lam.Left)
+                    if (String_Length(retC) > 0) {
+                        this.ListElemSet("__closure_ret__", stmt.Name, retC)
+                    }
+                }
                 return
             }
             var t = this.TypeToC(stmt.Str)
@@ -2921,20 +2932,38 @@ public class CGen {
                 let calleeType = this.LocalTypeGet(calleeName)
                 if (calleeType == "AmalgameClosure*") {
                     let argc: int = expr.Args.Count()
+                    // Result-type-aware unwrap. The lambda's declared
+                    // return type was stashed at assignment time (see
+                    // EmitVarDeclStmt / __closure_ret__). For pointer
+                    // types (code_string, anything ending in `*`) emit
+                    // a direct cast so gcc doesn't complain about
+                    // integer-to-pointer; for scalars stay on the
+                    // intptr_t-roundtrip path; default to i64 if we
+                    // never learned the return type (block-bodied
+                    // lambdas, or fall-throughs from older code).
+                    let retC0 = this.ListElemGet("__closure_ret__", calleeName)
+                    var retC: string = retC0
+                    if (String_Length(retC) == 0) { retC = "i64" }
                     if (argc == 1) {
                         let arg0 = this.EmitExprStr(expr.Args.Get(0))
-                        return this.UnboxScalar("i64", "AmalgameClosure_call1(" + calleeName + ", " + this.BoxAsVoid(arg0) + ")")
+                        let callC = "AmalgameClosure_call1(" + calleeName + ", " + this.BoxAsVoid(arg0) + ")"
+                        if (this.IsCPointerType(retC)) { return "((" + retC + ")" + callC + ")" }
+                        return this.UnboxScalar(retC, callC)
                     }
                     if (argc == 2) {
                         let arg0 = this.EmitExprStr(expr.Args.Get(0))
                         let arg1 = this.EmitExprStr(expr.Args.Get(1))
-                        return this.UnboxScalar("i64", "AmalgameClosure_call2(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ")")
+                        let callC = "AmalgameClosure_call2(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ")"
+                        if (this.IsCPointerType(retC)) { return "((" + retC + ")" + callC + ")" }
+                        return this.UnboxScalar(retC, callC)
                     }
                     if (argc == 3) {
                         let arg0 = this.EmitExprStr(expr.Args.Get(0))
                         let arg1 = this.EmitExprStr(expr.Args.Get(1))
                         let arg2 = this.EmitExprStr(expr.Args.Get(2))
-                        return this.UnboxScalar("i64", "AmalgameClosure_call3(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ", " + this.BoxAsVoid(arg2) + ")")
+                        let callC = "AmalgameClosure_call3(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ", " + this.BoxAsVoid(arg2) + ")"
+                        if (this.IsCPointerType(retC)) { return "((" + retC + ")" + callC + ")" }
+                        return this.UnboxScalar(retC, callC)
                     }
                 }
             }
@@ -3758,6 +3787,12 @@ public class CGen {
         if (t == "string") { return "code_string" }
         if (t == "void")   { return "void" }
         if (t == "")       { return "void" }
+        // First-class closure values. AM source spells the type as
+        // `Closure`; it lowers to `AmalgameClosure*` (the runtime
+        // type used everywhere else for lambdas — see _runtime.h).
+        // Lets facade.am declare `(name: string, handler: Closure)`
+        // without needing a per-package typedef shim.
+        if (t == "Closure") { return "AmalgameClosure*" }
         // Array types: string[] → code_string*, int[] → i64*, etc.
         if (String_EndsWith(t, "[]")) {
             let inner = String_Substring(t, 0, String_Length(t) - 2)

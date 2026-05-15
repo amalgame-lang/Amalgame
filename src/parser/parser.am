@@ -1169,18 +1169,58 @@ public class Parser {
     }
 
     // True if the current "(" opens a lambda param list — i.e. a comma
-    // list of bare identifiers (or empty) followed by ")" "=>".
-    // Anything else (typed param, expression) means it's not a lambda.
+    // list of identifiers (with optional `:type` annotations) followed
+    // by ")" "=>". Anything else (a real expression) returns false so
+    // the caller falls through to ParseAssign.
+    //
+    // Accepted shapes:
+    //   ()                             empty
+    //   (x)                            bare ident
+    //   (x, y, z)                      multi bare idents
+    //   (x: string)                    typed ident
+    //   (x: string, y: int)            multi typed
+    //   (x, y: int)                    mixed bare + typed
     private bool IsLambdaParenStart() {
         var i: int = 1
         // Empty parens: () =>
         if (this.Peek(i).Value == ")") {
             return this.Peek(i + 1).Value == "=>"
         }
-        // (ident ("," ident)*) =>
+        // (ident [":" typename] ("," ident [":" typename])*) =>
         while (true) {
             if (this.Peek(i).Type != TokenType.IDENTIFIER) { return false }
             i = i + 1
+            // Optional `:type` annotation — skip past the type tokens.
+            // A type is one ident/keyword, optionally followed by `?`
+            // or generic brackets `<...>` / array brackets `[]`. The
+            // ParseTypeName logic is more elaborate; here we just want
+            // enough lookahead to reach `,` or `)`.
+            if (this.Peek(i).Value == ":") {
+                i = i + 1
+                if (this.Peek(i).Type != TokenType.IDENTIFIER) {
+                    let v = this.Peek(i).Value
+                    let isKw = v == "int" || v == "string" || v == "bool" || v == "void" || v == "float"
+                    if (!isKw) { return false }
+                }
+                i = i + 1
+                // Optional `<...>` generic args — skip to the matching `>`.
+                if (this.Peek(i).Value == "<") {
+                    var depth: int = 1
+                    i = i + 1
+                    while (depth > 0 && this.Peek(i).Type != TokenType.EOF) {
+                        let v2 = this.Peek(i).Value
+                        if (v2 == "<") { depth = depth + 1 }
+                        if (v2 == ">") { depth = depth - 1 }
+                        i = i + 1
+                    }
+                }
+                // Optional `[]` array suffix
+                if (this.Peek(i).Value == "[") {
+                    if (this.Peek(i + 1).Value == "]") { i = i + 2 }
+                }
+                // Optional `?` nullable suffix
+                if (this.Peek(i).Value == "?") { i = i + 1 }
+            }
             if (this.Peek(i).Value == ")") {
                 return this.Peek(i + 1).Value == "=>"
             }
@@ -1208,7 +1248,17 @@ public class Parser {
         while (!this.IsEnd() && !this.CheckValue(")")) {
             if (this.CheckValue(",")) { this.Advance(); continue }
             let pTok = this.ExpectIdent()
-            let p = Ast.Param(pTok.Value, "?", pTok.Line, pTok.Column)
+            // Optional `:<type>` annotation. Without it the param type
+            // stays `"?"` and downstream falls back to the legacy i64
+            // boxing. With it, c_gen emits a typed cast at the lambda's
+            // C entry — unblocking `(req: string) => ...` style handlers
+            // used by webview-style C callbacks. v2.6+.
+            var pType: string = "?"
+            if (this.CheckValue(":")) {
+                this.Advance()
+                pType = this.ParseTypeName()
+            }
+            let p = Ast.Param(pTok.Value, pType, pTok.Line, pTok.Column)
             lam.Params.Add(p)
         }
         this.Expect(")")
