@@ -7,6 +7,72 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.13] — 2026-05-15
+
+Tooling release: a new `--template ui-web-form` scaffolder for the
+freshly-released [`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
+package, plus three small fixes from the post-v0.8.12 backlog.
+
+### Added: `amc new --template ui-web-form`
+
+Scaffolds a single-window webview GUI project on top of
+amalgame-ui-web v0.0.4:
+
+- `src/main.am` — `Window` + `Page` + small form (Input + Textarea
+  + Submit) + handler with a tiny in-page click bridge that wires
+  the handler's return value into a `<pre id=out>` panel.
+- `amalgame.toml` — pins `ui-web @v0.0.4`.
+- `build.sh` — locates the cached ui-web clone, compiles
+  `webview.cc` (C++ TU, one-shot) + `Amalgame_UI_Web.c` + facade
+  + user main, links against the OS-native engine:
+  - Linux/BSD : `pkg-config --libs webkit2gtk-4.1` (auto-detected,
+    falls back to 4.0)
+  - macOS    : `-framework Cocoa -framework WebKit`
+  - Windows  : `-lWebView2Loader.dll.lib -lOle32 -lShlwapi`
+  Resolves `libamalgame.a` from either an XDG install layout
+  (`share/amalgame/lib`) or a dev checkout (`$AMC_DIR/lib`).
+- `README.md` — install prereqs per distro + theming pointers
+  (`Page.SetTheme`, `--amc-*` CSS variables).
+
+The existing `--template forms` (ui-sdl + ui-forms) row in the help
+text gains a **sunset 2026-05-15** marker; use `ui-web-form` for
+new projects.
+
+### Fixed: `amc package add` tolerates `-dev` pre-release suffix
+
+The strict manifest-vs-tag validator rejected installs whenever a
+package was tagged without bumping `version = "X.Y.Z-dev"` to the
+release-bare form first — which is the convention several official
+packages (including the freshly-tagged ui-web v0.0.4) actually
+use. The check now strips a `-dev` suffix before comparing.
+Versions that don't match even after stripping (e.g. `0.0.5-dev`
+at tag `v0.0.4`) still hard-fail.
+
+### Fixed: macOS canonical executable path
+
+`Program.ResolveSelfPath` now resolves the canonical executable
+path on macOS via `_NSGetExecutablePath` + `realpath()`, matching
+the existing Linux `/proc/self/exe` and Windows
+`GetModuleFileNameA` branches. Homebrew's `/usr/local/bin/amc`
+symlink resolves to the versioned cellar, so `amc build`'s
+sibling-runtime discovery works on macOS through PATH too. Closes
+the last edge case tracked in `CONTINUATION.md` since v0.8.1.
+
+### Fixed: `gdb --dap` fallback in `amc dap`
+
+After exhausting the `lldb-dap` candidate chain, `DetectBackend`
+now probes `gdb` (plus a couple of fallback paths
+`/usr/bin/gdb` / `/opt/homebrew/bin/gdb`). gdb gained `--dap` in
+v14 (2023-11); all modern distros and MSYS2 ship a recent enough
+gdb. The path is returned with a `gdb:` sentinel that
+`ExecBackend` strips and uses to inject `--dap` as `argv[1]`. The
+old-gdb case fails clearly at exec time — the DAP client
+surfaces it as a launch error rather than a silent timeout. Linux
++ Windows-MSYS2 users without LLVM now get a working debugger out
+of the box.
+
+---
+
 ## [v0.8.12] — 2026-05-15
 
 Compiler release unlocking fluent chain APIs for external packages.
