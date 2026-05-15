@@ -7,6 +7,89 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.12] — 2026-05-15
+
+Compiler release unlocking fluent chain APIs for external packages.
+Closes the last of the high-impact cgen bugs from the ui-forms
+backlog (#2 in ROADMAP_COMPLET) — only #6 (let scope flattened)
+remains open.
+
+### Fixed: cross-package chained method calls
+
+`ExtType.Static().Method()` where `ExtType` lives in an `--external`
+facade produced invalid `Type_Static()_Method(...)` C tokens. The
+underlying mismatch: `RegisterExternalProg` emitted forward decls
+but never called `MethodRetSet` for external methods, so the
+return-type registry stayed empty for them. `InferTypeFromExpr`'s
+`ClassName.Method()` static path also fell back to the consumer's
+`SymName` (e.g. `App_Page`) instead of the external mangling
+(`Amalgame_UI_Web_Page`) — so even when MethodRet had entries,
+the lookup keys didn't match.
+
+Two-part fix in `c_gen.am`:
+
+- `RegisterExternalProg`/`ExternalMethodSig` now register every
+  external method's return type via `MethodRetSet` +
+  `MethodRetRawSet`, mirroring the in-bundle registration that
+  `EmitForwardDecl` does for first-party classes.
+- `InferTypeFromExpr`'s static-call IDENTIFIER path tries
+  `ExternalClassMangled` before `SymName`, so `Page.New()` on an
+  external `Page` resolves to `Amalgame_UI_Web_Page*` and propagates
+  through subsequent chained calls.
+
+### Fixed: inline lambda as argument outside list-method dispatch
+
+`EmitExprStr` for `__lambda__` arguments returned a
+`__lambda_<param>_<body>__` placeholder string. Higher-order list
+methods (Map/Filter/etc.) intercepted earlier via `EmitClosureArg`
+and recovered, but every other call site (webview `Bind`, builder
+`OnClick`, etc.) got literal garbage tokens.
+
+Replaced with a direct `EmitLambdaAsClosure` call so every inline
+lambda emits a real `AmalgameClosure_new((void*)lam_N_fn, env)`
+compound statement expression.
+
+### amalgame-ui-web v0.0.3 unlocks fluent builder
+
+Together the two fixes above are what made the new
+[`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
+v0.0.3 fluent builder API representable:
+
+```amalgame
+let page = Page.New()
+    .SetTitle("My App")
+    .SetBody(
+        Element.Stack()
+            .AddChild(Element.Label("Hello"))
+            .AddChild(Element.Button("Save")
+                .OnClick((req: string) => Json.EncodeString("ok")))
+    )
+page.ApplyTo(win)
+```
+
+### Patch surface
+
+- `src/generator/c_gen.am` — `ExternalMethodSig` registers
+  MethodRet entries; InferTypeFromExpr static-call path consults
+  ExternalClassMangled; EmitExprStr inline lambda emits real
+  closure value.
+- `ROADMAP_COMPLET.md` — bug #2 marked fixed.
+- `src/package_registry.am` — version bump.
+- `README.md` — version bump.
+
+Test suite stays green: 46/46 PASS on Linux/macOS/Windows CI.
+
+### Cgen backlog status
+
+5 of the 6 ui-forms cgen bugs are now closed (parens lost, return
+null typecheck, brace-literal interpolation, typed-param lambdas
+return type + inline lambda as arg, cross-package chained calls).
+The last one — `let` scope flattened to function level — hasn't
+been retriggered by ui-web v0.0.x usage; it'll get re-prioritised
+when a real consumer hits it again.
+
+---
+
 ## [v0.8.11] — 2026-05-15
 
 Compiler release unlocking C-trampoline-style callbacks (used by
