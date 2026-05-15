@@ -15,7 +15,8 @@ import Amalgame.String
 //   amc new <name> --template lib        # library skeleton
 //   amc new <name> --template test       # test-only bundle
 //   amc new <name> --template service    # long-running daemon
-//   amc new <name> --template forms      # GUI app (ui-sdl + ui-forms)
+//   amc new <name> --template forms        # GUI app (ui-sdl + ui-forms) — sunset
+//   amc new <name> --template ui-web-form  # webview GUI app (amalgame-ui-web)
 //
 // Creates a `<name>/` directory with starter files: source skeleton,
 // .gitignore, README.md, build.sh. The output is intentionally
@@ -38,12 +39,15 @@ public class NewCommand {
         Console.WriteError("  service  Long-running daemon. signal-aware shutdown loop using")
         Console.WriteError("           Amalgame.Service + Amalgame.Logging, a systemd unit, and")
         Console.WriteError("           an install.sh wired for /usr/local/bin + systemctl.")
-        Console.WriteError("  forms    GUI app on top of amalgame-ui-sdl + amalgame-ui-forms.")
-        Console.WriteError("           Opens a 320x240 window with a Label + Button via SDL2.")
-        Console.WriteError("           Requires libsdl2-dev + libsdl2-ttf-dev on the build host.")
+        Console.WriteError("  forms        GUI app on top of amalgame-ui-sdl + amalgame-ui-forms.")
+        Console.WriteError("               Sunset 2026-05-15 — use ui-web-form for new projects.")
+        Console.WriteError("  ui-web-form  Webview GUI app on top of amalgame-ui-web. HTML/CSS UI")
+        Console.WriteError("               rendered by the OS webview (WebView2 / WKWebView /")
+        Console.WriteError("               WebKitGTK). Requires libwebkit2gtk-4.1-dev on Linux")
+        Console.WriteError("               (macOS / Windows 11 ship the engine with the OS).")
         Console.WriteError("")
         Console.WriteError("Flags:")
-        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service, forms.")
+        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service, forms, ui-web-form.")
         Console.WriteError("  --vscode             Also write .vscode/launch.json + settings.json")
         Console.WriteError("                       so F5 launches the binary under `amc dap` with")
         Console.WriteError("                       breakpoints on the .am sources. Opt-in to avoid")
@@ -96,8 +100,8 @@ public class NewCommand {
             NewCommand.PrintUsage()
             return 1
         }
-        if (template != "exe" && template != "lib" && template != "test" && template != "service" && template != "forms") {
-            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service / forms)")
+        if (template != "exe" && template != "lib" && template != "test" && template != "service" && template != "forms" && template != "ui-web-form") {
+            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service / forms / ui-web-form)")
             return 1
         }
         // Accept a path like `path/to/myproj` — IsSafeName only
@@ -135,6 +139,8 @@ public class NewCommand {
             rc = NewCommand.ScaffoldService(name, baseName)
         } else if (template == "forms") {
             rc = NewCommand.ScaffoldForms(name, baseName)
+        } else if (template == "ui-web-form") {
+            rc = NewCommand.ScaffoldUiWebForm(name, baseName)
         } else {
             rc = NewCommand.ScaffoldTest(name, baseName)
         }
@@ -1203,6 +1209,316 @@ public class NewCommand {
         s = s + "\n"
         s = s + "Full surface in the `amalgame-ui-forms` README\n"
         s = s + "(github.com/amalgame-lang/amalgame-ui-forms).\n"
+        return s
+    }
+
+    // ── ui-web-form template ──────────────────────────
+    //
+    // Webview GUI app built on amalgame-ui-web. Renders HTML/CSS
+    // through the OS-native engine (WebView2 / WKWebView /
+    // WebKitGTK) and bridges JS ↔ Amalgame via Window.Bind. The
+    // scaffold lays out a Window + Page + small form + Submit
+    // handler that echoes the form payload back into a <pre>
+    // panel via a tiny in-page click bridge (until ui-web v0.0.5+
+    // ships a declarative `.OnResult(targetId)`).
+
+    private static int ScaffoldUiWebForm(string path, string base) {
+        if (!File.Mkdir(path + "/src")) {
+            Console.WriteError("amc new: failed to create src/ subdirectory")
+            return 1
+        }
+
+        let mainAm:    string = NewCommand.MainAmUiWebForm(base)
+        let manifest:  string = NewCommand.ManifestUiWebForm(base)
+        let buildSh:   string = NewCommand.BuildShUiWebForm(base)
+        let readme:    string = NewCommand.ReadmeUiWebForm(base)
+        let gitignore: string = NewCommand.GitignoreCommon()
+
+        if (!NewCommand.WriteFile(path + "/src/main.am",   mainAm))    { return 1 }
+        if (!NewCommand.WriteFile(path + "/amalgame.toml", manifest))  { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.sh",      buildSh))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore",    gitignore)) { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md",     readme))    { return 1 }
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/build.sh"))
+
+        Console.WriteLine("Scaffolded '" + base + "' (ui-web-form template).")
+        Console.WriteLine("  cd " + path)
+        Console.WriteLine("  amc package add ui-web              # fetch the package (one-off)")
+        Console.WriteLine("  sudo apt install libwebkit2gtk-4.1-dev   # Linux build deps")
+        Console.WriteLine("  ./build.sh && ./" + base)
+        return 0
+    }
+
+    private static string MainAmUiWebForm(string name) {
+        var s: string = ""
+        s = s + "import Amalgame.UI.Web\n"
+        s = s + "\n"
+        s = s + "// Scaffolded by `amc new --template ui-web-form`.\n"
+        s = s + "//\n"
+        s = s + "// A 720x480 webview window with a small form built via the\n"
+        s = s + "// AM-side Element / Page builder. Submit invokes the AM\n"
+        s = s + "// handler with the form payload as a JSON object string\n"
+        s = s + "// (auto-collected by ui-web's __amc_collect bridge). The\n"
+        s = s + "// returned JSON lands in the <pre id=out> panel via a\n"
+        s = s + "// tiny in-page click bridge — until ui-web v0.0.5+ ships\n"
+        s = s + "// a declarative `.OnResult(targetId)`.\n"
+        s = s + "//\n"
+        s = s + "// The baseline stylesheet handles light/dark theming from\n"
+        s = s + "// the OS. Override individual CSS variables (`--amc-bg`,\n"
+        s = s + "// `--amc-fg`, `--amc-accent`, …) from your own stylesheet\n"
+        s = s + "// or call `Page.SetStylesheet(url)` / `.AddCss(url)`.\n"
+        s = s + "\n"
+        s = s + "class Program {\n"
+        s = s + "    public static void Main() {\n"
+        s = s + "        let win: Window = new Window(\"" + name + "\", 720, 480, false)\n"
+        s = s + "        if (!win.IsValid()) {\n"
+        s = s + "            return\n"
+        s = s + "        }\n"
+        s = s + "\n"
+        s = s + "        let page: Page = Page.New()\n"
+        s = s + "            .SetTitle(\"" + name + "\")\n"
+        s = s + "            .SetBody(\n"
+        s = s + "                Element.Stack()\n"
+        s = s + "                    .AddChild(Element.Heading(\"Welcome to " + name + "\"))\n"
+        s = s + "                    .AddChild(Element.Label(\"Edit the form, then click Submit.\"))\n"
+        s = s + "                    .AddChild(Element.Input(\"user\").Attr(\"placeholder\", \"Your name\"))\n"
+        s = s + "                    .AddChild(Element.Textarea(\"message\").Attr(\"placeholder\", \"A message\").Size(0, 80))\n"
+        s = s + "                    .AddChild(Element.Button(\"Submit\")\n"
+        s = s + "                        .OnClick((req: string) => req))\n"
+        s = s + "                    .AddChild(Element.Pre(\"(submit to see the form payload)\").Id(\"out\"))\n"
+        s = s + "            )\n"
+        s = s + "\n"
+        s = s + "        page.ApplyTo(win)\n"
+        s = s + "\n"
+        s = s + "        // In-page bridge: intercept Button clicks so the\n"
+        s = s + "        // handler's return value lands in <pre id=out>.\n"
+        s = s + "        win.Init(\"document.addEventListener('click',async e=>{if(e.target.tagName!=='BUTTON')return;const m=(e.target.getAttribute('onclick')||'').match(/window\\\\.(\\\\w+)/);if(!m)return;e.preventDefault();const r=await window[m[1]](JSON.stringify(window.__amc_collect()));document.getElementById('out').textContent=JSON.stringify(JSON.parse(r),null,2);},true);\")\n"
+        s = s + "\n"
+        s = s + "        win.Run()\n"
+        s = s + "        win.Destroy()\n"
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string ManifestUiWebForm(string name) {
+        var s: string = ""
+        s = s + "# Project manifest — declares external package deps.\n"
+        s = s + "# Run `amc package add ui-web` once to populate amalgame.lock\n"
+        s = s + "# and clone the package into ~/.amalgame/packages/, then\n"
+        s = s + "# `./build.sh` to compile + link against the OS webview.\n"
+        s = s + "\n"
+        s = s + "[package]\n"
+        s = s + "name        = \"" + name + "\"\n"
+        s = s + "version     = \"0.1.0\"\n"
+        s = s + "description = \"Amalgame webview GUI app scaffolded by `amc new --template ui-web-form`.\"\n"
+        s = s + "\n"
+        s = s + "[dependencies]\n"
+        s = s + "ui-web = { git = \"github.com/amalgame-lang/amalgame-ui-web\", tag = \"v0.0.4\" }\n"
+        return s
+    }
+
+    private static string BuildShUiWebForm(string name) {
+        // Sentinels for `${VAR:-default}` and `$(...)` chunks that
+        // would otherwise collide with AM's `"text {var}"` string
+        // interpolation when amc parses this very source file.
+        let lb: string = "{"
+        let rb: string = "}"
+        let amcVar:       string = "$" + lb + "AMC:-$(command -v amc)" + rb
+        let pkgVar:       string = "$" + lb + "AMALGAME_PACKAGES_DIR:-$HOME/.amalgame/packages" + rb
+        var s: string = ""
+        s = s + "#!/bin/sh\n"
+        s = s + "# Build script for the `" + name + "` webview GUI app.\n"
+        s = s + "#\n"
+        s = s + "# Pipeline:\n"
+        s = s + "#   1. Locate the amalgame-ui-web clone in your package cache.\n"
+        s = s + "#   2. Compile the vendored webview C++ implementation (once).\n"
+        s = s + "#   3. Compile the C glue and the AM-side facade.\n"
+        s = s + "#   4. Compile src/main.am via amc --external.\n"
+        s = s + "#   5. Link everything against libwebkit2gtk (Linux), Cocoa+WebKit\n"
+        s = s + "#      (macOS), or WebView2Loader (Windows MinGW).\n"
+        s = s + "#\n"
+        s = s + "# Requires: amc 0.8.12+. On Linux you also need\n"
+        s = s + "# libwebkit2gtk-4.1-dev (Debian/Ubuntu) or equivalent.\n"
+        s = s + "set -eu\n"
+        s = s + "\n"
+        s = s + "NAME=" + name + "\n"
+        s = s + "AMC=" + amcVar + "\n"
+        s = s + "AMC_DIR=$(cd \"$(dirname \"$AMC\")\" && pwd)\n"
+        s = s + "if [ -d \"$AMC_DIR/runtime\" ]; then\n"
+        s = s + "  AMC_RUNTIME=\"$AMC_DIR/runtime\"\n"
+        s = s + "else\n"
+        s = s + "  AMC_RUNTIME=\"$AMC_DIR/../share/amalgame/runtime\"\n"
+        s = s + "fi\n"
+        s = s + "# Resolve libamalgame.a: prefer the XDG install layout\n"
+        s = s + "# (share/amalgame/lib/), fall back to a dev checkout layout\n"
+        s = s + "# ($AMC_DIR/lib/) so this script works against both an\n"
+        s = s + "# installed amc and a freshly-bootstrapped one.\n"
+        s = s + "if [ -z \"${AMC_LIB:-}\" ]; then\n"
+        s = s + "  if [ -f \"$AMC_DIR/../share/amalgame/lib/libamalgame.a\" ]; then\n"
+        s = s + "    AMC_LIB=\"$AMC_DIR/../share/amalgame/lib/libamalgame.a\"\n"
+        s = s + "  elif [ -f \"$AMC_DIR/lib/libamalgame.a\" ]; then\n"
+        s = s + "    AMC_LIB=\"$AMC_DIR/lib/libamalgame.a\"\n"
+        s = s + "  else\n"
+        s = s + "    echo \"ERROR: libamalgame.a not found. Set \\$AMC_LIB or reinstall amc.\"\n"
+        s = s + "    exit 1\n"
+        s = s + "  fi\n"
+        s = s + "fi\n"
+        s = s + "PKG_CACHE=" + pkgVar + "\n"
+        s = s + "\n"
+        s = s + "# Newest installed ui-web tag in the cache.\n"
+        s = s + "UIWEB_DIR=$(ls -dt \"$PKG_CACHE/github.com/amalgame-lang/amalgame-ui-web/\"v* 2>/dev/null | head -1)\n"
+        s = s + "if [ -z \"$UIWEB_DIR\" ] || [ ! -d \"$UIWEB_DIR/runtime/vendor/webview\" ]; then\n"
+        s = s + "  echo \"ERROR: amalgame-ui-web not installed. Run 'amc package add ui-web' first.\"\n"
+        s = s + "  exit 1\n"
+        s = s + "fi\n"
+        s = s + "echo \"Using ui-web from $UIWEB_DIR\"\n"
+        s = s + "\n"
+        s = s + "# WebKitGTK detection (Linux only — macOS/Windows ship the engine).\n"
+        s = s + "WEBKIT_CFLAGS=\"\"\n"
+        s = s + "WEBKIT_LIBS=\"\"\n"
+        s = s + "case \"$(uname -s)\" in\n"
+        s = s + "  Linux*|FreeBSD*|OpenBSD*|NetBSD*)\n"
+        s = s + "    if pkg-config --exists webkit2gtk-4.1; then\n"
+        s = s + "      WEBKIT_PC=webkit2gtk-4.1\n"
+        s = s + "    elif pkg-config --exists webkit2gtk-4.0; then\n"
+        s = s + "      WEBKIT_PC=webkit2gtk-4.0\n"
+        s = s + "    else\n"
+        s = s + "      echo \"ERROR: install libwebkit2gtk-4.1-dev (Debian/Ubuntu) or equivalent.\"\n"
+        s = s + "      exit 1\n"
+        s = s + "    fi\n"
+        s = s + "    WEBKIT_CFLAGS=$(pkg-config --cflags \"$WEBKIT_PC\")\n"
+        s = s + "    WEBKIT_LIBS=$(pkg-config --libs \"$WEBKIT_PC\")\n"
+        s = s + "    ;;\n"
+        s = s + "  Darwin*)\n"
+        s = s + "    WEBKIT_LIBS=\"-framework Cocoa -framework WebKit\"\n"
+        s = s + "    ;;\n"
+        s = s + "  MINGW*|MSYS*|CYGWIN*)\n"
+        s = s + "    WEBKIT_LIBS=\"-lWebView2Loader.dll.lib -lOle32 -lShlwapi\"\n"
+        s = s + "    ;;\n"
+        s = s + "esac\n"
+        s = s + "\n"
+        s = s + "mkdir -p build\n"
+        s = s + "\n"
+        s = s + "# Step 1: vendored webview C++ TU (one-shot, ~5 s).\n"
+        s = s + "if [ ! -f build/webview.o ] || \\\n"
+        s = s + "   [ \"$UIWEB_DIR/runtime/vendor/webview/webview.cc\" -nt build/webview.o ]; then\n"
+        s = s + "  echo \"Building webview.cc (one-time C++ TU)...\"\n"
+        s = s + "  g++ -c -O2 -std=c++17 -DNDEBUG -Wno-unused-parameter \\\n"
+        s = s + "      -DWEBVIEW_STATIC \\\n"
+        s = s + "      -I \"$UIWEB_DIR/runtime/vendor/webview\" \\\n"
+        s = s + "      $WEBKIT_CFLAGS \\\n"
+        s = s + "      \"$UIWEB_DIR/runtime/vendor/webview/webview.cc\" \\\n"
+        s = s + "      -o build/webview.o\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "# Step 2: C glue (thin slot-table over webview_*).\n"
+        s = s + "if [ ! -f build/Amalgame_UI_Web.o ] || \\\n"
+        s = s + "   [ \"$UIWEB_DIR/runtime/Amalgame_UI_Web.c\" -nt build/Amalgame_UI_Web.o ]; then\n"
+        s = s + "  echo \"Building C glue...\"\n"
+        s = s + "  gcc -c -O2 -DWEBVIEW_STATIC \\\n"
+        s = s + "      -I \"$AMC_RUNTIME\" \\\n"
+        s = s + "      -I \"$UIWEB_DIR/runtime\" \\\n"
+        s = s + "      -I \"$UIWEB_DIR/runtime/vendor/webview\" \\\n"
+        s = s + "      $WEBKIT_CFLAGS \\\n"
+        s = s + "      \"$UIWEB_DIR/runtime/Amalgame_UI_Web.c\" \\\n"
+        s = s + "      -o build/Amalgame_UI_Web.o\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "# Step 3: ui-web AM facade.\n"
+        s = s + "if [ ! -f build/facade.o ] || [ \"$UIWEB_DIR/facade.am\" -nt build/facade.o ]; then\n"
+        s = s + "  echo \"Building ui-web facade...\"\n"
+        s = s + "  (cd \"$UIWEB_DIR\" && \"$AMC\" --lib facade.am --quiet)\n"
+        s = s + "  gcc -c -O2 \\\n"
+        s = s + "      -I \"$AMC_RUNTIME\" \\\n"
+        s = s + "      -I \"$UIWEB_DIR/runtime\" \\\n"
+        s = s + "      \"$UIWEB_DIR/a.out.c\" \\\n"
+        s = s + "      -o build/facade.o\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        s = s + "# Step 4: user app.\n"
+        s = s + "echo \"Compiling src/main.am...\"\n"
+        s = s + "\"$AMC\" -o \"build/$NAME\" src/main.am --external \"$UIWEB_DIR/facade.am\" --quiet\n"
+        s = s + "\n"
+        s = s + "# Step 5: link. Use gcc (not g++) — Amalgame_Net.h passes string\n"
+        s = s + "# literals as code_string (non-const char*) which g++ rejects.\n"
+        s = s + "# Pull libstdc++ in explicitly so the C++ symbols resolve.\n"
+        s = s + "echo \"Linking $NAME...\"\n"
+        s = s + "gcc -O2 \\\n"
+        s = s + "    -I \"$AMC_RUNTIME\" \\\n"
+        s = s + "    -I \"$UIWEB_DIR/runtime\" \\\n"
+        s = s + "    \"build/$NAME.c\" \\\n"
+        s = s + "    build/facade.o build/Amalgame_UI_Web.o build/webview.o \\\n"
+        s = s + "    \"$AMC_LIB\" \\\n"
+        s = s + "    $WEBKIT_LIBS \\\n"
+        s = s + "    -lstdc++ -lm -lgc -lcurl -lz -ldl -lpthread \\\n"
+        s = s + "    -o \"$NAME\"\n"
+        s = s + "echo \"Built ./$NAME — run it now.\"\n"
+        return s
+    }
+
+    private static string ReadmeUiWebForm(string name) {
+        var s: string = ""
+        s = s + "# " + name + "\n"
+        s = s + "\n"
+        s = s + "Webview GUI app built with the [Amalgame](https://amalgame.me)\n"
+        s = s + "language and the [`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)\n"
+        s = s + "package.\n"
+        s = s + "\n"
+        s = s + "Renders an HTML/CSS UI through the OS-native webview engine\n"
+        s = s + "(WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux).\n"
+        s = s + "Backend logic stays in Amalgame, with JS ↔ Amalgame IPC via\n"
+        s = s + "`Window.Bind` and a declarative form-collect bridge.\n"
+        s = s + "\n"
+        s = s + "## First run\n"
+        s = s + "\n"
+        s = s + "Install build dependencies (one-off, per machine):\n"
+        s = s + "\n"
+        s = s + "```sh\n"
+        s = s + "# Debian / Ubuntu\n"
+        s = s + "sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev pkg-config\n"
+        s = s + "\n"
+        s = s + "# Fedora\n"
+        s = s + "sudo dnf install webkit2gtk4.1-devel gtk3-devel pkgconf-pkg-config\n"
+        s = s + "\n"
+        s = s + "# Arch / Manjaro\n"
+        s = s + "sudo pacman -S webkit2gtk-4.1 gtk3 pkgconf\n"
+        s = s + "\n"
+        s = s + "# macOS — nothing, WKWebView ships with the OS since 10.10.\n"
+        s = s + "# Windows 11 — nothing, WebView2 runtime ships with the OS.\n"
+        s = s + "# Older Windows 10 — install the WebView2 evergreen bootstrapper:\n"
+        s = s + "#   https://developer.microsoft.com/microsoft-edge/webview2/\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "Fetch the package and build:\n"
+        s = s + "\n"
+        s = s + "```sh\n"
+        s = s + "amc package add ui-web\n"
+        s = s + "./build.sh\n"
+        s = s + "./" + name + "\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "A 720x480 window opens with a small form (Input + Textarea +\n"
+        s = s + "Submit). Clicking Submit echoes the form payload back into a\n"
+        s = s + "`<pre>` panel as pretty-printed JSON.\n"
+        s = s + "\n"
+        s = s + "## Next steps\n"
+        s = s + "\n"
+        s = s + "- More form fields: `Element.Select / Option / CheckBox /\n"
+        s = s + "  Radio`. Names auto-collected into the handler's `req` JSON.\n"
+        s = s + "- Custom theme: override CSS variables in your own stylesheet:\n"
+        s = s + "\n"
+        s = s + "  ```css\n"
+        s = s + "  :root { --amc-accent: #ff6b00 }\n"
+        s = s + "  ```\n"
+        s = s + "\n"
+        s = s + "  Apply via `Page.New().AddCss(\"file:///abs/path/style.css\")`.\n"
+        s = s + "- Force theme: `Page.SetTheme(\"light\" | \"dark\" | \"auto\")`.\n"
+        s = s + "- Multi-page apps: layer extra stylesheets / replace the\n"
+        s = s + "  baseline / load remote URLs — see the ui-web README.\n"
+        s = s + "\n"
+        s = s + "Full surface in the `amalgame-ui-web` README\n"
+        s = s + "(github.com/amalgame-lang/amalgame-ui-web).\n"
         return s
     }
 }

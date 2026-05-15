@@ -385,10 +385,9 @@ public class Program {
     // that need a sibling runtime/ or lib/ directory (`amc build`,
     // `amc run`) keep working when the binary is invoked through PATH
     // with no leading `/` in argv[0]. Linux exposes the canonical path
-    // via the `/proc/self/exe` symlink; Windows via GetModuleFileNameA.
-    // macOS (no /proc) returns "" and the caller falls back to argv[0]
-    // — Homebrew installs an absolute symlink so the legacy path is
-    // already canonical there.
+    // via `/proc/self/exe`; Windows via GetModuleFileNameA; macOS via
+    // _NSGetExecutablePath (with a realpath() pass so symlinked
+    // Homebrew shims resolve to the actual cellar binary).
     public static string ResolveSelfPath() {
         @c {
             #ifdef _WIN32
@@ -399,6 +398,23 @@ public class Program {
                 for (DWORD i = 0; i < n; i++) { if (buf[i] == '\\') buf[i] = '/'; }
                 char* out = (char*) GC_MALLOC((size_t)(n + 1));
                 memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #elif defined(__APPLE__)
+                #include <mach-o/dyld.h>
+                #include <stdlib.h>
+                char raw[4096];
+                uint32_t size = sizeof(raw);
+                if (_NSGetExecutablePath(raw, &size) != 0) { return (code_string) ""; }
+                /* realpath collapses any /./, /../, or symlink in the path
+                 * — Homebrew installs amc as a symlink in /usr/local/bin
+                 * pointing at the versioned cellar; we want the cellar
+                 * path so the runtime/ sibling search succeeds. */
+                char resolved[4096];
+                char* p = realpath(raw, resolved);
+                const char* src = p ? (const char*)resolved : (const char*)raw;
+                size_t n = strlen(src);
+                char* out = (char*) GC_MALLOC(n + 1);
+                memcpy(out, src, n + 1);
                 return (code_string) out;
             #else
                 char buf[4096];

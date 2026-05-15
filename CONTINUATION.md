@@ -1,10 +1,304 @@
 # Continuation prompt — start a new chat with this
 
-> **Last refreshed 2026-05-14 (late night)** — **v0.8.10 tagged.**
-> The big push this day shipped the **GUI toolkit ecosystem**
-> (ui-sdl + ui-forms as two new external packages) and the amc
-> support around it. Released amc tags this session:
-> v0.8.7 → v0.8.10, plus ui-sdl v0.1.0 + ui-forms v0.1.0 → v0.1.4.
+> **Last refreshed 2026-05-15 (evening)** — **ui-web v0.0.4 shipped
+> end-to-end** + **amc v0.8.13 release candidate** assembled on
+> develop. Whole v0.0.4 roadmap (form reading + OS theming + amc
+> scaffolder) landed in one session.
+>
+> ### ui-web v0.0.4 — tagged + on packages-index
+>
+> 6-commit PR (`#2`) merged → tag `v0.0.4` → GitHub Release →
+> packages-index PR `#19` merged. `amc package add ui-web` resolves
+> to v0.0.4 now. `required-amalgame >= 0.8.12`.
+>
+> What landed:
+>
+> 1. **Form reading** — new `Element` builders: `Textarea(name)`,
+>    `Select(name)`, `Option(value, label)`, `CheckBox(name)`,
+>    `Radio(name, value)`, `Bind(name)`. `Page.ApplyTo` injects a
+>    `window.__amc_collect()` JS bridge via `Window.Init`; the
+>    generated `onclick` stringifies the collected form state and
+>    passes it as the handler's `req` JSON object. Breaking from
+>    v0.0.3 where `req` was the JS args array.
+>
+> 2. **OS theming** — baseline stylesheet auto-injected by
+>    `Page.Render` (modern reset + 7 CSS variables —
+>    `--amc-bg`/`-fg`/`-muted`/`-border`/`-surface`/`-accent`/
+>    `-radius`). Dark variant keys off `[data-theme=dark]` written
+>    on `<html>` from the OS detection. Linux `gtk-application-prefer-dark-theme`
+>    flip in `Amalgame_UI_Web_Create` so GTK-rendered `<select>`
+>    popups and scrollbars match. `Page.SetStylesheet(url)` /
+>    `.AddCss(url)` / `.NoBaseline()` / `.SetTheme("auto"|"light"|"dark")`.
+>    `Page.DetectOSTheme()` static exposes the C primitive
+>    (gsettings / `defaults` / Windows registry; `AMALGAME_UI_THEME`
+>    env override wins).
+>
+> 3. **Element.Size(w, h)** — pixel sizing helper, 0 = leave axis
+>    intact. Style() now cumulative (StyleCss field; multiple calls
+>    layer per CSS cascade). Render emits single combined `style`
+>    attr.
+>
+> 4. **Chrome lockdown by default** — `Page.ApplyTo` swallows
+>    contextmenu + F5/Ctrl+R/Cmd+R reloads (SetHtml-loaded pages
+>    have no URL to reload to). Opt out via `Page.AllowBrowserDefaults()`.
+>    `Ctrl+Shift+I` (DevTools) intentionally left alive.
+>
+> 5. **Polish** — `user-select: none` on body (form fields + `<pre>`
+>    stay selectable), `textarea { resize: none }` (drag-grip
+>    destabilizes declarative layout), void HTML tags no longer get
+>    a stray closing tag, `<meta viewport>` for HiDPI.
+>
+> ### amc — `--template ui-web-form` scaffolder (PR #463 merged)
+>
+> `amc new my-app --template ui-web-form` scaffolds a webview GUI
+> project: `src/main.am` (Window + Page + form + handler with a
+> small click bridge wiring handler return into `<pre id=out>`),
+> `amalgame.toml` (pins ui-web @v0.0.4), `build.sh` (locates the
+> ui-web clone in the package cache, builds `webview.cc` once,
+> then glue.c + facade.am + user main, links against webkit2gtk /
+> Cocoa+WebKit / WebView2 per OS), README.md (build prereqs per
+> distro). Help text marks the legacy `--template forms` (ui-forms
+> SDL stack) as sunset 2026-05-15.
+>
+> ### amc — quick wins on develop (PR #464, awaiting review)
+>
+> Three small fixes accumulated for the next release:
+>
+> 1. **`amc package add` tolerates `-dev` manifest suffix** at tag
+>    validation (`"0.0.4-dev"` at tag `v0.0.4` no longer rejected).
+>    Matches the convention of tagging without bumping the manifest
+>    that several official packages (ui-web among them) actually use.
+> 2. **macOS canonical path** — `Program.ResolveSelfPath` now uses
+>    `_NSGetExecutablePath` + `realpath()` so the Homebrew symlink
+>    layout resolves to the cellar (where `runtime/` is a sibling).
+>    Closes the last edge case where `amc build` couldn't find its
+>    sibling runtime/ on macOS through PATH.
+> 3. **`gdb --dap` fallback** in `src/dap.am` — after lldb-dap,
+>    probe `gdb` (and a couple of fallback paths). Returned with a
+>    `gdb:` sentinel; ExecBackend strips it and injects `--dap` as
+>    argv[1]. Closes the gdb-dap backlog tracked since v0.8.0.
+>
+> Once PR #464 is merged, **release amc v0.8.13** with the
+> scaffolder (#463) + quick wins (#464).
+>
+> ### Suite — v0.0.5 ui-web "real apps need this" backlog
+>
+> No urgent feature blocking real productive apps. The big gap
+> toward a v1 desktop-app parity story (proposal section v2) is
+> native chrome: menubar, dialogs, system tray + notifs, custom
+> URL scheme `am://`, multi-window orchestration. Each is per-OS
+> work (Win32 + NSMenu + GtkMenuBar style). ~20 focused weeks of
+> work spreadable across v0.0.5 → v0.0.7 or a single v0.1.0 push.
+>
+> A more incremental v0.0.5 menu: pick the most-painful gap from
+> real-user feedback, ship just that. Candidates:
+>
+> - **`.OnResult(targetId)` declarative**: the spike-bridge JS in
+>   `main.am` (passing the handler's return back to the DOM) is
+>   the most awkward thing in the scaffold today. ~1-2 days to
+>   bake into `Element.OnClick` directly.
+> - **`Page.AddAsset(path)`**: ship images/fonts alongside the
+>   stylesheet override. Deferred from v0.0.4. ~2 days.
+> - **HiDPI scaling sanity check** + windowed `Window.SetIcon`.
+>
+> Native menubar stays the headline v0.1.0 work.
+>
+> ---
+>
+> **Archived below — afternoon 2026-05-15 (v0.8.12 + ui-web v0.0.3 / pivot)**
+>
+> **Earlier in 2026-05-15** — **v0.8.12 tagged**
+> + GUI ecosystem pivoted from SDL/Tk to webview. Massive day:
+> released amc tags **v0.8.11** + **v0.8.12**, created the new
+> [`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
+> package and shipped it through v0.0.3, sunset `amalgame-ui-forms`
+> and the never-published `amalgame-ui-tk` exploration.
+>
+> ### Headline: GUI toolkit pivot SDL/Tk → Webview (2026-05-15)
+>
+> Two sub-pivots the same day:
+>
+> - **Morning** — SDL retained-mode (`amalgame-ui-forms`) → Tcl/Tk
+>   (`amalgame-ui-tk`). Reason: SDL drawing from scratch couldn't
+>   produce rounded corners, OS native fonts, HiDPI, theming —
+>   six cgen/typechecker bugs had piled up specifically around
+>   `ui-forms`. Tk wraps native widgets through ttk on Linux,
+>   Cocoa on macOS, Vista on Windows.
+>
+> - **Afternoon** — Tcl/Tk (`amalgame-ui-tk`) → Webview
+>   (`amalgame-ui-web`). Reason: Tk's menubar was buggy on X11,
+>   the "caméléon" promise was unconvincing in practice, and the
+>   rest of the desktop ecosystem (VS Code, Slack, Discord,
+>   1Password, Tauri) settled on webview years ago. ui-tk had
+>   only ~6 h of investment, never pushed to GitHub.
+>
+> The decision matrix lives in
+> [`docs/proposals/amalgame-ui-web.md`](docs/proposals/amalgame-ui-web.md)
+> — industry survey across 10 modern language ecosystems,
+> options matrix (IUP / libui-ng / LVGL / Slint / webview),
+> v0.0.x → v1.0 capability roadmap with effort estimates,
+> deployment notes per OS, implementation plan.
+>
+> ### v0.8.12 (cross-pkg chains + inline lambda fixes) ✅ tagged
+>
+> 1. **PR #456 — cgen bugs #2 + half of "inline lambda as arg"**.
+>    - **Cross-package chained method calls** (ROADMAP #2). For
+>      `ExtType.Static().Method()` where `ExtType` lives in an
+>      `--external` facade, EmitCalleeStr's CALL-on-MEMBER branch
+>      called InferTypeFromExpr which fell back to the consumer's
+>      `SymName` (e.g. `App_Page` instead of `Amalgame_UI_Web_Page`).
+>      `MethodRet` was empty under that key, so the fallback
+>      returned the raw `EmitExprStr(callee.Left) + "_" + mname`
+>      string, producing invalid `Type_Static()_Method(...)` C
+>      tokens. Two-part fix: `RegisterExternalProg` now calls
+>      `MethodRetSet` for every external method; InferTypeFromExpr's
+>      static path tries `ExternalClassMangled` before `SymName`.
+>    - **Inline lambda as argument** outside Map/Filter dispatch.
+>      EmitExprStr for `__lambda__` returned a
+>      `__lambda_<param>_<body>__` placeholder string. Higher-order
+>      list methods intercept earlier via EmitClosureArg, so the
+>      placeholder only surfaced at non-list call sites (Bind,
+>      Element.OnClick, etc.) where it became garbage C. Replaced
+>      with direct `EmitLambdaAsClosure(expr)` so every inline
+>      lambda emits a real `AmalgameClosure_new(...)` compound
+>      expression.
+>
+>    Discovered while bootstrapping `amalgame-ui-web` v0.0.3's
+>    fluent builder. 5 of 6 ui-forms cgen bugs are now closed; only
+>    **#6 `let` scope flattened** remains open (no consumer
+>    retriggered it intra-package in v0.0.x).
+>
+> 2. **PR #459 — ROADMAP_COMPLET sunset banner** + **PR #460 —
+>    proposal doc committed**. Documentation companion changes.
+>
+> ### v0.8.11 (cgen brace literal + typed-param lambdas + Closure) ✅ tagged
+>
+> 1. **PR #452 — cgen mis-parses `{` `}` `:` inside string literals**.
+>    `EmitInterpolatedString` accepted any `{x...}` content starting
+>    with a letter (or `this.`) as an interpolation slot. CSS rules
+>    like `body{font-family:system-ui}` silently triggered
+>    interpolation parsing and produced malformed C. New
+>    `IsValidInterpExpr` requires the brace content to match
+>    `ident(.ident)*` with optional trailing `(args)`.
+>
+> 2. **PR #453 — typed-param lambdas + return-type-aware closure
+>    calls + Closure type**. Multi-param `(req: string) => "..."`
+>    style now lowers correctly: ParseLambdaMulti consumes optional
+>    `:type` annotations; `InferTypeFromExpr` stashes the lambda's
+>    return type via a new `__closure_ret__` map; closure call
+>    sites emit a direct cast for pointer-typed returns
+>    (`code_string`, `*`) instead of the legacy hardcoded
+>    `UnboxScalar("i64", …)`. New AM type `Closure` →
+>    `AmalgameClosure*` so facade methods can declare
+>    `handler: Closure` without per-package typedef shims.
+>
+>    Unblocks every C-trampoline-style binding the stdlib might
+>    add next — webview Bind is the first consumer; filewatcher
+>    OnChange / http handler callbacks would land the same way.
+>
+> ### amalgame-ui-web v0.0.3 — webview GUI shipped
+>
+> **Three iterations the same day.** Repo at
+> [`amalgame-lang/amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
+> (public). Wraps the MIT-licensed
+> [`webview/webview`](https://github.com/webview/webview) v0.12.0
+> (vendored at `runtime/vendor/webview/webview.h`) and renders
+> HTML/CSS/JS via WebView2 on Windows, WKWebView on macOS,
+> WebKitGTK on Linux.
+>
+> - **v0.0.1** — single window MVP: `Window(title, w, h, debug)`,
+>   `IsValid`, `SetTitle`, `SetSize(w, h, hint)`, `Navigate(url)`,
+>   `SetHtml(html)`, `Init(js)` (pre-page-load inject), `Eval(js)`,
+>   `Run()` (blocking event loop), `Terminate()`, `Destroy()`.
+>   `WindowHint.None/Min/Max/Fixed` mirror `webview_hint_t`.
+>
+> - **v0.0.2** — bidirectional IPC: `Window.Bind(name, handler:
+>   Closure)` + `Window.Unbind(name)`. Backed by a 64-slot
+>   trampoline registry in the C glue; the fixed
+>   `_amalgame_uiweb_trampoline` dispatches every JS call into
+>   `AmalgameClosure_call2(req, NULL)` and forwards the returned
+>   `code_string` to `webview_return` automatically. Handlers
+>   must return valid JSON — `Json.EncodeString` helper ships
+>   alongside.
+>
+> - **v0.0.3** — HTML builder API. `Element` class with static
+>   builders (`Stack`, `Row`, `Label`, `Heading`, `Button`,
+>   `Input`, `Pre`, `Div`) + fluent `Attr/Id/Class/Style/AddChild/
+>   SetText/OnClick` chaining. `Page` class with
+>   `New().SetTitle(...).SetBody(...).ApplyTo(window)`. Page.Render
+>   walks the tree, allocates a `_amc_<n>` name per OnClick element,
+>   and ApplyTo auto-binds each handler via Window.Bind. The fluent
+>   chain pattern is what surfaced the cgen #2 bug fixed in v0.8.12.
+>
+> Listed on `amalgame-lang/packages-index` (PR #18), so
+> `amc package add ui-web` works end-to-end. Requires amc
+> >=0.8.12.
+>
+> ### Sunset 2026-05-15 — ui-forms + ui-tk
+>
+> `amalgame-ui-forms` v0.1.4 stays listed on packages-index for
+> existing consumers but receives a top-of-README banner pointing
+> users to `amalgame-ui-web` (PR #1 on that repo, merged). No
+> further releases planned. `amalgame-ui-sdl` v0.1.0 stays as the
+> foundation for a future `amalgame-gfx` package (games / 3D /
+> real-time viz, separate scope).
+>
+> `amalgame-ui-tk` was never pushed to GitHub — local sunset only.
+>
+> ROADMAP_COMPLET entry (Forms toolkit) carries the sunset banner
+> and points to the design proposal (PR #459, merged).
+>
+> ### What's next — v0.0.4 candidates
+>
+> Open in [`memory/project_ui_pivot.md`](https://github.com/amalgame-lang/Amalgame/blob/main/.claude/projects/-home-neitsab-D-veloppement-Amalgame/memory/project_ui_pivot.md)
+> (private to author's environment, mirrored at the top of every
+> session). Three feature buckets ordered by user pain:
+>
+> 1. **`Element.Bind(name)` — read DOM state from AM**. Currently
+>    AM can push HTML/text/JS into the webview (SetHtml, Eval)
+>    and react to JS calls (Bind), but can't read input values
+>    declaratively. v0.0.4 candidate: an Input/Select/Textarea
+>    accessor that injects bridging JS at Render time, so the
+>    OnClick handler can read `(req: string)` as a JSON object
+>    with form field values pre-parsed.
+>
+> 2. **OS theme handling** — webview default theme should match
+>    the OS (light/dark), with overrideable CSS/asset files.
+>    Detection already exists via the
+>    `Amalgame_UI_DetectOSTheme()` weak symbol shipped with
+>    `amalgame-ui-sdl` (probes macOS `defaults`, Windows registry,
+>    Linux `gsettings color-scheme`). v0.0.4 ships a
+>    baseline `data-theme` stylesheet that ApplyTo injects when
+>    the page has no custom CSS; users override via standard
+>    `<link rel=stylesheet>` or via a new
+>    `Page.SetStylesheet(path)` helper. Modern webviews honor the
+>    `prefers-color-scheme` media query natively, so user CSS
+>    can write `@media (prefers-color-scheme: dark) { ... }`
+>    and just work.
+>
+> 3. **Native menubar — biggest UX gap left.** Win32 + NSMenu +
+>    GtkMenuBar. ~6 weeks × 3 OS. v0.0.5 or v0.1.0 candidate.
+>
+> Remaining capability axis toward v1.0 (per the proposal):
+> custom URL scheme `am://`, native file dialogs, system tray +
+> notifications, multi-window orchestration, IPC binary, auto-
+> update, OS drag-drop. ~20-25 focused engineering weeks total,
+> spreadable over v0.1.x → v0.3.x.
+>
+> ### Cgen backlog status
+>
+> 5 of 6 ui-forms cgen bugs closed. Open:
+>
+> - [ ] **#6 `let` scope flattened to function level** — two
+>       `let x: T = ...` in different `if`/`while` blocks collide
+>       at the C level. **Workaround**: rename. **Fix**: resolver
+>       tracks block scope, cgen emits per-block C scopes.
+>       Hasn't reproduced intra-package in ui-web v0.0.x — picks
+>       up when a consumer hits it again.
+>
+> ---
+>
+> ### Previous push — 2026-05-14 (late night, archived below)
 >
 > ### v0.8.10 (close 2 cgen bugs + SDL2 in installer) ✅ tagged
 >
