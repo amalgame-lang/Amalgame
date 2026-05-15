@@ -1088,6 +1088,19 @@ public class CGen {
                             let firstC = String_Substring(cname2, 0, 1)
                             let isUpp  = firstC == String_ToUpper(firstC)
                             if (isUpp) {
+                                // External classes (registered via --external)
+                                // mangle to their declaring file's namespace
+                                // rather than the consumer's NsPrefix. Try
+                                // the external table first so cross-package
+                                // chains like `Page.New().SetTitle(...)` —
+                                // where Page lives in Amalgame.UI.Web —
+                                // resolve correctly. Falls through to
+                                // SymName for in-bundle classes.
+                                let extMangled: string = this.ExternalClassMangled(cname2)
+                                if (String_Length(extMangled) > 0) {
+                                    let retTE = this.MethodRetGet(extMangled, mname2)
+                                    if (String_Length(retTE) > 0) { return retTE }
+                                }
                                 let symCls = this.SymName(cname2)
                                 let retT2  = this.MethodRetGet(symCls, mname2)
                                 if (String_Length(retT2) > 0) { return retT2 }
@@ -1496,6 +1509,20 @@ public class CGen {
             retType = this.TupleStructName(retTypeRaw)
         } else {
             retType = this.TypeToC(retTypeRaw)
+        }
+        // Register the return type so cross-package chained calls
+        // (e.g. `Page.New().SetTitle(...)` where Page lives in an
+        // --external facade) can resolve the intermediate receiver
+        // type via InferTypeFromExpr → MethodRetGet. Without this,
+        // EmitCalleeStr's CALL-on-MEMBER branch falls through to
+        // its raw `EmitExprStr(callee.Left) + "_" + mname` fallback,
+        // producing the invalid `Type_Method()_Method(...)` C string
+        // pattern (the cross-pkg chain bug #2 in ROADMAP_COMPLET).
+        // Mirrors the in-bundle registration that EmitForwardDecl
+        // does around the MethodRetSet call ~line 1851.
+        if (!isCtor) {
+            this.MethodRetSet(mangledClass, method.Name, retType)
+            this.MethodRetRawSet(mangledClass, method.Name, retTypeRaw)
         }
         var sig: string = ""
         if (isCtor) {
@@ -2706,13 +2733,21 @@ public class CGen {
     private string EmitExprStr(AstNode expr) {
         if (expr == null) { return "NULL" }
         let k = expr.Kind
-        // Lambda: x => expr — emit as a C compound statement expression (GCC extension)
+        // Lambda: x => expr — emit as a real AmalgameClosure*.
+        //
+        // Higher-order list methods (Map/Filter/etc.) intercept the
+        // lambda earlier via EmitClosureArg with their element-type
+        // framing; anything landing here is an inline lambda passed
+        // to a regular call site (e.g. webview Bind, builder OnClick),
+        // where the closure value itself is the desired argument.
+        //
+        // The legacy `__lambda_<param>_<body>__` placeholder pattern
+        // didn't survive any call site that wasn't a Map/Filter — it
+        // surfaced as garbage C tokens. Emitting an inline
+        // `AmalgameClosure_new((void*)lam_N_fn, env)` is type-correct
+        // and lifetime-safe (env is code_alloc'd, GC tracks both).
         if (k == NodeKind.METHOD_DECL && expr.Name == "__lambda__") {
-            let paramName = expr.Str
-            let bodyStr   = this.EmitExprStr(expr.Left)
-            // Can't easily emit a lambda in C without closures
-            // Store as a tagged placeholder — callers must handle
-            return "__lambda_" + paramName + "_" + bodyStr + "__"
+            return this.EmitLambdaAsClosure(expr)
         }
         // Tuple literal: (val1, val2, ...)
         if (k == NodeKind.CALL && expr.Name == "__tuple_literal__") {

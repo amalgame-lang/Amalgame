@@ -262,20 +262,25 @@ of these block a release on its own.
       instead of grouping them per-class, or do a 2-pass
       emit (collect signatures, then write definitions).
 
-- [ ] **Chained method calls on cross-package types** —
-      `form.GetChild(i).GetX()` where `GetChild` returns a
-      Widget* from the current package and `GetX()` is also
-      defined on Widget. The cgen emits
-      `Form_GetChild(form, i) Widget_GetX` instead of
-      `Widget_GetX(Form_GetChild(form, i))` — the inner call's
-      return-value cast is dropped, so gcc reads `_GetX` as a
-      standalone token after the function call.
-      **Workaround**: stage the receiver in an intermediate
-      local (`let w: Widget = form.GetChild(i); w.GetX()`).
-      **Fix**: in the CALL emit path, propagate the
-      method-return cast when the call is itself the receiver
-      of another call. Likely in `EmitCalleeStr` around the
-      method-chain path.
+- [x] **Chained method calls on cross-package types** —
+      **fixed 2026-05-15**. Two-part fix in c_gen.am:
+      `RegisterExternalProg` now registers each external method's
+      return type via `MethodRetSet` (was emitting forward decls
+      only, leaving `MethodRet*` tables empty for external classes).
+      `InferTypeFromExpr`'s `ClassName.Method()` static-call path
+      tries `ExternalClassMangled` before falling back to the
+      consumer's `SymName` — `Page.New()` on an external `Page`
+      now resolves to `Amalgame_UI_Web_Page*` instead of
+      `App_Page*` (which had no MethodRet entries).
+      Plus: `EmitExprStr` for inline `__lambda__` arguments
+      no longer returns a `__lambda_…__` placeholder string;
+      it emits a real `AmalgameClosure_new((void*)lam_N_fn, env)`
+      compound statement expression. The previous placeholder
+      survived only when wrapped by a Map/Filter dispatch that
+      called `EmitClosureArg` first — every other call site
+      (Bind, Element.OnClick, etc.) got garbage C tokens.
+      Discovered while bootstrapping amalgame-ui-web v0.0.3's
+      fluent builder (`Page.New().SetTitle(...).SetBody(...)`).
 
 - [ ] **Field name == type name shadowing** —
       `public Layout: Layout` (field `Layout` of type
