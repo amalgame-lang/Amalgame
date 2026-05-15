@@ -1377,8 +1377,18 @@ public class Parser {
 
     private AstNode ParseAdd() {
         var left = this.ParseMul()
-        while (this.CheckValue("+") || this.CheckValue("-")) {
+        while (true) {
+            // Multi-line continuation: tolerate a newline before the
+            // operator if the next non-newline token is + or -.
+            // Without this, `var s = "a"\n  + "b"\n  + "c"` silently
+            // dropped the continuation and produced `s = "a"`.
+            if (this.CheckType(TokenType.NEWLINE)) {
+                if (!this.LookaheadAfterNewlinesIs("+", "-", "")) { break }
+                this.SkipNewlines()
+            }
+            if (!this.CheckValue("+") && !this.CheckValue("-")) { break }
             let tok = this.Advance()
+            this.SkipNewlines()   // also tolerate `expr +\n  next`
             let right = this.ParseMul()
             left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
         }
@@ -1387,12 +1397,36 @@ public class Parser {
 
     private AstNode ParseMul() {
         var left = this.ParseUnary()
-        while (this.CheckValue("*") || this.CheckValue("/") || this.CheckValue("%")) {
+        while (true) {
+            if (this.CheckType(TokenType.NEWLINE)) {
+                if (!this.LookaheadAfterNewlinesIs("*", "/", "%")) { break }
+                this.SkipNewlines()
+            }
+            if (!this.CheckValue("*") && !this.CheckValue("/") && !this.CheckValue("%")) { break }
             let tok = this.Advance()
+            this.SkipNewlines()
             let right = this.ParseUnary()
             left = Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
         }
         return left
+    }
+
+    // True iff the first non-NEWLINE token at-or-after Pos has a value
+    // equal to one of s1 / s2 / s3 (pass "" for unused slots). Drives
+    // multi-line operator continuation in ParseAdd / ParseMul / etc.
+    private bool LookaheadAfterNewlinesIs(string s1, string s2, string s3) {
+        var off: int = 0
+        let max: int = this.TokenCount
+        while (this.Pos + off < max) {
+            let t: Token = this.Tokens.Get(this.Pos + off)
+            if (t.Type == TokenType.NEWLINE) {
+                off = off + 1
+                continue
+            }
+            let v: string = t.Value
+            return v == s1 || v == s2 || v == s3
+        }
+        return false
     }
 
     private AstNode ParseUnary() {
