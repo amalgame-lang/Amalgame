@@ -1109,10 +1109,50 @@ public class CGen {
         return ""
     }
 
+    // Strict identifier-shape check for `{...}` interpolation content.
+    // Accepts:  ident, ident.path, ident.path(args), this.path[(args)]
+    // Rejects:  anything containing `;`, `:`, `-`, ` `, `+`, `,`, `=`, …
+    //           outside of a method-call argument list.
+    //
+    // Why: pre-fix the check was "starts with a letter, or starts with
+    // `this.`" — too permissive. CSS rules like `body{font-family:...}`
+    // start with `f` and silently swallowed the brace as an interpolation
+    // slot, producing garbage C from cgen. Inline HTML/CSS/JS authored
+    // in `.am` string literals now passes through cleanly.
+    private bool IsValidInterpExpr(s: string) {
+        let n = String_Length(s)
+        if (n == 0) { return false }
+        let first = String_Substring(s, 0, 1)
+        let identStart = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", first)
+        if (!identStart) { return false }
+        let identCont = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_."
+        var i = 1
+        while (i < n) {
+            let ch = String_Substring(s, i, 1)
+            if (ch == "(") {
+                // Method-call form: rest is the argument list. Trust the
+                // existing InterpExprToC to parse it; require closing `)`
+                // as the very last character so we don't mis-detect mid-
+                // string `(` followed by garbage and an unrelated `)`
+                // later in the source — that case lands here only when
+                // the head segment is already a clean ident path.
+                let last = String_Substring(s, n - 1, 1)
+                if (last == ")") { return true }
+                return false
+            }
+            let ok = String_Contains(identCont, ch)
+            if (!ok) { return false }
+            i = i + 1
+        }
+        return true
+    }
+
     // Re-escape a string value (which may contain real newlines, tabs, quotes)
     // into valid C string literal content.
-    // Emit a string literal, expanding {varName} interpolations
-    // Only applies to valid {identifier} patterns — not C braces like "{" or "} else {"
+    // Emit a string literal, expanding {ident} / {this.field} / {obj.method(args)}
+    // interpolations. Bare `{` followed by non-identifier content (CSS,
+    // JS arrow bodies, JSON, …) passes through as a literal — see
+    // IsValidInterpExpr above.
     private string EmitInterpolatedString(string raw) {
         let hasInterp = String_IndexOf(raw, "{")
         if (hasInterp < 0) {
@@ -1120,7 +1160,7 @@ public class CGen {
             return "\"" + escaped + "\""
         }
         let len = String_Length(raw)
-        // Check for at least one valid {identifier} pattern
+        // Check for at least one valid {ident…} pattern
         var hasValid = false
         var ci = 0
         while (ci < len) {
@@ -1130,10 +1170,7 @@ public class CGen {
                 let close = String_IndexOf(rest, "}")
                 if (close > 0) {
                     let inner = String_Substring(raw, ci + 1, close)
-                    let fc = String_Substring(inner, 0, 1)
-                    // Valid if starts with a letter or "this."
-                    let isAlpha = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", fc)
-                    if (isAlpha || String_StartsWith(inner, "this.")) {
+                    if (this.IsValidInterpExpr(inner)) {
                         hasValid = true
                         ci = len
                     } else {
@@ -1161,9 +1198,7 @@ public class CGen {
                 let close2 = String_IndexOf(rest2, "}")
                 if (close2 > 0) {
                     let expr = String_Substring(raw, i + 1, close2)
-                    let fc2 = String_Substring(expr, 0, 1)
-                    let isId = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", fc2)
-                    if (isId || String_StartsWith(expr, "this.")) {
+                    if (this.IsValidInterpExpr(expr)) {
                         if (i > segStart) {
                             let seg = String_Substring(raw, segStart, i - segStart)
                             let esc = this.EscapeStringForC(seg)
