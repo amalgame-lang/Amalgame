@@ -43,10 +43,11 @@ public class DapServer {
             Console.WriteError("amc dap: no DAP backend found in PATH.")
             Console.WriteError("")
             Console.WriteError("Install one of the following debug adapters:")
-            Console.WriteError("  Linux:   apt install lldb-18  (from https://apt.llvm.org/)")
-            Console.WriteError("           → /usr/lib/llvm-18/bin/lldb-dap")
-            Console.WriteError("  macOS:   xcode-select --install  (lldb-dap ships with Xcode CLT 14+)")
-            Console.WriteError("  Windows: pacman -S mingw-w64-x86_64-gdb  (gdb 14+ has --dap, MSYS2)")
+            Console.WriteError("  Linux:    apt install lldb-18  (from https://apt.llvm.org/)")
+            Console.WriteError("            → /usr/lib/llvm-18/bin/lldb-dap")
+            Console.WriteError("            — or — apt install gdb  (any distro's recent gdb is fine)")
+            Console.WriteError("  macOS:    xcode-select --install  (lldb-dap ships with Xcode CLT 14+)")
+            Console.WriteError("  Windows:  pacman -S mingw-w64-x86_64-gdb  (gdb 14+ has --dap, MSYS2)")
             Console.WriteError("")
             Console.WriteError("Then re-run `amc dap`. Use `amc build -g entry.am` first to embed")
             Console.WriteError("DWARF debug info so breakpoints can target .am source lines.")
@@ -78,21 +79,50 @@ public class DapServer {
         let n: int = cands.Count()
         for i in 0..n {
             let c: string = cands.Get(i)
-            let probe = Process.RunCapture("command -v '" + c + "' 2>/dev/null")
-            if (probe.Exit == 0 && String_Length(probe.Stdout) > 0) {
-                // Strip the trailing newline `command -v` writes
-                var s: string = probe.Stdout
-                let last: int = String_Length(s) - 1
-                if (last >= 0) {
-                    let tail: string = String_Substring(s, last, 1)
-                    if (tail == "\n") {
-                        s = String_Substring(s, 0, last)
-                    }
-                }
-                return s
+            let hit: string = DapServer.Probe(c)
+            if (String_Length(hit) > 0) {
+                return hit
+            }
+        }
+        // gdb fallback for hosts without LLVM. gdb gained --dap in
+        // v14 (2023-11); most Debian/Ubuntu 24.04+, Fedora 39+, Arch,
+        // and MSYS2 mingw64 ship a recent enough gdb. Older systems
+        // will fail at exec time with a clean error on stderr — the
+        // DAP client surfaces it as a launch failure. Returned with a
+        // `gdb:` sentinel so ExecBackend knows to inject `--dap` as
+        // the first argv element.
+        let gdbCands: List<string> = new List<string>()
+        gdbCands.Add("gdb")
+        gdbCands.Add("/usr/bin/gdb")
+        gdbCands.Add("/opt/homebrew/bin/gdb")
+        let m: int = gdbCands.Count()
+        for i in 0..m {
+            let c: string = gdbCands.Get(i)
+            let hit: string = DapServer.Probe(c)
+            if (String_Length(hit) > 0) {
+                return "gdb:" + hit
             }
         }
         return ""
+    }
+
+    // Run `command -v` for a candidate binary; on hit return the
+    // resolved absolute path with the trailing newline stripped, else
+    // the empty string.
+    private static string Probe(string candidate) {
+        let probe = Process.RunCapture("command -v '" + candidate + "' 2>/dev/null")
+        if (probe.Exit != 0 || String_Length(probe.Stdout) == 0) {
+            return ""
+        }
+        var s: string = probe.Stdout
+        let last: int = String_Length(s) - 1
+        if (last >= 0) {
+            let tail: string = String_Substring(s, last, 1)
+            if (tail == "\n") {
+                s = String_Substring(s, 0, last)
+            }
+        }
+        return s
     }
 
     // Replace this process with the backend. argv[0] is the resolved
@@ -103,23 +133,39 @@ public class DapServer {
     // and returns 127.
     private int ExecBackend(string exe) {
         @c {
+            // Strip the `gdb:` sentinel DetectBackend added for the
+            // gdb fallback path and remember it so we can inject the
+            // `--dap` arg lldb-dap doesn't need.
+            const char* exeStr = (const char*) exe;
+            int isGdb = 0;
+            if (strncmp(exeStr, "gdb:", 4) == 0) {
+                isGdb = 1;
+                exeStr += 4;
+            }
             int parentArgc = code_argc;
             char** parentArgv = code_argv;
-            // argv layout: [backend_path, forwarded_args..., NULL]
+            // argv layout:
+            //   lldb-dap : [exe,            forwarded_args..., NULL]
+            //   gdb      : [exe, "--dap",   forwarded_args..., NULL]
             int fwd = parentArgc - 2;
             if (fwd < 0) { fwd = 0; }
-            int n = 1 + fwd + 1;
+            int extra = isGdb ? 1 : 0;
+            int n = 1 + extra + fwd + 1;
             char** argv = (char**) malloc(sizeof(char*) * (size_t) n);
             if (argv == NULL) {
                 fprintf(stderr, "amc dap: out of memory building argv\n");
                 return 127;
             }
-            argv[0] = (char*) exe;
-            for (int i = 0; i < fwd; i++) {
-                argv[1 + i] = parentArgv[2 + i];
+            int pos = 0;
+            argv[pos++] = (char*) exeStr;
+            if (isGdb) {
+                argv[pos++] = (char*) "--dap";
             }
-            argv[n - 1] = (char*) 0;
-            execvp((const char*) exe, argv);
+            for (int i = 0; i < fwd; i++) {
+                argv[pos++] = parentArgv[2 + i];
+            }
+            argv[pos] = (char*) 0;
+            execvp(exeStr, argv);
             // execvp returns only on error.
             perror("amc dap: execvp");
             free(argv);
