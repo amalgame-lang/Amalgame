@@ -7,6 +7,97 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.11] — 2026-05-15
+
+Compiler release unlocking C-trampoline-style callbacks (used by
+the brand-new `amalgame-ui-web` package's `Window.Bind`, and a
+prerequisite for any future stdlib callback API). Two coordinated
+changes shipped:
+
+### Fixed: cgen mis-parses `{` `}` `:` inside string literals
+
+`EmitInterpolatedString` accepted any `{x...}` content starting
+with a letter (or `this.`) as an interpolation slot. CSS embedded
+in `.am` string literals — e.g. `"body{font-family:system-ui}"` —
+silently triggered interpolation parsing and produced malformed C
+(ternary cascades, `String_FromInt(font-family:...)`).
+
+Introduces `IsValidInterpExpr` which requires the brace content to
+match `ident(.ident)*` with an optional trailing `(args)` for
+method calls. Anything containing `:`, `;`, `-`, ` `, etc. falls
+back to a literal `{` / `}`. Discovered while bringing up the
+`amalgame-ui-web` spike (inline HTML with `<style>body{...}</style>`
+blocks).
+
+PR #452.
+
+### Added: typed-param lambdas + return-type-aware closure calls
+
+Three coordinated parser/cgen changes that make `(req: string) =>
+"saved: " + req` style handlers representable. Before this release,
+multi-param lambdas accepted only bare identifiers and CGen always
+unboxed the closure result as `i64`, which made string-shaped
+handlers (needed by webview-style C trampolines) impossible.
+
+- `ParseLambdaMulti` consumes optional `:type` annotations per
+  param. `IsLambdaParenStart` looks past type tokens (incl.
+  `<...>`, `[]`, `?` suffixes) so the lookahead still distinguishes
+  lambdas from parenthesised expressions.
+- At lambda assignment, `InferTypeFromExpr` stashes the return type
+  via a new `__closure_ret__` map. At `AmalgameClosure_call1/2/3`
+  sites, pointer-typed returns (`code_string`, `*`) emit a direct
+  cast; scalars stay on the `UnboxScalar` path; missing info falls
+  back to the legacy `i64` default so block-bodied lambdas and
+  pre-existing code are unaffected.
+- Inline lambdas passed as call arguments now emit a real
+  `AmalgameClosure_new(...)` instead of a `__lambda_..._placeholder__`
+  token. Higher-order list methods (Map/Filter/etc.) still
+  intercept earlier via `EmitClosureArg`, so this only affects
+  "regular" call sites such as webview `Bind`.
+
+Also: new AM type `Closure` → `AmalgameClosure*` so facade methods
+can declare `handler: Closure` without per-package typedef shims.
+
+PR #453.
+
+### New external package: amalgame-ui-web
+
+[`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
+v0.0.2-dev — Webview-based GUI binding. Wraps the MIT-licensed
+[`webview/webview`](https://github.com/webview/webview) library and
+renders HTML/CSS/JS in the OS-native engine (WebView2 / WKWebView /
+WebKitGTK). v0.0.2 surface: `Window` (new, IsValid, SetTitle,
+SetSize, Navigate, SetHtml, Init, Eval, Run, Terminate, Destroy,
+Bind, Unbind) + bidirectional JS↔AM IPC via typed-lambda handlers.
+
+The two cgen/lambda changes in this release are what made the
+package's `Bind` API viable. Replaces the sunset `amalgame-ui-forms`
+(SDL retained-mode) and `amalgame-ui-tk` (Tcl/Tk) toolkits as the
+recommended GUI path for productive apps — see the design proposal
+at `docs/proposals/amalgame-ui-web.md`.
+
+### Patch surface
+
+- `src/parser/parser.am` — `ParseLambdaMulti` typed params,
+  `IsLambdaParenStart` typed-param lookahead.
+- `src/generator/c_gen.am` — `IsValidInterpExpr` strict
+  interpolation check, `__closure_ret__` tracking, return-type-
+  aware closure call sites, inline lambdas emit closures directly,
+  `Closure` → `AmalgameClosure*` typedef.
+- `src/package_registry.am` — version bump.
+- `README.md` — version bump.
+- `tests/samples/typed_lambda.am` — new sample exercising
+  `(string)→string`, `(int)→int`, `(string,int)→string`.
+
+Test suite stays green: 46/46 PASS on Linux/macOS/Windows CI.
+
+The 4 remaining cgen bugs from the ui-forms backlog (#1 forward-
+decl ordering, #2 chained calls cross-pkg, #3 field=type shadowing,
+#6 let scope flattened) are still open — none reproduce intra-
+package on the current amc, awaiting a cross-package consumer.
+
+---
+
 ## [v0.8.10] — 2026-05-14
 
 Bug-fix release closing 2 of the 6 cgen/typechecker bugs that
