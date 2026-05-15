@@ -28,6 +28,10 @@ hack on the compiler itself, jump to chapter 7.
    adding a builtin, adding a syntax form, adding a CGen rule.
 8. [LLM commands](08-llm-commands.md) — `amc migrate`, `amc generate`,
    `amc explain`: providers, env vars, caching, design rationale.
+9. [`amalgame-ui-web`](09-ui-web/README.md) — desktop GUI binding
+   over the OS webview (WebView2 / WKWebView / WebKitGTK). Five
+   sub-chapters: getting started, widget catalogue, events +
+   partial-DOM updates, layout + theming, escape hatches.
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
