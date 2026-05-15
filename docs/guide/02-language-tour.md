@@ -375,6 +375,54 @@ let times = nums.Map(x => x * 10)                // [10, 20, 30, 40]
 let total = nums.Reduce(0, (acc, x) => acc + x)  // 10
 ```
 
+## List literals and comprehensions
+
+Square-bracket syntax builds a `List<T>` inline. Comma-separated
+expressions are literals; the `for x in iter` form is a
+comprehension that maps and optionally filters:
+
+```kotlin
+// Empty list — element type comes from the target slot.
+let empty: List<int> = []
+
+// Literal with explicit elements.
+let names: List<string> = ["alpha", "beta", "gamma"]
+
+// Mixed with computed values and trailing comma.
+let n = 7
+let nums: List<int> = [
+    n,
+    n + 1,
+    n * 2,
+]
+
+// Function argument.
+TakeList(["x", "y", "z"])
+
+// List comprehension — map a range.
+let squares: List<int> = [i * i for i in 0..10]
+// → [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+
+// Comprehension with filter.
+let evens: List<int> = [i for i in 0..20 if i % 2 == 0]
+
+// Iterate an existing list — `x` is bound element-by-element.
+let upper: List<string> = [String_ToUpper(name) for name in names]
+```
+
+Both forms lower to the same shape — a GCC compound-statement
+expression that allocates a fresh `AmalgameList*` and pushes
+each boxed element. Literals are equivalent to the longhand
+`new List<T>(); list.Add(...)` series — use whichever reads
+better at the call site.
+
+The comprehension supports two iterable shapes:
+- a numeric range (`lo..hi`) — emits a counted `i64` loop;
+- any `List<T>` value — emits an indexed loop over the list.
+
+Same-name nesting (`[ [j for j in 0..i] for i in 0..3 ]`)
+isn't supported yet — pick distinct loop variables when nesting.
+
 **Current limitations.** Lambda arguments and results are still
 typed `i64` at the C level. `xs.Filter(x => x > 0)` works
 because `bool` round-trips through int; `xs.Map(x => x.Name)`
@@ -474,12 +522,12 @@ non-zero when any error was reported.
 
 ## What's not in the language yet
 
-- Closures that **capture** surrounding variables (lambdas exist but
-  capture is not implemented — use static helpers / explicit args).
 - Generic type inference (`let xs = new List<int>()` does compile but
-  the element type `int` isn't propagated through method calls).
-- `match` as expression — arms run statements, not expressions.
-- List comprehensions, spread `...args`, async/await.
+  the element type `int` isn't propagated through every method call —
+  see [04-stdlib.md](04-stdlib.md#listt) for which methods preserve
+  the element type).
+- Spread / rest (`...args`), async / await.
+- Same-name list-comprehension nesting (use distinct loop vars).
 
 See [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md) for the full
 backlog.
