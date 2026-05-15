@@ -1200,6 +1200,15 @@ public class FullResolver {
             this.PopScope()
             return
         }
+        if (k == NodeKind.LIST_LITERAL) {
+            // [e1, e2, ...]: each element is resolved in the outer
+            // scope. No new bindings introduced.
+            let nc: int = expr.Children.Count()
+            for i in 0..nc {
+                this.ResolveExpr(expr.Children.Get(i))
+            }
+            return
+        }
         if (k == NodeKind.ASSIGN) {
             this.ResolveAssign(expr)
             return

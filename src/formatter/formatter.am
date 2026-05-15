@@ -682,6 +682,15 @@ public class Formatter {
             }
             return s + "]"
         }
+        if (k == NodeKind.LIST_LITERAL) {
+            var ll: string = "["
+            let nc: int = n.Children.Count()
+            for i in 0..nc {
+                if (i > 0) { ll = ll + ", " }
+                ll = ll + this.EmitExpr(n.Children.Get(i))
+            }
+            return ll + "]"
+        }
         // Expression contexts can't host a `//` comment, so emit a
         // syntactically valid placeholder identifier instead. Round-trip
         // is lossy but the surrounding code remains parseable.
@@ -892,6 +901,7 @@ public class Formatter {
         if (k == NodeKind.THIS_EXPR)      { return "THIS_EXPR" }
         if (k == NodeKind.INDEX_EXPR)     { return "INDEX_EXPR" }
         if (k == NodeKind.LIST_COMP)      { return "LIST_COMP" }
+        if (k == NodeKind.LIST_LITERAL)   { return "LIST_LITERAL" }
         return "?"
     }
 }

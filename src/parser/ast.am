@@ -35,6 +35,12 @@ public enum NodeKind {
     THIS_EXPR
     INDEX_EXPR
     LIST_COMP
+    // List literal: `[expr1, expr2, expr3]`. Distinct from LIST_COMP
+    // (which carries a `for x in iter` projection). Children hold the
+    // literal element expressions in declaration order. An empty `[]`
+    // emits an empty AmalgameList* (element type defaults to void*
+    // until it lands in a typed slot).
+    LIST_LITERAL
     // Inline-C raw block (`@c { … }`). `Str` holds the verbatim C source
     // between the matching braces (outer `{`/`}` excluded). The resolver
     // treats it as opaque; the cgen splices it inside a compound statement

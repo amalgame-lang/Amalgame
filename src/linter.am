@@ -377,6 +377,13 @@ public class Linter {
             this.PopScope()
             return
         }
+        if (k == NodeKind.LIST_LITERAL) {
+            let nc: int = expr.Children.Count()
+            for i in 0..nc {
+                this.LintExpr(expr.Children.Get(i))
+            }
+            return
+        }
         if (k == NodeKind.ASSIGN) {
             if (expr.Left  != null) { this.LintExpr(expr.Left) }
             if (expr.Right != null) { this.LintExpr(expr.Right) }
