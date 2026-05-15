@@ -1658,43 +1658,58 @@ public class Parser {
         return this.Unknown()
     }
 
-    // ── List comprehension ────────────────────────────
-    // [expr for x in iter]                         — map
-    // [expr for x in iter if cond]                 — map + filter
-    // The shape is recognised by spotting a `for` keyword after the first
-    // expression. Everything else (e.g. plain array literals) is left for
-    // a future ParseArrayLiteral; for now `[` exclusively starts a comp.
+    // ── Bracket-expression: list literal OR comprehension ─
+    // []                                            — empty literal
+    // [expr1, expr2, expr3]                         — literal (n>=1)
+    // [expr for x in iter]                          — comprehension map
+    // [expr for x in iter if cond]                  — comp + filter
+    // The shape is decided by what follows the first expression:
+    // `for` → comprehension; `,` or `]` → literal. Trailing comma OK.
     private AstNode ParseListComp() {
         let tok = this.Advance() // consume '['
-        let projection = this.ParseExpr()
         this.SkipNewlines()
-        if (!this.CheckKw("for")) {
-            this.Errors.Add("Expected 'for' in list comprehension at " + String_FromInt(tok.Line) + ":" + String_FromInt(tok.Column))
-            // Skip until ']' to recover.
-            while (!this.IsEnd() && !this.CheckValue("]")) { this.Advance() }
-            if (this.CheckValue("]")) { this.Advance() }
-            return this.Unknown()
-        }
-        this.Advance() // consume 'for'
-        let varTok = this.ExpectIdent()
-        if (!this.CheckKw("in")) {
-            this.Errors.Add("Expected 'in' in list comprehension at " + String_FromInt(varTok.Line) + ":" + String_FromInt(varTok.Column))
-        } else {
-            this.Advance() // consume 'in'
-        }
-        let iter = this.ParseExpr()
-        let node = new AstNode(NodeKind.LIST_COMP, tok.Line, tok.Column)
-        node.Left  = projection         // expr emitted per element
-        node.Str   = varTok.Value       // iteration variable name
-        node.Right = iter               // iterable (range or list)
-        this.SkipNewlines()
-        if (this.CheckKw("if")) {
+        // Empty literal.
+        if (this.CheckValue("]")) {
             this.Advance()
-            node.Cond = this.ParseExpr()  // optional filter condition
+            return new AstNode(NodeKind.LIST_LITERAL, tok.Line, tok.Column)
+        }
+        let firstExpr = this.ParseExpr()
+        this.SkipNewlines()
+        // List comprehension form — keep the historical shape.
+        if (this.CheckKw("for")) {
+            this.Advance() // consume 'for'
+            let varTok = this.ExpectIdent()
+            if (!this.CheckKw("in")) {
+                this.Errors.Add("Expected 'in' in list comprehension at " + String_FromInt(varTok.Line) + ":" + String_FromInt(varTok.Column))
+            } else {
+                this.Advance() // consume 'in'
+            }
+            let iter = this.ParseExpr()
+            let node = new AstNode(NodeKind.LIST_COMP, tok.Line, tok.Column)
+            node.Left  = firstExpr          // expr emitted per element
+            node.Str   = varTok.Value       // iteration variable name
+            node.Right = iter               // iterable (range or list)
+            this.SkipNewlines()
+            if (this.CheckKw("if")) {
+                this.Advance()
+                node.Cond = this.ParseExpr()  // optional filter condition
+                this.SkipNewlines()
+            }
+            this.Expect("]")
+            return node
+        }
+        // List literal — accumulate comma-separated expressions.
+        let lit = new AstNode(NodeKind.LIST_LITERAL, tok.Line, tok.Column)
+        lit.Children.Add(firstExpr)
+        while (this.CheckValue(",")) {
+            this.Advance()
+            this.SkipNewlines()
+            if (this.CheckValue("]")) { break } // tolerate trailing comma
+            lit.Children.Add(this.ParseExpr())
             this.SkipNewlines()
         }
         this.Expect("]")
-        return node
+        return lit
     }
 
     // ── Match ─────────────────────────────────────────
