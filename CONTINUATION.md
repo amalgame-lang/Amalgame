@@ -1,6 +1,113 @@
 # Continuation prompt — start a new chat with this
 
-> **Last refreshed 2026-05-15 (late afternoon)** — **v0.8.12 tagged**
+> **Last refreshed 2026-05-15 (evening)** — **ui-web v0.0.4 shipped
+> end-to-end** + **amc v0.8.13 release candidate** assembled on
+> develop. Whole v0.0.4 roadmap (form reading + OS theming + amc
+> scaffolder) landed in one session.
+>
+> ### ui-web v0.0.4 — tagged + on packages-index
+>
+> 6-commit PR (`#2`) merged → tag `v0.0.4` → GitHub Release →
+> packages-index PR `#19` merged. `amc package add ui-web` resolves
+> to v0.0.4 now. `required-amalgame >= 0.8.12`.
+>
+> What landed:
+>
+> 1. **Form reading** — new `Element` builders: `Textarea(name)`,
+>    `Select(name)`, `Option(value, label)`, `CheckBox(name)`,
+>    `Radio(name, value)`, `Bind(name)`. `Page.ApplyTo` injects a
+>    `window.__amc_collect()` JS bridge via `Window.Init`; the
+>    generated `onclick` stringifies the collected form state and
+>    passes it as the handler's `req` JSON object. Breaking from
+>    v0.0.3 where `req` was the JS args array.
+>
+> 2. **OS theming** — baseline stylesheet auto-injected by
+>    `Page.Render` (modern reset + 7 CSS variables —
+>    `--amc-bg`/`-fg`/`-muted`/`-border`/`-surface`/`-accent`/
+>    `-radius`). Dark variant keys off `[data-theme=dark]` written
+>    on `<html>` from the OS detection. Linux `gtk-application-prefer-dark-theme`
+>    flip in `Amalgame_UI_Web_Create` so GTK-rendered `<select>`
+>    popups and scrollbars match. `Page.SetStylesheet(url)` /
+>    `.AddCss(url)` / `.NoBaseline()` / `.SetTheme("auto"|"light"|"dark")`.
+>    `Page.DetectOSTheme()` static exposes the C primitive
+>    (gsettings / `defaults` / Windows registry; `AMALGAME_UI_THEME`
+>    env override wins).
+>
+> 3. **Element.Size(w, h)** — pixel sizing helper, 0 = leave axis
+>    intact. Style() now cumulative (StyleCss field; multiple calls
+>    layer per CSS cascade). Render emits single combined `style`
+>    attr.
+>
+> 4. **Chrome lockdown by default** — `Page.ApplyTo` swallows
+>    contextmenu + F5/Ctrl+R/Cmd+R reloads (SetHtml-loaded pages
+>    have no URL to reload to). Opt out via `Page.AllowBrowserDefaults()`.
+>    `Ctrl+Shift+I` (DevTools) intentionally left alive.
+>
+> 5. **Polish** — `user-select: none` on body (form fields + `<pre>`
+>    stay selectable), `textarea { resize: none }` (drag-grip
+>    destabilizes declarative layout), void HTML tags no longer get
+>    a stray closing tag, `<meta viewport>` for HiDPI.
+>
+> ### amc — `--template ui-web-form` scaffolder (PR #463 merged)
+>
+> `amc new my-app --template ui-web-form` scaffolds a webview GUI
+> project: `src/main.am` (Window + Page + form + handler with a
+> small click bridge wiring handler return into `<pre id=out>`),
+> `amalgame.toml` (pins ui-web @v0.0.4), `build.sh` (locates the
+> ui-web clone in the package cache, builds `webview.cc` once,
+> then glue.c + facade.am + user main, links against webkit2gtk /
+> Cocoa+WebKit / WebView2 per OS), README.md (build prereqs per
+> distro). Help text marks the legacy `--template forms` (ui-forms
+> SDL stack) as sunset 2026-05-15.
+>
+> ### amc — quick wins on develop (PR #464, awaiting review)
+>
+> Three small fixes accumulated for the next release:
+>
+> 1. **`amc package add` tolerates `-dev` manifest suffix** at tag
+>    validation (`"0.0.4-dev"` at tag `v0.0.4` no longer rejected).
+>    Matches the convention of tagging without bumping the manifest
+>    that several official packages (ui-web among them) actually use.
+> 2. **macOS canonical path** — `Program.ResolveSelfPath` now uses
+>    `_NSGetExecutablePath` + `realpath()` so the Homebrew symlink
+>    layout resolves to the cellar (where `runtime/` is a sibling).
+>    Closes the last edge case where `amc build` couldn't find its
+>    sibling runtime/ on macOS through PATH.
+> 3. **`gdb --dap` fallback** in `src/dap.am` — after lldb-dap,
+>    probe `gdb` (and a couple of fallback paths). Returned with a
+>    `gdb:` sentinel; ExecBackend strips it and injects `--dap` as
+>    argv[1]. Closes the gdb-dap backlog tracked since v0.8.0.
+>
+> Once PR #464 is merged, **release amc v0.8.13** with the
+> scaffolder (#463) + quick wins (#464).
+>
+> ### Suite — v0.0.5 ui-web "real apps need this" backlog
+>
+> No urgent feature blocking real productive apps. The big gap
+> toward a v1 desktop-app parity story (proposal section v2) is
+> native chrome: menubar, dialogs, system tray + notifs, custom
+> URL scheme `am://`, multi-window orchestration. Each is per-OS
+> work (Win32 + NSMenu + GtkMenuBar style). ~20 focused weeks of
+> work spreadable across v0.0.5 → v0.0.7 or a single v0.1.0 push.
+>
+> A more incremental v0.0.5 menu: pick the most-painful gap from
+> real-user feedback, ship just that. Candidates:
+>
+> - **`.OnResult(targetId)` declarative**: the spike-bridge JS in
+>   `main.am` (passing the handler's return back to the DOM) is
+>   the most awkward thing in the scaffold today. ~1-2 days to
+>   bake into `Element.OnClick` directly.
+> - **`Page.AddAsset(path)`**: ship images/fonts alongside the
+>   stylesheet override. Deferred from v0.0.4. ~2 days.
+> - **HiDPI scaling sanity check** + windowed `Window.SetIcon`.
+>
+> Native menubar stays the headline v0.1.0 work.
+>
+> ---
+>
+> **Archived below — afternoon 2026-05-15 (v0.8.12 + ui-web v0.0.3 / pivot)**
+>
+> **Earlier in 2026-05-15** — **v0.8.12 tagged**
 > + GUI ecosystem pivoted from SDL/Tk to webview. Massive day:
 > released amc tags **v0.8.11** + **v0.8.12**, created the new
 > [`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
