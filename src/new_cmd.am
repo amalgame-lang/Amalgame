@@ -1219,8 +1219,8 @@ public class NewCommand {
     // WebKitGTK) and bridges JS ↔ Amalgame via Window.Bind. The
     // scaffold lays out a Window + Page + small form + Submit
     // handler that echoes the form payload back into a <pre>
-    // panel via a tiny in-page click bridge (until ui-web v0.0.5+
-    // ships a declarative `.OnResult(targetId)`).
+    // panel via the declarative `Element.OnResult(targetId)`
+    // builder (ui-web v0.0.5+).
 
     private static int ScaffoldUiWebForm(string path, string base) {
         if (!File.Mkdir(path + "/src")) {
@@ -1259,9 +1259,8 @@ public class NewCommand {
         s = s + "// AM-side Element / Page builder. Submit invokes the AM\n"
         s = s + "// handler with the form payload as a JSON object string\n"
         s = s + "// (auto-collected by ui-web's __amc_collect bridge). The\n"
-        s = s + "// returned JSON lands in the <pre id=out> panel via a\n"
-        s = s + "// tiny in-page click bridge — until ui-web v0.0.5+ ships\n"
-        s = s + "// a declarative `.OnResult(targetId)`.\n"
+        s = s + "// returned value is routed declaratively into the\n"
+        s = s + "// <pre id=out> panel via `Element.OnResult(\"out\")`.\n"
         s = s + "//\n"
         s = s + "// The baseline stylesheet handles light/dark theming from\n"
         s = s + "// the OS. Override individual CSS variables (`--amc-bg`,\n"
@@ -1284,16 +1283,12 @@ public class NewCommand {
         s = s + "                    .AddChild(Element.Input(\"user\").Attr(\"placeholder\", \"Your name\"))\n"
         s = s + "                    .AddChild(Element.Textarea(\"message\").Attr(\"placeholder\", \"A message\").Size(0, 80))\n"
         s = s + "                    .AddChild(Element.Button(\"Submit\")\n"
-        s = s + "                        .OnClick((req: string) => req))\n"
+        s = s + "                        .OnClick((req: string) => req)\n"
+        s = s + "                        .OnResult(\"out\"))\n"
         s = s + "                    .AddChild(Element.Pre(\"(submit to see the form payload)\").Id(\"out\"))\n"
         s = s + "            )\n"
         s = s + "\n"
         s = s + "        page.ApplyTo(win)\n"
-        s = s + "\n"
-        s = s + "        // In-page bridge: intercept Button clicks so the\n"
-        s = s + "        // handler's return value lands in <pre id=out>.\n"
-        s = s + "        win.Init(\"document.addEventListener('click',async e=>{if(e.target.tagName!=='BUTTON')return;const m=(e.target.getAttribute('onclick')||'').match(/window\\\\.(\\\\w+)/);if(!m)return;e.preventDefault();const r=await window[m[1]](JSON.stringify(window.__amc_collect()));document.getElementById('out').textContent=JSON.stringify(JSON.parse(r),null,2);},true);\")\n"
-        s = s + "\n"
         s = s + "        win.Run()\n"
         s = s + "        win.Destroy()\n"
         s = s + "    }\n"
@@ -1314,7 +1309,7 @@ public class NewCommand {
         s = s + "description = \"Amalgame webview GUI app scaffolded by `amc new --template ui-web-form`.\"\n"
         s = s + "\n"
         s = s + "[dependencies]\n"
-        s = s + "ui-web = { git = \"github.com/amalgame-lang/amalgame-ui-web\", tag = \"v0.0.4\" }\n"
+        s = s + "ui-web = { git = \"github.com/amalgame-lang/amalgame-ui-web\", tag = \"v0.0.5\" }\n"
         return s
     }
 
