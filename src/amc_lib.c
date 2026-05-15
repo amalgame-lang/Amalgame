@@ -21658,12 +21658,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "1c329bd0";
+    return "e164b25c";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-15T14:52:00Z";
+    return "2026-05-15T15:24:45Z";
 }
 
 Amalgame_Compiler_LspServer* Amalgame_Compiler_LspServer_new();
@@ -30412,57 +30412,57 @@ static code_string Amalgame_Compiler_NewCommand_MainAmUiWebForm(code_string name
     #line 1261 "./src/new_cmd.am"
     s = (code_string_concat(s, "// (auto-collected by ui-web's __amc_collect bridge). The\n"));
     #line 1262 "./src/new_cmd.am"
-    s = (code_string_concat(s, "// returned JSON lands in the <pre id=out> panel via a\n"));
+    s = (code_string_concat(s, "// returned value is routed declaratively into the\n"));
     #line 1263 "./src/new_cmd.am"
-    s = (code_string_concat(s, "// tiny in-page click bridge — until ui-web v0.0.5+ ships\n"));
+    s = (code_string_concat(s, "// <pre id=out> panel via `Element.OnResult(\"out\")`.\n"));
     #line 1264 "./src/new_cmd.am"
-    s = (code_string_concat(s, "// a declarative `.OnResult(targetId)`.\n"));
-    #line 1265 "./src/new_cmd.am"
     s = (code_string_concat(s, "//\n"));
-    #line 1266 "./src/new_cmd.am"
+    #line 1265 "./src/new_cmd.am"
     s = (code_string_concat(s, "// The baseline stylesheet handles light/dark theming from\n"));
-    #line 1267 "./src/new_cmd.am"
+    #line 1266 "./src/new_cmd.am"
     s = (code_string_concat(s, "// the OS. Override individual CSS variables (`--amc-bg`,\n"));
-    #line 1268 "./src/new_cmd.am"
+    #line 1267 "./src/new_cmd.am"
     s = (code_string_concat(s, "// `--amc-fg`, `--amc-accent`, …) from your own stylesheet\n"));
-    #line 1269 "./src/new_cmd.am"
+    #line 1268 "./src/new_cmd.am"
     s = (code_string_concat(s, "// or call `Page.SetStylesheet(url)` / `.AddCss(url)`.\n"));
+    #line 1269 "./src/new_cmd.am"
+    s = (code_string_concat(s, "\n"));
     #line 1270 "./src/new_cmd.am"
-    s = (code_string_concat(s, "\n"));
-    #line 1271 "./src/new_cmd.am"
     s = (code_string_concat(s, "class Program {\n"));
-    #line 1272 "./src/new_cmd.am"
+    #line 1271 "./src/new_cmd.am"
     s = (code_string_concat(s, "    public static void Main() {\n"));
-    #line 1273 "./src/new_cmd.am"
+    #line 1272 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "        let win: Window = new Window(\"")), name)), "\", 720, 480, false)\n"));
-    #line 1274 "./src/new_cmd.am"
+    #line 1273 "./src/new_cmd.am"
     s = (code_string_concat(s, "        if (!win.IsValid()) {\n"));
-    #line 1275 "./src/new_cmd.am"
+    #line 1274 "./src/new_cmd.am"
     s = (code_string_concat(s, "            return\n"));
-    #line 1276 "./src/new_cmd.am"
+    #line 1275 "./src/new_cmd.am"
     s = (code_string_concat(s, "        }\n"));
-    #line 1277 "./src/new_cmd.am"
+    #line 1276 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1278 "./src/new_cmd.am"
+    #line 1277 "./src/new_cmd.am"
     s = (code_string_concat(s, "        let page: Page = Page.New()\n"));
-    #line 1279 "./src/new_cmd.am"
+    #line 1278 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "            .SetTitle(\"")), name)), "\")\n"));
-    #line 1280 "./src/new_cmd.am"
+    #line 1279 "./src/new_cmd.am"
     s = (code_string_concat(s, "            .SetBody(\n"));
-    #line 1281 "./src/new_cmd.am"
+    #line 1280 "./src/new_cmd.am"
     s = (code_string_concat(s, "                Element.Stack()\n"));
-    #line 1282 "./src/new_cmd.am"
+    #line 1281 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "                    .AddChild(Element.Heading(\"Welcome to ")), name)), "\"))\n"));
-    #line 1283 "./src/new_cmd.am"
+    #line 1282 "./src/new_cmd.am"
     s = (code_string_concat(s, "                    .AddChild(Element.Label(\"Edit the form, then click Submit.\"))\n"));
-    #line 1284 "./src/new_cmd.am"
+    #line 1283 "./src/new_cmd.am"
     s = (code_string_concat(s, "                    .AddChild(Element.Input(\"user\").Attr(\"placeholder\", \"Your name\"))\n"));
-    #line 1285 "./src/new_cmd.am"
+    #line 1284 "./src/new_cmd.am"
     s = (code_string_concat(s, "                    .AddChild(Element.Textarea(\"message\").Attr(\"placeholder\", \"A message\").Size(0, 80))\n"));
-    #line 1286 "./src/new_cmd.am"
+    #line 1285 "./src/new_cmd.am"
     s = (code_string_concat(s, "                    .AddChild(Element.Button(\"Submit\")\n"));
+    #line 1286 "./src/new_cmd.am"
+    s = (code_string_concat(s, "                        .OnClick((req: string) => req)\n"));
     #line 1287 "./src/new_cmd.am"
-    s = (code_string_concat(s, "                        .OnClick((req: string) => req))\n"));
+    s = (code_string_concat(s, "                        .OnResult(\"out\"))\n"));
     #line 1288 "./src/new_cmd.am"
     s = (code_string_concat(s, "                    .AddChild(Element.Pre(\"(submit to see the form payload)\").Id(\"out\"))\n"));
     #line 1289 "./src/new_cmd.am"
@@ -30472,451 +30472,441 @@ static code_string Amalgame_Compiler_NewCommand_MainAmUiWebForm(code_string name
     #line 1291 "./src/new_cmd.am"
     s = (code_string_concat(s, "        page.ApplyTo(win)\n"));
     #line 1292 "./src/new_cmd.am"
-    s = (code_string_concat(s, "\n"));
-    #line 1293 "./src/new_cmd.am"
-    s = (code_string_concat(s, "        // In-page bridge: intercept Button clicks so the\n"));
-    #line 1294 "./src/new_cmd.am"
-    s = (code_string_concat(s, "        // handler's return value lands in <pre id=out>.\n"));
-    #line 1295 "./src/new_cmd.am"
-    s = (code_string_concat(s, "        win.Init(\"document.addEventListener('click',async e=>{if(e.target.tagName!=='BUTTON')return;const m=(e.target.getAttribute('onclick')||'').match(/window\\\\.(\\\\w+)/);if(!m)return;e.preventDefault();const r=await window[m[1]](JSON.stringify(window.__amc_collect()));document.getElementById('out').textContent=JSON.stringify(JSON.parse(r),null,2);},true);\")\n"));
-    #line 1296 "./src/new_cmd.am"
-    s = (code_string_concat(s, "\n"));
-    #line 1297 "./src/new_cmd.am"
     s = (code_string_concat(s, "        win.Run()\n"));
-    #line 1298 "./src/new_cmd.am"
+    #line 1293 "./src/new_cmd.am"
     s = (code_string_concat(s, "        win.Destroy()\n"));
-    #line 1299 "./src/new_cmd.am"
+    #line 1294 "./src/new_cmd.am"
     s = (code_string_concat(s, "    }\n"));
-    #line 1300 "./src/new_cmd.am"
+    #line 1295 "./src/new_cmd.am"
     s = (code_string_concat(s, "}\n"));
-    #line 1301 "./src/new_cmd.am"
+    #line 1296 "./src/new_cmd.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_NewCommand_ManifestUiWebForm(code_string name) {
-    #line 1305 "./src/new_cmd.am"
+    #line 1300 "./src/new_cmd.am"
     code_string s = "";
-    #line 1306 "./src/new_cmd.am"
+    #line 1301 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Project manifest — declares external package deps.\n"));
-    #line 1307 "./src/new_cmd.am"
+    #line 1302 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Run `amc package add ui-web` once to populate amalgame.lock\n"));
-    #line 1308 "./src/new_cmd.am"
+    #line 1303 "./src/new_cmd.am"
     s = (code_string_concat(s, "# and clone the package into ~/.amalgame/packages/, then\n"));
-    #line 1309 "./src/new_cmd.am"
+    #line 1304 "./src/new_cmd.am"
     s = (code_string_concat(s, "# `./build.sh` to compile + link against the OS webview.\n"));
+    #line 1305 "./src/new_cmd.am"
+    s = (code_string_concat(s, "\n"));
+    #line 1306 "./src/new_cmd.am"
+    s = (code_string_concat(s, "[package]\n"));
+    #line 1307 "./src/new_cmd.am"
+    s = (code_string_concat((code_string_concat((code_string_concat(s, "name        = \"")), name)), "\"\n"));
+    #line 1308 "./src/new_cmd.am"
+    s = (code_string_concat(s, "version     = \"0.1.0\"\n"));
+    #line 1309 "./src/new_cmd.am"
+    s = (code_string_concat(s, "description = \"Amalgame webview GUI app scaffolded by `amc new --template ui-web-form`.\"\n"));
     #line 1310 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
     #line 1311 "./src/new_cmd.am"
-    s = (code_string_concat(s, "[package]\n"));
-    #line 1312 "./src/new_cmd.am"
-    s = (code_string_concat((code_string_concat((code_string_concat(s, "name        = \"")), name)), "\"\n"));
-    #line 1313 "./src/new_cmd.am"
-    s = (code_string_concat(s, "version     = \"0.1.0\"\n"));
-    #line 1314 "./src/new_cmd.am"
-    s = (code_string_concat(s, "description = \"Amalgame webview GUI app scaffolded by `amc new --template ui-web-form`.\"\n"));
-    #line 1315 "./src/new_cmd.am"
-    s = (code_string_concat(s, "\n"));
-    #line 1316 "./src/new_cmd.am"
     s = (code_string_concat(s, "[dependencies]\n"));
-    #line 1317 "./src/new_cmd.am"
-    s = (code_string_concat(s, "ui-web = { git = \"github.com/amalgame-lang/amalgame-ui-web\", tag = \"v0.0.4\" }\n"));
-    #line 1318 "./src/new_cmd.am"
+    #line 1312 "./src/new_cmd.am"
+    s = (code_string_concat(s, "ui-web = { git = \"github.com/amalgame-lang/amalgame-ui-web\", tag = \"v0.0.5\" }\n"));
+    #line 1313 "./src/new_cmd.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_NewCommand_BuildShUiWebForm(code_string name) {
-    #line 1325 "./src/new_cmd.am"
+    #line 1320 "./src/new_cmd.am"
     code_string lb = "{";
-    #line 1326 "./src/new_cmd.am"
+    #line 1321 "./src/new_cmd.am"
     code_string rb = "}";
-    #line 1327 "./src/new_cmd.am"
+    #line 1322 "./src/new_cmd.am"
     code_string amcVar = code_string_concat((code_string_concat((code_string_concat("$", lb)), "AMC:-$(command -v amc)")), rb);
-    #line 1328 "./src/new_cmd.am"
+    #line 1323 "./src/new_cmd.am"
     code_string pkgVar = code_string_concat((code_string_concat((code_string_concat("$", lb)), "AMALGAME_PACKAGES_DIR:-$HOME/.amalgame/packages")), rb);
-    #line 1329 "./src/new_cmd.am"
+    #line 1324 "./src/new_cmd.am"
     code_string s = "";
-    #line 1330 "./src/new_cmd.am"
+    #line 1325 "./src/new_cmd.am"
     s = (code_string_concat(s, "#!/bin/sh\n"));
-    #line 1331 "./src/new_cmd.am"
+    #line 1326 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "# Build script for the `")), name)), "` webview GUI app.\n"));
-    #line 1332 "./src/new_cmd.am"
+    #line 1327 "./src/new_cmd.am"
     s = (code_string_concat(s, "#\n"));
-    #line 1333 "./src/new_cmd.am"
+    #line 1328 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Pipeline:\n"));
-    #line 1334 "./src/new_cmd.am"
+    #line 1329 "./src/new_cmd.am"
     s = (code_string_concat(s, "#   1. Locate the amalgame-ui-web clone in your package cache.\n"));
-    #line 1335 "./src/new_cmd.am"
+    #line 1330 "./src/new_cmd.am"
     s = (code_string_concat(s, "#   2. Compile the vendored webview C++ implementation (once).\n"));
-    #line 1336 "./src/new_cmd.am"
+    #line 1331 "./src/new_cmd.am"
     s = (code_string_concat(s, "#   3. Compile the C glue and the AM-side facade.\n"));
-    #line 1337 "./src/new_cmd.am"
+    #line 1332 "./src/new_cmd.am"
     s = (code_string_concat(s, "#   4. Compile src/main.am via amc --external.\n"));
-    #line 1338 "./src/new_cmd.am"
+    #line 1333 "./src/new_cmd.am"
     s = (code_string_concat(s, "#   5. Link everything against libwebkit2gtk (Linux), Cocoa+WebKit\n"));
-    #line 1339 "./src/new_cmd.am"
+    #line 1334 "./src/new_cmd.am"
     s = (code_string_concat(s, "#      (macOS), or WebView2Loader (Windows MinGW).\n"));
-    #line 1340 "./src/new_cmd.am"
+    #line 1335 "./src/new_cmd.am"
     s = (code_string_concat(s, "#\n"));
-    #line 1341 "./src/new_cmd.am"
+    #line 1336 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Requires: amc 0.8.12+. On Linux you also need\n"));
-    #line 1342 "./src/new_cmd.am"
+    #line 1337 "./src/new_cmd.am"
     s = (code_string_concat(s, "# libwebkit2gtk-4.1-dev (Debian/Ubuntu) or equivalent.\n"));
-    #line 1343 "./src/new_cmd.am"
+    #line 1338 "./src/new_cmd.am"
     s = (code_string_concat(s, "set -eu\n"));
-    #line 1344 "./src/new_cmd.am"
+    #line 1339 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1345 "./src/new_cmd.am"
+    #line 1340 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "NAME=")), name)), "\n"));
-    #line 1346 "./src/new_cmd.am"
+    #line 1341 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "AMC=")), amcVar)), "\n"));
-    #line 1347 "./src/new_cmd.am"
+    #line 1342 "./src/new_cmd.am"
     s = (code_string_concat(s, "AMC_DIR=$(cd \"$(dirname \"$AMC\")\" && pwd)\n"));
-    #line 1348 "./src/new_cmd.am"
+    #line 1343 "./src/new_cmd.am"
     s = (code_string_concat(s, "if [ -d \"$AMC_DIR/runtime\" ]; then\n"));
-    #line 1349 "./src/new_cmd.am"
+    #line 1344 "./src/new_cmd.am"
     s = (code_string_concat(s, "  AMC_RUNTIME=\"$AMC_DIR/runtime\"\n"));
-    #line 1350 "./src/new_cmd.am"
+    #line 1345 "./src/new_cmd.am"
     s = (code_string_concat(s, "else\n"));
-    #line 1351 "./src/new_cmd.am"
+    #line 1346 "./src/new_cmd.am"
     s = (code_string_concat(s, "  AMC_RUNTIME=\"$AMC_DIR/../share/amalgame/runtime\"\n"));
-    #line 1352 "./src/new_cmd.am"
+    #line 1347 "./src/new_cmd.am"
     s = (code_string_concat(s, "fi\n"));
-    #line 1353 "./src/new_cmd.am"
+    #line 1348 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Resolve libamalgame.a: prefer the XDG install layout\n"));
-    #line 1354 "./src/new_cmd.am"
+    #line 1349 "./src/new_cmd.am"
     s = (code_string_concat(s, "# (share/amalgame/lib/), fall back to a dev checkout layout\n"));
-    #line 1355 "./src/new_cmd.am"
+    #line 1350 "./src/new_cmd.am"
     s = (code_string_concat(s, "# ($AMC_DIR/lib/) so this script works against both an\n"));
-    #line 1356 "./src/new_cmd.am"
+    #line 1351 "./src/new_cmd.am"
     s = (code_string_concat(s, "# installed amc and a freshly-bootstrapped one.\n"));
-    #line 1357 "./src/new_cmd.am"
+    #line 1352 "./src/new_cmd.am"
     s = (code_string_concat(s, "if [ -z \"${AMC_LIB:-}\" ]; then\n"));
-    #line 1358 "./src/new_cmd.am"
+    #line 1353 "./src/new_cmd.am"
     s = (code_string_concat(s, "  if [ -f \"$AMC_DIR/../share/amalgame/lib/libamalgame.a\" ]; then\n"));
-    #line 1359 "./src/new_cmd.am"
+    #line 1354 "./src/new_cmd.am"
     s = (code_string_concat(s, "    AMC_LIB=\"$AMC_DIR/../share/amalgame/lib/libamalgame.a\"\n"));
-    #line 1360 "./src/new_cmd.am"
+    #line 1355 "./src/new_cmd.am"
     s = (code_string_concat(s, "  elif [ -f \"$AMC_DIR/lib/libamalgame.a\" ]; then\n"));
-    #line 1361 "./src/new_cmd.am"
+    #line 1356 "./src/new_cmd.am"
     s = (code_string_concat(s, "    AMC_LIB=\"$AMC_DIR/lib/libamalgame.a\"\n"));
-    #line 1362 "./src/new_cmd.am"
+    #line 1357 "./src/new_cmd.am"
     s = (code_string_concat(s, "  else\n"));
-    #line 1363 "./src/new_cmd.am"
+    #line 1358 "./src/new_cmd.am"
     s = (code_string_concat(s, "    echo \"ERROR: libamalgame.a not found. Set \\$AMC_LIB or reinstall amc.\"\n"));
-    #line 1364 "./src/new_cmd.am"
+    #line 1359 "./src/new_cmd.am"
     s = (code_string_concat(s, "    exit 1\n"));
-    #line 1365 "./src/new_cmd.am"
+    #line 1360 "./src/new_cmd.am"
     s = (code_string_concat(s, "  fi\n"));
-    #line 1366 "./src/new_cmd.am"
+    #line 1361 "./src/new_cmd.am"
     s = (code_string_concat(s, "fi\n"));
-    #line 1367 "./src/new_cmd.am"
+    #line 1362 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "PKG_CACHE=")), pkgVar)), "\n"));
-    #line 1368 "./src/new_cmd.am"
+    #line 1363 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1369 "./src/new_cmd.am"
+    #line 1364 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Newest installed ui-web tag in the cache.\n"));
-    #line 1370 "./src/new_cmd.am"
+    #line 1365 "./src/new_cmd.am"
     s = (code_string_concat(s, "UIWEB_DIR=$(ls -dt \"$PKG_CACHE/github.com/amalgame-lang/amalgame-ui-web/\"v* 2>/dev/null | head -1)\n"));
-    #line 1371 "./src/new_cmd.am"
+    #line 1366 "./src/new_cmd.am"
     s = (code_string_concat(s, "if [ -z \"$UIWEB_DIR\" ] || [ ! -d \"$UIWEB_DIR/runtime/vendor/webview\" ]; then\n"));
-    #line 1372 "./src/new_cmd.am"
+    #line 1367 "./src/new_cmd.am"
     s = (code_string_concat(s, "  echo \"ERROR: amalgame-ui-web not installed. Run 'amc package add ui-web' first.\"\n"));
-    #line 1373 "./src/new_cmd.am"
+    #line 1368 "./src/new_cmd.am"
     s = (code_string_concat(s, "  exit 1\n"));
-    #line 1374 "./src/new_cmd.am"
+    #line 1369 "./src/new_cmd.am"
     s = (code_string_concat(s, "fi\n"));
-    #line 1375 "./src/new_cmd.am"
+    #line 1370 "./src/new_cmd.am"
     s = (code_string_concat(s, "echo \"Using ui-web from $UIWEB_DIR\"\n"));
-    #line 1376 "./src/new_cmd.am"
+    #line 1371 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1377 "./src/new_cmd.am"
+    #line 1372 "./src/new_cmd.am"
     s = (code_string_concat(s, "# WebKitGTK detection (Linux only — macOS/Windows ship the engine).\n"));
-    #line 1378 "./src/new_cmd.am"
+    #line 1373 "./src/new_cmd.am"
     s = (code_string_concat(s, "WEBKIT_CFLAGS=\"\"\n"));
-    #line 1379 "./src/new_cmd.am"
+    #line 1374 "./src/new_cmd.am"
     s = (code_string_concat(s, "WEBKIT_LIBS=\"\"\n"));
-    #line 1380 "./src/new_cmd.am"
+    #line 1375 "./src/new_cmd.am"
     s = (code_string_concat(s, "case \"$(uname -s)\" in\n"));
-    #line 1381 "./src/new_cmd.am"
+    #line 1376 "./src/new_cmd.am"
     s = (code_string_concat(s, "  Linux*|FreeBSD*|OpenBSD*|NetBSD*)\n"));
-    #line 1382 "./src/new_cmd.am"
+    #line 1377 "./src/new_cmd.am"
     s = (code_string_concat(s, "    if pkg-config --exists webkit2gtk-4.1; then\n"));
-    #line 1383 "./src/new_cmd.am"
+    #line 1378 "./src/new_cmd.am"
     s = (code_string_concat(s, "      WEBKIT_PC=webkit2gtk-4.1\n"));
-    #line 1384 "./src/new_cmd.am"
+    #line 1379 "./src/new_cmd.am"
     s = (code_string_concat(s, "    elif pkg-config --exists webkit2gtk-4.0; then\n"));
-    #line 1385 "./src/new_cmd.am"
+    #line 1380 "./src/new_cmd.am"
     s = (code_string_concat(s, "      WEBKIT_PC=webkit2gtk-4.0\n"));
-    #line 1386 "./src/new_cmd.am"
+    #line 1381 "./src/new_cmd.am"
     s = (code_string_concat(s, "    else\n"));
-    #line 1387 "./src/new_cmd.am"
+    #line 1382 "./src/new_cmd.am"
     s = (code_string_concat(s, "      echo \"ERROR: install libwebkit2gtk-4.1-dev (Debian/Ubuntu) or equivalent.\"\n"));
-    #line 1388 "./src/new_cmd.am"
+    #line 1383 "./src/new_cmd.am"
     s = (code_string_concat(s, "      exit 1\n"));
-    #line 1389 "./src/new_cmd.am"
+    #line 1384 "./src/new_cmd.am"
     s = (code_string_concat(s, "    fi\n"));
-    #line 1390 "./src/new_cmd.am"
+    #line 1385 "./src/new_cmd.am"
     s = (code_string_concat(s, "    WEBKIT_CFLAGS=$(pkg-config --cflags \"$WEBKIT_PC\")\n"));
-    #line 1391 "./src/new_cmd.am"
+    #line 1386 "./src/new_cmd.am"
     s = (code_string_concat(s, "    WEBKIT_LIBS=$(pkg-config --libs \"$WEBKIT_PC\")\n"));
-    #line 1392 "./src/new_cmd.am"
+    #line 1387 "./src/new_cmd.am"
     s = (code_string_concat(s, "    ;;\n"));
-    #line 1393 "./src/new_cmd.am"
+    #line 1388 "./src/new_cmd.am"
     s = (code_string_concat(s, "  Darwin*)\n"));
-    #line 1394 "./src/new_cmd.am"
+    #line 1389 "./src/new_cmd.am"
     s = (code_string_concat(s, "    WEBKIT_LIBS=\"-framework Cocoa -framework WebKit\"\n"));
-    #line 1395 "./src/new_cmd.am"
+    #line 1390 "./src/new_cmd.am"
     s = (code_string_concat(s, "    ;;\n"));
-    #line 1396 "./src/new_cmd.am"
+    #line 1391 "./src/new_cmd.am"
     s = (code_string_concat(s, "  MINGW*|MSYS*|CYGWIN*)\n"));
-    #line 1397 "./src/new_cmd.am"
+    #line 1392 "./src/new_cmd.am"
     s = (code_string_concat(s, "    WEBKIT_LIBS=\"-lWebView2Loader.dll.lib -lOle32 -lShlwapi\"\n"));
-    #line 1398 "./src/new_cmd.am"
+    #line 1393 "./src/new_cmd.am"
     s = (code_string_concat(s, "    ;;\n"));
-    #line 1399 "./src/new_cmd.am"
+    #line 1394 "./src/new_cmd.am"
     s = (code_string_concat(s, "esac\n"));
-    #line 1400 "./src/new_cmd.am"
+    #line 1395 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1401 "./src/new_cmd.am"
+    #line 1396 "./src/new_cmd.am"
     s = (code_string_concat(s, "mkdir -p build\n"));
-    #line 1402 "./src/new_cmd.am"
+    #line 1397 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1403 "./src/new_cmd.am"
+    #line 1398 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Step 1: vendored webview C++ TU (one-shot, ~5 s).\n"));
-    #line 1404 "./src/new_cmd.am"
+    #line 1399 "./src/new_cmd.am"
     s = (code_string_concat(s, "if [ ! -f build/webview.o ] || \\\n"));
-    #line 1405 "./src/new_cmd.am"
+    #line 1400 "./src/new_cmd.am"
     s = (code_string_concat(s, "   [ \"$UIWEB_DIR/runtime/vendor/webview/webview.cc\" -nt build/webview.o ]; then\n"));
-    #line 1406 "./src/new_cmd.am"
+    #line 1401 "./src/new_cmd.am"
     s = (code_string_concat(s, "  echo \"Building webview.cc (one-time C++ TU)...\"\n"));
-    #line 1407 "./src/new_cmd.am"
+    #line 1402 "./src/new_cmd.am"
     s = (code_string_concat(s, "  g++ -c -O2 -std=c++17 -DNDEBUG -Wno-unused-parameter \\\n"));
-    #line 1408 "./src/new_cmd.am"
+    #line 1403 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -DWEBVIEW_STATIC \\\n"));
-    #line 1409 "./src/new_cmd.am"
+    #line 1404 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -I \"$UIWEB_DIR/runtime/vendor/webview\" \\\n"));
-    #line 1410 "./src/new_cmd.am"
+    #line 1405 "./src/new_cmd.am"
     s = (code_string_concat(s, "      $WEBKIT_CFLAGS \\\n"));
-    #line 1411 "./src/new_cmd.am"
+    #line 1406 "./src/new_cmd.am"
     s = (code_string_concat(s, "      \"$UIWEB_DIR/runtime/vendor/webview/webview.cc\" \\\n"));
-    #line 1412 "./src/new_cmd.am"
+    #line 1407 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -o build/webview.o\n"));
-    #line 1413 "./src/new_cmd.am"
+    #line 1408 "./src/new_cmd.am"
     s = (code_string_concat(s, "fi\n"));
-    #line 1414 "./src/new_cmd.am"
+    #line 1409 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1415 "./src/new_cmd.am"
+    #line 1410 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Step 2: C glue (thin slot-table over webview_*).\n"));
-    #line 1416 "./src/new_cmd.am"
+    #line 1411 "./src/new_cmd.am"
     s = (code_string_concat(s, "if [ ! -f build/Amalgame_UI_Web.o ] || \\\n"));
-    #line 1417 "./src/new_cmd.am"
+    #line 1412 "./src/new_cmd.am"
     s = (code_string_concat(s, "   [ \"$UIWEB_DIR/runtime/Amalgame_UI_Web.c\" -nt build/Amalgame_UI_Web.o ]; then\n"));
-    #line 1418 "./src/new_cmd.am"
+    #line 1413 "./src/new_cmd.am"
     s = (code_string_concat(s, "  echo \"Building C glue...\"\n"));
-    #line 1419 "./src/new_cmd.am"
+    #line 1414 "./src/new_cmd.am"
     s = (code_string_concat(s, "  gcc -c -O2 -DWEBVIEW_STATIC \\\n"));
-    #line 1420 "./src/new_cmd.am"
+    #line 1415 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -I \"$AMC_RUNTIME\" \\\n"));
-    #line 1421 "./src/new_cmd.am"
+    #line 1416 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -I \"$UIWEB_DIR/runtime\" \\\n"));
-    #line 1422 "./src/new_cmd.am"
+    #line 1417 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -I \"$UIWEB_DIR/runtime/vendor/webview\" \\\n"));
-    #line 1423 "./src/new_cmd.am"
+    #line 1418 "./src/new_cmd.am"
     s = (code_string_concat(s, "      $WEBKIT_CFLAGS \\\n"));
-    #line 1424 "./src/new_cmd.am"
+    #line 1419 "./src/new_cmd.am"
     s = (code_string_concat(s, "      \"$UIWEB_DIR/runtime/Amalgame_UI_Web.c\" \\\n"));
-    #line 1425 "./src/new_cmd.am"
+    #line 1420 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -o build/Amalgame_UI_Web.o\n"));
-    #line 1426 "./src/new_cmd.am"
+    #line 1421 "./src/new_cmd.am"
     s = (code_string_concat(s, "fi\n"));
-    #line 1427 "./src/new_cmd.am"
+    #line 1422 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1428 "./src/new_cmd.am"
+    #line 1423 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Step 3: ui-web AM facade.\n"));
-    #line 1429 "./src/new_cmd.am"
+    #line 1424 "./src/new_cmd.am"
     s = (code_string_concat(s, "if [ ! -f build/facade.o ] || [ \"$UIWEB_DIR/facade.am\" -nt build/facade.o ]; then\n"));
-    #line 1430 "./src/new_cmd.am"
+    #line 1425 "./src/new_cmd.am"
     s = (code_string_concat(s, "  echo \"Building ui-web facade...\"\n"));
-    #line 1431 "./src/new_cmd.am"
+    #line 1426 "./src/new_cmd.am"
     s = (code_string_concat(s, "  (cd \"$UIWEB_DIR\" && \"$AMC\" --lib facade.am --quiet)\n"));
-    #line 1432 "./src/new_cmd.am"
+    #line 1427 "./src/new_cmd.am"
     s = (code_string_concat(s, "  gcc -c -O2 \\\n"));
-    #line 1433 "./src/new_cmd.am"
+    #line 1428 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -I \"$AMC_RUNTIME\" \\\n"));
-    #line 1434 "./src/new_cmd.am"
+    #line 1429 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -I \"$UIWEB_DIR/runtime\" \\\n"));
-    #line 1435 "./src/new_cmd.am"
+    #line 1430 "./src/new_cmd.am"
     s = (code_string_concat(s, "      \"$UIWEB_DIR/a.out.c\" \\\n"));
-    #line 1436 "./src/new_cmd.am"
+    #line 1431 "./src/new_cmd.am"
     s = (code_string_concat(s, "      -o build/facade.o\n"));
-    #line 1437 "./src/new_cmd.am"
+    #line 1432 "./src/new_cmd.am"
     s = (code_string_concat(s, "fi\n"));
-    #line 1438 "./src/new_cmd.am"
+    #line 1433 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1439 "./src/new_cmd.am"
+    #line 1434 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Step 4: user app.\n"));
-    #line 1440 "./src/new_cmd.am"
+    #line 1435 "./src/new_cmd.am"
     s = (code_string_concat(s, "echo \"Compiling src/main.am...\"\n"));
-    #line 1441 "./src/new_cmd.am"
+    #line 1436 "./src/new_cmd.am"
     s = (code_string_concat(s, "\"$AMC\" -o \"build/$NAME\" src/main.am --external \"$UIWEB_DIR/facade.am\" --quiet\n"));
-    #line 1442 "./src/new_cmd.am"
+    #line 1437 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1443 "./src/new_cmd.am"
+    #line 1438 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Step 5: link. Use gcc (not g++) — Amalgame_Net.h passes string\n"));
-    #line 1444 "./src/new_cmd.am"
+    #line 1439 "./src/new_cmd.am"
     s = (code_string_concat(s, "# literals as code_string (non-const char*) which g++ rejects.\n"));
-    #line 1445 "./src/new_cmd.am"
+    #line 1440 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Pull libstdc++ in explicitly so the C++ symbols resolve.\n"));
-    #line 1446 "./src/new_cmd.am"
+    #line 1441 "./src/new_cmd.am"
     s = (code_string_concat(s, "echo \"Linking $NAME...\"\n"));
-    #line 1447 "./src/new_cmd.am"
+    #line 1442 "./src/new_cmd.am"
     s = (code_string_concat(s, "gcc -O2 \\\n"));
-    #line 1448 "./src/new_cmd.am"
+    #line 1443 "./src/new_cmd.am"
     s = (code_string_concat(s, "    -I \"$AMC_RUNTIME\" \\\n"));
-    #line 1449 "./src/new_cmd.am"
+    #line 1444 "./src/new_cmd.am"
     s = (code_string_concat(s, "    -I \"$UIWEB_DIR/runtime\" \\\n"));
-    #line 1450 "./src/new_cmd.am"
+    #line 1445 "./src/new_cmd.am"
     s = (code_string_concat(s, "    \"build/$NAME.c\" \\\n"));
-    #line 1451 "./src/new_cmd.am"
+    #line 1446 "./src/new_cmd.am"
     s = (code_string_concat(s, "    build/facade.o build/Amalgame_UI_Web.o build/webview.o \\\n"));
-    #line 1452 "./src/new_cmd.am"
+    #line 1447 "./src/new_cmd.am"
     s = (code_string_concat(s, "    \"$AMC_LIB\" \\\n"));
-    #line 1453 "./src/new_cmd.am"
+    #line 1448 "./src/new_cmd.am"
     s = (code_string_concat(s, "    $WEBKIT_LIBS \\\n"));
-    #line 1454 "./src/new_cmd.am"
+    #line 1449 "./src/new_cmd.am"
     s = (code_string_concat(s, "    -lstdc++ -lm -lgc -lcurl -lz -ldl -lpthread \\\n"));
-    #line 1455 "./src/new_cmd.am"
+    #line 1450 "./src/new_cmd.am"
     s = (code_string_concat(s, "    -o \"$NAME\"\n"));
-    #line 1456 "./src/new_cmd.am"
+    #line 1451 "./src/new_cmd.am"
     s = (code_string_concat(s, "echo \"Built ./$NAME — run it now.\"\n"));
-    #line 1457 "./src/new_cmd.am"
+    #line 1452 "./src/new_cmd.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_NewCommand_ReadmeUiWebForm(code_string name) {
-    #line 1461 "./src/new_cmd.am"
+    #line 1456 "./src/new_cmd.am"
     code_string s = "";
-    #line 1462 "./src/new_cmd.am"
+    #line 1457 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "# ")), name)), "\n"));
-    #line 1463 "./src/new_cmd.am"
+    #line 1458 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1464 "./src/new_cmd.am"
+    #line 1459 "./src/new_cmd.am"
     s = (code_string_concat(s, "Webview GUI app built with the [Amalgame](https://amalgame.me)\n"));
-    #line 1465 "./src/new_cmd.am"
+    #line 1460 "./src/new_cmd.am"
     s = (code_string_concat(s, "language and the [`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)\n"));
-    #line 1466 "./src/new_cmd.am"
+    #line 1461 "./src/new_cmd.am"
     s = (code_string_concat(s, "package.\n"));
+    #line 1462 "./src/new_cmd.am"
+    s = (code_string_concat(s, "\n"));
+    #line 1463 "./src/new_cmd.am"
+    s = (code_string_concat(s, "Renders an HTML/CSS UI through the OS-native webview engine\n"));
+    #line 1464 "./src/new_cmd.am"
+    s = (code_string_concat(s, "(WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux).\n"));
+    #line 1465 "./src/new_cmd.am"
+    s = (code_string_concat(s, "Backend logic stays in Amalgame, with JS ↔ Amalgame IPC via\n"));
+    #line 1466 "./src/new_cmd.am"
+    s = (code_string_concat(s, "`Window.Bind` and a declarative form-collect bridge.\n"));
     #line 1467 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
     #line 1468 "./src/new_cmd.am"
-    s = (code_string_concat(s, "Renders an HTML/CSS UI through the OS-native webview engine\n"));
-    #line 1469 "./src/new_cmd.am"
-    s = (code_string_concat(s, "(WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux).\n"));
-    #line 1470 "./src/new_cmd.am"
-    s = (code_string_concat(s, "Backend logic stays in Amalgame, with JS ↔ Amalgame IPC via\n"));
-    #line 1471 "./src/new_cmd.am"
-    s = (code_string_concat(s, "`Window.Bind` and a declarative form-collect bridge.\n"));
-    #line 1472 "./src/new_cmd.am"
-    s = (code_string_concat(s, "\n"));
-    #line 1473 "./src/new_cmd.am"
     s = (code_string_concat(s, "## First run\n"));
-    #line 1474 "./src/new_cmd.am"
+    #line 1469 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1475 "./src/new_cmd.am"
+    #line 1470 "./src/new_cmd.am"
     s = (code_string_concat(s, "Install build dependencies (one-off, per machine):\n"));
-    #line 1476 "./src/new_cmd.am"
+    #line 1471 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1477 "./src/new_cmd.am"
+    #line 1472 "./src/new_cmd.am"
     s = (code_string_concat(s, "```sh\n"));
-    #line 1478 "./src/new_cmd.am"
+    #line 1473 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Debian / Ubuntu\n"));
-    #line 1479 "./src/new_cmd.am"
+    #line 1474 "./src/new_cmd.am"
     s = (code_string_concat(s, "sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev pkg-config\n"));
-    #line 1480 "./src/new_cmd.am"
+    #line 1475 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1481 "./src/new_cmd.am"
+    #line 1476 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Fedora\n"));
-    #line 1482 "./src/new_cmd.am"
+    #line 1477 "./src/new_cmd.am"
     s = (code_string_concat(s, "sudo dnf install webkit2gtk4.1-devel gtk3-devel pkgconf-pkg-config\n"));
-    #line 1483 "./src/new_cmd.am"
+    #line 1478 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1484 "./src/new_cmd.am"
+    #line 1479 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Arch / Manjaro\n"));
-    #line 1485 "./src/new_cmd.am"
+    #line 1480 "./src/new_cmd.am"
     s = (code_string_concat(s, "sudo pacman -S webkit2gtk-4.1 gtk3 pkgconf\n"));
-    #line 1486 "./src/new_cmd.am"
+    #line 1481 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1487 "./src/new_cmd.am"
+    #line 1482 "./src/new_cmd.am"
     s = (code_string_concat(s, "# macOS — nothing, WKWebView ships with the OS since 10.10.\n"));
-    #line 1488 "./src/new_cmd.am"
+    #line 1483 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Windows 11 — nothing, WebView2 runtime ships with the OS.\n"));
-    #line 1489 "./src/new_cmd.am"
+    #line 1484 "./src/new_cmd.am"
     s = (code_string_concat(s, "# Older Windows 10 — install the WebView2 evergreen bootstrapper:\n"));
-    #line 1490 "./src/new_cmd.am"
+    #line 1485 "./src/new_cmd.am"
     s = (code_string_concat(s, "#   https://developer.microsoft.com/microsoft-edge/webview2/\n"));
-    #line 1491 "./src/new_cmd.am"
+    #line 1486 "./src/new_cmd.am"
     s = (code_string_concat(s, "```\n"));
-    #line 1492 "./src/new_cmd.am"
+    #line 1487 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1493 "./src/new_cmd.am"
+    #line 1488 "./src/new_cmd.am"
     s = (code_string_concat(s, "Fetch the package and build:\n"));
-    #line 1494 "./src/new_cmd.am"
+    #line 1489 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1495 "./src/new_cmd.am"
+    #line 1490 "./src/new_cmd.am"
     s = (code_string_concat(s, "```sh\n"));
-    #line 1496 "./src/new_cmd.am"
+    #line 1491 "./src/new_cmd.am"
     s = (code_string_concat(s, "amc package add ui-web\n"));
-    #line 1497 "./src/new_cmd.am"
+    #line 1492 "./src/new_cmd.am"
     s = (code_string_concat(s, "./build.sh\n"));
-    #line 1498 "./src/new_cmd.am"
+    #line 1493 "./src/new_cmd.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "./")), name)), "\n"));
-    #line 1499 "./src/new_cmd.am"
+    #line 1494 "./src/new_cmd.am"
     s = (code_string_concat(s, "```\n"));
-    #line 1500 "./src/new_cmd.am"
+    #line 1495 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1501 "./src/new_cmd.am"
+    #line 1496 "./src/new_cmd.am"
     s = (code_string_concat(s, "A 720x480 window opens with a small form (Input + Textarea +\n"));
-    #line 1502 "./src/new_cmd.am"
+    #line 1497 "./src/new_cmd.am"
     s = (code_string_concat(s, "Submit). Clicking Submit echoes the form payload back into a\n"));
-    #line 1503 "./src/new_cmd.am"
+    #line 1498 "./src/new_cmd.am"
     s = (code_string_concat(s, "`<pre>` panel as pretty-printed JSON.\n"));
-    #line 1504 "./src/new_cmd.am"
+    #line 1499 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1505 "./src/new_cmd.am"
+    #line 1500 "./src/new_cmd.am"
     s = (code_string_concat(s, "## Next steps\n"));
-    #line 1506 "./src/new_cmd.am"
+    #line 1501 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1507 "./src/new_cmd.am"
+    #line 1502 "./src/new_cmd.am"
     s = (code_string_concat(s, "- More form fields: `Element.Select / Option / CheckBox /\n"));
-    #line 1508 "./src/new_cmd.am"
+    #line 1503 "./src/new_cmd.am"
     s = (code_string_concat(s, "  Radio`. Names auto-collected into the handler's `req` JSON.\n"));
-    #line 1509 "./src/new_cmd.am"
+    #line 1504 "./src/new_cmd.am"
     s = (code_string_concat(s, "- Custom theme: override CSS variables in your own stylesheet:\n"));
-    #line 1510 "./src/new_cmd.am"
+    #line 1505 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
-    #line 1511 "./src/new_cmd.am"
+    #line 1506 "./src/new_cmd.am"
     s = (code_string_concat(s, "  ```css\n"));
-    #line 1512 "./src/new_cmd.am"
+    #line 1507 "./src/new_cmd.am"
     s = (code_string_concat(s, "  :root { --amc-accent: #ff6b00 }\n"));
-    #line 1513 "./src/new_cmd.am"
+    #line 1508 "./src/new_cmd.am"
     s = (code_string_concat(s, "  ```\n"));
+    #line 1509 "./src/new_cmd.am"
+    s = (code_string_concat(s, "\n"));
+    #line 1510 "./src/new_cmd.am"
+    s = (code_string_concat(s, "  Apply via `Page.New().AddCss(\"file:///abs/path/style.css\")`.\n"));
+    #line 1511 "./src/new_cmd.am"
+    s = (code_string_concat(s, "- Force theme: `Page.SetTheme(\"light\" | \"dark\" | \"auto\")`.\n"));
+    #line 1512 "./src/new_cmd.am"
+    s = (code_string_concat(s, "- Multi-page apps: layer extra stylesheets / replace the\n"));
+    #line 1513 "./src/new_cmd.am"
+    s = (code_string_concat(s, "  baseline / load remote URLs — see the ui-web README.\n"));
     #line 1514 "./src/new_cmd.am"
     s = (code_string_concat(s, "\n"));
     #line 1515 "./src/new_cmd.am"
-    s = (code_string_concat(s, "  Apply via `Page.New().AddCss(\"file:///abs/path/style.css\")`.\n"));
-    #line 1516 "./src/new_cmd.am"
-    s = (code_string_concat(s, "- Force theme: `Page.SetTheme(\"light\" | \"dark\" | \"auto\")`.\n"));
-    #line 1517 "./src/new_cmd.am"
-    s = (code_string_concat(s, "- Multi-page apps: layer extra stylesheets / replace the\n"));
-    #line 1518 "./src/new_cmd.am"
-    s = (code_string_concat(s, "  baseline / load remote URLs — see the ui-web README.\n"));
-    #line 1519 "./src/new_cmd.am"
-    s = (code_string_concat(s, "\n"));
-    #line 1520 "./src/new_cmd.am"
     s = (code_string_concat(s, "Full surface in the `amalgame-ui-web` README\n"));
-    #line 1521 "./src/new_cmd.am"
+    #line 1516 "./src/new_cmd.am"
     s = (code_string_concat(s, "(github.com/amalgame-lang/amalgame-ui-web).\n"));
-    #line 1522 "./src/new_cmd.am"
+    #line 1517 "./src/new_cmd.am"
     return s;
 }
 
