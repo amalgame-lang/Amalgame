@@ -1385,7 +1385,29 @@ implementation effort.
       consumer needs it — server-side UTC + the breakdown above
       cover most cases.
 - [x] **`Amalgame.UI` / Forms toolkit (cross-platform GUI)** —
-      **shipped 2026-05-14** as two external packages:
+      **shipped 2026-05-14, sunset 2026-05-15** as two external packages:
+
+      > **⚠ Sunset 2026-05-15:** [`amalgame-ui-forms`](https://github.com/amalgame-lang/amalgame-ui-forms)
+      > and the never-published `amalgame-ui-tk` exploration
+      > have been superseded by
+      > [`amalgame-ui-web`](https://github.com/amalgame-lang/amalgame-ui-web)
+      > **v0.0.3+** (webview-based, renders HTML/CSS/JS in the
+      > OS-native engine — WebView2 / WKWebView / WebKitGTK).
+      > The decision matrix lives in
+      > [`docs/proposals/amalgame-ui-web.md`](docs/proposals/amalgame-ui-web.md);
+      > TL;DR: SDL retained-mode means re-implementing every widget
+      > by hand (rounded corners, native fonts, OS theming, HiDPI, …)
+      > with zero leverage from the OS — webview gets all of that
+      > for free, and it's what the rest of the desktop ecosystem
+      > (VS Code, Slack, Discord, Tauri) settled on years ago.
+      >
+      > `amalgame-ui-sdl` stays in the package index as the
+      > foundation for any future `amalgame-gfx` package that
+      > covers games / 3D / real-time visualization — those
+      > use cases need a custom-rendered surface, not a
+      > webview. Both `ui-sdl` v0.1.0 and `ui-forms` v0.1.4
+      > stay listed for existing consumers; no further
+      > releases planned on `ui-forms`.
 
       - `amalgame-ui-sdl` **v0.1.0** — thin SDL2/SDL3 binding.
         Surface: `Window` (create/close/title/resize), `Event`
