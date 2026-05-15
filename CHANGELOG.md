@@ -7,6 +7,78 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.14] — 2026-05-15
+
+Toolchain release bundling four orthogonal fixes/features that
+together unblock `amalgame-ui-web` v0.0.5.
+
+### Added: list literals — `[a, b, c]`
+
+The bracket-expression parser now accepts a comma-separated form
+in addition to the existing list-comprehension form. Backward
+compatible — `[proj for x in iter]` keeps its meaning; what's
+new is `[]`, `[e1, e2, e3]`, trailing commas, and multi-line
+literals. Codegen emits the same compound-statement expression
+as `new List<T>().Add(...)` chains, so any `AmalgameList*` slot
+can be initialized inline.
+
+```kotlin
+let names: List<string> = ["alpha", "beta", "gamma"]
+let nums:  List<int>    = [1, 2, 3, 4, 5]
+let empty: List<int>    = []
+```
+
+Touches `parser/ast.am` (new `NodeKind.LIST_LITERAL`),
+`parser/parser.am`, `resolver/resolver.am`, `linter.am`,
+`formatter/formatter.am`, `generator/c_gen.am`. Doc updated in
+`docs/guide/02-language-tour.md`.
+
+### Fixed: `.Size()` short-circuit in c_gen
+
+`InferTypeFromExpr` hardcoded `.Count()` and `.Size()` to return
+`i64` — correct for `AmalgameList*` / `AmalgameMap*` / etc.,
+wrong for user classes with their own `Size()` returning
+something else. Symptom: chaining `.Size()` between a static
+factory call and a follow-up method produced an undefined
+`i64_<method>` C call (`Element.AbsoluteContainer().Size(0, 100).AddChild(x)`
+lowered to `i64_AddChild(...)`). Fix: gate the `.Size()`
+shortcut behind a receiver-type check — only short-circuit when
+the receiver resolves to a collection. `.Count()` keeps the
+unconditional shortcut.
+
+### Fixed: multi-line `+ / - / * / / / %` continuation
+
+`ParseAdd` and `ParseMul` ended their loops on the first
+NEWLINE token, so:
+
+```kotlin
+var s = "alpha"
+    + "beta"
+    + "gamma"
+```
+
+silently parsed as `s = "alpha"` and dropped the continuation.
+The EOL variant (`"a" +\n "b"`) ended up with `_unknown_` as
+the right operand. Fix: a `LookaheadAfterNewlinesIs(s1, s2, s3)`
+helper peeks past every NEWLINE; the binary parsers accept the
+operator across a newline iff the next real token matches the
+operator set. Statement-terminator newlines still break the
+loop.
+
+### Changed: `amc new --template ui-web-form` scaffold
+
+The scaffolder emits an `Element.OnResult("out")` call instead
+of the verbose in-page click-listener bridge. Generated
+`amalgame.toml` pins `ui-web @v0.0.5` to match the released
+package.
+
+### Added: `docs/guide/09-ui-web/` chapter
+
+Mirror of the developer guide that ships with the
+`amalgame-ui-web` package — five sub-chapters (getting started,
+widget catalogue, events + partial DOM, layout + theming,
+extending) under the existing user-guide TOC.
+
 ## [v0.8.13] — 2026-05-15
 
 Tooling release: a new `--template ui-web-form` scaffolder for the
@@ -4298,3 +4370,4 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.14

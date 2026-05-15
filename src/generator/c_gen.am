@@ -682,6 +682,7 @@ public class CGen {
         if (expr == null) { return "" }
         let k = expr.Kind
         if (k == NodeKind.LIST_COMP)      { return "AmalgameList*" }
+        if (k == NodeKind.LIST_LITERAL)   { return "AmalgameList*" }
         // match-as-expression: type is the type of the first arm body.
         // (All arms must agree at runtime; we trust the first as a hint.)
         if (k == NodeKind.IF_STMT && expr.Name == "__match__") {
@@ -988,8 +989,37 @@ public class CGen {
                 }
                 if (expr.Left.Kind == NodeKind.MEMBER) {
                     let mname2 = expr.Left.Name
-                    // Collection method return types based on method name
-                    if (mname2 == "Count" || mname2 == "Size") { return "i64" }
+                    // Collection method return types based on method name.
+                    // `Count` is unique to collections so the shortcut is
+                    // safe. `Size` collides with user-defined methods (e.g.
+                    // facade builders like `Element.Size(w, h)`) — guard
+                    // the shortcut behind a receiver-type check so the
+                    // generic flow below can resolve user-class Size()
+                    // returns from the method registry.
+                    if (mname2 == "Count") { return "i64" }
+                    if (mname2 == "Size") {
+                        if (expr.Left.Left != null) {
+                            let llkS = expr.Left.Left.Kind
+                            if (llkS == NodeKind.IDENTIFIER) {
+                                let recvT: string = this.LocalTypeGet(expr.Left.Left.Name)
+                                if (recvT == "AmalgameList*" || recvT == "AmalgameMap*" || recvT == "AmalgameSet*" || recvT == "AmalgameDict*") {
+                                    return "i64"
+                                }
+                            }
+                            if (llkS == NodeKind.MEMBER) {
+                                let ll: AstNode = expr.Left.Left
+                                if (ll.Left != null && ll.Left.Kind == NodeKind.THIS_EXPR) {
+                                    let ft: string = this.FieldTypeGet(this.CurrentClass, ll.Name)
+                                    if (ft == "AmalgameList*" || ft == "AmalgameMap*" || ft == "AmalgameSet*" || ft == "AmalgameDict*") {
+                                        return "i64"
+                                    }
+                                }
+                            }
+                        }
+                        // Fall through to the normal method-resolution
+                        // flow below — user-defined Size() returns will
+                        // be looked up via MethodRetGet on the receiver.
+                    }
                     if (mname2 == "Clear") { return "void" }
                     if (mname2 == "Reserve") { return "void" }
                     if (mname2 == "IsEmpty" || mname2 == "Has" || mname2 == "Contains" || mname2 == "Remove" || mname2 == "Add") {
@@ -3151,7 +3181,27 @@ public class CGen {
         if (k == NodeKind.LIST_COMP) {
             return this.EmitListComp(expr)
         }
+        if (k == NodeKind.LIST_LITERAL) {
+            return this.EmitListLiteral(expr)
+        }
         return "/* unknown expr */"
+    }
+
+    // ── List literal ──────────────────────────────────
+    // [expr1, expr2, expr3] becomes a GCC compound-statement
+    // expression that allocates a fresh AmalgameList* and pushes
+    // each element box. Empty `[]` emits an empty list. Elements
+    // are boxed via BoxAsVoid (matches the convention used by
+    // user-written .Add(x) calls and by EmitListComp).
+    private string EmitListLiteral(AstNode n) {
+        var s: string = "({ AmalgameList* __ll = AmalgameList_new(); "
+        let nc: int = n.Children.Count()
+        for i in 0..nc {
+            let elem: string = this.EmitExprStr(n.Children.Get(i))
+            s = s + "AmalgameList_add(__ll, " + this.BoxAsVoid(elem) + "); "
+        }
+        s = s + "__ll; })"
+        return s
     }
 
     // ── Match as expression ───────────────────────────
