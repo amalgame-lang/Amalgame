@@ -7,6 +7,47 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.16] — 2026-05-16
+
+Single-fix patch release.
+
+### Fixed: chained method calls on `new X(...)` receivers
+
+After v0.8.15 cleared the type-inference cascade for long fluent
+chains, a related pattern was still broken at the codegen level:
+
+```kotlin
+let a = new Widget("foo").Class("bar")
+let b = new Widget("baz").Class("a").Style("red")
+let o = new Other().Set(new Widget("zzz"))
+```
+
+emitted invalid C — the method name was mashed into the
+constructor call as a suffix
+(`App_Widget_new("foo")_Class("bar")`) because neither
+`EmitCalleeStr` nor `InferTypeFromExpr` had a case for a
+NEW_EXPR (or CALL-on-NEW_EXPR) receiver of a method call.
+
+Three additions in `src/generator/c_gen.am`:
+
+1. `EmitCalleeStr` — new branches for `lk == NEW_EXPR` and
+   `lk == CALL`. The NEW_EXPR branch resolves the method
+   symbol via the same dispatch as a static `ClassName.Method()`
+   call (external mangled / core stdlib / package mangled /
+   `SymName` fallback). The CALL branch infers the inner
+   receiver's return type and emits `<bare>_<mname>`.
+2. `InferTypeFromExpr` — new branch for `llk2 == NEW_EXPR`.
+   Mirrors the existing CALL branch so chains like
+   `new X().M1().M2()` know the type after `M1()`.
+3. Call-emission site — receiver detection adds the
+   `ll.Kind == NEW_EXPR` case so the new'd instance is
+   forwarded as the first arg, mirroring `varName.Method()`.
+
+Documented workarounds in `amalgame-ui-web` test spikes (e.g.
+the `BuildLabeledStack()` static helpers that split
+`new LabeledInput(...).Render()` across `let` intermediates)
+can be retired starting with this release.
+
 ## [v0.8.15] — 2026-05-16
 
 Single-fix patch release.
