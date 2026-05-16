@@ -341,8 +341,67 @@ public class LspServer {
             if (cachedPath == path) { continue }
             resolver.Programs.Add(this.CachedSiblingProgs.Get(i))
         }
+        // If the workspace root is itself an amalgame-lang package
+        // (has an `amalgame.toml` with a `[stdlib]` table), declare
+        // that package's class as a known type-global. Without this
+        // step, sample / test files INSIDE the package repo flag
+        // every call to e.g. `PostgreSQL.Open(...)` as
+        // "Unknown symbol 'PostgreSQL'" because the resolver only
+        // sees the .am test files, never the manifest that exposes
+        // the class. The proper namespace-mangled function symbols
+        // still come from the runtime header / facade — we just
+        // need the class name itself to be visible.
+        let pkgClass: string = LspServer.DetectLocalPackageClass(this.CachedRoot)
+        if (String_Length(pkgClass) > 0) {
+            resolver.DeclareGlobal(pkgClass, "type", false)
+        }
         resolver.ResolvePrograms()
         return resolver
+    }
+
+    // Read `<root>/amalgame.toml` and pull `[stdlib].class` out, if
+    // the file exists and parses. Returns empty string when there's
+    // no manifest or no [stdlib].class entry — the LSP is then in
+    // "regular project" mode. We don't use the full TOML parser
+    // here to keep the LSP lightweight + bootstrap-friendly; a
+    // line-based scan handles the manifest shape every
+    // amalgame-lang package uses.
+    public static string DetectLocalPackageClass(string root) {
+        if (String_Length(root) == 0) { return "" }
+        let manifestPath: string = root + "/amalgame.toml"
+        if (!File.Exists(manifestPath)) { return "" }
+        let src: string = File.ReadAll(manifestPath)
+        let lines: List<string> = String_Split(src, "\n")
+        let nLines: int = lines.Count()
+        var inStdlib: bool = false
+        var li: int = 0
+        while (li < nLines) {
+            let line: string = lines.Get(li)
+            let trimmed: string = String_TrimStart(line)
+            // [stdlib] / [stdlib.functions] section detection.
+            if (String_StartsWith(trimmed, "[stdlib]")) {
+                inStdlib = true
+            } else if (String_StartsWith(trimmed, "[") && !String_StartsWith(trimmed, "[stdlib.")) {
+                inStdlib = false
+            }
+            if (inStdlib && String_StartsWith(trimmed, "class")) {
+                // class = "Foo" — pull the quoted value out.
+                let eq: int = String_IndexOf(trimmed, "=")
+                if (eq > 0) {
+                    let rhs: string = String_Trim(String_From(trimmed, eq + 1))
+                    let q1: int = String_IndexOf(rhs, "\"")
+                    if (q1 >= 0) {
+                        let after: string = String_From(rhs, q1 + 1)
+                        let q2: int = String_IndexOf(after, "\"")
+                        if (q2 > 0) {
+                            return String_Substring(after, 0, q2)
+                        }
+                    }
+                }
+            }
+            li = li + 1
+        }
+        return ""
     }
 
     // Populate the workspace cache on first use, or after the user

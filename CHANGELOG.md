@@ -7,6 +7,42 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.20] — 2026-05-16
+
+LSP UX fix.
+
+### Fixed: `Unknown symbol '<ClassName>'` when developing in a package repo
+
+When developing INSIDE an amalgame-lang package's own repo (e.g.
+editing `tests/stdlib_pg.am` in `amalgame-database-postgresql/`),
+the LSP flagged every call to the package's own class
+(`PostgreSQL.Open(...)`, `Image.Load(...)`, `NATS.Open(...)`, …)
+as `Unknown symbol`. The resolver only saw the workspace's `.am`
+files; the package's manifest, which is where the class is
+exposed via `[stdlib].class`, was never read by `amc lsp`.
+
+Fix: `BuildWorkspaceResolver` now calls a new
+`LspServer.DetectLocalPackageClass(root)` helper that:
+- Probes `<workspace_root>/amalgame.toml` for an `[stdlib]` table
+- Pulls the `class = "Foo"` value with a small line-based scan
+  (no TOML-parser dep — keeps the LSP startup lightweight)
+- `resolver.DeclareGlobal(name, "type", false)` so the class is
+  visible as a type-global before `ResolvePrograms()` runs
+
+The fix is namespace-aware (only triggers inside `[stdlib]` /
+`[stdlib.functions]`) so a stray `class = "Foo"` anywhere else
+in the manifest is ignored. Block-comment lines aren't parsed
+(rare in TOML).
+
+Validated end-to-end via a synthetic LSP session: PG test file
+no longer emits `Unknown symbol 'PostgreSQL'`; injecting a real
+unknown symbol (`TotallyNotASymbol`) still surfaces correctly.
+
+### Tested
+
+- 452/452 PASS local (214 core + 191 stdlib + 12 fmt + 35 amc-new)
+- Snapshot regenerated
+
 ## [v0.8.19] — 2026-05-16
 
 Bugfix release — two compiler issues surfaced by the
@@ -4561,6 +4597,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.20]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.20
 [v0.8.19]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.19
 [v0.8.18]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.18
 [v0.8.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.17
