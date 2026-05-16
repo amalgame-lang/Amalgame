@@ -54,7 +54,7 @@ adds a native OS tooltip via the HTML `title` attribute.
 |---|---|---|
 | `Element.Input(name)`                    | `<input type=text>`   | TextBox |
 | `Element.Password(name)`                 | `<input type=password>` | TextBox (masked) |
-| `Element.Number(name, min, max, step)`   | `<input type=number>` | NumericUpDown |
+| `Element.Number(name, min, max, step)`   | composite `<input type=number>` + ▲/▼ | NumericUpDown |
 | `Element.Slider(name, min, max, step)`   | `<input type=range>`  | TrackBar |
 | `Element.DatePicker(name)`               | `<input type=date>`   | DateTimePicker (date) |
 | `Element.TimePicker(name)`               | `<input type=time>`   | DateTimePicker (time) |
@@ -74,21 +74,36 @@ Element.Row()
 `Number`'s min/max default to 0 — pass `(name, 0, 0, 0)` to leave
 all three attributes unset.
 
+Since v0.0.5 `Number` is a composite (the `<input type=number>`
+plus a vertical `▲` / `▼` button column). WebKitGTK doesn't paint
+the native `::-webkit-inner-spin-button`, so the buttons are
+always visible and behave identically on the three OS engines.
+
 ## Multi-line text
 
-| Builder | HTML |
-|---|---|
-| `Element.Textarea(name)` | `<textarea>` |
+| Builder | HTML | WinForms |
+|---|---|---|
+| `Element.Textarea(name)`        | `<textarea>` | TextBox (Multiline) |
+| `Element.RichTextBox(name)`     | `<div contenteditable=true>` | RichTextBox (v0.0.9) |
 
 ```amalgame
 Element.Textarea("message")
     .Attr("placeholder", "Type a message…")
     .Size(0, 80)        // height in px; 0 = auto width
+
+Element.RichTextBox("notes")
+    .Attr("placeholder-text", "Write notes here…")
+    .Style("min-height:120px")
 ```
 
 `textarea` is intentionally not resizable by default — the
 drag-grip destabilizes declarative layouts. Re-enable via
 `.Style("resize:vertical")` if you need it.
+
+`RichTextBox` (v0.0.9) accepts inline formatting via the built-in
+browser shortcuts (`Ctrl-B` / `Ctrl-I` / `Ctrl-U`) and pasted rich
+content. The form payload reports the rich content as the inner
+HTML under the widget's `name` key.
 
 ## Boolean / choice widgets
 
@@ -137,19 +152,99 @@ use `Page.AppendInner(win, bodyId, …)` to grow the table at
 runtime (see [`03-events-and-state.md`](03-events-and-state.md#partial-dom-updates)).
 Pass `""` to skip the id.
 
+## Tree (v0.0.7)
+
+| Builder | What it does | WinForms |
+|---|---|---|
+| `Element.TreeView()`               | Root container.                              | TreeView |
+| `Element.TreeNode(caption)`        | Expandable folder-like node (HTML5 `<details>`). | TreeNode |
+| `Element.TreeLeaf(caption)`        | Terminal item.                               | TreeNode (leaf) |
+
+```amalgame
+Element.TreeView()
+    .AddChild(Element.TreeNode("src")
+        .AddChild(Element.TreeNode("parser")
+            .AddChild(Element.TreeLeaf("ast.am"))
+            .AddChild(Element.TreeLeaf("parser.am")))
+        .AddChild(Element.TreeLeaf("main.am")))
+    .AddChild(Element.TreeLeaf("README.md"))
+```
+
+Built on `<details>` / `<summary>` so expand/collapse + keyboard
+focus work without any JS. Pass `.Attr("open", "open")` on a
+`TreeNode` to render it expanded by default. The baseline themes
+the rotating ▶ caret, hover background, and 18 px nested indent
+through the `--amc-*` variables.
+
 ## Display widgets
 
-| Builder | HTML |
-|---|---|
-| `Element.ProgressBar(value, max)` | `<progress>` — pass `value < 0` for an indeterminate bar. |
-| `Element.Image(src)`              | `<img>` — accepts `file://`, `https://`, `data:image/...`. |
-| `Element.PictureBox(src)`         | Alias of `Image` — matches the WinForms toolbox name. |
-| `Element.Iframe(url)`             | `<iframe>` — embed a webpage inside your app. |
+| Builder | HTML | WinForms |
+|---|---|---|
+| `Element.ProgressBar(value, max)` | `<progress>`               | ProgressBar (`value < 0` = indeterminate) |
+| `Element.Image(src)`              | `<img>`                    | PictureBox / Image |
+| `Element.PictureBox(src)`         | `<img>` (alias)            | PictureBox |
+| `Element.Iframe(url)`             | `<iframe>`                 | WebBrowser |
+| `Element.MonthCalendar(name, year, month)` | grid (`<table>`) + ◀ / month / year / ▶ header | MonthCalendar (v0.0.9 + v0.0.10 navigator) |
 
 ```amalgame
 Element.Row()
     .AddChild(Element.Label("Loading:").Size(80, 0))
     .AddChild(Element.ProgressBar(42, 100))
+
+Element.MonthCalendar("birthday", 2026, 5)
+```
+
+`MonthCalendar` (v0.0.9) renders an inline month grid. The header
+(v0.0.10) carries ◀ / month dropdown / year dropdown / ▶ so the
+user can jump to any month or year directly. Clicking a day
+highlights it and reports the selection as an ISO `YYYY-MM-DD`
+string under the widget's `name` key in the form payload (the
+key is absent when no day is selected).
+
+## Menus (v0.0.8)
+
+The cross-OS, HTML-rendered MenuBar — same shape as WinForms'
+`MenuStrip`, themed with `--amc-*`. A native OS variant (Win32
+`HMENU` / NSMenu / GtkMenuBar) is planned as opt-in via
+`data-mode="native"` in v0.1.0; today the API is forward-compatible.
+
+| Builder | What it does | WinForms |
+|---|---|---|
+| `Element.MenuBar()`                           | `<nav>` container — top-of-window menu strip. | MenuStrip |
+| `Element.MenuItem(label)`                     | Top-level item with a dropdown panel — internally a `<details>` whose `<summary>` is the label. | ToolStripMenuItem |
+| `Element.MenuOption(label, actionName)`       | `<button>` inside a dropdown that calls `window.<actionName>('')` on click. | ToolStripMenuItem (leaf) |
+| `Element.MenuSeparator()`                     | Themed `<hr>` between options. | ToolStripSeparator |
+| `Element.ContextMenu(targetId)`               | Right-click menu — reuses MenuOption / MenuSeparator. | ContextMenuStrip |
+
+```amalgame
+Element.MenuBar()
+    .AddChild(Element.MenuItem("File")
+        .AddChild(Element.MenuOption("New",   "amc_new"))
+        .AddChild(Element.MenuOption("Open…", "amc_open"))
+        .AddChild(Element.MenuSeparator())
+        .AddChild(Element.MenuOption("Quit",  "amc_quit")))
+    .AddChild(Element.MenuItem("Edit")
+        .AddChild(Element.MenuOption("Undo",  "amc_undo")))
+```
+
+Bind every action name via `win.Bind("amc_new", handler)`. A
+global `click` listener closes any open menu when the user
+clicks outside it; `Escape` closes both menubar dropdowns and
+the context menu.
+
+`ContextMenu` attaches to the host element whose id you pass
+and listens for the `contextmenu` DOM event:
+
+```amalgame
+let cm = Element.ContextMenu("workspace")
+    .AddChild(Element.MenuOption("Cut",   "amc_cut"))
+    .AddChild(Element.MenuOption("Copy",  "amc_copy"))
+    .AddChild(Element.MenuSeparator())
+    .AddChild(Element.MenuOption("Paste", "amc_paste"))
+
+Element.Div().Id("workspace").Class("amc-ctx-target")
+    .AddChild(cm)
+    .AddChild( … your actual content … )
 ```
 
 ## Containers & layout
@@ -168,6 +263,7 @@ These don't carry data, they organize children. Full reference in
 | `Element.AbsoluteContainer()`            | `position:relative` parent for `.Position(x, y)` children. |
 | `Element.GroupBox(title)`                | `<fieldset><legend>` — captioned section. |
 | `Element.TabControl(group)` + `Element.Tab(group, id, label, body)` | Pure-CSS tabs (radio + sibling selector). |
+| `Element.SplitContainer(orientation, ratio)` | Two-pane resizable container (v0.0.8). |
 | `Element.ToolStrip()`                    | Themed horizontal button row. |
 | `Element.StatusStrip()`                  | Fixed-bottom status bar. |
 
@@ -175,6 +271,68 @@ These don't carry data, they organize children. Full reference in
 Element.GroupBox("Personal info")
     .AddChild(Element.Input("name").Attr("placeholder", "Name"))
     .AddChild(Element.Input("email").Attr("placeholder", "Email"))
+```
+
+`SplitContainer` (v0.0.8) takes an orientation (`"row"` →
+left/right with a vertical divider, `"column"` → top/bottom)
+and an initial ratio percentage 5..95 (e.g. `30` for a 30/70
+split). The divider is draggable with the mouse / pen / touch:
+
+```amalgame
+Element.SplitContainer("row", 30)
+    .AddChild(Element.Stack().AddChild( … left pane … ))
+    .AddChild(Element.Stack().AddChild( … right pane … ))
+```
+
+## Dialogs (v0.0.6 → v0.0.8)
+
+Modal message boxes and file pickers. All entry points are
+static methods on `Dialog`, not Element builders — they don't
+go in the page tree; they pop on demand.
+
+### Message boxes (v0.0.6)
+
+| Call | Buttons | WinForms equivalent |
+|---|---|---|
+| `Dialog.Info(win, title, message, handler)`         | OK         | `MessageBox.Show(... Information)` |
+| `Dialog.Warning(win, title, message, handler)`      | OK         | `MessageBox.Show(... Warning)` |
+| `Dialog.Error(win, title, message, handler)`        | OK         | `MessageBox.Show(... Error)` |
+| `Dialog.Confirm(win, title, message, handler)`      | OK/Cancel  | `MessageBox.Show(... OKCancel)` |
+| `Dialog.YesNoCancel(win, title, message, handler)`  | Yes/No/Cancel | `MessageBox.Show(... YesNoCancel)` |
+| `Dialog.Show(win, kind, title, message, buttons, handler)` | mix & match | low-level |
+
+The handler receives the clicked button id as `req` —
+`"ok"` / `"cancel"` / `"yes"` / `"no"` — or `"cancel"` when the
+user dismisses with Esc / backdrop click.
+
+```amalgame
+Dialog.Confirm(win, "Quit?", "Discard unsaved changes?",
+    (req: string) => {
+        if (req == "ok") { win.Terminate() }
+        return ""
+    })
+```
+
+Implementation uses the HTML `<dialog>` element — focus trap,
+Esc-dismissal and backdrop scrim come from the browser for free.
+The header carries a colored accent (blue / orange / red) based on
+the kind.
+
+### File pickers (v0.0.7 + v0.0.8)
+
+| Call | Returns to handler | Notes |
+|---|---|---|
+| `Dialog.OpenFile(win, accept, handler)`                       | filename string (or `""` on cancel) | Browser sandbox: filename only, no path. |
+| `Dialog.OpenFileContent(win, accept, binary, handler)` (v0.0.8) | JSON `{"name":"…","content":"…"}` (text or base64) | `binary=true` → `readAsDataURL` then strip prefix. |
+| `Dialog.SaveFile(win, filename, content, mimeType, handler)`  | `"ok"` once download is initiated | Sandbox: no way to know if the user accepted Save-As. |
+
+```amalgame
+Dialog.OpenFileContent(win, ".txt,.json", false,
+    (payload: string) => {
+        // payload = ""  on cancel
+        // payload = {"name":"notes.txt","content":"Hello, file…"} on success
+        return ""
+    })
 ```
 
 ## Escape hatches
@@ -208,7 +366,7 @@ so they chain.
 | `.Id(id)`               | HTML id. Required when targeted by `OnResult` / `AppendInner`. |
 | `.Class(cls)`           | CSS class. Multiple classes allowed (space-separated). |
 | `.Style(css)`           | Append inline CSS. Cumulative — multiple calls layer. |
-| `.Attr(name, value)`    | Set any HTML attribute (escape hatch). |
+| `.Attr(name, value)`    | Set any HTML attribute (escape hatch). Replaces on duplicate key (since v0.0.8). |
 | `.Size(w, h)`           | Pixel size; 0 on either axis leaves it unset. |
 | `.Position(x, y)`       | Absolute placement (use inside `AbsoluteContainer`). |
 | `.Visible(b)`           | False → `display:none`. |

@@ -1,7 +1,7 @@
 # Amalgame — Roadmap
 
 > **Upcoming priority sequence (2026-05-14 decision):**
-> `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) ✅ all shipped through v0.8.13.
+> `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) → `v0.8.14` (list literals `[a, b, c]` + `.Size()` short-circuit fix + multi-line `+/-/*///%` continuation + ui-web-form scaffolder uses `OnResult` + docs/guide/09-ui-web/ chapter) → `v0.8.15` (`InferTypeFromExpr` memoization — long fluent chains no longer hang) → `v0.8.16` (chained method calls on `new X(...)` receivers — codegen fix) → `v0.8.17` (macOS CI clang `<mach-o/dyld.h>` hoist to file scope) → **native Windows Service** (drops NSSM, switch service template to native `sc.exe` + `Service.RunAsService`) → `v0.8.18` (`Process` v2: `RunCaptureBoth` real stderr split via fork+execvp+2 pipes / CreateProcess+CreatePipe×2; `RunCaptureBothTimeout` + `RunTimeout` with SIGKILL/TerminateProcess deadline, sentinel exit 124) ✅ all shipped through v0.8.18.
 >
 > **Backlog post-v0.8.13:** Approche A DAP migration (pretty-print AmalgameList* / AmalgameMap*, filter runtime frames) + msgpack extraction (gated on cgen facade ABI fix) + LSP package discovery code action + cgen bug #6 (`let` scope flattened to function level — workaround: rename locals; fix: per-block C scope).
 >
@@ -34,7 +34,7 @@
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-15 · `amc 0.8.13` · self-hosted · 480/480 tests (amc) + 85+/85+ ecosystem · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.4**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`)
+> Updated 2026-05-16 · `amc 0.8.18` · self-hosted · 452/452 tests (amc) + 85+/85+ ecosystem · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -218,9 +218,10 @@ In rough order of usefulness × effort:
       `"x: {coll.Count()}"` to propagate the inferred
       `AmalgameList*` to the embedded call (current workaround:
       stage in named locals).
-- [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
-      literal syntax `[...]` first and a clear semantics for variadic
-      calls. Larger than it looks.
+- [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. List
+      literal syntax `[a, b, c]` shipped in **v0.8.14** (prereq
+      cleared); still needs a clear semantics for variadic calls
+      + `[...a, ...b]` concat in literals. Larger than it looks.
 - [ ] **`async` / `await`** — coroutines via ucontext or setjmp.
       Substantial: runtime + AST + CGen. Defer until there's a concrete
       use case.
@@ -918,7 +919,16 @@ before the next big language addition.
       installer payload. Open question: auto-detect editors vs.
       interactive prompt — preference is opt-out (auto-detect by
       default; `--no-editors` skips).
-- [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
+- [x] **DAP** — debug adapter (v0.8.0). `amc dap` ships as a thin
+      proxy (Approche C) — `lldb-dap` on macOS, `gdb --dap` fallback
+      on Linux/Windows-MSYS2 (gdb ≥ 14). cgen emits `#line N "foo.am"`
+      directives at every statement so gcc/clang DWARF carries `.am`
+      filenames + lines natively → native breakpoints on `.am` source
+      without source maps. VS Code extension v0.3.0 registers the
+      `amc` debug type + `DebugAdapterDescriptorFactory` that spawns
+      `amc dap`. **Approche A (MI bridge custom)** for pretty-printing
+      `AmalgameList*` / `AmalgameMap*` + filtering runtime frames is
+      tracked as v0.9.0+ work (see top-of-file backlog).
 - [ ] **Inlay hints + code actions** — once hover/completion is in.
 
 ### Stdlib — backlog
@@ -1521,31 +1531,30 @@ implementation effort.
       `install.ps1` (NSSM-based) for Windows. README covers all
       three OSes; macOS install scripts are documented but not
       auto-generated (run the binary directly under launchd
-      manually for now).
-- [ ] **`Amalgame.Service` v2 — native Windows Service mode (SCM
-      dispatcher).** Today the Windows path relies on NSSM
-      (https://nssm.cc) to wrap the console binary as a service —
-      operationally indistinguishable from a native service but
-      requires the operator to install a small wrapper exe. v2
-      ships the SCM dance inside the binary itself: at startup
-      call `StartServiceCtrlDispatcher` with a static `ServiceMain`
-      callback; if it returns FALSE with
-      `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT`, fall through to
-      console mode (current behaviour). The `ServiceMain` callback
-      calls `RegisterServiceCtrlHandler` for shutdown control codes
-      and pumps `SetServiceStatus` so SCM sees the service as
-      properly running. The user-loop side stays exactly the same
-      (`while (!Service.ShouldStop()) { ... }`); the runtime hides
-      the dual-mode plumbing.
-      Implementation needs a worker-thread split (SCM dispatcher
-      blocks the main thread; the user loop runs on a secondary
-      thread, both observe the same `ShouldStop` atomic flag) plus
-      an amc-side wrap of generated `main()` so the SCM bootstrap
-      happens before the user's Amalgame `Main()` is invoked. The
-      `--template service` scaffolder switches to native mode and
-      drops the NSSM dependency; existing NSSM installs keep
-      working since NSSM-managed services run the same binary
-      either way.
+      manually for now). Superseded by v2 (2026-05-16) which drops
+      NSSM in favor of native sc.exe + `Service.RunAsService`.
+- [x] **`Amalgame.Service` v2 — native Windows Service mode (SCM
+      dispatcher)** (amalgame-service v0.2.0, 2026-05-16). New
+      `Service.RunAsService(name)` superset of `Install()` that
+      additionally bootstraps `StartServiceCtrlDispatcher` on a
+      worker thread; `ServiceMain` callback registers
+      `RegisterServiceCtrlHandlerEx`, pumps `SetServiceStatus`
+      (`START_PENDING` → `RUNNING` → `STOPPED`), and parks on a
+      manual-reset event flipped either by `SERVICE_CONTROL_STOP`
+      (handler) or by `atexit` during normal teardown. Cleanup is
+      registered via `atexit()` — no extra user code needed.
+      Console-mode launch keeps working: the dispatcher returns
+      immediately with `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT`
+      and the binary falls through to the existing console Ctrl
+      handler path. User-loop side is unchanged
+      (`while (!Service.ShouldStop()) { ... }`). The amc-side
+      `main()` wrap considered in the v1 design wasn't needed —
+      `RunAsService` is just a runtime call, no compiler-side
+      magic. POSIX path is identical to `Install()` (name
+      ignored). `amc new --template service` scaffolder switched
+      to native mode at the same time (sc.exe-based `install.ps1`,
+      NSSM dependency dropped). Existing NSSM installs keep
+      working since the binary stays console-compatible.
 - [ ] **`amc new --template service` v2 — macOS launchd plist.**
       The binary already runs cleanly on macOS via `./build.sh
       && ./<name>`; only the install scripting is missing. Ship
@@ -1901,8 +1910,11 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    hello && cd hello && ./build.sh".
 5. **`amc test` polish** — `--runtime <path>` flag (don't assume
    cwd has `runtime/`), per-file timeouts, parallel execution.
-6. **Process v2** — split stderr from stdout via real pipes,
-   add timeouts, async streaming output for long-running children.
+6. ~~**Process v2** — split stderr from stdout via real pipes,
+   add timeouts~~ ✅ **shipped in v0.8.18** (`RunCaptureBoth` /
+   `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124 on
+   timeout). Async streaming (`Process.Spawn` → handle persistant
+   avec `ReadLine` / `IsAlive` / `Kill`) reste backlog Process v3.
 7. **Spread operator** — `f(...args)` and `[...a, ...b]`. Needs
    list literal syntax `[...]` first.
 

@@ -2,8 +2,11 @@
 
 ## Prerequisites
 
-- **`amc` 0.8.13 or later.** v0.0.5+ of ui-web uses chained method
-  calls across packages — older amc binaries trip type inference.
+- **`amc` 0.8.17 or later.** ui-web v0.0.5+ leans on cross-package
+  chained calls + list literals + `new X(...).Method()` lowering;
+  older amc binaries either trip type inference or fail to lower.
+  v0.8.16 fixed the quadratic chain-length behavior, v0.8.17
+  fixed the macOS CI compilation.
 - **An OS webview engine** matching the build target:
 
   | OS                 | Engine     | Install                                      |
@@ -69,6 +72,53 @@ class Program {
 The `Window` constructor takes `(title, width, height, debug)`.
 `debug=true` exposes DevTools (`Ctrl+Shift+I`); leave it `false`
 in shipped builds.
+
+## Shorter entry point — `Form` + `Application.Run` (v0.0.7)
+
+For apps that read more naturally as WinForms boilerplate, use
+the value-style `Form` wrapper and let `Application.Run` handle
+the `Window + Page + ApplyTo + Run + Destroy` plumbing:
+
+```amalgame
+import Amalgame.UI.Web
+
+class Program {
+    public static void Main() {
+        let f: Form = new Form("Hello", 480, 320)
+        f.SetBody(
+            Element.Stack()
+                .AddChild(Element.Heading("Hello, Amalgame"))
+                .AddChild(Element.Button("Click me")
+                    .OnClick((req: string) => "\"clicked\"")
+                    .OnResult("out"))
+                .AddChild(Element.Pre("").Id("out"))
+        )
+        Application.Run(f)
+    }
+}
+```
+
+`Form` is a flat class (not a base to subclass — AM's static
+dispatch makes parent-virtual overrides unreliable). It carries
+the title, size, body, theme, debug flag, plus an optional
+`OnLoad(handler)` Closure that fires once the window is up so you
+can do late `win.Bind` registrations:
+
+```amalgame
+let f: Form = new Form("Editor", 1024, 768)
+f.SetTheme("auto")
+f.SetDebug(false)
+f.OnLoad((req: string) => {
+    // wire late bindings here once the webview is live
+    return ""
+})
+f.SetBody( … )
+Application.Run(f)
+```
+
+Both styles produce identical binaries — `Application.Run` is
+sugar over the explicit `new Window(...) → Page.ApplyTo → win.Run()`
+sequence.
 
 ## Build script
 
@@ -162,7 +212,11 @@ JS unless you reach for it deliberately (see
 - **DevTools needs `debug=true`** at `Window` construction time —
   the 4th argument. Toggling later isn't supported by the
   underlying webview library.
-- **Long fluent chains hang amc's type inference**: chains of
-  ~24+ `.AddChild(...)` calls go non-linear. Split into named
-  intermediates (`let header: Element = …`) — see
-  [`04-layout-and-theme.md`](04-layout-and-theme.md#fluent-chain-limits).
+- **Long fluent chains** used to send amc's type inference into
+  quadratic behavior on chains of ~24+ links. Fixed in amc
+  v0.8.16 — but splitting into `let header: Element = …`
+  intermediates is still the recommended style for readability.
+  See [`04-layout-and-theme.md`](04-layout-and-theme.md#fluent-chain-limits).
+- **`new X(...).Method()` chains** were lowered incorrectly by
+  amc before v0.8.16; if you target an older compiler, split via
+  `let x = new X(...)` then call `x.Method()`.

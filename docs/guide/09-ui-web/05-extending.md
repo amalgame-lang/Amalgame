@@ -153,6 +153,22 @@ The webview library itself exposes the native window handle via
 GtkWindow* on Linux. Cast and call native APIs from there for
 deeper integration.
 
+The current C surface (see `runtime/Amalgame_UI_Web.h`) is:
+
+- `Amalgame_UI_Web_Create / SetTitle / SetSize / Navigate /
+  SetHtml / Init / Eval / Run / Terminate / Destroy / Bind /
+  Unbind` — the wrapped webview API.
+- `Amalgame_UI_Web_OpenUrl(url)` — OS-browser bridge powering
+  `Element.Link`.
+- `Amalgame_UI_Web_DetectOSTheme()` — `"light"` / `"dark"` from
+  gsettings / `defaults` / registry, honoring
+  `AMALGAME_UI_THEME=…`.
+
+Add new primitives following the same shape. The MenuBar /
+SplitContainer / Dialog widgets ship as pure HTML/CSS/JS today
+— a future opt-in native MenuBar (v0.1.0) will live next to the
+existing primitives without breaking the AM-side API.
+
 ## Custom widgets — the Component pattern
 
 When a tree of Elements is reused across screens, promote it to
@@ -186,9 +202,13 @@ my-team-widgets` pulls them in, and consumers compose them via
 `Render()` like any other Element source. No engine support
 needed; this is pure language reuse.
 
-A formal `abstract class Component { Element Render() }`
-convention is planned for v0.0.6 (see
-[`../architecture.md`](../architecture.md)).
+Shipped in v0.0.9 — the Component pattern is now the documented
+extension point. We deliberately picked a flat class with a
+`Render()` method rather than an `abstract class Component` base:
+AM's static dispatch makes virtual overrides on a parent
+unreliable, so a convention reads better and runs more
+predictably. See [`../architecture.md`](../architecture.md) for
+the full three-level model (Element / Component / Form).
 
 ## Replacing the baseline stylesheet
 
@@ -206,6 +226,29 @@ The form-collect / chrome-lockdown / link-routing bridges still
 inject. Only the visual styles are replaced. You'll need to
 re-style the `.amc-statusstrip`, `.amc-tabs`, `.amc-listview`,
 etc. classes yourself if you use those builders.
+
+## The Form façade as a quick template (v0.0.7)
+
+If your app is a one-shot main window, `Form` + `Application.Run`
+removes the `Window + Page + ApplyTo + Run + Destroy` boilerplate.
+It is sugar — under the hood it's the same code path:
+
+```amalgame
+let f: Form = new Form("My App", 800, 600)
+f.SetTheme("auto")
+f.SetDebug(false)
+f.OnLoad((req: string) => {
+    // late-bound Window.Bind calls go here
+    return ""
+})
+f.SetBody( … )
+Application.Run(f)
+```
+
+Field-public-and-mutable rather than abstract-base-and-override
+because AM's static dispatch doesn't reliably resolve a parent's
+virtual through subclass references — keeping `Form` flat avoids
+the trap. See [`01-getting-started.md`](01-getting-started.md#shorter-entry-point--form--applicationrun-v007).
 
 ## Debugging tips
 

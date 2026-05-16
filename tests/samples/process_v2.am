@@ -1,0 +1,46 @@
+// Process v2 — split stderr/stdout via real pipes (fork+execvp on
+// POSIX, CreateProcess on Windows) + timeout-aware variants.
+//
+// v1 surface (Run + RunCapture) stays unchanged; v2 adds:
+//   Process.RunCaptureBoth(cmd)              real stderr split
+//   Process.RunCaptureBothTimeout(cmd, ms)   same + SIGKILL after ms
+//   Process.RunTimeout(cmd, ms)              equivalent of Run + timeout
+//
+// Timeout sentinel exit code is 124 (matches GNU `timeout(1)`).
+
+class Program {
+    public static void Main() {
+        // ── 1. Real stderr split ──────────────────────────────
+        //
+        // Print "hello-out" to stdout and "hello-err" to stderr in
+        // a single shell command. v1's RunCapture merged them via
+        // 2>&1; v2's RunCaptureBoth keeps them apart through two
+        // real pipes.
+        let r = Process.RunCaptureBoth("echo -n hello-out; echo -n hello-err 1>&2")
+        Console.WriteLine("split.exit=" + String_FromInt(r.Exit))
+        Console.WriteLine("split.out=" + r.Stdout)
+        Console.WriteLine("split.err=" + r.Stderr)
+
+        // ── 2. Timeout — child killed past the deadline ───────
+        //
+        // sleep 5 with a 200ms budget. Process is SIGKILL'd; exit
+        // sentinel is 124. Nothing reaches stdout because the
+        // `echo never` after the sleep never runs.
+        let t = Process.RunCaptureBothTimeout("sleep 5; echo never", 200)
+        Console.WriteLine("timeout.exit=" + String_FromInt(t.Exit))
+        Console.WriteLine("timeout.out=[" + t.Stdout + "]")
+
+        // ── 3. Quick command well under the timeout budget ────
+        //
+        // Sanity check that timeout-aware doesn't change behaviour
+        // for normal-duration children — exit should be 0 + output
+        // captured normally.
+        let q = Process.RunCaptureBothTimeout("echo quick", 2000)
+        Console.WriteLine("quick.exit=" + String_FromInt(q.Exit))
+        Console.WriteLine("quick.out=" + String_Trim(q.Stdout))
+
+        // ── 4. RunTimeout — no capture, just exit code ────────
+        let e = Process.RunTimeout("true", 1000)
+        Console.WriteLine("runt.exit=" + String_FromInt(e))
+    }
+}
