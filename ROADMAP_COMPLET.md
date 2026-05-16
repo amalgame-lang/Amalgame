@@ -1,7 +1,7 @@
 # Amalgame — Roadmap
 
 > **Upcoming priority sequence (2026-05-14 decision):**
-> `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) ✅ all shipped through v0.8.13.
+> `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) → `v0.8.14` (list literals `[a, b, c]` + `.Size()` short-circuit fix + multi-line `+/-/*///%` continuation + ui-web-form scaffolder uses `OnResult` + docs/guide/09-ui-web/ chapter) → `v0.8.15` (`InferTypeFromExpr` memoization — long fluent chains no longer hang) → `v0.8.16` (chained method calls on `new X(...)` receivers — codegen fix) → `v0.8.17` (macOS CI clang `<mach-o/dyld.h>` hoist to file scope) → **native Windows Service** (drops NSSM, switch service template to native `sc.exe` + `Service.RunAsService`) ✅ all shipped through v0.8.17.
 >
 > **Backlog post-v0.8.13:** Approche A DAP migration (pretty-print AmalgameList* / AmalgameMap*, filter runtime frames) + msgpack extraction (gated on cgen facade ABI fix) + LSP package discovery code action + cgen bug #6 (`let` scope flattened to function level — workaround: rename locals; fix: per-block C scope).
 >
@@ -34,7 +34,7 @@
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-15 · `amc 0.8.13` · self-hosted · 480/480 tests (amc) + 85+/85+ ecosystem · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.4**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`)
+> Updated 2026-05-16 · `amc 0.8.17` · self-hosted · 451/451 tests (amc) + 85+/85+ ecosystem · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16)
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -218,9 +218,10 @@ In rough order of usefulness × effort:
       `"x: {coll.Count()}"` to propagate the inferred
       `AmalgameList*` to the embedded call (current workaround:
       stage in named locals).
-- [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. Needs list
-      literal syntax `[...]` first and a clear semantics for variadic
-      calls. Larger than it looks.
+- [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. List
+      literal syntax `[a, b, c]` shipped in **v0.8.14** (prereq
+      cleared); still needs a clear semantics for variadic calls
+      + `[...a, ...b]` concat in literals. Larger than it looks.
 - [ ] **`async` / `await`** — coroutines via ucontext or setjmp.
       Substantial: runtime + AST + CGen. Defer until there's a concrete
       use case.
@@ -918,7 +919,16 @@ before the next big language addition.
       installer payload. Open question: auto-detect editors vs.
       interactive prompt — preference is opt-out (auto-detect by
       default; `--no-editors` skips).
-- [ ] **DAP** — debug adapter using DWARF (`-g3` already emitted).
+- [x] **DAP** — debug adapter (v0.8.0). `amc dap` ships as a thin
+      proxy (Approche C) — `lldb-dap` on macOS, `gdb --dap` fallback
+      on Linux/Windows-MSYS2 (gdb ≥ 14). cgen emits `#line N "foo.am"`
+      directives at every statement so gcc/clang DWARF carries `.am`
+      filenames + lines natively → native breakpoints on `.am` source
+      without source maps. VS Code extension v0.3.0 registers the
+      `amc` debug type + `DebugAdapterDescriptorFactory` that spawns
+      `amc dap`. **Approche A (MI bridge custom)** for pretty-printing
+      `AmalgameList*` / `AmalgameMap*` + filtering runtime frames is
+      tracked as v0.9.0+ work (see top-of-file backlog).
 - [ ] **Inlay hints + code actions** — once hover/completion is in.
 
 ### Stdlib — backlog

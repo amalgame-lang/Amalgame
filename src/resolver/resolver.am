@@ -298,9 +298,13 @@ public class FullResolver {
         this.DeclareGlobal("Path",           "type", false)
         this.DeclareGlobal("Env",            "type", false)
         // Process
-        this.DeclareGlobal("Process",            "type", false)
-        this.DeclareGlobal("Process_Run",        "int",                   false)
-        this.DeclareGlobal("Process_RunCapture", "AmalgameProcessResult", false)
+        this.DeclareGlobal("Process",                       "type", false)
+        this.DeclareGlobal("Process_Run",                   "int",                   false)
+        this.DeclareGlobal("Process_RunCapture",            "AmalgameProcessResult", false)
+        // v2 (2026-05-16): split stderr + timeout-aware variants
+        this.DeclareGlobal("Process_RunTimeout",            "int",                   false)
+        this.DeclareGlobal("Process_RunCaptureBoth",        "AmalgameProcessResult", false)
+        this.DeclareGlobal("Process_RunCaptureBothTimeout", "AmalgameProcessResult", false)
         // Console
         this.DeclareGlobal("Console",        "type", false)
         this.DeclareGlobal("Console_WriteLine",  "void",   false)
