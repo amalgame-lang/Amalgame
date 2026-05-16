@@ -133,17 +133,33 @@ public class AmalgameCompiler {
         let phaseSw = new MonoTimer()
 
         // ── Detect namespace from first file ──────────
+        //
+        // We need the namespace prefix before parsing so the
+        // self-package-skip loop below and `gen.BeginMulti` can
+        // both see it. We walk the source line by line and skip
+        // `//` line comments — a previous `String_IndexOf` on the
+        // raw source got fooled by comments like
+        // `// schema namespace foo bar` and consumed `foo bar` as
+        // the namespace name. Block comments `/* … */` aren't
+        // skipped here (rare in practice; if they ever cause
+        // trouble add a second scan pass).
         let firstPath = inputFiles.Get(0)
         let firstSrc  = File.ReadAll(firstPath)
         var nsPrefix  = "App"
-        let nlIdx = String_IndexOf(firstSrc, "namespace ")
-        if (nlIdx >= 0) {
-            let nlRest = String_Substring(firstSrc, nlIdx + 10, 200)
-            let nlEnd  = String_IndexOf(nlRest, "\n")
-            if (nlEnd > 0) {
-                let rawNs = String_Substring(nlRest, 0, nlEnd)
-                nsPrefix  = String_Replace(String_Trim(rawNs), ".", "_")
+        let nsLines: List<string> = String_Split(firstSrc, "\n")
+        let nsLineCount: int = nsLines.Count()
+        var nsi = 0
+        while (nsi < nsLineCount) {
+            let nsLine: string = nsLines.Get(nsi)
+            let nsTrim = String_TrimStart(nsLine)
+            if (!String_StartsWith(nsTrim, "//")) {
+                if (String_StartsWith(nsTrim, "namespace ")) {
+                    let nsAfter = String_From(nsTrim, 10)
+                    nsPrefix = String_Replace(String_Trim(nsAfter), ".", "_")
+                    nsi = nsLineCount
+                }
             }
+            nsi = nsi + 1
         }
 
         // ── Load v0.5 package registry ───────────────

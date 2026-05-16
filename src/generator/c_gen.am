@@ -3788,6 +3788,24 @@ public class CGen {
                     let varType = this.LocalTypeGet(tname)
                     let bareType = String_Replace(varType, "*", "")
                     if (String_Length(bareType) > 0) {
+                        // Opaque `void*` receiver — typically the result of a
+                        // `<AmalgameList*>.Get(i)` where the inner cell type
+                        // was erased because the surrounding `List<List<...>>`
+                        // generic wasn't annotated. Dispatch through the
+                        // collection runtime (AmalgameList_<method>) when the
+                        // method is a known list verb, so chained
+                        // `rows.Get(i).Get(j)` lowers cleanly without
+                        // requiring `let row: List<X> = rows.Get(i)`
+                        // annotations at every step. Same downcase trick
+                        // as the chained-CALL branch below.
+                        if (bareType == "void") {
+                            let isListM: bool = mname == "Get" || mname == "Count" || mname == "Size" || mname == "Add" || mname == "Remove" || mname == "Clear" || mname == "IndexOf" || mname == "Contains"
+                            if (isListM) {
+                                let mfirst: string = String_Substring(mname, 0, 1)
+                                let mrest:  string = String_Substring(mname, 1, String_Length(mname) - 1)
+                                return "AmalgameList_" + String_ToLower(mfirst) + mrest
+                            }
+                        }
                         // WebSocket runtime helper — strip the
                         // "Amalgame" struct prefix so `ws.Send()`
                         // on a `WebSocket*` lowers to `WebSocket_Send`,
