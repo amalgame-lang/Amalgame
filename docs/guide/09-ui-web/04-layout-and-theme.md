@@ -17,6 +17,8 @@ scheme drives the visuals.
 | `Element.Panel()`     | Alias of `Div`                    | When the WinForms name reads better. |
 | `Element.GroupBox(title)` | Block with `<legend>` caption | Visually grouped subsections of a form. |
 | `Element.TabControl(g) / Tab(g, id, label, body)` | Tab strip + active panel below | Categorize many widgets without overwhelming the user. |
+| `Element.SplitContainer(or, ratio)` (v0.0.8) | Two resizable panes (`"row"` or `"column"`) | IDE-shell, master/detail UI. |
+| `Element.MenuBar()`   | Top-of-window menu strip (v0.0.8) | App-level File / Edit / View menus. |
 | `Element.ToolStrip()` | Themed horizontal button row      | Toolbar above content. |
 | `Element.StatusStrip()` | Fixed-bottom footer             | Status / version / connection state line. |
 
@@ -48,7 +50,7 @@ which is what `AbsoluteContainer` provides.
 ## Filling the viewport
 
 By default since v0.0.5, `Page` lays out the body like a desktop
-app:
+app (`FillViewport` mode):
 
 - The body is pinned to `100vh` height.
 - Window-level vscroll is disabled.
@@ -84,11 +86,35 @@ baseline class, so it grows to fill its parent. The active tab
 panel has `overflow:auto`. `StatusStrip` is `position:fixed` so
 it doesn't take layout space — it floats at the viewport bottom.
 
+## `Page.FullBleed()` (v0.0.8) — kill the body padding
+
+`FillViewport` keeps the default 16 px body padding so simple
+forms have breathing room. IDE-shell layouts where the MenuBar
+hugs the top edge and a SplitContainer fills the rest need a
+zero-padding body:
+
+```amalgame
+Page.New()
+    .FullBleed()                            // body padding:0
+    .SetBody(
+        Element.Stack()
+            .AddChild(Element.MenuBar()...) // touches the top edge
+            .AddChild(Element.SplitContainer("row", 25)
+                .AddChild(treePane)
+                .AddChild(editorPane)
+                .Fill())
+            .AddChild(Element.StatusStrip()...))
+```
+
+`FullBleed` and `FillViewport` are independent — `FullBleed` only
+changes the body padding; `FillViewport` controls the layout
+height. The combination is the typical IDE-shell.
+
 ## `.Fill()` — mark a child as the flex-grow target
 
 When your root layout isn't a TabControl but some other tall
-content (a `Stack` of fields, a long ListView), mark the child
-that should take the remaining space and scroll:
+content (a `Stack` of fields, a long ListView, a SplitContainer),
+mark the child that should take the remaining space and scroll:
 
 ```amalgame
 Element.Stack()
@@ -128,6 +154,46 @@ sibling-selector reveals only the `:checked` tab's panel.
   that, override the `.amc-tabs` `grid-template-columns` from
   your own stylesheet.
 
+## SplitContainer mechanics (v0.0.8)
+
+```amalgame
+Element.SplitContainer("row", 30)   // "row" → vertical divider
+    .AddChild(leftPane)
+    .AddChild(rightPane)
+```
+
+Two panes plus a thin divider. The divider is draggable: a small
+JS bridge wires `pointerdown` → `pointermove` adjusts the panes'
+`flex-grow` values → `pointerup` ends the drag. The split ratio
+is clamped to 5..95 so neither pane can collapse fully.
+
+Orientation `"column"` gives a horizontal divider (top/bottom
+panes). The container handles its own theming; you don't need to
+style anything to get a working divider on light or dark themes.
+
+## MenuBar inside a layout (v0.0.8)
+
+`MenuBar` is just an element — drop it wherever you'd put any
+other container. Typical placement is the first child of the
+page body:
+
+```amalgame
+Page.New().FullBleed().SetBody(
+    Element.Stack()
+        .AddChild(Element.MenuBar()
+            .AddChild(Element.MenuItem("File")
+                .AddChild(Element.MenuOption("New",  "amc_new"))
+                .AddChild(Element.MenuOption("Quit", "amc_quit"))))
+        .AddChild(mainContent.Fill())
+        .AddChild(Element.StatusStrip()
+            .AddChild(Element.Label("Ready"))))
+```
+
+Bind the action names with `win.Bind("amc_new", handler)`. The
+MenuBar carries `data-mode="common"` today; v0.1.0 will add an
+opt-in `data-mode="native"` that flips to OS-native menus
+without changing your AM code.
+
 ## Theming — the seven CSS variables
 
 The baseline stylesheet exposes seven variables that flip with
@@ -139,8 +205,8 @@ the OS theme. Override any of them from your own stylesheet:
 | `--amc-fg`      | `#1a1a1a`     | `#e8e8e8`    | Body text, control text |
 | `--amc-muted`   | `#6a6a6a`     | `#9a9a9a`    | Legend text, status strip |
 | `--amc-border`  | `#d0d0d0`     | `#404040`    | Input borders, table cell borders |
-| `--amc-surface` | `#f5f5f5`     | `#2a2a2a`    | Button bg, `<pre>` bg, toolbar bg |
-| `--amc-accent`  | `#0066cc`     | `#4a9eff`    | Focus rings, slider thumb, active tab border, links |
+| `--amc-surface` | `#f5f5f5`     | `#2a2a2a`    | Button bg, `<pre>` bg, toolbar bg, MenuBar bg |
+| `--amc-accent`  | `#0066cc`     | `#4a9eff`    | Focus rings, slider thumb, active tab border, MonthCalendar today outline, links |
 | `--amc-radius`  | `4px`         | `4px`        | Input + button border-radius |
 
 The OS theme is detected at render time and written to
@@ -154,6 +220,48 @@ Page.New().SetTheme("auto")    // default — follow OS
 
 You can also override via env var: `AMALGAME_UI_THEME=dark` wins
 over OS detection at runtime.
+
+### Live theme switching — `Page.AutoTheme(true)` (v0.0.8)
+
+By default the OS theme is read once at `Page.Render` time. If
+the user flips dark / light mode while the app is running, the
+page stays on whatever it was when it loaded.
+
+Turn `AutoTheme` on to make the page follow the system live:
+
+```amalgame
+Page.New()
+    .AutoTheme(true)
+    .SetBody( … )
+    .ApplyTo(win)
+```
+
+Under the hood, the bridge JS listens to
+`matchMedia('(prefers-color-scheme: dark)').onchange` and flips
+`<html data-theme>` accordingly — `--amc-*` variables follow.
+
+`AutoTheme` is opt-in for backwards-compatibility — v0.0.5
+shipped without it. Future versions may make it the default.
+
+### `Page.OnThemeChange(handler)` (v0.0.8)
+
+Hook into the same live-theme bridge when your app needs to react
+beyond CSS (re-render an SVG icon, update a `Pre` indicator, log
+the change):
+
+```amalgame
+Page.New()
+    .OnThemeChange((req: string) => {
+        // req is "light" or "dark"
+        Console.WriteLine("theme: " + req)
+        return ""
+    })
+    .SetBody( … )
+```
+
+`OnThemeChange` implies `AutoTheme(true)`. The handler also fires
+once on initial page load so it can sync widgets to the current
+theme.
 
 ### Customizing variables
 
@@ -203,24 +311,19 @@ DevTools (`Ctrl+Shift+I` in debug builds) is never blocked.
 
 ## Fluent-chain limits
 
-Amc's type inference goes non-linear above ~24 chained `.AddChild(...)`
-calls in a single fluent expression. Workaround: split into named
-intermediates.
+Amc's type inference had a quadratic behavior on `.AddChild(...)`
+chains beyond ~24 links. Fixed in amc v0.8.16 (memoization on
+`InferTypeFromExpr` keyed by AST pointer identity), so chains of
+any length are linear-time now. The intermediate-`let` pattern
+remains the recommended style anyway because it reads better:
 
 ```amalgame
-// AVOID — long chain that may hang amc
-Element.Stack()
-    .AddChild(...)         // ×30+
-    .AddChild(...)
-    ...
-
-// PREFER — broken into blocks
 let header: Element = Element.Stack()
-    .AddChild(...)         // ×8 max per chain
+    .AddChild(...)
 let main:   Element = Element.Stack()
-    .AddChild(...)         // ×8 max
+    .AddChild(...)
 let footer: Element = Element.Stack()
-    .AddChild(...)         // ×8 max
+    .AddChild(...)
 
 Element.Stack()
     .AddChild(header)
@@ -228,6 +331,5 @@ Element.Stack()
     .AddChild(footer)
 ```
 
-This is an amc bug (memoization missing on `InferTypeFromExpr`)
-that will be fixed; the workaround is harmless and reads better
-anyway.
+If you're on amc < 0.8.16, split long chains the same way as a
+workaround.

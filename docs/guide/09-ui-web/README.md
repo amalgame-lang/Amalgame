@@ -30,6 +30,11 @@ overview, see the sibling docs:
 
 ## Minimal app
 
+Two equivalent shapes — the explicit `Window + Page` and the
+`Form + Application.Run` sugar (v0.0.7).
+
+### Explicit shape
+
 ```amalgame
 import Amalgame.UI.Web
 
@@ -56,6 +61,27 @@ class Program {
 }
 ```
 
+### Form sugar
+
+```amalgame
+import Amalgame.UI.Web
+
+class Program {
+    public static void Main() {
+        let f: Form = new Form("Hello", 480, 320)
+        f.SetBody(
+            Element.Stack()
+                .AddChild(Element.Heading("Hello, Amalgame"))
+                .AddChild(Element.Button("Click me")
+                    .OnClick((req: string) => "\"clicked\"")
+                    .OnResult("out"))
+                .AddChild(Element.Pre("").Id("out"))
+        )
+        Application.Run(f)
+    }
+}
+```
+
 Build (Linux/Ubuntu, see [`01-getting-started.md`](01-getting-started.md)
 for macOS / Windows):
 
@@ -72,20 +98,28 @@ authored by hand.
 
 **Is:**
 - A typed Amalgame surface over an OS webview.
-- A WinForms-aligned widget builder (`Element.Button`, `Element.Input`, …).
-- Form-state auto-collection — every named input round-trips through
-  a JSON object delivered to your handlers.
-- A baseline stylesheet themed via 7 CSS variables that flip with
-  the OS color scheme.
-- Partial-DOM update primitives so DataGrid-style apps can refresh
-  rows without re-rendering the page.
+- A WinForms-aligned widget builder (`Element.Button`,
+  `Element.Input`, …) covering the bulk of the WinForms toolbox
+  plus modal dialogs, menus, tree views, split panes, rich-text,
+  and a month calendar.
+- Form-state auto-collection — every named input round-trips
+  through a JSON object delivered to your handlers.
+- A baseline stylesheet themed via 7 CSS variables that flip
+  with the OS color scheme — live with `Page.AutoTheme(true)`
+  (v0.0.8) or once-at-load by default.
+- Partial-DOM update primitives so DataGrid-style apps can
+  refresh rows without re-rendering the page.
 
 **Isn't:**
 - A retained-mode toolkit (use `Element` to build trees, not
   `Button.Visible = false` mutations).
-- A full WPF / Qt replacement — native menubar, system tray,
-  DataGridView and OS dialogs are planned for v0.1+ (see
-  [`../winforms-mapping.md`](../winforms-mapping.md)).
+- A *native* WinForms — the MenuBar / Dialog / context menu
+  render as HTML/CSS, not OS chrome. An opt-in native MenuBar
+  is planned for v0.1.0 (the AM API won't change). DataGridView,
+  system tray, ToolTip-as-widget, NotifyIcon and the printing
+  stack are not in scope before v0.1+. See
+  [`../winforms-mapping.md`](../winforms-mapping.md) for the
+  per-control status.
 - A browser. URLs in `<a href>` route through the OS browser via
   `Element.Link`; the webview only renders your app's own HTML.
 
