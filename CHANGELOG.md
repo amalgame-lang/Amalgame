@@ -7,6 +7,38 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.15] — 2026-05-16
+
+Single-fix patch release.
+
+### Fixed: `InferTypeFromExpr` chain-length hang
+
+amc hung indefinitely on long fluent chains — ui-web v0.0.5+
+apps past ~24 `.AddChild(...)` calls in a single expression
+never finished compiling. `InferTypeFromExpr` recurses on
+`expr.Left` for every CALL/MEMBER, which on a chain like
+
+```
+a.AddChild(x).AddChild(y).AddChild(z)...AddChild(zzz)
+```
+
+re-infers the entire prefix at every step — N calls produce
+O(N²) re-visits, plus per-visit work made it superquadratic in
+practice.
+
+Fix: cache the inference by `AstNode` identity (C pointer cast
+to `i64`) using parallel `List<int>` / `List<string>` on the
+`CGen` instance. `InferTypeFromExpr` checks the cache first,
+falls through to the new `InferTypeFromExprUncached` on a miss,
+stores the result. The cache lives one AST and is wiped per
+file by the per-file fresh `CGen`.
+
+Stress test (40-link chain): hangs → 26 ms to .c.
+
+Documented workarounds in the v0.0.5+ ui-web `docs/guide/04-layout-and-theme.md`
+("Fluent chain limits") can be retired once consumers pick up
+v0.8.15.
+
 ## [v0.8.14] — 2026-05-15
 
 Toolchain release bundling four orthogonal fixes/features that
