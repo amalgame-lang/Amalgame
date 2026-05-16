@@ -1521,31 +1521,30 @@ implementation effort.
       `install.ps1` (NSSM-based) for Windows. README covers all
       three OSes; macOS install scripts are documented but not
       auto-generated (run the binary directly under launchd
-      manually for now).
-- [ ] **`Amalgame.Service` v2 — native Windows Service mode (SCM
-      dispatcher).** Today the Windows path relies on NSSM
-      (https://nssm.cc) to wrap the console binary as a service —
-      operationally indistinguishable from a native service but
-      requires the operator to install a small wrapper exe. v2
-      ships the SCM dance inside the binary itself: at startup
-      call `StartServiceCtrlDispatcher` with a static `ServiceMain`
-      callback; if it returns FALSE with
-      `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT`, fall through to
-      console mode (current behaviour). The `ServiceMain` callback
-      calls `RegisterServiceCtrlHandler` for shutdown control codes
-      and pumps `SetServiceStatus` so SCM sees the service as
-      properly running. The user-loop side stays exactly the same
-      (`while (!Service.ShouldStop()) { ... }`); the runtime hides
-      the dual-mode plumbing.
-      Implementation needs a worker-thread split (SCM dispatcher
-      blocks the main thread; the user loop runs on a secondary
-      thread, both observe the same `ShouldStop` atomic flag) plus
-      an amc-side wrap of generated `main()` so the SCM bootstrap
-      happens before the user's Amalgame `Main()` is invoked. The
-      `--template service` scaffolder switches to native mode and
-      drops the NSSM dependency; existing NSSM installs keep
-      working since NSSM-managed services run the same binary
-      either way.
+      manually for now). Superseded by v2 (2026-05-16) which drops
+      NSSM in favor of native sc.exe + `Service.RunAsService`.
+- [x] **`Amalgame.Service` v2 — native Windows Service mode (SCM
+      dispatcher)** (amalgame-service v0.2.0, 2026-05-16). New
+      `Service.RunAsService(name)` superset of `Install()` that
+      additionally bootstraps `StartServiceCtrlDispatcher` on a
+      worker thread; `ServiceMain` callback registers
+      `RegisterServiceCtrlHandlerEx`, pumps `SetServiceStatus`
+      (`START_PENDING` → `RUNNING` → `STOPPED`), and parks on a
+      manual-reset event flipped either by `SERVICE_CONTROL_STOP`
+      (handler) or by `atexit` during normal teardown. Cleanup is
+      registered via `atexit()` — no extra user code needed.
+      Console-mode launch keeps working: the dispatcher returns
+      immediately with `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT`
+      and the binary falls through to the existing console Ctrl
+      handler path. User-loop side is unchanged
+      (`while (!Service.ShouldStop()) { ... }`). The amc-side
+      `main()` wrap considered in the v1 design wasn't needed —
+      `RunAsService` is just a runtime call, no compiler-side
+      magic. POSIX path is identical to `Install()` (name
+      ignored). `amc new --template service` scaffolder switched
+      to native mode at the same time (sc.exe-based `install.ps1`,
+      NSSM dependency dropped). Existing NSSM installs keep
+      working since the binary stays console-compatible.
 - [ ] **`amc new --template service` v2 — macOS launchd plist.**
       The binary already runs cleanly on macOS via `./build.sh
       && ./<name>`; only the install scripting is missing. Ship
