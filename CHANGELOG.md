@@ -7,6 +7,49 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.18] — 2026-05-16
+
+Stdlib feature release: `Process` v2 surface.
+
+### Added: split stderr/stdout + timeout-aware Process variants
+
+Three new entry points on the `Process` runtime module sit alongside
+the v1 `Run` / `RunCapture` (unchanged):
+
+| Function | Behaviour |
+|---|---|
+| `Process.RunCaptureBoth(cmd)` | Real stderr/stdout split via `fork` + `pipe(2)`×2 on POSIX, `CreateProcess` + `CreatePipe`×2 on Windows |
+| `Process.RunCaptureBothTimeout(cmd, ms)` | Same split + `SIGKILL` / `TerminateProcess` after `ms` |
+| `Process.RunTimeout(cmd, ms)` | Like `Run` + timeout, no capture |
+
+The timeout sentinel exit code is **124** (matches GNU `timeout(1)`).
+
+v1 used `popen` with shell `2>&1` to merge streams into a single
+`Stdout`, so `result.Stderr` was always `""`. v2 wires real pipes
+so the two streams arrive separately. The `AmalgameProcessResult`
+shape is unchanged — the `Stderr` field just becomes useful for
+callers that opt into the v2 functions.
+
+POSIX path drives a `poll(2)` loop with non-blocking reads and
+`waitpid(WNOHANG)` per round; Windows path drives a
+`WaitForSingleObject(50ms)` loop with `PeekNamedPipe`-gated
+`ReadFile`. Shared scaffolding: `_am_buf_append` for growable GC
+buffers, `AMALGAME_PROCESS_TIMEOUT_EXIT` macro for the sentinel.
+
+Resolver declares the three new globals; cgen knows their return
+types (`AmalgameProcessResult*` for the two capture variants,
+`i64` for `RunTimeout`). No changes to v1 callers — fully backward
+compatible.
+
+Sample at `tests/samples/process_v2.am` exercises split stderr,
+timeout kill, sub-budget completion, and `RunTimeout` without
+capture.
+
+**Out of scope**: `Process.Spawn(cmd)` → handle persistant with
+`ReadLine` / `IsAlive` / `Kill` (streaming async model) is tracked
+as Process v3 backlog. Pose des questions de concurrence
+vis-à-vis bdwgc; déféré tant qu'un consumer réel n'en a pas besoin.
+
 ## [v0.8.17] — 2026-05-16
 
 Single-fix patch release.
@@ -4470,4 +4513,8 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.18]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.18
+[v0.8.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.17
+[v0.8.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.16
+[v0.8.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.15
 [v0.8.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.14
