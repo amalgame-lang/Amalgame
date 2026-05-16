@@ -18,6 +18,16 @@ import Amalgame.String
     #ifdef _WIN32
         #include <windows.h>
     #endif
+    #ifdef __APPLE__
+        // macOS-specific: dyld for _NSGetExecutablePath (ResolveSelfPath),
+        // stdlib for realpath(). MUST live at file scope — including
+        // mach-o/dyld.h inside a function body pulls in OSByteOrder.h
+        // whose inline definitions trip clang ("function definition is
+        // not allowed here"). gcc is more permissive but the file-scope
+        // include is the portable place anyway.
+        #include <mach-o/dyld.h>
+        #include <stdlib.h>
+    #endif
 }
 
 public class MonoTimer {
@@ -400,8 +410,10 @@ public class Program {
                 memcpy(out, buf, (size_t)(n + 1));
                 return (code_string) out;
             #elif defined(__APPLE__)
-                #include <mach-o/dyld.h>
-                #include <stdlib.h>
+                /* `#include <mach-o/dyld.h>` + `<stdlib.h>` moved to the
+                 * file-scope @c block at the top of main.am — clang
+                 * rejects the byte_order.h inline functions when those
+                 * headers are pulled in inside a function body. */
                 char raw[4096];
                 uint32_t size = sizeof(raw);
                 if (_NSGetExecutablePath(raw, &size) != 0) { return (code_string) ""; }
