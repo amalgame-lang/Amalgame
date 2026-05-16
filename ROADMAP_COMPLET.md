@@ -470,6 +470,27 @@ before the next big language addition.
       Chained calls on user classes (`x.Foo().Bar().Baz()`)
       still propagate; verified via the new `ArgParser` fluent
       registration API.
+- [ ] **CGen: propagate nested-generics through cross-package
+      calls** — v0.8.19 ships an intercept-`void`-receiver
+      workaround that dispatches known list verbs (Get/Count/Size
+      /Add/...) through `AmalgameList_<m>` when the receiver's
+      static type erased to `void*`. The deeper fix is to make
+      `MethodRetTypes` carry the inner generic param across
+      package boundaries — `PostgreSQL.QueryAll → List<List<string>>`
+      should let `rows.Get(0)` infer `List<string>` and
+      `row0.Get(0)` infer `string`, with the matching `(code_string)`
+      cast applied automatically. Today the AmalgameList_get
+      fallback returns `void*`, which the user then casts
+      manually. Touches: PackageRegistry manifest schema (let
+      `[stdlib.functions]` declare the full generic shape, not
+      just `returns = "AmalgameList*"`), `MethodRetSet/Get`
+      registry (key on `(class, method)` → full generic type
+      string), and `EmitCalleeStr`'s lookup that propagates
+      through `__local__`/`__local_map__`. Estimated 1-2 days;
+      unblocks Map dispatch on `void*` too (currently same
+      workaround would be needed for `dict.Get(k)` chained
+      through opaque). The intercept-void workaround in v0.8.19
+      stays as a safety belt either way.
 - [x] **CGen: chained `obj.Field.Method()` /
       `obj.Method().Method()` (resolved)** — `EmitCalleeStr`
       now handles both shapes: when the receiver is a CALL, the
