@@ -5,6 +5,26 @@
 >
 > **Backlog post-v0.8.13:** Approche A DAP migration (pretty-print AmalgameList* / AmalgameMap*, filter runtime frames) + msgpack extraction (gated on cgen facade ABI fix) + LSP package discovery code action + cgen bug #6 (`let` scope flattened to function level — workaround: rename locals; fix: per-block C scope).
 >
+> **Post-v0.8.16 — pending session-deep-dive items.** Three items
+> picked from the v0.0.5 → v0.0.10 ui-web wave that need a dedicated
+> session each. See [`## 📋 Next sessions (3 dedicated items)`](#-next-sessions-3-dedicated-items)
+> at the bottom of this file for the full scope of each.
+>
+> - **4a. LSP package discovery** (~1-2 days) — wire the existing
+>   `amc package suggest --json` into the LSP: completion on
+>   `import Amalgame.…`, diagnostic + codeAction "install missing
+>   package" when an unknown symbol matches a known package class,
+>   `amc build` auto-suggest on unresolved import.
+> - **4b. DAP MI bridge custom** (~1-2 weeks) — drop the proxy-mince
+>   `amc dap` for a full MI parser that translates gdb-MI ↔ DAP
+>   in-process. Already framed as "Approche A v0.9.0+" above —
+>   triggers as soon as a real debug user-facing pain point hits.
+> - **3. Menubar OS-natif** (~6 weeks × 3 OS, Linux/GtkMenuBar first)
+>   — the marker `data-mode="native"` is posted by
+>   `Element.MenuBar().UseNative(true)` since v0.0.8; the C bridge
+>   that swaps the HTML menu for the native OS one is the work
+>   item. Apps that opt in today will switch automatically.
+>
 > **DAP strategy — decision 2026-05-13 (hybride, two-step):**
 > 1. **v0.8.0 — Approche C (proxy mince + path translation)** : `amc dap` spawn `gdb --dap` (Linux + Windows-MSYS2, gdb ≥ 14) ou `lldb-dap` (macOS, Xcode CLT 14+) et forward DAP messages bidirectionnel. Les `#line N "foo.am"` directives émises par la cgen (à ajouter, prérequis bloquant) permettent à gdb/lldb de mapper natively `.c` ↔ `.am` via DWARF. **Effort : ~3-4h DAP + ~1-2h #line directives**. Pas de translation custom des types Amalgame — proxy minimal.
 > 2. **v0.9.0+ — Migration vers Approche A (bridge MI custom)** : quand un use case réel demande du sucre Amalgame-spécifique (pretty-print `AmalgameList*`/`AmalgameMap*`, filtrer les frames runtime `Amalgame_*`/`_runtime.h`, prettifier les closures), on ajoute un mode bridge MI complet. `amc dap` parle DAP au client, gdb-MI au serveur, traduit les deux. **Effort : ~6-10h**. Le proxy C reste un fallback. **À NE PAS OUBLIER** : la dette « migrer vers A » est explicite, pas un nice-to-have ; à reprendre dès qu'un debug user-facing devient pénible avec le proxy.
@@ -1885,3 +1905,125 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    add timeouts, async streaming output for long-running children.
 7. **Spread operator** — `f(...args)` and `[...a, ...b]`. Needs
    list literal syntax `[...]` first.
+
+## 📋 Next sessions (3 dedicated items)
+
+Picked at the end of the v0.0.5 → v0.0.10 `amalgame-ui-web` wave
+(post-v0.8.16). Each needs a focused session.
+
+### 4a. LSP package discovery — wire `amc package suggest` into the LSP
+
+**Scope** : ~1-2 days · `src/lsp.am` + small primitives.
+
+The `amc package suggest <name|ns> --json` command already exists
+(v0.7.x+) and matches against class names, namespaces, and
+description substrings. It returns the package + tag + match
+reason. Pieces still missing from the developer experience:
+
+1. **Completion on `import Amalgame.<cursor>`** — when the
+   client requests `textDocument/completion` inside an `import`
+   directive, the LSP should propose:
+   - namespaces of installed packages (read from
+     `~/.amalgame/packages/<pkg>/amalgame.toml` `[stdlib].namespace`)
+   - namespaces of cached-but-uninstalled packages (from the
+     official index `~/.amalgame/cache/packages-index.toml`,
+     `[[version]].namespace`) marked with a "↓ install" hint.
+2. **Diagnostic** : `unknown symbol 'Window'` published as a
+   regular diagnostic when an identifier isn't resolved.
+3. **CodeAction quickfix** : on the diagnostic, expose two
+   commands —
+   - `Run amc package add ui-web` (shown to the user as an
+     external command they confirm before running)
+   - `Add import Amalgame.UI.Web at the top of the file`
+   The LSP doesn't auto-install — it only displays the
+   command. The decision (run / dismiss) is the user's.
+4. **`amc build` auto-suggest** — if the compile fails with an
+   unresolved import, run `package suggest` on the imported
+   namespace and print the install command in the error message
+   (no auto-install — same safety stance).
+
+**Acceptance**: typing `Window` in a fresh project with no
+imports triggers a diagnostic + codeAction; clicking the action
+adds the import + suggests the install command. Compiling the
+same file with `amc build` prints `Suggestion: amc package add
+ui-web && import Amalgame.UI.Web` in the diagnostic output.
+
+**Touches** : `src/lsp.am` (HandleCompletion + new
+codeActionProvider branch), `src/package_registry.am`
+(`SuggestForNamespace(ns)` helper), `src/build_cmd.am`
+(post-error hint).
+
+### 4b. DAP MI bridge custom (Approche A migration)
+
+**Scope** : ~6-10 h per `docs/proposals/dap-strategy.md` ·
+already framed in the top-of-file block as the "v0.9.0+
+migration". The v0.8.0 proxy-mince is fine for basic stepping +
+breakpoints, but degrades on:
+
+- Pretty-print `AmalgameList*` / `AmalgameMap*` (currently
+  shown as opaque pointers)
+- Frame filtering for runtime helpers (`Amalgame_*`, `_runtime.h`
+  routines noise the call stack)
+- Closure env objects (the captured locals are inside a
+  generated `LamEnv_N` struct, illegible in the gdb view)
+
+**Triggers**: as soon as a real debug user-facing session
+becomes painful. This is **not** a nice-to-have — the deferred
+migration is tracked as explicit tech debt.
+
+**Approach** :
+- `amc dap` keeps the DAP serializer towards the client.
+- Internally, instead of forwarding to `gdb --dap`, spawn `gdb
+  --interpreter=mi3` and parse the MI protocol.
+- Translate DAP requests (`setBreakpoints`, `stackTrace`,
+  `variables`, etc.) to MI commands (`-break-insert`,
+  `-stack-list-frames`, `-stack-list-variables`); translate MI
+  responses back to DAP shape.
+- Per-type pretty-printers in AM: a registry keyed by C type
+  name → format function. Default ones for
+  `AmalgameList*`/`AmalgameMap*`/`AmalgameSet*`/`AmalgameClosure*`.
+- Frame filter: hide frames whose function name matches
+  `^_runtime_` or `^Amalgame_` unless `--show-runtime` is set.
+
+**Touches** : `src/dap.am` (rewrite from proxy to bridge),
+`src/dap/mi_parser.am` (new), `src/dap/pretty_printers.am`
+(new).
+
+### 3. Menubar OS-native (Win32 + NSMenu + GtkMenuBar)
+
+**Scope** : ~6 weeks per OS, Linux/GtkMenuBar first since the
+host is testable here.
+
+The marker `data-mode="native"` is already written by
+`Element.MenuBar().UseNative(true)` since `amalgame-ui-web`
+v0.0.8 — apps that opt in today will switch automatically once
+the bridge lands.
+
+**Pieces** :
+- C side : `webview_get_window(w)` returns the native handle.
+  Cast to `GtkWindow*` / `NSWindow*` / `HWND` per OS.
+- Linux : `gtk_menu_bar_new()` + `gtk_menu_shell_append()`. Hook
+  it via a `g_object_get_data` path so it sits above the
+  webview pane in the container.
+- macOS : `NSApplication.sharedApplication.mainMenu` + `NSMenu` /
+  `NSMenuItem`. Per macOS convention the menubar is global at
+  the top of the screen, not per-window.
+- Windows : `SetMenu(hwnd, hmenu)` + `AppendMenuW`. Per-window.
+- AM bridge : on `Page.ApplyTo`, walk for any `<nav
+  class="amc-menubar" data-mode="native">`, extract the
+  menu items (label + action), hand them to a new C primitive
+  `Amalgame_UI_Web_SetNativeMenubar(slot, json)` which builds
+  the native UI; then remove the HTML `<nav>` from the document.
+- Click → JS bridge : the native menu items dispatch back via
+  `webview_eval("window.<actionName>('')")` to reuse the
+  existing bind path.
+
+**Acceptance**: an app calling `Element.MenuBar().UseNative(true)`
+gets the native OS menubar on the target OS, falls back to the
+HTML menu on others. The HTML demo continues to work for users
+who don't opt in.
+
+**Touches** : `runtime/Amalgame_UI_Web.c` (per-OS native menubar
+primitive), `facade.am` (no API change — just bridge wire-up),
+new C glue files per OS, possibly `[stdlib].sources` per
+platform.
