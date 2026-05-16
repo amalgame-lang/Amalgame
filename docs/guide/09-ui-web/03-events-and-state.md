@@ -87,6 +87,10 @@ Example handler `req`:
   when none is checked.
 - Multi-select listboxes → not auto-collected in v0.0.5 — read
   `.selectedOptions` via `Window.Eval` until v0.0.6.
+- `Element.RichTextBox(name)` (v0.0.9) → the contenteditable's
+  `.innerHTML` (preserves bold / italic / lists).
+- `Element.MonthCalendar(name, …)` (v0.0.9) → the selected day as
+  ISO `YYYY-MM-DD`; key absent when no day is selected.
 - Other inputs → their `.value` (always a string in HTML, even
   for `type=number` / `type=date`).
 
@@ -211,6 +215,57 @@ public static void Main() {
 
 Each click on Refresh appends a new row to the table without
 re-rendering the heading, the button, or the existing rows.
+
+## Dialog handlers (v0.0.6+)
+
+`Dialog.Info` / `Dialog.Confirm` / `Dialog.OpenFile` etc.
+**don't** deliver the page's form payload. They're one-shot
+bridges: the handler receives the user's choice as a plain
+string.
+
+| Call | `req` shape |
+|---|---|
+| `Dialog.Info / Warning / Error`                 | `"ok"` (button) or `"cancel"` (Esc / backdrop) |
+| `Dialog.Confirm`                                | `"ok"` or `"cancel"` |
+| `Dialog.YesNoCancel`                            | `"yes"`, `"no"`, or `"cancel"` |
+| `Dialog.OpenFile`                               | filename string (`""` on cancel) |
+| `Dialog.OpenFileContent` (v0.0.8)               | `""` on cancel, else JSON `{"name":"…","content":"…"}` |
+| `Dialog.SaveFile`                               | `"ok"` once the download is initiated |
+
+```amalgame
+Dialog.Confirm(win, "Quit?", "Discard unsaved changes?",
+    (req: string) => {
+        if (req == "ok") { win.Terminate() }
+        return ""
+    })
+```
+
+If you need the form payload alongside the user's choice, snap
+it once via `Window.Eval` and a hidden field, then read it from
+inside the dialog handler — the per-event form-collect bridge
+isn't wired through `Dialog.*` calls.
+
+## MenuBar action handlers (v0.0.8)
+
+`Element.MenuOption(label, actionName)` calls
+`window.<actionName>('')` on click. The empty-string argument
+means the handler always receives `""` as `req` — same caveat
+as Dialogs: bind a separate `Window.Eval` collector first if
+you need the form state when the menu option fires.
+
+```amalgame
+win.Bind("amc_save", (req: string) => {
+    // req is "" — collect the form via the regular bridge:
+    win.Eval("window._amc_save_payload = JSON.stringify(window.__amc_collect());")
+    // … then read window._amc_save_payload from a follow-up Eval.
+    return ""
+})
+```
+
+Most apps don't need this — menu actions tend to drive top-level
+flow (Open / Save / Quit) and read state via dedicated dialogs.
+When they do need the form, a `Window.Bind` triggered by an
+in-page `Button` is simpler than a MenuOption.
 
 ## Custom JS events
 
