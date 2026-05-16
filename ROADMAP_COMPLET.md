@@ -1564,6 +1564,50 @@ implementation effort.
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
 - [x] GitHub Releases automation (tag-triggered)
+
+### Package release checklist (mandatory for every new external package)
+
+Convention adoptée 2026-05-16 après le ship de
+`amalgame-database-postgresql` (1er dynamic-link). À appliquer à
+chaque nouveau package amalgame-lang avant le tag `v0.1.0` :
+
+1. **README → table `## Prerequisites` per OS** (apt / dnf /
+   pacman / brew / MSYS2). Mentionner explicitement **build-time**
+   (header `*-dev`) ET **deploy-time** (runtime lib). Si le
+   package n'a aucune dep système, écrire explicitement "No
+   external dependencies" plutôt que laisser un trou — sinon
+   l'utilisateur doute.
+2. **NOTICE.md** attribue tout upstream vendored + sa licence
+   (modèle: amalgame-image, amalgame-audio).
+3. **Tests gate cleanly** sur les deps manquantes — `SKIP` propre,
+   jamais `FAIL`, quand le service/lib n'est pas dispo (pattern:
+   amalgame-messaging-mqtt's `MQTT_AVAILABLE=0` flag).
+4. **CI Linux-only** quand le package dépend d'un service externe :
+   utiliser le `services:` natif GitHub Actions (Postgres,
+   Mosquitto, Redis, MongoDB, Kafka, RabbitMQ → tous packagés
+   en image Docker). macOS/Windows runners GHA ne supportent pas
+   `services:` — on **ne valide pas multi-OS en CI**, mais
+   chaque package **doit rester multi-OS-compatible dans le code**
+   (pas de `#ifdef` plate-forme inutile ; les wrappers de libs
+   cross-OS comme libpq / SDL2 / miniaudio abstraient déjà
+   l'OS pour nous).
+5. **Vendor key vs dynamic-link** :
+   - Vendor (sources dans `runtime/vendor/`) quand l'upstream est
+     petit single-header / public domain (stb_image, miniaudio,
+     stb_vorbis) ou redistribuable sans contrainte (SQLite,
+     DuckDB MIT).
+   - Dynamic-link (manifest `libs = [...]` sans `sources`) quand
+     l'upstream est volumineux et déjà packagé partout (libpq,
+     libmariadb, libmongoc, librdkafka, librabbitmq).
+6. **Manifest `required-amalgame`** doit matcher le matrix CI :
+   si la CI ne teste qu'avec `v0.8.18`, le manifest doit dire
+   `>=0.8.0` (ou plus récent), pas `>=0.5.4`. Sinon
+   `amc package add` accepte une combinaison non-testée et
+   le user prend des bugs cgen anciens en pleine face.
+
+Audit 2026-05-16 — packages avec gaps à patcher rétro : compress,
+database-duckdb, ui-sdl, ui-forms, regex, audio. Voir commits du
+même jour sur ces repos.
 - [ ] **Replace external-package CIs with `release.sh` scripts** —
       the package repos (`amalgame-database-sqlite` /
       `amalgame-database-nosql-redis` / `amalgame-database-duckdb` /
