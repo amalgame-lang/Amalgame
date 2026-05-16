@@ -7,6 +7,54 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.19] — 2026-05-16
+
+Bugfix release — two compiler issues surfaced by the
+`amalgame-database-postgresql` CI end-to-end run.
+
+### Fixed: lexer — `namespace` keyword inside `//` comments leaks into the prefix
+
+`main.am` pre-extracts the namespace via `String_IndexOf(firstSrc, "namespace ")`
+on the raw source to feed `nsPrefix` into the cgen + the
+self-package skip loop. Comments weren't being skipped, so a
+line like `// schema namespace foo bar` placed before the real
+`namespace App` declaration matched first and `foo bar` leaked
+into every generated C identifier (`typedef struct _foo bar_Program …`).
+
+Fix: replace the raw `IndexOf` with a line-by-line scan that
+trims and skips `//` lines before the keyword check. Block
+comments `/* … */` aren't skipped here yet (rare in practice; can
+be added if it ever bites). Same patch adds the missing
+`: List<string>` annotation on the `String_Split` result so the
+new code itself doesn't trigger the second bug below.
+
+### Fixed: cgen — opaque-`void*` receiver lowered `.Get()` to `void_Get(…)`
+
+When a cross-package call like `PostgreSQL.QueryAll` returned
+`List<List<string>>`, the inner-cell type erased to `void*`
+because nested generics aren't propagated through the type
+registry. A follow-up `row0.Get(j)` then hit the MEMBER-call
+dispatch which built the symbol as `<bareType>_<mname>` →
+`void_Get(row0, j)` → linker undefined-reference.
+
+Fix: intercept `bareType == "void"` and dispatch known list
+verbs (`Get` / `Count` / `Size` / `Add` / `Remove` / `Clear` /
+`IndexOf` / `Contains`) through the `AmalgameList_<method>`
+runtime with the same camelCase-first-letter trick the
+chained-CALL branch uses. Doesn't solve the deeper
+nested-generics-in-type-registry problem, but unblocks the
+common `List<List<X>>` → row → cell pattern without forcing
+explicit annotations at every intermediate `let`.
+
+### Tested
+
+- 452/452 PASS (214 core + 191 stdlib + 12 fmt + 35 amc-new)
+- Snapshot regenerated
+- `amalgame-database-postgresql` test fixture compiles cleanly
+  without the previously-needed comment-rewording + List<string>
+  workarounds; CI green end-to-end against `postgres:16-alpine`
+  service container
+
 ## [v0.8.18] — 2026-05-16
 
 Stdlib feature release: `Process` v2 surface.
@@ -4513,6 +4561,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.19]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.19
 [v0.8.18]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.18
 [v0.8.17]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.17
 [v0.8.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.16
