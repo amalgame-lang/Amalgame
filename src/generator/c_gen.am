@@ -116,6 +116,20 @@ public class CGen {
     private CurrentSource:   string
     private LastLineEmitted: int
 
+    // InferTypeFromExpr memoization (v0.8.15).
+    // Without this cache, a chain like `a.AddChild(x).AddChild(y).AddChild(z)...`
+    // recurses on the receiver of each call, re-inferring the whole
+    // chain up to the leftmost expression every step — quadratic
+    // visits, and beyond ~24 links amc effectively hangs because each
+    // visit itself does string concat / list walks.
+    //
+    // The cache keys nodes by their C pointer cast to i64 — AstNode
+    // identity is stable within a single compilation. Parallel
+    // List<i64>/List<string> rather than AmalgameMap so we don't have
+    // to introduce a new generic-key map shape just for this.
+    private InferCacheKeys: List<int>
+    private InferCacheVals: List<string>
+
     // v0.5 package-manager: each external package's class +
     // functions feed the isStdlib check (ClassName), return-type
     // table (Func → CRetType), and prelude #include emission
@@ -166,6 +180,8 @@ public class CGen {
         this.ExternalClassNsArr = new List<string>()
         this.CurrentSource     = ""
         this.LastLineEmitted   = -1
+        this.InferCacheKeys    = new List<int>()
+        this.InferCacheVals    = new List<string>()
         // Pre-register stdlib struct fields
         this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
         this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
@@ -678,7 +694,30 @@ public class CGen {
     }
 
     // ── Infer C type from RHS expression ─────────────
+    // Memoized entry point. Look up the node by its C pointer
+    // identity; on a miss, dispatch to InferTypeFromExprUncached
+    // and cache the result. Critical for long fluent-chain expressions
+    // (e.g. v0.0.5 ui-web builders with 20+ AddChild) — without the
+    // cache the recursion re-inferred every prefix at every step.
     private string InferTypeFromExpr(AstNode expr) {
+        if (expr == null) { return "" }
+        var key: int = 0
+        @c {
+            key = (i64)expr;
+        }
+        let n: int = this.InferCacheKeys.Count()
+        for i in 0..n {
+            if (this.InferCacheKeys.Get(i) == key) {
+                return this.InferCacheVals.Get(i)
+            }
+        }
+        let result: string = this.InferTypeFromExprUncached(expr)
+        this.InferCacheKeys.Add(key)
+        this.InferCacheVals.Add(result)
+        return result
+    }
+
+    private string InferTypeFromExprUncached(AstNode expr) {
         if (expr == null) { return "" }
         let k = expr.Kind
         if (k == NodeKind.LIST_COMP)      { return "AmalgameList*" }
