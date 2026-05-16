@@ -7,6 +7,33 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.17] — 2026-05-16
+
+Single-fix patch release.
+
+### Fixed: macOS CI build (clang inline-function-in-function-body)
+
+The cross-platform release pipeline failed on `Build (macOS arm64)`
+with 20 errors of `function definition is not allowed here` from
+`<libkern/OSByteOrder.h>`. Root cause: `src/main.am` included
+`<mach-o/dyld.h>` inside a function-scope `@c { … }` block for
+`ResolveSelfPath` — that header transitively pulls in
+`OSByteOrder.h` which declares inline functions at top level,
+which clang refuses to (re-)declare inside a function body.
+gcc/glibc accepts the same pattern because Linux uses macros
+rather than file-scope inlines.
+
+Fix: hoist the `#include <mach-o/dyld.h>` + `#include <stdlib.h>`
+into the existing file-scope `@c { … }` block at the top of
+main.am, gated by `__APPLE__`. The local `@c` body in
+`ResolveSelfPath` keeps a comment pointer.
+
+Same fix shape applies to any future macOS-specific header that
+defines inline functions — keep system header includes at file
+scope.
+
+tests/run_all_tests.sh: 451/451 green.
+
 ## [v0.8.16] — 2026-05-16
 
 Single-fix patch release.
