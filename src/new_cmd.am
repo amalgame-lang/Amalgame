@@ -214,9 +214,12 @@ public class NewCommand {
         let unit:      string = NewCommand.SystemdUnit(base)
         let installSh: string = NewCommand.InstallShService(base)
         let buildSh:   string = NewCommand.BuildShService(base)
-        // Windows side — NSSM-based install + MinGW build, PowerShell only
-        // (modern, available on every Windows 7+ host, much cleaner
-        // download-and-extract logic than a CMD batch script).
+        // Windows side — native SCM install (sc.exe) + MinGW build,
+        // PowerShell only (modern, available on every Windows 7+ host,
+        // much cleaner UAC + service-management ergonomics than a
+        // CMD batch script). NSSM dependency dropped in v0.2.0 of
+        // amalgame-service; the binary now wires up the SCM dispatcher
+        // itself via `Service.RunAsService(name)`.
         let buildPs1:   string = NewCommand.BuildPs1Service(base)
         let installPs1: string = NewCommand.InstallPs1Service(base)
         let readme:     string = NewCommand.ReadmeService(base)
@@ -245,7 +248,7 @@ public class NewCommand {
         Console.WriteLine("  Linux:    ./build.sh && sudo ./install.sh")
         Console.WriteLine("            sudo journalctl -fu " + base)
         Console.WriteLine("  Windows:  .\\build.ps1 ; Start-Process powershell -Verb runAs install.ps1")
-        Console.WriteLine("            (uses NSSM under the hood; auto-downloaded if missing)")
+        Console.WriteLine("            (registers as a native Windows service via sc.exe)")
         return 0
     }
 
@@ -610,14 +613,22 @@ public class NewCommand {
         s = s + "//\n"
         s = s + "// Replace `OnTick()` with your actual work. The systemd unit\n"
         s = s + "// (`" + name + ".service`) runs this with stdout/stderr routed\n"
-        s = s + "// to journald; on macOS use launchd, on Windows wrap it with sc.\n"
+        s = s + "// to journald; on macOS launchd does the same; on Windows the\n"
+        s = s + "// binary is a native service (SCM dispatcher wired in via\n"
+        s = s + "// `Service.RunAsService`) registered via `sc.exe create`.\n"
         s = s + "\n"
         s = s + "public class Program {\n"
         s = s + "    public static int Main(List<string> args) {\n"
         s = s + "        Log.SetMinLevel(\"info\")\n"
         s = s + "        Log.Info(\"" + name + " starting\")\n"
         s = s + "\n"
-        s = s + "        Service.Install()\n"
+        s = s + "        // `RunAsService` installs the POSIX signal / Windows\n"
+        s = s + "        // Ctrl handler AND (on Windows) bootstraps the Service\n"
+        s = s + "        // Control Manager dispatcher so the same binary runs\n"
+        s = s + "        // unchanged as a console process and as a registered\n"
+        s = s + "        // Windows service. The name must match `sc create <name>`.\n"
+        s = s + "        Service.RunAsService(\"" + name + "\")\n"
+        s = s + "\n"
         s = s + "        var ticks: int = 0\n"
         s = s + "        while (!Service.ShouldStop()) {\n"
         s = s + "            Program.OnTick(ticks)\n"
@@ -651,7 +662,7 @@ public class NewCommand {
         s = s + "\n"
         s = s + "[dependencies]\n"
         s = s + "logging = { git = \"github.com/amalgame-lang/amalgame-logging\", tag = \"v0.1.0\" }\n"
-        s = s + "service = { git = \"github.com/amalgame-lang/amalgame-service\", tag = \"v0.1.0\" }\n"
+        s = s + "service = { git = \"github.com/amalgame-lang/amalgame-service\", tag = \"v0.2.0\" }\n"
         return s
     }
 
@@ -756,35 +767,34 @@ public class NewCommand {
         return s
     }
 
-    // ── Windows install (NSSM wrapper) ────────────────
+    // ── Windows install (native SCM via sc.exe) ──────
     //
-    // Native Windows Service mode (StartServiceCtrlDispatcher /
-    // RegisterServiceCtrlHandler / SetServiceStatus) requires the
-    // exe to itself register with SCM within ~30s of launch, which
-    // means wiring an SCM dispatcher into amc's generated main().
-    // Tracked as a v2 follow-up.
+    // The binary itself wires up the SCM dispatcher
+    // (`StartServiceCtrlDispatcher` + `RegisterServiceCtrlHandlerEx`
+    // + `SetServiceStatus`) through `Service.RunAsService(name)`
+    // from amalgame-service v0.2.0+. No external wrapper exe is
+    // needed — we register the binary directly with the built-in
+    // `sc.exe` and Windows treats it as a first-class service.
     //
-    // For v1 we ship NSSM-based scripts. NSSM (Non-Sucking Service
-    // Manager — https://nssm.cc) is a tiny exe that wraps any
-    // console binary as a proper Windows service: handles SCM
-    // dispatch, status reporting, log rotation, auto-restart.
-    // Same outcome as a "native" service from the operator's POV;
-    // user binary stays a plain console app.
+    // Console-mode launch keeps working (StartServiceCtrlDispatcher
+    // returns ERROR_FAILED_SERVICE_CONTROLLER_CONNECT and the binary
+    // falls through to a foreground loop), so the same exe is used
+    // for `./<name>.exe` runs and the registered service.
     private static string InstallPs1Service(string name) {
         var s: string = ""
-        s = s + "# install.ps1 — register " + name + " as a Windows service via NSSM.\n"
+        s = s + "# install.ps1 — register " + name + " as a native Windows service.\n"
         s = s + "#\n"
-        s = s + "# NSSM (https://nssm.cc) is a tiny SCM wrapper that turns any\n"
-        s = s + "# console binary into a proper Windows service. v1 of `amc new\n"
-        s = s + "# --template service` ships NSSM-based scripts; native SCM\n"
-        s = s + "# dispatcher integration is tracked for v2.\n"
+        s = s + "# Uses the built-in `sc.exe` (no NSSM, no external download).\n"
+        s = s + "# The binary is a native service: its `Service.RunAsService`\n"
+        s = s + "# call (from amalgame-service v0.2.0+) bootstraps the Windows\n"
+        s = s + "# SCM dispatcher on a worker thread at startup.\n"
         s = s + "#\n"
         s = s + "# Run from an elevated PowerShell:\n"
         s = s + "#   Start-Process powershell -Verb runAs -ArgumentList '-File','install.ps1'\n"
         s = s + "$ErrorActionPreference = 'Stop'\n"
         s = s + "Set-Location $PSScriptRoot\n"
         s = s + "\n"
-        s = s + "# Elevation check.\n"
+        s = s + "# Elevation check — `sc create` needs admin.\n"
         s = s + "$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()\n"
         s = s + "$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)\n"
         s = s + "if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {\n"
@@ -792,45 +802,55 @@ public class NewCommand {
         s = s + "  exit 1\n"
         s = s + "}\n"
         s = s + "\n"
-        s = s + "# Locate NSSM. Check PATH first, then fall back to a vendored\n"
-        s = s + "# copy under ./nssm.exe (drop it in the project root if you\n"
-        s = s + "# pre-downloaded). Auto-download as a last resort.\n"
-        s = s + "$nssm = (Get-Command nssm -ErrorAction SilentlyContinue)\n"
-        s = s + "$nssmExe = if ($nssm) { $nssm.Path } else { Join-Path $PSScriptRoot 'nssm.exe' }\n"
-        s = s + "if (-not (Test-Path $nssmExe)) {\n"
-        s = s + "  $url = 'https://nssm.cc/release/nssm-2.24.zip'\n"
-        s = s + "  Write-Host \"Downloading NSSM from $url\"\n"
-        s = s + "  $tmp = New-TemporaryFile\n"
-        s = s + "  Invoke-WebRequest -Uri $url -OutFile $tmp.FullName\n"
-        s = s + "  $extract = Join-Path $env:TEMP ('nssm-' + [Guid]::NewGuid())\n"
-        s = s + "  Expand-Archive -Path $tmp.FullName -DestinationPath $extract -Force\n"
-        s = s + "  $arch = if ([Environment]::Is64BitOperatingSystem) { 'win64' } else { 'win32' }\n"
-        s = s + "  Copy-Item -Path (Join-Path $extract \"nssm-2.24/$arch/nssm.exe\") -Destination $nssmExe -Force\n"
-        s = s + "  Remove-Item $tmp.FullName, $extract -Recurse -Force\n"
-        s = s + "}\n"
-        s = s + "\n"
-        s = s + "# Build the binary if missing or stale.\n"
+        s = s + "# Build the binary if missing.\n"
         s = s + "$exe = Join-Path $PSScriptRoot '" + name + ".exe'\n"
         s = s + "if (-not (Test-Path $exe)) { & .\\build.ps1 }\n"
         s = s + "\n"
-        s = s + "# Stop + remove any prior install so we cleanly replace it.\n"
-        s = s + "& $nssmExe stop '" + name + "' 2>$null | Out-Null\n"
-        s = s + "& $nssmExe remove '" + name + "' confirm 2>$null | Out-Null\n"
+        s = s + "$svc = '" + name + "'\n"
+        s = s + "$display = '" + name + " (Amalgame service)'\n"
         s = s + "\n"
-        s = s + "# Register + configure + start.\n"
-        s = s + "& $nssmExe install '" + name + "' $exe\n"
-        s = s + "& $nssmExe set '" + name + "' AppDirectory $PSScriptRoot\n"
-        s = s + "& $nssmExe set '" + name + "' DisplayName '" + name + " (Amalgame service)'\n"
-        s = s + "& $nssmExe set '" + name + "' Start SERVICE_AUTO_START\n"
-        s = s + "& $nssmExe set '" + name + "' AppStdout (Join-Path $PSScriptRoot '" + name + ".out.log')\n"
-        s = s + "& $nssmExe set '" + name + "' AppStderr (Join-Path $PSScriptRoot '" + name + ".err.log')\n"
-        s = s + "& $nssmExe start '" + name + "'\n"
+        s = s + "# Stop + delete any prior registration so we cleanly replace it.\n"
+        s = s + "# `sc query` exit code 1060 means \"service does not exist\".\n"
+        s = s + "& sc.exe query $svc *> $null\n"
+        s = s + "if ($LASTEXITCODE -eq 0) {\n"
+        s = s + "  Write-Host \"==> Stopping existing service '$svc'\"\n"
+        s = s + "  & sc.exe stop   $svc *> $null\n"
+        s = s + "  Start-Sleep -Seconds 1\n"
+        s = s + "  Write-Host \"==> Deleting existing service '$svc'\"\n"
+        s = s + "  & sc.exe delete $svc *> $null\n"
+        s = s + "  Start-Sleep -Seconds 1\n"
+        s = s + "}\n"
+        s = s + "\n"
+        s = s + "# Register the binary as an auto-start service. `binPath=` MUST\n"
+        s = s + "# have a space after the equals sign (sc.exe quirk).\n"
+        s = s + "Write-Host \"==> Registering '$svc' (binPath=$exe)\"\n"
+        s = s + "& sc.exe create $svc binPath= \"`\"$exe`\"\" start= auto DisplayName= $display\n"
+        s = s + "if ($LASTEXITCODE -ne 0) { throw \"sc create failed (exit=$LASTEXITCODE)\" }\n"
+        s = s + "\n"
+        s = s + "# Optional: restart on failure (1st/2nd/3rd retry @ 5s, reset counter @ 1h).\n"
+        s = s + "& sc.exe failure $svc reset= 3600 actions= restart/5000/restart/5000/restart/5000 *> $null\n"
+        s = s + "\n"
+        s = s + "# Start.\n"
+        s = s + "Write-Host \"==> Starting '$svc'\"\n"
+        s = s + "& sc.exe start $svc\n"
+        s = s + "if ($LASTEXITCODE -ne 0) { throw \"sc start failed (exit=$LASTEXITCODE)\" }\n"
         s = s + "\n"
         s = s + "Write-Host ''\n"
-        s = s + "Write-Host \"Done. Service registered as '" + name + "'.\"\n"
-        s = s + "Write-Host '  Status:'\n"
-        s = s + "& $nssmExe status '" + name + "'\n"
-        s = s + "Write-Host '  Stderr log: ' (Join-Path $PSScriptRoot '" + name + ".err.log')\n"
+        s = s + "Write-Host \"Done. Service '$svc' registered + started.\"\n"
+        s = s + "Write-Host '  Status (sc query):'\n"
+        s = s + "& sc.exe query $svc\n"
+        s = s + "Write-Host ''\n"
+        s = s + "Write-Host 'Operate the service via standard tooling:'\n"
+        s = s + "Write-Host \"  sc.exe query   $svc\"\n"
+        s = s + "Write-Host \"  sc.exe stop    $svc\"\n"
+        s = s + "Write-Host \"  sc.exe start   $svc\"\n"
+        s = s + "Write-Host \"  sc.exe delete  $svc       # remove (after stop)\"\n"
+        s = s + "Write-Host \"  Get-Service    $svc       # PowerShell view\"\n"
+        s = s + "Write-Host ''\n"
+        s = s + "Write-Host 'Logs: this template writes to stderr only. To capture them,'\n"
+        s = s + "Write-Host 'either redirect inside Main() (Amalgame.Logging.SetFile)'\n"
+        s = s + "Write-Host 'or wrap stdout/stderr via a shim. Native Windows event-log'\n"
+        s = s + "Write-Host 'integration is on the amalgame-service roadmap.'\n"
         return s
     }
 
@@ -887,30 +907,35 @@ public class NewCommand {
         s = s + "journalctl -fu " + name + "\n"
         s = s + "```\n"
         s = s + "\n"
-        s = s + "## Windows — install as a service (via NSSM)\n"
+        s = s + "## Windows — install as a native service (via sc.exe)\n"
         s = s + "\n"
         s = s + "```powershell\n"
         s = s + "# elevated PowerShell\n"
         s = s + "Start-Process powershell -Verb runAs -ArgumentList '-File','install.ps1'\n"
         s = s + "```\n"
         s = s + "\n"
-        s = s + "`install.ps1` does three things: builds the binary if missing,\n"
-        s = s + "fetches [NSSM](https://nssm.cc) (a tiny SCM wrapper) into the project\n"
-        s = s + "root if not already present, then registers `" + name + "` as an\n"
-        s = s + "auto-start Windows service with stdout/stderr routed to log files\n"
-        s = s + "in the project directory.\n"
+        s = s + "`install.ps1` builds the binary if needed, then registers it as\n"
+        s = s + "a native auto-start Windows service via the built-in `sc.exe`.\n"
+        s = s + "**No NSSM** or other external wrapper is involved — the binary\n"
+        s = s + "wires up the Windows Service Control Manager dispatcher itself\n"
+        s = s + "through `Service.RunAsService(\"" + name + "\")` (from\n"
+        s = s + "`amalgame-service` v0.2.0+).\n"
         s = s + "\n"
-        s = s + "Operate the service via NSSM:\n"
+        s = s + "Operate the service via standard Windows tooling:\n"
         s = s + "\n"
         s = s + "```powershell\n"
-        s = s + "nssm status " + name + "\n"
-        s = s + "nssm restart " + name + "\n"
-        s = s + "nssm stop " + name + "\n"
-        s = s + "nssm remove " + name + " confirm\n"
+        s = s + "sc.exe query   " + name + "\n"
+        s = s + "sc.exe stop    " + name + "\n"
+        s = s + "sc.exe start   " + name + "\n"
+        s = s + "sc.exe delete  " + name + "\n"
+        s = s + "Get-Service    " + name + "\n"
         s = s + "```\n"
         s = s + "\n"
-        s = s + "Or use the standard `sc` / `Get-Service` commands — NSSM-registered\n"
-        s = s + "services are real Windows services from the OS's perspective.\n"
+        s = s + "The exact same binary keeps working when launched directly from a\n"
+        s = s + "console (`.\\" + name + ".exe`) — `StartServiceCtrlDispatcher` returns\n"
+        s = s + "immediately with `ERROR_FAILED_SERVICE_CONTROLLER_CONNECT` and the\n"
+        s = s + "binary falls through to the same `while (!ShouldStop)` loop, with\n"
+        s = s + "`Ctrl+C` triggering clean shutdown via the console Ctrl handler.\n"
         s = s + "\n"
         s = s + "## macOS — launchd\n"
         s = s + "\n"
@@ -918,22 +943,6 @@ public class NewCommand {
         s = s + "(`./build.sh && ./" + name + "` works identically to Linux); only\n"
         s = s + "the install scripting is Linux-specific. Write a `launchd.plist`\n"
         s = s + "and `launchctl bootstrap` it — tracked for a future template revision.\n"
-        s = s + "\n"
-        s = s + "## Why NSSM on Windows?\n"
-        s = s + "\n"
-        s = s + "A native Windows service must call `StartServiceCtrlDispatcher`\n"
-        s = s + "within ~30s of launch and report status changes back to SCM via\n"
-        s = s + "`SetServiceStatus`. Plain console binaries — like the one this\n"
-        s = s + "template scaffolds — don't do that. NSSM is a tiny exe (~350 KB)\n"
-        s = s + "that handles the SCM dance + auto-restart + log rotation + crash\n"
-        s = s + "recovery, transparently wrapping any console binary as a proper\n"
-        s = s + "Windows service.\n"
-        s = s + "\n"
-        s = s + "From the operator's perspective the result is indistinguishable\n"
-        s = s + "from a native service — same `sc start` / `Get-Service` / Event\n"
-        s = s + "Viewer integration. A future template revision will add a\n"
-        s = s + "`--native` switch that wires the SCM dispatcher directly into the\n"
-        s = s + "binary; v1 ships NSSM-only.\n"
         s = s + "\n"
         s = s + "## Project layout\n"
         s = s + "\n"
@@ -943,7 +952,7 @@ public class NewCommand {
         s = s + "├── src/main.am             # daemon entry point — edit OnTick() here\n"
         s = s + "├── " + name + ".service      # systemd unit (Linux)\n"
         s = s + "├── install.sh              # build + deploy under systemd (Linux)\n"
-        s = s + "├── install.ps1             # NSSM-based service install (Windows)\n"
+        s = s + "├── install.ps1             # native Windows service install (sc.exe)\n"
         s = s + "├── build.sh                # POSIX compile: amc + gcc\n"
         s = s + "├── build.ps1               # Windows compile: amc + MinGW gcc\n"
         s = s + "├── .gitignore\n"
