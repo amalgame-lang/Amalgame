@@ -1,7 +1,7 @@
 # Amalgame — Roadmap
 
 > **Upcoming priority sequence (2026-05-14 decision):**
-> `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) → `v0.8.14` (list literals `[a, b, c]` + `.Size()` short-circuit fix + multi-line `+/-/*///%` continuation + ui-web-form scaffolder uses `OnResult` + docs/guide/09-ui-web/ chapter) → `v0.8.15` (`InferTypeFromExpr` memoization — long fluent chains no longer hang) → `v0.8.16` (chained method calls on `new X(...)` receivers — codegen fix) → `v0.8.17` (macOS CI clang `<mach-o/dyld.h>` hoist to file scope) → **native Windows Service** (drops NSSM, switch service template to native `sc.exe` + `Service.RunAsService`) → `v0.8.18` (`Process` v2: `RunCaptureBoth` real stderr split via fork+execvp+2 pipes / CreateProcess+CreatePipe×2; `RunCaptureBothTimeout` + `RunTimeout` with SIGKILL/TerminateProcess deadline, sentinel exit 124) ✅ all shipped through v0.8.18.
+> `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) → `v0.8.14` (list literals `[a, b, c]` + `.Size()` short-circuit fix + multi-line `+/-/*///%` continuation + ui-web-form scaffolder uses `OnResult` + docs/guide/09-ui-web/ chapter) → `v0.8.15` (`InferTypeFromExpr` memoization — long fluent chains no longer hang) → `v0.8.16` (chained method calls on `new X(...)` receivers — codegen fix) → `v0.8.17` (macOS CI clang `<mach-o/dyld.h>` hoist to file scope) → **native Windows Service** (drops NSSM, switch service template to native `sc.exe` + `Service.RunAsService`) → `v0.8.18` (`Process` v2: `RunCaptureBoth` real stderr split via fork+execvp+2 pipes / CreateProcess+CreatePipe×2; `RunCaptureBothTimeout` + `RunTimeout` with SIGKILL/TerminateProcess deadline, sentinel exit 124) → `v0.8.19` (lexer: `//`-comments containing the `namespace` keyword no longer leak into `nsPrefix` ; cgen: `.Get()` on a `void*` opaque collection-cell dispatches through `AmalgameList_get` instead of emitting `void_Get`) ✅ all shipped through v0.8.19.
 >
 > **Backlog post-v0.8.13:** Approche A DAP migration (pretty-print AmalgameList* / AmalgameMap*, filter runtime frames) + msgpack extraction (gated on cgen facade ABI fix) + LSP package discovery code action + cgen bug #6 (`let` scope flattened to function level — workaround: rename locals; fix: per-block C scope).
 >
@@ -34,7 +34,7 @@
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-16 · `amc 0.8.18` · self-hosted · 452/452 tests (amc) + 85+/85+ ecosystem · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
+> Updated 2026-05-16 · `amc 0.8.19` · self-hosted · 452/452 tests (amc) + 85+/85+ ecosystem · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -1564,6 +1564,50 @@ implementation effort.
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
 - [x] GitHub Releases automation (tag-triggered)
+
+### Package release checklist (mandatory for every new external package)
+
+Convention adoptée 2026-05-16 après le ship de
+`amalgame-database-postgresql` (1er dynamic-link). À appliquer à
+chaque nouveau package amalgame-lang avant le tag `v0.1.0` :
+
+1. **README → table `## Prerequisites` per OS** (apt / dnf /
+   pacman / brew / MSYS2). Mentionner explicitement **build-time**
+   (header `*-dev`) ET **deploy-time** (runtime lib). Si le
+   package n'a aucune dep système, écrire explicitement "No
+   external dependencies" plutôt que laisser un trou — sinon
+   l'utilisateur doute.
+2. **NOTICE.md** attribue tout upstream vendored + sa licence
+   (modèle: amalgame-image, amalgame-audio).
+3. **Tests gate cleanly** sur les deps manquantes — `SKIP` propre,
+   jamais `FAIL`, quand le service/lib n'est pas dispo (pattern:
+   amalgame-messaging-mqtt's `MQTT_AVAILABLE=0` flag).
+4. **CI Linux-only** quand le package dépend d'un service externe :
+   utiliser le `services:` natif GitHub Actions (Postgres,
+   Mosquitto, Redis, MongoDB, Kafka, RabbitMQ → tous packagés
+   en image Docker). macOS/Windows runners GHA ne supportent pas
+   `services:` — on **ne valide pas multi-OS en CI**, mais
+   chaque package **doit rester multi-OS-compatible dans le code**
+   (pas de `#ifdef` plate-forme inutile ; les wrappers de libs
+   cross-OS comme libpq / SDL2 / miniaudio abstraient déjà
+   l'OS pour nous).
+5. **Vendor key vs dynamic-link** :
+   - Vendor (sources dans `runtime/vendor/`) quand l'upstream est
+     petit single-header / public domain (stb_image, miniaudio,
+     stb_vorbis) ou redistribuable sans contrainte (SQLite,
+     DuckDB MIT).
+   - Dynamic-link (manifest `libs = [...]` sans `sources`) quand
+     l'upstream est volumineux et déjà packagé partout (libpq,
+     libmariadb, libmongoc, librdkafka, librabbitmq).
+6. **Manifest `required-amalgame`** doit matcher le matrix CI :
+   si la CI ne teste qu'avec `v0.8.18`, le manifest doit dire
+   `>=0.8.0` (ou plus récent), pas `>=0.5.4`. Sinon
+   `amc package add` accepte une combinaison non-testée et
+   le user prend des bugs cgen anciens en pleine face.
+
+Audit 2026-05-16 — packages avec gaps à patcher rétro : compress,
+database-duckdb, ui-sdl, ui-forms, regex, audio. Voir commits du
+même jour sur ces repos.
 - [ ] **Replace external-package CIs with `release.sh` scripts** —
       the package repos (`amalgame-database-sqlite` /
       `amalgame-database-nosql-redis` / `amalgame-database-duckdb` /
