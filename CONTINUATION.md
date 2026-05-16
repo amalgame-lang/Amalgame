@@ -1147,8 +1147,6 @@ Compiler / tooling backlog:
 
 - **Multi-version coexistence** — dual-link, package A wants
   redis@v1 + B wants redis@v2.
-- **`Amalgame.Service` v2** — native Windows SCM dispatcher,
-  drops NSSM dep.
 - **`amc new --template service` v2** — macOS launchd.
 - **LSP slice 6** — tighter selectionRange + more code actions.
 - **ORM layer** — sits above the SQL backend packages.

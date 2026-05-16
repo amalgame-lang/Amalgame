@@ -98,12 +98,14 @@ assert_file "$TMP/myd/build.ps1"
 assert_file "$TMP/myd/.gitignore"
 assert_file "$TMP/myd/README.md"
 # Spot-check the generated main.am uses the documented APIs.
-grep -q "Service.Install"      "$TMP/myd/src/main.am" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} service template missing Service.Install"; FAIL=$((FAIL + 1)); }
+grep -q "Service.RunAsService" "$TMP/myd/src/main.am" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} service template missing Service.RunAsService"; FAIL=$((FAIL + 1)); }
 grep -q "while.*ShouldStop"    "$TMP/myd/src/main.am" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} service template missing ShouldStop loop"; FAIL=$((FAIL + 1)); }
 grep -q "Log.Info"             "$TMP/myd/src/main.am" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} service template missing Log.Info"; FAIL=$((FAIL + 1)); }
 # Spot-check the systemd unit + install scripts have the right name baked in.
 grep -q "ExecStart=/usr/local/bin/myd"  "$TMP/myd/myd.service" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} systemd unit missing ExecStart"; FAIL=$((FAIL + 1)); }
-grep -q "nssm"                          "$TMP/myd/install.ps1" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} install.ps1 missing NSSM"; FAIL=$((FAIL + 1)); }
+# Windows install must use native sc.exe (no NSSM since amalgame-service v0.2.0).
+grep -q "sc.exe create"                 "$TMP/myd/install.ps1" && PASS=$((PASS + 1)) || { echo -e "  ${RED}FAIL${NC} install.ps1 missing 'sc.exe create' (native SCM)"; FAIL=$((FAIL + 1)); }
+grep -qE 'nssm(\.exe|Exe|\s+(install|set|start|stop|remove))' "$TMP/myd/install.ps1" && { echo -e "  ${RED}FAIL${NC} install.ps1 still invokes NSSM (should be sc.exe only)"; FAIL=$((FAIL + 1)); } || PASS=$((PASS + 1))
 
 # ── Refusal without --force on existing dir ───
 "$AMC" new "$TMP/exetest" 2>&1 | grep -qi "already exists" && PASS=$((PASS + 1)) || {
