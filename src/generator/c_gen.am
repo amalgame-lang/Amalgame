@@ -1151,6 +1151,19 @@ public class CGen {
                                 if (String_Length(retTC) > 0) { return retTC }
                             }
                         }
+                        // new ClassName(...).Method() — receiver is a NEW_EXPR.
+                        // Reuse the NEW_EXPR inference (top of this function)
+                        // to get the freshly-built instance's type, then look
+                        // up `Method` on it. Unblocks `new Form(...).SetBody(...)`
+                        // style fluent declarations everywhere.
+                        if (llk2 == NodeKind.NEW_EXPR) {
+                            let recvT    = this.InferTypeFromExpr(expr.Left.Left)
+                            let recvBare = String_Replace(recvT, "*", "")
+                            if (String_Length(recvBare) > 0) {
+                                let retTN = this.MethodRetGet(recvBare, mname2)
+                                if (String_Length(retTN) > 0) { return retTN }
+                            }
+                        }
                         // ClassName.Method() → static call, look up SymName(ClassName)
                         if (llk2 == NodeKind.IDENTIFIER) {
                             let cname2 = expr.Left.Left.Name
@@ -3129,6 +3142,15 @@ public class CGen {
                                 selfExpr   = this.EmitExprStr(ll)
                             }
                         }
+                        // new ClassName(...).Method(...) — instantiate
+                        // and call on the result. The receiver is the
+                        // full constructor call; EmitCalleeStr below
+                        // resolves the method symbol via the same
+                        // path as a static call to ClassName.
+                        if (ll.Kind == NodeKind.NEW_EXPR) {
+                            isSelfCall = true
+                            selfExpr   = this.EmitExprStr(ll)
+                        }
                         // "literal".Method(...) — pass the literal as the
                         // first argument to String_Method.
                         if (ll.Kind == NodeKind.LITERAL_STRING) {
@@ -3811,6 +3833,48 @@ public class CGen {
                         }
                         return bareR + "_" + mname
                     }
+                }
+                // <call-chain>.Method(...) — receiver is a CALL whose
+                // return type we can infer. Used by patterns like
+                // `new X().M1().M2()` or `a.M1(x).M2(y)`. The
+                // detection in the call-emission site already sets
+                // isSelfCall + selfExpr; this branch resolves the
+                // method symbol from the inferred receiver type.
+                if (lk == NodeKind.CALL) {
+                    let rt: string = this.InferTypeFromExpr(callee.Left)
+                    let bare: string = String_Replace(rt, "*", "")
+                    if (String_Length(bare) > 0) {
+                        if (bare == "AmalgameList" || bare == "AmalgameMap" || bare == "AmalgameSet") {
+                            let first: string = String_Substring(mname, 0, 1)
+                            let rest:  string = String_Substring(mname, 1, String_Length(mname) - 1)
+                            return bare + "_" + String_ToLower(first) + rest
+                        }
+                        return bare + "_" + mname
+                    }
+                }
+                // new ClassName(...).Method(...) — receiver is a NEW_EXPR.
+                // Resolve the method symbol from the class being
+                // instantiated, same dispatch as a static call to
+                // ClassName (external mangled / core stdlib / package
+                // mangled / SymName fallback). Without this, the
+                // fallback at the end of the function mashes the
+                // method name into `new()`'s call string, producing
+                // invalid C like `App_Widget_new("foo")_Class("bar")`.
+                if (lk == NodeKind.NEW_EXPR) {
+                    let tname: string = callee.Left.Name
+                    let externalMangled: string = this.ExternalClassMangled(tname)
+                    if (String_Length(externalMangled) > 0) {
+                        return externalMangled + "_" + mname
+                    }
+                    let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                    if (isCoreStdlib) {
+                        return tname + "_" + mname
+                    }
+                    let mangledPrefix: string = this.PkgClassMangledPrefix(tname)
+                    if (String_Length(mangledPrefix) > 0) {
+                        return mangledPrefix + "_" + mname
+                    }
+                    return this.SymName(tname) + "_" + mname
                 }
                 // Chained-member call: this.Field.Method() or
                 // varName.Field.Method(). Look up the inner-receiver
