@@ -202,6 +202,148 @@ public class AmalgameCompiler {
             }
         }
 
+        // Bug 6 — auto-external the bundled stdlib facades.
+        //
+        // User code that does `import Amalgame.Formats.Json` and
+        // declares a field `Definition: JsonValue` would otherwise see
+        // `JsonValue` lowered to `<UserNs>_JsonValue*` because the
+        // resolver + cgen have no idea the bundled stdlib lives under
+        // `Amalgame.Formats.Json`. Treating json.am / toml.am / etc.
+        // as `--external` is exactly what's needed: the resolver
+        // registers their public symbols (`Json`, `JsonValue`, …) and
+        // RegisterExternalProg seeds ExternalClasses with the file's
+        // own namespace mangling — so TypeToC, InferTypeFromExpr and
+        // EmitCalleeStr all dispatch to `Amalgame_Formats_Json_JsonValue`
+        // automatically.
+        //
+        // Skip namespaces the user is *defining* (matches the self-skip
+        // rule above for installed-package facades) and any file already
+        // queued as an input or external (avoids duplicate typedef).
+        let amcPathForStdlib: string = Program.ResolveSelfPath()
+        let stdlibDir: string = Program.ResolveStdlibSrcDir(amcPathForStdlib)
+        if (String_Length(stdlibDir) > 0) {
+            // Each entry: "<namespace>|<filename>" — kept as a flat list
+            // because the bootstrap lacks Map<string,string>.
+            //
+            // Both the canonical 4-part `Amalgame.Formats.X` namespace
+            // AND the legacy 3-part `Amalgame.X` shorthand are listed
+            // — `import` in Amalgame is informational (the resolver
+            // doesn't actually use it for name resolution), so users
+            // and older facades freely use either form. The auto-attach
+            // scanner accepts both; either spelling resolves to the
+            // same on-disk .am facade.
+            let stdlibEntries: List<string> = new List<string>()
+            stdlibEntries.Add("Amalgame.Path|path.am")
+            stdlibEntries.Add("Amalgame.Formats.Json|json.am")
+            stdlibEntries.Add("Amalgame.Json|json.am")
+            stdlibEntries.Add("Amalgame.Formats.Toml|toml.am")
+            stdlibEntries.Add("Amalgame.Toml|toml.am")
+            stdlibEntries.Add("Amalgame.Formats.MsgPack|msgpack.am")
+            stdlibEntries.Add("Amalgame.MsgPack|msgpack.am")
+            stdlibEntries.Add("Amalgame.Compiler|amc_buildinfo.am")
+            let sec: int = stdlibEntries.Count()
+            // First pass over the user input files: collect imports AND
+            // each file's own `namespace` declaration. We compare both
+            // against the bundled-stdlib catalog so that:
+            //   - imports decide which facades to auto-attach
+            //   - inputs' own namespaces filter out facades the user is
+            //     already compiling from source (e.g. the bootstrap
+            //     itself feeds src/stdlib/json.am as an input, which
+            //     must NOT also be auto-attached as external)
+            // Also record each input file's basename for a second-line
+            // dedup that survives relative-vs-absolute path drift.
+            let importedNs: List<string> = new List<string>()
+            let inputNs:    List<string> = new List<string>()
+            let inputLeafs: List<string> = new List<string>()
+            for ifn in 0..inputCount {
+                let ipath: string = inputFiles.Get(ifn)
+                let lastSlash: int = String_LastIndexOf(ipath, "/")
+                if (lastSlash >= 0) {
+                    inputLeafs.Add(String_Substring(ipath, lastSlash + 1, String_Length(ipath) - lastSlash - 1))
+                } else {
+                    inputLeafs.Add(ipath)
+                }
+                let isrc: string = File.ReadAll(ipath)
+                let ilines: List<string> = String_Split(isrc, "\n")
+                let iln: int = ilines.Count()
+                var idx: int = 0
+                while (idx < iln) {
+                    let raw: string = ilines.Get(idx)
+                    let trimmed: string = String_TrimStart(raw)
+                    if (String_StartsWith(trimmed, "//")) {
+                        idx = idx + 1
+                        continue
+                    }
+                    if (String_StartsWith(trimmed, "import ")) {
+                        let after: string = String_From(trimmed, 7)
+                        let imp: string = String_Trim(after)
+                        if (String_Length(imp) > 0) {
+                            importedNs.Add(imp)
+                        }
+                    }
+                    if (String_StartsWith(trimmed, "namespace ")) {
+                        let nsAfter: string = String_From(trimmed, 10)
+                        let nsName: string = String_Trim(nsAfter)
+                        if (String_Length(nsName) > 0) {
+                            inputNs.Add(nsName)
+                        }
+                    }
+                    idx = idx + 1
+                }
+            }
+            // Iterate the bundled-stdlib catalog. For each entry,
+            // attach the facade if:
+            //   - the user imports the matching namespace
+            //   - no input file declares that namespace (avoid
+            //     auto-attaching a facade of a file we're compiling)
+            //   - the file isn't already an input / explicit external
+            for ei in 0..sec {
+                let entry: string = stdlibEntries.Get(ei)
+                let sepIdx: int = String_IndexOf(entry, "|")
+                if (sepIdx <= 0) { continue }
+                let ns: string = String_Substring(entry, 0, sepIdx)
+                let leaf: string = String_Substring(entry, sepIdx + 1, String_Length(entry) - sepIdx - 1)
+                let nsPrefixCand: string = String_Replace(ns, ".", "_")
+                if (nsPrefixCand == nsPrefix) { continue }
+                var declaredByInput: bool = false
+                let nic: int = inputNs.Count()
+                for nii in 0..nic {
+                    if (inputNs.Get(nii) == ns) { declaredByInput = true }
+                }
+                if (declaredByInput) { continue }
+                var requested: bool = false
+                let ni: int = importedNs.Count()
+                for ii in 0..ni {
+                    if (importedNs.Get(ii) == ns) { requested = true }
+                }
+                if (!requested) { continue }
+                let candidate: string = stdlibDir + "/" + leaf
+                if (!File.Exists(candidate)) { continue }
+                // De-duplicate against inputs (by leaf basename — the
+                // path strings may differ between relative and absolute
+                // forms) and against explicit externals (full path
+                // expected to match).
+                var dup: bool = false
+                let ilc: int = inputLeafs.Count()
+                for ilf in 0..ilc {
+                    if (inputLeafs.Get(ilf) == leaf) { dup = true }
+                }
+                let ecc: int = this.ExternalFiles.Count()
+                for ec in 0..ecc {
+                    let extPath: string = this.ExternalFiles.Get(ec)
+                    if (extPath == candidate) { dup = true }
+                    let extSlash: int = String_LastIndexOf(extPath, "/")
+                    if (extSlash >= 0) {
+                        let extLeaf: string = String_Substring(extPath, extSlash + 1, String_Length(extPath) - extSlash - 1)
+                        if (extLeaf == leaf) { dup = true }
+                    }
+                }
+                if (!dup) {
+                    this.ExternalFiles.Add(candidate)
+                }
+            }
+        }
+
         // ── CGen init ─────────────────────────────────
         let gen = new CGen()
         gen.RegisterPackages(pkgReg)
@@ -504,6 +646,36 @@ public class Program {
         if (File.Exists(xdg)) { return xdg }
         let legacy: string = binDir + "/lib/libamalgame.a"
         if (File.Exists(legacy)) { return legacy }
+        return ""
+    }
+
+    // Resolve the directory holding the bundled-stdlib .am sources
+    // (Json/Toml/MsgPack/Path/Compiler). Bug 6 fix: when user code does
+    // `import Amalgame.Formats.Json` and references `JsonValue` in a
+    // field type, the cgen needs to lower that type to its bundled
+    // namespace (Amalgame_Formats_Json_JsonValue) instead of the
+    // consumer's NsPrefix. The cheapest way to teach the cgen the right
+    // mangling is to parse the relevant .am facade as `--external`, so
+    // RegisterExternalProg seeds the ExternalClasses registry exactly
+    // like a third-party package facade does.
+    //
+    // Probe order:
+    //   1. $AMC_STDLIB_SRC env override
+    //   2. <bin>/../share/amalgame/stdlib   (XDG install layout)
+    //   3. <bin>/src/stdlib                 (source-tree dev layout)
+    // Returns "" if no candidate contains json.am (the marker file).
+    public static string ResolveStdlibSrcDir(string amcPath) {
+        let envDir: string = Env_Get("AMC_STDLIB_SRC")
+        if (String_Length(envDir) > 0 && File.Exists(envDir + "/json.am")) {
+            return envDir
+        }
+        let slashIdx: int = String_LastIndexOf(amcPath, "/")
+        if (slashIdx < 0) { return "" }
+        let binDir: string = String_Substring(amcPath, 0, slashIdx)
+        let xdg: string = binDir + "/../share/amalgame/stdlib"
+        if (File.Exists(xdg + "/json.am")) { return xdg }
+        let dev: string = binDir + "/src/stdlib"
+        if (File.Exists(dev + "/json.am")) { return dev }
         return ""
     }
 

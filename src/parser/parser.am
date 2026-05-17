@@ -729,10 +729,30 @@ public class Parser {
             while (!this.IsEnd() && depth > 0) {
                 let inner = this.Current()
                 let iv = inner.Value
-                if (iv == "<") { depth = depth + 1 }
-                if (iv == ">") { depth = depth - 1 }
-                if (depth > 0) { name = name + iv }
-                this.Advance()
+                if (iv == ">>") {
+                    // Bug 8: lexer fuses two closing `>` of nested
+                    // generics (`List<List<int>>`) into a single OP_SHR
+                    // token. Treat as two `>` for depth bookkeeping —
+                    // append the inner closers and let the post-loop
+                    // `name + ">"` re-emit the outermost one.
+                    if (depth >= 3) {
+                        name  = name + ">>"
+                        depth = depth - 2
+                    } else if (depth == 2) {
+                        name  = name + ">"
+                        depth = 0
+                    } else {
+                        // depth == 1: stray `>` past the outer generic.
+                        // Bail at 0 and let downstream surface the error.
+                        depth = 0
+                    }
+                    this.Advance()
+                } else {
+                    if (iv == "<") { depth = depth + 1 }
+                    if (iv == ">") { depth = depth - 1 }
+                    if (depth > 0) { name = name + iv }
+                    this.Advance()
+                }
             }
             name = name + ">"
         }
@@ -1209,8 +1229,15 @@ public class Parser {
                     i = i + 1
                     while (depth > 0 && this.Peek(i).Type != TokenType.EOF) {
                         let v2 = this.Peek(i).Value
-                        if (v2 == "<") { depth = depth + 1 }
-                        if (v2 == ">") { depth = depth - 1 }
+                        if (v2 == ">>") {
+                            // Bug 8: `>>` (OP_SHR) inside a generic
+                            // closes two levels at once.
+                            depth = depth - 2
+                            if (depth < 0) { depth = 0 }
+                        } else {
+                            if (v2 == "<") { depth = depth + 1 }
+                            if (v2 == ">") { depth = depth - 1 }
+                        }
                         i = i + 1
                     }
                 }
@@ -1864,10 +1891,28 @@ public class Parser {
             while (!this.IsEnd() && depth > 0) {
                 let inner = this.Current()
                 let iv = inner.Value
-                if (iv == "<") { depth = depth + 1 }
-                if (iv == ">") { depth = depth - 1 }
-                if (depth > 0) { generic = generic + iv }
-                this.Advance()
+                if (iv == ">>") {
+                    // Bug 8 mirror: `new List<List<int>>()` — the lexer
+                    // fuses two `>` into OP_SHR. Same fix as ParseTypeName;
+                    // ParseNew has no post-loop `+ ">"`, so the inner
+                    // closer(s) must include both `>` when both close
+                    // inner generics, otherwise drop the outer one.
+                    if (depth >= 3) {
+                        generic = generic + ">>"
+                        depth   = depth - 2
+                    } else if (depth == 2) {
+                        generic = generic + ">"
+                        depth   = 0
+                    } else {
+                        depth = 0
+                    }
+                    this.Advance()
+                } else {
+                    if (iv == "<") { depth = depth + 1 }
+                    if (iv == ">") { depth = depth - 1 }
+                    if (depth > 0) { generic = generic + iv }
+                    this.Advance()
+                }
             }
         }
         let node = Ast.NewExpr(typeName, tok.Line, tok.Column)

@@ -1,0 +1,56 @@
+namespace Tests
+
+// Regression test for Bug 8 (amc v0.8.26):
+//
+// `let xs: List<List<int>> = ...` rejected with "Expected '}' got ''"
+// because the lexer fuses two consecutive `>` characters into a single
+// OP_SHR token (`>>`), and `ParseTypeName`'s generic-bracket loop only
+// recognised single-character `>` tokens for depth bookkeeping. The
+// loop would then consume the rest of the file looking for the
+// matching closer that never came, producing a parse error on the next
+// statement boundary.
+//
+// Fix: ParseTypeName + ParseNew + the lambda lookahead all detect the
+// `>>` token explicitly and treat it as two `>` for depth bookkeeping,
+// appending the inner closer(s) to the type name as appropriate.
+
+public class Program {
+    public static void Main() {
+        // The original repro — nested generic in a `let` annotation.
+        let xs: List<List<int>> = new List<List<int>>()
+        let row: List<int> = new List<int>()
+        row.Add(1)
+        row.Add(2)
+        row.Add(3)
+        xs.Add(row)
+        if (xs.Count() == 1) {
+            Console.WriteLine("[PASS] List<List<int>> annotation parses")
+        } else {
+            Console.WriteLine("[FAIL] xs.Count() = " + String_FromInt(xs.Count()))
+        }
+
+        // Triple-nested: tokens end with `>>>` (lexed as `>>` then `>`).
+        let cube: List<List<List<int>>> = new List<List<List<int>>>()
+        if (cube.Count() == 0) {
+            Console.WriteLine("[PASS] List<List<List<int>>> annotation parses")
+        } else {
+            Console.WriteLine("[FAIL] cube.Count() = " + String_FromInt(cube.Count()))
+        }
+
+        // Quad-nested: tokens end with `>>>>` (lexed as `>>` then `>>`).
+        let tess: List<List<List<List<int>>>> = new List<List<List<List<int>>>>()
+        if (tess.Count() == 0) {
+            Console.WriteLine("[PASS] List<List<List<List<int>>>> annotation parses")
+        } else {
+            Console.WriteLine("[FAIL] tess.Count() = " + String_FromInt(tess.Count()))
+        }
+
+        // Generic with comma + nested — Map<K, List<V>>.
+        let pairs: Map<string, List<int>> = new Map<string, List<int>>()
+        if (pairs.Size() == 0) {
+            Console.WriteLine("[PASS] Map<string, List<int>> annotation parses")
+        } else {
+            Console.WriteLine("[FAIL] pairs.Size() = " + String_FromInt(pairs.Size()))
+        }
+    }
+}
