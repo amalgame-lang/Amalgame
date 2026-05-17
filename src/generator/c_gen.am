@@ -1146,6 +1146,24 @@ public class CGen {
                                         let et = this.ListElemGet(this.CurrentClass, fn3)
                                         if (String_Length(et) > 0) { return et }
                                     }
+                                    // Bug 10 (v0.8.28): obj.Field.Get(i) where obj is
+                                    // a local var of class type C and C.Field is
+                                    // `List<T>` or `Map<K,V>`. Without this, the
+                                    // Get falls through to `void*` and the
+                                    // operator-resolution pass for `==`/`!=` can't
+                                    // see that the result is `code_string`, so it
+                                    // lowers to pointer compare instead of
+                                    // `code_string_equals`. AutoBUS exposed this
+                                    // via `s.Topics.Get(j) == name`.
+                                    if (ll.Left.Kind == NodeKind.IDENTIFIER) {
+                                        let objN3 = ll.Left.Name
+                                        let objT3 = this.LocalTypeGet(objN3)
+                                        let bareO = String_Replace(objT3, "*", "")
+                                        if (String_Length(bareO) > 0) {
+                                            let etV = this.ListElemGet(bareO, ll.Name)
+                                            if (String_Length(etV) > 0) { return etV }
+                                        }
+                                    }
                                 }
                             }
                             if (ll.Kind == NodeKind.IDENTIFIER) {
