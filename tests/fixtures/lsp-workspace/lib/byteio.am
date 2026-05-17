@@ -1,0 +1,5 @@
+namespace Workspace.Lib
+
+public class ByteIO {
+    public static int Read(int x) { return x }
+}
