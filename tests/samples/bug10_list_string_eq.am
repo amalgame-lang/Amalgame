@@ -1,0 +1,108 @@
+namespace Demo
+
+import Amalgame.Collections
+
+// Regression test for Bug 10 (amc v0.8.28):
+//
+// `obj.Field.Get(i) == s` where `obj` is a local var of class type C
+// and `C.Field: List<string>` used to emit raw C `==` (pointer
+// comparison) instead of `code_string_equals(...)`.
+//
+// Why: InferTypeFromExpr's `.Get(...)` branch handled
+// `this.Field.Get(i)` (via ListElemGet on CurrentClass) and
+// `localList.Get(i)` (via ListElemGet on "__local__") but not
+// `localObj.Field.Get(i)` — the chained MEMBER form that AutoBUS's
+// `subscription.am::FindByTopic` exposed.
+//
+// Fix: InferTypeFromExpr extended to look up
+// `ListElemGet(LocalTypeGet(obj).bare, Field)` for the MEMBER
+// receiver chain.
+//
+// All four cases below MUST resolve `==`/`!=` against the list
+// element type — pointer compare would only match by C string-
+// literal coalescing, which we defeat by building one side via
+// `code_string_concat` (i.e. `"be" + "ta"`).
+
+public class Holder {
+    public Topics: List<string>
+
+    public Holder() {
+        this.Topics = new List<string>()
+    }
+
+    public void AddTopic(t: string) {
+        this.Topics.Add(t)
+    }
+}
+
+public class Program {
+    public static void Main() {
+        let h: Holder = new Holder()
+        h.AddTopic("alpha")
+        h.AddTopic("beta")
+        h.AddTopic("gamma")
+
+        // Force a distinct pointer from any compile-time literal —
+        // C compilers coalesce identical literals, so a plain
+        // `"beta"` on the RHS would match by luck even with the
+        // pointer-compare bug.
+        let want: string = "be" + "ta"
+
+        // 1) Right-hand local string, LHS = obj.Field.Get(i).
+        var hits1: int = 0
+        for i in 0..h.Topics.Count() {
+            if (h.Topics.Get(i) == want) {
+                hits1 = hits1 + 1
+            }
+        }
+        if (hits1 == 1) {
+            Console.WriteLine("[PASS] bug10 — obj.Field.Get(i) == localVar")
+        } else {
+            Console.WriteLine("[FAIL] bug10 — obj.Field.Get(i) == localVar — " + String_FromInt(hits1))
+        }
+
+        // 2) Left-hand local string, RHS = obj.Field.Get(i).
+        var hits2: int = 0
+        for i in 0..h.Topics.Count() {
+            if (want == h.Topics.Get(i)) {
+                hits2 = hits2 + 1
+            }
+        }
+        if (hits2 == 1) {
+            Console.WriteLine("[PASS] bug10 — localVar == obj.Field.Get(i)")
+        } else {
+            Console.WriteLine("[FAIL] bug10 — localVar == obj.Field.Get(i) — " + String_FromInt(hits2))
+        }
+
+        // 3) != mirror — count non-matches.
+        var diffs: int = 0
+        for i in 0..h.Topics.Count() {
+            if (h.Topics.Get(i) != want) {
+                diffs = diffs + 1
+            }
+        }
+        if (diffs == 2) {
+            Console.WriteLine("[PASS] bug10 — obj.Field.Get(i) != localVar")
+        } else {
+            Console.WriteLine("[FAIL] bug10 — obj.Field.Get(i) != localVar — " + String_FromInt(diffs))
+        }
+
+        // 4) Local List<string> + concat literal (was already
+        //    handled before bug 10; keep here so a future regression
+        //    on the broader inference path is caught immediately).
+        let xs: List<string> = new List<string>()
+        xs.Add("alpha")
+        xs.Add("beta")
+        var hits4: int = 0
+        for i in 0..xs.Count() {
+            if (xs.Get(i) == want) {
+                hits4 = hits4 + 1
+            }
+        }
+        if (hits4 == 1) {
+            Console.WriteLine("[PASS] bug10 — localList.Get(i) == concatVar")
+        } else {
+            Console.WriteLine("[FAIL] bug10 — localList.Get(i) == concatVar — " + String_FromInt(hits4))
+        }
+    }
+}
