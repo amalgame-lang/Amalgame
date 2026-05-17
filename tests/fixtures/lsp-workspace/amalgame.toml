@@ -1,0 +1,10 @@
+# Workspace marker for the LSP fixture — `FindWorkspaceRoot`
+# (v0.8.25+) recognises `amalgame.toml` as a root marker, so
+# opening tests/byteio_test.am should walk up to this directory
+# and the sibling scan picks up lib/byteio.am — the class
+# `ByteIO` then resolves cross-file. Pre-v0.8.25 the walk
+# stopped at tests/, never finding the library file.
+
+[package]
+name = "lsp-workspace-fixture"
+version = "0.0.1"

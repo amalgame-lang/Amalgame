@@ -680,6 +680,42 @@ run_lsp_check "lsp: folding comment run"   '{"startLine":3,"endLine":5,"kind":"c
 # 2-line import group on lines 1..2 → 0..1.
 run_lsp_check "lsp: folding import run"    '{"startLine":0,"endLine":1,"kind":"imports"}'              "$lsp_fold_seq"
 
+# Bug 6 regression (v0.8.25): the workspace-root walk now treats
+# `amalgame.toml` as a marker. Pre-v0.8.25, opening a file in a
+# sub-directory of a project that only had a manifest (no .git /
+# build_amc.sh / package.json) made `FindWorkspaceRoot` fall back
+# to the file's own dir — the sibling scan never reached the other
+# directories of the project, and cross-dir class references came
+# back as "Unknown symbol". Fixture lives at
+# tests/fixtures/lsp-workspace/.
+LSP_FIX_ROOT="$(pwd)/tests/fixtures/lsp-workspace"
+LSP_FIX_FILE="$LSP_FIX_ROOT/tests/byteio_test.am"
+lsp_open_xdir='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file://'"$LSP_FIX_FILE"'","languageId":"amalgame","version":1,"text":"namespace Workspace.Tests\n\npublic class TestRunner {\n    public static void Run() {\n        let v: int = ByteIO.Read(42)\n    }\n}\n"}}}'
+lsp_xdir_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_xdir"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# Negative check: the diagnostics array for this file must NOT
+# contain "Unknown symbol 'ByteIO'". Reuses the lsp_check helper
+# pattern but inverts the assertion.
+run_lsp_absent() {
+    local name="$1"
+    local pattern="$2"
+    local input="$3"
+    printf "  %-34s" "$name"
+    local out
+    out=$(printf '%s' "$input" | "$AMC" lsp 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${RED}FAIL${NC} (unexpected pattern present)"
+        echo "    should NOT contain: $pattern"
+        echo "    got snippet:"
+        echo "$out" | grep -F "$pattern" | head -2 | sed 's/^/      /'
+        FAIL=$((FAIL + 1))
+    else
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    fi
+}
+run_lsp_absent "lsp: xdir resolves ByteIO" "Unknown symbol 'ByteIO'" "$lsp_xdir_seq"
+
 # ── amc migrate ────────────────────────────────────────
 echo ""
 echo "── amc migrate ─────────────────────────"
