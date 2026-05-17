@@ -10,6 +10,7 @@
 #    <prefix>/bin/amc(.exe)
 #    <prefix>/share/amalgame/runtime/    _runtime.h + Amalgame_*.h
 #    <prefix>/share/amalgame/lib/        libamalgame.a
+#    <prefix>/share/amalgame/stdlib/     bundled-stdlib .am facades
 #    <prefix>/share/amalgame/docs/       grammar + language tour
 #
 #  amc resolves these paths via Program.ResolveRuntimeDir /
@@ -38,6 +39,7 @@ BIN_DIR="$PREFIX/bin"
 SHARE_DIR="$PREFIX/share/amalgame"
 RUNTIME_DIR="$SHARE_DIR/runtime"
 LIB_DIR="$SHARE_DIR/lib"
+STDLIB_DIR="$SHARE_DIR/stdlib"
 DOCS_DIR="$SHARE_DIR/docs"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -341,7 +343,7 @@ EXTRACT_DIR="$TMP_DIR/amc-$VNUM-$TARGET"
 # The tarball is already laid out the way amc expects (bin/ +
 # share/amalgame/{runtime,lib,docs}), produced by release.yml since
 # v0.8.1. We just copy the tree into $PREFIX — no per-file rewiring.
-$SUDO mkdir -p "$BIN_DIR" "$RUNTIME_DIR" "$LIB_DIR" "$DOCS_DIR"
+$SUDO mkdir -p "$BIN_DIR" "$RUNTIME_DIR" "$LIB_DIR" "$STDLIB_DIR" "$DOCS_DIR"
 
 # Back up an existing share/amalgame/ install so users can roll back
 # without re-downloading. Skipped for bin/amc (atomic replace via cp).
@@ -355,6 +357,7 @@ backup_dir() {
 }
 backup_dir "$RUNTIME_DIR"
 backup_dir "$LIB_DIR"
+backup_dir "$STDLIB_DIR"
 backup_dir "$DOCS_DIR"
 
 # Binary (and Windows DLLs if any landed in bin/).
@@ -366,12 +369,19 @@ for extra in "$EXTRACT_DIR/bin/"*; do
     $SUDO install -m 755 "$extra" "$BIN_DIR/"
 done
 
-# Runtime headers + libamalgame.a + LLM-prompt docs.
+# Runtime headers + libamalgame.a + bundled-stdlib facades + LLM docs.
 $SUDO cp -r "$EXTRACT_DIR/share/amalgame/runtime"/* "$RUNTIME_DIR/"
 success "Runtime headers → $RUNTIME_DIR/"
 if [ -d "$EXTRACT_DIR/share/amalgame/lib" ]; then
     $SUDO cp -r "$EXTRACT_DIR/share/amalgame/lib"/* "$LIB_DIR/"
     success "libamalgame.a → $LIB_DIR/"
+fi
+# Bug 6 fix (v0.8.26+): ship the bundled-stdlib .am facades so
+# `amc build` can auto-attach them as `--external` when user code
+# imports the matching namespace (Amalgame.Formats.Json etc.).
+if [ -d "$EXTRACT_DIR/share/amalgame/stdlib" ]; then
+    $SUDO cp -r "$EXTRACT_DIR/share/amalgame/stdlib"/* "$STDLIB_DIR/"
+    success "Stdlib facades → $STDLIB_DIR/"
 fi
 if [ -d "$EXTRACT_DIR/share/amalgame/docs" ]; then
     $SUDO cp -r "$EXTRACT_DIR/share/amalgame/docs"/* "$DOCS_DIR/"

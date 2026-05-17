@@ -3048,14 +3048,20 @@ public class CGen {
                             let lt3 = this.LocalTypeGet(expr.Left.Name)
                             if (lt3 == "code_string") { useConcat = true }
                         }
-                        // CALL that returns code_string (including nested code_string_concat)
+                        // CALL that returns code_string (including nested
+                        // code_string_concat). Bug 7: previously also
+                        // triggered on any `String_*` callee name, which
+                        // misclassified `pos + String_Length(needle)` as
+                        // a concat because `String_Length` *starts with*
+                        // `String_` yet returns `i64`. InferTypeFromExpr
+                        // already knows the precise return type, so consult
+                        // it instead of the name prefix.
                         if (lk3 == NodeKind.CALL) {
                             let ltype3 = this.InferTypeFromExpr(expr.Left)
                             if (ltype3 == "code_string") { useConcat = true }
-                            // Also detect code_string_concat directly by callee name
                             if (expr.Left.Left != null) {
                                 let calleeL = this.EmitCalleeStr(expr.Left.Left)
-                                if (String_StartsWith(calleeL, "String_") || calleeL == "code_string_concat") {
+                                if (calleeL == "code_string_concat") {
                                     useConcat = true
                                 }
                             }
@@ -3067,9 +3073,16 @@ public class CGen {
                         let rk3 = expr.Right.Kind
                         if (rk3 == NodeKind.LITERAL_STRING) { useConcat = true }
                         if (rk3 == NodeKind.CALL) {
+                            // Bug 7 (RHS): mirror of the LHS fix above —
+                            // trust InferTypeFromExpr rather than callee-
+                            // name prefix matching. `String_Length`,
+                            // `String_IndexOf`, `String_ToInt` etc. return
+                            // i64 and must not be classified as concat.
+                            let rtype3 = this.InferTypeFromExpr(expr.Right)
+                            if (rtype3 == "code_string") { useConcat = true }
                             if (expr.Right.Left != null) {
                                 let calleeR = this.EmitCalleeStr(expr.Right.Left)
-                                if (String_StartsWith(calleeR, "String_") || calleeR == "code_string_concat") {
+                                if (calleeR == "code_string_concat") {
                                     useConcat = true
                                 }
                             }

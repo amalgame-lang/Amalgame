@@ -1,0 +1,72 @@
+namespace Tests
+
+// Regression test for Bug 7 (amc v0.8.26):
+//
+// `pos + String_Length(needle)` used to lower to
+// `code_string_concat(pos, String_Length(needle))` because the cgen's
+// BINARY-`+` branch matched the RHS callee by name prefix
+// (`String_StartsWith(calleeR, "String_")`), classifying every
+// String_* helper as a string-returning function. But `String_Length`,
+// `String_IndexOf`, `String_LastIndexOf`, `String_ToInt` all return
+// `i64`, so the classification was wrong and gcc compiled the result
+// into a pointer-arithmetic mess.
+//
+// Fix: BINARY-`+` now consults InferTypeFromExpr (which already has
+// precise return-type knowledge for the String_* family) instead of
+// pattern-matching the callee name. The literal `code_string_concat`
+// callee stays in the trigger list because nested concatenations do
+// return `code_string`.
+
+public class Program {
+    // The original bug surface: integer addition where the RHS is a
+    // call to a String_* helper that returns int.
+    public static int IndexEndOf(text: string, needle: string) {
+        return String_IndexOf(text, needle) + String_Length(needle)
+    }
+
+    // Mirror case — LHS is a String_* call returning int, RHS is a
+    // local int. Same wrong dispatch pre-fix.
+    public static int LengthPlus(s: string, extra: int) {
+        return String_Length(s) + extra
+    }
+
+    public static void Main() {
+        // Bug repro proper — must return 5 ("hello"[0..5] = "hello").
+        let n: int = Program.IndexEndOf("hello world", "lo")
+        if (n == 5) {
+            Console.WriteLine("[PASS] int + String_Length lowers to addition")
+        } else {
+            Console.WriteLine("[FAIL] expected 5, got " + String_FromInt(n))
+        }
+
+        let m: int = Program.LengthPlus("ab", 3)
+        if (m == 5) {
+            Console.WriteLine("[PASS] String_Length + int lowers to addition")
+        } else {
+            Console.WriteLine("[FAIL] expected 5, got " + String_FromInt(m))
+        }
+
+        // Sanity: legitimate concat patterns still concat.
+        let greet: string = "hello, " + "world"
+        if (greet == "hello, world") {
+            Console.WriteLine("[PASS] string + string still concatenates")
+        } else {
+            Console.WriteLine("[FAIL] greet=" + greet)
+        }
+
+        let labelled: string = "n=" + String_FromInt(42)
+        if (labelled == "n=42") {
+            Console.WriteLine("[PASS] string + String_FromInt still concatenates")
+        } else {
+            Console.WriteLine("[FAIL] labelled=" + labelled)
+        }
+
+        // Cross-form: int sum of two String_Length calls.
+        let total: int = String_Length("ab") + String_Length("cdef")
+        if (total == 6) {
+            Console.WriteLine("[PASS] String_Length + String_Length lowers to addition")
+        } else {
+            Console.WriteLine("[FAIL] total=" + String_FromInt(total))
+        }
+    }
+}
