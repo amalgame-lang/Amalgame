@@ -595,6 +595,24 @@ run_external_test "bug6: Definition setter" \
     "[PASS] Definition setter: hello" \
     ""
 
+# Bug 9 regression (v0.8.27): RegisterExternalProg only emitted
+# `typedef struct _X X;` for each external class, so any field
+# access on `r.Ok` / `r.Value` / `r.Error` hit gcc's
+# `invalid use of incomplete typedef`. Fix emits the full struct
+# body + the body of any sibling simple enum (e.g. `JsonKind`).
+run_external_test "bug9: JsonResult.Ok+.Value" \
+    "$SAMPLES/bug9_external_struct_fields.am" \
+    "[PASS] external field access — JsonResult.Ok + .Value" \
+    ""
+run_external_test "bug9: JsonError.Message" \
+    "$SAMPLES/bug9_external_struct_fields.am" \
+    "[PASS] external field access — JsonError.Message populated" \
+    ""
+run_external_test "bug9: JsonError.Line" \
+    "$SAMPLES/bug9_external_struct_fields.am" \
+    "[PASS] external field access — JsonError.Line" \
+    ""
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"
