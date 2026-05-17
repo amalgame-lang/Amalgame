@@ -153,6 +153,17 @@ public class CGen {
     public ExternalClasses:    List<string>
     public ExternalClassNsArr: List<string>
 
+    // Bug 9 (v0.8.27): external enum registry — parallel to
+    // ExternalClasses, but for ENUM_DECL nodes. Needed once the
+    // struct-body emission for external classes started exposing
+    // private fields whose type is a sibling enum (e.g.
+    // `JsonValue.Kind: JsonKind`). TypeToC checks this before its
+    // SymName fallback so the type lowers to the bundled namespace
+    // (`Amalgame_Formats_Json_JsonKind`, value not pointer) instead
+    // of the consumer's NsPrefix.
+    public ExternalEnums:      List<string>
+    public ExternalEnumNsArr:  List<string>
+
     public CGen() {
         this.Out            = new Emitter()
         this.NsPrefix       = ""
@@ -178,6 +189,8 @@ public class CGen {
         this.PkgClassNs        = new List<string>()
         this.ExternalClasses   = new List<string>()
         this.ExternalClassNsArr = new List<string>()
+        this.ExternalEnums     = new List<string>()
+        this.ExternalEnumNsArr = new List<string>()
         this.CurrentSource     = ""
         this.LastLineEmitted   = -1
         this.InferCacheKeys    = new List<int>()
@@ -1595,7 +1608,17 @@ public class CGen {
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
         // Pass 1: register every external class + emit typedef forward
-        // decl. Method sigs are deferred to pass 2.
+        // decl. Struct bodies and method sigs are deferred to pass 2/3.
+        //
+        // Bug 9 (v0.8.27): enums get the same treatment — registered
+        // in ExternalEnums and emitted as a full `typedef enum _M {…}`
+        // (not just a forward) because gcc needs the body to know the
+        // type's size when an enum is stored as a field. Algebraic
+        // enums (variants with payloads) are NOT supported via the
+        // external path yet — they'd need the tagged-union machinery
+        // EmitEnum runs in-bundle. The bundled stdlib's user-facing
+        // enums (JsonKind, TomlKind) are all simple, so this is fine
+        // for the current auto-attach catalog.
         for i in 0..n {
             let decl: AstNode = kids.Get(i)
             if (decl.Kind == NodeKind.CLASS_DECL) {
@@ -1604,8 +1627,131 @@ public class CGen {
                 let mangled: string = nsPrefix + "_" + decl.Name
                 this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* external */")
             }
+            if (decl.Kind == NodeKind.ENUM_DECL) {
+                var isAlg: bool = false
+                let vc: int = decl.Children.Count()
+                for vi in 0..vc {
+                    let vm: AstNode = decl.Children.Get(vi)
+                    if (String_Length(vm.Str) > 0) { isAlg = true }
+                }
+                if (isAlg) {
+                    // Skip algebraic external enums — emit only the
+                    // forward typedef so any param/return type still
+                    // type-checks at the C level. Consumer code that
+                    // pattern-matches on the variants would need the
+                    // full tag enum + union body emitted here; left
+                    // as future work.
+                    let mangled: string = nsPrefix + "_" + decl.Name
+                    this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* external alg-enum fwd */")
+                } else {
+                    this.ExternalEnums.Add(decl.Name)
+                    this.ExternalEnumNsArr.Add(nsPrefix)
+                    let mangled: string = nsPrefix + "_" + decl.Name
+                    // Emit the full body so gcc has the enum size for
+                    // any field/local of this type.
+                    this.Out.EmitLine("typedef enum _" + mangled + " {")
+                    this.Out.Indent_()
+                    for vi in 0..vc {
+                        let vm: AstNode = decl.Children.Get(vi)
+                        let memberC: string = mangled + "_" + vm.Name
+                        if (vi < vc - 1) {
+                            this.Out.EmitLine(memberC + ",")
+                        } else {
+                            this.Out.EmitLine(memberC)
+                        }
+                    }
+                    this.Out.Dedent()
+                    this.Out.EmitLine("} " + mangled + "; /* external */")
+                }
+            }
         }
-        // Pass 2: emit method forward decls. All external classes are
+        // Pass 2: emit the struct body for every external class. Bug 9
+        // (v0.8.27): pre-fix, only the forward typedef landed in the
+        // consumer's .c, so any user code reading `r.Ok` / `r.Value`
+        // on a `JsonResult` hit `invalid use of incomplete typedef`.
+        // The fields actually live in libamalgame.a's compiled image,
+        // and the layout is deterministic (a CLASS_DECL produces one
+        // contiguous struct via EmitClass), so mirroring the body
+        // verbatim here exposes the fields to gcc without needing
+        // accessor shims. Field types are looked up via TypeToC, which
+        // already knows pass-1 external typedefs — sibling references
+        // (`JsonResult.Value: JsonValue`) resolve cleanly.
+        //
+        // Also register each field in FieldTypeSet so the cgen's
+        // MEMBER dispatch (FieldTypeGet on `<class>.<field>`) gets a
+        // non-empty C-type for chained `r.Field.Method()` patterns.
+        // Without this, the chain falls back to `void*` erasure and
+        // emits wrong methods on the inferred receiver.
+        for i in 0..n {
+            let decl: AstNode = kids.Get(i)
+            if (decl.Kind != NodeKind.CLASS_DECL) { continue }
+            let mangled: string = nsPrefix + "_" + decl.Name
+            let members: List<AstNode> = decl.Children
+            let mc: int = members.Count()
+            // Pre-scan: register field C types before emitting the
+            // struct body, so EmitClass-style chained-call dispatch
+            // works for fields on this external class too.
+            for mi in 0..mc {
+                let m: AstNode = members.Get(mi)
+                if (m.Kind == NodeKind.VAR_DECL) {
+                    let rawType: string = m.Str
+                    let ftype: string   = this.TypeToC(rawType)
+                    this.FieldTypeSet(mangled, m.Name, ftype)
+                    if (String_StartsWith(rawType, "List<")) {
+                        let inner: string = String_Substring(rawType, 5, String_Length(rawType) - 6)
+                        let elemC: string = this.TypeToC(inner)
+                        this.ListElemSet(mangled, m.Name, elemC)
+                    }
+                    if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
+                        let mi2: string = String_Substring(rawType, 4, String_Length(rawType) - 5)
+                        let mcomma: int = String_IndexOf(mi2, ",")
+                        if (mcomma > 0) {
+                            let vRaw: string  = String_Substring(mi2, mcomma + 1, String_Length(mi2) - mcomma - 1)
+                            let vTrim: string = String_Trim(vRaw)
+                            if (String_Length(vTrim) > 0) {
+                                this.ListElemSet(mangled, m.Name, this.TypeToC(vTrim))
+                            }
+                        }
+                    }
+                }
+            }
+            // Emit the struct body. Empty classes (static helpers like
+            // `Path` or `Json`) still get a one-line `struct _X {};`
+            // wrapper — gcc accepts the empty body and the type stays
+            // a valid pointee, matching how EmitClass handles in-bundle
+            // classes that hold no instance fields.
+            this.Out.EmitLine("struct _" + mangled + " {")
+            this.Out.Indent_()
+            // Embed parent fields directly if this class extends another
+            // external class (same shape as EmitClass's parent embed).
+            let parentName: string = decl.Str
+            if (String_Length(parentName) > 0) {
+                let parentMangled: string = this.ExternalClassMangled(parentName)
+                if (String_Length(parentMangled) > 0) {
+                    let pfc: int = this.FieldNames.Count()
+                    let pfPrefix: string = parentMangled + "."
+                    for pfi in 0..pfc {
+                        let pfkey: string = this.FieldNames.Get(pfi)
+                        if (String_StartsWith(pfkey, pfPrefix)) {
+                            let pfname: string = String_Substring(pfkey, String_Length(pfPrefix), String_Length(pfkey) - String_Length(pfPrefix))
+                            let pftype: string = this.FieldCTypes.Get(pfi)
+                            this.Out.EmitLine(pftype + " " + pfname + ";")
+                            this.FieldTypeSet(mangled, pfname, pftype)
+                        }
+                    }
+                }
+            }
+            for mi in 0..mc {
+                let m: AstNode = members.Get(mi)
+                if (m.Kind == NodeKind.VAR_DECL) {
+                    let ftype: string = this.TypeToC(m.Str)
+                    this.Out.EmitLine(ftype + " " + m.Name + ";")
+                }
+            }
+            this.Out.Dedent()
+            this.Out.EmitLine("};")
+        }
+        // Pass 3: emit method forward decls. All external classes are
         // now in the registry, so cross-class return/param types lower
         // to the correct mangled name.
         for i in 0..n {
@@ -1683,6 +1829,21 @@ public class CGen {
         for i in 0..n {
             if (this.ExternalClasses.Get(i) == tname) {
                 return this.ExternalClassNsArr.Get(i) + "_" + tname
+            }
+        }
+        return ""
+    }
+
+    // Bug 9 (v0.8.27): mirror of ExternalClassMangled for enums.
+    // Returns the full mangled C name for an external enum
+    // (e.g. "JsonKind" → "Amalgame_Formats_Json_JsonKind"), or ""
+    // if the short name isn't registered. Used by TypeToC to lower
+    // enum-typed fields/params to the bundled namespace.
+    public string ExternalEnumMangled(string tname) {
+        let n = this.ExternalEnums.Count()
+        for i in 0..n {
+            if (this.ExternalEnums.Get(i) == tname) {
+                return this.ExternalEnumNsArr.Get(i) + "_" + tname
             }
         }
         return ""
@@ -4144,6 +4305,14 @@ public class CGen {
         let externalMangled: string = this.ExternalClassMangled(t)
         if (String_Length(externalMangled) > 0) {
             return externalMangled + "*"
+        }
+        // Bug 9 (v0.8.27): external enums are value types — return the
+        // mangled name without the `*` suffix. Reaches here for fields
+        // like `JsonValue.Kind: JsonKind` when emitting JsonValue's
+        // struct body from an external file's --external import.
+        let externalEnumMangled: string = this.ExternalEnumMangled(t)
+        if (String_Length(externalEnumMangled) > 0) {
+            return externalEnumMangled
         }
         let sym = this.SymName(t)
         // Single uppercase letter = generic type parameter → use void*
