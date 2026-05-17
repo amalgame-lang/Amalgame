@@ -504,6 +504,13 @@ run_test "map tombstone: sum"         "$SAMPLES/map_tombstone.am"  "sum after re
 run_test "map tombstone: keys"        "$SAMPLES/map_tombstone.am"  "Keys() count: 25"
 run_test "map tombstone: values"      "$SAMPLES/map_tombstone.am"  "Values() count: 25"
 
+# Bug 5 regression (v0.8.24): for i in 0..xs.Count() — the RHS of
+# `..` must consume the .method() / (args) chain, otherwise the
+# cgen sees a CALL on stmt.Left and emits the foreach branch.
+run_test "for-range: 0..method()"     "$SAMPLES/for_range_method_call.am"  "sum: 60"
+run_test "for-range: map.Size()"      "$SAMPLES/for_range_method_call.am"  "map iters: 3"
+run_test "for-range: ident..method"   "$SAMPLES/for_range_method_call.am"  "ident-range hits: 2"
+
 # Bug 2 regression (v0.8.23): cgen Map/Set/List method dispatch
 # must downcase to *_set / *_get / *_has / *_add / *_remove when
 # the receiver is `this.field` or `obj.field`, not just a bare
