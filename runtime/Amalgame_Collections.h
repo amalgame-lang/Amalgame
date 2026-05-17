@@ -324,8 +324,11 @@ static inline code_bool AmalgameMap_isEmpty(AmalgameMap* m) {
 static inline AmalgameList* AmalgameMap_keys(AmalgameMap* m) {
     AmalgameList* l = AmalgameList_new();
     if (!m) return l;
+    /* Bug 4 (v0.8.23): `used` is no longer a bool — TOMBSTONE (=2)
+     * is truthy too. Filter against the live-slot constant or
+     * tombstoned keys leak into the result list. */
     for (int i = 0; i < m->capacity; i++)
-        if (m->entries[i].used)
+        if (m->entries[i].used == AMMAP_OCCUPIED)
             AmalgameList_add(l, (void*) m->entries[i].key);
     return l;
 }
@@ -334,7 +337,7 @@ static inline AmalgameList* AmalgameMap_values(AmalgameMap* m) {
     AmalgameList* l = AmalgameList_new();
     if (!m) return l;
     for (int i = 0; i < m->capacity; i++)
-        if (m->entries[i].used)
+        if (m->entries[i].used == AMMAP_OCCUPIED)
             AmalgameList_add(l, m->entries[i].value);
     return l;
 }
