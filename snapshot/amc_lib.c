@@ -23036,12 +23036,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "847a0a00";
+    return "5c7d4838";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-17T09:44:09Z";
+    return "2026-05-17T15:40:10Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
@@ -23642,431 +23642,435 @@ static void Amalgame_Compiler_LspServer_EnsureWorkspaceCache(Amalgame_Compiler_L
 }
 
 code_string Amalgame_Compiler_LspServer_FindWorkspaceRoot(code_string startPath) {
-    #line 451 "./src/lsp.am"
+    #line 465 "./src/lsp.am"
     code_string dir = Amalgame_Compiler_LspServer_Dirname(startPath);
-    #line 452 "./src/lsp.am"
+    #line 466 "./src/lsp.am"
     code_string initialDir = dir;
-    #line 453 "./src/lsp.am"
+    #line 467 "./src/lsp.am"
     for (i64 i = 0; i < 8; i++) {
-        #line 454 "./src/lsp.am"
+        #line 468 "./src/lsp.am"
         if (String_Length(dir) == 0) {
             return initialDir;
         }
-        #line 455 "./src/lsp.am"
+        #line 469 "./src/lsp.am"
         if (File_Exists(code_string_concat(dir, "/.git"))) {
             return dir;
         }
-        #line 456 "./src/lsp.am"
+        #line 470 "./src/lsp.am"
+        if (File_Exists(code_string_concat(dir, "/amalgame.toml"))) {
+            return dir;
+        }
+        #line 471 "./src/lsp.am"
         if (File_Exists(code_string_concat(dir, "/build_amc.sh"))) {
             return dir;
         }
-        #line 457 "./src/lsp.am"
+        #line 472 "./src/lsp.am"
         if (File_Exists(code_string_concat(dir, "/package.json"))) {
             return dir;
         }
-        #line 458 "./src/lsp.am"
+        #line 473 "./src/lsp.am"
         code_string parent = Amalgame_Compiler_LspServer_Dirname(dir);
-        #line 459 "./src/lsp.am"
+        #line 474 "./src/lsp.am"
         if (code_string_equals(parent, dir)) {
             return initialDir;
         }
-        #line 460 "./src/lsp.am"
+        #line 475 "./src/lsp.am"
         dir = parent;
     }
-    #line 462 "./src/lsp.am"
+    #line 477 "./src/lsp.am"
     return initialDir;
 }
 
 code_string Amalgame_Compiler_LspServer_Dirname(code_string path) {
-    #line 466 "./src/lsp.am"
+    #line 481 "./src/lsp.am"
     i64 last = String_LastIndexOf(path, "/");
-    #line 467 "./src/lsp.am"
+    #line 482 "./src/lsp.am"
     if (last <= 0) {
         return "";
     }
-    #line 468 "./src/lsp.am"
+    #line 483 "./src/lsp.am"
     return String_Substring(path, 0, last);
 }
 
 static code_string Amalgame_Compiler_LspServer_Compile(Amalgame_Compiler_LspServer* self, code_string uri, code_string source) {
-    #line 478 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 479 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 480 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 481 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 482 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 483 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 485 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 487 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
-    #line 488 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker_Check(tc, prog);
-    #line 490 "./src/lsp.am"
-    code_string arr = "[";
-    #line 491 "./src/lsp.am"
-    code_bool first = 1;
-    #line 492 "./src/lsp.am"
-    i64 rn = AmalgameList_count(resolver->RawErrors);
     #line 493 "./src/lsp.am"
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    #line 494 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 495 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 496 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 497 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 498 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 500 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 502 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
+    #line 503 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker_Check(tc, prog);
+    #line 505 "./src/lsp.am"
+    code_string arr = "[";
+    #line 506 "./src/lsp.am"
+    code_bool first = 1;
+    #line 507 "./src/lsp.am"
+    i64 rn = AmalgameList_count(resolver->RawErrors);
+    #line 508 "./src/lsp.am"
     for (i64 ri = 0; ri < rn; ri++) {
-        #line 494 "./src/lsp.am"
+        #line 509 "./src/lsp.am"
         Amalgame_Compiler_ResolverError* e = (Amalgame_Compiler_ResolverError*)AmalgameList_get(resolver->RawErrors, ri);
-        #line 495 "./src/lsp.am"
+        #line 510 "./src/lsp.am"
         if (!code_string_equals(e->Filename, path)) {
             continue;
         }
-        #line 496 "./src/lsp.am"
+        #line 511 "./src/lsp.am"
         if (!first) {
             arr = (code_string_concat(arr, ","));
         }
-        #line 497 "./src/lsp.am"
+        #line 512 "./src/lsp.am"
         arr = (code_string_concat(arr, Amalgame_Compiler_LspServer_DiagnosticFromResolver(source, e)));
-        #line 498 "./src/lsp.am"
+        #line 513 "./src/lsp.am"
         first = 0;
     }
-    #line 500 "./src/lsp.am"
+    #line 515 "./src/lsp.am"
     i64 tn = AmalgameList_count(tc->Errors);
-    #line 501 "./src/lsp.am"
+    #line 516 "./src/lsp.am"
     for (i64 ti = 0; ti < tn; ti++) {
-        #line 502 "./src/lsp.am"
+        #line 517 "./src/lsp.am"
         Amalgame_Compiler_TypeError* te = (Amalgame_Compiler_TypeError*)AmalgameList_get(tc->Errors, ti);
-        #line 503 "./src/lsp.am"
+        #line 518 "./src/lsp.am"
         if (!code_string_equals(te->Filename, path)) {
             continue;
         }
-        #line 504 "./src/lsp.am"
+        #line 519 "./src/lsp.am"
         if (!first) {
             arr = (code_string_concat(arr, ","));
         }
-        #line 505 "./src/lsp.am"
+        #line 520 "./src/lsp.am"
         arr = (code_string_concat(arr, Amalgame_Compiler_LspServer_DiagnosticFromTc(source, te)));
-        #line 506 "./src/lsp.am"
+        #line 521 "./src/lsp.am"
         first = 0;
     }
-    #line 508 "./src/lsp.am"
+    #line 523 "./src/lsp.am"
     arr = (code_string_concat(arr, "]"));
-    #line 509 "./src/lsp.am"
+    #line 524 "./src/lsp.am"
     return arr;
 }
 
 static void Amalgame_Compiler_LspServer_HandleHover(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    #line 515 "./src/lsp.am"
+    #line 530 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 516 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 517 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 518 "./src/lsp.am"
-        return;
-    }
-    #line 520 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 521 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 522 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 523 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 524 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 525 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 526 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 527 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
-    #line 528 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker_Check(tc, prog);
     #line 531 "./src/lsp.am"
-    i64 targetLine = line + 1;
-    #line 532 "./src/lsp.am"
-    i64 targetCol = character + 1;
-    #line 533 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
-    #line 534 "./src/lsp.am"
-    if (node == NULL) {
-        #line 535 "./src/lsp.am"
+    if (String_Length(source) == 0) {
+        #line 532 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 536 "./src/lsp.am"
+        #line 533 "./src/lsp.am"
         return;
     }
+    #line 535 "./src/lsp.am"
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    #line 536 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 537 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 538 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 539 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 540 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 541 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 542 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
+    #line 543 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker_Check(tc, prog);
+    #line 546 "./src/lsp.am"
+    i64 targetLine = line + 1;
+    #line 547 "./src/lsp.am"
+    i64 targetCol = character + 1;
+    #line 548 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
     #line 549 "./src/lsp.am"
-    if (((String_Length(node->Name) > 0) && (node->Kind != Amalgame_Compiler_NodeKind_LITERAL_STRING)) && (node->Kind != Amalgame_Compiler_NodeKind_LITERAL_INT)) {
+    if (node == NULL) {
         #line 550 "./src/lsp.am"
-        Amalgame_Compiler_AstNode* method = Amalgame_Compiler_LspServer_FindMethodDeclByName(prog, node->Name);
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
         #line 551 "./src/lsp.am"
+        return;
+    }
+    #line 564 "./src/lsp.am"
+    if (((String_Length(node->Name) > 0) && (node->Kind != Amalgame_Compiler_NodeKind_LITERAL_STRING)) && (node->Kind != Amalgame_Compiler_NodeKind_LITERAL_INT)) {
+        #line 565 "./src/lsp.am"
+        Amalgame_Compiler_AstNode* method = Amalgame_Compiler_LspServer_FindMethodDeclByName(prog, node->Name);
+        #line 566 "./src/lsp.am"
         if (method != NULL) {
-            #line 552 "./src/lsp.am"
+            #line 567 "./src/lsp.am"
             code_string sigMd = Amalgame_Compiler_LspServer_FormatMethodSignatureMarkdown(method);
-            #line 553 "./src/lsp.am"
+            #line 568 "./src/lsp.am"
             code_string bodySig = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"")), Amalgame_Compiler_Json_EscapeString(sigMd))), "\"}}}");
-            #line 554 "./src/lsp.am"
+            #line 569 "./src/lsp.am"
             Amalgame_Compiler_LspServer_Send(self, bodySig);
-            #line 555 "./src/lsp.am"
+            #line 570 "./src/lsp.am"
             return;
         }
     }
-    #line 559 "./src/lsp.am"
+    #line 574 "./src/lsp.am"
     code_string typeStr = Amalgame_Compiler_TypeChecker_LookupNodeType(tc, node);
-    #line 560 "./src/lsp.am"
+    #line 575 "./src/lsp.am"
     if ((code_string_equals(typeStr, "?")) || (String_Length(typeStr) == 0)) {
-        #line 564 "./src/lsp.am"
+        #line 579 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 565 "./src/lsp.am"
+        #line 580 "./src/lsp.am"
         return;
     }
-    #line 567 "./src/lsp.am"
+    #line 582 "./src/lsp.am"
     code_string content = code_string_concat((code_string_concat((code_string_concat((code_string_concat("**", node->Name)), "**: `")), typeStr)), "`");
-    #line 568 "./src/lsp.am"
+    #line 583 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"contents\":{\"kind\":\"markdown\",\"value\":\"")), Amalgame_Compiler_Json_EscapeString(content))), "\"}}}");
-    #line 569 "./src/lsp.am"
+    #line 584 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_HandleSignatureHelp(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    #line 593 "./src/lsp.am"
-    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 594 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 595 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 596 "./src/lsp.am"
-        return;
-    }
-    #line 598 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 599 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 600 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 601 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 602 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 603 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 605 "./src/lsp.am"
-    i64 targetLine = line + 1;
-    #line 606 "./src/lsp.am"
-    i64 targetCol = character + 1;
-    #line 607 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* call = Amalgame_Compiler_LspServer_FindCallAtPosition(prog, targetLine, targetCol);
     #line 608 "./src/lsp.am"
-    if (call == NULL) {
-        #line 609 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
+    #line 609 "./src/lsp.am"
+    if (String_Length(source) == 0) {
         #line 610 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 611 "./src/lsp.am"
         return;
     }
-    #line 612 "./src/lsp.am"
-    code_string calleeName = Amalgame_Compiler_LspServer_CallCalleeName(call);
     #line 613 "./src/lsp.am"
-    if (String_Length(calleeName) == 0) {
-        #line 614 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 615 "./src/lsp.am"
-        return;
-    }
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    #line 614 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 615 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 616 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
     #line 617 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* method = Amalgame_Compiler_LspServer_FindMethodDeclByName(prog, calleeName);
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
     #line 618 "./src/lsp.am"
-    if (method == NULL) {
-        #line 619 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 620 "./src/lsp.am"
+    i64 targetLine = line + 1;
+    #line 621 "./src/lsp.am"
+    i64 targetCol = character + 1;
+    #line 622 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* call = Amalgame_Compiler_LspServer_FindCallAtPosition(prog, targetLine, targetCol);
+    #line 623 "./src/lsp.am"
+    if (call == NULL) {
+        #line 624 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 620 "./src/lsp.am"
+        #line 625 "./src/lsp.am"
         return;
     }
-    #line 626 "./src/lsp.am"
-    code_string label = code_string_concat(method->Name, "(");
     #line 627 "./src/lsp.am"
-    i64 pn = AmalgameList_count(method->Params);
+    code_string calleeName = Amalgame_Compiler_LspServer_CallCalleeName(call);
     #line 628 "./src/lsp.am"
+    if (String_Length(calleeName) == 0) {
+        #line 629 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 630 "./src/lsp.am"
+        return;
+    }
+    #line 632 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* method = Amalgame_Compiler_LspServer_FindMethodDeclByName(prog, calleeName);
+    #line 633 "./src/lsp.am"
+    if (method == NULL) {
+        #line 634 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 635 "./src/lsp.am"
+        return;
+    }
+    #line 641 "./src/lsp.am"
+    code_string label = code_string_concat(method->Name, "(");
+    #line 642 "./src/lsp.am"
+    i64 pn = AmalgameList_count(method->Params);
+    #line 643 "./src/lsp.am"
     AmalgameList* starts = AmalgameList_new();
-    #line 629 "./src/lsp.am"
+    #line 644 "./src/lsp.am"
     AmalgameList* ends = AmalgameList_new();
-    #line 630 "./src/lsp.am"
+    #line 645 "./src/lsp.am"
     for (i64 i = 0; i < pn; i++) {
-        #line 631 "./src/lsp.am"
+        #line 646 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 632 "./src/lsp.am"
+        #line 647 "./src/lsp.am"
         if (i > 0) {
             label = (code_string_concat(label, ", "));
         }
-        #line 633 "./src/lsp.am"
+        #line 648 "./src/lsp.am"
         i64 startCol = String_Length(label);
-        #line 634 "./src/lsp.am"
+        #line 649 "./src/lsp.am"
         code_string paramLabel = p->Name;
-        #line 635 "./src/lsp.am"
+        #line 650 "./src/lsp.am"
         if (String_Length(p->Str) > 0) {
-            #line 636 "./src/lsp.am"
+            #line 651 "./src/lsp.am"
             paramLabel = (code_string_concat((code_string_concat(paramLabel, ": ")), p->Str));
         }
-        #line 638 "./src/lsp.am"
+        #line 653 "./src/lsp.am"
         label = (code_string_concat(label, paramLabel));
-        #line 639 "./src/lsp.am"
+        #line 654 "./src/lsp.am"
         AmalgameList_add(starts, (void*)(intptr_t)(startCol));
-        #line 640 "./src/lsp.am"
+        #line 655 "./src/lsp.am"
         AmalgameList_add(ends, (void*)(intptr_t)(String_Length(label)));
     }
-    #line 642 "./src/lsp.am"
+    #line 657 "./src/lsp.am"
     label = (code_string_concat(label, ")"));
-    #line 643 "./src/lsp.am"
+    #line 658 "./src/lsp.am"
     if ((String_Length(method->Str) > 0) && (!code_string_equals(method->Str, "void"))) {
-        #line 644 "./src/lsp.am"
+        #line 659 "./src/lsp.am"
         label = (code_string_concat((code_string_concat(label, ": ")), method->Str));
     }
-    #line 652 "./src/lsp.am"
+    #line 667 "./src/lsp.am"
     i64 active = 0;
-    #line 653 "./src/lsp.am"
+    #line 668 "./src/lsp.am"
     i64 an = AmalgameList_count(call->Args);
-    #line 654 "./src/lsp.am"
+    #line 669 "./src/lsp.am"
     for (i64 ai = 0; ai < an; ai++) {
-        #line 655 "./src/lsp.am"
+        #line 670 "./src/lsp.am"
         Amalgame_Compiler_AstNode* a = (Amalgame_Compiler_AstNode*)AmalgameList_get(call->Args, ai);
-        #line 660 "./src/lsp.am"
+        #line 675 "./src/lsp.am"
         if ((a->Line < targetLine) || ((a->Line == targetLine) && (a->Column < targetCol))) {
-            #line 661 "./src/lsp.am"
+            #line 676 "./src/lsp.am"
             active = ai;
         }
     }
-    #line 664 "./src/lsp.am"
+    #line 679 "./src/lsp.am"
     if (active > (pn - 1)) {
         active = (pn - 1);
     }
-    #line 665 "./src/lsp.am"
+    #line 680 "./src/lsp.am"
     if (active < 0) {
         active = 0;
     }
-    #line 670 "./src/lsp.am"
+    #line 685 "./src/lsp.am"
     code_string paramsJson = "[";
-    #line 671 "./src/lsp.am"
+    #line 686 "./src/lsp.am"
     for (i64 i = 0; i < pn; i++) {
-        #line 672 "./src/lsp.am"
+        #line 687 "./src/lsp.am"
         if (i > 0) {
             paramsJson = (code_string_concat(paramsJson, ","));
         }
-        #line 673 "./src/lsp.am"
+        #line 688 "./src/lsp.am"
         paramsJson = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(paramsJson, "{\"label\":[")), String_FromInt((i64)AmalgameList_get(starts, i)))), ",")), String_FromInt((i64)AmalgameList_get(ends, i)))), "]}"));
     }
-    #line 675 "./src/lsp.am"
+    #line 690 "./src/lsp.am"
     paramsJson = (code_string_concat(paramsJson, "]"));
-    #line 677 "./src/lsp.am"
+    #line 692 "./src/lsp.am"
     code_string result = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"signatures\":[{\"label\":\"", Amalgame_Compiler_Json_EscapeString(label))), "\",\"parameters\":")), paramsJson)), "}],\"activeSignature\":0,\"activeParameter\":")), String_FromInt(active))), "}");
-    #line 678 "./src/lsp.am"
+    #line 693 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), result)), "}");
-    #line 679 "./src/lsp.am"
+    #line 694 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_SendNullResult(Amalgame_Compiler_LspServer* self, i64 id) {
-    #line 683 "./src/lsp.am"
+    #line 698 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":null}");
-    #line 684 "./src/lsp.am"
+    #line 699 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    #line 700 "./src/lsp.am"
-    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 701 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 702 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 703 "./src/lsp.am"
-        return;
-    }
-    #line 705 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 706 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 707 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 708 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 709 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 710 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 711 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 713 "./src/lsp.am"
-    i64 targetLine = line + 1;
-    #line 714 "./src/lsp.am"
-    i64 targetCol = character + 1;
     #line 715 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
     #line 716 "./src/lsp.am"
-    if (node == NULL) {
+    if (String_Length(source) == 0) {
         #line 717 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
         #line 718 "./src/lsp.am"
         return;
     }
+    #line 720 "./src/lsp.am"
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
     #line 721 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* enclosing = Amalgame_Compiler_LspServer_FindEnclosingMethod(prog, targetLine);
-    #line 732 "./src/lsp.am"
-    if ((node->Kind == Amalgame_Compiler_NodeKind_MEMBER) && (enclosing != NULL)) {
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 722 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 723 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 724 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 725 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 726 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 728 "./src/lsp.am"
+    i64 targetLine = line + 1;
+    #line 729 "./src/lsp.am"
+    i64 targetCol = character + 1;
+    #line 730 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    #line 731 "./src/lsp.am"
+    if (node == NULL) {
+        #line 732 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
         #line 733 "./src/lsp.am"
+        return;
+    }
+    #line 736 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* enclosing = Amalgame_Compiler_LspServer_FindEnclosingMethod(prog, targetLine);
+    #line 747 "./src/lsp.am"
+    if ((node->Kind == Amalgame_Compiler_NodeKind_MEMBER) && (enclosing != NULL)) {
+        #line 748 "./src/lsp.am"
         if ((node->Left != NULL) && (node->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-            #line 734 "./src/lsp.am"
+            #line 749 "./src/lsp.am"
             Amalgame_Compiler_AstNode* recv = Amalgame_Compiler_LspServer_LookupLocalInMethod(enclosing, node->Left->Name);
-            #line 735 "./src/lsp.am"
+            #line 750 "./src/lsp.am"
             if (recv != NULL) {
-                #line 736 "./src/lsp.am"
+                #line 751 "./src/lsp.am"
                 code_string recvType = Amalgame_Compiler_LspServer_BareTypeName(recv->Str);
-                #line 737 "./src/lsp.am"
+                #line 752 "./src/lsp.am"
                 if (String_Length(recvType) > 0) {
-                    #line 738 "./src/lsp.am"
+                    #line 753 "./src/lsp.am"
                     i64 nProgs2 = AmalgameList_count(resolver->Programs);
-                    #line 739 "./src/lsp.am"
+                    #line 754 "./src/lsp.am"
                     for (i64 i = 0; i < nProgs2; i++) {
-                        #line 740 "./src/lsp.am"
+                        #line 755 "./src/lsp.am"
                         Amalgame_Compiler_AstNode* p2 = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
-                        #line 741 "./src/lsp.am"
+                        #line 756 "./src/lsp.am"
                         i64 dc2 = AmalgameList_count(p2->Children);
-                        #line 742 "./src/lsp.am"
+                        #line 757 "./src/lsp.am"
                         for (i64 j = 0; j < dc2; j++) {
-                            #line 743 "./src/lsp.am"
+                            #line 758 "./src/lsp.am"
                             Amalgame_Compiler_AstNode* cls = (Amalgame_Compiler_AstNode*)AmalgameList_get(p2->Children, j);
-                            #line 744 "./src/lsp.am"
+                            #line 759 "./src/lsp.am"
                             if (cls->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
                                 continue;
                             }
-                            #line 745 "./src/lsp.am"
+                            #line 760 "./src/lsp.am"
                             if (!code_string_equals(cls->Name, recvType)) {
                                 continue;
                             }
-                            #line 746 "./src/lsp.am"
+                            #line 761 "./src/lsp.am"
                             i64 mc = AmalgameList_count(cls->Children);
-                            #line 747 "./src/lsp.am"
+                            #line 762 "./src/lsp.am"
                             for (i64 k2 = 0; k2 < mc; k2++) {
-                                #line 748 "./src/lsp.am"
+                                #line 763 "./src/lsp.am"
                                 Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, k2);
-                                #line 749 "./src/lsp.am"
+                                #line 764 "./src/lsp.am"
                                 Amalgame_Compiler_NodeKind mk = m->Kind;
-                                #line 750 "./src/lsp.am"
+                                #line 765 "./src/lsp.am"
                                 if ((mk != Amalgame_Compiler_NodeKind_METHOD_DECL) && (mk != Amalgame_Compiler_NodeKind_VAR_DECL)) {
                                     continue;
                                 }
-                                #line 751 "./src/lsp.am"
+                                #line 766 "./src/lsp.am"
                                 if (!code_string_equals(m->Name, node->Name)) {
                                     continue;
                                 }
-                                #line 752 "./src/lsp.am"
+                                #line 767 "./src/lsp.am"
                                 code_string memPath = p2->Str2;
-                                #line 753 "./src/lsp.am"
+                                #line 768 "./src/lsp.am"
                                 if (String_Length(memPath) == 0) {
                                     memPath = path;
                                 }
-                                #line 754 "./src/lsp.am"
+                                #line 769 "./src/lsp.am"
                                 Amalgame_Compiler_LspServer_SendDefinitionLocation(self, id, memPath, m->Line, m->Column, m->Name);
-                                #line 755 "./src/lsp.am"
+                                #line 770 "./src/lsp.am"
                                 return;
                             }
                         }
@@ -24075,2920 +24079,2920 @@ static void Amalgame_Compiler_LspServer_HandleDefinition(Amalgame_Compiler_LspSe
             }
         }
     }
-    #line 768 "./src/lsp.am"
+    #line 783 "./src/lsp.am"
     code_string lookup = node->Name;
-    #line 769 "./src/lsp.am"
+    #line 784 "./src/lsp.am"
     if (node->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 770 "./src/lsp.am"
+        #line 785 "./src/lsp.am"
         if ((node->Left != NULL) && (node->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-            #line 771 "./src/lsp.am"
+            #line 786 "./src/lsp.am"
             lookup = node->Left->Name;
         }
     }
-    #line 774 "./src/lsp.am"
+    #line 789 "./src/lsp.am"
     if (String_Length(lookup) == 0) {
-        #line 775 "./src/lsp.am"
+        #line 790 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 776 "./src/lsp.am"
+        #line 791 "./src/lsp.am"
         return;
     }
-    #line 782 "./src/lsp.am"
+    #line 797 "./src/lsp.am"
     if (enclosing != NULL) {
-        #line 783 "./src/lsp.am"
+        #line 798 "./src/lsp.am"
         Amalgame_Compiler_AstNode* local = Amalgame_Compiler_LspServer_LookupLocalInMethod(enclosing, lookup);
-        #line 784 "./src/lsp.am"
+        #line 799 "./src/lsp.am"
         if (local != NULL) {
-            #line 785 "./src/lsp.am"
+            #line 800 "./src/lsp.am"
             Amalgame_Compiler_LspServer_SendDefinitionLocation(self, id, path, local->Line, local->Column, lookup);
-            #line 786 "./src/lsp.am"
+            #line 801 "./src/lsp.am"
             return;
         }
     }
-    #line 792 "./src/lsp.am"
+    #line 807 "./src/lsp.am"
     i64 nProgs = AmalgameList_count(resolver->Programs);
-    #line 793 "./src/lsp.am"
+    #line 808 "./src/lsp.am"
     for (i64 i = 0; i < nProgs; i++) {
-        #line 794 "./src/lsp.am"
+        #line 809 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
-        #line 795 "./src/lsp.am"
+        #line 810 "./src/lsp.am"
         i64 nDecls = AmalgameList_count(p->Children);
-        #line 796 "./src/lsp.am"
+        #line 811 "./src/lsp.am"
         for (i64 j = 0; j < nDecls; j++) {
-            #line 797 "./src/lsp.am"
+            #line 812 "./src/lsp.am"
             Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(p->Children, j);
-            #line 798 "./src/lsp.am"
+            #line 813 "./src/lsp.am"
             if (code_string_equals(decl->Name, lookup)) {
-                #line 799 "./src/lsp.am"
+                #line 814 "./src/lsp.am"
                 code_string declPath = p->Str2;
-                #line 800 "./src/lsp.am"
+                #line 815 "./src/lsp.am"
                 if (String_Length(declPath) == 0) {
                     declPath = path;
                 }
-                #line 801 "./src/lsp.am"
+                #line 816 "./src/lsp.am"
                 Amalgame_Compiler_LspServer_SendDefinitionLocation(self, id, declPath, decl->Line, decl->Column, lookup);
-                #line 802 "./src/lsp.am"
+                #line 817 "./src/lsp.am"
                 return;
             }
         }
     }
-    #line 807 "./src/lsp.am"
+    #line 822 "./src/lsp.am"
     Amalgame_Compiler_LspServer_SendNullResult(self, id);
 }
 
 static code_string Amalgame_Compiler_LspServer_BareTypeName(code_string raw) {
-    #line 816 "./src/lsp.am"
+    #line 831 "./src/lsp.am"
     code_string t = raw;
-    #line 817 "./src/lsp.am"
+    #line 832 "./src/lsp.am"
     if (String_Length(t) == 0) {
         return "";
     }
-    #line 818 "./src/lsp.am"
+    #line 833 "./src/lsp.am"
     if (String_EndsWith(t, "?")) {
-        #line 819 "./src/lsp.am"
+        #line 834 "./src/lsp.am"
         t = String_Substring(t, 0, String_Length(t) - 1);
     }
-    #line 821 "./src/lsp.am"
+    #line 836 "./src/lsp.am"
     if (String_EndsWith(t, "*")) {
-        #line 822 "./src/lsp.am"
+        #line 837 "./src/lsp.am"
         t = String_Substring(t, 0, String_Length(t) - 1);
     }
-    #line 824 "./src/lsp.am"
+    #line 839 "./src/lsp.am"
     i64 lt = String_IndexOf(t, "<");
-    #line 825 "./src/lsp.am"
+    #line 840 "./src/lsp.am"
     if (lt >= 0) {
-        #line 826 "./src/lsp.am"
+        #line 841 "./src/lsp.am"
         t = String_Substring(t, 0, lt);
     }
-    #line 828 "./src/lsp.am"
+    #line 843 "./src/lsp.am"
     return t;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindEnclosingMethod(Amalgame_Compiler_AstNode* prog, i64 targetLine) {
-    #line 841 "./src/lsp.am"
+    #line 856 "./src/lsp.am"
     Amalgame_Compiler_AstNode* best = NULL;
-    #line 842 "./src/lsp.am"
+    #line 857 "./src/lsp.am"
     i64 bestLine = -1;
-    #line 843 "./src/lsp.am"
+    #line 858 "./src/lsp.am"
     i64 dc = AmalgameList_count(prog->Children);
-    #line 844 "./src/lsp.am"
+    #line 859 "./src/lsp.am"
     for (i64 i = 0; i < dc; i++) {
-        #line 845 "./src/lsp.am"
+        #line 860 "./src/lsp.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 846 "./src/lsp.am"
+        #line 861 "./src/lsp.am"
         if (decl->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
             continue;
         }
-        #line 847 "./src/lsp.am"
+        #line 862 "./src/lsp.am"
         i64 mc = AmalgameList_count(decl->Children);
-        #line 848 "./src/lsp.am"
+        #line 863 "./src/lsp.am"
         for (i64 j = 0; j < mc; j++) {
-            #line 849 "./src/lsp.am"
+            #line 864 "./src/lsp.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, j);
-            #line 850 "./src/lsp.am"
+            #line 865 "./src/lsp.am"
             if (m->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
                 continue;
             }
-            #line 851 "./src/lsp.am"
+            #line 866 "./src/lsp.am"
             if (m->Line > targetLine) {
                 continue;
             }
-            #line 852 "./src/lsp.am"
+            #line 867 "./src/lsp.am"
             if (m->Line > bestLine) {
-                #line 853 "./src/lsp.am"
+                #line 868 "./src/lsp.am"
                 bestLine = m->Line;
-                #line 854 "./src/lsp.am"
+                #line 869 "./src/lsp.am"
                 best = m;
             }
         }
     }
-    #line 858 "./src/lsp.am"
+    #line 873 "./src/lsp.am"
     return best;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_LookupLocalInMethod(Amalgame_Compiler_AstNode* method, code_string name) {
-    #line 867 "./src/lsp.am"
+    #line 882 "./src/lsp.am"
     i64 pc = AmalgameList_count(method->Params);
-    #line 868 "./src/lsp.am"
+    #line 883 "./src/lsp.am"
     for (i64 i = 0; i < pc; i++) {
-        #line 869 "./src/lsp.am"
+        #line 884 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 870 "./src/lsp.am"
+        #line 885 "./src/lsp.am"
         if (code_string_equals(p->Name, name)) {
             return p;
         }
     }
-    #line 872 "./src/lsp.am"
+    #line 887 "./src/lsp.am"
     return Amalgame_Compiler_LspServer_FindLocalVarDecl(method->Body, name);
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindLocalVarDecl(Amalgame_Compiler_AstNode* node, code_string name) {
-    #line 880 "./src/lsp.am"
+    #line 895 "./src/lsp.am"
     if (node == NULL) {
         return NULL;
     }
-    #line 881 "./src/lsp.am"
+    #line 896 "./src/lsp.am"
     Amalgame_Compiler_NodeKind k = node->Kind;
-    #line 882 "./src/lsp.am"
+    #line 897 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_METHOD_DECL) || (k == Amalgame_Compiler_NodeKind_CLASS_DECL)) {
         return NULL;
     }
-    #line 883 "./src/lsp.am"
+    #line 898 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_VAR_DECL) && (code_string_equals(node->Name, name))) {
         return node;
     }
-    #line 887 "./src/lsp.am"
+    #line 902 "./src/lsp.am"
     if (node->Left != NULL) {
-        #line 888 "./src/lsp.am"
+        #line 903 "./src/lsp.am"
         Amalgame_Compiler_AstNode* r1 = Amalgame_Compiler_LspServer_FindLocalVarDecl(node->Left, name);
-        #line 889 "./src/lsp.am"
+        #line 904 "./src/lsp.am"
         if (r1 != NULL) {
             return r1;
         }
     }
-    #line 891 "./src/lsp.am"
+    #line 906 "./src/lsp.am"
     if (node->Right != NULL) {
-        #line 892 "./src/lsp.am"
+        #line 907 "./src/lsp.am"
         Amalgame_Compiler_AstNode* r2 = Amalgame_Compiler_LspServer_FindLocalVarDecl(node->Right, name);
-        #line 893 "./src/lsp.am"
+        #line 908 "./src/lsp.am"
         if (r2 != NULL) {
             return r2;
         }
     }
-    #line 895 "./src/lsp.am"
+    #line 910 "./src/lsp.am"
     if (node->Cond != NULL) {
-        #line 896 "./src/lsp.am"
+        #line 911 "./src/lsp.am"
         Amalgame_Compiler_AstNode* r3 = Amalgame_Compiler_LspServer_FindLocalVarDecl(node->Cond, name);
-        #line 897 "./src/lsp.am"
+        #line 912 "./src/lsp.am"
         if (r3 != NULL) {
             return r3;
         }
     }
-    #line 899 "./src/lsp.am"
+    #line 914 "./src/lsp.am"
     if (node->Body != NULL) {
-        #line 900 "./src/lsp.am"
+        #line 915 "./src/lsp.am"
         Amalgame_Compiler_AstNode* r4 = Amalgame_Compiler_LspServer_FindLocalVarDecl(node->Body, name);
-        #line 901 "./src/lsp.am"
+        #line 916 "./src/lsp.am"
         if (r4 != NULL) {
             return r4;
         }
     }
-    #line 903 "./src/lsp.am"
+    #line 918 "./src/lsp.am"
     if (node->Else != NULL) {
-        #line 904 "./src/lsp.am"
+        #line 919 "./src/lsp.am"
         Amalgame_Compiler_AstNode* r5 = Amalgame_Compiler_LspServer_FindLocalVarDecl(node->Else, name);
-        #line 905 "./src/lsp.am"
+        #line 920 "./src/lsp.am"
         if (r5 != NULL) {
             return r5;
         }
     }
-    #line 907 "./src/lsp.am"
+    #line 922 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 908 "./src/lsp.am"
+    #line 923 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 909 "./src/lsp.am"
+        #line 924 "./src/lsp.am"
         Amalgame_Compiler_AstNode* r6 = Amalgame_Compiler_LspServer_FindLocalVarDecl((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i), name);
-        #line 910 "./src/lsp.am"
+        #line 925 "./src/lsp.am"
         if (r6 != NULL) {
             return r6;
         }
     }
-    #line 912 "./src/lsp.am"
+    #line 927 "./src/lsp.am"
     return NULL;
 }
 
 static void Amalgame_Compiler_LspServer_HandleDocumentSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string uri) {
-    #line 936 "./src/lsp.am"
+    #line 951 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 937 "./src/lsp.am"
+    #line 952 "./src/lsp.am"
     if (String_Length(source) == 0) {
-        #line 938 "./src/lsp.am"
+        #line 953 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 939 "./src/lsp.am"
+        #line 954 "./src/lsp.am"
         return;
     }
-    #line 941 "./src/lsp.am"
+    #line 956 "./src/lsp.am"
     code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 942 "./src/lsp.am"
+    #line 957 "./src/lsp.am"
     Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 943 "./src/lsp.am"
+    #line 958 "./src/lsp.am"
     AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 944 "./src/lsp.am"
+    #line 959 "./src/lsp.am"
     Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 945 "./src/lsp.am"
+    #line 960 "./src/lsp.am"
     Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 946 "./src/lsp.am"
+    #line 961 "./src/lsp.am"
     code_string json = "[";
-    #line 947 "./src/lsp.am"
+    #line 962 "./src/lsp.am"
     i64 n = AmalgameList_count(prog->Children);
-    #line 948 "./src/lsp.am"
+    #line 963 "./src/lsp.am"
     code_bool first = 1;
-    #line 949 "./src/lsp.am"
+    #line 964 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 950 "./src/lsp.am"
+        #line 965 "./src/lsp.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 951 "./src/lsp.am"
+        #line 966 "./src/lsp.am"
         code_string entry = Amalgame_Compiler_LspServer_SymbolForDecl(decl);
-        #line 952 "./src/lsp.am"
+        #line 967 "./src/lsp.am"
         if (String_Length(entry) > 0) {
-            #line 953 "./src/lsp.am"
+            #line 968 "./src/lsp.am"
             if (!first) {
                 json = (code_string_concat(json, ","));
             }
-            #line 954 "./src/lsp.am"
+            #line 969 "./src/lsp.am"
             json = (code_string_concat(json, entry));
-            #line 955 "./src/lsp.am"
+            #line 970 "./src/lsp.am"
             first = 0;
         }
     }
-    #line 958 "./src/lsp.am"
+    #line 973 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 959 "./src/lsp.am"
+    #line 974 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 960 "./src/lsp.am"
+    #line 975 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static code_string Amalgame_Compiler_LspServer_SymbolForDecl(Amalgame_Compiler_AstNode* decl) {
-    #line 967 "./src/lsp.am"
+    #line 982 "./src/lsp.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 968 "./src/lsp.am"
+    #line 983 "./src/lsp.am"
     i64 kind = 0;
-    #line 969 "./src/lsp.am"
+    #line 984 "./src/lsp.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
         kind = 5;
     } else if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 970 "./src/lsp.am"
+        #line 985 "./src/lsp.am"
         kind = 10;
     } else {
-        #line 971 "./src/lsp.am"
+        #line 986 "./src/lsp.am"
         return "";
     }
-    #line 972 "./src/lsp.am"
+    #line 987 "./src/lsp.am"
     code_string name = decl->Name;
-    #line 973 "./src/lsp.am"
+    #line 988 "./src/lsp.am"
     if (String_Length(name) == 0) {
         return "";
     }
-    #line 974 "./src/lsp.am"
+    #line 989 "./src/lsp.am"
     code_string children = "[";
-    #line 975 "./src/lsp.am"
+    #line 990 "./src/lsp.am"
     code_bool firstChild = 1;
-    #line 976 "./src/lsp.am"
+    #line 991 "./src/lsp.am"
     i64 mc = AmalgameList_count(decl->Children);
-    #line 977 "./src/lsp.am"
+    #line 992 "./src/lsp.am"
     for (i64 i = 0; i < mc; i++) {
-        #line 978 "./src/lsp.am"
+        #line 993 "./src/lsp.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, i);
-        #line 979 "./src/lsp.am"
+        #line 994 "./src/lsp.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 980 "./src/lsp.am"
+        #line 995 "./src/lsp.am"
         i64 ckind = 0;
-        #line 982 "./src/lsp.am"
+        #line 997 "./src/lsp.am"
         if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
             ckind = 6;
         }
-        #line 983 "./src/lsp.am"
+        #line 998 "./src/lsp.am"
         if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
             ckind = 8;
         }
-        #line 986 "./src/lsp.am"
+        #line 1001 "./src/lsp.am"
         if ((k == Amalgame_Compiler_NodeKind_ENUM_DECL) && (mk == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
             ckind = 22;
         }
-        #line 987 "./src/lsp.am"
+        #line 1002 "./src/lsp.am"
         if (ckind == 0) {
             continue;
         }
-        #line 988 "./src/lsp.am"
+        #line 1003 "./src/lsp.am"
         if (String_Length(m->Name) == 0) {
             continue;
         }
-        #line 989 "./src/lsp.am"
+        #line 1004 "./src/lsp.am"
         if (!firstChild) {
             children = (code_string_concat(children, ","));
         }
-        #line 990 "./src/lsp.am"
+        #line 1005 "./src/lsp.am"
         children = (code_string_concat(children, Amalgame_Compiler_LspServer_SymbolEntry(m->Name, ckind, m->Line, m->Column, "[]")));
-        #line 991 "./src/lsp.am"
+        #line 1006 "./src/lsp.am"
         firstChild = 0;
     }
-    #line 993 "./src/lsp.am"
+    #line 1008 "./src/lsp.am"
     children = (code_string_concat(children, "]"));
-    #line 994 "./src/lsp.am"
+    #line 1009 "./src/lsp.am"
     return Amalgame_Compiler_LspServer_SymbolEntry(name, kind, decl->Line, decl->Column, children);
 }
 
 static code_string Amalgame_Compiler_LspServer_SymbolEntry(code_string name, i64 kind, i64 line, i64 col, code_string childrenJson) {
-    #line 1002 "./src/lsp.am"
+    #line 1017 "./src/lsp.am"
     i64 lineLsp = line - 1;
-    #line 1003 "./src/lsp.am"
+    #line 1018 "./src/lsp.am"
     i64 colLsp = col - 1;
-    #line 1004 "./src/lsp.am"
+    #line 1019 "./src/lsp.am"
     i64 nameLen = String_Length(name);
-    #line 1005 "./src/lsp.am"
+    #line 1020 "./src/lsp.am"
     i64 endCol = colLsp + nameLen;
-    #line 1006 "./src/lsp.am"
+    #line 1021 "./src/lsp.am"
     code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
-    #line 1007 "./src/lsp.am"
+    #line 1022 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name))), "\",\"kind\":")), String_FromInt(kind))), ",\"range\":")), range)), ",\"selectionRange\":")), range)), ",\"children\":")), childrenJson)), "}");
 }
 
 static void Amalgame_Compiler_LspServer_HandleReferences(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    #line 1023 "./src/lsp.am"
-    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1024 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 1025 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1026 "./src/lsp.am"
-        return;
-    }
-    #line 1028 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1029 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1030 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1031 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 1032 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 1033 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 1034 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 1036 "./src/lsp.am"
-    i64 targetLine = line + 1;
-    #line 1037 "./src/lsp.am"
-    i64 targetCol = character + 1;
     #line 1038 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
     #line 1039 "./src/lsp.am"
-    if (node == NULL) {
+    if (String_Length(source) == 0) {
         #line 1040 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
         #line 1041 "./src/lsp.am"
         return;
     }
     #line 1043 "./src/lsp.am"
-    code_string target = node->Name;
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
     #line 1044 "./src/lsp.am"
-    if (String_Length(target) == 0) {
-        #line 1045 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 1045 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 1046 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 1047 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 1048 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 1049 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 1051 "./src/lsp.am"
+    i64 targetLine = line + 1;
+    #line 1052 "./src/lsp.am"
+    i64 targetCol = character + 1;
+    #line 1053 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    #line 1054 "./src/lsp.am"
+    if (node == NULL) {
+        #line 1055 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1046 "./src/lsp.am"
+        #line 1056 "./src/lsp.am"
         return;
     }
-    #line 1049 "./src/lsp.am"
+    #line 1058 "./src/lsp.am"
+    code_string target = node->Name;
+    #line 1059 "./src/lsp.am"
+    if (String_Length(target) == 0) {
+        #line 1060 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
+        #line 1061 "./src/lsp.am"
+        return;
+    }
+    #line 1064 "./src/lsp.am"
     code_string json = "[";
-    #line 1050 "./src/lsp.am"
+    #line 1065 "./src/lsp.am"
     code_bool first = 1;
-    #line 1051 "./src/lsp.am"
+    #line 1066 "./src/lsp.am"
     i64 nProgs = AmalgameList_count(resolver->Programs);
-    #line 1052 "./src/lsp.am"
+    #line 1067 "./src/lsp.am"
     for (i64 i = 0; i < nProgs; i++) {
-        #line 1053 "./src/lsp.am"
+        #line 1068 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
-        #line 1054 "./src/lsp.am"
+        #line 1069 "./src/lsp.am"
         code_string filePath = p->Str2;
-        #line 1055 "./src/lsp.am"
+        #line 1070 "./src/lsp.am"
         if (String_Length(filePath) == 0) {
             filePath = path;
         }
-        #line 1056 "./src/lsp.am"
+        #line 1071 "./src/lsp.am"
         AmalgameList* entries = AmalgameList_new();
-        #line 1057 "./src/lsp.am"
+        #line 1072 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectReferences(p, target, filePath, entries);
-        #line 1058 "./src/lsp.am"
+        #line 1073 "./src/lsp.am"
         i64 ec = AmalgameList_count(entries);
-        #line 1059 "./src/lsp.am"
+        #line 1074 "./src/lsp.am"
         for (i64 j = 0; j < ec; j++) {
-            #line 1060 "./src/lsp.am"
+            #line 1075 "./src/lsp.am"
             if (!first) {
                 json = (code_string_concat(json, ","));
             }
-            #line 1061 "./src/lsp.am"
+            #line 1076 "./src/lsp.am"
             json = (code_string_concat(json, (code_string)AmalgameList_get(entries, j)));
-            #line 1062 "./src/lsp.am"
+            #line 1077 "./src/lsp.am"
             first = 0;
         }
     }
-    #line 1065 "./src/lsp.am"
+    #line 1080 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 1066 "./src/lsp.am"
+    #line 1081 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 1067 "./src/lsp.am"
+    #line 1082 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_CollectReferences(Amalgame_Compiler_AstNode* node, code_string target, code_string filePath, AmalgameList* out) {
-    #line 1077 "./src/lsp.am"
+    #line 1092 "./src/lsp.am"
     if (node == NULL) {
         return;
     }
-    #line 1078 "./src/lsp.am"
+    #line 1093 "./src/lsp.am"
     Amalgame_Compiler_NodeKind k = node->Kind;
-    #line 1079 "./src/lsp.am"
+    #line 1094 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_IDENTIFIER) || (k == Amalgame_Compiler_NodeKind_MEMBER)) {
-        #line 1080 "./src/lsp.am"
+        #line 1095 "./src/lsp.am"
         if (code_string_equals(node->Name, target)) {
-            #line 1081 "./src/lsp.am"
+            #line 1096 "./src/lsp.am"
             AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_LspServer_LocationJson(filePath, node->Line, node->Column, target)));
         }
     }
-    #line 1084 "./src/lsp.am"
+    #line 1099 "./src/lsp.am"
     if (node->Left != NULL) {
         Amalgame_Compiler_LspServer_CollectReferences(node->Left, target, filePath, out);
     }
-    #line 1085 "./src/lsp.am"
+    #line 1100 "./src/lsp.am"
     if (node->Right != NULL) {
         Amalgame_Compiler_LspServer_CollectReferences(node->Right, target, filePath, out);
     }
-    #line 1086 "./src/lsp.am"
+    #line 1101 "./src/lsp.am"
     if (node->Cond != NULL) {
         Amalgame_Compiler_LspServer_CollectReferences(node->Cond, target, filePath, out);
     }
-    #line 1087 "./src/lsp.am"
+    #line 1102 "./src/lsp.am"
     if (node->Body != NULL) {
         Amalgame_Compiler_LspServer_CollectReferences(node->Body, target, filePath, out);
     }
-    #line 1088 "./src/lsp.am"
+    #line 1103 "./src/lsp.am"
     if (node->Else != NULL) {
         Amalgame_Compiler_LspServer_CollectReferences(node->Else, target, filePath, out);
     }
-    #line 1089 "./src/lsp.am"
+    #line 1104 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 1090 "./src/lsp.am"
+    #line 1105 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1091 "./src/lsp.am"
+        #line 1106 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectReferences((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i), target, filePath, out);
     }
-    #line 1093 "./src/lsp.am"
+    #line 1108 "./src/lsp.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 1094 "./src/lsp.am"
+    #line 1109 "./src/lsp.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 1095 "./src/lsp.am"
+        #line 1110 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectReferences((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j), target, filePath, out);
     }
-    #line 1097 "./src/lsp.am"
+    #line 1112 "./src/lsp.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 1098 "./src/lsp.am"
+    #line 1113 "./src/lsp.am"
     for (i64 k2 = 0; k2 < an; k2++) {
-        #line 1099 "./src/lsp.am"
+        #line 1114 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectReferences((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k2), target, filePath, out);
     }
 }
 
 static code_string Amalgame_Compiler_LspServer_LocationJson(code_string filePath, i64 line, i64 col, code_string name) {
-    #line 1107 "./src/lsp.am"
+    #line 1122 "./src/lsp.am"
     i64 lineLsp = line - 1;
-    #line 1108 "./src/lsp.am"
+    #line 1123 "./src/lsp.am"
     i64 colLsp = col - 1;
-    #line 1109 "./src/lsp.am"
+    #line 1124 "./src/lsp.am"
     i64 nameLen = String_Length(name);
-    #line 1110 "./src/lsp.am"
+    #line 1125 "./src/lsp.am"
     i64 endCol = colLsp + nameLen;
-    #line 1111 "./src/lsp.am"
+    #line 1126 "./src/lsp.am"
     code_string uri = code_string_concat("file://", Amalgame_Compiler_LspServer_PercentEncodePath(filePath));
-    #line 1112 "./src/lsp.am"
+    #line 1127 "./src/lsp.am"
     code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
-    #line 1113 "./src/lsp.am"
+    #line 1128 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"uri\":\"", Amalgame_Compiler_Json_EscapeString(uri))), "\",\"range\":")), range)), "}");
 }
 
 static void Amalgame_Compiler_LspServer_HandleRename(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character, code_string newName) {
-    #line 1138 "./src/lsp.am"
-    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1139 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 1140 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":{}}}"));
-        #line 1141 "./src/lsp.am"
-        return;
-    }
-    #line 1143 "./src/lsp.am"
-    if (String_Length(newName) == 0) {
-        #line 1144 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":{}}}"));
-        #line 1145 "./src/lsp.am"
-        return;
-    }
-    #line 1147 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1148 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1149 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1150 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 1151 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 1152 "./src/lsp.am"
-    prog->Str2 = path;
     #line 1153 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 1155 "./src/lsp.am"
-    i64 targetLine = line + 1;
-    #line 1156 "./src/lsp.am"
-    i64 targetCol = character + 1;
-    #line 1157 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
+    #line 1154 "./src/lsp.am"
+    if (String_Length(source) == 0) {
+        #line 1155 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":{}}}"));
+        #line 1156 "./src/lsp.am"
+        return;
+    }
     #line 1158 "./src/lsp.am"
-    if (node == NULL) {
+    if (String_Length(newName) == 0) {
         #line 1159 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":{}}}"));
         #line 1160 "./src/lsp.am"
         return;
     }
     #line 1162 "./src/lsp.am"
-    code_string target = node->Name;
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
     #line 1163 "./src/lsp.am"
-    if (String_Length(target) == 0) {
-        #line 1164 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 1164 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 1165 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 1166 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 1167 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 1168 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 1170 "./src/lsp.am"
+    i64 targetLine = line + 1;
+    #line 1171 "./src/lsp.am"
+    i64 targetCol = character + 1;
+    #line 1172 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
+    #line 1173 "./src/lsp.am"
+    if (node == NULL) {
+        #line 1174 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":{}}}"));
-        #line 1165 "./src/lsp.am"
+        #line 1175 "./src/lsp.am"
         return;
     }
-    #line 1174 "./src/lsp.am"
-    code_string changes = "{";
-    #line 1175 "./src/lsp.am"
-    code_bool firstFile = 1;
-    #line 1176 "./src/lsp.am"
-    i64 nProgs = AmalgameList_count(resolver->Programs);
     #line 1177 "./src/lsp.am"
-    for (i64 i = 0; i < nProgs; i++) {
-        #line 1178 "./src/lsp.am"
-        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
+    code_string target = node->Name;
+    #line 1178 "./src/lsp.am"
+    if (String_Length(target) == 0) {
         #line 1179 "./src/lsp.am"
-        code_string filePath = p->Str2;
+        Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":{}}}"));
         #line 1180 "./src/lsp.am"
+        return;
+    }
+    #line 1189 "./src/lsp.am"
+    code_string changes = "{";
+    #line 1190 "./src/lsp.am"
+    code_bool firstFile = 1;
+    #line 1191 "./src/lsp.am"
+    i64 nProgs = AmalgameList_count(resolver->Programs);
+    #line 1192 "./src/lsp.am"
+    for (i64 i = 0; i < nProgs; i++) {
+        #line 1193 "./src/lsp.am"
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
+        #line 1194 "./src/lsp.am"
+        code_string filePath = p->Str2;
+        #line 1195 "./src/lsp.am"
         if (String_Length(filePath) == 0) {
             filePath = path;
         }
-        #line 1181 "./src/lsp.am"
+        #line 1196 "./src/lsp.am"
         code_string fileUri = code_string_concat("file://", Amalgame_Compiler_LspServer_PercentEncodePath(filePath));
-        #line 1182 "./src/lsp.am"
+        #line 1197 "./src/lsp.am"
         AmalgameList* edits = AmalgameList_new();
-        #line 1183 "./src/lsp.am"
+        #line 1198 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectRenameEdits(p, target, newName, edits);
-        #line 1184 "./src/lsp.am"
+        #line 1199 "./src/lsp.am"
         i64 ec = AmalgameList_count(edits);
-        #line 1185 "./src/lsp.am"
+        #line 1200 "./src/lsp.am"
         if (ec == 0) {
             continue;
         }
-        #line 1186 "./src/lsp.am"
+        #line 1201 "./src/lsp.am"
         if (!firstFile) {
             changes = (code_string_concat(changes, ","));
         }
-        #line 1187 "./src/lsp.am"
+        #line 1202 "./src/lsp.am"
         changes = (code_string_concat((code_string_concat((code_string_concat(changes, "\"")), Amalgame_Compiler_Json_EscapeString(fileUri))), "\":["));
-        #line 1188 "./src/lsp.am"
+        #line 1203 "./src/lsp.am"
         for (i64 j = 0; j < ec; j++) {
-            #line 1189 "./src/lsp.am"
+            #line 1204 "./src/lsp.am"
             if (j > 0) {
                 changes = (code_string_concat(changes, ","));
             }
-            #line 1190 "./src/lsp.am"
+            #line 1205 "./src/lsp.am"
             changes = (code_string_concat(changes, (code_string)AmalgameList_get(edits, j)));
         }
-        #line 1192 "./src/lsp.am"
+        #line 1207 "./src/lsp.am"
         changes = (code_string_concat(changes, "]"));
-        #line 1193 "./src/lsp.am"
+        #line 1208 "./src/lsp.am"
         firstFile = 0;
     }
-    #line 1195 "./src/lsp.am"
+    #line 1210 "./src/lsp.am"
     changes = (code_string_concat(changes, "}"));
-    #line 1196 "./src/lsp.am"
+    #line 1211 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"changes\":")), changes)), "}}");
-    #line 1197 "./src/lsp.am"
+    #line 1212 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_CollectRenameEdits(Amalgame_Compiler_AstNode* node, code_string target, code_string newName, AmalgameList* out) {
-    #line 1205 "./src/lsp.am"
+    #line 1220 "./src/lsp.am"
     if (node == NULL) {
         return;
     }
-    #line 1206 "./src/lsp.am"
+    #line 1221 "./src/lsp.am"
     Amalgame_Compiler_NodeKind k = node->Kind;
-    #line 1213 "./src/lsp.am"
+    #line 1228 "./src/lsp.am"
     code_bool matches = 0;
-    #line 1214 "./src/lsp.am"
+    #line 1229 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_IDENTIFIER) || (k == Amalgame_Compiler_NodeKind_MEMBER)) {
         matches = 1;
     }
-    #line 1215 "./src/lsp.am"
+    #line 1230 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_CLASS_DECL) || (k == Amalgame_Compiler_NodeKind_ENUM_DECL)) {
         matches = 1;
     }
-    #line 1216 "./src/lsp.am"
+    #line 1231 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_METHOD_DECL) || (k == Amalgame_Compiler_NodeKind_VAR_DECL)) {
         matches = 1;
     }
-    #line 1217 "./src/lsp.am"
+    #line 1232 "./src/lsp.am"
     if (k == Amalgame_Compiler_NodeKind_PARAM) {
         matches = 1;
     }
-    #line 1218 "./src/lsp.am"
+    #line 1233 "./src/lsp.am"
     if (matches && (code_string_equals(node->Name, target))) {
-        #line 1219 "./src/lsp.am"
+        #line 1234 "./src/lsp.am"
         AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_LspServer_TextEditJson(node->Line, node->Column, target, newName)));
     }
-    #line 1221 "./src/lsp.am"
+    #line 1236 "./src/lsp.am"
     if (node->Left != NULL) {
         Amalgame_Compiler_LspServer_CollectRenameEdits(node->Left, target, newName, out);
     }
-    #line 1222 "./src/lsp.am"
+    #line 1237 "./src/lsp.am"
     if (node->Right != NULL) {
         Amalgame_Compiler_LspServer_CollectRenameEdits(node->Right, target, newName, out);
     }
-    #line 1223 "./src/lsp.am"
+    #line 1238 "./src/lsp.am"
     if (node->Cond != NULL) {
         Amalgame_Compiler_LspServer_CollectRenameEdits(node->Cond, target, newName, out);
     }
-    #line 1224 "./src/lsp.am"
+    #line 1239 "./src/lsp.am"
     if (node->Body != NULL) {
         Amalgame_Compiler_LspServer_CollectRenameEdits(node->Body, target, newName, out);
     }
-    #line 1225 "./src/lsp.am"
+    #line 1240 "./src/lsp.am"
     if (node->Else != NULL) {
         Amalgame_Compiler_LspServer_CollectRenameEdits(node->Else, target, newName, out);
     }
-    #line 1226 "./src/lsp.am"
+    #line 1241 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 1227 "./src/lsp.am"
+    #line 1242 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1228 "./src/lsp.am"
+        #line 1243 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectRenameEdits((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i), target, newName, out);
     }
-    #line 1230 "./src/lsp.am"
+    #line 1245 "./src/lsp.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 1231 "./src/lsp.am"
+    #line 1246 "./src/lsp.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 1232 "./src/lsp.am"
+        #line 1247 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectRenameEdits((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j), target, newName, out);
     }
-    #line 1234 "./src/lsp.am"
+    #line 1249 "./src/lsp.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 1235 "./src/lsp.am"
+    #line 1250 "./src/lsp.am"
     for (i64 k2 = 0; k2 < an; k2++) {
-        #line 1236 "./src/lsp.am"
+        #line 1251 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectRenameEdits((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k2), target, newName, out);
     }
 }
 
 static code_string Amalgame_Compiler_LspServer_TextEditJson(i64 line, i64 col, code_string oldName, code_string newName) {
-    #line 1243 "./src/lsp.am"
+    #line 1258 "./src/lsp.am"
     i64 lineLsp = line - 1;
-    #line 1244 "./src/lsp.am"
+    #line 1259 "./src/lsp.am"
     i64 colLsp = col - 1;
-    #line 1245 "./src/lsp.am"
+    #line 1260 "./src/lsp.am"
     i64 oldLen = String_Length(oldName);
-    #line 1246 "./src/lsp.am"
+    #line 1261 "./src/lsp.am"
     i64 endCol = colLsp + oldLen;
-    #line 1247 "./src/lsp.am"
+    #line 1262 "./src/lsp.am"
     code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
-    #line 1248 "./src/lsp.am"
+    #line 1263 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"range\":", range)), ",\"newText\":\"")), Amalgame_Compiler_Json_EscapeString(newName))), "\"}");
 }
 
 static void Amalgame_Compiler_LspServer_HandlePrepareRename(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    #line 1261 "./src/lsp.am"
+    #line 1276 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1262 "./src/lsp.am"
+    #line 1277 "./src/lsp.am"
     if (String_Length(source) == 0) {
-        #line 1263 "./src/lsp.am"
+        #line 1278 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 1264 "./src/lsp.am"
+        #line 1279 "./src/lsp.am"
         return;
     }
-    #line 1266 "./src/lsp.am"
+    #line 1281 "./src/lsp.am"
     code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1267 "./src/lsp.am"
+    #line 1282 "./src/lsp.am"
     Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1268 "./src/lsp.am"
+    #line 1283 "./src/lsp.am"
     AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1269 "./src/lsp.am"
+    #line 1284 "./src/lsp.am"
     Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 1270 "./src/lsp.am"
+    #line 1285 "./src/lsp.am"
     Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 1272 "./src/lsp.am"
+    #line 1287 "./src/lsp.am"
     i64 targetLine = line + 1;
-    #line 1273 "./src/lsp.am"
+    #line 1288 "./src/lsp.am"
     i64 targetCol = character + 1;
-    #line 1274 "./src/lsp.am"
+    #line 1289 "./src/lsp.am"
     Amalgame_Compiler_AstNode* node = Amalgame_Compiler_LspServer_FindNodeAtPosition(prog, targetLine, targetCol);
-    #line 1275 "./src/lsp.am"
+    #line 1290 "./src/lsp.am"
     if (node == NULL) {
-        #line 1276 "./src/lsp.am"
+        #line 1291 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 1277 "./src/lsp.am"
+        #line 1292 "./src/lsp.am"
         return;
     }
-    #line 1279 "./src/lsp.am"
+    #line 1294 "./src/lsp.am"
     Amalgame_Compiler_NodeKind k = node->Kind;
-    #line 1282 "./src/lsp.am"
+    #line 1297 "./src/lsp.am"
     code_bool renameable = 0;
-    #line 1283 "./src/lsp.am"
+    #line 1298 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_IDENTIFIER) || (k == Amalgame_Compiler_NodeKind_MEMBER)) {
         renameable = 1;
     }
-    #line 1284 "./src/lsp.am"
+    #line 1299 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_CLASS_DECL) || (k == Amalgame_Compiler_NodeKind_ENUM_DECL)) {
         renameable = 1;
     }
-    #line 1285 "./src/lsp.am"
+    #line 1300 "./src/lsp.am"
     if ((k == Amalgame_Compiler_NodeKind_METHOD_DECL) || (k == Amalgame_Compiler_NodeKind_VAR_DECL)) {
         renameable = 1;
     }
-    #line 1286 "./src/lsp.am"
+    #line 1301 "./src/lsp.am"
     if (k == Amalgame_Compiler_NodeKind_PARAM) {
         renameable = 1;
     }
-    #line 1287 "./src/lsp.am"
-    if (!renameable) {
-        #line 1288 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 1289 "./src/lsp.am"
-        return;
-    }
-    #line 1291 "./src/lsp.am"
-    code_string name = node->Name;
-    #line 1292 "./src/lsp.am"
-    if (String_Length(name) == 0) {
-        #line 1293 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 1294 "./src/lsp.am"
-        return;
-    }
-    #line 1296 "./src/lsp.am"
-    i64 lineLsp = node->Line - 1;
-    #line 1297 "./src/lsp.am"
-    i64 colLsp = node->Column - 1;
-    #line 1298 "./src/lsp.am"
-    i64 nameLen = String_Length(name);
-    #line 1299 "./src/lsp.am"
-    i64 endCol = colLsp + nameLen;
-    #line 1300 "./src/lsp.am"
-    code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
-    #line 1301 "./src/lsp.am"
-    code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"range\":")), range)), ",\"placeholder\":\"")), Amalgame_Compiler_Json_EscapeString(name))), "\"}}");
     #line 1302 "./src/lsp.am"
+    if (!renameable) {
+        #line 1303 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 1304 "./src/lsp.am"
+        return;
+    }
+    #line 1306 "./src/lsp.am"
+    code_string name = node->Name;
+    #line 1307 "./src/lsp.am"
+    if (String_Length(name) == 0) {
+        #line 1308 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 1309 "./src/lsp.am"
+        return;
+    }
+    #line 1311 "./src/lsp.am"
+    i64 lineLsp = node->Line - 1;
+    #line 1312 "./src/lsp.am"
+    i64 colLsp = node->Column - 1;
+    #line 1313 "./src/lsp.am"
+    i64 nameLen = String_Length(name);
+    #line 1314 "./src/lsp.am"
+    i64 endCol = colLsp + nameLen;
+    #line 1315 "./src/lsp.am"
+    code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
+    #line 1316 "./src/lsp.am"
+    code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"range\":")), range)), ",\"placeholder\":\"")), Amalgame_Compiler_Json_EscapeString(name))), "\"}}");
+    #line 1317 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_HandlePrepareCallHierarchy(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 character) {
-    #line 1328 "./src/lsp.am"
+    #line 1343 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1329 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 1330 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 1331 "./src/lsp.am"
-        return;
-    }
-    #line 1333 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1334 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1335 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1336 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 1337 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 1338 "./src/lsp.am"
-    i64 targetLine = line + 1;
-    #line 1339 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* enclosing = Amalgame_Compiler_LspServer_FindEnclosingMethod(prog, targetLine);
-    #line 1340 "./src/lsp.am"
-    if (enclosing == NULL) {
-        #line 1341 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendNullResult(self, id);
-        #line 1342 "./src/lsp.am"
-        return;
-    }
     #line 1344 "./src/lsp.am"
+    if (String_Length(source) == 0) {
+        #line 1345 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 1346 "./src/lsp.am"
+        return;
+    }
+    #line 1348 "./src/lsp.am"
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    #line 1349 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 1350 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 1351 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 1352 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 1353 "./src/lsp.am"
+    i64 targetLine = line + 1;
+    #line 1354 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* enclosing = Amalgame_Compiler_LspServer_FindEnclosingMethod(prog, targetLine);
+    #line 1355 "./src/lsp.am"
+    if (enclosing == NULL) {
+        #line 1356 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendNullResult(self, id);
+        #line 1357 "./src/lsp.am"
+        return;
+    }
+    #line 1359 "./src/lsp.am"
     code_string item = Amalgame_Compiler_LspServer_CallHierarchyItemJson(enclosing, path);
-    #line 1345 "./src/lsp.am"
+    #line 1360 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[")), item)), "]}");
-    #line 1346 "./src/lsp.am"
+    #line 1361 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_HandleIncomingCalls(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_JsonValue* item) {
-    #line 1350 "./src/lsp.am"
+    #line 1365 "./src/lsp.am"
     code_string target = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(item, "name"));
-    #line 1351 "./src/lsp.am"
+    #line 1366 "./src/lsp.am"
     if (String_Length(target) == 0) {
-        #line 1352 "./src/lsp.am"
+        #line 1367 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1353 "./src/lsp.am"
+        #line 1368 "./src/lsp.am"
         return;
     }
-    #line 1357 "./src/lsp.am"
-    code_string itemUri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(item, "uri"));
-    #line 1358 "./src/lsp.am"
-    code_string anchor = Amalgame_Compiler_LspServer_UriToPath(itemUri);
-    #line 1363 "./src/lsp.am"
-    code_string openSrc = Amalgame_Compiler_LspServer_LookupDoc(self, itemUri);
-    #line 1364 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex2 = Amalgame_Compiler_Lexer_new(openSrc, anchor);
-    #line 1365 "./src/lsp.am"
-    AmalgameList* toks2 = Amalgame_Compiler_Lexer_Tokenize(lex2);
-    #line 1366 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par2 = Amalgame_Compiler_Parser_new(toks2);
-    #line 1367 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* openProg = Amalgame_Compiler_Parser_Parse(par2);
-    #line 1368 "./src/lsp.am"
-    openProg->Str2 = anchor;
-    #line 1369 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, anchor, openProg);
-    #line 1371 "./src/lsp.am"
-    code_string json = "[";
     #line 1372 "./src/lsp.am"
-    code_bool first = 1;
+    code_string itemUri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(item, "uri"));
     #line 1373 "./src/lsp.am"
+    code_string anchor = Amalgame_Compiler_LspServer_UriToPath(itemUri);
+    #line 1378 "./src/lsp.am"
+    code_string openSrc = Amalgame_Compiler_LspServer_LookupDoc(self, itemUri);
+    #line 1379 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex2 = Amalgame_Compiler_Lexer_new(openSrc, anchor);
+    #line 1380 "./src/lsp.am"
+    AmalgameList* toks2 = Amalgame_Compiler_Lexer_Tokenize(lex2);
+    #line 1381 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par2 = Amalgame_Compiler_Parser_new(toks2);
+    #line 1382 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* openProg = Amalgame_Compiler_Parser_Parse(par2);
+    #line 1383 "./src/lsp.am"
+    openProg->Str2 = anchor;
+    #line 1384 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, anchor, openProg);
+    #line 1386 "./src/lsp.am"
+    code_string json = "[";
+    #line 1387 "./src/lsp.am"
+    code_bool first = 1;
+    #line 1388 "./src/lsp.am"
     i64 nProgs = AmalgameList_count(resolver->Programs);
-    #line 1374 "./src/lsp.am"
+    #line 1389 "./src/lsp.am"
     for (i64 i = 0; i < nProgs; i++) {
-        #line 1375 "./src/lsp.am"
+        #line 1390 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
-        #line 1376 "./src/lsp.am"
+        #line 1391 "./src/lsp.am"
         code_string filePath = p->Str2;
-        #line 1377 "./src/lsp.am"
+        #line 1392 "./src/lsp.am"
         if (String_Length(filePath) == 0) {
             filePath = anchor;
         }
-        #line 1378 "./src/lsp.am"
+        #line 1393 "./src/lsp.am"
         i64 dc = AmalgameList_count(p->Children);
-        #line 1379 "./src/lsp.am"
+        #line 1394 "./src/lsp.am"
         for (i64 j = 0; j < dc; j++) {
-            #line 1380 "./src/lsp.am"
+            #line 1395 "./src/lsp.am"
             Amalgame_Compiler_AstNode* cls = (Amalgame_Compiler_AstNode*)AmalgameList_get(p->Children, j);
-            #line 1381 "./src/lsp.am"
+            #line 1396 "./src/lsp.am"
             if (cls->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
                 continue;
             }
-            #line 1382 "./src/lsp.am"
+            #line 1397 "./src/lsp.am"
             i64 mc = AmalgameList_count(cls->Children);
-            #line 1383 "./src/lsp.am"
+            #line 1398 "./src/lsp.am"
             for (i64 k2 = 0; k2 < mc; k2++) {
-                #line 1384 "./src/lsp.am"
+                #line 1399 "./src/lsp.am"
                 Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, k2);
-                #line 1385 "./src/lsp.am"
+                #line 1400 "./src/lsp.am"
                 if (m->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
                     continue;
                 }
-                #line 1386 "./src/lsp.am"
+                #line 1401 "./src/lsp.am"
                 AmalgameList* ranges = AmalgameList_new();
-                #line 1387 "./src/lsp.am"
+                #line 1402 "./src/lsp.am"
                 Amalgame_Compiler_LspServer_CollectCallSitesForName(m->Body, target, ranges);
-                #line 1388 "./src/lsp.am"
+                #line 1403 "./src/lsp.am"
                 i64 rc = AmalgameList_count(ranges);
-                #line 1389 "./src/lsp.am"
+                #line 1404 "./src/lsp.am"
                 if (rc == 0) {
                     continue;
                 }
-                #line 1390 "./src/lsp.am"
+                #line 1405 "./src/lsp.am"
                 code_string rangesJson = "[";
-                #line 1391 "./src/lsp.am"
+                #line 1406 "./src/lsp.am"
                 for (i64 ri = 0; ri < rc; ri++) {
-                    #line 1392 "./src/lsp.am"
+                    #line 1407 "./src/lsp.am"
                     if (ri > 0) {
                         rangesJson = (code_string_concat(rangesJson, ","));
                     }
-                    #line 1393 "./src/lsp.am"
+                    #line 1408 "./src/lsp.am"
                     rangesJson = (code_string_concat(rangesJson, (code_string)AmalgameList_get(ranges, ri)));
                 }
-                #line 1395 "./src/lsp.am"
+                #line 1410 "./src/lsp.am"
                 rangesJson = (code_string_concat(rangesJson, "]"));
-                #line 1396 "./src/lsp.am"
+                #line 1411 "./src/lsp.am"
                 code_string fromItem = Amalgame_Compiler_LspServer_CallHierarchyItemJson(m, filePath);
-                #line 1397 "./src/lsp.am"
+                #line 1412 "./src/lsp.am"
                 if (!first) {
                     json = (code_string_concat(json, ","));
                 }
-                #line 1398 "./src/lsp.am"
+                #line 1413 "./src/lsp.am"
                 json = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(json, "{\"from\":")), fromItem)), ",\"fromRanges\":")), rangesJson)), "}"));
-                #line 1399 "./src/lsp.am"
+                #line 1414 "./src/lsp.am"
                 first = 0;
             }
         }
     }
-    #line 1403 "./src/lsp.am"
+    #line 1418 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 1404 "./src/lsp.am"
+    #line 1419 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 1405 "./src/lsp.am"
+    #line 1420 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_HandleOutgoingCalls(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_JsonValue* item) {
-    #line 1409 "./src/lsp.am"
+    #line 1424 "./src/lsp.am"
     code_string itemName = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(item, "name"));
-    #line 1410 "./src/lsp.am"
+    #line 1425 "./src/lsp.am"
     code_string itemUri = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(item, "uri"));
-    #line 1411 "./src/lsp.am"
+    #line 1426 "./src/lsp.am"
     if ((String_Length(itemName) == 0) || (String_Length(itemUri) == 0)) {
-        #line 1412 "./src/lsp.am"
+        #line 1427 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1413 "./src/lsp.am"
+        #line 1428 "./src/lsp.am"
         return;
     }
-    #line 1418 "./src/lsp.am"
-    Amalgame_Compiler_JsonValue* selRange = Amalgame_Compiler_JsonValue_Get(item, "selectionRange");
-    #line 1419 "./src/lsp.am"
-    Amalgame_Compiler_JsonValue* selStart = Amalgame_Compiler_JsonValue_Get(selRange, "start");
-    #line 1420 "./src/lsp.am"
-    i64 methodLine = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(selStart, "line")) + 1;
-    #line 1422 "./src/lsp.am"
-    code_string anchor = Amalgame_Compiler_LspServer_UriToPath(itemUri);
-    #line 1423 "./src/lsp.am"
-    code_string openSrc = Amalgame_Compiler_LspServer_LookupDoc(self, itemUri);
-    #line 1424 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex2 = Amalgame_Compiler_Lexer_new(openSrc, anchor);
-    #line 1425 "./src/lsp.am"
-    AmalgameList* toks2 = Amalgame_Compiler_Lexer_Tokenize(lex2);
-    #line 1426 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par2 = Amalgame_Compiler_Parser_new(toks2);
-    #line 1427 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par2);
-    #line 1428 "./src/lsp.am"
-    prog->Str2 = anchor;
-    #line 1429 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, anchor, prog);
-    #line 1432 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* method = NULL;
     #line 1433 "./src/lsp.am"
-    i64 nProgs = AmalgameList_count(resolver->Programs);
+    Amalgame_Compiler_JsonValue* selRange = Amalgame_Compiler_JsonValue_Get(item, "selectionRange");
     #line 1434 "./src/lsp.am"
+    Amalgame_Compiler_JsonValue* selStart = Amalgame_Compiler_JsonValue_Get(selRange, "start");
+    #line 1435 "./src/lsp.am"
+    i64 methodLine = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(selStart, "line")) + 1;
+    #line 1437 "./src/lsp.am"
+    code_string anchor = Amalgame_Compiler_LspServer_UriToPath(itemUri);
+    #line 1438 "./src/lsp.am"
+    code_string openSrc = Amalgame_Compiler_LspServer_LookupDoc(self, itemUri);
+    #line 1439 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex2 = Amalgame_Compiler_Lexer_new(openSrc, anchor);
+    #line 1440 "./src/lsp.am"
+    AmalgameList* toks2 = Amalgame_Compiler_Lexer_Tokenize(lex2);
+    #line 1441 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par2 = Amalgame_Compiler_Parser_new(toks2);
+    #line 1442 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par2);
+    #line 1443 "./src/lsp.am"
+    prog->Str2 = anchor;
+    #line 1444 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, anchor, prog);
+    #line 1447 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* method = NULL;
+    #line 1448 "./src/lsp.am"
+    i64 nProgs = AmalgameList_count(resolver->Programs);
+    #line 1449 "./src/lsp.am"
     for (i64 i = 0; i < nProgs; i++) {
-        #line 1435 "./src/lsp.am"
+        #line 1450 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, i);
-        #line 1436 "./src/lsp.am"
+        #line 1451 "./src/lsp.am"
         code_string pPath = p->Str2;
-        #line 1437 "./src/lsp.am"
+        #line 1452 "./src/lsp.am"
         if (!code_string_equals(pPath, anchor)) {
             continue;
         }
-        #line 1438 "./src/lsp.am"
+        #line 1453 "./src/lsp.am"
         i64 dc = AmalgameList_count(p->Children);
-        #line 1439 "./src/lsp.am"
+        #line 1454 "./src/lsp.am"
         for (i64 j = 0; j < dc; j++) {
-            #line 1440 "./src/lsp.am"
+            #line 1455 "./src/lsp.am"
             Amalgame_Compiler_AstNode* cls = (Amalgame_Compiler_AstNode*)AmalgameList_get(p->Children, j);
-            #line 1441 "./src/lsp.am"
+            #line 1456 "./src/lsp.am"
             if (cls->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
                 continue;
             }
-            #line 1442 "./src/lsp.am"
+            #line 1457 "./src/lsp.am"
             i64 mc = AmalgameList_count(cls->Children);
-            #line 1443 "./src/lsp.am"
+            #line 1458 "./src/lsp.am"
             for (i64 k2 = 0; k2 < mc; k2++) {
-                #line 1444 "./src/lsp.am"
+                #line 1459 "./src/lsp.am"
                 Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, k2);
-                #line 1445 "./src/lsp.am"
+                #line 1460 "./src/lsp.am"
                 if (m->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
                     continue;
                 }
-                #line 1446 "./src/lsp.am"
+                #line 1461 "./src/lsp.am"
                 if (!code_string_equals(m->Name, itemName)) {
                     continue;
                 }
-                #line 1447 "./src/lsp.am"
+                #line 1462 "./src/lsp.am"
                 if (m->Line != methodLine) {
                     continue;
                 }
-                #line 1448 "./src/lsp.am"
+                #line 1463 "./src/lsp.am"
                 method = m;
             }
         }
     }
-    #line 1452 "./src/lsp.am"
+    #line 1467 "./src/lsp.am"
     if (method == NULL) {
-        #line 1453 "./src/lsp.am"
+        #line 1468 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1454 "./src/lsp.am"
+        #line 1469 "./src/lsp.am"
         return;
     }
-    #line 1460 "./src/lsp.am"
+    #line 1475 "./src/lsp.am"
     AmalgameList* calleeNames = AmalgameList_new();
-    #line 1461 "./src/lsp.am"
+    #line 1476 "./src/lsp.am"
     AmalgameList* calleeSites = AmalgameList_new();
-    #line 1462 "./src/lsp.am"
+    #line 1477 "./src/lsp.am"
     Amalgame_Compiler_LspServer_CollectOutgoingCalls(method->Body, calleeNames, calleeSites);
-    #line 1464 "./src/lsp.am"
+    #line 1479 "./src/lsp.am"
     code_string json = "[";
-    #line 1465 "./src/lsp.am"
+    #line 1480 "./src/lsp.am"
     code_bool first = 1;
-    #line 1466 "./src/lsp.am"
+    #line 1481 "./src/lsp.am"
     i64 cn = AmalgameList_count(calleeNames);
-    #line 1467 "./src/lsp.am"
+    #line 1482 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1468 "./src/lsp.am"
+        #line 1483 "./src/lsp.am"
         code_string name = (code_string)AmalgameList_get(calleeNames, i);
-        #line 1469 "./src/lsp.am"
+        #line 1484 "./src/lsp.am"
         code_string ranges = (code_string)AmalgameList_get(calleeSites, i);
-        #line 1474 "./src/lsp.am"
+        #line 1489 "./src/lsp.am"
         code_string toItem = "";
-        #line 1475 "./src/lsp.am"
+        #line 1490 "./src/lsp.am"
         for (i64 pi = 0; pi < nProgs; pi++) {
-            #line 1476 "./src/lsp.am"
+            #line 1491 "./src/lsp.am"
             if (String_Length(toItem) > 0) {
                 break;
             }
-            #line 1477 "./src/lsp.am"
+            #line 1492 "./src/lsp.am"
             Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(resolver->Programs, pi);
-            #line 1478 "./src/lsp.am"
+            #line 1493 "./src/lsp.am"
             code_string pPath = p->Str2;
-            #line 1479 "./src/lsp.am"
+            #line 1494 "./src/lsp.am"
             if (String_Length(pPath) == 0) {
                 pPath = anchor;
             }
-            #line 1480 "./src/lsp.am"
+            #line 1495 "./src/lsp.am"
             i64 dc = AmalgameList_count(p->Children);
-            #line 1481 "./src/lsp.am"
+            #line 1496 "./src/lsp.am"
             for (i64 dj = 0; dj < dc; dj++) {
-                #line 1482 "./src/lsp.am"
+                #line 1497 "./src/lsp.am"
                 if (String_Length(toItem) > 0) {
                     break;
                 }
-                #line 1483 "./src/lsp.am"
+                #line 1498 "./src/lsp.am"
                 Amalgame_Compiler_AstNode* cls = (Amalgame_Compiler_AstNode*)AmalgameList_get(p->Children, dj);
-                #line 1484 "./src/lsp.am"
+                #line 1499 "./src/lsp.am"
                 if (cls->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
                     continue;
                 }
-                #line 1485 "./src/lsp.am"
+                #line 1500 "./src/lsp.am"
                 i64 mc = AmalgameList_count(cls->Children);
-                #line 1486 "./src/lsp.am"
+                #line 1501 "./src/lsp.am"
                 for (i64 mk = 0; mk < mc; mk++) {
-                    #line 1487 "./src/lsp.am"
+                    #line 1502 "./src/lsp.am"
                     Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, mk);
-                    #line 1488 "./src/lsp.am"
+                    #line 1503 "./src/lsp.am"
                     if (m->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
                         continue;
                     }
-                    #line 1489 "./src/lsp.am"
+                    #line 1504 "./src/lsp.am"
                     if (!code_string_equals(m->Name, name)) {
                         continue;
                     }
-                    #line 1490 "./src/lsp.am"
+                    #line 1505 "./src/lsp.am"
                     toItem = Amalgame_Compiler_LspServer_CallHierarchyItemJson(m, pPath);
                 }
             }
         }
-        #line 1494 "./src/lsp.am"
+        #line 1509 "./src/lsp.am"
         if (String_Length(toItem) == 0) {
             continue;
         }
-        #line 1495 "./src/lsp.am"
+        #line 1510 "./src/lsp.am"
         if (!first) {
             json = (code_string_concat(json, ","));
         }
-        #line 1496 "./src/lsp.am"
+        #line 1511 "./src/lsp.am"
         json = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(json, "{\"to\":")), toItem)), ",\"fromRanges\":")), ranges)), "}"));
-        #line 1497 "./src/lsp.am"
+        #line 1512 "./src/lsp.am"
         first = 0;
     }
-    #line 1499 "./src/lsp.am"
+    #line 1514 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 1500 "./src/lsp.am"
+    #line 1515 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 1501 "./src/lsp.am"
+    #line 1516 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_CollectCallSitesForName(Amalgame_Compiler_AstNode* node, code_string target, AmalgameList* out) {
-    #line 1509 "./src/lsp.am"
+    #line 1524 "./src/lsp.am"
     if (node == NULL) {
         return;
     }
-    #line 1510 "./src/lsp.am"
+    #line 1525 "./src/lsp.am"
     Amalgame_Compiler_AstNode* n = node;
-    #line 1511 "./src/lsp.am"
+    #line 1526 "./src/lsp.am"
     if ((n->Kind == Amalgame_Compiler_NodeKind_CALL) && (n->Left != NULL)) {
-        #line 1512 "./src/lsp.am"
+        #line 1527 "./src/lsp.am"
         Amalgame_Compiler_AstNode* callee = n->Left;
-        #line 1513 "./src/lsp.am"
+        #line 1528 "./src/lsp.am"
         code_string calleeName = "";
-        #line 1514 "./src/lsp.am"
+        #line 1529 "./src/lsp.am"
         if (callee->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
             calleeName = callee->Name;
         }
-        #line 1515 "./src/lsp.am"
+        #line 1530 "./src/lsp.am"
         if (callee->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
             calleeName = callee->Name;
         }
-        #line 1516 "./src/lsp.am"
+        #line 1531 "./src/lsp.am"
         if (code_string_equals(calleeName, target)) {
-            #line 1517 "./src/lsp.am"
+            #line 1532 "./src/lsp.am"
             AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_LspServer_RangeJsonForName(callee->Line, callee->Column, calleeName)));
         }
     }
-    #line 1522 "./src/lsp.am"
+    #line 1537 "./src/lsp.am"
     if (n->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
         return;
     }
-    #line 1523 "./src/lsp.am"
+    #line 1538 "./src/lsp.am"
     if (n->Left != NULL) {
         Amalgame_Compiler_LspServer_CollectCallSitesForName(n->Left, target, out);
     }
-    #line 1524 "./src/lsp.am"
+    #line 1539 "./src/lsp.am"
     if (n->Right != NULL) {
         Amalgame_Compiler_LspServer_CollectCallSitesForName(n->Right, target, out);
     }
-    #line 1525 "./src/lsp.am"
+    #line 1540 "./src/lsp.am"
     if (n->Cond != NULL) {
         Amalgame_Compiler_LspServer_CollectCallSitesForName(n->Cond, target, out);
     }
-    #line 1526 "./src/lsp.am"
+    #line 1541 "./src/lsp.am"
     if (n->Body != NULL) {
         Amalgame_Compiler_LspServer_CollectCallSitesForName(n->Body, target, out);
     }
-    #line 1527 "./src/lsp.am"
+    #line 1542 "./src/lsp.am"
     if (n->Else != NULL) {
         Amalgame_Compiler_LspServer_CollectCallSitesForName(n->Else, target, out);
     }
-    #line 1528 "./src/lsp.am"
+    #line 1543 "./src/lsp.am"
     i64 cn = AmalgameList_count(n->Children);
-    #line 1529 "./src/lsp.am"
+    #line 1544 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1530 "./src/lsp.am"
+        #line 1545 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectCallSitesForName((Amalgame_Compiler_AstNode*)AmalgameList_get(n->Children, i), target, out);
     }
-    #line 1532 "./src/lsp.am"
+    #line 1547 "./src/lsp.am"
     i64 pn = AmalgameList_count(n->Params);
-    #line 1533 "./src/lsp.am"
+    #line 1548 "./src/lsp.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 1534 "./src/lsp.am"
+        #line 1549 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectCallSitesForName((Amalgame_Compiler_AstNode*)AmalgameList_get(n->Params, j), target, out);
     }
-    #line 1536 "./src/lsp.am"
+    #line 1551 "./src/lsp.am"
     i64 an = AmalgameList_count(n->Args);
-    #line 1537 "./src/lsp.am"
+    #line 1552 "./src/lsp.am"
     for (i64 k = 0; k < an; k++) {
-        #line 1538 "./src/lsp.am"
+        #line 1553 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectCallSitesForName((Amalgame_Compiler_AstNode*)AmalgameList_get(n->Args, k), target, out);
     }
 }
 
 static void Amalgame_Compiler_LspServer_CollectOutgoingCalls(Amalgame_Compiler_AstNode* node, AmalgameList* names, AmalgameList* rangesOut) {
-    #line 1547 "./src/lsp.am"
+    #line 1562 "./src/lsp.am"
     if (node == NULL) {
         return;
     }
-    #line 1548 "./src/lsp.am"
+    #line 1563 "./src/lsp.am"
     Amalgame_Compiler_AstNode* n = node;
-    #line 1549 "./src/lsp.am"
+    #line 1564 "./src/lsp.am"
     if ((n->Kind == Amalgame_Compiler_NodeKind_CALL) && (n->Left != NULL)) {
-        #line 1550 "./src/lsp.am"
+        #line 1565 "./src/lsp.am"
         Amalgame_Compiler_AstNode* callee = n->Left;
-        #line 1551 "./src/lsp.am"
+        #line 1566 "./src/lsp.am"
         code_string calleeName = "";
-        #line 1552 "./src/lsp.am"
+        #line 1567 "./src/lsp.am"
         if (callee->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
             calleeName = callee->Name;
         }
-        #line 1553 "./src/lsp.am"
+        #line 1568 "./src/lsp.am"
         if (callee->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
             calleeName = callee->Name;
         }
-        #line 1554 "./src/lsp.am"
+        #line 1569 "./src/lsp.am"
         if (String_Length(calleeName) > 0) {
-            #line 1555 "./src/lsp.am"
+            #line 1570 "./src/lsp.am"
             code_string r = Amalgame_Compiler_LspServer_RangeJsonForName(callee->Line, callee->Column, calleeName);
-            #line 1556 "./src/lsp.am"
+            #line 1571 "./src/lsp.am"
             i64 nc = AmalgameList_count(names);
-            #line 1557 "./src/lsp.am"
+            #line 1572 "./src/lsp.am"
             code_bool found = 0;
-            #line 1558 "./src/lsp.am"
+            #line 1573 "./src/lsp.am"
             for (i64 i = 0; i < nc; i++) {
-                #line 1559 "./src/lsp.am"
+                #line 1574 "./src/lsp.am"
                 if (code_string_equals((code_string)AmalgameList_get(names, i), calleeName)) {
-                    #line 1560 "./src/lsp.am"
+                    #line 1575 "./src/lsp.am"
                     code_string prev = (code_string)AmalgameList_get(rangesOut, i);
-                    #line 1563 "./src/lsp.am"
+                    #line 1578 "./src/lsp.am"
                     i64 prevLen = String_Length(prev);
-                    #line 1564 "./src/lsp.am"
+                    #line 1579 "./src/lsp.am"
                     code_string head = String_Substring(prev, 0, prevLen - 1);
-                    #line 1565 "./src/lsp.am"
+                    #line 1580 "./src/lsp.am"
                     code_string sep = ",";
-                    #line 1566 "./src/lsp.am"
+                    #line 1581 "./src/lsp.am"
                     if (code_string_equals(prev, "[]")) {
                         sep = "";
                     }
-                    #line 1567 "./src/lsp.am"
+                    #line 1582 "./src/lsp.am"
                     code_string updated = code_string_concat((code_string_concat((code_string_concat(head, sep)), r)), "]");
-                    #line 1568 "./src/lsp.am"
+                    #line 1583 "./src/lsp.am"
                     AmalgameList_removeAt(rangesOut, i);
-                    #line 1569 "./src/lsp.am"
+                    #line 1584 "./src/lsp.am"
                     AmalgameList_add(rangesOut, (void*)(intptr_t)(updated));
-                    #line 1572 "./src/lsp.am"
+                    #line 1587 "./src/lsp.am"
                     AmalgameList_removeAt(names, i);
-                    #line 1573 "./src/lsp.am"
+                    #line 1588 "./src/lsp.am"
                     AmalgameList_add(names, (void*)(intptr_t)(calleeName));
-                    #line 1574 "./src/lsp.am"
+                    #line 1589 "./src/lsp.am"
                     found = 1;
                 }
             }
-            #line 1577 "./src/lsp.am"
+            #line 1592 "./src/lsp.am"
             if (!found) {
-                #line 1578 "./src/lsp.am"
+                #line 1593 "./src/lsp.am"
                 AmalgameList_add(names, (void*)(intptr_t)(calleeName));
-                #line 1579 "./src/lsp.am"
+                #line 1594 "./src/lsp.am"
                 AmalgameList_add(rangesOut, (void*)(intptr_t)(code_string_concat((code_string_concat("[", r)), "]")));
             }
         }
     }
-    #line 1583 "./src/lsp.am"
+    #line 1598 "./src/lsp.am"
     if (n->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
         return;
     }
-    #line 1584 "./src/lsp.am"
+    #line 1599 "./src/lsp.am"
     if (n->Left != NULL) {
         Amalgame_Compiler_LspServer_CollectOutgoingCalls(n->Left, names, rangesOut);
     }
-    #line 1585 "./src/lsp.am"
+    #line 1600 "./src/lsp.am"
     if (n->Right != NULL) {
         Amalgame_Compiler_LspServer_CollectOutgoingCalls(n->Right, names, rangesOut);
     }
-    #line 1586 "./src/lsp.am"
+    #line 1601 "./src/lsp.am"
     if (n->Cond != NULL) {
         Amalgame_Compiler_LspServer_CollectOutgoingCalls(n->Cond, names, rangesOut);
     }
-    #line 1587 "./src/lsp.am"
+    #line 1602 "./src/lsp.am"
     if (n->Body != NULL) {
         Amalgame_Compiler_LspServer_CollectOutgoingCalls(n->Body, names, rangesOut);
     }
-    #line 1588 "./src/lsp.am"
+    #line 1603 "./src/lsp.am"
     if (n->Else != NULL) {
         Amalgame_Compiler_LspServer_CollectOutgoingCalls(n->Else, names, rangesOut);
     }
-    #line 1589 "./src/lsp.am"
+    #line 1604 "./src/lsp.am"
     i64 cn = AmalgameList_count(n->Children);
-    #line 1590 "./src/lsp.am"
+    #line 1605 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1591 "./src/lsp.am"
+        #line 1606 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectOutgoingCalls((Amalgame_Compiler_AstNode*)AmalgameList_get(n->Children, i), names, rangesOut);
     }
-    #line 1593 "./src/lsp.am"
+    #line 1608 "./src/lsp.am"
     i64 pn = AmalgameList_count(n->Params);
-    #line 1594 "./src/lsp.am"
+    #line 1609 "./src/lsp.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 1595 "./src/lsp.am"
+        #line 1610 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectOutgoingCalls((Amalgame_Compiler_AstNode*)AmalgameList_get(n->Params, j), names, rangesOut);
     }
-    #line 1597 "./src/lsp.am"
+    #line 1612 "./src/lsp.am"
     i64 an = AmalgameList_count(n->Args);
-    #line 1598 "./src/lsp.am"
+    #line 1613 "./src/lsp.am"
     for (i64 k = 0; k < an; k++) {
-        #line 1599 "./src/lsp.am"
+        #line 1614 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectOutgoingCalls((Amalgame_Compiler_AstNode*)AmalgameList_get(n->Args, k), names, rangesOut);
     }
 }
 
 static code_string Amalgame_Compiler_LspServer_CallHierarchyItemJson(Amalgame_Compiler_AstNode* method, code_string filePath) {
-    #line 1612 "./src/lsp.am"
+    #line 1627 "./src/lsp.am"
     code_string name = method->Name;
-    #line 1613 "./src/lsp.am"
-    i64 lineLsp = method->Line - 1;
-    #line 1614 "./src/lsp.am"
-    i64 colLsp = method->Column - 1;
-    #line 1615 "./src/lsp.am"
-    i64 nameLen = String_Length(name);
-    #line 1616 "./src/lsp.am"
-    i64 endCol = colLsp + nameLen;
-    #line 1617 "./src/lsp.am"
-    code_string uri = code_string_concat("file://", Amalgame_Compiler_LspServer_PercentEncodePath(filePath));
-    #line 1618 "./src/lsp.am"
-    code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
-    #line 1619 "./src/lsp.am"
-    code_string data = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name))), "\",\"uri\":\"")), Amalgame_Compiler_Json_EscapeString(uri))), "\",\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "}");
-    #line 1620 "./src/lsp.am"
-    return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name))), "\",\"kind\":6,\"uri\":\"")), Amalgame_Compiler_Json_EscapeString(uri))), "\",\"range\":")), range)), ",\"selectionRange\":")), range)), ",\"data\":")), data)), "}");
-}
-
-static code_string Amalgame_Compiler_LspServer_RangeJsonForName(i64 line, i64 col, code_string name) {
     #line 1628 "./src/lsp.am"
-    i64 lineLsp = line - 1;
+    i64 lineLsp = method->Line - 1;
     #line 1629 "./src/lsp.am"
-    i64 colLsp = col - 1;
+    i64 colLsp = method->Column - 1;
     #line 1630 "./src/lsp.am"
     i64 nameLen = String_Length(name);
     #line 1631 "./src/lsp.am"
     i64 endCol = colLsp + nameLen;
     #line 1632 "./src/lsp.am"
+    code_string uri = code_string_concat("file://", Amalgame_Compiler_LspServer_PercentEncodePath(filePath));
+    #line 1633 "./src/lsp.am"
+    code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
+    #line 1634 "./src/lsp.am"
+    code_string data = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name))), "\",\"uri\":\"")), Amalgame_Compiler_Json_EscapeString(uri))), "\",\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "}");
+    #line 1635 "./src/lsp.am"
+    return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name))), "\",\"kind\":6,\"uri\":\"")), Amalgame_Compiler_Json_EscapeString(uri))), "\",\"range\":")), range)), ",\"selectionRange\":")), range)), ",\"data\":")), data)), "}");
+}
+
+static code_string Amalgame_Compiler_LspServer_RangeJsonForName(i64 line, i64 col, code_string name) {
+    #line 1643 "./src/lsp.am"
+    i64 lineLsp = line - 1;
+    #line 1644 "./src/lsp.am"
+    i64 colLsp = col - 1;
+    #line 1645 "./src/lsp.am"
+    i64 nameLen = String_Length(name);
+    #line 1646 "./src/lsp.am"
+    i64 endCol = colLsp + nameLen;
+    #line 1647 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
 }
 
 static void Amalgame_Compiler_LspServer_HandleInlayHint(Amalgame_Compiler_LspServer* self, i64 id, code_string uri) {
-    #line 1657 "./src/lsp.am"
+    #line 1672 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1658 "./src/lsp.am"
+    #line 1673 "./src/lsp.am"
     if (String_Length(source) == 0) {
-        #line 1659 "./src/lsp.am"
+        #line 1674 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1660 "./src/lsp.am"
+        #line 1675 "./src/lsp.am"
         return;
     }
-    #line 1662 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1663 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1664 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1665 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 1666 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 1667 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 1668 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 1669 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
-    #line 1670 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker_Check(tc, prog);
-    #line 1672 "./src/lsp.am"
-    AmalgameList* hints = AmalgameList_new();
-    #line 1673 "./src/lsp.am"
-    Amalgame_Compiler_LspServer_CollectInlayHints(prog, tc, hints);
-    #line 1675 "./src/lsp.am"
-    code_string json = "[";
-    #line 1676 "./src/lsp.am"
-    i64 n = AmalgameList_count(hints);
     #line 1677 "./src/lsp.am"
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    #line 1678 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 1679 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 1680 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 1681 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 1682 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 1683 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 1684 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
+    #line 1685 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker_Check(tc, prog);
+    #line 1687 "./src/lsp.am"
+    AmalgameList* hints = AmalgameList_new();
+    #line 1688 "./src/lsp.am"
+    Amalgame_Compiler_LspServer_CollectInlayHints(prog, tc, hints);
+    #line 1690 "./src/lsp.am"
+    code_string json = "[";
+    #line 1691 "./src/lsp.am"
+    i64 n = AmalgameList_count(hints);
+    #line 1692 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1678 "./src/lsp.am"
+        #line 1693 "./src/lsp.am"
         if (i > 0) {
             json = (code_string_concat(json, ","));
         }
-        #line 1679 "./src/lsp.am"
+        #line 1694 "./src/lsp.am"
         json = (code_string_concat(json, (code_string)AmalgameList_get(hints, i)));
     }
-    #line 1681 "./src/lsp.am"
+    #line 1696 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 1682 "./src/lsp.am"
+    #line 1697 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 1683 "./src/lsp.am"
+    #line 1698 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_CollectInlayHints(Amalgame_Compiler_AstNode* node, Amalgame_Compiler_TypeChecker* tc, AmalgameList* out) {
-    #line 1691 "./src/lsp.am"
+    #line 1706 "./src/lsp.am"
     if (node == NULL) {
         return;
     }
-    #line 1692 "./src/lsp.am"
+    #line 1707 "./src/lsp.am"
     if (node->Kind == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 1696 "./src/lsp.am"
+        #line 1711 "./src/lsp.am"
         if ((String_Length(node->Str) == 0) || (code_string_equals(node->Str, "__tuple_destructure__"))) {
-            #line 1697 "./src/lsp.am"
+            #line 1712 "./src/lsp.am"
             if ((!code_string_equals(node->Str, "__tuple_destructure__")) && (node->Left != NULL)) {
-                #line 1698 "./src/lsp.am"
+                #line 1713 "./src/lsp.am"
                 code_string inferred = Amalgame_Compiler_TypeChecker_LookupNodeType(tc, node->Left);
-                #line 1699 "./src/lsp.am"
+                #line 1714 "./src/lsp.am"
                 if ((String_Length(inferred) > 0) && (!code_string_equals(inferred, "?"))) {
-                    #line 1700 "./src/lsp.am"
+                    #line 1715 "./src/lsp.am"
                     AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_LspServer_InlayHintJson(node->Line, node->Column, node->Name, inferred)));
                 }
             }
         }
     }
-    #line 1705 "./src/lsp.am"
+    #line 1720 "./src/lsp.am"
     if (node->Left != NULL) {
         Amalgame_Compiler_LspServer_CollectInlayHints(node->Left, tc, out);
     }
-    #line 1706 "./src/lsp.am"
+    #line 1721 "./src/lsp.am"
     if (node->Right != NULL) {
         Amalgame_Compiler_LspServer_CollectInlayHints(node->Right, tc, out);
     }
-    #line 1707 "./src/lsp.am"
+    #line 1722 "./src/lsp.am"
     if (node->Cond != NULL) {
         Amalgame_Compiler_LspServer_CollectInlayHints(node->Cond, tc, out);
     }
-    #line 1708 "./src/lsp.am"
+    #line 1723 "./src/lsp.am"
     if (node->Body != NULL) {
         Amalgame_Compiler_LspServer_CollectInlayHints(node->Body, tc, out);
     }
-    #line 1709 "./src/lsp.am"
+    #line 1724 "./src/lsp.am"
     if (node->Else != NULL) {
         Amalgame_Compiler_LspServer_CollectInlayHints(node->Else, tc, out);
     }
-    #line 1710 "./src/lsp.am"
+    #line 1725 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 1711 "./src/lsp.am"
+    #line 1726 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1712 "./src/lsp.am"
+        #line 1727 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectInlayHints((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i), tc, out);
     }
-    #line 1714 "./src/lsp.am"
+    #line 1729 "./src/lsp.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 1715 "./src/lsp.am"
+    #line 1730 "./src/lsp.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 1716 "./src/lsp.am"
+        #line 1731 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectInlayHints((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j), tc, out);
     }
-    #line 1718 "./src/lsp.am"
+    #line 1733 "./src/lsp.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 1719 "./src/lsp.am"
+    #line 1734 "./src/lsp.am"
     for (i64 k = 0; k < an; k++) {
-        #line 1720 "./src/lsp.am"
+        #line 1735 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectInlayHints((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k), tc, out);
     }
 }
 
 static code_string Amalgame_Compiler_LspServer_InlayHintJson(i64 line, i64 col, code_string name, code_string typeStr) {
-    #line 1730 "./src/lsp.am"
+    #line 1745 "./src/lsp.am"
     i64 lineLsp = line - 1;
-    #line 1731 "./src/lsp.am"
+    #line 1746 "./src/lsp.am"
     i64 colLsp = col - 1;
-    #line 1732 "./src/lsp.am"
+    #line 1747 "./src/lsp.am"
     i64 nameLen = String_Length(name);
-    #line 1733 "./src/lsp.am"
+    #line 1748 "./src/lsp.am"
     i64 endCol = colLsp + nameLen;
-    #line 1734 "./src/lsp.am"
+    #line 1749 "./src/lsp.am"
     code_string pos = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}");
-    #line 1735 "./src/lsp.am"
+    #line 1750 "./src/lsp.am"
     code_string label = code_string_concat(": ", typeStr);
-    #line 1736 "./src/lsp.am"
+    #line 1751 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"position\":", pos)), ",\"label\":\"")), Amalgame_Compiler_Json_EscapeString(label))), "\",\"kind\":1,\"paddingLeft\":true}");
 }
 
 static void Amalgame_Compiler_LspServer_HandleCodeAction(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 startLine, i64 startChr, i64 endLine, i64 endChr) {
-    #line 1754 "./src/lsp.am"
+    #line 1769 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1755 "./src/lsp.am"
+    #line 1770 "./src/lsp.am"
     if (String_Length(source) == 0) {
-        #line 1756 "./src/lsp.am"
+        #line 1771 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1757 "./src/lsp.am"
+        #line 1772 "./src/lsp.am"
         return;
     }
-    #line 1759 "./src/lsp.am"
+    #line 1774 "./src/lsp.am"
     code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1760 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1761 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1762 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 1763 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 1764 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 1765 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
-    #line 1766 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
-    #line 1767 "./src/lsp.am"
-    Amalgame_Compiler_TypeChecker_Check(tc, prog);
-    #line 1770 "./src/lsp.am"
-    i64 sLine = startLine + 1;
-    #line 1771 "./src/lsp.am"
-    i64 eLine = endLine + 1;
-    #line 1772 "./src/lsp.am"
-    AmalgameList* actions = AmalgameList_new();
-    #line 1773 "./src/lsp.am"
-    Amalgame_Compiler_LspServer_CollectAnnotationFixes(prog, tc, uri, sLine, eLine, actions);
     #line 1775 "./src/lsp.am"
-    code_string json = "[";
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
     #line 1776 "./src/lsp.am"
-    i64 n = AmalgameList_count(actions);
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
     #line 1777 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 1778 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 1779 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 1780 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 1781 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker* tc = Amalgame_Compiler_TypeChecker_new(resolver, path);
+    #line 1782 "./src/lsp.am"
+    Amalgame_Compiler_TypeChecker_Check(tc, prog);
+    #line 1785 "./src/lsp.am"
+    i64 sLine = startLine + 1;
+    #line 1786 "./src/lsp.am"
+    i64 eLine = endLine + 1;
+    #line 1787 "./src/lsp.am"
+    AmalgameList* actions = AmalgameList_new();
+    #line 1788 "./src/lsp.am"
+    Amalgame_Compiler_LspServer_CollectAnnotationFixes(prog, tc, uri, sLine, eLine, actions);
+    #line 1790 "./src/lsp.am"
+    code_string json = "[";
+    #line 1791 "./src/lsp.am"
+    i64 n = AmalgameList_count(actions);
+    #line 1792 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1778 "./src/lsp.am"
+        #line 1793 "./src/lsp.am"
         if (i > 0) {
             json = (code_string_concat(json, ","));
         }
-        #line 1779 "./src/lsp.am"
+        #line 1794 "./src/lsp.am"
         json = (code_string_concat(json, (code_string)AmalgameList_get(actions, i)));
     }
-    #line 1781 "./src/lsp.am"
+    #line 1796 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 1782 "./src/lsp.am"
+    #line 1797 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 1783 "./src/lsp.am"
+    #line 1798 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_CollectAnnotationFixes(Amalgame_Compiler_AstNode* node, Amalgame_Compiler_TypeChecker* tc, code_string uri, i64 sLine, i64 eLine, AmalgameList* out) {
-    #line 1791 "./src/lsp.am"
+    #line 1806 "./src/lsp.am"
     if (node == NULL) {
         return;
     }
-    #line 1792 "./src/lsp.am"
+    #line 1807 "./src/lsp.am"
     if (node->Kind == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 1794 "./src/lsp.am"
+        #line 1809 "./src/lsp.am"
         code_bool inRange = (node->Line >= sLine) && (node->Line <= eLine);
-        #line 1795 "./src/lsp.am"
+        #line 1810 "./src/lsp.am"
         if (((inRange && (String_Length(node->Str) == 0)) && (!code_string_equals(node->Str, "__tuple_destructure__"))) && (node->Left != NULL)) {
-            #line 1796 "./src/lsp.am"
+            #line 1811 "./src/lsp.am"
             code_string inferred = Amalgame_Compiler_TypeChecker_LookupNodeType(tc, node->Left);
-            #line 1797 "./src/lsp.am"
+            #line 1812 "./src/lsp.am"
             if ((String_Length(inferred) > 0) && (!code_string_equals(inferred, "?"))) {
-                #line 1798 "./src/lsp.am"
+                #line 1813 "./src/lsp.am"
                 AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_LspServer_AnnotationFixJson(uri, node->Line, node->Column, node->Name, inferred)));
             }
         }
     }
-    #line 1802 "./src/lsp.am"
+    #line 1817 "./src/lsp.am"
     if (node->Left != NULL) {
         Amalgame_Compiler_LspServer_CollectAnnotationFixes(node->Left, tc, uri, sLine, eLine, out);
     }
-    #line 1803 "./src/lsp.am"
+    #line 1818 "./src/lsp.am"
     if (node->Right != NULL) {
         Amalgame_Compiler_LspServer_CollectAnnotationFixes(node->Right, tc, uri, sLine, eLine, out);
     }
-    #line 1804 "./src/lsp.am"
+    #line 1819 "./src/lsp.am"
     if (node->Cond != NULL) {
         Amalgame_Compiler_LspServer_CollectAnnotationFixes(node->Cond, tc, uri, sLine, eLine, out);
     }
-    #line 1805 "./src/lsp.am"
+    #line 1820 "./src/lsp.am"
     if (node->Body != NULL) {
         Amalgame_Compiler_LspServer_CollectAnnotationFixes(node->Body, tc, uri, sLine, eLine, out);
     }
-    #line 1806 "./src/lsp.am"
+    #line 1821 "./src/lsp.am"
     if (node->Else != NULL) {
         Amalgame_Compiler_LspServer_CollectAnnotationFixes(node->Else, tc, uri, sLine, eLine, out);
     }
-    #line 1807 "./src/lsp.am"
+    #line 1822 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 1808 "./src/lsp.am"
+    #line 1823 "./src/lsp.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 1809 "./src/lsp.am"
+        #line 1824 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectAnnotationFixes((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i), tc, uri, sLine, eLine, out);
     }
-    #line 1811 "./src/lsp.am"
+    #line 1826 "./src/lsp.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 1812 "./src/lsp.am"
+    #line 1827 "./src/lsp.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 1813 "./src/lsp.am"
+        #line 1828 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectAnnotationFixes((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j), tc, uri, sLine, eLine, out);
     }
-    #line 1815 "./src/lsp.am"
+    #line 1830 "./src/lsp.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 1816 "./src/lsp.am"
+    #line 1831 "./src/lsp.am"
     for (i64 k = 0; k < an; k++) {
-        #line 1817 "./src/lsp.am"
+        #line 1832 "./src/lsp.am"
         Amalgame_Compiler_LspServer_CollectAnnotationFixes((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k), tc, uri, sLine, eLine, out);
     }
 }
 
 static code_string Amalgame_Compiler_LspServer_AnnotationFixJson(code_string uri, i64 line, i64 col, code_string name, code_string typeStr) {
-    #line 1830 "./src/lsp.am"
+    #line 1845 "./src/lsp.am"
     i64 lineLsp = line - 1;
-    #line 1831 "./src/lsp.am"
+    #line 1846 "./src/lsp.am"
     i64 colLsp = col - 1;
-    #line 1832 "./src/lsp.am"
+    #line 1847 "./src/lsp.am"
     i64 nameLen = String_Length(name);
-    #line 1833 "./src/lsp.am"
+    #line 1848 "./src/lsp.am"
     i64 endCol = colLsp + nameLen;
-    #line 1834 "./src/lsp.am"
+    #line 1849 "./src/lsp.am"
     code_string insertPoint = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}");
-    #line 1835 "./src/lsp.am"
+    #line 1850 "./src/lsp.am"
     code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":", insertPoint)), ",\"end\":")), insertPoint)), "}");
-    #line 1836 "./src/lsp.am"
+    #line 1851 "./src/lsp.am"
     code_string newText = code_string_concat(": ", typeStr);
-    #line 1837 "./src/lsp.am"
+    #line 1852 "./src/lsp.am"
     code_string edit = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"range\":", range)), ",\"newText\":\"")), Amalgame_Compiler_Json_EscapeString(newText))), "\"}");
-    #line 1838 "./src/lsp.am"
+    #line 1853 "./src/lsp.am"
     code_string changes = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"", Amalgame_Compiler_Json_EscapeString(uri))), "\":[")), edit)), "]}");
-    #line 1839 "./src/lsp.am"
+    #line 1854 "./src/lsp.am"
     code_string title = code_string_concat("Add type annotation: ", typeStr);
-    #line 1840 "./src/lsp.am"
+    #line 1855 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"title\":\"", Amalgame_Compiler_Json_EscapeString(title))), "\",\"kind\":\"quickfix\",\"isPreferred\":true,\"edit\":{\"changes\":")), changes)), "}}");
 }
 
 static void Amalgame_Compiler_LspServer_HandleFoldingRange(Amalgame_Compiler_LspServer* self, i64 id, code_string uri) {
-    #line 1864 "./src/lsp.am"
+    #line 1879 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 1865 "./src/lsp.am"
+    #line 1880 "./src/lsp.am"
     if (String_Length(source) == 0) {
-        #line 1866 "./src/lsp.am"
+        #line 1881 "./src/lsp.am"
         Amalgame_Compiler_LspServer_Send(self, code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":[]}"));
-        #line 1867 "./src/lsp.am"
+        #line 1882 "./src/lsp.am"
         return;
     }
-    #line 1869 "./src/lsp.am"
+    #line 1884 "./src/lsp.am"
     code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 1870 "./src/lsp.am"
+    #line 1885 "./src/lsp.am"
     Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 1871 "./src/lsp.am"
+    #line 1886 "./src/lsp.am"
     AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 1873 "./src/lsp.am"
+    #line 1888 "./src/lsp.am"
     AmalgameList* folds = AmalgameList_new();
-    #line 1874 "./src/lsp.am"
+    #line 1889 "./src/lsp.am"
     AmalgameList* braceStack = AmalgameList_new();
-    #line 1875 "./src/lsp.am"
+    #line 1890 "./src/lsp.am"
     i64 commStart = 0;
-    #line 1876 "./src/lsp.am"
+    #line 1891 "./src/lsp.am"
     i64 commEnd = 0;
-    #line 1877 "./src/lsp.am"
+    #line 1892 "./src/lsp.am"
     i64 lastComm = -2;
-    #line 1878 "./src/lsp.am"
+    #line 1893 "./src/lsp.am"
     i64 impStart = 0;
-    #line 1879 "./src/lsp.am"
+    #line 1894 "./src/lsp.am"
     i64 impEnd = 0;
-    #line 1880 "./src/lsp.am"
+    #line 1895 "./src/lsp.am"
     i64 lastImp = -2;
-    #line 1882 "./src/lsp.am"
+    #line 1897 "./src/lsp.am"
     i64 nT = AmalgameList_count(toks);
-    #line 1883 "./src/lsp.am"
+    #line 1898 "./src/lsp.am"
     for (i64 i = 0; i < nT; i++) {
-        #line 1884 "./src/lsp.am"
+        #line 1899 "./src/lsp.am"
         Amalgame_Compiler_Token* t = (void*)AmalgameList_get(toks, i);
-        #line 1885 "./src/lsp.am"
+        #line 1900 "./src/lsp.am"
         Amalgame_Compiler_TokenType ty = t->Type;
-        #line 1887 "./src/lsp.am"
+        #line 1902 "./src/lsp.am"
         if (ty == Amalgame_Compiler_TokenType_LBRACE) {
-            #line 1888 "./src/lsp.am"
+            #line 1903 "./src/lsp.am"
             AmalgameList_add(braceStack, (void*)(intptr_t)(t->Line));
         }
-        #line 1890 "./src/lsp.am"
+        #line 1905 "./src/lsp.am"
         if (ty == Amalgame_Compiler_TokenType_RBRACE) {
-            #line 1891 "./src/lsp.am"
+            #line 1906 "./src/lsp.am"
             i64 depth = AmalgameList_count(braceStack);
-            #line 1892 "./src/lsp.am"
+            #line 1907 "./src/lsp.am"
             if (depth > 0) {
-                #line 1893 "./src/lsp.am"
+                #line 1908 "./src/lsp.am"
                 i64 openLine = (i64)AmalgameList_get(braceStack, depth - 1);
-                #line 1894 "./src/lsp.am"
+                #line 1909 "./src/lsp.am"
                 AmalgameList_removeAt(braceStack, depth - 1);
-                #line 1895 "./src/lsp.am"
+                #line 1910 "./src/lsp.am"
                 i64 closeLine = t->Line;
-                #line 1897 "./src/lsp.am"
+                #line 1912 "./src/lsp.am"
                 if (closeLine > (openLine + 1)) {
-                    #line 1898 "./src/lsp.am"
+                    #line 1913 "./src/lsp.am"
                     AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(openLine - 1, closeLine - 2, "")));
                 }
             }
         }
-        #line 1903 "./src/lsp.am"
+        #line 1918 "./src/lsp.am"
         if (ty == Amalgame_Compiler_TokenType_COMMENT) {
-            #line 1904 "./src/lsp.am"
+            #line 1919 "./src/lsp.am"
             if (t->Line == (lastComm + 1)) {
-                #line 1905 "./src/lsp.am"
+                #line 1920 "./src/lsp.am"
                 commEnd = t->Line;
             } else {
-                #line 1907 "./src/lsp.am"
+                #line 1922 "./src/lsp.am"
                 if (commEnd > commStart) {
-                    #line 1908 "./src/lsp.am"
+                    #line 1923 "./src/lsp.am"
                     AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(commStart - 1, commEnd - 1, "comment")));
                 }
-                #line 1910 "./src/lsp.am"
+                #line 1925 "./src/lsp.am"
                 commStart = t->Line;
-                #line 1911 "./src/lsp.am"
+                #line 1926 "./src/lsp.am"
                 commEnd = t->Line;
             }
-            #line 1913 "./src/lsp.am"
+            #line 1928 "./src/lsp.am"
             lastComm = t->Line;
         }
-        #line 1916 "./src/lsp.am"
+        #line 1931 "./src/lsp.am"
         if (ty == Amalgame_Compiler_TokenType_KW_IMPORT) {
-            #line 1917 "./src/lsp.am"
+            #line 1932 "./src/lsp.am"
             if (t->Line == (lastImp + 1)) {
-                #line 1918 "./src/lsp.am"
+                #line 1933 "./src/lsp.am"
                 impEnd = t->Line;
             } else {
-                #line 1920 "./src/lsp.am"
+                #line 1935 "./src/lsp.am"
                 if (impEnd > impStart) {
-                    #line 1921 "./src/lsp.am"
+                    #line 1936 "./src/lsp.am"
                     AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(impStart - 1, impEnd - 1, "imports")));
                 }
-                #line 1923 "./src/lsp.am"
+                #line 1938 "./src/lsp.am"
                 impStart = t->Line;
-                #line 1924 "./src/lsp.am"
+                #line 1939 "./src/lsp.am"
                 impEnd = t->Line;
             }
-            #line 1926 "./src/lsp.am"
+            #line 1941 "./src/lsp.am"
             lastImp = t->Line;
         }
     }
-    #line 1930 "./src/lsp.am"
+    #line 1945 "./src/lsp.am"
     if (commEnd > commStart) {
-        #line 1931 "./src/lsp.am"
+        #line 1946 "./src/lsp.am"
         AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(commStart - 1, commEnd - 1, "comment")));
     }
-    #line 1933 "./src/lsp.am"
+    #line 1948 "./src/lsp.am"
     if (impEnd > impStart) {
-        #line 1934 "./src/lsp.am"
+        #line 1949 "./src/lsp.am"
         AmalgameList_add(folds, (void*)(intptr_t)(Amalgame_Compiler_LspServer_FoldEntry(impStart - 1, impEnd - 1, "imports")));
     }
-    #line 1937 "./src/lsp.am"
+    #line 1952 "./src/lsp.am"
     code_string json = "[";
-    #line 1938 "./src/lsp.am"
+    #line 1953 "./src/lsp.am"
     i64 fn = AmalgameList_count(folds);
-    #line 1939 "./src/lsp.am"
+    #line 1954 "./src/lsp.am"
     for (i64 i = 0; i < fn; i++) {
-        #line 1940 "./src/lsp.am"
+        #line 1955 "./src/lsp.am"
         if (i > 0) {
             json = (code_string_concat(json, ","));
         }
-        #line 1941 "./src/lsp.am"
+        #line 1956 "./src/lsp.am"
         json = (code_string_concat(json, (code_string)AmalgameList_get(folds, i)));
     }
-    #line 1943 "./src/lsp.am"
+    #line 1958 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 1944 "./src/lsp.am"
+    #line 1959 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 1945 "./src/lsp.am"
+    #line 1960 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static code_string Amalgame_Compiler_LspServer_FoldEntry(i64 startLine, i64 endLine, code_string kind) {
-    #line 1953 "./src/lsp.am"
+    #line 1968 "./src/lsp.am"
     code_string s = code_string_concat((code_string_concat((code_string_concat("{\"startLine\":", String_FromInt(startLine))), ",\"endLine\":")), String_FromInt(endLine));
-    #line 1954 "./src/lsp.am"
+    #line 1969 "./src/lsp.am"
     if (String_Length(kind) > 0) {
-        #line 1955 "./src/lsp.am"
+        #line 1970 "./src/lsp.am"
         s = (code_string_concat((code_string_concat((code_string_concat(s, ",\"kind\":\"")), kind)), "\""));
     }
-    #line 1957 "./src/lsp.am"
+    #line 1972 "./src/lsp.am"
     s = (code_string_concat(s, "}"));
-    #line 1958 "./src/lsp.am"
+    #line 1973 "./src/lsp.am"
     return s;
 }
 
 static void Amalgame_Compiler_LspServer_HandleWorkspaceSymbol(Amalgame_Compiler_LspServer* self, i64 id, code_string query) {
-    #line 1981 "./src/lsp.am"
+    #line 1996 "./src/lsp.am"
     code_string anchor = "";
-    #line 1982 "./src/lsp.am"
+    #line 1997 "./src/lsp.am"
     if (AmalgameList_count(self->DocUris) > 0) {
-        #line 1983 "./src/lsp.am"
+        #line 1998 "./src/lsp.am"
         anchor = Amalgame_Compiler_LspServer_UriToPath((code_string)AmalgameList_get(self->DocUris, 0));
     } else {
-        #line 1985 "./src/lsp.am"
+        #line 2000 "./src/lsp.am"
         anchor = "./_.am";
     }
-    #line 1987 "./src/lsp.am"
+    #line 2002 "./src/lsp.am"
     Amalgame_Compiler_LspServer_EnsureWorkspaceCache(self, anchor);
-    #line 1989 "./src/lsp.am"
+    #line 2004 "./src/lsp.am"
     code_string q = String_ToLower(query);
-    #line 1990 "./src/lsp.am"
+    #line 2005 "./src/lsp.am"
     code_string json = "[";
-    #line 1991 "./src/lsp.am"
+    #line 2006 "./src/lsp.am"
     code_bool first = 1;
-    #line 1992 "./src/lsp.am"
+    #line 2007 "./src/lsp.am"
     i64 n = AmalgameList_count(self->CachedSiblingProgs);
-    #line 1993 "./src/lsp.am"
+    #line 2008 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1994 "./src/lsp.am"
+        #line 2009 "./src/lsp.am"
         Amalgame_Compiler_AstNode* prog = (Amalgame_Compiler_AstNode*)AmalgameList_get(self->CachedSiblingProgs, i);
-        #line 1995 "./src/lsp.am"
+        #line 2010 "./src/lsp.am"
         code_string path = (code_string)AmalgameList_get(self->CachedSiblingPaths, i);
-        #line 1996 "./src/lsp.am"
+        #line 2011 "./src/lsp.am"
         i64 dc = AmalgameList_count(prog->Children);
-        #line 1997 "./src/lsp.am"
+        #line 2012 "./src/lsp.am"
         for (i64 j = 0; j < dc; j++) {
-            #line 1998 "./src/lsp.am"
+            #line 2013 "./src/lsp.am"
             Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, j);
-            #line 1999 "./src/lsp.am"
+            #line 2014 "./src/lsp.am"
             code_string entry = Amalgame_Compiler_LspServer_WorkspaceSymbolEntry(decl, path, q);
-            #line 2000 "./src/lsp.am"
+            #line 2015 "./src/lsp.am"
             if (String_Length(entry) > 0) {
-                #line 2001 "./src/lsp.am"
+                #line 2016 "./src/lsp.am"
                 if (!first) {
                     json = (code_string_concat(json, ","));
                 }
-                #line 2002 "./src/lsp.am"
+                #line 2017 "./src/lsp.am"
                 json = (code_string_concat(json, entry));
-                #line 2003 "./src/lsp.am"
+                #line 2018 "./src/lsp.am"
                 first = 0;
             }
         }
     }
-    #line 2007 "./src/lsp.am"
+    #line 2022 "./src/lsp.am"
     json = (code_string_concat(json, "]"));
-    #line 2008 "./src/lsp.am"
+    #line 2023 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":")), json)), "}");
-    #line 2009 "./src/lsp.am"
+    #line 2024 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static code_string Amalgame_Compiler_LspServer_WorkspaceSymbolEntry(Amalgame_Compiler_AstNode* decl, code_string path, code_string lowerQuery) {
-    #line 2019 "./src/lsp.am"
+    #line 2034 "./src/lsp.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 2020 "./src/lsp.am"
+    #line 2035 "./src/lsp.am"
     i64 kind = 0;
-    #line 2021 "./src/lsp.am"
+    #line 2036 "./src/lsp.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
         kind = 5;
     } else if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 2022 "./src/lsp.am"
+        #line 2037 "./src/lsp.am"
         kind = 10;
     } else {
-        #line 2023 "./src/lsp.am"
+        #line 2038 "./src/lsp.am"
         return "";
     }
-    #line 2024 "./src/lsp.am"
+    #line 2039 "./src/lsp.am"
     code_string name = decl->Name;
-    #line 2025 "./src/lsp.am"
+    #line 2040 "./src/lsp.am"
     if (String_Length(name) == 0) {
         return "";
     }
-    #line 2026 "./src/lsp.am"
+    #line 2041 "./src/lsp.am"
     if (String_Length(lowerQuery) > 0) {
-        #line 2027 "./src/lsp.am"
+        #line 2042 "./src/lsp.am"
         code_string lname = String_ToLower(name);
-        #line 2028 "./src/lsp.am"
+        #line 2043 "./src/lsp.am"
         if (String_IndexOf(lname, lowerQuery) < 0) {
             return "";
         }
     }
-    #line 2030 "./src/lsp.am"
+    #line 2045 "./src/lsp.am"
     i64 lineLsp = decl->Line - 1;
-    #line 2031 "./src/lsp.am"
+    #line 2046 "./src/lsp.am"
     i64 colLsp = decl->Column - 1;
-    #line 2032 "./src/lsp.am"
+    #line 2047 "./src/lsp.am"
     i64 nameLen = String_Length(name);
-    #line 2033 "./src/lsp.am"
+    #line 2048 "./src/lsp.am"
     i64 endCol = colLsp + nameLen;
-    #line 2034 "./src/lsp.am"
+    #line 2049 "./src/lsp.am"
     code_string uri = code_string_concat("file://", Amalgame_Compiler_LspServer_PercentEncodePath(path));
-    #line 2035 "./src/lsp.am"
+    #line 2050 "./src/lsp.am"
     code_string range = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"start\":{\"line\":", String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(colLsp))), "},\"end\":{\"line\":")), String_FromInt(lineLsp))), ",\"character\":")), String_FromInt(endCol))), "}}");
-    #line 2036 "./src/lsp.am"
+    #line 2051 "./src/lsp.am"
     code_string location = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"uri\":\"", Amalgame_Compiler_Json_EscapeString(uri))), "\",\"range\":")), range)), "}");
-    #line 2037 "./src/lsp.am"
+    #line 2052 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"name\":\"", Amalgame_Compiler_Json_EscapeString(name))), "\",\"kind\":")), String_FromInt(kind))), ",\"location\":")), location)), "}");
 }
 
 static void Amalgame_Compiler_LspServer_SendDefinitionLocation(Amalgame_Compiler_LspServer* self, i64 id, code_string path, i64 line, i64 col, code_string name) {
-    #line 2050 "./src/lsp.am"
+    #line 2065 "./src/lsp.am"
     code_string encPath = Amalgame_Compiler_LspServer_PercentEncodePath(path);
-    #line 2051 "./src/lsp.am"
+    #line 2066 "./src/lsp.am"
     code_string declUri = code_string_concat("file://", encPath);
-    #line 2052 "./src/lsp.am"
+    #line 2067 "./src/lsp.am"
     i64 declLine = line - 1;
-    #line 2053 "./src/lsp.am"
+    #line 2068 "./src/lsp.am"
     i64 declCol = col - 1;
-    #line 2058 "./src/lsp.am"
+    #line 2073 "./src/lsp.am"
     i64 nameLen = String_Length(name);
-    #line 2059 "./src/lsp.am"
+    #line 2074 "./src/lsp.am"
     i64 endCol = declCol + nameLen;
-    #line 2060 "./src/lsp.am"
+    #line 2075 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"uri\":\"")), Amalgame_Compiler_Json_EscapeString(declUri))), "\",\"range\":{\"start\":{\"line\":")), String_FromInt(declLine))), ",\"character\":")), String_FromInt(declCol))), "},\"end\":{\"line\":")), String_FromInt(declLine))), ",\"character\":")), String_FromInt(endCol))), "}}}}");
-    #line 2061 "./src/lsp.am"
+    #line 2076 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static code_string Amalgame_Compiler_LspServer_PercentEncodePath(code_string path) {
-    #line 2069 "./src/lsp.am"
+    #line 2084 "./src/lsp.am"
     code_string out = "";
-    #line 2070 "./src/lsp.am"
+    #line 2085 "./src/lsp.am"
     i64 n = String_Length(path);
-    #line 2071 "./src/lsp.am"
+    #line 2086 "./src/lsp.am"
     code_string upper = "0123456789ABCDEF";
-    #line 2072 "./src/lsp.am"
+    #line 2087 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2073 "./src/lsp.am"
+        #line 2088 "./src/lsp.am"
         code_string c = String_CharAt1(path, i);
-        #line 2074 "./src/lsp.am"
+        #line 2089 "./src/lsp.am"
         i64 code = String_ToInt(String_FromInt(0));
-        #line 2081 "./src/lsp.am"
+        #line 2096 "./src/lsp.am"
         code_bool isSafeAlnum = Amalgame_Compiler_LspServer_IsUriSafeChar(c);
-        #line 2082 "./src/lsp.am"
+        #line 2097 "./src/lsp.am"
         if (isSafeAlnum) {
-            #line 2083 "./src/lsp.am"
+            #line 2098 "./src/lsp.am"
             out = (code_string_concat(out, c));
         } else {
-            #line 2089 "./src/lsp.am"
+            #line 2104 "./src/lsp.am"
             i64 cn = String_Length(c);
-            #line 2090 "./src/lsp.am"
+            #line 2105 "./src/lsp.am"
             for (i64 bi = 0; bi < cn; bi++) {
-                #line 2091 "./src/lsp.am"
+                #line 2106 "./src/lsp.am"
                 code_string b = String_CharAt1(c, bi);
-                #line 2092 "./src/lsp.am"
+                #line 2107 "./src/lsp.am"
                 i64 bcode = Amalgame_Compiler_LspServer_AsciiCodeOf(b);
-                #line 2093 "./src/lsp.am"
+                #line 2108 "./src/lsp.am"
                 i64 hi = bcode / 16;
-                #line 2094 "./src/lsp.am"
+                #line 2109 "./src/lsp.am"
                 i64 lo = bcode - (hi * 16);
-                #line 2095 "./src/lsp.am"
+                #line 2110 "./src/lsp.am"
                 code_string hiCh = String_CharAt1(upper, hi);
-                #line 2096 "./src/lsp.am"
+                #line 2111 "./src/lsp.am"
                 code_string loCh = String_CharAt1(upper, lo);
-                #line 2097 "./src/lsp.am"
+                #line 2112 "./src/lsp.am"
                 out = (code_string_concat((code_string_concat((code_string_concat(out, "%")), hiCh)), loCh));
             }
         }
     }
-    #line 2101 "./src/lsp.am"
+    #line 2116 "./src/lsp.am"
     return out;
 }
 
 static code_bool Amalgame_Compiler_LspServer_IsUriSafeChar(code_string c) {
-    #line 2108 "./src/lsp.am"
+    #line 2123 "./src/lsp.am"
     if (String_Length(c) != 1) {
         return 0;
     }
-    #line 2109 "./src/lsp.am"
+    #line 2124 "./src/lsp.am"
     i64 code = Amalgame_Compiler_LspServer_AsciiCodeOf(c);
-    #line 2110 "./src/lsp.am"
+    #line 2125 "./src/lsp.am"
     if ((code >= 65) && (code <= 90)) {
         return 1;
     }
-    #line 2111 "./src/lsp.am"
+    #line 2126 "./src/lsp.am"
     if ((code >= 97) && (code <= 122)) {
         return 1;
     }
-    #line 2112 "./src/lsp.am"
+    #line 2127 "./src/lsp.am"
     if ((code >= 48) && (code <= 57)) {
         return 1;
     }
-    #line 2113 "./src/lsp.am"
+    #line 2128 "./src/lsp.am"
     if ((((code == 45) || (code == 46)) || (code == 95)) || (code == 126)) {
         return 1;
     }
-    #line 2114 "./src/lsp.am"
+    #line 2129 "./src/lsp.am"
     if (code == 47) {
         return 1;
     }
-    #line 2115 "./src/lsp.am"
+    #line 2130 "./src/lsp.am"
     return 0;
 }
 
 static i64 Amalgame_Compiler_LspServer_AsciiCodeOf(code_string c) {
-    #line 2122 "./src/lsp.am"
+    #line 2137 "./src/lsp.am"
     i64 n = String_Length(c);
-    #line 2123 "./src/lsp.am"
+    #line 2138 "./src/lsp.am"
     if (n == 0) {
         return 0;
     }
-    #line 2124 "./src/lsp.am"
+    #line 2139 "./src/lsp.am"
     for (i64 code = 0; code < 256; code++) {
-        #line 2125 "./src/lsp.am"
+        #line 2140 "./src/lsp.am"
         if (code_string_equals(String_FromByte(code), c)) {
             return code;
         }
     }
-    #line 2127 "./src/lsp.am"
+    #line 2142 "./src/lsp.am"
     return 0;
 }
 
 static void Amalgame_Compiler_LspServer_HandleCompletion(Amalgame_Compiler_LspServer* self, i64 id, code_string uri, i64 line, i64 chr) {
-    #line 2145 "./src/lsp.am"
+    #line 2160 "./src/lsp.am"
     code_string source = Amalgame_Compiler_LspServer_LookupDoc(self, uri);
-    #line 2146 "./src/lsp.am"
-    if (String_Length(source) == 0) {
-        #line 2147 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendEmptyCompletion(self, id);
-        #line 2148 "./src/lsp.am"
-        return;
-    }
-    #line 2150 "./src/lsp.am"
-    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
-    #line 2151 "./src/lsp.am"
-    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
-    #line 2152 "./src/lsp.am"
-    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
-    #line 2153 "./src/lsp.am"
-    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
-    #line 2154 "./src/lsp.am"
-    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
-    #line 2155 "./src/lsp.am"
-    prog->Str2 = path;
-    #line 2156 "./src/lsp.am"
-    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
     #line 2161 "./src/lsp.am"
-    code_string receiverType = Amalgame_Compiler_LspServer_ReceiverTypeAt(source, line, chr, resolver);
-    #line 2162 "./src/lsp.am"
-    if ((String_Length(receiverType) > 0) && (!code_string_equals(receiverType, "?"))) {
+    if (String_Length(source) == 0) {
+        #line 2162 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendEmptyCompletion(self, id);
         #line 2163 "./src/lsp.am"
-        Amalgame_Compiler_LspServer_SendMemberCompletion(self, id, resolver, receiverType);
-        #line 2164 "./src/lsp.am"
         return;
     }
+    #line 2165 "./src/lsp.am"
+    code_string path = Amalgame_Compiler_LspServer_UriToPath(uri);
+    #line 2166 "./src/lsp.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(source, path);
+    #line 2167 "./src/lsp.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 2168 "./src/lsp.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
     #line 2169 "./src/lsp.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 2170 "./src/lsp.am"
+    prog->Str2 = path;
+    #line 2171 "./src/lsp.am"
+    Amalgame_Compiler_FullResolver* resolver = Amalgame_Compiler_LspServer_BuildWorkspaceResolver(self, path, prog);
+    #line 2176 "./src/lsp.am"
+    code_string receiverType = Amalgame_Compiler_LspServer_ReceiverTypeAt(source, line, chr, resolver);
+    #line 2177 "./src/lsp.am"
+    if ((String_Length(receiverType) > 0) && (!code_string_equals(receiverType, "?"))) {
+        #line 2178 "./src/lsp.am"
+        Amalgame_Compiler_LspServer_SendMemberCompletion(self, id, resolver, receiverType);
+        #line 2179 "./src/lsp.am"
+        return;
+    }
+    #line 2184 "./src/lsp.am"
     Amalgame_Compiler_LspServer_SendGlobalCompletion(self, id, resolver);
 }
 
 static void Amalgame_Compiler_LspServer_SendGlobalCompletion(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_FullResolver* resolver) {
-    #line 2173 "./src/lsp.am"
+    #line 2188 "./src/lsp.am"
     code_string items = "";
-    #line 2174 "./src/lsp.am"
+    #line 2189 "./src/lsp.am"
     code_bool first = 1;
-    #line 2175 "./src/lsp.am"
+    #line 2190 "./src/lsp.am"
     i64 gn = Amalgame_Compiler_FullResolver_GlobalCount(resolver);
-    #line 2176 "./src/lsp.am"
+    #line 2191 "./src/lsp.am"
     for (i64 gi = 0; gi < gn; gi++) {
-        #line 2177 "./src/lsp.am"
+        #line 2192 "./src/lsp.am"
         code_string name = Amalgame_Compiler_FullResolver_GlobalNameAt(resolver, gi);
-        #line 2178 "./src/lsp.am"
+        #line 2193 "./src/lsp.am"
         if (String_Length(name) == 0) {
             continue;
         }
-        #line 2179 "./src/lsp.am"
+        #line 2194 "./src/lsp.am"
         code_string typeS = Amalgame_Compiler_FullResolver_GlobalTypeAt(resolver, gi);
-        #line 2184 "./src/lsp.am"
+        #line 2199 "./src/lsp.am"
         i64 kind = 6;
-        #line 2185 "./src/lsp.am"
+        #line 2200 "./src/lsp.am"
         if (code_string_equals(typeS, "type")) {
             kind = 7;
         } else if (code_string_equals(typeS, "void")) {
-            #line 2186 "./src/lsp.am"
+            #line 2201 "./src/lsp.am"
             kind = 3;
         }
-        #line 2187 "./src/lsp.am"
+        #line 2202 "./src/lsp.am"
         if (!first) {
             items = (code_string_concat(items, ","));
         }
-        #line 2188 "./src/lsp.am"
+        #line 2203 "./src/lsp.am"
         items = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(items, "{\"label\":\"")), Amalgame_Compiler_Json_EscapeString(name))), "\",\"kind\":")), String_FromInt(kind))), ",\"detail\":\"")), Amalgame_Compiler_Json_EscapeString(typeS))), "\"}"));
-        #line 2189 "./src/lsp.am"
+        #line 2204 "./src/lsp.am"
         first = 0;
     }
-    #line 2191 "./src/lsp.am"
+    #line 2206 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"isIncomplete\":false,\"items\":[")), items)), "]}}");
-    #line 2192 "./src/lsp.am"
+    #line 2207 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 static void Amalgame_Compiler_LspServer_SendMemberCompletion(Amalgame_Compiler_LspServer* self, i64 id, Amalgame_Compiler_FullResolver* resolver, code_string typeName) {
-    #line 2199 "./src/lsp.am"
+    #line 2214 "./src/lsp.am"
     code_string bare = typeName;
-    #line 2200 "./src/lsp.am"
+    #line 2215 "./src/lsp.am"
     if (String_EndsWith(bare, "?")) {
-        #line 2201 "./src/lsp.am"
+        #line 2216 "./src/lsp.am"
         bare = String_Substring(bare, 0, String_Length(bare) - 1);
     }
-    #line 2203 "./src/lsp.am"
+    #line 2218 "./src/lsp.am"
     if (String_EndsWith(bare, "*")) {
-        #line 2204 "./src/lsp.am"
+        #line 2219 "./src/lsp.am"
         bare = String_Substring(bare, 0, String_Length(bare) - 1);
     }
-    #line 2211 "./src/lsp.am"
+    #line 2226 "./src/lsp.am"
     Amalgame_Compiler_MemberTable* members = resolver->Members;
-    #line 2212 "./src/lsp.am"
+    #line 2227 "./src/lsp.am"
     i64 mc = Amalgame_Compiler_MemberTable_MemberCountFor(members, bare);
-    #line 2213 "./src/lsp.am"
+    #line 2228 "./src/lsp.am"
     if (mc == 0) {
-        #line 2217 "./src/lsp.am"
+        #line 2232 "./src/lsp.am"
         Amalgame_Compiler_LspServer_SendEmptyCompletion(self, id);
-        #line 2218 "./src/lsp.am"
+        #line 2233 "./src/lsp.am"
         return;
     }
-    #line 2220 "./src/lsp.am"
+    #line 2235 "./src/lsp.am"
     code_string items = "";
-    #line 2221 "./src/lsp.am"
+    #line 2236 "./src/lsp.am"
     code_bool first = 1;
-    #line 2222 "./src/lsp.am"
+    #line 2237 "./src/lsp.am"
     for (i64 i = 0; i < mc; i++) {
-        #line 2223 "./src/lsp.am"
+        #line 2238 "./src/lsp.am"
         code_string name = Amalgame_Compiler_MemberTable_MemberNameForAt(members, bare, i);
-        #line 2224 "./src/lsp.am"
+        #line 2239 "./src/lsp.am"
         if (String_Length(name) == 0) {
             continue;
         }
-        #line 2225 "./src/lsp.am"
+        #line 2240 "./src/lsp.am"
         code_string mtype = Amalgame_Compiler_MemberTable_Get(members, bare, name);
-        #line 2231 "./src/lsp.am"
+        #line 2246 "./src/lsp.am"
         i64 kind = 5;
-        #line 2232 "./src/lsp.am"
+        #line 2247 "./src/lsp.am"
         if (((((code_string_equals(mtype, "void")) || (code_string_equals(mtype, "int"))) || (code_string_equals(mtype, "string"))) || (code_string_equals(mtype, "bool"))) || (code_string_equals(mtype, "float"))) {
-            #line 2233 "./src/lsp.am"
+            #line 2248 "./src/lsp.am"
             kind = 2;
         } else if ((String_Length(mtype) > 0) && (!code_string_equals(mtype, "?"))) {
-            #line 2235 "./src/lsp.am"
+            #line 2250 "./src/lsp.am"
             kind = 2;
         }
-        #line 2237 "./src/lsp.am"
+        #line 2252 "./src/lsp.am"
         if (!first) {
             items = (code_string_concat(items, ","));
         }
-        #line 2238 "./src/lsp.am"
+        #line 2253 "./src/lsp.am"
         items = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(items, "{\"label\":\"")), Amalgame_Compiler_Json_EscapeString(name))), "\",\"kind\":")), String_FromInt(kind))), ",\"detail\":\"")), Amalgame_Compiler_Json_EscapeString(mtype))), "\"}"));
-        #line 2239 "./src/lsp.am"
+        #line 2254 "./src/lsp.am"
         first = 0;
     }
-    #line 2241 "./src/lsp.am"
+    #line 2256 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"isIncomplete\":false,\"items\":[")), items)), "]}}");
-    #line 2242 "./src/lsp.am"
+    #line 2257 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 code_string Amalgame_Compiler_LspServer_ReceiverTypeAt(code_string source, i64 line, i64 chr, Amalgame_Compiler_FullResolver* resolver) {
-    #line 2251 "./src/lsp.am"
+    #line 2266 "./src/lsp.am"
     i64 n = String_Length(source);
-    #line 2252 "./src/lsp.am"
+    #line 2267 "./src/lsp.am"
     i64 lineStart = 0;
-    #line 2253 "./src/lsp.am"
+    #line 2268 "./src/lsp.am"
     i64 curLine = 0;
-    #line 2254 "./src/lsp.am"
+    #line 2269 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2255 "./src/lsp.am"
+        #line 2270 "./src/lsp.am"
         if (curLine == line) {
-            #line 2256 "./src/lsp.am"
+            #line 2271 "./src/lsp.am"
             lineStart = i;
-            #line 2257 "./src/lsp.am"
+            #line 2272 "./src/lsp.am"
             break;
         }
-        #line 2259 "./src/lsp.am"
+        #line 2274 "./src/lsp.am"
         code_string c = String_CharAt1(source, i);
-        #line 2260 "./src/lsp.am"
+        #line 2275 "./src/lsp.am"
         if (code_string_equals(c, "\n")) {
             curLine = (curLine + 1);
         }
     }
-    #line 2262 "./src/lsp.am"
+    #line 2277 "./src/lsp.am"
     if (curLine != line) {
         return "";
     }
-    #line 2265 "./src/lsp.am"
+    #line 2280 "./src/lsp.am"
     i64 cursorAbs = lineStart + chr;
-    #line 2266 "./src/lsp.am"
+    #line 2281 "./src/lsp.am"
     if ((cursorAbs <= 0) || (cursorAbs > n)) {
         return "";
     }
-    #line 2268 "./src/lsp.am"
+    #line 2283 "./src/lsp.am"
     i64 dotPos = cursorAbs - 1;
-    #line 2269 "./src/lsp.am"
+    #line 2284 "./src/lsp.am"
     if (dotPos < 0) {
         return "";
     }
-    #line 2270 "./src/lsp.am"
+    #line 2285 "./src/lsp.am"
     code_string dotCh = String_CharAt1(source, dotPos);
-    #line 2271 "./src/lsp.am"
+    #line 2286 "./src/lsp.am"
     if (!code_string_equals(dotCh, ".")) {
         return "";
     }
-    #line 2273 "./src/lsp.am"
+    #line 2288 "./src/lsp.am"
     code_string ident = "";
-    #line 2274 "./src/lsp.am"
+    #line 2289 "./src/lsp.am"
     i64 p = dotPos - 1;
-    #line 2275 "./src/lsp.am"
+    #line 2290 "./src/lsp.am"
     while (p >= lineStart) {
-        #line 2276 "./src/lsp.am"
+        #line 2291 "./src/lsp.am"
         code_string c = String_CharAt1(source, p);
-        #line 2277 "./src/lsp.am"
+        #line 2292 "./src/lsp.am"
         if (Amalgame_Compiler_LspServer_IsIdentChar(c)) {
-            #line 2278 "./src/lsp.am"
+            #line 2293 "./src/lsp.am"
             ident = (code_string_concat(c, ident));
-            #line 2279 "./src/lsp.am"
+            #line 2294 "./src/lsp.am"
             p = (p - 1);
         } else {
-            #line 2280 "./src/lsp.am"
+            #line 2295 "./src/lsp.am"
             break;
         }
     }
-    #line 2282 "./src/lsp.am"
+    #line 2297 "./src/lsp.am"
     if (String_Length(ident) == 0) {
         return "";
     }
-    #line 2290 "./src/lsp.am"
+    #line 2305 "./src/lsp.am"
     if (code_string_equals(ident, "this")) {
         return "";
     }
-    #line 2291 "./src/lsp.am"
+    #line 2306 "./src/lsp.am"
     if (Amalgame_Compiler_FullResolver_HasSymbol(resolver, ident)) {
-        #line 2292 "./src/lsp.am"
+        #line 2307 "./src/lsp.am"
         code_string t = Amalgame_Compiler_FullResolver_GetTypeName(resolver, ident);
-        #line 2297 "./src/lsp.am"
+        #line 2312 "./src/lsp.am"
         if ((String_Length(t) > 0) && (!code_string_equals(t, "?"))) {
             return t;
         }
     }
-    #line 2305 "./src/lsp.am"
+    #line 2320 "./src/lsp.am"
     code_string lt = Amalgame_Compiler_LspServer_ScanLocalDeclType(source, cursorAbs, ident);
-    #line 2306 "./src/lsp.am"
+    #line 2321 "./src/lsp.am"
     if (String_Length(lt) > 0) {
         return lt;
     }
-    #line 2307 "./src/lsp.am"
+    #line 2322 "./src/lsp.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_LspServer_ScanLocalDeclType(code_string source, i64 before, code_string ident) {
-    #line 2314 "./src/lsp.am"
+    #line 2329 "./src/lsp.am"
     i64 n = String_Length(source);
-    #line 2315 "./src/lsp.am"
+    #line 2330 "./src/lsp.am"
     if (before > n) {
         before = n;
     }
-    #line 2320 "./src/lsp.am"
+    #line 2335 "./src/lsp.am"
     code_string bestType = "";
-    #line 2321 "./src/lsp.am"
+    #line 2336 "./src/lsp.am"
     AmalgameList* needles = AmalgameList_new();
-    #line 2322 "./src/lsp.am"
+    #line 2337 "./src/lsp.am"
     AmalgameList_add(needles, (void*)(intptr_t)(code_string_concat("let ", ident)));
-    #line 2323 "./src/lsp.am"
+    #line 2338 "./src/lsp.am"
     AmalgameList_add(needles, (void*)(intptr_t)(code_string_concat("var ", ident)));
-    #line 2324 "./src/lsp.am"
+    #line 2339 "./src/lsp.am"
     i64 nn = AmalgameList_count(needles);
-    #line 2325 "./src/lsp.am"
+    #line 2340 "./src/lsp.am"
     for (i64 ni = 0; ni < nn; ni++) {
-        #line 2326 "./src/lsp.am"
+        #line 2341 "./src/lsp.am"
         code_string needle = (code_string)AmalgameList_get(needles, ni);
-        #line 2327 "./src/lsp.am"
+        #line 2342 "./src/lsp.am"
         i64 nlen = String_Length(needle);
-        #line 2328 "./src/lsp.am"
+        #line 2343 "./src/lsp.am"
         i64 pos = 0;
-        #line 2329 "./src/lsp.am"
+        #line 2344 "./src/lsp.am"
         while (pos < before) {
-            #line 2330 "./src/lsp.am"
+            #line 2345 "./src/lsp.am"
             i64 idx = String_IndexOf(String_Substring(source, pos, before - pos), needle);
-            #line 2331 "./src/lsp.am"
+            #line 2346 "./src/lsp.am"
             if (idx < 0) {
                 break;
             }
-            #line 2332 "./src/lsp.am"
+            #line 2347 "./src/lsp.am"
             i64 absIdx = pos + idx;
-            #line 2336 "./src/lsp.am"
+            #line 2351 "./src/lsp.am"
             code_bool okStart = (absIdx == 0) || !Amalgame_Compiler_LspServer_IsIdentChar(String_CharAt1(source, absIdx - 1));
-            #line 2337 "./src/lsp.am"
+            #line 2352 "./src/lsp.am"
             i64 after = absIdx + nlen;
-            #line 2338 "./src/lsp.am"
+            #line 2353 "./src/lsp.am"
             code_bool okEnd = (after >= n) || !Amalgame_Compiler_LspServer_IsIdentChar(String_CharAt1(source, after));
-            #line 2339 "./src/lsp.am"
+            #line 2354 "./src/lsp.am"
             if (okStart && okEnd) {
-                #line 2340 "./src/lsp.am"
+                #line 2355 "./src/lsp.am"
                 code_string t = Amalgame_Compiler_LspServer_ExtractTypeAfterDecl(source, after, n);
-                #line 2341 "./src/lsp.am"
+                #line 2356 "./src/lsp.am"
                 if (String_Length(t) > 0) {
                     bestType = t;
                 }
             }
-            #line 2343 "./src/lsp.am"
+            #line 2358 "./src/lsp.am"
             pos = (absIdx + nlen);
         }
     }
-    #line 2346 "./src/lsp.am"
+    #line 2361 "./src/lsp.am"
     return bestType;
 }
 
 static code_string Amalgame_Compiler_LspServer_ExtractTypeAfterDecl(code_string source, i64 start, i64 n) {
-    #line 2353 "./src/lsp.am"
+    #line 2368 "./src/lsp.am"
     i64 i = start;
-    #line 2355 "./src/lsp.am"
+    #line 2370 "./src/lsp.am"
     while (i < n) {
-        #line 2356 "./src/lsp.am"
+        #line 2371 "./src/lsp.am"
         code_string c = String_CharAt1(source, i);
-        #line 2357 "./src/lsp.am"
+        #line 2372 "./src/lsp.am"
         if ((code_string_equals(c, " ")) || (code_string_equals(c, "\t"))) {
             i = (i + 1);
         } else {
             break;
         }
     }
-    #line 2359 "./src/lsp.am"
+    #line 2374 "./src/lsp.am"
     if (i >= n) {
         return "";
     }
-    #line 2360 "./src/lsp.am"
+    #line 2375 "./src/lsp.am"
     code_string head = String_CharAt1(source, i);
-    #line 2361 "./src/lsp.am"
+    #line 2376 "./src/lsp.am"
     if (code_string_equals(head, ":")) {
-        #line 2362 "./src/lsp.am"
+        #line 2377 "./src/lsp.am"
         i = (i + 1);
-        #line 2364 "./src/lsp.am"
+        #line 2379 "./src/lsp.am"
         while (i < n) {
-            #line 2365 "./src/lsp.am"
+            #line 2380 "./src/lsp.am"
             code_string c = String_CharAt1(source, i);
-            #line 2366 "./src/lsp.am"
+            #line 2381 "./src/lsp.am"
             if ((code_string_equals(c, " ")) || (code_string_equals(c, "\t"))) {
                 i = (i + 1);
             } else {
                 break;
             }
         }
-        #line 2369 "./src/lsp.am"
+        #line 2384 "./src/lsp.am"
         code_string t = "";
-        #line 2370 "./src/lsp.am"
+        #line 2385 "./src/lsp.am"
         while (i < n) {
-            #line 2371 "./src/lsp.am"
+            #line 2386 "./src/lsp.am"
             code_string c = String_CharAt1(source, i);
-            #line 2372 "./src/lsp.am"
+            #line 2387 "./src/lsp.am"
             if (Amalgame_Compiler_LspServer_IsIdentChar(c)) {
-                #line 2373 "./src/lsp.am"
+                #line 2388 "./src/lsp.am"
                 t = (code_string_concat(t, c));
-                #line 2374 "./src/lsp.am"
+                #line 2389 "./src/lsp.am"
                 i = (i + 1);
             } else {
-                #line 2375 "./src/lsp.am"
+                #line 2390 "./src/lsp.am"
                 break;
             }
         }
-        #line 2377 "./src/lsp.am"
+        #line 2392 "./src/lsp.am"
         return t;
     }
-    #line 2379 "./src/lsp.am"
+    #line 2394 "./src/lsp.am"
     if (code_string_equals(head, "=")) {
-        #line 2380 "./src/lsp.am"
+        #line 2395 "./src/lsp.am"
         i = (i + 1);
-        #line 2382 "./src/lsp.am"
+        #line 2397 "./src/lsp.am"
         while (i < n) {
-            #line 2383 "./src/lsp.am"
+            #line 2398 "./src/lsp.am"
             code_string c = String_CharAt1(source, i);
-            #line 2384 "./src/lsp.am"
+            #line 2399 "./src/lsp.am"
             if ((code_string_equals(c, " ")) || (code_string_equals(c, "\t"))) {
                 i = (i + 1);
             } else {
                 break;
             }
         }
-        #line 2387 "./src/lsp.am"
+        #line 2402 "./src/lsp.am"
         code_string newKw = "new ";
-        #line 2388 "./src/lsp.am"
+        #line 2403 "./src/lsp.am"
         if ((i + 4) <= n) {
-            #line 2389 "./src/lsp.am"
+            #line 2404 "./src/lsp.am"
             code_string head4 = String_Substring(source, i, 4);
-            #line 2390 "./src/lsp.am"
+            #line 2405 "./src/lsp.am"
             if (code_string_equals(head4, newKw)) {
-                #line 2391 "./src/lsp.am"
+                #line 2406 "./src/lsp.am"
                 i = (i + 4);
-                #line 2392 "./src/lsp.am"
+                #line 2407 "./src/lsp.am"
                 code_string t = "";
-                #line 2393 "./src/lsp.am"
+                #line 2408 "./src/lsp.am"
                 while (i < n) {
-                    #line 2394 "./src/lsp.am"
+                    #line 2409 "./src/lsp.am"
                     code_string c = String_CharAt1(source, i);
-                    #line 2395 "./src/lsp.am"
+                    #line 2410 "./src/lsp.am"
                     if (Amalgame_Compiler_LspServer_IsIdentChar(c)) {
-                        #line 2396 "./src/lsp.am"
+                        #line 2411 "./src/lsp.am"
                         t = (code_string_concat(t, c));
-                        #line 2397 "./src/lsp.am"
+                        #line 2412 "./src/lsp.am"
                         i = (i + 1);
                     } else {
-                        #line 2398 "./src/lsp.am"
+                        #line 2413 "./src/lsp.am"
                         break;
                     }
                 }
-                #line 2400 "./src/lsp.am"
+                #line 2415 "./src/lsp.am"
                 return t;
             }
         }
     }
-    #line 2404 "./src/lsp.am"
+    #line 2419 "./src/lsp.am"
     return "";
 }
 
 static code_bool Amalgame_Compiler_LspServer_IsIdentChar(code_string c) {
-    #line 2408 "./src/lsp.am"
+    #line 2423 "./src/lsp.am"
     if (String_Length(c) == 0) {
         return 0;
     }
-    #line 2409 "./src/lsp.am"
+    #line 2424 "./src/lsp.am"
     code_string alnum = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
-    #line 2410 "./src/lsp.am"
+    #line 2425 "./src/lsp.am"
     return String_IndexOf(alnum, c) >= 0;
 }
 
 static void Amalgame_Compiler_LspServer_SendEmptyCompletion(Amalgame_Compiler_LspServer* self, i64 id) {
-    #line 2414 "./src/lsp.am"
+    #line 2429 "./src/lsp.am"
     code_string body = code_string_concat((code_string_concat("{\"jsonrpc\":\"2.0\",\"id\":", String_FromInt(id))), ",\"result\":{\"isIncomplete\":false,\"items\":[]}}");
-    #line 2415 "./src/lsp.am"
+    #line 2430 "./src/lsp.am"
     Amalgame_Compiler_LspServer_Send(self, body);
 }
 
 code_string Amalgame_Compiler_LspServer_DiagnosticFromResolver(code_string source, Amalgame_Compiler_ResolverError* e) {
-    #line 2427 "./src/lsp.am"
+    #line 2442 "./src/lsp.am"
     return Amalgame_Compiler_LspServer_DiagnosticBody(source, e->Line, e->Column, e->Message);
 }
 
 code_string Amalgame_Compiler_LspServer_DiagnosticFromTc(code_string source, Amalgame_Compiler_TypeError* e) {
-    #line 2431 "./src/lsp.am"
+    #line 2446 "./src/lsp.am"
     return Amalgame_Compiler_LspServer_DiagnosticBody(source, e->Line, e->Column, e->Message);
 }
 
 static code_string Amalgame_Compiler_LspServer_DiagnosticBody(code_string source, i64 line, i64 col, code_string msg) {
-    #line 2439 "./src/lsp.am"
+    #line 2454 "./src/lsp.am"
     i64 l = line - 1;
-    #line 2440 "./src/lsp.am"
+    #line 2455 "./src/lsp.am"
     i64 cStart = col - 1;
-    #line 2441 "./src/lsp.am"
+    #line 2456 "./src/lsp.am"
     if (l < 0) {
         l = 0;
     }
-    #line 2442 "./src/lsp.am"
+    #line 2457 "./src/lsp.am"
     if (cStart < 0) {
         cStart = 0;
     }
-    #line 2443 "./src/lsp.am"
+    #line 2458 "./src/lsp.am"
     i64 endCol = Amalgame_Compiler_LspServer_TokenEndCol(source, line, col);
-    #line 2444 "./src/lsp.am"
+    #line 2459 "./src/lsp.am"
     i64 cEnd = endCol - 1;
-    #line 2445 "./src/lsp.am"
+    #line 2460 "./src/lsp.am"
     if (cEnd <= cStart) {
         cEnd = (cStart + 1);
     }
-    #line 2446 "./src/lsp.am"
+    #line 2461 "./src/lsp.am"
     code_string lStr = String_FromInt(l);
-    #line 2447 "./src/lsp.am"
+    #line 2462 "./src/lsp.am"
     code_string cStartStr = String_FromInt(cStart);
-    #line 2448 "./src/lsp.am"
+    #line 2463 "./src/lsp.am"
     code_string cEndStr = String_FromInt(cEnd);
-    #line 2449 "./src/lsp.am"
+    #line 2464 "./src/lsp.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"severity\":1,\"range\":{\"start\":{\"line\":", lStr)), ",\"character\":")), cStartStr)), "},\"end\":{\"line\":")), lStr)), ",\"character\":")), cEndStr)), "}},\"message\":\"")), Amalgame_Compiler_Json_EscapeString(msg))), "\"}");
 }
 
 static i64 Amalgame_Compiler_LspServer_TokenEndCol(code_string source, i64 line, i64 col) {
-    #line 2457 "./src/lsp.am"
+    #line 2472 "./src/lsp.am"
     i64 n = String_Length(source);
-    #line 2458 "./src/lsp.am"
+    #line 2473 "./src/lsp.am"
     i64 off = 0;
-    #line 2459 "./src/lsp.am"
+    #line 2474 "./src/lsp.am"
     i64 ln = 1;
-    #line 2460 "./src/lsp.am"
+    #line 2475 "./src/lsp.am"
     while ((ln < line) && (off < n)) {
-        #line 2461 "./src/lsp.am"
+        #line 2476 "./src/lsp.am"
         code_string ch = String_CharAt1(source, off);
-        #line 2462 "./src/lsp.am"
+        #line 2477 "./src/lsp.am"
         if (code_string_equals(ch, "\n")) {
             ln = (ln + 1);
         }
-        #line 2463 "./src/lsp.am"
+        #line 2478 "./src/lsp.am"
         off = (off + 1);
     }
-    #line 2465 "./src/lsp.am"
+    #line 2480 "./src/lsp.am"
     i64 colIdx = 0;
-    #line 2466 "./src/lsp.am"
+    #line 2481 "./src/lsp.am"
     while ((colIdx < (col - 1)) && (off < n)) {
-        #line 2467 "./src/lsp.am"
+        #line 2482 "./src/lsp.am"
         code_string ch = String_CharAt1(source, off);
-        #line 2468 "./src/lsp.am"
+        #line 2483 "./src/lsp.am"
         if (code_string_equals(ch, "\n")) {
             break;
         }
-        #line 2469 "./src/lsp.am"
+        #line 2484 "./src/lsp.am"
         off = (off + 1);
-        #line 2470 "./src/lsp.am"
+        #line 2485 "./src/lsp.am"
         colIdx = (colIdx + 1);
     }
-    #line 2472 "./src/lsp.am"
+    #line 2487 "./src/lsp.am"
     i64 endCol = col;
-    #line 2473 "./src/lsp.am"
+    #line 2488 "./src/lsp.am"
     while (off < n) {
-        #line 2474 "./src/lsp.am"
+        #line 2489 "./src/lsp.am"
         code_string ch = String_CharAt1(source, off);
-        #line 2475 "./src/lsp.am"
+        #line 2490 "./src/lsp.am"
         if (Amalgame_Compiler_LspServer_IsWordChar(ch)) {
-            #line 2476 "./src/lsp.am"
+            #line 2491 "./src/lsp.am"
             off = (off + 1);
-            #line 2477 "./src/lsp.am"
+            #line 2492 "./src/lsp.am"
             endCol = (endCol + 1);
         } else {
-            #line 2478 "./src/lsp.am"
+            #line 2493 "./src/lsp.am"
             break;
         }
     }
-    #line 2480 "./src/lsp.am"
+    #line 2495 "./src/lsp.am"
     return endCol;
 }
 
 static code_bool Amalgame_Compiler_LspServer_IsWordChar(code_string ch) {
-    #line 2484 "./src/lsp.am"
+    #line 2499 "./src/lsp.am"
     if (String_Length(ch) == 0) {
         return 0;
     }
-    #line 2485 "./src/lsp.am"
+    #line 2500 "./src/lsp.am"
     if (code_string_equals(ch, "_")) {
         return 1;
     }
-    #line 2486 "./src/lsp.am"
+    #line 2501 "./src/lsp.am"
     if (String_IndexOf("0123456789", ch) >= 0) {
         return 1;
     }
-    #line 2487 "./src/lsp.am"
+    #line 2502 "./src/lsp.am"
     if (String_IndexOf("abcdefghijklmnopqrstuvwxyz", ch) >= 0) {
         return 1;
     }
-    #line 2488 "./src/lsp.am"
+    #line 2503 "./src/lsp.am"
     if (String_IndexOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch) >= 0) {
         return 1;
     }
-    #line 2489 "./src/lsp.am"
+    #line 2504 "./src/lsp.am"
     return 0;
 }
 
 code_string Amalgame_Compiler_LspServer_UriToPath(code_string uri) {
-    #line 2499 "./src/lsp.am"
+    #line 2514 "./src/lsp.am"
     code_string raw = uri;
-    #line 2500 "./src/lsp.am"
+    #line 2515 "./src/lsp.am"
     if (String_StartsWith(uri, "file://")) {
-        #line 2501 "./src/lsp.am"
+        #line 2516 "./src/lsp.am"
         i64 n = String_Length(uri);
-        #line 2502 "./src/lsp.am"
+        #line 2517 "./src/lsp.am"
         raw = String_Substring(uri, 7, n - 7);
     }
-    #line 2504 "./src/lsp.am"
+    #line 2519 "./src/lsp.am"
     return Amalgame_Compiler_LspServer_PercentDecode(raw);
 }
 
 static code_string Amalgame_Compiler_LspServer_PercentDecode(code_string s) {
-    #line 2511 "./src/lsp.am"
+    #line 2526 "./src/lsp.am"
     code_string out = "";
-    #line 2512 "./src/lsp.am"
+    #line 2527 "./src/lsp.am"
     i64 n = String_Length(s);
-    #line 2513 "./src/lsp.am"
+    #line 2528 "./src/lsp.am"
     i64 i = 0;
-    #line 2514 "./src/lsp.am"
+    #line 2529 "./src/lsp.am"
     while (i < n) {
-        #line 2515 "./src/lsp.am"
+        #line 2530 "./src/lsp.am"
         code_string c = String_CharAt1(s, i);
-        #line 2516 "./src/lsp.am"
+        #line 2531 "./src/lsp.am"
         if ((code_string_equals(c, "%")) && ((i + 2) < n)) {
-            #line 2517 "./src/lsp.am"
+            #line 2532 "./src/lsp.am"
             code_string h0 = String_CharAt1(s, i + 1);
-            #line 2518 "./src/lsp.am"
+            #line 2533 "./src/lsp.am"
             code_string h1 = String_CharAt1(s, i + 2);
-            #line 2519 "./src/lsp.am"
+            #line 2534 "./src/lsp.am"
             i64 v0 = Amalgame_Compiler_LspServer_HexDigit(h0);
-            #line 2520 "./src/lsp.am"
+            #line 2535 "./src/lsp.am"
             i64 v1 = Amalgame_Compiler_LspServer_HexDigit(h1);
-            #line 2521 "./src/lsp.am"
+            #line 2536 "./src/lsp.am"
             if ((v0 >= 0) && (v1 >= 0)) {
-                #line 2522 "./src/lsp.am"
+                #line 2537 "./src/lsp.am"
                 i64 b = (v0 * 16) + v1;
-                #line 2523 "./src/lsp.am"
+                #line 2538 "./src/lsp.am"
                 out = (code_string_concat(out, String_FromByte(b)));
-                #line 2524 "./src/lsp.am"
+                #line 2539 "./src/lsp.am"
                 i = (i + 3);
             } else {
-                #line 2526 "./src/lsp.am"
+                #line 2541 "./src/lsp.am"
                 out = (code_string_concat(out, c));
-                #line 2527 "./src/lsp.am"
+                #line 2542 "./src/lsp.am"
                 i = (i + 1);
             }
         } else {
-            #line 2530 "./src/lsp.am"
+            #line 2545 "./src/lsp.am"
             out = (code_string_concat(out, c));
-            #line 2531 "./src/lsp.am"
+            #line 2546 "./src/lsp.am"
             i = (i + 1);
         }
     }
-    #line 2534 "./src/lsp.am"
+    #line 2549 "./src/lsp.am"
     return out;
 }
 
 static i64 Amalgame_Compiler_LspServer_HexDigit(code_string c) {
-    #line 2538 "./src/lsp.am"
+    #line 2553 "./src/lsp.am"
     if (code_string_equals(c, "0")) {
         return 0;
     }
-    #line 2539 "./src/lsp.am"
+    #line 2554 "./src/lsp.am"
     if (code_string_equals(c, "1")) {
         return 1;
     }
-    #line 2540 "./src/lsp.am"
+    #line 2555 "./src/lsp.am"
     if (code_string_equals(c, "2")) {
         return 2;
     }
-    #line 2541 "./src/lsp.am"
+    #line 2556 "./src/lsp.am"
     if (code_string_equals(c, "3")) {
         return 3;
     }
-    #line 2542 "./src/lsp.am"
+    #line 2557 "./src/lsp.am"
     if (code_string_equals(c, "4")) {
         return 4;
     }
-    #line 2543 "./src/lsp.am"
+    #line 2558 "./src/lsp.am"
     if (code_string_equals(c, "5")) {
         return 5;
     }
-    #line 2544 "./src/lsp.am"
+    #line 2559 "./src/lsp.am"
     if (code_string_equals(c, "6")) {
         return 6;
     }
-    #line 2545 "./src/lsp.am"
+    #line 2560 "./src/lsp.am"
     if (code_string_equals(c, "7")) {
         return 7;
     }
-    #line 2546 "./src/lsp.am"
+    #line 2561 "./src/lsp.am"
     if (code_string_equals(c, "8")) {
         return 8;
     }
-    #line 2547 "./src/lsp.am"
+    #line 2562 "./src/lsp.am"
     if (code_string_equals(c, "9")) {
         return 9;
     }
-    #line 2548 "./src/lsp.am"
+    #line 2563 "./src/lsp.am"
     if ((code_string_equals(c, "a")) || (code_string_equals(c, "A"))) {
         return 10;
     }
-    #line 2549 "./src/lsp.am"
+    #line 2564 "./src/lsp.am"
     if ((code_string_equals(c, "b")) || (code_string_equals(c, "B"))) {
         return 11;
     }
-    #line 2550 "./src/lsp.am"
+    #line 2565 "./src/lsp.am"
     if ((code_string_equals(c, "c")) || (code_string_equals(c, "C"))) {
         return 12;
     }
-    #line 2551 "./src/lsp.am"
+    #line 2566 "./src/lsp.am"
     if ((code_string_equals(c, "d")) || (code_string_equals(c, "D"))) {
         return 13;
     }
-    #line 2552 "./src/lsp.am"
+    #line 2567 "./src/lsp.am"
     if ((code_string_equals(c, "e")) || (code_string_equals(c, "E"))) {
         return 14;
     }
-    #line 2553 "./src/lsp.am"
+    #line 2568 "./src/lsp.am"
     if ((code_string_equals(c, "f")) || (code_string_equals(c, "F"))) {
         return 15;
     }
-    #line 2554 "./src/lsp.am"
+    #line 2569 "./src/lsp.am"
     return -1;
 }
 
 Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col) {
-    #line 2570 "./src/lsp.am"
+    #line 2585 "./src/lsp.am"
     if (root == NULL) {
         return NULL;
     }
-    #line 2571 "./src/lsp.am"
+    #line 2586 "./src/lsp.am"
     Amalgame_Compiler_AstNode* best = NULL;
-    #line 2572 "./src/lsp.am"
+    #line 2587 "./src/lsp.am"
     best = Amalgame_Compiler_LspServer_FindNodeWalk(root, line, col, best);
-    #line 2573 "./src/lsp.am"
+    #line 2588 "./src/lsp.am"
     return best;
 }
 
 code_string Amalgame_Compiler_LspServer_FormatMethodSignatureMarkdown(Amalgame_Compiler_AstNode* method) {
-    #line 2584 "./src/lsp.am"
+    #line 2599 "./src/lsp.am"
     code_string sig = code_string_concat(method->Name, "(");
-    #line 2585 "./src/lsp.am"
+    #line 2600 "./src/lsp.am"
     i64 n = AmalgameList_count(method->Params);
-    #line 2586 "./src/lsp.am"
+    #line 2601 "./src/lsp.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2587 "./src/lsp.am"
+        #line 2602 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 2588 "./src/lsp.am"
+        #line 2603 "./src/lsp.am"
         if (i > 0) {
             sig = (code_string_concat(sig, ", "));
         }
-        #line 2589 "./src/lsp.am"
+        #line 2604 "./src/lsp.am"
         sig = (code_string_concat(sig, p->Name));
-        #line 2590 "./src/lsp.am"
+        #line 2605 "./src/lsp.am"
         if (String_Length(p->Str) > 0) {
-            #line 2591 "./src/lsp.am"
+            #line 2606 "./src/lsp.am"
             sig = (code_string_concat((code_string_concat(sig, ": ")), p->Str));
         }
     }
-    #line 2594 "./src/lsp.am"
+    #line 2609 "./src/lsp.am"
     sig = (code_string_concat(sig, ")"));
-    #line 2595 "./src/lsp.am"
+    #line 2610 "./src/lsp.am"
     if ((String_Length(method->Str) > 0) && (!code_string_equals(method->Str, "void"))) {
-        #line 2596 "./src/lsp.am"
+        #line 2611 "./src/lsp.am"
         sig = (code_string_concat((code_string_concat(sig, ": ")), method->Str));
     }
-    #line 2598 "./src/lsp.am"
+    #line 2613 "./src/lsp.am"
     return code_string_concat((code_string_concat("```amalgame\n", sig)), "\n```");
 }
 
 Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindMethodDeclByName(Amalgame_Compiler_AstNode* prog, code_string methodName) {
-    #line 2608 "./src/lsp.am"
+    #line 2623 "./src/lsp.am"
     if (prog == NULL) {
         return NULL;
     }
-    #line 2609 "./src/lsp.am"
+    #line 2624 "./src/lsp.am"
     i64 topN = AmalgameList_count(prog->Children);
-    #line 2610 "./src/lsp.am"
+    #line 2625 "./src/lsp.am"
     for (i64 ti = 0; ti < topN; ti++) {
-        #line 2611 "./src/lsp.am"
+        #line 2626 "./src/lsp.am"
         Amalgame_Compiler_AstNode* top = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, ti);
-        #line 2612 "./src/lsp.am"
+        #line 2627 "./src/lsp.am"
         if (top->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
             continue;
         }
-        #line 2613 "./src/lsp.am"
+        #line 2628 "./src/lsp.am"
         i64 mn = AmalgameList_count(top->Children);
-        #line 2614 "./src/lsp.am"
+        #line 2629 "./src/lsp.am"
         for (i64 mi = 0; mi < mn; mi++) {
-            #line 2615 "./src/lsp.am"
+            #line 2630 "./src/lsp.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(top->Children, mi);
-            #line 2616 "./src/lsp.am"
+            #line 2631 "./src/lsp.am"
             if (m->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
                 continue;
             }
-            #line 2617 "./src/lsp.am"
+            #line 2632 "./src/lsp.am"
             if (code_string_equals(m->Name, methodName)) {
                 return m;
             }
         }
     }
-    #line 2620 "./src/lsp.am"
+    #line 2635 "./src/lsp.am"
     return NULL;
 }
 
 Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindCallAtPosition(Amalgame_Compiler_AstNode* root, i64 line, i64 col) {
-    #line 2630 "./src/lsp.am"
+    #line 2645 "./src/lsp.am"
     if (root == NULL) {
         return NULL;
     }
-    #line 2631 "./src/lsp.am"
+    #line 2646 "./src/lsp.am"
     Amalgame_Compiler_AstNode* best = NULL;
-    #line 2632 "./src/lsp.am"
+    #line 2647 "./src/lsp.am"
     best = Amalgame_Compiler_LspServer_FindCallWalk(root, line, col, best);
-    #line 2633 "./src/lsp.am"
+    #line 2648 "./src/lsp.am"
     return best;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindCallWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best) {
-    #line 2637 "./src/lsp.am"
+    #line 2652 "./src/lsp.am"
     Amalgame_Compiler_AstNode* current = best;
-    #line 2638 "./src/lsp.am"
+    #line 2653 "./src/lsp.am"
     if (node->Kind == Amalgame_Compiler_NodeKind_CALL) {
-        #line 2639 "./src/lsp.am"
+        #line 2654 "./src/lsp.am"
         if ((line > node->Line) || ((line == node->Line) && (col >= node->Column))) {
-            #line 2640 "./src/lsp.am"
+            #line 2655 "./src/lsp.am"
             current = node;
         }
     }
-    #line 2643 "./src/lsp.am"
+    #line 2658 "./src/lsp.am"
     if (node->Left != NULL) {
         current = Amalgame_Compiler_LspServer_FindCallWalk(node->Left, line, col, current);
     }
-    #line 2644 "./src/lsp.am"
+    #line 2659 "./src/lsp.am"
     if (node->Right != NULL) {
         current = Amalgame_Compiler_LspServer_FindCallWalk(node->Right, line, col, current);
     }
-    #line 2645 "./src/lsp.am"
+    #line 2660 "./src/lsp.am"
     if (node->Cond != NULL) {
         current = Amalgame_Compiler_LspServer_FindCallWalk(node->Cond, line, col, current);
     }
-    #line 2646 "./src/lsp.am"
+    #line 2661 "./src/lsp.am"
     if (node->Body != NULL) {
         current = Amalgame_Compiler_LspServer_FindCallWalk(node->Body, line, col, current);
     }
-    #line 2647 "./src/lsp.am"
+    #line 2662 "./src/lsp.am"
     if (node->Else != NULL) {
         current = Amalgame_Compiler_LspServer_FindCallWalk(node->Else, line, col, current);
     }
-    #line 2648 "./src/lsp.am"
+    #line 2663 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 2649 "./src/lsp.am"
+    #line 2664 "./src/lsp.am"
     for (i64 ci = 0; ci < cn; ci++) {
         current = Amalgame_Compiler_LspServer_FindCallWalk((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, ci), line, col, current);
     }
-    #line 2650 "./src/lsp.am"
+    #line 2665 "./src/lsp.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 2651 "./src/lsp.am"
+    #line 2666 "./src/lsp.am"
     for (i64 pi = 0; pi < pn; pi++) {
         current = Amalgame_Compiler_LspServer_FindCallWalk((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, pi), line, col, current);
     }
-    #line 2652 "./src/lsp.am"
+    #line 2667 "./src/lsp.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 2653 "./src/lsp.am"
+    #line 2668 "./src/lsp.am"
     for (i64 ai = 0; ai < an; ai++) {
         current = Amalgame_Compiler_LspServer_FindCallWalk((Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, ai), line, col, current);
     }
-    #line 2654 "./src/lsp.am"
+    #line 2669 "./src/lsp.am"
     return current;
 }
 
 code_string Amalgame_Compiler_LspServer_CallCalleeName(Amalgame_Compiler_AstNode* call) {
-    #line 2663 "./src/lsp.am"
+    #line 2678 "./src/lsp.am"
     if (call == NULL) {
         return "";
     }
-    #line 2664 "./src/lsp.am"
+    #line 2679 "./src/lsp.am"
     if (call->Left == NULL) {
         return "";
     }
-    #line 2665 "./src/lsp.am"
+    #line 2680 "./src/lsp.am"
     Amalgame_Compiler_AstNode* l = call->Left;
-    #line 2666 "./src/lsp.am"
+    #line 2681 "./src/lsp.am"
     if (l->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
         return l->Name;
     }
-    #line 2667 "./src/lsp.am"
+    #line 2682 "./src/lsp.am"
     if (l->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
         return l->Name;
     }
-    #line 2668 "./src/lsp.am"
+    #line 2683 "./src/lsp.am"
     return "";
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_LspServer_FindNodeWalk(Amalgame_Compiler_AstNode* node, i64 line, i64 col, Amalgame_Compiler_AstNode* best) {
-    #line 2672 "./src/lsp.am"
+    #line 2687 "./src/lsp.am"
     Amalgame_Compiler_AstNode* current = best;
-    #line 2673 "./src/lsp.am"
+    #line 2688 "./src/lsp.am"
     if (Amalgame_Compiler_LspServer_NodeCovers(node, line, col)) {
-        #line 2677 "./src/lsp.am"
+        #line 2692 "./src/lsp.am"
         if (String_Length(node->Name) > 0) {
-            #line 2678 "./src/lsp.am"
+            #line 2693 "./src/lsp.am"
             current = node;
         } else if (current == NULL) {
-            #line 2680 "./src/lsp.am"
+            #line 2695 "./src/lsp.am"
             current = node;
         }
     }
-    #line 2684 "./src/lsp.am"
+    #line 2699 "./src/lsp.am"
     if (node->Left != NULL) {
         current = Amalgame_Compiler_LspServer_FindNodeWalk(node->Left, line, col, current);
     }
-    #line 2685 "./src/lsp.am"
+    #line 2700 "./src/lsp.am"
     if (node->Right != NULL) {
         current = Amalgame_Compiler_LspServer_FindNodeWalk(node->Right, line, col, current);
     }
-    #line 2686 "./src/lsp.am"
+    #line 2701 "./src/lsp.am"
     if (node->Cond != NULL) {
         current = Amalgame_Compiler_LspServer_FindNodeWalk(node->Cond, line, col, current);
     }
-    #line 2687 "./src/lsp.am"
+    #line 2702 "./src/lsp.am"
     if (node->Body != NULL) {
         current = Amalgame_Compiler_LspServer_FindNodeWalk(node->Body, line, col, current);
     }
-    #line 2688 "./src/lsp.am"
+    #line 2703 "./src/lsp.am"
     if (node->Else != NULL) {
         current = Amalgame_Compiler_LspServer_FindNodeWalk(node->Else, line, col, current);
     }
-    #line 2690 "./src/lsp.am"
+    #line 2705 "./src/lsp.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 2691 "./src/lsp.am"
+    #line 2706 "./src/lsp.am"
     for (i64 ci = 0; ci < cn; ci++) {
-        #line 2692 "./src/lsp.am"
+        #line 2707 "./src/lsp.am"
         Amalgame_Compiler_AstNode* c = (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, ci);
-        #line 2693 "./src/lsp.am"
+        #line 2708 "./src/lsp.am"
         current = Amalgame_Compiler_LspServer_FindNodeWalk(c, line, col, current);
     }
-    #line 2695 "./src/lsp.am"
+    #line 2710 "./src/lsp.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 2696 "./src/lsp.am"
+    #line 2711 "./src/lsp.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 2697 "./src/lsp.am"
+        #line 2712 "./src/lsp.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, pi);
-        #line 2698 "./src/lsp.am"
+        #line 2713 "./src/lsp.am"
         current = Amalgame_Compiler_LspServer_FindNodeWalk(p, line, col, current);
     }
-    #line 2700 "./src/lsp.am"
+    #line 2715 "./src/lsp.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 2701 "./src/lsp.am"
+    #line 2716 "./src/lsp.am"
     for (i64 ai = 0; ai < an; ai++) {
-        #line 2702 "./src/lsp.am"
+        #line 2717 "./src/lsp.am"
         Amalgame_Compiler_AstNode* a = (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, ai);
-        #line 2703 "./src/lsp.am"
+        #line 2718 "./src/lsp.am"
         current = Amalgame_Compiler_LspServer_FindNodeWalk(a, line, col, current);
     }
-    #line 2705 "./src/lsp.am"
+    #line 2720 "./src/lsp.am"
     return current;
 }
 
 static code_bool Amalgame_Compiler_LspServer_NodeCovers(Amalgame_Compiler_AstNode* node, i64 line, i64 col) {
-    #line 2709 "./src/lsp.am"
+    #line 2724 "./src/lsp.am"
     if (node->Line != line) {
         return 0;
     }
-    #line 2710 "./src/lsp.am"
+    #line 2725 "./src/lsp.am"
     i64 nameLen = String_Length(node->Name);
-    #line 2711 "./src/lsp.am"
+    #line 2726 "./src/lsp.am"
     if (nameLen == 0) {
         return 0;
     }
-    #line 2712 "./src/lsp.am"
+    #line 2727 "./src/lsp.am"
     i64 endCol = node->Column + nameLen;
-    #line 2713 "./src/lsp.am"
+    #line 2728 "./src/lsp.am"
     if (col < node->Column) {
         return 0;
     }
-    #line 2714 "./src/lsp.am"
+    #line 2729 "./src/lsp.am"
     if (col > endCol) {
         return 0;
     }
-    #line 2715 "./src/lsp.am"
+    #line 2730 "./src/lsp.am"
     return 1;
 }
 
