@@ -1,0 +1,60 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Regression test for Bug 3 (amc v0.8.23):
+//   AmalgameMap_remove used to mark the slot AMMAP_EMPTY, which
+//   broke open-addressing linear-probe lookups for any colliding
+//   key inserted *after* the removed one. Subsequent Get/Has on
+//   those collisions returned NULL / false, and downstream code
+//   that assumed the value was present then segfaulted.
+//
+// We insert many keys, remove the first half, then walk the
+// remaining half via Has(). With cap≥16 and FNV-1a, collisions
+// inside 50 keys are statistically guaranteed; without tombstones,
+// at least one Has() in the second half returns false.
+public class Program {
+    public static void Main(string[] args) {
+        let m = new Map<string, int>()
+
+        var i: int = 0
+        while (i < 50) {
+            m.Set("key" + String_FromInt(i), i)
+            i = i + 1
+        }
+
+        var j: int = 0
+        while (j < 25) {
+            m.Remove("key" + String_FromInt(j))
+            j = j + 1
+        }
+
+        var found: int = 0
+        var k: int = 25
+        while (k < 50) {
+            if (m.Has("key" + String_FromInt(k))) {
+                found = found + 1
+            }
+            k = k + 1
+        }
+        Console.WriteLine("found after remove: " + String_FromInt(found))
+
+        var sum: int = 0
+        var p: int = 25
+        while (p < 50) {
+            sum = sum + m.Get("key" + String_FromInt(p))
+            p = p + 1
+        }
+        Console.WriteLine("sum after remove: " + String_FromInt(sum))
+
+        // Bug 4 (v0.8.23): Keys()/Values() used `if (used)` which
+        // was truthy for the new TOMBSTONE state (=2) too — every
+        // removed key/value leaked back into the result list. The
+        // size check below would have shown 50 instead of 25 before
+        // the fix.
+        let allKeys = m.Keys()
+        Console.WriteLine("Keys() count: " + String_FromInt(allKeys.Count()))
+        let allValues = m.Values()
+        Console.WriteLine("Values() count: " + String_FromInt(allValues.Count()))
+    }
+}

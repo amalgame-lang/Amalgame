@@ -1,0 +1,62 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Regression test for Bug 2 (amc v0.8.23):
+//   `this.entries.Set(k, v)` used to emit `AmalgameMap_Set`
+//   (PascalCase, undefined) instead of `AmalgameMap_set` because
+//   the cgen Map dispatch only specialised the IDENTIFIER receiver
+//   case. Same hazard for Get / Has / Remove / Size on `this.field`
+//   and `obj.field` Map<K,V> receivers, plus the analogous List
+//   and Set fields.
+
+public class Cache {
+    private entries: Map<string, int>
+    private tags:    Set<string>
+    private log:     List<string>
+
+    public void Init() {
+        this.entries = new Map<string, int>()
+        this.tags    = new Set<string>()
+        this.log     = new List<string>()
+    }
+
+    public void Put(string k, int v) {
+        this.entries.Set(k, v)            // was: AmalgameMap_Set (undef)
+        this.tags.Add(k)                  // was: AmalgameSet_Add  (undef)
+        this.log.Add("put:" + k)          // was: AmalgameList_Add (undef)
+    }
+
+    public int Lookup(string k) {
+        if (this.entries.Has(k)) {        // was: AmalgameMap_Has  (undef)
+            return this.entries.Get(k)    // was: AmalgameMap_Get  (undef)
+        }
+        return -1
+    }
+
+    public int CountTags() { return this.tags.Size() }
+    public int CountLog()  { return this.log.Count() }
+
+    public void Forget(string k) {
+        this.entries.Remove(k)            // was: AmalgameMap_Remove (undef)
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let c = new Cache()
+        c.Init()
+        c.Put("alpha", 1)
+        c.Put("beta",  2)
+        c.Put("gamma", 3)
+
+        Console.WriteLine("alpha=" + String_FromInt(c.Lookup("alpha")))
+        Console.WriteLine("beta="  + String_FromInt(c.Lookup("beta")))
+        Console.WriteLine("tags="  + String_FromInt(c.CountTags()))
+        Console.WriteLine("log="   + String_FromInt(c.CountLog()))
+
+        c.Forget("beta")
+        Console.WriteLine("after forget beta=" + String_FromInt(c.Lookup("beta")))
+        Console.WriteLine("alpha still=" + String_FromInt(c.Lookup("alpha")))
+    }
+}
