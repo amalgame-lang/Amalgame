@@ -494,4 +494,316 @@ static inline AmalgameProcessResult* Process_RunCaptureBothTimeout(
     return _am_proc_runex(cmd, timeout_ms, 1);
 }
 
+/* ============================================================
+ *  v3: streaming Spawn — persistent handle, line-by-line I/O
+ *      POSIX only for now (fork + pipe + waitpid + select).
+ *      Windows path (CreateProcess + Named Pipes) lands in v3.1.
+ * ============================================================ */
+
+#ifndef _WIN32
+
+typedef struct AmalgameProcessHandle {
+    pid_t pid;
+    int   stdin_fd;     /* parent's write end, -1 if not piped */
+    int   stdout_fd;    /* parent's read  end, -1 if not piped */
+    int   stderr_fd;    /* parent's read  end, -1 if not piped */
+    int   alive;        /* 1 until waitpid reaps */
+    int   exit_code;    /* -1 until reaped */
+    /* Per-stream line accumulator. ReadLine pulls bytes via
+     * non-blocking read() and stops at '\n'; the leftover
+     * bytes (no newline yet) live here until the next call
+     * appends more and finds the terminator. */
+    char* out_buf;
+    size_t out_len;
+    size_t out_cap;
+    char* err_buf;
+    size_t err_len;
+    size_t err_cap;
+} AmalgameProcessHandle;
+
+/* Spawn a child process via /bin/sh -c. captureStreams flags:
+ *   bit 0 (1) — pipe stdin  (parent can WriteLine)
+ *   bit 1 (2) — pipe stdout (parent can ReadLine)
+ *   bit 2 (4) — pipe stderr (parent can ReadErrLine)
+ * Pass 7 to pipe all three. Pass 0 for an inherit-parent-stdio
+ * child (useful for background scripts that don't need IPC).
+ *
+ * Returns the handle even on partial failure; check pid > 0
+ * (parent saw fork OK) and alive == 1 before using stream
+ * methods. Internal pipes are O_NONBLOCK on the parent side
+ * so ReadLine/WriteLine never block past their timeout.
+ */
+static inline AmalgameProcessHandle* Process_Spawn(code_string cmd, i64 captureStreams) {
+    AmalgameProcessHandle* h =
+        (AmalgameProcessHandle*) code_alloc(sizeof(AmalgameProcessHandle));
+    h->pid       = -1;
+    h->stdin_fd  = -1;
+    h->stdout_fd = -1;
+    h->stderr_fd = -1;
+    h->alive     = 0;
+    h->exit_code = -1;
+    h->out_buf   = NULL;
+    h->out_len   = 0;
+    h->out_cap   = 0;
+    h->err_buf   = NULL;
+    h->err_len   = 0;
+    h->err_cap   = 0;
+    if (!cmd) return h;
+
+    int want_in  = (captureStreams & 1) ? 1 : 0;
+    int want_out = (captureStreams & 2) ? 1 : 0;
+    int want_err = (captureStreams & 4) ? 1 : 0;
+
+    int in_pipe[2]  = {-1, -1};
+    int out_pipe[2] = {-1, -1};
+    int err_pipe[2] = {-1, -1};
+    if (want_in  && pipe(in_pipe)  < 0) return h;
+    if (want_out && pipe(out_pipe) < 0) {
+        if (want_in) { close(in_pipe[0]); close(in_pipe[1]); }
+        return h;
+    }
+    if (want_err && pipe(err_pipe) < 0) {
+        if (want_in)  { close(in_pipe[0]);  close(in_pipe[1]);  }
+        if (want_out) { close(out_pipe[0]); close(out_pipe[1]); }
+        return h;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        if (want_in)  { close(in_pipe[0]);  close(in_pipe[1]);  }
+        if (want_out) { close(out_pipe[0]); close(out_pipe[1]); }
+        if (want_err) { close(err_pipe[0]); close(err_pipe[1]); }
+        return h;
+    }
+
+    if (pid == 0) {
+        /* ── child ── */
+        if (want_in)  {
+            dup2(in_pipe[0],  STDIN_FILENO);
+            close(in_pipe[0]); close(in_pipe[1]);
+        }
+        if (want_out) {
+            dup2(out_pipe[1], STDOUT_FILENO);
+            close(out_pipe[0]); close(out_pipe[1]);
+        }
+        if (want_err) {
+            dup2(err_pipe[1], STDERR_FILENO);
+            close(err_pipe[0]); close(err_pipe[1]);
+        }
+        execl("/bin/sh", "sh", "-c", (const char*) cmd, (char*) NULL);
+        _exit(127);
+    }
+
+    /* ── parent ── */
+    h->pid   = pid;
+    h->alive = 1;
+    if (want_in) {
+        close(in_pipe[0]);
+        fcntl(in_pipe[1], F_SETFL, fcntl(in_pipe[1], F_GETFL, 0) | O_NONBLOCK);
+        h->stdin_fd = in_pipe[1];
+    }
+    if (want_out) {
+        close(out_pipe[1]);
+        fcntl(out_pipe[0], F_SETFL, fcntl(out_pipe[0], F_GETFL, 0) | O_NONBLOCK);
+        h->stdout_fd = out_pipe[0];
+    }
+    if (want_err) {
+        close(err_pipe[1]);
+        fcntl(err_pipe[0], F_SETFL, fcntl(err_pipe[0], F_GETFL, 0) | O_NONBLOCK);
+        h->stderr_fd = err_pipe[0];
+    }
+    return h;
+}
+
+/* Non-blocking probe of the child status. Returns 1 if alive,
+ * 0 if reaped (exit_code populated). Side-effect: refreshes
+ * h->alive and h->exit_code on transition. */
+static inline code_bool Process_IsAlive(AmalgameProcessHandle* h) {
+    if (!h || h->pid < 0) return 0;
+    if (!h->alive) return 0;
+    int status = 0;
+    pid_t w = waitpid(h->pid, &status, WNOHANG);
+    if (w == h->pid) {
+        h->alive = 0;
+        h->exit_code = (int) _am_decode_status(status);
+        return 0;
+    }
+    return 1;
+}
+
+static inline i64 Process_ExitCode(AmalgameProcessHandle* h) {
+    if (!h) return -1;
+    (void) Process_IsAlive(h);   /* refresh state */
+    return (i64) h->exit_code;
+}
+
+/* Block up to timeout_ms (≤ 0 = forever) for the child to exit.
+ * Returns true if reaped within the budget. */
+static inline code_bool Process_Wait(AmalgameProcessHandle* h, i64 timeout_ms) {
+    if (!h || h->pid < 0) return 0;
+    if (!h->alive) return 1;
+    if (timeout_ms <= 0) {
+        int status = 0;
+        if (waitpid(h->pid, &status, 0) == h->pid) {
+            h->alive = 0;
+            h->exit_code = (int) _am_decode_status(status);
+            return 1;
+        }
+        return 0;
+    }
+    struct timeval start, now;
+    gettimeofday(&start, NULL);
+    while (1) {
+        if (!Process_IsAlive(h)) return 1;
+        gettimeofday(&now, NULL);
+        i64 elapsed = (i64)(now.tv_sec - start.tv_sec) * 1000
+                    + (i64)(now.tv_usec - start.tv_usec) / 1000;
+        if (elapsed >= timeout_ms) return 0;
+        struct timespec ts = { 0, 10 * 1000000L };  /* 10ms poll */
+        nanosleep(&ts, NULL);
+    }
+}
+
+/* Send SIGTERM (graceful). */
+static inline void Process_Kill(AmalgameProcessHandle* h) {
+    if (h && h->pid > 0 && h->alive) kill(h->pid, SIGTERM);
+}
+/* Send SIGKILL (hard). */
+static inline void Process_KillForce(AmalgameProcessHandle* h) {
+    if (h && h->pid > 0 && h->alive) kill(h->pid, SIGKILL);
+}
+
+/* Write a UTF-8 string to the child's stdin, appending a '\n'
+ * if the string doesn't already end with one. Returns true on
+ * full write. Non-blocking — fails if the kernel pipe is full
+ * (caller can retry). */
+static inline code_bool Process_WriteLine(AmalgameProcessHandle* h, code_string s) {
+    if (!h || h->stdin_fd < 0 || !s) return 0;
+    size_t n = strlen(s);
+    int need_nl = (n == 0 || s[n - 1] != '\n') ? 1 : 0;
+    size_t total = n + (need_nl ? 1 : 0);
+    char* buf = (char*) GC_MALLOC(total);
+    if (n > 0) memcpy(buf, s, n);
+    if (need_nl) buf[n] = '\n';
+    ssize_t k = write(h->stdin_fd, buf, total);
+    return (k == (ssize_t) total) ? 1 : 0;
+}
+
+/* Internal: read from fd into the buffer, expanding as needed.
+ * Stops on a '\n' or when read returns EAGAIN. Returns the
+ * index of the newline (≥0) or -1 if no newline yet. */
+static inline ssize_t _am_proc_pump(int fd, char** buf, size_t* len, size_t* cap, i64 timeout_ms) {
+    if (fd < 0) return -1;
+    /* Check the existing buffer first. */
+    if (*buf && *len > 0) {
+        for (size_t i = 0; i < *len; i++) {
+            if ((*buf)[i] == '\n') return (ssize_t) i;
+        }
+    }
+    /* Use select for the timeout. */
+    struct timeval tv;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(fd, &rfds);
+    if (timeout_ms > 0) {
+        tv.tv_sec  = (long) (timeout_ms / 1000);
+        tv.tv_usec = (long) ((timeout_ms % 1000) * 1000);
+    } else {
+        tv.tv_sec = 0; tv.tv_usec = 0;
+    }
+    int sr = select(fd + 1, &rfds, NULL, NULL, &tv);
+    if (sr <= 0) return -1;   /* timeout or error */
+
+    char chunk[4096];
+    ssize_t k = read(fd, chunk, sizeof(chunk));
+    if (k <= 0) return -2;    /* EOF or error */
+    /* Grow buffer if needed. */
+    size_t need = *len + (size_t) k + 1;
+    if (need > *cap) {
+        size_t nc = *cap ? *cap : 256;
+        while (nc < need) nc *= 2;
+        char* nb = (char*) GC_MALLOC(nc);
+        if (*len > 0) memcpy(nb, *buf, *len);
+        *buf = nb;
+        *cap = nc;
+    }
+    memcpy(*buf + *len, chunk, (size_t) k);
+    *len += (size_t) k;
+    (*buf)[*len] = '\0';
+    for (size_t i = 0; i < *len; i++) {
+        if ((*buf)[i] == '\n') return (ssize_t) i;
+    }
+    return -1;
+}
+
+/* Internal: extract a line at index `nl` (newline position),
+ * shift the remainder back to the front, return the line as
+ * a fresh GC-allocated string (newline stripped). */
+static inline code_string _am_proc_extract(char** buf, size_t* len, ssize_t nl) {
+    char* p = (char*) code_alloc((size_t) nl + 1);
+    if (nl > 0) memcpy(p, *buf, (size_t) nl);
+    p[nl] = '\0';
+    /* Shift the rest down. */
+    size_t after = (size_t) nl + 1;
+    if (after < *len) {
+        memmove(*buf, *buf + after, *len - after);
+        *len -= after;
+    } else {
+        *len = 0;
+    }
+    return p;
+}
+
+/* Read one '\n'-terminated line from the child's stdout. The
+ * newline is stripped. Returns "" on timeout, NULL sentinel
+ * (encoded as the literal string "__EOF__") on EOF. */
+static inline code_string Process_ReadLine(AmalgameProcessHandle* h, i64 timeout_ms) {
+    if (!h || h->stdout_fd < 0) return (code_string) "";
+    ssize_t nl = _am_proc_pump(h->stdout_fd, &h->out_buf, &h->out_len, &h->out_cap, timeout_ms);
+    if (nl == -2) {
+        /* EOF — flush any remaining buffer as a final partial line. */
+        if (h->out_len > 0) {
+            return _am_proc_extract(&h->out_buf, &h->out_len, (ssize_t) h->out_len);
+        }
+        return (code_string) "__EOF__";
+    }
+    if (nl < 0) return (code_string) "";    /* timeout */
+    return _am_proc_extract(&h->out_buf, &h->out_len, nl);
+}
+
+/* Same shape for stderr. */
+static inline code_string Process_ReadErrLine(AmalgameProcessHandle* h, i64 timeout_ms) {
+    if (!h || h->stderr_fd < 0) return (code_string) "";
+    ssize_t nl = _am_proc_pump(h->stderr_fd, &h->err_buf, &h->err_len, &h->err_cap, timeout_ms);
+    if (nl == -2) {
+        if (h->err_len > 0) {
+            return _am_proc_extract(&h->err_buf, &h->err_len, (ssize_t) h->err_len);
+        }
+        return (code_string) "__EOF__";
+    }
+    if (nl < 0) return (code_string) "";
+    return _am_proc_extract(&h->err_buf, &h->err_len, nl);
+}
+
+#else  /* _WIN32 — streaming Spawn not yet implemented */
+
+typedef struct AmalgameProcessHandle {
+    int unused;
+} AmalgameProcessHandle;
+
+static inline AmalgameProcessHandle* Process_Spawn(code_string cmd, i64 captureStreams) {
+    (void) cmd; (void) captureStreams;
+    return NULL;  /* TODO v3.1: CreateProcess + Named Pipes */
+}
+static inline code_bool   Process_IsAlive(AmalgameProcessHandle* h)        { (void) h; return 0; }
+static inline i64         Process_ExitCode(AmalgameProcessHandle* h)       { (void) h; return -1; }
+static inline code_bool   Process_Wait(AmalgameProcessHandle* h, i64 t)    { (void) h; (void) t; return 0; }
+static inline void        Process_Kill(AmalgameProcessHandle* h)            { (void) h; }
+static inline void        Process_KillForce(AmalgameProcessHandle* h)       { (void) h; }
+static inline code_bool   Process_WriteLine(AmalgameProcessHandle* h, code_string s)     { (void) h; (void) s; return 0; }
+static inline code_string Process_ReadLine(AmalgameProcessHandle* h, i64 t)              { (void) h; (void) t; return (code_string) ""; }
+static inline code_string Process_ReadErrLine(AmalgameProcessHandle* h, i64 t)           { (void) h; (void) t; return (code_string) ""; }
+
+#endif /* _WIN32 */
+
 #endif /* AMALGAME_PROCESS_H */
