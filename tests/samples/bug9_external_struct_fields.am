@@ -1,0 +1,65 @@
+namespace MyApp
+
+import Amalgame.Collections
+import Amalgame.Json
+
+// Regression test for Bug 9 (amc v0.8.27):
+//
+// The v0.8.26 auto-attach mechanism (`import Amalgame.Json` →
+// share/amalgame/stdlib/json.am loaded as `--external`) registered
+// the bundled-stdlib classes correctly for METHOD dispatch but
+// only emitted a forward typedef `typedef struct _X X;` for each
+// class. Any user code that read a *field* — e.g. `r.Ok` on a
+// `JsonResult`, the documented entry point of `Amalgame.Json` —
+// hit gcc's `invalid use of incomplete typedef`.
+//
+// Fix: RegisterExternalProg now emits the full struct body
+// (mirroring EmitClass's layout) plus a real enum body for
+// simple ENUM_DECLs (`typedef enum _M { … } M;`). The fields
+// resolve cleanly and gcc compiles the consumer.
+//
+// New ExternalEnums registry handles `JsonValue.Kind: JsonKind`
+// (a sibling enum reference inside the struct body); TypeToC
+// returns the bundled mangled name (value type, no `*`) instead
+// of falling back to the consumer's NsPrefix.
+
+public class Program {
+    public static void Main() {
+        // ── 1. Parse OK + field reads ───────────────────
+        let r1 = Json.Parse("{\"x\":42}")
+        if (!r1.Ok) {
+            Console.WriteLine("[FAIL] parse OK reported false")
+            return
+        }
+        let v: JsonValue = r1.Value
+        let xNode: JsonValue = v.Get("x")
+        if (xNode.AsInt() == 42) {
+            Console.WriteLine("[PASS] external field access — JsonResult.Ok + .Value")
+        } else {
+            Console.WriteLine("[FAIL] x.AsInt() got " + String_FromInt(xNode.AsInt()))
+        }
+
+        // ── 2. Parse fail + error sub-field reads ───────
+        let r2 = Json.Parse("not json {{{")
+        if (r2.Ok) {
+            Console.WriteLine("[FAIL] malformed parse reported Ok=true")
+            return
+        }
+        // Drill through r2.Error (JsonError struct) into its
+        // Message field — exercises a chained struct field access
+        // across two external classes.
+        let err: JsonError = r2.Error
+        if (String_Length(err.Message) > 0) {
+            Console.WriteLine("[PASS] external field access — JsonError.Message populated")
+        } else {
+            Console.WriteLine("[FAIL] JsonError.Message empty on parse fail")
+        }
+        // Line/Column are int fields — verify the second-field
+        // offset survives the struct body emission too.
+        if (err.Line > 0) {
+            Console.WriteLine("[PASS] external field access — JsonError.Line")
+        } else {
+            Console.WriteLine("[FAIL] JsonError.Line == " + String_FromInt(err.Line))
+        }
+    }
+}
