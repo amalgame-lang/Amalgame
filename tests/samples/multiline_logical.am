@@ -1,0 +1,49 @@
+// Multi-line continuation for logical && / || operators.
+// Added in v0.8.21 — the parser's ParseAnd/ParseOr now skip
+// NEWLINE tokens before the operator when the next non-blank
+// token is && / || (mirrors the v0.8.14 fix for + - * / %).
+//
+// Before the fix:
+//   if (a && b
+//          && c)         // → "Expected ')' at 1:N got '\n'"
+//   if (a
+//          && b)         // same
+//
+// All four shapes below should compile cleanly and run.
+
+class Program {
+    public static void Main() {
+        let a: bool = true
+        let b: bool = false
+        let c: bool = true
+        let d: bool = true
+
+        // Newline before &&
+        if (a
+                && c
+                && d) {
+            Console.WriteLine("A")
+        }
+
+        // && at EOL
+        if (a &&
+                c &&
+                d) {
+            Console.WriteLine("B")
+        }
+
+        // Newline before ||
+        if (b
+                || c
+                || d) {
+            Console.WriteLine("C")
+        }
+
+        // Mixed && and || across lines — operator precedence
+        // unchanged, only the line-break tolerance is new.
+        if (a && b
+                || c && d) {
+            Console.WriteLine("D")
+        }
+    }
+}
