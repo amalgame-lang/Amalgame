@@ -7,6 +7,43 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.21] — 2026-05-17
+
+Parser quality-of-life — multi-line `&&` / `||` continuation.
+
+### Fixed: multi-line `&&` / `||` continuation in parser
+
+`ParseAnd` and `ParseOr` ended their loops on the first NEWLINE
+token, so:
+
+```kotlin
+if (cond1
+        && cond2
+        && cond3) {
+    ...
+}
+```
+
+silently dropped every condition past the first `&&` (parser
+emitted a `_unknown_` placeholder for the right operand). Same
+for `||`. The fix mirrors v0.8.14's `+ - * / %` continuation:
+each operator's parse loop now peeks past NEWLINEs and continues
+when the next non-blank token is the matching operator. `expr &&
+\n   next` (operator at EOL) was already accepted thanks to the
+existing `SkipNewlines` after operator consumption — only the
+"newline-then-operator" shape needed the fix.
+
+Surfaced during the v0.2 + Kafka + RabbitMQ test-fixture work this
+week: every `if (a\n   && b)` chain had to be folded into
+`let aOk: bool = ...; let bOk: bool = ...; if (aOk && bOk)`
+intermediates. Those workarounds can now be removed at leisure.
+
+### Added: regression sample `tests/samples/multiline_logical.am`
+
+Four shapes exercised: newline-before-`&&`, trailing-`&&`,
+newline-before-`||`, mixed `&&`+`||` across lines. Wired into
+`tests/run_tests.sh` as 4 new test cases (total 218 PASS).
+
 ## [v0.8.20] — 2026-05-16
 
 LSP UX fix.
@@ -4597,6 +4634,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.21]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.21
 [v0.8.20]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.20
 [v0.8.19]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.19
 [v0.8.18]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.18
