@@ -56,5 +56,35 @@ public class Program {
             hits = hits + 1
         }
         Console.WriteLine("ident-range hits: " + String_FromInt(hits))
+
+        // ── Bug 5 mirror form (v0.8.25): call-on-LHS ────────────
+        //   xs.Count()..N was a parse error pre-v0.8.25 — `..` only
+        //   existed inside ParsePrimary's integer + identifier
+        //   branches, so a call expression on the LHS exited
+        //   ParsePostfix cleanly and left the `..` dangling. v0.8.25
+        //   refactored `..` to a real binary operator (ParseRange,
+        //   between ParseAssign and ParseOr); both directions parse
+        //   uniformly now.
+
+        var mirrorSum: int = 0
+        let upper: int = 5
+        for k in xs.Count()..upper {
+            mirrorSum = mirrorSum + k
+        }
+        // xs.Count() == 3, upper == 5 → range 3..5 covers k=3 and k=4
+        Console.WriteLine("mirror sum: " + String_FromInt(mirrorSum))
+
+        // ── Bug 5 both-sides-are-calls (v0.8.25) ────────────────
+        //   The most aggressive case: both LHS and RHS contain
+        //   method calls. Pre-v0.8.25 this couldn't parse at all.
+
+        let lo = new List<int>()
+        lo.Add(0)   // lo.Count() == 1
+        var bothSum: int = 0
+        for m in lo.Count()..xs.Count() {
+            bothSum = bothSum + m
+        }
+        // lo.Count() == 1, xs.Count() == 3 → range 1..3 covers m=1 and m=2
+        Console.WriteLine("both-call sum: " + String_FromInt(bothSum))
     }
 }
