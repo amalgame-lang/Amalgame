@@ -46,5 +46,15 @@ public class Program {
             p = p + 1
         }
         Console.WriteLine("sum after remove: " + String_FromInt(sum))
+
+        // Bug 4 (v0.8.23): Keys()/Values() used `if (used)` which
+        // was truthy for the new TOMBSTONE state (=2) too — every
+        // removed key/value leaked back into the result list. The
+        // size check below would have shown 50 instead of 25 before
+        // the fix.
+        let allKeys = m.Keys()
+        Console.WriteLine("Keys() count: " + String_FromInt(allKeys.Count()))
+        let allValues = m.Values()
+        Console.WriteLine("Values() count: " + String_FromInt(allValues.Count()))
     }
 }

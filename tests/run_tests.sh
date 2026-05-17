@@ -499,6 +499,10 @@ run_test "auto-qualify: explicit this. mix" "$SAMPLES/cgen_auto_qualify.am" "aft
 # inserted before the remove become unreachable.
 run_test "map tombstone: count"       "$SAMPLES/map_tombstone.am"  "found after remove: 25"
 run_test "map tombstone: sum"         "$SAMPLES/map_tombstone.am"  "sum after remove: 925"
+# Bug 4 (v0.8.23): Keys()/Values() used truthy test on `used` which
+# leaked tombstoned entries. Expect 25 live, not 50.
+run_test "map tombstone: keys"        "$SAMPLES/map_tombstone.am"  "Keys() count: 25"
+run_test "map tombstone: values"      "$SAMPLES/map_tombstone.am"  "Values() count: 25"
 
 # Bug 2 regression (v0.8.23): cgen Map/Set/List method dispatch
 # must downcase to *_set / *_get / *_has / *_add / *_remove when
