@@ -1,0 +1,60 @@
+namespace Tests
+
+import Amalgame.Collections
+
+// Regression test for Bug 5 (amc v0.8.24):
+//   `for i in 0..xs.Count()` used to parse the RHS via
+//   ParsePrimary, which stops at the atom. The trailing
+//   `.Count()` was then attached to the BINARY ".." by
+//   ParsePostfix, producing CALL(MEMBER(range, Count)).
+//   The cgen saw a CALL on stmt.Left and emitted the foreach
+//   branch — bogus `AmalgameList* __it_i = 0 .. xs_Count();`
+//   that gcc rejected with "expected identifier before '.'".
+//
+// Fix: RHS of `..` now parses via ParsePostfix so the call /
+// member chain is consumed before the BINARY is built.
+//
+// Cases exercised:
+//   1. integer..method-call    (the original repro)
+//   2. integer..member-access  (single dot, no call)
+//   3. ident..method-call      (mirror branch, identifier LHS)
+
+public class Program {
+    public static void Main(string[] args) {
+        let xs = new List<int>()
+        xs.Add(10)
+        xs.Add(20)
+        xs.Add(30)
+
+        // Case 1: 0..xs.Count() — the failing form.
+        var sum: int = 0
+        for i in 0..xs.Count() {
+            sum = sum + xs.Get(i)
+        }
+        Console.WriteLine("sum: " + String_FromInt(sum))
+
+        // Case 2: 0..xs.Size() — also a method call on a Map proxy
+        // (List.Size is an alias for Count). Same parse shape.
+        let m = new Map<string, int>()
+        m.Set("a", 1)
+        m.Set("b", 2)
+        m.Set("c", 3)
+        var n: int = 0
+        // for-over a Map isn't supported directly; use .Size()
+        // method call as the range RHS to keep this case isolated
+        // to the parse fix.
+        for k in 0..m.Size() {
+            n = n + 1
+        }
+        Console.WriteLine("map iters: " + String_FromInt(n))
+
+        // Case 3: ident..method-call — mirror of the identifier
+        // branch in ParsePrimary (n..xs.Count() instead of 0..).
+        var start: int = 1
+        var hits: int = 0
+        for j in start..xs.Count() {
+            hits = hits + 1
+        }
+        Console.WriteLine("ident-range hits: " + String_FromInt(hits))
+    }
+}

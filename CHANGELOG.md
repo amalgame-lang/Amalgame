@@ -7,6 +7,78 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.24] — 2026-05-17
+
+Single-bug point release. Bug 5, reported mid-flight on the
+v0.8.23 release by the same downstream project that surfaced
+Bugs 1-4.
+
+### Fixed — Bug 5: `for i in 0..xs.Count()` drops the method call
+
+```amalgame
+for i in 0..xs.Count() {       // ← was rejected by gcc
+    sum = sum + xs.Get(i)
+}
+```
+
+cgen emitted bogus C:
+
+```c
+AmalgameList* __it_i = 0 .. xs_Count();
+i64 __len_i = AmalgameList_size(__it_i);
+for (i64 __idx_i = 0; __idx_i < __len_i; __idx_i++) { ... }
+```
+
+gcc then rejected with `expected identifier before '.'`.
+
+**Root cause** — parser, not cgen. `..` is parsed inline inside
+`ParsePrimary`'s integer + identifier branches, with the RHS
+pulled via `ParsePrimary()`. That consumes just the atom (`xs`)
+and stops. The `BINARY("..", 0, xs)` was then handed up to
+`ParsePostfix`, which saw the trailing `.Count()` and wrapped the
+whole range in `CALL(MEMBER(range, Count))`. cgen's range
+detector at `EmitStmt:FOR_IN_STMT` checks
+`stmt.Left.Kind == BINARY && stmt.Left.Str == ".."` — with the
+range wrapped in a CALL the check fails and emission falls into
+the collection-foreach branch.
+
+**Fix**: change the RHS parser from `ParsePrimary()` to
+`ParsePostfix()` in both range-producing branches of
+`ParsePrimary` (integer LHS and identifier LHS). `ParsePostfix`
+descends into `ParsePrimary` for the atom then attaches the
+`.method` / `(args)` / `[index]` suffix chain, so `xs.Count()`
+is fully consumed before the BINARY is built.
+
+```
+// Before: 0..xs.Count() → BINARY("..", 0, xs) + dangling .Count()
+// After:  0..xs.Count() → BINARY("..", 0, CALL(MEMBER(xs, Count)))
+```
+
+cgen then emits the counted loop cleanly:
+
+```c
+for (i64 i = 0; i < AmalgameList_count(xs); i++) { ... }
+```
+
+### Tests
+
+3-case regression in `tests/samples/for_range_method_call.am`:
+- `0..xs.Count()` (the original repro, asserts `sum=60`)
+- `0..m.Size()` on a `Map<K,V>` (same parse shape, asserts iter count)
+- `ident..xs.Count()` (mirror branch via identifier LHS)
+
+237/237 PASS (was 234 + 3 new).
+
+### Known follow-up — not in this release
+
+The mirror form `xs.Count()..N` (call-on-LHS, atom-on-RHS) still
+doesn't parse cleanly. `ParsePostfix` consumes `xs.Count()` and
+leaves `..N` dangling because `..` isn't recognised at any
+binary-op precedence level outside the two `ParsePrimary`
+branches. Fix would mean moving `..` to a proper binary-op layer
+(probably between `ParseAssign` and `ParseOr`). Tracked for a
+follow-up release.
+
 ## [v0.8.23] — 2026-05-17
 
 Four cgen + runtime bugs surfaced while compiling an external
@@ -4787,6 +4859,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.24]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.24
 [v0.8.23]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.23
 [v0.8.22]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.22
 [v0.8.21]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.21
