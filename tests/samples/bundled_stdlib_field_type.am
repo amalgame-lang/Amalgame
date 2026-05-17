@@ -1,0 +1,50 @@
+namespace MyApp
+
+import Amalgame.Formats.Json
+
+// Regression test for Bug 6 (amc v0.8.26):
+//
+// Pre-v0.8.26, declaring `Definition: JsonValue` on a user class with
+// its own namespace caused cgen to emit `MyApp_JsonValue*` (wrong) for
+// the field type and `MyApp_Json_NullValue()` for the construction
+// call. Both should mangle to the bundled-stdlib namespace
+// (`Amalgame_Formats_Json_JsonValue` / `Amalgame_Formats_Json_Json_NullValue`)
+// because the bundled stdlib classes live under `Amalgame.Formats.Json`
+// — and that's what libamalgame.a exports.
+//
+// Fix: main.am scans the user's `import` statements at compile start.
+// When `Amalgame.Formats.Json` (or any other bundled-stdlib namespace)
+// is referenced, the matching .am facade from share/amalgame/stdlib/
+// (or the source-tree fallback) is added to the `--external` list
+// automatically. RegisterExternalProg then seeds the cgen's
+// ExternalClasses registry with the right namespace, and TypeToC /
+// InferTypeFromExpr / EmitCalleeStr all dispatch correctly.
+
+public class Schema {
+    public Title:      string
+    public Definition: JsonValue
+
+    public Schema(title: string) {
+        this.Title      = title
+        this.Definition = Json.NullValue()
+    }
+}
+
+public class Program {
+    public static void Main() {
+        let s = new Schema("regression")
+        // Round-trip through a real Json.* method to make sure the
+        // construction call resolves to the bundled symbol.
+        if (s.Definition.IsNull()) {
+            Console.WriteLine("[PASS] field type lowers to bundled-stdlib namespace")
+        } else {
+            Console.WriteLine("[FAIL] Definition.IsNull() returned false")
+        }
+        // And exercise the field through a setter, so the struct
+        // typedef has to be both fwd-declared (typedef) and indirected
+        // (`->Definition`) — covers the previously-broken assignment
+        // path too.
+        s.Definition = Json.OfString("hello")
+        Console.WriteLine("[PASS] Definition setter: " + s.Definition.AsString())
+    }
+}

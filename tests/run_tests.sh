@@ -515,6 +515,27 @@ run_test "for-range: ident..method"   "$SAMPLES/for_range_method_call.am"  "iden
 run_test "for-range: call..ident"     "$SAMPLES/for_range_method_call.am"  "mirror sum: 7"
 run_test "for-range: call..call"     "$SAMPLES/for_range_method_call.am"  "both-call sum: 3"
 
+# Bug 7 regression (v0.8.26): BINARY-`+` used to misclassify any
+# String_* callee on the RHS as a string-concat dispatch via the
+# `String_StartsWith(callee, "String_")` name-pattern check, even
+# though String_Length / String_IndexOf / String_LastIndexOf /
+# String_ToInt return i64. The fix consults InferTypeFromExpr (which
+# already has precise return types) instead of the name prefix.
+run_test "bug7: int + String_Length"  "$SAMPLES/bug7_int_plus_string_helper.am"  "[PASS] int + String_Length lowers to addition"
+run_test "bug7: String_Length + int"  "$SAMPLES/bug7_int_plus_string_helper.am"  "[PASS] String_Length + int lowers to addition"
+run_test "bug7: string + string"      "$SAMPLES/bug7_int_plus_string_helper.am"  "[PASS] string + string still concatenates"
+run_test "bug7: string + FromInt"     "$SAMPLES/bug7_int_plus_string_helper.am"  "[PASS] string + String_FromInt still concatenates"
+run_test "bug7: Length + Length"      "$SAMPLES/bug7_int_plus_string_helper.am"  "[PASS] String_Length + String_Length lowers to addition"
+
+# Bug 8 regression (v0.8.26): the lexer fuses two consecutive `>` into
+# a single OP_SHR token, so the parser's generic-bracket loops were
+# bailing on `List<List<int>>` (and deeper) annotations. Fixed in
+# ParseTypeName, ParseNew, and the lambda-lookahead helper.
+run_test "bug8: List<List<int>>"      "$SAMPLES/bug8_nested_generics.am"  "[PASS] List<List<int>> annotation parses"
+run_test "bug8: triple-nested"        "$SAMPLES/bug8_nested_generics.am"  "[PASS] List<List<List<int>>> annotation parses"
+run_test "bug8: quad-nested"          "$SAMPLES/bug8_nested_generics.am"  "[PASS] List<List<List<List<int>>>> annotation parses"
+run_test "bug8: Map<K, List<V>>"      "$SAMPLES/bug8_nested_generics.am"  "[PASS] Map<string, List<int>> annotation parses"
+
 # Bug 2 regression (v0.8.23): cgen Map/Set/List method dispatch
 # must downcase to *_set / *_get / *_has / *_add / *_remove when
 # the receiver is `this.field` or `obj.field`, not just a bare
@@ -558,6 +579,21 @@ run_test "inline-C dir: isalpha no"   "$SAMPLES/inline_c_directives.am"  "0 is n
 LIBA_SAMPLE="$SAMPLES/external_libamalgame.am"
 LIBA_EXTS="src/stdlib/json.am src/stdlib/msgpack.am"
 run_external_test "libamalgame.a: msgpack"  "$LIBA_SAMPLE"  "mp: 42"           "$LIBA_EXTS"
+
+# Bug 6 regression (v0.8.26): user code that declares a JsonValue
+# field on its own class must lower the field type to the bundled
+# stdlib namespace (Amalgame_Formats_Json_JsonValue), not the user's
+# NsPrefix-mangled name. Verifies the auto-external mechanism kicks
+# in from `import Amalgame.Formats.Json` alone — NO `--external` flag
+# passed here, matching the `amc build` end-user path.
+run_external_test "bug6: JsonValue field type" \
+    "$SAMPLES/bundled_stdlib_field_type.am" \
+    "[PASS] field type lowers to bundled-stdlib namespace" \
+    ""
+run_external_test "bug6: Definition setter" \
+    "$SAMPLES/bundled_stdlib_field_type.am" \
+    "[PASS] Definition setter: hello" \
+    ""
 
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
