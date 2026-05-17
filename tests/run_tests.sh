@@ -613,6 +613,26 @@ run_external_test "bug9: JsonError.Line" \
     "[PASS] external field access — JsonError.Line" \
     ""
 
+# Bug 10 regression (v0.8.28): `obj.Field.Get(i) == s` where
+# `obj` is a local var of class type C and `C.Field: List<string>`
+# used to emit raw C `==` (pointer compare) instead of
+# `code_string_equals`. AutoBUS's subscription.am::FindByTopic
+# exposed it. Fix: InferTypeFromExpr's `.Get(...)` branch now
+# resolves the element type via `ListElemGet(LocalTypeGet(obj),
+# Field)` for the chained MEMBER receiver shape.
+run_test "bug10: obj.Field.Get == localVar" \
+    "$SAMPLES/bug10_list_string_eq.am" \
+    "[PASS] bug10 — obj.Field.Get(i) == localVar"
+run_test "bug10: localVar == obj.Field.Get" \
+    "$SAMPLES/bug10_list_string_eq.am" \
+    "[PASS] bug10 — localVar == obj.Field.Get(i)"
+run_test "bug10: obj.Field.Get != localVar" \
+    "$SAMPLES/bug10_list_string_eq.am" \
+    "[PASS] bug10 — obj.Field.Get(i) != localVar"
+run_test "bug10: localList.Get == concatVar" \
+    "$SAMPLES/bug10_list_string_eq.am" \
+    "[PASS] bug10 — localList.Get(i) == concatVar"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"
