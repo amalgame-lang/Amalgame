@@ -974,6 +974,13 @@ public class CGen {
                 if (calleeStr == "Process_RunCaptureBoth") { return "AmalgameProcessResult*" }
                 if (calleeStr == "Process_RunCaptureBothTimeout") { return "AmalgameProcessResult*" }
                 if (calleeStr == "Process_RunTimeout") { return "i64" }
+                if (calleeStr == "Process_Spawn") { return "AmalgameProcessHandle*" }
+                if (calleeStr == "Process_IsAlive") { return "code_bool" }
+                if (calleeStr == "Process_ExitCode") { return "i64" }
+                if (calleeStr == "Process_Wait") { return "code_bool" }
+                if (calleeStr == "Process_WriteLine") { return "code_bool" }
+                if (calleeStr == "Process_ReadLine") { return "code_string" }
+                if (calleeStr == "Process_ReadErrLine") { return "code_string" }
                 if (calleeStr == "Console_ReadLine" || calleeStr == "Console_ReadBytes") { return "code_string" }
                 if (calleeStr == "Console_Flush" || calleeStr == "Console_Write") { return "void" }
                 // String stdlib: int / bool returns. The CGen previously
