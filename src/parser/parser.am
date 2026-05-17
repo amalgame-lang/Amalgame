@@ -1279,13 +1279,39 @@ public class Parser {
     }
 
     private AstNode ParseAssign() {
-        let left = this.ParseOr()
+        let left = this.ParseRange()
         let isAssign = this.CheckValue("=") || this.CheckValue("+=") || this.CheckValue("-=") || this.CheckValue("*=") || this.CheckValue("/=") || this.CheckValue("%=")
         let isBitAssign = this.CheckValue("&=") || this.CheckValue("|=") || this.CheckValue("^=") || this.CheckValue("<<=") || this.CheckValue(">>=")
         if (isAssign || isBitAssign) {
             let tok = this.Advance()
             let right = this.ParseAssign()
             return Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
+        }
+        return left
+    }
+
+    // ParseRange — `..` as a proper binary operator (v0.8.25). Sits
+    // between ParseAssign and ParseOr in the precedence ladder, just
+    // above the logical ops. Before this, `..` was only recognised
+    // inside ParsePrimary's integer + identifier branches with the
+    // RHS pulled via ParsePostfix (v0.8.24 fix for Bug 5). That
+    // resolved `0..xs.Count()` but the mirror form `xs.Count()..N`
+    // still didn't parse — `xs.Count()` was consumed by ParsePostfix
+    // as a normal expression, then the `..` was unrecognised at any
+    // outer level. Pulling `..` up to a regular binary-op layer
+    // works for both directions and for any mixed shape
+    // (`a + b .. c * d`, `xs.Count() .. ys.Count()`, …).
+    //
+    // Non-associative: `a..b..c` is rejected by leaving the second
+    // `..` for the caller, which surfaces as a parse error one level
+    // up. Mirrors Rust's semantics — chained ranges have no obvious
+    // meaning in Amalgame.
+    private AstNode ParseRange() {
+        let left = this.ParseOr()
+        if (this.CheckValue("..")) {
+            let tok = this.Advance()
+            let right = this.ParseOr()
+            return Ast.Binary(left, "..", right, tok.Line, tok.Column)
         }
         return left
     }
@@ -1591,23 +1617,10 @@ public class Parser {
 
         if (this.CheckType(TokenType.INTEGER)) {
             this.Advance()
-            let lit = Ast.IntLit(v, tok.Line, tok.Column)
-            // Range: 0..count or 0..xs.Count() — Bug 5 (v0.8.24): the
-            // RHS used to parse via ParsePrimary, which stops at the
-            // atom. So `0..xs.Count()` parsed as BINARY("..", 0, xs)
-            // and the trailing `.Count()` was then attached to the
-            // BINARY by ParsePostfix → CALL(MEMBER(range, Count)).
-            // The cgen saw a CALL on stmt.Left and dropped into the
-            // foreach branch, emitting bogus `AmalgameList* __it = 0
-            // .. xs_Count()` instead of a counted-int for-loop.
-            // ParsePostfix consumes the suffix chain so the RHS is
-            // the full call/member expression.
-            if (this.CheckValue("..")) {
-                this.Advance()
-                let right = this.ParsePostfix()
-                return Ast.Binary(lit, "..", right, tok.Line, tok.Column)
-            }
-            return lit
+            // v0.8.25: `..` is no longer parsed inline here — it's a
+            // proper binary operator in ParseRange (between ParseAssign
+            // and ParseOr). See that function for the rationale.
+            return Ast.IntLit(v, tok.Line, tok.Column)
         }
         if (this.CheckType(TokenType.FLOAT)) {
             this.Advance()
@@ -1670,16 +1683,8 @@ public class Parser {
         }
         if (this.CheckType(TokenType.IDENTIFIER)) {
             this.Advance()
-            let ident = Ast.Ident(v, tok.Line, tok.Column)
-            // Range: i..count or n..xs.Count() — same Bug 5 fix as
-            // the integer branch above; see that comment for why
-            // RHS must be ParsePostfix rather than ParsePrimary.
-            if (this.CheckValue("..")) {
-                this.Advance()
-                let right = this.ParsePostfix()
-                return Ast.Binary(ident, "..", right, tok.Line, tok.Column)
-            }
-            return ident
+            // v0.8.25: `..` lives in ParseRange now.
+            return Ast.Ident(v, tok.Line, tok.Column)
         }
 
         if (this.CheckValue("[")) {

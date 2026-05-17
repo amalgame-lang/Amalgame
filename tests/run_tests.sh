@@ -510,6 +510,10 @@ run_test "map tombstone: values"      "$SAMPLES/map_tombstone.am"  "Values() cou
 run_test "for-range: 0..method()"     "$SAMPLES/for_range_method_call.am"  "sum: 60"
 run_test "for-range: map.Size()"      "$SAMPLES/for_range_method_call.am"  "map iters: 3"
 run_test "for-range: ident..method"   "$SAMPLES/for_range_method_call.am"  "ident-range hits: 2"
+# Bug 5 mirror form (v0.8.25): call-on-LHS now parses too thanks
+# to the ParseRange refactor (`..` is a proper binary operator).
+run_test "for-range: call..ident"     "$SAMPLES/for_range_method_call.am"  "mirror sum: 7"
+run_test "for-range: call..call"     "$SAMPLES/for_range_method_call.am"  "both-call sum: 3"
 
 # Bug 2 regression (v0.8.23): cgen Map/Set/List method dispatch
 # must downcase to *_set / *_get / *_has / *_add / *_remove when
