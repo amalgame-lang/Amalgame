@@ -244,29 +244,41 @@ public class CGen {
     }
 
     public void AddFilePass2(AstNode prog, string sourcePath) {
+        // Backward-compatible single-call entry: emits forwards + bodies
+        // for ONE file. Cross-file callers (main.am, gen_test.am)
+        // should invoke AddFilePass2Forwards on every file first, then
+        // AddFilePass2Bodies — see Bug 1 fix (v0.8.23) for the
+        // rationale.
+        this.AddFilePass2Forwards(prog)
+        this.AddFilePass2Bodies(prog, sourcePath)
+    }
+
+    // Pass 2a — forwards only. Constructor signatures, non-constructor
+    // method signatures, lambda env structs and fn forward decls.
+    // Bug 1 (v0.8.23): when the driver compiles N files, calling this
+    // for every file BEFORE emitting any body lets a call site in
+    // file A reach a method defined in file B without gcc tripping
+    // an implicit-declaration warning + conflicting-types error.
+    public void AddFilePass2Forwards(AstNode prog) {
+        this.EmitConstructorForwards(prog)
+        this.EmitMethodForwards(prog)
+        // Phase A — assign ids and emit env struct + forward decl for
+        // every lambda in this file. The fn bodies themselves land in
+        // AddFilePass2Bodies so they can dereference fields on class
+        // structs (like u->Name) whose bodies emit there.
+        this.EmitLambdaForwards(prog)
+    }
+
+    // Pass 2b — bodies only. Class struct + method bodies, lambda fn
+    // bodies. Must be called AFTER every file's forwards (Pass 2a)
+    // have been emitted.
+    public void AddFilePass2Bodies(AstNode prog, string sourcePath) {
         // v0.8.0+: track the current source path so EmitStmt can prefix
         // each lowered statement with `#line N "<path>"`. Reset the
         // last-line cache per file so the first statement always
         // emits a directive.
         this.CurrentSource   = sourcePath
         this.LastLineEmitted = -1
-        // Phase A0 — forward-declare every class's `_new(...)` constructor
-        // signature, BEFORE any class body is emitted. Without this, a
-        // constructor whose body calls `new B(...)` on a class declared
-        // later in the file (or even just below in the same file) hits
-        // an implicit-decl / conflicting-types pair in gcc, since pass 2
-        // emits decls top-to-bottom and class B's `_new` only appears
-        // when B's body is reached. All Pass-1 typedefs are visible by
-        // now, so the parameter types resolve cleanly.
-        this.EmitConstructorForwards(prog)
-        // Phase A — assign ids and emit env struct + forward decl for
-        // every lambda in this file, BEFORE any decl bodies that may
-        // reference them. The fn bodies themselves come last so they
-        // can dereference fields on class structs (like u->Name) whose
-        // bodies are emitted in Phase B. The walker descends into all
-        // child/list fields generically so any lambda position the
-        // parser produces is covered.
-        this.EmitLambdaForwards(prog)
         // Phase B — regular decl emission (class struct bodies + method bodies).
         let decls = prog.Children.Count()
         for j in 0..decls {
@@ -277,6 +289,30 @@ public class CGen {
         // now visible, so typed param unboxing (e.g. `Probe_User* u =
         // (Probe_User*)__arg0;` followed by `u->Name`) lowers cleanly.
         this.EmitLambdaBodies(prog)
+    }
+
+    // Emit forward decls for every non-constructor method in the prog.
+    // Constructors are handled by EmitConstructorForwards; this fills
+    // the gap so a method in file A can call one in file B that hasn't
+    // been emitted yet.
+    private void EmitMethodForwards(AstNode prog) {
+        let decls = prog.Children.Count()
+        for i in 0..decls {
+            let decl = prog.Children.Get(i)
+            if (decl.Kind == NodeKind.CLASS_DECL) {
+                let cname = this.SymName(decl.Name)
+                let members = decl.Children.Count()
+                for j in 0..members {
+                    let m = decl.Children.Get(j)
+                    if (m.Kind == NodeKind.METHOD_DECL && m.Name != decl.Name) {
+                        let isPublic = m.Flag
+                        var prefix   = ""
+                        if (!isPublic) { prefix = "static " }
+                        this.Out.EmitLine(prefix + this.MethodSig(m, cname) + ";")
+                    }
+                }
+            }
+        }
     }
 
     private void EmitConstructorForwards(AstNode prog) {
@@ -1918,6 +1954,20 @@ public class CGen {
                     let elemC = this.TypeToC(inner)
                     this.ListElemSet(name, m.Name, elemC)
                 }
+                // Track value type for Map<K,V> fields (Bug 2 follow-up,
+                // v0.8.23): without this, `this.entries.Get(k)` falls
+                // back to `(void*)` cast for class-field maps.
+                if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
+                    let mi = String_Substring(rawType, 4, String_Length(rawType) - 5)
+                    let mc = String_IndexOf(mi, ",")
+                    if (mc > 0) {
+                        let vRaw = String_Substring(mi, mc + 1, String_Length(mi) - mc - 1)
+                        let vTrim = String_Trim(vRaw)
+                        if (String_Length(vTrim) > 0) {
+                            this.ListElemSet(name, m.Name, this.TypeToC(vTrim))
+                        }
+                    }
+                }
             }
         }
 
@@ -3397,78 +3447,109 @@ public class CGen {
         let callee = callExpr.Left
         let mname  = callee.Name
 
+        // Resolve the receiver to a C expression + C type, regardless
+        // of whether it's a simple local (`m.Set(...)`), a field on
+        // `this` (`this.entries.Set(...)`), or a field on a known
+        // local instance (`obj.entries.Set(...)`). Bug 2 (v0.8.23):
+        // before this, only the IDENTIFIER case was specialized, so
+        // `this.entries.Set(k, v)` fell through to the generic method
+        // dispatch and emitted `AmalgameMap_Set` (PascalCase, undefined).
+        var rxExpr  = ""
+        var rxType  = ""
+        var rxElem  = ""   // tracking key for ListElemGet on Map<K,V> Get
+        if (callee.Left != null) {
+            let rk = callee.Left.Kind
+            if (rk == NodeKind.IDENTIFIER) {
+                rxExpr = callee.Left.Name
+                rxType = this.LocalTypeGet(rxExpr)
+                rxElem = "__local_map__." + rxExpr
+            }
+            if (rk == NodeKind.MEMBER && callee.Left.Left != null) {
+                let pk = callee.Left.Left.Kind
+                if (pk == NodeKind.THIS_EXPR) {
+                    let fn = callee.Left.Name
+                    rxExpr = "self->" + fn
+                    rxType = this.FieldTypeGet(this.CurrentClass, fn)
+                    rxElem = this.CurrentClass + "." + fn
+                }
+                if (pk == NodeKind.IDENTIFIER) {
+                    let vn = callee.Left.Left.Name
+                    let vt = this.LocalTypeGet(vn)
+                    let bn = String_Replace(vt, "*", "")
+                    let fn = callee.Left.Name
+                    if (String_Length(bn) > 0) {
+                        rxExpr = vn + "->" + fn
+                        rxType = this.FieldTypeGet(bn, fn)
+                        rxElem = bn + "." + fn
+                    }
+                }
+            }
+        }
+
         // Map methods
         // Map iteration helpers — Keys() / Values() return List<K>/List<V>.
-        if ((mname == "Keys" || mname == "Values") && callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
-            let vname = callee.Left.Name
-            let vtype = this.LocalTypeGet(vname)
-            if (vtype == "AmalgameMap*") {
-                if (mname == "Keys")   { return "AmalgameMap_keys(" + vname + ")" }
-                if (mname == "Values") { return "AmalgameMap_values(" + vname + ")" }
+        if (mname == "Keys" || mname == "Values") {
+            if (rxType == "AmalgameMap*") {
+                if (mname == "Keys")   { return "AmalgameMap_keys(" + rxExpr + ")" }
+                if (mname == "Values") { return "AmalgameMap_values(" + rxExpr + ")" }
             }
         }
         if (mname == "Set" || mname == "Has" || mname == "Size" || mname == "Remove" || mname == "Get") {
-            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
-                let vname = callee.Left.Name
-                let vtype = this.LocalTypeGet(vname)
-                if (vtype == "AmalgameMap*") {
-                    let args = callExpr.Args
-                    let ac = args.Count()
-                    if (mname == "Set" && ac >= 2) {
-                        let k2 = this.EmitExprStr(args.Get(0))
-                        let v2 = this.EmitExprStr(args.Get(1))
-                        return "AmalgameMap_set(" + vname + ", " + k2 + ", " + this.BoxAsVoid(v2) + ")"
+            if (rxType == "AmalgameMap*") {
+                let args = callExpr.Args
+                let ac = args.Count()
+                if (mname == "Set" && ac >= 2) {
+                    let k2 = this.EmitExprStr(args.Get(0))
+                    let v2 = this.EmitExprStr(args.Get(1))
+                    return "AmalgameMap_set(" + rxExpr + ", " + k2 + ", " + this.BoxAsVoid(v2) + ")"
+                }
+                if (mname == "Has" && ac >= 1) {
+                    let k2 = this.EmitExprStr(args.Get(0))
+                    return "AmalgameMap_has(" + rxExpr + ", " + k2 + ")"
+                }
+                if (mname == "Size") { return "AmalgameMap_size(" + rxExpr + ")" }
+                if (mname == "Remove" && ac >= 1) {
+                    let k2 = this.EmitExprStr(args.Get(0))
+                    return "AmalgameMap_remove(" + rxExpr + ", " + k2 + ")"
+                }
+                if (mname == "Get" && ac >= 1) {
+                    let k2 = this.EmitExprStr(args.Get(0))
+                    // Use the recorded value type for `new Map<K,V>()` so
+                    // `m.Get(k)` lowers to `(V)AmalgameMap_get(m, k)`
+                    // instead of `(void*)…`. Falls back to void* when V
+                    // wasn't tracked (e.g. param-passed map or field).
+                    var castT = ""
+                    let dotPos = String_IndexOf(rxElem, ".")
+                    if (dotPos > 0) {
+                        let nsPart = String_Substring(rxElem, 0, dotPos)
+                        let kPart  = String_Substring(rxElem, dotPos + 1, String_Length(rxElem) - dotPos - 1)
+                        castT = this.ListElemGet(nsPart, kPart)
                     }
-                    if (mname == "Has" && ac >= 1) {
-                        let k2 = this.EmitExprStr(args.Get(0))
-                        return "AmalgameMap_has(" + vname + ", " + k2 + ")"
-                    }
-                    if (mname == "Size") { return "AmalgameMap_size(" + vname + ")" }
-                    if (mname == "Remove" && ac >= 1) {
-                        let k2 = this.EmitExprStr(args.Get(0))
-                        return "AmalgameMap_remove(" + vname + ", " + k2 + ")"
-                    }
-                    if (mname == "Get" && ac >= 1) {
-                        let k2 = this.EmitExprStr(args.Get(0))
-                        // Use the recorded value type for `new Map<K,V>()` so
-                        // `m.Get(k)` lowers to `(V)AmalgameMap_get(m, k)`
-                        // instead of `(void*)…`. Falls back to void* when V
-                        // wasn't tracked (e.g. param-passed map).
-                        var castT = this.ListElemGet("__local_map__", vname)
-                        if (String_Length(castT) == 0) { castT = "void*" }
-                        return "(" + castT + ")AmalgameMap_get(" + vname + ", " + k2 + ")"
-                    }
+                    if (String_Length(castT) == 0) { castT = "void*" }
+                    return "(" + castT + ")AmalgameMap_get(" + rxExpr + ", " + k2 + ")"
                 }
             }
         }
         // Set methods
         if (mname == "Contains" || mname == "Size") {
-            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
-                let vname = callee.Left.Name
-                let vtype = this.LocalTypeGet(vname)
-                if (vtype == "AmalgameSet*") {
-                    let args = callExpr.Args
-                    let ac = args.Count()
-                    if (mname == "Contains" && ac >= 1) {
-                        let v2 = this.EmitExprStr(args.Get(0))
-                        return "AmalgameSet_contains(" + vname + ", " + v2 + ")"
-                    }
-                    if (mname == "Size") { return "AmalgameSet_size(" + vname + ")" }
+            if (rxType == "AmalgameSet*") {
+                let args = callExpr.Args
+                let ac = args.Count()
+                if (mname == "Contains" && ac >= 1) {
+                    let v2 = this.EmitExprStr(args.Get(0))
+                    return "AmalgameSet_contains(" + rxExpr + ", " + v2 + ")"
                 }
+                if (mname == "Size") { return "AmalgameSet_size(" + rxExpr + ")" }
             }
         }
         if (mname == "Add" || mname == "Remove") {
-            if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
-                let vname = callee.Left.Name
-                let vtype = this.LocalTypeGet(vname)
-                if (vtype == "AmalgameSet*") {
-                    let args = callExpr.Args
-                    let ac = args.Count()
-                    if (ac >= 1) {
-                        let v2 = this.EmitExprStr(args.Get(0))
-                        if (mname == "Add") { return "AmalgameSet_add(" + vname + ", " + v2 + ")" }
-                        return "AmalgameSet_remove(" + vname + ", " + v2 + ")"
-                    }
+            if (rxType == "AmalgameSet*") {
+                let args = callExpr.Args
+                let ac = args.Count()
+                if (ac >= 1) {
+                    let v2 = this.EmitExprStr(args.Get(0))
+                    if (mname == "Add") { return "AmalgameSet_add(" + rxExpr + ", " + v2 + ")" }
+                    return "AmalgameSet_remove(" + rxExpr + ", " + v2 + ")"
                 }
             }
         }
