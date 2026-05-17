@@ -510,6 +510,10 @@ run_test "map tombstone: values"      "$SAMPLES/map_tombstone.am"  "Values() cou
 run_test "for-range: 0..method()"     "$SAMPLES/for_range_method_call.am"  "sum: 60"
 run_test "for-range: map.Size()"      "$SAMPLES/for_range_method_call.am"  "map iters: 3"
 run_test "for-range: ident..method"   "$SAMPLES/for_range_method_call.am"  "ident-range hits: 2"
+# Bug 5 mirror form (v0.8.25): call-on-LHS now parses too thanks
+# to the ParseRange refactor (`..` is a proper binary operator).
+run_test "for-range: call..ident"     "$SAMPLES/for_range_method_call.am"  "mirror sum: 7"
+run_test "for-range: call..call"     "$SAMPLES/for_range_method_call.am"  "both-call sum: 3"
 
 # Bug 2 regression (v0.8.23): cgen Map/Set/List method dispatch
 # must downcase to *_set / *_get / *_has / *_add / *_remove when
@@ -675,6 +679,42 @@ run_lsp_check "lsp: folding class body"    '{"startLine":6,"endLine":10}'       
 run_lsp_check "lsp: folding comment run"   '{"startLine":3,"endLine":5,"kind":"comment"}'              "$lsp_fold_seq"
 # 2-line import group on lines 1..2 → 0..1.
 run_lsp_check "lsp: folding import run"    '{"startLine":0,"endLine":1,"kind":"imports"}'              "$lsp_fold_seq"
+
+# Bug 6 regression (v0.8.25): the workspace-root walk now treats
+# `amalgame.toml` as a marker. Pre-v0.8.25, opening a file in a
+# sub-directory of a project that only had a manifest (no .git /
+# build_amc.sh / package.json) made `FindWorkspaceRoot` fall back
+# to the file's own dir — the sibling scan never reached the other
+# directories of the project, and cross-dir class references came
+# back as "Unknown symbol". Fixture lives at
+# tests/fixtures/lsp-workspace/.
+LSP_FIX_ROOT="$(pwd)/tests/fixtures/lsp-workspace"
+LSP_FIX_FILE="$LSP_FIX_ROOT/tests/byteio_test.am"
+lsp_open_xdir='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file://'"$LSP_FIX_FILE"'","languageId":"amalgame","version":1,"text":"namespace Workspace.Tests\n\npublic class TestRunner {\n    public static void Run() {\n        let v: int = ByteIO.Read(42)\n    }\n}\n"}}}'
+lsp_xdir_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_xdir"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# Negative check: the diagnostics array for this file must NOT
+# contain "Unknown symbol 'ByteIO'". Reuses the lsp_check helper
+# pattern but inverts the assertion.
+run_lsp_absent() {
+    local name="$1"
+    local pattern="$2"
+    local input="$3"
+    printf "  %-34s" "$name"
+    local out
+    out=$(printf '%s' "$input" | "$AMC" lsp 2>&1)
+    if echo "$out" | grep -qF "$pattern"; then
+        echo -e "${RED}FAIL${NC} (unexpected pattern present)"
+        echo "    should NOT contain: $pattern"
+        echo "    got snippet:"
+        echo "$out" | grep -F "$pattern" | head -2 | sed 's/^/      /'
+        FAIL=$((FAIL + 1))
+    else
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    fi
+}
+run_lsp_absent "lsp: xdir resolves ByteIO" "Unknown symbol 'ByteIO'" "$lsp_xdir_seq"
 
 # ── amc migrate ────────────────────────────────────────
 echo ""
