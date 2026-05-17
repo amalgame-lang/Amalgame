@@ -1,0 +1,8 @@
+namespace MultiBug1
+
+public class Program {
+    public static void Main(string[] args) {
+        let h = new Helper()
+        Console.WriteLine("got: " + String_FromInt(h.Compute(5)))
+    }
+}

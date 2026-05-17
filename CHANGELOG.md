@@ -7,6 +7,82 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.23] — 2026-05-17
+
+Four cgen + runtime bugs surfaced while compiling an external
+Amalgame project against the v0.8.22 runtime. All four had local
+workarounds documented in user code; this release removes the
+need for any of them.
+
+### Fixed — Bug 1: cgen multi-file forward decls
+
+`amc a.am b.am` where `a.am` calls a method defined in `b.am`
+tripped gcc's `-Wimplicit-function-declaration` followed by a
+hard `conflicting-types` error. Pass 1 only emitted struct
+typedefs across files; method + constructor forwards landed
+inside Pass 2 file-by-file, so when `a.am`'s body was emitted,
+`b.am`'s prototypes hadn't been written yet. Workaround was
+reordering args (`amc b.am a.am`).
+
+**Fix**: split `AddFilePass2` into `AddFilePass2Forwards` +
+`AddFilePass2Bodies`. `main.am` and `gen_test.am` now run the
+forward sweep across every file before any body. New
+`EmitMethodForwards` covers non-constructor methods.
+
+### Fixed — Bug 2: `this.field.Set / .Get / .Has / .Add` dispatch
+
+The cgen specialized Map / Set / List methods only when the
+receiver was a bare `IDENTIFIER` (`m.Set(k, v)`). When the
+receiver was a class field — `this.entries.Set(k, v)` or
+`obj.cache.Add(x)` — the dispatch fell through to the generic
+method path which emits PascalCase (`AmalgameMap_Set`, undef).
+Workaround was an intermediate local.
+
+**Fix**: factor receiver resolution to handle three kinds —
+`IDENTIFIER`, `MEMBER-of-THIS`, `MEMBER-of-IDENTIFIER` — and
+reuse the same `rxExpr` / `rxType` for the Map and Set blocks.
+Also track `Map<K,V>` *field* element types (already done for
+`List<T>` fields) so `this.entries.Get(k)` casts to `V` instead
+of `(void*)`.
+
+### Fixed — Bug 3: `AmalgameMap_remove` poisons collision chains
+
+Open-addressing linear probe + `_remove` marking the slot
+`AMMAP_EMPTY` → colliding keys inserted *before* the remove
+became unreachable. `Has(k)` returned false even though `Set(k,
+…)` was called. Has-then-Get patterns then segfaulted.
+
+**Fix**: 3-state slot (`EMPTY` / `OCCUPIED` / `TOMBSTONE`).
+`_remove` marks `TOMBSTONE`; `_get` / `_has` skip tombstones;
+`_set` reuses the first tombstone on the probe path. Load
+factor counts size + tombstones so insert/remove churn grows
+before probes degenerate. `_ammap_grow` rebuilds OCCUPIED-only.
+
+### Fixed — Bug 4: `Map.Keys / Values` leak tombstoned entries
+
+Discovered while reverting Bug 3 to confirm the regression
+fired: even with the tombstone fix in `_set` / `_get` / `_has`
+/ `_remove`, `_keys` and `_values` still emitted the dead
+entries because they tested `if (e->used)` — and `TOMBSTONE`
+(=2) is truthy in C.
+
+**Fix**: switch both loops to `if (e->used == AMMAP_OCCUPIED)`.
+Same 3-state constant the rest of the file already uses.
+
+### Tests
+
+234/234 PASS (was 232 + 9 new regression cases):
+
+- `map_tombstone.am` — insert 50 keys, remove 25, assert all
+  remaining findable, sum = 925, `Keys().Count() == 25`,
+  `Values().Count() == 25`.
+- `field_map_dispatch.am` — Map / Set / List fields on a class,
+  full `Set` / `Has` / `Get` / `Remove` / `Add` / `Size` /
+  `Count` surface.
+- `multi_file_bug1/{main,helper}.am` + new `run_multi_test`
+  harness with `-Werror=implicit-function-declaration` so the
+  Bug 1 regression fails hard if it reappears.
+
 ## [v0.8.22] — 2026-05-17
 
 `Process` v3 — streaming `Spawn` with a persistent handle.
@@ -4711,6 +4787,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.23]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.23
 [v0.8.22]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.22
 [v0.8.21]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.21
 [v0.8.20]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.20

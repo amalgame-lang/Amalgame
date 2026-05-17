@@ -348,12 +348,20 @@ public class AmalgameCompiler {
 
         // ── Codegen pass ──────────────────────────────
         gen.EmitSeparator()
+        // Bug 1 (v0.8.23): every file's forwards must land before any
+        // file's bodies, otherwise a call from file A to a method in
+        // file B fires gcc's implicit-declaration warning + a follow-up
+        // conflicting-types error. Pre-fix workaround was forcing the
+        // user to pass `amc utils.am main.am` (common files first).
+        for jf in 0..inputCount {
+            gen.AddFilePass2Forwards(progs.Get(jf))
+        }
         for j in 0..inputCount {
             // Pass the source path so the cgen emits `#line N "foo.am"`
             // directives at each statement — DWARF then carries .am
             // filenames + line numbers, and `amc dap` can forward
             // breakpoints natively without rewriting source paths.
-            gen.AddFilePass2(progs.Get(j), inputFiles.Get(j))
+            gen.AddFilePass2Bodies(progs.Get(j), inputFiles.Get(j))
         }
 
         // ── Write output .c ───────────────────────────
