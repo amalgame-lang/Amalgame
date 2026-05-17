@@ -92,6 +92,7 @@ jobs:
           mkdir -p "dist/$NAME/bin"
           mkdir -p "dist/$NAME/share/amalgame/runtime"
           mkdir -p "dist/$NAME/share/amalgame/lib"
+          mkdir -p "dist/$NAME/share/amalgame/stdlib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
           mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
@@ -101,6 +102,17 @@ jobs:
           # build_amc.sh ran tools/build-stdlib.sh as Step 4, so
           # lib/libamalgame.a is already on disk.
           cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          # Bug 6 fix (v0.8.26+): ship the bundled-stdlib .am sources
+          # so `amc build` can auto-attach them as `--external` when
+          # user code does `import Amalgame.Formats.Json` etc.
+          # Without this, the cgen has no way to learn the right
+          # namespace mangling for JsonValue / TomlValue / MsgPack and
+          # falls back to the consumer's NsPrefix.
+          cp src/stdlib/json.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           # Bundle the LLM-prompt source docs so `amc migrate / generate /
           # explain` find them at <exec-dir>/../share/amalgame/docs/...
@@ -179,12 +191,19 @@ jobs:
           mkdir -p "dist/$NAME/bin"
           mkdir -p "dist/$NAME/share/amalgame/runtime"
           mkdir -p "dist/$NAME/share/amalgame/lib"
+          mkdir -p "dist/$NAME/share/amalgame/stdlib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
           mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
           cp amc                              "dist/$NAME/bin/"
           cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
           cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          # Bug 6 fix (v0.8.26+): see linux job for rationale.
+          cp src/stdlib/json.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
@@ -267,12 +286,19 @@ jobs:
           mkdir -p "dist/$NAME/bin"
           mkdir -p "dist/$NAME/share/amalgame/runtime"
           mkdir -p "dist/$NAME/share/amalgame/lib"
+          mkdir -p "dist/$NAME/share/amalgame/stdlib"
           mkdir -p "dist/$NAME/share/amalgame/docs/language"
           mkdir -p "dist/$NAME/share/amalgame/docs/guide"
           mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
           cp amc.exe                          "dist/$NAME/bin/"
           cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
           cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          # Bug 6 fix (v0.8.26+): see linux job for rationale.
+          cp src/stdlib/json.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"

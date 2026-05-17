@@ -110,6 +110,9 @@ Source: "{#AmcStageDir}\bin\*"; DestDir: "{app}\bin"; Flags: ignoreversion recur
 ; AMC_RUNTIME env override is needed.
 Source: "{#AmcStageDir}\share\amalgame\runtime\*"; DestDir: "{app}\share\amalgame\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AmcStageDir}\share\amalgame\lib\*";     DestDir: "{app}\share\amalgame\lib";     Flags: ignoreversion recursesubdirs createallsubdirs
+; Bug 6 fix (v0.8.26+): ship bundled-stdlib .am facades so the cgen
+; can auto-attach them when user code imports the namespace.
+Source: "{#AmcStageDir}\share\amalgame\stdlib\*";  DestDir: "{app}\share\amalgame\stdlib";  Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AmcStageDir}\share\amalgame\docs\*";    DestDir: "{app}\share\amalgame\docs";    Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AmcStageDir}\share\amalgame\editors\*"; DestDir: "{app}\share\amalgame\editors"; Flags: ignoreversion recursesubdirs createallsubdirs
 

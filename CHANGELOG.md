@@ -7,6 +7,111 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.26] — 2026-05-17
+
+Three downstream-reported bugs surfaced while building a JSON-schema
+processing app on top of v0.8.25. Each one had a documented
+workaround (rename the field, extract the length to a local, drop the
+outer `List` annotation) — this release closes the underlying root
+causes so the workarounds can come out.
+
+### Fixed — Bug 6 (cgen): bundled-stdlib field types mangle to user NsPrefix
+
+User code with its own namespace would declare a field like
+`Definition: JsonValue` and watch the cgen emit
+`MyApp_JsonValue* Definition;` (and `MyApp_Json_NullValue()` for the
+construction call) instead of the bundled-stdlib's
+`Amalgame_Formats_Json_JsonValue*` / `Amalgame_Formats_Json_Json_NullValue()`.
+The struct typedef was never emitted under the wrong prefix, so gcc
+bailed with `unknown type name 'MyApp_JsonValue'`; the documented
+workaround was to switch the field to `string` and re-parse JSON on
+each access.
+
+**Root cause**: `amc build app.am` runs amc with only the user's
+entry file as input. The cgen has no idea that `JsonValue` is a
+bundled-stdlib class, so its `SymName("JsonValue")` falls through to
+the user's `NsPrefix` (`MyApp_JsonValue`). Passing
+`--external src/stdlib/json.am` already fixed it, but `amc build`
+doesn't expose `--external` and the bare `amc -o` workflow doesn't
+either for end users.
+
+**Fix**: at compile start, amc scans the input files for
+`import Amalgame.Formats.Json` / `.Toml` / `.MsgPack` / `Amalgame.Path`
+/ `Amalgame.Compiler`. For each namespace the user imports, the
+corresponding `.am` facade is auto-attached as `--external`,
+delegating the registration to the existing `RegisterExternalProg`
+path. `TypeToC` / `InferTypeFromExpr` / `EmitCalleeStr` then dispatch
+to the bundled namespace automatically.
+
+The facades live at `<bin>/../share/amalgame/stdlib/` for installed
+amc (release.yml + install.sh + amalgame.iss now ship them) and at
+`<bin>/src/stdlib/` for source-tree dev builds. `$AMC_STDLIB_SRC`
+overrides for unusual layouts. Auto-attach skips:
+- Namespaces declared by the user's own input files (so amc
+  compiling its own `src/stdlib/json.am` doesn't double-register).
+- Facades already passed via explicit `--external` or as primary
+  inputs (de-dup by filename leaf so relative-vs-absolute path
+  drift between caller and probe doesn't double-emit).
+
+Both the canonical 4-part namespace AND the legacy 3-part shorthand
+are accepted by the auto-attach scanner — `import Amalgame.Json`
+resolves to the same `json.am` facade as `import Amalgame.Formats.Json`.
+This keeps the Autobus downstream session (and `src/stdlib/msgpack.am`'s
+own `import Amalgame.Json` doc-comment) working without forcing a
+rename. The aliases apply to Json / Toml / MsgPack only.
+
+### Fixed — Bug 7 (cgen): `+` with a `String_*`-callee operand misclassified as concat
+
+`return pos + String_Length(needle)` lowered to
+`return code_string_concat(pos, String_Length(needle));` because the
+cgen's BINARY-`+` branch matched the RHS callee by name prefix —
+`String_StartsWith(callee, "String_")` ⇒ assumed string-returning ⇒
+dispatch to `code_string_concat`. But `String_Length`, `String_IndexOf`,
+`String_LastIndexOf`, `String_ToInt` all return `i64`, so the
+classification was wrong and the C compiled into pointer-arithmetic
+on an integer (the workaround was to extract the call to a local).
+
+**Fix**: BINARY-`+` now consults `InferTypeFromExpr` on both LHS and
+RHS, which already has precise return-type knowledge for the
+`String_*` family (see the explicit return-type table around c_gen.am
+line 966). The name-pattern check is removed; the literal
+`code_string_concat` callee stays in the trigger list because nested
+concatenations do return `code_string`.
+
+### Fixed — Bug 8 (parser): `List<List<int>>` rejected by ParseTypeName
+
+The lexer fuses two consecutive `>` characters into a single
+`OP_SHR` token (`>>`), so the parser's generic-bracket loop only
+recognised single-character `>` for depth bookkeeping. For
+`let xs: List<List<int>> = ...`, the loop never saw a closing `>`
+and consumed the rest of the file looking for one, producing
+`Expected '}' got ''` at EOF. Workaround was to drop the outer
+annotation and rely on implicit `void*` cast on `xs.Get(i)`.
+
+**Fix**: `ParseTypeName`, `ParseNew` and the lambda-param lookahead
+all detect the `>>` token explicitly and treat it as two `>` for
+depth bookkeeping. The inner closer(s) get appended to the type
+string; the outermost one stays unappended (the post-loop
+`name + ">"` re-emits it). Triple-nested (`>>>` = `>>` + `>`) and
+quad-nested (`>>>>` = `>>` + `>>`) generics parse cleanly too.
+
+### Tests
+
+251/251 PASS (was 240 + 11 new):
+- 5 cases in `bug7_int_plus_string_helper.am` cover the originally
+  broken form plus the LHS mirror, plus three sanity cases (string +
+  string, string + `String_FromInt`, `String_Length` + `String_Length`)
+  that must NOT regress to plain `+`.
+- 4 cases in `bug8_nested_generics.am` cover double-, triple-,
+  quad-nested generics and `Map<K, List<V>>` (comma + nested).
+- 2 cases in `bundled_stdlib_field_type.am` (a new `run_external_test`
+  invocation with no `--external` flag) exercise the auto-attach
+  path end-to-end: amc emits the right C, gcc links against
+  `lib/libamalgame.a`, and the resulting binary reads/writes the
+  JsonValue field via the bundled struct typedef.
+
+---
+
 ## [v0.8.25] — 2026-05-17
 
 Two follow-up fixes for issues surfaced by the Autobus downstream
