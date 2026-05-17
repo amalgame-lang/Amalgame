@@ -94,6 +94,67 @@ run_test() {
     fi
 }
 
+# Multi-file driver. Compile multiple .am files in one amc invocation,
+# link, run, and grep for an expected substring. Used by the Bug 1
+# regression (v0.8.23): caller in file A reaches a method defined in
+# file B — Pass 2a (forwards across all files before any bodies) must
+# emit the prototype.
+#
+#   $1 = test name
+#   $2 = expected substring
+#   $3..$N = .am files (caller first to exercise the dependency direction)
+run_multi_test() {
+    local name="$1"
+    local expected="$2"
+    shift 2
+    local files=("$@")
+
+    printf "  %-34s" "$name"
+
+    for f in "${files[@]}"; do
+        if [ ! -f "$f" ]; then
+            echo -e "${YELLOW}SKIP${NC} (file not found: $f)"
+            SKIP=$((SKIP + 1)); return
+        fi
+    done
+
+    local out_base="$BUILD_DIR/$(basename "${files[0]%.am}")"
+    output=$("$AMC" -o "$out_base" "${files[@]}" 2>&1)
+    amc_exit=$?
+    if [ $amc_exit -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (amc exited $amc_exit)"
+        echo "$output" | head -5 | sed 's/^/    /'
+        FAIL=$((FAIL + 1)); return
+    fi
+
+    local c_file="${out_base}.c"
+    if [ ! -f "$c_file" ]; then
+        echo -e "${RED}FAIL${NC} (no .c emitted)"
+        FAIL=$((FAIL + 1)); return
+    fi
+    # -Werror=implicit-function-declaration is the surgical check for
+    # Bug 1: without the fix, the caller in file A sees an implicit
+    # decl for the method defined in file B, which becomes a hard
+    # error here instead of merely a warning.
+    gcc -O2 -Iruntime -Werror=implicit-function-declaration \
+        "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    if [ ! -x "$out_base" ]; then
+        echo -e "${RED}FAIL${NC} (gcc failed — implicit decl?)"
+        FAIL=$((FAIL + 1)); return
+    fi
+
+    run_output=$("$out_base" 2>&1)
+    if echo "$run_output" | grep -qF "$expected"; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC} (output mismatch)"
+        echo "    expected : $expected"
+        echo "    got      : $(echo "$run_output" | head -3 | tr '\n' '|')"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # Project F (v0.7.5+) end-to-end driver. Compile `$file` with one
 # or more `--external <mod>` flags, then link the user .c against
 # `lib/libamalgame.a` (pre-built by tools/build-stdlib.sh) instead
@@ -432,6 +493,36 @@ run_test "auto-qualify: ctor write"  "$SAMPLES/cgen_auto_qualify.am" "value: 7"
 run_test "auto-qualify: method read" "$SAMPLES/cgen_auto_qualify.am" "dp: 17"
 run_test "auto-qualify: method write" "$SAMPLES/cgen_auto_qualify.am" "after reset value: 0"
 run_test "auto-qualify: explicit this. mix" "$SAMPLES/cgen_auto_qualify.am" "after reset label: reset"
+
+# Bug 3 regression (v0.8.23): AmalgameMap_remove must mark the
+# slot as a tombstone, not empty — otherwise colliding keys
+# inserted before the remove become unreachable.
+run_test "map tombstone: count"       "$SAMPLES/map_tombstone.am"  "found after remove: 25"
+run_test "map tombstone: sum"         "$SAMPLES/map_tombstone.am"  "sum after remove: 925"
+# Bug 4 (v0.8.23): Keys()/Values() used truthy test on `used` which
+# leaked tombstoned entries. Expect 25 live, not 50.
+run_test "map tombstone: keys"        "$SAMPLES/map_tombstone.am"  "Keys() count: 25"
+run_test "map tombstone: values"      "$SAMPLES/map_tombstone.am"  "Values() count: 25"
+
+# Bug 2 regression (v0.8.23): cgen Map/Set/List method dispatch
+# must downcase to *_set / *_get / *_has / *_add / *_remove when
+# the receiver is `this.field` or `obj.field`, not just a bare
+# local. Before, `this.entries.Set(k, v)` emitted the undefined
+# `AmalgameMap_Set` (PascalCase from the generic method path).
+run_test "field map: get"             "$SAMPLES/field_map_dispatch.am"  "alpha=1"
+run_test "field map: has-then-get"    "$SAMPLES/field_map_dispatch.am"  "beta=2"
+run_test "field set: size"            "$SAMPLES/field_map_dispatch.am"  "tags=3"
+run_test "field list: count"          "$SAMPLES/field_map_dispatch.am"  "log=3"
+run_test "field map: remove"          "$SAMPLES/field_map_dispatch.am"  "after forget beta=-1"
+run_test "field map: kept after rm"   "$SAMPLES/field_map_dispatch.am"  "alpha still=1"
+
+# Bug 1 regression (v0.8.23): multi-file compilation — caller in file
+# A reaches a method defined in file B. Before the fix, Pass 2 emitted
+# main.am's body (calling Helper_*) before helper.am's forward decls
+# landed, so gcc tripped -Wimplicit-function-declaration. Test passes
+# main.am FIRST (caller order) to exercise the dependency direction.
+run_multi_test "multi-file: caller first" "got: 35" \
+    "$SAMPLES/multi_file_bug1/main.am" "$SAMPLES/multi_file_bug1/helper.am"
 
 # Inline-C blocks (`@c { … }`) — body spliced verbatim into the emitted C.
 run_test "inline-C: return value"     "$SAMPLES/inline_c.am"  "len=8"
