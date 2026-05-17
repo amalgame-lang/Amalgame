@@ -1,0 +1,43 @@
+// Process v3 — streaming Spawn with a persistent handle. The
+// child process keeps running and the parent reads its stdout
+// line-by-line, in parallel. Unlike v2's RunCaptureBoth (which
+// blocks until completion + returns everything at once), v3 is
+// suitable for `tail -f`-style long-running processes, REPLs
+// you want to drive from AM, or any IPC where you don't know
+// in advance how many bytes to collect.
+//
+// Stream-bits for Spawn(cmd, bits):
+//   bit 0 (1) — pipe stdin  (parent can WriteLine)
+//   bit 1 (2) — pipe stdout (parent can ReadLine)
+//   bit 2 (4) — pipe stderr (parent can ReadErrLine)
+//   pass 7 to pipe all three.
+
+class Program {
+    public static void Main() {
+        // Spawn a shell that prints 3 lines on stdout with 50ms
+        // gaps between them. We pipe stdout (bit 1 = 2).
+        let h = Process.Spawn("for i in 1 2 3; do echo line-$i; sleep 0.05; done", 2)
+        if (Process.IsAlive(h)) {
+            Console.WriteLine("spawn: alive")
+        } else {
+            Console.WriteLine("spawn: dead immediately")
+        }
+
+        // Drain stdout. ReadLine returns "" on timeout, "__EOF__"
+        // when the child closes its stdout.
+        var n: int = 0
+        while (n < 5) {
+            let line: string = Process.ReadLine(h, 500)
+            if (line == "__EOF__") {
+                Console.WriteLine("eof")
+                n = 5
+            } else if (String_Length(line) > 0) {
+                Console.WriteLine("got: " + line)
+                n = n + 1
+            }
+        }
+        // Wait for the child to fully reap (should already be done).
+        Process.Wait(h, 1000)
+        Console.WriteLine("exit=" + String_FromInt(Process.ExitCode(h)))
+    }
+}

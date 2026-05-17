@@ -305,6 +305,16 @@ public class FullResolver {
         this.DeclareGlobal("Process_RunTimeout",            "int",                   false)
         this.DeclareGlobal("Process_RunCaptureBoth",        "AmalgameProcessResult", false)
         this.DeclareGlobal("Process_RunCaptureBothTimeout", "AmalgameProcessResult", false)
+        // v3 (2026-05-17): streaming Spawn with persistent handle
+        this.DeclareGlobal("Process_Spawn",                 "AmalgameProcessHandle", false)
+        this.DeclareGlobal("Process_IsAlive",               "bool",                  false)
+        this.DeclareGlobal("Process_ExitCode",              "int",                   false)
+        this.DeclareGlobal("Process_Wait",                  "bool",                  false)
+        this.DeclareGlobal("Process_Kill",                  "void",                  false)
+        this.DeclareGlobal("Process_KillForce",             "void",                  false)
+        this.DeclareGlobal("Process_WriteLine",             "bool",                  false)
+        this.DeclareGlobal("Process_ReadLine",              "string",                false)
+        this.DeclareGlobal("Process_ReadErrLine",           "string",                false)
         // Console
         this.DeclareGlobal("Console",        "type", false)
         this.DeclareGlobal("Console_WriteLine",  "void",   false)

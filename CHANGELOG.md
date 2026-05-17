@@ -7,6 +7,83 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.22] — 2026-05-17
+
+`Process` v3 — streaming `Spawn` with a persistent handle.
+
+### Added: `Process.Spawn(cmd, captureStreams) → AmalgameProcessHandle*`
+
+Unlike `Process.Run` / `RunCapture` (synchronous, block until
+done) and v2's `RunCaptureBoth*` (synchronous, capture full
+buffers), `Spawn` gives you a **persistent handle** to the
+child process that the parent can drive line-by-line in
+parallel:
+
+```kotlin
+let h = Process.Spawn("tail -f /var/log/app.log", 2)  // bit 1 = pipe stdout
+while (Process.IsAlive(h)) {
+    let line: string = Process.ReadLine(h, 1000)      // 1s timeout
+    if (line == "__EOF__") { break }
+    if (String_Length(line) > 0) {
+        Console.WriteLine("LOG: " + line)
+    }
+}
+Process.Wait(h, 0)   // 0 = wait forever
+```
+
+`captureStreams` is a bit-mask:
+- bit 0 (1) → pipe stdin (`WriteLine`)
+- bit 1 (2) → pipe stdout (`ReadLine`)
+- bit 2 (4) → pipe stderr (`ReadErrLine`)
+- pass `7` to pipe all three; pass `0` to let the child inherit
+  the parent's stdio (background scripts that don't need IPC)
+
+### Full v3 surface
+
+| Method | Returns | Notes |
+|---|---|---|
+| `Process.Spawn(cmd, captureStreams)` | `AmalgameProcessHandle*` | Fork+exec via `/bin/sh -c`, non-blocking |
+| `Process.IsAlive(h)` | `bool` | Non-blocking probe (`waitpid WNOHANG`) |
+| `Process.ExitCode(h)` | `int` | `-1` until reaped |
+| `Process.Wait(h, timeout_ms)` | `bool` | `timeout ≤ 0` blocks forever |
+| `Process.Kill(h)` | `void` | SIGTERM (graceful) |
+| `Process.KillForce(h)` | `void` | SIGKILL (hard) |
+| `Process.WriteLine(h, text)` | `bool` | Appends `\n` if missing; non-blocking |
+| `Process.ReadLine(h, timeout_ms)` | `string` | `""` on timeout, `"__EOF__"` on stream close |
+| `Process.ReadErrLine(h, timeout_ms)` | `string` | Same shape for stderr |
+
+### Implementation
+
+POSIX-only initially (`fork` + `pipe(2)` × {0..3} + `select(2)` +
+`waitpid` + `kill`). Parent-side pipes are `O_NONBLOCK` so
+`ReadLine` / `WriteLine` never block past their timeout.
+Per-stream line accumulator handles partial reads (a `read()`
+that returns half a line stays buffered until the next call
+completes the newline).
+
+Windows path (`CreateProcess` + Named Pipes for stdin/stdout/stderr
++ `WaitForMultipleObjects`) lands in v3.1 — the current Windows
+fallbacks return empty handles / sentinels so user code compiles
+cross-platform but only the POSIX flow is functional.
+
+### Out of scope (v3.x)
+
+- Windows native CreateProcess + Named Pipes implementation
+- Binary read (current `ReadLine` is text/newline-oriented; for
+  binary IPC bytes use Channel via `amalgame-threading` as the
+  inter-thread fanout instead)
+- Async I/O via callbacks (composable today with Threading's
+  `ThreadSpawn` + the streaming `ReadLine` loop)
+- Process tree management (parent → many children + supervisor)
+
+### Tested
+
+- 5 new test cases in `tests/run_tests.sh` against
+  `tests/samples/process_v3.am` (spawn alive / 3 stream lines /
+  EOF detection / exit code 0)
+- Full suite: **461/461 PASS** (+5 vs v0.8.21 → 223+191+12+35)
+- Snapshot updated
+
 ## [v0.8.21] — 2026-05-17
 
 Parser quality-of-life — multi-line `&&` / `||` continuation.
@@ -4634,6 +4711,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.22]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.22
 [v0.8.21]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.21
 [v0.8.20]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.20
 [v0.8.19]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.19
