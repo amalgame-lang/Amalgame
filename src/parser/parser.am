@@ -1592,10 +1592,19 @@ public class Parser {
         if (this.CheckType(TokenType.INTEGER)) {
             this.Advance()
             let lit = Ast.IntLit(v, tok.Line, tok.Column)
-            // Range: 0..count
+            // Range: 0..count or 0..xs.Count() — Bug 5 (v0.8.24): the
+            // RHS used to parse via ParsePrimary, which stops at the
+            // atom. So `0..xs.Count()` parsed as BINARY("..", 0, xs)
+            // and the trailing `.Count()` was then attached to the
+            // BINARY by ParsePostfix → CALL(MEMBER(range, Count)).
+            // The cgen saw a CALL on stmt.Left and dropped into the
+            // foreach branch, emitting bogus `AmalgameList* __it = 0
+            // .. xs_Count()` instead of a counted-int for-loop.
+            // ParsePostfix consumes the suffix chain so the RHS is
+            // the full call/member expression.
             if (this.CheckValue("..")) {
                 this.Advance()
-                let right = this.ParsePrimary()
+                let right = this.ParsePostfix()
                 return Ast.Binary(lit, "..", right, tok.Line, tok.Column)
             }
             return lit
@@ -1662,10 +1671,12 @@ public class Parser {
         if (this.CheckType(TokenType.IDENTIFIER)) {
             this.Advance()
             let ident = Ast.Ident(v, tok.Line, tok.Column)
-            // Range: i..count
+            // Range: i..count or n..xs.Count() — same Bug 5 fix as
+            // the integer branch above; see that comment for why
+            // RHS must be ParsePostfix rather than ParsePrimary.
             if (this.CheckValue("..")) {
                 this.Advance()
-                let right = this.ParsePrimary()
+                let right = this.ParsePostfix()
                 return Ast.Binary(ident, "..", right, tok.Line, tok.Column)
             }
             return ident
