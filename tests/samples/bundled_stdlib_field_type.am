@@ -1,6 +1,13 @@
 namespace MyApp
 
-import Amalgame.Formats.Json
+// Legacy 3-part `Amalgame.Json` alias deliberately exercised here.
+// The Autobus downstream session (docs/amc-debug-session.md) uses
+// this short form, mirroring src/stdlib/msgpack.am's own import.
+// The auto-attach catalog accepts both `Amalgame.Json` and
+// `Amalgame.Formats.Json` for the same json.am facade — keeps
+// legacy and pre-rename code working without breaking the
+// canonical 4-part path.
+import Amalgame.Json
 
 // Regression test for Bug 6 (amc v0.8.26):
 //

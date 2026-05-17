@@ -224,11 +224,22 @@ public class AmalgameCompiler {
         if (String_Length(stdlibDir) > 0) {
             // Each entry: "<namespace>|<filename>" — kept as a flat list
             // because the bootstrap lacks Map<string,string>.
+            //
+            // Both the canonical 4-part `Amalgame.Formats.X` namespace
+            // AND the legacy 3-part `Amalgame.X` shorthand are listed
+            // — `import` in Amalgame is informational (the resolver
+            // doesn't actually use it for name resolution), so users
+            // and older facades freely use either form. The auto-attach
+            // scanner accepts both; either spelling resolves to the
+            // same on-disk .am facade.
             let stdlibEntries: List<string> = new List<string>()
             stdlibEntries.Add("Amalgame.Path|path.am")
             stdlibEntries.Add("Amalgame.Formats.Json|json.am")
+            stdlibEntries.Add("Amalgame.Json|json.am")
             stdlibEntries.Add("Amalgame.Formats.Toml|toml.am")
+            stdlibEntries.Add("Amalgame.Toml|toml.am")
             stdlibEntries.Add("Amalgame.Formats.MsgPack|msgpack.am")
+            stdlibEntries.Add("Amalgame.MsgPack|msgpack.am")
             stdlibEntries.Add("Amalgame.Compiler|amc_buildinfo.am")
             let sec: int = stdlibEntries.Count()
             // First pass over the user input files: collect imports AND

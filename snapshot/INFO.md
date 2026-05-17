@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-17T18:51:26+02:00
-Git rev:  a5db58252ade3e38aeb75ad0dd7de30e0737c9b6
+Captured: 2026-05-17T19:37:49+02:00
+Git rev:  fb54212cc95ac836db54d59a6a020527542b82f5
 Branch:   feature/bugs-6-7-8-jsonvalue-stringconcat-nestedgenerics
 Tests:    458 passed
 
