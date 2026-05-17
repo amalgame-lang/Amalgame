@@ -7,6 +7,60 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.28] — 2026-05-17
+
+Follow-up to v0.8.27 — AutoBUS Phase 4 (`subscription.am::FindByTopic`)
+surfaced a silent miscompilation on `==` between a class-field-rooted
+`List<string>.Get(i)` and a string variable.
+
+### Fixed — Bug 10 (cgen): `obj.Field.Get(i) == s` emitted pointer compare
+
+`InferTypeFromExpr`'s `.Get(...)` branch knew how to resolve the
+element type for two shapes:
+
+* `this.Field.Get(i)` — looked up via `ListElemGet(CurrentClass, Field)`
+* `localList.Get(i)`  — looked up via `ListElemGet("__local__", localList)`
+
+…but not the chained MEMBER receiver `obj.Field.Get(i)` where
+`obj` is a local var of class type `C` and `C.Field: List<string>`.
+That shape fell through to `void*`, and the `==`/`!=` handler
+therefore couldn't see that the result was `code_string` — so it
+lowered to raw C `==` (pointer comparison) instead of
+`code_string_equals(...)`.
+
+Worse, the failure was silent: under gcc's default string-literal
+coalescing, two compile-time `"beta"` literals share an address and
+pointer compare happens to match — masking the bug for typical
+in-source repros. The break only surfaces when one operand is built
+at runtime (concat, read, decode, …), which is exactly what
+AutoBUS's topic-name lookup does on JSON-decoded subscriptions.
+
+**Fix**: extend the `Get` branch of `InferTypeFromExpr` to
+recognise `ll.Left.Kind == NodeKind.IDENTIFIER` on the
+`expr.Left.Left` MEMBER receiver — resolve `obj`'s C type via
+`LocalTypeGet`, strip `*`, and look up the element type with
+`ListElemGet(objType, Field)`. The `==`/`!=` resolver now sees
+`code_string` for the LHS and lowers to `code_string_equals`.
+
+The same path covers `!=` and the LHS-on-the-right variant
+(`localVar == obj.Field.Get(i)` → the existing RHS-literal check
+already handled compile-time literals, and the new LHS resolution
+catches the rest).
+
+Regression test `tests/samples/bug10_list_string_eq.am` covers
+four shapes: `obj.Field.Get(i) == localVar`, `localVar ==
+obj.Field.Get(i)`, the `!=` mirror, and the previously-working
+`localList.Get(i) == concatVar` form (to catch a future regression
+on the wider inference path). All four match the runtime against
+a `"be" + "ta"` concat so the test fails loudly if the cgen ever
+slips back to pointer compare.
+
+**Downstream**: AutoBUS's `subscription.am::FindByTopic` workaround
+— a typed local between `topics.Get(j)` and the `==` — can be
+reverted once AutoBUS adopts amc v0.8.28.
+
+---
+
 ## [v0.8.27] — 2026-05-17
 
 Follow-up to v0.8.26 — the AutoBUS downstream session discovered
