@@ -134,21 +134,51 @@ static inline i64 AmalgameList_countIf(AmalgameList* l, AmalgameClosure* fn) {
 
 /* ================================================================
    Map<K,V> - open-addressing hash map (string keys)
+   ================================================================
+
+   Slot state — 3 values (was 2 pre-v0.8.23):
+
+     AMMAP_EMPTY      slot never held a key (probe terminates here)
+     AMMAP_OCCUPIED   slot has a live key (probe checks for match)
+     AMMAP_TOMBSTONE  slot used to hold a key, now removed
+                      (probe must skip past, NOT terminate)
+
+   The TOMBSTONE state is mandatory for linear-probing maps:
+   without it, `remove(k1)` of a key that collided with k2 (k2's
+   probe sequence passed through k1's slot) leaves an EMPTY there,
+   so the next `get(k2)` thinks "first empty slot reached → key
+   doesn't exist" and returns NULL. Pre-v0.8.23 the code did
+   exactly this — `e->used = false` on remove — and silently
+   broke any program that removed colliding keys mid-stream.
+
+   The `used` field is kept (now an int instead of code_bool) for
+   ABI compatibility — callers reading the field as a truthy
+   value still see 1 for occupied and 0 for empty. TOMBSTONE
+   slots return 2, which evaluates truthy too; that's
+   intentional: anything iterating the map needs to skip
+   tombstones the same way it would skip live entries it doesn't
+   want to touch.
    ================================================================ */
 
 #define AMMAP_INITIAL_CAP 16
 #define AMMAP_LOAD_MAX    0.70
 
+/* Slot states. `used` field width is int so it can hold 0/1/2. */
+#define AMMAP_EMPTY      0
+#define AMMAP_OCCUPIED   1
+#define AMMAP_TOMBSTONE  2
+
 typedef struct {
     code_string key;
     void*       value;
-    code_bool   used;
+    int         used;   /* AMMAP_EMPTY / OCCUPIED / TOMBSTONE */
 } AmalgameMapEntry;
 
 typedef struct _AmalgameMap {
     AmalgameMapEntry* entries;
     int               capacity;
-    int               size;
+    int               size;        /* live (OCCUPIED) entries */
+    int               tombstones;  /* dead-but-reserved slots */
 } AmalgameMap;
 
 static unsigned int _ammap_hash(code_string key, int cap) {
@@ -165,6 +195,7 @@ static AmalgameMap* AmalgameMap_new() {
     AmalgameMap* m   = (AmalgameMap*) GC_MALLOC(sizeof(AmalgameMap));
     m->capacity      = AMMAP_INITIAL_CAP;
     m->size          = 0;
+    m->tombstones    = 0;
     m->entries       = (AmalgameMapEntry*) GC_MALLOC(
                          sizeof(AmalgameMapEntry) * AMMAP_INITIAL_CAP);
     memset(m->entries, 0,
@@ -174,24 +205,51 @@ static AmalgameMap* AmalgameMap_new() {
 
 static void AmalgameMap_set(AmalgameMap* m, code_string key, void* value) {
     if (!m || !key) return;
-    if ((double)(m->size + 1) / m->capacity > AMMAP_LOAD_MAX)
+    /* Load factor counts BOTH live entries and tombstones —
+     * otherwise a long stream of insert/remove/insert/… fills
+     * the table with tombstones, probes get linear in capacity,
+     * and we never grow. Growing rebuilds without tombstones. */
+    if ((double)(m->size + m->tombstones + 1) / m->capacity > AMMAP_LOAD_MAX)
         _ammap_grow(m);
 
     unsigned int idx = _ammap_hash(key, m->capacity);
+    int first_tomb = -1;
     for (int i = 0; i < m->capacity; i++) {
         unsigned int slot = (idx + (unsigned)i) % (unsigned)m->capacity;
         AmalgameMapEntry* e = &m->entries[slot];
-        if (!e->used) {
-            e->key   = _am_strdup(key);
-            e->value = value;
-            e->used  = true;
+        if (e->used == AMMAP_EMPTY) {
+            /* Reuse the first tombstone we saw if any — keeps the
+             * effective probe distance short. Otherwise insert here. */
+            int target_slot = (first_tomb >= 0) ? first_tomb : (int) slot;
+            AmalgameMapEntry* dst = &m->entries[target_slot];
+            if (dst->used == AMMAP_TOMBSTONE) m->tombstones--;
+            dst->key   = _am_strdup(key);
+            dst->value = value;
+            dst->used  = AMMAP_OCCUPIED;
             m->size++;
             return;
         }
+        if (e->used == AMMAP_TOMBSTONE) {
+            if (first_tomb < 0) first_tomb = (int) slot;
+            continue;   /* don't stop — same key may exist further along */
+        }
+        /* AMMAP_OCCUPIED */
         if (strcmp(e->key, key) == 0) {
-            e->value = value;
+            e->value = value;   /* update in place */
             return;
         }
+    }
+    /* Probe walked the whole table without finding an EMPTY slot
+     * — every slot is OCCUPIED or TOMBSTONE. The load-check at
+     * the top should have grown before we hit this. As a
+     * fallback, drop into the first tombstone if we saw one. */
+    if (first_tomb >= 0) {
+        AmalgameMapEntry* dst = &m->entries[first_tomb];
+        dst->key   = _am_strdup(key);
+        dst->value = value;
+        dst->used  = AMMAP_OCCUPIED;
+        m->tombstones--;
+        m->size++;
     }
 }
 
@@ -203,8 +261,9 @@ static void _ammap_grow(AmalgameMap* m) {
                      sizeof(AmalgameMapEntry) * m->capacity);
     memset(m->entries, 0, sizeof(AmalgameMapEntry) * m->capacity);
     m->size = 0;
+    m->tombstones = 0;
     for (int i = 0; i < oldCap; i++)
-        if (oldEntries[i].used)
+        if (oldEntries[i].used == AMMAP_OCCUPIED)
             AmalgameMap_set(m, oldEntries[i].key, oldEntries[i].value);
 }
 
@@ -214,7 +273,8 @@ static inline void* AmalgameMap_get(AmalgameMap* m, code_string key) {
     for (int i = 0; i < m->capacity; i++) {
         unsigned int slot = (idx + (unsigned)i) % (unsigned)m->capacity;
         AmalgameMapEntry* e = &m->entries[slot];
-        if (!e->used) return NULL;
+        if (e->used == AMMAP_EMPTY) return NULL;
+        if (e->used == AMMAP_TOMBSTONE) continue;   /* skip past, key may be further */
         if (strcmp(e->key, key) == 0) return e->value;
     }
     return NULL;
@@ -226,7 +286,8 @@ static inline code_bool AmalgameMap_has(AmalgameMap* m, code_string key) {
     for (int i = 0; i < m->capacity; i++) {
         unsigned int slot = (idx + (unsigned)i) % (unsigned)m->capacity;
         AmalgameMapEntry* e = &m->entries[slot];
-        if (!e->used) return false;
+        if (e->used == AMMAP_EMPTY) return false;
+        if (e->used == AMMAP_TOMBSTONE) continue;
         if (strcmp(e->key, key) == 0) return true;
     }
     return false;
@@ -238,10 +299,14 @@ static inline code_bool AmalgameMap_remove(AmalgameMap* m, code_string key) {
     for (int i = 0; i < m->capacity; i++) {
         unsigned int slot = (idx + (unsigned)i) % (unsigned)m->capacity;
         AmalgameMapEntry* e = &m->entries[slot];
-        if (!e->used) return false;
+        if (e->used == AMMAP_EMPTY) return false;
+        if (e->used == AMMAP_TOMBSTONE) continue;
         if (strcmp(e->key, key) == 0) {
-            e->used = false;
+            /* Mark as tombstone, NOT empty — colliding keys must
+             * still be findable via the probe sequence. */
+            e->used = AMMAP_TOMBSTONE;
             m->size--;
+            m->tombstones++;
             return true;
         }
     }
