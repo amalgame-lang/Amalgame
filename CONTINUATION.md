@@ -1,5 +1,15 @@
 # Continuation prompt — start a new chat with this
 
+> **Header refresh 2026-05-17** — current state is **amc v0.8.25
+> shipped** (full v0.8.13 → v0.8.25 progression in [CHANGELOG.md](CHANGELOG.md)).
+> Ecosystem now includes **amalgame-image v0.2.0** (typed RGBA +
+> Resize/Crop/Flip/Rotate via stb_image_resize2), **amalgame-audio
+> v0.2.0** (multi-format decode WAV/MP3/FLAC/OGG via miniaudio +
+> sondes), **amalgame-database-nosql-redis v0.3.0** (Pub/Sub +
+> Pipelining), **amalgame-messaging-nats-jetstream v0.1.0** (new
+> package — streams + durable pull consumers + at-least-once).
+> The historical snapshot below is preserved as session context.
+
 > **Last refreshed 2026-05-15 (evening)** — **ui-web v0.0.4 shipped
 > end-to-end** + **amc v0.8.13 release candidate** assembled on
 > develop. Whole v0.0.4 roadmap (form reading + OS theming + amc
