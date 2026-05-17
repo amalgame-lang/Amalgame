@@ -1,0 +1,5 @@
+namespace MultiBug1
+
+public class Helper {
+    public int Compute(int x) { return x * 7 }
+}
