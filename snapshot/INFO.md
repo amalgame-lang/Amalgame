@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-17T17:41:20+02:00
-Git rev:  5c7d4838d896110140bca21e59ac87850cbff582
-Branch:   feature/lsp-amalgame-toml-marker
+Captured: 2026-05-17T17:46:21+02:00
+Git rev:  c026f520ac31ef5917f1c13a7757d7bd42e8d60a
+Branch:   release/v0.8.25
 Tests:    (skipped) passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
