@@ -473,6 +473,13 @@ run_test "process: cap stdout"    "$SAMPLES/process_api.am"  "cap.out=captured-l
 run_test "process: nonzero exit"  "$SAMPLES/process_api.am"  "bad.exit=1"
 run_test "process: stderr merge"  "$SAMPLES/process_api.am"  "merged.out=stderr-bytes"
 
+# Multi-line && / || continuation (v0.8.21). Sample emits 4 lines
+# A/B/C/D — one per shape covered.
+run_test "ml-logical: && newline"   "$SAMPLES/multiline_logical.am"  "A"
+run_test "ml-logical: && trailing"  "$SAMPLES/multiline_logical.am"  "B"
+run_test "ml-logical: || newline"   "$SAMPLES/multiline_logical.am"  "C"
+run_test "ml-logical: && + || mix"  "$SAMPLES/multiline_logical.am"  "D"
+
 # ── amc test runner ────────────────────────────────────
 echo ""
 echo "── amc test ────────────────────────────"

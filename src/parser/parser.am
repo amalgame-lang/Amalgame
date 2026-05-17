@@ -1292,8 +1292,18 @@ public class Parser {
 
     private AstNode ParseOr() {
         var left = this.ParseBitwiseOr()
-        while (this.CheckValue("||")) {
+        while (true) {
+            // Multi-line continuation — same shape as ParseAdd /
+            // ParseMul (v0.8.14). Tolerate a newline before the
+            // `||` so `if (a\n   || b\n   || c)` parses cleanly,
+            // and tolerate `expr ||\n   next` (operator at EOL).
+            if (this.CheckType(TokenType.NEWLINE)) {
+                if (!this.LookaheadAfterNewlinesIs("||", "", "")) { break }
+                this.SkipNewlines()
+            }
+            if (!this.CheckValue("||")) { break }
             let tok = this.Advance()
+            this.SkipNewlines()
             let right = this.ParseBitwiseOr()
             left = Ast.Binary(left, "||", right, tok.Line, tok.Column)
         }
@@ -1332,8 +1342,19 @@ public class Parser {
 
     private AstNode ParseAnd() {
         var left = this.ParseEquality()
-        while (this.CheckValue("&&")) {
+        while (true) {
+            // Multi-line continuation — same shape as ParseAdd /
+            // ParseMul / ParseOr. Tolerate a newline before the
+            // `&&` so `if (cond1\n   && cond2\n   && cond3)` parses
+            // cleanly, and tolerate `expr &&\n   next` (operator
+            // at EOL).
+            if (this.CheckType(TokenType.NEWLINE)) {
+                if (!this.LookaheadAfterNewlinesIs("&&", "", "")) { break }
+                this.SkipNewlines()
+            }
+            if (!this.CheckValue("&&")) { break }
             let tok = this.Advance()
+            this.SkipNewlines()
             let right = this.ParseEquality()
             left = Ast.Binary(left, "&&", right, tok.Line, tok.Column)
         }
