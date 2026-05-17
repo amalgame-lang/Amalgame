@@ -53,6 +53,13 @@ overrides for unusual layouts. Auto-attach skips:
   inputs (de-dup by filename leaf so relative-vs-absolute path
   drift between caller and probe doesn't double-emit).
 
+Both the canonical 4-part namespace AND the legacy 3-part shorthand
+are accepted by the auto-attach scanner — `import Amalgame.Json`
+resolves to the same `json.am` facade as `import Amalgame.Formats.Json`.
+This keeps the Autobus downstream session (and `src/stdlib/msgpack.am`'s
+own `import Amalgame.Json` doc-comment) working without forcing a
+rename. The aliases apply to Json / Toml / MsgPack only.
+
 ### Fixed — Bug 7 (cgen): `+` with a `String_*`-callee operand misclassified as concat
 
 `return pos + String_Length(needle)` lowered to
