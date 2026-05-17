@@ -1,0 +1,10 @@
+namespace Workspace.Tests
+
+public class TestRunner {
+    public static void Run() {
+        // Cross-directory class reference. Pre-v0.8.25 the LSP
+        // reported "Unknown symbol 'ByteIO'" because the workspace
+        // root walk stopped at tests/ (no marker upstream).
+        let v: int = ByteIO.Read(42)
+    }
+}

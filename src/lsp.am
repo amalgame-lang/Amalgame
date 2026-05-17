@@ -442,17 +442,32 @@ public class LspServer {
     }
 
     // Walk up from `startPath`'s directory until we find a marker
-    // file (`.git`, `build_amc.sh`, or `package.json`) or run out
-    // of parents. Returns the marker's parent directory, or the
-    // start directory as a fallback. 8 levels is enough for sane
-    // project layouts; anything deeper falls back to the file's
-    // own directory and works file-locally.
+    // file or run out of parents. Returns the marker's parent
+    // directory, or the start directory as a fallback. 8 levels
+    // is enough for sane project layouts; anything deeper falls
+    // back to the file's own directory and works file-locally.
+    //
+    // Markers (any one is enough):
+    //   `.git`           — the universal "this is a repo" marker
+    //   `amalgame.toml`  — an Amalgame project / package manifest
+    //   `build_amc.sh`   — the Amalgame compiler repo itself
+    //   `package.json`   — common JS-adjacent marker, useful for
+    //                      monorepos that house an Amalgame project
+    //
+    // amalgame.toml was added to fix the case reported against
+    // Autobus: opening `tests/wire/byteio_test.am` made the LSP
+    // tree-walk stop at `tests/wire/` (no other marker upstream),
+    // so the workspace scan never reached `Common/wire/byteio.am`
+    // — every reference to `ByteIO` came back as Unknown symbol.
+    // Now the walk reaches the Autobus root via its `amalgame.toml`
+    // and the sibling scan picks up the full source tree.
     public static string FindWorkspaceRoot(string startPath) {
         var dir: string = LspServer.Dirname(startPath)
         let initialDir: string = dir
         for i in 0..8 {
             if (String_Length(dir) == 0) { return initialDir }
             if (File.Exists(dir + "/.git")) { return dir }
+            if (File.Exists(dir + "/amalgame.toml")) { return dir }
             if (File.Exists(dir + "/build_amc.sh")) { return dir }
             if (File.Exists(dir + "/package.json")) { return dir }
             let parent: string = LspServer.Dirname(dir)
