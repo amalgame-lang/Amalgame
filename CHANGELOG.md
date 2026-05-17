@@ -7,6 +7,78 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.27] — 2026-05-17
+
+Follow-up to v0.8.26 — the AutoBUS downstream session discovered
+that the Bug 6 fix unblocked method dispatch on bundled-stdlib
+classes but left field reads broken.
+
+### Fixed — Bug 9 (cgen): external struct field access hit "incomplete typedef"
+
+The v0.8.26 auto-attach registered external classes via
+`RegisterExternalProg`, which only emitted a forward typedef
+`typedef struct _X X;` per class. Field-level reads on those
+classes — the documented `Json.Parse` entry point pattern:
+
+```amalgame
+let r = Json.Parse(body)
+if (r.Ok) {
+    let root: JsonValue = r.Value
+    …
+}
+```
+
+…hit `error: invalid use of incomplete typedef 'Amalgame_Formats_Json_JsonResult'`
+at the gcc step. The fields live in libamalgame.a's compiled
+image, but the consumer's `.c` had no way to know the layout.
+
+**Fix**: `RegisterExternalProg` now emits the full struct body
+for every external CLASS_DECL (mirroring `EmitClass`'s layout)
+and the full enum body for every external simple ENUM_DECL
+(`typedef enum _M { … } M;`). Fields lower through `TypeToC`
+exactly like in-bundle classes, so sibling references resolve
+to the bundled namespace mangling instead of the consumer's
+`NsPrefix`.
+
+New `ExternalEnums` / `ExternalEnumNsArr` parallel registries
+back the enum lookup — checked by `TypeToC` right after
+`ExternalClassMangled` so types like `JsonValue.Kind: JsonKind`
+(a sibling enum reference inside the struct body) resolve to
+the bundled mangled name as a value type, not a pointer.
+
+The struct body emission registers each field via
+`FieldTypeSet(mangled, fieldName, ctype)` so chained
+`r.Field.Method()` dispatch through the cgen's `FieldTypeGet`
+lookup gets a non-empty C type — keeps the chained-call paths
+honest for external classes too.
+
+Algebraic external enums (variants with payloads) still get
+forward-only typedefs — they'd need the tagged-union machinery
+`EmitEnum` runs in-bundle. The current bundled-stdlib catalog
+(Json / Toml / MsgPack / Path / Compiler) uses simple enums
+only, so this is fine.
+
+### Tests
+
+492/492 PASS (was 489 + 3 new):
+- `bug9_external_struct_fields.am` — 3 cases covering
+  `JsonResult.Ok` (bool field), `r.Value` (sibling-class
+  pointer), `r2.Error.Message` (chained field across two
+  external classes — JsonResult + JsonError), `JsonError.Line`
+  (int field at non-zero offset).
+
+The AutoBUS `@c {…}` shim in `Common/state/topic.am::LoadAll`
+can now be replaced with the clean form:
+
+```amalgame
+let r = Json.Parse(content)
+if (!r.Ok) { continue }
+let root: JsonValue = r.Value
+let t: Topic = Topic.FromJson(root)
+```
+
+---
+
 ## [v0.8.26] — 2026-05-17
 
 Three downstream-reported bugs surfaced while building a JSON-schema
