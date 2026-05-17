@@ -7,6 +7,79 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.25] — 2026-05-17
+
+Two follow-up fixes for issues surfaced by the Autobus downstream
+project after v0.8.24 shipped.
+
+### Fixed — Bug 5 mirror: `..` becomes a real binary operator
+
+v0.8.24 fixed `for i in 0..xs.Count()` by changing the RHS of `..`
+to parse via `ParsePostfix`, but the mirror form `xs.Count()..N`
+still failed at parse time. `..` was only recognised inside
+`ParsePrimary`'s integer + identifier branches, so a call
+expression on the LHS exited `ParsePostfix` cleanly and left the
+`..` dangling — the for-stmt then reported `Expected '{'` where
+the range RHS should have been.
+
+**Fix**: pull `..` out of `ParsePrimary` into a proper
+binary-operator layer `ParseRange`, between `ParseAssign` and
+`ParseOr` in the precedence ladder. Same shape as Rust's range
+expression — just above logical_or, below comparison/additive.
+Both LHS and RHS go through `ParseOr`, so any combination of
+atoms, calls, member chains, arithmetic, etc. is fair game on
+either side.
+
+```
+// Before: xs.Count()..N → parse error "Expected '{'"
+// After:  xs.Count()..N → BINARY("..", CALL(MEMBER(xs, Count)), N)
+```
+
+Non-associative: `a..b..c` rejects the second `..` cleanly by
+leaving it for the caller.
+
+**Cases now accepted**:
+- `0..xs.Count()` (already worked since v0.8.24, regression check)
+- `xs.Count()..n` (mirror — the v0.8.25 fix)
+- `lo.Count()..xs.Count()` (both sides are calls)
+- `0..n+1` (arithmetic on RHS)
+- `(a+b)..(c*d)` (full sub-expressions on both sides)
+
+### Fixed — Bug 6: LSP `FindWorkspaceRoot` accepts `amalgame.toml`
+
+Reported on the Autobus project (no `.git` at the project root,
+manifest-driven layout). Opening `tests/wire/byteio_test.am` — a
+file in a sub-directory of a project that only had an
+`amalgame.toml` manifest at the root — surfaced 10+
+`Unknown symbol 'ByteIO'` diagnostics in VS Code, even though the
+build was green.
+
+**Root cause**: `FindWorkspaceRoot` recognised `.git`,
+`build_amc.sh`, and `package.json` as workspace markers but not
+`amalgame.toml`. Autobus has no `.git` and no upstream marker
+between `tests/wire/` and `/home`, so the walk fell back to the
+file's own directory. The sibling scan only saw the 2 files in
+`tests/wire/`, missing the actual class definition in
+`Common/wire/byteio.am`.
+
+**Fix**: add `amalgame.toml` to the marker list. Any Amalgame
+project or package now anchors the workspace root at its
+manifest, even without a `.git` directory.
+
+### Tests
+
+240/240 PASS (was 234 + 6 new):
+- 2 new `for_range_method_call.am` cases: `xs.Count()..n` and
+  `lo.Count()..xs.Count()` (mirror + both-sides-calls)
+- 1 new LSP regression: `tests/fixtures/lsp-workspace/` (a
+  manifest at root + `lib/byteio.am` + `tests/byteio_test.am`
+  referencing it cross-dir) with a new `run_lsp_absent` helper
+  asserting no `Unknown symbol 'ByteIO'` diagnostic is published.
+
+Real-world verification on Autobus: pre-fix LSP on
+`tests/wire/byteio_test.am` produced 10 `Unknown symbol 'ByteIO'`
+diagnostics; post-fix produces zero.
+
 ## [v0.8.24] — 2026-05-17
 
 Single-bug point release. Bug 5, reported mid-flight on the
@@ -4859,6 +4932,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.3.4]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.4
 [v0.3.3]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.3
 [v0.3.2]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.3.2
+[v0.8.25]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.25
 [v0.8.24]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.24
 [v0.8.23]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.23
 [v0.8.22]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.22
