@@ -480,6 +480,14 @@ run_test "ml-logical: && trailing"  "$SAMPLES/multiline_logical.am"  "B"
 run_test "ml-logical: || newline"   "$SAMPLES/multiline_logical.am"  "C"
 run_test "ml-logical: && + || mix"  "$SAMPLES/multiline_logical.am"  "D"
 
+# Process v3 streaming (v0.8.22). Spawns a 3-line shell child
+# and reads lines one by one across 50ms gaps.
+run_test "process v3: spawn alive"  "$SAMPLES/process_v3.am"  "spawn: alive"
+run_test "process v3: stream line1" "$SAMPLES/process_v3.am"  "got: line-1"
+run_test "process v3: stream line3" "$SAMPLES/process_v3.am"  "got: line-3"
+run_test "process v3: eof"          "$SAMPLES/process_v3.am"  "eof"
+run_test "process v3: exit 0"       "$SAMPLES/process_v3.am"  "exit=0"
+
 # ── amc test runner ────────────────────────────────────
 echo ""
 echo "── amc test ────────────────────────────"
