@@ -1134,33 +1134,44 @@ This is identical to how every other production HTTP/TLS stack
 
 ## 21. Roadmap
 
-| Version | Scope | Estimated effort |
+Status legend: ✅ shipped · 🟡 partial · ⏳ planned.
+
+| Version | Scope | Status |
 |---|---|---|
-| `amc` multi-class manifest | Extend package manifest to support `classes = [...]` (prerequisite for amalgame-tls) | 1 day |
-| `amalgame-tls v0.1` | OpenSSL binding, TlsConfig (file-based certs), client+server stream, ALPN, multi-OS | 3-4 days |
-| `amalgame-net-http v0.1` | HTTP/1.1 + HTTP/2 (nghttp2) parser, client+server, body parsing (json/form/multipart), keep-alive | 6-8 days |
-| `amalgame-web v0.1` | WebApp, programmatic routing, middleware pipeline, static serve, MemorySessionStore | 3 days |
-| `amalgame-web v0.2` | Filesystem-based routing + DEV mode (single `app.so` + filewatcher + hot dlopen), pretty errors | 4 days |
-| `amalgame-web v0.3` | WebSocket server (extends `amalgame-net-websocket`), SSE, channels pub/sub | 2-3 days |
-| `amalgame-tls v0.2` | ACME / Let's Encrypt automatic certs (tls-alpn-01 + http-01) | 4-5 days |
-| `amalgame-web v0.4` | Security middleware (CSRF, CORS, rate limit, security headers, slow loris), JsonFileSessionStore, /metrics, /healthz | 3 days |
-| `amalgame-web v0.5` | PROD modular mode (`app.so` deployment), PROD all-in-one (`mosaic build --mono`), graceful shutdown | 3-4 days |
-| `amalgame-web v0.6` | Reverse proxy (HTTP/1.1+2, load balancing, health checks, circuit breaker) | 3 days |
-| `amalgame-web v0.7` | RedisSessionStore, OpenTelemetry-compat request IDs, advanced rate limit (sliding window) | 2 days |
-| `amalgame-web v1.0` | Polish, docs, stable API, `mosaic supervisor`, scaffolder `amc new --template web-app` | 1 week |
+| `amc` multi-class manifest (v0.8.29) | `classes = [...]` in `[stdlib]` — multi-class packages | ✅ shipped |
+| `amc` first-class fn types (v0.8.30) | `Closure` as field/param type, invoke via `this.Fn(x)` / `local.Fn(x)` | ✅ shipped |
+| `amc` libcurl ejection (v0.8.31) | HTTP out of bundled stdlib → `amalgame-net-http` + `amalgame-net-curl` packages | ✅ shipped |
+| `amalgame-tls v0.1.2` | OpenSSL 3.x binding, TlsConfig (file-based certs + ALPN + min version), client+server stream, multi-OS auto-detect | ✅ shipped |
+| `amalgame-net-http v0.1.1` | HTTP/1.1 pure-AM parser + HttpRequest/Response + HttpServer helpers + HttpClient (GET/POST/+builder), 17 parser tests + 5 e2e tests | ✅ shipped |
+| `amalgame-net-curl v0.1.1` | Thin libcurl binding (Http.Get/Post/Put/Delete/Patch) extracted from amc's old runtime — companion to net-http for outbound API calls | ✅ shipped |
+| `amalgame-web v0.1.3` | Router (path matching `:param` + `*splat`), Route + Closure handlers (no more handler-name strings), MemorySessionStore + Session, WebContext | ✅ shipped |
+| `amalgame-net-http v0.2` | HTTP/2 via nghttp2 binding | ⏳ planned |
+| `amalgame-web v0.2` | Filesystem-based routing + DEV mode (single `app.so` + filewatcher + hot dlopen), pretty errors | ⏳ planned |
+| `amalgame-web v0.3` | WebSocket server (extends `amalgame-net-websocket`), SSE, channels pub/sub | ⏳ planned |
+| `amalgame-tls v0.2` | ACME / Let's Encrypt automatic certs (tls-alpn-01 + http-01) | ⏳ planned |
+| `amalgame-web v0.4` | Security middleware (CSRF, CORS, rate limit, security headers, slow loris), JsonFileSessionStore, /metrics, /healthz | ⏳ planned |
+| `amalgame-web v0.5` | PROD modular mode (`app.so` deployment), PROD all-in-one (`mosaic build --mono`), graceful shutdown | ⏳ planned |
+| `amalgame-web v0.6` | Reverse proxy (HTTP/1.1+2, load balancing, health checks, circuit breaker) | ⏳ planned |
+| `amalgame-web v0.7` | RedisSessionStore, OpenTelemetry-compat request IDs, advanced rate limit (sliding window) | ⏳ planned |
+| `amalgame-web v1.0` | Polish, docs, stable API, `mosaic supervisor`, scaffolder `amc new --template web-app` | ⏳ planned |
 
-**Total v0.1 → v1.0 ≈ 8-9 weeks** of focused work for the framework
-itself. Argon2id in `amalgame-crypto` is a precondition for v0.5 and
-must land before then.
+**Shipped 2026-05-18** (one development day): foundation through
+`amalgame-web v0.1.3` — Router + Closure handlers running end-to-end,
+verified with a working browser demo (TCP accept loop → HttpParser →
+Router.Match → closure dispatch → HttpResponse.Render). All four
+packages registered on `amalgame-lang/packages-index`, all CIs green
+against amc v0.8.31.
 
-**Roadmap dependencies (must land first):**
+**Roadmap dependencies still pending:**
 
-1. `amc` multi-class manifest extension (precondition for `amalgame-tls`).
-2. Argon2id in `amalgame-crypto` (precondition for v0.5).
-3. WebSocket server-side framing in `amalgame-net-websocket`
-   (precondition for `amalgame-web v0.3`).
-4. amc support for **package binary delivery** if we ever switch
-   away from Option A — not required for v1.0.
+1. Argon2id in `amalgame-crypto` — precondition for `amalgame-web v0.4`
+   (CSRF + secure session tokens).
+2. WebSocket server-side framing in `amalgame-net-websocket` —
+   precondition for `amalgame-web v0.3`.
+3. nghttp2 binding for `amalgame-net-http v0.2` (HTTP/2 server support).
+4. amc parser/cgen extensions: nested `obj.A.B.fn(args)` closure
+   dispatch (currently requires binding to a local first), and
+   typed `Closure<A, R>` parameterized function types.
 
 ## 22. Future work (post-v1.0)
 
