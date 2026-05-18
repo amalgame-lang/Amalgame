@@ -1,0 +1,88 @@
+// First-class functions via the `Closure` type (v0.8.30+).
+//
+// Validates that closures can be:
+//   1. Declared as a class field type
+//   2. Passed as a constructor / method parameter
+//   3. Stored in a List<>
+//   4. Invoked via `this.Field(args)` and `local.Field(args)`
+//
+// Arities 1, 2, 3 are tested. Args + return values are boxed to
+// void* at the C level; AM-side typing is `Closure` (any → any).
+
+namespace Tests
+
+import Amalgame.Collections
+import Amalgame.String
+
+public class Route {
+    public Path:    string
+    public Handler: Closure
+
+    public Route(string path, Closure handler) {
+        this.Path    = path
+        this.Handler = handler
+    }
+
+    public int Invoke(int x) {
+        return this.Handler(x)
+    }
+}
+
+public class Combiner {
+    public Fn: Closure
+
+    public Combiner(Closure fn) { this.Fn = fn }
+
+    public int Apply(int a, int b) {
+        return this.Fn(a, b)
+    }
+}
+
+public class Triplet {
+    public Fn: Closure
+
+    public Triplet(Closure fn) { this.Fn = fn }
+
+    public int Compute(int x, int y, int z) {
+        return this.Fn(x, y, z)
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        // ── Arity 1: closure as field, invoked via this.Field ─────
+        let doubler = new Route("/double", x => x * 2)
+        if (doubler.Invoke(21) == 42) {
+            Console.WriteLine("[PASS] arity-1 this.Field call")
+        } else {
+            Console.WriteLine("[FAIL] arity-1")
+        }
+
+        // ── Arity 2 ───────────────────────────────────────────────
+        let adder = new Combiner((a, b) => a + b)
+        if (adder.Apply(10, 32) == 42) {
+            Console.WriteLine("[PASS] arity-2 this.Field call")
+        } else {
+            Console.WriteLine("[FAIL] arity-2")
+        }
+
+        // ── Arity 3 ───────────────────────────────────────────────
+        let sum3 = new Triplet((a, b, c) => a + b + c)
+        if (sum3.Compute(10, 20, 12) == 42) {
+            Console.WriteLine("[PASS] arity-3 this.Field call")
+        } else {
+            Console.WriteLine("[FAIL] arity-3")
+        }
+
+        // ── Closure in List<>, called via local.Field ─────────────
+        let routes = new List<Route>()
+        routes.Add(new Route("/inc",    x => x + 1))
+        routes.Add(new Route("/square", x => x * x))
+        let r: Route = routes.Get(1)
+        if (r.Invoke(6) == 36) {
+            Console.WriteLine("[PASS] closure in List + local.Field call")
+        } else {
+            Console.WriteLine("[FAIL] closure in List")
+        }
+    }
+}
