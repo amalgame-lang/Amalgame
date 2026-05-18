@@ -316,10 +316,16 @@ header "Downloading Amalgame $VTAG..."
 ARCHIVE_PATH="$TMP_DIR/$ARCHIVE"
 download "$URL" "$ARCHIVE_PATH"
 
-# Verify checksum if the release ships one.
-CHECKSUM_URL="$BASE_URL/$ARCHIVE.sha256"
+# Verify checksum if the release ships one. Releases since v0.8.32
+# bundle every per-OS artifact in a single `checksums.sha256` (one
+# line per asset), not a per-archive `.sha256`. Extract our row out
+# of it before feeding `sha256sum -c`.
+CHECKSUM_URL="$BASE_URL/checksums.sha256"
+CHECKSUM_ALL="$TMP_DIR/checksums.sha256"
 CHECKSUM_FILE="$TMP_DIR/$ARCHIVE.sha256"
-if fetch_url "$CHECKSUM_URL" > "$CHECKSUM_FILE" 2>/dev/null && [ -s "$CHECKSUM_FILE" ]; then
+if fetch_url "$CHECKSUM_URL" > "$CHECKSUM_ALL" 2>/dev/null && \
+   grep -qE "[[:space:]]\*?$ARCHIVE\$" "$CHECKSUM_ALL"; then
+    grep -E "[[:space:]]\*?$ARCHIVE\$" "$CHECKSUM_ALL" > "$CHECKSUM_FILE"
     info "Verifying checksum..."
     if command -v sha256sum &>/dev/null; then
         (cd "$TMP_DIR" && sha256sum -c "$ARCHIVE.sha256")
@@ -330,6 +336,8 @@ if fetch_url "$CHECKSUM_URL" > "$CHECKSUM_FILE" 2>/dev/null && [ -s "$CHECKSUM_F
     else
         warn "sha256sum / shasum not found — skipping checksum verification"
     fi
+else
+    warn "checksums.sha256 missing or no entry for $ARCHIVE — skipping verification"
 fi
 
 # ── Install ───────────────────────────────────────────────
