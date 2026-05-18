@@ -85,7 +85,7 @@ run_test() {
     # extraction — Database.SQLite is now an opt-in external
     # package. Tests that need it go through `run_db_test` which
     # adds the .o + sets cwd to $SQLITE_PROJ.
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -ldl -lpthread -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lz -ldl -lpthread -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -410,7 +410,7 @@ USRAM
     check_e2e "PM e2e: FakePkg.Close called"     "Amalgame_Fake_FakePkg_Close\\("
 
     # Full round-trip: gcc + run.
-    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -lz -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
+    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lz -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
     printf "  %-38s" "PM e2e: gcc + run"
     if [ -x "$TMPDIR/out" ]; then
         local run_out=$("$TMPDIR/out" 2>&1)
@@ -553,7 +553,7 @@ USRAM
     # Full round-trip: gcc + run with the per-package archive.
     printf "  %-38s" "facade e2e: gcc + run"
     gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" "$ARCHIVE" \
-        -lgc -lm -lcurl -lz -ldl -lpthread -o "$TMPDIR/out" \
+        -lgc -lm -lz -ldl -lpthread -o "$TMPDIR/out" \
         2> "$TMPDIR/link.log"
     if [ -x "$TMPDIR/out" ]; then
         local run_out=$("$TMPDIR/out" 2>&1)

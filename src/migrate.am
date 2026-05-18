@@ -27,6 +27,25 @@ import Amalgame.String
 //   - Directory recursion: v1.
 //   - Prompt loaded from disk: v1.
 
+// Lightweight HTTP response shape used by migrate.am's LLM-API
+// callers. Mirrors what `Http_PostWithHeaders` returned before we
+// dropped the libcurl runtime dep from amc (v0.8.31). Now backed
+// by a shell-out to the `curl` CLI — same data, no link-time
+// dependency on libcurl.
+public class CurlResponse {
+    public Status: int
+    public Body:   string
+    public Error:  string
+    public Ok:     bool
+
+    public CurlResponse() {
+        this.Status = 0
+        this.Body   = ""
+        this.Error  = ""
+        this.Ok     = false
+    }
+}
+
 public class MigrateResult {
     public Ok:      bool
     public Content: string
@@ -864,7 +883,10 @@ public class MigrateCommand {
         headers.Set("anthropic-version", "2023-06-01")
         headers.Set("Content-Type", "application/json")
 
-        let resp = Http_PostWithHeaders("https://api.anthropic.com/v1/messages", body, headers)
+        let resp = MigrateCommand.CurlPost("https://api.anthropic.com/v1/messages", body, headers)
+        if (String_Length(resp.Error) > 0) {
+            res.Ok = false ; res.Error = "claude-api: " + resp.Error ; return res
+        }
         let status: int = resp.Status
         if (status != 200) {
             res.Ok    = false
@@ -923,7 +945,10 @@ public class MigrateCommand {
         headers.Set("Authorization", "Bearer " + apiKey)
         headers.Set("Content-Type", "application/json")
 
-        let resp = Http_PostWithHeaders("https://api.openai.com/v1/chat/completions", body, headers)
+        let resp = MigrateCommand.CurlPost("https://api.openai.com/v1/chat/completions", body, headers)
+        if (String_Length(resp.Error) > 0) {
+            res.Ok = false ; res.Error = "chatgpt: " + resp.Error ; return res
+        }
         let status: int = resp.Status
         if (status != 200) {
             res.Ok    = false
@@ -984,7 +1009,10 @@ public class MigrateCommand {
         headers.Set("Content-Type", "application/json")
         let url: string = "https://generativelanguage.googleapis.com/v1beta/models/" + modelId + ":generateContent?key=" + apiKey
 
-        let resp = Http_PostWithHeaders(url, body, headers)
+        let resp = MigrateCommand.CurlPost(url, body, headers)
+        if (String_Length(resp.Error) > 0) {
+            res.Ok = false ; res.Error = "gemini: " + resp.Error ; return res
+        }
         let status: int = resp.Status
         if (status != 200) {
             res.Ok    = false
@@ -1183,6 +1211,87 @@ public class MigrateCommand {
         }
         cmd = cmd + " < " + tmpPath
         return Process.Run(cmd)
+    }
+
+    // POST a JSON body to an URL with custom headers using the
+    // system `curl` CLI. Used by the LLM-provider callers (Claude,
+    // OpenAI, Gemini) since v0.8.31 — replaces the previous reliance
+    // on libcurl-backed `Http_PostWithHeaders` so that amc itself
+    // doesn't need to link against libcurl.
+    //
+    // Writes the body to a temp file (-d @file) so we don't risk
+    // shell-quoting a huge JSON payload. Captures stdout (response
+    // body) and the HTTP status via -w '%{http_code}'.
+    private static CurlResponse CurlPost(string url, string body, Map<string, string> headers) {
+        let resp = new CurlResponse()
+
+        // Build the curl command. Use -sS for "silent but show
+        // errors" so we surface network failures without cluttering
+        // the success path. The `%{http_code}` is assembled at
+        // runtime to dodge AM's string-interpolation lexer which
+        // grabs anything inside `{...}` inside a literal.
+        let openBrace: string = String_FromByte(123)        // '{'
+        let closeBrace: string = String_FromByte(125)       // '}'
+        var cmd: string = "curl -sS -X POST -w '\\n__AMC_STATUS__:%" + openBrace + "http_code" + closeBrace + "'"
+
+        let keys: List<string> = headers.Keys()
+        let kn: int = keys.Count()
+        for i in 0..kn {
+            let k: string = keys.Get(i)
+            let v: string = headers.Get(k)
+            cmd = cmd + " -H " + MigrateCommand.ShellEscape(k + ": " + v)
+        }
+
+        // Body via temp file to avoid OS arg-length limits on big
+        // prompts (Linux ARG_MAX is ~2 MB; 128 KB is the safe shell
+        // limit before things get flaky). `mktemp` gives us a
+        // guaranteed-unique filename so concurrent invocations
+        // don't clobber each other.
+        let mk = Process.RunCapture("mktemp /tmp/amc-migrate-body-XXXXXX.json")
+        if (mk.Exit != 0) {
+            resp.Error = "curl: mktemp failed (" + String_FromInt(mk.Exit) + ")"
+            return resp
+        }
+        let bodyPath: string = String_Trim(mk.Stdout)
+        if (!File.WriteAll(bodyPath, body)) {
+            resp.Error = "curl: failed to write body to " + bodyPath
+            return resp
+        }
+        cmd = cmd + " --data-binary @" + bodyPath
+        cmd = cmd + " " + MigrateCommand.ShellEscape(url)
+
+        let res = Process.RunCapture(cmd)
+        File.Delete(bodyPath)
+
+        if (res.Exit != 0) {
+            resp.Error = "curl exit " + String_FromInt(res.Exit) + ": " + res.Stderr
+            return resp
+        }
+
+        // Split off the trailing `__AMC_STATUS__:NNN` line that -w
+        // appended after the response body.
+        let raw: string = res.Stdout
+        let marker: string = "\n__AMC_STATUS__:"
+        let idx: int = String_LastIndexOf(raw, marker)
+        if (idx < 0) {
+            resp.Error = "curl: missing status marker in output"
+            resp.Body  = raw
+            return resp
+        }
+        resp.Body   = String_Substring(raw, 0, idx)
+        let statStr: string = String_Substring(raw, idx + String_Length(marker),
+                                                String_Length(raw) - idx - String_Length(marker))
+        resp.Status = String_ToInt(String_Trim(statStr))
+        resp.Ok     = resp.Status >= 200 && resp.Status < 300
+        return resp
+    }
+
+    // Quote a string for safe use as a single shell argument.
+    // Wraps in single quotes and escapes embedded single quotes
+    // via the `'\''` POSIX idiom.
+    private static string ShellEscape(string s) {
+        let escaped: string = String_Replace(s, "'", "'\\''")
+        return "'" + escaped + "'"
     }
 
     // If the response is wrapped in ```...``` (any language tag),
