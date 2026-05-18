@@ -410,5 +410,51 @@ public class Program {
         } else {
             Console.WriteLine("[FAIL] bare ge")
         }
+
+        // ── multi-class manifest (classes = [...]) ────────────────────
+        // Verifies that `[stdlib].classes = ["FakeA","FakeB","FakeC"]`
+        // is parsed into ClassNames (all three) and ClassName (first).
+
+        let mcLock:  string = "tests/fixtures/pm-multiclass/amalgame.lock"
+        let mcCache: string = "tests/fixtures/pm-multiclass/cache"
+        let mcReg = PackageRegistry.LoadFrom(mcLock, mcCache)
+
+        if (mcReg.Packages.Count() == 1) {
+            Console.WriteLine("[PASS] multiclass: one package")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: one package got " + String_FromInt(mcReg.Packages.Count()))
+        }
+
+        let mc: LoadedPackage = mcReg.Packages.Get(0)
+
+        if (mc.ClassNames.Count() == 3) {
+            Console.WriteLine("[PASS] multiclass: ClassNames count")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: ClassNames count got " + String_FromInt(mc.ClassNames.Count()))
+        }
+
+        if (mc.ClassName == "FakeA") {
+            Console.WriteLine("[PASS] multiclass: ClassName is first")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: ClassName got '" + mc.ClassName + "'")
+        }
+
+        if (mc.ClassNames.Get(0) == "FakeA" && mc.ClassNames.Get(1) == "FakeB" && mc.ClassNames.Get(2) == "FakeC") {
+            Console.WriteLine("[PASS] multiclass: all class names")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: all class names")
+        }
+
+        if (mc.FuncNames.Count() == 4) {
+            Console.WriteLine("[PASS] multiclass: func count")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: func count got " + String_FromInt(mc.FuncNames.Count()))
+        }
+
+        if (mc.Ns == "Amalgame.Fake.Multi") {
+            Console.WriteLine("[PASS] multiclass: namespace")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: namespace got '" + mc.Ns + "'")
+        }
     }
 }

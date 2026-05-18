@@ -1589,8 +1589,14 @@ public class CGen {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
-            this.PkgClasses.Add(p.ClassName)
-            this.PkgClassNs.Add(p.Ns)
+            // Add every class the package exposes. Multi-class packages
+            // (classes = [...]) get one entry per class, all sharing the
+            // same namespace so PkgClassMangledPrefix resolves correctly.
+            let pkgCn: int = p.ClassNames.Count()
+            for pkgCi in 0..pkgCn {
+                this.PkgClasses.Add(p.ClassNames.Get(pkgCi))
+                this.PkgClassNs.Add(p.Ns)
+            }
             this.PkgHeaders.Add(p.Header)
             // C symbols use the full namespace-mangled form so
             // packages can't collide at link time when two of them

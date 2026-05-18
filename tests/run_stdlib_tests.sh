@@ -337,6 +337,13 @@ run_test "PR: caret 0.0.x reject patch" "$SAMPLES/stdlib_package_registry.am" "[
 run_test "PR: tilde within"           "$SAMPLES/stdlib_package_registry.am" "[PASS] tilde within"          "" "$PR_EXTRA"
 run_test "PR: tilde reject minor"     "$SAMPLES/stdlib_package_registry.am" "[PASS] tilde reject minor"    "" "$PR_EXTRA"
 run_test "PR: bare ge"                "$SAMPLES/stdlib_package_registry.am" "[PASS] bare ge"               "" "$PR_EXTRA"
+# multi-class manifest (classes = [...]).
+run_test "PR: multiclass one package" "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: one package"     "" "$PR_EXTRA"
+run_test "PR: multiclass count"       "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: ClassNames count" "" "$PR_EXTRA"
+run_test "PR: multiclass primary"     "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: ClassName is first" "" "$PR_EXTRA"
+run_test "PR: multiclass all names"   "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: all class names"  "" "$PR_EXTRA"
+run_test "PR: multiclass func count"  "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: func count"      "" "$PR_EXTRA"
+run_test "PR: multiclass namespace"   "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: namespace"       "" "$PR_EXTRA"
 
 # ── PackageManager e2e (full pipeline) ────────────────
 # Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
