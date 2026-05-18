@@ -250,11 +250,16 @@ public class FullResolver {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
-            // Class name as type-global (kept SHORT — user code
-            // imports the namespace and refers to the class by
-            // its short name; the cgen mangles at call sites).
-            this.DeclareGlobal(p.ClassName, "type", false)
-            this.PkgClasses.Add(p.ClassName)
+            // Register every class the package exposes. Packages
+            // that declare `classes = [...]` (multi-class, e.g.
+            // amalgame-tls) may have several; legacy single-class
+            // packages always have exactly one via ClassNames[0].
+            let pkgCn: int = p.ClassNames.Count()
+            for pkgCi in 0..pkgCn {
+                let pkgCls: string = p.ClassNames.Get(pkgCi)
+                this.DeclareGlobal(pkgCls, "type", false)
+                this.PkgClasses.Add(pkgCls)
+            }
             // Each function as a runtime global. The C symbol is
             // mangled with the full package namespace so two
             // packages declaring the same short class can coexist

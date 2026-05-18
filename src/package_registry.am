@@ -85,7 +85,8 @@ import Amalgame.Formats.Toml
 // with the class to produce `Redis_Open`.
 public class LoadedPackage {
     public  Name:        string             // amalgame-database-nosql-redis
-    public  ClassName:   string             // Redis
+    public  ClassName:   string             // primary class (first in classes[])
+    public  ClassNames:  List<string>       // all classes: ["TlsConfig", "TlsContext", ...]
     public  Header:      string             // runtime/Amalgame_Database_Redis.h
     public  Ns:          string             // Amalgame.Database.NoSQL.Redis
     // Git tag this install was resolved at (e.g. "v0.2.0"). Read
@@ -141,6 +142,7 @@ public class LoadedPackage {
     public LoadedPackage() {
         this.Name       = ""
         this.ClassName  = ""
+        this.ClassNames = new List<string>()
         this.Header     = ""
         this.Ns         = ""
         this.Tag        = ""
@@ -229,20 +231,36 @@ public class PackageRegistry {
             // and [stdlib.functions] sections.
             let stdlibTable: TomlValue = manifest.Get("stdlib")
             if (!stdlibTable.IsTable()) { continue }
-            let classVal: TomlValue = stdlibTable.Get("class")
             let headerVal: TomlValue = stdlibTable.Get("header")
             let nsVal: TomlValue = stdlibTable.Get("namespace")
-            let clsName: string = classVal.AsString()
             let hdr: string = headerVal.AsString()
             let ns: string = nsVal.AsString()
-            if (String_Length(clsName) == 0) { continue }
-            if (String_Length(hdr) == 0)     { continue }
+            if (String_Length(hdr) == 0) { continue }
+
+            // Collect class names: prefer `classes = [...]` (multi-class
+            // packages like amalgame-tls), fall back to `class = "..."`.
+            let classNames: List<string> = new List<string>()
+            let classesArr: TomlValue = stdlibTable.Get("classes")
+            if (classesArr.IsArray()) {
+                let cn: int = classesArr.Count()
+                for ci in 0..cn {
+                    let cv: string = classesArr.At(ci).AsString()
+                    if (String_Length(cv) > 0) { classNames.Add(cv) }
+                }
+            }
+            if (classNames.Count() == 0) {
+                let classVal: TomlValue = stdlibTable.Get("class")
+                let clsSingle: string = classVal.AsString()
+                if (String_Length(clsSingle) > 0) { classNames.Add(clsSingle) }
+            }
+            if (classNames.Count() == 0) { continue }
 
             let lp = new LoadedPackage()
-            lp.Name      = pkgName
-            lp.Tag       = pkgTag
-            lp.PkgDir    = pkgDir
-            lp.ClassName = clsName
+            lp.Name       = pkgName
+            lp.Tag        = pkgTag
+            lp.PkgDir     = pkgDir
+            lp.ClassNames = classNames
+            lp.ClassName  = classNames.Get(0)
             // Manifest's header path is relative to the package
             // root; expose it as absolute so the cgen can emit
             // `#include "<absolute path>"` and the resolver +
