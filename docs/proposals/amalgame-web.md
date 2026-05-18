@@ -1,6 +1,7 @@
 # Proposal: `Amalgame.Web` — TLS, HTTP and the Mosaic web server
 
-**Status:** Draft 2026-05-17. Not yet implemented. This document is the
+**Status:** Decisions locked 2026-05-18. Implementation starting.
+All open questions from section 23 are resolved. This document is the
 contract against which `amalgame-tls`, `amalgame-net-http` and
 `amalgame-web` will be built. It supersedes any prior informal
 discussion of HTTP/TLS in Amalgame.
@@ -448,17 +449,20 @@ Three modes, selected by CLI command:
 ### 5.1 DEV — `mosaic dev`
 
 - Filesystem watcher (`amalgame-io-filewatcher`) on `app/` and `lib/`.
-- First request to a route → `mosaic` calls `amc compile-shared
-  app/<route>.am` → produces `.amweb-cache/routes/<route>.so` (≈100-500
-  ms cold compile).
-- Subsequent requests → `dlopen` the cached `.so`, invoke handler.
-- File change → invalidate cache entry, next request recompiles.
+- On startup → `mosaic` calls `amc compile-shared app/` → compiles
+  the **entire `app/` tree into a single `.amweb-cache/app.so`**
+  (≈500 ms–2 s cold compile depending on project size).
+- Requests → `dlopen` the cached `app.so`, dispatch to the matching
+  handler by route.
+- File change in `app/` or `lib/` → watcher triggers full recompile
+  of `app.so`; new `.so` is swapped in atomically on next request.
 - Pretty error page: stack trace in AM (not C), source snippet, suggested
   fix on common errors.
 - Request log to stdout in human-readable format.
 - TLS optional (`--tls-cert`/`--tls-key`) or self-signed via
   `--tls-dev` (localhost cert auto-generated).
 - ACME **disabled** in dev mode to avoid Let's Encrypt rate limits.
+- `--open` flag: opens the browser automatically at startup (opt-in).
 
 ### 5.2 PROD modular — `mosaic serve`
 
@@ -466,25 +470,20 @@ Three modes, selected by CLI command:
   ```
   dist/
   ├── mosaic                    # server binary
-  ├── routes/
-  │   ├── index.so
-  │   ├── users__id.so
-  │   └── ...
-  ├── lib/
-  │   └── *.so                  # optional shared libs
+  ├── app.so                    # entire app/ compiled as one shared lib
   ├── public/                   # assets, served verbatim
   └── mosaic.toml               # server config
   ```
-- All `.so` files are pre-compiled by the CI/build pipeline; **no
-  runtime compilation**.
-- File watcher disabled (security: writing to `dist/routes/*.so` would
+- `app.so` is pre-compiled by the CI/build pipeline; **no runtime
+  compilation**.
+- File watcher disabled (security: writing to `dist/app.so` would
   not auto-reload).
 - Hot reload available via `SIGHUP` or `mosaic reload` command — swaps
-  `.so` atomically by re-`dlopen`ing.
+  `app.so` atomically by re-`dlopen`ing.
 - Use cases:
   - Self-hosted deployments with frequent partial updates
-  - Shipping a patch by rsync of a single `.so`
-  - Plugin-style architectures (third-party `.so` extensions, opt-in)
+  - Shipping a patch by replacing `app.so` + SIGHUP
+  - Separation of server binary and application logic
 
 ### 5.3 PROD all-in-one — `mosaic build --mono` → custom binary
 
@@ -528,7 +527,7 @@ artifacts.
 │              │                                                    │
 │   mosaic                                                          │
 │   ├─ mosaic new <name>      → scaffold project                   │
-│   ├─ mosaic dev             → DEV mode (filewatcher + hot dlopen)│
+│   ├─ mosaic dev [--open]    → DEV mode (filewatcher + hot dlopen)│
 │   ├─ mosaic build           → both PROD artifacts                │
 │   │     [--modular | --mono]                                      │
 │   ├─ mosaic serve           → PROD modular runtime                │
@@ -536,6 +535,7 @@ artifacts.
 │   ├─ mosaic routes          → list discovered routes              │
 │   ├─ mosaic cache clean     → wipe .amweb-cache                   │
 │   ├─ mosaic acme renew      → force ACME renew now                │
+│   ├─ mosaic supervisor <dir>→ launch all sites in <dir>/ (v1.0)  │
 │   └─ mosaic version                                                │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -642,27 +642,23 @@ This is the Go `net/http` model, simplified.
 ```
 mon-app/
 └── .amweb-cache/                  # gitignored
-    ├── meta.json                  # source hash → .so path map
-    ├── routes/
-    │   ├── index.so
-    │   ├── users__id.so           # [id].am → users__id.so (slug-safe)
-    │   ├── api__login.so
-    │   └── ...
-    ├── lib/
-    │   └── shared.so              # optional, when lib/ is large
-    └── tmp/                       # in-flight compilations
+    ├── meta.json                  # source tree hash → app.so path
+    ├── app.so                     # entire app/ compiled as one .so
+    └── tmp/                       # in-flight compilation
 ```
 
 - Default location: `./.amweb-cache/` in the project root.
 - Override: `AMWEB_CACHE_DIR=/var/cache/mosaic/<app>` env var (useful
   for multi-instance deployments where the project dir is read-only).
-- `meta.json` stores SHA-256 of each source file **and its transitive
-  imports under `lib/`**. A change in `lib/db.am` invalidates all
-  routes that import it (not just `lib/db.am`'s direct consumers).
-- Compilation is atomic: build into `tmp/`, then `rename()` into
-  `routes/`. A partially-written `.so` is never loaded.
+- `meta.json` stores the aggregate SHA-256 of the entire `app/` tree
+  **and `lib/`**. Any change to any source file triggers a full
+  recompile of `app.so` — simple and correct.
+- Compilation is atomic: build into `tmp/app.so`, then `rename()`.
+  A partially-written `.so` is never loaded.
 - `mosaic cache clean` wipes the cache. `mosaic dev --no-cache`
   forces full recompile.
+- Per-file invalidation (one `.so` per route) may be revisited in
+  v1.x if compile time on large projects becomes a bottleneck.
 
 ## 9. Sessions
 
@@ -981,7 +977,77 @@ Rationale:
 Process-isolated multi-tenant hosting may be revisited in v1.x+ if
 demand materializes.
 
-## 17. Configuration
+## 17. Production deployment
+
+### 17.1 Directory-per-site pattern
+
+Each production site is an independent directory containing its binary
+(or `app.so`), config, and assets. Sites run as independent processes
+behind a reverse proxy (nginx, Caddy, Traefik) routing by hostname.
+
+```
+/opt/sites/
+├── blog/
+│   ├── blog           ← mono binary (mosaic build --mono)
+│   └── mosaic.toml    ← listen: :3001
+├── api/
+│   ├── api
+│   └── mosaic.toml    ← listen: :3002
+└── shop/
+    ├── app.so         ← modular build (mosaic build --modular)
+    ├── mosaic
+    └── mosaic.toml    ← listen: :3003
+```
+
+Each site crashes and restarts independently. Adding or removing a site
+is as simple as adding or removing a directory.
+
+### 17.2 OS service integration — `amalgame-service`
+
+The existing `amalgame-service` package covers both production OS
+targets. No new tooling is required.
+
+**Linux (systemd):**
+
+```bash
+mosaic build --mono
+sudo ./install.sh      # registers + starts the systemd unit
+sudo journalctl -fu my-app
+```
+
+Generated `.service` unit:
+
+```ini
+[Service]
+ExecStart=/opt/sites/my-app/my-app
+WorkingDirectory=/opt/sites/my-app
+Restart=on-failure
+```
+
+**Windows (Windows Service Control Manager):**
+
+```powershell
+.\build.ps1
+Start-Process powershell -Verb runAs .\install.ps1
+# Registers via sc.exe, starts the Windows Service natively.
+# No NSSM or third-party wrapper required (amalgame-service ≥ v0.2.0).
+```
+
+### 17.3 `mosaic supervisor` (v1.0 — convenience)
+
+For dev multi-site and hosting contexts without systemd (macOS,
+lightweight VPS):
+
+```bash
+mosaic supervisor /opt/sites/
+# Scans subdirectories, launches each site's binary / mosaic serve,
+# restarts on crash, SIGHUP for reload, aggregated logs to stdout.
+```
+
+This is a convenience wrapper — for serious production Linux/Windows
+deployments, prefer `amalgame-service` + systemd/SCM.
+
+## 18. Configuration
 
 Two config files coexist:
 
@@ -1033,7 +1099,7 @@ Env vars override config file (`MOSAIC_LISTEN=:8080`,
 
 CLI flags override env vars.
 
-## 18. Naming conventions
+## 19. Naming conventions
 
 | Layer | Name |
 |---|---|
@@ -1048,7 +1114,7 @@ blog posts, conference talks). Code, manifests, namespaces, doc
 references all use `Amalgame.Web`. The name nods thematically to
 "Amalgame" (both terms evoke assembled pieces).
 
-## 19. External dependencies
+## 20. External dependencies
 
 | Dep | Package providing | License | Resolved via |
 |---|---|---|---|
@@ -1066,36 +1132,48 @@ or vcpkg.
 This is identical to how every other production HTTP/TLS stack
 (curl, nginx, Node.js) works.
 
-## 20. Roadmap
+## 21. Roadmap
 
-| Version | Scope | Estimated effort |
+Status legend: ✅ shipped · 🟡 partial · ⏳ planned.
+
+| Version | Scope | Status |
 |---|---|---|
-| `amalgame-tls v0.1` | OpenSSL binding, TlsConfig static (file-based certs), client+server stream, ALPN | 3-4 days |
-| `amalgame-net-http v0.1` | HTTP/1.1 parser (pure AM), client+server, body parsing (json/form/multipart), keep-alive | 4-5 days |
-| `amalgame-net-http v0.2` | HTTP/2 via nghttp2 binding | 3-4 days |
-| `amalgame-web v0.1` | WebApp, programmatic routing, middleware pipeline, static serve, MemorySessionStore | 3 days |
-| `amalgame-web v0.2` | Filesystem-based routing + DEV mode (dlopen + filewatcher), pretty errors | 4 days |
-| `amalgame-web v0.3` | WebSocket server (extends net-websocket), SSE, channels pub/sub | 2-3 days |
-| `amalgame-tls v0.2` | ACME / Let's Encrypt automatic certs (tls-alpn-01 + http-01) | 4-5 days |
-| `amalgame-web v0.4` | Security middleware (CSRF, CORS, rate limit, security headers, slow loris), JsonFileSessionStore, /metrics, /healthz | 3 days |
-| `amalgame-web v0.5` | PROD modular mode (`.so` deployment), PROD all-in-one mode (`mosaic build --mono`), graceful shutdown | 3-4 days |
-| `amalgame-web v0.6` | Reverse proxy (HTTP/1.1+2, load balancing, health checks, circuit breaker) | 3 days |
-| `amalgame-web v0.7` | RedisSessionStore, OpenTelemetry-compat request IDs, advanced rate limit (sliding window) | 2 days |
-| `amalgame-web v1.0` | Polish, docs, stable API, scaffolder template `amc new --template web-app` | 1 week |
+| `amc` multi-class manifest (v0.8.29) | `classes = [...]` in `[stdlib]` — multi-class packages | ✅ shipped |
+| `amc` first-class fn types (v0.8.30) | `Closure` as field/param type, invoke via `this.Fn(x)` / `local.Fn(x)` | ✅ shipped |
+| `amc` libcurl ejection (v0.8.31) | HTTP out of bundled stdlib → `amalgame-net-http` + `amalgame-net-curl` packages | ✅ shipped |
+| `amalgame-tls v0.1.2` | OpenSSL 3.x binding, TlsConfig (file-based certs + ALPN + min version), client+server stream, multi-OS auto-detect | ✅ shipped |
+| `amalgame-net-http v0.1.1` | HTTP/1.1 pure-AM parser + HttpRequest/Response + HttpServer helpers + HttpClient (GET/POST/+builder), 17 parser tests + 5 e2e tests | ✅ shipped |
+| `amalgame-net-curl v0.1.1` | Thin libcurl binding (Http.Get/Post/Put/Delete/Patch) extracted from amc's old runtime — companion to net-http for outbound API calls | ✅ shipped |
+| `amalgame-web v0.1.3` | Router (path matching `:param` + `*splat`), Route + Closure handlers (no more handler-name strings), MemorySessionStore + Session, WebContext | ✅ shipped |
+| `amalgame-net-http v0.2` | HTTP/2 via nghttp2 binding | ⏳ planned |
+| `amalgame-web v0.2` | Filesystem-based routing + DEV mode (single `app.so` + filewatcher + hot dlopen), pretty errors | ⏳ planned |
+| `amalgame-web v0.3` | WebSocket server (extends `amalgame-net-websocket`), SSE, channels pub/sub | ⏳ planned |
+| `amalgame-tls v0.2` | ACME / Let's Encrypt automatic certs (tls-alpn-01 + http-01) | ⏳ planned |
+| `amalgame-web v0.4` | Security middleware (CSRF, CORS, rate limit, security headers, slow loris), JsonFileSessionStore, /metrics, /healthz | ⏳ planned |
+| `amalgame-web v0.5` | PROD modular mode (`app.so` deployment), PROD all-in-one (`mosaic build --mono`), graceful shutdown | ⏳ planned |
+| `amalgame-web v0.6` | Reverse proxy (HTTP/1.1+2, load balancing, health checks, circuit breaker) | ⏳ planned |
+| `amalgame-web v0.7` | RedisSessionStore, OpenTelemetry-compat request IDs, advanced rate limit (sliding window) | ⏳ planned |
+| `amalgame-web v1.0` | Polish, docs, stable API, `mosaic supervisor`, scaffolder `amc new --template web-app` | ⏳ planned |
 
-**Total v0.1 → v1.0 ≈ 7-8 weeks** of focused work for the framework
-itself. Argon2id in `amalgame-crypto` is a precondition for v0.5 and
-must land before then.
+**Shipped 2026-05-18** (one development day): foundation through
+`amalgame-web v0.1.3` — Router + Closure handlers running end-to-end,
+verified with a working browser demo (TCP accept loop → HttpParser →
+Router.Match → closure dispatch → HttpResponse.Render). All four
+packages registered on `amalgame-lang/packages-index`, all CIs green
+against amc v0.8.31.
 
-**Roadmap dependencies (must land first):**
+**Roadmap dependencies still pending:**
 
-1. Argon2id in `amalgame-crypto` (precondition for v0.5).
-2. WebSocket server-side framing in `amalgame-net-websocket`
-   (precondition for `amalgame-web v0.3`).
-3. amc support for **package binary delivery** if we ever switch
-   away from Option A — not required for v1.0.
+1. Argon2id in `amalgame-crypto` — precondition for `amalgame-web v0.4`
+   (CSRF + secure session tokens).
+2. WebSocket server-side framing in `amalgame-net-websocket` —
+   precondition for `amalgame-web v0.3`.
+3. nghttp2 binding for `amalgame-net-http v0.2` (HTTP/2 server support).
+4. amc parser/cgen extensions: nested `obj.A.B.fn(args)` closure
+   dispatch (currently requires binding to a local first), and
+   typed `Closure<A, R>` parameterized function types.
 
-## 21. Future work (post-v1.0)
+## 22. Future work (post-v1.0)
 
 - **JSX-like template literals** in amc parser (separate proposal).
 - **Multi-site hosting** in a single Mosaic process (separate proposal
@@ -1114,7 +1192,7 @@ must land before then.
 - **Built-in admin UI** (à la Caddy admin API, à la Traefik
   dashboard).
 
-## 22. Decisions log (record of rejected paths)
+## 23. Decisions log (record of rejected paths)
 
 1. **mbedTLS / BearSSL / wolfSSL rejected** in favor of OpenSSL 3.x:
    industry credibility, ABI stability, ubiquitous packaging.
@@ -1142,33 +1220,54 @@ must land before then.
    2026, HTTP/2 covers the practical needs.
 10. **Built-in templating with JSX literals deferred** to v1.0+:
     requires amc parser extension, which is a separate work item.
+11. **HTTP/2 included in `amalgame-net-http v0.1`** (not a separate
+    v0.2): shipping HTTP/1.1-only first would mean half the ecosystem
+    uses an incomplete stack. nghttp2 is added upfront; total cost is
+    one extra week, outcome is a complete HTTP layer from day one.
+12. **Argon2id in `amalgame-crypto`** (not a sister package): consistent
+    with existing SHA-256/HMAC surface, no extra `amc package add` step
+    for users who need password hashing.
+13. **WebSocket server in `amalgame-net-websocket`** (not `amalgame-web`):
+    the SHA-1+Base64 handshake and frame encoding are already there;
+    adding server-side framing is ~200 lines and achieves client+server
+    parity in one package.
+14. **Single `app.so` per project** (not one `.so` per route file):
+    simpler compilation pipeline, one `dlopen` call, adequate for v0.x.
+    Per-file invalidation may be revisited in v1.x if large-project
+    compile times become a bottleneck.
+15. **Production deployment via `amalgame-service`**: the existing
+    `amalgame-service` package already handles Linux (systemd unit) and
+    Windows (native SCM via `sc.exe`). No new tooling needed for
+    production OS-service integration.
+16. **`mosaic supervisor` as v1.0 convenience** (not primary deployment
+    tool): systemd and Windows SCM cover serious production cases.
+    `mosaic supervisor <dir>` targets dev multi-site and lightweight
+    hosting contexts (macOS, VPS without systemd).
+17. **Directory-per-site deployment pattern**: each production site lives
+    in its own directory with its binary (or `app.so`), `mosaic.toml`,
+    and `public/`. Sites run as independent processes, isolated crash
+    domains, behind a reverse proxy routing by hostname.
 
-## 23. Open questions (must be answered before code starts)
+## 24. Decisions (formerly open questions — all resolved 2026-05-18)
 
-1. **HTTP/2 from v0.1 or v0.2?** Current plan: v0.2 to ship `amalgame-net-http v0.1`
-   faster. Decide whether v0.1 of the framework needs HTTP/2 or can
-   ship HTTP/1.1-only first.
-2. **OpenSSL version pin?** OpenSSL 3.0 LTS is the floor; some macOS
-   Homebrew defaults still ship OpenSSL 1.1.1 in transitive bottle
-   chains. Document and require ≥ 3.0.
-3. **Argon2id package home?** Add to `amalgame-crypto` directly, or
-   spin a sister package `amalgame-crypto-pwhash`? Tendency: into
-   `amalgame-crypto` to keep the surface coherent.
-4. **WebSocket server in `amalgame-net-websocket` or `amalgame-web`?**
-   Cleaner in `amalgame-net-websocket` (parity with client), but
-   `amalgame-web` is the only consumer. Tendency: extend
-   `amalgame-net-websocket` to v0.2.
-5. **Per-route `.so` granularity** — one `.so` per `.am` file is the
-   default, but should we offer a "merge mode" (one `.so` per
-   directory) for projects with hundreds of small route files?
-   Defer to v1.x measurement.
-6. **Config file format**: TOML for `mosaic.toml` (consistent with
-   `amalgame.toml`). Confirmed — no JSON or YAML.
-7. **Should `mosaic dev` open the browser automatically?** Nice
-   touch (Vite does this). Behind a flag `--open`? Tendency: yes,
-   `--open` flag opt-in.
+1. **HTTP/2 from v0.1** — `amalgame-net-http v0.1` ships HTTP/1.1 +
+   HTTP/2 together. No separate v0.2 for HTTP/2.
+2. **OpenSSL multi-OS** — detected via `__has_include` + common path
+   probing (Homebrew `/opt/homebrew/opt/openssl@3/include` on macOS,
+   system path on Linux, msys2/vcpkg on Windows). OpenSSL ≥ 3.0 is
+   the floor. `AMALGAME_CFLAGS` env var for non-standard installs.
+3. **Argon2id in `amalgame-crypto`** — added directly alongside
+   SHA-256/HMAC, no sister package. Precondition for `amalgame-web v0.5`.
+4. **WebSocket server in `amalgame-net-websocket`** — extend to v0.2.
+   If the server framing turns out complex, fallback to `amalgame-web`.
+5. **Single `app.so` per project** — one `.so` for the entire `app/`
+   tree. Per-file granularity deferred to v1.x.
+6. **Config file format: TOML** — `mosaic.toml`, consistent with
+   `amalgame.toml`. No JSON, no YAML.
+7. **`mosaic dev --open`** — opt-in flag that opens the browser at
+   startup. Disabled by default.
 
-## 24. Appendix: complete example app
+## 25. Appendix: complete example app
 
 A minimal but realistic Mosaic app.
 
@@ -1325,7 +1424,7 @@ ssh prod "cd /opt/todo-app && ./mosaic serve"
 
 ---
 
-## 25. Acceptance criteria for v1.0
+## 26. Acceptance criteria for v1.0
 
 This proposal is considered complete when:
 

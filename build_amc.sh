@@ -42,7 +42,7 @@ AMC_SOURCES="src/lexer/token.am \
 #   ./snapshot/amc       ← last known-good Amalgame (tools/save-snapshot.sh)
 #
 # If neither exists, build snapshot/amc from the tracked snapshot/amc_lib.c:
-#   gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -lz -o snapshot/amc
+#   gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lz -o snapshot/amc
 # Pre-flight: warn early if libgc-dev / libcurl headers are missing.
 # Both are required by the runtime — the snapshot-bootstrap recovery
 # step below will fail with "fatal error: gc.h" otherwise, which is
@@ -90,7 +90,7 @@ else
     echo "  gcc -O2 -Iruntime \\" >&2
     echo "      -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable \\" >&2
     echo "      snapshot/amc_lib.c \\" >&2
-    echo "      -lgc -lm -lcurl -lz -o snapshot/amc" >&2
+    echo "      -lgc -lm -lz -o snapshot/amc" >&2
     echo "" >&2
     echo "If gcc reports 'fatal error: gc.h: No such file or directory'," >&2
     echo "libgc-dev isn't installed. If it reports 'cannot find -lgc' at link" >&2
@@ -108,7 +108,7 @@ if [ ! -f gen_test.c ]; then
     echo "Step 1 failed: gen_test.c was not produced" >&2
     exit 1
 fi
-gcc -O2 -Iruntime -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable gen_test.c -lgc -lm -lcurl -lz -o gen_test
+gcc -O2 -Iruntime -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable gen_test.c -lgc -lm -lz -o gen_test
 
 echo "=== Step 2: Generate all bundles + amc_lib.c ==="
 time ./gen_test
@@ -130,7 +130,7 @@ echo "=== Step 3: Compile amc ==="
 gcc -Iruntime \
     -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable \
     src/amc_lib.c \
-    -lgc -lm -lcurl -lz -o amc
+    -lgc -lm -lz -o amc
 echo "✅ amc built $(date)"
 
 # ── Step 4: Pre-compile the user-facing stdlib into lib/libamalgame.a
