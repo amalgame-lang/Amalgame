@@ -620,6 +620,29 @@ public class CGen {
         return result
     }
 
+    // Walk a chain of MEMBER nodes rooted at THIS/IDENT and return the
+    // bare class name of the leaf. Used by call-site dispatch to
+    // resolve `obj.A.B.fn(args)` without forcing a bind-to-local.
+    // Empty string if the chain hits an unknown local/field.
+    private string ResolveReceiverClass(AstNode node) {
+        if (node == null) { return "" }
+        let nk = node.Kind
+        if (nk == NodeKind.THIS_EXPR) { return this.CurrentClass }
+        if (nk == NodeKind.IDENTIFIER) {
+            let t = this.LocalTypeGet(node.Name)
+            if (String_Length(t) == 0) { return "" }
+            return String_Replace(t, "*", "")
+        }
+        if (nk == NodeKind.MEMBER) {
+            let parentCls = this.ResolveReceiverClass(node.Left)
+            if (String_Length(parentCls) == 0) { return "" }
+            let ft = this.FieldTypeGet(parentCls, node.Name)
+            if (String_Length(ft) == 0) { return "" }
+            return String_Replace(ft, "*", "")
+        }
+        return ""
+    }
+
     // For `let names = users.Map(u => u.Name)`, the result list's
     // element type is the lambda's return type — NOT the receiver's
     // element type. We push the lambda params into LocalTypes so
@@ -3326,6 +3349,17 @@ public class CGen {
                         let localType: string = this.LocalTypeGet(mem.Left.Name)
                         recvCls  = String_Replace(localType, "*", "")
                         recvExpr = mem.Left.Name
+                    } else if (mem.Left.Kind == NodeKind.MEMBER) {
+                        // Nested member access: `obj.A.B.fn(args)` —
+                        // resolve the receiver chain's leaf class via
+                        // ResolveReceiverClass and emit the C
+                        // expression for the inner chain directly (no
+                        // bind-to-local required).
+                        let nestedCls: string = this.ResolveReceiverClass(mem.Left)
+                        if (String_Length(nestedCls) > 0) {
+                            recvCls  = nestedCls
+                            recvExpr = this.EmitExprStr(mem.Left)
+                        }
                     }
                     if (String_Length(recvCls) > 0) {
                         let ft: string = this.FieldTypeGet(recvCls, mem.Name)
