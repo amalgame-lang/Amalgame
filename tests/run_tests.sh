@@ -471,6 +471,10 @@ run_test "FCF: arity-1 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-1 t
 run_test "FCF: arity-2 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-2 this.Field call"
 run_test "FCF: arity-3 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-3 this.Field call"
 run_test "FCF: List + local"   "$SAMPLES/closure_as_field.am"  "[PASS] closure in List + local.Field call"
+# v0.8.33 — nested MEMBER closure dispatch (obj.A.B.fn(args)).
+run_test "FCF: nested IDENT 1" "$SAMPLES/closure_nested_member.am" "[PASS] nested IDENT chain arity-1"
+run_test "FCF: nested THIS 1"  "$SAMPLES/closure_nested_member.am" "[PASS] nested THIS chain arity-1"
+run_test "FCF: nested 3-deep"  "$SAMPLES/closure_nested_member.am" "[PASS] nested IDENT chain 3-deep"
 run_test "lambda v2: 2-arg"   "$SAMPLES/lambdas_v2.am"  "add: 12"
 run_test "lambda v2: block"   "$SAMPLES/lambdas_v2.am"  "plus3: 23"
 run_test "lambda v2: 2+block" "$SAMPLES/lambdas_v2.am"  "mix: 17"

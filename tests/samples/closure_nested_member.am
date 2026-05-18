@@ -1,0 +1,63 @@
+// Nested MEMBER access for closure dispatch (post-v0.8.32).
+//
+// Before: `obj.A.B.fn(args)` forced a bind-to-local — cgen only
+// resolved THIS_EXPR and IDENTIFIER receivers, falling back to
+// emitting a regular method call when the field happened to be a
+// Closure.
+//
+// After: c_gen.am::ResolveReceiverClass walks arbitrary MEMBER
+// chains rooted at THIS/IDENT, so the call site emits
+// `AmalgameClosure_callN(obj->A->B->fn, args)` directly.
+
+namespace Tests
+
+import Amalgame.Collections
+
+public class Inner {
+    public Handler: Closure
+    public Inner(Closure h) { this.Handler = h }
+}
+
+public class MatchResult {
+    public Inner: Inner
+    public MatchResult(Inner i) { this.Inner = i }
+}
+
+public class Router {
+    public Result: MatchResult
+    public Router(MatchResult r) { this.Result = r }
+
+    // Exercises `this.A.B.fn(args)` — nested MEMBER rooted at THIS.
+    public int CallViaThis(int x) {
+        return this.Result.Inner.Handler(x)
+    }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let inner   = new Inner(x => x * 2)
+        let m       = new MatchResult(inner)
+        let router  = new Router(m)
+
+        // ── Arity 1: nested IDENT.field.field.fn ──────────────────
+        if (m.Inner.Handler(21) == 42) {
+            Console.WriteLine("[PASS] nested IDENT chain arity-1")
+        } else {
+            Console.WriteLine("[FAIL] nested IDENT chain arity-1")
+        }
+
+        // ── Arity 1: nested THIS.field.field.fn ───────────────────
+        if (router.CallViaThis(21) == 42) {
+            Console.WriteLine("[PASS] nested THIS chain arity-1")
+        } else {
+            Console.WriteLine("[FAIL] nested THIS chain arity-1")
+        }
+
+        // ── Deeper chain: 3 levels (router.Result.Inner.Handler) ──
+        if (router.Result.Inner.Handler(21) == 42) {
+            Console.WriteLine("[PASS] nested IDENT chain 3-deep")
+        } else {
+            Console.WriteLine("[FAIL] nested IDENT chain 3-deep")
+        }
+    }
+}
