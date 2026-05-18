@@ -375,6 +375,49 @@ let times = nums.Map(x => x * 10)                // [10, 20, 30, 40]
 let total = nums.Reduce(0, (acc, x) => acc + x)  // 10
 ```
 
+### First-class functions (`Closure` type, v0.8.30+)
+
+Use the `Closure` type to declare function-valued **class fields**,
+**method parameters**, and **collection elements**. Lambdas literal-
+or named-bound to a `Closure` slot are usable like any other value,
+and a stored closure is invoked with the same `field(args)` syntax
+as a method call — the compiler dispatches through
+`AmalgameClosure_callN` under the hood.
+
+```kotlin
+public class Route {
+    public Path:    string
+    public Handler: Closure                  // ← first-class fn field
+
+    public Route(string path, Closure handler) {
+        this.Path    = path
+        this.Handler = handler
+    }
+
+    public int Run(int x) {
+        return this.Handler(x)                // ← invoke stored closure
+    }
+}
+
+let r = new Route("/double", x => x * 2)
+r.Run(21)                                    // → 42
+
+// Closures in a collection.
+let routes = new List<Route>()
+routes.Add(new Route("/inc", x => x + 1))
+let r0: Route = routes.Get(0)
+r0.Run(99)                                   // → 100
+```
+
+This is the foundation of callback APIs (handler registries, event
+emitters, middleware chains, etc.). For now `Closure` is **untyped**
+(args and result are boxed to `void*` and round-trip through `i64` /
+pointer casts as appropriate), matching the v0.3 inline-lambda
+behavior — see *Current limitations* below.
+
+Arities 1, 2 and 3 are supported. Closures of arity 0 or 4+ require
+a future cgen extension.
+
 ## List literals and comprehensions
 
 Square-bracket syntax builds a `List<T>` inline. Comma-separated

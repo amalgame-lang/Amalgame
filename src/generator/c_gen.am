@@ -3297,6 +3297,67 @@ public class CGen {
             return expr.Str + operand
         }
         if (k == NodeKind.CALL) {
+            // ── Closure call via MEMBER access (v0.8.30+) ─────────
+            // `this.Fn(x)`, `obj.Handler(req)`, etc. — when the
+            // referenced field has type `Closure` (lowered to
+            // `AmalgameClosure*`), dispatch through
+            // AmalgameClosure_callN instead of emitting a method
+            // call. Same arity 1-3 limit as the IDENTIFIER path
+            // below; uses the same BoxAsVoid / unbox machinery.
+            //
+            // This is what makes `Closure` a first-class type for
+            // class fields, enabling handler-callback APIs:
+            //   public class HttpServer {
+            //       public Handler: Closure
+            //       public HttpResponse Dispatch(HttpRequest req) {
+            //           return this.Handler(req)
+            //       }
+            //   }
+            if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER) {
+                let mem: AstNode = expr.Left
+                if (mem.Left != null && mem.Name != "") {
+                    var recvCls: string = ""
+                    var recvExpr: string = ""
+                    if (mem.Left.Kind == NodeKind.THIS_EXPR) {
+                        recvCls  = this.CurrentClass
+                        recvExpr = "self"
+                    } else if (mem.Left.Kind == NodeKind.IDENTIFIER) {
+                        // Receiver is a local — strip trailing `*` from
+                        // its C type to recover the bare class name
+                        // (matches the convention used by FieldTypeGet
+                        // lookups elsewhere in this file).
+                        let localType: string = this.LocalTypeGet(mem.Left.Name)
+                        recvCls  = String_Replace(localType, "*", "")
+                        recvExpr = mem.Left.Name
+                    }
+                    if (String_Length(recvCls) > 0) {
+                        let ft: string = this.FieldTypeGet(recvCls, mem.Name)
+                        if (ft == "AmalgameClosure*") {
+                            let argc: int = expr.Args.Count()
+                            let calleeName: string = recvExpr + "->" + mem.Name
+                            let retC: string = "i64"   // closure return type erased to i64
+                            if (argc == 1) {
+                                let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                                let callC = "AmalgameClosure_call1(" + calleeName + ", " + this.BoxAsVoid(arg0) + ")"
+                                return this.UnboxScalar(retC, callC)
+                            }
+                            if (argc == 2) {
+                                let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                                let arg1 = this.EmitExprStr(expr.Args.Get(1))
+                                let callC = "AmalgameClosure_call2(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ")"
+                                return this.UnboxScalar(retC, callC)
+                            }
+                            if (argc == 3) {
+                                let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                                let arg1 = this.EmitExprStr(expr.Args.Get(1))
+                                let arg2 = this.EmitExprStr(expr.Args.Get(2))
+                                let callC = "AmalgameClosure_call3(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ", " + this.BoxAsVoid(arg2) + ")"
+                                return this.UnboxScalar(retC, callC)
+                            }
+                        }
+                    }
+                }
+            }
             // Closure call: callee is a local of type AmalgameClosure*.
             // v2 supports arities 1, 2, 3 — args boxed via intptr_t at
             // the call site, result unboxed back to i64. Arities >3

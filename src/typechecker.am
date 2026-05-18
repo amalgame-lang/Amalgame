@@ -1098,6 +1098,17 @@ public class TypeChecker {
                 calleeType = this.GetType(callee)
             }
         }
+        // First-class function support (v0.8.30+): when the callee
+        // is a value of type `Closure` (a stored function reference),
+        // the call expression's type is the closure's return value,
+        // not the closure itself. Since closures are currently
+        // untyped at the AM level (args/result erased to i64/void*),
+        // surface the call result as `?` so it round-trips through
+        // IsAssignable cleanly. A future typed-Closure proposal
+        // will replace this with the closure's declared return type.
+        if (calleeType == "Closure" || calleeType == "AmalgameClosure*") {
+            calleeType = "?"
+        }
         this.SetType(expr, calleeType)
     }
 
