@@ -1,0 +1,22 @@
+# Manifest for the fake-multiclass fixture — exercises the
+# `[stdlib].classes = [...]` schema added to support packages
+# that expose more than one class (e.g. amalgame-tls exposes
+# TlsConfig, TlsContext, TlsStream).
+
+[package]
+name           = "fake-multiclass"
+version        = "0.1.0"
+license        = "Apache-2.0"
+schema-version = 1
+
+[stdlib]
+classes   = ["FakeA", "FakeB", "FakeC"]
+header    = "runtime/fake_multiclass.h"
+namespace = "Amalgame.Fake.Multi"
+libs      = ["m"]
+
+[stdlib.functions]
+FakeA_New   = { returns = "AmalgameFakeA*" }
+FakeA_Close = { returns = "void" }
+FakeB_New   = { returns = "AmalgameFakeB*" }
+FakeC_Run   = { returns = "code_bool" }

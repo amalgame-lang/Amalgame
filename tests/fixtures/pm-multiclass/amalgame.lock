@@ -1,0 +1,5 @@
+[[package]]
+name = "fake-multiclass"
+git  = "example.com/fake/fake-multiclass"
+tag  = "v0.1.0"
+rev  = "deadbeef00000000"

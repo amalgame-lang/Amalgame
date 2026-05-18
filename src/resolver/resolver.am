@@ -250,11 +250,16 @@ public class FullResolver {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
-            // Class name as type-global (kept SHORT — user code
-            // imports the namespace and refers to the class by
-            // its short name; the cgen mangles at call sites).
-            this.DeclareGlobal(p.ClassName, "type", false)
-            this.PkgClasses.Add(p.ClassName)
+            // Register every class the package exposes. Packages
+            // that declare `classes = [...]` (multi-class, e.g.
+            // amalgame-tls) may have several; legacy single-class
+            // packages always have exactly one via ClassNames[0].
+            let pkgCn: int = p.ClassNames.Count()
+            for pkgCi in 0..pkgCn {
+                let pkgCls: string = p.ClassNames.Get(pkgCi)
+                this.DeclareGlobal(pkgCls, "type", false)
+                this.PkgClasses.Add(pkgCls)
+            }
             // Each function as a runtime global. The C symbol is
             // mangled with the full package namespace so two
             // packages declaring the same short class can coexist
@@ -505,17 +510,11 @@ public class FullResolver {
         this.DeclareGlobal("String_FromFloat",  "string", false)
         this.DeclareGlobal("String_From",       "string", false)
         this.DeclareGlobal("String_CharAt",     "string", false)
-        // Http/Net
-        this.DeclareGlobal("Http",              "type",   false)
-        this.DeclareGlobal("Http_Get",          "?",      false)
-        this.DeclareGlobal("Http_Post",         "?",      false)
-        this.DeclareGlobal("Http_GetWithHeaders","?",     false)
-        this.DeclareGlobal("Http_GetTimeout",   "?",      false)
-        this.DeclareGlobal("Http_PostJson",     "?",      false)
-        this.DeclareGlobal("Http_PostWithHeaders","?",    false)
-        this.DeclareGlobal("Http_Put",          "?",      false)
-        this.DeclareGlobal("Http_Delete",       "?",      false)
-        this.DeclareGlobal("Http_Patch",        "?",      false)
+        // Net — TCP/UDP sockets only. The libcurl-backed Http_*
+        // helpers used to live here through v0.8.30 but were
+        // dropped in v0.8.31 — amc no longer links against libcurl.
+        // Use the external `amalgame-net-http` (pure-AM HTTP/1.1)
+        // or future `amalgame-net-curl` (libcurl binding) packages.
         this.DeclareGlobal("TcpServer_Listen",  "?",      false)
         this.DeclareGlobal("TcpServer_Accept",  "?",      false)
         this.DeclareGlobal("TcpServer_Close",   "void",   false)

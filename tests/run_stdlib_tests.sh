@@ -85,7 +85,7 @@ run_test() {
     # extraction — Database.SQLite is now an opt-in external
     # package. Tests that need it go through `run_db_test` which
     # adds the .o + sets cwd to $SQLITE_PROJ.
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -ldl -lpthread -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lz -ldl -lpthread -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -187,26 +187,16 @@ run_test "Collections: Set.Remove"        "$SAMPLES/stdlib_collections.am" "afte
 echo ""
 echo "── Amalgame.Net ────────────────────────────"
 
-if curl -s --max-time 3 https://httpbin.org/get > /dev/null 2>&1 && \
-   pkg-config --exists libcurl 2>/dev/null; then
-    run_test "Net: Http.Get status"   "$SAMPLES/stdlib_net.am"  "status: 200"
-    run_test "Net: Http.Get ok"       "$SAMPLES/stdlib_net.am"  "ok: true"
-    run_test "Net: Http.GetHeaders"   "$SAMPLES/stdlib_net.am"  "headers ok: true"
-    run_test "Net: Http.Post"         "$SAMPLES/stdlib_net.am"  "post ok: true"
-    run_test "Net: done"              "$SAMPLES/stdlib_net.am"  "Net test done"
-elif ! pkg-config --exists libcurl 2>/dev/null; then
-    run_skip "Net: Http.Get status"   "libcurl-dev not installed"
-    run_skip "Net: Http.Get ok"       "libcurl-dev not installed"
-    run_skip "Net: Http.GetHeaders"   "libcurl-dev not installed"
-    run_skip "Net: Http.Post"         "libcurl-dev not installed"
-    run_skip "Net: done"              "libcurl-dev not installed"
-else
-    run_skip "Net: Http.Get status"   "no internet"
-    run_skip "Net: Http.Get ok"       "no internet"
-    run_skip "Net: Http.GetHeaders"   "no internet"
-    run_skip "Net: Http.Post"         "no internet"
-    run_skip "Net: done"              "no internet"
-fi
+# HTTP client moved to the amalgame-net-http package in amc v0.8.31
+# (libcurl dropped from the bundled stdlib). The httpbin-driven
+# Http.Get tests below now belong to the package's own suite, not
+# the bundled stdlib. Keep the skip-stubs so the test inventory in
+# this script still mentions the migration.
+run_skip "Net: Http.Get status"   "moved to amalgame-net-http package (v0.8.31+)"
+run_skip "Net: Http.Get ok"       "moved to amalgame-net-http package (v0.8.31+)"
+run_skip "Net: Http.GetHeaders"   "moved to amalgame-net-http package (v0.8.31+)"
+run_skip "Net: Http.Post"         "moved to amalgame-net-http package (v0.8.31+)"
+run_skip "Net: done"              "moved to amalgame-net-http package (v0.8.31+)"
 
 # ── Amalgame.Json ──────────────────────────────────────
 # Tests pull in src/stdlib/json.am as a 5th-arg extra input so
@@ -337,6 +327,13 @@ run_test "PR: caret 0.0.x reject patch" "$SAMPLES/stdlib_package_registry.am" "[
 run_test "PR: tilde within"           "$SAMPLES/stdlib_package_registry.am" "[PASS] tilde within"          "" "$PR_EXTRA"
 run_test "PR: tilde reject minor"     "$SAMPLES/stdlib_package_registry.am" "[PASS] tilde reject minor"    "" "$PR_EXTRA"
 run_test "PR: bare ge"                "$SAMPLES/stdlib_package_registry.am" "[PASS] bare ge"               "" "$PR_EXTRA"
+# multi-class manifest (classes = [...]).
+run_test "PR: multiclass one package" "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: one package"     "" "$PR_EXTRA"
+run_test "PR: multiclass count"       "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: ClassNames count" "" "$PR_EXTRA"
+run_test "PR: multiclass primary"     "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: ClassName is first" "" "$PR_EXTRA"
+run_test "PR: multiclass all names"   "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: all class names"  "" "$PR_EXTRA"
+run_test "PR: multiclass func count"  "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: func count"      "" "$PR_EXTRA"
+run_test "PR: multiclass namespace"   "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: namespace"       "" "$PR_EXTRA"
 
 # ── PackageManager e2e (full pipeline) ────────────────
 # Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
@@ -403,7 +400,7 @@ USRAM
     check_e2e "PM e2e: FakePkg.Close called"     "Amalgame_Fake_FakePkg_Close\\("
 
     # Full round-trip: gcc + run.
-    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lcurl -lz -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
+    gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" -lgc -lm -lz -o "$TMPDIR/out" 2>"$TMPDIR/gcc.log"
     printf "  %-38s" "PM e2e: gcc + run"
     if [ -x "$TMPDIR/out" ]; then
         local run_out=$("$TMPDIR/out" 2>&1)
@@ -546,7 +543,7 @@ USRAM
     # Full round-trip: gcc + run with the per-package archive.
     printf "  %-38s" "facade e2e: gcc + run"
     gcc -O2 -I"$RUNTIME_ABS" "$TMPDIR/out.c" "$ARCHIVE" \
-        -lgc -lm -lcurl -lz -ldl -lpthread -o "$TMPDIR/out" \
+        -lgc -lm -lz -ldl -lpthread -o "$TMPDIR/out" \
         2> "$TMPDIR/link.log"
     if [ -x "$TMPDIR/out" ]; then
         local run_out=$("$TMPDIR/out" 2>&1)

@@ -61,7 +61,7 @@ run_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lz -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -137,7 +137,7 @@ run_multi_test() {
     # decl for the method defined in file B, which becomes a hard
     # error here instead of merely a warning.
     gcc -O2 -Iruntime -Werror=implicit-function-declaration \
-        "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+        "$c_file" -lgc -lm -lz -o "$out_base" 2>/dev/null
     if [ ! -x "$out_base" ]; then
         echo -e "${RED}FAIL${NC} (gcc failed — implicit decl?)"
         FAIL=$((FAIL + 1)); return
@@ -193,7 +193,7 @@ run_external_test() {
         FAIL=$((FAIL + 1)); return
     fi
     local c_file="${out_base}.c"
-    gcc -O2 -Iruntime "$c_file" lib/libamalgame.a -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" lib/libamalgame.a -lgc -lm -lz -o "$out_base" 2>/dev/null
     if [ ! -x "$out_base" ]; then
         echo -e "${RED}FAIL${NC} (gcc/link failed)"
         FAIL=$((FAIL + 1)); return
@@ -406,7 +406,7 @@ run_lib_link_test() {
         sed 's/^/    /' "$tmpdir/err" | head -5
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
     fi
-    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lcurl -lz -o "$tmpdir/app" 2>"$tmpdir/err"; then
+    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lz -o "$tmpdir/app" 2>"$tmpdir/err"; then
         echo -e "${RED}FAIL${NC} (link)"
         sed 's/^/    /' "$tmpdir/err" | head -5
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
@@ -466,6 +466,15 @@ run_test "closure: no cap"   "$SAMPLES/closures_capture.am"  "triple(7) = 21"
 run_test "closure: 1 cap"    "$SAMPLES/closures_capture.am"  "addN(5) = 105"
 run_test "closure: 2 caps"   "$SAMPLES/closures_capture.am"  "combine(10) = 25"
 run_test "closure: snap val" "$SAMPLES/closures_capture.am"  "snap(0) = 1"
+# v0.8.30 — first-class functions via `Closure` field type.
+run_test "FCF: arity-1 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-1 this.Field call"
+run_test "FCF: arity-2 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-2 this.Field call"
+run_test "FCF: arity-3 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-3 this.Field call"
+run_test "FCF: List + local"   "$SAMPLES/closure_as_field.am"  "[PASS] closure in List + local.Field call"
+# v0.8.33 — nested MEMBER closure dispatch (obj.A.B.fn(args)).
+run_test "FCF: nested IDENT 1" "$SAMPLES/closure_nested_member.am" "[PASS] nested IDENT chain arity-1"
+run_test "FCF: nested THIS 1"  "$SAMPLES/closure_nested_member.am" "[PASS] nested THIS chain arity-1"
+run_test "FCF: nested 3-deep"  "$SAMPLES/closure_nested_member.am" "[PASS] nested IDENT chain 3-deep"
 run_test "lambda v2: 2-arg"   "$SAMPLES/lambdas_v2.am"  "add: 12"
 run_test "lambda v2: block"   "$SAMPLES/lambdas_v2.am"  "plus3: 23"
 run_test "lambda v2: 2+block" "$SAMPLES/lambdas_v2.am"  "mix: 17"
@@ -1245,7 +1254,7 @@ run_multifile_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lz -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then

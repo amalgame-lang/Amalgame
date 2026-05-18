@@ -195,11 +195,8 @@ public class CGen {
         this.LastLineEmitted   = -1
         this.InferCacheKeys    = new List<int>()
         this.InferCacheVals    = new List<string>()
-        // Pre-register stdlib struct fields
-        this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
-        this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
-        this.FieldTypeSet("AmalgameHttpResponse", "Error",  "code_string")
-        this.FieldTypeSet("AmalgameHttpResponse", "Ok",     "code_bool")
+        // Pre-register stdlib struct fields (libcurl-backed
+        // AmalgameHttpResponse dropped in v0.8.31 — see resolver.am).
         this.FieldTypeSet("AmalgameTcpConn",      "RemoteIp", "code_string")
         this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
         this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
@@ -623,6 +620,29 @@ public class CGen {
         return result
     }
 
+    // Walk a chain of MEMBER nodes rooted at THIS/IDENT and return the
+    // bare class name of the leaf. Used by call-site dispatch to
+    // resolve `obj.A.B.fn(args)` without forcing a bind-to-local.
+    // Empty string if the chain hits an unknown local/field.
+    private string ResolveReceiverClass(AstNode node) {
+        if (node == null) { return "" }
+        let nk = node.Kind
+        if (nk == NodeKind.THIS_EXPR) { return this.CurrentClass }
+        if (nk == NodeKind.IDENTIFIER) {
+            let t = this.LocalTypeGet(node.Name)
+            if (String_Length(t) == 0) { return "" }
+            return String_Replace(t, "*", "")
+        }
+        if (nk == NodeKind.MEMBER) {
+            let parentCls = this.ResolveReceiverClass(node.Left)
+            if (String_Length(parentCls) == 0) { return "" }
+            let ft = this.FieldTypeGet(parentCls, node.Name)
+            if (String_Length(ft) == 0) { return "" }
+            return String_Replace(ft, "*", "")
+        }
+        return ""
+    }
+
     // For `let names = users.Map(u => u.Name)`, the result list's
     // element type is the lambda's return type — NOT the receiver's
     // element type. We push the lambda params into LocalTypes so
@@ -1014,8 +1034,8 @@ public class CGen {
                 //  types moved to packages amalgame-database-nosql-
                 //  redis + amalgame-messaging-mqtt v0.1.0.
                 //  PackageRegistry feeds them via the loop below.)
-                // Net stdlib return types
-                if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson" || calleeStr == "Http_PostWithHeaders" || calleeStr == "Http_Put" || calleeStr == "Http_Delete" || calleeStr == "Http_Patch") { return "AmalgameHttpResponse*" }
+                // Net stdlib return types (Http_* moved to external
+                // packages in v0.8.31, see runtime/Amalgame_Net.h).
                 if (calleeStr == "Env_Get") { return "code_string" }
                 if (calleeStr == "Env_Has") { return "code_bool" }
                 if (calleeStr == "Process_RunCapture") { return "AmalgameProcessResult*" }
@@ -1589,8 +1609,14 @@ public class CGen {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
-            this.PkgClasses.Add(p.ClassName)
-            this.PkgClassNs.Add(p.Ns)
+            // Add every class the package exposes. Multi-class packages
+            // (classes = [...]) get one entry per class, all sharing the
+            // same namespace so PkgClassMangledPrefix resolves correctly.
+            let pkgCn: int = p.ClassNames.Count()
+            for pkgCi in 0..pkgCn {
+                this.PkgClasses.Add(p.ClassNames.Get(pkgCi))
+                this.PkgClassNs.Add(p.Ns)
+            }
             this.PkgHeaders.Add(p.Header)
             // C symbols use the full namespace-mangled form so
             // packages can't collide at link time when two of them
@@ -1880,12 +1906,30 @@ public class CGen {
 
     // Look up the mangled-C-symbol prefix for a registered package
     // class. Returns "" if the class isn't in the registry.
+    // Build the C symbol prefix for `<Class>.<Method>(...)` calls
+    // against a package class. Convention depends on the manifest:
+    //   - Single-class packages bake the class into the namespace
+    //     (Redis pkg → ns "Amalgame.Database.NoSQL.Redis" + class
+    //      "Redis"); C symbols are `<ns>_<method>`. Don't double the
+    //      class segment.
+    //   - Multi-class packages don't include the class in the
+    //     namespace (Tls pkg → ns "Amalgame.Tls" + classes
+    //      TlsConfig/TlsContext/TlsStream); C symbols are
+    //      `<ns>_<class>_<method>` so the same `_Default` method on
+    //      multiple classes can't collide.
+    // The "namespace ends with `_<class>`" check disambiguates the
+    // two patterns from the same code path.
     private string PkgClassMangledPrefix(string tname) {
         let n: int = this.PkgClasses.Count()
         for i in 0..n {
             if (this.PkgClasses.Get(i) == tname) {
                 let ns: string = this.PkgClassNs.Get(i)
-                return String_Replace(ns, ".", "_")
+                let mangledNs: string = String_Replace(ns, ".", "_")
+                if (mangledNs == tname) { return mangledNs }
+                if (String_EndsWith(mangledNs, "_" + tname)) {
+                    return mangledNs
+                }
+                return mangledNs + "_" + tname
             }
         }
         return ""
@@ -3291,6 +3335,78 @@ public class CGen {
             return expr.Str + operand
         }
         if (k == NodeKind.CALL) {
+            // ── Closure call via MEMBER access (v0.8.30+) ─────────
+            // `this.Fn(x)`, `obj.Handler(req)`, etc. — when the
+            // referenced field has type `Closure` (lowered to
+            // `AmalgameClosure*`), dispatch through
+            // AmalgameClosure_callN instead of emitting a method
+            // call. Same arity 1-3 limit as the IDENTIFIER path
+            // below; uses the same BoxAsVoid / unbox machinery.
+            //
+            // This is what makes `Closure` a first-class type for
+            // class fields, enabling handler-callback APIs:
+            //   public class HttpServer {
+            //       public Handler: Closure
+            //       public HttpResponse Dispatch(HttpRequest req) {
+            //           return this.Handler(req)
+            //       }
+            //   }
+            if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER) {
+                let mem: AstNode = expr.Left
+                if (mem.Left != null && mem.Name != "") {
+                    var recvCls: string = ""
+                    var recvExpr: string = ""
+                    if (mem.Left.Kind == NodeKind.THIS_EXPR) {
+                        recvCls  = this.CurrentClass
+                        recvExpr = "self"
+                    } else if (mem.Left.Kind == NodeKind.IDENTIFIER) {
+                        // Receiver is a local — strip trailing `*` from
+                        // its C type to recover the bare class name
+                        // (matches the convention used by FieldTypeGet
+                        // lookups elsewhere in this file).
+                        let localType: string = this.LocalTypeGet(mem.Left.Name)
+                        recvCls  = String_Replace(localType, "*", "")
+                        recvExpr = mem.Left.Name
+                    } else if (mem.Left.Kind == NodeKind.MEMBER) {
+                        // Nested member access: `obj.A.B.fn(args)` —
+                        // resolve the receiver chain's leaf class via
+                        // ResolveReceiverClass and emit the C
+                        // expression for the inner chain directly (no
+                        // bind-to-local required).
+                        let nestedCls: string = this.ResolveReceiverClass(mem.Left)
+                        if (String_Length(nestedCls) > 0) {
+                            recvCls  = nestedCls
+                            recvExpr = this.EmitExprStr(mem.Left)
+                        }
+                    }
+                    if (String_Length(recvCls) > 0) {
+                        let ft: string = this.FieldTypeGet(recvCls, mem.Name)
+                        if (ft == "AmalgameClosure*") {
+                            let argc: int = expr.Args.Count()
+                            let calleeName: string = recvExpr + "->" + mem.Name
+                            let retC: string = "i64"   // closure return type erased to i64
+                            if (argc == 1) {
+                                let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                                let callC = "AmalgameClosure_call1(" + calleeName + ", " + this.BoxAsVoid(arg0) + ")"
+                                return this.UnboxScalar(retC, callC)
+                            }
+                            if (argc == 2) {
+                                let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                                let arg1 = this.EmitExprStr(expr.Args.Get(1))
+                                let callC = "AmalgameClosure_call2(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ")"
+                                return this.UnboxScalar(retC, callC)
+                            }
+                            if (argc == 3) {
+                                let arg0 = this.EmitExprStr(expr.Args.Get(0))
+                                let arg1 = this.EmitExprStr(expr.Args.Get(1))
+                                let arg2 = this.EmitExprStr(expr.Args.Get(2))
+                                let callC = "AmalgameClosure_call3(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ", " + this.BoxAsVoid(arg2) + ")"
+                                return this.UnboxScalar(retC, callC)
+                            }
+                        }
+                    }
+                }
+            }
             // Closure call: callee is a local of type AmalgameClosure*.
             // v2 supports arities 1, 2, 3 — args boxed via intptr_t at
             // the call site, result unboxed back to i64. Arities >3

@@ -63,7 +63,7 @@ cp src/amc_lib.c snapshot/amc_lib.c
 echo "  saved: snapshot/amc_lib.c ($(wc -l < snapshot/amc_lib.c) lines)"
 
 # Compile a local Linux binary (not committed, but useful immediately).
-gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc
 echo "  built: snapshot/amc ($(stat -c%s snapshot/amc) bytes)"
 
 # Provenance.
@@ -83,12 +83,12 @@ needed).
 
 To recompile the snapshot binary on this platform:
 
-    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc
 
 To restore an older snapshot (after a bad commit):
 
     git checkout <good-rev> -- snapshot/amc_lib.c
-    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc
 EOF
 
 echo "  wrote: snapshot/INFO.md"
