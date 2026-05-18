@@ -1906,12 +1906,30 @@ public class CGen {
 
     // Look up the mangled-C-symbol prefix for a registered package
     // class. Returns "" if the class isn't in the registry.
+    // Build the C symbol prefix for `<Class>.<Method>(...)` calls
+    // against a package class. Convention depends on the manifest:
+    //   - Single-class packages bake the class into the namespace
+    //     (Redis pkg → ns "Amalgame.Database.NoSQL.Redis" + class
+    //      "Redis"); C symbols are `<ns>_<method>`. Don't double the
+    //      class segment.
+    //   - Multi-class packages don't include the class in the
+    //     namespace (Tls pkg → ns "Amalgame.Tls" + classes
+    //      TlsConfig/TlsContext/TlsStream); C symbols are
+    //      `<ns>_<class>_<method>` so the same `_Default` method on
+    //      multiple classes can't collide.
+    // The "namespace ends with `_<class>`" check disambiguates the
+    // two patterns from the same code path.
     private string PkgClassMangledPrefix(string tname) {
         let n: int = this.PkgClasses.Count()
         for i in 0..n {
             if (this.PkgClasses.Get(i) == tname) {
                 let ns: string = this.PkgClassNs.Get(i)
-                return String_Replace(ns, ".", "_")
+                let mangledNs: string = String_Replace(ns, ".", "_")
+                if (mangledNs == tname) { return mangledNs }
+                if (String_EndsWith(mangledNs, "_" + tname)) {
+                    return mangledNs
+                }
+                return mangledNs + "_" + tname
             }
         }
         return ""
