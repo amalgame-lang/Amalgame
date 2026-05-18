@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-18T22:12:00+02:00
-Git rev:  204beda27d71c0395a3a2d70eec455f75ce0d8bf
+Captured: 2026-05-18T22:46:00+02:00
+Git rev:  f0007b2597bf68e2d879f87d5600917a17a4740f
 Branch:   develop
 Tests:    (skipped) passed
 
@@ -13,9 +13,9 @@ needed).
 
 To recompile the snapshot binary on this platform:
 
-    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc
 
 To restore an older snapshot (after a bad commit):
 
     git checkout <good-rev> -- snapshot/amc_lib.c
-    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+    gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc

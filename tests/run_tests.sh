@@ -61,7 +61,7 @@ run_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lz -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then
@@ -137,7 +137,7 @@ run_multi_test() {
     # decl for the method defined in file B, which becomes a hard
     # error here instead of merely a warning.
     gcc -O2 -Iruntime -Werror=implicit-function-declaration \
-        "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+        "$c_file" -lgc -lm -lz -o "$out_base" 2>/dev/null
     if [ ! -x "$out_base" ]; then
         echo -e "${RED}FAIL${NC} (gcc failed — implicit decl?)"
         FAIL=$((FAIL + 1)); return
@@ -193,7 +193,7 @@ run_external_test() {
         FAIL=$((FAIL + 1)); return
     fi
     local c_file="${out_base}.c"
-    gcc -O2 -Iruntime "$c_file" lib/libamalgame.a -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" lib/libamalgame.a -lgc -lm -lz -o "$out_base" 2>/dev/null
     if [ ! -x "$out_base" ]; then
         echo -e "${RED}FAIL${NC} (gcc/link failed)"
         FAIL=$((FAIL + 1)); return
@@ -406,7 +406,7 @@ run_lib_link_test() {
         sed 's/^/    /' "$tmpdir/err" | head -5
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
     fi
-    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lcurl -lz -o "$tmpdir/app" 2>"$tmpdir/err"; then
+    if ! gcc -I"$runtime_dir" "$consumer_c" "$tmpdir/lib.o" -lgc -lm -lz -o "$tmpdir/app" 2>"$tmpdir/err"; then
         echo -e "${RED}FAIL${NC} (link)"
         sed 's/^/    /' "$tmpdir/err" | head -5
         FAIL=$((FAIL + 1)); rm -rf "$tmpdir"; return
@@ -1250,7 +1250,7 @@ run_multifile_test() {
         echo -e "${RED}FAIL${NC} (no .c emitted)"
         FAIL=$((FAIL + 1)); return
     fi
-    gcc -O2 -Iruntime "$c_file" -lgc -lm -lcurl -lz -o "$out_base" 2>/dev/null
+    gcc -O2 -Iruntime "$c_file" -lgc -lm -lz -o "$out_base" 2>/dev/null
 
     exe="$out_base"
     if [ ! -x "$exe" ]; then

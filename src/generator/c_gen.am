@@ -195,11 +195,8 @@ public class CGen {
         this.LastLineEmitted   = -1
         this.InferCacheKeys    = new List<int>()
         this.InferCacheVals    = new List<string>()
-        // Pre-register stdlib struct fields
-        this.FieldTypeSet("AmalgameHttpResponse", "Status", "i64")
-        this.FieldTypeSet("AmalgameHttpResponse", "Body",   "code_string")
-        this.FieldTypeSet("AmalgameHttpResponse", "Error",  "code_string")
-        this.FieldTypeSet("AmalgameHttpResponse", "Ok",     "code_bool")
+        // Pre-register stdlib struct fields (libcurl-backed
+        // AmalgameHttpResponse dropped in v0.8.31 — see resolver.am).
         this.FieldTypeSet("AmalgameTcpConn",      "RemoteIp", "code_string")
         this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
         this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
@@ -1014,8 +1011,8 @@ public class CGen {
                 //  types moved to packages amalgame-database-nosql-
                 //  redis + amalgame-messaging-mqtt v0.1.0.
                 //  PackageRegistry feeds them via the loop below.)
-                // Net stdlib return types
-                if (calleeStr == "Http_Get" || calleeStr == "Http_Post" || calleeStr == "Http_GetWithHeaders" || calleeStr == "Http_GetTimeout" || calleeStr == "Http_PostJson" || calleeStr == "Http_PostWithHeaders" || calleeStr == "Http_Put" || calleeStr == "Http_Delete" || calleeStr == "Http_Patch") { return "AmalgameHttpResponse*" }
+                // Net stdlib return types (Http_* moved to external
+                // packages in v0.8.31, see runtime/Amalgame_Net.h).
                 if (calleeStr == "Env_Get") { return "code_string" }
                 if (calleeStr == "Env_Has") { return "code_bool" }
                 if (calleeStr == "Process_RunCapture") { return "AmalgameProcessResult*" }

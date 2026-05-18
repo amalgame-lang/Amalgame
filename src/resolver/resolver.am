@@ -510,17 +510,11 @@ public class FullResolver {
         this.DeclareGlobal("String_FromFloat",  "string", false)
         this.DeclareGlobal("String_From",       "string", false)
         this.DeclareGlobal("String_CharAt",     "string", false)
-        // Http/Net
-        this.DeclareGlobal("Http",              "type",   false)
-        this.DeclareGlobal("Http_Get",          "?",      false)
-        this.DeclareGlobal("Http_Post",         "?",      false)
-        this.DeclareGlobal("Http_GetWithHeaders","?",     false)
-        this.DeclareGlobal("Http_GetTimeout",   "?",      false)
-        this.DeclareGlobal("Http_PostJson",     "?",      false)
-        this.DeclareGlobal("Http_PostWithHeaders","?",    false)
-        this.DeclareGlobal("Http_Put",          "?",      false)
-        this.DeclareGlobal("Http_Delete",       "?",      false)
-        this.DeclareGlobal("Http_Patch",        "?",      false)
+        // Net — TCP/UDP sockets only. The libcurl-backed Http_*
+        // helpers used to live here through v0.8.30 but were
+        // dropped in v0.8.31 — amc no longer links against libcurl.
+        // Use the external `amalgame-net-http` (pure-AM HTTP/1.1)
+        // or future `amalgame-net-curl` (libcurl binding) packages.
         this.DeclareGlobal("TcpServer_Listen",  "?",      false)
         this.DeclareGlobal("TcpServer_Accept",  "?",      false)
         this.DeclareGlobal("TcpServer_Close",   "void",   false)
