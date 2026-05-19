@@ -1771,6 +1771,19 @@ public class CGen {
                             }
                         }
                     }
+                    // Typed-Closure field on an external class — record
+                    // the return type so MEMBER closure-call dispatch on
+                    // chained `obj.Field.Method(args)` patterns can emit
+                    // a typed cast. Mirrors EmitClass's same registration.
+                    if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
+                        let cinner: string = String_Substring(rawType, 8, String_Length(rawType) - 9)
+                        let cparts: List<string> = this.SplitTopLevelCommas(cinner)
+                        let cpc: int = cparts.Count()
+                        if (cpc >= 1) {
+                            let crawRet: string = String_Trim(cparts.Get(cpc - 1))
+                            this.ListElemSet(mangled + "__closure_ret__", m.Name, this.TypeToC(crawRet))
+                        }
+                    }
                 }
             }
             // Emit the struct body. Empty classes (static helpers like
