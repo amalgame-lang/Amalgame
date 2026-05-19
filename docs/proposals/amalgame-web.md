@@ -1,10 +1,16 @@
 # Proposal: `Amalgame.Web` — TLS, HTTP and the Mosaic web server
 
-**Status:** Decisions locked 2026-05-18. Implementation starting.
-All open questions from section 23 are resolved. This document is the
-contract against which `amalgame-tls`, `amalgame-net-http` and
-`amalgame-web` will be built. It supersedes any prior informal
-discussion of HTTP/TLS in Amalgame.
+**Status:** Foundation shipped 2026-05-18 to 2026-05-19. The full
+HTTPS+H2 + WebSocket + filesystem-routing + livereload stack now
+runs end-to-end. Section 21 below is the authoritative roadmap for
+the remaining work; it supersedes the original "v0.1 through v1.0
+versions" plan as the architecture evolved during implementation
+(notably: `mosaic` became its own repo, WebSocket landed in
+`amalgame-net-http` rather than `amalgame-web`, ACME shipped as a
+certbot wrapper with native impl deferred).
+
+This document remains the contract for `amalgame-tls`,
+`amalgame-net-http`, `amalgame-web` and `mosaic`.
 
 **Author:** v0.8.x cycle, post `ui-web v0.0.4` ship. Driven by the need
 to give Amalgame a credible server story to match the desktop story
@@ -824,12 +830,13 @@ Default for all cookies set via `HttpResponse.SetCookie()`:
 
 ### 11.4 Password hashing
 
-Currently `amalgame-crypto` ships SHA-256 / HMAC-SHA-256. **Argon2id**
-should be added to `amalgame-crypto` (or a sister package
-`amalgame-crypto-pwhash`) before Mosaic v0.5 ships. SHA-based hashing
-is not acceptable for password storage.
+`amalgame-crypto` does not exist yet (see §21 phase 2 item 2.1). When
+it lands, it must ship **Argon2id** alongside HMAC + asymmetric
+primitives. SHA-based hashing is not acceptable for password
+storage.
 
-Tracked as a precondition; not in this proposal's direct scope.
+Tracked as critical precondition in §21.3 — every auth flow and the
+native ACME implementation block on it.
 
 ## 12. Observability
 
@@ -1134,63 +1141,183 @@ This is identical to how every other production HTTP/TLS stack
 
 ## 21. Roadmap
 
-Status legend: ✅ shipped · 🟡 partial · ⏳ planned.
+### 21.1 Shipped
 
-| Version | Scope | Status |
+Two intensive days (2026-05-18 and 2026-05-19) took the stack from
+"nothing yet" through "HTTPS + HTTP/2 + WebSocket + filesystem routing
++ livereload, end-to-end".
+
+| Package / Version | Highlights | Date |
 |---|---|---|
-| `amc` multi-class manifest (v0.8.29) | `classes = [...]` in `[stdlib]` — multi-class packages | ✅ shipped |
-| `amc` first-class fn types (v0.8.30) | `Closure` as field/param type, invoke via `this.Fn(x)` / `local.Fn(x)` | ✅ shipped |
-| `amc` libcurl ejection (v0.8.31) | HTTP out of bundled stdlib → `amalgame-net-http` + `amalgame-net-curl` packages | ✅ shipped |
-| `amalgame-tls v0.1.2` | OpenSSL 3.x binding, TlsConfig (file-based certs + ALPN + min version), client+server stream, multi-OS auto-detect | ✅ shipped |
-| `amalgame-net-http v0.1.1` | HTTP/1.1 pure-AM parser + HttpRequest/Response + HttpServer helpers + HttpClient (GET/POST/+builder), 17 parser tests + 5 e2e tests | ✅ shipped |
-| `amalgame-net-curl v0.1.1` | Thin libcurl binding (Http.Get/Post/Put/Delete/Patch) extracted from amc's old runtime — companion to net-http for outbound API calls | ✅ shipped |
-| `amalgame-web v0.1.3` | Router (path matching `:param` + `*splat`), Route + Closure handlers (no more handler-name strings), MemorySessionStore + Session, WebContext | ✅ shipped |
-| `amalgame-net-http v0.2` | HTTP/2 via nghttp2 binding | ⏳ planned |
-| `amalgame-web v0.2` | Filesystem-based routing + DEV mode (single `app.so` + filewatcher + hot dlopen), pretty errors | ⏳ planned |
-| `amalgame-web v0.3` | WebSocket server (extends `amalgame-net-websocket`), SSE, channels pub/sub | ⏳ planned |
-| `amalgame-tls v0.2` | ACME / Let's Encrypt automatic certs (tls-alpn-01 + http-01) | ⏳ planned |
-| `amalgame-web v0.4` | Security middleware (CSRF, CORS, rate limit, security headers, slow loris), JsonFileSessionStore, /metrics, /healthz | ⏳ planned |
-| `amalgame-web v0.5` | PROD modular mode (`app.so` deployment), PROD all-in-one (`mosaic build --mono`), graceful shutdown | ⏳ planned |
-| `amalgame-web v0.6` | Reverse proxy (HTTP/1.1+2, load balancing, health checks, circuit breaker) | ⏳ planned |
-| `amalgame-web v0.7` | RedisSessionStore, OpenTelemetry-compat request IDs, advanced rate limit (sliding window) | ⏳ planned |
-| `amalgame-web v1.0` | Polish, docs, stable API, `mosaic supervisor`, scaffolder `amc new --template web-app` | ⏳ planned |
+| `amc` v0.8.29 → v0.8.34 | Multi-class manifest; first-class `Closure`; libcurl ejection; nested-MEMBER closure dispatch; PkgClassMangledPrefix multi-class fix; full Mac/Win release | 2026-05-18..19 |
+| `amalgame-tls` v0.1.0 → v0.2.0 | OpenSSL 3.x binding (multi-OS) + raw-byte read/write helpers + **ACME wrapper** (`Acme.EnsureCert` via certbot --standalone) + `Acme.ChallengeServer` for webroot-mode | 2026-05-18..19 |
+| `amalgame-net-curl` v0.1.0 → v0.1.1 | Thin libcurl binding (Get/Post/Put/Delete/Patch) — companion to net-http for outbound calls | 2026-05-18 |
+| `amalgame-net-http` v0.1.0 → **v0.4.1** | HTTP/1.1 pure-AM parser; **`Http1.Serve`** (browser-friendly); **`Http2.Serve`** h2c via nghttp2 binding; **`Https.Serve`** HTTPS + ALPN h2; **`Ws.Serve`** WebSocket (RFC 6455); **`Wss.Serve`** WebSocket over TLS | 2026-05-18..19 |
+| `amalgame-web` v0.1.0 → v0.2.1 | Router (`:param` + `*splat`); Route + Closure handlers; `MemorySessionStore`; `WebContext`. Pure runtime library — the build tool moved out (see Decisions §23). | 2026-05-18..19 |
+| `mosaic` v0.1.0 → v0.3.1 | **Standalone repo** (build tool, not a package). `tools/mosaic-routes.sh` (Next.js-style filesystem routing, `[id]`/`[...slug]` syntax). `tools/mosaic-build.sh` (regen routes + amc + gcc). `tools/mosaic-dev.sh` (filewatcher + auto-rebuild + restart). **Livereload daemon** (compiled at first run, broadcasts WS "reload" → browser auto-refresh on every save). | 2026-05-19 |
 
-**Shipped 2026-05-18** (one development day): foundation through
-`amalgame-web v0.1.3` — Router + Closure handlers running end-to-end,
-verified with a working browser demo (TCP accept loop → HttpParser →
-Router.Match → closure dispatch → HttpResponse.Render). All four
-packages registered on `amalgame-lang/packages-index`, all CIs green
-against amc v0.8.31.
+Live verified: 4-route filesystem-routed Mosaic app served from
+`mosaic-fs-demo/` in HTTP/1.1, HTTP/2 (h2c), HTTPS+ALPN h2 and
+WebSocket. Browser livereload working end-to-end. All packages
+registered on `amalgame-lang/packages-index`; all CIs green
+against amc v0.8.34.
 
-**Roadmap dependencies still pending:**
+### 21.2 Remaining work — 4 phases
 
-1. Argon2id in `amalgame-crypto` — precondition for `amalgame-web v0.4`
-   (CSRF + secure session tokens).
-2. WebSocket server-side framing in `amalgame-net-websocket` —
-   precondition for `amalgame-web v0.3`.
-3. nghttp2 binding for `amalgame-net-http v0.2` (HTTP/2 server support).
-4. amc parser/cgen extensions: nested `obj.A.B.fn(args)` closure
-   dispatch (currently requires binding to a local first), and
-   typed `Closure<A, R>` parameterized function types.
+Effort estimates assume focused full-time work. Total ~8-12 weeks
+to reach feature parity with mainstream web stacks
+(Rails / Django / Phoenix / SvelteKit) **plus** production-grade
+security.
+
+#### Phase 1 — Production hardening (~2-3 weeks)
+
+Blocking for any real prod use. Without these, security audits
+fail and throughput is misery.
+
+| # | Item | Effort | Depends |
+|---|---|---|---|
+| 1.1 | **Security pack** in `amalgame-web` — `WithSecurityHeaders` / `WithCors` / `WithCsrf` / `WithRateLimit` / `WithRequestId` middlewares (see §11) | 2-3 d | — |
+| 1.2 | **Fix command injection** in `tls`'s `Acme.EnsureCert` — replace `system(3)` with `execve(argv)` so user-supplied `domain` cannot inject shell metacharacters | 1 h | — |
+| 1.3 | **Anti-injection guards** — CRLF in `HttpResponse.Header(name, value)`, open-redirect in `Redirect(url)`, SSRF in `HttpClient.Get(url)` (refuse RFC1918 by default with explicit opt-out) | 1 d | — |
+| 1.4 | **Slowloris timeouts** — `SO_RCVTIMEO` / `SO_SNDTIMEO` on accept; per-connection idle timeout | 0.5 d | — |
+| 1.5 | **Configurable limits** — body / header / URL length tunable, not hardcoded | 0.5 d | — |
+| 1.6 | **`amalgame-threading`** package — pthread bindings (mutex, cond var, thread create/join) | 2 d | — |
+| 1.7 | **Worker pool** in `Http*.Serve` / `Ws*.Serve` — N concurrent connections instead of 1 | 1-2 d | 1.6 |
+| 1.8 | **HTTP/1.1 keep-alive** in `Http1.Serve` | 1 d | — |
+| 1.9 | **IPv6 (dual-stack)** — bind `AF_INET6` with `IPV6_V6ONLY=0` everywhere | 0.5 d | — |
+| 1.10 | **Graceful shutdown** — SIGTERM handler drains in-flight requests before exit | 0.5 d | 1.6 |
+
+#### Phase 2 — Real-world apps (~3-4 weeks)
+
+Past phase 1, the stack can serve traffic safely. Phase 2 turns it
+into something that runs real apps.
+
+| # | Item | Effort | Depends |
+|---|---|---|---|
+| 2.1 | **`amalgame-crypto`** — Argon2id, HMAC (HS256/384/512), RSA, ECDSA, Ed25519, CSPRNG. Precondition for auth + native ACME + session signing | 2-3 d | — |
+| 2.2 | **`amalgame-web-auth`** (or `web/auth` namespace) — Basic + Bearer/JWT + API key + session login flow middlewares | 2 d | 2.1 |
+| 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | 2 d | 2.2 |
+| 2.4 | **WebAuthn / passkeys** — passwordless auth | 3-4 d | 2.1 |
+| 2.5 | **TOTP / 2FA** — RFC 6238 (HMAC-SHA1 over time counter) | 0.5 d | 2.1 |
+| 2.6 | **`amalgame-database-sqlite`** — start small with file-based DB | 2 d | — |
+| 2.7 | **`amalgame-database-postgres`** — libpq binding for prod | 3-4 d | — |
+| 2.8 | **Migration framework** — schema versioning + apply/rollback | 1 d | 2.6 / 2.7 |
+| 2.9 | **`amalgame-template`** — HTML template engine with **auto-escape** (closes the default-XSS hole) | 2-3 d | — |
+| 2.10 | **`amalgame-validation`** — typed input schemas | 1-2 d | — |
+| 2.11 | **`JsonFileSessionStore` / `RedisSessionStore`** in `amalgame-web` | 1 d | 2.7 (Redis) |
+| 2.12 | **`router.Ws(path, handler)`** — register WS routes through the Router instead of side-binding | 1 d | — |
+| 2.13 | **Multipart parser** — `HttpRequest.File("avatar")` for upload | 1.5 d | — |
+
+#### Phase 3 — UX + ops (~1-2 weeks)
+
+Quality of life. Better dev experience, smoother prod deploys.
+
+| # | Item | Effort | Depends |
+|---|---|---|---|
+| 3.1 | **Structured access logs** — JSON or Common Log Format | 1 d | — |
+| 3.2 | **`/metrics` endpoint** — Prometheus exposition format | 1 d | — |
+| 3.3 | **OpenTelemetry tracing** — request spans propagated through middleware chain | 2 d | — |
+| 3.4 | **`/healthz` + `/readyz`** middleware | 0.5 d | — |
+| 3.5 | **systemd `Type=notify` + watchdog** integration | 0.5 d | — |
+| 3.6 | **`mosaic new <template>`** — scaffolding | 1 d | — |
+| 3.7 | **dlopen hot-swap** in `mosaic dev` — `app.so` rebuild + hot reload so in-flight WS connections survive | 3-4 d | 1.6 |
+| 3.8 | **Native `mosaic` binary** — rewrite the bash scripts as `src/*.am`, compile via amc into a single binary | 1-2 d | — |
+| 3.9 | **Source mapping** — amc errors point at the user's `app/X.am`, not the generated `_routes.am` | 2 d | 3.7 (cleaner with dlopen path) |
+| 3.10 | **`mosaic test`** — harness for integration tests against a running app | 1-2 d | — |
+| 3.11 | **Docker / systemd templates** — drop-in deployment recipes | 0.5 d | — |
+
+#### Phase 4 — Polish + breadth (~2-3 weeks)
+
+Past phase 3, Mosaic is feature-complete for serious deployments.
+Phase 4 fills in the long tail.
+
+| # | Item | Effort | Depends |
+|---|---|---|---|
+| 4.1 | **Native pure-AM ACME** (RFC 8555) — replaces the certbot wrapper. JWS account signing + order/auth/finalize state machine + CSR DER + cert chain parsing. `Acme.EnsureCert` API stays stable. | 2-3 d | 2.1 |
+| 4.2 | **`Acme.WithDirectory(url)`** — other CAs (Buypass, ZeroSSL, Google Trust Services) | 0.5 d | 4.1 |
+| 4.3 | **DNS-01 challenges + DNS provider bindings** — wildcards via Cloudflare / Route53 / OVH / Gandi | 3-4 d | 4.1 |
+| 4.4 | **mTLS client cert auth** in `TlsConfig` + surfaced as `WebContext.ClientCert` | 1 d | — |
+| 4.5 | **OCSP stapling** — TLS server attaches cached OCSP responses | 1 d | — |
+| 4.6 | **HTTP/1.1 fallback in `Https.Serve`** — ALPN advertises both `h2` and `http/1.1`, dispatch by negotiated proto | 1 d | — |
+| 4.7 | **Static file middleware** — `sendfile(2)` + built-in MIME DB + `Cache-Control` + `ETag` / `If-None-Match` | 1-2 d | — |
+| 4.8 | **gzip / brotli compression** — output negotiated via `Accept-Encoding` | 1 d | — |
+| 4.9 | **Range requests (206 Partial Content)** — video / big-file resume | 1 d | — |
+| 4.10 | **Server-Sent Events (SSE)** — lightweight unidirectional push | 1 d | — |
+| 4.11 | **WebSocket binary frames** — AM-side `WsConn.SendBinary` / `ReceiveBinary` (List<int>) | 0.5 d | — |
+| 4.12 | **WebSocket fragmentation** — multi-frame messages (currently rejected) | 1 d | — |
+| 4.13 | **WebSocket subprotocol negotiation** — `Sec-WebSocket-Protocol` | 0.5 d | — |
+| 4.14 | **HTTP/3 / QUIC** — likely via ngtcp2 or msquic when implementations stabilise | future | — |
+| 4.15 | **`amalgame-email`** — SMTP client (transactional mail) | 1-2 d | — |
+| 4.16 | **`amalgame-queue`** — background jobs over DB / Redis | 2 d | 2.6 |
+| 4.17 | **`amalgame-cron`** — scheduled tasks | 1 d | — |
+| 4.18 | **`amalgame-i18n`** — locale-aware responses, Accept-Language | 1 d | — |
+| 4.19 | **`amalgame-openapi`** — generate `swagger.json` from registered routes | 2 d | — |
+| 4.20 | **`Closure<A, R>` typed closures** in amc — removes the `-Wno-int-conversion` workaround currently in `mosaic-build.sh` | 1-2 d | — |
+| 4.21 | **WAF rule engine** — opt-in middleware with anti-bot, SQL/XSS pattern detection | 2 d | — |
+
+### 21.3 Critical preconditions
+
+Three packages underpin most of phases 1-4:
+
+1. **`amalgame-threading`** (1.6) — without it, every server runs 1
+   connection at a time. Unusable past a demo.
+2. **`amalgame-crypto`** (2.1) — without it: no auth, no JWT, no
+   session signing, no native ACME.
+3. **`amalgame-template`** (2.9) — without it, users hand-concat HTML
+   strings, which is both ergonomically miserable and an XSS hole
+   by default.
+
+Shipping these three early unblocks everything else.
+
+### 21.4 Suggested order (first ~25 days of focused work)
+
+1. **1.2 + 1.3** — injection fixes (sec-critical, cheap)
+2. **1.6 + 1.7** — threading + worker pool (unblocks concurrency)
+3. **1.1** — security headers / CORS / CSRF / rate limit (audit-passable)
+4. **2.1** — `amalgame-crypto` (unblocks auth + JWT + ACME native)
+5. **2.6** — SQLite (unblocks persistence)
+6. **2.9** — template engine + auto-escape (real apps + anti-XSS)
+7. **2.2** — auth Basic + Bearer + sessions (MVP login flow)
+8. **3.1** — access logs (debuggable in prod)
+9. **3.4 + 3.5** — `/healthz` + systemd (deployable)
+10. **4.1** — native ACME (removes certbot dependency)
+
+After step 10 the stack is genuinely prod-ready: routing, auth,
+sessions, DB, templates, security middleware, HTTPS auto-renew,
+observability, systemd integration. The rest (phase 4 polish,
+extra DBs, OAuth/WebAuthn, etc.) is breadth.
 
 ## 22. Future work (post-v1.0)
 
-- **JSX-like template literals** in amc parser (separate proposal).
-- **Multi-site hosting** in a single Mosaic process (separate proposal
-  if demand).
-- **Process-isolated workers** (one OS process per route, Phusion
-  Passenger model).
-- **HTTP/3 (QUIC)** via ngtcp2 or msquic.
-- **Built-in caching reverse proxy** (Varnish replacement).
-- **WAF rule engine** (ModSecurity-compatible rules).
-- **Cluster mode** with shared state via Redis or a coordination
-  service.
-- **OpenTelemetry full tracing** (spans, exporters).
-- **Pre-built `mosaic` binary distribution** if compile time becomes
-  prohibitive.
-- **DNS-01 ACME challenge** for wildcard certs.
-- **Built-in admin UI** (à la Caddy admin API, à la Traefik
-  dashboard).
+Items that are intentionally **not** in §21's phases — too speculative,
+too niche, or blocked on out-of-scope language work.
+
+- **JSX-like template literals** in the amc parser. Requires a
+  separate proposal for the syntax + a parser extension. v2.0+
+  candidate.
+- **Multi-site hosting in a single Mosaic process** (one process,
+  multiple virtual hosts behind a single port). Industry pattern
+  is one process per site behind a reverse proxy; this option
+  remains for resource-constrained shared-hosting scenarios.
+  Separate proposal if demand surfaces.
+- **Process-isolated workers** — one OS process per route, Phusion
+  Passenger model. Stronger crash isolation than the thread-pool
+  model, at the cost of complexity and memory.
+- **Built-in caching reverse proxy** — Varnish replacement integrated
+  with Mosaic. Out of scope until Mosaic's own reverse proxy
+  (phase-deferred — was originally web v0.6) ships.
+- **Cluster mode** — multi-host shared state via Redis or a
+  coordination service. Application-layer feature; outside the
+  framework's primary remit.
+- **Built-in admin UI** — à la Caddy admin API or Traefik dashboard.
+  Would expose Mosaic's runtime stats / routes / certs / sessions
+  through a `/_admin` endpoint with auth.
+- **Multi-protocol fast-CGI / SCGI / WAI gateways** — for embedding
+  Mosaic inside other web stacks. Unlikely to ever be a priority.
+
+(Items previously listed here — HTTP/3, WAF, DNS-01 wildcards,
+native ACME, pre-built mosaic binary, OpenTelemetry full — have
+moved into §21's phase 3 or 4.)
 
 ## 23. Decisions log (record of rejected paths)
 
@@ -1248,7 +1375,51 @@ against amc v0.8.31.
     and `public/`. Sites run as independent processes, isolated crash
     domains, behind a reverse proxy routing by hostname.
 
+### Decisions taken during implementation (2026-05-19)
+
+18. **`mosaic` is a separate repo, not a sub-package of `amalgame-web`.**
+    The build tool's lifecycle (CLI ergonomics, scaffolding,
+    dev-server iteration) is fundamentally different from the
+    runtime library's (stable API contract, prod-grade fixes).
+    Industry precedent matches: SvelteKit lib + `vite`, Rails gem +
+    `rails` binary historically. `amalgame-lang/mosaic` ships the
+    binary (or scripts, for now); `amalgame-web` stays a pure-AM
+    package consumed by `amc package add web`. Split done at
+    `mosaic v0.1.0` / `web v0.2.1`.
+19. **Filesystem-routing convention** — flat `namespace App` with
+    `class Page` collisions resolved by source-rewriting (the
+    generator renames each `class Page` to `<PathPrefix>_Page` while
+    concatenating into `_routes.am`). Pure dotted-namespace dispatch
+    (`App.Routes.Users.Id.Page.GET(ctx)`) is **not supported by amc**
+    today, so the per-file-namespace alternative would require an
+    amc parser extension. Source-mapping loss (errors point at the
+    generated file, not the user's `app/X.am`) is the price; will
+    be recovered in phase 3.7-3.9 via dlopen.
+20. **WebSocket server lives in `amalgame-net-http`, not `amalgame-web`
+    or a new `amalgame-net-websocket`**. The WS upgrade is HTTP/1.1;
+    the frame parser is small (~250 LoC including PING/PONG/CLOSE);
+    sharing the package keeps one TLS code path for the `wss://`
+    variant. `web` exposes WS to user code via
+    `router.Ws(path, handler)` in phase 2 (item 2.12).
+21. **ACME shipped as a `certbot` subprocess wrapper, not a native
+    RFC 8555 implementation**, in `tls v0.2.0`. Rationale: ~200 LoC
+    of wrapping over a battle-tested client, production-usable today.
+    The native implementation (item 4.1) is ~2-3 days of JWS +
+    state machine work, deferred to `tls v0.3.0`. The
+    `Acme.EnsureCert(domain, email, dir)` API is stable across the
+    swap — only the implementation changes.
+22. **HTTPS server advertises ALPN `h2` only** (no HTTP/1.1 fallback)
+    in `net-http v0.3.0`. Browsers from 2015+ all speak h2; the
+    fallback path lands in phase 4 (item 4.6) when there's user
+    pressure for legacy clients. Simplifies the v0.3 implementation
+    by ~30%.
+
 ## 24. Decisions (formerly open questions — all resolved 2026-05-18)
+
+These were the open architectural questions before implementation started.
+For decisions taken during implementation (2026-05-19, e.g., splitting
+`mosaic` into its own repo, deferring native ACME), see §23 entries 18+.
+
 
 1. **HTTP/2 from v0.1** — `amalgame-net-http v0.1` ships HTTP/1.1 +
    HTTP/2 together. No separate v0.2 for HTTP/2.
