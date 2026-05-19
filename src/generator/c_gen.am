@@ -3881,7 +3881,23 @@ public class CGen {
         var s: string = "({ AmalgameList* __ll = AmalgameList_new(); "
         let nc: int = n.Children.Count()
         for i in 0..nc {
-            let elem: string = this.EmitExprStr(n.Children.Get(i))
+            let child: AstNode = n.Children.Get(i)
+            // Spread item `...expr` (v0.8.36+): the operand is an
+            // iterable; splice its elements one by one via an inline
+            // for-loop over its data array. The operand is bound to
+            // a fresh `__sp_<i>` local so a side-effecting source
+            // expression (e.g. a method call) only fires once.
+            if (child.Kind == NodeKind.UNARY && child.Str == "...") {
+                let src: string = this.EmitExprStr(child.Left)
+                let idx: string = String_FromInt(i)
+                s = s + "{ AmalgameList* __sp_" + idx + " = " + src + "; "
+                s = s + "i64 __spn_" + idx + " = AmalgameList_size(__sp_" + idx + "); "
+                s = s + "for (i64 __spi_" + idx + " = 0; __spi_" + idx + " < __spn_" + idx + "; __spi_" + idx + "++) { "
+                s = s + "AmalgameList_add(__ll, __sp_" + idx + "->data[__spi_" + idx + "]); "
+                s = s + "} } "
+                continue
+            }
+            let elem: string = this.EmitExprStr(child)
             s = s + "AmalgameList_add(__ll, " + this.BoxAsVoid(elem) + "); "
         }
         s = s + "__ll; })"

@@ -1744,6 +1744,22 @@ public class Parser {
     // [expr for x in iter if cond]                  — comp + filter
     // The shape is decided by what follows the first expression:
     // `for` → comprehension; `,` or `]` → literal. Trailing comma OK.
+    // Parse one literal item: either `...expr` (spread) or a plain
+    // expression. Spread items wrap the operand in a UNARY node with
+    // op="..." so the cgen LIST_LITERAL branch can splice the operand
+    // list into the target via per-element Add() at runtime.
+    private AstNode ParseListItem() {
+        if (this.CheckType(TokenType.OP_SPREAD)) {
+            let sptok = this.Advance()
+            let inner = this.ParseExpr()
+            let n = new AstNode(NodeKind.UNARY, sptok.Line, sptok.Column)
+            n.Str = "..."
+            n.Left = inner
+            return n
+        }
+        return this.ParseExpr()
+    }
+
     private AstNode ParseListComp() {
         let tok = this.Advance() // consume '['
         this.SkipNewlines()
@@ -1752,7 +1768,7 @@ public class Parser {
             this.Advance()
             return new AstNode(NodeKind.LIST_LITERAL, tok.Line, tok.Column)
         }
-        let firstExpr = this.ParseExpr()
+        let firstExpr = this.ParseListItem()
         this.SkipNewlines()
         // List comprehension form — keep the historical shape.
         if (this.CheckKw("for")) {
@@ -1784,7 +1800,7 @@ public class Parser {
             this.Advance()
             this.SkipNewlines()
             if (this.CheckValue("]")) { break } // tolerate trailing comma
-            lit.Children.Add(this.ParseExpr())
+            lit.Children.Add(this.ParseListItem())
             this.SkipNewlines()
         }
         this.Expect("]")
