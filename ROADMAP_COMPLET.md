@@ -387,9 +387,16 @@ of these block a release on its own.
       expected an executable amc never produces — now follows the
       single-file convention (`-o base` + manual gcc), so the four
       multifile tests pass.
-- [ ] **Better error recovery** — the parser is okay but produces
-      `_unknown_` placeholder ASTs that cascade into noisy resolver
-      errors. Skip them more aggressively.
+- [ ] **Better error recovery** — partial fix shipped 2026-05-19:
+      `ParseVarDecl` now reports `Expected expression after '='`
+      when the RHS is missing (`let x =\n…`) instead of silently
+      synthesising `_unknown_` that survived all the way to gcc
+      ("'_unknown_' undeclared" was the only diagnostic the user
+      ever saw). Remaining work: tighten the other `Unknown()`
+      call sites in `ParsePrimary` / `ParseStmt` to emit
+      "unexpected token" diagnostics; gate cgen on
+      `parseErrors == 0` rather than running it unconditionally
+      so the `_unknown_` placeholder never reaches the C output.
 - [x] **Comments-on-same-line in `amc fmt`** — `Sync` and
       `FlushTrailingComments` now drain pending comments whose source
       line == `LastLine` by appending them to the previously emitted
@@ -411,17 +418,15 @@ of these block a release on its own.
       `for i in 0..N` workarounds can be unwound where the
       sequence is unbounded; left in place where the bound is
       meaningful documentation.
-- [ ] **Parser: `(a + b) % 256` ignores parens, parses as
-      `a + (b % 256)`** — surfaced 2026-05-12 in `msgpack.am`.
-      Repro: `let a = 500; let b = 65536; (a + b) % 256` returns
-      `500` (= `a + (b % 256)` = `500 + 0`) instead of the
-      expected `244` (= `66036 % 256`). The same expression
-      assigned via an intermediate local works: `let sum = a +
-      b; sum % 256` → `244`. Workaround in msgpack.am's ByteOf
-      is to use the intermediate local. Likely the `%` operator
-      binds tighter than `+` in `ParseExpr` and doesn't honour
-      the paren grouping in the AST shape it returns. Repro fixture
-      worth dropping into `tests/samples/` once we touch this.
+- [x] **Parser: `(a + b) % 256` ignores parens** —
+      **verified fixed 2026-05-19**. The repro from the
+      roadmap (`let a = 500; let b = 65536; (a+b)%256 == 244`)
+      and several variants (literal-only, function call return,
+      arg position) all now produce 244 as expected. ParseAdd/
+      ParseMul precedence is correct; the cgen paren-wrapping
+      fix in v0.8.10 (Bug #4 "parens lost") closed any residual
+      AST-shape issue. The msgpack.am intermediate-local
+      workaround can be unwound next time the file is touched.
 - [x] **CGen: `<call>.Count()` on `AmalgameList*` lowered to
       `_Count` instead of `_count` (resolved v0.7.2)** — the
       chained-call dispatch in `EmitCalleeStr` (case
@@ -1969,10 +1974,14 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    open "Stdlib delivery model" question — the early modules will
    be done header-only, but reaching ~10 modules is when options
    D/E start paying off.
-3. **LSP member completion** — `obj.<cursor>` narrowed to the
-   methods/fields of `obj`'s type. Needs a position→receiver→type
-   →members chain on top of v0.3.5's global completion. Probably
-   ~150 LoC once the receiver-resolution helper is in place.
+3. ~~**LSP member completion**~~ ✅ **already implemented**
+   (verified 2026-05-19). `HandleCompletion` in `src/lsp.am`
+   dispatches `obj.<cursor>` to `ReceiverTypeAt` (resolves the
+   identifier left of the dot via global symbols or a local
+   let/var text-scan heuristic) and `SendMemberCompletion`
+   walks `MemberTable` for that bare class. `this.<cursor>`
+   still returns "" pending a "current class at offset"
+   tracker — future enhancement.
 4. **`amc new <name> [--template …]`** — scaffolding command à la
    `cargo new` / `dotnet new`. File templates (exe/lib/test) +
    a dispatcher branch in `main.am`. ~200-400 LoC. Big onboarding

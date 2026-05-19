@@ -669,6 +669,25 @@ run_test "lambda_v25: Filter<User>"      "$SAMPLES/lambda_v25_nonint.am"  "[PASS
 run_test "lambda_v25: capture+Filter"    "$SAMPLES/lambda_v25_nonint.am"  "[PASS] capture+Filter hits=2"
 run_test "lambda_v25: chain Filter|Map"  "$SAMPLES/lambda_v25_nonint.am"  "[PASS] chain Filter|Map joined=alice|carol|"
 
+# Typed closures — `Closure<A, R>` / `Closure<A1, A2, R>` / etc.
+# Pre-fix, the bare `Closure` type erased all arg/return info so
+# the cgen defaulted to i64 + intptr_t roundtrip at call sites
+# and inside lambda bodies. mosaic-build.sh had to add
+# `-Wno-int-conversion -Wno-incompatible-pointer-types` to silence
+# the resulting gcc noise. With typed Closure:
+#   - lambda VAR_DECL patches the lambda's param Str from <A,…>
+#   - EmitClass tracks per-field closure return type for MEMBER
+#     closure-call dispatch
+#   - typechecker extracts R from `Closure<…, R>` as the call
+#     result type
+# Sample exercises arities 1/2 + pointer/scalar combinations +
+# typed Closure as a class field with this.Field(x) dispatch.
+run_test "closure_typed: <int,int>"           "$SAMPLES/closure_typed.am"  "[PASS] Closure<int,int> r1=42"
+run_test "closure_typed: <int,int,int>"       "$SAMPLES/closure_typed.am"  "[PASS] Closure<int,int,int> r2=30"
+run_test "closure_typed: <User,string>"       "$SAMPLES/closure_typed.am"  "[PASS] Closure<User,string> r3=alice"
+run_test "closure_typed: <User,int>"          "$SAMPLES/closure_typed.am"  "[PASS] Closure<User,int> r4=99"
+run_test "closure_typed: field <Conn,Conn>"   "$SAMPLES/closure_typed.am"  "[PASS] Server field Closure<Conn,Conn> id=42"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"

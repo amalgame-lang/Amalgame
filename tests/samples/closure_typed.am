@@ -1,0 +1,118 @@
+namespace Demo
+
+// Typed closures — `Closure<A, R>` / `Closure<A1, A2, R>` /
+// `Closure<A1, A2, A3, R>` (arities 1-3 supported, mirrors the
+// AmalgameClosure_callN runtime).
+//
+// The last comma-separated arg is the return type; the rest are
+// parameter types. Same shape as Kotlin's `(A) -> R`, just spelled
+// inside `<...>`.
+//
+// What the fix unlocks:
+//   1. Lambda body: when assigning a lambda to a typed-closure
+//      local (`let h: Closure<User, string> = u => u.Name`),
+//      the lambda's first PARAM Str is patched from the annotation
+//      BEFORE Phase C emits the fn body, so `u.Name` lowers as
+//      `u->Name` (pointer arg) instead of `i64 u = ...; u.Name`
+//      (compile error).
+//   2. Closure call (IDENTIFIER): the call site already consulted
+//      `__closure_ret__` for the unbox cast — typed annotations
+//      now seed that table directly (priority over body inference).
+//   3. Closure call (MEMBER, this.Field): EmitClass records the
+//      closure return type for `Closure<...>`-annotated fields;
+//      the MEMBER closure-call branch emits a typed cast on the
+//      result instead of defaulting to i64 + intptr_t roundtrip.
+//   4. TypeChecker: `c(x)` where c is `Closure<A, R>` now surfaces
+//      R as the call result type instead of erasing to `?`, so the
+//      assignment `let r: R = c(x)` typechecks without `?` wildcard.
+//   5. TypeToC: `Closure<...>` still lowers to `AmalgameClosure*`
+//      so the runtime ABI is unchanged — the typed annotation is
+//      purely a compile-time hint that informs cast emission.
+//
+// Net effect: mosaic-build.sh can drop its `-Wno-int-conversion`
+// `-Wno-incompatible-pointer-types` flags once mosaic uses
+// `Closure<...>` instead of bare `Closure`.
+
+public class User {
+    public Name: string
+    public Age: int
+    public User(n: string, a: int) {
+        this.Name = n
+        this.Age = a
+    }
+}
+
+public class Conn {
+    public Id: int
+    public Conn(i: int) { this.Id = i }
+}
+
+public class Server {
+    public Handler: Closure<Conn, Conn>
+
+    public Server(h: Closure<Conn, Conn>) {
+        this.Handler = h
+    }
+
+    public int Dispatch(c: Conn) {
+        // this.Handler is a typed closure field — call result
+        // is Conn*, not i64. EmitClass tracks the field's
+        // closure return type; the MEMBER call branch reads it.
+        let r: Conn = this.Handler(c)
+        return r.Id
+    }
+}
+
+public class Program {
+    public static Conn echo(c: Conn) { return c }
+
+    public static void Main() {
+        // Closure<int, int> — scalar arg + return
+        let f1: Closure<int, int> = x => x * 2
+        let r1: int = f1(21)
+        if (r1 == 42) {
+            Console.WriteLine("[PASS] Closure<int,int> r1=" + String_FromInt(r1))
+        } else {
+            Console.WriteLine("[FAIL] r1=" + String_FromInt(r1))
+        }
+
+        // Closure<int, int, int> — 2 scalar args
+        let f2: Closure<int, int, int> = (a, b) => a + b
+        let r2: int = f2(10, 20)
+        if (r2 == 30) {
+            Console.WriteLine("[PASS] Closure<int,int,int> r2=" + String_FromInt(r2))
+        } else {
+            Console.WriteLine("[FAIL] r2=" + String_FromInt(r2))
+        }
+
+        // Closure<User, string> — pointer arg + pointer return
+        let f3: Closure<User, string> = u => u.Name
+        let r3: string = f3(new User("alice", 30))
+        if (r3 == "alice") {
+            Console.WriteLine("[PASS] Closure<User,string> r3=" + r3)
+        } else {
+            Console.WriteLine("[FAIL] r3=" + r3)
+        }
+
+        // Closure<User, int> — pointer arg, scalar return
+        let f4: Closure<User, int> = u => u.Age
+        let r4: int = f4(new User("bob", 99))
+        if (r4 == 99) {
+            Console.WriteLine("[PASS] Closure<User,int> r4=" + String_FromInt(r4))
+        } else {
+            Console.WriteLine("[FAIL] r4=" + String_FromInt(r4))
+        }
+
+        // Closure as typed class field — round-trip through MEMBER
+        // closure-call (no gcc warning because the cgen now emits
+        // a typed cast on the call result).
+        let h: Closure<Conn, Conn> = c => Program.echo(c)
+        let s: Server = new Server(h)
+        let id: int = s.Dispatch(new Conn(42))
+        if (id == 42) {
+            Console.WriteLine("[PASS] Server field Closure<Conn,Conn> id=" + String_FromInt(id))
+        } else {
+            Console.WriteLine("[FAIL] id=" + String_FromInt(id))
+        }
+    }
+}
