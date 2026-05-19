@@ -387,16 +387,20 @@ of these block a release on its own.
       expected an executable amc never produces — now follows the
       single-file convention (`-o base` + manual gcc), so the four
       multifile tests pass.
-- [ ] **Better error recovery** — partial fix shipped 2026-05-19:
-      `ParseVarDecl` now reports `Expected expression after '='`
-      when the RHS is missing (`let x =\n…`) instead of silently
-      synthesising `_unknown_` that survived all the way to gcc
-      ("'_unknown_' undeclared" was the only diagnostic the user
-      ever saw). Remaining work: tighten the other `Unknown()`
-      call sites in `ParsePrimary` / `ParseStmt` to emit
-      "unexpected token" diagnostics; gate cgen on
-      `parseErrors == 0` rather than running it unconditionally
-      so the `_unknown_` placeholder never reaches the C output.
+- [x] **Better error recovery** — **shipped 2026-05-19** in two
+      slices:
+      - `ParseVarDecl` reports `Expected expression after '='` when
+        the RHS is missing (`let x =\n…`) instead of silently
+        synthesising `_unknown_`.
+      - `main.am` now gates the cgen pass on `this.ExitCode == 0`
+        (in addition to the existing `parseOk` gate that already
+        short-circuited on parse errors). Resolver / typechecker
+        errors no longer let the cgen run on a partially-resolved
+        AST, so gcc never sees `_unknown_` placeholders or unmangled
+        identifiers — the user gets the amc diagnostic and only
+        that. Remaining nice-to-have: tighten the other `Unknown()`
+        sites in `ParsePrimary` / `ParseStmt` to emit
+        "unexpected token" diagnostics rather than silent recovery.
 - [x] **Comments-on-same-line in `amc fmt`** — `Sync` and
       `FlushTrailingComments` now drain pending comments whose source
       line == `LastLine` by appending them to the previously emitted
@@ -1974,14 +1978,20 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    open "Stdlib delivery model" question — the early modules will
    be done header-only, but reaching ~10 modules is when options
    D/E start paying off.
-3. ~~**LSP member completion**~~ ✅ **already implemented**
-   (verified 2026-05-19). `HandleCompletion` in `src/lsp.am`
-   dispatches `obj.<cursor>` to `ReceiverTypeAt` (resolves the
-   identifier left of the dot via global symbols or a local
-   let/var text-scan heuristic) and `SendMemberCompletion`
-   walks `MemberTable` for that bare class. `this.<cursor>`
-   still returns "" pending a "current class at offset"
-   tracker — future enhancement.
+3. ~~**LSP member completion**~~ ✅ **shipped** (final piece
+   2026-05-19). `HandleCompletion` in `src/lsp.am` dispatches
+   `obj.<cursor>` to `ReceiverTypeAt`, which now handles three
+   shapes:
+   - global symbols (class / enum names) → `Class.<member>`
+   - local var declared with `let X: T = …` or `let X = new T(…)`
+   - `this.<cursor>` → `EnclosingClassAt` text-scans backwards
+     from the cursor, tracking brace depth and `class XXX {`
+     openings, so the innermost enclosing class is returned even
+     for nested `if`/`while`/`match` blocks. Heuristic-only
+     (skips strings/comments — replace with a real lex sweep
+     if false positives appear); covers the common case where
+     a user types `this.` inside a method body and expects to
+     see the class's own methods/fields listed.
 4. **`amc new <name> [--template …]`** — scaffolding command à la
    `cargo new` / `dotnet new`. File templates (exe/lib/test) +
    a dispatcher branch in `main.am`. ~200-400 LoC. Big onboarding

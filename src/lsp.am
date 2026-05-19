@@ -2299,10 +2299,15 @@ public class LspServer {
         //   1. a global symbol (class / enum name) → the type IS the
         //      identifier (Class.StaticMember pattern).
         //   2. a local variable → look up its declared type.
-        //   3. a `this` access — short circuit to the surrounding
-        //      class. We don't track "current class at offset" yet,
-        //      so we punt on this case in v1 and return "".
-        if (ident == "this") { return "" }
+        //   3. `this` access — text-scan backwards from the cursor
+        //      for the enclosing `class XXX {` (brace-balance walk
+        //      that survives nested method scopes). Returns the
+        //      class name so SendMemberCompletion lists its
+        //      methods/fields. Falls back to "" outside any class
+        //      (top-level code, unlikely in practice).
+        if (ident == "this") {
+            return LspServer.EnclosingClassAt(source, cursorAbs)
+        }
         if (resolver.HasSymbol(ident)) {
             let t: string = resolver.GetTypeName(ident)
             // A class name has its own name as the type marker
@@ -2320,6 +2325,112 @@ public class LspServer {
         let lt: string = LspServer.ScanLocalDeclType(source, cursorAbs, ident)
         if (String_Length(lt) > 0) { return lt }
         return ""
+    }
+
+    // Find the class enclosing the cursor at `before` (text-scan).
+    // Walks the source forward, tracking brace depth, and remembers
+    // the class name at every `[public ]class XXX` (and `[public ]
+    // interface XXX` / `record` / `enum`) opening so we can pop
+    // back when the class closes. Returns the innermost class still
+    // open at the cursor offset, or "" if outside any class.
+    //
+    // Heuristic-only: doesn't parse strings/comments, so a `{` inside
+    // a string literal would skew the depth. In practice the cgen
+    // bootstraps fine and the editor cursor is rarely deep inside a
+    // string when asking for `this.<dot>` completion. Replace with a
+    // real lex sweep if false positives become a problem.
+    private static string EnclosingClassAt(string source, int before) {
+        let n: int = String_Length(source)
+        if (before > n) { before = n }
+        // Stack of (className, depth-at-open) entries. We push on a
+        // `class XXX {` opening and pop when our depth drops back
+        // below the recorded value.
+        let names: List<string> = new List<string>()
+        let depths: List<int>   = new List<int>()
+        var depth: int = 0
+        var i: int = 0
+        while (i < before) {
+            let c: string = String_CharAt1(source, i)
+            if (c == "{") { depth = depth + 1 ; i = i + 1 ; continue }
+            if (c == "}") {
+                depth = depth - 1
+                // Pop any class entries whose recorded depth is now > current.
+                let nn: int = names.Count()
+                if (nn > 0) {
+                    let top: int = depths.Get(nn - 1)
+                    if (top > depth) {
+                        names.RemoveAt(nn - 1)
+                        depths.RemoveAt(nn - 1)
+                    }
+                }
+                i = i + 1 ; continue
+            }
+            // Look for `class XXX` at this position. Accept `class` /
+            // `interface` / `record` / `enum`; preceded optionally by
+            // `public ` or `private `. We just check the keyword
+            // `class` for now — interfaces/records/enums also benefit
+            // but the MemberTable mostly tracks classes anyway.
+            if (c == "c" && LspServer.MatchKeywordAt(source, i, "class")) {
+                // Skip "class", whitespace, then read the identifier.
+                var j: int = i + 5
+                while (j < before) {
+                    let cj: string = String_CharAt1(source, j)
+                    if (cj == " " || cj == "\t") { j = j + 1 ; continue }
+                    break
+                }
+                var nameStart: int = j
+                while (j < before) {
+                    let cj2: string = String_CharAt1(source, j)
+                    if (LspServer.IsIdentChar(cj2)) { j = j + 1 ; continue }
+                    break
+                }
+                if (j > nameStart) {
+                    let className: string = String_Substring(source, nameStart, j - nameStart)
+                    // Skip to the next `{` to record the opening depth.
+                    while (j < before) {
+                        let cj3: string = String_CharAt1(source, j)
+                        if (cj3 == "{") {
+                            depth = depth + 1
+                            names.Add(className)
+                            depths.Add(depth)
+                            j = j + 1
+                            break
+                        }
+                        j = j + 1
+                    }
+                    i = j
+                    continue
+                }
+            }
+            i = i + 1
+        }
+        let nf: int = names.Count()
+        if (nf == 0) { return "" }
+        return names.Get(nf - 1)
+    }
+
+    // Does `source[pos..]` start with `kw` AND have a non-identifier
+    // character at `pos-1` (or pos==0) AND at `pos+len(kw)`? Lets the
+    // scanner match the bare keyword without confusing `class` with
+    // `myclass` or `classify`.
+    private static bool MatchKeywordAt(string source, int pos, string kw) {
+        let n: int = String_Length(source)
+        let kl: int = String_Length(kw)
+        if (pos + kl > n) { return false }
+        for ki in 0..kl {
+            if (String_CharAt1(source, pos + ki) != String_CharAt1(kw, ki)) {
+                return false
+            }
+        }
+        if (pos > 0) {
+            let prev: string = String_CharAt1(source, pos - 1)
+            if (LspServer.IsIdentChar(prev)) { return false }
+        }
+        if (pos + kl < n) {
+            let next: string = String_CharAt1(source, pos + kl)
+            if (LspServer.IsIdentChar(next)) { return false }
+        }
+        return true
     }
 
     // Scan `source` from the start to `before` for the latest

@@ -488,6 +488,20 @@ public class AmalgameCompiler {
             return
         }
 
+        // Skip cgen entirely when a previous phase (resolver /
+        // typechecker) flagged errors. Pre-fix the cgen ran
+        // unconditionally on the partially-resolved AST: any
+        // identifier the resolver rejected lowered as itself
+        // (no symbol mangling, no implicit-declaration guard),
+        // so gcc emitted a second wave of confusing errors
+        // ("'_unknown_' undeclared", "implicit declaration of
+        // foo") that masked the real amc diagnostic. Failing
+        // clean here keeps the amc message the only thing the
+        // user sees.
+        if (this.ExitCode != 0) {
+            return
+        }
+
         // ── Codegen pass ──────────────────────────────
         gen.EmitSeparator()
         // Bug 1 (v0.8.23): every file's forwards must land before any
