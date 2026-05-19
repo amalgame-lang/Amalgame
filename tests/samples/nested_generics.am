@@ -1,0 +1,70 @@
+namespace Demo
+
+// Nested-generics through chained `.Get(i).Get(j)…` (v0.8.36+).
+//
+// Pre-fix the inner Get fell through to `(void*)AmalgameList_get(...)`
+// because the cgen only tracked one layer of element type at the
+// `__local__` table. `let rows: List<List<string>>; rows.Get(0).Get(0)`
+// emitted `(void*)…` for the outer Get and gcc only accepted the
+// assignment through the implicit `void*` → pointer conversion.
+//
+// Post-fix:
+//   - `TrackGenericLocal` also stores the *raw* element type at
+//     `__local_raw__:<varname>` (was only the C type at `__local__`).
+//   - `RecoverChainedListElemRaw` walks a chained `.Get(...).Get(...)`
+//     receiver back to the original typed local, peeling one
+//     `List<...>` layer per hop via `PeelOneGenericLayer`.
+//   - The `.Get(i)` emit branch consults the chained recovery before
+//     falling through to `(void*)`. Pointer-shaped elems lower via a
+//     direct cast (`(code_string)…`); scalar elems lower via
+//     `UnboxScalar` (`(i64)(intptr_t)…`).
+//
+// Cross-package: explicit annotations on the consumer's local pull
+// the raw type through `TrackGenericLocal`; method-return-typed
+// locals (`let rows = PostgreSQL.QueryAll()`) read the raw shape
+// from `MethodRetRawGet` which is already populated by
+// `ExternalMethodSig` during Pass 2 of facade registration.
+
+public class Program {
+    public static void Main() {
+        // 2-deep: List<List<string>>
+        let rows: List<List<string>> = new List<List<string>>()
+        let row0: List<string> = new List<string>()
+        row0.Add("alpha")
+        row0.Add("beta")
+        rows.Add(row0)
+        let s: string = rows.Get(0).Get(0)
+        if (s == "alpha") {
+            Console.WriteLine("[PASS] List<List<string>> rows[0][0]=" + s)
+        } else {
+            Console.WriteLine("[FAIL] s=" + s)
+        }
+
+        // 2-deep with scalar elem: List<List<int>>
+        let m: List<List<int>> = new List<List<int>>()
+        let mrow: List<int> = new List<int>()
+        mrow.Add(42)
+        mrow.Add(99)
+        m.Add(mrow)
+        let n: int = m.Get(0).Get(0)
+        if (n == 42) {
+            Console.WriteLine("[PASS] List<List<int>> m[0][0]=" + String_FromInt(n))
+        } else {
+            Console.WriteLine("[FAIL] n=" + String_FromInt(n))
+        }
+
+        // 3-deep: List<List<List<int>>>
+        let cube: List<List<List<int>>> = new List<List<List<int>>>()
+        let mat: List<List<int>> = new List<List<int>>()
+        let row: List<int> = new List<int>()
+        row.Add(7)
+        mat.Add(row)
+        cube.Add(mat)
+        let v: int = cube.Get(0).Get(0).Get(0)
+        if (v == 7) {
+            Console.WriteLine("[PASS] List<List<List<int>>> cube[0][0][0]=" + String_FromInt(v))
+        } else {
+            Console.WriteLine("[FAIL] v=" + String_FromInt(v))
+        }
+    }
+}

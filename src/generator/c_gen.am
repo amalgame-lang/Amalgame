@@ -703,6 +703,12 @@ public class CGen {
             let inner = String_Substring(rawType, 5, String_Length(rawType) - 6)
             if (String_Length(inner) > 0) {
                 this.ListElemSet("__local__", varName, this.TypeToC(inner))
+                // Also stash the RAW elem type so chained `.Get(i).Get(j)`
+                // can peel another generic layer at the consumer's call
+                // site (see RecoverChainedListElemRaw). Without this,
+                // nested-collection access (`List<List<string>>`) falls
+                // through to a `(void*)` cast on the inner Get.
+                this.ListElemSet("__local_raw__", varName, inner)
             }
             return
         }
@@ -714,9 +720,59 @@ public class CGen {
                 let vTrim = String_Trim(vRaw)
                 if (String_Length(vTrim) > 0) {
                     this.ListElemSet("__local_map__", varName, this.TypeToC(vTrim))
+                    // Same raw-shape tracking as for List<T>, keyed under
+                    // a Map-specific tag so the chained dispatch can tell
+                    // List<T> apart from Map<K,V>.
+                    this.ListElemSet("__local_map_raw__", varName, vTrim)
                 }
             }
         }
+    }
+
+    // Peel one `List<...>` (or `Map<K, ...>`) layer off a raw type
+    // string. `List<List<string>>` → `List<string>`, `List<string>` →
+    // `string`, `Map<string, int>` → `int`, anything else → "".
+    private string PeelOneGenericLayer(string rawType) {
+        if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
+            return String_Substring(rawType, 5, String_Length(rawType) - 6)
+        }
+        if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
+            let inner = String_Substring(rawType, 4, String_Length(rawType) - 5)
+            // Split on the FIRST top-level comma — same logic as
+            // TrackGenericLocal above.
+            let comma = String_IndexOf(inner, ",")
+            if (comma > 0) {
+                return String_Trim(String_Substring(inner, comma + 1, String_Length(inner) - comma - 1))
+            }
+        }
+        return ""
+    }
+
+    // Walk a chained `.Get(i).Get(j)…` receiver to recover the
+    // element raw type at the consumer's call depth. Returns "" if
+    // the chain doesn't bottom out at a known typed local. Recursion
+    // peels one `List<...>` / `Map<K,...>` layer per Get hop.
+    //
+    // Example: with `let rows: List<List<string>>`,
+    //   `rows.Get(0).Get(0)` → outer Get's receiver is `rows.Get(0)`,
+    //   inner is `rows` (IDENTIFIER, depth 0). Inner Get returns
+    //   `List<string>`. Outer Get peels one more layer → `string`.
+    //   The Get-emit branch uses that to emit `(code_string)…` instead
+    //   of `(void*)…`.
+    private string RecoverChainedListElemRaw(AstNode recv) {
+        if (recv == null) { return "" }
+        if (recv.Kind == NodeKind.IDENTIFIER) {
+            return this.ListElemGet("__local_raw__", recv.Name)
+        }
+        if (recv.Kind == NodeKind.CALL) {
+            if (recv.Left == null) { return "" }
+            if (recv.Left.Kind != NodeKind.MEMBER) { return "" }
+            if (recv.Left.Name != "Get") { return "" }
+            let innerElemRaw: string = this.RecoverChainedListElemRaw(recv.Left.Left)
+            if (String_Length(innerElemRaw) == 0) { return "" }
+            return this.PeelOneGenericLayer(innerElemRaw)
+        }
+        return ""
     }
 
     private void ListElemSet(string className, string fieldName, string elemCType) {
@@ -4186,9 +4242,29 @@ public class CGen {
                     let vn5 = callee.Left.Name
                     elemType = this.ListElemGet("__local__", vn5)
                 }
+                // Case: chained `xs.Get(i).Get(j)` — receiver is a CALL
+                // to Get. Walk the chain back to the original typed
+                // local, peeling one `List<...>` layer per hop. Lets
+                // nested-collection access lower with proper typed casts
+                // instead of falling through to `(void*)`.
+                if (lkG == NodeKind.CALL && String_Length(elemType) == 0) {
+                    let chainedRaw: string = this.RecoverChainedListElemRaw(callee.Left)
+                    if (String_Length(chainedRaw) > 0) {
+                        elemType = this.TypeToC(chainedRaw)
+                    }
+                }
             }
             if (String_Length(elemType) > 0) {
-                return "(" + elemType + ")AmalgameList_get(" + listExpr + ", " + idx0 + ")"
+                // For pointer-shaped elems (anything ending in `*`,
+                // including code_string), the direct cast suffices.
+                // For scalar elems (i64, double, code_bool), the
+                // runtime stored an intptr_t-boxed value — unbox via
+                // the standard helper so the assignment doesn't trip
+                // a sign-extension warning.
+                if (this.IsCPointerType(elemType)) {
+                    return "(" + elemType + ")AmalgameList_get(" + listExpr + ", " + idx0 + ")"
+                }
+                return this.UnboxScalar(elemType, "AmalgameList_get(" + listExpr + ", " + idx0 + ")")
             }
             return "(void*)AmalgameList_get(" + listExpr + ", " + idx0 + ")"
         }
