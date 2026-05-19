@@ -164,6 +164,19 @@ public class CGen {
     public ExternalEnums:      List<string>
     public ExternalEnumNsArr:  List<string>
 
+    // Classes declared in the current compilation unit, accumulated by
+    // EmitForwardDecl during AddFilePass1. Lets EmitCalleeStr / TypeToC
+    // give Local precedence over PkgClasses when both register the same
+    // short name — the facade-ABI conflict that surfaced during the
+    // msgpack extraction (`MsgPack.DecodeOne(...)` inside the facade
+    // itself, while the running amc has the same MsgPack registered as
+    // a package). Without this, the call mangles to the package's
+    // header-export shape (`Amalgame_Formats_MsgPack_DecodeOne`) while
+    // the body is defined under the Local shape
+    // (`Amalgame_Formats_MsgPack_MsgPack_DecodeOne`), producing an
+    // implicit-int decl + segfault on first dereference.
+    public LocalClasses: List<string>
+
     public CGen() {
         this.Out            = new Emitter()
         this.NsPrefix       = ""
@@ -191,6 +204,7 @@ public class CGen {
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
         this.ExternalEnumNsArr = new List<string>()
+        this.LocalClasses      = new List<string>()
         this.CurrentSource     = ""
         this.LastLineEmitted   = -1
         this.InferCacheKeys    = new List<int>()
@@ -1757,6 +1771,19 @@ public class CGen {
                             }
                         }
                     }
+                    // Typed-Closure field on an external class — record
+                    // the return type so MEMBER closure-call dispatch on
+                    // chained `obj.Field.Method(args)` patterns can emit
+                    // a typed cast. Mirrors EmitClass's same registration.
+                    if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
+                        let cinner: string = String_Substring(rawType, 8, String_Length(rawType) - 9)
+                        let cparts: List<string> = this.SplitTopLevelCommas(cinner)
+                        let cpc: int = cparts.Count()
+                        if (cpc >= 1) {
+                            let crawRet: string = String_Trim(cparts.Get(cpc - 1))
+                            this.ListElemSet(mangled + "__closure_ret__", m.Name, this.TypeToC(crawRet))
+                        }
+                    }
                 }
             }
             // Emit the struct body. Empty classes (static helpers like
@@ -1919,6 +1946,38 @@ public class CGen {
     //      multiple classes can't collide.
     // The "namespace ends with `_<class>`" check disambiguates the
     // two patterns from the same code path.
+    // Split a comma-separated list of types, respecting nested `<...>`
+    // depth so `List<int>, Map<string, int>, bool` returns 3 parts and
+    // not 5. Used by the typed-Closure path (Closure<A1, A2, R>) to
+    // peel apart the args + return type without a real parser.
+    private List<string> SplitTopLevelCommas(string s) {
+        let parts: List<string> = new List<string>()
+        let n: int = String_Length(s)
+        var depth: int = 0
+        var cur: string = ""
+        for i in 0..n {
+            let ch: string = String_Substring(s, i, 1)
+            if (ch == "<") { depth = depth + 1; cur = cur + ch }
+            else if (ch == ">") { depth = depth - 1; cur = cur + ch }
+            else if (ch == "," && depth == 0) {
+                parts.Add(cur)
+                cur = ""
+            } else {
+                cur = cur + ch
+            }
+        }
+        if (String_Length(cur) > 0) { parts.Add(cur) }
+        return parts
+    }
+
+    private bool IsLocalClass(string tname) {
+        let n: int = this.LocalClasses.Count()
+        for i in 0..n {
+            if (this.LocalClasses.Get(i) == tname) { return true }
+        }
+        return false
+    }
+
     private string PkgClassMangledPrefix(string tname) {
         let n: int = this.PkgClasses.Count()
         for i in 0..n {
@@ -1961,6 +2020,9 @@ public class CGen {
         if (k == NodeKind.CLASS_DECL) {
             let name = this.SymName(decl.Name)
             this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+            // Track the short class name so IsLocalClass can give it
+            // precedence over a same-named PkgClass (facade-ABI bug).
+            this.LocalClasses.Add(decl.Name)
         }
         if (k == NodeKind.INLINE_C) {
             // File-scope `@c { … }` raw block. Emit the body verbatim
@@ -2189,6 +2251,22 @@ public class CGen {
                         if (String_Length(vTrim) > 0) {
                             this.ListElemSet(name, m.Name, this.TypeToC(vTrim))
                         }
+                    }
+                }
+                // Track return type for typed-Closure fields
+                // (Closure<A, R> / Closure<A1, A2, R> / ...).
+                // Without this, `this.Handler(req)` lowers as
+                // `(i64)(intptr_t)AmalgameClosure_call1(...)` and gcc
+                // complains when assigning the result to a pointer-
+                // typed local. Read by the MEMBER closure-call branch
+                // in EmitExprStr to emit a typed cast.
+                if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
+                    let cinner = String_Substring(rawType, 8, String_Length(rawType) - 9)
+                    let cparts: List<string> = this.SplitTopLevelCommas(cinner)
+                    let cpc: int = cparts.Count()
+                    if (cpc >= 1) {
+                        let crawRet = String_Trim(cparts.Get(cpc - 1))
+                        this.ListElemSet(name + "__closure_ret__", m.Name, this.TypeToC(crawRet))
                     }
                 }
             }
@@ -2739,6 +2817,20 @@ public class CGen {
     private void EmitStmt(AstNode stmt) {
         this.EmitLineDirective(stmt)
         let k = stmt.Kind
+        if (k == NodeKind.BLOCK) {
+            // Bare `{ ... }` block at statement position. The resolver
+            // already pushes a "block" scope around the children, so
+            // emitting a C `{ ... }` here gives each `let` inside its
+            // own C-scope — siblings can reuse local names without
+            // colliding with names from a previous sibling block (fix
+            // for the ui-forms r0/r2 ↔ rz0/rz2 workaround).
+            this.Out.EmitLine("{")
+            this.Out.Indent_()
+            this.EmitBlock(stmt)
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            return
+        }
         if (k == NodeKind.TRY_STMT) {
             // try { … } catch e { … } [finally { … }] — setjmp/longjmp pattern
             // (matches the Vala bootstrap's c_generator).
@@ -2892,6 +2984,40 @@ public class CGen {
                 let envName = "LamEnv_" + id
                 let fnName  = "lam_" + id + "_fn"
                 let envVar  = "__env_" + id
+                // Typed closure (Closure<A, R> / Closure<A1, A2, R> /
+                // Closure<A1, A2, A3, R>): when the user annotated the
+                // local with a typed-closure shape, push each A_i into
+                // the lambda's i-th PARAM Str. Phase C (EmitLambdaBodies)
+                // hasn't run yet, so subsequent body emission picks up
+                // the typed unpack and member access lowers cleanly
+                // (no more `-Wno-int-conversion` cache-misère on the
+                // mosaic-build.sh side). The last comma-separated arg
+                // is the return type — used to seed __closure_ret__
+                // below.
+                var typedRet: string = ""
+                if (String_StartsWith(stmt.Str, "Closure<") && String_EndsWith(stmt.Str, ">")) {
+                    let inner: string = String_Substring(stmt.Str, 8, String_Length(stmt.Str) - 9)
+                    let parts: List<string> = this.SplitTopLevelCommas(inner)
+                    let pc: int = parts.Count()
+                    let pn: int = lam.Params.Count()
+                    if (pc >= 1) {
+                        // Last entry is the return type.
+                        typedRet = String_Trim(parts.Get(pc - 1))
+                        // All preceding entries are arg types — patch
+                        // the lambda's params in order (only when the
+                        // param has no annotation already, so the user
+                        // can override per-param if they want).
+                        let argCount: int = pc - 1
+                        let toPatch: int = argCount
+                        if (toPatch > pn) { toPatch = pn }
+                        for ai in 0..toPatch {
+                            let p = lam.Params.Get(ai)
+                            if (String_Length(p.Str) == 0 || p.Str == "?") {
+                                p.Str = String_Trim(parts.Get(ai))
+                            }
+                        }
+                    }
+                }
                 this.Out.EmitLine(envName + "* " + envVar + " = (" + envName + "*) code_alloc(sizeof(" + envName + "));")
                 let cn = lam.Args.Count()
                 for i in 0..cn {
@@ -2902,10 +3028,13 @@ public class CGen {
                 this.LocalTypeSet(stmt.Name, "AmalgameClosure*")
                 // Track the lambda's return type so the call site emits
                 // the right cast/unbox instead of always assuming i64.
-                // Expression-bodied lambdas: infer from lam.Left. Block-
-                // bodied lambdas leave it blank → call site falls back
-                // to the legacy `UnboxScalar("i64", …)` path.
-                if (lam.Left != null) {
+                // Priority: explicit Closure<…, R> annotation > body
+                // inference. Block-bodied lambdas with no annotation
+                // leave it blank → call site falls back to the legacy
+                // `UnboxScalar("i64", …)` path.
+                if (String_Length(typedRet) > 0) {
+                    this.ListElemSet("__closure_ret__", stmt.Name, this.TypeToC(typedRet))
+                } else if (lam.Left != null) {
                     let retC = this.InferTypeFromExpr(lam.Left)
                     if (String_Length(retC) > 0) {
                         this.ListElemSet("__closure_ret__", stmt.Name, retC)
@@ -3056,10 +3185,26 @@ public class CGen {
             }
             // Collection for: for x in <list-expr>. Emit a wrapper block so
             // the synthetic iterator + length stay scoped to the loop. The
-            // element type is erased to void* (generics erase to void*); the
-            // user casts explicitly when treating the element as a primitive.
-            // The synthetic names use vn as a suffix so nested for-in over
+            // synthetic names use vn as a suffix so nested for-in over
             // different lists don't shadow each other.
+            //
+            // Lambda v2.5 follow-up: when the iter expression is a known
+            // typed local (e.g. `let xs: List<User> = ...`) or a typed
+            // class field, infer the element C type and type the loop
+            // variable accordingly so the body resolves `u.Name`,
+            // `u.Method()`, etc., without manual casts. Falls back to
+            // `void*` when the type can't be recovered — same behaviour
+            // as before, just opt-in to typed casts when info is there.
+            var elemC: string = ""
+            if (stmt.Left != null) {
+                let ilk = stmt.Left.Kind
+                if (ilk == NodeKind.IDENTIFIER) {
+                    elemC = this.ListElemGet("__local__", stmt.Left.Name)
+                } else if (ilk == NodeKind.MEMBER && stmt.Left.Left != null && stmt.Left.Left.Kind == NodeKind.THIS_EXPR) {
+                    elemC = this.ListElemGet(this.CurrentClass, stmt.Left.Name)
+                }
+            }
+            if (String_Length(elemC) == 0) { elemC = "void*" }
             let iter = this.EmitExprStr(stmt.Left)
             this.Out.EmitLine("{")
             this.Out.Indent_()
@@ -3067,8 +3212,16 @@ public class CGen {
             this.Out.EmitLine("i64 __len_" + vn + " = AmalgameList_size(__it_" + vn + ");")
             this.Out.EmitLine("for (i64 __idx_" + vn + " = 0; __idx_" + vn + " < __len_" + vn + "; __idx_" + vn + "++) {")
             this.Out.Indent_()
-            this.Out.EmitLine("void* " + vn + " = __it_" + vn + "->data[__idx_" + vn + "];")
-            this.LocalTypeSet(vn, "void*")
+            let rawElem = "__it_" + vn + "->data[__idx_" + vn + "]"
+            if (elemC == "void*") {
+                this.Out.EmitLine("void* " + vn + " = " + rawElem + ";")
+            } else if (this.IsCPointerType(elemC)) {
+                this.Out.EmitLine(elemC + " " + vn + " = (" + elemC + ")" + rawElem + ";")
+            } else {
+                // Scalar (i64, double, code_bool …) — unbox through intptr_t.
+                this.Out.EmitLine(elemC + " " + vn + " = " + this.UnboxScalar(elemC, rawElem) + ";")
+            }
+            this.LocalTypeSet(vn, elemC)
             if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
             this.Out.Dedent()
             this.Out.EmitLine("}")
@@ -3384,16 +3537,25 @@ public class CGen {
                         if (ft == "AmalgameClosure*") {
                             let argc: int = expr.Args.Count()
                             let calleeName: string = recvExpr + "->" + mem.Name
-                            let retC: string = "i64"   // closure return type erased to i64
+                            // Typed-Closure return: read the per-class,
+                            // per-field closure return type recorded by
+                            // EmitClass for `Closure<...>`-annotated
+                            // fields. Falls back to i64 when the field
+                            // is the legacy bare `Closure` (no annot).
+                            let retC0: string = this.ListElemGet(recvCls + "__closure_ret__", mem.Name)
+                            var retC: string = retC0
+                            if (String_Length(retC) == 0) { retC = "i64" }
                             if (argc == 1) {
                                 let arg0 = this.EmitExprStr(expr.Args.Get(0))
                                 let callC = "AmalgameClosure_call1(" + calleeName + ", " + this.BoxAsVoid(arg0) + ")"
+                                if (this.IsCPointerType(retC)) { return "((" + retC + ")" + callC + ")" }
                                 return this.UnboxScalar(retC, callC)
                             }
                             if (argc == 2) {
                                 let arg0 = this.EmitExprStr(expr.Args.Get(0))
                                 let arg1 = this.EmitExprStr(expr.Args.Get(1))
                                 let callC = "AmalgameClosure_call2(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ")"
+                                if (this.IsCPointerType(retC)) { return "((" + retC + ")" + callC + ")" }
                                 return this.UnboxScalar(retC, callC)
                             }
                             if (argc == 3) {
@@ -3401,6 +3563,7 @@ public class CGen {
                                 let arg1 = this.EmitExprStr(expr.Args.Get(1))
                                 let arg2 = this.EmitExprStr(expr.Args.Get(2))
                                 let callC = "AmalgameClosure_call3(" + calleeName + ", " + this.BoxAsVoid(arg0) + ", " + this.BoxAsVoid(arg1) + ", " + this.BoxAsVoid(arg2) + ")"
+                                if (this.IsCPointerType(retC)) { return "((" + retC + ")" + callC + ")" }
                                 return this.UnboxScalar(retC, callC)
                             }
                         }
@@ -4169,6 +4332,22 @@ public class CGen {
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
+                        // Facade-package ABI fix: when the class is BOTH
+                        // declared locally in this compilation unit AND
+                        // registered as a PkgClass (the package's own
+                        // facade.am compiled while the package is in the
+                        // running amc's lockfile), prefer the local
+                        // dispatch — the method body is emitted under
+                        // SymName(tname)_mname, not under the PkgClass's
+                        // header-export shape. Without this short-circuit,
+                        // `MsgPack.DecodeOne(...)` inside MsgPack's own
+                        // facade lowers to `Amalgame_Formats_MsgPack_DecodeOne`
+                        // (header shape) while the body is
+                        // `Amalgame_Formats_MsgPack_MsgPack_DecodeOne` (local
+                        // shape) → implicit-int decl + segfault.
+                        if (this.IsLocalClass(tname)) {
+                            return this.SymName(tname) + "_" + mname
+                        }
                         // v0.5 packages: namespace-mangled form so
                         // two packages that happen to expose the
                         // same short class name can't collide.
@@ -4398,6 +4577,11 @@ public class CGen {
         // Lets facade.am declare `(name: string, handler: Closure)`
         // without needing a per-package typedef shim.
         if (t == "Closure") { return "AmalgameClosure*" }
+        // Typed closure: `Closure<A, R>` / `Closure<A1, A2, R>` / etc.
+        // Still lowers to the same runtime type — the args/return
+        // annotations only inform the cgen at call sites + lambda
+        // bodies, not the field/local/ctor-param C layout.
+        if (String_StartsWith(t, "Closure<")) { return "AmalgameClosure*" }
         // Array types: string[] → code_string*, int[] → i64*, etc.
         if (String_EndsWith(t, "[]")) {
             let inner = String_Substring(t, 0, String_Length(t) - 2)

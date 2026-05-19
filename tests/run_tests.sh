@@ -642,6 +642,61 @@ run_test "bug10: localList.Get == concatVar" \
     "$SAMPLES/bug10_list_string_eq.am" \
     "[PASS] bug10 — localList.Get(i) == concatVar"
 
+# Bare `{ ... }` block-statement scope (v0.8.35).
+# Before the fix, EmitStmt had no NodeKind.BLOCK branch — a bare
+# `{ ... }` at statement position was silently dropped (resolver
+# scoped correctly, cgen emitted nothing). Workaround in user code
+# was to rename locals across sibling sections (ui-forms tests
+# renamed r0/r2 → rz0/rz2). Fix: EmitStmt now recognises
+# NodeKind.BLOCK and wraps in C `{ ... }`, giving each sibling
+# block its own scope.
+run_test "let_block_scope: sibling-1"   "$SAMPLES/let_block_scope.am"  "[PASS] block-1 x=1"
+run_test "let_block_scope: sibling-2"   "$SAMPLES/let_block_scope.am"  "[PASS] block-2 x=2"
+run_test "let_block_scope: section-A"   "$SAMPLES/let_block_scope.am"  "[PASS] section-A sum=30"
+run_test "let_block_scope: section-B"   "$SAMPLES/let_block_scope.am"  "[PASS] section-B sum=300"
+run_test "let_block_scope: nested"      "$SAMPLES/let_block_scope.am"  "[PASS] nested outer=99"
+run_test "let_block_scope: post-nested" "$SAMPLES/let_block_scope.am"  "[PASS] post-nested outer=7"
+
+# Lambda v2.5 — non-int signatures end-to-end.
+# Pre-fix, the lambda fn body was typed correctly but the
+# subsequent `for u in <Filter result>` typed the loop var as
+# void*, so `u.Name`/`u.Method()` failed to compile. The
+# EmitForIn now infers the elem type from typed locals
+# (ListElemGet) and types the loop var accordingly. Untyped
+# lists fall back to void* (legacy).
+run_test "lambda_v25: Map<User,int>"     "$SAMPLES/lambda_v25_nonint.am"  "[PASS] Map<User,int> ageSum=95"
+run_test "lambda_v25: Filter<User>"      "$SAMPLES/lambda_v25_nonint.am"  "[PASS] Filter<User> adultNames=alice,carol,"
+run_test "lambda_v25: capture+Filter"    "$SAMPLES/lambda_v25_nonint.am"  "[PASS] capture+Filter hits=2"
+run_test "lambda_v25: chain Filter|Map"  "$SAMPLES/lambda_v25_nonint.am"  "[PASS] chain Filter|Map joined=alice|carol|"
+
+# Typed closures — `Closure<A, R>` / `Closure<A1, A2, R>` / etc.
+# Pre-fix, the bare `Closure` type erased all arg/return info so
+# the cgen defaulted to i64 + intptr_t roundtrip at call sites
+# and inside lambda bodies. mosaic-build.sh had to add
+# `-Wno-int-conversion -Wno-incompatible-pointer-types` to silence
+# the resulting gcc noise. With typed Closure:
+#   - lambda VAR_DECL patches the lambda's param Str from <A,…>
+#   - EmitClass tracks per-field closure return type for MEMBER
+#     closure-call dispatch
+#   - typechecker extracts R from `Closure<…, R>` as the call
+#     result type
+# Sample exercises arities 1/2 + pointer/scalar combinations +
+# typed Closure as a class field with this.Field(x) dispatch.
+run_test "closure_typed: <int,int>"           "$SAMPLES/closure_typed.am"  "[PASS] Closure<int,int> r1=42"
+run_test "closure_typed: <int,int,int>"       "$SAMPLES/closure_typed.am"  "[PASS] Closure<int,int,int> r2=30"
+run_test "closure_typed: <User,string>"       "$SAMPLES/closure_typed.am"  "[PASS] Closure<User,string> r3=alice"
+run_test "closure_typed: <User,int>"          "$SAMPLES/closure_typed.am"  "[PASS] Closure<User,int> r4=99"
+run_test "closure_typed: field <Conn,Conn>"   "$SAMPLES/closure_typed.am"  "[PASS] Server field Closure<Conn,Conn> id=42"
+
+# Lambda-param inference from typed-Closure ctor/method params (v0.8.36+).
+# Pre-fix, `new Route(c => ...)` needed an explicit `(c: Type) =>`
+# annotation because the resolver only patched lambdas bound via a
+# typed local. Now the resolver also walks ctor/method params and
+# pushes A_i from `Closure<A1, …, R>` into the lambda's i-th PARAM.
+run_test "lambda_infer: ctor-arg"           "$SAMPLES/lambda_inference_ctor.am"  "[PASS] ctor-arg lambda n1=alice"
+run_test "lambda_infer: method-arg"         "$SAMPLES/lambda_inference_ctor.am"  "[PASS] method-arg lambda n2=bob"
+run_test "lambda_infer: explicit override"  "$SAMPLES/lambda_inference_ctor.am"  "[PASS] explicit-param still works n3=carol"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"

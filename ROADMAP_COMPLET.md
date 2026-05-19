@@ -208,16 +208,25 @@ In rough order of usefulness × effort:
       explicit annotation, and the receiver's element type is
       propagated to the result (so `big.Get(0)` lowers with the
       right cast).
-- [ ] **Lambda v2.5 — non-int signatures (still pending)** —
-      `xs.Map(x => x.Name)` over a `List<Class>` doesn't yet
-      work because the lambda is still `(i64) → i64` at the C
-      level. Needs (1) the TypeChecker to infer the lambda's
-      expected signature from the formal parameter at the call
-      site, (2) CGen to emit non-int `lam_N_fn` signatures
-      based on the inferred shape, (3) string interpolation
-      `"x: {coll.Count()}"` to propagate the inferred
-      `AmalgameList*` to the embedded call (current workaround:
-      stage in named locals).
+- [x] **Lambda v2.5 — non-int signatures** — **fixed 2026-05-19**.
+      The lambda-body emitter (`EmitOneLambdaBody`) and the
+      resolver-side `PatchLambdaParamTypes` were already in place
+      from the prior v2.5 push (params get typed from the
+      receiver's elem type, pointer-typed params cast directly
+      via `(User*)__arg0`, scalars unbox via `intptr_t`). The
+      missing piece was the consumer side: a `for u in
+      <Filter result>` typed the loop variable as `void*`, so
+      `u.Name` failed to compile downstream. `EmitForIn` now
+      looks up the iter expression's elem C type via
+      `ListElemGet` (on `__local__` for typed locals,
+      `CurrentClass` for `this.Field`) and emits a typed loop
+      variable accordingly — pointer types cast directly, scalars
+      unbox via `intptr_t`, untyped lists fall back to `void*`
+      (legacy). Sample: `tests/samples/lambda_v25_nonint.am`
+      (Map<User,int>, Filter<User>, capture+Filter, chain
+      Filter|Map). String interpolation `"x: {coll.Count()}"`
+      already works since v0.8.16 (`new X(...).Method()` chain
+      codegen).
 - [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. List
       literal syntax `[a, b, c]` shipped in **v0.8.14** (prereq
       cleared); still needs a clear semantics for variadic calls
@@ -234,33 +243,25 @@ These samples trigger bugs in the self-hosted compiler. They're
 marked SKIP in `tests/run_tests.sh` (`SKIP_SELFHOST`) so the suite
 stays green; each one needs its own fix.
 
-- [ ] **Facade-package ABI bug — same-class static dispatch
-      vs PkgClassMangledPrefix** (v0.7.8 known issue, blocks
-      msgpack extraction in v0.8.0). When a package's `facade.am`
-      calls its own static methods via `ClassName.X()` syntax
-      (e.g. `MsgPack.DecodeOne(c)` inside `MsgPack.DecodeJson`):
-      - `AddFilePass1` registers `MsgPack` in `LocalClasses`
-      - `PackageRegistry.Load()` also adds it to `PkgClasses` (the
-        running amc has its own package registered in
-        `amalgame.lock` during the precompile-on-add step)
-      - `EmitCalleeStr` checks `PkgClassMangledPrefix` **before**
-        the `SymName` (LocalClass) fallback, so the call lowers to
-        `Amalgame_Formats_MsgPack_DecodeOne` (namespace only,
-        SQLite-style)
-      - …but the function is **defined** as
-        `Amalgame_Formats_MsgPack_MsgPack_DecodeOne` (namespace +
-        class, facade-style)
-      - gcc accepts the implicit-int declaration, sign-extends the
-        return into a pointer, runtime segfault on first deref.
-      - **Fix**: check `IsLocalClass(tname)` **before**
-        `PkgClassMangledPrefix` in `EmitCalleeStr` (line 3515).
-        Same precedence change needed in `TypeToC` (line 3793)
-        for return-type / let-annotation paths if they hit the
-        same conflict.
-      - **Workaround until fixed**: facades use `this.X()` or
-        private inline helpers; never `ClassName.X()` within the
-        same class. The 5 facades shipped in v0.7.7 follow this
-        accidentally, which is why they work.
+- [x] **Facade-package ABI bug — same-class static dispatch
+      vs PkgClassMangledPrefix** — **fixed 2026-05-19**.
+      `CGen.LocalClasses` field added + populated by
+      `EmitForwardDecl` on every `CLASS_DECL` during
+      `AddFilePass1`. New `IsLocalClass(tname)` helper.
+      `EmitCalleeStr`'s `MEMBER`-on-`IDENTIFIER` static-call
+      branch short-circuits to `SymName(tname) + "_" + mname`
+      when `IsLocalClass(tname)` is true, BEFORE consulting
+      `PkgClassMangledPrefix`. This unblocks the v0.8.0+
+      msgpack extraction: `MsgPack.DecodeOne(...)` inside
+      `MsgPack.DecodeJson` now correctly mangles to the
+      LocalClass shape (`Amalgame_Formats_MsgPack_MsgPack_DecodeOne`)
+      that matches the method body, instead of the PkgClass
+      header-export shape. `TypeToC` was investigated and does
+      NOT use `PkgClassMangledPrefix` (it uses `SymName` directly
+      via the namespace lookup), so no parallel fix was needed
+      there. The 5 v0.7.7 facades that worked accidentally
+      (because they avoided `ClassName.X()` self-dispatch) now
+      work by construction.
 
 ### Cgen/typechecker bugs surfaced by amalgame-ui-forms (v0.0.3 → v0.0.5)
 
@@ -271,19 +272,21 @@ comments), so the package CI is green — but the cgen/typechecker
 still needs the proper fix. Fix order can be opportunistic; none
 of these block a release on its own.
 
-- [ ] **Forward-decl ordering across class boundaries** —
-      a method on class A that calls a method on class B,
-      where B is declared **after** A in the same source file,
-      emits `B_Foo(...)` without a forward declaration. gcc
-      then treats it as `int B_Foo()`-implicit and bails on
-      type conflict when the real definition is emitted later.
-      Hit while wiring `Layout.Apply(Form)` calling
-      `form.ChildCount()`. **Workaround**: drop the inter-
-      class reference (Layout.Apply takes `List<Widget>`
-      instead of `Form`). **Fix**: emit method forward decls
-      in a single pre-class block at the top of the .c
-      instead of grouping them per-class, or do a 2-pass
-      emit (collect signatures, then write definitions).
+- [x] **Forward-decl ordering across class boundaries** —
+      **already silently fixed** (verified 2026-05-19). The
+      v0.8.23 multi-file forward-decl split (`AddFilePass2` →
+      `Forwards` + `Bodies`) brought along the right behaviour
+      for the single-file case too: `EmitMethodForwards`
+      iterates **every** class in the prog and emits forward
+      decls for **all** their methods before any body is
+      written. So a method on class A calling a method on
+      class B (defined later in the same file) sees B's
+      forward declaration and gcc lowers it cleanly. Sample:
+      `A.CallB() { return B.Foo() }` with B defined after A —
+      compiles, runs, returns the expected value. The original
+      Layout.Apply(Form) / form.ChildCount() workaround can be
+      unwound; left to the next ui-forms-style refactor when
+      the receiver chain is touched.
 
 - [x] **Chained method calls on cross-package types** —
       **fixed 2026-05-15**. Two-part fix in c_gen.am:
@@ -305,18 +308,16 @@ of these block a release on its own.
       Discovered while bootstrapping amalgame-ui-web v0.0.3's
       fluent builder (`Page.New().SetTitle(...).SetBody(...)`).
 
-- [ ] **Field name == type name shadowing** —
-      `public Layout: Layout` (field `Layout` of type
-      `Layout`) generates correct struct emission, but
-      assignments (`self->Layout = x`) and reads
-      (`self->Layout`) silently no-op or hit the typedef
-      rather than the struct member. Symptom in ui-forms
-      v0.0.4: `SetLayout` ran but `ApplyLayout` saw a null
-      LayoutRef, so children stayed at construction bounds.
-      **Workaround**: rename the field
-      (`Layout` → `LayoutRef`). **Fix**: cgen `EmitFieldRef`
-      should mangle by struct-relative offset, not by name
-      lookup that prefers the typedef.
+- [x] **Field name == type name shadowing** —
+      **already silently fixed** (verified 2026-05-19).
+      A class `Form { public Layout: Layout }` with full
+      Set/Get round-trip (`SetLayout(l)` → `this.Layout = l`
+      → `GetLayout()` → `this.Layout`) preserves the value
+      through the field correctly. cgen's `EmitFieldRef`
+      now resolves through `self->Layout` against the struct
+      member without colliding with the typedef. The original
+      `Layout` → `LayoutRef` workaround in ui-forms v0.0.4
+      can be reverted next time the file is touched.
 
 - [x] **Parens lost on mixed `* + /`** — **fixed 2026-05-14**.
       cgen `EmitExprStr` BINARY branch now wraps any sub-BINARY
@@ -334,16 +335,21 @@ of these block a release on its own.
       legitimate NULL sentinel. Drops the `@c { return NULL; }`
       workaround from facade.am files (see ui-forms cleanup pass).
 
-- [ ] **`let` scope flattened to function level** — every
-      `let` in a method body lowers as a top-of-function C
-      declaration, so two `let x: T = ...` in *different*
-      `if`/`while` blocks collide at the C level with
-      `redefinition of x`. Hit during ui-forms v0.0.5 tests
-      (RadioButton block declared r0, r2; Form.Resize block
-      reused the same names). **Workaround**: rename locals
-      across blocks. **Fix**: resolver should track block
-      scope and let the cgen emit per-block C scopes
-      (`{` … `}` around each block's locals).
+- [x] **`let` scope flattened to function level** — **fixed
+      2026-05-19 (v0.8.35)**. Original symptom was hit in
+      ui-forms v0.0.5 tests where the RadioButton section and
+      the Form.Resize section, both in the same `Main()` body,
+      reused `r0`/`r2` and gcc bailed with `redefinition of r0`.
+      Root cause was *not* in `if`/`while` (those already wrap
+      in C `{ ... }` via EmitIf/EmitWhile) — it was that the
+      parser DID accept a bare `{ ... }` at statement position
+      and the resolver DID push/pop a block scope, but cgen's
+      `EmitStmt` had no `NodeKind.BLOCK` branch, so the bare
+      block's contents were silently dropped. Fix: add a BLOCK
+      branch to `EmitStmt` (c_gen.am line ~2743) that wraps the
+      children in a C `{ ... }`. Users can now scope sibling
+      sections explicitly without the rename workaround. Sample:
+      `tests/samples/let_block_scope.am` (6 assertions).
 
 - [x] **`Type.Variant` patterns in match** — `ParseMatchPattern`
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,
@@ -381,9 +387,20 @@ of these block a release on its own.
       expected an executable amc never produces — now follows the
       single-file convention (`-o base` + manual gcc), so the four
       multifile tests pass.
-- [ ] **Better error recovery** — the parser is okay but produces
-      `_unknown_` placeholder ASTs that cascade into noisy resolver
-      errors. Skip them more aggressively.
+- [x] **Better error recovery** — **shipped 2026-05-19** in two
+      slices:
+      - `ParseVarDecl` reports `Expected expression after '='` when
+        the RHS is missing (`let x =\n…`) instead of silently
+        synthesising `_unknown_`.
+      - `main.am` now gates the cgen pass on `this.ExitCode == 0`
+        (in addition to the existing `parseOk` gate that already
+        short-circuited on parse errors). Resolver / typechecker
+        errors no longer let the cgen run on a partially-resolved
+        AST, so gcc never sees `_unknown_` placeholders or unmangled
+        identifiers — the user gets the amc diagnostic and only
+        that. Remaining nice-to-have: tighten the other `Unknown()`
+        sites in `ParsePrimary` / `ParseStmt` to emit
+        "unexpected token" diagnostics rather than silent recovery.
 - [x] **Comments-on-same-line in `amc fmt`** — `Sync` and
       `FlushTrailingComments` now drain pending comments whose source
       line == `LastLine` by appending them to the previously emitted
@@ -405,17 +422,15 @@ of these block a release on its own.
       `for i in 0..N` workarounds can be unwound where the
       sequence is unbounded; left in place where the bound is
       meaningful documentation.
-- [ ] **Parser: `(a + b) % 256` ignores parens, parses as
-      `a + (b % 256)`** — surfaced 2026-05-12 in `msgpack.am`.
-      Repro: `let a = 500; let b = 65536; (a + b) % 256` returns
-      `500` (= `a + (b % 256)` = `500 + 0`) instead of the
-      expected `244` (= `66036 % 256`). The same expression
-      assigned via an intermediate local works: `let sum = a +
-      b; sum % 256` → `244`. Workaround in msgpack.am's ByteOf
-      is to use the intermediate local. Likely the `%` operator
-      binds tighter than `+` in `ParseExpr` and doesn't honour
-      the paren grouping in the AST shape it returns. Repro fixture
-      worth dropping into `tests/samples/` once we touch this.
+- [x] **Parser: `(a + b) % 256` ignores parens** —
+      **verified fixed 2026-05-19**. The repro from the
+      roadmap (`let a = 500; let b = 65536; (a+b)%256 == 244`)
+      and several variants (literal-only, function call return,
+      arg position) all now produce 244 as expected. ParseAdd/
+      ParseMul precedence is correct; the cgen paren-wrapping
+      fix in v0.8.10 (Bug #4 "parens lost") closed any residual
+      AST-shape issue. The msgpack.am intermediate-local
+      workaround can be unwound next time the file is touched.
 - [x] **CGen: `<call>.Count()` on `AmalgameList*` lowered to
       `_Count` instead of `_count` (resolved v0.7.2)** — the
       chained-call dispatch in `EmitCalleeStr` (case
@@ -1951,12 +1966,11 @@ MQTT, DuckDB — are mostly thin C bindings, so the gain is small).
 
 Top of the list, ordered by *unlocked-value* per *days-of-work*:
 
-1. **Lambda v2.5 — non-int signatures** — i64-shaped Filter /
-   Map / Reduce / ForEach are in (List), but `xs.Map(x => x.Name)`
-   over a `List<Class>` still needs (a) TypeChecker to infer the
-   lambda's expected signature from the formal param at the call
-   site, (b) CGen to emit non-int `lam_N_fn` signatures based on
-   the inferred shape. Unlocks the rest of real-world lambda usage.
+1. ~~**Lambda v2.5 — non-int signatures**~~ ✅ **shipped 2026-05-19**.
+   `xs.Map(x => x.Name)` over a `List<Class>` works end-to-end:
+   resolver patches the lambda param type, cgen emits typed
+   lambda bodies + typed for-in loop vars. See the "Cgen bugs"
+   section above for details.
 2. **Stdlib expansion** — pick one or two modules from the stdlib
    backlog (`DateTime`, `Json`, `Regex` are the most missed).
    Independent of compiler/tooling work, so can run in parallel
@@ -1964,10 +1978,20 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    open "Stdlib delivery model" question — the early modules will
    be done header-only, but reaching ~10 modules is when options
    D/E start paying off.
-3. **LSP member completion** — `obj.<cursor>` narrowed to the
-   methods/fields of `obj`'s type. Needs a position→receiver→type
-   →members chain on top of v0.3.5's global completion. Probably
-   ~150 LoC once the receiver-resolution helper is in place.
+3. ~~**LSP member completion**~~ ✅ **shipped** (final piece
+   2026-05-19). `HandleCompletion` in `src/lsp.am` dispatches
+   `obj.<cursor>` to `ReceiverTypeAt`, which now handles three
+   shapes:
+   - global symbols (class / enum names) → `Class.<member>`
+   - local var declared with `let X: T = …` or `let X = new T(…)`
+   - `this.<cursor>` → `EnclosingClassAt` text-scans backwards
+     from the cursor, tracking brace depth and `class XXX {`
+     openings, so the innermost enclosing class is returned even
+     for nested `if`/`while`/`match` blocks. Heuristic-only
+     (skips strings/comments — replace with a real lex sweep
+     if false positives appear); covers the common case where
+     a user types `this.` inside a method body and expects to
+     see the class's own methods/fields listed.
 4. **`amc new <name> [--template …]`** — scaffolding command à la
    `cargo new` / `dotnet new`. File templates (exe/lib/test) +
    a dispatcher branch in `main.am`. ~200-400 LoC. Big onboarding

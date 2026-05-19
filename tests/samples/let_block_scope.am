@@ -1,0 +1,55 @@
+namespace Demo
+
+// Regression test: bare `{ ... }` block-statement scope.
+//
+// Before the fix, EmitStmt had no NodeKind.BLOCK branch, so a bare
+// `{ ... }` at statement position was silently dropped (parser built
+// a BLOCK node, resolver pushed/popped a scope, cgen emitted nothing).
+//
+// Workaround in user code: rename locals across sibling sections
+// (e.g. ui-forms tests renamed r0/r2 → rz0/rz2 manually because both
+// the RadioButton section and the Form.Resize section reused those
+// names inside the same method body).
+//
+// Fix: cgen EmitStmt now recognises NodeKind.BLOCK and emits a C
+// `{ ... }` wrapper, giving each sibling block its own C scope —
+// `let x: T = ...` in one block no longer collides with `let x: T`
+// in the next.
+
+public class Program {
+    public static void Main() {
+        // Two sibling blocks reusing the same local name.
+        {
+            let x: int = 1
+            Console.WriteLine("[PASS] block-1 x=" + String_FromInt(x))
+        }
+        {
+            let x: int = 2
+            Console.WriteLine("[PASS] block-2 x=" + String_FromInt(x))
+        }
+
+        // Two sibling blocks reusing several local names — mirrors the
+        // ui-forms RadioButton / Form.Resize pattern that originally
+        // surfaced the bug.
+        {
+            let r0: int = 10
+            let r1: int = 20
+            let s: int = r0 + r1
+            Console.WriteLine("[PASS] section-A sum=" + String_FromInt(s))
+        }
+        {
+            let r0: int = 100
+            let r1: int = 200
+            let s: int = r0 + r1
+            Console.WriteLine("[PASS] section-B sum=" + String_FromInt(s))
+        }
+
+        // Nested bare block — inner scope shadows outer.
+        let outer: int = 7
+        {
+            let outer: int = 99
+            Console.WriteLine("[PASS] nested outer=" + String_FromInt(outer))
+        }
+        Console.WriteLine("[PASS] post-nested outer=" + String_FromInt(outer))
+    }
+}

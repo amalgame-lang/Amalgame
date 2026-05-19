@@ -263,6 +263,34 @@ break
 continue
 ```
 
+### Block scope (`{ … }`, v0.8.35+)
+
+A bare `{ … }` at statement position introduces its own scope.
+Useful to give long methods visually-separated sections where
+each section can reuse local names without colliding at the C
+level:
+
+```kotlin
+public static void Run() {
+    {
+        let r0: int = 1
+        let r1: int = 2
+        // ... section A uses r0, r1 ...
+    }
+    {
+        let r0: int = 10   // OK — fresh scope, no shadowing warning
+        let r1: int = 20
+        // ... section B reuses the same names ...
+    }
+}
+```
+
+Each block emits a matching C `{ … }` wrapper, so `let` inside
+one block is invisible to the next. Mirrors C / C++ / Java
+scoping; required only when you want a fresh slot for the same
+name. `if` / `while` / `for` / `match` arm bodies already get
+their own scopes automatically.
+
 ### Guard clauses
 
 ```kotlin
@@ -410,13 +438,82 @@ r0.Run(99)                                   // → 100
 ```
 
 This is the foundation of callback APIs (handler registries, event
-emitters, middleware chains, etc.). For now `Closure` is **untyped**
-(args and result are boxed to `void*` and round-trip through `i64` /
-pointer casts as appropriate), matching the v0.3 inline-lambda
-behavior — see *Current limitations* below.
+emitters, middleware chains, etc.).
 
 Arities 1, 2 and 3 are supported. Closures of arity 0 or 4+ require
 a future cgen extension.
+
+### Typed closures (`Closure<A, R>`, v0.8.35+)
+
+Annotate the closure shape to let the compiler emit typed casts
+on each argument and the return value. The last comma-separated
+parameter is **R** (the return type); the rest are argument types.
+Same convention as Kotlin's `(A) -> R`, just spelled inside `<…>`.
+
+```kotlin
+// Arity 1: scalar in, scalar out.
+let f1: Closure<int, int> = x => x * 2
+let r1: int = f1(21)                          // 42
+
+// Arity 2: two scalars in, one out.
+let f2: Closure<int, int, int> = (a, b) => a + b
+let r2: int = f2(10, 20)                      // 30
+
+// Pointer argument + pointer return.
+let f3: Closure<User, string> = u => u.Name
+let r3: string = f3(new User("alice", 30))    // "alice"
+
+// Typed closure as a class field — call result is pointer-typed.
+public class Server {
+    public Handler: Closure<Conn, Conn>
+    public Server(h: Closure<Conn, Conn>) { this.Handler = h }
+    public int Dispatch(c: Conn) {
+        let r: Conn = this.Handler(c)         // ← typed cast, no warning
+        return r.Id
+    }
+}
+```
+
+The runtime ABI is unchanged — `Closure<…>` still lowers to
+`AmalgameClosure*`. The annotation is purely a compile-time hint
+that informs:
+
+  - **Lambda body emission** — `u => u.Name` over `Closure<User, string>`
+    types `u` as `User*` (was `i64 u = (i64)(intptr_t)__arg0;` for bare
+    `Closure`).
+  - **Call site casts** — both IDENTIFIER (`f(x)`) and MEMBER
+    (`this.Handler(c)`) closure calls cast the result to R instead of
+    going through `i64 + intptr_t`.
+  - **Typechecker** — `c(x)` where c is `Closure<…, R>` surfaces R
+    as the call result type, so `let r: R = c(x)` typechecks without
+    falling back to the `?` wildcard.
+
+User code that previously needed `-Wno-int-conversion` to silence
+"pointer from integer" noise around closure boxing can drop those
+flags once the relevant `Closure` fields/params/locals carry their
+typed shape.
+
+**Direct lambda args (v0.8.36+).** Lambda-param inference also
+fires when the lambda is passed *directly* to a ctor or method
+whose parameter is declared `Closure<A, R>` — the resolver
+walks the target signature and pushes A into the lambda's
+first PARAM. All three forms below produce the same typed
+unpack with no `-Wint-conversion` noise:
+
+```kotlin
+// Direct ctor arg — c inferred as WebContext from Route's signature.
+new Route(c => Program.handle(c))
+
+// Method arg — same inference path.
+reg.Register("name", c => Program.handle(c))
+
+// Bind to a typed local — c inferred from the local annotation.
+let h: Closure<WebContext, HttpResponse> = c => Program.handle(c)
+new Route(h)
+
+// Or type the lambda param explicitly — overrides inference.
+new Route((c: WebContext) => Program.handle(c))
+```
 
 ## List literals and comprehensions
 
@@ -466,11 +563,15 @@ The comprehension supports two iterable shapes:
 Same-name nesting (`[ [j for j in 0..i] for i in 0..3 ]`)
 isn't supported yet — pick distinct loop variables when nesting.
 
-**Current limitations.** Lambda arguments and results are still
-typed `i64` at the C level. `xs.Filter(x => x > 0)` works
-because `bool` round-trips through int; `xs.Map(x => x.Name)`
-over a `List<Class>` doesn't yet — it needs the lambda-typing
-layer that's tracked for the next release.
+**Higher-order methods on `List<Class>` (v0.8.35+).** Both
+`xs.Filter(x => x > 0)` and `xs.Map(x => x.Name)` over a
+`List<User>` now work end-to-end. The resolver patches the
+lambda's first param from the receiver's element type, the cgen
+emits a typed unpack (`User* x = (User*)__arg0;`) and the
+consumer-side `for u in filterResult` lowers with the right
+element cast (no manual `as User*` needed). Untyped lists
+(`new List<int>()` with no annotation) still fall back to
+`void*` and require explicit casts.
 
 ## Null safety
 

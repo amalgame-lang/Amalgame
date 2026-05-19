@@ -929,8 +929,23 @@ public class Parser {
             decl.Str = this.ParseTypeName()
         }
         if (this.CheckValue("=")) {
-            this.Advance()
-            decl.Left = this.ParseExpr()
+            let eqTok = this.Advance()
+            // Reject obviously-missing RHS upfront. Pre-fix the parser
+            // silently accepted `let x =\n…` and synthesised an
+            // `_unknown_` placeholder that survived all the way to
+            // gcc, which then complained about "_unknown_ undeclared".
+            // The user got no actionable diagnostic from amc.
+            //
+            // Use type-based checks (NEWLINE / RBRACE) not CheckValue —
+            // a literal string `"}"` matches CheckValue("}") because
+            // that compares Token.Value, and would fail self-host on
+            // legitimate code like `let rb: string = "}"`.
+            if (this.CheckType(TokenType.NEWLINE) || this.CheckType(TokenType.RBRACE) || this.IsEnd()) {
+                this.Errors.Add("Expected expression after '=' at " + String_FromInt(eqTok.Line) + ":" + String_FromInt(eqTok.Column))
+                decl.Left = this.Unknown()
+            } else {
+                decl.Left = this.ParseExpr()
+            }
         }
         return decl
     }

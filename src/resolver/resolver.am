@@ -1121,6 +1121,136 @@ public class FullResolver {
         }
     }
 
+    // ── Lambda-param inference from typed-Closure target signatures ─
+    //
+    // When a lambda is passed *directly* (no typed-local binding) to a
+    // method/ctor parameter declared `Closure<A1, A2, …, R>`, push each
+    // A_i into the lambda's i-th PARAM Str. The cgen then emits the
+    // pointer-typed unpack (`Demo_User* u = (Demo_User*)__arg0;`) and
+    // the body resolves `u.Name` without the `(c: Type) =>` workaround.
+    //
+    // Sites covered:
+    //   - NEW_EXPR  (`new Route(c => …)`):     ctor params
+    //   - CALL via MEMBER (`r.SetHandler(c => …)`): method params
+    //
+    // The static-method shape (`Foo(c => …)` with Foo top-level) is
+    // out of scope — Amalgame doesn't have top-level fns, every static
+    // call goes through a class via MEMBER (`Foo.Bar(c => …)`), which
+    // the MEMBER branch already handles.
+
+    private AstNode FindMethodInPrograms(string className, string methodName) {
+        let progCount: int = this.Programs.Count()
+        for pi in 0..progCount {
+            let prog: AstNode = this.Programs.Get(pi)
+            let dc: int = prog.Children.Count()
+            for di in 0..dc {
+                let decl: AstNode = prog.Children.Get(di)
+                if (decl.Kind != NodeKind.CLASS_DECL) { continue }
+                if (decl.Name != className) { continue }
+                let mc: int = decl.Children.Count()
+                for mi in 0..mc {
+                    let m: AstNode = decl.Children.Get(mi)
+                    if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                    if (m.Name == methodName) { return m }
+                }
+            }
+        }
+        return null
+    }
+
+    private void PatchLambdasFromTypedClosureParams(AstNode call, AstNode methodDecl) {
+        if (methodDecl == null) { return }
+        let pn: int = methodDecl.Params.Count()
+        let argc: int = call.Args.Count()
+        let lim: int = if (pn < argc) { pn } else { argc }
+        for ai in 0..lim {
+            let arg: AstNode = call.Args.Get(ai)
+            if (arg.Kind != NodeKind.METHOD_DECL) { continue }
+            if (arg.Name != "__lambda__") { continue }
+            let param: AstNode = methodDecl.Params.Get(ai)
+            let paramT: string = param.Str
+            if (!String_StartsWith(paramT, "Closure<")) { continue }
+            if (!String_EndsWith(paramT, ">")) { continue }
+            let inner: string = String_Substring(paramT, 8, String_Length(paramT) - 9)
+            let parts: List<string> = this.SplitTopLevelCommasResolver(inner)
+            let pc: int = parts.Count()
+            if (pc < 1) { continue }
+            // All entries except the last are arg types — patch lambda's params.
+            let argTypeCount: int = pc - 1
+            let lamPn: int = arg.Params.Count()
+            let toPatch: int = if (argTypeCount < lamPn) { argTypeCount } else { lamPn }
+            for li in 0..toPatch {
+                let lp: AstNode = arg.Params.Get(li)
+                if (String_Length(lp.Str) == 0 || lp.Str == "?") {
+                    lp.Str = String_Trim(parts.Get(li))
+                }
+            }
+        }
+    }
+
+    // Depth-aware comma split so `Closure<List<int>, Map<string,int>, R>`
+    // returns 3 parts (mirrors c_gen.am::SplitTopLevelCommas).
+    private List<string> SplitTopLevelCommasResolver(string s) {
+        let parts: List<string> = new List<string>()
+        let n: int = String_Length(s)
+        var depth: int = 0
+        var cur: string = ""
+        for i in 0..n {
+            let ch: string = String_Substring(s, i, 1)
+            if (ch == "<") { depth = depth + 1; cur = cur + ch }
+            else if (ch == ">") { depth = depth - 1; cur = cur + ch }
+            else if (ch == "," && depth == 0) {
+                parts.Add(cur)
+                cur = ""
+            } else {
+                cur = cur + ch
+            }
+        }
+        if (String_Length(cur) > 0) { parts.Add(cur) }
+        return parts
+    }
+
+    private void PatchLambdaParamTypesGeneric(AstNode expr) {
+        // NEW_EXPR: ctor lookup on the class being constructed.
+        if (expr.Kind == NodeKind.NEW_EXPR) {
+            let methodDecl: AstNode = this.FindMethodInPrograms(expr.Name, expr.Name)
+            this.PatchLambdasFromTypedClosureParams(expr, methodDecl)
+            return
+        }
+        // CALL via MEMBER: method lookup on the receiver's class.
+        // Two shapes:
+        //   - `ClassName.Method(lambda)`  → static; recvClass == ClassName
+        //   - `localVar.Method(lambda)`   → instance; recvClass == type of localVar
+        if (expr.Kind == NodeKind.CALL && expr.Left != null && expr.Left.Kind == NodeKind.MEMBER) {
+            let mem: AstNode = expr.Left
+            if (mem.Left == null) { return }
+            var recvClass: string = ""
+            if (mem.Left.Kind == NodeKind.IDENTIFIER) {
+                let recvName: string = mem.Left.Name
+                if (this.LookupInScopes(recvName)) {
+                    let t: string = this.GetTypeName(recvName)
+                    if (t == recvName) {
+                        // Static-call shape: class name registered as its
+                        // own type marker (DeclareGlobal(name, name, …)).
+                        recvClass = recvName
+                    } else if (String_Length(t) > 0 && t != "?") {
+                        // Instance-call shape: local var's type IS the
+                        // class. Strip the trailing `?` for nullable
+                        // locals so the lookup still hits.
+                        if (String_EndsWith(t, "?")) {
+                            recvClass = String_Substring(t, 0, String_Length(t) - 1)
+                        } else {
+                            recvClass = t
+                        }
+                    }
+                }
+            }
+            if (String_Length(recvClass) == 0) { return }
+            let methodDecl: AstNode = this.FindMethodInPrograms(recvClass, mem.Name)
+            this.PatchLambdasFromTypedClosureParams(expr, methodDecl)
+        }
+    }
+
     // ── Expression resolver ───────────────────────────
 
     private void ResolveExpr(AstNode expr) {
@@ -1177,6 +1307,12 @@ public class FullResolver {
             // from the receiver's element type so the body can resolve
             // member access like `x.Name` instead of failing on `?`.
             this.PatchLambdaParamTypes(expr)
+            // v0.8.36: when the callee's parameter is declared
+            // `Closure<A1, A2, …, R>`, patch the lambda arg's PARAM
+            // Str so the cgen emits a typed unpack — same mechanism,
+            // driven by the target signature instead of the receiver
+            // element type.
+            this.PatchLambdaParamTypesGeneric(expr)
             let argc = expr.Args.Count()
             for i in 0..argc {
                 this.ResolveExpr(expr.Args.Get(i))
@@ -1184,6 +1320,8 @@ public class FullResolver {
             return
         }
         if (k == NodeKind.NEW_EXPR) {
+            // Same typed-Closure patching for `new T(c => …)` ctor args.
+            this.PatchLambdaParamTypesGeneric(expr)
             let argc = expr.Args.Count()
             for i in 0..argc {
                 this.ResolveExpr(expr.Args.Get(i))
