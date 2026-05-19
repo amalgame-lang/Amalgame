@@ -563,6 +563,45 @@ The comprehension supports two iterable shapes:
 Same-name nesting (`[ [j for j in 0..i] for i in 0..3 ]`)
 isn't supported yet — pick distinct loop variables when nesting.
 
+**Spread operator** `...src` (v0.8.36+). Inside a list literal,
+each `...src` item splices `src`'s elements at its position:
+
+```kotlin
+let a: List<int> = [1, 2, 3]
+let b: List<int> = [4, 5]
+let c: List<int> = [...a, ...b, 99]
+// → [1, 2, 3, 4, 5, 99]  (Count() == 6)
+
+// Mix spreads with literal elements at any position.
+let names = ["alice", "bob"]
+let all   = ["zero", ...names, "tail"]
+// → ["zero", "alice", "bob", "tail"]
+
+// Spread the result of a method call — source is evaluated once
+// (bound to a synthetic `__sp_<i>` local in the generated C).
+let doubled = [...nums.Map(x => x * 2), 999]
+```
+
+Variadic call sites (`f(...args)`) and variadic param definitions
+(`(...xs: T[])`) need a new function-signature grammar and are
+not yet supported.
+
+**Nested generics** `List<List<T>>` (v0.8.36+). Chained
+`.Get(i).Get(j)` peels one generic layer per hop, so each level
+gets a typed cast instead of falling through to `void*`:
+
+```kotlin
+let rows: List<List<string>> = …
+let s: string = rows.Get(0).Get(0)   // proper code_string cast
+
+let cube: List<List<List<int>>> = …
+let v: int = cube.Get(0).Get(0).Get(0)  // unbox via intptr_t
+```
+
+Works up to arbitrary depth, both for `List<…>` and the value-
+half of `Map<K, …>`. The raw element type is tracked at every
+`let` annotation + every typed method return.
+
 **Higher-order methods on `List<Class>` (v0.8.35+).** Both
 `xs.Filter(x => x > 0)` and `xs.Map(x => x.Name)` over a
 `List<User>` now work end-to-end. The resolver patches the
