@@ -482,8 +482,22 @@ public class Lexer {
                 this.AddToken(TokenType.OP_PIPE_EQ, "|=") }
             else { this.AddToken(TokenType.OP_PIPE, "|") }
         } else if (c == ".") {
-            if (c2 == ".") { this.Advance()
-                this.AddToken(TokenType.OP_DOTDOT, "..") }
+            if (c2 == ".") {
+                this.Advance()
+                // Triple-dot `...` — spread operator (v0.8.36+). Used
+                // in list literals to splice an iterable's elements:
+                // `[...a, ...b, c]` builds a fresh list from a's
+                // elements, then b's, then c. Tokenised here as a
+                // single token so the parser sees one OP_SPREAD
+                // instead of two `..` + `.`.
+                let c3: string = this.CharAt(this.Pos)
+                if (c3 == ".") {
+                    this.Advance()
+                    this.AddToken(TokenType.OP_SPREAD, "...")
+                } else {
+                    this.AddToken(TokenType.OP_DOTDOT, "..")
+                }
+            }
             else { this.AddToken(TokenType.OP_DOT, ".") }
         } else if (c == ":") {
             if (c2 == ":") { this.Advance()

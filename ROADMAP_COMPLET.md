@@ -227,10 +227,18 @@ In rough order of usefulness × effort:
       Filter|Map). String interpolation `"x: {coll.Count()}"`
       already works since v0.8.16 (`new X(...).Method()` chain
       codegen).
-- [ ] **Spread operator** `f(...args)` and `[...a, ...b]`. List
-      literal syntax `[a, b, c]` shipped in **v0.8.14** (prereq
-      cleared); still needs a clear semantics for variadic calls
-      + `[...a, ...b]` concat in literals. Larger than it looks.
+- [~] **Spread operator** — **MVP shipped 2026-05-19**:
+      `[...a, ...b, c]` in list literals splices each operand's
+      elements at its position. New `OP_SPREAD` token (`...`),
+      `ParseListItem` wraps `...expr` in `UNARY(op="...")`,
+      `EmitListLiteral` branches to an inline per-element
+      `AmalgameList_add` loop that binds the source to a fresh
+      `__sp_<i>` local so side-effecting source expressions
+      (e.g. `[...users.Map(u => u.Name)]`) only fire once.
+      Sample: `tests/samples/spread_list_literal.am`. Still
+      pending: variadic call sites `f(...args)` and variadic
+      param definitions `(...xs: T[])` — both need new
+      function-signature syntax (out of MVP scope).
 - [ ] **`async` / `await`** — coroutines via ucontext or setjmp.
       Substantial: runtime + AST + CGen. Defer until there's a concrete
       use case.
@@ -2004,8 +2012,10 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
    `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124 on
    timeout). Async streaming (`Process.Spawn` → handle persistant
    avec `ReadLine` / `IsAlive` / `Kill`) reste backlog Process v3.
-7. **Spread operator** — `f(...args)` and `[...a, ...b]`. Needs
-   list literal syntax `[...]` first.
+7. ~~**Spread operator** — `[...a, ...b]` in list literals~~
+   ✅ **MVP shipped 2026-05-19** (see the dedicated entry above
+   in the language backlog). Variadic call / variadic param
+   syntax still pending — requires new function-sig grammar.
 
 ## 📋 Next sessions (3 dedicated items)
 

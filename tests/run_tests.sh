@@ -697,6 +697,26 @@ run_test "lambda_infer: ctor-arg"           "$SAMPLES/lambda_inference_ctor.am" 
 run_test "lambda_infer: method-arg"         "$SAMPLES/lambda_inference_ctor.am"  "[PASS] method-arg lambda n2=bob"
 run_test "lambda_infer: explicit override"  "$SAMPLES/lambda_inference_ctor.am"  "[PASS] explicit-param still works n3=carol"
 
+# Nested generics through chained `.Get(i).Get(j)` (v0.8.36+).
+# Pre-fix the inner Get fell through to `(void*)AmalgameList_get(...)`
+# because TrackGenericLocal only stored one layer of element type.
+# Post-fix `__local_raw__:<varname>` carries the raw type and
+# `RecoverChainedListElemRaw` peels one List<...> layer per hop.
+run_test "nested_gen: List<List<string>>"           "$SAMPLES/nested_generics.am"  "[PASS] List<List<string>> rows[0][0]=alpha"
+run_test "nested_gen: List<List<int>>"              "$SAMPLES/nested_generics.am"  "[PASS] List<List<int>> m[0][0]=42"
+run_test "nested_gen: List<List<List<int>>>"        "$SAMPLES/nested_generics.am"  "[PASS] List<List<List<int>>> cube[0][0][0]=7"
+
+# Spread operator in list literals (v0.8.36+). `[...a, ...b, c]`
+# splices each spread operand's elements into the fresh list at
+# its position. Variadic call sites / param definitions are out
+# of MVP scope.
+run_test "spread: int sum"            "$SAMPLES/spread_list_literal.am"  "[PASS] spread int sum=114"
+run_test "spread: int count"          "$SAMPLES/spread_list_literal.am"  "[PASS] spread int count=6"
+run_test "spread: strings count"      "$SAMPLES/spread_list_literal.am"  "[PASS] spread strings count=5"
+run_test "spread: strings order"      "$SAMPLES/spread_list_literal.am"  "[PASS] spread strings order preserved"
+run_test "spread: call-result sum"    "$SAMPLES/spread_list_literal.am"  "[PASS] spread call result sum=1119"
+run_test "spread: empty source"       "$SAMPLES/spread_list_literal.am"  "[PASS] spread empty count=2"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"
