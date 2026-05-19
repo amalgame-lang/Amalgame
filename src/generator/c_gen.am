@@ -1659,15 +1659,37 @@ public class CGen {
     // this split, the second class in iteration order isn't yet
     // registered when the first class's method sigs reference it,
     // and the forward decl falls back to the consumer's namespace.
+    // Back-compat one-shot entry: process a single external prog
+    // end-to-end (typedefs + bodies + method sigs). Suitable for the
+    // LSP and any caller that only loads one external. Multi-external
+    // callers (main.am compile loop) must use Pass1 / Pass2 separately
+    // so cross-external type refs resolve in either direction — see
+    // the comment on RegisterExternalProgPass1 below.
     public void RegisterExternalProg(AstNode prog) {
+        this.RegisterExternalProgPass1(prog)
+        this.RegisterExternalProgPass2(prog)
+    }
+
+    // Pass 1 — typedefs only. Register every external class + enum in
+    // ExternalClasses / ExternalEnums and emit the matching forward
+    // typedef.
+    //
+    // Why this is separate from Pass 2 (struct bodies + field tracking
+    // + method forward decls): when two external packages reference
+    // each other's types (e.g. amalgame-web's Route.Handler typed
+    // `Closure<WebContext, HttpResponse>` where HttpResponse lives in
+    // amalgame-net-http), the type lookups in Pass 2 (TypeToC ↦
+    // ExternalClassMangled) only resolve if the referenced class was
+    // already added to ExternalClasses. By running Pass 1 across ALL
+    // externals before any Pass 2, the registry is fully populated
+    // before any TypeToC call fires — the `amalgame.lock` ordering
+    // caveat that surfaced during the v0.3.0 web release goes away.
+    public void RegisterExternalProgPass1(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
-        // Pass 1: register every external class + emit typedef forward
-        // decl. Struct bodies and method sigs are deferred to pass 2/3.
-        //
         // Bug 9 (v0.8.27): enums get the same treatment — registered
         // in ExternalEnums and emitted as a full `typedef enum _M {…}`
         // (not just a forward) because gcc needs the body to know the
@@ -1723,7 +1745,21 @@ public class CGen {
                 }
             }
         }
-        // Pass 2: emit the struct body for every external class. Bug 9
+    }
+
+    // Pass 2 — struct bodies, field type tracking, method forward
+    // decls. MUST be called AFTER Pass 1 has run on every external
+    // prog the consumer references, so cross-package type lookups
+    // (e.g. `Closure<WebContext, HttpResponse>` where HttpResponse
+    // is in a separate package) hit the populated ExternalClasses
+    // registry instead of falling back to SymName.
+    public void RegisterExternalProgPass2(AstNode prog) {
+        let ns: string = prog.Str
+        if (String_Length(ns) == 0) { return }
+        let nsPrefix: string = String_Replace(ns, ".", "_")
+        let kids: List<AstNode> = prog.Children
+        let n: int = kids.Count()
+        // Emit the struct body for every external class. Bug 9
         // (v0.8.27): pre-fix, only the forward typedef landed in the
         // consumer's .c, so any user code reading `r.Ok` / `r.Value`
         // on a `JsonResult` hit `invalid use of incomplete typedef`.
