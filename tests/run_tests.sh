@@ -657,6 +657,18 @@ run_test "let_block_scope: section-B"   "$SAMPLES/let_block_scope.am"  "[PASS] s
 run_test "let_block_scope: nested"      "$SAMPLES/let_block_scope.am"  "[PASS] nested outer=99"
 run_test "let_block_scope: post-nested" "$SAMPLES/let_block_scope.am"  "[PASS] post-nested outer=7"
 
+# Lambda v2.5 — non-int signatures end-to-end.
+# Pre-fix, the lambda fn body was typed correctly but the
+# subsequent `for u in <Filter result>` typed the loop var as
+# void*, so `u.Name`/`u.Method()` failed to compile. The
+# EmitForIn now infers the elem type from typed locals
+# (ListElemGet) and types the loop var accordingly. Untyped
+# lists fall back to void* (legacy).
+run_test "lambda_v25: Map<User,int>"     "$SAMPLES/lambda_v25_nonint.am"  "[PASS] Map<User,int> ageSum=95"
+run_test "lambda_v25: Filter<User>"      "$SAMPLES/lambda_v25_nonint.am"  "[PASS] Filter<User> adultNames=alice,carol,"
+run_test "lambda_v25: capture+Filter"    "$SAMPLES/lambda_v25_nonint.am"  "[PASS] capture+Filter hits=2"
+run_test "lambda_v25: chain Filter|Map"  "$SAMPLES/lambda_v25_nonint.am"  "[PASS] chain Filter|Map joined=alice|carol|"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"

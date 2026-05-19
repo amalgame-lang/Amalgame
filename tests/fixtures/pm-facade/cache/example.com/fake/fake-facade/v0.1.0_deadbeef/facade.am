@@ -20,4 +20,16 @@ public class FakeFacade {
     public static int Twice(int x) {
         return x * 2
     }
+
+    // Facade-self-dispatch regression: invokes its own static
+    // siblings via `FakeFacade.X(...)`. Pre-fix, this lowered to
+    // `Amalgame_Fake_FakeFacade_Make/_Twice` (PkgClass header
+    // shape) instead of `Amalgame_Fake_FakeFacade_FakeFacade_Make/_Twice`
+    // (LocalClass shape), producing an implicit-int decl + runtime
+    // crash. Post-fix, IsLocalClass short-circuits in EmitCalleeStr
+    // so the dispatch picks the matching local body.
+    public static int MakeThenTwice(int x) {
+        let m: int = FakeFacade.Make(x)
+        return FakeFacade.Twice(m)
+    }
 }

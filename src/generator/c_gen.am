@@ -164,6 +164,19 @@ public class CGen {
     public ExternalEnums:      List<string>
     public ExternalEnumNsArr:  List<string>
 
+    // Classes declared in the current compilation unit, accumulated by
+    // EmitForwardDecl during AddFilePass1. Lets EmitCalleeStr / TypeToC
+    // give Local precedence over PkgClasses when both register the same
+    // short name — the facade-ABI conflict that surfaced during the
+    // msgpack extraction (`MsgPack.DecodeOne(...)` inside the facade
+    // itself, while the running amc has the same MsgPack registered as
+    // a package). Without this, the call mangles to the package's
+    // header-export shape (`Amalgame_Formats_MsgPack_DecodeOne`) while
+    // the body is defined under the Local shape
+    // (`Amalgame_Formats_MsgPack_MsgPack_DecodeOne`), producing an
+    // implicit-int decl + segfault on first dereference.
+    public LocalClasses: List<string>
+
     public CGen() {
         this.Out            = new Emitter()
         this.NsPrefix       = ""
@@ -191,6 +204,7 @@ public class CGen {
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
         this.ExternalEnumNsArr = new List<string>()
+        this.LocalClasses      = new List<string>()
         this.CurrentSource     = ""
         this.LastLineEmitted   = -1
         this.InferCacheKeys    = new List<int>()
@@ -1919,6 +1933,14 @@ public class CGen {
     //      multiple classes can't collide.
     // The "namespace ends with `_<class>`" check disambiguates the
     // two patterns from the same code path.
+    private bool IsLocalClass(string tname) {
+        let n: int = this.LocalClasses.Count()
+        for i in 0..n {
+            if (this.LocalClasses.Get(i) == tname) { return true }
+        }
+        return false
+    }
+
     private string PkgClassMangledPrefix(string tname) {
         let n: int = this.PkgClasses.Count()
         for i in 0..n {
@@ -1961,6 +1983,9 @@ public class CGen {
         if (k == NodeKind.CLASS_DECL) {
             let name = this.SymName(decl.Name)
             this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+            // Track the short class name so IsLocalClass can give it
+            // precedence over a same-named PkgClass (facade-ABI bug).
+            this.LocalClasses.Add(decl.Name)
         }
         if (k == NodeKind.INLINE_C) {
             // File-scope `@c { … }` raw block. Emit the body verbatim
@@ -3070,10 +3095,26 @@ public class CGen {
             }
             // Collection for: for x in <list-expr>. Emit a wrapper block so
             // the synthetic iterator + length stay scoped to the loop. The
-            // element type is erased to void* (generics erase to void*); the
-            // user casts explicitly when treating the element as a primitive.
-            // The synthetic names use vn as a suffix so nested for-in over
+            // synthetic names use vn as a suffix so nested for-in over
             // different lists don't shadow each other.
+            //
+            // Lambda v2.5 follow-up: when the iter expression is a known
+            // typed local (e.g. `let xs: List<User> = ...`) or a typed
+            // class field, infer the element C type and type the loop
+            // variable accordingly so the body resolves `u.Name`,
+            // `u.Method()`, etc., without manual casts. Falls back to
+            // `void*` when the type can't be recovered — same behaviour
+            // as before, just opt-in to typed casts when info is there.
+            var elemC: string = ""
+            if (stmt.Left != null) {
+                let ilk = stmt.Left.Kind
+                if (ilk == NodeKind.IDENTIFIER) {
+                    elemC = this.ListElemGet("__local__", stmt.Left.Name)
+                } else if (ilk == NodeKind.MEMBER && stmt.Left.Left != null && stmt.Left.Left.Kind == NodeKind.THIS_EXPR) {
+                    elemC = this.ListElemGet(this.CurrentClass, stmt.Left.Name)
+                }
+            }
+            if (String_Length(elemC) == 0) { elemC = "void*" }
             let iter = this.EmitExprStr(stmt.Left)
             this.Out.EmitLine("{")
             this.Out.Indent_()
@@ -3081,8 +3122,16 @@ public class CGen {
             this.Out.EmitLine("i64 __len_" + vn + " = AmalgameList_size(__it_" + vn + ");")
             this.Out.EmitLine("for (i64 __idx_" + vn + " = 0; __idx_" + vn + " < __len_" + vn + "; __idx_" + vn + "++) {")
             this.Out.Indent_()
-            this.Out.EmitLine("void* " + vn + " = __it_" + vn + "->data[__idx_" + vn + "];")
-            this.LocalTypeSet(vn, "void*")
+            let rawElem = "__it_" + vn + "->data[__idx_" + vn + "]"
+            if (elemC == "void*") {
+                this.Out.EmitLine("void* " + vn + " = " + rawElem + ";")
+            } else if (this.IsCPointerType(elemC)) {
+                this.Out.EmitLine(elemC + " " + vn + " = (" + elemC + ")" + rawElem + ";")
+            } else {
+                // Scalar (i64, double, code_bool …) — unbox through intptr_t.
+                this.Out.EmitLine(elemC + " " + vn + " = " + this.UnboxScalar(elemC, rawElem) + ";")
+            }
+            this.LocalTypeSet(vn, elemC)
             if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
             this.Out.Dedent()
             this.Out.EmitLine("}")
@@ -4182,6 +4231,22 @@ public class CGen {
                         let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
+                        }
+                        // Facade-package ABI fix: when the class is BOTH
+                        // declared locally in this compilation unit AND
+                        // registered as a PkgClass (the package's own
+                        // facade.am compiled while the package is in the
+                        // running amc's lockfile), prefer the local
+                        // dispatch — the method body is emitted under
+                        // SymName(tname)_mname, not under the PkgClass's
+                        // header-export shape. Without this short-circuit,
+                        // `MsgPack.DecodeOne(...)` inside MsgPack's own
+                        // facade lowers to `Amalgame_Formats_MsgPack_DecodeOne`
+                        // (header shape) while the body is
+                        // `Amalgame_Formats_MsgPack_MsgPack_DecodeOne` (local
+                        // shape) → implicit-int decl + segfault.
+                        if (this.IsLocalClass(tname)) {
+                            return this.SymName(tname) + "_" + mname
                         }
                         // v0.5 packages: namespace-mangled form so
                         // two packages that happen to expose the
