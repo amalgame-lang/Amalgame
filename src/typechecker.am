@@ -1101,13 +1101,35 @@ public class TypeChecker {
         // First-class function support (v0.8.30+): when the callee
         // is a value of type `Closure` (a stored function reference),
         // the call expression's type is the closure's return value,
-        // not the closure itself. Since closures are currently
-        // untyped at the AM level (args/result erased to i64/void*),
-        // surface the call result as `?` so it round-trips through
-        // IsAssignable cleanly. A future typed-Closure proposal
-        // will replace this with the closure's declared return type.
+        // not the closure itself.
+        //   - Bare `Closure` (no annotation) → erased return, surface
+        //     as `?` so IsAssignable accepts any target type.
+        //   - `Closure<A, R>` / `Closure<A1, A2, R>` / ... → the last
+        //     comma-separated parameter is R; extract it so the call
+        //     result typechecks against the user's annotated target.
         if (calleeType == "Closure" || calleeType == "AmalgameClosure*") {
             calleeType = "?"
+        } else if (String_StartsWith(calleeType, "Closure<") && String_EndsWith(calleeType, ">")) {
+            let inner = String_Substring(calleeType, 8, String_Length(calleeType) - 9)
+            // Find the last top-level comma (depth-aware so
+            // `Closure<List<int>, Map<string,int>, R>` doesn't split
+            // inside the nested generics).
+            let nin: int = String_Length(inner)
+            var depth: int = 0
+            var lastComma: int = -1
+            for i in 0..nin {
+                let ch = String_Substring(inner, i, 1)
+                if (ch == "<") { depth = depth + 1 }
+                else if (ch == ">") { depth = depth - 1 }
+                else if (ch == "," && depth == 0) { lastComma = i }
+            }
+            if (lastComma >= 0) {
+                let rRaw = String_Substring(inner, lastComma + 1, nin - lastComma - 1)
+                calleeType = String_Trim(rRaw)
+            } else {
+                // Single arg in <>: it's the return type itself
+                calleeType = String_Trim(inner)
+            }
         }
         this.SetType(expr, calleeType)
     }
