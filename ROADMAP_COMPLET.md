@@ -334,16 +334,21 @@ of these block a release on its own.
       legitimate NULL sentinel. Drops the `@c { return NULL; }`
       workaround from facade.am files (see ui-forms cleanup pass).
 
-- [ ] **`let` scope flattened to function level** — every
-      `let` in a method body lowers as a top-of-function C
-      declaration, so two `let x: T = ...` in *different*
-      `if`/`while` blocks collide at the C level with
-      `redefinition of x`. Hit during ui-forms v0.0.5 tests
-      (RadioButton block declared r0, r2; Form.Resize block
-      reused the same names). **Workaround**: rename locals
-      across blocks. **Fix**: resolver should track block
-      scope and let the cgen emit per-block C scopes
-      (`{` … `}` around each block's locals).
+- [x] **`let` scope flattened to function level** — **fixed
+      2026-05-19 (v0.8.35)**. Original symptom was hit in
+      ui-forms v0.0.5 tests where the RadioButton section and
+      the Form.Resize section, both in the same `Main()` body,
+      reused `r0`/`r2` and gcc bailed with `redefinition of r0`.
+      Root cause was *not* in `if`/`while` (those already wrap
+      in C `{ ... }` via EmitIf/EmitWhile) — it was that the
+      parser DID accept a bare `{ ... }` at statement position
+      and the resolver DID push/pop a block scope, but cgen's
+      `EmitStmt` had no `NodeKind.BLOCK` branch, so the bare
+      block's contents were silently dropped. Fix: add a BLOCK
+      branch to `EmitStmt` (c_gen.am line ~2743) that wraps the
+      children in a C `{ ... }`. Users can now scope sibling
+      sections explicitly without the rename workaround. Sample:
+      `tests/samples/let_block_scope.am` (6 assertions).
 
 - [x] **`Type.Variant` patterns in match** — `ParseMatchPattern`
       now reads an optional `.IDENT` suffix and emits an `Ast.Member`,

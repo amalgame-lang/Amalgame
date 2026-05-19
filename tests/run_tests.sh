@@ -642,6 +642,21 @@ run_test "bug10: localList.Get == concatVar" \
     "$SAMPLES/bug10_list_string_eq.am" \
     "[PASS] bug10 — localList.Get(i) == concatVar"
 
+# Bare `{ ... }` block-statement scope (v0.8.35).
+# Before the fix, EmitStmt had no NodeKind.BLOCK branch — a bare
+# `{ ... }` at statement position was silently dropped (resolver
+# scoped correctly, cgen emitted nothing). Workaround in user code
+# was to rename locals across sibling sections (ui-forms tests
+# renamed r0/r2 → rz0/rz2). Fix: EmitStmt now recognises
+# NodeKind.BLOCK and wraps in C `{ ... }`, giving each sibling
+# block its own scope.
+run_test "let_block_scope: sibling-1"   "$SAMPLES/let_block_scope.am"  "[PASS] block-1 x=1"
+run_test "let_block_scope: sibling-2"   "$SAMPLES/let_block_scope.am"  "[PASS] block-2 x=2"
+run_test "let_block_scope: section-A"   "$SAMPLES/let_block_scope.am"  "[PASS] section-A sum=30"
+run_test "let_block_scope: section-B"   "$SAMPLES/let_block_scope.am"  "[PASS] section-B sum=300"
+run_test "let_block_scope: nested"      "$SAMPLES/let_block_scope.am"  "[PASS] nested outer=99"
+run_test "let_block_scope: post-nested" "$SAMPLES/let_block_scope.am"  "[PASS] post-nested outer=7"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"

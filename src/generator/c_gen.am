@@ -2739,6 +2739,20 @@ public class CGen {
     private void EmitStmt(AstNode stmt) {
         this.EmitLineDirective(stmt)
         let k = stmt.Kind
+        if (k == NodeKind.BLOCK) {
+            // Bare `{ ... }` block at statement position. The resolver
+            // already pushes a "block" scope around the children, so
+            // emitting a C `{ ... }` here gives each `let` inside its
+            // own C-scope — siblings can reuse local names without
+            // colliding with names from a previous sibling block (fix
+            // for the ui-forms r0/r2 ↔ rz0/rz2 workaround).
+            this.Out.EmitLine("{")
+            this.Out.Indent_()
+            this.EmitBlock(stmt)
+            this.Out.Dedent()
+            this.Out.EmitLine("}")
+            return
+        }
         if (k == NodeKind.TRY_STMT) {
             // try { … } catch e { … } [finally { … }] — setjmp/longjmp pattern
             // (matches the Vala bootstrap's c_generator).
