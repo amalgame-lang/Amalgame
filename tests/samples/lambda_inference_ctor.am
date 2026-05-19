@@ -1,0 +1,77 @@
+namespace Demo
+
+// Lambda-param inference from typed-Closure method/ctor signatures
+// (v0.8.36+).
+//
+// Pre-fix: when an inline lambda was passed directly to a ctor or
+// method whose parameter was `Closure<A, R>`, the lambda's PARAM Str
+// stayed untyped because the resolver only patched lambdas bound via
+// `let x: Closure<…> = lambda` (typed local). The user had to either
+// bind to a typed local OR annotate the lambda's param explicitly
+// (`(c: WebContext) => …`) to get a typed unpack — otherwise the
+// cgen emitted `i64 c = (i64)(intptr_t)__arg0;` and gcc complained
+// at every `c.Field` access in the body with `-Wint-conversion`.
+//
+// Post-fix: resolver's `PatchLambdaParamTypesGeneric` walks both
+// NEW_EXPR ctor params and CALL-via-MEMBER method params. For each
+// param declared `Closure<A1, A2, …, R>` whose corresponding arg is
+// `__lambda__`, the lambda's i-th PARAM Str gets A_i. The cgen's
+// existing typed-param unpack path then emits the pointer cast
+// directly.
+
+public class User {
+    public Name: string
+    public User(n: string) { this.Name = n }
+}
+
+public class Route {
+    public Handler: Closure<User, string>
+    public Route(h: Closure<User, string>) { this.Handler = h }
+}
+
+public class Registry {
+    public Last: Route
+    public Registry() { this.Last = null }
+    // Method that takes a typed-Closure parameter — exercises the
+    // CALL-via-MEMBER patching path (the NEW_EXPR path is exercised
+    // by the inline `new Route(...)` below).
+    public void Register(name: string, h: Closure<User, string>) {
+        this.Last = new Route(h)
+    }
+}
+
+public class Program {
+    public static string getName(u: User) { return u.Name }
+
+    public static void Main() {
+        // 1. Inline lambda → ctor param Closure<User, string>
+        let r: Route = new Route(u => Program.getName(u))
+        let n1: string = r.Handler(new User("alice"))
+        if (n1 == "alice") {
+            Console.WriteLine("[PASS] ctor-arg lambda n1=" + n1)
+        } else {
+            Console.WriteLine("[FAIL] n1=" + n1)
+        }
+
+        // 2. Inline lambda → method param Closure<User, string>
+        let reg: Registry = new Registry()
+        reg.Register("u", u => u.Name)
+        let n2: string = reg.Last.Handler(new User("bob"))
+        if (n2 == "bob") {
+            Console.WriteLine("[PASS] method-arg lambda n2=" + n2)
+        } else {
+            Console.WriteLine("[FAIL] n2=" + n2)
+        }
+
+        // 3. The user can still override per-param if they want
+        //    a different concrete type (sanity check that explicit
+        //    annotations on the lambda param win over inference).
+        let r3: Route = new Route((u: User) => u.Name)
+        let n3: string = r3.Handler(new User("carol"))
+        if (n3 == "carol") {
+            Console.WriteLine("[PASS] explicit-param still works n3=" + n3)
+        } else {
+            Console.WriteLine("[FAIL] n3=" + n3)
+        }
+    }
+}

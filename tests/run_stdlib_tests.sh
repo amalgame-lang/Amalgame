@@ -463,13 +463,35 @@ test_pm_facade_e2e() {
     local BASE="$BUILD_DIR/FakeFacade-facade"
     local ARCHIVE="$BUILD_DIR/libamalgame-pkg-FakeFacade.a"
 
+    # Precompile from TMPDIR so the running amc loads amalgame.lock
+    # alongside compiling the facade. This is what triggers the
+    # facade-ABI conflict (FakeFacade is in BOTH LocalClasses and
+    # PkgClasses simultaneously). Without the IsLocalClass short-
+    # circuit in EmitCalleeStr, the self-dispatch
+    # `FakeFacade.Make(...)` inside `MakeThenTwice` lowers to the
+    # PkgClass header shape and the precompiled archive contains
+    # broken references to undefined symbols.
+    local CACHE_ABS="$TMPDIR/cache"
     printf "  %-38s" "facade e2e: amc --lib"
-    if "$AMC_ABS" --lib --quiet "$PKG_DIR/facade.am" -o "$BASE" > "$TMPDIR/precompile.log" 2>&1; then
+    if (cd "$TMPDIR" && AMALGAME_PACKAGES_DIR="$CACHE_ABS" "$AMC_ABS" --lib --quiet "$PKG_DIR/facade.am" -o "$BASE") > "$TMPDIR/precompile.log" 2>&1; then
         echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
     else
         echo -e "${RED}FAIL${NC}"; FAIL=$((FAIL+1))
         head -5 "$TMPDIR/precompile.log" | sed 's/^/    /'
         rm -rf "$TMPDIR"; return
+    fi
+
+    # Verify facade-self-dispatch lowers to the LocalClass shape
+    # (with the `_FakeFacade_` inner segment), not the PkgClass
+    # header shape (just the namespace). Pre-fix, the generated C
+    # called `Amalgame_Fake_FakeFacade_Make` instead of the actual
+    # symbol `Amalgame_Fake_FakeFacade_FakeFacade_Make`.
+    printf "  %-38s" "facade e2e: self-dispatch local shape"
+    if grep -q "Amalgame_Fake_FakeFacade_FakeFacade_Make(x)" "$BASE.c" && \
+       grep -q "Amalgame_Fake_FakeFacade_FakeFacade_Twice(m)" "$BASE.c"; then
+        echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
+    else
+        echo -e "${RED}FAIL${NC} (facade self-dispatch lowered to PkgClass shape)"; FAIL=$((FAIL+1))
     fi
 
     printf "  %-38s" "facade e2e: gcc -c"
@@ -506,12 +528,16 @@ public class Program {
     public static void Main() {
         let v: int = FakeFacade.Make(41)
         let w: int = FakeFacade.Twice(v)
-        Console.WriteLine("got " + String_FromInt(w))
+        // Exercises the facade-self-dispatch path: MakeThenTwice
+        // internally calls FakeFacade.Make(x) then FakeFacade.Twice(m).
+        // Pre-fix this would crash because the precompiled archive
+        // contained calls to the wrong symbols.
+        let z: int = FakeFacade.MakeThenTwice(41)
+        Console.WriteLine("got " + String_FromInt(w) + " z=" + String_FromInt(z))
     }
 }
 USRAM
 
-    local CACHE_ABS="$TMPDIR/cache"
     (cd "$TMPDIR" && AMALGAME_PACKAGES_DIR="$CACHE_ABS" "$AMC_ABS" -o out user.am --quiet) \
         > "$TMPDIR/usercompile.log" 2>&1
     local amc_exit=$?
@@ -547,7 +573,7 @@ USRAM
         2> "$TMPDIR/link.log"
     if [ -x "$TMPDIR/out" ]; then
         local run_out=$("$TMPDIR/out" 2>&1)
-        if [ "$run_out" = "got 84" ]; then
+        if [ "$run_out" = "got 84 z=84" ]; then
             echo -e "${GREEN}PASS${NC}"; PASS=$((PASS+1))
         else
             echo -e "${RED}FAIL${NC} (got: $run_out)"; FAIL=$((FAIL+1))

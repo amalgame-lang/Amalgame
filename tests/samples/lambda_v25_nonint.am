@@ -1,0 +1,82 @@
+namespace Demo
+
+// Lambda v2.5 — non-int signatures.
+//
+// Before this fix, `xs.Map(x => x.Name)` over a `List<Class>` would
+// generate `lam_N_fn` bodies typed correctly (Demo_User* u =
+// (Demo_User*)__arg0;) — but a subsequent `for u in mapResult`
+// would type the loop variable as `void*`, so any `u.Name` /
+// `u.Method()` access in the loop body failed to compile.
+//
+// Two parts to make this work end-to-end:
+//   1. (already present) PatchLambdaParamTypes in the resolver
+//      sets the lambda's first PARAM type from the receiver's
+//      element type, so the cgen's EmitOneLambdaBody can emit
+//      pointer-typed unpack (`Demo_User* u = (Demo_User*)__arg0;`).
+//   2. (this fix) EmitForIn looks up the iter expression's
+//      element C type via ListElemGet — for a typed local
+//      (`let adults: List<User> = ...`) or a `this.Field` of
+//      known elem type — and emits a typed loop variable
+//      (`Demo_User* u = (Demo_User*)__it_u->data[__idx_u];`)
+//      so the body resolves `u.Name` against the pointer type.
+//      Scalar lists (`List<int>`) unbox via intptr_t.
+//      Untyped lists fall back to void* (legacy behaviour).
+
+public class User {
+    public Name: string
+    public Age: int
+    public User(n: string, a: int) {
+        this.Name = n
+        this.Age = a
+    }
+}
+
+public class Program {
+    public static void Main() {
+        let users: List<User> = new List<User>()
+        users.Add(new User("alice", 30))
+        users.Add(new User("bob", 25))
+        users.Add(new User("carol", 40))
+
+        // Map<User, int>: returns List<int>, iterated as primitive.
+        let ages: List<int> = users.Map(u => u.Age)
+        var ageSum: int = 0
+        for a in ages { ageSum = ageSum + a }
+        if (ageSum == 95) {
+            Console.WriteLine("[PASS] Map<User,int> ageSum=" + String_FromInt(ageSum))
+        } else {
+            Console.WriteLine("[FAIL] ageSum=" + String_FromInt(ageSum))
+        }
+
+        // Filter<User>: returns List<User>, iterated with field access.
+        let adults: List<User> = users.Filter(u => u.Age >= 30)
+        var adultNames: string = ""
+        for u in adults { adultNames = adultNames + u.Name + "," }
+        if (adultNames == "alice,carol,") {
+            Console.WriteLine("[PASS] Filter<User> adultNames=" + adultNames)
+        } else {
+            Console.WriteLine("[FAIL] adultNames=" + adultNames)
+        }
+
+        // Lambda capturing outer state + Filter.
+        let cutoff: int = 28
+        let above: List<User> = users.Filter(u => u.Age > cutoff)
+        var hits: int = 0
+        for u in above { hits = hits + 1 }
+        if (hits == 2) {
+            Console.WriteLine("[PASS] capture+Filter hits=" + String_FromInt(hits))
+        } else {
+            Console.WriteLine("[FAIL] hits=" + String_FromInt(hits))
+        }
+
+        // Chain Filter -> Map.
+        let names: List<string> = users.Filter(u => u.Age >= 30).Map(u => u.Name)
+        var joined: string = ""
+        for n in names { joined = joined + n + "|" }
+        if (joined == "alice|carol|") {
+            Console.WriteLine("[PASS] chain Filter|Map joined=" + joined)
+        } else {
+            Console.WriteLine("[FAIL] joined=" + joined)
+        }
+    }
+}
