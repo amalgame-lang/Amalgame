@@ -493,26 +493,27 @@ User code that previously needed `-Wno-int-conversion` to silence
 flags once the relevant `Closure` fields/params/locals carry their
 typed shape.
 
-**Current limitation — direct lambda args.** Lambda-param
-inference only fires when the lambda is *bound* to a typed
-local (`let h: Closure<A, R> = lambda`). When the lambda is
-passed as an argument directly (`new Route(c => ...)`), patch
-the lambda param yourself by typing it explicitly:
+**Direct lambda args (v0.8.36+).** Lambda-param inference also
+fires when the lambda is passed *directly* to a ctor or method
+whose parameter is declared `Closure<A, R>` — the resolver
+walks the target signature and pushes A into the lambda's
+first PARAM. All three forms below produce the same typed
+unpack with no `-Wint-conversion` noise:
 
 ```kotlin
-// Pre-fix shape — the lambda's `c` is untyped i64 (warning).
+// Direct ctor arg — c inferred as WebContext from Route's signature.
 new Route(c => Program.handle(c))
 
-// Bind to a typed local — `c` becomes WebContext* in the body.
+// Method arg — same inference path.
+reg.Register("name", c => Program.handle(c))
+
+// Bind to a typed local — c inferred from the local annotation.
 let h: Closure<WebContext, HttpResponse> = c => Program.handle(c)
 new Route(h)
 
-// Or type the lambda param explicitly — same effect, no local.
+// Or type the lambda param explicitly — overrides inference.
 new Route((c: WebContext) => Program.handle(c))
 ```
-
-Method/ctor-driven inference (lambda param picked from the
-target signature) is tracked for a follow-up.
 
 ## List literals and comprehensions
 

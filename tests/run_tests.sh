@@ -688,6 +688,15 @@ run_test "closure_typed: <User,string>"       "$SAMPLES/closure_typed.am"  "[PAS
 run_test "closure_typed: <User,int>"          "$SAMPLES/closure_typed.am"  "[PASS] Closure<User,int> r4=99"
 run_test "closure_typed: field <Conn,Conn>"   "$SAMPLES/closure_typed.am"  "[PASS] Server field Closure<Conn,Conn> id=42"
 
+# Lambda-param inference from typed-Closure ctor/method params (v0.8.36+).
+# Pre-fix, `new Route(c => ...)` needed an explicit `(c: Type) =>`
+# annotation because the resolver only patched lambdas bound via a
+# typed local. Now the resolver also walks ctor/method params and
+# pushes A_i from `Closure<A1, …, R>` into the lambda's i-th PARAM.
+run_test "lambda_infer: ctor-arg"           "$SAMPLES/lambda_inference_ctor.am"  "[PASS] ctor-arg lambda n1=alice"
+run_test "lambda_infer: method-arg"         "$SAMPLES/lambda_inference_ctor.am"  "[PASS] method-arg lambda n2=bob"
+run_test "lambda_infer: explicit override"  "$SAMPLES/lambda_inference_ctor.am"  "[PASS] explicit-param still works n3=carol"
+
 # Env builtins (Env.Get / Env.Has) — exported here so the sample sees them.
 export AMC_ENV_PROBE=hello
 run_test "env: hasPath true"         "$SAMPLES/stdlib_env.am"  "hasPath: true"
