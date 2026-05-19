@@ -393,14 +393,25 @@ public class AmalgameCompiler {
                 this.ExitCode = 1
                 parseOk = false
             }
-            // RegisterExternalProg both indexes the file's classes (so
-            // call-site mangling can look them up) and emits the
-            // matching `typedef struct _Mangled Mangled;` forward
-            // declarations using the file's own namespace. No
-            // AddFilePass1 here — that would re-emit forward decls
-            // under the bundle's global NsPrefix and produce a
-            // duplicate / wrong-prefix typedef.
-            gen.RegisterExternalProg(eprog)
+        }
+        // RegisterExternalProg is split into two passes (v0.8.36):
+        //   - Pass 1 across every external first — populates
+        //     ExternalClasses / ExternalEnums + emits the matching
+        //     typedef forward decls.
+        //   - Pass 2 across every external next — emits the struct
+        //     body, registers field C-types, emits method forward
+        //     decls. Type lookups (TypeToC ↦ ExternalClassMangled)
+        //     now resolve cross-external regardless of declaration
+        //     order. Pre-fix, package A referencing package B in a
+        //     typed-Closure field (e.g. amalgame-web's
+        //     `Closure<WebContext, HttpResponse>` where HttpResponse
+        //     is in amalgame-net-http) only worked if B preceded A
+        //     in `amalgame.lock`.
+        for ei3 in 0..externalCount {
+            gen.RegisterExternalProgPass1(externalProgs.Get(ei3))
+        }
+        for ei4 in 0..externalCount {
+            gen.RegisterExternalProgPass2(externalProgs.Get(ei4))
         }
         // Don't continue past resolve/typecheck/cgen if the parser
         // refused part of the input — the AST is incomplete and
