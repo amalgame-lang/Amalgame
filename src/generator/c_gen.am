@@ -703,6 +703,12 @@ public class CGen {
             let inner = String_Substring(rawType, 5, String_Length(rawType) - 6)
             if (String_Length(inner) > 0) {
                 this.ListElemSet("__local__", varName, this.TypeToC(inner))
+                // Also stash the RAW elem type so chained `.Get(i).Get(j)`
+                // can peel another generic layer at the consumer's call
+                // site (see RecoverChainedListElemRaw). Without this,
+                // nested-collection access (`List<List<string>>`) falls
+                // through to a `(void*)` cast on the inner Get.
+                this.ListElemSet("__local_raw__", varName, inner)
             }
             return
         }
@@ -714,9 +720,59 @@ public class CGen {
                 let vTrim = String_Trim(vRaw)
                 if (String_Length(vTrim) > 0) {
                     this.ListElemSet("__local_map__", varName, this.TypeToC(vTrim))
+                    // Same raw-shape tracking as for List<T>, keyed under
+                    // a Map-specific tag so the chained dispatch can tell
+                    // List<T> apart from Map<K,V>.
+                    this.ListElemSet("__local_map_raw__", varName, vTrim)
                 }
             }
         }
+    }
+
+    // Peel one `List<...>` (or `Map<K, ...>`) layer off a raw type
+    // string. `List<List<string>>` → `List<string>`, `List<string>` →
+    // `string`, `Map<string, int>` → `int`, anything else → "".
+    private string PeelOneGenericLayer(string rawType) {
+        if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
+            return String_Substring(rawType, 5, String_Length(rawType) - 6)
+        }
+        if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
+            let inner = String_Substring(rawType, 4, String_Length(rawType) - 5)
+            // Split on the FIRST top-level comma — same logic as
+            // TrackGenericLocal above.
+            let comma = String_IndexOf(inner, ",")
+            if (comma > 0) {
+                return String_Trim(String_Substring(inner, comma + 1, String_Length(inner) - comma - 1))
+            }
+        }
+        return ""
+    }
+
+    // Walk a chained `.Get(i).Get(j)…` receiver to recover the
+    // element raw type at the consumer's call depth. Returns "" if
+    // the chain doesn't bottom out at a known typed local. Recursion
+    // peels one `List<...>` / `Map<K,...>` layer per Get hop.
+    //
+    // Example: with `let rows: List<List<string>>`,
+    //   `rows.Get(0).Get(0)` → outer Get's receiver is `rows.Get(0)`,
+    //   inner is `rows` (IDENTIFIER, depth 0). Inner Get returns
+    //   `List<string>`. Outer Get peels one more layer → `string`.
+    //   The Get-emit branch uses that to emit `(code_string)…` instead
+    //   of `(void*)…`.
+    private string RecoverChainedListElemRaw(AstNode recv) {
+        if (recv == null) { return "" }
+        if (recv.Kind == NodeKind.IDENTIFIER) {
+            return this.ListElemGet("__local_raw__", recv.Name)
+        }
+        if (recv.Kind == NodeKind.CALL) {
+            if (recv.Left == null) { return "" }
+            if (recv.Left.Kind != NodeKind.MEMBER) { return "" }
+            if (recv.Left.Name != "Get") { return "" }
+            let innerElemRaw: string = this.RecoverChainedListElemRaw(recv.Left.Left)
+            if (String_Length(innerElemRaw) == 0) { return "" }
+            return this.PeelOneGenericLayer(innerElemRaw)
+        }
+        return ""
     }
 
     private void ListElemSet(string className, string fieldName, string elemCType) {
@@ -1659,15 +1715,37 @@ public class CGen {
     // this split, the second class in iteration order isn't yet
     // registered when the first class's method sigs reference it,
     // and the forward decl falls back to the consumer's namespace.
+    // Back-compat one-shot entry: process a single external prog
+    // end-to-end (typedefs + bodies + method sigs). Suitable for the
+    // LSP and any caller that only loads one external. Multi-external
+    // callers (main.am compile loop) must use Pass1 / Pass2 separately
+    // so cross-external type refs resolve in either direction — see
+    // the comment on RegisterExternalProgPass1 below.
     public void RegisterExternalProg(AstNode prog) {
+        this.RegisterExternalProgPass1(prog)
+        this.RegisterExternalProgPass2(prog)
+    }
+
+    // Pass 1 — typedefs only. Register every external class + enum in
+    // ExternalClasses / ExternalEnums and emit the matching forward
+    // typedef.
+    //
+    // Why this is separate from Pass 2 (struct bodies + field tracking
+    // + method forward decls): when two external packages reference
+    // each other's types (e.g. amalgame-web's Route.Handler typed
+    // `Closure<WebContext, HttpResponse>` where HttpResponse lives in
+    // amalgame-net-http), the type lookups in Pass 2 (TypeToC ↦
+    // ExternalClassMangled) only resolve if the referenced class was
+    // already added to ExternalClasses. By running Pass 1 across ALL
+    // externals before any Pass 2, the registry is fully populated
+    // before any TypeToC call fires — the `amalgame.lock` ordering
+    // caveat that surfaced during the v0.3.0 web release goes away.
+    public void RegisterExternalProgPass1(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
-        // Pass 1: register every external class + emit typedef forward
-        // decl. Struct bodies and method sigs are deferred to pass 2/3.
-        //
         // Bug 9 (v0.8.27): enums get the same treatment — registered
         // in ExternalEnums and emitted as a full `typedef enum _M {…}`
         // (not just a forward) because gcc needs the body to know the
@@ -1723,7 +1801,21 @@ public class CGen {
                 }
             }
         }
-        // Pass 2: emit the struct body for every external class. Bug 9
+    }
+
+    // Pass 2 — struct bodies, field type tracking, method forward
+    // decls. MUST be called AFTER Pass 1 has run on every external
+    // prog the consumer references, so cross-package type lookups
+    // (e.g. `Closure<WebContext, HttpResponse>` where HttpResponse
+    // is in a separate package) hit the populated ExternalClasses
+    // registry instead of falling back to SymName.
+    public void RegisterExternalProgPass2(AstNode prog) {
+        let ns: string = prog.Str
+        if (String_Length(ns) == 0) { return }
+        let nsPrefix: string = String_Replace(ns, ".", "_")
+        let kids: List<AstNode> = prog.Children
+        let n: int = kids.Count()
+        // Emit the struct body for every external class. Bug 9
         // (v0.8.27): pre-fix, only the forward typedef landed in the
         // consumer's .c, so any user code reading `r.Ok` / `r.Value`
         // on a `JsonResult` hit `invalid use of incomplete typedef`.
@@ -3789,7 +3881,23 @@ public class CGen {
         var s: string = "({ AmalgameList* __ll = AmalgameList_new(); "
         let nc: int = n.Children.Count()
         for i in 0..nc {
-            let elem: string = this.EmitExprStr(n.Children.Get(i))
+            let child: AstNode = n.Children.Get(i)
+            // Spread item `...expr` (v0.8.36+): the operand is an
+            // iterable; splice its elements one by one via an inline
+            // for-loop over its data array. The operand is bound to
+            // a fresh `__sp_<i>` local so a side-effecting source
+            // expression (e.g. a method call) only fires once.
+            if (child.Kind == NodeKind.UNARY && child.Str == "...") {
+                let src: string = this.EmitExprStr(child.Left)
+                let idx: string = String_FromInt(i)
+                s = s + "{ AmalgameList* __sp_" + idx + " = " + src + "; "
+                s = s + "i64 __spn_" + idx + " = AmalgameList_size(__sp_" + idx + "); "
+                s = s + "for (i64 __spi_" + idx + " = 0; __spi_" + idx + " < __spn_" + idx + "; __spi_" + idx + "++) { "
+                s = s + "AmalgameList_add(__ll, __sp_" + idx + "->data[__spi_" + idx + "]); "
+                s = s + "} } "
+                continue
+            }
+            let elem: string = this.EmitExprStr(child)
             s = s + "AmalgameList_add(__ll, " + this.BoxAsVoid(elem) + "); "
         }
         s = s + "__ll; })"
@@ -4150,9 +4258,29 @@ public class CGen {
                     let vn5 = callee.Left.Name
                     elemType = this.ListElemGet("__local__", vn5)
                 }
+                // Case: chained `xs.Get(i).Get(j)` — receiver is a CALL
+                // to Get. Walk the chain back to the original typed
+                // local, peeling one `List<...>` layer per hop. Lets
+                // nested-collection access lower with proper typed casts
+                // instead of falling through to `(void*)`.
+                if (lkG == NodeKind.CALL && String_Length(elemType) == 0) {
+                    let chainedRaw: string = this.RecoverChainedListElemRaw(callee.Left)
+                    if (String_Length(chainedRaw) > 0) {
+                        elemType = this.TypeToC(chainedRaw)
+                    }
+                }
             }
             if (String_Length(elemType) > 0) {
-                return "(" + elemType + ")AmalgameList_get(" + listExpr + ", " + idx0 + ")"
+                // For pointer-shaped elems (anything ending in `*`,
+                // including code_string), the direct cast suffices.
+                // For scalar elems (i64, double, code_bool), the
+                // runtime stored an intptr_t-boxed value — unbox via
+                // the standard helper so the assignment doesn't trip
+                // a sign-extension warning.
+                if (this.IsCPointerType(elemType)) {
+                    return "(" + elemType + ")AmalgameList_get(" + listExpr + ", " + idx0 + ")"
+                }
+                return this.UnboxScalar(elemType, "AmalgameList_get(" + listExpr + ", " + idx0 + ")")
             }
             return "(void*)AmalgameList_get(" + listExpr + ", " + idx0 + ")"
         }

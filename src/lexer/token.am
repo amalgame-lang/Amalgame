@@ -70,6 +70,7 @@ public enum TokenType {
     OP_QDOT
     OP_QMARK
     OP_DOTDOT
+    OP_SPREAD
     OP_COALESCE
     // Bitwise
     OP_AMP

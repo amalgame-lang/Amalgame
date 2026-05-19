@@ -47,12 +47,44 @@ public class LspServer {
     private CachedSiblingPaths: List<string>
     private CachedSiblingProgs: List<AstNode>
 
+    // Resolver-level cache. BuildWorkspaceResolver is the
+    // single hot path for hover/completion/definition; pre-cache it
+    // ran the full Pass-1+Pass-2 resolve on every request, even when
+    // the underlying file hadn't changed between two requests (very
+    // common: Cmd+click after a hover, completion after type
+    // narrowing). Now we cache the post-build resolver and only
+    // invalidate when the open document or workspace contents change.
+    //
+    // Invalidation hooks live in the message-loop dispatch:
+    //   - didOpen / didChange  → InvalidateResolverCache()
+    //                            (the active document's AST changed)
+    //   - didClose             → InvalidateResolverCache()
+    //   - didCreate / didDelete / didRenameFiles → invalidate sibling
+    //     cache too (a new sibling needs to be in Programs).
+    //
+    // Path-keyed: a different open document gets its own cached
+    // resolver, so switching files doesn't trigger a rebuild for the
+    // previous one when we come back to it. Practical workspace size
+    // is ~30 files; keeping one resolver per recently-opened file is
+    // bounded by editor session length.
+    private CachedResolver:     FullResolver
+    private CachedResolverPath: string
     public LspServer() {
         this.DocUris             = new List<string>()
         this.Docs                = new List<string>()
         this.CachedRoot          = ""
         this.CachedSiblingPaths  = new List<string>()
         this.CachedSiblingProgs  = new List<AstNode>()
+        this.CachedResolver      = null
+        this.CachedResolverPath  = ""
+    }
+
+    // Mark the post-build resolver as stale. Called on every doc
+    // edit / open / close so the next BuildWorkspaceResolver rebuilds
+    // from fresh AST input.
+    private void InvalidateResolverCache() {
+        this.CachedResolver     = null
+        this.CachedResolverPath = ""
     }
 
     // ── Main loop ─────────────────────────────────────
@@ -84,6 +116,7 @@ public class LspServer {
                 let uri: string = td.Get("uri").AsString()
                 let txt: string = td.Get("text").AsString()
                 this.UpsertDoc(uri, txt)
+                this.InvalidateResolverCache()
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didChange") {
                 // Full sync: client re-sends the whole document text
@@ -92,10 +125,21 @@ public class LspServer {
                 let changes: JsonValue = params.Get("contentChanges")
                 let txt: string        = changes.At(0).Get("text").AsString()
                 this.UpsertDoc(uri, txt)
+                this.InvalidateResolverCache()
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didClose") {
                 let uri: string = td.Get("uri").AsString()
                 this.RemoveDoc(uri)
+                this.InvalidateResolverCache()
+            } else if (method == "workspace/didCreateFiles" || method == "workspace/didDeleteFiles" || method == "workspace/didRenameFiles") {
+                // Sibling .am added / removed / renamed → drop both
+                // the sibling cache (so EnsureWorkspaceCache re-walks
+                // the workspace next time) AND the resolver cache (so
+                // the next hover/completion sees the new sibling set).
+                this.CachedRoot = ""
+                this.CachedSiblingPaths = new List<string>()
+                this.CachedSiblingProgs = new List<AstNode>()
+                this.InvalidateResolverCache()
             } else if (method == "textDocument/hover") {
                 let uri: string  = td.Get("uri").AsString()
                 let line: int    = pos.Get("line").AsInt()
@@ -325,6 +369,15 @@ public class LspServer {
     // the caller (see Compile) so the editor only sees errors for
     // the document it's actually showing.
     private FullResolver BuildWorkspaceResolver(string path, AstNode prog) {
+        // Cache hit: the open document hasn't changed since the last
+        // call (no didChange / didOpen / didClose fired in between)
+        // AND the workspace siblings are still the cached ones (no
+        // didCreate / didDelete fired). Return the post-resolve
+        // resolver as-is — its Programs list already includes the
+        // current `prog` (we stored a reference, not a copy).
+        if (this.CachedResolver != null && this.CachedResolverPath == path) {
+            return this.CachedResolver
+        }
         let resolver = new FullResolver()
         resolver.Programs.Add(prog)
         this.EnsureWorkspaceCache(path)
@@ -356,6 +409,9 @@ public class LspServer {
             resolver.DeclareGlobal(pkgClass, "type", false)
         }
         resolver.ResolvePrograms()
+        // Stash for subsequent requests at the same document version.
+        this.CachedResolver     = resolver
+        this.CachedResolverPath = path
         return resolver
     }
 

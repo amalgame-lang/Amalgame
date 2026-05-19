@@ -1,0 +1,77 @@
+namespace Demo
+
+// Spread operator in list literals (v0.8.36+).
+//
+// `[...a, ...b, c]` splices each spread operand's elements into the
+// fresh list at its position. Skipped for this MVP:
+//   - variadic call sites `f(...args)`     — needs new function-sig syntax
+//   - variadic param definitions `(...xs)` — same
+//
+// Token / parser / cgen path:
+//   - Lexer: `...` lowers to `OP_SPREAD` (3 dots in a row; the 2-dot
+//     `..` range op stays as `OP_DOTDOT`).
+//   - Parser: `ParseListItem` accepts `OP_SPREAD <expr>` and wraps
+//     the operand in a `UNARY` node with op="...".
+//   - CGen: `EmitListLiteral`'s loop branches on
+//     `child.Kind == UNARY && Str == "..."` and emits an inline
+//     for-loop over the operand's `->data[i]` slots, calling
+//     `AmalgameList_add` per element. The source list is bound to
+//     a fresh `__sp_<i>` local so side-effecting source expressions
+//     (e.g. `[...users.Map(u => u.Name)]`) only fire once.
+
+public class Program {
+    public static void Main() {
+        // Basic: spread two lists + a tail element.
+        let a: List<int> = [1, 2, 3]
+        let b: List<int> = [4, 5]
+        let c: List<int> = [...a, ...b, 99]
+        var sum: int = 0
+        for v in c { sum = sum + v }
+        if (sum == 114) {
+            Console.WriteLine("[PASS] spread int sum=" + String_FromInt(sum))
+        } else {
+            Console.WriteLine("[FAIL] sum=" + String_FromInt(sum))
+        }
+        if (c.Count() == 6) {
+            Console.WriteLine("[PASS] spread int count=6")
+        } else {
+            Console.WriteLine("[FAIL] count=" + String_FromInt(c.Count()))
+        }
+
+        // Strings with spread between literal elements.
+        let names: List<string> = ["alice", "bob"]
+        let more: List<string> = ["carol"]
+        let all: List<string> = ["zero", ...names, ...more, "tail"]
+        if (all.Count() == 5) {
+            Console.WriteLine("[PASS] spread strings count=5")
+        } else {
+            Console.WriteLine("[FAIL] string count=" + String_FromInt(all.Count()))
+        }
+        if (all.Get(0) == "zero" && all.Get(2) == "bob" && all.Get(4) == "tail") {
+            Console.WriteLine("[PASS] spread strings order preserved")
+        } else {
+            Console.WriteLine("[FAIL] order broken")
+        }
+
+        // Spread the result of a method call — the source expression
+        // is evaluated ONCE thanks to the `__sp_<i>` binding.
+        let nums: List<int> = [10, 20, 30]
+        let doubled: List<int> = [...nums.Map(x => x * 2), 999]
+        var s2: int = 0
+        for v in doubled { s2 = s2 + v }
+        if (s2 == 1119) {
+            Console.WriteLine("[PASS] spread call result sum=" + String_FromInt(s2))
+        } else {
+            Console.WriteLine("[FAIL] call-result sum=" + String_FromInt(s2))
+        }
+
+        // Spread an empty source — degenerates cleanly.
+        let empty: List<int> = new List<int>()
+        let mixed: List<int> = [...empty, 1, ...empty, 2]
+        if (mixed.Count() == 2) {
+            Console.WriteLine("[PASS] spread empty count=2")
+        } else {
+            Console.WriteLine("[FAIL] empty count=" + String_FromInt(mixed.Count()))
+        }
+    }
+}
