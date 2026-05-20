@@ -1106,6 +1106,12 @@ Env vars override config file (`MOSAIC_LISTEN=:8080`,
 
 CLI flags override env vars.
 
+**Full per-key reference** (including env-var names, types, defaults
+and library mappings for every section above and the planned
+`[security.headers]` / `[security.cors]` / `[security.csrf]` /
+`[security.rate_limit]` / `[logging]` / `[limits]` tables): see
+[`docs/mosaic-configuration.md`](../mosaic-configuration.md).
+
 ## 19. Naming conventions
 
 | Layer | Name |
