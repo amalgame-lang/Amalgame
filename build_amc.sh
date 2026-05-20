@@ -140,9 +140,19 @@ echo "✅ amc built $(date)"
 echo "=== Step 4: Build lib/libamalgame.a ==="
 ./tools/build-stdlib.sh
 
-# End-user install is `install/install.sh` (downloads the release
-# tarball) or `install/windows/*.iss` (Inno Setup). Both lay things
-# out under <prefix>/share/amalgame/{runtime,lib}, matching the
-# XDG-style lookup chain in amc's Program.ResolveRuntimeDir /
-# ResolveLibAmalgameA. Don't reinvent that here — this script is the
-# contributor's dev build, not an installer.
+# ── Step 5: Refresh personal prefix (~/.local by default) ───────
+#    Makes the freshly-built amc immediately available from anywhere
+#    on the contributor's machine — sibling repos, examples, LSP
+#    integration, CI dev loops. The layout mirrors install/install.sh
+#    (bin/, share/amalgame/{runtime,lib,stdlib}) so the same prefix
+#    works whether you got amc via the release installer or built it
+#    here.
+#
+#    Opt out:        AMC_SKIP_LOCAL_INSTALL=1 ./build_amc.sh
+#    Other prefix:   AMC_LOCAL_PREFIX=/some/where ./build_amc.sh
+#
+#    This is NOT the user-facing installer (no checksum dance, no
+#    download); it's the dev's own convenience copy. See
+#    install/install.sh for the polished release flow.
+echo "=== Step 5: Install to personal prefix ==="
+./tools/install-local.sh
