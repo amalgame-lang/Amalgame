@@ -253,17 +253,20 @@ sliding-window / token-bucket in v2 if you need strict guarantees.
 
 ### `[limits]` — server-side resource ceilings
 
-**Lib:** `Amalgame.Net.Http.HttpServerConfig.FromMap(...)` (*planned*).
-**Status:** *planned* — currently hardcoded in the runtime.
+**Lib:** `Amalgame.Net.Http.HttpServerConfig` (C-struct + builders + getters) — fed by the Mosaic CLI to `Http1.ServeWith(port, config, handler)` / `Http2.ServeWith` / `Https.ServeWith` / `Ws.ServeWith` / `Wss.ServeWith`.
+**Status:** *shipped end-to-end* — Slowloris timeouts in v0.4.3 (Http1) / v0.4.4 (all variants); H1 parser size-limit wiring in v0.4.5. `idle_timeout_sec` and `listen_backlog` remain planned (keep-alive + listen() refactor respectively).
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
-| `max_body_size_mb` | `int` | `8` | `MOSAIC_LIMITS_MAX_BODY_SIZE_MB` | 413 returned on overflow. |
-| `max_header_size_kb` | `int` | `16` | `MOSAIC_LIMITS_MAX_HEADER_SIZE_KB` | 431 on overflow. |
-| `max_url_length` | `int` | `2048` | `MOSAIC_LIMITS_MAX_URL_LENGTH` | Bytes. |
-| `header_timeout_sec` | `int` | `10` | `MOSAIC_LIMITS_HEADER_TIMEOUT_SEC` | Slowloris guard — `SO_RCVTIMEO` on the connection until headers parsed. |
-| `body_timeout_sec` | `int` | `30` | `MOSAIC_LIMITS_BODY_TIMEOUT_SEC` | Idle-during-body guard. |
-| `idle_keepalive_sec` | `int` | `60` | `MOSAIC_LIMITS_IDLE_KEEPALIVE_SEC` | *needs HTTP keep-alive support — currently `Connection: close` only.* |
+| `header_timeout_sec` | `int` | `0` (off) | `MOSAIC_LIMITS_HEADER_TIMEOUT_SEC` | **shipped v0.4.3** (Http1) / **v0.4.4** (Http2/Https/Ws/Wss) — `SO_RCVTIMEO` on accepted connection. Slowloris guard. |
+| `body_timeout_sec` | `int` | `0` (off) | `MOSAIC_LIMITS_BODY_TIMEOUT_SEC` | **shipped v0.4.3/4** — applied alongside `header_timeout_sec` (larger of the two used as the single phase deadline; v0.4.6 will split). |
+| `max_body_bytes` | `int` | `8388608` (8 MiB) | `MOSAIC_LIMITS_MAX_BODY_BYTES` | **shipped v0.4.5** (H1) — parse fails (-1, conn closed) on Content-Length over the limit. H2 size enforcement pending. |
+| `max_header_bytes` | `int` | `65536` (64 KiB) | `MOSAIC_LIMITS_MAX_HEADER_BYTES` | **shipped v0.4.5** (H1) — parse fails when the total header-block size exceeds this. |
+| `max_url_bytes` | `int` | implicit (bounded by recv buffer) | `MOSAIC_LIMITS_MAX_URL_BYTES` | **shipped v0.4.5** (H1) — parse fails when the request-target length exceeds this. |
+| `idle_timeout_sec` | `int` | `0` | `MOSAIC_LIMITS_IDLE_TIMEOUT_SEC` | *planned* — needs HTTP keep-alive (currently `Connection: close` only). |
+| `listen_backlog` | `int` | `64` | `MOSAIC_LIMITS_LISTEN_BACKLOG` | *planned* — needs `H1Server_Listen` to thread the value through to `listen(2)`. |
+
+**Caveat for Ws / Wss `header_timeout_sec`:** `SO_RCVTIMEO` persists for the connection lifetime, which breaks long-lived WebSocket frame loops. Handlers that intend long idle waits should clear/raise the timeout themselves (or wait for v0.4.6's post-upgrade auto-clear). For pure HTTP servers this is the right behavior.
 
 **Always-on invariant (not configurable):** `HttpResponse.Header(name, value)`
 silently drops any value containing CR (`\r`) or LF (`\n`) — HTTP-response-
