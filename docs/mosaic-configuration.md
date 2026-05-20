@@ -195,18 +195,27 @@ Unknown keys are ignored (forward-compat with future fields).
 
 ### `[security.rate_limit]` — per-IP / per-key throttling
 
-**Lib:** `Amalgame.Web.RateLimit.FromMap(...)` (*planned*).
-**Status:** *planned*.
+**Lib:** `Amalgame.Web.RateLimit.FromMap(...)` (v0.6.0).
+**Status:** *shipped* — fixed-window algorithm, in-process memory store, per-IP keying. Sliding-window + Redis backend planned for v2.
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
-| `enabled` | `bool` | `false` | `MOSAIC_SECURITY_RATE_LIMIT_ENABLED` | |
-| `rps` | `int` | `100` | `MOSAIC_SECURITY_RATE_LIMIT_RPS` | Sustained req/sec. |
-| `burst` | `int` | `200` | `MOSAIC_SECURITY_RATE_LIMIT_BURST` | Token bucket size. |
-| `key_strategy` | `"ip"\|"user"\|"custom"` | `"ip"` | `MOSAIC_SECURITY_RATE_LIMIT_KEY_STRATEGY` | |
-| `trusted_proxies` | `[string]` | `[]` | `MOSAIC_SECURITY_RATE_LIMIT_TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` we trust. |
-| `backend` | `"memory"\|"redis"` | `"memory"` | `MOSAIC_SECURITY_RATE_LIMIT_BACKEND` | Redis backend *planned v2*. |
-| `redis_url` | `string` | — | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_URL` | |
+| `enabled` | `bool` | *omitted = on* | `MOSAIC_SECURITY_RATE_LIMIT_ENABLED` | Set to `false` to return `Disabled()` regardless of other keys. |
+| `preset` | `"per_ip"\|"disabled"` | — | `MOSAIC_SECURITY_RATE_LIMIT_PRESET` | Starting point; explicit keys then override. |
+| `rps` | `int` | — | `MOSAIC_SECURITY_RATE_LIMIT_RPS` | Shortcut: `max_requests=N, window_sec=1`. |
+| `max_requests` | `int` | `0` | `MOSAIC_SECURITY_RATE_LIMIT_MAX_REQUESTS` | Requests per window. `0` = no throttle. |
+| `window_sec` | `int` | `1` | `MOSAIC_SECURITY_RATE_LIMIT_WINDOW_SEC` | Window length in seconds. |
+| `key_strategy` | `"ip"` | `"ip"` | `MOSAIC_SECURITY_RATE_LIMIT_KEY_STRATEGY` | Only `"ip"` supported today (strips `:port` from `RemoteAddr`). `"user"`/`"custom"` *planned v2*. |
+| `trusted_proxies` | `[string]` | `[]` | `MOSAIC_SECURITY_RATE_LIMIT_TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` is trusted. *planned v2*. |
+| `backend` | `"memory"\|"redis"` | `"memory"` | `MOSAIC_SECURITY_RATE_LIMIT_BACKEND` | Redis *planned v2*. |
+| `redis_url` | `string` | — | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_URL` | *planned v2*. |
+
+**Algorithm caveat:** the v1 fixed-window counter can briefly allow
+up to `2 × max_requests` across a window boundary (a burst that
+straddles two windows). Acceptable for most apps; switch to
+sliding-window / token-bucket in v2 if you need strict guarantees.
+
+**Depends on:** [`amalgame-datetime`](https://github.com/amalgame-lang/amalgame-datetime) for the monotonic clock (`DateTime.NowMonotonicNanos()`).
 
 ---
 
