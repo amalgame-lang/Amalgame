@@ -180,16 +180,34 @@ Unknown keys are ignored (forward-compat with future fields).
 
 ### `[security.csrf]` — CSRF token validation
 
-**Lib:** `Amalgame.Web.Csrf.FromMap(...)` (*planned*).
-**Status:** *planned*.
+**Lib:** `Amalgame.Web.Csrf.FromMap(...)` (v0.7.0).
+**Status:** *shipped* — double-submit cookie pattern, 256-bit token entropy via amalgame-random, prefix-matched exempt paths.
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
-| `enabled` | `bool` | `false` | `MOSAIC_SECURITY_CSRF_ENABLED` | |
-| `cookie_name` | `string` | `"csrf_token"` | `MOSAIC_SECURITY_CSRF_COOKIE_NAME` | Double-submit cookie. |
-| `header_name` | `string` | `"X-CSRF-Token"` | `MOSAIC_SECURITY_CSRF_HEADER_NAME` | Where the SPA sends the token back. |
-| `safe_methods` | `[string]` | `["GET","HEAD","OPTIONS"]` | `MOSAIC_SECURITY_CSRF_SAFE_METHODS` | Methods skipped from validation. |
-| `exempt_paths` | `[string]` | `[]` | `MOSAIC_SECURITY_CSRF_EXEMPT_PATHS` | Glob-matched. |
+| `enabled` | `bool` | *omitted = on* | `MOSAIC_SECURITY_CSRF_ENABLED` | Set to `false` to return `Csrf.Disabled()` regardless of other keys. |
+| `cookie_name` | `string` | `"csrf_token"` | `MOSAIC_SECURITY_CSRF_COOKIE_NAME` | Double-submit cookie name. |
+| `header_name` | `string` | `"X-CSRF-Token"` | `MOSAIC_SECURITY_CSRF_HEADER_NAME` | Where the SPA echoes the cookie value back. |
+| `token_bytes` | `int` | `32` | `MOSAIC_SECURITY_CSRF_TOKEN_BYTES` | Entropy bytes (32 = 256-bit token, hex-encoded → 64 chars). |
+| `safe_methods` | `[string]` | `["GET","HEAD","OPTIONS"]` | `MOSAIC_SECURITY_CSRF_SAFE_METHODS` | Comma-separated; these bypass Validate. |
+| `exempt_paths` | `[string]` | `[]` | `MOSAIC_SECURITY_CSRF_EXEMPT_PATHS` | Comma-separated; prefix-matched against `req.Path`. |
+| `cookie_path` | `string` | `"/"` | `MOSAIC_SECURITY_CSRF_COOKIE_PATH` | Set-Cookie `Path=`. |
+| `cookie_secure` | `bool` | `true` | `MOSAIC_SECURITY_CSRF_COOKIE_SECURE` | Set-Cookie `Secure` flag (set `false` for HTTP-only dev). |
+| `cookie_samesite` | `"Strict"\|"Lax"\|"None"` | `"Lax"` | `MOSAIC_SECURITY_CSRF_COOKIE_SAMESITE` | Set-Cookie `SameSite=`. |
+| `cookie_max_age` | `int` | `0` | `MOSAIC_SECURITY_CSRF_COOKIE_MAX_AGE` | Seconds; `0` = session cookie (cleared on browser close). |
+
+**Trade-off note:** the CSRF cookie is intentionally NOT `HttpOnly` —
+the SPA needs to read it via JS to echo into the `X-CSRF-Token`
+request header. Compensated by:
+- `Secure` + `SameSite=Lax` defaults (cookie only sent on TLS + only on top-level navigations or same-site requests)
+- Token has no semantic meaning beyond its randomness — it is NOT a session bearer
+- 256-bit entropy from `/dev/urandom` / `BCryptGenRandom`
+
+**Form-only flows** (HTML form post without JS): planned for v0.7.x.
+Today the validation reads the configured header only; the
+`body_key` config will accept a form field name as a fallback.
+
+**Depends on:** [`amalgame-random`](https://github.com/amalgame-lang/amalgame-random) for crypto-grade entropy (`Random.SystemBytes` via `/dev/urandom` / `BCryptGenRandom`).
 
 ---
 
