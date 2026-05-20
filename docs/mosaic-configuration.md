@@ -12,19 +12,52 @@ For the design rationale, see `docs/proposals/amalgame-web.md` §18.
 
 ---
 
-## 1. Override layers
+## 1. The override cascade
+
+There are not three but **six** layers, lowest-priority first:
 
 ```
-mosaic.toml   <   env vars   <   CLI flags
+1. Library default   (the class's constructor)
+2. mosaic.toml       (CLI flattens it and calls FromMap on each feature)
+3. env vars          (MOSAIC_<SECTION>_<KEY> — applied by CLI, or read
+                      directly by the lib for runtime knobs like
+                      MOSAIC_TLS_ACME_SERVER)
+4. CLI flags         (mosaic dev --listen :8080)
+5. App code          (builder chained in main.am AFTER the CLI hands
+                      back the pre-configured instance)
+6. Per-route handler (`resp.Header(...)` in the route closure — Apply
+                      never overwrites a header the handler already set)
 ```
 
-- **`mosaic.toml`** — per-project file at the app root. Optional;
-  defaults apply if absent.
-- **Env vars** — uppercase, dot-separated TOML path with `MOSAIC_`
-  prefix and `_` for dots. `[server].listen` → `MOSAIC_SERVER_LISTEN`,
-  `[security.headers].csp` → `MOSAIC_SECURITY_HEADERS_CSP`.
-- **CLI flags** — `mosaic dev --listen :8080 --tls-mode off`.
-  Highest priority. Identical naming pattern (`--<section>-<key>`).
+**"Code" is not one layer but two**: the library default lives at the
+bottom (it's what the constructor produces), your `main.am` chaining
+lives in the middle, and your route handler lives at the top. They
+look the same to a reader but sit at very different positions in the
+cascade.
+
+**Handler-wins is intentional**: a single exceptional route
+(e.g. `/embed` that must allow an `<iframe>`) can override a global
+policy without disabling the policy elsewhere. The cautious default
+stays cautious everywhere else.
+
+### Two scenarios
+
+**With the Mosaic CLI:** TOML / env / flags are layered by the CLI,
+which calls each feature's `FromMap(...)` and yields the pre-configured
+instance to your `main.am`. Your code can chain further `With*(...)`
+calls — those overwrite the CLI-applied values, which is exactly what
+you want (code is closer to the routes than the config file).
+
+**Without the Mosaic CLI:** you build instances directly in `main.am`
+with the builders. TOML / env / flags don't apply. The library has
+zero dependency on TOML or any CLI.
+
+### One feature = one instance
+
+Per WebApp, you should have exactly one `SecurityHeaders` (and one
+`Cors`, one `Csrf`, one `RateLimit`, …). Multiple instances are a
+source of silent contradictions. Sub-apps mounted on different paths
+are the only legitimate case for more than one.
 
 ## 2. File location
 
