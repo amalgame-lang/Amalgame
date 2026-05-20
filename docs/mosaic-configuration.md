@@ -97,21 +97,43 @@ consumes it. The legend:
 
 ### `[tls]` — TLS / HTTPS / ACME
 
-**Lib:** `Amalgame.Tls.TlsConfig` + `Amalgame.Tls.Acme`.
-**Status:** *partial* — `acme` mode works (certbot wrapper); `files` and `off` work; the extra knobs below are *planned*.
+**Lib:** `Amalgame.Tls.TlsConfig` + `Amalgame.Tls.Acme` (runtime), `Amalgame.Web.AcmeConfig` (Mosaic-side TOML wiring, v0.10.0).
+**Status:** *partial* — `acme` mode shipped via amalgame-tls v0.2.2 (certbot wrapper) + amalgame-web v0.10.0 (`AcmeConfig.FromMap`); `files` and `off` work. Multi-domain SAN provisioning still uses one domain at a time (single-call EnsureCert per host).
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
 | `mode` | `"off"\|"files"\|"acme"` | `"off"` | `MOSAIC_TLS_MODE` | Top-level switch. |
-| `acme_email` | `string` | — | `MOSAIC_TLS_ACME_EMAIL` | Required when mode = `"acme"`. |
-| `acme_cache` | `string` | `"./data/acme"` | `MOSAIC_TLS_ACME_CACHE` | Cert/account dir. |
-| `domains` | `[string]` | `[]` | `MOSAIC_TLS_DOMAINS` | SANs to provision. |
-| `acme_server` | `string` | LE production | `MOSAIC_TLS_ACME_SERVER` | ACME directory URL. *planned* — Buypass / ZeroSSL / LE-staging by passing the directory URL. |
-| `certbot_path` | `string` | `"certbot"` (looked up via `PATH`) | `MOSAIC_TLS_CERTBOT_PATH` | Absolute path override. *planned*. |
+| `acme_email` | `string` | — | `MOSAIC_TLS_ACME_EMAIL` | Required when mode = `"acme"`. *shipped v0.10.0* (maps to `AcmeConfig.Email`). |
+| `acme_cache` | `string` | `"./certs"` | `MOSAIC_TLS_ACME_CACHE` | Cert/account dir (maps to `AcmeConfig.CertDir`). *shipped v0.10.0*. |
+| `domains` | `[string]` | `[]` | `MOSAIC_TLS_DOMAINS` | SANs to provision. v0.10.0 supports the first entry only (single-domain EnsureCertEx); multi-SAN cert is a v0.11 follow-up. |
+| `acme_server` | `string` | LE production | `MOSAIC_TLS_ACME_SERVER` | ACME directory URL. *shipped v0.10.0* (maps to `AcmeConfig.AcmeServer`; env var honored by `Acme.EnsureCertEx`). Buypass / ZeroSSL / LE-staging by passing the directory URL. |
+| `certbot_path` | `string` | `"certbot"` (looked up via `PATH`) | `MOSAIC_TLS_CERTBOT_PATH` | Absolute path override. *shipped v0.10.0* (maps to `AcmeConfig.CertbotPath`). |
 | `cert_file` | `string` | — | `MOSAIC_TLS_CERT_FILE` | Required when mode = `"files"`. |
 | `key_file` | `string` | — | `MOSAIC_TLS_KEY_FILE` | Required when mode = `"files"`. |
-| `min_version` | `"1.2"\|"1.3"` | `"1.3"` | `MOSAIC_TLS_MIN_VERSION` | Maps to `TlsConfig.WithMinVersion`. |
-| `alpn` | `string` | `"h2,http/1.1"` | `MOSAIC_TLS_ALPN` | ALPN list (comma-separated). |
+| `min_version` | `"1.2"\|"1.3"` | `"1.3"` | `MOSAIC_TLS_MIN_VERSION` | Maps to `TlsConfig.WithMinVersion`. *planned* — direct via `Amalgame.Tls.TlsConfig` today. |
+| `alpn` | `string` | `"h2,http/1.1"` | `MOSAIC_TLS_ALPN` | ALPN list (comma-separated). *planned* — direct via `TlsConfig.WithAlpn` today. |
+
+**Pattern d'usage (mode = "acme"):**
+
+```amalgame
+import Amalgame.Web         // AcmeConfig
+import Amalgame.Tls         // Acme.EnsureCertEx
+import Amalgame.Net.Http    // Https.Serve
+
+let acme = AcmeConfig.FromMap(tomlAcmeSection)
+let err: string = acme.Validate()
+if (String_Length(err) > 0) { Console.WriteError(err); return }
+
+if (acme.Enabled) {
+    let rc: int = Acme.EnsureCertEx(
+        acme.Domain, acme.Email, acme.CertDir,
+        acme.AcmeServer, acme.CertbotPath)
+    if (rc != 0) { Console.WriteError("ACME failed"); return }
+}
+Https.Serve(443, acme.CertPath(), acme.KeyPath(), handler)
+```
+
+L'appel `Acme.EnsureCertEx` reste côté user pour qu'il puisse séquencer le provisionnement avec son propre startup (DB / migrations / etc.) avant de bind port 443. v0.3 d'amalgame-tls swap l'implem en ACME natif (RFC 8555) sans changer l'API d'`AcmeConfig`.
 
 ---
 
