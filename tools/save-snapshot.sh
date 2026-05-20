@@ -93,4 +93,13 @@ EOF
 
 echo "  wrote: snapshot/INFO.md"
 echo ""
+
+# Refresh the personal prefix too — the snapshot we just saved was
+# validated by the full test suite, so it's by definition a "known
+# good" amc to expose to other repos on this machine. Same install
+# helper as build_amc.sh Step 5. Opt out with AMC_SKIP_LOCAL_INSTALL=1.
+echo "── Refreshing personal prefix ────────────────"
+./tools/install-local.sh
+echo ""
+
 echo "✓ Snapshot saved."
