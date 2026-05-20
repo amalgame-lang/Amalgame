@@ -117,19 +117,39 @@ consumes it. The legend:
 
 ### `[sessions]` — server-side session storage
 
-**Lib:** `Amalgame.Web.MemorySessionStore` (today) / `JsonFileSessionStore` / `RedisSessionStore` (*planned*).
-**Status:** *partial* — `memory` backend ships; `json_file` and `redis` are *planned*.
+**Lib:** `Amalgame.Web.MemorySessionStore` / `SignedCookieSessionStore` (today) — `RedisSessionStore` (planned, uses amalgame-database-nosql-redis) — `shm` backend planned (needs amalgame-threading).
+**Status:** *partial* — `memory` (v0.8.1) + `signed_cookie` strategy (v0.8.3) ship; `redis` and `shm` are *planned*.
+
+The schema has **two orthogonal dimensions**:
+
+- **`strategy`** — *where* the session lives:
+  - `server_side` (default) — id in cookie, data on the server (backend below)
+  - `encrypted_cookie` — data IS the cookie, signed (and eventually encrypted)
+    with `amalgame-crypto`. No server storage; `backend` is ignored.
+- **`backend`** — *which* server-side store (when `strategy = "server_side"`):
+  - `memory` (default) — in-process Map; single-worker only
+  - `shm` (planned) — shared memory between workers of the same node
+  - `redis` (planned) — multi-worker, multi-node
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
-| `backend` | `"memory"\|"json_file"\|"redis"` | `"memory"` | `MOSAIC_SESSIONS_BACKEND` | |
-| `dir` | `string` | `"./data/sessions"` | `MOSAIC_SESSIONS_DIR` | For `json_file`. |
+| `strategy` | `"server_side"\|"encrypted_cookie"` | `"server_side"` | `MOSAIC_SESSIONS_STRATEGY` | When `encrypted_cookie`, the cookie value IS the signed session payload (Flask/Rails pattern). v0.1 is signed-only (visible but tamper-proof); AEAD encryption comes with amalgame-crypto v0.2. |
+| `secret` | `string` | — | `MOSAIC_SESSIONS_SECRET` | **Required** when `strategy = "encrypted_cookie"`. HMAC-SHA-256 key. Keep stable across deploys; rotation invalidates all signed cookies. |
+| `backend` | `"memory"\|"shm"\|"redis"` | `"memory"` | `MOSAIC_SESSIONS_BACKEND` | Ignored when `strategy = "encrypted_cookie"`. |
+| `dir` | `string` | `"./data/sessions"` | `MOSAIC_SESSIONS_DIR` | For future `file` backend (not in the 3-tier triplet). |
 | `url` | `string` | — | `MOSAIC_SESSIONS_URL` | For `redis` (`redis://host:port/db`). |
-| `max_age_sec` | `int` | `86400` | `MOSAIC_SESSIONS_MAX_AGE_SEC` | Per-session TTL. |
-| `cookie_name` | `string` | `"mosaic_session"` | `MOSAIC_SESSIONS_COOKIE_NAME` | *planned*. |
-| `cookie_secure` | `bool` | `true` (when TLS on) | `MOSAIC_SESSIONS_COOKIE_SECURE` | *planned*. |
-| `cookie_samesite` | `"Strict"\|"Lax"\|"None"` | `"Lax"` | `MOSAIC_SESSIONS_COOKIE_SAMESITE` | *planned*. |
-| `cookie_path` | `string` | `"/"` | `MOSAIC_SESSIONS_COOKIE_PATH` | *planned*. |
+| `max_age_sec` | `int` | `86400` | `MOSAIC_SESSIONS_MAX_AGE_SEC` | Per-session TTL (server-side stores). |
+| `cookie_name` | `string` | `"mosaic_session"` | `MOSAIC_SESSIONS_COOKIE_NAME` | *shipped v0.8.1* (memory) / *v0.8.3* (signed_cookie). |
+| `cookie_secure` | `bool` | `true` (when TLS on) | `MOSAIC_SESSIONS_COOKIE_SECURE` | *shipped v0.8.1/v0.8.3*. |
+| `cookie_samesite` | `"Strict"\|"Lax"\|"None"` | `"Lax"` | `MOSAIC_SESSIONS_COOKIE_SAMESITE` | *shipped v0.8.1/v0.8.3*. |
+| `cookie_path` | `string` | `"/"` | `MOSAIC_SESSIONS_COOKIE_PATH` | *shipped v0.8.1/v0.8.3*. |
+| `cookie_max_age` | `int` | `0` | `MOSAIC_SESSIONS_COOKIE_MAX_AGE` | Set-Cookie `Max-Age=`. 0 = session cookie. *shipped v0.8.1/v0.8.3*. |
+
+**SignedCookieSessionStore caveats (v0.8.3, signed-only):**
+- Data is visible to anyone who has the cookie (tamper-proof but NOT confidential). Don't store secrets / credentials.
+- Keys + values must not contain `&`, `=`, or `.` (no escaping in v0.1 — JSON payload comes in v0.2).
+- 4 KB cookie limit ≈ ~30 typical key=value pairs.
+- For sensitive data: switch to `strategy = "server_side"` with `backend = "redis"`, or wait for the AEAD-encrypted variant (depends on amalgame-crypto v0.2).
 
 ---
 
