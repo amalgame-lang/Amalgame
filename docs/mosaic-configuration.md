@@ -238,6 +238,14 @@ Unknown keys are ignored (forward-compat with future fields).
 | `body_timeout_sec` | `int` | `30` | `MOSAIC_LIMITS_BODY_TIMEOUT_SEC` | Idle-during-body guard. |
 | `idle_keepalive_sec` | `int` | `60` | `MOSAIC_LIMITS_IDLE_KEEPALIVE_SEC` | *needs HTTP keep-alive support — currently `Connection: close` only.* |
 
+**Always-on invariant (not configurable):** `HttpResponse.Header(name, value)`
+silently drops any value containing CR (`\r`) or LF (`\n`) — HTTP-response-
+splitting prevention. There is no opt-out config: no legitimate header
+value contains CR/LF, and the cost of leaving it on is a CVE-class
+injection vector. Power-users who need a value verbatim (test fixtures,
+trusted internal builders) can call `HeaderUnsafe(name, value)` per
+response. Shipped in `amalgame-net-http v0.4.2`.
+
 ---
 
 ## 4. Composing config in code (no `mosaic.toml`)
