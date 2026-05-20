@@ -164,6 +164,18 @@ public class CGen {
     public ExternalEnums:      List<string>
     public ExternalEnumNsArr:  List<string>
 
+    // v0.8.37: opaque C types declared as return types in a
+    // package's [stdlib.functions] table (e.g. `Redis.Open →
+    // AmalgameRedis*`). PackageRegistry.AmalgameTypeFromC strips
+    // the `*` to give the AM-side name; the consumer can now use
+    // that name as a class field type (`public Handle: AmalgameRedis`)
+    // and TypeToC lowers it to the raw C name (`AmalgameRedis*`)
+    // instead of mangling it into the consumer's namespace. Lifts
+    // the "AM can't store an opaque C handle in a class field"
+    // limitation that blocked Redis-connection pooling and
+    // per-instance pthread mutexes.
+    public PkgOpaqueTypes: List<string>
+
     // Classes declared in the current compilation unit, accumulated by
     // EmitForwardDecl during AddFilePass1. Lets EmitCalleeStr / TypeToC
     // give Local precedence over PkgClasses when both register the same
@@ -204,6 +216,7 @@ public class CGen {
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
         this.ExternalEnumNsArr = new List<string>()
+        this.PkgOpaqueTypes    = new List<string>()
         this.LocalClasses      = new List<string>()
         this.CurrentSource     = ""
         this.LastLineEmitted   = -1
@@ -1671,11 +1684,12 @@ public class CGen {
     // Idempotent — re-registering same packages overwrites the
     // earlier entries.
     public void RegisterPackages(PackageRegistry reg) {
-        this.PkgClasses    = new List<string>()
-        this.PkgFuncs      = new List<string>()
-        this.PkgFuncCTypes = new List<string>()
-        this.PkgHeaders    = new List<string>()
-        this.PkgClassNs    = new List<string>()
+        this.PkgClasses     = new List<string>()
+        this.PkgFuncs       = new List<string>()
+        this.PkgFuncCTypes  = new List<string>()
+        this.PkgHeaders     = new List<string>()
+        this.PkgClassNs     = new List<string>()
+        this.PkgOpaqueTypes = new List<string>()
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
@@ -1699,6 +1713,30 @@ public class CGen {
                 let mangled: string = PackageRegistry.ManglePackageSymbol(p.Ns, fName)
                 this.PkgFuncs.Add(mangled)
                 this.PkgFuncCTypes.Add(cType)
+                // Track opaque return types so the consumer can store
+                // them in class fields. AmalgameTypeFromC strips a
+                // trailing `*` so `AmalgameRedis*` → `AmalgameRedis`.
+                // Only record names that look like opaque C types: an
+                // identifier starting with an uppercase A-Z and *not*
+                // already in PkgClasses (which would re-route via
+                // PkgClassMangledPrefix). Skip primitives (the strip
+                // is a no-op there, so we'd accidentally hijack `i64`
+                // etc. — guard via the C-string-pointer convention).
+                if (String_EndsWith(cType, "*")) {
+                    let amType: string = PackageRegistry.AmalgameTypeFromC(cType)
+                    if (String_Length(amType) > 0) {
+                        // De-duplicate — same opaque type can return
+                        // from multiple functions in the same package.
+                        var seen: bool = false
+                        let oc: int = this.PkgOpaqueTypes.Count()
+                        for oi in 0..oc {
+                            if (this.PkgOpaqueTypes.Get(oi) == amType) { seen = true }
+                        }
+                        if (!seen) {
+                            this.PkgOpaqueTypes.Add(amType)
+                        }
+                    }
+                }
             }
         }
     }
@@ -4759,6 +4797,19 @@ public class CGen {
         let externalEnumMangled: string = this.ExternalEnumMangled(t)
         if (String_Length(externalEnumMangled) > 0) {
             return externalEnumMangled
+        }
+        // v0.8.37: opaque C types declared as PkgFunc return types
+        // (e.g. `AmalgameRedis` from Redis.Open → AmalgameRedis*).
+        // Lower them straight to `<name>*` so the consumer's struct
+        // body emits the right C type for fields like
+        // `public Handle: AmalgameRedis`. Without this, SymName
+        // would prefix the consumer's namespace and gcc would fail
+        // (`unknown type 'Amalgame_Web_AmalgameRedis'`).
+        let opaqueCount: int = this.PkgOpaqueTypes.Count()
+        for oi in 0..opaqueCount {
+            if (this.PkgOpaqueTypes.Get(oi) == t) {
+                return t + "*"
+            }
         }
         let sym = this.SymName(t)
         // Single uppercase letter = generic type parameter → use void*
