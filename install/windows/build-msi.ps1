@@ -304,8 +304,14 @@ $msiViewModifyInsert       = 1
 $msiViewModifyAssign       = 3
 
 $installer = New-Object -ComObject WindowsInstaller.Installer
-$database  = $installer.GetType().InvokeMember("OpenDatabase", "InvokeMethod",
-                $null, $installer, @($MsiPath, $msiOpenDatabaseModeCreate))
+# Bootstrap call — same typed-BindingFlags pattern as the
+# Invoke-MSI helper below, so DISP_E_TYPEMISMATCH can't come from
+# this first dispatch either.
+$installerBf = [System.Reflection.BindingFlags]::InvokeMethod
+$database = $installer.GetType().InvokeMember(
+    "OpenDatabase", $installerBf, $null, $installer,
+    [object[]]@($MsiPath, $msiOpenDatabaseModeCreate)
+)
 
 function Invoke-MSI {
     # COM dispatch shim for METHOD calls (Execute / Close / Modify /
@@ -313,10 +319,21 @@ function Invoke-MSI {
     # (StringData / IntegerData / SetStream / Property on
     # SummaryInformation) MUST go through `Set-MsiProperty` below —
     # the WindowsInstaller dispatch rejects "InvokeMethod" on
-    # indexed property puts and the failure is silent (the record
-    # stays empty, then INSERT fails with a cryptic 1627 / -2146827284).
-    param([object]$Target, [string]$Method, [object[]]$Args)
-    return $Target.GetType().InvokeMember($Method, "InvokeMethod", $null, $Target, $Args)
+    # indexed property puts and the failure is silent.
+    #
+    # Param name `$MethodArgs` (NOT `$Args`) — `$args` is a PowerShell
+    # automatic variable, and even though `[object[]]$Args` binds
+    # positionally in most cases, some PS hosts coerce the binding
+    # in surprising ways (DISP_E_TYPEMISMATCH from InvokeMember
+    # is a typical symptom). Naming it differently sidesteps the
+    # whole question.
+    #
+    # BindingFlags passed as a typed enum value, not the string
+    # "InvokeMethod" — string→BindingFlags coercion via .NET's
+    # default binder isn't guaranteed across PS versions either.
+    param([object]$Target, [string]$Method, [object[]]$MethodArgs = @())
+    $bf = [System.Reflection.BindingFlags]::InvokeMethod
+    return $Target.GetType().InvokeMember($Method, $bf, $null, $Target, [object[]]$MethodArgs)
 }
 
 function Set-MsiProperty {
@@ -324,11 +341,8 @@ function Set-MsiProperty {
     # Record.StringData(N), Record.IntegerData(N), and
     # SummaryInformation.Property(PID) — all COM indexed properties.
     param([object]$Target, [string]$Property, [object[]]$IndexAndValue)
-    [void]$Target.GetType().InvokeMember(
-        $Property,
-        [System.Reflection.BindingFlags]::SetProperty,
-        $null, $Target, $IndexAndValue
-    )
+    $bf = [System.Reflection.BindingFlags]::SetProperty
+    [void]$Target.GetType().InvokeMember($Property, $bf, $null, $Target, [object[]]$IndexAndValue)
 }
 
 function Insert-Row {
