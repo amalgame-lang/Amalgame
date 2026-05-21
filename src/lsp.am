@@ -2082,6 +2082,37 @@ public class LspServer {
         let q: string = String_ToLower(query)
         var json: string = "["
         var first: bool = true
+        // First pass — walk every open document. The sibling cache
+        // is populated by `find <root> -name '*.am'` from disk so it
+        // misses files that exist only in the editor (unsaved or
+        // not yet on disk). Skip open docs whose path also shows up
+        // in the sibling cache to avoid duplicate entries.
+        let openN: int = this.DocUris.Count()
+        for di in 0..openN {
+            let docUri: string  = this.DocUris.Get(di)
+            let docSrc: string  = this.Docs.Get(di)
+            let docPath: string = LspServer.UriToPath(docUri)
+            var dup: bool = false
+            let sn: int = this.CachedSiblingPaths.Count()
+            for sj in 0..sn {
+                if (this.CachedSiblingPaths.Get(sj) == docPath) { dup = true }
+            }
+            if (dup) { continue }
+            let lex  = new Lexer(docSrc, docPath)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            let dc: int = prog.Children.Count()
+            for j in 0..dc {
+                let decl: AstNode = prog.Children.Get(j)
+                let entry: string = LspServer.WorkspaceSymbolEntry(decl, docPath, q)
+                if (String_Length(entry) > 0) {
+                    if (!first) { json = json + "," }
+                    json = json + entry
+                    first = false
+                }
+            }
+        }
         let n: int = this.CachedSiblingProgs.Count()
         for i in 0..n {
             let prog: AstNode = this.CachedSiblingProgs.Get(i)

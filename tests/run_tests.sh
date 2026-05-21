@@ -928,6 +928,41 @@ run_lsp_check "lsp: refs Greet has result" '"id":13,"result":['          "$lsp_n
 run_lsp_check "lsp: refs Greet decl line"  '"line":5'                    "$lsp_nav_seq"
 run_lsp_check "lsp: refs Greet call line"  '"line":12'                   "$lsp_nav_seq"
 
+# Phase B follow-up: rename / prepareRename / workspace symbol /
+# inlayHint / codeAction / callHierarchy. Uses the same fixture.
+lsp_prepareRename='{"jsonrpc":"2.0","id":20,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18}}}'
+lsp_rename='{"jsonrpc":"2.0","id":21,"method":"textDocument/rename","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18},"newName":"SayHi"}}'
+lsp_wssym='{"jsonrpc":"2.0","id":22,"method":"workspace/symbol","params":{"query":"Foo"}}'
+lsp_inlay='{"jsonrpc":"2.0","id":23,"method":"textDocument/inlayHint","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"}}}'
+lsp_codeact='{"jsonrpc":"2.0","id":24,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"range":{"start":{"line":11,"character":0},"end":{"line":11,"character":30}},"context":{"diagnostics":[]}}}'
+lsp_callhPrep='{"jsonrpc":"2.0","id":25,"method":"textDocument/prepareCallHierarchy","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18}}}'
+
+lsp_navx_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$lsp_prepareRename"; lsp_frame "$lsp_rename"; lsp_frame "$lsp_wssym"; lsp_frame "$lsp_inlay"; lsp_frame "$lsp_codeact"; lsp_frame "$lsp_callhPrep"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# prepareRename should return a placeholder = the current name.
+run_lsp_check "lsp: prepRename placeholder" '"placeholder":"Greet"'             "$lsp_navx_seq"
+# rename should emit a WorkspaceEdit with `changes` containing the file URI.
+run_lsp_check "lsp: rename has changes"     '"id":21,"result":{"changes":{'      "$lsp_navx_seq"
+run_lsp_check "lsp: rename newText SayHi"   '"newText":"SayHi"'                 "$lsp_navx_seq"
+# workspace/symbol("Foo") — at minimum the Foo class must show up.
+run_lsp_check "lsp: ws-symbol finds Foo"    '"id":22,"result":[{"name":"Foo","kind":5'  "$lsp_navx_seq"
+# inlayHint — `let f = new Foo()` has no annotation, so a hint `: Foo` is inserted.
+run_lsp_check "lsp: inlayHint Foo label"    '"label":": Foo"'                   "$lsp_navx_seq"
+# codeAction on the let-line — should offer "add explicit type annotation".
+run_lsp_check "lsp: codeAction title"       '"title":"Add type annotation: Foo"' "$lsp_navx_seq"
+# prepareCallHierarchy on Greet decl — at least one CallHierarchyItem.
+run_lsp_check "lsp: callh prepare item"     '"id":25,"result":[{"name":"Greet"'  "$lsp_navx_seq"
+
+# callHierarchy/incomingCalls — pass back the item from prepare so
+# the server can resolve the method and walk for callers. Main is
+# the sole caller of Greet.
+lsp_callhIn='{"jsonrpc":"2.0","id":26,"method":"callHierarchy/incomingCalls","params":{"item":{"name":"Greet","kind":6,"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":5,"character":18},"end":{"line":5,"character":23}},"selectionRange":{"start":{"line":5,"character":18},"end":{"line":5,"character":23}},"data":{"name":"Greet","uri":"file:///tmp/lsp_nav.am","line":5,"character":18}}}}'
+lsp_callhOut='{"jsonrpc":"2.0","id":27,"method":"callHierarchy/outgoingCalls","params":{"item":{"name":"Main","kind":6,"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":10,"character":24},"end":{"line":10,"character":28}},"selectionRange":{"start":{"line":10,"character":24},"end":{"line":10,"character":28}},"data":{"name":"Main","uri":"file:///tmp/lsp_nav.am","line":10,"character":24}}}}'
+
+lsp_callh_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$lsp_callhIn"; lsp_frame "$lsp_callhOut"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+run_lsp_check "lsp: callh incoming Main"    '"name":"Main"'           "$lsp_callh_seq"
+run_lsp_check "lsp: callh outgoing Greet"   '"name":"Greet"'          "$lsp_callh_seq"
+
 # ── amc migrate ────────────────────────────────────────
 echo ""
 echo "── amc migrate ─────────────────────────"
