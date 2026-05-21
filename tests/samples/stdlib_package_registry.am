@@ -445,7 +445,7 @@ public class Program {
             Console.WriteLine("[FAIL] multiclass: all class names")
         }
 
-        if (mc.FuncNames.Count() == 4) {
+        if (mc.FuncNames.Count() == 5) {
             Console.WriteLine("[PASS] multiclass: func count")
         } else {
             Console.WriteLine("[FAIL] multiclass: func count got " + String_FromInt(mc.FuncNames.Count()))
@@ -455,6 +455,31 @@ public class Program {
             Console.WriteLine("[PASS] multiclass: namespace")
         } else {
             Console.WriteLine("[FAIL] multiclass: namespace got '" + mc.Ns + "'")
+        }
+
+        // FuncRetsRaw parallel array — empty string when the manifest
+        // omits `returns_generic`, non-empty AM-level shape when
+        // declared. FakeC_Query is the only entry with a raw shape.
+        if (mc.FuncRetsRaw.Count() == mc.FuncRets.Count()) {
+            Console.WriteLine("[PASS] multiclass: FuncRetsRaw parallel")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: FuncRetsRaw parallel got " + String_FromInt(mc.FuncRetsRaw.Count()))
+        }
+
+        // FakeC_Query is the 5th function (index 4).
+        let queryRaw = mc.FuncRetsRaw.Get(4)
+        if (queryRaw == "List<List<string>>") {
+            Console.WriteLine("[PASS] multiclass: returns_generic parsed")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: returns_generic got '" + queryRaw + "'")
+        }
+
+        // Earlier entries (no returns_generic in manifest) should be
+        // empty strings — verifies the parallel-array invariant.
+        if (mc.FuncRetsRaw.Get(0) == "") {
+            Console.WriteLine("[PASS] multiclass: missing returns_generic empty")
+        } else {
+            Console.WriteLine("[FAIL] multiclass: missing returns_generic got '" + mc.FuncRetsRaw.Get(0) + "'")
         }
     }
 }

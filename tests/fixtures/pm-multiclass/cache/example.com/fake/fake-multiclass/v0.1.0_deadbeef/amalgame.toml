@@ -20,3 +20,7 @@ FakeA_New   = { returns = "AmalgameFakeA*" }
 FakeA_Close = { returns = "void" }
 FakeB_New   = { returns = "AmalgameFakeB*" }
 FakeC_Run   = { returns = "code_bool" }
+# Optional `returns_generic` field — AM-level generic shape used by
+# cgen to propagate inner types through chained `.Get(i).Get(j)`
+# calls. Falls back to the void-receiver workaround when absent.
+FakeC_Query = { returns = "AmalgameList*", returns_generic = "List<List<string>>" }

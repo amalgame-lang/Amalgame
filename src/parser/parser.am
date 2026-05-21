@@ -600,7 +600,11 @@ public class Parser {
 
     private AstNode ParseMethod(string retType, bool isPublic, bool isStatic, int line, int col) {
         let nameTok = this.ExpectIdent()
-        let method = Ast.Method(nameTok.Value, retType, line, col)
+        // Position the METHOD_DECL on the method name itself so LSP
+        // navigation (definition/references at the click on the name)
+        // matches via NodeCovers. `line`/`col` came in pointing at the
+        // return-type token, which is wrong for cursor-targeting.
+        let method = Ast.Method(nameTok.Value, retType, nameTok.Line, nameTok.Column)
         method.Flag  = isPublic
         method.Flag2 = isStatic
         // Decorators stashed by ParseMember/ParseDecoratorList — store on Str2.
@@ -1910,7 +1914,8 @@ public class Parser {
     }
 
     private AstNode ParseNew() {
-        let tok = this.Advance()
+        this.Advance()                  // consume 'new'
+        let nameTok = this.Current()    // first token of the class name
         let typeName = this.ParseQualifiedName()
         // Capture the type-argument list (e.g. `<int>`) so the codegen can
         // remember the element type of `new List<int>()` and lower
@@ -1946,7 +1951,7 @@ public class Parser {
                 }
             }
         }
-        let node = Ast.NewExpr(typeName, tok.Line, tok.Column)
+        let node = Ast.NewExpr(typeName, nameTok.Line, nameTok.Column)
         if (String_Length(generic) > 0) { node.Str2 = generic }
         if (this.CheckValue("(")) {
             this.Advance()

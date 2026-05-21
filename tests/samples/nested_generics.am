@@ -24,6 +24,32 @@ namespace Demo
 // locals (`let rows = PostgreSQL.QueryAll()`) read the raw shape
 // from `MethodRetRawGet` which is already populated by
 // `ExternalMethodSig` during Pass 2 of facade registration.
+//
+// v0.8.40 extension: the consumer-side lookup at the `let xs =
+// recv.M(...)` site now tries three keys before falling back to
+// `void*` erasure: (1) bare receiver name (in-bundle static call),
+// (2) ExternalClassMangled(name) (external static call), (3)
+// LocalTypeGet(name) → bare C type (instance call on a typed
+// local). Plus a last-chance `.Get(...)` peel from the receiver's
+// known raw shape — so an intermediate local
+// (`let row0 = rows.Get(0)`) stays properly typed without an
+// explicit annotation.
+
+class DataStore {
+    public DataStore() {}
+
+    // Instance method returning nested generics — exercises the
+    // LocalTypeGet → bareT → MethodRetRawGet path at the consumer's
+    // `let rows = store.QueryAll()` declaration site.
+    public List<List<string>> QueryAll() {
+        let out: List<List<string>> = new List<List<string>>()
+        let r0: List<string> = new List<string>()
+        r0.Add("alice")
+        r0.Add("30")
+        out.Add(r0)
+        return out
+    }
+}
 
 public class Program {
     public static void Main() {
@@ -65,6 +91,20 @@ public class Program {
             Console.WriteLine("[PASS] List<List<List<int>>> cube[0][0][0]=" + String_FromInt(v))
         } else {
             Console.WriteLine("[FAIL] v=" + String_FromInt(v))
+        }
+
+        // Instance method returning nested generics — no explicit
+        // annotation on the consumer's locals. Pre-fix the inner
+        // Get erased to `void*` because the consumer-side lookup
+        // didn't walk LocalTypeGet → bareT for instance receivers.
+        let store = new DataStore()
+        let rs = store.QueryAll()
+        let r0 = rs.Get(0)
+        let name = r0.Get(0)
+        if (name == "alice") {
+            Console.WriteLine("[PASS] instance call nested rs[0][0]=" + name)
+        } else {
+            Console.WriteLine("[FAIL] instance call nested name=" + name)
         }
     }
 }
