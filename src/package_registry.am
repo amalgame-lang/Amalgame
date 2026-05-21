@@ -100,6 +100,14 @@ public class LoadedPackage {
     public  PkgDir:      string
     public  FuncNames:   List<string>       // ["Open", "Close", ...]
     public  FuncRets:    List<string>       // ["AmalgameRedis*", "void", ...]
+    // Optional Amalgame-level generic shape per function, parallel
+    // to FuncRets. When non-empty, cgen propagates this through
+    // MethodRetRaw so chained `.Get(i).Get(j)` peels the right
+    // inner type instead of erasing to `void*`. Read from the
+    // manifest's `[stdlib.functions].<name>.returns_generic` key.
+    // Example: `QueryAll = { returns = "AmalgameList*",
+    //                       returns_generic = "List<List<string>>" }`
+    public  FuncRetsRaw: List<string>       // ["List<List<string>>", "", ...]
     // Vendored .c / .cpp sources the package contributes to the
     // user binary at link time. Read from the manifest's optional
     // top-level [stdlib].sources array; absolute paths (resolved
@@ -147,8 +155,9 @@ public class LoadedPackage {
         this.Ns         = ""
         this.Tag        = ""
         this.PkgDir     = ""
-        this.FuncNames  = new List<string>()
-        this.FuncRets   = new List<string>()
+        this.FuncNames    = new List<string>()
+        this.FuncRets     = new List<string>()
+        this.FuncRetsRaw  = new List<string>()
         this.Sources    = new List<string>()
         this.CFlags     = ""
         this.CxxFlags   = ""
@@ -349,6 +358,13 @@ public class PackageRegistry {
                     if (String_Length(retStr) == 0) { continue }
                     lp.FuncNames.Add(fName)
                     lp.FuncRets.Add(retStr)
+                    // Optional Amalgame-level generic shape (e.g.
+                    // "List<List<string>>"). When absent, push an
+                    // empty string so FuncRetsRaw stays index-parallel
+                    // to FuncRets.
+                    let fRetGen: TomlValue = fDef.Get("returns_generic")
+                    let retGenStr: string = fRetGen.AsString()
+                    lp.FuncRetsRaw.Add(retGenStr)
                 }
             }
             reg.Packages.Add(lp)

@@ -711,6 +711,7 @@ run_test "lambda_infer: explicit override"  "$SAMPLES/lambda_inference_ctor.am" 
 run_test "nested_gen: List<List<string>>"           "$SAMPLES/nested_generics.am"  "[PASS] List<List<string>> rows[0][0]=alpha"
 run_test "nested_gen: List<List<int>>"              "$SAMPLES/nested_generics.am"  "[PASS] List<List<int>> m[0][0]=42"
 run_test "nested_gen: List<List<List<int>>>"        "$SAMPLES/nested_generics.am"  "[PASS] List<List<List<int>>> cube[0][0][0]=7"
+run_test "nested_gen: instance call infer"          "$SAMPLES/nested_generics.am"  "[PASS] instance call nested rs[0][0]=alice"
 
 # Spread operator in list literals (v0.8.36+). `[...a, ...b, c]`
 # splices each spread operand's elements into the fresh list at
