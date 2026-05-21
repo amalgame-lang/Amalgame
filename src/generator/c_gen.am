@@ -1589,6 +1589,32 @@ public class CGen {
         if (parenIdx > 0) {
             let callee = String_Substring(expr, 0, parenIdx)
             let rest   = String_Substring(expr, parenIdx, String_Length(expr) - parenIdx)
+            // Instance dispatch: `obj.method(...)` where obj is a
+            // typed local pointer in scope (e.g. `let app = this`
+            // captured by a lambda). The naive dot-replace below
+            // would produce `app_method(...)` — wrong. Look up obj's
+            // C type and emit `<BareT>_method(obj, ...args)`.
+            let dotIn = String_IndexOf(callee, ".")
+            if (dotIn > 0 && String_IndexOf(String_Substring(callee, dotIn + 1, String_Length(callee) - dotIn - 1), ".") == -1) {
+                let objName = String_Substring(callee, 0, dotIn)
+                let mName   = String_Substring(callee, dotIn + 1, String_Length(callee) - dotIn - 1)
+                let objType = this.LocalTypeGet(objName)
+                if (String_Length(objType) > 0 && String_Contains(objType, "*")) {
+                    let bareT = String_Replace(objType, "*", "")
+                    let inside = String_Substring(rest, 1, String_Length(rest) - 2)
+                    var iCall: string = ""
+                    if (String_Length(inside) == 0) {
+                        iCall = bareT + "_" + mName + "(" + objName + ")"
+                    } else {
+                        iCall = bareT + "_" + mName + "(" + objName + ", " + inside + ")"
+                    }
+                    let iRetT = this.MethodRetGet(bareT, mName)
+                    if (String_Length(iRetT) > 0) {
+                        return this.WrapForInterp(iCall, iRetT)
+                    }
+                    return "(" + iCall + " ? " + iCall + " : \"\")"
+                }
+            }
             let cCallee = String_Replace(callee, ".", "_")
             let cCall  = cCallee + rest
             let retT   = this.BuiltinCallReturnType(cCallee)
