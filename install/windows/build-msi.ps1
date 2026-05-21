@@ -848,7 +848,10 @@ Do
     WScript.Sleep 500
 Loop
 Set si = db.SummaryInformation(200)
-si.Property(1)  = "1252"
+' PIDs 1, 14, 15 are INTEGER per MSI SDK — pass them as Long, not String,
+' or the COM dispatch returns "Msi API Error: Property,Pid" (type mismatch
+' on the Variant before the value even reaches the Installer engine).
+si.Property(1)  = CLng(1252)
 si.Property(2)  = "$(& $esc "$ProductName Installer")"
 si.Property(3)  = "$(& $esc "$ProductName $Version")"
 si.Property(4)  = "$(& $esc $ManufacturerName)"
@@ -856,8 +859,8 @@ si.Property(5)  = "amalgame;compiler;language"
 si.Property(6)  = "Amalgame language toolchain"
 si.Property(7)  = "x64;1033"
 si.Property(9)  = "$rev"
-si.Property(14) = 200
-si.Property(15) = 2
+si.Property(14) = CLng(200)
+si.Property(15) = CLng(2)
 si.Persist
 db.Commit
 WScript.Echo "[vbs] SummaryInformation written (attempts=" & attempt & ")"
