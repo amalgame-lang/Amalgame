@@ -1,0 +1,52 @@
+// Regression: string interpolation inside a lambda body must trigger
+// capture analysis for identifiers referenced inside `{…}` segments.
+//
+// Pre-fix (≤ v0.8.39), the parser kept interpolated strings as a raw
+// LITERAL_STRING and CGen lowered them via InterpExprToC at code-emit
+// time. The resolver never walked the embedded expressions, so any
+// captured local referenced *only* through `{…}` inside a lambda body
+// silently dropped out of the lambda's env struct, producing
+// undeclared-identifier errors or wrong static-mangle dispatch.
+//
+// Three patterns covered here:
+//   1. bare local captured via `{var}` only
+//   2. `let app = this` + member method call via `{app.Method()}`
+//   3. method-call args (`{x.M(y)}` where y is also a captured local)
+
+class Greeter {
+    public Name: string
+
+    public Greeter() {
+        this.Name = "ada"
+    }
+
+    public string Hello() {
+        return "hello " + this.Name
+    }
+
+    // Instance method binding `let app = this` and capturing it
+    // inside a lambda that uses it only through string interpolation.
+    public Closure<int, string> Greet() {
+        let app = this
+        return n => "say={app.Hello()} n={n}"
+    }
+}
+
+class Program {
+    public static void Main() {
+        // Pattern 1: bare local captured through {…} only.
+        let greeting = "hi"
+        let f1 = n => "g={greeting} n={n}"
+        Console.WriteLine(f1(7))
+
+        // Pattern 2: `let app = this` + member method call.
+        let g = new Greeter()
+        let f2 = g.Greet()
+        Console.WriteLine(f2(3))
+
+        // Pattern 3: method-call arg captured.
+        let prefix = "x="
+        let f3 = n => "{prefix}{n}"
+        Console.WriteLine(f3(42))
+    }
+}

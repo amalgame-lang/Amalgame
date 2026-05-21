@@ -664,6 +664,62 @@ public class FullResolver {
         lam.Args.Add(id)
     }
 
+    // Idempotent capture attempt by name. Used by the IDENTIFIER
+    // branch of ResolveExpr and by the string-interpolation scanner
+    // (CaptureIdentsInInterpExpr) which needs to trigger capture on
+    // identifiers embedded in `"{…}"` segments that the resolver
+    // wouldn't otherwise walk (the parser keeps the interpolation
+    // raw and the cgen lowers it via InterpExprToC later).
+    private void TryCaptureLocalByName(string name, int line, int col) {
+        if (this.LambdaInProgress == null) { return }
+        let idx = this.IndexOfLocal(name)
+        if (idx == -1) { return }
+        if (idx >= this.LambdaBoundary) { return }
+        var typeName = this.LocalTypes.Get(idx)
+        if (String_Length(typeName) == 0 || typeName == "?") {
+            typeName = "int"
+        }
+        this.AddCapture(this.LambdaInProgress, name, typeName, line, col)
+    }
+
+    // Walk the inside of a `{…}` interpolation segment and trigger
+    // capture analysis on every identifier-shaped token. TryCapture
+    // is a no-op for non-locals so spurious tokens (field names,
+    // method names, keywords) are safe.
+    private void CaptureIdentsInInterpExpr(string inner, int line, int col) {
+        let n          = String_Length(inner)
+        let identStart = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+        let identCont  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+        var i = 0
+        while (i < n) {
+            let ch = String_Substring(inner, i, 1)
+            if (!String_Contains(identStart, ch)) {
+                i = i + 1
+                continue
+            }
+            var j = i + 1
+            while (j < n) {
+                let cj = String_Substring(inner, j, 1)
+                if (!String_Contains(identCont, cj)) { break }
+                j = j + 1
+            }
+            // Only attempt capture on the first token of a member chain.
+            // A leading `.` before our position means we're at a member
+            // access (`x.Field`) — skip it; only the receiver `x`
+            // matters for capture, and we've already scanned it.
+            var skip = false
+            if (i > 0) {
+                let prev = String_Substring(inner, i - 1, 1)
+                if (prev == ".") { skip = true }
+            }
+            if (!skip) {
+                let name = String_Substring(inner, i, j - i)
+                this.TryCaptureLocalByName(name, line, col)
+            }
+            i = j
+        }
+    }
+
     // ── Error reporting ───────────────────────────────
 
     private void Error(string msg, AstNode node) {
@@ -1274,16 +1330,7 @@ public class FullResolver {
             // to "int" when the local was declared without an
             // annotation and the resolver doesn't have a richer type
             // — matches v1 closures' (i64) -> i64 boxing convention.
-            if (this.LambdaInProgress != null) {
-                let idx = this.IndexOfLocal(expr.Name)
-                if (idx != -1 && idx < this.LambdaBoundary) {
-                    var typeName = this.LocalTypes.Get(idx)
-                    if (String_Length(typeName) == 0 || typeName == "?") {
-                        typeName = "int"
-                    }
-                    this.AddCapture(this.LambdaInProgress, expr.Name, typeName, expr.Line, expr.Column)
-                }
-            }
+            this.TryCaptureLocalByName(expr.Name, expr.Line, expr.Column)
             return
         }
         if (k == NodeKind.BINARY) {
@@ -1404,6 +1451,38 @@ public class FullResolver {
             this.PopScope()
             this.LambdaInProgress = prevLam
             this.LambdaBoundary   = prevBoundary
+            return
+        }
+        if (k == NodeKind.LITERAL_STRING) {
+            // String interpolations `"…{expr}…"` are kept as a raw
+            // LITERAL_STRING by the parser and lowered later by
+            // CGen's EmitInterpolatedString. The resolver therefore
+            // never walks the embedded expressions through the
+            // normal IDENTIFIER branch — which breaks capture
+            // analysis when a captured local is referenced *only*
+            // through `{…}` inside a lambda body. Scan each `{…}`
+            // segment for identifier-shaped tokens and trigger the
+            // capture-attempt helper on each.
+            if (this.LambdaInProgress == null) { return }
+            let raw = expr.Str
+            let rn  = String_Length(raw)
+            var ri  = 0
+            while (ri < rn) {
+                let rch = String_Substring(raw, ri, 1)
+                if (rch != "{") {
+                    ri = ri + 1
+                    continue
+                }
+                let rest  = String_Substring(raw, ri + 1, rn - ri - 1)
+                let close = String_IndexOf(rest, "}")
+                if (close <= 0) {
+                    ri = ri + 1
+                    continue
+                }
+                let inner = String_Substring(raw, ri + 1, close)
+                this.CaptureIdentsInInterpExpr(inner, expr.Line, expr.Column)
+                ri = ri + 1 + close + 1
+            }
             return
         }
         // Literals, this, null — always valid

@@ -466,6 +466,12 @@ run_test "closure: no cap"   "$SAMPLES/closures_capture.am"  "triple(7) = 21"
 run_test "closure: 1 cap"    "$SAMPLES/closures_capture.am"  "addN(5) = 105"
 run_test "closure: 2 caps"   "$SAMPLES/closures_capture.am"  "combine(10) = 25"
 run_test "closure: snap val" "$SAMPLES/closures_capture.am"  "snap(0) = 1"
+# string interpolation must trigger capture analysis inside lambda
+# bodies — pre-fix the resolver skipped {…} embedded exprs and the
+# cgen mangled `app.Method()` as static `app_Method()`.
+run_test "interp cap: bare"  "$SAMPLES/interp_capture_in_lambda.am" "g=hi n=7"
+run_test "interp cap: this"  "$SAMPLES/interp_capture_in_lambda.am" "say=hello ada n=3"
+run_test "interp cap: pfx"   "$SAMPLES/interp_capture_in_lambda.am" "x=42"
 # v0.8.30 — first-class functions via `Closure` field type.
 run_test "FCF: arity-1 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-1 this.Field call"
 run_test "FCF: arity-2 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-2 this.Field call"
