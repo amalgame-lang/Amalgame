@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-21T22:31:43+02:00
-Git rev:  620cb0c2b58d28b9d209f8c2d93894fbc6a0c513
+Captured: 2026-05-21T22:40:19+02:00
+Git rev:  d0cff21b55f0cf21bb25f3188c8d7161bb0f3445
 Branch:   feature/interp-capture-in-lambda
 Tests:    (skipped) passed
 

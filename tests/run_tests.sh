@@ -973,6 +973,17 @@ lsp_pkg_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_pkg"; lsp_frame "$lsp_
 run_lsp_check "lsp: pkg-add suggestion"      '"command":"amc package add ui-'  "$lsp_pkg_seq"
 run_lsp_check "lsp: pkg-add for-quoted-sym"  "(for 'Window')"                  "$lsp_pkg_seq"
 
+# Import-line completion — when the cursor is on a line whose
+# trimmed prefix is `import `, surface bundled stdlib namespaces
+# (and any installed package namespaces from amalgame.lock).
+lsp_open_imp='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_imp.am","languageId":"amalgame","version":1,"text":"import Amalgame.\nclass Program {\n    public static void Main() {}\n}"}}}'
+lsp_imp_comp='{"jsonrpc":"2.0","id":40,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///tmp/lsp_imp.am"},"position":{"line":0,"character":16}}}'
+lsp_imp_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_imp"; lsp_frame "$lsp_imp_comp"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+run_lsp_check "lsp: import IO"          '"label":"Amalgame.IO","kind":9'                  "$lsp_imp_seq"
+run_lsp_check "lsp: import Net"         '"label":"Amalgame.Net","kind":9'                 "$lsp_imp_seq"
+run_lsp_check "lsp: import Formats.Json" '"label":"Amalgame.Formats.Json","kind":9'       "$lsp_imp_seq"
+run_lsp_check "lsp: import bundled tag"  '"detail":"bundled stdlib"'                      "$lsp_imp_seq"
+
 # ── amc migrate ────────────────────────────────────────
 echo ""
 echo "── amc migrate ─────────────────────────"
