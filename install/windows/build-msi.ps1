@@ -59,6 +59,41 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Verbose error dump — when something throws, print the full
+# stack trace + line number + invocation details so the GHA log
+# tells us where in build-msi.ps1 the failure happened. Without
+# this, PS's default error reporting at script-call boundaries
+# masks the internal line and we have to bisect blind.
+trap {
+    Write-Host ""
+    Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Red
+    Write-Host "build-msi.ps1 — TRAPPED ERROR" -ForegroundColor Red
+    Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Red
+    Write-Host "Message    : $($_.Exception.Message)"
+    Write-Host "Category   : $($_.CategoryInfo)"
+    Write-Host "Target     : $($_.TargetObject)"
+    Write-Host "FQEID      : $($_.FullyQualifiedErrorId)"
+    if ($_.InvocationInfo) {
+        Write-Host "Script     : $($_.InvocationInfo.ScriptName)"
+        Write-Host "Line #     : $($_.InvocationInfo.ScriptLineNumber)"
+        Write-Host "Position   : $($_.InvocationInfo.PositionMessage)"
+    }
+    Write-Host ""
+    Write-Host "── Script stack trace ──"
+    Write-Host $_.ScriptStackTrace
+    Write-Host ""
+    Write-Host "── PS call stack ──"
+    Get-PSCallStack | Format-Table -AutoSize | Out-String | Write-Host
+    Write-Host ""
+    Write-Host "── Inner exception chain ──"
+    $ex = $_.Exception
+    while ($ex) {
+        Write-Host "  $($ex.GetType().FullName): $($ex.Message)"
+        $ex = $ex.InnerException
+    }
+    exit 1
+}
+
 # ── Sanity checks ─────────────────────────────────────────────
 if (-not (Test-Path $StageDir)) {
     throw "StageDir not found: $StageDir"
@@ -314,7 +349,30 @@ $database = $installer.OpenDatabase($MsiPath, $msiOpenDatabaseModeCreate)
 # (CallType.Set / CallType.Let). Works on PS 5.1 AND PS 7,
 # bypasses the DLR-based COM adapter that's been throwing
 # DISP_E_TYPEMISMATCH / op_Addition / etc. on the GHA runner.
-Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
+# PS 7 on .NET 6+ may need "Microsoft.VisualBasic.Core" instead
+# of the legacy "Microsoft.VisualBasic" name. Try the .NET 6 name
+# first; fall back to the legacy name silently if not found. If
+# both fail, throw — CallByName is the only reliable COM IDispatch
+# late-binding path we know that works across PS 5.1 + PS 7.
+$vbLoaded = $false
+foreach ($asmName in @("Microsoft.VisualBasic.Core", "Microsoft.VisualBasic")) {
+    try {
+        Add-Type -AssemblyName $asmName -ErrorAction Stop
+        $vbLoaded = $true
+        Write-Host "  [dbg] loaded $asmName"
+        break
+    } catch {
+        Write-Host "  [dbg] $asmName not loadable: $($_.Exception.Message)"
+    }
+}
+if (-not $vbLoaded) {
+    throw "Neither Microsoft.VisualBasic.Core nor Microsoft.VisualBasic could be loaded."
+}
+# Verify the type is reachable. Throws TypeNotFound if Add-Type
+# silently failed.
+$null = [Microsoft.VisualBasic.Interaction]
+$null = [Microsoft.VisualBasic.CallType]::Method
+Write-Host "  [dbg] CallByName reachable"
 
 function Invoke-MSI {
     # Single entry point for every WindowsInstaller method call.
@@ -322,6 +380,7 @@ function Invoke-MSI {
     # which is the same path VBScript and classic VB used for 20+
     # years — battle-tested for IDispatch.
     param([object]$Target, [string]$Method, [object[]]$MethodArgs = @())
+    Write-Host "  [dbg] Invoke-MSI: $Method ($($MethodArgs.Count) args)"
     return [Microsoft.VisualBasic.Interaction]::CallByName(
         $Target,
         $Method,
@@ -374,6 +433,8 @@ function Exec-Sql {
 }
 
 Write-Host "  Creating MSI schema…"
+Write-Host "  [dbg] DB type: $($database.GetType().FullName)"
+Write-Host "  [dbg] Installer type: $($installer.GetType().FullName)"
 
 # ── Schema: CREATE TABLE … ────────────────────────────────────
 # Column types follow MSI conventions:
@@ -400,7 +461,14 @@ $schemas = @(
     "CREATE TABLE ``Icon`` (``Name`` CHAR(72) NOT NULL, ``Data`` OBJECT NOT NULL PRIMARY KEY ``Name``)",
     "CREATE TABLE ``CustomAction`` (``Action`` CHAR(72) NOT NULL, ``Type`` SHORT NOT NULL, ``Source`` CHAR(72), ``Target`` CHAR(255), ``ExtendedType`` LONG PRIMARY KEY ``Action``)"
 )
-foreach ($ddl in $schemas) { Exec-Sql $ddl }
+Write-Host "  [dbg] $($schemas.Count) tables to create"
+$schemaIdx = 0
+foreach ($ddl in $schemas) {
+    $schemaIdx += 1
+    $tableName = ([regex]::Match($ddl, "CREATE TABLE\s+``([^``]+)``").Groups[1].Value)
+    Write-Host "  [dbg] schema $schemaIdx/$($schemas.Count): $tableName"
+    Exec-Sql $ddl
+}
 
 # ── Property table ────────────────────────────────────────────
 $properties = @{
