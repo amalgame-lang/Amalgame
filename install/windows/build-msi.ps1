@@ -765,10 +765,21 @@ Invoke-MSI $streamView "Close" @()
 $siNeedsVbScript = $true
 
 # ── Commit + release COM objects ─────────────────────────────
+# We must fully release the COM handles BEFORE spawning cscript,
+# otherwise the OLE structured-storage layer still holds the .msi
+# file open and cscript's OpenDatabase fails with "Msi API Error".
+# Releasing $database alone is not enough — $installer keeps an
+# internal session that pins the file. WaitForPendingFinalizers
+# forces the RCW finalizer to actually release the native handle.
 Invoke-MSI $database "Commit" @()
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($database)
 $database = $null
+[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
+$installer = $null
 [System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+[System.GC]::Collect()
+Start-Sleep -Milliseconds 200
 
 # Set SummaryInformation via spawned cscript.exe. cscript ships
 # on every Windows since the late 90s; VBScript's COM dispatch
@@ -809,10 +820,8 @@ WScript.Echo "[vbs] SummaryInformation written"
     }
     Remove-Item -Path $vbsPath -ErrorAction SilentlyContinue
 }
-# $database already released above (before msiinfo step). Just
-# release the installer COM object here.
-[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
-[System.GC]::Collect()
+# $database and $installer were both released before the cscript
+# step (the file-handle dance).
 
 # Tidy workdir (keep the .cab next to the .msi for debugging).
 Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
