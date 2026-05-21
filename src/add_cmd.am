@@ -375,6 +375,66 @@ public class AddCommand {
             }
         }
 
+        // ── 4d. Transitive deps (amc v0.8.39+) ───────────
+        // If the manifest declares a top-level [dependencies] table,
+        // recursively install each entry before wiring this package
+        // into the consumer's amalgame.toml. Keeps the lock build
+        // (step 6) ordering stable — deps land first, this package
+        // last. amc walks one package at a time so a transitive
+        // failure surfaces with the failing package's name, not as
+        // a downstream link error.
+        //
+        // Schema (compatible with the consumer-level [dependencies]
+        // form amc uses to track direct user deps):
+        //
+        //   [dependencies]
+        //   amalgame-crypto = ">=0.3.0"      # short form
+        //
+        //   [dependencies.crypto]            # long form
+        //   git = "github.com/amalgame-lang/amalgame-crypto"
+        //   tag = "v0.3.0"
+        //
+        // The short form is preferred for transitive deps — it lets
+        // amc auto-resolve through the packages index. The long form
+        // is supported as a fallback for non-indexed git URLs.
+        let depsTable: TomlValue = manifest.Get("dependencies")
+        if (depsTable.IsTable()) {
+            let depKeys: List<string> = depsTable.Keys()
+            let ndep: int = depKeys.Count()
+            for di in 0..ndep {
+                let depKey: string = depKeys.Get(di)
+                let depVal: TomlValue = depsTable.Get(depKey)
+                var transSpec: string = ""
+                if (depVal.IsString()) {
+                    // Short form: `amalgame-crypto = ">=0.3.0"`.
+                    // Resolve the package name to its shortname for
+                    // the index — strip the conventional `amalgame-`
+                    // prefix when present.
+                    var depShort: string = depKey
+                    if (String_StartsWith(depShort, "amalgame-")) {
+                        depShort = String_Substring(depShort, 9, String_Length(depShort) - 9)
+                    }
+                    transSpec = depShort
+                } else if (depVal.IsTable()) {
+                    let depGit: string = depVal.Get("git").AsString()
+                    let depTag: string = depVal.Get("tag").AsString()
+                    if (String_Length(depGit) > 0 && String_Length(depTag) > 0) {
+                        transSpec = depGit + "@" + depTag
+                    }
+                }
+                if (String_Length(transSpec) == 0) {
+                    Console.WriteError("[" + mfNameStr + "]: unrecognised dependency entry: " + depKey)
+                    return 1
+                }
+                Console.WriteLine("── " + mfNameStr + " depends on " + depKey + " — auto-installing ──")
+                let trc: int = AddCommand.RunOne(transSpec, noPrecompile)
+                if (trc != 0) {
+                    Console.WriteError("transitive dependency " + depKey + " failed (" + transSpec + ")")
+                    return trc
+                }
+            }
+        }
+
         // ── 5. Update project's amalgame.toml ─────────────
         if (!AddCommand.UpdateProjectManifest(depName, url, tag)) {
             Console.WriteError("could not update amalgame.toml")
