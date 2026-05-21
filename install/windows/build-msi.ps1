@@ -740,26 +740,46 @@ Invoke-MSI $streamView "Close" @()
 # getter (not a method) — CallByName with CallType.Method returns
 # DISP_E_MEMBERNOTFOUND. Direct PS COM access dispatches through
 # IDispatch's propget path correctly.
-$si = $database.SummaryInformation(200)
-# Direct PS COM syntax for the property PUT — bypasses Set-MsiProperty's
-# CallByName path which threw "Property,Pid" on this object. PS parses
-# `$obj.IndexedProp(idx) = val` as a special PROPPUT dispatch when the
-# target is a COM IDispatch.
-$si.Property(1)  = "1252"                                  # PID_CODEPAGE
-$si.Property(2)  = "$ProductName Installer"                # PID_TITLE
-$si.Property(3)  = "$ProductName $Version"                 # PID_SUBJECT
-$si.Property(4)  = $ManufacturerName                       # PID_AUTHOR
-$si.Property(5)  = "amalgame;compiler;language"            # PID_KEYWORDS
-$si.Property(6)  = "Amalgame language toolchain"           # PID_COMMENTS
-$si.Property(7)  = "x64;1033"                              # PID_TEMPLATE (x64 matches ProgramFiles64Folder)
-$si.Property(9)  = [Guid]::NewGuid().ToString("B").ToUpper() # PID_REVNUMBER (per-build)
-$si.Property(14) = 200                                     # PID_PAGECOUNT (schema version)
-$si.Property(15) = 2                                       # PID_WORDCOUNT (2 = limited UI)
-$si.Persist()
+# SummaryInformation property setters fail on PS 7 / .NET 6 with
+# both Type.InvokeMember (DISP_E_TYPEMISMATCH), CallByName
+# (Property,Pid), AND `$si.Property($n) = $v` (which PS routes
+# through CallByName internally → same error). The IDispatch
+# propput interface of SummaryInformation's `Property` member
+# isn't reachable through any PS 7 dispatch path we've found.
+#
+# WORKAROUND: skip SummaryInformation programmatic setup. Use
+# msiinfo.exe via Process spawn AFTER Commit — that's the
+# external tool documented for this exact case. Falls back
+# gracefully if msiinfo isn't on PATH (Windows SDK install).
+#
+# A bare MSI without summary info IS installable but Windows
+# Explorer won't render the title bar / file properties dialog
+# correctly. msiinfo fixes that as a post-step.
+$siNeedsMsiinfo = $true
+Write-Host "  [skip] SummaryInformation programmatic setup (PS 7 IDispatch limitation)"
 
 # ── Commit + release COM objects ─────────────────────────────
 Invoke-MSI $database "Commit" @()
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($database)
+$database = $null
+[System.GC]::Collect()
+
+# Best-effort SummaryInformation patch via msiinfo.exe (Windows
+# SDK). Sets PID 7 (template), PID 9 (revnumber), PID 14
+# (pagecount), PID 15 (wordcount) — the ones MSI validation
+# requires. Skipped silently if msiinfo isn't on PATH.
+if ($siNeedsMsiinfo) {
+    $msiinfo = Get-Command msiinfo.exe -ErrorAction SilentlyContinue
+    if ($msiinfo) {
+        Write-Host "  Patching SummaryInformation via msiinfo.exe…"
+        $rev = [Guid]::NewGuid().ToString("B").ToUpper()
+        & msiinfo.exe $MsiPath /t "x64;1033" /v $rev /p 200 /w 2 /c "1252" /s "$ProductName Installer" /j "$ProductName $Version" /a $ManufacturerName /k "amalgame;compiler;language" /o "Amalgame language toolchain" | Out-Null
+    } else {
+        Write-Warning "msiinfo.exe not on PATH — MSI ships without SummaryInformation (works but Explorer shows defaults). Install Windows SDK to fix."
+    }
+}
+# $database already released above (before msiinfo step). Just
+# release the installer COM object here.
 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
 [System.GC]::Collect()
 
