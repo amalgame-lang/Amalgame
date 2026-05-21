@@ -99,6 +99,45 @@ For OSS code-signing options without buying a cert, see the discussion
 in `docs/release-signing.md` (TBA — SignPath / OSSign / Azure Trusted
 Signing).
 
+## v1.1 cold-read fixes (2026-05-21)
+
+Six bugs caught before first Windows run, fixed in the same PR:
+
+1. **`Record.StringData` / `IntegerData` setters** — `InvokeMember`
+   with `InvokeMethod` silently fails on indexed-property puts. Now
+   uses `BindingFlags.SetProperty` via a `Set-MsiProperty` shim. Same
+   fix applied to `SummaryInformation.Property`.
+2. **CustomAction Type 3122 → 1074** — dropped `msidbCustomActionTypeNoImpersonate`
+   (2048). The postinstall script writes to HKCU and `%USERPROFILE%`,
+   which only makes sense in the invoking user's context. Without
+   the fix it would have run as LocalSystem and missed the user's
+   VS Code / sample-project paths.
+3. **`PID_TEMPLATE` "Intel;1033" → "x64;1033"** — matches the
+   `ProgramFiles64Folder` install target. With "Intel" the MSI was
+   technically 32-bit and would have triggered file-system
+   redirection (silent install into `\Program Files (x86)\`).
+4. **Component.Attributes |= 256** (`msidbComponentAttributes64bit`)
+   on every file component — required for the x64 MSI to skip
+   redirection.
+5. **Trailing-backslash quoting** — `"[INSTALLLOCATION]"` after MSI
+   substitution ends with `\"`, which the C-runtime arg parser
+   treats as an escaped quote → unterminated string when passed to
+   `powershell.exe`. Mitigation: don't quote-wrap a property that
+   ends with `\`; let `postinstall.ps1` derive the install location
+   from its own `$PSCommandPath`.
+6. **Hardcoded `powershell.exe` path** — replaced the `[SystemFolder]`
+   placeholder with the literal `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`.
+   Deferred CustomActions only resolve `CustomActionData` /
+   `ProductCode` / `UserSID` at runtime; property placeholders in
+   Type-50 Source aren't guaranteed to work.
+
+If the first Windows test surfaces another bug, likely suspects:
+(a) CustomAction sequence position (3400 / 5500),
+(b) the cabinet stream embed (`_Streams` table — schema not declared
+explicitly, may need a `CREATE TABLE _Streams` if the engine doesn't
+auto-create it),
+(c) the `Environment` row's `=-*PATH` prefix combo.
+
 ## Known limitations (v1)
 
 1. **No upgrade detection.** Each `ProductCode` is unique per version
