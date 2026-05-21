@@ -111,41 +111,44 @@ $AbsIcon    = (Resolve-Path (Join-Path $ScriptRoot $IconPath   )).Path
 
 $OutAbs = Join-Path $ScriptRoot $OutputDir
 $null = New-Item -ItemType Directory -Path $OutAbs -Force
-$MsiPath = Join-Path $OutAbs "amalgame-$Version.msi"
+$MsiFinalPath = Join-Path $OutAbs "amalgame-$Version.msi"
+# Build into a uniquely-named file (timestamp + PID) so re-runs never
+# collide with a lingering lock on the previous .msi (held by
+# Defender real-time scan, shell preview/thumbnailer, or MsiServer).
+# At the end of the script we atomically move the staging file over
+# the final path, retrying if the target is still locked.
+$stamp = (Get-Date -Format "yyyyMMddHHmmss") + "-" + $PID
+$MsiPath = Join-Path $OutAbs "amalgame-$Version.staging-$stamp.msi"
 $CabPath = Join-Path $OutAbs "amalgame-$Version.cab"
 $WorkDir = Join-Path $OutAbs "work-$Version"
 $null = New-Item -ItemType Directory -Path $WorkDir -Force
 
-# Wipe stale outputs so re-runs don't double-stream files into the
-# existing cabinet (we use makecab fresh each time).
-# A previous run in the same PS host leaves COM RCWs that pin the
-# previous .msi until the GC finalizes them. Force a full GC + wait
-# for finalizers before trying to delete. Then retry to absorb any
-# shell preview / Defender scan lock contention.
+# Clean stale build artifacts. We only need to wipe the .cab here —
+# the .msi target is the staging path which is unique per run, so
+# there's no stale file to delete.
 [System.GC]::Collect()
 [System.GC]::WaitForPendingFinalizers()
 [System.GC]::Collect()
-
-foreach ($p in @($MsiPath, $CabPath)) {
-    if (-not (Test-Path $p)) { continue }
+if (Test-Path $CabPath) {
     $removed = $false
     for ($try = 1; $try -le 20; $try++) {
         try {
-            Remove-Item $p -Force -ErrorAction Stop
+            Remove-Item $CabPath -Force -ErrorAction Stop
             $removed = $true
             break
         } catch {
             if ($try -eq 20) { throw }
-            # Re-run GC on each retry — the previous run's RCWs may
-            # take more than one cycle to finalize through the COM
-            # apartment-thread message pump.
             [System.GC]::Collect()
             [System.GC]::WaitForPendingFinalizers()
             Start-Sleep -Milliseconds 500
         }
     }
-    if (-not $removed) { throw "Unable to delete stale output: $p" }
+    if (-not $removed) { throw "Unable to delete stale cabinet: $CabPath" }
 }
+# Best-effort cleanup of stale staging files from prior aborted runs
+# (same Version prefix). Quiet — if any are locked, just leave them.
+Get-ChildItem -Path $OutAbs -Filter "amalgame-$Version.staging-*.msi" -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
 
 Write-Host "── build-msi.ps1 ─────────────────────────────────"
 Write-Host "  Product   : $ProductName $Version"
@@ -873,8 +876,37 @@ WScript.Echo "[vbs] SummaryInformation written (attempts=" & attempt & ")"
 # Tidy workdir (keep the .cab next to the .msi for debugging).
 Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
 
+# Move the staging file into the final canonical location. The final
+# path may be locked by Defender / shell preview / a prior cscript;
+# retry with GC pressure. If we ultimately can't claim the final
+# path, leave the staging file in place and report it.
+$stagingPath = $MsiPath
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+$moved = $false
+for ($try = 1; $try -le 20; $try++) {
+    try {
+        if (Test-Path $MsiFinalPath) {
+            Remove-Item $MsiFinalPath -Force -ErrorAction Stop
+        }
+        Move-Item -Path $stagingPath -Destination $MsiFinalPath -Force -ErrorAction Stop
+        $moved = $true
+        break
+    } catch {
+        if ($try -eq 20) {
+            Write-Warning "Could not claim final path '$MsiFinalPath' — leaving staging file at '$stagingPath'"
+            $MsiFinalPath = $stagingPath
+            $moved = $true
+            break
+        }
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 Write-Host ""
-Write-Host "✓ MSI written: $MsiPath ($((Get-Item $MsiPath).Length) bytes)"
+Write-Host "✓ MSI written: $MsiFinalPath ($((Get-Item $MsiFinalPath).Length) bytes)"
 Write-Host ""
-Write-Host "Verify with:  msiexec /i `"$MsiPath`" /l*v install.log"
+Write-Host "Verify with:  msiexec /i `"$MsiFinalPath`" /l*v install.log"
 Write-Host ""
