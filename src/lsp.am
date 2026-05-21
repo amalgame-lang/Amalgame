@@ -804,7 +804,18 @@ public class LspServer {
             if (node.Left != null && node.Left.Kind == NodeKind.IDENTIFIER) {
                 let recv: AstNode? = LspServer.LookupLocalInMethod(enclosing, node.Left.Name)
                 if (recv != null) {
-                    let recvType: string = LspServer.BareTypeName(recv.Str)
+                    var recvType: string = LspServer.BareTypeName(recv.Str)
+                    // Fallback when the local was declared without an
+                    // explicit annotation (e.g. `let f = new Foo()`)
+                    // — inspect the VAR_DECL's RHS for a NEW_EXPR and
+                    // pull the class name from there. Covers the most
+                    // common pattern without requiring the user to
+                    // annotate every variable.
+                    if (String_Length(recvType) == 0 && recv.Left != null) {
+                        if (recv.Left.Kind == NodeKind.NEW_EXPR) {
+                            recvType = recv.Left.Name
+                        }
+                    }
                     if (String_Length(recvType) > 0) {
                         let nProgs2: int = resolver.Programs.Count()
                         for i in 0..nProgs2 {
@@ -1148,6 +1159,17 @@ public class LspServer {
         if (node == null) { return }
         let k = node.Kind
         if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) {
+            if (node.Name == target) {
+                out.Add(LspServer.LocationJson(filePath, node.Line, node.Column, target))
+            }
+        }
+        // Declaration sites: a click on the symbol *at* its declaration
+        // (or `includeDeclaration: true` on a usage-site click) expects
+        // the decl location in the result. Walk the four decl kinds
+        // whose Name we surface in DocumentSymbol so behaviour stays
+        // consistent — classes, enums, methods (incl. ctors), fields,
+        // and let/var locals.
+        if (k == NodeKind.CLASS_DECL || k == NodeKind.ENUM_DECL || k == NodeKind.METHOD_DECL || k == NodeKind.VAR_DECL) {
             if (node.Name == target) {
                 out.Add(LspServer.LocationJson(filePath, node.Line, node.Column, target))
             }
