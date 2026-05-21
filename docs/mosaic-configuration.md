@@ -97,28 +97,50 @@ consumes it. The legend:
 
 ### `[tls]` — TLS / HTTPS / ACME
 
-**Lib:** `Amalgame.Tls.TlsConfig` + `Amalgame.Tls.Acme`.
-**Status:** *partial* — `acme` mode works (certbot wrapper); `files` and `off` work; the extra knobs below are *planned*.
+**Lib:** `Amalgame.Tls.TlsConfig` + `Amalgame.Tls.Acme` (runtime), `Amalgame.Web.AcmeConfig` (Mosaic-side TOML wiring, v0.10.0).
+**Status:** *partial* — `acme` mode shipped via amalgame-tls v0.2.2 (certbot wrapper) + amalgame-web v0.10.0 (`AcmeConfig.FromMap`); `files` and `off` work. Multi-domain SAN provisioning still uses one domain at a time (single-call EnsureCert per host).
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
 | `mode` | `"off"\|"files"\|"acme"` | `"off"` | `MOSAIC_TLS_MODE` | Top-level switch. |
-| `acme_email` | `string` | — | `MOSAIC_TLS_ACME_EMAIL` | Required when mode = `"acme"`. |
-| `acme_cache` | `string` | `"./data/acme"` | `MOSAIC_TLS_ACME_CACHE` | Cert/account dir. |
-| `domains` | `[string]` | `[]` | `MOSAIC_TLS_DOMAINS` | SANs to provision. |
-| `acme_server` | `string` | LE production | `MOSAIC_TLS_ACME_SERVER` | ACME directory URL. *planned* — Buypass / ZeroSSL / LE-staging by passing the directory URL. |
-| `certbot_path` | `string` | `"certbot"` (looked up via `PATH`) | `MOSAIC_TLS_CERTBOT_PATH` | Absolute path override. *planned*. |
+| `acme_email` | `string` | — | `MOSAIC_TLS_ACME_EMAIL` | Required when mode = `"acme"`. *shipped v0.10.0* (maps to `AcmeConfig.Email`). |
+| `acme_cache` | `string` | `"./certs"` | `MOSAIC_TLS_ACME_CACHE` | Cert/account dir (maps to `AcmeConfig.CertDir`). *shipped v0.10.0*. |
+| `domains` | `[string]` | `[]` | `MOSAIC_TLS_DOMAINS` | SANs to provision. v0.10.0 supports the first entry only (single-domain EnsureCertEx); multi-SAN cert is a v0.11 follow-up. |
+| `acme_server` | `string` | LE production | `MOSAIC_TLS_ACME_SERVER` | ACME directory URL. *shipped v0.10.0* (maps to `AcmeConfig.AcmeServer`; env var honored by `Acme.EnsureCertEx`). Buypass / ZeroSSL / LE-staging by passing the directory URL. |
+| `certbot_path` | `string` | `"certbot"` (looked up via `PATH`) | `MOSAIC_TLS_CERTBOT_PATH` | Absolute path override. *shipped v0.10.0* (maps to `AcmeConfig.CertbotPath`). |
 | `cert_file` | `string` | — | `MOSAIC_TLS_CERT_FILE` | Required when mode = `"files"`. |
 | `key_file` | `string` | — | `MOSAIC_TLS_KEY_FILE` | Required when mode = `"files"`. |
-| `min_version` | `"1.2"\|"1.3"` | `"1.3"` | `MOSAIC_TLS_MIN_VERSION` | Maps to `TlsConfig.WithMinVersion`. |
-| `alpn` | `string` | `"h2,http/1.1"` | `MOSAIC_TLS_ALPN` | ALPN list (comma-separated). |
+| `min_version` | `"1.2"\|"1.3"` | `"1.3"` | `MOSAIC_TLS_MIN_VERSION` | Maps to `TlsConfig.WithMinVersion`. *planned* — direct via `Amalgame.Tls.TlsConfig` today. |
+| `alpn` | `string` | `"h2,http/1.1"` | `MOSAIC_TLS_ALPN` | ALPN list (comma-separated). *planned* — direct via `TlsConfig.WithAlpn` today. |
+
+**Pattern d'usage (mode = "acme"):**
+
+```amalgame
+import Amalgame.Web         // AcmeConfig
+import Amalgame.Tls         // Acme.EnsureCertEx
+import Amalgame.Net.Http    // Https.Serve
+
+let acme = AcmeConfig.FromMap(tomlAcmeSection)
+let err: string = acme.Validate()
+if (String_Length(err) > 0) { Console.WriteError(err); return }
+
+if (acme.Enabled) {
+    let rc: int = Acme.EnsureCertEx(
+        acme.Domain, acme.Email, acme.CertDir,
+        acme.AcmeServer, acme.CertbotPath)
+    if (rc != 0) { Console.WriteError("ACME failed"); return }
+}
+Https.Serve(443, acme.CertPath(), acme.KeyPath(), handler)
+```
+
+L'appel `Acme.EnsureCertEx` reste côté user pour qu'il puisse séquencer le provisionnement avec son propre startup (DB / migrations / etc.) avant de bind port 443. v0.3 d'amalgame-tls swap l'implem en ACME natif (RFC 8555) sans changer l'API d'`AcmeConfig`.
 
 ---
 
 ### `[sessions]` — server-side session storage
 
-**Lib:** `Amalgame.Web.MemorySessionStore` / `SignedCookieSessionStore` (signed + AEAD modes) / `RedisSessionStore`.
-**Status:** *fully shipped* — `memory` (v0.8.1, made thread-safe in v0.9.0) + `signed_cookie` strategy (signed v0.8.3, encrypted v0.8.5) + `redis` backend (v0.8.4) + `shm` (v0.9.0; alias of `memory` since `MemorySessionStore` is now thread-safe under `Http1.ServeMt`).
+**Lib:** `Amalgame.Web.MemorySessionStore` / `SignedCookieSessionStore` (today) — `RedisSessionStore` (planned, uses amalgame-database-nosql-redis) — `shm` backend planned (needs amalgame-threading).
+**Status:** *partial* — `memory` (v0.8.1) + `signed_cookie` strategy (v0.8.3) ship; `redis` and `shm` are *planned*.
 
 The schema has **two orthogonal dimensions**:
 
@@ -127,21 +149,17 @@ The schema has **two orthogonal dimensions**:
   - `encrypted_cookie` — data IS the cookie, signed (and eventually encrypted)
     with `amalgame-crypto`. No server storage; `backend` is ignored.
 - **`backend`** — *which* server-side store (when `strategy = "server_side"`):
-  - `memory` (default, v0.9.0 thread-safe) — in-process Map. Safe under `Http1.ServeMt` (multi-thread accept loop) thanks to a process-wide mutex around the Map. Single-process, lost on restart.
-  - `shm` (v0.9.0; alias of `memory`) — historically reserved for "shared between workers of the same node". Since `memory` is now thread-safe, `shm` is recognised as a synonym; both wire to `MemorySessionStore`.
-  - `redis` (v0.8.4) — multi-worker, multi-node; uses `amalgame-database-nosql-redis`
+  - `memory` (default) — in-process Map; single-worker only
+  - `shm` (planned) — shared memory between workers of the same node
+  - `redis` (planned) — multi-worker, multi-node
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
-| `strategy` | `"server_side"\|"encrypted_cookie"` | `"server_side"` | `MOSAIC_SESSIONS_STRATEGY` | When `encrypted_cookie`, the cookie value IS the encoded session payload (Flask/Rails pattern). Pair with `encrypted = "true"` to switch from HMAC-signed plain text (v0.8.3) to AES-256-GCM AEAD (v0.8.5, confidential + authenticated). |
-| `encrypted` | `bool` | `false` | `MOSAIC_SESSIONS_ENCRYPTED` | *shipped v0.8.5*. When `true`, payload is sealed with AES-256-GCM (key = SHA-256(secret), fresh 12-byte nonce per Encode). Wire format `<nonce_hex_24>.<ct_and_tag_hex>`. |
+| `strategy` | `"server_side"\|"encrypted_cookie"` | `"server_side"` | `MOSAIC_SESSIONS_STRATEGY` | When `encrypted_cookie`, the cookie value IS the signed session payload (Flask/Rails pattern). v0.1 is signed-only (visible but tamper-proof); AEAD encryption comes with amalgame-crypto v0.2. |
 | `secret` | `string` | — | `MOSAIC_SESSIONS_SECRET` | **Required** when `strategy = "encrypted_cookie"`. HMAC-SHA-256 key. Keep stable across deploys; rotation invalidates all signed cookies. |
 | `backend` | `"memory"\|"shm"\|"redis"` | `"memory"` | `MOSAIC_SESSIONS_BACKEND` | Ignored when `strategy = "encrypted_cookie"`. |
 | `dir` | `string` | `"./data/sessions"` | `MOSAIC_SESSIONS_DIR` | For future `file` backend (not in the 3-tier triplet). |
-| `host` | `string` | `"127.0.0.1"` | `MOSAIC_SESSIONS_HOST` | For `redis` backend. *shipped v0.8.4*. |
-| `port` | `int` | `6379` | `MOSAIC_SESSIONS_PORT` | For `redis` backend. *shipped v0.8.4*. |
-| `key_prefix` | `string` | `"mosaic:session"` | `MOSAIC_SESSIONS_KEY_PREFIX` | For `redis` backend — Redis key namespace. *shipped v0.8.4*. |
-| `url` | `string` | — | `MOSAIC_SESSIONS_URL` | Reserved for future `redis://host:port/db` parsing; for now use `host` + `port`. |
+| `url` | `string` | — | `MOSAIC_SESSIONS_URL` | For `redis` (`redis://host:port/db`). |
 | `max_age_sec` | `int` | `86400` | `MOSAIC_SESSIONS_MAX_AGE_SEC` | Per-session TTL (server-side stores). |
 | `cookie_name` | `string` | `"mosaic_session"` | `MOSAIC_SESSIONS_COOKIE_NAME` | *shipped v0.8.1* (memory) / *v0.8.3* (signed_cookie). |
 | `cookie_secure` | `bool` | `true` (when TLS on) | `MOSAIC_SESSIONS_COOKIE_SECURE` | *shipped v0.8.1/v0.8.3*. |
@@ -149,12 +167,11 @@ The schema has **two orthogonal dimensions**:
 | `cookie_path` | `string` | `"/"` | `MOSAIC_SESSIONS_COOKIE_PATH` | *shipped v0.8.1/v0.8.3*. |
 | `cookie_max_age` | `int` | `0` | `MOSAIC_SESSIONS_COOKIE_MAX_AGE` | Set-Cookie `Max-Age=`. 0 = session cookie. *shipped v0.8.1/v0.8.3*. |
 
-**SignedCookieSessionStore caveats:**
-- Signed-only mode (`encrypted = false`, default): data is visible to anyone who has the cookie (tamper-proof but NOT confidential). Don't store secrets / credentials.
-- Encrypted mode (`encrypted = true`, v0.8.5): confidential AND authenticated via AES-256-GCM. Cookie is ~2× larger (hex encoding + 16-byte tag + 12-byte nonce overhead). Safe for moderate-sensitivity payloads (user_id, email, role).
-- Keys + values must not contain `&`, `=`, or `.` (no escaping in v0.1 — JSON payload planned).
+**SignedCookieSessionStore caveats (v0.8.3, signed-only):**
+- Data is visible to anyone who has the cookie (tamper-proof but NOT confidential). Don't store secrets / credentials.
+- Keys + values must not contain `&`, `=`, or `.` (no escaping in v0.1 — JSON payload comes in v0.2).
 - 4 KB cookie limit ≈ ~30 typical key=value pairs.
-- Switch to `strategy = "server_side"` for very large session payloads or when revocation must be synchronous (cookie sessions can only be revoked by rotating the secret, which invalidates everyone).
+- For sensitive data: switch to `strategy = "server_side"` with `backend = "redis"`, or wait for the AEAD-encrypted variant (depends on amalgame-crypto v0.2).
 
 ---
 
@@ -239,7 +256,7 @@ Today the validation reads the configured header only; the
 ### `[security.rate_limit]` — per-IP / per-key throttling
 
 **Lib:** `Amalgame.Web.RateLimit.FromMap(...)` (v0.6.0).
-**Status:** *shipped* — fixed-window algorithm, `memory` (v0.6.0, thread-safe in v0.9.0) + `redis` (v0.8.4) backends, per-IP keying. Sliding-window planned for v2.
+**Status:** *shipped* — fixed-window algorithm, in-process memory store, per-IP keying. Sliding-window + Redis backend planned for v2.
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
@@ -250,11 +267,8 @@ Today the validation reads the configured header only; the
 | `window_sec` | `int` | `1` | `MOSAIC_SECURITY_RATE_LIMIT_WINDOW_SEC` | Window length in seconds. |
 | `key_strategy` | `"ip"` | `"ip"` | `MOSAIC_SECURITY_RATE_LIMIT_KEY_STRATEGY` | Only `"ip"` supported today (strips `:port` from `RemoteAddr`). `"user"`/`"custom"` *planned v2*. |
 | `trusted_proxies` | `[string]` | `[]` | `MOSAIC_SECURITY_RATE_LIMIT_TRUSTED_PROXIES` | CIDRs whose `X-Forwarded-For` is trusted. *planned v2*. |
-| `backend` | `"memory"\|"redis"` | `"memory"` | `MOSAIC_SECURITY_RATE_LIMIT_BACKEND` | *shipped v0.8.4* — `redis` uses INCR + EXPIRE per window (atomic on the counter, EXPIRE set-once via INCR==1). |
-| `redis_host` | `string` | `"127.0.0.1"` | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_HOST` | *shipped v0.8.4*. |
-| `redis_port` | `int` | `6379` | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_PORT` | *shipped v0.8.4*. |
-| `redis_key_prefix` | `string` | `"mosaic:rl"` | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_KEY_PREFIX` | *shipped v0.8.4*. |
-| `redis_url` | `string` | — | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_URL` | Reserved for future `redis://` URL parsing; use the three keys above for now. |
+| `backend` | `"memory"\|"redis"` | `"memory"` | `MOSAIC_SECURITY_RATE_LIMIT_BACKEND` | Redis *planned v2*. |
+| `redis_url` | `string` | — | `MOSAIC_SECURITY_RATE_LIMIT_REDIS_URL` | *planned v2*. |
 
 **Algorithm caveat:** the v1 fixed-window counter can briefly allow
 up to `2 × max_requests` across a window boundary (a burst that
