@@ -753,39 +753,28 @@ Invoke-MSI $streamView "Close" @()
 # Type.InvokeMember API, different adapter path.
 Add-Type -TypeDefinition @"
 using System;
-using System.Reflection;
 
 public static class MsiSummaryHelper {
+    // SummaryInformation.Property is decorated [id(DISPID_VALUE)]
+    // in the WindowsInstaller IDL — it's the DEFAULT property of
+    // the IDispatch. .NET reflection's InvokeMember can't reliably
+    // address default-property propputs by name; the GetIDsOfNames
+    // lookup returns errors like "Property,Pid".
+    //
+    // C# `dynamic` uses the DLR's COM binder, which DOES handle
+    // default properties correctly. `si.Property[pid] = val` on a
+    // dynamic COM ref → DISPATCH_PROPERTYPUT with the right
+    // DISPID + DISPID_PROPERTYPUT marker.
     public static void Apply(object db, int[] pids, object[] values, int maxProps) {
-        Type dbType = db.GetType();
-        // SummaryInformation(maxProps) returns the SI object — it's
-        // a property getter (not a method).
-        object si = dbType.InvokeMember(
-            "SummaryInformation",
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.GetProperty,
-            null, db, new object[] { maxProps });
-        Type siType = si.GetType();
+        dynamic database = db;
+        dynamic si = database.SummaryInformation(maxProps);
         for (int i = 0; i < pids.Length; i++) {
-            // PutDispProperty (8192) → DISPATCH_PROPERTYPUT — for
-            // VALUE puts on COM IDispatch. SetProperty (which is
-            // PutDispProperty | PutRefDispProperty) tries
-            // DISPATCH_PROPERTYPUTREF first and that flavour
-            // doesn't exist on SummaryInformation.Property — hence
-            // the cryptic "Property,Pid" error from every other
-            // dispatch path. PutDispProperty alone hits the right
-            // entry on the first try.
-            siType.InvokeMember(
-                "Property",
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.PutDispProperty,
-                null, si, new object[] { pids[i], values[i] });
+            si.Property[pids[i]] = values[i];
         }
-        siType.InvokeMember(
-            "Persist",
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.InvokeMethod,
-            null, si, null);
+        si.Persist();
     }
 }
-"@
+"@ -ReferencedAssemblies "Microsoft.CSharp", "System.Linq.Expressions"
 
 Write-Host "  Setting SummaryInformation via C# helper…"
 $siPids = [int[]]@(1, 2, 3, 4, 5, 6, 7, 9, 14, 15)
