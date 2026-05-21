@@ -587,16 +587,18 @@ if ($null -ne $amcComponent) {
 }
 
 # ── Icon table (binary stream) ───────────────────────────────
-# Streams (Icon.Data, _Streams.Data, cabinet) bypass the
-# parametrised-Execute path because their values come from disk
-# via SetStream (a record method, not a property). Use the
-# explicit View.Modify(Insert, record) pattern for these.
+# For parametrised INSERT with `?` placeholders, the correct
+# pattern is `View.Execute(record)` — the record's fields BIND
+# to the placeholders. `Execute(null) + Modify(Insert, record)`
+# is for UPDATE-style fetches, not bulk insert with params.
+# (Earlier attempts used Modify because of confusion with the
+# update workflow — but `Execute(null)` on a parametrised view
+# returns "Execute,Params" since the placeholders aren't filled.)
 $iconView = Invoke-MSI $database "OpenView" @("INSERT INTO ``Icon`` (``Name``, ``Data``) VALUES (?, ?)")
-Invoke-MSI $iconView "Execute" @($null)
 $iconRecord = Invoke-MSI $installer "CreateRecord" @(2)
 Set-MsiProperty $iconRecord "StringData" @(1, "icon.ico")
 Invoke-MSI     $iconRecord "SetStream"   @(2, $AbsIcon)
-Invoke-MSI $iconView "Modify" @($msiViewModifyInsert, $iconRecord)
+Invoke-MSI $iconView "Execute" @($iconRecord)
 Invoke-MSI $iconView "Close" @()
 
 # ── Shortcuts (Start Menu) ───────────────────────────────────
@@ -722,11 +724,12 @@ foreach ($a in $uiSeq) {
 # what we register here.
 Write-Host "  Embedding cabinet…"
 $streamView = Invoke-MSI $database "OpenView" @("INSERT INTO ``_Streams`` (``Name``, ``Data``) VALUES (?, ?)")
-Invoke-MSI $streamView "Execute" @($null)
 $streamRecord = Invoke-MSI $installer "CreateRecord" @(2)
 Set-MsiProperty $streamRecord "StringData" @(1, "amalgame.cab")
 Invoke-MSI      $streamRecord "SetStream"   @(2, $CabPath)
-Invoke-MSI $streamView "Modify" @($msiViewModifyInsert, $streamRecord)
+# Execute(record) binds the record's fields to the `?` placeholders
+# — same pattern as the Icon insert above.
+Invoke-MSI $streamView "Execute" @($streamRecord)
 Invoke-MSI $streamView "Close" @()
 
 # ── Summary information ──────────────────────────────────────
