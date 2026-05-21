@@ -963,6 +963,16 @@ lsp_callh_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$ls
 run_lsp_check "lsp: callh incoming Main"    '"name":"Main"'           "$lsp_callh_seq"
 run_lsp_check "lsp: callh outgoing Greet"   '"name":"Greet"'          "$lsp_callh_seq"
 
+# Phase D — package-install codeAction on Unknown symbol diagnostic.
+# Fixture: bare `Window` reference (matches ui-sdl + ui-web in the
+# curated index). The action's `command` field carries the
+# `amc package add <pkg>` line the editor surfaces; we never auto-run.
+lsp_open_pkg='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_pkg.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let w = Window\n    }\n}"}}}'
+lsp_pkg_ca='{"jsonrpc":"2.0","id":30,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///tmp/lsp_pkg.am"},"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":40}},"context":{"diagnostics":[]}}}'
+lsp_pkg_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_pkg"; lsp_frame "$lsp_pkg_ca"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+run_lsp_check "lsp: pkg-add suggestion"      '"command":"amc package add ui-'  "$lsp_pkg_seq"
+run_lsp_check "lsp: pkg-add for-quoted-sym"  "(for 'Window')"                  "$lsp_pkg_seq"
+
 # ── amc migrate ────────────────────────────────────────
 echo ""
 echo "── amc migrate ─────────────────────────"
