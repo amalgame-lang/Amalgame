@@ -304,45 +304,43 @@ $msiViewModifyInsert       = 1
 $msiViewModifyAssign       = 3
 
 $installer = New-Object -ComObject WindowsInstaller.Installer
-# Bootstrap call — same typed-BindingFlags pattern as the
-# Invoke-MSI helper below, so DISP_E_TYPEMISMATCH can't come from
-# this first dispatch either.
-$installerBf = [System.Reflection.BindingFlags]::InvokeMethod
-$database = $installer.GetType().InvokeMember(
-    "OpenDatabase", $installerBf, $null, $installer,
-    [object[]]@($MsiPath, $msiOpenDatabaseModeCreate)
-)
+# Bootstrap via PowerShell COM late-binding — same pattern as the
+# Invoke-MSI helper below.
+$database = $installer.OpenDatabase($MsiPath, $msiOpenDatabaseModeCreate)
 
 function Invoke-MSI {
-    # COM dispatch shim for METHOD calls (Execute / Close / Modify /
-    # OpenView / CreateRecord / Commit / Persist). Property setters
-    # (StringData / IntegerData / SetStream / Property on
-    # SummaryInformation) MUST go through `Set-MsiProperty` below —
-    # the WindowsInstaller dispatch rejects "InvokeMethod" on
-    # indexed property puts and the failure is silent.
-    #
-    # Param name `$MethodArgs` (NOT `$Args`) — `$args` is a PowerShell
-    # automatic variable, and even though `[object[]]$Args` binds
-    # positionally in most cases, some PS hosts coerce the binding
-    # in surprising ways (DISP_E_TYPEMISMATCH from InvokeMember
-    # is a typical symptom). Naming it differently sidesteps the
-    # whole question.
-    #
-    # BindingFlags passed as a typed enum value, not the string
-    # "InvokeMethod" — string→BindingFlags coercion via .NET's
-    # default binder isn't guaranteed across PS versions either.
+    # COM dispatch shim for METHOD calls. Switched from
+    # Type.InvokeMember(reflection) to PowerShell native
+    # dot-dispatch (`$Target.$Method(...)`) because the reflection
+    # path was throwing DISP_E_TYPEMISMATCH on the GHA windows-
+    # latest runner across multiple BindingFlags / type-marshalling
+    # combinations. PS native dispatch routes through IDispatch
+    # directly and works for any WindowsInstaller COM method.
     param([object]$Target, [string]$Method, [object[]]$MethodArgs = @())
-    $bf = [System.Reflection.BindingFlags]::InvokeMethod
-    return $Target.GetType().InvokeMember($Method, $bf, $null, $Target, [object[]]$MethodArgs)
+    $n = ($MethodArgs | Measure-Object).Count
+    switch ($n) {
+        0 { return $Target.$Method() }
+        1 { return $Target.$Method($MethodArgs[0]) }
+        2 { return $Target.$Method($MethodArgs[0], $MethodArgs[1]) }
+        3 { return $Target.$Method($MethodArgs[0], $MethodArgs[1], $MethodArgs[2]) }
+        4 { return $Target.$Method($MethodArgs[0], $MethodArgs[1], $MethodArgs[2], $MethodArgs[3]) }
+    }
+    throw "Invoke-MSI: $n args not supported (extend the switch)"
 }
 
 function Set-MsiProperty {
-    # Indexed-property setter via reflection. Used for
-    # Record.StringData(N), Record.IntegerData(N), and
-    # SummaryInformation.Property(PID) — all COM indexed properties.
+    # Indexed-property setter via PowerShell's native COM late-
+    # binding. `$Target.$Property($idx) = $val` doesn't parse
+    # directly in PS (parser sees it as method-call as lvalue), so
+    # we build the assignment in a scriptblock string and Invoke()
+    # it. PS's COM dispatch translates that to the IDispatch
+    # PROPPUTREF/PROPPUT entry — same path WindowsInstaller docs
+    # show in their VBScript samples for Record.StringData(N) = X.
     param([object]$Target, [string]$Property, [object[]]$IndexAndValue)
-    $bf = [System.Reflection.BindingFlags]::SetProperty
-    [void]$Target.GetType().InvokeMember($Property, $bf, $null, $Target, [object[]]$IndexAndValue)
+    $idx = $IndexAndValue[0]
+    $val = $IndexAndValue[1]
+    $expr = "`$args[0].$Property(`$args[1]) = `$args[2]"
+    & ([scriptblock]::Create($expr)) $Target $idx $val
 }
 
 function Insert-Row {
