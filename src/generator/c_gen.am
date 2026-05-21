@@ -1589,6 +1589,32 @@ public class CGen {
         if (parenIdx > 0) {
             let callee = String_Substring(expr, 0, parenIdx)
             let rest   = String_Substring(expr, parenIdx, String_Length(expr) - parenIdx)
+            // Instance dispatch: `obj.method(...)` where obj is a
+            // typed local pointer in scope (e.g. `let app = this`
+            // captured by a lambda). The naive dot-replace below
+            // would produce `app_method(...)` — wrong. Look up obj's
+            // C type and emit `<BareT>_method(obj, ...args)`.
+            let dotIn = String_IndexOf(callee, ".")
+            if (dotIn > 0 && String_IndexOf(String_Substring(callee, dotIn + 1, String_Length(callee) - dotIn - 1), ".") == -1) {
+                let objName = String_Substring(callee, 0, dotIn)
+                let mName   = String_Substring(callee, dotIn + 1, String_Length(callee) - dotIn - 1)
+                let objType = this.LocalTypeGet(objName)
+                if (String_Length(objType) > 0 && String_Contains(objType, "*")) {
+                    let bareT = String_Replace(objType, "*", "")
+                    let inside = String_Substring(rest, 1, String_Length(rest) - 2)
+                    var iCall: string = ""
+                    if (String_Length(inside) == 0) {
+                        iCall = bareT + "_" + mName + "(" + objName + ")"
+                    } else {
+                        iCall = bareT + "_" + mName + "(" + objName + ", " + inside + ")"
+                    }
+                    let iRetT = this.MethodRetGet(bareT, mName)
+                    if (String_Length(iRetT) > 0) {
+                        return this.WrapForInterp(iCall, iRetT)
+                    }
+                    return "(" + iCall + " ? " + iCall + " : \"\")"
+                }
+            }
             let cCallee = String_Replace(callee, ".", "_")
             let cCall  = cCallee + rest
             let retT   = this.BuiltinCallReturnType(cCallee)
@@ -1764,6 +1790,28 @@ public class CGen {
                 let mangled: string = PackageRegistry.ManglePackageSymbol(p.Ns, fName)
                 this.PkgFuncs.Add(mangled)
                 this.PkgFuncCTypes.Add(cType)
+                // When the manifest declares the AM-level generic
+                // shape via `returns_generic`, register it under
+                // each of the package's class names (mangled) so
+                // the consumer's `let xs = pg.QueryAll(...)` →
+                // chained `.Get(i).Get(j)` propagates layered
+                // peeling instead of erasing to `void*`. The flat
+                // `[stdlib.functions]` table doesn't disambiguate
+                // by class; over-registering across siblings is
+                // harmless because the consumer-side lookup is
+                // keyed on the receiver's class type, not by
+                // brute name match.
+                if (j < p.FuncRetsRaw.Count()) {
+                    let rawShape: string = p.FuncRetsRaw.Get(j)
+                    if (String_Length(rawShape) > 0) {
+                        for pkgCk in 0..pkgCn {
+                            let mc: string = this.PkgClassMangledPrefix(p.ClassNames.Get(pkgCk))
+                            if (String_Length(mc) > 0) {
+                                this.MethodRetRawSet(mc, fName, rawShape)
+                            }
+                        }
+                    }
+                }
                 // Track opaque return types so the consumer can store
                 // them in class fields. AmalgameTypeFromC strips a
                 // trailing `*` so `AmalgameRedis*` → `AmalgameRedis`.
@@ -3278,10 +3326,47 @@ public class CGen {
             if (stmt.Left != null && stmt.Left.Kind == NodeKind.CALL) {
                 // Recover ClassName + MethodName for `obj.Method()` and
                 // `Program.Method()` so we can read the raw return type.
+                // Three lookup keys, tried in turn:
+                //   1. Bare receiver name — works for in-bundle static
+                //      calls like `Program.MakeList()`.
+                //   2. ExternalClassMangled(name) — works for static
+                //      calls on an `--external` class (`FakeDb.Open()`).
+                //   3. LocalTypeGet(name) → bare C type — works for
+                //      instance calls on a typed local (`db.QueryAll()`)
+                //      whether `db` was declared with an explicit
+                //      annotation or had its type inferred from a
+                //      prior call.
                 let callee = stmt.Left.Left
                 if (callee != null && callee.Kind == NodeKind.MEMBER) {
                     if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
-                        let retRaw = this.MethodRetRawGet(callee.Left.Name, callee.Name)
+                        let recvName = callee.Left.Name
+                        var retRaw = this.MethodRetRawGet(recvName, callee.Name)
+                        if (String_Length(retRaw) == 0) {
+                            let extMangled = this.ExternalClassMangled(recvName)
+                            if (String_Length(extMangled) > 0) {
+                                retRaw = this.MethodRetRawGet(extMangled, callee.Name)
+                            }
+                        }
+                        if (String_Length(retRaw) == 0) {
+                            let recvType = this.LocalTypeGet(recvName)
+                            if (String_Length(recvType) > 0) {
+                                let bareT = String_Replace(recvType, "*", "")
+                                if (String_Length(bareT) > 0) {
+                                    retRaw = this.MethodRetRawGet(bareT, callee.Name)
+                                }
+                            }
+                        }
+                        // Last-chance: chained `.Get(i)` on a typed
+                        // local with a known raw shape. Peels one
+                        // generic layer (List<List<T>>→List<T>,
+                        // Map<K, List<T>>→List<T>) so an intermediate
+                        // local (`let row0 = rows.Get(0)`) stays typed
+                        // without an explicit annotation. Mirrors the
+                        // RecoverChainedListElemRaw path used by the
+                        // chained-emit branch at the call site.
+                        if (String_Length(retRaw) == 0 && callee.Name == "Get") {
+                            retRaw = this.RecoverChainedListElemRaw(callee.Left)
+                        }
                         if (String_Length(retRaw) > 0) {
                             this.TrackGenericLocal(stmt.Name, retRaw)
                         }

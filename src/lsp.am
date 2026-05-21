@@ -804,7 +804,18 @@ public class LspServer {
             if (node.Left != null && node.Left.Kind == NodeKind.IDENTIFIER) {
                 let recv: AstNode? = LspServer.LookupLocalInMethod(enclosing, node.Left.Name)
                 if (recv != null) {
-                    let recvType: string = LspServer.BareTypeName(recv.Str)
+                    var recvType: string = LspServer.BareTypeName(recv.Str)
+                    // Fallback when the local was declared without an
+                    // explicit annotation (e.g. `let f = new Foo()`)
+                    // — inspect the VAR_DECL's RHS for a NEW_EXPR and
+                    // pull the class name from there. Covers the most
+                    // common pattern without requiring the user to
+                    // annotate every variable.
+                    if (String_Length(recvType) == 0 && recv.Left != null) {
+                        if (recv.Left.Kind == NodeKind.NEW_EXPR) {
+                            recvType = recv.Left.Name
+                        }
+                    }
                     if (String_Length(recvType) > 0) {
                         let nProgs2: int = resolver.Programs.Count()
                         for i in 0..nProgs2 {
@@ -1148,6 +1159,17 @@ public class LspServer {
         if (node == null) { return }
         let k = node.Kind
         if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) {
+            if (node.Name == target) {
+                out.Add(LspServer.LocationJson(filePath, node.Line, node.Column, target))
+            }
+        }
+        // Declaration sites: a click on the symbol *at* its declaration
+        // (or `includeDeclaration: true` on a usage-site click) expects
+        // the decl location in the result. Walk the four decl kinds
+        // whose Name we surface in DocumentSymbol so behaviour stays
+        // consistent — classes, enums, methods (incl. ctors), fields,
+        // and let/var locals.
+        if (k == NodeKind.CLASS_DECL || k == NodeKind.ENUM_DECL || k == NodeKind.METHOD_DECL || k == NodeKind.VAR_DECL) {
             if (node.Name == target) {
                 out.Add(LspServer.LocationJson(filePath, node.Line, node.Column, target))
             }
@@ -1842,6 +1864,7 @@ public class LspServer {
         let eLine: int = endLine + 1
         let actions: List<string> = new List<string>()
         LspServer.CollectAnnotationFixes(prog, tc, uri, sLine, eLine, actions)
+        this.CollectPackageInstallSuggestions(resolver, uri, path, sLine, eLine, actions)
 
         var json: string = "["
         let n: int = actions.Count()
@@ -1852,6 +1875,122 @@ public class LspServer {
         json = json + "]"
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
         this.Send(body)
+    }
+
+    // For every `Unknown symbol 'X'` resolver diagnostic whose
+    // position lies in the requested code-action range, shell out to
+    // `amc package suggest --json X` and emit one CodeAction per
+    // suggested package. The action is informational — its `command`
+    // shows the install command in the editor's status bar; we
+    // explicitly do NOT auto-install. The user runs the command
+    // themselves.
+    private void CollectPackageInstallSuggestions(FullResolver resolver, string uri, string path, int sLine, int eLine, List<string> out) {
+        let errN: int = resolver.RawErrors.Count()
+        if (errN == 0) { return }
+        let prefix: string = "Unknown symbol '"
+        let prefLen: int = String_Length(prefix)
+        let seen: List<string> = new List<string>()
+        for ei in 0..errN {
+            let err: ResolverError = resolver.RawErrors.Get(ei)
+            if (err.Line < sLine || err.Line > eLine) { continue }
+            if (!String_StartsWith(err.Message, prefix)) { continue }
+            let rest: string = String_Substring(err.Message, prefLen, String_Length(err.Message) - prefLen)
+            let endQuote: int = String_IndexOf(rest, "'")
+            if (endQuote <= 0) { continue }
+            let symName: string = String_Substring(rest, 0, endQuote)
+            // Skip "_" wildcard / parser placeholder.
+            if (symName == "_" || symName == "_unknown_") { continue }
+            // Dedupe — same symbol can fire multiple resolver errors
+            // (one per use site) but we only want one set of actions.
+            var dup: bool = false
+            let sn: int = seen.Count()
+            for si in 0..sn {
+                if (seen.Get(si) == symName) { dup = true }
+            }
+            if (dup) { continue }
+            seen.Add(symName)
+            // Shell out to ourselves. The bundled `amc` is on PATH
+            // after `build_amc.sh --install`; if not, the process
+            // exits non-zero and we silently skip — no action emitted.
+            // Resolve amc binary via /proc/self/exe (Linux) /
+            // GetModuleFileNameA (Windows) / _NSGetExecutablePath
+            // (macOS). Falls back to bare `amc` (which works when
+            // the install put it on PATH) on resolution failure.
+            var cmd: string = "amc"
+            let amcBin: string = LspServer.AmcBinaryPath()
+            if (String_Length(amcBin) > 0) { cmd = amcBin }
+            let result = Process.RunCapture(cmd + " package suggest --json " + symName)
+            if (result.Exit != 0) { continue }
+            let trimmed: string = String_Trim(result.Stdout)
+            if (String_Length(trimmed) == 0 || trimmed == "[]") { continue }
+            let parsed: JsonResult = Json.Parse(trimmed)
+            if (!parsed.Ok) { continue }
+            let doc: JsonValue = parsed.Value
+            if (doc.IsNull() || !doc.IsArray()) { continue }
+            let arr: List<JsonValue> = doc.AsArray()
+            let nResults: int = arr.Count()
+            for ri in 0..nResults {
+                let entry: JsonValue = arr.Get(ri)
+                let pkgName: string = entry.Get("name").AsString()
+                if (String_Length(pkgName) == 0) { continue }
+                let pkgTag: string  = entry.Get("latest_compatible_tag").AsString()
+                let pkgDesc: string = entry.Get("description").AsString()
+                out.Add(LspServer.PackageInstallActionJson(pkgName, pkgTag, pkgDesc, symName))
+            }
+        }
+    }
+
+    // Resolve the running amc binary's canonical path. Same shape
+    // as Program.ResolveSelfPath in main.am — duplicated as a
+    // local static so lsp.am doesn't have to depend on the
+    // entry-point class (whose symbols aren't reliably exported
+    // for cross-file calls).
+    private static string AmcBinaryPath() {
+        @c {
+            #ifdef _WIN32
+                char buf[4096];
+                DWORD n = GetModuleFileNameA(NULL, buf, sizeof(buf));
+                if (n == 0 || n >= sizeof(buf)) { return (code_string) ""; }
+                for (DWORD i = 0; i < n; i++) { if (buf[i] == '\\') buf[i] = '/'; }
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #elif defined(__APPLE__)
+                char raw[4096];
+                uint32_t size = sizeof(raw);
+                if (_NSGetExecutablePath(raw, &size) != 0) { return (code_string) ""; }
+                char resolved[4096];
+                char* p = realpath(raw, resolved);
+                const char* src = p ? (const char*)resolved : (const char*)raw;
+                size_t n = strlen(src);
+                char* out = (char*) GC_MALLOC(n + 1);
+                memcpy(out, src, n + 1);
+                return (code_string) out;
+            #else
+                char buf[4096];
+                ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+                if (n <= 0) { return (code_string) ""; }
+                buf[n] = '\0';
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #endif
+        }
+    }
+
+    // Build a CodeAction JSON pointing at the install command.
+    // `command` is the LSP Command shape — the editor surfaces the
+    // title in the lightbulb menu and runs the command verbatim when
+    // the user picks it. Kind = quickfix so VS Code groups it with
+    // the other quickfix actions.
+    private static string PackageInstallActionJson(string pkgName, string pkgTag, string pkgDesc, string symName) {
+        var label: string = "Install package " + pkgName
+        if (String_Length(pkgTag) > 0) { label = label + "@" + pkgTag }
+        label = label + " (for '" + symName + "')"
+        var cmdArgs: string = "amc package add " + pkgName
+        if (String_Length(pkgTag) > 0) { cmdArgs = cmdArgs + "@" + pkgTag }
+        let cmd: string = "{\"title\":\"" + Json.EscapeString(label) + "\",\"command\":\"" + Json.EscapeString(cmdArgs) + "\"}"
+        return "{\"title\":\"" + Json.EscapeString(label) + "\",\"kind\":\"quickfix\",\"command\":" + cmd + "}"
     }
 
     // Walk the AST collecting CodeAction JSONs for every annotation-
@@ -2060,6 +2199,37 @@ public class LspServer {
         let q: string = String_ToLower(query)
         var json: string = "["
         var first: bool = true
+        // First pass — walk every open document. The sibling cache
+        // is populated by `find <root> -name '*.am'` from disk so it
+        // misses files that exist only in the editor (unsaved or
+        // not yet on disk). Skip open docs whose path also shows up
+        // in the sibling cache to avoid duplicate entries.
+        let openN: int = this.DocUris.Count()
+        for di in 0..openN {
+            let docUri: string  = this.DocUris.Get(di)
+            let docSrc: string  = this.Docs.Get(di)
+            let docPath: string = LspServer.UriToPath(docUri)
+            var dup: bool = false
+            let sn: int = this.CachedSiblingPaths.Count()
+            for sj in 0..sn {
+                if (this.CachedSiblingPaths.Get(sj) == docPath) { dup = true }
+            }
+            if (dup) { continue }
+            let lex  = new Lexer(docSrc, docPath)
+            let toks = lex.Tokenize()
+            let par  = new Parser(toks)
+            let prog = par.Parse()
+            let dc: int = prog.Children.Count()
+            for j in 0..dc {
+                let decl: AstNode = prog.Children.Get(j)
+                let entry: string = LspServer.WorkspaceSymbolEntry(decl, docPath, q)
+                if (String_Length(entry) > 0) {
+                    if (!first) { json = json + "," }
+                    json = json + entry
+                    first = false
+                }
+            }
+        }
         let n: int = this.CachedSiblingProgs.Count()
         for i in 0..n {
             let prog: AstNode = this.CachedSiblingProgs.Get(i)
@@ -2226,6 +2396,16 @@ public class LspServer {
         prog.Str2 = path
         let resolver = this.BuildWorkspaceResolver(path, prog)
 
+        // Import-line context: when the cursor is on a line whose
+        // non-whitespace prefix is `import `, propose package
+        // namespaces from the workspace's amalgame.lock. Lets the
+        // user type `import Amalgame.` and pick from installed
+        // packages instead of guessing the exact namespace.
+        if (LspServer.IsImportLine(source, line)) {
+            this.SendImportCompletion(id)
+            return
+        }
+
         // Inspect the cursor context: if the character right before
         // the cursor is a dot, attempt member completion. LSP line/
         // character are 0-based.
@@ -2238,6 +2418,92 @@ public class LspServer {
         // Fallback: list every global the resolver knows. Editor
         // filters by prefix on its side.
         this.SendGlobalCompletion(id, resolver)
+    }
+
+    // True when the trimmed text on `line` starts with the import
+    // keyword (with at least one trailing space — `importer` and
+    // `imports` aren't keywords, and a bare `import` on its own
+    // line is only useful while typing the namespace).
+    private static bool IsImportLine(string source, int line) {
+        let n: int = String_Length(source)
+        var pos: int = 0
+        var curLine: int = 0
+        var lineStart: int = 0
+        while (pos < n) {
+            if (curLine == line) { break }
+            let c: string = String_Substring(source, pos, 1)
+            if (c == "\n") {
+                curLine = curLine + 1
+                lineStart = pos + 1
+            }
+            pos = pos + 1
+        }
+        if (curLine != line) { return false }
+        // Find end-of-line
+        var lineEnd: int = lineStart
+        while (lineEnd < n) {
+            let c: string = String_Substring(source, lineEnd, 1)
+            if (c == "\n") { break }
+            lineEnd = lineEnd + 1
+        }
+        let lineText: string = String_Trim(String_Substring(source, lineStart, lineEnd - lineStart))
+        return String_StartsWith(lineText, "import ") || lineText == "import"
+    }
+
+    // Build CompletionItem[] from installed-package namespaces. Reads
+    // the workspace's amalgame.lock via PackageRegistry; falls back
+    // to an empty list when no lockfile is present (the user gets
+    // their regular global completion instead).
+    private void SendImportCompletion(int id) {
+        let lockPath: string  = this.CachedRoot + "/amalgame.lock"
+        let cacheRoot: string = PackageRegistry.AmalgameHome() + "/packages"
+        var items: string = ""
+        var first: bool = true
+        if (File.Exists(lockPath)) {
+            let reg = PackageRegistry.LoadFrom(lockPath, cacheRoot)
+            let n: int = reg.Packages.Count()
+            for i in 0..n {
+                let p: LoadedPackage = reg.Packages.Get(i)
+                let ns: string = p.Ns
+                if (String_Length(ns) == 0) { continue }
+                let detail: string = p.Name + " @ " + p.Tag
+                // CompletionItemKind 9 = Module
+                if (!first) { items = items + "," }
+                items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"" + Json.EscapeString(detail) + "\"}"
+                first = false
+            }
+        }
+        // Always also expose the bundled stdlib roots — they're
+        // available without a lockfile. Same list the resolver
+        // pre-declares as type-globals.
+        let bundled: List<string> = LspServer.BundledNamespaces()
+        let bn: int = bundled.Count()
+        for bi in 0..bn {
+            let ns: string = bundled.Get(bi)
+            if (!first) { items = items + "," }
+            items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"bundled stdlib\"}"
+            first = false
+        }
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
+        this.Send(body)
+    }
+
+    // Hardcoded bundled-stdlib namespaces. Mirrors what
+    // `lib/libamalgame.a` ships out of the box — these resolve
+    // without any package install step.
+    private static List<string> BundledNamespaces() {
+        let xs: List<string> = new List<string>()
+        xs.Add("Amalgame.IO")
+        xs.Add("Amalgame.Process")
+        xs.Add("Amalgame.String")
+        xs.Add("Amalgame.Collections")
+        xs.Add("Amalgame.Console")
+        xs.Add("Amalgame.Net")
+        xs.Add("Amalgame.Path")
+        xs.Add("Amalgame.Formats.Json")
+        xs.Add("Amalgame.Formats.Toml")
+        xs.Add("Amalgame.Formats.Msgpack")
+        return xs
     }
 
     private void SendGlobalCompletion(int id, FullResolver resolver) {

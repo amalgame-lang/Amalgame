@@ -466,6 +466,12 @@ run_test "closure: no cap"   "$SAMPLES/closures_capture.am"  "triple(7) = 21"
 run_test "closure: 1 cap"    "$SAMPLES/closures_capture.am"  "addN(5) = 105"
 run_test "closure: 2 caps"   "$SAMPLES/closures_capture.am"  "combine(10) = 25"
 run_test "closure: snap val" "$SAMPLES/closures_capture.am"  "snap(0) = 1"
+# string interpolation must trigger capture analysis inside lambda
+# bodies — pre-fix the resolver skipped {…} embedded exprs and the
+# cgen mangled `app.Method()` as static `app_Method()`.
+run_test "interp cap: bare"  "$SAMPLES/interp_capture_in_lambda.am" "g=hi n=7"
+run_test "interp cap: this"  "$SAMPLES/interp_capture_in_lambda.am" "say=hello ada n=3"
+run_test "interp cap: pfx"   "$SAMPLES/interp_capture_in_lambda.am" "x=42"
 # v0.8.30 — first-class functions via `Closure` field type.
 run_test "FCF: arity-1 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-1 this.Field call"
 run_test "FCF: arity-2 field"  "$SAMPLES/closure_as_field.am"  "[PASS] arity-2 this.Field call"
@@ -705,6 +711,7 @@ run_test "lambda_infer: explicit override"  "$SAMPLES/lambda_inference_ctor.am" 
 run_test "nested_gen: List<List<string>>"           "$SAMPLES/nested_generics.am"  "[PASS] List<List<string>> rows[0][0]=alpha"
 run_test "nested_gen: List<List<int>>"              "$SAMPLES/nested_generics.am"  "[PASS] List<List<int>> m[0][0]=42"
 run_test "nested_gen: List<List<List<int>>>"        "$SAMPLES/nested_generics.am"  "[PASS] List<List<List<int>>> cube[0][0][0]=7"
+run_test "nested_gen: instance call infer"          "$SAMPLES/nested_generics.am"  "[PASS] instance call nested rs[0][0]=alice"
 
 # Spread operator in list literals (v0.8.36+). `[...a, ...b, c]`
 # splices each spread operand's elements into the fresh list at
@@ -873,6 +880,109 @@ run_lsp_absent() {
     fi
 }
 run_lsp_absent "lsp: xdir resolves ByteIO" "Unknown symbol 'ByteIO'" "$lsp_xdir_seq"
+
+# ── Phase B navigation: documentSymbol / definition / references ──────
+# Fixture: two classes, one with a field + ctor + greeter method.
+# Line numbering (LSP 0-indexed):
+#   0: class Foo {
+#   1:     public Name: string
+#   2:     public Foo() {
+#   3:         this.Name = "x"
+#   4:     }
+#   5:     public string Greet() {
+#   6:         return "hi " + this.Name
+#   7:     }
+#   8: }
+#   9: class Program {
+#  10:     public static void Main() {
+#  11:         let f = new Foo()
+#  12:         let s = f.Greet()
+#  13:     }
+#  14: }
+lsp_nav_text='class Foo {\n    public Name: string\n    public Foo() {\n        this.Name = \"x\"\n    }\n    public string Greet() {\n        return \"hi \" + this.Name\n    }\n}\nclass Program {\n    public static void Main() {\n        let f = new Foo()\n        let s = f.Greet()\n    }\n}'
+lsp_open_nav='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am","languageId":"amalgame","version":1,"text":"'"$lsp_nav_text"'"}}}'
+
+# documentSymbol: outline of the open file.
+lsp_docsym='{"jsonrpc":"2.0","id":10,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"}}}'
+# definition on `Foo` inside `new Foo()` (line 11 col 20, LSP 0-indexed)
+lsp_defFoo='{"jsonrpc":"2.0","id":11,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":11,"character":20}}}'
+# definition on `Greet` in `f.Greet()` (line 12 col 18)
+lsp_defGreet='{"jsonrpc":"2.0","id":12,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":12,"character":18}}}'
+# references at the Greet declaration (line 5 col 18)
+lsp_refGreet='{"jsonrpc":"2.0","id":13,"method":"textDocument/references","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18},"context":{"includeDeclaration":true}}}'
+
+lsp_nav_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$lsp_docsym"; lsp_frame "$lsp_defFoo"; lsp_frame "$lsp_defGreet"; lsp_frame "$lsp_refGreet"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# documentSymbol — outline contains both classes + their members.
+run_lsp_check "lsp: docsym lists Foo"      '"name":"Foo","kind":5'      "$lsp_nav_seq"
+run_lsp_check "lsp: docsym lists Program"  '"name":"Program","kind":5'  "$lsp_nav_seq"
+run_lsp_check "lsp: docsym Foo has Greet"  '"name":"Greet","kind":6'    "$lsp_nav_seq"
+run_lsp_check "lsp: docsym Foo has Name"   '"name":"Name","kind":8'     "$lsp_nav_seq"
+run_lsp_check "lsp: docsym Program.Main"   '"name":"Main","kind":6'     "$lsp_nav_seq"
+# definition — Foo at line 11:20 should jump to line 0 (class Foo decl, LSP 0-indexed)
+run_lsp_check "lsp: def Foo at line 0"     '"id":11,"result":{"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":0'    "$lsp_nav_seq"
+# definition — Greet at line 12:18 should jump to line 5 (method decl)
+run_lsp_check "lsp: def Greet at line 5"   '"id":12,"result":{"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":5'    "$lsp_nav_seq"
+# references — Greet at the decl site should return at least 2 occurrences (decl + call)
+run_lsp_check "lsp: refs Greet has result" '"id":13,"result":['          "$lsp_nav_seq"
+run_lsp_check "lsp: refs Greet decl line"  '"line":5'                    "$lsp_nav_seq"
+run_lsp_check "lsp: refs Greet call line"  '"line":12'                   "$lsp_nav_seq"
+
+# Phase B follow-up: rename / prepareRename / workspace symbol /
+# inlayHint / codeAction / callHierarchy. Uses the same fixture.
+lsp_prepareRename='{"jsonrpc":"2.0","id":20,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18}}}'
+lsp_rename='{"jsonrpc":"2.0","id":21,"method":"textDocument/rename","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18},"newName":"SayHi"}}'
+lsp_wssym='{"jsonrpc":"2.0","id":22,"method":"workspace/symbol","params":{"query":"Foo"}}'
+lsp_inlay='{"jsonrpc":"2.0","id":23,"method":"textDocument/inlayHint","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"}}}'
+lsp_codeact='{"jsonrpc":"2.0","id":24,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"range":{"start":{"line":11,"character":0},"end":{"line":11,"character":30}},"context":{"diagnostics":[]}}}'
+lsp_callhPrep='{"jsonrpc":"2.0","id":25,"method":"textDocument/prepareCallHierarchy","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18}}}'
+
+lsp_navx_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$lsp_prepareRename"; lsp_frame "$lsp_rename"; lsp_frame "$lsp_wssym"; lsp_frame "$lsp_inlay"; lsp_frame "$lsp_codeact"; lsp_frame "$lsp_callhPrep"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# prepareRename should return a placeholder = the current name.
+run_lsp_check "lsp: prepRename placeholder" '"placeholder":"Greet"'             "$lsp_navx_seq"
+# rename should emit a WorkspaceEdit with `changes` containing the file URI.
+run_lsp_check "lsp: rename has changes"     '"id":21,"result":{"changes":{'      "$lsp_navx_seq"
+run_lsp_check "lsp: rename newText SayHi"   '"newText":"SayHi"'                 "$lsp_navx_seq"
+# workspace/symbol("Foo") — at minimum the Foo class must show up.
+run_lsp_check "lsp: ws-symbol finds Foo"    '"id":22,"result":[{"name":"Foo","kind":5'  "$lsp_navx_seq"
+# inlayHint — `let f = new Foo()` has no annotation, so a hint `: Foo` is inserted.
+run_lsp_check "lsp: inlayHint Foo label"    '"label":": Foo"'                   "$lsp_navx_seq"
+# codeAction on the let-line — should offer "add explicit type annotation".
+run_lsp_check "lsp: codeAction title"       '"title":"Add type annotation: Foo"' "$lsp_navx_seq"
+# prepareCallHierarchy on Greet decl — at least one CallHierarchyItem.
+run_lsp_check "lsp: callh prepare item"     '"id":25,"result":[{"name":"Greet"'  "$lsp_navx_seq"
+
+# callHierarchy/incomingCalls — pass back the item from prepare so
+# the server can resolve the method and walk for callers. Main is
+# the sole caller of Greet.
+lsp_callhIn='{"jsonrpc":"2.0","id":26,"method":"callHierarchy/incomingCalls","params":{"item":{"name":"Greet","kind":6,"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":5,"character":18},"end":{"line":5,"character":23}},"selectionRange":{"start":{"line":5,"character":18},"end":{"line":5,"character":23}},"data":{"name":"Greet","uri":"file:///tmp/lsp_nav.am","line":5,"character":18}}}}'
+lsp_callhOut='{"jsonrpc":"2.0","id":27,"method":"callHierarchy/outgoingCalls","params":{"item":{"name":"Main","kind":6,"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":10,"character":24},"end":{"line":10,"character":28}},"selectionRange":{"start":{"line":10,"character":24},"end":{"line":10,"character":28}},"data":{"name":"Main","uri":"file:///tmp/lsp_nav.am","line":10,"character":24}}}}'
+
+lsp_callh_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$lsp_callhIn"; lsp_frame "$lsp_callhOut"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+run_lsp_check "lsp: callh incoming Main"    '"name":"Main"'           "$lsp_callh_seq"
+run_lsp_check "lsp: callh outgoing Greet"   '"name":"Greet"'          "$lsp_callh_seq"
+
+# Phase D — package-install codeAction on Unknown symbol diagnostic.
+# Fixture: bare `Window` reference (matches ui-sdl + ui-web in the
+# curated index). The action's `command` field carries the
+# `amc package add <pkg>` line the editor surfaces; we never auto-run.
+lsp_open_pkg='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_pkg.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let w = Window\n    }\n}"}}}'
+lsp_pkg_ca='{"jsonrpc":"2.0","id":30,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///tmp/lsp_pkg.am"},"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":40}},"context":{"diagnostics":[]}}}'
+lsp_pkg_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_pkg"; lsp_frame "$lsp_pkg_ca"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+run_lsp_check "lsp: pkg-add suggestion"      '"command":"amc package add ui-'  "$lsp_pkg_seq"
+run_lsp_check "lsp: pkg-add for-quoted-sym"  "(for 'Window')"                  "$lsp_pkg_seq"
+
+# Import-line completion — when the cursor is on a line whose
+# trimmed prefix is `import `, surface bundled stdlib namespaces
+# (and any installed package namespaces from amalgame.lock).
+lsp_open_imp='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_imp.am","languageId":"amalgame","version":1,"text":"import Amalgame.\nclass Program {\n    public static void Main() {}\n}"}}}'
+lsp_imp_comp='{"jsonrpc":"2.0","id":40,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///tmp/lsp_imp.am"},"position":{"line":0,"character":16}}}'
+lsp_imp_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_imp"; lsp_frame "$lsp_imp_comp"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+run_lsp_check "lsp: import IO"          '"label":"Amalgame.IO","kind":9'                  "$lsp_imp_seq"
+run_lsp_check "lsp: import Net"         '"label":"Amalgame.Net","kind":9'                 "$lsp_imp_seq"
+run_lsp_check "lsp: import Formats.Json" '"label":"Amalgame.Formats.Json","kind":9'       "$lsp_imp_seq"
+run_lsp_check "lsp: import bundled tag"  '"detail":"bundled stdlib"'                      "$lsp_imp_seq"
 
 # ── amc migrate ────────────────────────────────────────
 echo ""

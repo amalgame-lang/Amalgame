@@ -334,6 +334,10 @@ run_test "PR: multiclass primary"     "$SAMPLES/stdlib_package_registry.am" "[PA
 run_test "PR: multiclass all names"   "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: all class names"  "" "$PR_EXTRA"
 run_test "PR: multiclass func count"  "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: func count"      "" "$PR_EXTRA"
 run_test "PR: multiclass namespace"   "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: namespace"       "" "$PR_EXTRA"
+# returns_generic — AM-level shape parsed from [stdlib.functions]
+run_test "PR: mc retgen parallel" "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: FuncRetsRaw parallel"     "" "$PR_EXTRA"
+run_test "PR: mc retgen value"    "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: returns_generic parsed"   "" "$PR_EXTRA"
+run_test "PR: mc retgen empty"    "$SAMPLES/stdlib_package_registry.am" "[PASS] multiclass: missing returns_generic empty"  "" "$PR_EXTRA"
 
 # ── PackageManager e2e (full pipeline) ────────────────
 # Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
