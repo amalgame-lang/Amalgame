@@ -118,8 +118,23 @@ $null = New-Item -ItemType Directory -Path $WorkDir -Force
 
 # Wipe stale outputs so re-runs don't double-stream files into the
 # existing cabinet (we use makecab fresh each time).
+# Windows shell preview, Defender, or a lingering cscript can keep
+# the previous .msi locked for a moment — retry a few times before
+# giving up.
 foreach ($p in @($MsiPath, $CabPath)) {
-    if (Test-Path $p) { Remove-Item $p -Force }
+    if (-not (Test-Path $p)) { continue }
+    $removed = $false
+    for ($try = 1; $try -le 10; $try++) {
+        try {
+            Remove-Item $p -Force -ErrorAction Stop
+            $removed = $true
+            break
+        } catch {
+            if ($try -eq 10) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if (-not $removed) { throw "Unable to delete stale output: $p" }
 }
 
 Write-Host "── build-msi.ps1 ─────────────────────────────────"
