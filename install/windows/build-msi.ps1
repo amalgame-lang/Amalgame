@@ -279,34 +279,51 @@ $database  = $installer.GetType().InvokeMember("OpenDatabase", "InvokeMethod",
                 $null, $installer, @($MsiPath, $msiOpenDatabaseModeCreate))
 
 function Invoke-MSI {
-    # COM dispatch shim: PowerShell sometimes mistypes the
-    # WindowsInstaller late-bound calls, so we go through reflection.
+    # COM dispatch shim for METHOD calls (Execute / Close / Modify /
+    # OpenView / CreateRecord / Commit / Persist). Property setters
+    # (StringData / IntegerData / SetStream / Property on
+    # SummaryInformation) MUST go through `Set-MsiProperty` below —
+    # the WindowsInstaller dispatch rejects "InvokeMethod" on
+    # indexed property puts and the failure is silent (the record
+    # stays empty, then INSERT fails with a cryptic 1627 / -2146827284).
     param([object]$Target, [string]$Method, [object[]]$Args)
     return $Target.GetType().InvokeMember($Method, "InvokeMethod", $null, $Target, $Args)
 }
 
+function Set-MsiProperty {
+    # Indexed-property setter via reflection. Used for
+    # Record.StringData(N), Record.IntegerData(N), and
+    # SummaryInformation.Property(PID) — all COM indexed properties.
+    param([object]$Target, [string]$Property, [object[]]$IndexAndValue)
+    [void]$Target.GetType().InvokeMember(
+        $Property,
+        [System.Reflection.BindingFlags]::SetProperty,
+        $null, $Target, $IndexAndValue
+    )
+}
+
 function Insert-Row {
-    # Open a view, fill a record, insert, close. The columns must
-    # match the table schema exactly.
+    # INSERT with parameter binding. View.Execute(record) walks the
+    # record's columns as values for each `?` placeholder; the engine
+    # handles the row insertion in one call. No separate Modify needed.
     param([string]$Sql, [object[]]$Values)
     $view = Invoke-MSI $database "OpenView" @($Sql)
-    Invoke-MSI $view "Execute" @($null)
     $record = Invoke-MSI $installer "CreateRecord" @($Values.Count)
     for ($i = 0; $i -lt $Values.Count; $i++) {
         $v = $Values[$i]
         if ($null -eq $v) { continue }
         if ($v -is [int] -or $v -is [long]) {
-            Invoke-MSI $record "IntegerData" @($i + 1, [int]$v)
+            Set-MsiProperty $record "IntegerData" @($i + 1, [int]$v)
         } else {
-            Invoke-MSI $record "StringData" @($i + 1, [string]$v)
+            Set-MsiProperty $record "StringData"  @($i + 1, [string]$v)
         }
     }
-    Invoke-MSI $view "Modify" @($msiViewModifyInsert, $record)
+    Invoke-MSI $view "Execute" @($record)
     Invoke-MSI $view "Close" @()
 }
 
 function Exec-Sql {
-    # Schema DDL (CREATE TABLE). No record, no Modify — just Execute.
+    # Schema DDL (CREATE TABLE / ALTER). No record, no parameters.
     param([string]$Sql)
     $view = Invoke-MSI $database "OpenView" @($Sql)
     Invoke-MSI $view "Execute" @($null)
@@ -392,15 +409,19 @@ Insert-Row "INSERT INTO ``Directory`` (``Directory``, ``Directory_Parent``, ``De
 # ── Components + Files + FeatureComponents ───────────────────
 # One component per file. ComponentId is a deterministic GUID so
 # upgrade/repair tracks the same atom across versions of the MSI.
-$msidbComponentAttributesLocalOnly = 0
-$msidbComponentAttributesShared    = 8
+# Attributes = 256 (msidbComponentAttributes64bit) — required for
+# every component in an x64 MSI per the MSI spec. Without this the
+# Windows Installer treats the component as 32-bit, which on x64
+# systems triggers file-system / registry redirection (the install
+# silently lands under \Program Files (x86)\ instead of \Program Files\).
+$msidbComponentAttributes64bit = 256
 
 $sequence = 0
 foreach ($sf in $staged) {
     $sequence += 1
     # KeyPath: same as the file's File key.
     Insert-Row "INSERT INTO ``Component`` (``Component``, ``ComponentId``, ``Directory_``, ``Attributes``, ``Condition``, ``KeyPath``) VALUES (?, ?, ?, ?, ?, ?)" @(
-        $sf.ComponentId, $sf.ComponentGuid, $sf.InstallDirId, $msidbComponentAttributesLocalOnly, $null, $sf.FileKey
+        $sf.ComponentId, $sf.ComponentGuid, $sf.InstallDirId, $msidbComponentAttributes64bit, $null, $sf.FileKey
     )
     Insert-Row "INSERT INTO ``File`` (``File``, ``Component_``, ``FileName``, ``FileSize``, ``Version``, ``Language``, ``Attributes``, ``Sequence``) VALUES (?, ?, ?, ?, ?, ?, ?, ?)" @(
         $sf.FileKey, $sf.ComponentId, $sf.DestName, [int]$sf.Size, $null, $null, [int]512, [int]$sequence
@@ -438,36 +459,34 @@ if ($null -ne $amcComponent) {
 }
 
 # ── Icon table (binary stream) ───────────────────────────────
+# Streams (Icon.Data, _Streams.Data, cabinet) bypass the
+# parametrised-Execute path because their values come from disk
+# via SetStream (a record method, not a property). Use the
+# explicit View.Modify(Insert, record) pattern for these.
 $iconView = Invoke-MSI $database "OpenView" @("INSERT INTO ``Icon`` (``Name``, ``Data``) VALUES (?, ?)")
 Invoke-MSI $iconView "Execute" @($null)
 $iconRecord = Invoke-MSI $installer "CreateRecord" @(2)
-Invoke-MSI $iconRecord "StringData" @(1, "icon.ico")
-Invoke-MSI $iconRecord "SetStream"  @(2, $AbsIcon)
+Set-MsiProperty $iconRecord "StringData" @(1, "icon.ico")
+Invoke-MSI     $iconRecord "SetStream"   @(2, $AbsIcon)
 Invoke-MSI $iconView "Modify" @($msiViewModifyInsert, $iconRecord)
 Invoke-MSI $iconView "Close" @()
 
 # ── Shortcuts (Start Menu) ───────────────────────────────────
-# Component for the Start Menu folder itself. Empty (no file
-# associated) — present so the directory exists and gets cleaned
-# up on uninstall.
-$menuComponentGuid = New-DeterministicGuid "$UpgradeCode|AMALGAME_MENU"
-Insert-Row "INSERT INTO ``Component`` (``Component``, ``ComponentId``, ``Directory_``, ``Attributes``, ``Condition``, ``KeyPath``) VALUES (?, ?, ?, ?, ?, ?)" @(
-    "C_AmalgameMenu", $menuComponentGuid, "AMALGAME_MENU", [int]4, $null, "S_AmalgameReadme"
-)
-Insert-Row "INSERT INTO ``FeatureComponents`` (``Feature_``, ``Component_``) VALUES (?, ?)" @("CompleteFeature", "C_AmalgameMenu")
-# A shortcut needs a target File key. Point README/GettingStarted at the
-# bundled files. Online docs goes to a URL — MSI doesn't natively
-# support URL shortcuts in the Shortcut table; documented limitation.
+# Tied to the amc.exe component so they install/uninstall with it.
+# That avoids needing a Registry-keypath component just for the
+# shortcuts (which would require an extra Registry table). Target
+# is `[#<FileKey>]` — MSI's syntax for "absolute path to installed
+# file <FileKey>".
 $readmeKey = ($staged | Where-Object { $_.DestName -eq "README.md"           -and $_.InstallDirRel -eq "" }).FileKey
 $gsKey     = ($staged | Where-Object { $_.DestName -eq "01-getting-started.md" }).FileKey
-if ($readmeKey) {
+if ($readmeKey -and $amcComponent) {
     Insert-Row "INSERT INTO ``Shortcut`` (``Shortcut``, ``Directory_``, ``Name``, ``Component_``, ``Target``, ``Arguments``, ``Description``, ``Hotkey``, ``Icon_``, ``IconIndex``, ``ShowCmd``, ``WkDir``) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" @(
-        "S_AmalgameReadme", "AMALGAME_MENU", "Amalgame README", "C_AmalgameMenu", "[#$readmeKey]", $null, "Open Amalgame README", $null, "icon.ico", [int]0, [int]1, $null
+        "S_AmalgameReadme", "AMALGAME_MENU", "Amalgame README", $amcComponent, "[#$readmeKey]", $null, "Open Amalgame README", $null, "icon.ico", [int]0, [int]1, $null
     )
 }
-if ($gsKey) {
+if ($gsKey -and $amcComponent) {
     Insert-Row "INSERT INTO ``Shortcut`` (``Shortcut``, ``Directory_``, ``Name``, ``Component_``, ``Target``, ``Arguments``, ``Description``, ``Hotkey``, ``Icon_``, ``IconIndex``, ``ShowCmd``, ``WkDir``) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" @(
-        "S_GettingStarted", "AMALGAME_MENU", "Amalgame Getting Started", "C_AmalgameMenu", "[#$gsKey]", $null, "Amalgame language tour", $null, "icon.ico", [int]0, [int]1, $null
+        "S_GettingStarted", "AMALGAME_MENU", "Amalgame Getting Started", $amcComponent, "[#$gsKey]", $null, "Amalgame language tour", $null, "icon.ico", [int]0, [int]1, $null
     )
 }
 
@@ -485,21 +504,40 @@ if ($gsKey) {
 # runtime; brackets get expanded by the engine. We also pass
 # [INSTALLLOCATION] so the script knows where it's installed.
 
-# Helper property: path to powershell.exe (works on any Windows 10+).
+# Hardcoded path to PowerShell 5.1 — always present on every
+# supported Windows host (10/11/Server 2016+). Using [SystemFolder]
+# here would seem cleaner, but deferred CustomActions only have
+# access to CustomActionData / ProductCode / UserSID at runtime, so
+# property placeholders in Type-50 Source don't reliably resolve.
+# The literal path sidesteps the issue.
 Insert-Row "INSERT INTO ``Property`` (``Property``, ``Value``) VALUES (?, ?)" @(
-    "POWERSHELL_EXE", "[SystemFolder]WindowsPowerShell\v1.0\powershell.exe"
+    "POWERSHELL_EXE", "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 )
 
-# Common cmd-line fragment quoted so paths with spaces (Program Files)
-# survive PowerShell's argument splitting.
-$psPostArgsInstall   = '-NoProfile -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode install -InstallLocation "[INSTALLLOCATION]"'
-$psPostArgsUninstall = '-NoProfile -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode uninstall -InstallLocation "[INSTALLLOCATION]"'
+# Command-line for the deferred CA. Two notable details:
+#   - `[INSTALLLOCATION]` always expands with a trailing backslash;
+#     wrapping it in `"…"` produces a closing `\"` which the C
+#     runtime arg parser treats as an escaped quote → unterminated
+#     string. Mitigation: don't quote-wrap [INSTALLLOCATION] alone;
+#     join it with a non-backslash trailing segment so the closing
+#     quote isn't preceded by `\`.
+#   - We DON'T pass -InstallLocation here — postinstall.ps1 derives
+#     it from $PSCommandPath, sidestepping the trailing-backslash
+#     question entirely.
+$psPostArgsInstall   = '-NoProfile -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode install'
+$psPostArgsUninstall = '-NoProfile -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode uninstall'
 
+# Type 1074 = 50 (exec property + cmdline) + 1024 (deferred). We
+# DON'T set 2048 (NoImpersonate) — the post-install work writes to
+# HKCU and %USERPROFILE%, which only makes sense in the invoking
+# user's context. With NoImpersonate the action would run as
+# LocalSystem and the vsix install / sample scaffold would target
+# the wrong user profile.
 Insert-Row "INSERT INTO ``CustomAction`` (``Action``, ``Type``, ``Source``, ``Target``, ``ExtendedType``) VALUES (?, ?, ?, ?, ?)" @(
-    "CA_PostInstall", [int]3122, "POWERSHELL_EXE", $psPostArgsInstall, $null
+    "CA_PostInstall", [int]1074, "POWERSHELL_EXE", $psPostArgsInstall, $null
 )
 Insert-Row "INSERT INTO ``CustomAction`` (``Action``, ``Type``, ``Source``, ``Target``, ``ExtendedType``) VALUES (?, ?, ?, ?, ?)" @(
-    "CA_PostUninstall", [int]3122, "POWERSHELL_EXE", $psPostArgsUninstall, $null
+    "CA_PostUninstall", [int]1074, "POWERSHELL_EXE", $psPostArgsUninstall, $null
 )
 
 # ── InstallExecuteSequence (canonical Windows Installer actions) ──
@@ -558,25 +596,27 @@ Write-Host "  Embedding cabinet…"
 $streamView = Invoke-MSI $database "OpenView" @("INSERT INTO ``_Streams`` (``Name``, ``Data``) VALUES (?, ?)")
 Invoke-MSI $streamView "Execute" @($null)
 $streamRecord = Invoke-MSI $installer "CreateRecord" @(2)
-Invoke-MSI $streamRecord "StringData" @(1, "amalgame.cab")
-Invoke-MSI $streamRecord "SetStream"  @(2, $CabPath)
+Set-MsiProperty $streamRecord "StringData" @(1, "amalgame.cab")
+Invoke-MSI      $streamRecord "SetStream"   @(2, $CabPath)
 Invoke-MSI $streamView "Modify" @($msiViewModifyInsert, $streamRecord)
 Invoke-MSI $streamView "Close" @()
 
 # ── Summary information ──────────────────────────────────────
 # These 8 properties are what the Windows shell reads to display
 # the MSI's title bar / explorer preview. PIDs from the MSI SDK.
+# SummaryInformation property setters are indexed by PID — they go
+# through the same Set-MsiProperty reflection helper as Record.
 $si = Invoke-MSI $database "SummaryInformation" @([int]200)
-Invoke-MSI $si "Property" @([int]1, "1252")                      # PID_CODEPAGE
-Invoke-MSI $si "Property" @([int]2, "$ProductName Installer")    # PID_TITLE
-Invoke-MSI $si "Property" @([int]3, "$ProductName $Version")     # PID_SUBJECT
-Invoke-MSI $si "Property" @([int]4, $ManufacturerName)           # PID_AUTHOR
-Invoke-MSI $si "Property" @([int]5, "amalgame;compiler;language")  # PID_KEYWORDS
-Invoke-MSI $si "Property" @([int]6, "Amalgame language toolchain") # PID_COMMENTS
-Invoke-MSI $si "Property" @([int]7, "Intel;1033")                  # PID_TEMPLATE (platform;langs)
-Invoke-MSI $si "Property" @([int]9, [Guid]::NewGuid().ToString("B").ToUpper()) # PID_REVNUMBER (per-build)
-Invoke-MSI $si "Property" @([int]14, [int]200)                     # PID_PAGECOUNT (schema version)
-Invoke-MSI $si "Property" @([int]15, [int]2)                       # PID_WORDCOUNT (2 = limited UI)
+Set-MsiProperty $si "Property" @([int]1,  "1252")                                 # PID_CODEPAGE
+Set-MsiProperty $si "Property" @([int]2,  "$ProductName Installer")               # PID_TITLE
+Set-MsiProperty $si "Property" @([int]3,  "$ProductName $Version")                # PID_SUBJECT
+Set-MsiProperty $si "Property" @([int]4,  $ManufacturerName)                      # PID_AUTHOR
+Set-MsiProperty $si "Property" @([int]5,  "amalgame;compiler;language")            # PID_KEYWORDS
+Set-MsiProperty $si "Property" @([int]6,  "Amalgame language toolchain")           # PID_COMMENTS
+Set-MsiProperty $si "Property" @([int]7,  "x64;1033")                              # PID_TEMPLATE (x64 matches ProgramFiles64Folder)
+Set-MsiProperty $si "Property" @([int]9,  [Guid]::NewGuid().ToString("B").ToUpper()) # PID_REVNUMBER (per-build)
+Set-MsiProperty $si "Property" @([int]14, [int]200)                                 # PID_PAGECOUNT (schema version)
+Set-MsiProperty $si "Property" @([int]15, [int]2)                                   # PID_WORDCOUNT (2 = limited UI)
 Invoke-MSI $si "Persist" @()
 
 # ── Commit + release COM objects ─────────────────────────────
