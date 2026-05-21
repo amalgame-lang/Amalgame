@@ -118,9 +118,15 @@ function New-DeterministicGuid {
     # Stable GUID derived from input via SHA1 → first 16 bytes →
     # standard 8-4-4-4-12 format. Re-builds with the same input
     # produce identical GUIDs so MSI's upgrade detection works.
-    $sha1  = [System.Security.Cryptography.SHA1]::Create()
-    $bytes = $sha1.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Seed))
-    $guid  = [Guid]::new($bytes[0..15])
+    #
+    # PowerShell array slicing returns `object[]`, not `byte[]` —
+    # `[Guid]::new(byte[])` doesn't match the object[] shape and
+    # PS falls through to the string ctor which bails with "Guid
+    # should contain 32 digits". `[byte[]]` cast forces the type.
+    $sha1   = [System.Security.Cryptography.SHA1]::Create()
+    $bytes  = $sha1.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Seed))
+    $first16 = [byte[]]($bytes[0..15])
+    $guid    = [Guid]::new($first16)
     $sha1.Dispose()
     return "{$($guid.ToString().ToUpper())}"
 }
