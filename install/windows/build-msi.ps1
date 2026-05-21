@@ -751,47 +751,18 @@ Invoke-MSI $streamView "Close" @()
 # reflection layer marshals COM args to IDispatch directly,
 # bypassing the PS 7 wrapper that's been failing. Same
 # Type.InvokeMember API, different adapter path.
-Add-Type -TypeDefinition @"
-using System;
-
-public static class MsiSummaryHelper {
-    // SummaryInformation.Property is decorated [id(DISPID_VALUE)]
-    // in the WindowsInstaller IDL — it's the DEFAULT property of
-    // the IDispatch. .NET reflection's InvokeMember can't reliably
-    // address default-property propputs by name; the GetIDsOfNames
-    // lookup returns errors like "Property,Pid".
-    //
-    // C# `dynamic` uses the DLR's COM binder, which DOES handle
-    // default properties correctly. `si.Property[pid] = val` on a
-    // dynamic COM ref → DISPATCH_PROPERTYPUT with the right
-    // DISPID + DISPID_PROPERTYPUT marker.
-    public static void Apply(object db, int[] pids, object[] values, int maxProps) {
-        dynamic database = db;
-        dynamic si = database.SummaryInformation(maxProps);
-        for (int i = 0; i < pids.Length; i++) {
-            si.Property[pids[i]] = values[i];
-        }
-        si.Persist();
-    }
-}
-"@ -ReferencedAssemblies "Microsoft.CSharp", "System.Linq.Expressions"
-
-Write-Host "  Setting SummaryInformation via C# helper…"
-$siPids = [int[]]@(1, 2, 3, 4, 5, 6, 7, 9, 14, 15)
-$siVals = [object[]]@(
-    "1252",                                              # PID_CODEPAGE
-    "$ProductName Installer",                            # PID_TITLE
-    "$ProductName $Version",                             # PID_SUBJECT
-    $ManufacturerName,                                   # PID_AUTHOR
-    "amalgame;compiler;language",                        # PID_KEYWORDS
-    "Amalgame language toolchain",                       # PID_COMMENTS
-    "x64;1033",                                          # PID_TEMPLATE
-    [Guid]::NewGuid().ToString("B").ToUpper(),           # PID_REVNUMBER
-    [int]200,                                            # PID_PAGECOUNT (schema version)
-    [int]2                                               # PID_WORDCOUNT (limited UI)
-)
-[MsiSummaryHelper]::Apply($database, $siPids, $siVals, 200)
-$siNeedsMsiinfo = $false
+# Defer the SummaryInformation set until AFTER the main Commit
+# (below). The PS / C# .NET adapters can't dispatch the IDispatch
+# propput for SummaryInformation.Property (decorated
+# [id(DISPID_VALUE)], default property — GetIDsOfNames returns
+# "Property,Pid" through both reflection and DLR/dynamic paths).
+#
+# Workaround: spawn cscript.exe with an inline VBScript that opens
+# the MSI in TRANSACT mode and sets the SI properties via native
+# COM dispatch. VBScript has been the documented way to script
+# WindowsInstaller since 1999 — its dispatch hits the
+# DISPID_VALUE path correctly.
+$siNeedsVbScript = $true
 
 # ── Commit + release COM objects ─────────────────────────────
 Invoke-MSI $database "Commit" @()
@@ -799,19 +770,44 @@ Invoke-MSI $database "Commit" @()
 $database = $null
 [System.GC]::Collect()
 
-# Best-effort SummaryInformation patch via msiinfo.exe (Windows
-# SDK). Sets PID 7 (template), PID 9 (revnumber), PID 14
-# (pagecount), PID 15 (wordcount) — the ones MSI validation
-# requires. Skipped silently if msiinfo isn't on PATH.
-if ($siNeedsMsiinfo) {
-    $msiinfo = Get-Command msiinfo.exe -ErrorAction SilentlyContinue
-    if ($msiinfo) {
-        Write-Host "  Patching SummaryInformation via msiinfo.exe…"
-        $rev = [Guid]::NewGuid().ToString("B").ToUpper()
-        & msiinfo.exe $MsiPath /t "x64;1033" /v $rev /p 200 /w 2 /c "1252" /s "$ProductName Installer" /j "$ProductName $Version" /a $ManufacturerName /k "amalgame;compiler;language" /o "Amalgame language toolchain" | Out-Null
-    } else {
-        Write-Warning "msiinfo.exe not on PATH — MSI ships without SummaryInformation (works but Explorer shows defaults). Install Windows SDK to fix."
+# Set SummaryInformation via spawned cscript.exe. cscript ships
+# on every Windows since the late 90s; VBScript's COM dispatch
+# routes to IDispatch::Invoke with DISPID_PROPERTYPUT correctly
+# for default-property propputs like SummaryInformation.Property.
+if ($siNeedsVbScript) {
+    Write-Host "  Setting SummaryInformation via cscript.exe + VBScript…"
+    $rev = [Guid]::NewGuid().ToString("B").ToUpper()
+    # Build the VBScript. Strings interpolated from PS get escaped
+    # for VBScript (double-up any " characters).
+    $esc = { param([string]$s) $s.Replace('"', '""') }
+    $vbs = @"
+Option Explicit
+Dim installer, db, si
+Set installer = CreateObject("WindowsInstaller.Installer")
+' MsiOpenDatabaseModeTransact = 1 — opens for read+write with commit semantics.
+Set db = installer.OpenDatabase(WScript.Arguments(0), 1)
+Set si = db.SummaryInformation(200)
+si.Property(1)  = "1252"
+si.Property(2)  = "$(& $esc "$ProductName Installer")"
+si.Property(3)  = "$(& $esc "$ProductName $Version")"
+si.Property(4)  = "$(& $esc $ManufacturerName)"
+si.Property(5)  = "amalgame;compiler;language"
+si.Property(6)  = "Amalgame language toolchain"
+si.Property(7)  = "x64;1033"
+si.Property(9)  = "$rev"
+si.Property(14) = 200
+si.Property(15) = 2
+si.Persist
+db.Commit
+WScript.Echo "[vbs] SummaryInformation written"
+"@
+    $vbsPath = Join-Path $env:TEMP "amalgame-msi-si-$Version.vbs"
+    Set-Content -Path $vbsPath -Value $vbs -Encoding ASCII
+    & cscript.exe //nologo //T:30 $vbsPath $MsiPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "cscript exited $LASTEXITCODE — SummaryInformation set failed; MSI may be invalid."
     }
+    Remove-Item -Path $vbsPath -ErrorAction SilentlyContinue
 }
 # $database already released above (before msiinfo step). Just
 # release the installer COM object here.
