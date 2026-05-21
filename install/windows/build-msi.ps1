@@ -118,19 +118,29 @@ $null = New-Item -ItemType Directory -Path $WorkDir -Force
 
 # Wipe stale outputs so re-runs don't double-stream files into the
 # existing cabinet (we use makecab fresh each time).
-# Windows shell preview, Defender, or a lingering cscript can keep
-# the previous .msi locked for a moment — retry a few times before
-# giving up.
+# A previous run in the same PS host leaves COM RCWs that pin the
+# previous .msi until the GC finalizes them. Force a full GC + wait
+# for finalizers before trying to delete. Then retry to absorb any
+# shell preview / Defender scan lock contention.
+[System.GC]::Collect()
+[System.GC]::WaitForPendingFinalizers()
+[System.GC]::Collect()
+
 foreach ($p in @($MsiPath, $CabPath)) {
     if (-not (Test-Path $p)) { continue }
     $removed = $false
-    for ($try = 1; $try -le 10; $try++) {
+    for ($try = 1; $try -le 20; $try++) {
         try {
             Remove-Item $p -Force -ErrorAction Stop
             $removed = $true
             break
         } catch {
-            if ($try -eq 10) { throw }
+            if ($try -eq 20) { throw }
+            # Re-run GC on each retry — the previous run's RCWs may
+            # take more than one cycle to finalize through the COM
+            # apartment-thread message pump.
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
             Start-Sleep -Milliseconds 500
         }
     }
