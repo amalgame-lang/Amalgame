@@ -2396,6 +2396,16 @@ public class LspServer {
         prog.Str2 = path
         let resolver = this.BuildWorkspaceResolver(path, prog)
 
+        // Import-line context: when the cursor is on a line whose
+        // non-whitespace prefix is `import `, propose package
+        // namespaces from the workspace's amalgame.lock. Lets the
+        // user type `import Amalgame.` and pick from installed
+        // packages instead of guessing the exact namespace.
+        if (LspServer.IsImportLine(source, line)) {
+            this.SendImportCompletion(id)
+            return
+        }
+
         // Inspect the cursor context: if the character right before
         // the cursor is a dot, attempt member completion. LSP line/
         // character are 0-based.
@@ -2408,6 +2418,92 @@ public class LspServer {
         // Fallback: list every global the resolver knows. Editor
         // filters by prefix on its side.
         this.SendGlobalCompletion(id, resolver)
+    }
+
+    // True when the trimmed text on `line` starts with the import
+    // keyword (with at least one trailing space — `importer` and
+    // `imports` aren't keywords, and a bare `import` on its own
+    // line is only useful while typing the namespace).
+    private static bool IsImportLine(string source, int line) {
+        let n: int = String_Length(source)
+        var pos: int = 0
+        var curLine: int = 0
+        var lineStart: int = 0
+        while (pos < n) {
+            if (curLine == line) { break }
+            let c: string = String_Substring(source, pos, 1)
+            if (c == "\n") {
+                curLine = curLine + 1
+                lineStart = pos + 1
+            }
+            pos = pos + 1
+        }
+        if (curLine != line) { return false }
+        // Find end-of-line
+        var lineEnd: int = lineStart
+        while (lineEnd < n) {
+            let c: string = String_Substring(source, lineEnd, 1)
+            if (c == "\n") { break }
+            lineEnd = lineEnd + 1
+        }
+        let lineText: string = String_Trim(String_Substring(source, lineStart, lineEnd - lineStart))
+        return String_StartsWith(lineText, "import ") || lineText == "import"
+    }
+
+    // Build CompletionItem[] from installed-package namespaces. Reads
+    // the workspace's amalgame.lock via PackageRegistry; falls back
+    // to an empty list when no lockfile is present (the user gets
+    // their regular global completion instead).
+    private void SendImportCompletion(int id) {
+        let lockPath: string  = this.CachedRoot + "/amalgame.lock"
+        let cacheRoot: string = PackageRegistry.AmalgameHome() + "/packages"
+        var items: string = ""
+        var first: bool = true
+        if (File.Exists(lockPath)) {
+            let reg = PackageRegistry.LoadFrom(lockPath, cacheRoot)
+            let n: int = reg.Packages.Count()
+            for i in 0..n {
+                let p: LoadedPackage = reg.Packages.Get(i)
+                let ns: string = p.Ns
+                if (String_Length(ns) == 0) { continue }
+                let detail: string = p.Name + " @ " + p.Tag
+                // CompletionItemKind 9 = Module
+                if (!first) { items = items + "," }
+                items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"" + Json.EscapeString(detail) + "\"}"
+                first = false
+            }
+        }
+        // Always also expose the bundled stdlib roots — they're
+        // available without a lockfile. Same list the resolver
+        // pre-declares as type-globals.
+        let bundled: List<string> = LspServer.BundledNamespaces()
+        let bn: int = bundled.Count()
+        for bi in 0..bn {
+            let ns: string = bundled.Get(bi)
+            if (!first) { items = items + "," }
+            items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"bundled stdlib\"}"
+            first = false
+        }
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
+        this.Send(body)
+    }
+
+    // Hardcoded bundled-stdlib namespaces. Mirrors what
+    // `lib/libamalgame.a` ships out of the box — these resolve
+    // without any package install step.
+    private static List<string> BundledNamespaces() {
+        let xs: List<string> = new List<string>()
+        xs.Add("Amalgame.IO")
+        xs.Add("Amalgame.Process")
+        xs.Add("Amalgame.String")
+        xs.Add("Amalgame.Collections")
+        xs.Add("Amalgame.Console")
+        xs.Add("Amalgame.Net")
+        xs.Add("Amalgame.Path")
+        xs.Add("Amalgame.Formats.Json")
+        xs.Add("Amalgame.Formats.Toml")
+        xs.Add("Amalgame.Formats.Msgpack")
+        return xs
     }
 
     private void SendGlobalCompletion(int id, FullResolver resolver) {
