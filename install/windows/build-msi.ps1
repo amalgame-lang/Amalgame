@@ -390,16 +390,18 @@ function Invoke-MSI {
 }
 
 function Set-MsiProperty {
-    # Indexed COM property setter via CallByName. CallType.Set
-    # corresponds to DISPATCH_PROPERTYPUTREF (for object refs);
-    # CallType.Let is DISPATCH_PROPERTYPUT (for value types).
-    # We use Set — works for both string and int values on
-    # WindowsInstaller Record / SummaryInformation properties.
+    # Indexed COM property setter via CallByName.
+    #   CallType.Set = DISPATCH_PROPERTYPUTREF (object refs)
+    #   CallType.Let = DISPATCH_PROPERTYPUT    (value types)
+    # WindowsInstaller's Record.StringData / IntegerData /
+    # SummaryInformation.Property all expose ONLY PROPPUT (the
+    # values are int/string, not object refs), so we MUST use
+    # CallType.Let — Set gives DISP_E_MEMBERNOTFOUND.
     param([object]$Target, [string]$Property, [object[]]$IndexAndValue)
     [void][Microsoft.VisualBasic.Interaction]::CallByName(
         $Target,
         $Property,
-        [Microsoft.VisualBasic.CallType]::Set,
+        [Microsoft.VisualBasic.CallType]::Let,
         [object[]]$IndexAndValue
     )
 }
