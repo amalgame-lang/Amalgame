@@ -166,6 +166,24 @@ function Register-Directory {
     return $parentId
 }
 
+# Tracks every (InstallRelDir, DestName) pair already staged so a
+# duplicate Add-StageFile call (typically caused by a Get-ChildItem
+# enumeration following a reparse point or hard link in the gcc
+# bundle) becomes a no-op instead of producing a duplicate MSI
+# File row + cabinet entry. Without this, makecab.exe aborts with
+# "Duplicate file name: Fxxxxxxxxx already defined".
+$stagedInstallPaths = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase
+)
+# Sequential counter for FileKey / ComponentId. Guaranteed unique
+# without relying on sha1-prefix collision-resistance (we saw two
+# colliding short-prefix hashes at ~10K files in v0.8.40-rc1 — not
+# a real birthday but apparently enough of a margin to spook the
+# release pipeline). Component GUIDs are still deterministic via
+# New-DeterministicGuid so MSI upgrade tracking stays stable across
+# rebuilds.
+$script:stagedCounter = 0
+
 function Add-StageFile {
     param(
         [string]$AbsSource,
@@ -173,16 +191,21 @@ function Add-StageFile {
         [string]$DestName
     )
     if (-not (Test-Path $AbsSource)) { return }
+    # Normalise + dedupe.
+    $normDir  = $InstallRelDir.Replace("\", "/").TrimEnd("/")
+    $instPath = "$normDir/$DestName"
+    if (-not $stagedInstallPaths.Add($instPath)) {
+        # Already staged — skip silently. Common cause: a recursive
+        # Get-ChildItem walked the same file twice via a reparse
+        # point.
+        return
+    }
     $dirId = Register-Directory -RelPath $InstallRelDir
-    # File key: F + first 12 hex of sha1(installpath). Stable across
-    # rebuilds; collision-resistant enough for our file counts.
-    $sha1Provider = [System.Security.Cryptography.SHA1]::Create()
-    $hashBytes    = $sha1Provider.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$InstallRelDir/$DestName"))
-    $sha1Provider.Dispose()
-    $hashHex      = (-join ($hashBytes | ForEach-Object { $_.ToString("x2") })).Substring(0, 12)
-    $fileKey      = "F$hashHex"
-    $compId       = "C$hashHex"
-    $compGuid     = New-DeterministicGuid "$UpgradeCode|$InstallRelDir/$DestName"
+    $script:stagedCounter += 1
+    $idx       = $script:stagedCounter
+    $fileKey   = "F{0:D8}" -f $idx
+    $compId    = "C{0:D8}" -f $idx
+    $compGuid  = New-DeterministicGuid "$UpgradeCode|$instPath"
     $sf = [StagedFile]::new()
     $sf.SourcePath     = $AbsSource
     $sf.InstallDirId   = $dirId
