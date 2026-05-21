@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-21T22:40:19+02:00
-Git rev:  d0cff21b55f0cf21bb25f3188c8d7161bb0f3445
-Branch:   feature/interp-capture-in-lambda
+Captured: 2026-05-21T23:37:06+02:00
+Git rev:  d55f34d3b801b824d06a46a867ced76e9a450202
+Branch:   release/v0.8.40
 Tests:    (skipped) passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
