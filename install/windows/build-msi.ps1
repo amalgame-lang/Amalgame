@@ -376,17 +376,23 @@ Write-Host "  [dbg] CallByName reachable"
 
 function Invoke-MSI {
     # Single entry point for every WindowsInstaller method call.
-    # CallByName routes through Microsoft.VisualBasic's COM binder,
-    # which is the same path VBScript and classic VB used for 20+
-    # years — battle-tested for IDispatch.
+    # CallByName routes through Microsoft.VisualBasic's COM binder
+    # (DISPATCH_METHOD). Args MUST be passed INLINE not as an
+    # array — CallByName's last param is `params object[]`, and
+    # passing `[object[]]@(...)` for that param makes .NET treat
+    # the whole array as a SINGLE argument (giving the COM
+    # method one arg too many).
     param([object]$Target, [string]$Method, [object[]]$MethodArgs = @())
     Write-Host "  [dbg] Invoke-MSI: $Method ($($MethodArgs.Count) args)"
-    return [Microsoft.VisualBasic.Interaction]::CallByName(
-        $Target,
-        $Method,
-        [Microsoft.VisualBasic.CallType]::Method,
-        [object[]]$MethodArgs
-    )
+    $iact  = [Microsoft.VisualBasic.Interaction]
+    $cType = [Microsoft.VisualBasic.CallType]::Method
+    switch ($MethodArgs.Count) {
+        0 { return $iact::CallByName($Target, $Method, $cType) }
+        1 { return $iact::CallByName($Target, $Method, $cType, $MethodArgs[0]) }
+        2 { return $iact::CallByName($Target, $Method, $cType, $MethodArgs[0], $MethodArgs[1]) }
+        3 { return $iact::CallByName($Target, $Method, $cType, $MethodArgs[0], $MethodArgs[1], $MethodArgs[2]) }
+    }
+    throw "Invoke-MSI: too many args ($($MethodArgs.Count)) — extend the switch"
 }
 
 function Set-MsiProperty {
@@ -397,12 +403,14 @@ function Set-MsiProperty {
     # SummaryInformation.Property all expose ONLY PROPPUT (the
     # values are int/string, not object refs), so we MUST use
     # CallType.Let — Set gives DISP_E_MEMBERNOTFOUND.
+    # Args passed inline (NOT as object[]) — same reason as above.
     param([object]$Target, [string]$Property, [object[]]$IndexAndValue)
     [void][Microsoft.VisualBasic.Interaction]::CallByName(
         $Target,
         $Property,
         [Microsoft.VisualBasic.CallType]::Let,
-        [object[]]$IndexAndValue
+        $IndexAndValue[0],
+        $IndexAndValue[1]
     )
 }
 
