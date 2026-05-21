@@ -308,39 +308,41 @@ $installer = New-Object -ComObject WindowsInstaller.Installer
 # Invoke-MSI helper below.
 $database = $installer.OpenDatabase($MsiPath, $msiOpenDatabaseModeCreate)
 
+# Load Microsoft.VisualBasic for CallByName. This is THE documented
+# way to do COM IDispatch late-binding from .NET — it handles both
+# method invocation (CallType.Method) and indexed property setters
+# (CallType.Set / CallType.Let). Works on PS 5.1 AND PS 7,
+# bypasses the DLR-based COM adapter that's been throwing
+# DISP_E_TYPEMISMATCH / op_Addition / etc. on the GHA runner.
+Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
+
 function Invoke-MSI {
-    # COM dispatch shim for METHOD calls. Switched from
-    # Type.InvokeMember(reflection) to PowerShell native
-    # dot-dispatch (`$Target.$Method(...)`) because the reflection
-    # path was throwing DISP_E_TYPEMISMATCH on the GHA windows-
-    # latest runner across multiple BindingFlags / type-marshalling
-    # combinations. PS native dispatch routes through IDispatch
-    # directly and works for any WindowsInstaller COM method.
+    # Single entry point for every WindowsInstaller method call.
+    # CallByName routes through Microsoft.VisualBasic's COM binder,
+    # which is the same path VBScript and classic VB used for 20+
+    # years — battle-tested for IDispatch.
     param([object]$Target, [string]$Method, [object[]]$MethodArgs = @())
-    $n = ($MethodArgs | Measure-Object).Count
-    switch ($n) {
-        0 { return $Target.$Method() }
-        1 { return $Target.$Method($MethodArgs[0]) }
-        2 { return $Target.$Method($MethodArgs[0], $MethodArgs[1]) }
-        3 { return $Target.$Method($MethodArgs[0], $MethodArgs[1], $MethodArgs[2]) }
-        4 { return $Target.$Method($MethodArgs[0], $MethodArgs[1], $MethodArgs[2], $MethodArgs[3]) }
-    }
-    throw "Invoke-MSI: $n args not supported (extend the switch)"
+    return [Microsoft.VisualBasic.Interaction]::CallByName(
+        $Target,
+        $Method,
+        [Microsoft.VisualBasic.CallType]::Method,
+        [object[]]$MethodArgs
+    )
 }
 
 function Set-MsiProperty {
-    # Indexed-property setter via PowerShell's native COM late-
-    # binding. `$Target.$Property($idx) = $val` doesn't parse
-    # directly in PS (parser sees it as method-call as lvalue), so
-    # we build the assignment in a scriptblock string and Invoke()
-    # it. PS's COM dispatch translates that to the IDispatch
-    # PROPPUTREF/PROPPUT entry — same path WindowsInstaller docs
-    # show in their VBScript samples for Record.StringData(N) = X.
+    # Indexed COM property setter via CallByName. CallType.Set
+    # corresponds to DISPATCH_PROPERTYPUTREF (for object refs);
+    # CallType.Let is DISPATCH_PROPERTYPUT (for value types).
+    # We use Set — works for both string and int values on
+    # WindowsInstaller Record / SummaryInformation properties.
     param([object]$Target, [string]$Property, [object[]]$IndexAndValue)
-    $idx = $IndexAndValue[0]
-    $val = $IndexAndValue[1]
-    $expr = "`$args[0].$Property(`$args[1]) = `$args[2]"
-    & ([scriptblock]::Create($expr)) $Target $idx $val
+    [void][Microsoft.VisualBasic.Interaction]::CallByName(
+        $Target,
+        $Property,
+        [Microsoft.VisualBasic.CallType]::Set,
+        [object[]]$IndexAndValue
+    )
 }
 
 function Insert-Row {
