@@ -741,17 +741,21 @@ Invoke-MSI $streamView "Close" @()
 # DISP_E_MEMBERNOTFOUND. Direct PS COM access dispatches through
 # IDispatch's propget path correctly.
 $si = $database.SummaryInformation(200)
-Set-MsiProperty $si "Property" @([int]1,  "1252")                                 # PID_CODEPAGE
-Set-MsiProperty $si "Property" @([int]2,  "$ProductName Installer")               # PID_TITLE
-Set-MsiProperty $si "Property" @([int]3,  "$ProductName $Version")                # PID_SUBJECT
-Set-MsiProperty $si "Property" @([int]4,  $ManufacturerName)                      # PID_AUTHOR
-Set-MsiProperty $si "Property" @([int]5,  "amalgame;compiler;language")            # PID_KEYWORDS
-Set-MsiProperty $si "Property" @([int]6,  "Amalgame language toolchain")           # PID_COMMENTS
-Set-MsiProperty $si "Property" @([int]7,  "x64;1033")                              # PID_TEMPLATE (x64 matches ProgramFiles64Folder)
-Set-MsiProperty $si "Property" @([int]9,  [Guid]::NewGuid().ToString("B").ToUpper()) # PID_REVNUMBER (per-build)
-Set-MsiProperty $si "Property" @([int]14, [int]200)                                 # PID_PAGECOUNT (schema version)
-Set-MsiProperty $si "Property" @([int]15, [int]2)                                   # PID_WORDCOUNT (2 = limited UI)
-Invoke-MSI $si "Persist" @()
+# Direct PS COM syntax for the property PUT — bypasses Set-MsiProperty's
+# CallByName path which threw "Property,Pid" on this object. PS parses
+# `$obj.IndexedProp(idx) = val` as a special PROPPUT dispatch when the
+# target is a COM IDispatch.
+$si.Property(1)  = "1252"                                  # PID_CODEPAGE
+$si.Property(2)  = "$ProductName Installer"                # PID_TITLE
+$si.Property(3)  = "$ProductName $Version"                 # PID_SUBJECT
+$si.Property(4)  = $ManufacturerName                       # PID_AUTHOR
+$si.Property(5)  = "amalgame;compiler;language"            # PID_KEYWORDS
+$si.Property(6)  = "Amalgame language toolchain"           # PID_COMMENTS
+$si.Property(7)  = "x64;1033"                              # PID_TEMPLATE (x64 matches ProgramFiles64Folder)
+$si.Property(9)  = [Guid]::NewGuid().ToString("B").ToUpper() # PID_REVNUMBER (per-build)
+$si.Property(14) = 200                                     # PID_PAGECOUNT (schema version)
+$si.Property(15) = 2                                       # PID_WORDCOUNT (2 = limited UI)
+$si.Persist()
 
 # ── Commit + release COM objects ─────────────────────────────
 Invoke-MSI $database "Commit" @()
