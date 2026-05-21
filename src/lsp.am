@@ -1864,6 +1864,7 @@ public class LspServer {
         let eLine: int = endLine + 1
         let actions: List<string> = new List<string>()
         LspServer.CollectAnnotationFixes(prog, tc, uri, sLine, eLine, actions)
+        this.CollectPackageInstallSuggestions(resolver, uri, path, sLine, eLine, actions)
 
         var json: string = "["
         let n: int = actions.Count()
@@ -1874,6 +1875,122 @@ public class LspServer {
         json = json + "]"
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}"
         this.Send(body)
+    }
+
+    // For every `Unknown symbol 'X'` resolver diagnostic whose
+    // position lies in the requested code-action range, shell out to
+    // `amc package suggest --json X` and emit one CodeAction per
+    // suggested package. The action is informational — its `command`
+    // shows the install command in the editor's status bar; we
+    // explicitly do NOT auto-install. The user runs the command
+    // themselves.
+    private void CollectPackageInstallSuggestions(FullResolver resolver, string uri, string path, int sLine, int eLine, List<string> out) {
+        let errN: int = resolver.RawErrors.Count()
+        if (errN == 0) { return }
+        let prefix: string = "Unknown symbol '"
+        let prefLen: int = String_Length(prefix)
+        let seen: List<string> = new List<string>()
+        for ei in 0..errN {
+            let err: ResolverError = resolver.RawErrors.Get(ei)
+            if (err.Line < sLine || err.Line > eLine) { continue }
+            if (!String_StartsWith(err.Message, prefix)) { continue }
+            let rest: string = String_Substring(err.Message, prefLen, String_Length(err.Message) - prefLen)
+            let endQuote: int = String_IndexOf(rest, "'")
+            if (endQuote <= 0) { continue }
+            let symName: string = String_Substring(rest, 0, endQuote)
+            // Skip "_" wildcard / parser placeholder.
+            if (symName == "_" || symName == "_unknown_") { continue }
+            // Dedupe — same symbol can fire multiple resolver errors
+            // (one per use site) but we only want one set of actions.
+            var dup: bool = false
+            let sn: int = seen.Count()
+            for si in 0..sn {
+                if (seen.Get(si) == symName) { dup = true }
+            }
+            if (dup) { continue }
+            seen.Add(symName)
+            // Shell out to ourselves. The bundled `amc` is on PATH
+            // after `build_amc.sh --install`; if not, the process
+            // exits non-zero and we silently skip — no action emitted.
+            // Resolve amc binary via /proc/self/exe (Linux) /
+            // GetModuleFileNameA (Windows) / _NSGetExecutablePath
+            // (macOS). Falls back to bare `amc` (which works when
+            // the install put it on PATH) on resolution failure.
+            var cmd: string = "amc"
+            let amcBin: string = LspServer.AmcBinaryPath()
+            if (String_Length(amcBin) > 0) { cmd = amcBin }
+            let result = Process.RunCapture(cmd + " package suggest --json " + symName)
+            if (result.Exit != 0) { continue }
+            let trimmed: string = String_Trim(result.Stdout)
+            if (String_Length(trimmed) == 0 || trimmed == "[]") { continue }
+            let parsed: JsonResult = Json.Parse(trimmed)
+            if (!parsed.Ok) { continue }
+            let doc: JsonValue = parsed.Value
+            if (doc.IsNull() || !doc.IsArray()) { continue }
+            let arr: List<JsonValue> = doc.AsArray()
+            let nResults: int = arr.Count()
+            for ri in 0..nResults {
+                let entry: JsonValue = arr.Get(ri)
+                let pkgName: string = entry.Get("name").AsString()
+                if (String_Length(pkgName) == 0) { continue }
+                let pkgTag: string  = entry.Get("latest_compatible_tag").AsString()
+                let pkgDesc: string = entry.Get("description").AsString()
+                out.Add(LspServer.PackageInstallActionJson(pkgName, pkgTag, pkgDesc, symName))
+            }
+        }
+    }
+
+    // Resolve the running amc binary's canonical path. Same shape
+    // as Program.ResolveSelfPath in main.am — duplicated as a
+    // local static so lsp.am doesn't have to depend on the
+    // entry-point class (whose symbols aren't reliably exported
+    // for cross-file calls).
+    private static string AmcBinaryPath() {
+        @c {
+            #ifdef _WIN32
+                char buf[4096];
+                DWORD n = GetModuleFileNameA(NULL, buf, sizeof(buf));
+                if (n == 0 || n >= sizeof(buf)) { return (code_string) ""; }
+                for (DWORD i = 0; i < n; i++) { if (buf[i] == '\\') buf[i] = '/'; }
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #elif defined(__APPLE__)
+                char raw[4096];
+                uint32_t size = sizeof(raw);
+                if (_NSGetExecutablePath(raw, &size) != 0) { return (code_string) ""; }
+                char resolved[4096];
+                char* p = realpath(raw, resolved);
+                const char* src = p ? (const char*)resolved : (const char*)raw;
+                size_t n = strlen(src);
+                char* out = (char*) GC_MALLOC(n + 1);
+                memcpy(out, src, n + 1);
+                return (code_string) out;
+            #else
+                char buf[4096];
+                ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+                if (n <= 0) { return (code_string) ""; }
+                buf[n] = '\0';
+                char* out = (char*) GC_MALLOC((size_t)(n + 1));
+                memcpy(out, buf, (size_t)(n + 1));
+                return (code_string) out;
+            #endif
+        }
+    }
+
+    // Build a CodeAction JSON pointing at the install command.
+    // `command` is the LSP Command shape — the editor surfaces the
+    // title in the lightbulb menu and runs the command verbatim when
+    // the user picks it. Kind = quickfix so VS Code groups it with
+    // the other quickfix actions.
+    private static string PackageInstallActionJson(string pkgName, string pkgTag, string pkgDesc, string symName) {
+        var label: string = "Install package " + pkgName
+        if (String_Length(pkgTag) > 0) { label = label + "@" + pkgTag }
+        label = label + " (for '" + symName + "')"
+        var cmdArgs: string = "amc package add " + pkgName
+        if (String_Length(pkgTag) > 0) { cmdArgs = cmdArgs + "@" + pkgTag }
+        let cmd: string = "{\"title\":\"" + Json.EscapeString(label) + "\",\"command\":\"" + Json.EscapeString(cmdArgs) + "\"}"
+        return "{\"title\":\"" + Json.EscapeString(label) + "\",\"kind\":\"quickfix\",\"command\":" + cmd + "}"
     }
 
     // Walk the AST collecting CodeAction JSONs for every annotation-
