@@ -735,9 +735,12 @@ Invoke-MSI $streamView "Close" @()
 # ── Summary information ──────────────────────────────────────
 # These 8 properties are what the Windows shell reads to display
 # the MSI's title bar / explorer preview. PIDs from the MSI SDK.
-# SummaryInformation property setters are indexed by PID — they go
-# through the same Set-MsiProperty reflection helper as Record.
-$si = Invoke-MSI $database "SummaryInformation" @([int]200)
+#
+# Database.SummaryInformation(maxProps) is an indexed property
+# getter (not a method) — CallByName with CallType.Method returns
+# DISP_E_MEMBERNOTFOUND. Direct PS COM access dispatches through
+# IDispatch's propget path correctly.
+$si = $database.SummaryInformation(200)
 Set-MsiProperty $si "Property" @([int]1,  "1252")                                 # PID_CODEPAGE
 Set-MsiProperty $si "Property" @([int]2,  "$ProductName Installer")               # PID_TITLE
 Set-MsiProperty $si "Property" @([int]3,  "$ProductName $Version")                # PID_SUBJECT
