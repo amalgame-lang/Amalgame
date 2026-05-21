@@ -740,23 +740,62 @@ Invoke-MSI $streamView "Close" @()
 # getter (not a method) — CallByName with CallType.Method returns
 # DISP_E_MEMBERNOTFOUND. Direct PS COM access dispatches through
 # IDispatch's propget path correctly.
-# SummaryInformation property setters fail on PS 7 / .NET 6 with
-# both Type.InvokeMember (DISP_E_TYPEMISMATCH), CallByName
-# (Property,Pid), AND `$si.Property($n) = $v` (which PS routes
-# through CallByName internally → same error). The IDispatch
-# propput interface of SummaryInformation's `Property` member
-# isn't reachable through any PS 7 dispatch path we've found.
+# SummaryInformation IS required — Windows Installer refuses any
+# MSI without it (error 1620 / 2262 STG_E_FILENOTFOUND on the
+# SummaryInformation stream). PS 7's dispatch adapter can't reach
+# the IDispatch propput on SummaryInformation.Property through
+# any of the tested PS paths (Type.InvokeMember /
+# Microsoft.VisualBasic.CallByName / `$obj.Prop(idx)=val`).
 #
-# WORKAROUND: skip SummaryInformation programmatic setup. Use
-# msiinfo.exe via Process spawn AFTER Commit — that's the
-# external tool documented for this exact case. Falls back
-# gracefully if msiinfo isn't on PATH (Windows SDK install).
-#
-# A bare MSI without summary info IS installable but Windows
-# Explorer won't render the title bar / file properties dialog
-# correctly. msiinfo fixes that as a post-step.
-$siNeedsMsiinfo = $true
-Write-Host "  [skip] SummaryInformation programmatic setup (PS 7 IDispatch limitation)"
+# WORKAROUND: inline C# helper compiled via Add-Type. C#'s
+# reflection layer marshals COM args to IDispatch directly,
+# bypassing the PS 7 wrapper that's been failing. Same
+# Type.InvokeMember API, different adapter path.
+Add-Type -TypeDefinition @"
+using System;
+using System.Reflection;
+
+public static class MsiSummaryHelper {
+    public static void Apply(object db, int[] pids, object[] values, int maxProps) {
+        Type dbType = db.GetType();
+        // SummaryInformation(maxProps) returns the SI object — it's
+        // a property getter (not a method), but reflection's
+        // GetProperty flag handles either.
+        object si = dbType.InvokeMember(
+            "SummaryInformation",
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.GetProperty,
+            null, db, new object[] { maxProps });
+        Type siType = si.GetType();
+        for (int i = 0; i < pids.Length; i++) {
+            siType.InvokeMember(
+                "Property",
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.SetProperty,
+                null, si, new object[] { pids[i], values[i] });
+        }
+        siType.InvokeMember(
+            "Persist",
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.InvokeMethod,
+            null, si, null);
+    }
+}
+"@
+
+Write-Host "  Setting SummaryInformation via C# helper…"
+$siPids = [int[]]@(1, 2, 3, 4, 5, 6, 7, 9, 14, 15)
+$siVals = [object[]]@(
+    "1252",                                              # PID_CODEPAGE
+    "$ProductName Installer",                            # PID_TITLE
+    "$ProductName $Version",                             # PID_SUBJECT
+    $ManufacturerName,                                   # PID_AUTHOR
+    "amalgame;compiler;language",                        # PID_KEYWORDS
+    "Amalgame language toolchain",                       # PID_COMMENTS
+    "x64;1033",                                          # PID_TEMPLATE
+    [Guid]::NewGuid().ToString("B").ToUpper(),           # PID_REVNUMBER
+    [int]200,                                            # PID_PAGECOUNT (schema version)
+    [int]2                                               # PID_WORDCOUNT (limited UI)
+)
+[MsiSummaryHelper]::Apply($database, $siPids, $siVals, 200)
+$siNeedsMsiinfo = $false
 
 # ── Commit + release COM objects ─────────────────────────────
 Invoke-MSI $database "Commit" @()
