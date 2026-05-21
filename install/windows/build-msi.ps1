@@ -418,18 +418,15 @@ function Insert-Row {
     # INSERT with parameter binding. View.Execute(record) walks the
     # record's columns as values for each `?` placeholder; the engine
     # handles the row insertion in one call. No separate Modify needed.
+    # Each View/Record is an OLE structured-storage handle on the .msi;
+    # releasing them eagerly prevents the file lock from surviving past
+    # the database COM release (which breaks cscript's later OpenDatabase).
     param([string]$Sql, [object[]]$Values)
     $view = Invoke-MSI $database "OpenView" @($Sql)
     $record = Invoke-MSI $installer "CreateRecord" @($Values.Count)
     for ($i = 0; $i -lt $Values.Count; $i++) {
         $v = $Values[$i]
         if ($null -eq $v) { continue }
-        # PS 7 parses `@($i + 1, [string]$v)` as
-        # `$i + @(1, [string]$v)` (comma binds tighter than `+`
-        # inside array subexpressions — a known parser quirk),
-        # which then tries `int + Object[]` → op_Addition fail.
-        # Extracting the index to a typed local sidesteps the
-        # whole ambiguity.
         [int]$fieldIdx = $i + 1
         if ($v -is [int] -or $v -is [long]) {
             Set-MsiProperty $record "IntegerData" @($fieldIdx, [int]$v)
@@ -439,6 +436,8 @@ function Insert-Row {
     }
     Invoke-MSI $view "Execute" @($record)
     Invoke-MSI $view "Close" @()
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($record)
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($view)
 }
 
 function Exec-Sql {
@@ -447,6 +446,7 @@ function Exec-Sql {
     $view = Invoke-MSI $database "OpenView" @($Sql)
     Invoke-MSI $view "Execute" @($null)
     Invoke-MSI $view "Close" @()
+    [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($view)
 }
 
 Write-Host "  Creating MSI schema…"
@@ -600,6 +600,9 @@ Set-MsiProperty $iconRecord "StringData" @(1, "icon.ico")
 Invoke-MSI     $iconRecord "SetStream"   @(2, $AbsIcon)
 Invoke-MSI $iconView "Execute" @($iconRecord)
 Invoke-MSI $iconView "Close" @()
+[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($iconRecord)
+[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($iconView)
+$iconRecord = $null; $iconView = $null
 
 # ── Shortcuts (Start Menu) ───────────────────────────────────
 # Tied to the amc.exe component so they install/uninstall with it.
@@ -731,6 +734,9 @@ Invoke-MSI      $streamRecord "SetStream"   @(2, $CabPath)
 # — same pattern as the Icon insert above.
 Invoke-MSI $streamView "Execute" @($streamRecord)
 Invoke-MSI $streamView "Close" @()
+[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($streamRecord)
+[void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($streamView)
+$streamRecord = $null; $streamView = $null
 
 # ── Summary information ──────────────────────────────────────
 # These 8 properties are what the Windows shell reads to display
@@ -793,10 +799,26 @@ if ($siNeedsVbScript) {
     $esc = { param([string]$s) $s.Replace('"', '""') }
     $vbs = @"
 Option Explicit
-Dim installer, db, si
+Dim installer, db, si, attempt, lastErr
 Set installer = CreateObject("WindowsInstaller.Installer")
 ' MsiOpenDatabaseModeTransact = 1 — opens for read+write with commit semantics.
-Set db = installer.OpenDatabase(WScript.Arguments(0), 1)
+' Retry up to 20 times (10s total) — the parent PowerShell process may
+' still hold the OLE structured-storage handle for a moment after
+' releasing the COM objects; the kernel takes a beat to flush the lock.
+attempt = 0
+Do
+    attempt = attempt + 1
+    On Error Resume Next
+    Set db = installer.OpenDatabase(WScript.Arguments(0), 1)
+    lastErr = Err.Number
+    On Error Goto 0
+    If lastErr = 0 Then Exit Do
+    If attempt >= 20 Then
+        WScript.StdErr.WriteLine "[vbs] OpenDatabase failed after " & attempt & " retries (err=" & lastErr & ")"
+        WScript.Quit 2
+    End If
+    WScript.Sleep 500
+Loop
 Set si = db.SummaryInformation(200)
 si.Property(1)  = "1252"
 si.Property(2)  = "$(& $esc "$ProductName Installer")"
@@ -810,7 +832,7 @@ si.Property(14) = 200
 si.Property(15) = 2
 si.Persist
 db.Commit
-WScript.Echo "[vbs] SummaryInformation written"
+WScript.Echo "[vbs] SummaryInformation written (attempts=" & attempt & ")"
 "@
     $vbsPath = Join-Path $env:TEMP "amalgame-msi-si-$Version.vbs"
     Set-Content -Path $vbsPath -Value $vbs -Encoding ASCII
