@@ -895,6 +895,19 @@ public class CGen {
     private string InferTypeFromExprUncached(AstNode expr) {
         if (expr == null) { return "" }
         let k = expr.Kind
+        // v0.8.39 — `let app = this` picks up the enclosing class's
+        // C type so the local is declared as `<Class>* app = self;`
+        // instead of `void* app = self;`.  Closures capturing `app`
+        // then box it as a class pointer, and `app.Field` lowers
+        // cleanly without a void-pointer member access error.
+        // CurrentClass is the already-mangled symbol (e.g. Demo_Counter),
+        // so we tack on `*` directly — running it through TypeToC would
+        // double-prefix via SymName.
+        if (k == NodeKind.THIS_EXPR) {
+            if (String_Length(this.CurrentClass) > 0) {
+                return this.CurrentClass + "*"
+            }
+        }
         if (k == NodeKind.LIST_COMP)      { return "AmalgameList*" }
         if (k == NodeKind.LIST_LITERAL)   { return "AmalgameList*" }
         // match-as-expression: type is the type of the first arm body.

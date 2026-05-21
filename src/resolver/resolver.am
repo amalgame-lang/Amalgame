@@ -1420,6 +1420,14 @@ public class FullResolver {
         if (k == NodeKind.LITERAL_STRING) { return "string" }
         if (k == NodeKind.LITERAL_BOOL)   { return "bool" }
         if (k == NodeKind.BINARY && expr.Str == "..") { return "range" }
+        // v0.8.39 — `let app = this` now picks up the enclosing class
+        // type instead of falling through to "?".  Closures capturing
+        // `app` then box it as a class pointer instead of i64.
+        if (k == NodeKind.THIS_EXPR) {
+            if (String_Length(this.CurrentClass) > 0) {
+                return this.CurrentClass
+            }
+        }
         if (k == NodeKind.NEW_EXPR) {
             // v2.5: include the generic type-arg so List<User> is
             // returned as "List<User>" — needed by
