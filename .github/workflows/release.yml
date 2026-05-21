@@ -412,39 +412,56 @@ jobs:
           Remove-Item -Recurse -Force winlibs-tmp, mingw.zip
           Test-Path install\windows\gcc-bundle\bin\gcc.exe
 
-      - name: Locate preinstalled Inno Setup
-        id: iscc
-        shell: pwsh
-        run: |
-          # windows-latest ships Inno Setup 6 preinstalled (currently v6.7.1).
-          # Both 32-bit and 64-bit Program Files locations are checked since
-          # GitHub has historically used both across image generations.
-          $candidates = @(
-            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-            "C:\Program Files\Inno Setup 6\ISCC.exe"
-          )
-          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $iscc) {
-            Write-Error "ISCC.exe not found on the runner. Image may have dropped it — fall back to: choco install innosetup -y --force"
-            exit 1
-          }
-          Write-Host "Using $iscc"
-          "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      # InnoSetup .exe build — DISABLED while we validate the
+      # PowerShell MSI builder. Re-enable by flipping the `if:` to
+      # `true` (or removing it) if we need both artifacts again.
+      # The two `Locate Inno Setup` + `Build .exe` steps used to
+      # produce `install\windows\Output\amalgame-<ver>-setup.exe`.
+      #
+      # - name: Locate preinstalled Inno Setup
+      #   id: iscc
+      #   if: false
+      #   shell: pwsh
+      #   run: |
+      #     $candidates = @(
+      #       "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+      #       "C:\Program Files\Inno Setup 6\ISCC.exe"
+      #     )
+      #     $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+      #     "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      #
+      # - name: Build amalgame-<ver>-setup.exe
+      #   if: false
+      #   shell: pwsh
+      #   working-directory: install\windows
+      #   run: |
+      #     $version = "${{ steps.ver.outputs.version }}"
+      #     $stage = "..\..\dist\amc-$version-windows-x86_64"
+      #     & "${{ steps.iscc.outputs.path }}" "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
 
-      - name: Build amalgame-<ver>-setup.exe
+      - name: Build amalgame-<ver>.msi via pure-PowerShell builder
         shell: pwsh
         working-directory: install\windows
+        # Only Windows installer artifact while we validate the MSI
+        # builder. The .iss + InnoSetup-locate steps above are
+        # gated by `if: false` until we want them back. The MSI
+        # covers identical surface (file copy, HKCU PATH, Start
+        # Menu shortcuts, vsix install via postinstall.ps1) in a
+        # Windows-native installer format that group-policy /
+        # SCCM / Intune can deploy.
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $stage = "..\..\dist\amc-$version-windows-x86_64"
-          & "${{ steps.iscc.outputs.path }}" "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
+          # `shell: pwsh` already runs us under PowerShell — no
+          # nested invocation. Dot-source the builder.
+          .\build-msi.ps1 -Version $version -StageDir $stage -IncludeGccBundle
           Get-ChildItem Output
 
-      - name: Hash the installer for checksums
+      - name: Hash the installers for checksums
         shell: pwsh
         working-directory: install\windows\Output
         run: |
-          Get-ChildItem *.exe | ForEach-Object {
+          Get-ChildItem *.exe, *.msi -ErrorAction SilentlyContinue | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $($_.Name)" | Out-File -Encoding ascii "$($_.Name).sha256"
           }
@@ -454,6 +471,7 @@ jobs:
           name: release-windows-installer
           path: |
             install/windows/Output/*.exe
+            install/windows/Output/*.msi
             install/windows/Output/*.sha256
           retention-days: 7
 
@@ -495,4 +513,5 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/*.exe
+            dist/*.msi
             dist/checksums.sha256
