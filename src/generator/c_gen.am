@@ -266,6 +266,29 @@ public class CGen {
             this.NsPrefix = String_Replace(ns, ".", "_")
         }
         this.EmitHeader()
+        // v0.8.38: emit forward-decl typedefs for every class
+        // declared in a loaded package's [stdlib].classes. Without
+        // this, a consumer-side method signature that returns
+        // `Amalgame_Net_Http_Cookie*` (correctly mangled by the
+        // v0.8.38 TypeToC fix) would still fail at gcc with
+        // "unknown type name" because no `typedef struct _<mangled>
+        // <mangled>;` was emitted. Skip if the PkgClass's namespace
+        // is the SAME as the consumer's NsPrefix — that's the
+        // self-package compile case (the package's facade.am being
+        // built while it's also listed in its own lock); the local
+        // EmitForwardDecl will produce the same typedef under the
+        // SymName shape and a duplicate here would gcc-error.
+        let pc: int = this.PkgClasses.Count()
+        for pi in 0..pc {
+            let cname: string = this.PkgClasses.Get(pi)
+            let cns: string = this.PkgClassNs.Get(pi)
+            let cnsPrefix: string = String_Replace(cns, ".", "_")
+            if (cnsPrefix == this.NsPrefix) { continue }
+            let mangled: string = this.PkgClassMangledPrefix(cname)
+            if (String_Length(mangled) > 0) {
+                this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* pkg-class */")
+            }
+        }
     }
 
     public void AddFilePass1(AstNode prog) {
@@ -1041,7 +1064,13 @@ public class CGen {
             if (String_Length(externalMangled) > 0) {
                 return externalMangled + "*"
             }
-            return this.SymName(tname) + "*"
+            // v0.8.38: PkgClasses path — `new Cookie()` in
+            // amalgame-web infers Amalgame_Net_Http_Cookie* because
+            // Cookie lives in net-http's manifest. ClassMangledFor
+            // routes through IsLocalClass first so a self-package
+            // compile (msgpack-style) still uses the local
+            // namespace.
+            return this.ClassMangledFor(tname) + "*"
         }
         // method call returning a known type — check callee
         if (k == NodeKind.CALL) {
@@ -1362,6 +1391,15 @@ public class CGen {
                                 if (String_Length(extMangled) > 0) {
                                     let retTE = this.MethodRetGet(extMangled, mname2)
                                     if (String_Length(retTE) > 0) { return retTE }
+                                }
+                                // v0.8.38: PkgClasses path so a static
+                                // call like HttpResponse.New() looks up
+                                // the return type under the package's
+                                // namespace-mangled key.
+                                let pkgMangled2: string = this.PkgClassMangledPrefix(cname2)
+                                if (String_Length(pkgMangled2) > 0 && !this.IsLocalClass(cname2)) {
+                                    let retTP: string = this.MethodRetGet(pkgMangled2, mname2)
+                                    if (String_Length(retTP) > 0) { return retTP }
                                 }
                                 let symCls = this.SymName(cname2)
                                 let retT2  = this.MethodRetGet(symCls, mname2)
@@ -2122,6 +2160,33 @@ public class CGen {
             }
         }
         return ""
+    }
+
+    // v0.8.38: unified class-name mangling — used wherever a class
+    // name needs to be lowered to its C identifier. Resolution order:
+    //   1. LocalClasses — current compilation unit owns the body.
+    //      SymName() applies the consumer's NsPrefix. This wins over
+    //      PkgClasses to handle the self-package-compile case
+    //      (the facade.am of a package that's ALSO in its own lock
+    //      file, like msgpack — see line 4501 comment).
+    //   2. PkgClasses — declared in a [stdlib].classes entry of a
+    //      loaded package's manifest. Lower to <pkg-ns>_<tname>.
+    //      Catches the split-file pattern (net-http v0.4.6+) where
+    //      facade.am has no CLASS_DECL and --external doesn't see
+    //      the classes.
+    //   3. Fall through to SymName() — bare consumer mangling.
+    //
+    // Used by TypeToC, InferTypeFromExpr's NEW_EXPR + ClassName.Method
+    // branches, and EmitNewExpr's ctor-call composer.
+    private string ClassMangledFor(string tname) {
+        if (this.IsLocalClass(tname)) {
+            return this.SymName(tname)
+        }
+        let pkgMangled: string = this.PkgClassMangledPrefix(tname)
+        if (String_Length(pkgMangled) > 0) {
+            return pkgMangled
+        }
+        return this.SymName(tname)
     }
 
     private void EmitForwardDecl(AstNode decl) {
@@ -3875,12 +3940,16 @@ public class CGen {
                     } else {
                         // Project F: external classes use their file's
                         // own mangled prefix, not the bundle's NsPrefix.
+                        // v0.8.38: PkgClasses also consulted so
+                        // `new Cookie()` in amalgame-web emits
+                        // `Amalgame_Net_Http_Cookie_new(...)` instead
+                        // of the consumer-namespace SymName fallback.
                         let externalMangled: string = this.ExternalClassMangled(tname)
                         var ctorPrefix: string = ""
                         if (String_Length(externalMangled) > 0) {
                             ctorPrefix = externalMangled
                         } else {
-                            ctorPrefix = this.SymName(tname)
+                            ctorPrefix = this.ClassMangledFor(tname)
                         }
                         newCall = ctorPrefix + "_new("
                         let argc = expr.Args.Count()
@@ -4810,6 +4879,18 @@ public class CGen {
             if (this.PkgOpaqueTypes.Get(oi) == t) {
                 return t + "*"
             }
+        }
+        // v0.8.38: AM-side classes declared in a loaded package's
+        // manifest [stdlib].classes. Catches e.g. Cookie, HttpRequest,
+        // HttpResponse from amalgame-net-http when the consumer only
+        // --externals facade.am (which doesn't define them — they live
+        // in cookie.am / http_request.am / etc. since the v0.4.6 split).
+        // Without this lookup, the type lowers via SymName to the
+        // consumer's namespace and gcc fails with "unknown type
+        // Amalgame_Web_Cookie".
+        let pkgMangled: string = this.PkgClassMangledPrefix(t)
+        if (String_Length(pkgMangled) > 0 && !this.IsLocalClass(t)) {
+            return pkgMangled + "*"
         }
         let sym = this.SymName(t)
         // Single uppercase letter = generic type parameter → use void*
