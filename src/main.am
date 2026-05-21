@@ -188,17 +188,25 @@ public class AmalgameCompiler {
         let pkgCount: int = pkgReg.Packages.Count()
         for pi in 0..pkgCount {
             let lp: LoadedPackage = pkgReg.Packages.Get(pi)
+            var isSelf: bool = false
+            if (this.IsLib) {
+                let lpPrefix: string = String_Replace(lp.Ns, ".", "_")
+                if (lpPrefix == nsPrefix) {
+                    isSelf = true
+                }
+            }
+            if (isSelf) { continue }
+            // v0.8.39: attach both the facade AND every `[stdlib].sources`
+            // entry of the package so consumers don't have to enumerate
+            // each split file via --external.  Pre-split packages (one
+            // file in facade.am, no sources) keep working since the
+            // sources loop just runs zero times.
             if (String_Length(lp.Facade) > 0) {
-                var isSelf: bool = false
-                if (this.IsLib) {
-                    let lpPrefix: string = String_Replace(lp.Ns, ".", "_")
-                    if (lpPrefix == nsPrefix) {
-                        isSelf = true
-                    }
-                }
-                if (!isSelf) {
-                    this.ExternalFiles.Add(lp.Facade)
-                }
+                this.ExternalFiles.Add(lp.Facade)
+            }
+            let lpSrcCount: int = lp.Sources.Count()
+            for si in 0..lpSrcCount {
+                this.ExternalFiles.Add(lp.Sources.Get(si))
             }
         }
 
@@ -255,13 +263,44 @@ public class AmalgameCompiler {
             let importedNs: List<string> = new List<string>()
             let inputNs:    List<string> = new List<string>()
             let inputLeafs: List<string> = new List<string>()
-            for ifn in 0..inputCount {
-                let ipath: string = inputFiles.Get(ifn)
-                let lastSlash: int = String_LastIndexOf(ipath, "/")
-                if (lastSlash >= 0) {
-                    inputLeafs.Add(String_Substring(ipath, lastSlash + 1, String_Length(ipath) - lastSlash - 1))
-                } else {
-                    inputLeafs.Add(ipath)
+
+            // Build the list of files whose imports we want to scan:
+            // the user's CLI inputs PLUS each registered package's
+            // facade and sources. The package side is what unblocks
+            // patterns like amalgame-tls's acme.am that `import
+            // Amalgame.Formats.Json` — without it, the json.am facade
+            // is never auto-attached and acme.am fails to resolve
+            // Json.Parse at the consumer build (since v0.8.39).
+            let scanFiles: List<string> = new List<string>()
+            for ifs in 0..inputCount {
+                scanFiles.Add(inputFiles.Get(ifs))
+            }
+            let pkgScanStart: int = scanFiles.Count()
+            for psi in 0..pkgCount {
+                let plp: LoadedPackage = pkgReg.Packages.Get(psi)
+                if (String_Length(plp.Facade) > 0) {
+                    scanFiles.Add(plp.Facade)
+                }
+                let pln: int = plp.Sources.Count()
+                for psj in 0..pln {
+                    scanFiles.Add(plp.Sources.Get(psj))
+                }
+            }
+            let scanCount: int = scanFiles.Count()
+            for ifn in 0..scanCount {
+                let ipath: string = scanFiles.Get(ifn)
+                let isUserInput: bool = (ifn < pkgScanStart)
+                // inputLeafs feeds the dedup-by-basename guard further
+                // down; only user inputs participate (a package source
+                // happening to be named "json.am" should NOT shadow
+                // the bundled stdlib's json.am).
+                if (isUserInput) {
+                    let lastSlash: int = String_LastIndexOf(ipath, "/")
+                    if (lastSlash >= 0) {
+                        inputLeafs.Add(String_Substring(ipath, lastSlash + 1, String_Length(ipath) - lastSlash - 1))
+                    } else {
+                        inputLeafs.Add(ipath)
+                    }
                 }
                 let isrc: string = File.ReadAll(ipath)
                 let ilines: List<string> = String_Split(isrc, "\n")
@@ -276,15 +315,33 @@ public class AmalgameCompiler {
                     }
                     if (String_StartsWith(trimmed, "import ")) {
                         let after: string = String_From(trimmed, 7)
-                        let imp: string = String_Trim(after)
+                        // Strip trailing line comment so `import
+                        // Amalgame.Json    // foo` captures just
+                        // "Amalgame.Json" (the package sources we
+                        // now scan tend to use inline comments).
+                        var body: string = after
+                        let cmt: int = String_IndexOf(after, "//")
+                        if (cmt >= 0) {
+                            body = String_Substring(after, 0, cmt)
+                        }
+                        let imp: string = String_Trim(body)
                         if (String_Length(imp) > 0) {
                             importedNs.Add(imp)
                         }
                     }
                     if (String_StartsWith(trimmed, "namespace ")) {
                         let nsAfter: string = String_From(trimmed, 10)
-                        let nsName: string = String_Trim(nsAfter)
-                        if (String_Length(nsName) > 0) {
+                        var nsBody: string = nsAfter
+                        let nsCmt: int = String_IndexOf(nsAfter, "//")
+                        if (nsCmt >= 0) {
+                            nsBody = String_Substring(nsAfter, 0, nsCmt)
+                        }
+                        let nsName: string = String_Trim(nsBody)
+                        // Only user inputs contribute to the self-skip
+                        // list — a package source declaring its own
+                        // namespace shouldn't prevent the bundled facade
+                        // from being attached.
+                        if (isUserInput && String_Length(nsName) > 0) {
                             inputNs.Add(nsName)
                         }
                     }
@@ -993,23 +1050,103 @@ public class Program {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
-            let sources: List<string> = p.Sources
+            // Both the facade (single AM file) and [stdlib].sources
+            // (a list) need to land in the package's combined .o.
+            // Splitting them here so the AM pipeline below sees one
+            // unified list — the precompile output is per-package,
+            // not per-source.
+            let sources: List<string> = new List<string>()
+            if (String_Length(p.Facade) > 0) {
+                sources.Add(p.Facade)
+            }
+            let extraSrc: int = p.Sources.Count()
+            for esi in 0..extraSrc {
+                sources.Add(p.Sources.Get(esi))
+            }
             let sn: int = sources.Count()
+            if (sn == 0) { continue }
             // Compute the persistent precompile cache dir for this
             // package (only used if .o is present there; not
             // created here).
             let persistentDir: string = PackageRegistry.PrecompileCacheDir(p.PkgDir)
+
+            // Split sources into AM vs C/C++.  AM sources all compile
+            // together via a single `amc --lib` invocation (cross-file
+            // refs like Cookie ↔ HttpResponse need their siblings in
+            // scope).  Native sources still compile one-per-file since
+            // each is independent.
+            let amSources: List<string> = new List<string>()
+            let nativeSources: List<string> = new List<string>()
             for j in 0..sn {
-                let srcPath: string = sources.Get(j)
-                if (String_Length(srcPath) == 0) { continue }
-                // Derive an .o filename from the basename so two
-                // packages shipping a `foo.c` don't collide.
+                let sp: string = sources.Get(j)
+                if (String_Length(sp) == 0) { continue }
+                if (String_EndsWith(sp, ".am")) {
+                    amSources.Add(sp)
+                } else {
+                    nativeSources.Add(sp)
+                }
+            }
+
+            // ── AM path: single combined .o per package ───
+            if (amSources.Count() > 0) {
+                let amObj: string = "/tmp/amc-pkg-" + p.ClassName + ".o"
+                let amCacheObj: string = persistentDir + "/" + p.ClassName + ".o"
+                var skipAm: bool = false
+                if (File.Exists(amCacheObj)) {
+                    out.Add(amCacheObj); skipAm = true
+                } else if (File.Exists(amObj)) {
+                    out.Add(amObj); skipAm = true
+                }
+                if (!skipAm) {
+                    let amCsrc: string = amObj + ".c"
+                    let amcSelf: string = Program.ResolveSelfPath()
+                    var amcCmd: string = "'" + amcSelf + "' --lib --quiet -o '" + amObj + "'"
+                    let amCount: int = amSources.Count()
+                    for ai in 0..amCount {
+                        amcCmd = amcCmd + " '" + amSources.Get(ai) + "'"
+                    }
+                    let amcRes = Process.RunCapture(amcCmd)
+                    if (amcRes.Exit != 0) {
+                        Console.WriteError("amc precompile: amc --lib failed for " + p.ClassName)
+                        Console.WriteError(amcRes.Stdout)
+                    } else {
+                        var cmd: string = "gcc -O2"
+                        if (String_Length(amcRuntime) > 0) {
+                            cmd = cmd + " -I'" + amcRuntime + "'"
+                        }
+                        // The package's own runtime/ dir hosts the C
+                        // header named in [stdlib].header — every
+                        // include line in the generated .c references
+                        // it by basename, so missing the -I produces
+                        // the classic "Amalgame_X.h not found" fatal
+                        // error at the precompile gcc step.
+                        let pkgRuntime: string = p.PkgDir + "/runtime"
+                        cmd = cmd + " -I'" + pkgRuntime + "' -I'" + p.PkgDir + "'"
+                        if (String_Length(p.CFlags) > 0) {
+                            cmd = cmd + " " + p.CFlags
+                        }
+                        cmd = cmd + " -w -c '" + amCsrc + "' -o '" + amObj + "'"
+                        let gccRes = Process.RunCapture(cmd)
+                        if (gccRes.Exit != 0) {
+                            Console.WriteError("amc precompile: gcc failed for " + p.ClassName)
+                            Console.WriteError(gccRes.Stdout)
+                        } else {
+                            Console.WriteLine("Pre-compiled " + p.ClassName + " (" + String_FromInt(amCount) + " AM sources)")
+                            out.Add(amObj)
+                        }
+                    }
+                }
+            }
+
+            // ── Native path: one .o per .c/.cpp source ─────
+            let nn: int = nativeSources.Count()
+            for j in 0..nn {
+                let srcPath: string = nativeSources.Get(j)
                 let lastSlash: int = String_LastIndexOf(srcPath, "/")
                 var srcLeaf: string = srcPath
                 if (lastSlash >= 0) {
                     srcLeaf = String_Substring(srcPath, lastSlash + 1, String_Length(srcPath) - lastSlash - 1)
                 }
-                // Persistent cache lookup first.
                 let persistentObj: string = persistentDir + "/" + p.ClassName + "-" + srcLeaf + ".o"
                 if (File.Exists(persistentObj)) {
                     out.Add(persistentObj)
@@ -1030,16 +1167,12 @@ public class Program {
                 if (String_Length(amcRuntime) > 0) {
                     cmd = cmd + " -I'" + amcRuntime + "'"
                 }
-                // Per-package flags. CFlags for C, CxxFlags for C++.
                 if (isCxx && String_Length(p.CxxFlags) > 0) {
                     cmd = cmd + " " + p.CxxFlags
                 }
                 if (!isCxx && String_Length(p.CFlags) > 0) {
                     cmd = cmd + " " + p.CFlags
                 }
-                // -w to silence the upstream code's own warnings;
-                // we don't want amalgamation warnings cluttering
-                // `amc test` output.
                 cmd = cmd + " -w -c '" + srcPath + "' -o '" + objPath + "'"
                 let res = Process.RunCapture(cmd)
                 if (res.Exit != 0) {
