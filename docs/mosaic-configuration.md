@@ -105,13 +105,13 @@ consumes it. The legend:
 | `mode` | `"off"\|"files"\|"acme"` | `"off"` | `MOSAIC_TLS_MODE` | Top-level switch. |
 | `acme_email` | `string` | — | `MOSAIC_TLS_ACME_EMAIL` | Required when mode = `"acme"`. *shipped v0.10.0* (maps to `AcmeConfig.Email`). |
 | `acme_cache` | `string` | `"./certs"` | `MOSAIC_TLS_ACME_CACHE` | Cert/account dir (maps to `AcmeConfig.CertDir`). *shipped v0.10.0*. |
-| `domains` | `[string]` | `[]` | `MOSAIC_TLS_DOMAINS` | SANs to provision. v0.10.0 supports the first entry only (single-domain EnsureCertEx); multi-SAN cert is a v0.11 follow-up. |
+| `domains` | `string` | `""` | `MOSAIC_TLS_DOMAINS` | Comma-separated SAN list — first entry becomes the cert-name. *shipped v0.11.1* via `AcmeConfig.Domains` + `Acme.EnsureCertMulti` (amalgame-tls v0.2.3). Up to 32 SANs per cert. |
 | `acme_server` | `string` | LE production | `MOSAIC_TLS_ACME_SERVER` | ACME directory URL. *shipped v0.10.0* (maps to `AcmeConfig.AcmeServer`; env var honored by `Acme.EnsureCertEx`). Buypass / ZeroSSL / LE-staging by passing the directory URL. |
 | `certbot_path` | `string` | `"certbot"` (looked up via `PATH`) | `MOSAIC_TLS_CERTBOT_PATH` | Absolute path override. *shipped v0.10.0* (maps to `AcmeConfig.CertbotPath`). |
 | `cert_file` | `string` | — | `MOSAIC_TLS_CERT_FILE` | Required when mode = `"files"`. |
 | `key_file` | `string` | — | `MOSAIC_TLS_KEY_FILE` | Required when mode = `"files"`. |
-| `min_version` | `"1.2"\|"1.3"` | `"1.3"` | `MOSAIC_TLS_MIN_VERSION` | Maps to `TlsConfig.WithMinVersion`. *planned* — direct via `Amalgame.Tls.TlsConfig` today. |
-| `alpn` | `string` | `"h2,http/1.1"` | `MOSAIC_TLS_ALPN` | ALPN list (comma-separated). *planned* — direct via `TlsConfig.WithAlpn` today. |
+| `min_version` | `"1.2"\|"1.3"` | `"1.3"` | `MOSAIC_TLS_MIN_VERSION` | Maps to `HttpServerConfig.WithTlsMinVersion` (12/13). *shipped v0.11.2* via `Amalgame.Web.TlsBindingConfig.FromMap` + amalgame-net-http v0.7.1; honored end-to-end at `SSL_CTX_set_min_proto_version`. |
+| `alpn` | `string` | `"h2,http/1.1"` | `MOSAIC_TLS_ALPN` | ALPN list (comma-separated). *partial v0.11.2* — parsed and forwarded to `HttpServerConfig.WithTlsAlpn`, but net-http's ALPN select callback still hardcodes `h2` only (one-line stderr warning on mismatch). Full http/1.1 fallback lands in amalgame-net-http v0.7.2. |
 
 **Pattern d'usage (mode = "acme"):**
 
