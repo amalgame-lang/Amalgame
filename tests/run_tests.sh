@@ -881,6 +881,53 @@ run_lsp_absent() {
 }
 run_lsp_absent "lsp: xdir resolves ByteIO" "Unknown symbol 'ByteIO'" "$lsp_xdir_seq"
 
+# ── Phase B navigation: documentSymbol / definition / references ──────
+# Fixture: two classes, one with a field + ctor + greeter method.
+# Line numbering (LSP 0-indexed):
+#   0: class Foo {
+#   1:     public Name: string
+#   2:     public Foo() {
+#   3:         this.Name = "x"
+#   4:     }
+#   5:     public string Greet() {
+#   6:         return "hi " + this.Name
+#   7:     }
+#   8: }
+#   9: class Program {
+#  10:     public static void Main() {
+#  11:         let f = new Foo()
+#  12:         let s = f.Greet()
+#  13:     }
+#  14: }
+lsp_nav_text='class Foo {\n    public Name: string\n    public Foo() {\n        this.Name = \"x\"\n    }\n    public string Greet() {\n        return \"hi \" + this.Name\n    }\n}\nclass Program {\n    public static void Main() {\n        let f = new Foo()\n        let s = f.Greet()\n    }\n}'
+lsp_open_nav='{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am","languageId":"amalgame","version":1,"text":"'"$lsp_nav_text"'"}}}'
+
+# documentSymbol: outline of the open file.
+lsp_docsym='{"jsonrpc":"2.0","id":10,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"}}}'
+# definition on `Foo` inside `new Foo()` (line 11 col 20, LSP 0-indexed)
+lsp_defFoo='{"jsonrpc":"2.0","id":11,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":11,"character":20}}}'
+# definition on `Greet` in `f.Greet()` (line 12 col 18)
+lsp_defGreet='{"jsonrpc":"2.0","id":12,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":12,"character":18}}}'
+# references at the Greet declaration (line 5 col 18)
+lsp_refGreet='{"jsonrpc":"2.0","id":13,"method":"textDocument/references","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18},"context":{"includeDeclaration":true}}}'
+
+lsp_nav_seq=$(lsp_frame "$lsp_init"; lsp_frame "$lsp_open_nav"; lsp_frame "$lsp_docsym"; lsp_frame "$lsp_defFoo"; lsp_frame "$lsp_defGreet"; lsp_frame "$lsp_refGreet"; lsp_frame "$lsp_shut"; lsp_frame "$lsp_exit")
+
+# documentSymbol — outline contains both classes + their members.
+run_lsp_check "lsp: docsym lists Foo"      '"name":"Foo","kind":5'      "$lsp_nav_seq"
+run_lsp_check "lsp: docsym lists Program"  '"name":"Program","kind":5'  "$lsp_nav_seq"
+run_lsp_check "lsp: docsym Foo has Greet"  '"name":"Greet","kind":6'    "$lsp_nav_seq"
+run_lsp_check "lsp: docsym Foo has Name"   '"name":"Name","kind":8'     "$lsp_nav_seq"
+run_lsp_check "lsp: docsym Program.Main"   '"name":"Main","kind":6'     "$lsp_nav_seq"
+# definition — Foo at line 11:20 should jump to line 0 (class Foo decl, LSP 0-indexed)
+run_lsp_check "lsp: def Foo at line 0"     '"id":11,"result":{"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":0'    "$lsp_nav_seq"
+# definition — Greet at line 12:18 should jump to line 5 (method decl)
+run_lsp_check "lsp: def Greet at line 5"   '"id":12,"result":{"uri":"file:///tmp/lsp_nav.am","range":{"start":{"line":5'    "$lsp_nav_seq"
+# references — Greet at the decl site should return at least 2 occurrences (decl + call)
+run_lsp_check "lsp: refs Greet has result" '"id":13,"result":['          "$lsp_nav_seq"
+run_lsp_check "lsp: refs Greet decl line"  '"line":5'                    "$lsp_nav_seq"
+run_lsp_check "lsp: refs Greet call line"  '"line":12'                   "$lsp_nav_seq"
+
 # ── amc migrate ────────────────────────────────────────
 echo ""
 echo "── amc migrate ─────────────────────────"
