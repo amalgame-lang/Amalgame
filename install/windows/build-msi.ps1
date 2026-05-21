@@ -414,10 +414,17 @@ function Insert-Row {
     for ($i = 0; $i -lt $Values.Count; $i++) {
         $v = $Values[$i]
         if ($null -eq $v) { continue }
+        # PS 7 parses `@($i + 1, [string]$v)` as
+        # `$i + @(1, [string]$v)` (comma binds tighter than `+`
+        # inside array subexpressions — a known parser quirk),
+        # which then tries `int + Object[]` → op_Addition fail.
+        # Extracting the index to a typed local sidesteps the
+        # whole ambiguity.
+        [int]$fieldIdx = $i + 1
         if ($v -is [int] -or $v -is [long]) {
-            Set-MsiProperty $record "IntegerData" @($i + 1, [int]$v)
+            Set-MsiProperty $record "IntegerData" @($fieldIdx, [int]$v)
         } else {
-            Set-MsiProperty $record "StringData"  @($i + 1, [string]$v)
+            Set-MsiProperty $record "StringData"  @($fieldIdx, [string]$v)
         }
     }
     Invoke-MSI $view "Execute" @($record)
