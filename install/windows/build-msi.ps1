@@ -759,17 +759,24 @@ public static class MsiSummaryHelper {
     public static void Apply(object db, int[] pids, object[] values, int maxProps) {
         Type dbType = db.GetType();
         // SummaryInformation(maxProps) returns the SI object — it's
-        // a property getter (not a method), but reflection's
-        // GetProperty flag handles either.
+        // a property getter (not a method).
         object si = dbType.InvokeMember(
             "SummaryInformation",
             BindingFlags.Public | BindingFlags.Instance | BindingFlags.GetProperty,
             null, db, new object[] { maxProps });
         Type siType = si.GetType();
         for (int i = 0; i < pids.Length; i++) {
+            // PutDispProperty (8192) → DISPATCH_PROPERTYPUT — for
+            // VALUE puts on COM IDispatch. SetProperty (which is
+            // PutDispProperty | PutRefDispProperty) tries
+            // DISPATCH_PROPERTYPUTREF first and that flavour
+            // doesn't exist on SummaryInformation.Property — hence
+            // the cryptic "Property,Pid" error from every other
+            // dispatch path. PutDispProperty alone hits the right
+            // entry on the first try.
             siType.InvokeMember(
                 "Property",
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.SetProperty,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.PutDispProperty,
                 null, si, new object[] { pids[i], values[i] });
         }
         siType.InvokeMember(
