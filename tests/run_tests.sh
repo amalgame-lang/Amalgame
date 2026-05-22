@@ -1027,8 +1027,81 @@ if command -v gdb >/dev/null 2>&1; then
         echo "$DAP_BRIDGE_OUT" | head -10 | sed 's/^/      /'
         FAIL=$((FAIL + 1))
     fi
+
+    # Full session: compile a tiny C program with -g, drive it via
+    # scripted DAP through the bridge, verify each phase fired its
+    # response. Covers launch → setBreakpoints → configurationDone →
+    # *stopped → stackTrace → variables → evaluate → continue →
+    # terminated → disconnect.
+    printf "  %-34s" "dap: bridge full session"
+    DAP_PROG=$(mktemp --suffix=.c)
+    DAP_BIN=$(mktemp -u)
+    cat > "$DAP_PROG" << 'CEOF'
+#include <stdio.h>
+int main() {
+    int x = 7;
+    int y = 11;
+    int sum = x + y;
+    printf("%d\n", sum);
+    return 0;
+}
+CEOF
+    if ! gcc -g -O0 "$DAP_PROG" -o "$DAP_BIN" 2>/dev/null; then
+        echo -e "${YELLOW}SKIP${NC} (gcc -g failed)"
+        SKIP=$((SKIP + 1))
+        rm -f "$DAP_PROG"
+    else
+        D_INIT='{"seq":1,"type":"request","command":"initialize","arguments":{"clientID":"test","adapterID":"amc"}}'
+        D_LAUNCH='{"seq":2,"type":"request","command":"launch","arguments":{"program":"'"$DAP_BIN"'"}}'
+        D_SETBP='{"seq":3,"type":"request","command":"setBreakpoints","arguments":{"source":{"path":"'"$DAP_PROG"'"},"breakpoints":[{"line":5}]}}'
+        D_CFGDONE='{"seq":4,"type":"request","command":"configurationDone"}'
+        D_ST='{"seq":5,"type":"request","command":"stackTrace","arguments":{"threadId":1}}'
+        D_VARS='{"seq":6,"type":"request","command":"variables","arguments":{"variablesReference":1}}'
+        D_EVAL='{"seq":7,"type":"request","command":"evaluate","arguments":{"expression":"x+y","frameId":0}}'
+        D_CONT='{"seq":8,"type":"request","command":"continue"}'
+        D_DISC='{"seq":9,"type":"request","command":"disconnect"}'
+        DAP_SESS=$( (
+            for F in "$D_INIT" "$D_LAUNCH" "$D_SETBP" "$D_CFGDONE"; do
+                printf 'Content-Length: %d\r\n\r\n%s' "${#F}" "$F"
+            done
+            sleep 0.5
+            for F in "$D_ST" "$D_VARS" "$D_EVAL"; do
+                printf 'Content-Length: %d\r\n\r\n%s' "${#F}" "$F"
+            done
+            sleep 0.3
+            printf 'Content-Length: %d\r\n\r\n%s' "${#D_CONT}" "$D_CONT"
+            sleep 0.3
+            printf 'Content-Length: %d\r\n\r\n%s' "${#D_DISC}" "$D_DISC"
+        ) | timeout 8 "$AMC" dap --bridge 2>&1 )
+        # Strip the file path from setBp output so the test isn't
+        # fragile against tmpfile naming.
+        if echo "$DAP_SESS" | grep -qF '"command":"launch"' \
+           && echo "$DAP_SESS" | grep -qF '"command":"setBreakpoints"' \
+           && echo "$DAP_SESS" | grep -qF '"verified":true' \
+           && echo "$DAP_SESS" | grep -qF '"event":"stopped"' \
+           && echo "$DAP_SESS" | grep -qF '"reason":"breakpoint"' \
+           && echo "$DAP_SESS" | grep -qF '"command":"stackTrace"' \
+           && echo "$DAP_SESS" | grep -qF '"command":"variables"' \
+           && echo "$DAP_SESS" | grep -qF '"name":"x"' \
+           && echo "$DAP_SESS" | grep -qF '"value":"7"' \
+           && echo "$DAP_SESS" | grep -qF '"command":"evaluate"' \
+           && echo "$DAP_SESS" | grep -qF '"result":"18"' \
+           && echo "$DAP_SESS" | grep -qF '"event":"terminated"' \
+           && echo "$DAP_SESS" | grep -qF '"command":"disconnect"'; then
+            echo -e "${GREEN}PASS${NC}"
+            PASS=$((PASS + 1))
+        else
+            echo -e "${RED}FAIL${NC}"
+            echo "$DAP_SESS" | head -20 | sed 's/^/      /'
+            FAIL=$((FAIL + 1))
+        fi
+        rm -f "$DAP_PROG" "$DAP_BIN"
+    fi
 else
     printf "  %-34s" "dap: bridge initialize handshake"
+    echo -e "${YELLOW}SKIP${NC} (gdb not on PATH)"
+    SKIP=$((SKIP + 1))
+    printf "  %-34s" "dap: bridge full session"
     echo -e "${YELLOW}SKIP${NC} (gdb not on PATH)"
     SKIP=$((SKIP + 1))
 fi

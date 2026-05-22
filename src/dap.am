@@ -90,6 +90,18 @@ public class DapServer {
     // of request_seq. Bumped by NextOutSeq().
     public _outSeqCounter: int
 
+    // In-flight setBreakpoints request state. VS Code sends these
+    // serially per source so a single-slot tracker suffices for the
+    // MVP. Once Phase 7 flips the bridge default + multi-source
+    // breakpoint editors come into scope, generalise to a per-source
+    // queue.
+    public BkptInFlight:        bool
+    public BkptInFlightSeq:     int
+    public BkptInFlightSource:  string
+    public BkptInFlightPending: int
+    public BkptInFlightDapShape: List<string>  // accumulating DAP Breakpoint JSON snippets
+    public BkptKnownNumbers:    List<int>      // gdb breakpoint numbers currently set
+
     public DapServer() {
         this.Raw           = false
         this.ShowRuntime   = false
@@ -105,6 +117,12 @@ public class DapServer {
         this.MiTokensReq   = new List<int>()
         this.MiTokensKind  = new List<string>()
         this._outSeqCounter = 0
+        this.BkptInFlight         = false
+        this.BkptInFlightSeq      = -1
+        this.BkptInFlightSource   = ""
+        this.BkptInFlightPending  = 0
+        this.BkptInFlightDapShape = new List<string>()
+        this.BkptKnownNumbers     = new List<int>()
     }
 
     public int Run() {
@@ -616,30 +634,149 @@ public class DapServer {
         this.GdbInputBuf = String_Substring(buf, pos, bufLen - pos)
     }
 
-    // Parse one MI3 line and dispatch by record kind. The (gdb)
-    // prompt is implicit synchronisation; we don't act on it
-    // directly but log it at high verbosity for debugging.
+    // Parse one MI3 line and dispatch by record kind. Routes:
+    //   0 (result)        → HandleMiResult (token correlation)
+    //   1 (exec-async)    → HandleMiExecAsync (*stopped/*running)
+    //   3 (notify-async)  → HandleMiNotifyAsync (=thread-group-exited)
+    //   4/5/6 (streams)   → dropped (logs only, no DAP equivalent)
+    //   7 (gdb prompt)    → ignored
     private void HandleMiLine(string line) {
         let parser = new MiParser(line)
         let rec: MiRecord = parser.ParseRecord()
-        // Phase 2b: for now we just dispatch result records. Async
-        // (*stopped, etc.) records will route through their own
-        // handler in Phase 4. Stream + prompt records are dropped —
-        // they're useful in interactive gdb but redundant under DAP.
-        if (rec.RecordKind == 0) {
-            this.HandleMiResult(rec)
-        }
-        // else: stream/async/prompt — silent for now.
+        if      (rec.RecordKind == 0) { this.HandleMiResult(rec) }
+        else if (rec.RecordKind == 1) { this.HandleMiExecAsync(rec) }
+        else if (rec.RecordKind == 3) { this.HandleMiNotifyAsync(rec) }
+        // else: stream/status/prompt — silent.
     }
 
-    // Top-level result-record dispatch. Token correlation will land
-    // in Phase 4; the Phase 2b stub just exists so the parser is
-    // exercised end-to-end against real gdb output.
+    // Token correlation for MI result records. Each MI command we
+    // issue carries a numeric token (`<tok>-foo …`); gdb echoes the
+    // same token in the response, so we can route `^done` payloads
+    // back to the right DAP response builder.
     private void HandleMiResult(MiRecord rec) {
-        // Intentionally empty body for Phase 2b. The MI parser is
-        // running on every gdb line; routing into DAP responses
-        // happens in Phase 4 once the per-verb translators land.
-        return
+        if (rec.Token < 0) { return }
+        let idx: int = this.FindMiTokenIndex(rec.Token)
+        if (idx < 0) { return }
+        let dapSeq: int = this.MiTokensReq.Get(idx)
+        let kind: string = this.MiTokensKind.Get(idx)
+        this.ReleaseMiTokenAt(idx)
+        if      (kind == "launch")            { this.RespondLaunch(dapSeq, rec) }
+        else if (kind == "setBreakpoints")    { this.RespondSetBreakpoints(dapSeq, rec) }
+        else if (kind == "configurationDone") { this.RespondConfigurationDone(dapSeq, rec) }
+        else if (kind == "stackTrace")        { this.RespondStackTrace(dapSeq, rec) }
+        else if (kind == "variables")         { this.RespondVariables(dapSeq, rec) }
+        else if (kind == "evaluate")          { this.RespondEvaluate(dapSeq, rec) }
+        // The fire-and-forget verbs (continue/next/step/pause) don't
+        // register a token — their DAP response was sent up-front and
+        // their MI `^running` ack is ignored.
+    }
+
+    // Async exec event from gdb: `*stopped`, `*running`. Translates
+    // to DAP `stopped` events. `*running` we drop — VS Code doesn't
+    // require an explicit continued event for single-threaded
+    // programs, the silent state transition is fine.
+    private void HandleMiExecAsync(MiRecord rec) {
+        if (rec.Class == "stopped") {
+            this.EmitStoppedEvent(rec)
+        }
+        // *running, *connected, *exited, *signal-received: skipped
+        // for the MVP. *exited could optionally fire DAP `terminated`
+        // but `=thread-group-exited` already does that.
+    }
+
+    // Async notify event from gdb: `=thread-group-exited`,
+    // `=breakpoint-modified`, library load/unload, etc. We translate
+    // only the ones DAP clients act on.
+    private void HandleMiNotifyAsync(MiRecord rec) {
+        if (rec.Class == "thread-group-exited") {
+            // Program ended. Tell the client.
+            let evt: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+                ",\"type\":\"event\"" +
+                ",\"event\":\"terminated\"" +
+                ",\"body\":{}}"
+            this.SendDapFrame(evt)
+        }
+        // Other notify-async records: silent.
+    }
+
+    // Build + send a DAP `stopped` event. Per spec the body needs
+    // `reason`, `threadId`, plus optional `description`,
+    // `hitBreakpointIds`. We map gdb reasons to DAP strings:
+    //   breakpoint-hit → "breakpoint"
+    //   end-stepping-range → "step"
+    //   signal-received → "exception"
+    //   exited-normally → drop (handled by =thread-group-exited)
+    //   anything else → "pause"
+    private void EmitStoppedEvent(MiRecord rec) {
+        var reason: string = "pause"
+        var bkptList: string = ""
+        var isExit: bool = false
+        let resN: int = rec.Results.Count()
+        for i in 0..resN {
+            let key: string = rec.Results.Get(i)
+            let val: MiValue = rec.Values.Get(i)
+            if (key == "reason" && val.Kind == 0) {
+                let r: string = val.Str
+                if      (r == "breakpoint-hit")      { reason = "breakpoint" }
+                else if (r == "end-stepping-range") { reason = "step" }
+                else if (r == "signal-received")    { reason = "exception" }
+                else if (r == "function-finished")  { reason = "step" }
+                else if (r == "exited-normally")    { isExit = true }
+                else if (r == "exited")             { isExit = true }
+                else if (r == "exited-signalled")   { isExit = true }
+                else                                 { reason = r }
+            }
+            if (key == "bkptno" && val.Kind == 0) {
+                bkptList = ",\"hitBreakpointIds\":[" + val.Str + "]"
+            }
+        }
+        // Program-end *stopped is redundant — `=thread-group-exited`
+        // already drives the DAP `terminated` event. Suppressing here
+        // avoids the client seeing a phantom stopped-then-terminated
+        // sequence.
+        if (isExit) { return }
+        let evt: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"event\"" +
+            ",\"event\":\"stopped\"" +
+            ",\"body\":{" +
+                "\"reason\":\"" + Json.EscapeString(reason) + "\"" +
+                ",\"threadId\":1" +
+                ",\"allThreadsStopped\":true" +
+                bkptList +
+            "}}"
+        this.SendDapFrame(evt)
+    }
+
+    // ── Token correlation helpers ───────────────────────
+
+    // Issue an MI command to gdb, registering token→DAP correlation
+    // so the eventual `^done` lands in the right response builder.
+    // `mi` should NOT include the leading token — we prepend it.
+    // Returns the token assigned.
+    private int IssueMiCommand(int dapSeq, string command, string mi) {
+        let tok: int = this.NextMiToken
+        this.NextMiToken = this.NextMiToken + 1
+        this.MiTokens.Add(tok)
+        this.MiTokensReq.Add(dapSeq)
+        this.MiTokensKind.Add(command)
+        this.WriteToFd(1, String_FromInt(tok) + mi + "\n")
+        return tok
+    }
+
+    private int FindMiTokenIndex(int tok) {
+        let n: int = this.MiTokens.Count()
+        var found: int = -1
+        for i in 0..n {
+            if (this.MiTokens.Get(i) == tok) { found = i }
+        }
+        return found
+    }
+
+    private void ReleaseMiTokenAt(int idx) {
+        if (idx < 0) { return }
+        this.MiTokens.RemoveAt(idx)
+        this.MiTokensReq.RemoveAt(idx)
+        this.MiTokensKind.RemoveAt(idx)
     }
 
     // Dispatch a complete DAP request body. Body is the raw JSON
@@ -665,9 +802,389 @@ public class DapServer {
         let seq: int = root.Get("seq").AsInt()
         let command: string = root.Get("command").AsString()
         let args: JsonValue = root.Get("arguments")
-        if      (command == "initialize") { this.HandleInitialize(seq, args) }
-        else if (command == "disconnect") { this.HandleDisconnect(seq, args) }
-        else                              { this.SendDapErrorResponse(seq, command, "not implemented in --bridge yet") }
+        if      (command == "initialize")        { this.HandleInitialize(seq, args) }
+        else if (command == "disconnect")        { this.HandleDisconnect(seq, args) }
+        else if (command == "threads")           { this.HandleThreads(seq) }
+        else if (command == "continue")          { this.HandleContinue(seq, args) }
+        else if (command == "next")              { this.HandleStep(seq, "next",    "-exec-next") }
+        else if (command == "stepIn")            { this.HandleStep(seq, "stepIn",  "-exec-step") }
+        else if (command == "stepOut")           { this.HandleStep(seq, "stepOut", "-exec-finish") }
+        else if (command == "pause")             { this.HandlePause(seq, args) }
+        else if (command == "launch")            { this.HandleLaunch(seq, args) }
+        else if (command == "setBreakpoints")    { this.HandleSetBreakpoints(seq, args) }
+        else if (command == "configurationDone") { this.HandleConfigurationDone(seq, args) }
+        else if (command == "stackTrace")        { this.HandleStackTrace(seq, args) }
+        else if (command == "scopes")            { this.HandleScopes(seq, args) }
+        else if (command == "variables")         { this.HandleVariables(seq, args) }
+        else if (command == "evaluate")          { this.HandleEvaluate(seq, args) }
+        else                                     { this.SendDapErrorResponse(seq, command, "not implemented in --bridge yet") }
+    }
+
+    // ── Immediate-response handlers ─────────────────────
+    //
+    // These fire and forget — the DAP response is sent up front and
+    // any subsequent state change is communicated via async events
+    // (`stopped` for next/stepIn/stepOut/pause; `terminated` for
+    // disconnect; nothing for continue when single-threaded).
+
+    private void HandleThreads(int seq) {
+        // Single synthetic thread. Multi-thread support is deferred
+        // until the runtime has real threads (see ROADMAP "Open
+        // design questions: Single-threaded").
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"threads\"" +
+            ",\"body\":{\"threads\":[{\"id\":1,\"name\":\"main\"}]}}"
+        this.SendDapFrame(body)
+    }
+
+    private void HandleContinue(int seq, JsonValue args) {
+        this.WriteToFd(1, "-exec-continue\n")
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"continue\"" +
+            ",\"body\":{\"allThreadsContinued\":true}}"
+        this.SendDapFrame(body)
+    }
+
+    private void HandleStep(int seq, string dapCmd, string miCmd) {
+        this.WriteToFd(1, miCmd + "\n")
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"" + dapCmd + "\"}"
+        this.SendDapFrame(body)
+    }
+
+    private void HandlePause(int seq, JsonValue args) {
+        this.WriteToFd(1, "-exec-interrupt\n")
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"pause\"}"
+        this.SendDapFrame(body)
+    }
+
+    // ── Token-correlated handlers (stubs for Phase 4b+) ─
+
+    private void HandleLaunch(int seq, JsonValue args) {
+        let program: string = args.Get("program").AsString()
+        if (String_Length(program) == 0) {
+            this.SendDapErrorResponse(seq, "launch", "missing 'program' field")
+            return
+        }
+        // Load the program. Response sent when ^done arrives.
+        let mi: string = "-file-exec-and-symbols \"" + program + "\""
+        let _tok: int = this.IssueMiCommand(seq, "launch", mi)
+    }
+
+    private void HandleSetBreakpoints(int seq, JsonValue args) {
+        if (this.BkptInFlight) {
+            this.SendDapErrorResponse(seq, "setBreakpoints",
+                "previous setBreakpoints still in flight")
+            return
+        }
+        let src: JsonValue = args.Get("source")
+        let srcPath: string = src.Get("path").AsString()
+        if (String_Length(srcPath) == 0) {
+            this.SendDapErrorResponse(seq, "setBreakpoints", "missing 'source.path'")
+            return
+        }
+        let bpsVal: JsonValue = args.Get("breakpoints")
+        let bps: List<JsonValue> = bpsVal.AsArray()
+        let nNew: int = bps.Count()
+        // Clear every previously-set breakpoint. Fire-and-forget —
+        // we don't bother registering a token; gdb's ^done is silent
+        // when the number is unknown (^error is logged but harmless).
+        let nKnown: int = this.BkptKnownNumbers.Count()
+        for i in 0..nKnown {
+            let num: int = this.BkptKnownNumbers.Get(i)
+            this.WriteToFd(1, "-break-delete " + String_FromInt(num) + "\n")
+        }
+        this.BkptKnownNumbers = new List<int>()
+        // Empty breakpoints list → reply immediately. No state to track.
+        if (nNew == 0) {
+            this.SendBkptResponse(seq, new List<string>())
+            return
+        }
+        // Set up in-flight tracking.
+        this.BkptInFlight        = true
+        this.BkptInFlightSeq     = seq
+        this.BkptInFlightSource  = srcPath
+        this.BkptInFlightPending = nNew
+        this.BkptInFlightDapShape = new List<string>()
+        // Issue an MI insert per requested breakpoint. The dapSeq
+        // we register on the token isn't strictly needed (we have
+        // BkptInFlightSeq already) but keeps the registry uniform.
+        for i in 0..nNew {
+            let bp: JsonValue = bps.Get(i)
+            let line: int = bp.Get("line").AsInt()
+            let mi: string = "-break-insert " + srcPath + ":" + String_FromInt(line)
+            let _tok: int = this.IssueMiCommand(seq, "setBreakpoints", mi)
+        }
+    }
+
+    private void RespondSetBreakpoints(int dapSeq, MiRecord rec) {
+        if (!this.BkptInFlight || this.BkptInFlightSeq != dapSeq) {
+            // Late response from an aborted request — discard.
+            return
+        }
+        // Pull bkpt={...} from the response. On ^error we still
+        // accumulate a "verified:false" entry so the DAP array
+        // aligns with the request's input.
+        var dapEntry: string = ""
+        let bkpt: MiValue = rec.ResultOrNull("bkpt")
+        if (rec.Class == "done" && bkpt != null && bkpt.Kind == 1) {
+            let numS:  string = bkpt.FieldString("number")
+            let fileS: string = bkpt.FieldString("file")
+            let lineS: string = bkpt.FieldString("line")
+            // Track the breakpoint number for the next clearance round.
+            if (String_Length(numS) > 0) {
+                this.BkptKnownNumbers.Add(String_ToInt(numS))
+            }
+            dapEntry = "{\"id\":" + numS +
+                ",\"verified\":true" +
+                ",\"line\":" + lineS +
+                ",\"source\":{\"path\":\"" + Json.EscapeString(fileS) + "\"}}"
+        } else {
+            // Insert failed (e.g. bad line). Emit a verified:false
+            // marker so the client knows which one didn't bind.
+            dapEntry = "{\"verified\":false,\"message\":\"-break-insert failed\"}"
+        }
+        this.BkptInFlightDapShape.Add(dapEntry)
+        this.BkptInFlightPending = this.BkptInFlightPending - 1
+        if (this.BkptInFlightPending <= 0) {
+            this.SendBkptResponse(this.BkptInFlightSeq, this.BkptInFlightDapShape)
+            this.BkptInFlight        = false
+            this.BkptInFlightSeq     = -1
+            this.BkptInFlightSource  = ""
+        }
+    }
+
+    // Assemble + send the DAP setBreakpoints response from the
+    // accumulated per-breakpoint snippets. Separated out so the
+    // empty-list shortcut can call it directly.
+    private void SendBkptResponse(int seq, List<string> entries) {
+        var arr: string = "["
+        let n: int = entries.Count()
+        for i in 0..n {
+            if (i > 0) { arr = arr + "," }
+            arr = arr + entries.Get(i)
+        }
+        arr = arr + "]"
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"setBreakpoints\"" +
+            ",\"body\":{\"breakpoints\":" + arr + "}}"
+        this.SendDapFrame(body)
+    }
+
+    private void HandleConfigurationDone(int seq, JsonValue args) {
+        // Start the program. Reply when ^running comes back.
+        let _tok: int = this.IssueMiCommand(seq, "configurationDone", "-exec-run")
+    }
+
+    private void HandleStackTrace(int seq, JsonValue args) {
+        // DAP optionally restricts the level range with `startFrame`
+        // + `levels`. gdb's -stack-list-frames supports the same.
+        // We pass through when present; default to "all frames" (gdb
+        // returns up to its internal max otherwise).
+        let startF: int = args.Get("startFrame").AsInt()
+        let levels: int = args.Get("levels").AsInt()
+        var miArgs: string = ""
+        if (levels > 0) {
+            let endF: int = startF + levels - 1
+            miArgs = " " + String_FromInt(startF) + " " + String_FromInt(endF)
+        }
+        let _tok: int = this.IssueMiCommand(seq, "stackTrace", "-stack-list-frames" + miArgs)
+    }
+
+    private void HandleScopes(int seq, JsonValue args) {
+        // Synthetic single Locals scope keyed by frameId. variablesReference
+        // = frameId * 100 + 1 (Locals); frameId * 100 + 2 (Arguments) etc.
+        // Phase 4d shipped uses 1 for now.
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"scopes\"" +
+            ",\"body\":{\"scopes\":[{\"name\":\"Locals\",\"variablesReference\":1,\"expensive\":false}]}}"
+        this.SendDapFrame(body)
+    }
+
+    private void HandleVariables(int seq, JsonValue args) {
+        // variablesReference == 1 means "Locals of current frame".
+        // Future shapes (`frameId * 100 + 1`) for per-frame Locals,
+        // plus structured-object expansion (List/Map drill-down) all
+        // land in Phase 5. For MVP we always list the current frame's
+        // locals via `-stack-list-variables --simple-values`.
+        let _tok: int = this.IssueMiCommand(seq, "variables",
+            "-stack-list-variables --simple-values")
+    }
+
+    private void HandleEvaluate(int seq, JsonValue args) {
+        let expr: string = args.Get("expression").AsString()
+        if (String_Length(expr) == 0) {
+            this.SendDapErrorResponse(seq, "evaluate", "missing expression")
+            return
+        }
+        // gdb's MI expects the expression as a single double-quoted
+        // arg with escapes. JSON-escape covers most of what we need.
+        let mi: string = "-data-evaluate-expression \"" +
+            Json.EscapeString(expr) + "\""
+        let _tok: int = this.IssueMiCommand(seq, "evaluate", mi)
+    }
+
+    // ── Response builders (fired from HandleMiResult) ───
+    //
+    // Each builder reads a captured `^done,…` MiRecord, extracts the
+    // relevant fields, and assembles the DAP response keyed by the
+    // originating request's seq.
+
+    private void RespondLaunch(int dapSeq, MiRecord rec) {
+        let ok: bool = (rec.Class == "done")
+        if (!ok) {
+            this.SendDapErrorResponse(dapSeq, "launch", "-file-exec-and-symbols failed")
+            return
+        }
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(dapSeq) +
+            ",\"success\":true" +
+            ",\"command\":\"launch\"}"
+        this.SendDapFrame(body)
+    }
+
+    private void RespondConfigurationDone(int dapSeq, MiRecord rec) {
+        // -exec-run answers with ^running or ^error. Either way reply
+        // immediately — the *stopped event will fire later when the
+        // program hits a breakpoint or signals.
+        let ok: bool = (rec.Class == "running" || rec.Class == "done")
+        if (!ok) {
+            this.SendDapErrorResponse(dapSeq, "configurationDone", "-exec-run failed")
+            return
+        }
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(dapSeq) +
+            ",\"success\":true" +
+            ",\"command\":\"configurationDone\"}"
+        this.SendDapFrame(body)
+    }
+
+    private void RespondStackTrace(int dapSeq, MiRecord rec) {
+        if (rec.Class != "done") {
+            this.SendDapErrorResponse(dapSeq, "stackTrace", "-stack-list-frames failed")
+            return
+        }
+        let stack: MiValue = rec.ResultOrNull("stack")
+        var frames: string = "["
+        var count: int = 0
+        if (stack != null && stack.Kind == 2) {
+            let n: int = stack.ListItems.Count()
+            for i in 0..n {
+                let f: MiValue = stack.ListItems.Get(i)
+                if (f.Kind != 1) { continue }
+                let lvlS:  string = f.FieldString("level")
+                let funcS: string = f.FieldString("func")
+                let fileS: string = f.FieldString("fullname")
+                var lineS: string = f.FieldString("line")
+                if (String_Length(lineS) == 0) { lineS = "0" }
+                // Frame filter: hide internal runtime frames unless
+                // the user opted in with `--show-runtime`. Pattern
+                // matches `^Amalgame_*` (every runtime header verb:
+                // String_*, AmalgameList_*, etc.), `^_runtime_*`
+                // (exception/setjmp glue), and `^GC_*` (libgc).
+                // The cgen emits user code as `<Namespace>_<Class>_
+                // <Method>` so legitimate stack frames never match.
+                if (!this.ShowRuntime) {
+                    if (String_StartsWith(funcS, "Amalgame_") ||
+                        String_StartsWith(funcS, "_runtime_") ||
+                        String_StartsWith(funcS, "GC_")) {
+                        continue
+                    }
+                }
+                if (count > 0) { frames = frames + "," }
+                frames = frames + "{\"id\":" + lvlS +
+                    ",\"name\":\"" + Json.EscapeString(funcS) + "\"" +
+                    ",\"line\":" + lineS +
+                    ",\"column\":1"
+                if (String_Length(fileS) > 0) {
+                    frames = frames + ",\"source\":{\"path\":\"" + Json.EscapeString(fileS) + "\"}"
+                }
+                frames = frames + "}"
+                count = count + 1
+            }
+        }
+        frames = frames + "]"
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(dapSeq) +
+            ",\"success\":true" +
+            ",\"command\":\"stackTrace\"" +
+            ",\"body\":{\"stackFrames\":" + frames +
+            ",\"totalFrames\":" + String_FromInt(count) + "}}"
+        this.SendDapFrame(body)
+    }
+
+    private void RespondVariables(int dapSeq, MiRecord rec) {
+        if (rec.Class != "done") {
+            this.SendDapErrorResponse(dapSeq, "variables", "-stack-list-variables failed")
+            return
+        }
+        let vars: MiValue = rec.ResultOrNull("variables")
+        var arr: string = "["
+        var count: int = 0
+        if (vars != null && vars.Kind == 2) {
+            let n: int = vars.ListItems.Count()
+            for i in 0..n {
+                let v: MiValue = vars.ListItems.Get(i)
+                if (v.Kind != 1) { continue }
+                let name:  string = v.FieldString("name")
+                let value: string = v.FieldString("value")
+                let typeS: string = v.FieldString("type")
+                if (count > 0) { arr = arr + "," }
+                arr = arr + "{\"name\":\""  + Json.EscapeString(name)  + "\"" +
+                    ",\"value\":\"" + Json.EscapeString(value) + "\"" +
+                    ",\"type\":\""  + Json.EscapeString(typeS) + "\"" +
+                    ",\"variablesReference\":0}"
+                count = count + 1
+            }
+        }
+        arr = arr + "]"
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(dapSeq) +
+            ",\"success\":true" +
+            ",\"command\":\"variables\"" +
+            ",\"body\":{\"variables\":" + arr + "}}"
+        this.SendDapFrame(body)
+    }
+
+    private void RespondEvaluate(int dapSeq, MiRecord rec) {
+        if (rec.Class != "done") {
+            this.SendDapErrorResponse(dapSeq, "evaluate", "-data-evaluate-expression failed")
+            return
+        }
+        let valWrap: MiValue = rec.ResultOrNull("value")
+        var valStr: string = ""
+        if (valWrap != null) { valStr = valWrap.Str }
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(dapSeq) +
+            ",\"success\":true" +
+            ",\"command\":\"evaluate\"" +
+            ",\"body\":{\"result\":\"" + Json.EscapeString(valStr) +
+            "\",\"variablesReference\":0}}"
+        this.SendDapFrame(body)
     }
 
     // Reply with our capabilities. Phase 2b advertises only the
@@ -680,7 +1197,7 @@ public class DapServer {
             ",\"success\":true" +
             ",\"command\":\"initialize\"" +
             ",\"body\":{" +
-                "\"supportsConfigurationDoneRequest\":false," +
+                "\"supportsConfigurationDoneRequest\":true," +
                 "\"supportsTerminateRequest\":true," +
                 "\"supportTerminateDebuggee\":true" +
             "}}"

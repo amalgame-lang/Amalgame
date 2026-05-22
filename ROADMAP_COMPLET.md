@@ -2156,24 +2156,85 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
       gdb 13.1, validates initialize-response + initialized-event
       + disconnect-response on stdout.
 
-**Phases remaining for full bridge:**
+**Phases shipped (continued):**
 
-- [ ] **Phase 4 main — DAP↔MI translation (the 12 substantive
-      verbs).** Per-verb handlers for `launch` (`-file-exec-and-
-      symbols`, `-exec-arguments`), `setBreakpoints`
-      (`-break-delete-list` + `-break-insert`),
-      `configurationDone` (`-exec-run`), `threads` (synthetic
-      single thread), `stackTrace` (`-stack-list-frames`),
-      `scopes` (synthetic Locals scope), `variables`
-      (`-stack-list-variables --simple-values`), `continue`
-      (`-exec-continue`), `next` / `stepIn` / `stepOut`
-      (`-exec-next` / `-exec-step` / `-exec-finish`), `pause`
-      (`-exec-interrupt`), `evaluate`
-      (`-data-evaluate-expression`). Each handler needs MI token
-      correlation (the `MiTokens` triple-list is in place) and
-      response-building from the matched MI result record.
-      Estimated 500-700 LoC of careful state-machine work; gates
-      a real VS Code debug session.
+- [x] **Phase 4 — DAP↔MI translation.** The substantive bridge
+      work. Token correlation infra: `IssueMiCommand(seq, kind, mi)`
+      writes `<tok>-<mi>\n` to gdb and registers a `(tok, seq, kind)`
+      triple; `HandleMiResult(rec)` looks up by token and dispatches
+      to the per-verb response builder. All 13 DAP verbs shipped:
+        - `launch` → `-file-exec-and-symbols` (program path from
+          arguments). Response on `^done`.
+        - `setBreakpoints` → batched flow: tear down every
+          previously-known breakpoint via `-break-delete`, then
+          `-break-insert <file>:<line>` per requested bp. State
+          tracked in `BkptInFlight*` fields; response built once
+          all per-bp `^done` arrive.
+        - `configurationDone` → `-exec-run` then reply on
+          `^running`.
+        - `threads` → synthetic single thread (`{id:1,name:"main"}`)
+          since the runtime is single-threaded.
+        - `stackTrace` → `-stack-list-frames [start end]`. Builds
+          DAP `StackFrame[]`. Frame filter applied: `^Amalgame_*`,
+          `^_runtime_*`, `^GC_*` skipped unless `--show-runtime`.
+        - `scopes` → synthetic single Locals scope keyed by
+          `variablesReference=1` (per-frame scopes land with the
+          drill-down work in Phase 5).
+        - `variables` → `-stack-list-variables --simple-values`.
+          Each MI variable mapped to DAP `Variable` with name/value
+          /type; `variablesReference=0` for now (no drill-down).
+        - `evaluate` → `-data-evaluate-expression "<expr>"`.
+        - `continue` / `next` / `stepIn` / `stepOut` / `pause` →
+          fire-and-forget MI (`-exec-continue` / `-exec-next` /
+          `-exec-step` / `-exec-finish` / `-exec-interrupt`). DAP
+          response sent immediately; the `*stopped` event drives
+          the state transition.
+        - `disconnect` → unchanged from Phase 2b.
+      Async event translation:
+        - `*stopped` → DAP `stopped` event with reason mapped from
+          gdb (`breakpoint-hit`→`breakpoint`, `end-stepping-range`
+          →`step`, `signal-received`→`exception`, `function-finished`
+          →`step`). `exited-normally`/`exited`/`exited-signalled`
+          suppressed since `=thread-group-exited` already drives the
+          `terminated` event.
+        - `=thread-group-exited` → DAP `terminated` event.
+      Verified end-to-end: `tests/run_tests.sh` "dap: bridge full
+      session" compiles a tiny C program, scripts a full session
+      (init → launch → setBp at line 5 → cfgDone → stopped at bp →
+      stackTrace → variables [x=7, y=11] → evaluate "x+y" returns
+      "18" → continue → terminated → disconnect). All 13 verbs
+      exercised through real gdb 13.1.
+
+- [x] **Phase 6 — frame filter** (partial — see Phase 5 for the
+      step-until-visible piece). `stackTrace` skips frames whose
+      `func` matches `^Amalgame_*`, `^_runtime_*`, or `^GC_*`
+      unless the user passed `amc dap --show-runtime`. The auto-
+      step out of hidden frames after `stepIn` is deferred to
+      Phase 5 alongside the pretty-printer registry — both touch
+      the same async-state machinery.
+
+**Phases remaining:**
+
+- [ ] **Phase 5 — pretty-printer registry + step-until-visible.**
+      Keyed-by-C-type formatters for `AmalgameList *` (summary +
+      `[0]`, `[1]`, …), `AmalgameMap *`, `AmalgameSet *`,
+      `AmalgameClosure *`, `code_string` (length-aware). Each
+      printer takes the gdb-reported `(name, type, addr)` and
+      issues follow-up `-data-evaluate-expression` calls to expand
+      the structure, populating DAP `variablesReference` child
+      handles. The `Variable.variablesReference=0` slot today
+      becomes a non-zero opaque handle that resolves via a new
+      Variables-by-ref scope dispatched through `HandleVariables`.
+      Companion: `stepIn` auto-step through hidden frames up to an
+      8-hop budget when the post-step `*stopped` lands in a
+      filtered frame. Estimated ~200 LoC + ~150 LoC of state
+      machinery.
+
+- [ ] **Phase 7 — flip default to bridge.** Once Phase 5 ships,
+      change `RunBridge()` to act on every invocation (drop the
+      `--bridge` gate). `--raw` becomes the opt-out for users
+      who want the v0.8.0 execvp proxy. Update
+      `editors/vscode/extension.js` and the docs accordingly.
 - [ ] **Phase 5 — pretty-printer registry.** Default registrants
       for `AmalgameList*` / `AmalgameMap*` / `AmalgameSet*` /
       `AmalgameClosure*` / `code_string`.
