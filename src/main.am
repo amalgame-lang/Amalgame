@@ -498,7 +498,11 @@ public class AmalgameCompiler {
         for ei2 in 0..extCount {
             resolver.Programs.Add(externalProgs.Get(ei2))
         }
-        resolver.ResolvePrograms()
+        resolver.CollectAll()
+        if (this.Verbose) {
+            Console.WriteError("  collect:   " + phaseSw.Reset())
+        }
+        resolver.ResolveAll()
         if (resolver.HasErrors()) {
             Console.WriteError(resolver.GetErrors())
             this.ExitCode = 1
