@@ -860,7 +860,7 @@ public class Formatter {
             if (ch == "\\")     { out = out + "\\\\" }
             else if (ch == "\"") { out = out + "\\\"" }
             else if (ch == "\n") { out = out + "\\n" }
-            else if (ch == "\r") { out = out + "\\r" }
+            else if (ch == String_FromByte(13)) { out = out + "\\r" }  // see lexer.am "\r" workaround
             else if (ch == "\t") { out = out + "\\t" }
             else                 { out = out + ch }
             i = i + 1

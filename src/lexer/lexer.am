@@ -122,7 +122,13 @@ public class Lexer {
                 let esc = this.Advance()
                 if (esc == "n")  { value = value + "\n" }
                 if (esc == "t")  { value = value + "\t" }
-                if (esc == "r")  { value = value + "\r" }
+                // `"\r"` literal is unreliable: the ancestral amc that
+                // first lexed this file mishandled it (produced 2 bytes
+                // backslash+r instead of one CR), and every generation
+                // since has inherited the bug. Bypassing through
+                // String_FromByte(13) breaks the cycle — the runtime
+                // helper takes an int, no escape table involved.
+                if (esc == "r")  { value = value + String_FromByte(13) }
                 if (esc == "\"") { value = value + "\"" }
                 if (esc == "\\") { value = value + "\\" }
                 // \xHH — two hex digits → single byte

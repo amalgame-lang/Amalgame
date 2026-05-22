@@ -2057,7 +2057,7 @@ public class AddCommand {
         var out: string = String_Replace(s, "\\", "\\\\")
         out = String_Replace(out, "\"", "\\\"")
         out = String_Replace(out, "\n", "\\n")
-        out = String_Replace(out, "\r", "\\r")
+        out = String_Replace(out, String_FromByte(13), "\\r")  // see lexer.am "\r" workaround
         out = String_Replace(out, "\t", "\\t")
         return out
     }
