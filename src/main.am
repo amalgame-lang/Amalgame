@@ -1204,6 +1204,71 @@ public class Program {
     //
     // Returns 0 on success, non-zero on amc-compile / gcc-link
     // failure. Errors are printed to stderr inline.
+
+    // Scan a failed-amc stdout for `Unknown symbol 'X'` diagnostics
+    // and shell out to `amc package suggest --json X` to print a
+    // friendly hint section below the raw error dump. Mirrors the
+    // LSP-side `CollectPackageInstallSuggestions` codepath — same
+    // schema, same safety stance (display-only, never auto-install).
+    //
+    // Silent (no extra output) when the index isn't reachable or
+    // no symbol matches a known package.
+    public static void PrintPackageSuggestionsForOutput(string stdout, string amcPath) {
+        let lines: List<string> = String_Split(stdout, "\n")
+        let n: int = lines.Count()
+        let prefix: string = "Unknown symbol '"
+        let prefLen: int = String_Length(prefix)
+        let seen: List<string> = new List<string>()
+        var headerPrinted: bool = false
+        var cmd: string = "amc"
+        if (String_Length(amcPath) > 0) { cmd = amcPath }
+        for li in 0..n {
+            let line: string = lines.Get(li)
+            let idx: int = String_IndexOf(line, prefix)
+            if (idx < 0) { continue }
+            let restLen: int = String_Length(line) - idx - prefLen
+            if (restLen <= 0) { continue }
+            let rest: string = String_Substring(line, idx + prefLen, restLen)
+            let endQuote: int = String_IndexOf(rest, "'")
+            if (endQuote <= 0) { continue }
+            let symName: string = String_Substring(rest, 0, endQuote)
+            if (symName == "_" || symName == "_unknown_") { continue }
+            // Dedupe — same symbol can fire multiple errors.
+            let ns: int = seen.Count()
+            var dup: bool = false
+            for si in 0..ns {
+                if (seen.Get(si) == symName) { dup = true }
+            }
+            if (dup) { continue }
+            seen.Add(symName)
+            let result = Process.RunCapture(cmd + " package suggest --json " + symName)
+            if (result.Exit != 0) { continue }
+            let trimmed: string = String_Trim(result.Stdout)
+            if (String_Length(trimmed) == 0 || trimmed == "[]") { continue }
+            let parsed: JsonResult = Json.Parse(trimmed)
+            if (!parsed.Ok) { continue }
+            let doc: JsonValue = parsed.Value
+            if (doc.IsNull() || !doc.IsArray()) { continue }
+            let arr: List<JsonValue> = doc.AsArray()
+            let nr: int = arr.Count()
+            if (nr == 0) { continue }
+            if (!headerPrinted) {
+                Console.WriteLine("")
+                Console.WriteLine("hint: unresolved symbols match curated packages — install via:")
+                headerPrinted = true
+            }
+            Console.WriteLine("  '" + symName + "':")
+            for ri in 0..nr {
+                let entry: JsonValue = arr.Get(ri)
+                let pn: string = entry.Get("name").AsString()
+                let pt: string = entry.Get("latest_compatible_tag").AsString()
+                var hintLine: string = "    amc package add " + pn
+                if (String_Length(pt) > 0) { hintLine = hintLine + "@" + pt }
+                Console.WriteLine(hintLine)
+            }
+        }
+    }
+
     public static int BuildOneBinary(
         string amcPath,
         string entryAm,
@@ -1225,6 +1290,7 @@ public class Program {
         if (cr.Exit != 0) {
             Console.WriteError("  [COMPILE-FAIL] amc exited " + String_FromInt(cr.Exit))
             Console.Write(cr.Stdout)
+            Program.PrintPackageSuggestionsForOutput(cr.Stdout, amcPath)
             return 1
         }
         if (verbose) {

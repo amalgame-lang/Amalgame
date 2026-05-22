@@ -984,6 +984,55 @@ run_lsp_check "lsp: import Net"         '"label":"Amalgame.Net","kind":9'       
 run_lsp_check "lsp: import Formats.Json" '"label":"Amalgame.Formats.Json","kind":9'       "$lsp_imp_seq"
 run_lsp_check "lsp: import bundled tag"  '"detail":"bundled stdlib"'                      "$lsp_imp_seq"
 
+# ── amc dap ────────────────────────────────────────────
+echo ""
+echo "── amc dap ─────────────────────────────"
+
+# Hidden self-test: exercises the gdb MI3 parser (src/dap/mi_parser.am)
+# against canned inputs from the gdb manual. No gdb needed — the
+# parser is pure AM. Exits 0 on all PASS, 1 on first FAIL.
+printf "  %-34s" "dap: MI parser self-test"
+DAP_MI_OUT="$("$AMC" dap --self-test-mi 2>&1)"
+DAP_MI_RC=$?
+DAP_MI_PASS=$(echo "$DAP_MI_OUT" | grep -c '^\[PASS\]')
+DAP_MI_FAIL=$(echo "$DAP_MI_OUT" | grep -c '^\[FAIL\]')
+if [ "$DAP_MI_RC" = "0" ] && [ "$DAP_MI_FAIL" = "0" ] && [ "$DAP_MI_PASS" -ge "8" ]; then
+    echo -e "${GREEN}PASS${NC} ($DAP_MI_PASS cases)"
+    PASS=$((PASS + 1))
+else
+    echo -e "${RED}FAIL${NC} (rc=$DAP_MI_RC pass=$DAP_MI_PASS fail=$DAP_MI_FAIL)"
+    echo "$DAP_MI_OUT" | sed 's/^/      /'
+    FAIL=$((FAIL + 1))
+fi
+
+# Bridge MVP test: handshake (initialize → initialized event →
+# disconnect). Requires gdb on PATH; skips cleanly otherwise so
+# CI runners without gdb installed don't fail. The bridge spawns
+# gdb but doesn't actually attach to a program — initialize/
+# disconnect only exercises the DAP framing + MI-pipe plumbing.
+if command -v gdb >/dev/null 2>&1; then
+    printf "  %-34s" "dap: bridge initialize handshake"
+    DAP_INIT='{"seq":1,"type":"request","command":"initialize","arguments":{"clientID":"test","adapterID":"amc"}}'
+    DAP_DISC='{"seq":2,"type":"request","command":"disconnect"}'
+    DAP_BRIDGE_OUT="$( ( printf 'Content-Length: %d\r\n\r\n%s' "${#DAP_INIT}" "$DAP_INIT"
+                         printf 'Content-Length: %d\r\n\r\n%s' "${#DAP_DISC}" "$DAP_DISC"
+                       ) | timeout 5 "$AMC" dap --bridge 2>&1 )"
+    if echo "$DAP_BRIDGE_OUT" | grep -qF '"command":"initialize","body":{' \
+       && echo "$DAP_BRIDGE_OUT" | grep -qF '"event":"initialized"' \
+       && echo "$DAP_BRIDGE_OUT" | grep -qF '"command":"disconnect"'; then
+        echo -e "${GREEN}PASS${NC}"
+        PASS=$((PASS + 1))
+    else
+        echo -e "${RED}FAIL${NC}"
+        echo "$DAP_BRIDGE_OUT" | head -10 | sed 's/^/      /'
+        FAIL=$((FAIL + 1))
+    fi
+else
+    printf "  %-34s" "dap: bridge initialize handshake"
+    echo -e "${YELLOW}SKIP${NC} (gdb not on PATH)"
+    SKIP=$((SKIP + 1))
+fi
+
 # ── amc migrate ────────────────────────────────────────
 echo ""
 echo "── amc migrate ─────────────────────────"

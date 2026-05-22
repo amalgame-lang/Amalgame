@@ -132,6 +132,14 @@ public class Program {
         let lspProg  = lspPar.Parse()
         Console.WriteError("parsed: lsp.am")
 
+        let miPath   = "./src/dap/mi_parser.am"
+        let miSrc    = File.ReadAll(miPath)
+        let miLex    = new Lexer(miSrc, miPath)
+        let miToks   = miLex.Tokenize()
+        let miPar    = new Parser(miToks)
+        let miProg   = miPar.Parse()
+        Console.WriteError("parsed: dap/mi_parser.am")
+
         let dapPath  = "./src/dap.am"
         let dapSrc   = File.ReadAll(dapPath)
         let dapLex   = new Lexer(dapSrc, dapPath)
@@ -250,6 +258,7 @@ public class Program {
         gen6.AddFilePass1(mpProg)
         gen6.AddFilePass1(biProg)
         gen6.AddFilePass1(lspProg)
+        gen6.AddFilePass1(miProg)
         gen6.AddFilePass1(dapProg)
         gen6.AddFilePass1(migProg)
         gen6.AddFilePass1(genProg)
@@ -281,6 +290,7 @@ public class Program {
         gen6.AddFilePass2Forwards(mpProg)
         gen6.AddFilePass2Forwards(biProg)
         gen6.AddFilePass2Forwards(lspProg)
+        gen6.AddFilePass2Forwards(miProg)
         gen6.AddFilePass2Forwards(dapProg)
         gen6.AddFilePass2Forwards(migProg)
         gen6.AddFilePass2Forwards(genProg)
@@ -307,6 +317,7 @@ public class Program {
         gen6.AddFilePass2Bodies(mpProg,   mpPath)
         gen6.AddFilePass2Bodies(biProg,   biPath)
         gen6.AddFilePass2Bodies(lspProg,  lspPath)
+        gen6.AddFilePass2Bodies(miProg,   miPath)
         gen6.AddFilePass2Bodies(dapProg,  dapPath)
         gen6.AddFilePass2Bodies(migProg,  migPath)
         gen6.AddFilePass2Bodies(genProg,  genPath)

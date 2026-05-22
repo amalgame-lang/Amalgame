@@ -87,8 +87,13 @@ cxxflags  = "-O3 -DNDEBUG -std=c++17"  # extra flags for .cpp/.cc/.cxx
 libs      = ["stdc++"]          # bare names → -l<name> at link time
 
 [stdlib.functions]
-Open  = { returns = "AmalgameDuckDB*" }
-Close = { returns = "void" }
+Open     = { returns = "AmalgameDuckDB*" }
+Close    = { returns = "void" }
+# Optional `returns_generic` (v0.8.40+) carries the AM-level
+# generic shape so chained `.Get(i).Get(j)…` on the consumer side
+# infers typed casts instead of falling through to `(void*)`.
+# Example: `QueryAll` returning rows-of-columns of strings.
+QueryAll = { returns = "AmalgameList*", returns_generic = "List<List<string>>" }
 # …
 ```
 
@@ -105,6 +110,7 @@ Close = { returns = "void" }
 | `libs`                           | `[stdlib]`  | v0.5.3 | Bare lib names → `-l<name>` appended to every consumer's final link        |
 | `precompile`                     | `[stdlib]`  | v0.5.4 | When `true`, `amc package add` compiles sources at install time into `~/.amalgame/packages/.../build/<platform>/`. Subsequent `amc test`/`amc build` reuse the cached `.o`. Override with `--no-precompile`. |
 | `[stdlib.functions]`             | section     | v0.5.0 | `<Method> = { returns = "<C-type>" }` — populates the cgen's dispatch     |
+| `returns_generic` (per-function) | `[stdlib.functions]` | v0.8.40 | AM-level generic shape (e.g. `"List<List<string>>"`). When present, chained `.Get(i).Get(j)…` on the consumer infers typed casts (`(code_string)…` instead of `(void*)…`). Omit for non-collection returns or when one layer of `void*` is acceptable. |
 
 ### `required-amalgame` operators (v0.6.0+)
 
