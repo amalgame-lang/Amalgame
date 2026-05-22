@@ -1,6 +1,6 @@
 // Sample test file with deliberate FAIL and SKIP tags so the
 // runner's counting + dispatch logic is exercised end-to-end.
-// Used by tests/run_tests.sh to grep "PASS: 1  FAIL: 1  SKIP: 1"
+// Used by tests/core_bundle/core_test.am to grep "PASS: 1  FAIL: 1  SKIP: 1"
 // from amc test's summary line.
 
 class Program {

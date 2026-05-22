@@ -53,8 +53,16 @@ runtime/   ← Headers C du runtime
   Amalgame_Console.h     ← Console_WriteLine, Console_WriteError
 
 tests/
-  run_tests.sh           ← driver self-hosted (lexer, parser, resolver, typechecker)
-  samples/               ← programmes .am de test end-to-end
+  fmt/fmt_test.am               ← bundle AM: formatter idempotence + semantics
+  amc_new/amc_new_test.am       ← bundle AM: scaffolder smoke tests
+  stdlib_bundle/stdlib_test.am  ← bundle AM: 196 stdlib assertions + 2 PM e2e
+  core_bundle/
+    core_test.am                ← bundle AM: 325 cas core (lang, LSP, DAP, LLM)
+    fixtures/lsp_*.bin          ← séquences JSON-RPC pré-calculées pour les LSP tests
+  samples/                      ← programmes .am compilés par les bundles
+  fixtures/                     ← fixtures e2e (PM cache, LSP workspace, …)
+  run_*.sh                      ← legacy bash runners (safety net, à supprimer)
+  run_all_tests.sh              ← wrapper: boucle sur les bundles + lance le bash
 ```
 
 ---
@@ -98,7 +106,7 @@ hello (binaire)
 # 1. Éditer un .am dans src/
 # 2. Rebuild + test :
 ./build_amc.sh
-./tests/run_all_tests.sh 2>&1 | tail -3
+./amc test ./tests/core_bundle/ 2>&1 | tail -3   # ou ./tests/run_all_tests.sh pour la suite complète
 ```
 
 `build_amc.sh` runs the three stages (compile gen_test, generate
@@ -244,14 +252,33 @@ File_CloseWrite();             // ferme
 
 ### Lancer tous les tests
 ```bash
-./tests/run_all_tests.sh    # full suite (363 PASS / 0 FAIL / 0 SKIP)
+./tests/run_all_tests.sh                # full suite, ~42s (571 PASS / 0 FAIL / 5 SKIP)
+./amc test ./tests/core_bundle/         # une suite seule (325 PASS, ~29s)
+./amc test ./tests/stdlib_bundle/       # stdlib (196 PASS / 5 SKIP, ~8s)
+./amc test ./tests/fmt/                 # formatter (12 PASS, ~3s)
+./amc test ./tests/amc_new/             # scaffolder (38 PASS, ~1s)
 ```
 
+Les bundles AM (`tests/<suite>/*_test.am`) sont la voie canonique
+depuis 2026-05-22. Les bash runners (`tests/run_*.sh`) restent en
+filet pendant la transition — `run_all_tests.sh` les lance en
+parallèle pour vérifier la parité.
+
 ### Ajouter un test
-Créer `tests/samples/montest.am` puis ajouter dans `tests/run_tests.sh` :
-```bash
-run_test "ma feature" "$SAMPLES/montest.am" "sortie attendue"
+
+Pour un test de comportement runtime (compile + run + grep) :
+1. Créer le sample : `tests/samples/montest.am`
+2. Ajouter une assertion au bundle approprié (par ex. `core_bundle/core_test.am`) :
+```amalgame
+let g_montest: List<CoreCase> = new List<CoreCase>()
+g_montest.Add(new CoreCase("ma feature", "sortie attendue"))
+Program.RunGroup("./tests/samples/montest.am", "montest", g_montest)
 ```
+3. Relancer : `./amc test ./tests/core_bundle/`
+
+Pour un test de tooling (LSP, lint, --check), utiliser un helper
+spécialisé (`RunLspCheck`, `RunLintCheck`, `RunCheckFail`, etc.) déjà
+défini dans `core_test.am`.
 
 ### Tester un sample manuellement
 ```bash

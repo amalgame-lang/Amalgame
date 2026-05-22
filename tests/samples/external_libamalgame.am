@@ -11,7 +11,7 @@
 // bundled until amc's cgen learns to resolve bundled-stdlib class
 // names from external facades (deferred to v0.8.0).
 //
-// Compiled by tests/run_tests.sh as:
+// Compiled by tests/core_bundle/core_test.am as:
 //   ./amc -o <out> tests/samples/external_libamalgame.am \
 //       --external src/stdlib/json.am \
 //       --external src/stdlib/msgpack.am

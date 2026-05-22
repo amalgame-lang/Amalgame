@@ -156,9 +156,9 @@ A few pieces collaborate to keep round-tripping idempotent:
   the result still parses; idempotence is preserved at the cost of
   meaning. This is meant to be temporary and is rare in practice.
 
-`tests/run_fmt_tests.sh` checks idempotence + semantic equivalence
-on a small fixture; the regression sweep that runs `amc fmt` on every
-compiler source must stay green.
+`tests/fmt/fmt_test.am` checks idempotence + semantic equivalence
+on a small fixture (`amc test ./tests/fmt/`); the regression sweep
+that runs `amc fmt` on every compiler source must stay green.
 
 ## Linter (`src/linter.am`)
 
@@ -334,14 +334,32 @@ the in-memory line list and writing directly to `File_StreamLine`.
 
 ## Tests
 
-`tests/samples/*.am` — input programs.
-`tests/run_tests.sh` and `run_stdlib_tests.sh` — orchestrate them.
-`tests/samples/lib_e2e_consumer.c` — the C consumer for the `--lib`
-end-to-end test.
+- `tests/samples/*.am` — input programs (compiled + run by the bundles).
+- `tests/<bundle>/*_test.am` — AM test bundles driven by `amc test`:
+  `fmt/` (formatter), `amc_new/` (scaffolder), `stdlib_bundle/` (stdlib),
+  `core_bundle/` (lang + LSP + DAP + LLM tooling).
+- `tests/fixtures/` — fixtures e2e (PM caches, LSP workspace).
+- `tests/core_bundle/fixtures/lsp_*.bin` — pre-computed LSP JSON-RPC
+  sequences (Content-Length framing) consumed by the LSP cases.
+- `tests/samples/lib_e2e_consumer.c` — the C consumer for the `--lib`
+  end-to-end test.
+- `tests/run_*.sh` — legacy bash runners, kept as a safety net during
+  the bundle migration (to be dropped after a few stable releases).
 
-When you add a feature, drop a sample in `tests/samples/` and a line
-in `tests/run_tests.sh` to grep for the expected output. Keep the
-sample minimal — one feature, one observable.
+When you add a feature:
+1. Drop a sample in `tests/samples/montest.am` (one feature, one observable).
+2. Add an assertion to the appropriate bundle, e.g. in
+   `core_bundle/core_test.am`:
+   ```amalgame
+   g_montest.Add(new CoreCase("ma feature", "sortie attendue"))
+   Program.RunGroup("./tests/samples/montest.am", "montest", g_montest)
+   ```
+3. Verify: `./amc test ./tests/core_bundle/`.
+
+For tooling tests (LSP, lint, --check, --lib, multi-file, external),
+use the specialised helpers already defined in `core_test.am`:
+`RunLspCheck`, `RunLintCheck`, `RunCheckFail`, `RunCCheck`,
+`RunLibTest`, `RunMultiFile`, `RunExternalTest`, `RunCmdGrep`, etc.
 
 ## Common gotchas
 

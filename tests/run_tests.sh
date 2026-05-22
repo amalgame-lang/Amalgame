@@ -1,7 +1,14 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────
-#  Amalgame Transpiler — Test Runner
+#  Amalgame Transpiler — Test Runner (LEGACY)
 #  Usage: ./tests/run_tests.sh
+#
+#  DEPRECATED 2026-05-22 — superseded by tests/core_bundle/core_test.am
+#  Run via: ./amc test ./tests/core_bundle/
+#
+#  Kept as safety net during the migration; tests/run_all_tests.sh
+#  runs both this and the AM bundle to verify parity. This script
+#  will be removed once the AM bundles ship a few stable releases.
 # ─────────────────────────────────────────────────────
 
 AMC="./amc"

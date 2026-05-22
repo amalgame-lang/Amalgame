@@ -24,8 +24,12 @@ cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c \
     -lgc -lm -lcurl -o snapshot/amc   # one-time: bootstrap from tracked C
 ./build_amc.sh                         # builds the self-hosted amc into ./amc (~5s)
-./tests/run_all_tests.sh
+./tests/run_all_tests.sh               # full suite: 571 PASS in ~42s
 ```
+
+Individual test suites can be run via `./amc test ./tests/<bundle>/`
+where `<bundle>` is one of `fmt`, `amc_new`, `stdlib_bundle`, or
+`core_bundle` — see [06-build-and-tooling.md](06-build-and-tooling.md#tests).
 
 ### macOS (Apple Silicon or Intel)
 

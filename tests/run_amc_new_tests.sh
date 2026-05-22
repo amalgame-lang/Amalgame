@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# LEGACY (deprecated 2026-05-22) — superseded by tests/amc_new/amc_new_test.am
+# Run via: ./amc test ./tests/amc_new/
+# Kept as safety net during the migration.
+#
 # Smoke tests for `amc new`. Scaffolds each template into /tmp,
 # checks the expected files exist, and (for exe) compiles + runs
 # the result so a regression in the generated source breaks the

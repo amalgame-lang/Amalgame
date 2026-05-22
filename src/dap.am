@@ -185,7 +185,7 @@ public class DapServer {
         // Hidden self-test flag: exercise the MI parser against
         // canned inputs from the gdb manual without needing gdb
         // itself. Returns 0 on PASS, 1 on FAIL. Wired into
-        // run_tests.sh's "amc dap" section.
+        // tests/core_bundle/core_test.am's "amc dap" section.
         if (this.HasFlag("--self-test-mi")) {
             return DapServer.RunSelfTestMi()
         }
@@ -214,7 +214,7 @@ public class DapServer {
 
     // Exercise MiParser against a representative slice of gdb MI3
     // output. Returns 0 on all PASS, 1 on first FAIL. Emits PASS/FAIL
-    // lines on stdout so run_tests.sh can grep for them.
+    // lines on stdout so tests/core_bundle/core_test.am can grep for them.
     //
     // Coverage: result records (with + without token), exec-async
     // *stopped events, stack-list-frames lists of `frame=…` pairs,

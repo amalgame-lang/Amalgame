@@ -256,8 +256,10 @@ In rough order of usefulness × effort:
 ## 🟠 Compiler — open bugs (samples currently SKIPped)
 
 These samples trigger bugs in the self-hosted compiler. They're
-marked SKIP in `tests/run_tests.sh` (`SKIP_SELFHOST`) so the suite
-stays green; each one needs its own fix.
+marked SKIP in the test bundles (`SKIP_SELFHOST` in the legacy
+`tests/run_tests.sh`, or simply omitted from the AM bundle case
+list in `tests/core_bundle/core_test.am`) so the suite stays
+green; each one needs its own fix.
 
 - [x] **Facade-package ABI bug — same-class static dispatch
       vs PkgClassMangledPrefix** — **fixed 2026-05-19**.
@@ -727,28 +729,50 @@ before the next big language addition.
       who want to splice their own gcc command. Transitive-import
       watching is deferred until the `FileWatcher` package gains
       an event-based mode (post-D).
-- [ ] **Unify all test runners under `amc test`** — the repo
-      still ships ~1.9k lines of bash in `tests/run_tests.sh`
-      (992), `tests/run_stdlib_tests.sh` (607), `tests/run_fmt_tests.sh`
-      (132), `tests/run_amc_new_tests.sh` (143), and `tests/run_all_tests.sh`
-      (57). Each implements its own discovery + compile + capture
-      + tally loop in shell, with subtle differences (some pass
-      `--lib`, some assert expected stdout, fmt runner round-trips
-      via the formatter, amc-new runner shells out to scaffold + build).
-      Goal: rewrite every check as `*_test.am` files emitting
-      `[PASS]/[FAIL]/[SKIP]` lines so `amc test ./tests/` drives
-      the whole suite, then drop the bash. Likely needs `amc test`
-      additions: per-file env (`AMC_FLAGS`), expected-stdout
-      assertions (or move them inside the test bodies), parallel
-      execution, a `--filter <glob>` flag, and a `--ci` output
-      mode matching the current bash tally. Also: the fmt and
-      amc-new runners exercise tooling other than the compiler
-      (formatter idempotency, project scaffolding) — those need
-      either dedicated `Amalgame.Test` helpers (e.g.
-      `Test.Format(file)`, `Test.Scaffold("exe", "/tmp/x")`) or a
-      runner mode that shells out and captures. Big win: one
-      test entry point, one runtime, runs on every platform amc
-      compiles for (today the bash runners assume POSIX).
+- [x] **Unify all test runners under `amc test`** — **shipped
+      2026-05-22**. All 4 bash runners migrated to discoverable
+      `*_test.am` bundles driven by `amc test`, zero-delta with the
+      legacy bash counts:
+        - `tests/fmt/fmt_test.am` (12 PASS, ex `run_fmt_tests.sh`)
+        - `tests/amc_new/amc_new_test.am` (38 PASS, ex `run_amc_new_tests.sh`)
+        - `tests/stdlib_bundle/stdlib_test.am` (196 PASS + 5 SKIP +
+          PM/facade e2e, ex `run_stdlib_tests.sh`)
+        - `tests/core_bundle/core_test.am` (325 PASS — 197 `run_test`
+          + 30 misc helpers + 38 LSP + 4 DAP + 56 LLM-cmd, ex
+          `run_tests.sh`)
+      Bundles compile each sample ONCE and grep N substrings against
+      the captured stdout (vs the bash runner recompiling per
+      assertion). Total suite: 4m35s → 42s (~×6), stdlib alone
+      3m34s → 8s (~×27 — 8 samples × ~22 assertions each). The 15
+      bash helpers (`run_test`, `run_multi_test`, `run_external_test`,
+      `run_check_fail`, `run_lint_check`, `run_c_check`, `run_lib_test`,
+      `run_lib_link_test`, `run_amc_test_check`, `run_lsp_check`,
+      `run_lsp_absent`, `run_migrate_*`, `run_generate_check`,
+      `run_explain_check`, `run_multifile_test`) mapped to AM
+      equivalents (`RunGroup`, `RunCheckFail`, `RunLintCheck`,
+      `RunCCheck`, `RunLibTest`, `RunMultiFile`, `RunExternalTest`,
+      `RunAmcTestCheck`, `RunLspCheck`, `RunLspAbsent`, `RunCmdGrep`,
+      `RunLibLinkTest`, plus `LspFrame` for DAP framing). LSP
+      sequences live as pre-computed fixtures under
+      `tests/core_bundle/fixtures/lsp_*.bin`; the xdir fixture is
+      built at runtime to embed the absolute path. `run_all_tests.sh`
+      keeps both paths green during the transition (loop on the 4
+      bundle dirs + lance les bash). **Follow-ups before dropping
+      the bash:**
+        - 4 fixture `*_test.am` under `tests/samples/test_runner/`,
+          `tests/samples/lint_test.am`, and
+          `tests/fixtures/lsp-workspace/tests/byteio_test.am` must
+          move out of the auto-discovery path (or `amc test` needs
+          an `--exclude` flag). Otherwise `amc test ./tests/` would
+          pick them up (and `mixed_test.am` deliberately emits
+          `[FAIL]`).
+        - Compiler bug surfaced: the AM lexer mis-handles `\r`
+          (treats as backslash+r — `"\r"` is 2 bytes). Workaround
+          is a literal CR byte in `LspFrame`; fix is straightforward
+          in `src/lexer/lexer.am`'s escape table.
+      Once those two follow-ups land and the bundles stay green
+      across a few releases, drop the 4 `tests/run_*.sh` and let
+      `run_all_tests.sh` collapse to `./amc test ./tests/`.
 - [x] **`amc --lint`** (v0.3.3 unreachable, v0.3.4 unused/shadow)
       — `src/linter.am` walks the AST and flags:
       unreachable code after `return` / `throw` / `break` /
@@ -781,8 +805,10 @@ before the next big language addition.
           `amalgame-ui-forms`. Kept for archaeology; new users
           should use `ui-web-form`.
         - `ui-web-form` — webview-based GUI via `amalgame-ui-web`.
-      Tested in `tests/run_amc_new_tests.sh` (38 PASS) including a
-      hyphenated-name regression added 2026-05-22 — asserts
+      Tested in `tests/amc_new/amc_new_test.am` (38 PASS via
+      `amc test ./tests/amc_new/`; legacy bash mirror still at
+      `tests/run_amc_new_tests.sh`) including a hyphenated-name
+      regression added 2026-05-22 — asserts
       `^namespace track_d_test$` in the scaffolded main.am and
       that the project compiles + runs end-to-end.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
@@ -2132,7 +2158,7 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
       tuple, *stopped event with nested frame, keyed list,
       bare-tuple list, escaped \\n in stream, (gdb) prompt,
       empty `{}` / `[]`, escaped `\"` inside string). Wired into
-      `tests/run_tests.sh` as "dap: MI parser self-test".
+      `tests/core_bundle/core_test.am` as "dap: MI parser self-test".
 
 **Phases shipped (gdb-tested):**
 
@@ -2161,8 +2187,8 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
       on `\n`, parses each non-empty line through `MiParser`,
       dispatches result records to `HandleMiResult` (stub — token-
       correlation for response building lands with Phase 4 main).
-      Verified end-to-end via `tests/run_tests.sh` "dap: bridge
-      initialize handshake" — scripted DAP session through real
+      Verified end-to-end via `tests/core_bundle/core_test.am`
+      "dap: bridge initialize handshake" — scripted DAP session through real
       gdb 13.1, validates initialize-response + initialized-event
       + disconnect-response on stdout.
 
@@ -2208,8 +2234,8 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
           suppressed since `=thread-group-exited` already drives the
           `terminated` event.
         - `=thread-group-exited` → DAP `terminated` event.
-      Verified end-to-end: `tests/run_tests.sh` "dap: bridge full
-      session" compiles a tiny C program, scripts a full session
+      Verified end-to-end: `tests/core_bundle/core_test.am`
+      "dap: bridge full session" compiles a tiny C program, scripts a full session
       (init → launch → setBp at line 5 → cfgDone → stopped at bp →
       stackTrace → variables [x=7, y=11] → evaluate "x+y" returns
       "18" → continue → terminated → disconnect). All 13 verbs
@@ -2264,8 +2290,8 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
         through the same serial walker. Map/Set children left for
         a follow-up (their hash-table-with-tombstones layout
         needs a different traversal).
-      Verified in CI via `tests/run_tests.sh` "dap: bridge
-      pretty-print + drill" — builds a C program that wires
+      Verified in CI via `tests/core_bundle/core_test.am`
+      "dap: bridge pretty-print + drill" — builds a C program that wires
       `runtime/Amalgame_Collections.h`, attaches the bridge,
       asserts `"value":"List[3]"` + `"variablesReference":1000`
       on the parent and `0xa`/`0x14`/`0x1e` on the children.
