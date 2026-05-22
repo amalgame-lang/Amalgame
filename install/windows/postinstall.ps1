@@ -29,10 +29,22 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [ValidateSet("install","uninstall")] [string] $Mode,
-    [string] $InstallLocation = (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
+    [string] $InstallLocation = ""
 )
 
 $ErrorActionPreference = "Continue"
+
+# Derive InstallLocation here (not as a param default) because
+# Windows PowerShell 5.1 evaluates param defaults BEFORE the
+# automatic $PSCommandPath variable is populated when invoked
+# via `powershell.exe -File`. Doing it in the script body
+# ensures both vars are live before Split-Path runs.
+if ([string]::IsNullOrEmpty($InstallLocation)) {
+    $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    # script lives at <InstallLocation>\share\amalgame\install\postinstall.ps1
+    # → 4 Split-Path ascents to reach <InstallLocation>.
+    $InstallLocation = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $scriptPath)))
+}
 
 $LogPath = Join-Path $env:TEMP "amalgame-postinstall.log"
 function Log {
