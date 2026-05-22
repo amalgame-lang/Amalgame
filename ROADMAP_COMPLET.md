@@ -18,10 +18,15 @@
 >   prints a `hint:` block on resolve failure with the matching
 >   `amc package add …` commands. See the "Next sessions" entry
 >   below for the full breakdown.
-> - **4b. DAP MI bridge custom** (~1-2 weeks) — drop the proxy-mince
->   `amc dap` for a full MI parser that translates gdb-MI ↔ DAP
->   in-process. Already framed as "Approche A v0.9.0+" above —
->   triggers as soon as a real debug user-facing pain point hits.
+> - ~~**4b. DAP MI bridge custom**~~ ✅ **shipped 2026-05-22**.
+>   All 7 phases landed end-to-end: design doc + fork+pipe2+poll
+>   plumbing + MI3 parser + 13 DAP↔MI verb handlers + pretty-
+>   printers for `AmalgameList`/`Map`/`Set`/`Closure` + drill-down
+>   on `AmalgameList` children + step-until-visible + frame
+>   filter + bridge-default flip + octal-escape un-escape for
+>   UTF-8 paths. VS Code extension v0.4.0 wires `--bridge` by
+>   default (opt-out via `amalgame.dapBridge: false`). See the
+>   "Next sessions" entry below for the full breakdown.
 > - **3. Menubar OS-natif** (~6 weeks × 3 OS, Linux/GtkMenuBar first)
 >   — the marker `data-mode="native"` is posted by
 >   `Element.MenuBar().UseNative(true)` since v0.0.8; the C bridge
@@ -753,38 +758,33 @@ before the next big language addition.
       get warned-on as unused. Still TBD: suspicious patterns,
       catch-binder unused detection (parser puts them at a node
       we don't yet walk).
-- [ ] **`amc new <name> [--template <kind>]`** — scaffolding command,
-      à la `cargo new` / `dotnet new`. Creates a `<name>/` directory
-      with the right starter files for the chosen template:
-        - `exe` (default) — `src/main.am` with a `Program.Main` skeleton
-          + a `tests/hello_test.am`. Minimal "compiles and runs"
-          starting point.
-        - `lib` — `src/<name>.am` with a `public class` skeleton, a
-          README pointing at the `--lib` flag, no `Program.Main`.
+- [x] **`amc new <name> [--template <kind>]`** — scaffolding
+      command, à la `cargo new` / `dotnet new`. Shipped end-to-end:
+      `src/new_cmd.am` (1535 LoC) drives the six template branches
+      below; F5 in VS Code works out of the box because the
+      scaffolder also writes `.vscode/launch.json + tasks.json +
+      settings.json` (opt-out via `--no-vscode`). Hyphenated names
+      (`amc new my-app`) sanitise into a valid AM identifier for
+      the `namespace` line via `NewCommand.SanitizeIdent`; the
+      user's literal name still appears in README + console
+      greeting. Templates:
+        - `exe` (default) — `src/main.am` + `tests/hello_test.am`
+          + `build.sh`. Minimal compile-and-run starting point.
+        - `lib` — `src/<name>.am` with a `[Library]` marker comment
+          (read by `amc --lib`) and a `public class <Name>` skeleton.
         - `test` — pure test bundle (`tests/<name>_test.am` with a
-          PASS/FAIL example), useful when starting from an existing
-          codebase to add a test layer.
-        - Future: `cli` (with arg parsing skeleton), `web` (HTTP
-          server skeleton tied to the `Http` stdlib), `fmt-plugin`,
-          `service` (long-running background process — cross-platform
-          install/start/stop hooks: systemd unit on Linux, launchd
-          plist on macOS, Windows Service via `sc create`/SCM stubs;
-          template ships a `Service.Run()` with signal-aware shutdown
-          and a sample `journalctl`/`Console`-friendly logger), and
-          `forms` (cross-platform GUI app — SDL2-or-equivalent
-          binding under the hood; template ships a Window + Button +
-          TextField sample with the platform DLL/dylib/so resolution
-          handled in the build script). `service` and `forms` both
-          need extra runtime headers (signal/SCM glue and an SDL
-          binding respectively), so their templates land alongside
-          `Amalgame.Service` / `Amalgame.UI` stdlib modules — see
-          "Stdlib gaps" below for the matching entries.
-      All templates ship a `.gitignore`, a `README.md` stub, and a
-      `build.sh` calling `amc` directly. Implementation: a small set
-      of file templates in `src/templates/` (or hard-coded strings
-      in `src/main.am` to stay self-contained), a CLI dispatcher
-      branch in `main.am`, and a sample roundtrip test that
-      scaffolds + compiles a fresh project under `/tmp`.
+          PASS/FAIL example) for layering tests on an existing codebase.
+        - `service` (v2) — long-running daemon with native Windows
+          Service mode via `Service.RunAsService`. Linux systemd
+          unit + install.sh; Windows sc.exe scripts (NSSM-free).
+        - `forms` (sunset 2026-05-15) — SDL-based GUI via
+          `amalgame-ui-forms`. Kept for archaeology; new users
+          should use `ui-web-form`.
+        - `ui-web-form` — webview-based GUI via `amalgame-ui-web`.
+      Tested in `tests/run_amc_new_tests.sh` (38 PASS) including a
+      hyphenated-name regression added 2026-05-22 — asserts
+      `^namespace track_d_test$` in the scaffolded main.am and
+      that the project compiles + runs end-to-end.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
 - [x] **`amc package <action>`** (v0.5.0 → v0.6.x) — full package
       manager. `add <git-url>@<tag>` clones + validates + records,
@@ -917,26 +917,36 @@ before the next big language addition.
           consecutive `import` statements. Multi-line `if`/`while`/
           `for` blocks are covered by the brace-pair logic;
           multi-line `match` arms remain a v2 polish.
-- [ ] **`amc lsp` performance — workspace resolver caching.**
-      Every hover / completion / definition call rebuilds the
-      whole workspace resolver: parse the open file, walk every
-      sibling `.am`, parse each, collect+resolve. On a 30-file
-      workspace that's ~2.5–3s per request — fast enough for
-      diagnostics-on-save but noticeably slow for Cmd+Click
-      definition (VS Code shows the spinner). Cache the resolver
-      across requests, invalidate on `didChange` /
-      `didCreate` / `didDelete`. ~1 day of work; biggest LSP
-      UX win after the v2 navigation features themselves.
-- [ ] **VS Code extension robustness on `serverPath`.** The
-      extension currently does `child_process.spawn(serverPath)`
-      with the user-set value verbatim. Two real-world traps:
-      a leading whitespace in the JSON setting silently makes
-      the path look like ` /home/.../amc` (ENOENT), and a `~/`
-      prefix isn't expanded by `spawn`. Fix in
-      `editors/vscode/extension.js`: `serverPath.trim()` then
-      `serverPath.replace(/^~/, os.homedir())` before spawning.
-      ~5 LoC, unblocks anyone who configures `amalgame.serverPath`
-      with the natural shell-style value.
+- [~] **`amc lsp` performance — workspace resolver caching.**
+      Partially shipped 2026-05-22. The CachedResolver +
+      CachedSiblingProgs path was already in place; the gap was
+      cache invalidation on new files — fixed via:
+      (1) initialize response now advertises
+      `workspace.fileOperations.didCreate/didDelete/didRename`
+      with the `**/*.am` glob so VS Code fires explicit events;
+      (2) didOpen heuristic drops the sibling cache when the
+      opened path is under CachedRoot but absent from
+      CachedSiblingPaths (catches external creates from the Write
+      tool, git pull, terminal `touch`).
+      **Deeper perf issue identified, partial fix shipped.** Cold
+      `amc --check src/generator/c_gen.am` (5k LoC) was 151s,
+      almost all in resolve. Profiling revealed `MemberTable`
+      (className.member → typeName) and `FullResolver.GlobalNames`
+      both used parallel-list linear scans for Has/Get/Set — O(N)
+      per lookup, hit on every AST identifier reference and member
+      access. Added hashed `Map<string, int>` companions in
+      `38931f7` (151s → 132s on c_gen, ~13%). The remaining cost
+      lives somewhere else in Pass-2 traversal — parse itself is
+      also surprisingly slow (7s on c_gen). Reasonable target:
+      under 1s for a workspace file. **Follow-up needed**: instrument
+      with per-pass timing markers, identify the actual hotspot
+      (suspects: LocalNames linear scan in deeply-nested scopes,
+      AST traversal allocations, or a yet-undiscovered loop).
+- [x] **VS Code extension robustness on `serverPath`.** Already
+      shipped — `editors/vscode/extension.js` has
+      `resolveServerPath(raw)` doing both `trim()` and `~/`
+      expansion via `os.homedir()`. Verified in this session's
+      Track B audit.
 - [ ] **Editor integration on install + Windows MSI batteries-
       included (priority for v1.0 readiness)** — when a user
       installs Amalgame (`install.sh`, future `amc-up` package
