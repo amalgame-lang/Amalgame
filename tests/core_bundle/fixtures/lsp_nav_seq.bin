@@ -1,0 +1,17 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 433
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am","languageId":"amalgame","version":1,"text":"class Foo {\n    public Name: string\n    public Foo() {\n        this.Name = \"x\"\n    }\n    public string Greet() {\n        return \"hi \" + this.Name\n    }\n}\nclass Program {\n    public static void Main() {\n        let f = new Foo()\n        let s = f.Greet()\n    }\n}"}}}Content-Length: 123
+
+{"jsonrpc":"2.0","id":10,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"}}}Content-Length: 157
+
+{"jsonrpc":"2.0","id":11,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":11,"character":20}}}Content-Length: 157
+
+{"jsonrpc":"2.0","id":12,"method":"textDocument/definition","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":12,"character":18}}}Content-Length: 194
+
+{"jsonrpc":"2.0","id":13,"method":"textDocument/references","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18},"context":{"includeDeclaration":true}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}

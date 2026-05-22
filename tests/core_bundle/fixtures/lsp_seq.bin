@@ -1,0 +1,9 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 247
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_test.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let x = thisDoesNotExist\n    }\n}"}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}

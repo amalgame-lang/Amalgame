@@ -43,7 +43,24 @@ echo ""
 NEW_EXIT=$?
 
 echo ""
-if [ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $NEW_EXIT -eq 0 ]; then
+echo "─────────────────────────────────────────────"
+echo ""
+
+# AM-side test bundles (`amc test` driver). Safety net during the
+# bash-runner migration: each bash runner above has an `*_test.am`
+# equivalent below. Both run until the migration is complete and
+# verified across multiple releases — then the bash runner is dropped.
+echo "── AM test bundles ─────────────────────────"
+cd "$DIR/.."
+AM_EXIT=0
+for bundle in tests/fmt tests/amc_new tests/stdlib_bundle tests/core_bundle; do
+    echo ""
+    echo "  ┄ $bundle ┄"
+    ./amc test "./$bundle/" || AM_EXIT=$?
+done
+
+echo ""
+if [ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $NEW_EXIT -eq 0 ] && [ $AM_EXIT -eq 0 ]; then
     echo -e "\033[0;32m  All suites passed ✓\033[0m"
 else
     echo -e "\033[0;31m  Some tests failed ✗\033[0m"
@@ -51,7 +68,8 @@ else
     [ $STDLIB_EXIT -ne 0 ] && echo "  - Stdlib tests failed"
     [ $FMT_EXIT -ne 0 ]    && echo "  - Formatter tests failed"
     [ $NEW_EXIT -ne 0 ]    && echo "  - amc new tests failed"
+    [ $AM_EXIT -ne 0 ]     && echo "  - AM test bundles failed"
 fi
 echo ""
 
-[ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $NEW_EXIT -eq 0 ] && exit 0 || exit 1
+[ $CORE_EXIT -eq 0 ] && [ $STDLIB_EXIT -eq 0 ] && [ $FMT_EXIT -eq 0 ] && [ $NEW_EXIT -eq 0 ] && [ $AM_EXIT -eq 0 ] && exit 0 || exit 1

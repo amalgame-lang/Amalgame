@@ -1,0 +1,11 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 236
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_pkg.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let w = Window\n    }\n}"}}}Content-Length: 223
+
+{"jsonrpc":"2.0","id":30,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///tmp/lsp_pkg.am"},"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":40}},"context":{"diagnostics":[]}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}

@@ -1,0 +1,13 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 264
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_hover.am","languageId":"amalgame","version":1,"text":"class Program {\n    public static void Main() {\n        let x = 42\n        Console.WriteLine(x)\n    }\n}"}}}Content-Length: 151
+
+{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"file:///tmp/lsp_hover.am"},"position":{"line":3,"character":8}}}Content-Length: 156
+
+{"jsonrpc":"2.0","id":4,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///tmp/lsp_hover.am"},"position":{"line":3,"character":0}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}

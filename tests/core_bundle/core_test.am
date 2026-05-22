@@ -1,0 +1,1253 @@
+// Migrated from tests/run_tests.sh — 197 `run_test` core compiler
+// assertions across 63 samples. Each sample compiles + runs ONCE;
+// the captured stdout is scanned for each assertion's expected
+// substring. Mirrors the bash runner case-for-case.
+//
+// PHASE 1 of the run_tests.sh migration. Still TBD:
+//   run_external_test (6), run_lib_test (2), run_multifile_test (4),
+//   run_multi_test (1), run_check_fail (1), run_amc_test_check (4),
+//   run_lint_check (4), run_c_check (7), run_lsp_check (36),
+//   run_lsp_absent (1), run_migrate_* (22), run_generate_check (25),
+//   run_explain_check (10), run_lib_link_test (1).
+//
+// Driven by `amc test` discovery (*_test.am). Assumes CWD is the
+// repo root.
+
+class CoreCase {
+    public Label: string
+    public Needle: string
+    public CoreCase(label: string, needle: string) {
+        this.Label = label
+        this.Needle = needle
+    }
+}
+
+class Program {
+    public static string CompileAndRunOnce(string sample, string tag, string envPrefix) {
+        let outBin = "/tmp/amc_core_" + tag + "_bin"
+        let outC = outBin + ".c"
+        let amcCmd = "./amc -o '" + outBin + "' '" + sample + "' --quiet 2>/dev/null"
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) { return "<<compile-fail>>" }
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lz -ldl -lpthread -o '" + outBin + "' 2>/dev/null"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) { return "<<link-fail>>" }
+        // envPrefix lets callers set runtime env vars (e.g. "AMC_ENV_PROBE=hello ")
+        let rr = Process.RunCapture(envPrefix + "'" + outBin + "' 2>&1")
+        return rr.Stdout
+    }
+
+    public static void RunGroup(string sample, string tag, List<CoreCase> cases) {
+        Program.RunGroupEnv(sample, tag, "", cases)
+    }
+
+    public static void RunGroupEnv(string sample, string tag, string envPrefix, List<CoreCase> cases) {
+        let captured = Program.CompileAndRunOnce(sample, tag, envPrefix)
+        let n: int = cases.Count()
+        if (captured == "<<compile-fail>>") {
+            for i in 0..n {
+                let c1 = cases.Get(i)
+                Console.WriteLine("[FAIL] " + c1.Label + " (amc compile failed for " + sample + ")")
+            }
+            return
+        }
+        if (captured == "<<link-fail>>") {
+            for i in 0..n {
+                let c2 = cases.Get(i)
+                Console.WriteLine("[FAIL] " + c2.Label + " (gcc link failed for " + sample + ")")
+            }
+            return
+        }
+        for i in 0..n {
+            let c = cases.Get(i)
+            if (String_Contains(captured, c.Needle)) {
+                Console.WriteLine("[PASS] " + c.Label)
+            } else {
+                Console.WriteLine("[FAIL] " + c.Label + " (missing: " + c.Needle + ")")
+            }
+        }
+    }
+
+    // ── LLM / generic-cmd helper ───────────────────
+
+    // Run a shell command (already includes amc + args + env prefix),
+    // capture merged stdout/stderr, grep for `needle`. Used by all the
+    // migrate / generate / explain test cases.
+    public static void RunCmdGrep(string label, string cmd, string needle) {
+        let r = Process.RunCapture(cmd + " 2>&1")
+        if (String_Contains(r.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (pattern not found: " + needle + ")")
+        }
+    }
+
+    // Same as RunCmdGrep but asserts pattern is ABSENT.
+    public static void RunCmdAbsent(string label, string cmd, string needle) {
+        let r = Process.RunCapture(cmd + " 2>&1")
+        if (!String_Contains(r.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (forbidden pattern present: " + needle + ")")
+        }
+    }
+
+    // ── LSP helpers ────────────────────────────────
+
+    // Frame a single JSON-RPC body with LSP's Content-Length header.
+    // String_Length on UTF-8 strings returns byte count (matches `${#var}` in bash).
+    public static string LspFrame(string body) {
+        let n: int = String_Length(body)
+        // NOTE: AM lexer mis-handles `\r` (treats as backslash+r). Use
+        // `` for the CR byte. `\n` works as expected.
+        return "Content-Length: " + String_FromInt(n) + "\n\n" + body
+    }
+
+    // Pipe the bytes of `fixturePath` into `./amc lsp` and return the
+    // merged stdout/stderr. The bash `printf '%s' "$seq" | amc lsp 2>&1`
+    // shape becomes `cat <fixture> | amc lsp 2>&1`.
+    public static string LspRun(string fixturePath) {
+        let r = Process.RunCapture("cat '" + fixturePath + "' | ./amc lsp 2>&1")
+        return r.Stdout
+    }
+
+    public static void RunLspCheck(string label, string fixturePath, string needle) {
+        let out = Program.LspRun(fixturePath)
+        if (String_Contains(out, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (pattern not found in LSP output)")
+        }
+    }
+
+    public static void RunLspAbsent(string label, string fixturePath, string needle) {
+        let out = Program.LspRun(fixturePath)
+        if (!String_Contains(out, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (forbidden pattern present: " + needle + ")")
+        }
+    }
+
+    // Build the xdir fixture at runtime: the JSON body embeds the
+    // ABSOLUTE path to tests/fixtures/lsp-workspace/tests/byteio_test.am
+    // so the LSP resolves the file. Path varies per machine — Python's
+    // precomputed fixtures can't hardcode it.
+    public static string BuildLspXdirFixture() {
+        let absPath = String_Trim(Program.ShellRead("realpath tests/fixtures/lsp-workspace/tests/byteio_test.am"))
+        let init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}"
+        let openXdir = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"file://" + absPath + "\",\"languageId\":\"amalgame\",\"version\":1,\"text\":\"namespace Workspace.Tests\\n\\npublic class TestRunner {\\n    public static void Run() {\\n        let v: int = ByteIO.Read(42)\\n    }\\n}\\n\"}}}"
+        let shut = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\"}"
+        let exitMsg = "{\"jsonrpc\":\"2.0\",\"method\":\"exit\"}"
+        let seq = Program.LspFrame(init) + Program.LspFrame(openXdir) + Program.LspFrame(shut) + Program.LspFrame(exitMsg)
+        let dest = "/tmp/amc_core_lsp_xdir.bin"
+        File.WriteAll(dest, seq)
+        return dest
+    }
+
+    // ── Phase 2 helpers ─────────────────────────────
+
+    public static int ShellExit(string cmd) {
+        let r = Process.RunCapture(cmd + " >/dev/null 2>&1")
+        return r.Exit
+    }
+
+    public static string ShellRead(string cmd) {
+        let r = Process.RunCapture(cmd)
+        return r.Stdout
+    }
+
+    // run_check_fail: `amc --check <file>` must exit non-zero AND output
+    // contain the diagnostic substring.
+    public static void RunCheckFail(string label, string file, string needle) {
+        let r = Process.RunCapture("./amc --check '" + file + "' 2>&1")
+        if (r.Exit == 0) {
+            Console.WriteLine("[FAIL] " + label + " (expected non-zero exit)")
+            return
+        }
+        if (String_Contains(r.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (diagnostic missing: " + needle + ")")
+        }
+    }
+
+    // run_amc_test_check: `amc test <dir>`, grep stdout for pattern.
+    public static void RunAmcTestCheck(string label, string dir, string needle) {
+        let r = Process.RunCapture("./amc test '" + dir + "' 2>&1")
+        if (String_Contains(r.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (pattern not found: " + needle + ")")
+        }
+    }
+
+    // run_lint_check: `amc --lint -o <out> <file>`, grep stdout for pattern.
+    public static void RunLintCheck(string label, string file, string needle) {
+        let outBase = "/tmp/amc_core_lint_" + label
+        let r = Process.RunCapture("./amc --lint -o '" + outBase + "' '" + file + "' 2>&1")
+        if (String_Contains(r.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (lint pattern not found: " + needle + ")")
+        }
+    }
+
+    // run_c_check: `amc <flags> -o <out> <file>`, check generated .c contains pattern.
+    public static void RunCCheck(string label, string file, string needle, string flags) {
+        let outBase = "/tmp/amc_core_ccheck_" + label
+        let cmd = "./amc " + flags + " -o '" + outBase + "' '" + file + "' >/dev/null 2>&1"
+        Program.ShellExit(cmd)
+        let cFile = outBase + ".c"
+        if (!File.Exists(cFile)) {
+            Console.WriteLine("[FAIL] " + label + " (no .c generated)")
+            return
+        }
+        let body = File.ReadAll(cFile)
+        if (String_Contains(body, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (C pattern missing: " + needle + ")")
+        }
+    }
+
+    // run_lib_test: `amc <flags> -o <out> <file>`, expect "Library" in amc's output.
+    public static void RunLibTest(string label, string file, string flags) {
+        let outBase = "/tmp/amc_core_lib_" + label
+        let r = Process.RunCapture("./amc " + flags + " -o '" + outBase + "' '" + file + "' 2>&1")
+        if (r.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (amc exit=" + String_FromInt(r.Exit) + ")")
+            return
+        }
+        if (String_Contains(r.Stdout, "Library")) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (expected Library mode)")
+        }
+    }
+
+    // run_external_test: amc with --external flags, link against lib/libamalgame.a.
+    public static void RunExternalTest(string label, string file, string needle, string externals) {
+        if (!File.Exists("lib/libamalgame.a")) {
+            Console.WriteLine("[SKIP] " + label + " (lib/libamalgame.a missing)")
+            return
+        }
+        let outBase = "/tmp/amc_core_ext_" + label
+        // Split externals on whitespace and prefix each with --external
+        let parts: List<string> = String_Split(externals, " ")
+        let np: int = parts.Count()
+        var extArgs: string = ""
+        for i in 0..np {
+            let e: string = String_Trim(parts.Get(i))
+            if (String_Length(e) > 0) {
+                extArgs = extArgs + " --external " + e
+            }
+        }
+        let amcCmd = "./amc -o '" + outBase + "'" + extArgs + " '" + file + "' 2>&1"
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (amc exit=" + String_FromInt(cr.Exit) + ")")
+            return
+        }
+        let outC = outBase + ".c"
+        let gccCmd = "gcc -O2 -Iruntime '" + outC + "' lib/libamalgame.a -lgc -lm -lz -o '" + outBase + "' 2>/dev/null"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (gcc link failed)")
+            return
+        }
+        let rr = Process.RunCapture("'" + outBase + "' 2>&1")
+        if (String_Contains(rr.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (output mismatch — wanted: " + needle + ")")
+        }
+    }
+
+    // run_multifile_test / run_multi_test: amc with multiple .am files, link, run, grep stdout.
+    public static void RunMultiFile(string label, string needle, string files) {
+        let outBase = "/tmp/amc_core_multi_" + label
+        let amcCmd = "./amc -o '" + outBase + "' " + files + " 2>&1"
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (amc exit=" + String_FromInt(cr.Exit) + ")")
+            return
+        }
+        let outC = outBase + ".c"
+        let gccCmd = "gcc -O2 -Werror=implicit-function-declaration -Iruntime '" + outC + "' -lgc -lm -lz -o '" + outBase + "' 2>/dev/null"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (gcc link failed — implicit decl?)")
+            return
+        }
+        let rr = Process.RunCapture("'" + outBase + "' 2>&1")
+        if (String_Contains(rr.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (output mismatch — wanted: " + needle + ")")
+        }
+    }
+
+    // run_lib_link_test: amc --lib lib.am → .o, then gcc consumer.c + lib.o, run, grep.
+    public static void RunLibLinkTest(string label, string libFile, string consumerC, string needle) {
+        let tmp = String_Trim(Program.ShellRead("mktemp -d"))
+        let libBase = tmp + "/lib"
+        Program.ShellExit("./amc --lib '" + libFile + "' -o '" + libBase + "' >/dev/null 2>&1")
+        if (!File.Exists(libBase + ".c")) {
+            Console.WriteLine("[FAIL] " + label + " (no lib .c generated)")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+        // Lib must NOT contain `int main`
+        let libC = File.ReadAll(libBase + ".c")
+        if (String_Contains(libC, "\nint main")) {
+            Console.WriteLine("[FAIL] " + label + " (lib has int main)")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+        let cc1 = Program.ShellExit("gcc -Iruntime -c '" + libBase + ".c' -o '" + libBase + ".o'")
+        if (cc1 != 0) {
+            Console.WriteLine("[FAIL] " + label + " (gcc -c)")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+        let cc2 = Program.ShellExit("gcc -Iruntime '" + consumerC + "' '" + libBase + ".o' -lgc -lm -lz -o '" + tmp + "/app'")
+        if (cc2 != 0) {
+            Console.WriteLine("[FAIL] " + label + " (link)")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+        let rr = Process.RunCapture("'" + tmp + "/app' 2>&1")
+        if (String_Contains(rr.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (got: " + rr.Stdout + ")")
+        }
+        Program.ShellExit("rm -rf '" + tmp + "'")
+    }
+
+    public static void Main() {
+        // ── hello (1 cases) ──
+        let g_hello: List<CoreCase> = new List<CoreCase>()
+        g_hello.Add(new CoreCase("hello world", "Hello World !"))
+        Program.RunGroup("./tests/samples/hello.am", "hello", g_hello)
+
+        // ── variables (1 cases) ──
+        let g_variables: List<CoreCase> = new List<CoreCase>()
+        g_variables.Add(new CoreCase("variables", "int: 42"))
+        Program.RunGroup("./tests/samples/variables.am", "variables", g_variables)
+
+        // ── control_flow (1 cases) ──
+        let g_control_flow: List<CoreCase> = new List<CoreCase>()
+        g_control_flow.Add(new CoreCase("control flow", "Grade: B"))
+        Program.RunGroup("./tests/samples/control_flow.am", "control_flow", g_control_flow)
+
+        // ── classes (1 cases) ──
+        let g_classes: List<CoreCase> = new List<CoreCase>()
+        g_classes.Add(new CoreCase("classes", "Cat says hello!"))
+        Program.RunGroup("./tests/samples/classes.am", "classes", g_classes)
+
+        // ── match (1 cases) ──
+        let g_match: List<CoreCase> = new List<CoreCase>()
+        g_match.Add(new CoreCase("match", "Slightly wounded"))
+        Program.RunGroup("./tests/samples/match.am", "match", g_match)
+
+        // ── math (1 cases) ──
+        let g_math: List<CoreCase> = new List<CoreCase>()
+        g_math.Add(new CoreCase("math functions", "5! = 120"))
+        Program.RunGroup("./tests/samples/math.am", "math", g_math)
+
+        // ── record (1 cases) ──
+        let g_record: List<CoreCase> = new List<CoreCase>()
+        g_record.Add(new CoreCase("records", "Point: (3"))
+        Program.RunGroup("./tests/samples/record.am", "record", g_record)
+
+        // ── inheritance (1 cases) ──
+        let g_inheritance: List<CoreCase> = new List<CoreCase>()
+        g_inheritance.Add(new CoreCase("inheritance", "Circle 'Sun'"))
+        Program.RunGroup("./tests/samples/inheritance.am", "inheritance", g_inheritance)
+
+        // ── data_classes (1 cases) ──
+        let g_data_classes: List<CoreCase> = new List<CoreCase>()
+        g_data_classes.Add(new CoreCase("data classes", "Arthus"))
+        Program.RunGroup("./tests/samples/data_classes.am", "data_classes", g_data_classes)
+
+        // ── generics (1 cases) ──
+        let g_generics: List<CoreCase> = new List<CoreCase>()
+        g_generics.Add(new CoreCase("generics/utils", "Max: 99"))
+        Program.RunGroup("./tests/samples/generics.am", "generics", g_generics)
+
+        // ── generic_inference (2 cases) ──
+        let g_generic_inference: List<CoreCase> = new List<CoreCase>()
+        g_generic_inference.Add(new CoreCase("generic infer int", "total: 60"))
+        g_generic_inference.Add(new CoreCase("generic infer str", "combined: Arthus et Bastien"))
+        Program.RunGroup("./tests/samples/generic_inference.am", "generic_inference", g_generic_inference)
+
+        // ── map_inference (2 cases) ──
+        let g_map_inference: List<CoreCase> = new List<CoreCase>()
+        g_map_inference.Add(new CoreCase("map infer int", "total: 141"))
+        g_map_inference.Add(new CoreCase("map infer str", "combined: bonjour / hello"))
+        Program.RunGroup("./tests/samples/map_inference.am", "map_inference", g_map_inference)
+
+        // ── params_inference (2 cases) ──
+        let g_params_inference: List<CoreCase> = new List<CoreCase>()
+        g_params_inference.Add(new CoreCase("param infer list", "sum: 10"))
+        g_params_inference.Add(new CoreCase("param infer map", "greet: bonjour !"))
+        Program.RunGroup("./tests/samples/params_inference.am", "params_inference", g_params_inference)
+
+        // ── returns_inference (2 cases) ──
+        let g_returns_inference: List<CoreCase> = new List<CoreCase>()
+        g_returns_inference.Add(new CoreCase("return infer list", "range total: 10"))
+        g_returns_inference.Add(new CoreCase("return infer map", "counts sum: 6"))
+        Program.RunGroup("./tests/samples/returns_inference.am", "returns_inference", g_returns_inference)
+
+        // ── closures (1 cases) ──
+        let g_closures: List<CoreCase> = new List<CoreCase>()
+        g_closures.Add(new CoreCase("closures", "Counter = 10"))
+        Program.RunGroup("./tests/samples/closures.am", "closures", g_closures)
+
+        // ── closures_capture (4 cases) ──
+        let g_closures_capture: List<CoreCase> = new List<CoreCase>()
+        g_closures_capture.Add(new CoreCase("closure: no cap", "triple(7) = 21"))
+        g_closures_capture.Add(new CoreCase("closure: 1 cap", "addN(5) = 105"))
+        g_closures_capture.Add(new CoreCase("closure: 2 caps", "combine(10) = 25"))
+        g_closures_capture.Add(new CoreCase("closure: snap val", "snap(0) = 1"))
+        Program.RunGroup("./tests/samples/closures_capture.am", "closures_capture", g_closures_capture)
+
+        // ── interp_capture_in_lambda (3 cases) ──
+        let g_interp_capture_in_lambda: List<CoreCase> = new List<CoreCase>()
+        g_interp_capture_in_lambda.Add(new CoreCase("interp cap: bare", "g=hi n=7"))
+        g_interp_capture_in_lambda.Add(new CoreCase("interp cap: this", "say=hello ada n=3"))
+        g_interp_capture_in_lambda.Add(new CoreCase("interp cap: pfx", "x=42"))
+        Program.RunGroup("./tests/samples/interp_capture_in_lambda.am", "interp_capture_in_lambda", g_interp_capture_in_lambda)
+
+        // ── closure_as_field (4 cases) ──
+        let g_closure_as_field: List<CoreCase> = new List<CoreCase>()
+        g_closure_as_field.Add(new CoreCase("FCF: arity-1 field", "[PASS] arity-1 this.Field call"))
+        g_closure_as_field.Add(new CoreCase("FCF: arity-2 field", "[PASS] arity-2 this.Field call"))
+        g_closure_as_field.Add(new CoreCase("FCF: arity-3 field", "[PASS] arity-3 this.Field call"))
+        g_closure_as_field.Add(new CoreCase("FCF: List + local", "[PASS] closure in List + local.Field call"))
+        Program.RunGroup("./tests/samples/closure_as_field.am", "closure_as_field", g_closure_as_field)
+
+        // ── closure_nested_member (3 cases) ──
+        let g_closure_nested_member: List<CoreCase> = new List<CoreCase>()
+        g_closure_nested_member.Add(new CoreCase("FCF: nested IDENT 1", "[PASS] nested IDENT chain arity-1"))
+        g_closure_nested_member.Add(new CoreCase("FCF: nested THIS 1", "[PASS] nested THIS chain arity-1"))
+        g_closure_nested_member.Add(new CoreCase("FCF: nested 3-deep", "[PASS] nested IDENT chain 3-deep"))
+        Program.RunGroup("./tests/samples/closure_nested_member.am", "closure_nested_member", g_closure_nested_member)
+
+        // ── lambdas_v2 (5 cases) ──
+        let g_lambdas_v2: List<CoreCase> = new List<CoreCase>()
+        g_lambdas_v2.Add(new CoreCase("lambda v2: 2-arg", "add: 12"))
+        g_lambdas_v2.Add(new CoreCase("lambda v2: block", "plus3: 23"))
+        g_lambdas_v2.Add(new CoreCase("lambda v2: 2+block", "mix: 17"))
+        g_lambdas_v2.Add(new CoreCase("lambda v2: capture", "shift: 107"))
+        g_lambdas_v2.Add(new CoreCase("lambda v2: 3-arg", "pick: 6"))
+        Program.RunGroup("./tests/samples/lambdas_v2.am", "lambdas_v2", g_lambdas_v2)
+
+        // ── list_higher_order (7 cases) ──
+        let g_list_higher_order: List<CoreCase> = new List<CoreCase>()
+        g_list_higher_order.Add(new CoreCase("ho: filter", "filter count: 3"))
+        g_list_higher_order.Add(new CoreCase("ho: map", "map last: 10"))
+        g_list_higher_order.Add(new CoreCase("ho: reduce sum", "sum: 15"))
+        g_list_higher_order.Add(new CoreCase("ho: reduce block", "countGT2: 3"))
+        g_list_higher_order.Add(new CoreCase("ho: any/all/countIf", "evens: 2"))
+        g_list_higher_order.Add(new CoreCase("ho: forEach", "foreach: 5"))
+        g_list_higher_order.Add(new CoreCase("ho: chain filter+map", "chain first: 30"))
+        Program.RunGroup("./tests/samples/list_higher_order.am", "list_higher_order", g_list_higher_order)
+
+        // ── lambda_v25_typed (7 cases) ──
+        let g_lambda_v25_typed: List<CoreCase> = new List<CoreCase>()
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: Map<string>", "first name: Alice"))
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: Map<int>", "first age: 30"))
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: Filter class", "adults: 2"))
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: Filter mem", "adult0: Alice"))
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: Any", "anyMinor: true"))
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: All", "allAdults: false"))
+        g_lambda_v25_typed.Add(new CoreCase("lambda v2.5: CountIf", "underAge: 1"))
+        Program.RunGroup("./tests/samples/lambda_v25_typed.am", "lambda_v25_typed", g_lambda_v25_typed)
+
+        // ── param_ts_syntax (1 cases) ──
+        let g_param_ts_syntax: List<CoreCase> = new List<CoreCase>()
+        g_param_ts_syntax.Add(new CoreCase("param syntax: TS-style", "box: 21"))
+        Program.RunGroup("./tests/samples/param_ts_syntax.am", "param_ts_syntax", g_param_ts_syntax)
+
+        // ── multiline_method_chain (3 cases) ──
+        let g_multiline_method_chain: List<CoreCase> = new List<CoreCase>()
+        g_multiline_method_chain.Add(new CoreCase("chain: multiline filter", "first: Alice"))
+        g_multiline_method_chain.Add(new CoreCase("chain: multiline last", "last: Carol"))
+        g_multiline_method_chain.Add(new CoreCase("chain: stmt boundary OK", "sum: 3"))
+        Program.RunGroup("./tests/samples/multiline_method_chain.am", "multiline_method_chain", g_multiline_method_chain)
+
+        // ── cgen_auto_qualify (4 cases) ──
+        let g_cgen_auto_qualify: List<CoreCase> = new List<CoreCase>()
+        g_cgen_auto_qualify.Add(new CoreCase("auto-qualify: ctor write", "value: 7"))
+        g_cgen_auto_qualify.Add(new CoreCase("auto-qualify: method read", "dp: 17"))
+        g_cgen_auto_qualify.Add(new CoreCase("auto-qualify: method write", "after reset value: 0"))
+        g_cgen_auto_qualify.Add(new CoreCase("auto-qualify: explicit this. mix", "after reset label: reset"))
+        Program.RunGroup("./tests/samples/cgen_auto_qualify.am", "cgen_auto_qualify", g_cgen_auto_qualify)
+
+        // ── map_tombstone (4 cases) ──
+        let g_map_tombstone: List<CoreCase> = new List<CoreCase>()
+        g_map_tombstone.Add(new CoreCase("map tombstone: count", "found after remove: 25"))
+        g_map_tombstone.Add(new CoreCase("map tombstone: sum", "sum after remove: 925"))
+        g_map_tombstone.Add(new CoreCase("map tombstone: keys", "Keys() count: 25"))
+        g_map_tombstone.Add(new CoreCase("map tombstone: values", "Values() count: 25"))
+        Program.RunGroup("./tests/samples/map_tombstone.am", "map_tombstone", g_map_tombstone)
+
+        // ── for_range_method_call (5 cases) ──
+        let g_for_range_method_call: List<CoreCase> = new List<CoreCase>()
+        g_for_range_method_call.Add(new CoreCase("for-range: 0..method()", "sum: 60"))
+        g_for_range_method_call.Add(new CoreCase("for-range: map.Size()", "map iters: 3"))
+        g_for_range_method_call.Add(new CoreCase("for-range: ident..method", "ident-range hits: 2"))
+        g_for_range_method_call.Add(new CoreCase("for-range: call..ident", "mirror sum: 7"))
+        g_for_range_method_call.Add(new CoreCase("for-range: call..call", "both-call sum: 3"))
+        Program.RunGroup("./tests/samples/for_range_method_call.am", "for_range_method_call", g_for_range_method_call)
+
+        // ── bug7_int_plus_string_helper (5 cases) ──
+        let g_bug7_int_plus_string_helper: List<CoreCase> = new List<CoreCase>()
+        g_bug7_int_plus_string_helper.Add(new CoreCase("bug7: int + String_Length", "[PASS] int + String_Length lowers to addition"))
+        g_bug7_int_plus_string_helper.Add(new CoreCase("bug7: String_Length + int", "[PASS] String_Length + int lowers to addition"))
+        g_bug7_int_plus_string_helper.Add(new CoreCase("bug7: string + string", "[PASS] string + string still concatenates"))
+        g_bug7_int_plus_string_helper.Add(new CoreCase("bug7: string + FromInt", "[PASS] string + String_FromInt still concatenates"))
+        g_bug7_int_plus_string_helper.Add(new CoreCase("bug7: Length + Length", "[PASS] String_Length + String_Length lowers to addition"))
+        Program.RunGroup("./tests/samples/bug7_int_plus_string_helper.am", "bug7_int_plus_string_helper", g_bug7_int_plus_string_helper)
+
+        // ── bug8_nested_generics (4 cases) ──
+        let g_bug8_nested_generics: List<CoreCase> = new List<CoreCase>()
+        g_bug8_nested_generics.Add(new CoreCase("bug8: List<List<int>>", "[PASS] List<List<int>> annotation parses"))
+        g_bug8_nested_generics.Add(new CoreCase("bug8: triple-nested", "[PASS] List<List<List<int>>> annotation parses"))
+        g_bug8_nested_generics.Add(new CoreCase("bug8: quad-nested", "[PASS] List<List<List<List<int>>>> annotation parses"))
+        g_bug8_nested_generics.Add(new CoreCase("bug8: Map<K, List<V>>", "[PASS] Map<string, List<int>> annotation parses"))
+        Program.RunGroup("./tests/samples/bug8_nested_generics.am", "bug8_nested_generics", g_bug8_nested_generics)
+
+        // ── field_map_dispatch (6 cases) ──
+        let g_field_map_dispatch: List<CoreCase> = new List<CoreCase>()
+        g_field_map_dispatch.Add(new CoreCase("field map: get", "alpha=1"))
+        g_field_map_dispatch.Add(new CoreCase("field map: has-then-get", "beta=2"))
+        g_field_map_dispatch.Add(new CoreCase("field set: size", "tags=3"))
+        g_field_map_dispatch.Add(new CoreCase("field list: count", "log=3"))
+        g_field_map_dispatch.Add(new CoreCase("field map: remove", "after forget beta=-1"))
+        g_field_map_dispatch.Add(new CoreCase("field map: kept after rm", "alpha still=1"))
+        Program.RunGroup("./tests/samples/field_map_dispatch.am", "field_map_dispatch", g_field_map_dispatch)
+
+        // ── inline_c (4 cases) ──
+        let g_inline_c: List<CoreCase> = new List<CoreCase>()
+        g_inline_c.Add(new CoreCase("inline-C: return value", "len=8"))
+        g_inline_c.Add(new CoreCase("inline-C: local + multi-stmt", "doubled=42"))
+        g_inline_c.Add(new CoreCase("inline-C: brace torture", "braces=ab}c{de"))
+        g_inline_c.Add(new CoreCase("inline-C: void side-effect", "!done"))
+        Program.RunGroup("./tests/samples/inline_c.am", "inline_c", g_inline_c)
+
+        // ── inline_c_directives (4 cases) ──
+        let g_inline_c_directives: List<CoreCase> = new List<CoreCase>()
+        g_inline_c_directives.Add(new CoreCase("inline-C dir: toupper", "a→65"))
+        g_inline_c_directives.Add(new CoreCase("inline-C dir: toupper z", "z→90"))
+        g_inline_c_directives.Add(new CoreCase("inline-C dir: isalpha yes", "A is alpha"))
+        g_inline_c_directives.Add(new CoreCase("inline-C dir: isalpha no", "0 is not alpha"))
+        Program.RunGroup("./tests/samples/inline_c_directives.am", "inline_c_directives", g_inline_c_directives)
+
+        // ── bug10_list_string_eq (4 cases) ──
+        let g_bug10_list_string_eq: List<CoreCase> = new List<CoreCase>()
+        g_bug10_list_string_eq.Add(new CoreCase("bug10: obj.Field.Get == localVar", "[PASS] bug10 — obj.Field.Get(i) == localVar"))
+        g_bug10_list_string_eq.Add(new CoreCase("bug10: localVar == obj.Field.Get", "[PASS] bug10 — localVar == obj.Field.Get(i)"))
+        g_bug10_list_string_eq.Add(new CoreCase("bug10: obj.Field.Get != localVar", "[PASS] bug10 — obj.Field.Get(i) != localVar"))
+        g_bug10_list_string_eq.Add(new CoreCase("bug10: localList.Get == concatVar", "[PASS] bug10 — localList.Get(i) == concatVar"))
+        Program.RunGroup("./tests/samples/bug10_list_string_eq.am", "bug10_list_string_eq", g_bug10_list_string_eq)
+
+        // ── let_block_scope (6 cases) ──
+        let g_let_block_scope: List<CoreCase> = new List<CoreCase>()
+        g_let_block_scope.Add(new CoreCase("let_block_scope: sibling-1", "[PASS] block-1 x=1"))
+        g_let_block_scope.Add(new CoreCase("let_block_scope: sibling-2", "[PASS] block-2 x=2"))
+        g_let_block_scope.Add(new CoreCase("let_block_scope: section-A", "[PASS] section-A sum=30"))
+        g_let_block_scope.Add(new CoreCase("let_block_scope: section-B", "[PASS] section-B sum=300"))
+        g_let_block_scope.Add(new CoreCase("let_block_scope: nested", "[PASS] nested outer=99"))
+        g_let_block_scope.Add(new CoreCase("let_block_scope: post-nested", "[PASS] post-nested outer=7"))
+        Program.RunGroup("./tests/samples/let_block_scope.am", "let_block_scope", g_let_block_scope)
+
+        // ── lambda_v25_nonint (4 cases) ──
+        let g_lambda_v25_nonint: List<CoreCase> = new List<CoreCase>()
+        g_lambda_v25_nonint.Add(new CoreCase("lambda_v25: Map<User,int>", "[PASS] Map<User,int> ageSum=95"))
+        g_lambda_v25_nonint.Add(new CoreCase("lambda_v25: Filter<User>", "[PASS] Filter<User> adultNames=alice,carol,"))
+        g_lambda_v25_nonint.Add(new CoreCase("lambda_v25: capture+Filter", "[PASS] capture+Filter hits=2"))
+        g_lambda_v25_nonint.Add(new CoreCase("lambda_v25: chain Filter|Map", "[PASS] chain Filter|Map joined=alice|carol|"))
+        Program.RunGroup("./tests/samples/lambda_v25_nonint.am", "lambda_v25_nonint", g_lambda_v25_nonint)
+
+        // ── closure_typed (5 cases) ──
+        let g_closure_typed: List<CoreCase> = new List<CoreCase>()
+        g_closure_typed.Add(new CoreCase("closure_typed: <int,int>", "[PASS] Closure<int,int> r1=42"))
+        g_closure_typed.Add(new CoreCase("closure_typed: <int,int,int>", "[PASS] Closure<int,int,int> r2=30"))
+        g_closure_typed.Add(new CoreCase("closure_typed: <User,string>", "[PASS] Closure<User,string> r3=alice"))
+        g_closure_typed.Add(new CoreCase("closure_typed: <User,int>", "[PASS] Closure<User,int> r4=99"))
+        g_closure_typed.Add(new CoreCase("closure_typed: field <Conn,Conn>", "[PASS] Server field Closure<Conn,Conn> id=42"))
+        Program.RunGroup("./tests/samples/closure_typed.am", "closure_typed", g_closure_typed)
+
+        // ── lambda_inference_ctor (3 cases) ──
+        let g_lambda_inference_ctor: List<CoreCase> = new List<CoreCase>()
+        g_lambda_inference_ctor.Add(new CoreCase("lambda_infer: ctor-arg", "[PASS] ctor-arg lambda n1=alice"))
+        g_lambda_inference_ctor.Add(new CoreCase("lambda_infer: method-arg", "[PASS] method-arg lambda n2=bob"))
+        g_lambda_inference_ctor.Add(new CoreCase("lambda_infer: explicit override", "[PASS] explicit-param still works n3=carol"))
+        Program.RunGroup("./tests/samples/lambda_inference_ctor.am", "lambda_inference_ctor", g_lambda_inference_ctor)
+
+        // ── nested_generics (4 cases) ──
+        let g_nested_generics: List<CoreCase> = new List<CoreCase>()
+        g_nested_generics.Add(new CoreCase("nested_gen: List<List<string>>", "[PASS] List<List<string>> rows[0][0]=alpha"))
+        g_nested_generics.Add(new CoreCase("nested_gen: List<List<int>>", "[PASS] List<List<int>> m[0][0]=42"))
+        g_nested_generics.Add(new CoreCase("nested_gen: List<List<List<int>>>", "[PASS] List<List<List<int>>> cube[0][0][0]=7"))
+        g_nested_generics.Add(new CoreCase("nested_gen: instance call infer", "[PASS] instance call nested rs[0][0]=alice"))
+        Program.RunGroup("./tests/samples/nested_generics.am", "nested_generics", g_nested_generics)
+
+        // ── spread_list_literal (6 cases) ──
+        let g_spread_list_literal: List<CoreCase> = new List<CoreCase>()
+        g_spread_list_literal.Add(new CoreCase("spread: int sum", "[PASS] spread int sum=114"))
+        g_spread_list_literal.Add(new CoreCase("spread: int count", "[PASS] spread int count=6"))
+        g_spread_list_literal.Add(new CoreCase("spread: strings count", "[PASS] spread strings count=5"))
+        g_spread_list_literal.Add(new CoreCase("spread: strings order", "[PASS] spread strings order preserved"))
+        g_spread_list_literal.Add(new CoreCase("spread: call-result sum", "[PASS] spread call result sum=1119"))
+        g_spread_list_literal.Add(new CoreCase("spread: empty source", "[PASS] spread empty count=2"))
+        Program.RunGroup("./tests/samples/spread_list_literal.am", "spread_list_literal", g_spread_list_literal)
+
+        // ── stdlib_env (3 cases) ──
+        // Bash runner `export`s AMC_ENV_PROBE=hello before these three
+        // run and `unset`s after. We inline the export via envPrefix.
+        let g_stdlib_env: List<CoreCase> = new List<CoreCase>()
+        g_stdlib_env.Add(new CoreCase("env: hasPath true", "hasPath: true"))
+        g_stdlib_env.Add(new CoreCase("env: probe value", "probe: hello"))
+        g_stdlib_env.Add(new CoreCase("env: missing → false", "hasFake: false"))
+        Program.RunGroupEnv("./tests/samples/stdlib_env.am", "stdlib_env", "AMC_ENV_PROBE=hello ", g_stdlib_env)
+
+        // ── process_api (5 cases) ──
+        let g_process_api: List<CoreCase> = new List<CoreCase>()
+        g_process_api.Add(new CoreCase("process: run exit", "exit=0"))
+        g_process_api.Add(new CoreCase("process: cap exit", "cap.exit=0"))
+        g_process_api.Add(new CoreCase("process: cap stdout", "cap.out=captured-line"))
+        g_process_api.Add(new CoreCase("process: nonzero exit", "bad.exit=1"))
+        g_process_api.Add(new CoreCase("process: stderr merge", "merged.out=stderr-bytes"))
+        Program.RunGroup("./tests/samples/process_api.am", "process_api", g_process_api)
+
+        // ── multiline_logical (4 cases) ──
+        let g_multiline_logical: List<CoreCase> = new List<CoreCase>()
+        g_multiline_logical.Add(new CoreCase("ml-logical: && newline", "A"))
+        g_multiline_logical.Add(new CoreCase("ml-logical: && trailing", "B"))
+        g_multiline_logical.Add(new CoreCase("ml-logical: || newline", "C"))
+        g_multiline_logical.Add(new CoreCase("ml-logical: && + || mix", "D"))
+        Program.RunGroup("./tests/samples/multiline_logical.am", "multiline_logical", g_multiline_logical)
+
+        // ── process_v3 (5 cases) ──
+        let g_process_v3: List<CoreCase> = new List<CoreCase>()
+        g_process_v3.Add(new CoreCase("process v3: spawn alive", "spawn: alive"))
+        g_process_v3.Add(new CoreCase("process v3: stream line1", "got: line-1"))
+        g_process_v3.Add(new CoreCase("process v3: stream line3", "got: line-3"))
+        g_process_v3.Add(new CoreCase("process v3: eof", "eof"))
+        g_process_v3.Add(new CoreCase("process v3: exit 0", "exit=0"))
+        Program.RunGroup("./tests/samples/process_v3.am", "process_v3", g_process_v3)
+
+        // ── namespace (1 cases) ──
+        let g_namespace: List<CoreCase> = new List<CoreCase>()
+        g_namespace.Add(new CoreCase("sub-namespace runtime", "Arthus (lvl 42)"))
+        Program.RunGroup("./tests/samples/namespace.am", "namespace", g_namespace)
+
+        // ── forced_lib (1 cases) ──
+        let g_forced_lib: List<CoreCase> = new List<CoreCase>()
+        g_forced_lib.Add(new CoreCase("forced: normal mode", "localhost:8080"))
+        Program.RunGroup("./tests/samples/forced_lib.am", "forced_lib", g_forced_lib)
+
+        // ── interfaces (4 cases) ──
+        let g_interfaces: List<CoreCase> = new List<CoreCase>()
+        g_interfaces.Add(new CoreCase("interface basic", "Circle(r=5)"))
+        g_interfaces.Add(new CoreCase("interface method", "Rect(4x3)"))
+        g_interfaces.Add(new CoreCase("interface scale", "Circle(r=10)"))
+        g_interfaces.Add(new CoreCase("interface dispatch", "Circle(r=10)"))
+        Program.RunGroup("./tests/samples/interfaces.am", "interfaces", g_interfaces)
+
+        // ── generic_interfaces (2 cases) ──
+        let g_generic_interfaces: List<CoreCase> = new List<CoreCase>()
+        g_generic_interfaces.Add(new CoreCase("generic iface T", "compare: 4"))
+        g_generic_interfaces.Add(new CoreCase("generic iface K,V", "pair: answer=42"))
+        Program.RunGroup("./tests/samples/generic_interfaces.am", "generic_interfaces", g_generic_interfaces)
+
+        // ── enums (4 cases) ──
+        let g_enums: List<CoreCase> = new List<CoreCase>()
+        g_enums.Add(new CoreCase("enum basic", "Direction: North"))
+        g_enums.Add(new CoreCase("enum match", "Summer warm: true"))
+        g_enums.Add(new CoreCase("enum comparison", "isNorth: true"))
+        g_enums.Add(new CoreCase("enum all values", "East: East"))
+        Program.RunGroup("./tests/samples/enums.am", "enums", g_enums)
+
+        // ── operators (2 cases) ──
+        let g_operators: List<CoreCase> = new List<CoreCase>()
+        g_operators.Add(new CoreCase("operators", "add: 13"))
+        g_operators.Add(new CoreCase("logical ops", "and: false"))
+        Program.RunGroup("./tests/samples/operators.am", "operators", g_operators)
+
+        // ── strings (2 cases) ──
+        let g_strings: List<CoreCase> = new List<CoreCase>()
+        g_strings.Add(new CoreCase("strings concat", "Hello, World!"))
+        g_strings.Add(new CoreCase("string interp", "Product: 42"))
+        Program.RunGroup("./tests/samples/strings.am", "strings", g_strings)
+
+        // ── string_methods (4 cases) ──
+        let g_string_methods: List<CoreCase> = new List<CoreCase>()
+        g_string_methods.Add(new CoreCase("str inst length", "len: 12"))
+        g_string_methods.Add(new CoreCase("str inst toupper", "upper: HELLO, WORLD"))
+        g_string_methods.Add(new CoreCase("str inst trim", "trimmed: 'spaced'"))
+        g_string_methods.Add(new CoreCase("str inst replace", "replaced: Hello, Amalgame"))
+        Program.RunGroup("./tests/samples/string_methods.am", "string_methods", g_string_methods)
+
+        // ── loops (3 cases) ──
+        let g_loops: List<CoreCase> = new List<CoreCase>()
+        g_loops.Add(new CoreCase("loops break", "w: 0"))
+        g_loops.Add(new CoreCase("loops continue", "odd: 1"))
+        g_loops.Add(new CoreCase("loops nested", "diag: 0"))
+        Program.RunGroup("./tests/samples/loops.am", "loops", g_loops)
+
+        // ── null_safety (2 cases) ──
+        let g_null_safety: List<CoreCase> = new List<CoreCase>()
+        g_null_safety.Add(new CoreCase("null/bool", "name1: Arthus"))
+        g_null_safety.Add(new CoreCase("coalesce", "v2: 99"))
+        Program.RunGroup("./tests/samples/null_safety.am", "null_safety", g_null_safety)
+
+        // ── static_class (2 cases) ──
+        let g_static_class: List<CoreCase> = new List<CoreCase>()
+        g_static_class.Add(new CoreCase("default ctor", "zero: true"))
+        g_static_class.Add(new CoreCase("expr body methods", "prod: 42"))
+        Program.RunGroup("./tests/samples/static_class.am", "static_class", g_static_class)
+
+        // ── pattern_advanced (2 cases) ──
+        let g_pattern_advanced: List<CoreCase> = new List<CoreCase>()
+        g_pattern_advanced.Add(new CoreCase("pattern advanced", "small"))
+        g_pattern_advanced.Add(new CoreCase("pattern range", "Monday"))
+        Program.RunGroup("./tests/samples/pattern_advanced.am", "pattern_advanced", g_pattern_advanced)
+
+        // ── multi_class (2 cases) ──
+        let g_multi_class: List<CoreCase> = new List<CoreCase>()
+        g_multi_class.Add(new CoreCase("multi-class", "42 Rue de la Paix"))
+        g_multi_class.Add(new CoreCase("composition", "Adult: true"))
+        Program.RunGroup("./tests/samples/multi_class.am", "multi_class", g_multi_class)
+
+        // ── recursion (3 cases) ──
+        let g_recursion: List<CoreCase> = new List<CoreCase>()
+        g_recursion.Add(new CoreCase("recursion fib", "fib(10) = 55"))
+        g_recursion.Add(new CoreCase("recursion gcd", "gcd(48,18) = 6"))
+        g_recursion.Add(new CoreCase("recursion pow", "pow(2,8) = 256"))
+        Program.RunGroup("./tests/samples/recursion.am", "recursion", g_recursion)
+
+        // ── type_explicit (2 cases) ──
+        let g_type_explicit: List<CoreCase> = new List<CoreCase>()
+        g_type_explicit.Add(new CoreCase("explicit types", "count: 2"))
+        g_type_explicit.Add(new CoreCase("negative numbers", "neg: -42"))
+        Program.RunGroup("./tests/samples/type_explicit.am", "type_explicit", g_type_explicit)
+
+        // ── tuples (6 cases) ──
+        let g_tuples: List<CoreCase> = new List<CoreCase>()
+        g_tuples.Add(new CoreCase("tuple: basic", "name: Arthus"))
+        g_tuples.Add(new CoreCase("tuple: level", "level: 42"))
+        g_tuples.Add(new CoreCase("tuple: 3-tuple ok", "ok: true"))
+        g_tuples.Add(new CoreCase("tuple: quotient", "quotient: 3"))
+        g_tuples.Add(new CoreCase("tuple: remainder", "remainder: 2"))
+        g_tuples.Add(new CoreCase("tuple: div zero", "div ok: false"))
+        Program.RunGroup("./tests/samples/tuples.am", "tuples", g_tuples)
+
+        // ── multiline_string (4 cases) ──
+        let g_multiline_string: List<CoreCase> = new List<CoreCase>()
+        g_multiline_string.Add(new CoreCase("multiline basic", "lines: 2"))
+        g_multiline_string.Add(new CoreCase("multiline interp", "card ok: Arthus"))
+        g_multiline_string.Add(new CoreCase("multiline dedent", "sql ok"))
+        g_multiline_string.Add(new CoreCase("multiline single", "single: Hello World"))
+        Program.RunGroup("./tests/samples/multiline_string.am", "multiline_string", g_multiline_string)
+
+        // ── try_catch (4 cases) ──
+        let g_try_catch: List<CoreCase> = new List<CoreCase>()
+        g_try_catch.Add(new CoreCase("try: normal flow", "result: 5"))
+        g_try_catch.Add(new CoreCase("try: catch throw", "caught: division by zero"))
+        g_try_catch.Add(new CoreCase("try: finally", "finally runs"))
+        g_try_catch.Add(new CoreCase("try: done", "done"))
+        Program.RunGroup("./tests/samples/try_catch.am", "try_catch", g_try_catch)
+
+        // ── if_expr (4 cases) ──
+        let g_if_expr: List<CoreCase> = new List<CoreCase>()
+        g_if_expr.Add(new CoreCase("if-expr basic", "label: big"))
+        g_if_expr.Add(new CoreCase("if-expr else-if", "grade: C"))
+        g_if_expr.Add(new CoreCase("if-expr numeric", "bigger: 10"))
+        g_if_expr.Add(new CoreCase("if-expr bool", "adult: false"))
+        Program.RunGroup("./tests/samples/if_expr.am", "if_expr", g_if_expr)
+
+        // ── foreach (2 cases) ──
+        let g_foreach: List<CoreCase> = new List<CoreCase>()
+        g_foreach.Add(new CoreCase("for-in range", "sum 0..5: 10"))
+        g_foreach.Add(new CoreCase("for-in list", "list total: 3"))
+        Program.RunGroup("./tests/samples/foreach.am", "foreach", g_foreach)
+
+        // ── Phase 2: misc helpers ──────────────────────
+
+        // run_multi_test (1 case)
+        Program.RunMultiFile("multi-file: caller first", "got: 35",
+            "'./tests/samples/multi_file_bug1/main.am' './tests/samples/multi_file_bug1/helper.am'")
+
+        // run_external_test (6 cases)
+        Program.RunExternalTest("libamalgame.a: msgpack",
+            "./tests/samples/external_libamalgame.am",
+            "mp: 42",
+            "src/stdlib/json.am src/stdlib/msgpack.am")
+        Program.RunExternalTest("bug6: JsonValue field type",
+            "./tests/samples/bundled_stdlib_field_type.am",
+            "[PASS] field type lowers to bundled-stdlib namespace",
+            "")
+        Program.RunExternalTest("bug6: Definition setter",
+            "./tests/samples/bundled_stdlib_field_type.am",
+            "[PASS] Definition setter: hello",
+            "")
+        Program.RunExternalTest("bug9: JsonResult.Ok+.Value",
+            "./tests/samples/bug9_external_struct_fields.am",
+            "[PASS] external field access — JsonResult.Ok + .Value",
+            "")
+        Program.RunExternalTest("bug9: JsonError.Message",
+            "./tests/samples/bug9_external_struct_fields.am",
+            "[PASS] external field access — JsonError.Message populated",
+            "")
+        Program.RunExternalTest("bug9: JsonError.Line",
+            "./tests/samples/bug9_external_struct_fields.am",
+            "[PASS] external field access — JsonError.Line",
+            "")
+
+        // run_amc_test_check (4 cases)
+        Program.RunAmcTestCheck("amc test: discovers",  "./tests/samples/test_runner",  "arith_test.am")
+        Program.RunAmcTestCheck("amc test: pass tally", "./tests/samples/test_runner",  "PASS: 4")
+        Program.RunAmcTestCheck("amc test: fail tally", "./tests/samples/test_runner",  "FAIL: 1")
+        Program.RunAmcTestCheck("amc test: skip tally", "./tests/samples/test_runner",  "SKIP: 1")
+
+        // run_c_check (Namespace) — 4 cases
+        Program.RunCCheck("namespace C prefix",  "./tests/samples/namespace.am", "MyApp_Models_Player", "")
+        Program.RunCCheck("struct prefixed",     "./tests/samples/namespace.am", "struct _MyApp_Models_Player", "")
+        Program.RunCCheck("method prefixed",     "./tests/samples/namespace.am", "MyApp_Models_Player_Info", "")
+        Program.RunCCheck("hello prefix MyApp",  "./tests/samples/hello.am",     "MyApp_Program_Main", "")
+
+        // run_lib_test + run_c_check (Library mode) — 5 cases
+        Program.RunLibTest("auto-detect lib",      "./tests/samples/library.am", "")
+        Program.RunCCheck("lib: no int main",      "./tests/samples/library.am",     "Library — no entry point", "")
+        Program.RunCCheck("lib: symbols prefixed", "./tests/samples/library.am",     "Amalgame_Utils_StringHelper", "")
+        Program.RunLibTest("forced lib (--lib)",   "./tests/samples/forced_lib.am", "--lib")
+        Program.RunCCheck("forced: no int main",   "./tests/samples/forced_lib.am",  "Library — no entry point", "--lib")
+        // The "forced: normal mode" case is a regular run_test — already in Phase 1.
+
+        // run_lib_link_test (1 case)
+        Program.RunLibLinkTest("lib end-to-end (link + run)",
+            "./tests/samples/lib_e2e.am",
+            "./tests/samples/lib_e2e_consumer.c",
+            "add=15 mul=30")
+
+        // run_check_fail (1 case)
+        Program.RunCheckFail("generic iface bad sig",
+            "./tests/samples/generic_interfaces_bad.am",
+            "expected type 'int' (from interface 'IComparable<int>'), got 'string'")
+
+        // run_lint_check (4 cases)
+        Program.RunLintCheck("lint: dead code",
+            "./tests/samples/lint_test.am",
+            "unreachable code after")
+        Program.RunLintCheck("lint: unused local",
+            "./tests/samples/lint_unused_shadow.am",
+            "unused local 'dropped'")
+        Program.RunLintCheck("lint: shadow",
+            "./tests/samples/lint_unused_shadow.am",
+            "'n' shadows an enclosing binding")
+        Program.RunLintCheck("lint: loop binder",
+            "./tests/samples/lint_unused_shadow.am",
+            "unused local 'tick'")
+
+        // run_multifile_test (4 cases) — all 3 files compiled together
+        let mfFiles = "'./tests/samples/multifile/models.am' './tests/samples/multifile/utils.am' './tests/samples/multifile/main.am'"
+        Program.RunMultiFile("multifile: player status",   "Arthus HP=100 Lvl=42", mfFiles)
+        Program.RunMultiFile("multifile: logger",          "[LOG] Game started",   mfFiles)
+        Program.RunMultiFile("multifile: cross-file clamp", "Clamped: 100",        mfFiles)
+        Program.RunMultiFile("multifile: enemy",           "Enemy: Dragon",        mfFiles)
+
+        // ── Phase 3: LSP cases (38) ────────────────────
+        // Fixtures pre-built at tests/core_bundle/fixtures/lsp_*.bin
+        // by tools/build-lsp-fixtures.py — one fixture per scenario,
+        // each contains the full Content-Length-framed sequence.
+
+        let fSeq      = "./tests/core_bundle/fixtures/lsp_seq.bin"
+        let fQuery    = "./tests/core_bundle/fixtures/lsp_query_seq.bin"
+        let fFold     = "./tests/core_bundle/fixtures/lsp_fold_seq.bin"
+        let fNav      = "./tests/core_bundle/fixtures/lsp_nav_seq.bin"
+        let fNavX     = "./tests/core_bundle/fixtures/lsp_navx_seq.bin"
+        let fCallH    = "./tests/core_bundle/fixtures/lsp_callh_seq.bin"
+        let fPkg      = "./tests/core_bundle/fixtures/lsp_pkg_seq.bin"
+        let fImp      = "./tests/core_bundle/fixtures/lsp_imp_seq.bin"
+        let fXdir     = Program.BuildLspXdirFixture()
+
+        // initialize + didOpen-buggy + shutdown
+        Program.RunLspCheck("lsp: initialize reply",   fSeq,
+            "\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true")
+        Program.RunLspCheck("lsp: publishDiagnostics", fSeq,
+            "\"method\":\"textDocument/publishDiagnostics\"")
+        Program.RunLspCheck("lsp: error in diag",      fSeq,
+            "thisDoesNotExist")
+        Program.RunLspCheck("lsp: shutdown reply",     fSeq,
+            "\"id\":2,\"result\":null")
+
+        // hover + completion
+        Program.RunLspCheck("lsp: hover has contents",       fQuery,
+            "\"id\":3,\"result\":{\"contents\"")
+        Program.RunLspCheck("lsp: completion has items",     fQuery,
+            "\"id\":4,\"result\":{\"isIncomplete\":false,\"items\"")
+        Program.RunLspCheck("lsp: completion lists Console", fQuery,
+            "\"label\":\"Console\"")
+
+        // foldingRange
+        Program.RunLspCheck("lsp: folding method body", fFold,
+            "\"id\":5,\"result\":[{\"startLine\":7,\"endLine\":9}")
+        Program.RunLspCheck("lsp: folding class body",  fFold,
+            "{\"startLine\":6,\"endLine\":10}")
+        Program.RunLspCheck("lsp: folding comment run", fFold,
+            "{\"startLine\":3,\"endLine\":5,\"kind\":\"comment\"}")
+        Program.RunLspCheck("lsp: folding import run",  fFold,
+            "{\"startLine\":0,\"endLine\":1,\"kind\":\"imports\"}")
+
+        // xdir resolver (negative: ByteIO must NOT be unknown)
+        Program.RunLspAbsent("lsp: xdir resolves ByteIO", fXdir,
+            "Unknown symbol 'ByteIO'")
+
+        // Phase B navigation
+        Program.RunLspCheck("lsp: docsym lists Foo",      fNav, "\"name\":\"Foo\",\"kind\":5")
+        Program.RunLspCheck("lsp: docsym lists Program",  fNav, "\"name\":\"Program\",\"kind\":5")
+        Program.RunLspCheck("lsp: docsym Foo has Greet",  fNav, "\"name\":\"Greet\",\"kind\":6")
+        Program.RunLspCheck("lsp: docsym Foo has Name",   fNav, "\"name\":\"Name\",\"kind\":8")
+        Program.RunLspCheck("lsp: docsym Program.Main",   fNav, "\"name\":\"Main\",\"kind\":6")
+        Program.RunLspCheck("lsp: def Foo at line 0",     fNav,
+            "\"id\":11,\"result\":{\"uri\":\"file:///tmp/lsp_nav.am\",\"range\":{\"start\":{\"line\":0")
+        Program.RunLspCheck("lsp: def Greet at line 5",   fNav,
+            "\"id\":12,\"result\":{\"uri\":\"file:///tmp/lsp_nav.am\",\"range\":{\"start\":{\"line\":5")
+        Program.RunLspCheck("lsp: refs Greet has result", fNav, "\"id\":13,\"result\":[")
+        Program.RunLspCheck("lsp: refs Greet decl line",  fNav, "\"line\":5")
+        Program.RunLspCheck("lsp: refs Greet call line",  fNav, "\"line\":12")
+
+        // Phase B navx (rename + workspace symbol + inlayHint + codeAction + callh prepare)
+        Program.RunLspCheck("lsp: prepRename placeholder", fNavX, "\"placeholder\":\"Greet\"")
+        Program.RunLspCheck("lsp: rename has changes",     fNavX, "\"id\":21,\"result\":{\"changes\":{")
+        Program.RunLspCheck("lsp: rename newText SayHi",   fNavX, "\"newText\":\"SayHi\"")
+        Program.RunLspCheck("lsp: ws-symbol finds Foo",    fNavX, "\"id\":22,\"result\":[{\"name\":\"Foo\",\"kind\":5")
+        Program.RunLspCheck("lsp: inlayHint Foo label",    fNavX, "\"label\":\": Foo\"")
+        Program.RunLspCheck("lsp: codeAction title",       fNavX, "\"title\":\"Add type annotation: Foo\"")
+        Program.RunLspCheck("lsp: callh prepare item",     fNavX, "\"id\":25,\"result\":[{\"name\":\"Greet\"")
+
+        // callHierarchy incoming + outgoing
+        Program.RunLspCheck("lsp: callh incoming Main",    fCallH, "\"name\":\"Main\"")
+        Program.RunLspCheck("lsp: callh outgoing Greet",   fCallH, "\"name\":\"Greet\"")
+
+        // Package-install codeAction
+        Program.RunLspCheck("lsp: pkg-add suggestion",     fPkg, "\"command\":\"amc package add ui-")
+        Program.RunLspCheck("lsp: pkg-add for-quoted-sym", fPkg, "(for 'Window')")
+
+        // Import-line completion
+        Program.RunLspCheck("lsp: import IO",           fImp, "\"label\":\"Amalgame.IO\",\"kind\":9")
+        Program.RunLspCheck("lsp: import Net",          fImp, "\"label\":\"Amalgame.Net\",\"kind\":9")
+        Program.RunLspCheck("lsp: import Formats.Json", fImp, "\"label\":\"Amalgame.Formats.Json\",\"kind\":9")
+        Program.RunLspCheck("lsp: import bundled tag",  fImp, "\"detail\":\"bundled stdlib\"")
+
+        // ── DAP (3 cases, conditional on gdb) ───────────
+
+        // dap: MI parser self-test — no gdb needed, pure AM.
+        let dapMi = Process.RunCapture("./amc dap --self-test-mi 2>&1")
+        let nMiPass: int = 0
+        let miLines: List<string> = String_Split(dapMi.Stdout, "\n")
+        let nMi: int = miLines.Count()
+        for mi in 0..nMi {
+            let line: string = miLines.Get(mi)
+            if (String_StartsWith(line, "[PASS]")) {
+                nMiPass = nMiPass + 1
+            }
+        }
+        if (dapMi.Exit == 0 && nMiPass >= 9) {
+            Console.WriteLine("[PASS] dap: MI parser self-test (" + String_FromInt(nMiPass) + " cases)")
+        } else {
+            Console.WriteLine("[FAIL] dap: MI parser self-test (rc=" + String_FromInt(dapMi.Exit) + " pass=" + String_FromInt(nMiPass) + ")")
+        }
+
+        // dap: bridge tests — require gdb. Skip cleanly when absent.
+        let hasGdb = Program.ShellExit("command -v gdb")
+        if (hasGdb != 0) {
+            Console.WriteLine("[SKIP] dap: bridge initialize handshake (gdb not on PATH)")
+            Console.WriteLine("[SKIP] dap: bridge full session (gdb not on PATH)")
+            Console.WriteLine("[SKIP] dap: bridge pretty-print + drill (gdb not on PATH)")
+        } else {
+            // Bridge handshake (initialize → initialized event → disconnect).
+            let dInit = "{\"seq\":1,\"type\":\"request\",\"command\":\"initialize\",\"arguments\":{\"clientID\":\"test\",\"adapterID\":\"amc\"}}"
+            let dDisc = "{\"seq\":2,\"type\":\"request\",\"command\":\"disconnect\"}"
+            let initFrame = Program.LspFrame(dInit)
+            let discFrame = Program.LspFrame(dDisc)
+            File.WriteAll("/tmp/amc_core_dap_init.bin", initFrame + discFrame)
+            let bridgeOut = Process.RunCapture("cat /tmp/amc_core_dap_init.bin | timeout 5 ./amc dap --bridge 2>&1")
+            let bOut = bridgeOut.Stdout
+            if (String_Contains(bOut, "\"command\":\"initialize\",\"body\":{")
+                && String_Contains(bOut, "\"event\":\"initialized\"")
+                && String_Contains(bOut, "\"command\":\"disconnect\"")) {
+                Console.WriteLine("[PASS] dap: bridge initialize handshake")
+            } else {
+                Console.WriteLine("[FAIL] dap: bridge initialize handshake")
+            }
+
+            // Full session — compile a small C program with -g, drive DAP through bridge.
+            let dapProg = String_Trim(Program.ShellRead("mktemp --suffix=.c"))
+            let dapBin = String_Trim(Program.ShellRead("mktemp -u"))
+            let cBody = "#include <stdio.h>\nint main() {\n    int x = 7;\n    int y = 11;\n    int sum = x + y;\n    printf(\"%d\\n\", sum);\n    return 0;\n}\n"
+            File.WriteAll(dapProg, cBody)
+            let gccG = Program.ShellExit("gcc -g -O0 '" + dapProg + "' -o '" + dapBin + "'")
+            if (gccG != 0) {
+                Console.WriteLine("[SKIP] dap: bridge full session (gcc -g failed)")
+            } else {
+                // Build the session in 3 chunks (matches bash sleep pacing).
+                let dLaunch = "{\"seq\":2,\"type\":\"request\",\"command\":\"launch\",\"arguments\":{\"program\":\"" + dapBin + "\"}}"
+                let dSetBp  = "{\"seq\":3,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"" + dapProg + "\"},\"breakpoints\":[{\"line\":5}]}}"
+                let dCfgDone = "{\"seq\":4,\"type\":\"request\",\"command\":\"configurationDone\"}"
+                let dSt     = "{\"seq\":5,\"type\":\"request\",\"command\":\"stackTrace\",\"arguments\":{\"threadId\":1}}"
+                let dVars   = "{\"seq\":6,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1}}"
+                let dEval   = "{\"seq\":7,\"type\":\"request\",\"command\":\"evaluate\",\"arguments\":{\"expression\":\"x+y\",\"frameId\":0}}"
+                let dCont   = "{\"seq\":8,\"type\":\"request\",\"command\":\"continue\"}"
+                let dDisc2  = "{\"seq\":9,\"type\":\"request\",\"command\":\"disconnect\"}"
+                let chunk1 = Program.LspFrame(dInit) + Program.LspFrame(dLaunch) + Program.LspFrame(dSetBp) + Program.LspFrame(dCfgDone)
+                let chunk2 = Program.LspFrame(dSt) + Program.LspFrame(dVars) + Program.LspFrame(dEval)
+                let chunk3 = Program.LspFrame(dCont)
+                let chunk4 = Program.LspFrame(dDisc2)
+                File.WriteAll("/tmp/amc_core_dap_c1.bin", chunk1)
+                File.WriteAll("/tmp/amc_core_dap_c2.bin", chunk2)
+                File.WriteAll("/tmp/amc_core_dap_c3.bin", chunk3)
+                File.WriteAll("/tmp/amc_core_dap_c4.bin", chunk4)
+                let pipeline = "( cat /tmp/amc_core_dap_c1.bin; sleep 0.5; cat /tmp/amc_core_dap_c2.bin; sleep 0.3; cat /tmp/amc_core_dap_c3.bin; sleep 0.3; cat /tmp/amc_core_dap_c4.bin ) | timeout 8 ./amc dap --bridge 2>&1"
+                let fullOut = Process.RunCapture(pipeline)
+                let fOut = fullOut.Stdout
+                if (String_Contains(fOut, "\"command\":\"launch\"")
+                    && String_Contains(fOut, "\"command\":\"setBreakpoints\"")
+                    && String_Contains(fOut, "\"verified\":true")
+                    && String_Contains(fOut, "\"event\":\"stopped\"")
+                    && String_Contains(fOut, "\"reason\":\"breakpoint\"")
+                    && String_Contains(fOut, "\"command\":\"stackTrace\"")
+                    && String_Contains(fOut, "\"command\":\"variables\"")
+                    && String_Contains(fOut, "\"name\":\"x\"")
+                    && String_Contains(fOut, "\"value\":\"7\"")
+                    && String_Contains(fOut, "\"command\":\"evaluate\"")
+                    && String_Contains(fOut, "\"result\":\"18\"")
+                    && String_Contains(fOut, "\"event\":\"terminated\"")
+                    && String_Contains(fOut, "\"command\":\"disconnect\"")) {
+                    Console.WriteLine("[PASS] dap: bridge full session")
+                } else {
+                    Console.WriteLine("[FAIL] dap: bridge full session")
+                }
+                Program.ShellExit("rm -f '" + dapProg + "' '" + dapBin + "'")
+            }
+
+            // Pretty-print + drill-down: requires libgc + runtime/Amalgame_Collections.h
+            let listProg = String_Trim(Program.ShellRead("mktemp --suffix=.c"))
+            let listBin  = String_Trim(Program.ShellRead("mktemp -u"))
+            let listBody = "#include \"runtime/Amalgame_Collections.h\"\nint main() {\n    AmalgameList* xs = AmalgameList_new();\n    AmalgameList_add(xs, (void*)(intptr_t)10);\n    AmalgameList_add(xs, (void*)(intptr_t)20);\n    AmalgameList_add(xs, (void*)(intptr_t)30);\n    return 0;\n}\n"
+            File.WriteAll(listProg, listBody)
+            let gccL = Program.ShellExit("gcc -g -O0 -I. '" + listProg + "' -lgc -o '" + listBin + "'")
+            if (gccL != 0) {
+                Console.WriteLine("[SKIP] dap: bridge pretty-print + drill (libgc / runtime not available)")
+            } else {
+                let lLaunch = "{\"seq\":2,\"type\":\"request\",\"command\":\"launch\",\"arguments\":{\"program\":\"" + listBin + "\"}}"
+                let lSetBp  = "{\"seq\":3,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"" + listProg + "\"},\"breakpoints\":[{\"line\":7}]}}"
+                let lCfg    = "{\"seq\":4,\"type\":\"request\",\"command\":\"configurationDone\"}"
+                let lVars   = "{\"seq\":5,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1}}"
+                let lExp    = "{\"seq\":6,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1000}}"
+                let lDisc   = "{\"seq\":7,\"type\":\"request\",\"command\":\"disconnect\"}"
+                let lc1 = Program.LspFrame(dInit) + Program.LspFrame(lLaunch) + Program.LspFrame(lSetBp) + Program.LspFrame(lCfg)
+                let lc2 = Program.LspFrame(lVars)
+                let lc3 = Program.LspFrame(lExp)
+                let lc4 = Program.LspFrame(lDisc)
+                File.WriteAll("/tmp/amc_core_dap_lc1.bin", lc1)
+                File.WriteAll("/tmp/amc_core_dap_lc2.bin", lc2)
+                File.WriteAll("/tmp/amc_core_dap_lc3.bin", lc3)
+                File.WriteAll("/tmp/amc_core_dap_lc4.bin", lc4)
+                let lPipeline = "( cat /tmp/amc_core_dap_lc1.bin; sleep 0.8; cat /tmp/amc_core_dap_lc2.bin; sleep 0.5; cat /tmp/amc_core_dap_lc3.bin; sleep 0.3; cat /tmp/amc_core_dap_lc4.bin ) | timeout 8 ./amc dap --bridge 2>&1"
+                let listOut = Process.RunCapture(lPipeline)
+                let lOut = listOut.Stdout
+                if (String_Contains(lOut, "\"value\":\"List[3]\"")
+                    && String_Contains(lOut, "\"variablesReference\":1000")
+                    && String_Contains(lOut, "\"name\":\"[0]\"")
+                    && String_Contains(lOut, "\"value\":\"0xa\"")
+                    && String_Contains(lOut, "\"value\":\"0x14\"")
+                    && String_Contains(lOut, "\"value\":\"0x1e\"")) {
+                    Console.WriteLine("[PASS] dap: bridge pretty-print + drill")
+                } else {
+                    Console.WriteLine("[FAIL] dap: bridge pretty-print + drill")
+                }
+                Program.ShellExit("rm -f '" + listProg + "' '" + listBin + "'")
+            }
+        }
+
+        // ── Phase 4: amc migrate / generate / explain (LLM, hermetic) ──
+
+        // Set up fixtures
+        let bdir = String_Trim(Program.ShellRead("mktemp -d -t amc-core-llm-XXXXXX"))
+        let migTs = bdir + "/mig_fixture.ts"
+        File.WriteAll(migTs,
+            "class User { constructor(public name: string, public age: number) {} }\nconst u = new User(\"Alice\", 30);\nconsole.log(u.name);\n")
+
+        let migDir = bdir + "/mig_fixture_dir"
+        Program.ShellExit("mkdir -p '" + migDir + "'")
+        File.WriteAll(migDir + "/u1.ts", "class A { x: number = 0 }\n")
+        File.WriteAll(migDir + "/u2.py", "class B:\n    def __init__(self, x: int): self.x = x\n")
+        File.WriteAll(migDir + "/README.md", "# Not a source file\n")
+        File.WriteAll(migDir + "/already.am", "namespace Y\n")
+
+        let explainFix = bdir + "/explain_fixture.am"
+        File.WriteAll(explainFix,
+            "namespace Demo\npublic class Program {\n    public static void Main(string[] args) { Console.WriteLine(\"hi\") }\n}\n")
+
+        // Bash uses `unset` to ensure env vars are absent. In AM we use
+        // `env -u VAR amc ...` to truly unset them in the child env.
+        let unsetAll = "env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u GEMINI_API_KEY -u AMC_CUSTOM_PROVIDER_CMD "
+
+        // ── migrate: prompt-only (5 + 2 = 7) ──
+        Program.RunCmdGrep("migrate: language detected",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "translating TypeScript source")
+        Program.RunCmdGrep("migrate: source embedded",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "class User {")
+        Program.RunCmdGrep("migrate: TODO marker hint",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "TODO[migrate]")
+        Program.RunCmdGrep("migrate: convention listed",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "data class")
+        Program.RunCmdGrep("migrate: limitation listed",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "String interpolation does NOT propagate")
+
+        // ── migrate: dry-run (3) ──
+        Program.RunCmdGrep("migrate: dry-run lang",     "./amc migrate '" + migTs + "' --dry-run", "TypeScript")
+        Program.RunCmdGrep("migrate: dry-run out",      "./amc migrate '" + migTs + "' --dry-run", "mig_fixture.am")
+        Program.RunCmdGrep("migrate: dry-run provider", "./amc migrate '" + migTs + "' --dry-run", "provider:      claude")
+
+        // ── migrate: --help / -h (2) ──
+        Program.RunCmdGrep("migrate: --help", "./amc migrate --help", "Usage: amc migrate")
+        Program.RunCmdGrep("migrate: -h",     "./amc migrate -h",     "Usage: amc migrate")
+
+        // ── migrate: directory mode (4) ──
+        Program.RunCmdGrep("migrate: dir discovers", "./amc migrate '" + migDir + "' --dry-run", "found 2 file(s) to migrate")
+        Program.RunCmdGrep("migrate: dir picks ts",  "./amc migrate '" + migDir + "' --dry-run", "u1.ts (TypeScript")
+        Program.RunCmdGrep("migrate: dir picks py",  "./amc migrate '" + migDir + "' --dry-run", "u2.py (Python")
+        Program.RunCmdGrep("migrate: dir summary",   "./amc migrate '" + migDir + "' --dry-run", "2/2 succeeded, 0 failed")
+
+        // ── migrate: dir rejects --output (1) ──
+        Program.RunCmdGrep("migrate: dir rejects --output",
+            "./amc migrate '" + migDir + "' --output /tmp/x.am --dry-run",
+            "cannot be used with directory")
+
+        // ── migrate: provider failure paths (3) ──
+        Program.RunCmdGrep("migrate: claude-api no key",
+            unsetAll + "./amc migrate '" + migTs + "' --provider claude-api",
+            "ANTHROPIC_API_KEY not set")
+        Program.RunCmdGrep("migrate: unknown provider",
+            unsetAll + "./amc migrate '" + migTs + "' --provider gemini-7",
+            "not supported (built-in")
+        Program.RunCmdGrep("migrate: --help mentions claude-api",
+            "./amc migrate --help",
+            "claude-api")
+
+        // ── migrate: v1.3 prompt assets (2) ──
+        Program.RunCmdGrep("migrate: prompt embeds grammar",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "Amalgame grammar (EBNF)")
+        Program.RunCmdGrep("migrate: prompt embeds tour",
+            "./amc migrate '" + migTs + "' --prompt-only",
+            "Amalgame language tour")
+
+        // ── generate: 9 ──
+        Program.RunCmdGrep("generate: --help",           "./amc generate --help", "Usage: amc generate")
+        Program.RunCmdGrep("generate: dry-run",          "./amc generate 'test prompt' --dry-run", "would generate from")
+        Program.RunCmdGrep("generate: dry-run provider", "./amc generate 'test' --dry-run", "provider:      claude")
+        Program.RunCmdGrep("generate: prompt-only sys",  "./amc generate 'test' --prompt-only", "writing an Amalgame")
+        Program.RunCmdGrep("generate: prompt-only task", "./amc generate 'fizzbuzz' --prompt-only", "## Task")
+        Program.RunCmdGrep("generate: prompt embeds grammar", "./amc generate 'test' --prompt-only", "Amalgame grammar (EBNF)")
+        Program.RunCmdGrep("generate: claude-api no key",
+            unsetAll + "./amc generate 'test' --provider claude-api",
+            "ANTHROPIC_API_KEY not set")
+        Program.RunCmdGrep("generate: unknown provider",
+            "./amc generate 'test' --provider gemini-x",
+            "not supported (built-in")
+        Program.RunCmdGrep("generate: no prompt",        "./amc generate", "no prompt given")
+
+        // ── explain: 8 ──
+        Program.RunCmdGrep("explain: --help",         "./amc explain --help", "Usage: amc explain")
+        Program.RunCmdGrep("explain: dry-run",        "./amc explain '" + explainFix + "' --dry-run", "would explain")
+        Program.RunCmdGrep("explain: dry-run lang",   "./amc explain '" + explainFix + "' --dry-run", "output lang:   English")
+        Program.RunCmdGrep("explain: lang override",  "./amc explain '" + explainFix + "' --dry-run --lang French", "output lang:   French")
+        Program.RunCmdGrep("explain: prompt-only sys","./amc explain '" + explainFix + "' --prompt-only", "explaining Amalgame")
+        Program.RunCmdGrep("explain: prompt-only src","./amc explain '" + explainFix + "' --prompt-only", "Amalgame source: ")
+        Program.RunCmdGrep("explain: file not found", "./amc explain /nonexistent/file.am", "file not found")
+        Program.RunCmdGrep("explain: no input",       "./amc explain", "no input file")
+
+        // ── v2 providers (3) ──
+        Program.RunCmdGrep("v2: chatgpt no key",
+            unsetAll + "./amc generate 'test' --provider chatgpt",
+            "OPENAI_API_KEY not set")
+        Program.RunCmdGrep("v2: gemini no key",
+            unsetAll + "./amc generate 'test' --provider gemini",
+            "GEMINI_API_KEY not set")
+        Program.RunCmdGrep("v2: custom no cmd",
+            unsetAll + "./amc generate 'test' --provider custom",
+            "AMC_CUSTOM_PROVIDER_CMD")
+
+        // ── Auto-selection (2) ──
+        Program.RunCmdGrep("v2: auto-select chatgpt",
+            "OPENAI_API_KEY=fake env -u GEMINI_API_KEY -u ANTHROPIC_API_KEY ./amc generate 'test' --dry-run",
+            "provider:      chatgpt")
+        Program.RunCmdGrep("v2: auto-select gemini",
+            "GEMINI_API_KEY=fake env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY ./amc generate 'test' --dry-run",
+            "provider:      gemini")
+
+        // ── --help mentions new providers (3) ──
+        Program.RunCmdGrep("v2: --help mentions chatgpt", "./amc generate --help", "chatgpt")
+        Program.RunCmdGrep("v2: --help mentions gemini",  "./amc generate --help", "gemini")
+        Program.RunCmdGrep("v2: --help mentions custom",  "./amc generate --help", "custom")
+
+        // ── Cost estimation (5) ──
+        Program.RunCmdGrep("cost: claude free",
+            "./amc generate 'test' --dry-run",
+            "free (subscription")
+        Program.RunCmdGrep("cost: chatgpt has tokens",
+            "OPENAI_API_KEY=fake env -u GEMINI_API_KEY -u ANTHROPIC_API_KEY ./amc generate 'test' --dry-run",
+            "in + ~1000 out")
+        Program.RunCmdGrep("cost: chatgpt opus model dollars",
+            "OPENAI_API_KEY=fake env -u GEMINI_API_KEY -u ANTHROPIC_API_KEY ./amc generate 'test' --dry-run --model gpt-4o",
+            "$")
+        Program.RunCmdGrep("cost: claude-api opus mentions opus",
+            "ANTHROPIC_API_KEY=fake env -u OPENAI_API_KEY -u GEMINI_API_KEY ./amc generate 'test' --dry-run --model claude-opus-4-7",
+            "claude-opus-4-7")
+        Program.RunCmdGrep("cost: gemini default flash",
+            "GEMINI_API_KEY=fake env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY ./amc generate 'test' --dry-run",
+            "gemini-1.5-flash")
+
+        // ── --stream constraints (5) ──
+        Program.RunCmdGrep("stream: requires CLI provider",
+            "./amc generate 'test' --stream --provider claude-api",
+            "requires --provider claude")
+        Program.RunCmdGrep("stream: incompat with -o",
+            "./amc generate 'test' --stream -o /tmp/x.am",
+            "incompatible with -o")
+        Program.RunCmdGrep("stream: --help mentions",
+            "./amc generate --help",
+            "Stream the LLM response")
+        Program.RunCmdGrep("stream: explain requires CLI",
+            "./amc explain '" + explainFix + "' --stream --provider claude-api",
+            "requires --provider claude")
+        Program.RunCmdGrep("stream: explain --help",
+            "./amc explain --help",
+            "Stream the LLM response")
+
+        // ── Result cache (2) ──
+        Program.RunCmdGrep("cache: --help mentions",
+            "./amc migrate --help",
+            "Skip the on-disk result cache")
+        Program.RunCmdGrep("cache: --no-cache accepted",
+            unsetAll + "./amc migrate '" + migTs + "' --provider claude-api --no-cache",
+            "claude-api: ANTHROPIC_API_KEY not set")
+
+        // Cleanup
+        Program.ShellExit("rm -rf '" + bdir + "'")
+    }
+}
