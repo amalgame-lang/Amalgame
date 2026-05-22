@@ -2,7 +2,7 @@
   "name": "amalgame",
   "displayName": "Amalgame",
   "description": "Syntax highlighting + LSP client + DAP debugger for the Amalgame programming language (.am files).",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "BastienMOUGET",
   "license": "MIT",
   "icon": "icon.png",
@@ -53,6 +53,16 @@
           "type": "string",
           "default": "",
           "description": "Path to the amc binary used as the DAP server (`amc dap`). Empty string falls back to `amalgame.serverPath`. Set this if your debug builds need a different amc than your LSP."
+        },
+        "amalgame.dapBridge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `amc dap` in bridge mode (`--bridge`). The bridge translates DAP↔gdb-MI in-process so List/Map/Set/Closure variables pretty-print with summaries + drill-down, and runtime helper frames (Amalgame_*, _runtime_*, GC_*) are hidden from the call stack. Disable to fall back to the v0.8.0 `execvp` proxy (lldb-dap on macOS, gdb --dap on Linux gdb ≥ 14)."
+        },
+        "amalgame.dapShowRuntime": {
+          "type": "boolean",
+          "default": false,
+          "description": "When bridge mode is on, include `Amalgame_*` / `_runtime_*` / `GC_*` frames in the call stack instead of filtering them out. Useful for runtime-level debugging."
         }
       }
     },
