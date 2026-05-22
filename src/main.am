@@ -1217,8 +1217,8 @@ public class Program {
     //
     // Silent (no extra output) when the index isn't reachable or
     // no symbol matches a known package.
-    public static void PrintPackageSuggestionsForOutput(string stdout, string amcPath) {
-        let lines: List<string> = String_Split(stdout, "\n")
+    public static void PrintPackageSuggestionsForOutput(string output, string amcPath) {
+        let lines: List<string> = String_Split(output, "\n")
         let n: int = lines.Count()
         let prefix: string = "Unknown symbol '"
         let prefLen: int = String_Length(prefix)
