@@ -693,8 +693,8 @@ Insert-Row "INSERT INTO ``Property`` (``Property``, ``Value``) VALUES (?, ?)" @(
 #   - We DON'T pass -InstallLocation here — postinstall.ps1 derives
 #     it from $PSCommandPath, sidestepping the trailing-backslash
 #     question entirely.
-$psPostArgsInstall   = '-NoProfile -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode install'
-$psPostArgsUninstall = '-NoProfile -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode uninstall'
+$psPostArgsInstall   = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode install'
+$psPostArgsUninstall = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode uninstall'
 
 # Type 1074 = 50 (exec property + cmdline) + 1024 (deferred). We
 # DON'T set 2048 (NoImpersonate) — the post-install work writes to
