@@ -847,6 +847,7 @@ Amalgame_Compiler_MiValue* Amalgame_Compiler_MiRecord_ResultOrNull(Amalgame_Comp
 static code_string Amalgame_Compiler_MiParser_Peek(Amalgame_Compiler_MiParser* self);
 static code_bool Amalgame_Compiler_MiParser_IsAlpha(code_string c);
 static code_bool Amalgame_Compiler_MiParser_IsDigit(code_string c);
+static code_bool Amalgame_Compiler_MiParser_IsOctalDigit(code_string c);
 static code_string Amalgame_Compiler_MiParser_ParseIdent(Amalgame_Compiler_MiParser* self);
 static code_string Amalgame_Compiler_MiParser_ParseCString(Amalgame_Compiler_MiParser* self);
 Amalgame_Compiler_MiValue* Amalgame_Compiler_MiParser_ParseValue(Amalgame_Compiler_MiParser* self);
@@ -24506,12 +24507,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "c1d70a54";
+    return "857783fa";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-22T12:00:02Z";
+    return "2026-05-22T13:20:54Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
@@ -29503,6 +29504,7 @@ struct _Amalgame_Compiler_MiParser {
 static code_string Amalgame_Compiler_MiParser_Peek(Amalgame_Compiler_MiParser* self);
 static code_bool Amalgame_Compiler_MiParser_IsAlpha(code_string c);
 static code_bool Amalgame_Compiler_MiParser_IsDigit(code_string c);
+static code_bool Amalgame_Compiler_MiParser_IsOctalDigit(code_string c);
 static code_string Amalgame_Compiler_MiParser_ParseIdent(Amalgame_Compiler_MiParser* self);
 static code_string Amalgame_Compiler_MiParser_ParseCString(Amalgame_Compiler_MiParser* self);
 Amalgame_Compiler_MiValue* Amalgame_Compiler_MiParser_ParseValue(Amalgame_Compiler_MiParser* self);
@@ -29547,355 +29549,399 @@ static code_bool Amalgame_Compiler_MiParser_IsDigit(code_string c) {
     return String_IndexOf("0123456789", c) >= 0;
 }
 
+static code_bool Amalgame_Compiler_MiParser_IsOctalDigit(code_string c) {
+    #line 166 "./src/dap/mi_parser.am"
+    if (String_Length(c) == 0) {
+        return 0;
+    }
+    #line 167 "./src/dap/mi_parser.am"
+    return String_IndexOf("01234567", c) >= 0;
+}
+
 static code_string Amalgame_Compiler_MiParser_ParseIdent(Amalgame_Compiler_MiParser* self) {
-    #line 170 "./src/dap/mi_parser.am"
+    #line 174 "./src/dap/mi_parser.am"
     code_string out = "";
-    #line 171 "./src/dap/mi_parser.am"
+    #line 175 "./src/dap/mi_parser.am"
     while (self->Pos < String_Length(self->Input)) {
-        #line 172 "./src/dap/mi_parser.am"
-        code_string c = String_Substring(self->Input, self->Pos, 1);
-        #line 173 "./src/dap/mi_parser.am"
-        code_bool isAlpha = Amalgame_Compiler_MiParser_IsAlpha(c);
-        #line 174 "./src/dap/mi_parser.am"
-        code_bool isDigit = Amalgame_Compiler_MiParser_IsDigit(c);
-        #line 175 "./src/dap/mi_parser.am"
-        code_bool isMore = (code_string_equals(c, "_")) || (code_string_equals(c, "-"));
         #line 176 "./src/dap/mi_parser.am"
+        code_string c = String_Substring(self->Input, self->Pos, 1);
+        #line 177 "./src/dap/mi_parser.am"
+        code_bool isAlpha = Amalgame_Compiler_MiParser_IsAlpha(c);
+        #line 178 "./src/dap/mi_parser.am"
+        code_bool isDigit = Amalgame_Compiler_MiParser_IsDigit(c);
+        #line 179 "./src/dap/mi_parser.am"
+        code_bool isMore = (code_string_equals(c, "_")) || (code_string_equals(c, "-"));
+        #line 180 "./src/dap/mi_parser.am"
         if ((isAlpha || isDigit) || isMore) {
-            #line 177 "./src/dap/mi_parser.am"
+            #line 181 "./src/dap/mi_parser.am"
             out = (code_string_concat(out, c));
-            #line 178 "./src/dap/mi_parser.am"
+            #line 182 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
         } else {
-            #line 179 "./src/dap/mi_parser.am"
+            #line 183 "./src/dap/mi_parser.am"
             break;
         }
     }
-    #line 181 "./src/dap/mi_parser.am"
+    #line 185 "./src/dap/mi_parser.am"
     return out;
 }
 
 static code_string Amalgame_Compiler_MiParser_ParseCString(Amalgame_Compiler_MiParser* self) {
-    #line 191 "./src/dap/mi_parser.am"
+    #line 195 "./src/dap/mi_parser.am"
     if (!code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "\"")) {
         return "";
     }
-    #line 192 "./src/dap/mi_parser.am"
+    #line 196 "./src/dap/mi_parser.am"
     self->Pos = (self->Pos + 1);
-    #line 193 "./src/dap/mi_parser.am"
+    #line 197 "./src/dap/mi_parser.am"
     code_string out = "";
-    #line 194 "./src/dap/mi_parser.am"
+    #line 198 "./src/dap/mi_parser.am"
     i64 n = String_Length(self->Input);
-    #line 195 "./src/dap/mi_parser.am"
+    #line 199 "./src/dap/mi_parser.am"
     while (self->Pos < n) {
-        #line 196 "./src/dap/mi_parser.am"
+        #line 200 "./src/dap/mi_parser.am"
         code_string c = String_Substring(self->Input, self->Pos, 1);
-        #line 197 "./src/dap/mi_parser.am"
-        if (code_string_equals(c, "\"")) {
-            #line 198 "./src/dap/mi_parser.am"
-            self->Pos = (self->Pos + 1);
-            #line 199 "./src/dap/mi_parser.am"
-            return out;
-        }
         #line 201 "./src/dap/mi_parser.am"
-        if (code_string_equals(c, "\\")) {
+        if (code_string_equals(c, "\"")) {
             #line 202 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
             #line 203 "./src/dap/mi_parser.am"
+            return out;
+        }
+        #line 205 "./src/dap/mi_parser.am"
+        if (code_string_equals(c, "\\")) {
+            #line 206 "./src/dap/mi_parser.am"
+            self->Pos = (self->Pos + 1);
+            #line 207 "./src/dap/mi_parser.am"
             if (self->Pos >= n) {
-                #line 205 "./src/dap/mi_parser.am"
+                #line 209 "./src/dap/mi_parser.am"
                 out = (code_string_concat(out, "\\"));
-                #line 206 "./src/dap/mi_parser.am"
+                #line 210 "./src/dap/mi_parser.am"
                 return out;
             }
-            #line 208 "./src/dap/mi_parser.am"
+            #line 212 "./src/dap/mi_parser.am"
             code_string esc = String_Substring(self->Input, self->Pos, 1);
-            #line 209 "./src/dap/mi_parser.am"
+            #line 220 "./src/dap/mi_parser.am"
+            if (Amalgame_Compiler_MiParser_IsOctalDigit(esc)) {
+                #line 221 "./src/dap/mi_parser.am"
+                i64 b = String_ToInt(esc);
+                #line 222 "./src/dap/mi_parser.am"
+                self->Pos = (self->Pos + 1);
+                #line 223 "./src/dap/mi_parser.am"
+                if (self->Pos < n) {
+                    #line 224 "./src/dap/mi_parser.am"
+                    code_string c2 = String_Substring(self->Input, self->Pos, 1);
+                    #line 225 "./src/dap/mi_parser.am"
+                    if (Amalgame_Compiler_MiParser_IsOctalDigit(c2)) {
+                        #line 226 "./src/dap/mi_parser.am"
+                        b = ((b * 8) + String_ToInt(c2));
+                        #line 227 "./src/dap/mi_parser.am"
+                        self->Pos = (self->Pos + 1);
+                        #line 228 "./src/dap/mi_parser.am"
+                        if (self->Pos < n) {
+                            #line 229 "./src/dap/mi_parser.am"
+                            code_string c3 = String_Substring(self->Input, self->Pos, 1);
+                            #line 230 "./src/dap/mi_parser.am"
+                            if (Amalgame_Compiler_MiParser_IsOctalDigit(c3)) {
+                                #line 231 "./src/dap/mi_parser.am"
+                                b = ((b * 8) + String_ToInt(c3));
+                                #line 232 "./src/dap/mi_parser.am"
+                                self->Pos = (self->Pos + 1);
+                            }
+                        }
+                    }
+                }
+                #line 237 "./src/dap/mi_parser.am"
+                out = (code_string_concat(out, String_FromByte(b)));
+                #line 238 "./src/dap/mi_parser.am"
+                continue;
+            }
+            #line 240 "./src/dap/mi_parser.am"
             if (code_string_equals(esc, "n")) {
                 out = (code_string_concat(out, "\n"));
             } else if (code_string_equals(esc, "t")) {
-                #line 210 "./src/dap/mi_parser.am"
+                #line 241 "./src/dap/mi_parser.am"
                 out = (code_string_concat(out, "\t"));
             } else if (code_string_equals(esc, "r")) {
-                #line 211 "./src/dap/mi_parser.am"
+                #line 242 "./src/dap/mi_parser.am"
                 out = (code_string_concat(out, "\\r"));
             } else if (code_string_equals(esc, "\"")) {
-                #line 212 "./src/dap/mi_parser.am"
+                #line 243 "./src/dap/mi_parser.am"
                 out = (code_string_concat(out, "\""));
             } else if (code_string_equals(esc, "\\")) {
-                #line 213 "./src/dap/mi_parser.am"
+                #line 244 "./src/dap/mi_parser.am"
                 out = (code_string_concat(out, "\\"));
             } else {
-                #line 214 "./src/dap/mi_parser.am"
+                #line 245 "./src/dap/mi_parser.am"
                 out = (code_string_concat(out, esc));
             }
-            #line 215 "./src/dap/mi_parser.am"
+            #line 246 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
-            #line 216 "./src/dap/mi_parser.am"
+            #line 247 "./src/dap/mi_parser.am"
             continue;
         }
-        #line 218 "./src/dap/mi_parser.am"
+        #line 249 "./src/dap/mi_parser.am"
         out = (code_string_concat(out, c));
-        #line 219 "./src/dap/mi_parser.am"
+        #line 250 "./src/dap/mi_parser.am"
         self->Pos = (self->Pos + 1);
     }
-    #line 221 "./src/dap/mi_parser.am"
+    #line 252 "./src/dap/mi_parser.am"
     return out;
 }
 
 Amalgame_Compiler_MiValue* Amalgame_Compiler_MiParser_ParseValue(Amalgame_Compiler_MiParser* self) {
-    #line 226 "./src/dap/mi_parser.am"
+    #line 257 "./src/dap/mi_parser.am"
     code_string c = Amalgame_Compiler_MiParser_Peek(self);
-    #line 227 "./src/dap/mi_parser.am"
+    #line 258 "./src/dap/mi_parser.am"
     if (code_string_equals(c, "\"")) {
-        #line 228 "./src/dap/mi_parser.am"
+        #line 259 "./src/dap/mi_parser.am"
         Amalgame_Compiler_MiValue* v = Amalgame_Compiler_MiValue_new();
-        #line 229 "./src/dap/mi_parser.am"
+        #line 260 "./src/dap/mi_parser.am"
         v->Kind = 0;
-        #line 230 "./src/dap/mi_parser.am"
+        #line 261 "./src/dap/mi_parser.am"
         v->Str = Amalgame_Compiler_MiParser_ParseCString(self);
-        #line 231 "./src/dap/mi_parser.am"
+        #line 262 "./src/dap/mi_parser.am"
         return v;
     }
-    #line 233 "./src/dap/mi_parser.am"
+    #line 264 "./src/dap/mi_parser.am"
     if (code_string_equals(c, "{")) {
         return Amalgame_Compiler_MiParser_ParseTuple(self);
     }
-    #line 234 "./src/dap/mi_parser.am"
+    #line 265 "./src/dap/mi_parser.am"
     if (code_string_equals(c, "[")) {
         return Amalgame_Compiler_MiParser_ParseList(self);
     }
-    #line 238 "./src/dap/mi_parser.am"
+    #line 269 "./src/dap/mi_parser.am"
     return Amalgame_Compiler_MiValue_new();
 }
 
 static Amalgame_Compiler_MiValue* Amalgame_Compiler_MiParser_ParseTuple(Amalgame_Compiler_MiParser* self) {
-    #line 242 "./src/dap/mi_parser.am"
+    #line 273 "./src/dap/mi_parser.am"
     Amalgame_Compiler_MiValue* v = Amalgame_Compiler_MiValue_new();
-    #line 243 "./src/dap/mi_parser.am"
+    #line 274 "./src/dap/mi_parser.am"
     v->Kind = 1;
-    #line 244 "./src/dap/mi_parser.am"
+    #line 275 "./src/dap/mi_parser.am"
     if (!code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "{")) {
         return v;
     }
-    #line 245 "./src/dap/mi_parser.am"
+    #line 276 "./src/dap/mi_parser.am"
     self->Pos = (self->Pos + 1);
-    #line 246 "./src/dap/mi_parser.am"
+    #line 277 "./src/dap/mi_parser.am"
     if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "}")) {
-        #line 247 "./src/dap/mi_parser.am"
+        #line 278 "./src/dap/mi_parser.am"
         self->Pos = (self->Pos + 1);
-        #line 248 "./src/dap/mi_parser.am"
+        #line 279 "./src/dap/mi_parser.am"
         return v;
     }
-    #line 250 "./src/dap/mi_parser.am"
+    #line 281 "./src/dap/mi_parser.am"
     i64 n = String_Length(self->Input);
-    #line 251 "./src/dap/mi_parser.am"
+    #line 282 "./src/dap/mi_parser.am"
     while (self->Pos < n) {
-        #line 252 "./src/dap/mi_parser.am"
+        #line 283 "./src/dap/mi_parser.am"
         code_string key = Amalgame_Compiler_MiParser_ParseIdent(self);
-        #line 253 "./src/dap/mi_parser.am"
+        #line 284 "./src/dap/mi_parser.am"
         if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "=")) {
             self->Pos = (self->Pos + 1);
         }
-        #line 254 "./src/dap/mi_parser.am"
+        #line 285 "./src/dap/mi_parser.am"
         Amalgame_Compiler_MiValue* val = Amalgame_Compiler_MiParser_ParseValue(self);
-        #line 255 "./src/dap/mi_parser.am"
+        #line 286 "./src/dap/mi_parser.am"
         AmalgameList_add(v->TupleKeys, (void*)(intptr_t)(key));
-        #line 256 "./src/dap/mi_parser.am"
+        #line 287 "./src/dap/mi_parser.am"
         AmalgameList_add(v->TupleVals, (void*)(intptr_t)(val));
-        #line 257 "./src/dap/mi_parser.am"
+        #line 288 "./src/dap/mi_parser.am"
         if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), ",")) {
-            #line 258 "./src/dap/mi_parser.am"
+            #line 289 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
-            #line 259 "./src/dap/mi_parser.am"
+            #line 290 "./src/dap/mi_parser.am"
             continue;
         }
-        #line 261 "./src/dap/mi_parser.am"
+        #line 292 "./src/dap/mi_parser.am"
         if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "}")) {
-            #line 262 "./src/dap/mi_parser.am"
+            #line 293 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
-            #line 263 "./src/dap/mi_parser.am"
+            #line 294 "./src/dap/mi_parser.am"
             return v;
         }
-        #line 265 "./src/dap/mi_parser.am"
+        #line 296 "./src/dap/mi_parser.am"
         break;
     }
-    #line 267 "./src/dap/mi_parser.am"
+    #line 298 "./src/dap/mi_parser.am"
     return v;
 }
 
 static Amalgame_Compiler_MiValue* Amalgame_Compiler_MiParser_ParseList(Amalgame_Compiler_MiParser* self) {
-    #line 271 "./src/dap/mi_parser.am"
+    #line 302 "./src/dap/mi_parser.am"
     Amalgame_Compiler_MiValue* v = Amalgame_Compiler_MiValue_new();
-    #line 272 "./src/dap/mi_parser.am"
+    #line 303 "./src/dap/mi_parser.am"
     v->Kind = 2;
-    #line 273 "./src/dap/mi_parser.am"
+    #line 304 "./src/dap/mi_parser.am"
     if (!code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "[")) {
         return v;
     }
-    #line 274 "./src/dap/mi_parser.am"
+    #line 305 "./src/dap/mi_parser.am"
     self->Pos = (self->Pos + 1);
-    #line 275 "./src/dap/mi_parser.am"
+    #line 306 "./src/dap/mi_parser.am"
     if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "]")) {
-        #line 276 "./src/dap/mi_parser.am"
+        #line 307 "./src/dap/mi_parser.am"
         self->Pos = (self->Pos + 1);
-        #line 277 "./src/dap/mi_parser.am"
+        #line 308 "./src/dap/mi_parser.am"
         return v;
     }
-    #line 279 "./src/dap/mi_parser.am"
+    #line 310 "./src/dap/mi_parser.am"
     i64 n = String_Length(self->Input);
-    #line 280 "./src/dap/mi_parser.am"
+    #line 311 "./src/dap/mi_parser.am"
     while (self->Pos < n) {
-        #line 285 "./src/dap/mi_parser.am"
+        #line 316 "./src/dap/mi_parser.am"
         i64 savedPos = self->Pos;
-        #line 286 "./src/dap/mi_parser.am"
+        #line 317 "./src/dap/mi_parser.am"
         code_string maybeKey = Amalgame_Compiler_MiParser_ParseIdent(self);
-        #line 287 "./src/dap/mi_parser.am"
+        #line 318 "./src/dap/mi_parser.am"
         if ((String_Length(maybeKey) > 0) && (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "="))) {
-            #line 288 "./src/dap/mi_parser.am"
+            #line 319 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
-            #line 289 "./src/dap/mi_parser.am"
+            #line 320 "./src/dap/mi_parser.am"
             Amalgame_Compiler_MiValue* val = Amalgame_Compiler_MiParser_ParseValue(self);
-            #line 290 "./src/dap/mi_parser.am"
+            #line 321 "./src/dap/mi_parser.am"
             AmalgameList_add(v->ListKeys, (void*)(intptr_t)(maybeKey));
-            #line 291 "./src/dap/mi_parser.am"
+            #line 322 "./src/dap/mi_parser.am"
             AmalgameList_add(v->ListItems, (void*)(intptr_t)(val));
         } else {
-            #line 293 "./src/dap/mi_parser.am"
+            #line 324 "./src/dap/mi_parser.am"
             self->Pos = savedPos;
-            #line 294 "./src/dap/mi_parser.am"
+            #line 325 "./src/dap/mi_parser.am"
             Amalgame_Compiler_MiValue* val = Amalgame_Compiler_MiParser_ParseValue(self);
-            #line 295 "./src/dap/mi_parser.am"
+            #line 326 "./src/dap/mi_parser.am"
             AmalgameList_add(v->ListKeys, (void*)(intptr_t)(""));
-            #line 296 "./src/dap/mi_parser.am"
+            #line 327 "./src/dap/mi_parser.am"
             AmalgameList_add(v->ListItems, (void*)(intptr_t)(val));
         }
-        #line 298 "./src/dap/mi_parser.am"
+        #line 329 "./src/dap/mi_parser.am"
         if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), ",")) {
-            #line 299 "./src/dap/mi_parser.am"
+            #line 330 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
-            #line 300 "./src/dap/mi_parser.am"
+            #line 331 "./src/dap/mi_parser.am"
             continue;
         }
-        #line 302 "./src/dap/mi_parser.am"
+        #line 333 "./src/dap/mi_parser.am"
         if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "]")) {
-            #line 303 "./src/dap/mi_parser.am"
+            #line 334 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
-            #line 304 "./src/dap/mi_parser.am"
+            #line 335 "./src/dap/mi_parser.am"
             return v;
         }
-        #line 306 "./src/dap/mi_parser.am"
+        #line 337 "./src/dap/mi_parser.am"
         break;
     }
-    #line 308 "./src/dap/mi_parser.am"
+    #line 339 "./src/dap/mi_parser.am"
     return v;
 }
 
 Amalgame_Compiler_MiRecord* Amalgame_Compiler_MiParser_ParseRecord(Amalgame_Compiler_MiParser* self) {
-    #line 314 "./src/dap/mi_parser.am"
+    #line 345 "./src/dap/mi_parser.am"
     Amalgame_Compiler_MiRecord* rec = Amalgame_Compiler_MiRecord_new();
-    #line 316 "./src/dap/mi_parser.am"
+    #line 347 "./src/dap/mi_parser.am"
     code_string tokenStr = "";
-    #line 317 "./src/dap/mi_parser.am"
+    #line 348 "./src/dap/mi_parser.am"
     while (self->Pos < String_Length(self->Input)) {
-        #line 318 "./src/dap/mi_parser.am"
+        #line 349 "./src/dap/mi_parser.am"
         code_string c = String_Substring(self->Input, self->Pos, 1);
-        #line 319 "./src/dap/mi_parser.am"
+        #line 350 "./src/dap/mi_parser.am"
         if (Amalgame_Compiler_MiParser_IsDigit(c)) {
-            #line 320 "./src/dap/mi_parser.am"
+            #line 351 "./src/dap/mi_parser.am"
             tokenStr = (code_string_concat(tokenStr, c));
-            #line 321 "./src/dap/mi_parser.am"
+            #line 352 "./src/dap/mi_parser.am"
             self->Pos = (self->Pos + 1);
         } else {
-            #line 322 "./src/dap/mi_parser.am"
+            #line 353 "./src/dap/mi_parser.am"
             break;
         }
     }
-    #line 324 "./src/dap/mi_parser.am"
+    #line 355 "./src/dap/mi_parser.am"
     if (String_Length(tokenStr) > 0) {
-        #line 325 "./src/dap/mi_parser.am"
+        #line 356 "./src/dap/mi_parser.am"
         rec->Token = String_ToInt(tokenStr);
     }
-    #line 327 "./src/dap/mi_parser.am"
+    #line 358 "./src/dap/mi_parser.am"
     code_string prefix = Amalgame_Compiler_MiParser_Peek(self);
-    #line 328 "./src/dap/mi_parser.am"
+    #line 359 "./src/dap/mi_parser.am"
     if (code_string_equals(prefix, "^")) {
         rec->RecordKind = 0;
     } else if (code_string_equals(prefix, "*")) {
-        #line 329 "./src/dap/mi_parser.am"
+        #line 360 "./src/dap/mi_parser.am"
         rec->RecordKind = 1;
     } else if (code_string_equals(prefix, "+")) {
-        #line 330 "./src/dap/mi_parser.am"
+        #line 361 "./src/dap/mi_parser.am"
         rec->RecordKind = 2;
     } else if (code_string_equals(prefix, "=")) {
-        #line 331 "./src/dap/mi_parser.am"
+        #line 362 "./src/dap/mi_parser.am"
         rec->RecordKind = 3;
     } else if (code_string_equals(prefix, "~")) {
-        #line 332 "./src/dap/mi_parser.am"
+        #line 363 "./src/dap/mi_parser.am"
         rec->RecordKind = 4;
     } else if (code_string_equals(prefix, "@")) {
-        #line 333 "./src/dap/mi_parser.am"
+        #line 364 "./src/dap/mi_parser.am"
         rec->RecordKind = 5;
     } else if (code_string_equals(prefix, "&")) {
-        #line 334 "./src/dap/mi_parser.am"
+        #line 365 "./src/dap/mi_parser.am"
         rec->RecordKind = 6;
     } else if (code_string_equals(prefix, "(")) {
-        #line 337 "./src/dap/mi_parser.am"
+        #line 368 "./src/dap/mi_parser.am"
         rec->RecordKind = 7;
-        #line 338 "./src/dap/mi_parser.am"
+        #line 369 "./src/dap/mi_parser.am"
         return rec;
     } else {
-        #line 342 "./src/dap/mi_parser.am"
+        #line 373 "./src/dap/mi_parser.am"
         return rec;
     }
-    #line 344 "./src/dap/mi_parser.am"
+    #line 375 "./src/dap/mi_parser.am"
     self->Pos = (self->Pos + 1);
-    #line 346 "./src/dap/mi_parser.am"
+    #line 377 "./src/dap/mi_parser.am"
     if (((rec->RecordKind == 4) || (rec->RecordKind == 5)) || (rec->RecordKind == 6)) {
-        #line 347 "./src/dap/mi_parser.am"
+        #line 378 "./src/dap/mi_parser.am"
         rec->StreamText = Amalgame_Compiler_MiParser_ParseCString(self);
-        #line 348 "./src/dap/mi_parser.am"
+        #line 379 "./src/dap/mi_parser.am"
         return rec;
     }
-    #line 351 "./src/dap/mi_parser.am"
+    #line 382 "./src/dap/mi_parser.am"
     rec->Class = Amalgame_Compiler_MiParser_ParseIdent(self);
-    #line 352 "./src/dap/mi_parser.am"
+    #line 383 "./src/dap/mi_parser.am"
     if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), ",")) {
-        #line 353 "./src/dap/mi_parser.am"
+        #line 384 "./src/dap/mi_parser.am"
         self->Pos = (self->Pos + 1);
-        #line 354 "./src/dap/mi_parser.am"
+        #line 385 "./src/dap/mi_parser.am"
         Amalgame_Compiler_MiParser_ParseResultList(self, rec);
     }
-    #line 356 "./src/dap/mi_parser.am"
+    #line 387 "./src/dap/mi_parser.am"
     return rec;
 }
 
 static void Amalgame_Compiler_MiParser_ParseResultList(Amalgame_Compiler_MiParser* self, Amalgame_Compiler_MiRecord* rec) {
-    #line 360 "./src/dap/mi_parser.am"
+    #line 391 "./src/dap/mi_parser.am"
     i64 n = String_Length(self->Input);
-    #line 361 "./src/dap/mi_parser.am"
+    #line 392 "./src/dap/mi_parser.am"
     while (self->Pos < n) {
-        #line 362 "./src/dap/mi_parser.am"
+        #line 393 "./src/dap/mi_parser.am"
         code_string key = Amalgame_Compiler_MiParser_ParseIdent(self);
-        #line 363 "./src/dap/mi_parser.am"
+        #line 394 "./src/dap/mi_parser.am"
         if (String_Length(key) == 0) {
             break;
         }
-        #line 364 "./src/dap/mi_parser.am"
+        #line 395 "./src/dap/mi_parser.am"
         if (code_string_equals(Amalgame_Compiler_MiParser_Peek(self), "=")) {
             self->Pos = (self->Pos + 1);
         }
-        #line 365 "./src/dap/mi_parser.am"
+        #line 396 "./src/dap/mi_parser.am"
         Amalgame_Compiler_MiValue* val = Amalgame_Compiler_MiParser_ParseValue(self);
-        #line 366 "./src/dap/mi_parser.am"
+        #line 397 "./src/dap/mi_parser.am"
         AmalgameList_add(rec->Results, (void*)(intptr_t)(key));
-        #line 367 "./src/dap/mi_parser.am"
+        #line 398 "./src/dap/mi_parser.am"
         AmalgameList_add(rec->Values, (void*)(intptr_t)(val));
-        #line 368 "./src/dap/mi_parser.am"
+        #line 399 "./src/dap/mi_parser.am"
         if (!code_string_equals(Amalgame_Compiler_MiParser_Peek(self), ",")) {
             break;
         }
-        #line 369 "./src/dap/mi_parser.am"
+        #line 400 "./src/dap/mi_parser.am"
         self->Pos = (self->Pos + 1);
     }
 }
@@ -30303,19 +30349,45 @@ static i64 Amalgame_Compiler_DapServer_RunSelfTestMi() {
         #line 343 "./src/dap.am"
         failures = (failures + 1);
     }
-    #line 345 "./src/dap.am"
+    #line 350 "./src/dap.am"
+    code_string in9 = "^done,path=\"/tmp/D\\303\\251v\"";
+    #line 351 "./src/dap.am"
+    Amalgame_Compiler_MiParser* p9 = Amalgame_Compiler_MiParser_new(in9);
+    #line 352 "./src/dap.am"
+    Amalgame_Compiler_MiRecord* r9 = Amalgame_Compiler_MiParser_ParseRecord(p9);
+    #line 353 "./src/dap.am"
+    Amalgame_Compiler_MiValue* pathVal = Amalgame_Compiler_MiRecord_ResultOrNull(r9, "path");
+    #line 354 "./src/dap.am"
+    code_string path = "";
+    #line 355 "./src/dap.am"
+    if (pathVal != NULL) {
+        path = pathVal->Str;
+    }
+    #line 359 "./src/dap.am"
+    code_string expected = code_string_concat((code_string_concat((code_string_concat("/tmp/D", String_FromByte(195))), String_FromByte(169))), "v");
+    #line 360 "./src/dap.am"
+    if (code_string_equals(path, expected)) {
+        #line 361 "./src/dap.am"
+        Console_WriteLine("[PASS] mi: octal \\NNN escape (UTF-8 byte)");
+    } else {
+        #line 363 "./src/dap.am"
+        Console_WriteLine(code_string_concat((code_string_concat("[FAIL] mi: octal escape (got '", path)), "')"));
+        #line 364 "./src/dap.am"
+        failures = (failures + 1);
+    }
+    #line 366 "./src/dap.am"
     if (failures > 0) {
-        #line 346 "./src/dap.am"
+        #line 367 "./src/dap.am"
         Console_WriteError(code_string_concat((code_string_concat("amc dap --self-test-mi: ", String_FromInt(failures))), " case(s) failed"));
-        #line 347 "./src/dap.am"
+        #line 368 "./src/dap.am"
         return 1;
     }
-    #line 349 "./src/dap.am"
+    #line 370 "./src/dap.am"
     return 0;
 }
 
 static void Amalgame_Compiler_DapServer_ParseFlags(Amalgame_Compiler_DapServer* self) {
-    #line 357 "./src/dap.am"
+    #line 378 "./src/dap.am"
     { /* inline-C */
         
                     for (int i = 2; i < code_argc; i++) {
@@ -30337,33 +30409,33 @@ static void Amalgame_Compiler_DapServer_ParseFlags(Amalgame_Compiler_DapServer* 
 }
 
 i64 Amalgame_Compiler_DapServer_RunBridge(Amalgame_Compiler_DapServer* self) {
-    #line 391 "./src/dap.am"
+    #line 412 "./src/dap.am"
     if (!Amalgame_Compiler_DapServer_HasFlag(self, "--bridge")) {
-        #line 392 "./src/dap.am"
+        #line 413 "./src/dap.am"
         return Amalgame_Compiler_DapServer_RunRaw(self);
     }
-    #line 394 "./src/dap.am"
+    #line 415 "./src/dap.am"
     code_string gdbPath = Amalgame_Compiler_DapServer_Probe("gdb");
-    #line 395 "./src/dap.am"
+    #line 416 "./src/dap.am"
     if (String_Length(gdbPath) == 0) {
-        #line 396 "./src/dap.am"
+        #line 417 "./src/dap.am"
         Console_WriteError("amc dap --bridge: gdb not on PATH; falling back to --raw");
-        #line 397 "./src/dap.am"
+        #line 418 "./src/dap.am"
         return Amalgame_Compiler_DapServer_RunRaw(self);
     }
-    #line 399 "./src/dap.am"
+    #line 420 "./src/dap.am"
     i64 spawnRc = Amalgame_Compiler_DapServer_SpawnGdb(self, gdbPath);
-    #line 400 "./src/dap.am"
+    #line 421 "./src/dap.am"
     if (spawnRc != 0) {
-        #line 401 "./src/dap.am"
+        #line 422 "./src/dap.am"
         return spawnRc;
     }
-    #line 403 "./src/dap.am"
+    #line 424 "./src/dap.am"
     return Amalgame_Compiler_DapServer_PollLoop(self);
 }
 
 static i64 Amalgame_Compiler_DapServer_SpawnGdb(Amalgame_Compiler_DapServer* self, code_string gdbPath) {
-    #line 414 "./src/dap.am"
+    #line 435 "./src/dap.am"
     { /* inline-C */
         
                     int parentToChild[2];  // parent writes, child reads → gdb stdin
@@ -30416,54 +30488,54 @@ static i64 Amalgame_Compiler_DapServer_SpawnGdb(Amalgame_Compiler_DapServer* sel
 }
 
 static i64 Amalgame_Compiler_DapServer_PollLoop(Amalgame_Compiler_DapServer* self) {
-    #line 468 "./src/dap.am"
+    #line 489 "./src/dap.am"
     while (!self->StopRequested) {
-        #line 469 "./src/dap.am"
+        #line 490 "./src/dap.am"
         i64 what = Amalgame_Compiler_DapServer_PollOnce(self);
-        #line 470 "./src/dap.am"
+        #line 491 "./src/dap.am"
         if (what == 0) {
-            #line 473 "./src/dap.am"
+            #line 494 "./src/dap.am"
             code_string chunk = Amalgame_Compiler_DapServer_ReadFromFd(self, 0);
-            #line 474 "./src/dap.am"
+            #line 495 "./src/dap.am"
             if (String_Length(chunk) == 0) {
-                #line 475 "./src/dap.am"
+                #line 496 "./src/dap.am"
                 self->StdinOpen = 0;
-                #line 476 "./src/dap.am"
+                #line 497 "./src/dap.am"
                 Amalgame_Compiler_DapServer_CloseGdbStdin(self);
             } else {
-                #line 478 "./src/dap.am"
+                #line 499 "./src/dap.am"
                 Amalgame_Compiler_DapServer_OnDapInput(self, chunk);
             }
         } else if (what == 1) {
-            #line 483 "./src/dap.am"
+            #line 504 "./src/dap.am"
             code_string chunk = Amalgame_Compiler_DapServer_ReadFromFd(self, 1);
-            #line 484 "./src/dap.am"
+            #line 505 "./src/dap.am"
             if (String_Length(chunk) == 0) {
                 break;
             }
-            #line 485 "./src/dap.am"
+            #line 506 "./src/dap.am"
             Amalgame_Compiler_DapServer_OnGdbOutput(self, chunk);
         } else if (what == 2) {
-            #line 489 "./src/dap.am"
+            #line 510 "./src/dap.am"
             self->StdinOpen = 0;
-            #line 490 "./src/dap.am"
+            #line 511 "./src/dap.am"
             Amalgame_Compiler_DapServer_CloseGdbStdin(self);
         } else if (what == 3) {
-            #line 493 "./src/dap.am"
+            #line 514 "./src/dap.am"
             break;
         } else {
-            #line 495 "./src/dap.am"
+            #line 516 "./src/dap.am"
             break;
         }
     }
-    #line 498 "./src/dap.am"
+    #line 519 "./src/dap.am"
     Amalgame_Compiler_DapServer_Cleanup(self);
-    #line 499 "./src/dap.am"
+    #line 520 "./src/dap.am"
     return 0;
 }
 
 static i64 Amalgame_Compiler_DapServer_PollOnce(Amalgame_Compiler_DapServer* self) {
-    #line 507 "./src/dap.am"
+    #line 528 "./src/dap.am"
     { /* inline-C */
         
                     struct pollfd fds[2];
@@ -30493,7 +30565,7 @@ static i64 Amalgame_Compiler_DapServer_PollOnce(Amalgame_Compiler_DapServer* sel
 }
 
 static code_string Amalgame_Compiler_DapServer_ReadFromFd(Amalgame_Compiler_DapServer* self, i64 which) {
-    #line 539 "./src/dap.am"
+    #line 560 "./src/dap.am"
     { /* inline-C */
         
                     int fd = (which == 0) ? 0 : (int) self->GdbOutFd;
@@ -30519,7 +30591,7 @@ static code_string Amalgame_Compiler_DapServer_ReadFromFd(Amalgame_Compiler_DapS
 }
 
 void Amalgame_Compiler_DapServer_WriteToFd(Amalgame_Compiler_DapServer* self, i64 which, code_string s) {
-    #line 566 "./src/dap.am"
+    #line 587 "./src/dap.am"
     { /* inline-C */
         
                     int fd = (which == 1) ? (int) self->GdbInFd : 1;
@@ -30541,7 +30613,7 @@ void Amalgame_Compiler_DapServer_WriteToFd(Amalgame_Compiler_DapServer* self, i6
 }
 
 void Amalgame_Compiler_DapServer_CloseGdbStdin(Amalgame_Compiler_DapServer* self) {
-    #line 587 "./src/dap.am"
+    #line 608 "./src/dap.am"
     { /* inline-C */
         
                     if (self->GdbInFd >= 0) {
@@ -30553,1192 +30625,1192 @@ void Amalgame_Compiler_DapServer_CloseGdbStdin(Amalgame_Compiler_DapServer* self
 }
 
 static void Amalgame_Compiler_DapServer_OnDapInput(Amalgame_Compiler_DapServer* self, code_string chunk) {
-    #line 601 "./src/dap.am"
+    #line 622 "./src/dap.am"
     self->DapInputBuf = (code_string_concat(self->DapInputBuf, chunk));
-    #line 602 "./src/dap.am"
+    #line 623 "./src/dap.am"
     while (1) {
-        #line 603 "./src/dap.am"
+        #line 624 "./src/dap.am"
         code_string body = Amalgame_Compiler_DapServer_TryExtractDapFrame(self);
-        #line 604 "./src/dap.am"
+        #line 625 "./src/dap.am"
         if (String_Length(body) == 0) {
             break;
         }
-        #line 605 "./src/dap.am"
+        #line 626 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleDapMessage(self, body);
     }
 }
 
 static code_string Amalgame_Compiler_DapServer_Crlf() {
-    #line 621 "./src/dap.am"
+    #line 642 "./src/dap.am"
     return code_string_concat(String_FromByte(13), "\n");
 }
 
 static code_string Amalgame_Compiler_DapServer_CrlfCrlf() {
-    #line 622 "./src/dap.am"
+    #line 643 "./src/dap.am"
     return code_string_concat(Amalgame_Compiler_DapServer_Crlf(), Amalgame_Compiler_DapServer_Crlf());
 }
 
 static code_string Amalgame_Compiler_DapServer_TryExtractDapFrame(Amalgame_Compiler_DapServer* self) {
-    #line 625 "./src/dap.am"
+    #line 646 "./src/dap.am"
     code_string buf = self->DapInputBuf;
-    #line 626 "./src/dap.am"
+    #line 647 "./src/dap.am"
     i64 headEnd = String_IndexOf(buf, Amalgame_Compiler_DapServer_CrlfCrlf());
-    #line 627 "./src/dap.am"
+    #line 648 "./src/dap.am"
     if (headEnd < 0) {
         return "";
     }
-    #line 628 "./src/dap.am"
+    #line 649 "./src/dap.am"
     code_string header = String_Substring(buf, 0, headEnd);
-    #line 629 "./src/dap.am"
+    #line 650 "./src/dap.am"
     code_string needle = "Content-Length:";
-    #line 630 "./src/dap.am"
+    #line 651 "./src/dap.am"
     i64 lpi = String_IndexOf(header, needle);
-    #line 631 "./src/dap.am"
+    #line 652 "./src/dap.am"
     if (lpi < 0) {
-        #line 633 "./src/dap.am"
+        #line 654 "./src/dap.am"
         self->DapInputBuf = String_Substring(buf, headEnd + 4, (String_Length(buf) - headEnd) - 4);
-        #line 634 "./src/dap.am"
+        #line 655 "./src/dap.am"
         return "";
     }
-    #line 636 "./src/dap.am"
+    #line 657 "./src/dap.am"
     i64 valueStart = lpi + String_Length(needle);
-    #line 637 "./src/dap.am"
+    #line 658 "./src/dap.am"
     i64 lenN = 0;
-    #line 638 "./src/dap.am"
+    #line 659 "./src/dap.am"
     i64 i = valueStart;
-    #line 640 "./src/dap.am"
+    #line 661 "./src/dap.am"
     while (i < String_Length(header)) {
-        #line 641 "./src/dap.am"
+        #line 662 "./src/dap.am"
         code_string c = String_Substring(header, i, 1);
-        #line 642 "./src/dap.am"
+        #line 663 "./src/dap.am"
         if ((code_string_equals(c, " ")) || (code_string_equals(c, "\t"))) {
             i = (i + 1);
         } else {
             break;
         }
     }
-    #line 644 "./src/dap.am"
+    #line 665 "./src/dap.am"
     while (i < String_Length(header)) {
-        #line 645 "./src/dap.am"
+        #line 666 "./src/dap.am"
         code_string c = String_Substring(header, i, 1);
-        #line 646 "./src/dap.am"
+        #line 667 "./src/dap.am"
         if (Amalgame_Compiler_MiParser_IsDigit(c)) {
-            #line 647 "./src/dap.am"
+            #line 668 "./src/dap.am"
             lenN = ((lenN * 10) + String_ToInt(c));
-            #line 648 "./src/dap.am"
+            #line 669 "./src/dap.am"
             i = (i + 1);
         } else {
-            #line 649 "./src/dap.am"
+            #line 670 "./src/dap.am"
             break;
         }
     }
-    #line 651 "./src/dap.am"
+    #line 672 "./src/dap.am"
     i64 bodyStart = headEnd + 4;
-    #line 652 "./src/dap.am"
+    #line 673 "./src/dap.am"
     i64 bufLen = String_Length(buf);
-    #line 653 "./src/dap.am"
+    #line 674 "./src/dap.am"
     if ((bufLen - bodyStart) < lenN) {
         return "";
     }
-    #line 654 "./src/dap.am"
+    #line 675 "./src/dap.am"
     code_string body = String_Substring(buf, bodyStart, lenN);
-    #line 655 "./src/dap.am"
+    #line 676 "./src/dap.am"
     self->DapInputBuf = String_Substring(buf, bodyStart + lenN, (bufLen - bodyStart) - lenN);
-    #line 656 "./src/dap.am"
+    #line 677 "./src/dap.am"
     return body;
 }
 
 void Amalgame_Compiler_DapServer_SendDapFrame(Amalgame_Compiler_DapServer* self, code_string body) {
-    #line 663 "./src/dap.am"
+    #line 684 "./src/dap.am"
     code_string frame = code_string_concat((code_string_concat((code_string_concat("Content-Length: ", String_FromInt(String_Length(body)))), Amalgame_Compiler_DapServer_CrlfCrlf())), body);
-    #line 664 "./src/dap.am"
+    #line 685 "./src/dap.am"
     Amalgame_Compiler_DapServer_WriteToFd(self, 2, frame);
 }
 
 static void Amalgame_Compiler_DapServer_OnGdbOutput(Amalgame_Compiler_DapServer* self, code_string chunk) {
-    #line 672 "./src/dap.am"
+    #line 693 "./src/dap.am"
     self->GdbInputBuf = (code_string_concat(self->GdbInputBuf, chunk));
-    #line 673 "./src/dap.am"
+    #line 694 "./src/dap.am"
     code_string buf = self->GdbInputBuf;
-    #line 674 "./src/dap.am"
+    #line 695 "./src/dap.am"
     i64 bufLen = String_Length(buf);
-    #line 675 "./src/dap.am"
+    #line 696 "./src/dap.am"
     i64 pos = 0;
-    #line 676 "./src/dap.am"
+    #line 697 "./src/dap.am"
     while (pos < bufLen) {
-        #line 677 "./src/dap.am"
+        #line 698 "./src/dap.am"
         code_string rest = String_Substring(buf, pos, bufLen - pos);
-        #line 678 "./src/dap.am"
+        #line 699 "./src/dap.am"
         i64 nl = String_IndexOf(rest, "\n");
-        #line 679 "./src/dap.am"
+        #line 700 "./src/dap.am"
         if (nl < 0) {
             break;
         }
-        #line 680 "./src/dap.am"
+        #line 701 "./src/dap.am"
         code_string raw = String_Substring(buf, pos, nl);
-        #line 681 "./src/dap.am"
+        #line 702 "./src/dap.am"
         code_string line = String_Trim(raw);
-        #line 682 "./src/dap.am"
+        #line 703 "./src/dap.am"
         if (String_Length(line) > 0) {
-            #line 683 "./src/dap.am"
+            #line 704 "./src/dap.am"
             Amalgame_Compiler_DapServer_HandleMiLine(self, line);
         }
-        #line 685 "./src/dap.am"
+        #line 706 "./src/dap.am"
         pos = ((pos + nl) + 1);
     }
-    #line 687 "./src/dap.am"
+    #line 708 "./src/dap.am"
     self->GdbInputBuf = String_Substring(buf, pos, bufLen - pos);
 }
 
 static void Amalgame_Compiler_DapServer_HandleMiLine(Amalgame_Compiler_DapServer* self, code_string line) {
-    #line 697 "./src/dap.am"
+    #line 718 "./src/dap.am"
     Amalgame_Compiler_MiParser* parser = Amalgame_Compiler_MiParser_new(line);
-    #line 698 "./src/dap.am"
+    #line 719 "./src/dap.am"
     Amalgame_Compiler_MiRecord* rec = Amalgame_Compiler_MiParser_ParseRecord(parser);
-    #line 699 "./src/dap.am"
+    #line 720 "./src/dap.am"
     if (rec->RecordKind == 0) {
         Amalgame_Compiler_DapServer_HandleMiResult(self, rec);
     } else if (rec->RecordKind == 1) {
-        #line 700 "./src/dap.am"
+        #line 721 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleMiExecAsync(self, rec);
     } else if (rec->RecordKind == 3) {
-        #line 701 "./src/dap.am"
+        #line 722 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleMiNotifyAsync(self, rec);
     }
 }
 
 static void Amalgame_Compiler_DapServer_HandleMiResult(Amalgame_Compiler_DapServer* self, Amalgame_Compiler_MiRecord* rec) {
-    #line 710 "./src/dap.am"
+    #line 731 "./src/dap.am"
     if (rec->Token < 0) {
         return;
     }
-    #line 711 "./src/dap.am"
+    #line 732 "./src/dap.am"
     i64 idx = Amalgame_Compiler_DapServer_FindMiTokenIndex(self, rec->Token);
-    #line 712 "./src/dap.am"
+    #line 733 "./src/dap.am"
     if (idx < 0) {
         return;
     }
-    #line 713 "./src/dap.am"
+    #line 734 "./src/dap.am"
     i64 dapSeq = (i64)(intptr_t)AmalgameList_get(self->MiTokensReq, idx);
-    #line 714 "./src/dap.am"
+    #line 735 "./src/dap.am"
     code_string kind = (code_string)AmalgameList_get(self->MiTokensKind, idx);
-    #line 715 "./src/dap.am"
+    #line 736 "./src/dap.am"
     Amalgame_Compiler_DapServer_ReleaseMiTokenAt(self, idx);
-    #line 716 "./src/dap.am"
+    #line 737 "./src/dap.am"
     if (code_string_equals(kind, "launch")) {
         Amalgame_Compiler_DapServer_RespondLaunch(self, dapSeq, rec);
     } else if (code_string_equals(kind, "setBreakpoints")) {
-        #line 717 "./src/dap.am"
+        #line 738 "./src/dap.am"
         Amalgame_Compiler_DapServer_RespondSetBreakpoints(self, dapSeq, rec);
     } else if (code_string_equals(kind, "configurationDone")) {
-        #line 718 "./src/dap.am"
+        #line 739 "./src/dap.am"
         Amalgame_Compiler_DapServer_RespondConfigurationDone(self, dapSeq, rec);
     } else if (code_string_equals(kind, "stackTrace")) {
-        #line 719 "./src/dap.am"
+        #line 740 "./src/dap.am"
         Amalgame_Compiler_DapServer_RespondStackTrace(self, dapSeq, rec);
     } else if (code_string_equals(kind, "variables")) {
-        #line 720 "./src/dap.am"
+        #line 741 "./src/dap.am"
         Amalgame_Compiler_DapServer_RespondVariables(self, dapSeq, rec);
     } else if (code_string_equals(kind, "varFollowup")) {
-        #line 721 "./src/dap.am"
+        #line 742 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleVarFollowupResponse(self, rec);
     } else if (code_string_equals(kind, "evaluate")) {
-        #line 722 "./src/dap.am"
+        #line 743 "./src/dap.am"
         Amalgame_Compiler_DapServer_RespondEvaluate(self, dapSeq, rec);
     }
 }
 
 static void Amalgame_Compiler_DapServer_HandleMiExecAsync(Amalgame_Compiler_DapServer* self, Amalgame_Compiler_MiRecord* rec) {
-    #line 733 "./src/dap.am"
+    #line 754 "./src/dap.am"
     if (code_string_equals(rec->Class, "stopped")) {
-        #line 734 "./src/dap.am"
+        #line 755 "./src/dap.am"
         Amalgame_Compiler_DapServer_EmitStoppedEvent(self, rec);
     }
 }
 
 static void Amalgame_Compiler_DapServer_HandleMiNotifyAsync(Amalgame_Compiler_DapServer* self, Amalgame_Compiler_MiRecord* rec) {
-    #line 745 "./src/dap.am"
+    #line 766 "./src/dap.am"
     if (code_string_equals(rec->Class, "thread-group-exited")) {
-        #line 747 "./src/dap.am"
+        #line 768 "./src/dap.am"
         code_string evt = code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"event\"")), ",\"event\":\"terminated\"")), ",\"body\":{}}");
-        #line 751 "./src/dap.am"
+        #line 772 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapFrame(self, evt);
     }
 }
 
 static code_bool Amalgame_Compiler_DapServer_IsHiddenFrameFunc(Amalgame_Compiler_DapServer* self, code_string funcS) {
-    #line 769 "./src/dap.am"
+    #line 790 "./src/dap.am"
     if (self->ShowRuntime) {
         return 0;
     }
-    #line 770 "./src/dap.am"
+    #line 791 "./src/dap.am"
     if (String_StartsWith(funcS, "Amalgame_")) {
         return 1;
     }
-    #line 771 "./src/dap.am"
+    #line 792 "./src/dap.am"
     if (String_StartsWith(funcS, "_runtime_")) {
         return 1;
     }
-    #line 772 "./src/dap.am"
+    #line 793 "./src/dap.am"
     if (String_StartsWith(funcS, "GC_")) {
         return 1;
     }
-    #line 773 "./src/dap.am"
+    #line 794 "./src/dap.am"
     return 0;
 }
 
 static void Amalgame_Compiler_DapServer_EmitStoppedEvent(Amalgame_Compiler_DapServer* self, Amalgame_Compiler_MiRecord* rec) {
-    #line 781 "./src/dap.am"
+    #line 802 "./src/dap.am"
     if (self->StepBudget > 0) {
-        #line 782 "./src/dap.am"
+        #line 803 "./src/dap.am"
         Amalgame_Compiler_MiValue* frameV = Amalgame_Compiler_MiRecord_ResultOrNull(rec, "frame");
-        #line 783 "./src/dap.am"
+        #line 804 "./src/dap.am"
         code_string funcS = "";
-        #line 784 "./src/dap.am"
+        #line 805 "./src/dap.am"
         if (frameV != NULL) {
             funcS = Amalgame_Compiler_MiValue_FieldString(frameV, "func");
         }
-        #line 785 "./src/dap.am"
+        #line 806 "./src/dap.am"
         if (Amalgame_Compiler_DapServer_IsHiddenFrameFunc(self, funcS)) {
-            #line 786 "./src/dap.am"
+            #line 807 "./src/dap.am"
             self->StepBudget = (self->StepBudget - 1);
-            #line 787 "./src/dap.am"
+            #line 808 "./src/dap.am"
             Amalgame_Compiler_DapServer_WriteToFd(self, 1, "-exec-step\n");
-            #line 788 "./src/dap.am"
+            #line 809 "./src/dap.am"
             return;
         }
-        #line 792 "./src/dap.am"
+        #line 813 "./src/dap.am"
         self->StepBudget = 0;
     }
-    #line 794 "./src/dap.am"
+    #line 815 "./src/dap.am"
     code_string reason = "pause";
-    #line 795 "./src/dap.am"
+    #line 816 "./src/dap.am"
     code_string bkptList = "";
-    #line 796 "./src/dap.am"
+    #line 817 "./src/dap.am"
     code_bool isExit = 0;
-    #line 797 "./src/dap.am"
+    #line 818 "./src/dap.am"
     i64 resN = AmalgameList_count(rec->Results);
-    #line 798 "./src/dap.am"
+    #line 819 "./src/dap.am"
     for (i64 i = 0; i < resN; i++) {
-        #line 799 "./src/dap.am"
+        #line 820 "./src/dap.am"
         code_string key = (code_string)AmalgameList_get(rec->Results, i);
-        #line 800 "./src/dap.am"
+        #line 821 "./src/dap.am"
         Amalgame_Compiler_MiValue* val = (Amalgame_Compiler_MiValue*)AmalgameList_get(rec->Values, i);
-        #line 801 "./src/dap.am"
+        #line 822 "./src/dap.am"
         if ((code_string_equals(key, "reason")) && (val->Kind == 0)) {
-            #line 802 "./src/dap.am"
+            #line 823 "./src/dap.am"
             code_string r = val->Str;
-            #line 803 "./src/dap.am"
+            #line 824 "./src/dap.am"
             if (code_string_equals(r, "breakpoint-hit")) {
                 reason = "breakpoint";
             } else if (code_string_equals(r, "end-stepping-range")) {
-                #line 804 "./src/dap.am"
+                #line 825 "./src/dap.am"
                 reason = "step";
             } else if (code_string_equals(r, "signal-received")) {
-                #line 805 "./src/dap.am"
+                #line 826 "./src/dap.am"
                 reason = "exception";
             } else if (code_string_equals(r, "function-finished")) {
-                #line 806 "./src/dap.am"
+                #line 827 "./src/dap.am"
                 reason = "step";
             } else if (code_string_equals(r, "exited-normally")) {
-                #line 807 "./src/dap.am"
+                #line 828 "./src/dap.am"
                 isExit = 1;
             } else if (code_string_equals(r, "exited")) {
-                #line 808 "./src/dap.am"
+                #line 829 "./src/dap.am"
                 isExit = 1;
             } else if (code_string_equals(r, "exited-signalled")) {
-                #line 809 "./src/dap.am"
+                #line 830 "./src/dap.am"
                 isExit = 1;
             } else {
-                #line 810 "./src/dap.am"
+                #line 831 "./src/dap.am"
                 reason = r;
             }
         }
-        #line 812 "./src/dap.am"
+        #line 833 "./src/dap.am"
         if ((code_string_equals(key, "bkptno")) && (val->Kind == 0)) {
-            #line 813 "./src/dap.am"
+            #line 834 "./src/dap.am"
             bkptList = (code_string_concat((code_string_concat(",\"hitBreakpointIds\":[", val->Str)), "]"));
         }
     }
-    #line 820 "./src/dap.am"
+    #line 841 "./src/dap.am"
     if (isExit) {
         return;
     }
-    #line 821 "./src/dap.am"
+    #line 842 "./src/dap.am"
     code_string evt = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"event\"")), ",\"event\":\"stopped\"")), ",\"body\":{")), "\"reason\":\"")), Amalgame_Compiler_Json_EscapeString(reason))), "\"")), ",\"threadId\":1")), ",\"allThreadsStopped\":true")), bkptList)), "}}");
-    #line 830 "./src/dap.am"
+    #line 851 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, evt);
 }
 
 static i64 Amalgame_Compiler_DapServer_IssueMiCommand(Amalgame_Compiler_DapServer* self, i64 dapSeq, code_string command, code_string mi) {
-    #line 840 "./src/dap.am"
+    #line 861 "./src/dap.am"
     i64 tok = self->NextMiToken;
-    #line 841 "./src/dap.am"
+    #line 862 "./src/dap.am"
     self->NextMiToken = (self->NextMiToken + 1);
-    #line 842 "./src/dap.am"
+    #line 863 "./src/dap.am"
     AmalgameList_add(self->MiTokens, (void*)(intptr_t)(tok));
-    #line 843 "./src/dap.am"
+    #line 864 "./src/dap.am"
     AmalgameList_add(self->MiTokensReq, (void*)(intptr_t)(dapSeq));
-    #line 844 "./src/dap.am"
+    #line 865 "./src/dap.am"
     AmalgameList_add(self->MiTokensKind, (void*)(intptr_t)(command));
-    #line 845 "./src/dap.am"
+    #line 866 "./src/dap.am"
     Amalgame_Compiler_DapServer_WriteToFd(self, 1, code_string_concat((code_string_concat(String_FromInt(tok), mi)), "\n"));
-    #line 846 "./src/dap.am"
+    #line 867 "./src/dap.am"
     return tok;
 }
 
 static i64 Amalgame_Compiler_DapServer_FindMiTokenIndex(Amalgame_Compiler_DapServer* self, i64 tok) {
-    #line 850 "./src/dap.am"
+    #line 871 "./src/dap.am"
     i64 n = AmalgameList_count(self->MiTokens);
-    #line 851 "./src/dap.am"
+    #line 872 "./src/dap.am"
     i64 found = -1;
-    #line 852 "./src/dap.am"
+    #line 873 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 853 "./src/dap.am"
+        #line 874 "./src/dap.am"
         if ((i64)(intptr_t)AmalgameList_get(self->MiTokens, i) == tok) {
             found = i;
         }
     }
-    #line 855 "./src/dap.am"
+    #line 876 "./src/dap.am"
     return found;
 }
 
 static void Amalgame_Compiler_DapServer_ReleaseMiTokenAt(Amalgame_Compiler_DapServer* self, i64 idx) {
-    #line 859 "./src/dap.am"
+    #line 880 "./src/dap.am"
     if (idx < 0) {
         return;
     }
-    #line 860 "./src/dap.am"
+    #line 881 "./src/dap.am"
     AmalgameList_removeAt(self->MiTokens, idx);
-    #line 861 "./src/dap.am"
+    #line 882 "./src/dap.am"
     AmalgameList_removeAt(self->MiTokensReq, idx);
-    #line 862 "./src/dap.am"
+    #line 883 "./src/dap.am"
     AmalgameList_removeAt(self->MiTokensKind, idx);
 }
 
 static void Amalgame_Compiler_DapServer_HandleDapMessage(Amalgame_Compiler_DapServer* self, code_string body) {
-    #line 871 "./src/dap.am"
+    #line 892 "./src/dap.am"
     Amalgame_Compiler_JsonResult* parsed = Amalgame_Compiler_Json_Parse(body);
-    #line 872 "./src/dap.am"
+    #line 893 "./src/dap.am"
     if (!parsed->Ok) {
-        #line 875 "./src/dap.am"
+        #line 896 "./src/dap.am"
         return;
     }
-    #line 877 "./src/dap.am"
+    #line 898 "./src/dap.am"
     Amalgame_Compiler_JsonValue* root = parsed->Value;
-    #line 878 "./src/dap.am"
+    #line 899 "./src/dap.am"
     if (Amalgame_Compiler_JsonValue_IsNull(root)) {
         return;
     }
-    #line 879 "./src/dap.am"
+    #line 900 "./src/dap.am"
     code_string typeStr = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(root, "type"));
-    #line 880 "./src/dap.am"
+    #line 901 "./src/dap.am"
     if (!code_string_equals(typeStr, "request")) {
-        #line 883 "./src/dap.am"
+        #line 904 "./src/dap.am"
         return;
     }
-    #line 885 "./src/dap.am"
+    #line 906 "./src/dap.am"
     i64 seq = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(root, "seq"));
-    #line 886 "./src/dap.am"
+    #line 907 "./src/dap.am"
     code_string command = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(root, "command"));
-    #line 887 "./src/dap.am"
+    #line 908 "./src/dap.am"
     Amalgame_Compiler_JsonValue* args = Amalgame_Compiler_JsonValue_Get(root, "arguments");
-    #line 888 "./src/dap.am"
+    #line 909 "./src/dap.am"
     if (code_string_equals(command, "initialize")) {
         Amalgame_Compiler_DapServer_HandleInitialize(self, seq, args);
     } else if (code_string_equals(command, "disconnect")) {
-        #line 889 "./src/dap.am"
+        #line 910 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleDisconnect(self, seq, args);
     } else if (code_string_equals(command, "threads")) {
-        #line 890 "./src/dap.am"
+        #line 911 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleThreads(self, seq);
     } else if (code_string_equals(command, "continue")) {
-        #line 891 "./src/dap.am"
+        #line 912 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleContinue(self, seq, args);
     } else if (code_string_equals(command, "next")) {
-        #line 892 "./src/dap.am"
+        #line 913 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleStep(self, seq, "next", "-exec-next");
     } else if (code_string_equals(command, "stepIn")) {
-        #line 893 "./src/dap.am"
+        #line 914 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleStep(self, seq, "stepIn", "-exec-step");
     } else if (code_string_equals(command, "stepOut")) {
-        #line 894 "./src/dap.am"
+        #line 915 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleStep(self, seq, "stepOut", "-exec-finish");
     } else if (code_string_equals(command, "pause")) {
-        #line 895 "./src/dap.am"
+        #line 916 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandlePause(self, seq, args);
     } else if (code_string_equals(command, "launch")) {
-        #line 896 "./src/dap.am"
+        #line 917 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleLaunch(self, seq, args);
     } else if (code_string_equals(command, "setBreakpoints")) {
-        #line 897 "./src/dap.am"
+        #line 918 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleSetBreakpoints(self, seq, args);
     } else if (code_string_equals(command, "configurationDone")) {
-        #line 898 "./src/dap.am"
+        #line 919 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleConfigurationDone(self, seq, args);
     } else if (code_string_equals(command, "stackTrace")) {
-        #line 899 "./src/dap.am"
+        #line 920 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleStackTrace(self, seq, args);
     } else if (code_string_equals(command, "scopes")) {
-        #line 900 "./src/dap.am"
+        #line 921 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleScopes(self, seq, args);
     } else if (code_string_equals(command, "variables")) {
-        #line 901 "./src/dap.am"
+        #line 922 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleVariables(self, seq, args);
     } else if (code_string_equals(command, "evaluate")) {
-        #line 902 "./src/dap.am"
+        #line 923 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleEvaluate(self, seq, args);
     } else {
-        #line 903 "./src/dap.am"
+        #line 924 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, command, "not implemented in --bridge yet");
     }
 }
 
 static void Amalgame_Compiler_DapServer_HandleThreads(Amalgame_Compiler_DapServer* self, i64 seq) {
-    #line 917 "./src/dap.am"
+    #line 938 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"threads\"")), ",\"body\":{\"threads\":[{\"id\":1,\"name\":\"main\"}]}}");
-    #line 923 "./src/dap.am"
+    #line 944 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandleContinue(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 927 "./src/dap.am"
+    #line 948 "./src/dap.am"
     Amalgame_Compiler_DapServer_WriteToFd(self, 1, "-exec-continue\n");
-    #line 928 "./src/dap.am"
+    #line 949 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"continue\"")), ",\"body\":{\"allThreadsContinued\":true}}");
-    #line 934 "./src/dap.am"
+    #line 955 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandleStep(Amalgame_Compiler_DapServer* self, i64 seq, code_string dapCmd, code_string miCmd) {
-    #line 942 "./src/dap.am"
+    #line 963 "./src/dap.am"
     if ((code_string_equals(dapCmd, "stepIn")) && !self->ShowRuntime) {
-        #line 943 "./src/dap.am"
+        #line 964 "./src/dap.am"
         self->StepBudget = 8;
     }
-    #line 945 "./src/dap.am"
+    #line 966 "./src/dap.am"
     Amalgame_Compiler_DapServer_WriteToFd(self, 1, code_string_concat(miCmd, "\n"));
-    #line 946 "./src/dap.am"
+    #line 967 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"")), dapCmd)), "\"}");
-    #line 951 "./src/dap.am"
+    #line 972 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandlePause(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 955 "./src/dap.am"
+    #line 976 "./src/dap.am"
     Amalgame_Compiler_DapServer_WriteToFd(self, 1, "-exec-interrupt\n");
-    #line 956 "./src/dap.am"
+    #line 977 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"pause\"}");
-    #line 961 "./src/dap.am"
+    #line 982 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandleLaunch(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 967 "./src/dap.am"
+    #line 988 "./src/dap.am"
     code_string program = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(args, "program"));
-    #line 968 "./src/dap.am"
+    #line 989 "./src/dap.am"
     if (String_Length(program) == 0) {
-        #line 969 "./src/dap.am"
+        #line 990 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, "launch", "missing 'program' field");
-        #line 970 "./src/dap.am"
+        #line 991 "./src/dap.am"
         return;
     }
-    #line 973 "./src/dap.am"
+    #line 994 "./src/dap.am"
     code_string mi = code_string_concat((code_string_concat("-file-exec-and-symbols \"", program)), "\"");
-    #line 974 "./src/dap.am"
+    #line 995 "./src/dap.am"
     i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, seq, "launch", mi);
 }
 
 static void Amalgame_Compiler_DapServer_HandleSetBreakpoints(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 978 "./src/dap.am"
+    #line 999 "./src/dap.am"
     if (self->BkptInFlight) {
-        #line 979 "./src/dap.am"
+        #line 1000 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, "setBreakpoints", "previous setBreakpoints still in flight");
-        #line 981 "./src/dap.am"
+        #line 1002 "./src/dap.am"
         return;
     }
-    #line 983 "./src/dap.am"
+    #line 1004 "./src/dap.am"
     Amalgame_Compiler_JsonValue* src = Amalgame_Compiler_JsonValue_Get(args, "source");
-    #line 984 "./src/dap.am"
+    #line 1005 "./src/dap.am"
     code_string srcPath = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(src, "path"));
-    #line 985 "./src/dap.am"
+    #line 1006 "./src/dap.am"
     if (String_Length(srcPath) == 0) {
-        #line 986 "./src/dap.am"
+        #line 1007 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, "setBreakpoints", "missing 'source.path'");
-        #line 987 "./src/dap.am"
+        #line 1008 "./src/dap.am"
         return;
     }
-    #line 989 "./src/dap.am"
+    #line 1010 "./src/dap.am"
     Amalgame_Compiler_JsonValue* bpsVal = Amalgame_Compiler_JsonValue_Get(args, "breakpoints");
-    #line 990 "./src/dap.am"
+    #line 1011 "./src/dap.am"
     AmalgameList* bps = Amalgame_Compiler_JsonValue_AsArray(bpsVal);
-    #line 991 "./src/dap.am"
+    #line 1012 "./src/dap.am"
     i64 nNew = AmalgameList_count(bps);
-    #line 995 "./src/dap.am"
+    #line 1016 "./src/dap.am"
     i64 nKnown = AmalgameList_count(self->BkptKnownNumbers);
-    #line 996 "./src/dap.am"
+    #line 1017 "./src/dap.am"
     for (i64 i = 0; i < nKnown; i++) {
-        #line 997 "./src/dap.am"
+        #line 1018 "./src/dap.am"
         i64 num = (i64)(intptr_t)AmalgameList_get(self->BkptKnownNumbers, i);
-        #line 998 "./src/dap.am"
+        #line 1019 "./src/dap.am"
         Amalgame_Compiler_DapServer_WriteToFd(self, 1, code_string_concat((code_string_concat("-break-delete ", String_FromInt(num))), "\n"));
     }
-    #line 1000 "./src/dap.am"
+    #line 1021 "./src/dap.am"
     self->BkptKnownNumbers = AmalgameList_new();
-    #line 1002 "./src/dap.am"
+    #line 1023 "./src/dap.am"
     if (nNew == 0) {
-        #line 1003 "./src/dap.am"
+        #line 1024 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendBkptResponse(self, seq, AmalgameList_new());
-        #line 1004 "./src/dap.am"
+        #line 1025 "./src/dap.am"
         return;
     }
-    #line 1007 "./src/dap.am"
+    #line 1028 "./src/dap.am"
     self->BkptInFlight = 1;
-    #line 1008 "./src/dap.am"
+    #line 1029 "./src/dap.am"
     self->BkptInFlightSeq = seq;
-    #line 1009 "./src/dap.am"
+    #line 1030 "./src/dap.am"
     self->BkptInFlightSource = srcPath;
-    #line 1010 "./src/dap.am"
+    #line 1031 "./src/dap.am"
     self->BkptInFlightPending = nNew;
-    #line 1011 "./src/dap.am"
+    #line 1032 "./src/dap.am"
     self->BkptInFlightDapShape = AmalgameList_new();
-    #line 1015 "./src/dap.am"
+    #line 1036 "./src/dap.am"
     for (i64 i = 0; i < nNew; i++) {
-        #line 1016 "./src/dap.am"
+        #line 1037 "./src/dap.am"
         Amalgame_Compiler_JsonValue* bp = (Amalgame_Compiler_JsonValue*)AmalgameList_get(bps, i);
-        #line 1017 "./src/dap.am"
+        #line 1038 "./src/dap.am"
         i64 line = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(bp, "line"));
-        #line 1018 "./src/dap.am"
+        #line 1039 "./src/dap.am"
         code_string mi = code_string_concat((code_string_concat((code_string_concat("-break-insert ", srcPath)), ":")), String_FromInt(line));
-        #line 1019 "./src/dap.am"
+        #line 1040 "./src/dap.am"
         i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, seq, "setBreakpoints", mi);
     }
 }
 
 static void Amalgame_Compiler_DapServer_RespondSetBreakpoints(Amalgame_Compiler_DapServer* self, i64 dapSeq, Amalgame_Compiler_MiRecord* rec) {
-    #line 1024 "./src/dap.am"
+    #line 1045 "./src/dap.am"
     if (!self->BkptInFlight || (self->BkptInFlightSeq != dapSeq)) {
-        #line 1026 "./src/dap.am"
+        #line 1047 "./src/dap.am"
         return;
     }
-    #line 1031 "./src/dap.am"
+    #line 1052 "./src/dap.am"
     code_string dapEntry = "";
-    #line 1032 "./src/dap.am"
+    #line 1053 "./src/dap.am"
     Amalgame_Compiler_MiValue* bkpt = Amalgame_Compiler_MiRecord_ResultOrNull(rec, "bkpt");
-    #line 1033 "./src/dap.am"
+    #line 1054 "./src/dap.am"
     if (((code_string_equals(rec->Class, "done")) && (bkpt != NULL)) && (bkpt->Kind == 1)) {
-        #line 1034 "./src/dap.am"
+        #line 1055 "./src/dap.am"
         code_string numS = Amalgame_Compiler_MiValue_FieldString(bkpt, "number");
-        #line 1035 "./src/dap.am"
+        #line 1056 "./src/dap.am"
         code_string fileS = Amalgame_Compiler_MiValue_FieldString(bkpt, "file");
-        #line 1036 "./src/dap.am"
+        #line 1057 "./src/dap.am"
         code_string lineS = Amalgame_Compiler_MiValue_FieldString(bkpt, "line");
-        #line 1038 "./src/dap.am"
+        #line 1059 "./src/dap.am"
         if (String_Length(numS) > 0) {
-            #line 1039 "./src/dap.am"
+            #line 1060 "./src/dap.am"
             AmalgameList_add(self->BkptKnownNumbers, (void*)(intptr_t)(String_ToInt(numS)));
         }
-        #line 1041 "./src/dap.am"
+        #line 1062 "./src/dap.am"
         dapEntry = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"id\":", numS)), ",\"verified\":true")), ",\"line\":")), lineS)), ",\"source\":{\"path\":\"")), Amalgame_Compiler_Json_EscapeString(fileS))), "\"}}"));
     } else {
-        #line 1048 "./src/dap.am"
+        #line 1069 "./src/dap.am"
         dapEntry = "{\"verified\":false,\"message\":\"-break-insert failed\"}";
     }
-    #line 1050 "./src/dap.am"
+    #line 1071 "./src/dap.am"
     AmalgameList_add(self->BkptInFlightDapShape, (void*)(intptr_t)(dapEntry));
-    #line 1051 "./src/dap.am"
+    #line 1072 "./src/dap.am"
     self->BkptInFlightPending = (self->BkptInFlightPending - 1);
-    #line 1052 "./src/dap.am"
+    #line 1073 "./src/dap.am"
     if (self->BkptInFlightPending <= 0) {
-        #line 1053 "./src/dap.am"
+        #line 1074 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendBkptResponse(self, self->BkptInFlightSeq, self->BkptInFlightDapShape);
-        #line 1054 "./src/dap.am"
+        #line 1075 "./src/dap.am"
         self->BkptInFlight = 0;
-        #line 1055 "./src/dap.am"
+        #line 1076 "./src/dap.am"
         self->BkptInFlightSeq = -1;
-        #line 1056 "./src/dap.am"
+        #line 1077 "./src/dap.am"
         self->BkptInFlightSource = "";
     }
 }
 
 static void Amalgame_Compiler_DapServer_SendBkptResponse(Amalgame_Compiler_DapServer* self, i64 seq, AmalgameList* entries) {
-    #line 1064 "./src/dap.am"
+    #line 1085 "./src/dap.am"
     code_string arr = "[";
-    #line 1065 "./src/dap.am"
+    #line 1086 "./src/dap.am"
     i64 n = AmalgameList_count(entries);
-    #line 1066 "./src/dap.am"
+    #line 1087 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1067 "./src/dap.am"
+        #line 1088 "./src/dap.am"
         if (i > 0) {
             arr = (code_string_concat(arr, ","));
         }
-        #line 1068 "./src/dap.am"
+        #line 1089 "./src/dap.am"
         arr = (code_string_concat(arr, (code_string)AmalgameList_get(entries, i)));
     }
-    #line 1070 "./src/dap.am"
+    #line 1091 "./src/dap.am"
     arr = (code_string_concat(arr, "]"));
-    #line 1071 "./src/dap.am"
+    #line 1092 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"setBreakpoints\"")), ",\"body\":{\"breakpoints\":")), arr)), "}}");
-    #line 1077 "./src/dap.am"
+    #line 1098 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandleConfigurationDone(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1082 "./src/dap.am"
+    #line 1103 "./src/dap.am"
     i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, seq, "configurationDone", "-exec-run");
 }
 
 static void Amalgame_Compiler_DapServer_HandleStackTrace(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1090 "./src/dap.am"
+    #line 1111 "./src/dap.am"
     i64 startF = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(args, "startFrame"));
-    #line 1091 "./src/dap.am"
+    #line 1112 "./src/dap.am"
     i64 levels = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(args, "levels"));
-    #line 1092 "./src/dap.am"
+    #line 1113 "./src/dap.am"
     code_string miArgs = "";
-    #line 1093 "./src/dap.am"
+    #line 1114 "./src/dap.am"
     if (levels > 0) {
-        #line 1094 "./src/dap.am"
+        #line 1115 "./src/dap.am"
         i64 endF = (startF + levels) - 1;
-        #line 1095 "./src/dap.am"
+        #line 1116 "./src/dap.am"
         miArgs = (code_string_concat((code_string_concat((code_string_concat(" ", String_FromInt(startF))), " ")), String_FromInt(endF)));
     }
-    #line 1097 "./src/dap.am"
+    #line 1118 "./src/dap.am"
     i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, seq, "stackTrace", code_string_concat("-stack-list-frames", miArgs));
 }
 
 static void Amalgame_Compiler_DapServer_HandleScopes(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1104 "./src/dap.am"
+    #line 1125 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"scopes\"")), ",\"body\":{\"scopes\":[{\"name\":\"Locals\",\"variablesReference\":1,\"expensive\":false}]}}");
-    #line 1110 "./src/dap.am"
+    #line 1131 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandleVariables(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1114 "./src/dap.am"
+    #line 1135 "./src/dap.am"
     i64 vref = Amalgame_Compiler_JsonValue_AsInt(Amalgame_Compiler_JsonValue_Get(args, "variablesReference"));
-    #line 1115 "./src/dap.am"
+    #line 1136 "./src/dap.am"
     if (vref == 1) {
-        #line 1118 "./src/dap.am"
+        #line 1139 "./src/dap.am"
         i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, seq, "variables", "-stack-list-variables --simple-values");
-        #line 1120 "./src/dap.am"
+        #line 1141 "./src/dap.am"
         return;
     }
-    #line 1122 "./src/dap.am"
+    #line 1143 "./src/dap.am"
     if (vref > 1) {
-        #line 1124 "./src/dap.am"
+        #line 1145 "./src/dap.am"
         Amalgame_Compiler_DapServer_HandleChildVariables(self, seq, vref);
-        #line 1125 "./src/dap.am"
+        #line 1146 "./src/dap.am"
         return;
     }
-    #line 1127 "./src/dap.am"
+    #line 1148 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, "variables", "invalid variablesReference");
 }
 
 static void Amalgame_Compiler_DapServer_HandleChildVariables(Amalgame_Compiler_DapServer* self, i64 seq, i64 vref) {
-    #line 1136 "./src/dap.am"
+    #line 1157 "./src/dap.am"
     i64 cidx = Amalgame_Compiler_DapServer_FindChildRefIndex(self, vref);
-    #line 1137 "./src/dap.am"
+    #line 1158 "./src/dap.am"
     if (cidx < 0) {
-        #line 1138 "./src/dap.am"
+        #line 1159 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, "variables", "stale variablesReference");
-        #line 1139 "./src/dap.am"
+        #line 1160 "./src/dap.am"
         return;
     }
-    #line 1141 "./src/dap.am"
+    #line 1162 "./src/dap.am"
     code_string typeS = (code_string)AmalgameList_get(self->ChildRef_Types, cidx);
-    #line 1142 "./src/dap.am"
+    #line 1163 "./src/dap.am"
     code_string addr = (code_string)AmalgameList_get(self->ChildRef_Addrs, cidx);
-    #line 1143 "./src/dap.am"
+    #line 1164 "./src/dap.am"
     i64 size = (i64)(intptr_t)AmalgameList_get(self->ChildRef_Sizes, cidx);
-    #line 1144 "./src/dap.am"
+    #line 1165 "./src/dap.am"
     self->PendingVars_Seq = seq;
-    #line 1145 "./src/dap.am"
+    #line 1166 "./src/dap.am"
     self->PendingVars_Names = AmalgameList_new();
-    #line 1146 "./src/dap.am"
+    #line 1167 "./src/dap.am"
     self->PendingVars_Types = AmalgameList_new();
-    #line 1147 "./src/dap.am"
+    #line 1168 "./src/dap.am"
     self->PendingVars_Values = AmalgameList_new();
-    #line 1148 "./src/dap.am"
+    #line 1169 "./src/dap.am"
     self->PendingVars_Queries = AmalgameList_new();
-    #line 1149 "./src/dap.am"
+    #line 1170 "./src/dap.am"
     self->PendingVars_Refs = AmalgameList_new();
-    #line 1150 "./src/dap.am"
+    #line 1171 "./src/dap.am"
     self->PendingVars_Idx = 0;
-    #line 1154 "./src/dap.am"
+    #line 1175 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameList")) {
-        #line 1155 "./src/dap.am"
+        #line 1176 "./src/dap.am"
         for (i64 i = 0; i < size; i++) {
-            #line 1156 "./src/dap.am"
+            #line 1177 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Names, (void*)(intptr_t)(code_string_concat((code_string_concat("[", String_FromInt(i))), "]")));
-            #line 1157 "./src/dap.am"
+            #line 1178 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Types, (void*)(intptr_t)("void*"));
-            #line 1158 "./src/dap.am"
+            #line 1179 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Values, (void*)(intptr_t)("?"));
-            #line 1159 "./src/dap.am"
+            #line 1180 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Queries, (void*)(intptr_t)(code_string_concat((code_string_concat((code_string_concat((code_string_concat("(void*)((AmalgameList*)", addr)), ")->data[")), String_FromInt(i))), "]")));
-            #line 1160 "./src/dap.am"
+            #line 1181 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Refs, (void*)(intptr_t)(0));
         }
     }
-    #line 1163 "./src/dap.am"
+    #line 1184 "./src/dap.am"
     Amalgame_Compiler_DapServer_ProcessNextVarFollowup(self);
 }
 
 static i64 Amalgame_Compiler_DapServer_FindChildRefIndex(Amalgame_Compiler_DapServer* self, i64 vref) {
-    #line 1167 "./src/dap.am"
+    #line 1188 "./src/dap.am"
     i64 n = AmalgameList_count(self->ChildRef_Refs);
-    #line 1168 "./src/dap.am"
+    #line 1189 "./src/dap.am"
     i64 found = -1;
-    #line 1169 "./src/dap.am"
+    #line 1190 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1170 "./src/dap.am"
+        #line 1191 "./src/dap.am"
         if ((i64)(intptr_t)AmalgameList_get(self->ChildRef_Refs, i) == vref) {
             found = i;
         }
     }
-    #line 1172 "./src/dap.am"
+    #line 1193 "./src/dap.am"
     return found;
 }
 
 static i64 Amalgame_Compiler_DapServer_AllocChildRef(Amalgame_Compiler_DapServer* self, code_string typeS, code_string addr, i64 size) {
-    #line 1180 "./src/dap.am"
+    #line 1201 "./src/dap.am"
     i64 r = self->NextChildRef;
-    #line 1181 "./src/dap.am"
+    #line 1202 "./src/dap.am"
     self->NextChildRef = (self->NextChildRef + 1);
-    #line 1182 "./src/dap.am"
+    #line 1203 "./src/dap.am"
     AmalgameList_add(self->ChildRef_Refs, (void*)(intptr_t)(r));
-    #line 1183 "./src/dap.am"
+    #line 1204 "./src/dap.am"
     AmalgameList_add(self->ChildRef_Types, (void*)(intptr_t)(typeS));
-    #line 1184 "./src/dap.am"
+    #line 1205 "./src/dap.am"
     AmalgameList_add(self->ChildRef_Addrs, (void*)(intptr_t)(addr));
-    #line 1185 "./src/dap.am"
+    #line 1206 "./src/dap.am"
     AmalgameList_add(self->ChildRef_Sizes, (void*)(intptr_t)(size));
-    #line 1186 "./src/dap.am"
+    #line 1207 "./src/dap.am"
     return r;
 }
 
 static void Amalgame_Compiler_DapServer_HandleEvaluate(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1190 "./src/dap.am"
+    #line 1211 "./src/dap.am"
     code_string expr = Amalgame_Compiler_JsonValue_AsString(Amalgame_Compiler_JsonValue_Get(args, "expression"));
-    #line 1191 "./src/dap.am"
+    #line 1212 "./src/dap.am"
     if (String_Length(expr) == 0) {
-        #line 1192 "./src/dap.am"
+        #line 1213 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, seq, "evaluate", "missing expression");
-        #line 1193 "./src/dap.am"
+        #line 1214 "./src/dap.am"
         return;
     }
-    #line 1197 "./src/dap.am"
+    #line 1218 "./src/dap.am"
     code_string mi = code_string_concat((code_string_concat("-data-evaluate-expression \"", Amalgame_Compiler_Json_EscapeString(expr))), "\"");
-    #line 1199 "./src/dap.am"
+    #line 1220 "./src/dap.am"
     i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, seq, "evaluate", mi);
 }
 
 static void Amalgame_Compiler_DapServer_RespondLaunch(Amalgame_Compiler_DapServer* self, i64 dapSeq, Amalgame_Compiler_MiRecord* rec) {
-    #line 1209 "./src/dap.am"
+    #line 1230 "./src/dap.am"
     code_bool ok = code_string_equals(rec->Class, "done");
-    #line 1210 "./src/dap.am"
+    #line 1231 "./src/dap.am"
     if (!ok) {
-        #line 1211 "./src/dap.am"
+        #line 1232 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, dapSeq, "launch", "-file-exec-and-symbols failed");
-        #line 1212 "./src/dap.am"
+        #line 1233 "./src/dap.am"
         return;
     }
-    #line 1214 "./src/dap.am"
+    #line 1235 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(dapSeq))), ",\"success\":true")), ",\"command\":\"launch\"}");
-    #line 1219 "./src/dap.am"
+    #line 1240 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_RespondConfigurationDone(Amalgame_Compiler_DapServer* self, i64 dapSeq, Amalgame_Compiler_MiRecord* rec) {
-    #line 1226 "./src/dap.am"
+    #line 1247 "./src/dap.am"
     code_bool ok = (code_string_equals(rec->Class, "running")) || (code_string_equals(rec->Class, "done"));
-    #line 1227 "./src/dap.am"
+    #line 1248 "./src/dap.am"
     if (!ok) {
-        #line 1228 "./src/dap.am"
+        #line 1249 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, dapSeq, "configurationDone", "-exec-run failed");
-        #line 1229 "./src/dap.am"
+        #line 1250 "./src/dap.am"
         return;
     }
-    #line 1231 "./src/dap.am"
+    #line 1252 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(dapSeq))), ",\"success\":true")), ",\"command\":\"configurationDone\"}");
-    #line 1236 "./src/dap.am"
+    #line 1257 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_RespondStackTrace(Amalgame_Compiler_DapServer* self, i64 dapSeq, Amalgame_Compiler_MiRecord* rec) {
-    #line 1240 "./src/dap.am"
+    #line 1261 "./src/dap.am"
     if (!code_string_equals(rec->Class, "done")) {
-        #line 1241 "./src/dap.am"
+        #line 1262 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, dapSeq, "stackTrace", "-stack-list-frames failed");
-        #line 1242 "./src/dap.am"
+        #line 1263 "./src/dap.am"
         return;
     }
-    #line 1244 "./src/dap.am"
+    #line 1265 "./src/dap.am"
     Amalgame_Compiler_MiValue* stack = Amalgame_Compiler_MiRecord_ResultOrNull(rec, "stack");
-    #line 1245 "./src/dap.am"
+    #line 1266 "./src/dap.am"
     code_string frames = "[";
-    #line 1246 "./src/dap.am"
+    #line 1267 "./src/dap.am"
     i64 count = 0;
-    #line 1247 "./src/dap.am"
+    #line 1268 "./src/dap.am"
     if ((stack != NULL) && (stack->Kind == 2)) {
-        #line 1248 "./src/dap.am"
+        #line 1269 "./src/dap.am"
         i64 n = AmalgameList_count(stack->ListItems);
-        #line 1249 "./src/dap.am"
+        #line 1270 "./src/dap.am"
         for (i64 i = 0; i < n; i++) {
-            #line 1250 "./src/dap.am"
+            #line 1271 "./src/dap.am"
             Amalgame_Compiler_MiValue* f = (Amalgame_Compiler_MiValue*)AmalgameList_get(stack->ListItems, i);
-            #line 1251 "./src/dap.am"
+            #line 1272 "./src/dap.am"
             if (f->Kind != 1) {
                 continue;
             }
-            #line 1252 "./src/dap.am"
+            #line 1273 "./src/dap.am"
             code_string lvlS = Amalgame_Compiler_MiValue_FieldString(f, "level");
-            #line 1253 "./src/dap.am"
+            #line 1274 "./src/dap.am"
             code_string funcS = Amalgame_Compiler_MiValue_FieldString(f, "func");
-            #line 1254 "./src/dap.am"
+            #line 1275 "./src/dap.am"
             code_string fileS = Amalgame_Compiler_MiValue_FieldString(f, "fullname");
-            #line 1255 "./src/dap.am"
+            #line 1276 "./src/dap.am"
             code_string lineS = Amalgame_Compiler_MiValue_FieldString(f, "line");
-            #line 1256 "./src/dap.am"
+            #line 1277 "./src/dap.am"
             if (String_Length(lineS) == 0) {
                 lineS = "0";
             }
-            #line 1260 "./src/dap.am"
+            #line 1281 "./src/dap.am"
             if (Amalgame_Compiler_DapServer_IsHiddenFrameFunc(self, funcS)) {
                 continue;
             }
-            #line 1261 "./src/dap.am"
+            #line 1282 "./src/dap.am"
             if (count > 0) {
                 frames = (code_string_concat(frames, ","));
             }
-            #line 1262 "./src/dap.am"
+            #line 1283 "./src/dap.am"
             frames = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(frames, "{\"id\":")), lvlS)), ",\"name\":\"")), Amalgame_Compiler_Json_EscapeString(funcS))), "\"")), ",\"line\":")), lineS)), ",\"column\":1"));
-            #line 1266 "./src/dap.am"
+            #line 1287 "./src/dap.am"
             if (String_Length(fileS) > 0) {
-                #line 1267 "./src/dap.am"
+                #line 1288 "./src/dap.am"
                 frames = (code_string_concat((code_string_concat((code_string_concat(frames, ",\"source\":{\"path\":\"")), Amalgame_Compiler_Json_EscapeString(fileS))), "\"}"));
             }
-            #line 1269 "./src/dap.am"
+            #line 1290 "./src/dap.am"
             frames = (code_string_concat(frames, "}"));
-            #line 1270 "./src/dap.am"
+            #line 1291 "./src/dap.am"
             count = (count + 1);
         }
     }
-    #line 1273 "./src/dap.am"
+    #line 1294 "./src/dap.am"
     frames = (code_string_concat(frames, "]"));
-    #line 1274 "./src/dap.am"
+    #line 1295 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(dapSeq))), ",\"success\":true")), ",\"command\":\"stackTrace\"")), ",\"body\":{\"stackFrames\":")), frames)), ",\"totalFrames\":")), String_FromInt(count))), "}}");
-    #line 1281 "./src/dap.am"
+    #line 1302 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_RespondVariables(Amalgame_Compiler_DapServer* self, i64 dapSeq, Amalgame_Compiler_MiRecord* rec) {
-    #line 1285 "./src/dap.am"
+    #line 1306 "./src/dap.am"
     if (!code_string_equals(rec->Class, "done")) {
-        #line 1286 "./src/dap.am"
+        #line 1307 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, dapSeq, "variables", "-stack-list-variables failed");
-        #line 1287 "./src/dap.am"
+        #line 1308 "./src/dap.am"
         return;
     }
-    #line 1293 "./src/dap.am"
+    #line 1314 "./src/dap.am"
     Amalgame_Compiler_MiValue* vars = Amalgame_Compiler_MiRecord_ResultOrNull(rec, "variables");
-    #line 1294 "./src/dap.am"
+    #line 1315 "./src/dap.am"
     self->PendingVars_Seq = dapSeq;
-    #line 1295 "./src/dap.am"
+    #line 1316 "./src/dap.am"
     self->PendingVars_Names = AmalgameList_new();
-    #line 1296 "./src/dap.am"
+    #line 1317 "./src/dap.am"
     self->PendingVars_Types = AmalgameList_new();
-    #line 1297 "./src/dap.am"
+    #line 1318 "./src/dap.am"
     self->PendingVars_Values = AmalgameList_new();
-    #line 1298 "./src/dap.am"
+    #line 1319 "./src/dap.am"
     self->PendingVars_Queries = AmalgameList_new();
-    #line 1299 "./src/dap.am"
+    #line 1320 "./src/dap.am"
     self->PendingVars_Refs = AmalgameList_new();
-    #line 1300 "./src/dap.am"
+    #line 1321 "./src/dap.am"
     self->PendingVars_Idx = 0;
-    #line 1301 "./src/dap.am"
+    #line 1322 "./src/dap.am"
     if ((vars != NULL) && (vars->Kind == 2)) {
-        #line 1302 "./src/dap.am"
+        #line 1323 "./src/dap.am"
         i64 n = AmalgameList_count(vars->ListItems);
-        #line 1303 "./src/dap.am"
+        #line 1324 "./src/dap.am"
         for (i64 i = 0; i < n; i++) {
-            #line 1304 "./src/dap.am"
+            #line 1325 "./src/dap.am"
             Amalgame_Compiler_MiValue* v = (Amalgame_Compiler_MiValue*)AmalgameList_get(vars->ListItems, i);
-            #line 1305 "./src/dap.am"
+            #line 1326 "./src/dap.am"
             if (v->Kind != 1) {
                 continue;
             }
-            #line 1306 "./src/dap.am"
+            #line 1327 "./src/dap.am"
             code_string nameS = Amalgame_Compiler_MiValue_FieldString(v, "name");
-            #line 1307 "./src/dap.am"
+            #line 1328 "./src/dap.am"
             code_string typeS = Amalgame_Compiler_MiValue_FieldString(v, "type");
-            #line 1308 "./src/dap.am"
+            #line 1329 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Names, (void*)(intptr_t)(nameS));
-            #line 1309 "./src/dap.am"
+            #line 1330 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Types, (void*)(intptr_t)(typeS));
-            #line 1310 "./src/dap.am"
+            #line 1331 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Values, (void*)(intptr_t)(Amalgame_Compiler_MiValue_FieldString(v, "value")));
-            #line 1311 "./src/dap.am"
+            #line 1332 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Queries, (void*)(intptr_t)(Amalgame_Compiler_DapServer_PrettyPrintQuery(nameS, typeS)));
-            #line 1312 "./src/dap.am"
+            #line 1333 "./src/dap.am"
             AmalgameList_add(self->PendingVars_Refs, (void*)(intptr_t)(0));
         }
     }
-    #line 1315 "./src/dap.am"
+    #line 1336 "./src/dap.am"
     Amalgame_Compiler_DapServer_ProcessNextVarFollowup(self);
 }
 
 static void Amalgame_Compiler_DapServer_ProcessNextVarFollowup(Amalgame_Compiler_DapServer* self) {
-    #line 1323 "./src/dap.am"
+    #line 1344 "./src/dap.am"
     i64 n = AmalgameList_count(self->PendingVars_Names);
-    #line 1324 "./src/dap.am"
+    #line 1345 "./src/dap.am"
     while (self->PendingVars_Idx < n) {
-        #line 1325 "./src/dap.am"
+        #line 1346 "./src/dap.am"
         code_string q = (code_string)AmalgameList_get(self->PendingVars_Queries, self->PendingVars_Idx);
-        #line 1326 "./src/dap.am"
+        #line 1347 "./src/dap.am"
         if (String_Length(q) > 0) {
-            #line 1327 "./src/dap.am"
+            #line 1348 "./src/dap.am"
             i64 _tok = Amalgame_Compiler_DapServer_IssueMiCommand(self, self->PendingVars_Seq, "varFollowup", code_string_concat((code_string_concat("-data-evaluate-expression \"", Amalgame_Compiler_Json_EscapeString(q))), "\""));
-            #line 1329 "./src/dap.am"
+            #line 1350 "./src/dap.am"
             return;
         }
-        #line 1331 "./src/dap.am"
+        #line 1352 "./src/dap.am"
         self->PendingVars_Idx = (self->PendingVars_Idx + 1);
     }
-    #line 1333 "./src/dap.am"
+    #line 1354 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendVariablesResponse(self);
 }
 
 static code_string Amalgame_Compiler_DapServer_PrettyPrintQuery(code_string name, code_string typeS) {
-    #line 1349 "./src/dap.am"
+    #line 1370 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameList *")) {
         return code_string_concat((code_string_concat("(int)((AmalgameList*)", name)), ")->size");
     }
-    #line 1350 "./src/dap.am"
+    #line 1371 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameMap *")) {
         return code_string_concat((code_string_concat("(int)((AmalgameMap*)", name)), ")->size");
     }
-    #line 1351 "./src/dap.am"
+    #line 1372 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameSet *")) {
         return code_string_concat((code_string_concat("(int)((AmalgameSet*)", name)), ")->map->size");
     }
-    #line 1352 "./src/dap.am"
+    #line 1373 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameClosure *")) {
         return code_string_concat((code_string_concat("(void*)((AmalgameClosure*)", name)), ")->env");
     }
-    #line 1353 "./src/dap.am"
+    #line 1374 "./src/dap.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_DapServer_PrettyPrintFormat(code_string typeS, code_string evalResult) {
-    #line 1359 "./src/dap.am"
+    #line 1380 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameList *")) {
         return code_string_concat((code_string_concat("List[", evalResult)), "]");
     }
-    #line 1360 "./src/dap.am"
+    #line 1381 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameMap *")) {
         return code_string_concat((code_string_concat("Map[", evalResult)), "]");
     }
-    #line 1361 "./src/dap.am"
+    #line 1382 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameSet *")) {
         return code_string_concat((code_string_concat("Set[", evalResult)), "]");
     }
-    #line 1362 "./src/dap.am"
+    #line 1383 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameClosure *")) {
         return code_string_concat("λ env=", evalResult);
     }
-    #line 1363 "./src/dap.am"
+    #line 1384 "./src/dap.am"
     return evalResult;
 }
 
 static void Amalgame_Compiler_DapServer_HandleVarFollowupResponse(Amalgame_Compiler_DapServer* self, Amalgame_Compiler_MiRecord* rec) {
-    #line 1370 "./src/dap.am"
+    #line 1391 "./src/dap.am"
     i64 idx = self->PendingVars_Idx;
-    #line 1371 "./src/dap.am"
+    #line 1392 "./src/dap.am"
     if (idx < AmalgameList_count(self->PendingVars_Names)) {
-        #line 1372 "./src/dap.am"
+        #line 1393 "./src/dap.am"
         if (code_string_equals(rec->Class, "done")) {
-            #line 1373 "./src/dap.am"
+            #line 1394 "./src/dap.am"
             Amalgame_Compiler_MiValue* valWrap = Amalgame_Compiler_MiRecord_ResultOrNull(rec, "value");
-            #line 1374 "./src/dap.am"
+            #line 1395 "./src/dap.am"
             if (valWrap != NULL) {
-                #line 1375 "./src/dap.am"
+                #line 1396 "./src/dap.am"
                 code_string typeS = (code_string)AmalgameList_get(self->PendingVars_Types, idx);
-                #line 1376 "./src/dap.am"
+                #line 1397 "./src/dap.am"
                 code_string nameS = (code_string)AmalgameList_get(self->PendingVars_Names, idx);
-                #line 1377 "./src/dap.am"
+                #line 1398 "./src/dap.am"
                 code_string evalRes = valWrap->Str;
-                #line 1378 "./src/dap.am"
+                #line 1399 "./src/dap.am"
                 code_string pretty = Amalgame_Compiler_DapServer_PrettyPrintFormat(typeS, evalRes);
-                #line 1379 "./src/dap.am"
+                #line 1400 "./src/dap.am"
                 Amalgame_Compiler_DapServer_RewriteValueAt(self, idx, pretty);
-                #line 1384 "./src/dap.am"
+                #line 1405 "./src/dap.am"
                 code_string ctype = Amalgame_Compiler_DapServer_ContainerKind(typeS);
-                #line 1385 "./src/dap.am"
+                #line 1406 "./src/dap.am"
                 if (String_Length(ctype) > 0) {
-                    #line 1386 "./src/dap.am"
+                    #line 1407 "./src/dap.am"
                     i64 size = String_ToInt(evalRes);
-                    #line 1387 "./src/dap.am"
+                    #line 1408 "./src/dap.am"
                     if (size > 0) {
-                        #line 1388 "./src/dap.am"
+                        #line 1409 "./src/dap.am"
                         i64 vref = Amalgame_Compiler_DapServer_AllocChildRef(self, ctype, nameS, size);
-                        #line 1389 "./src/dap.am"
+                        #line 1410 "./src/dap.am"
                         Amalgame_Compiler_DapServer_RewriteRefAt(self, idx, vref);
                     }
                 }
             }
         }
-        #line 1395 "./src/dap.am"
+        #line 1416 "./src/dap.am"
         self->PendingVars_Idx = (idx + 1);
     }
-    #line 1397 "./src/dap.am"
+    #line 1418 "./src/dap.am"
     Amalgame_Compiler_DapServer_ProcessNextVarFollowup(self);
 }
 
 static code_string Amalgame_Compiler_DapServer_ContainerKind(code_string typeS) {
-    #line 1405 "./src/dap.am"
+    #line 1426 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameList *")) {
         return "AmalgameList";
     }
-    #line 1406 "./src/dap.am"
+    #line 1427 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameMap *")) {
         return "AmalgameMap";
     }
-    #line 1407 "./src/dap.am"
+    #line 1428 "./src/dap.am"
     if (code_string_equals(typeS, "AmalgameSet *")) {
         return "AmalgameSet";
     }
-    #line 1408 "./src/dap.am"
+    #line 1429 "./src/dap.am"
     return "";
 }
 
 static void Amalgame_Compiler_DapServer_RewriteRefAt(Amalgame_Compiler_DapServer* self, i64 idx, i64 newRef) {
-    #line 1412 "./src/dap.am"
+    #line 1433 "./src/dap.am"
     i64 n = AmalgameList_count(self->PendingVars_Refs);
-    #line 1413 "./src/dap.am"
+    #line 1434 "./src/dap.am"
     AmalgameList* fresh = AmalgameList_new();
-    #line 1414 "./src/dap.am"
+    #line 1435 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1415 "./src/dap.am"
+        #line 1436 "./src/dap.am"
         if (i == idx) {
             AmalgameList_add(fresh, (void*)(intptr_t)(newRef));
         } else {
-            #line 1416 "./src/dap.am"
+            #line 1437 "./src/dap.am"
             AmalgameList_add(fresh, (void*)(intptr_t)((i64)(intptr_t)AmalgameList_get(self->PendingVars_Refs, i)));
         }
     }
-    #line 1418 "./src/dap.am"
+    #line 1439 "./src/dap.am"
     self->PendingVars_Refs = fresh;
 }
 
 static void Amalgame_Compiler_DapServer_RewriteValueAt(Amalgame_Compiler_DapServer* self, i64 idx, code_string newValue) {
-    #line 1424 "./src/dap.am"
+    #line 1445 "./src/dap.am"
     i64 n = AmalgameList_count(self->PendingVars_Values);
-    #line 1425 "./src/dap.am"
+    #line 1446 "./src/dap.am"
     AmalgameList* fresh = AmalgameList_new();
-    #line 1426 "./src/dap.am"
+    #line 1447 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1427 "./src/dap.am"
+        #line 1448 "./src/dap.am"
         if (i == idx) {
             AmalgameList_add(fresh, (void*)(intptr_t)(newValue));
         } else {
-            #line 1428 "./src/dap.am"
+            #line 1449 "./src/dap.am"
             AmalgameList_add(fresh, (void*)(intptr_t)((code_string)AmalgameList_get(self->PendingVars_Values, i)));
         }
     }
-    #line 1430 "./src/dap.am"
+    #line 1451 "./src/dap.am"
     self->PendingVars_Values = fresh;
 }
 
 static void Amalgame_Compiler_DapServer_SendVariablesResponse(Amalgame_Compiler_DapServer* self) {
-    #line 1438 "./src/dap.am"
+    #line 1459 "./src/dap.am"
     code_string arr = "[";
-    #line 1439 "./src/dap.am"
+    #line 1460 "./src/dap.am"
     i64 n = AmalgameList_count(self->PendingVars_Names);
-    #line 1440 "./src/dap.am"
+    #line 1461 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1441 "./src/dap.am"
+        #line 1462 "./src/dap.am"
         code_string name = (code_string)AmalgameList_get(self->PendingVars_Names, i);
-        #line 1442 "./src/dap.am"
+        #line 1463 "./src/dap.am"
         code_string typeS = (code_string)AmalgameList_get(self->PendingVars_Types, i);
-        #line 1443 "./src/dap.am"
+        #line 1464 "./src/dap.am"
         code_string value = (code_string)AmalgameList_get(self->PendingVars_Values, i);
-        #line 1444 "./src/dap.am"
+        #line 1465 "./src/dap.am"
         i64 vref = (i64)(intptr_t)AmalgameList_get(self->PendingVars_Refs, i);
-        #line 1445 "./src/dap.am"
+        #line 1466 "./src/dap.am"
         if (i > 0) {
             arr = (code_string_concat(arr, ","));
         }
-        #line 1446 "./src/dap.am"
+        #line 1467 "./src/dap.am"
         arr = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(arr, "{\"name\":\"")), Amalgame_Compiler_Json_EscapeString(name))), "\"")), ",\"value\":\"")), Amalgame_Compiler_Json_EscapeString(value))), "\"")), ",\"type\":\"")), Amalgame_Compiler_Json_EscapeString(typeS))), "\"")), ",\"variablesReference\":")), String_FromInt(vref))), "}"));
     }
-    #line 1451 "./src/dap.am"
+    #line 1472 "./src/dap.am"
     arr = (code_string_concat(arr, "]"));
-    #line 1452 "./src/dap.am"
+    #line 1473 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(self->PendingVars_Seq))), ",\"success\":true")), ",\"command\":\"variables\"")), ",\"body\":{\"variables\":")), arr)), "}}");
-    #line 1458 "./src/dap.am"
+    #line 1479 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
-    #line 1461 "./src/dap.am"
+    #line 1482 "./src/dap.am"
     self->PendingVars_Seq = -1;
-    #line 1462 "./src/dap.am"
+    #line 1483 "./src/dap.am"
     self->PendingVars_Idx = 0;
 }
 
 static void Amalgame_Compiler_DapServer_RespondEvaluate(Amalgame_Compiler_DapServer* self, i64 dapSeq, Amalgame_Compiler_MiRecord* rec) {
-    #line 1466 "./src/dap.am"
+    #line 1487 "./src/dap.am"
     if (!code_string_equals(rec->Class, "done")) {
-        #line 1467 "./src/dap.am"
+        #line 1488 "./src/dap.am"
         Amalgame_Compiler_DapServer_SendDapErrorResponse(self, dapSeq, "evaluate", "-data-evaluate-expression failed");
-        #line 1468 "./src/dap.am"
+        #line 1489 "./src/dap.am"
         return;
     }
-    #line 1470 "./src/dap.am"
+    #line 1491 "./src/dap.am"
     Amalgame_Compiler_MiValue* valWrap = Amalgame_Compiler_MiRecord_ResultOrNull(rec, "value");
-    #line 1471 "./src/dap.am"
+    #line 1492 "./src/dap.am"
     code_string valStr = "";
-    #line 1472 "./src/dap.am"
+    #line 1493 "./src/dap.am"
     if (valWrap != NULL) {
         valStr = valWrap->Str;
     }
-    #line 1473 "./src/dap.am"
+    #line 1494 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(dapSeq))), ",\"success\":true")), ",\"command\":\"evaluate\"")), ",\"body\":{\"result\":\"")), Amalgame_Compiler_Json_EscapeString(valStr))), "\",\"variablesReference\":0}}");
-    #line 1480 "./src/dap.am"
+    #line 1501 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static void Amalgame_Compiler_DapServer_HandleInitialize(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1487 "./src/dap.am"
+    #line 1508 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"initialize\"")), ",\"body\":{")), "\"supportsConfigurationDoneRequest\":true,")), "\"supportsTerminateRequest\":true,")), "\"supportTerminateDebuggee\":true")), "}}");
-    #line 1497 "./src/dap.am"
+    #line 1518 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
-    #line 1502 "./src/dap.am"
+    #line 1523 "./src/dap.am"
     code_string evt = code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"event\"")), ",\"event\":\"initialized\"}");
-    #line 1505 "./src/dap.am"
+    #line 1526 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, evt);
 }
 
 static void Amalgame_Compiler_DapServer_HandleDisconnect(Amalgame_Compiler_DapServer* self, i64 seq, Amalgame_Compiler_JsonValue* args) {
-    #line 1512 "./src/dap.am"
+    #line 1533 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":true")), ",\"command\":\"disconnect\"}");
-    #line 1517 "./src/dap.am"
+    #line 1538 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
-    #line 1519 "./src/dap.am"
+    #line 1540 "./src/dap.am"
     Amalgame_Compiler_DapServer_WriteToFd(self, 1, "-gdb-exit\n");
-    #line 1520 "./src/dap.am"
+    #line 1541 "./src/dap.am"
     Amalgame_Compiler_DapServer_CloseGdbStdin(self);
-    #line 1521 "./src/dap.am"
+    #line 1542 "./src/dap.am"
     self->StopRequested = 1;
 }
 
 static void Amalgame_Compiler_DapServer_SendDapErrorResponse(Amalgame_Compiler_DapServer* self, i64 seq, code_string command, code_string reason) {
-    #line 1528 "./src/dap.am"
+    #line 1549 "./src/dap.am"
     code_string body = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("{\"seq\":", String_FromInt(Amalgame_Compiler_DapServer_NextOutSeq(self)))), ",\"type\":\"response\"")), ",\"request_seq\":")), String_FromInt(seq))), ",\"success\":false")), ",\"command\":\"")), Amalgame_Compiler_Json_EscapeString(command))), "\"")), ",\"message\":\"")), Amalgame_Compiler_Json_EscapeString(reason))), "\"}");
-    #line 1534 "./src/dap.am"
+    #line 1555 "./src/dap.am"
     Amalgame_Compiler_DapServer_SendDapFrame(self, body);
 }
 
 static i64 Amalgame_Compiler_DapServer_NextOutSeq(Amalgame_Compiler_DapServer* self) {
-    #line 1542 "./src/dap.am"
+    #line 1563 "./src/dap.am"
     { /* inline-C */
         
                     self->_outSeqCounter += 1;
@@ -31748,7 +31820,7 @@ static i64 Amalgame_Compiler_DapServer_NextOutSeq(Amalgame_Compiler_DapServer* s
 }
 
 static void Amalgame_Compiler_DapServer_Cleanup(Amalgame_Compiler_DapServer* self) {
-    #line 1550 "./src/dap.am"
+    #line 1571 "./src/dap.am"
     { /* inline-C */
         
                     if (self->GdbInFd  >= 0) { close((int) self->GdbInFd);  self->GdbInFd  = -1; }
@@ -31760,124 +31832,124 @@ static void Amalgame_Compiler_DapServer_Cleanup(Amalgame_Compiler_DapServer* sel
 }
 
 i64 Amalgame_Compiler_DapServer_RunRaw(Amalgame_Compiler_DapServer* self) {
-    #line 1561 "./src/dap.am"
+    #line 1582 "./src/dap.am"
     code_string exe = Amalgame_Compiler_DapServer_DetectBackend(self);
-    #line 1562 "./src/dap.am"
+    #line 1583 "./src/dap.am"
     if (String_Length(exe) == 0) {
-        #line 1563 "./src/dap.am"
+        #line 1584 "./src/dap.am"
         Console_WriteError("amc dap: no DAP backend found in PATH.");
-        #line 1564 "./src/dap.am"
+        #line 1585 "./src/dap.am"
         Console_WriteError("");
-        #line 1565 "./src/dap.am"
+        #line 1586 "./src/dap.am"
         Console_WriteError("Install one of the following debug adapters:");
-        #line 1566 "./src/dap.am"
+        #line 1587 "./src/dap.am"
         Console_WriteError("  Linux:    apt install lldb-18  (from https://apt.llvm.org/)");
-        #line 1567 "./src/dap.am"
+        #line 1588 "./src/dap.am"
         Console_WriteError("            → /usr/lib/llvm-18/bin/lldb-dap");
-        #line 1568 "./src/dap.am"
+        #line 1589 "./src/dap.am"
         Console_WriteError("            — or — apt install gdb  (any distro's recent gdb is fine)");
-        #line 1569 "./src/dap.am"
+        #line 1590 "./src/dap.am"
         Console_WriteError("  macOS:    xcode-select --install  (lldb-dap ships with Xcode CLT 14+)");
-        #line 1570 "./src/dap.am"
+        #line 1591 "./src/dap.am"
         Console_WriteError("  Windows:  pacman -S mingw-w64-x86_64-gdb  (gdb 14+ has --dap, MSYS2)");
-        #line 1571 "./src/dap.am"
+        #line 1592 "./src/dap.am"
         Console_WriteError("");
-        #line 1572 "./src/dap.am"
+        #line 1593 "./src/dap.am"
         Console_WriteError("Then re-run `amc dap`. Use `amc build -g entry.am` first to embed");
-        #line 1573 "./src/dap.am"
+        #line 1594 "./src/dap.am"
         Console_WriteError("DWARF debug info so breakpoints can target .am source lines.");
-        #line 1574 "./src/dap.am"
+        #line 1595 "./src/dap.am"
         return 127;
     }
-    #line 1580 "./src/dap.am"
+    #line 1601 "./src/dap.am"
     return Amalgame_Compiler_DapServer_ExecBackend(self, exe);
 }
 
 static code_string Amalgame_Compiler_DapServer_DetectBackend(Amalgame_Compiler_DapServer* self) {
-    #line 1591 "./src/dap.am"
+    #line 1612 "./src/dap.am"
     AmalgameList* cands = AmalgameList_new();
-    #line 1592 "./src/dap.am"
+    #line 1613 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("lldb-dap"));
-    #line 1593 "./src/dap.am"
+    #line 1614 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("lldb-dap-20"));
-    #line 1594 "./src/dap.am"
+    #line 1615 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("lldb-dap-19"));
-    #line 1595 "./src/dap.am"
+    #line 1616 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("lldb-dap-18"));
-    #line 1596 "./src/dap.am"
+    #line 1617 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("/usr/lib/llvm-20/bin/lldb-dap"));
-    #line 1597 "./src/dap.am"
+    #line 1618 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("/usr/lib/llvm-19/bin/lldb-dap"));
-    #line 1598 "./src/dap.am"
+    #line 1619 "./src/dap.am"
     AmalgameList_add(cands, (void*)(intptr_t)("/usr/lib/llvm-18/bin/lldb-dap"));
-    #line 1599 "./src/dap.am"
+    #line 1620 "./src/dap.am"
     i64 n = AmalgameList_count(cands);
-    #line 1600 "./src/dap.am"
+    #line 1621 "./src/dap.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1601 "./src/dap.am"
+        #line 1622 "./src/dap.am"
         code_string c = (code_string)AmalgameList_get(cands, i);
-        #line 1602 "./src/dap.am"
+        #line 1623 "./src/dap.am"
         code_string hit = Amalgame_Compiler_DapServer_Probe(c);
-        #line 1603 "./src/dap.am"
+        #line 1624 "./src/dap.am"
         if (String_Length(hit) > 0) {
-            #line 1604 "./src/dap.am"
+            #line 1625 "./src/dap.am"
             return hit;
         }
     }
-    #line 1614 "./src/dap.am"
+    #line 1635 "./src/dap.am"
     AmalgameList* gdbCands = AmalgameList_new();
-    #line 1615 "./src/dap.am"
+    #line 1636 "./src/dap.am"
     AmalgameList_add(gdbCands, (void*)(intptr_t)("gdb"));
-    #line 1616 "./src/dap.am"
+    #line 1637 "./src/dap.am"
     AmalgameList_add(gdbCands, (void*)(intptr_t)("/usr/bin/gdb"));
-    #line 1617 "./src/dap.am"
+    #line 1638 "./src/dap.am"
     AmalgameList_add(gdbCands, (void*)(intptr_t)("/opt/homebrew/bin/gdb"));
-    #line 1618 "./src/dap.am"
+    #line 1639 "./src/dap.am"
     i64 m = AmalgameList_count(gdbCands);
-    #line 1619 "./src/dap.am"
+    #line 1640 "./src/dap.am"
     for (i64 i = 0; i < m; i++) {
-        #line 1620 "./src/dap.am"
+        #line 1641 "./src/dap.am"
         code_string c = (code_string)AmalgameList_get(gdbCands, i);
-        #line 1621 "./src/dap.am"
+        #line 1642 "./src/dap.am"
         code_string hit = Amalgame_Compiler_DapServer_Probe(c);
-        #line 1622 "./src/dap.am"
+        #line 1643 "./src/dap.am"
         if (String_Length(hit) > 0) {
-            #line 1623 "./src/dap.am"
+            #line 1644 "./src/dap.am"
             return code_string_concat("gdb:", hit);
         }
     }
-    #line 1626 "./src/dap.am"
+    #line 1647 "./src/dap.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_DapServer_Probe(code_string candidate) {
-    #line 1633 "./src/dap.am"
+    #line 1654 "./src/dap.am"
     AmalgameProcessResult* probe = Process_RunCapture(code_string_concat((code_string_concat("command -v '", candidate)), "' 2>/dev/null"));
-    #line 1634 "./src/dap.am"
+    #line 1655 "./src/dap.am"
     if ((probe->Exit != 0) || (String_Length(probe->Stdout) == 0)) {
-        #line 1635 "./src/dap.am"
+        #line 1656 "./src/dap.am"
         return "";
     }
-    #line 1637 "./src/dap.am"
+    #line 1658 "./src/dap.am"
     code_string s = probe->Stdout;
-    #line 1638 "./src/dap.am"
+    #line 1659 "./src/dap.am"
     i64 last = String_Length(s) - 1;
-    #line 1639 "./src/dap.am"
+    #line 1660 "./src/dap.am"
     if (last >= 0) {
-        #line 1640 "./src/dap.am"
+        #line 1661 "./src/dap.am"
         code_string tail = String_Substring(s, last, 1);
-        #line 1641 "./src/dap.am"
+        #line 1662 "./src/dap.am"
         if (code_string_equals(tail, "\n")) {
-            #line 1642 "./src/dap.am"
+            #line 1663 "./src/dap.am"
             s = String_Substring(s, 0, last);
         }
     }
-    #line 1645 "./src/dap.am"
+    #line 1666 "./src/dap.am"
     return s;
 }
 
 static i64 Amalgame_Compiler_DapServer_ExecBackend(Amalgame_Compiler_DapServer* self, code_string exe) {
-    #line 1654 "./src/dap.am"
+    #line 1675 "./src/dap.am"
     { /* inline-C */
         
                     // Strip the `gdb:` sentinel DetectBackend added for the

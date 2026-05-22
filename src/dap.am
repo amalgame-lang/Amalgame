@@ -342,6 +342,27 @@ public class DapServer {
             Console.WriteLine("[FAIL] mi: escape inside string (got '" + msg + "')")
             failures = failures + 1
         }
+        // ── Case 9 — octal escape for UTF-8 byte (\303\251 = é) ─
+        // Regression for the "Développement → D303251veloppement"
+        // bug shipped before 2026-05-22. gdb MI encodes every
+        // non-ASCII byte as an octal triple; without this branch
+        // the digits leaked into the un-escaped string as literals.
+        let in9: string = "^done,path=\"/tmp/D\\303\\251v\""
+        let p9 = new MiParser(in9)
+        let r9: MiRecord = p9.ParseRecord()
+        let pathVal: MiValue = r9.ResultOrNull("path")
+        var path: string = ""
+        if (pathVal != null) { path = pathVal.Str }
+        // The two octal escapes encode the two UTF-8 bytes of `é`
+        // (0xC3 0xA9). String_FromByte builds a 1-byte string for
+        // each; concat yields a valid UTF-8 `é` followed by `v`.
+        let expected: string = "/tmp/D" + String_FromByte(195) + String_FromByte(169) + "v"
+        if (path == expected) {
+            Console.WriteLine("[PASS] mi: octal \\NNN escape (UTF-8 byte)")
+        } else {
+            Console.WriteLine("[FAIL] mi: octal escape (got '" + path + "')")
+            failures = failures + 1
+        }
         if (failures > 0) {
             Console.WriteError("amc dap --self-test-mi: " + String_FromInt(failures) + " case(s) failed")
             return 1
