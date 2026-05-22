@@ -1097,11 +1097,73 @@ CEOF
         fi
         rm -f "$DAP_PROG" "$DAP_BIN"
     fi
+
+    # Pretty-print + drill-down: a C program that builds an
+    # AmalgameList<int> via runtime/Amalgame_Collections.h, then a
+    # scripted DAP session checks `List[3]` summary and child
+    # values via variablesReference expansion. Skips when libgc or
+    # the runtime headers aren't reachable.
+    printf "  %-34s" "dap: bridge pretty-print + drill"
+    DAP_LIST_PROG=$(mktemp --suffix=.c)
+    DAP_LIST_BIN=$(mktemp -u)
+    cat > "$DAP_LIST_PROG" << 'CEOF'
+#include "runtime/Amalgame_Collections.h"
+int main() {
+    AmalgameList* xs = AmalgameList_new();
+    AmalgameList_add(xs, (void*)(intptr_t)10);
+    AmalgameList_add(xs, (void*)(intptr_t)20);
+    AmalgameList_add(xs, (void*)(intptr_t)30);
+    return 0;  /* line 7 — breakpoint */
+}
+CEOF
+    if ! gcc -g -O0 -I. "$DAP_LIST_PROG" -lgc -o "$DAP_LIST_BIN" 2>/dev/null; then
+        echo -e "${YELLOW}SKIP${NC} (libgc / runtime/ not available)"
+        SKIP=$((SKIP + 1))
+        rm -f "$DAP_LIST_PROG"
+    else
+        L_INIT='{"seq":1,"type":"request","command":"initialize","arguments":{"clientID":"test","adapterID":"amc"}}'
+        L_LAUNCH='{"seq":2,"type":"request","command":"launch","arguments":{"program":"'"$DAP_LIST_BIN"'"}}'
+        L_SETBP='{"seq":3,"type":"request","command":"setBreakpoints","arguments":{"source":{"path":"'"$DAP_LIST_PROG"'"},"breakpoints":[{"line":7}]}}'
+        L_CFGDONE='{"seq":4,"type":"request","command":"configurationDone"}'
+        L_VARS='{"seq":5,"type":"request","command":"variables","arguments":{"variablesReference":1}}'
+        L_EXPAND='{"seq":6,"type":"request","command":"variables","arguments":{"variablesReference":1000}}'
+        L_DISC='{"seq":7,"type":"request","command":"disconnect"}'
+        L_SESS=$( (
+            for F in "$L_INIT" "$L_LAUNCH" "$L_SETBP" "$L_CFGDONE"; do
+                printf 'Content-Length: %d\r\n\r\n%s' "${#F}" "$F"
+            done
+            sleep 0.8
+            printf 'Content-Length: %d\r\n\r\n%s' "${#L_VARS}" "$L_VARS"
+            sleep 0.5
+            printf 'Content-Length: %d\r\n\r\n%s' "${#L_EXPAND}" "$L_EXPAND"
+            sleep 0.3
+            printf 'Content-Length: %d\r\n\r\n%s' "${#L_DISC}" "$L_DISC"
+        ) | timeout 8 "$AMC" dap --bridge 2>&1 )
+        # `List[3]` summary + variablesReference=1000 for the AmalgameList var,
+        # plus the three hex child values (10/20/30 = 0xa/0x14/0x1e).
+        if echo "$L_SESS" | grep -qF '"value":"List[3]"' \
+           && echo "$L_SESS" | grep -qF '"variablesReference":1000' \
+           && echo "$L_SESS" | grep -qF '"name":"[0]"' \
+           && echo "$L_SESS" | grep -qF '"value":"0xa"' \
+           && echo "$L_SESS" | grep -qF '"value":"0x14"' \
+           && echo "$L_SESS" | grep -qF '"value":"0x1e"'; then
+            echo -e "${GREEN}PASS${NC}"
+            PASS=$((PASS + 1))
+        else
+            echo -e "${RED}FAIL${NC}"
+            echo "$L_SESS" | head -25 | sed 's/^/      /'
+            FAIL=$((FAIL + 1))
+        fi
+        rm -f "$DAP_LIST_PROG" "$DAP_LIST_BIN"
+    fi
 else
     printf "  %-34s" "dap: bridge initialize handshake"
     echo -e "${YELLOW}SKIP${NC} (gdb not on PATH)"
     SKIP=$((SKIP + 1))
     printf "  %-34s" "dap: bridge full session"
+    echo -e "${YELLOW}SKIP${NC} (gdb not on PATH)"
+    SKIP=$((SKIP + 1))
+    printf "  %-34s" "dap: bridge pretty-print + drill"
     echo -e "${YELLOW}SKIP${NC} (gdb not on PATH)"
     SKIP=$((SKIP + 1))
 fi

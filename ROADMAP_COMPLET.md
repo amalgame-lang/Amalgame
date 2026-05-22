@@ -2213,28 +2213,79 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
       Phase 5 alongside the pretty-printer registry — both touch
       the same async-state machinery.
 
+**Phases shipped (continued):**
+
+- [x] **Phase 5 — pretty-printers + step-until-visible.** Shipped
+      end-to-end.
+      - Phase 5A: `StepBudget` field, armed to 8 on every
+        `stepIn` (unless `--show-runtime`). After `*stopped` if
+        the landing frame's `func` matches `IsHiddenFrameFunc`
+        (the same helper that powers the stackTrace filter from
+        Phase 6), the bridge fires another `-exec-step` and
+        suppresses the DAP `stopped` event. Decrements budget;
+        when 0, surfaces whatever the user landed on.
+      - Phase 5B: pretty-printer registry via two type-keyed
+        static helpers in `DapServer`:
+          - `PrettyPrintQuery(name, typeS)` → MI eval expr or "".
+            Coverage: `AmalgameList *` → `(int)((AmalgameList*)
+            x)->size`; `AmalgameMap *` mirrors; `AmalgameSet *`
+            goes through `->map->size` (Set wraps a Map);
+            `AmalgameClosure *` → `(void*)((AmalgameClosure*)
+            x)->env`.
+          - `PrettyPrintFormat(typeS, evalResult)` → display
+            string. Yields `List[N]`, `Map[N]`, `Set[N]`,
+            `λ env=0x…`.
+        The follow-up walk is a serial state machine over
+        `PendingVars_*` parallel lists (Names/Types/Values/
+        Queries/Refs/Idx). Each `variables` request initialises
+        the staging, fires the first non-empty query,
+        `HandleVarFollowupResponse` rewrites the value, advances,
+        chains the next; when `Idx == Names.Count()`
+        `SendVariablesResponse` emits the final DAP frame.
+      - Phase 5C: drill-down via `variablesReference`. When
+        Phase 5B's follow-up returns the size for an Amalgame
+        container, `AllocChildRef` mints a fresh varRef ≥ 1000
+        and stores `(type, addr, size)` in `ChildRef_*` lists.
+        The Variable's `variablesReference` is rewritten to that
+        ref. On the client's expand, `HandleVariables(vref > 1)`
+        dispatches to `HandleChildVariables` which synthesises
+        a child list (`[0]` … `[N-1]`) with per-child queries
+        like `((AmalgameList*)<addr>)->data[i]`, then routes
+        through the same serial walker. Map/Set children left for
+        a follow-up (their hash-table-with-tombstones layout
+        needs a different traversal).
+      Verified in CI via `tests/run_tests.sh` "dap: bridge
+      pretty-print + drill" — builds a C program that wires
+      `runtime/Amalgame_Collections.h`, attaches the bridge,
+      asserts `"value":"List[3]"` + `"variablesReference":1000`
+      on the parent and `0xa`/`0x14`/`0x1e` on the children.
+
 **Phases remaining:**
 
-- [ ] **Phase 5 — pretty-printer registry + step-until-visible.**
-      Keyed-by-C-type formatters for `AmalgameList *` (summary +
-      `[0]`, `[1]`, …), `AmalgameMap *`, `AmalgameSet *`,
-      `AmalgameClosure *`, `code_string` (length-aware). Each
-      printer takes the gdb-reported `(name, type, addr)` and
-      issues follow-up `-data-evaluate-expression` calls to expand
-      the structure, populating DAP `variablesReference` child
-      handles. The `Variable.variablesReference=0` slot today
-      becomes a non-zero opaque handle that resolves via a new
-      Variables-by-ref scope dispatched through `HandleVariables`.
-      Companion: `stepIn` auto-step through hidden frames up to an
-      8-hop budget when the post-step `*stopped` lands in a
-      filtered frame. Estimated ~200 LoC + ~150 LoC of state
-      machinery.
+- [ ] **Phase 7 — flip default to bridge.** Drop the `--bridge`
+      gate in `RunBridge()`; `--raw` becomes the opt-out. Update
+      `editors/vscode/extension.js` (currently spawns
+      `amc dap` with no extra arg — would Just Work) and the
+      `docs/guide/06-build-and-tooling.md` debug section.
+      Optional: walk back the macOS lldb-dap detection in
+      `RunRaw()` to NOT block on a missing gdb, so non-Linux
+      hosts fall through to `--raw` automatically.
 
-- [ ] **Phase 7 — flip default to bridge.** Once Phase 5 ships,
-      change `RunBridge()` to act on every invocation (drop the
-      `--bridge` gate). `--raw` becomes the opt-out for users
-      who want the v0.8.0 execvp proxy. Update
-      `editors/vscode/extension.js` and the docs accordingly.
+- [ ] **AmalgameMap / AmalgameSet child drill-down.** Phase 5C
+      ships only the AmalgameList branch. Map and Set wrap a
+      tombstoned hash table — the child enumeration would emit
+      one DAP entry per OCCUPIED slot, skipping empties + tombs.
+      Defer until a real user-facing pain on Maps debugging
+      shows up.
+
+- [ ] **Per-frame variablesReference allocation.** Today the
+      Locals scope is keyed at `variablesReference=1` regardless
+      of which frame the client is inspecting. With multi-frame
+      stack traces (Phase 6 already filters runtime frames so the
+      user sees real call chains), expansion of locals in any
+      frame other than #0 needs `variablesReference=frameId+1`
+      or similar disambiguation, and the scopes response needs
+      to track which frame the request came from.
 - [ ] **Phase 5 — pretty-printer registry.** Default registrants
       for `AmalgameList*` / `AmalgameMap*` / `AmalgameSet*` /
       `AmalgameClosure*` / `code_string`.

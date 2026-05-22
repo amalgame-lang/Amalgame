@@ -102,6 +102,46 @@ public class DapServer {
     public BkptInFlightDapShape: List<string>  // accumulating DAP Breakpoint JSON snippets
     public BkptKnownNumbers:    List<int>      // gdb breakpoint numbers currently set
 
+    // Step-until-visible state (Phase 5A). After `stepIn` lands on
+    // a frame whose `func` matches the hidden-frame patterns
+    // (Amalgame_*, _runtime_*, GC_*), the bridge auto-issues
+    // additional `-exec-step`s up to this budget before surfacing
+    // the resulting *stopped event. Prevents users from getting
+    // stuck inside generated runtime helpers. 8 hops is enough for
+    // any reasonable getter/setter chain; deeper rabbit holes get
+    // surfaced so the user doesn't loop forever.
+    public StepBudget: int
+
+    // Pretty-printer follow-up state (Phase 5B+5C). Each variables
+    // request — both for the Locals scope (variablesReference=1) AND
+    // for drill-down into containers (variablesReference > 1) —
+    // populates these parallel lists and runs serial follow-ups.
+    // Generic across both shapes:
+    //   - Queries[i]   : MI eval expression to enrich Values[i]; "" =
+    //                    no follow-up (Values is final as-is)
+    //   - Names/Types/Values : final DAP `Variable` fields
+    //   - Refs[i]      : variablesReference for drill-down; 0 = leaf
+    //   - Idx          : cursor through Queries during follow-up walk
+    public PendingVars_Seq:     int
+    public PendingVars_Names:   List<string>
+    public PendingVars_Types:   List<string>
+    public PendingVars_Values:  List<string>
+    public PendingVars_Queries: List<string>
+    public PendingVars_Refs:    List<int>
+    public PendingVars_Idx:     int
+
+    // Drill-down registry (Phase 5C). When a Locals follow-up
+    // returns the size of an AmalgameList*/Map*/Set*, the bridge
+    // allocates a fresh variablesReference id and stores the parent
+    // type + pointer expression + size here. A subsequent
+    // `variables(variablesReference=N)` from the client looks up the
+    // entry to synthesize child eval queries.
+    public ChildRef_Refs:  List<int>
+    public ChildRef_Types: List<string>   // "AmalgameList" / "AmalgameMap" / "AmalgameSet"
+    public ChildRef_Addrs: List<string>   // pointer addr as gdb-eval-ready string
+    public ChildRef_Sizes: List<int>
+    public NextChildRef:   int            // varRef id pool, starts at 1000
+
     public DapServer() {
         this.Raw           = false
         this.ShowRuntime   = false
@@ -123,6 +163,19 @@ public class DapServer {
         this.BkptInFlightPending  = 0
         this.BkptInFlightDapShape = new List<string>()
         this.BkptKnownNumbers     = new List<int>()
+        this.StepBudget           = 0
+        this.PendingVars_Seq      = -1
+        this.PendingVars_Names    = new List<string>()
+        this.PendingVars_Types    = new List<string>()
+        this.PendingVars_Values   = new List<string>()
+        this.PendingVars_Queries  = new List<string>()
+        this.PendingVars_Refs     = new List<int>()
+        this.PendingVars_Idx      = 0
+        this.ChildRef_Refs        = new List<int>()
+        this.ChildRef_Types       = new List<string>()
+        this.ChildRef_Addrs       = new List<string>()
+        this.ChildRef_Sizes       = new List<int>()
+        this.NextChildRef         = 1000
     }
 
     public int Run() {
@@ -665,6 +718,7 @@ public class DapServer {
         else if (kind == "configurationDone") { this.RespondConfigurationDone(dapSeq, rec) }
         else if (kind == "stackTrace")        { this.RespondStackTrace(dapSeq, rec) }
         else if (kind == "variables")         { this.RespondVariables(dapSeq, rec) }
+        else if (kind == "varFollowup")       { this.HandleVarFollowupResponse(rec) }
         else if (kind == "evaluate")          { this.RespondEvaluate(dapSeq, rec) }
         // The fire-and-forget verbs (continue/next/step/pause) don't
         // register a token — their DAP response was sent up-front and
@@ -707,7 +761,36 @@ public class DapServer {
     //   signal-received → "exception"
     //   exited-normally → drop (handled by =thread-group-exited)
     //   anything else → "pause"
+    // True when a frame's `func` name matches the hidden-frame
+    // patterns. Used by EmitStoppedEvent (step-until-visible) and
+    // RespondStackTrace (frame filter). Pure function so both call
+    // sites use the same rules.
+    private bool IsHiddenFrameFunc(string funcS) {
+        if (this.ShowRuntime) { return false }
+        if (String_StartsWith(funcS, "Amalgame_")) { return true }
+        if (String_StartsWith(funcS, "_runtime_")) { return true }
+        if (String_StartsWith(funcS, "GC_"))       { return true }
+        return false
+    }
+
     private void EmitStoppedEvent(MiRecord rec) {
+        // Step-until-visible: if we're stepping and the current frame
+        // is hidden, fire another -exec-step and suppress the DAP
+        // event. Budget caps the auto-step depth so a pure-runtime
+        // loop doesn't lock the user out.
+        if (this.StepBudget > 0) {
+            let frameV: MiValue = rec.ResultOrNull("frame")
+            var funcS: string = ""
+            if (frameV != null) { funcS = frameV.FieldString("func") }
+            if (this.IsHiddenFrameFunc(funcS)) {
+                this.StepBudget = this.StepBudget - 1
+                this.WriteToFd(1, "-exec-step\n")
+                return
+            }
+            // Landed somewhere visible — clear the budget so the next
+            // stepIn re-arms freshly.
+            this.StepBudget = 0
+        }
         var reason: string = "pause"
         var bkptList: string = ""
         var isExit: bool = false
@@ -852,6 +935,13 @@ public class DapServer {
     }
 
     private void HandleStep(int seq, string dapCmd, string miCmd) {
+        // stepIn into runtime helpers (collection ops, GC, exception
+        // glue) is a poor UX — the user almost always wants to land
+        // back in their own .am source. Arm step-until-visible so
+        // the *stopped handler auto-steps through hidden frames.
+        if (dapCmd == "stepIn" && !this.ShowRuntime) {
+            this.StepBudget = 8
+        }
         this.WriteToFd(1, miCmd + "\n")
         let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
             ",\"type\":\"response\"" +
@@ -1021,13 +1111,79 @@ public class DapServer {
     }
 
     private void HandleVariables(int seq, JsonValue args) {
-        // variablesReference == 1 means "Locals of current frame".
-        // Future shapes (`frameId * 100 + 1`) for per-frame Locals,
-        // plus structured-object expansion (List/Map drill-down) all
-        // land in Phase 5. For MVP we always list the current frame's
-        // locals via `-stack-list-variables --simple-values`.
-        let _tok: int = this.IssueMiCommand(seq, "variables",
-            "-stack-list-variables --simple-values")
+        let vref: int = args.Get("variablesReference").AsInt()
+        if (vref == 1) {
+            // Locals scope — query gdb for the current frame's vars,
+            // pretty-print arrives in RespondVariables.
+            let _tok: int = this.IssueMiCommand(seq, "variables",
+                "-stack-list-variables --simple-values")
+            return
+        }
+        if (vref > 1) {
+            // Drill-down into a container we previously summarised.
+            this.HandleChildVariables(seq, vref)
+            return
+        }
+        this.SendDapErrorResponse(seq, "variables", "invalid variablesReference")
+    }
+
+    // Synthesize a child variables list for a container drilled into
+    // via `variables(variablesReference=N)`. Reuses the PendingVars_*
+    // staging shape — each child gets a query like
+    // `((AmalgameList*)<addr>)->data[<i>]`; the Locals follow-up
+    // walker is generic over Queries so it runs unchanged.
+    private void HandleChildVariables(int seq, int vref) {
+        let cidx: int = this.FindChildRefIndex(vref)
+        if (cidx < 0) {
+            this.SendDapErrorResponse(seq, "variables", "stale variablesReference")
+            return
+        }
+        let typeS: string = this.ChildRef_Types.Get(cidx)
+        let addr:  string = this.ChildRef_Addrs.Get(cidx)
+        let size:  int    = this.ChildRef_Sizes.Get(cidx)
+        this.PendingVars_Seq     = seq
+        this.PendingVars_Names   = new List<string>()
+        this.PendingVars_Types   = new List<string>()
+        this.PendingVars_Values  = new List<string>()
+        this.PendingVars_Queries = new List<string>()
+        this.PendingVars_Refs    = new List<int>()
+        this.PendingVars_Idx     = 0
+        // AmalgameList* drill-down: data[0..size-1]. AmalgameMap/Set
+        // children are deferred (their internal layout walks a hash
+        // table with tombstones — different shape).
+        if (typeS == "AmalgameList") {
+            for i in 0..size {
+                this.PendingVars_Names.Add("[" + String_FromInt(i) + "]")
+                this.PendingVars_Types.Add("void*")
+                this.PendingVars_Values.Add("?")
+                this.PendingVars_Queries.Add("(void*)((AmalgameList*)" + addr + ")->data[" + String_FromInt(i) + "]")
+                this.PendingVars_Refs.Add(0)
+            }
+        }
+        this.ProcessNextVarFollowup()
+    }
+
+    private int FindChildRefIndex(int vref) {
+        let n: int = this.ChildRef_Refs.Count()
+        var found: int = -1
+        for i in 0..n {
+            if (this.ChildRef_Refs.Get(i) == vref) { found = i }
+        }
+        return found
+    }
+
+    // Allocate a fresh variablesReference id, storing the metadata
+    // needed to expand it on a subsequent variables request.
+    // `addr` is the gdb-eval string that yields the pointer
+    // (typically just the var's name once gdb has its type info).
+    private int AllocChildRef(string typeS, string addr, int size) {
+        let r: int = this.NextChildRef
+        this.NextChildRef = this.NextChildRef + 1
+        this.ChildRef_Refs.Add(r)
+        this.ChildRef_Types.Add(typeS)
+        this.ChildRef_Addrs.Add(addr)
+        this.ChildRef_Sizes.Add(size)
+        return r
     }
 
     private void HandleEvaluate(int seq, JsonValue args) {
@@ -1098,20 +1254,10 @@ public class DapServer {
                 let fileS: string = f.FieldString("fullname")
                 var lineS: string = f.FieldString("line")
                 if (String_Length(lineS) == 0) { lineS = "0" }
-                // Frame filter: hide internal runtime frames unless
-                // the user opted in with `--show-runtime`. Pattern
-                // matches `^Amalgame_*` (every runtime header verb:
-                // String_*, AmalgameList_*, etc.), `^_runtime_*`
-                // (exception/setjmp glue), and `^GC_*` (libgc).
-                // The cgen emits user code as `<Namespace>_<Class>_
-                // <Method>` so legitimate stack frames never match.
-                if (!this.ShowRuntime) {
-                    if (String_StartsWith(funcS, "Amalgame_") ||
-                        String_StartsWith(funcS, "_runtime_") ||
-                        String_StartsWith(funcS, "GC_")) {
-                        continue
-                    }
-                }
+                // Frame filter — see IsHiddenFrameFunc. Shared with
+                // EmitStoppedEvent's step-until-visible check so both
+                // sites apply the same rule.
+                if (this.IsHiddenFrameFunc(funcS)) { continue }
                 if (count > 0) { frames = frames + "," }
                 frames = frames + "{\"id\":" + lvlS +
                     ",\"name\":\"" + Json.EscapeString(funcS) + "\"" +
@@ -1140,33 +1286,180 @@ public class DapServer {
             this.SendDapErrorResponse(dapSeq, "variables", "-stack-list-variables failed")
             return
         }
+        // Snapshot the variables into the pretty-printer staging.
+        // For each var we pre-compute the follow-up query (or "" if
+        // none) so ProcessNextVarFollowup can drive the walk
+        // uniformly across Locals + Children paths.
         let vars: MiValue = rec.ResultOrNull("variables")
-        var arr: string = "["
-        var count: int = 0
+        this.PendingVars_Seq     = dapSeq
+        this.PendingVars_Names   = new List<string>()
+        this.PendingVars_Types   = new List<string>()
+        this.PendingVars_Values  = new List<string>()
+        this.PendingVars_Queries = new List<string>()
+        this.PendingVars_Refs    = new List<int>()
+        this.PendingVars_Idx     = 0
         if (vars != null && vars.Kind == 2) {
             let n: int = vars.ListItems.Count()
             for i in 0..n {
                 let v: MiValue = vars.ListItems.Get(i)
                 if (v.Kind != 1) { continue }
-                let name:  string = v.FieldString("name")
-                let value: string = v.FieldString("value")
+                let nameS: string = v.FieldString("name")
                 let typeS: string = v.FieldString("type")
-                if (count > 0) { arr = arr + "," }
-                arr = arr + "{\"name\":\""  + Json.EscapeString(name)  + "\"" +
-                    ",\"value\":\"" + Json.EscapeString(value) + "\"" +
-                    ",\"type\":\""  + Json.EscapeString(typeS) + "\"" +
-                    ",\"variablesReference\":0}"
-                count = count + 1
+                this.PendingVars_Names.Add(nameS)
+                this.PendingVars_Types.Add(typeS)
+                this.PendingVars_Values.Add(v.FieldString("value"))
+                this.PendingVars_Queries.Add(DapServer.PrettyPrintQuery(nameS, typeS))
+                this.PendingVars_Refs.Add(0)
             }
+        }
+        this.ProcessNextVarFollowup()
+    }
+
+    // Walk staged variables looking for the next one that has a
+    // non-empty query. If found, issue the eval; response lands in
+    // HandleVarFollowupResponse which calls back here. When all
+    // entries are processed, SendVariablesResponse fires.
+    private void ProcessNextVarFollowup() {
+        let n: int = this.PendingVars_Names.Count()
+        while (this.PendingVars_Idx < n) {
+            let q: string = this.PendingVars_Queries.Get(this.PendingVars_Idx)
+            if (String_Length(q) > 0) {
+                let _tok: int = this.IssueMiCommand(this.PendingVars_Seq, "varFollowup",
+                    "-data-evaluate-expression \"" + Json.EscapeString(q) + "\"")
+                return
+            }
+            this.PendingVars_Idx = this.PendingVars_Idx + 1
+        }
+        this.SendVariablesResponse()
+    }
+
+    // Map (varName, typeStr) → the MI eval expression that yields
+    // the pretty-print summary. Returns "" when the type isn't
+    // registered, signalling ProcessNextVarFollowup to leave the
+    // value alone. Types covered:
+    //   - AmalgameList* / AmalgameMap* / AmalgameSet*: length probe
+    //   - AmalgameClosure*: env pointer probe
+    // code_string is intentionally absent — gdb already inlines the
+    // quoted string in its `value` field, no enrichment needed.
+    private static string PrettyPrintQuery(string name, string typeS) {
+        // Field names mirror runtime/_runtime.h + runtime/Amalgame_
+        // Collections.h: AmalgameList/Map both use `size`, AmalgameSet
+        // wraps an inner Map so the live count goes through `map->size`,
+        // AmalgameClosure exposes `env` as the captured-locals pointer.
+        if (typeS == "AmalgameList *")    { return "(int)((AmalgameList*)"    + name + ")->size" }
+        if (typeS == "AmalgameMap *")     { return "(int)((AmalgameMap*)"     + name + ")->size" }
+        if (typeS == "AmalgameSet *")     { return "(int)((AmalgameSet*)"     + name + ")->map->size" }
+        if (typeS == "AmalgameClosure *") { return "(void*)((AmalgameClosure*)" + name + ")->env" }
+        return ""
+    }
+
+    // Map (typeStr, evalResult) → the prettified value string. Mirror
+    // of PrettyPrintQuery — same type taxonomy.
+    private static string PrettyPrintFormat(string typeS, string evalResult) {
+        if (typeS == "AmalgameList *")    { return "List["    + evalResult + "]" }
+        if (typeS == "AmalgameMap *")     { return "Map["     + evalResult + "]" }
+        if (typeS == "AmalgameSet *")     { return "Set["     + evalResult + "]" }
+        if (typeS == "AmalgameClosure *") { return "λ env=" + evalResult }
+        return evalResult
+    }
+
+    // Receive the eval response for the current PendingVars_Idx
+    // variable. Replace its staged value with the prettified form,
+    // advance the cursor, and chain to the next follow-up.
+    private void HandleVarFollowupResponse(MiRecord rec) {
+        let idx: int = this.PendingVars_Idx
+        if (idx < this.PendingVars_Names.Count()) {
+            if (rec.Class == "done") {
+                let valWrap: MiValue = rec.ResultOrNull("value")
+                if (valWrap != null) {
+                    let typeS: string = this.PendingVars_Types.Get(idx)
+                    let nameS: string = this.PendingVars_Names.Get(idx)
+                    let evalRes: string = valWrap.Str
+                    let pretty: string = DapServer.PrettyPrintFormat(typeS, evalRes)
+                    this.RewriteValueAt(idx, pretty)
+                    // For container types, the eval result IS the
+                    // size — allocate a varRef so the client can
+                    // expand. AmalgameClosure has no children today
+                    // (env is opaque void*), skip its varRef.
+                    let ctype: string = DapServer.ContainerKind(typeS)
+                    if (String_Length(ctype) > 0) {
+                        let size: int = String_ToInt(evalRes)
+                        if (size > 0) {
+                            let vref: int = this.AllocChildRef(ctype, nameS, size)
+                            this.RewriteRefAt(idx, vref)
+                        }
+                    }
+                }
+            }
+            // ^error or missing value: leave the raw value in place.
+            this.PendingVars_Idx = idx + 1
+        }
+        this.ProcessNextVarFollowup()
+    }
+
+    // Container-type discriminator: returns the bare struct name
+    // ("AmalgameList" / "AmalgameMap" / "AmalgameSet") that's
+    // expandable into children, or "" for non-expandable types like
+    // AmalgameClosure (where the env is just a raw void*).
+    private static string ContainerKind(string typeS) {
+        if (typeS == "AmalgameList *") { return "AmalgameList" }
+        if (typeS == "AmalgameMap *")  { return "AmalgameMap"  }
+        if (typeS == "AmalgameSet *")  { return "AmalgameSet"  }
+        return ""
+    }
+
+    private void RewriteRefAt(int idx, int newRef) {
+        let n: int = this.PendingVars_Refs.Count()
+        let fresh: List<int> = new List<int>()
+        for i in 0..n {
+            if (i == idx) { fresh.Add(newRef) }
+            else          { fresh.Add(this.PendingVars_Refs.Get(i)) }
+        }
+        this.PendingVars_Refs = fresh
+    }
+
+    // List<string> in current stdlib has no Set(i, v) primitive, so
+    // rebuild the list with the substitution applied. Order survives.
+    private void RewriteValueAt(int idx, string newValue) {
+        let n: int = this.PendingVars_Values.Count()
+        let fresh: List<string> = new List<string>()
+        for i in 0..n {
+            if (i == idx) { fresh.Add(newValue) }
+            else          { fresh.Add(this.PendingVars_Values.Get(i)) }
+        }
+        this.PendingVars_Values = fresh
+    }
+
+    // Assemble + send the DAP variables response from the staging
+    // lists. Called once ProcessNextVarFollowup has walked every
+    // entry. Resets the staging state so the next variables
+    // request starts clean.
+    private void SendVariablesResponse() {
+        var arr: string = "["
+        let n: int = this.PendingVars_Names.Count()
+        for i in 0..n {
+            let name:  string = this.PendingVars_Names.Get(i)
+            let typeS: string = this.PendingVars_Types.Get(i)
+            let value: string = this.PendingVars_Values.Get(i)
+            let vref:  int    = this.PendingVars_Refs.Get(i)
+            if (i > 0) { arr = arr + "," }
+            arr = arr + "{\"name\":\""  + Json.EscapeString(name)  + "\"" +
+                ",\"value\":\"" + Json.EscapeString(value) + "\"" +
+                ",\"type\":\""  + Json.EscapeString(typeS) + "\"" +
+                ",\"variablesReference\":" + String_FromInt(vref) + "}"
         }
         arr = arr + "]"
         let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
             ",\"type\":\"response\"" +
-            ",\"request_seq\":" + String_FromInt(dapSeq) +
+            ",\"request_seq\":" + String_FromInt(this.PendingVars_Seq) +
             ",\"success\":true" +
             ",\"command\":\"variables\"" +
             ",\"body\":{\"variables\":" + arr + "}}"
         this.SendDapFrame(body)
+        // Clear staging — but keep allocated lists so the next
+        // request reuses them after the fresh assignment.
+        this.PendingVars_Seq = -1
+        this.PendingVars_Idx = 0
     }
 
     private void RespondEvaluate(int dapSeq, MiRecord rec) {
