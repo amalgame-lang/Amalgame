@@ -55,6 +55,25 @@ function Log {
 Log "begin ($($PSCommandPath))"
 Log "InstallLocation = $InstallLocation"
 
+# ── Strip Mark-of-the-Web on freshly installed files ─────────
+# MSI extracts files from a cabinet that originated in a .msi
+# downloaded over the web, so Windows attaches a Zone.Identifier
+# alternate data stream to each file marking it as "internet zone".
+# That triggers SmartScreen prompts and AV products (Trend, Symantec,
+# etc.) to flag amc.exe as untrusted at first launch. Unblock-File
+# removes the ADS so the files are treated as locally trusted, which
+# helps with the AV heuristic — though hash-based reputation still
+# applies, so for stronger trust we need Authenticode code-signing.
+if ($Mode -eq "install") {
+    try {
+        Get-ChildItem -Path $InstallLocation -Recurse -File -ErrorAction SilentlyContinue |
+            Unblock-File -ErrorAction SilentlyContinue
+        Log "stripped MotW from installed files"
+    } catch {
+        Log "Unblock-File pass failed: $($_.Exception.Message)"
+    }
+}
+
 # ── VS Code extension install / uninstall ────────────────────
 $cliVariants = @("code", "code-insiders", "codium", "code-oss")
 
