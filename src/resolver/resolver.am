@@ -153,6 +153,15 @@ public class FullResolver {
     // resolve before this index. With it: O(refs × log N) via the
     // bdwgc map's hashed probing.
     private GlobalIndex:   Map<string, int>
+    // Method body lookup: `className + "." + methodName` →
+    // METHOD_DECL AstNode. Populated during CollectAll on every
+    // CLASS_DECL's METHOD_DECL children. Replaces the O(progs ×
+    // classes × methods) linear scan in `FindMethodInPrograms`
+    // — which fires on EVERY call/new-expr during Pass 2
+    // (PatchLambdaParamTypesGeneric route). Dominated the resolve
+    // time on c_gen.am (~5k LoC, ~100 classes × 30+ methods) where
+    // every CALL/NEW_EXPR triggered a full-AST sweep.
+    private MethodNodeIndex: Map<string, AstNode>
     private LocalNames:    List<string>
     private LocalTypes:    List<string>
     private LocalIsLets:   List<bool>
@@ -200,6 +209,7 @@ public class FullResolver {
         this.GlobalNames   = new List<string>()
         this.GlobalTypes   = new List<string>()
         this.GlobalIndex   = new Map<string, int>()
+        this.MethodNodeIndex = new Map<string, AstNode>()
         this.LocalNames    = new List<string>()
         this.LocalTypes    = new List<string>()
         this.LocalIsLets   = new List<bool>()
@@ -780,16 +790,31 @@ public class FullResolver {
     }
 
     public void ResolvePrograms() {
+        this.CollectAll()
+        this.ResolveAll()
+    }
+
+    // Pass 1 only — collects every top-level class / enum / member
+    // into the global symbol table. Idempotent over the same
+    // Programs list (DeclareGlobal + MemberTable.Set both dedupe).
+    // Exposed separately so callers (CLI --verbose, LSP refresh)
+    // can time the two passes independently.
+    public void CollectAll() {
         let progCount = this.Programs.Count()
-        // Pass 1: collect all top-level declarations from all files
         for p in 0..progCount {
-            let prog = this.Programs.Get(p)
-            this.CollectProgram(prog)
+            this.CollectProgram(this.Programs.Get(p))
         }
-        // Pass 2: resolve bodies in all files
-        for p2 in 0..progCount {
-            let prog2 = this.Programs.Get(p2)
-            this.ResolveProgram(prog2)
+    }
+
+    // Pass 2 only — walks every method body, resolving identifier
+    // references against the global table + the local-scope stack.
+    // Must run after CollectAll so cross-file forward references
+    // resolve (a method declared in A.am can refer to a class
+    // declared in B.am that hasn't been Pass-2'd yet).
+    public void ResolveAll() {
+        let progCount = this.Programs.Count()
+        for p in 0..progCount {
+            this.ResolveProgram(this.Programs.Get(p))
         }
     }
 
@@ -830,6 +855,10 @@ public class FullResolver {
         }
         if (mk == NodeKind.METHOD_DECL) {
             this.Members.Set(className, m.Name, m.Str)
+            // Also index the AstNode so PatchLambdaParamTypesGeneric's
+            // FindMethodInPrograms is O(1) instead of O(progs ×
+            // classes × methods) per CALL/NEW_EXPR.
+            this.MethodNodeIndex.Set(className + "." + m.Name, m)
         }
     }
 
@@ -1185,23 +1214,15 @@ public class FullResolver {
     // the MEMBER branch already handles.
 
     private AstNode FindMethodInPrograms(string className, string methodName) {
-        let progCount: int = this.Programs.Count()
-        for pi in 0..progCount {
-            let prog: AstNode = this.Programs.Get(pi)
-            let dc: int = prog.Children.Count()
-            for di in 0..dc {
-                let decl: AstNode = prog.Children.Get(di)
-                if (decl.Kind != NodeKind.CLASS_DECL) { continue }
-                if (decl.Name != className) { continue }
-                let mc: int = decl.Children.Count()
-                for mi in 0..mc {
-                    let m: AstNode = decl.Children.Get(mi)
-                    if (m.Kind != NodeKind.METHOD_DECL) { continue }
-                    if (m.Name == methodName) { return m }
-                }
-            }
-        }
-        return null
+        // O(1) lookup via the index populated during CollectAll.
+        // Falls back to null if the (class, method) pair wasn't seen
+        // (external programs registered AFTER CollectAll, dynamic
+        // lookups before the table is fully populated, etc.). The
+        // pre-index implementation was a triple-nested loop that
+        // dominated Pass-2 resolve time on c_gen.am (140s+ → seconds).
+        let key: string = className + "." + methodName
+        if (!this.MethodNodeIndex.Has(key)) { return null }
+        return this.MethodNodeIndex.Get(key)
     }
 
     private void PatchLambdasFromTypedClosureParams(AstNode call, AstNode methodDecl) {
