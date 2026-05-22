@@ -5,16 +5,23 @@ import Amalgame.IO
 import Amalgame.Process
 import Amalgame.String
 
-// `@c { … }` blocks below need execvp / fork / pipe2 / poll /
+// `@c { … }` blocks below need execvp / fork / pipe / poll /
 // perror / malloc visible. _runtime.h already brings in <stdio.h>,
 // <stdlib.h>, <string.h>; we only need <unistd.h> for execvp/fork/
-// pipe2 and <poll.h> for poll(2) (used by the bridge — Phase 2+).
-@c_include "<unistd.h>"
-@c_include "<poll.h>"
-@c_include "<sys/wait.h>"
-@c_include "<fcntl.h>"
-@c_include "<errno.h>"
-@c_include "<signal.h>"
+// pipe and <poll.h> for poll(2) (used by the bridge — Phase 2+).
+// On Windows none of the bridge code path is reachable (gdb DAP
+// not supported), so the POSIX headers are gated and the bridge
+// helpers stub out to failure values that fall back to --raw.
+@c {
+    #ifndef _WIN32
+        #include <unistd.h>
+        #include <poll.h>
+        #include <sys/wait.h>
+        #include <fcntl.h>
+        #include <errno.h>
+        #include <signal.h>
+    #endif
+}
 
 // ═══════════════════════════════════════════════════════
 //  dap.am  —  amc dap: Debug Adapter Protocol
@@ -434,51 +441,63 @@ public class DapServer {
     // records (still emitted on `=thread-group-added` for free).
     private int SpawnGdb(string gdbPath) {
         @c {
-            int parentToChild[2];  // parent writes, child reads → gdb stdin
-            int childToParent[2];  // child writes, parent reads → gdb stdout
-            if (pipe2(parentToChild, O_CLOEXEC) < 0) {
-                perror("amc dap --bridge: pipe2 in");
-                return 1;
-            }
-            if (pipe2(childToParent, O_CLOEXEC) < 0) {
-                perror("amc dap --bridge: pipe2 out");
-                close(parentToChild[0]); close(parentToChild[1]);
-                return 1;
-            }
-            pid_t pid = fork();
-            if (pid < 0) {
-                perror("amc dap --bridge: fork");
-                close(parentToChild[0]); close(parentToChild[1]);
-                close(childToParent[0]); close(childToParent[1]);
-                return 1;
-            }
-            if (pid == 0) {
-                // Child — wire pipes to stdin/stdout, exec gdb.
-                // dup2 clears O_CLOEXEC on the target FDs (0, 1) so
-                // they survive the exec. The original pipe FDs still
-                // have O_CLOEXEC set so they auto-close. We also
-                // close them explicitly for clarity.
-                if (dup2(parentToChild[0], 0) < 0) { perror("dup2 stdin");  _exit(127); }
-                if (dup2(childToParent[1], 1) < 0) { perror("dup2 stdout"); _exit(127); }
-                close(parentToChild[0]); close(parentToChild[1]);
-                close(childToParent[0]); close(childToParent[1]);
-                execlp((const char*) gdbPath,
-                       "gdb", "--interpreter=mi3", "--nx", "--quiet",
-                       (char*) NULL);
-                perror("amc dap --bridge: execlp gdb");
-                _exit(127);
-            }
-            // Parent — close the child-side FDs, stash the rest.
-            close(parentToChild[0]);
-            close(childToParent[1]);
-            self->GdbInFd  = parentToChild[1];
-            self->GdbOutFd = childToParent[0];
-            self->GdbPid   = (i64) pid;
-            // SIGPIPE on a closed stdout (client disconnected) would
-            // kill us silently; turn it into a regular EPIPE that
-            // PollLoop catches via POLLHUP/read==-1.
-            signal(SIGPIPE, SIG_IGN);
-            return 0;
+            #ifdef _WIN32
+                (void) gdbPath;
+                return 1;  // bridge not supported on Windows; caller falls back to --raw
+            #else
+                int parentToChild[2];  // parent writes, child reads → gdb stdin
+                int childToParent[2];  // child writes, parent reads → gdb stdout
+                // pipe(2) + FD_CLOEXEC via fcntl — pipe2(2) is Linux/glibc
+                // only, not portable to macOS. The two-syscall variant is
+                // race-free enough for our single-threaded bridge spawn.
+                if (pipe(parentToChild) < 0) {
+                    perror("amc dap --bridge: pipe in");
+                    return 1;
+                }
+                fcntl(parentToChild[0], F_SETFD, FD_CLOEXEC);
+                fcntl(parentToChild[1], F_SETFD, FD_CLOEXEC);
+                if (pipe(childToParent) < 0) {
+                    perror("amc dap --bridge: pipe out");
+                    close(parentToChild[0]); close(parentToChild[1]);
+                    return 1;
+                }
+                fcntl(childToParent[0], F_SETFD, FD_CLOEXEC);
+                fcntl(childToParent[1], F_SETFD, FD_CLOEXEC);
+                pid_t pid = fork();
+                if (pid < 0) {
+                    perror("amc dap --bridge: fork");
+                    close(parentToChild[0]); close(parentToChild[1]);
+                    close(childToParent[0]); close(childToParent[1]);
+                    return 1;
+                }
+                if (pid == 0) {
+                    // Child — wire pipes to stdin/stdout, exec gdb.
+                    // dup2 clears O_CLOEXEC on the target FDs (0, 1) so
+                    // they survive the exec. The original pipe FDs still
+                    // have O_CLOEXEC set so they auto-close. We also
+                    // close them explicitly for clarity.
+                    if (dup2(parentToChild[0], 0) < 0) { perror("dup2 stdin");  _exit(127); }
+                    if (dup2(childToParent[1], 1) < 0) { perror("dup2 stdout"); _exit(127); }
+                    close(parentToChild[0]); close(parentToChild[1]);
+                    close(childToParent[0]); close(childToParent[1]);
+                    execlp((const char*) gdbPath,
+                           "gdb", "--interpreter=mi3", "--nx", "--quiet",
+                           (char*) NULL);
+                    perror("amc dap --bridge: execlp gdb");
+                    _exit(127);
+                }
+                // Parent — close the child-side FDs, stash the rest.
+                close(parentToChild[0]);
+                close(childToParent[1]);
+                self->GdbInFd  = parentToChild[1];
+                self->GdbOutFd = childToParent[0];
+                self->GdbPid   = (i64) pid;
+                // SIGPIPE on a closed stdout (client disconnected) would
+                // kill us silently; turn it into a regular EPIPE that
+                // PollLoop catches via POLLHUP/read==-1.
+                signal(SIGPIPE, SIG_IGN);
+                return 0;
+            #endif
         }
     }
 
@@ -527,28 +546,32 @@ public class DapServer {
     //   4 = poll failure
     private int PollOnce() {
         @c {
-            struct pollfd fds[2];
-            fds[0].fd = self->StdinOpen ? 0 : -1;
-            fds[0].events = POLLIN;
-            fds[1].fd = (int) self->GdbOutFd;
-            fds[1].events = POLLIN;
-            for (;;) {
-                fds[0].revents = 0;
-                fds[1].revents = 0;
-                int pr = poll(fds, 2, -1);
-                if (pr < 0) {
-                    if (errno == EINTR) continue;
-                    perror("amc dap --bridge: poll");
-                    return 4;
+            #ifdef _WIN32
+                return 4;  // unreachable: bridge stubs out on Windows
+            #else
+                struct pollfd fds[2];
+                fds[0].fd = self->StdinOpen ? 0 : -1;
+                fds[0].events = POLLIN;
+                fds[1].fd = (int) self->GdbOutFd;
+                fds[1].events = POLLIN;
+                for (;;) {
+                    fds[0].revents = 0;
+                    fds[1].revents = 0;
+                    int pr = poll(fds, 2, -1);
+                    if (pr < 0) {
+                        if (errno == EINTR) continue;
+                        perror("amc dap --bridge: poll");
+                        return 4;
+                    }
+                    // Prioritise gdb POLLHUP over POLLIN so we exit cleanly
+                    // when gdb crashes mid-response.
+                    if (fds[1].revents & (POLLHUP | POLLERR)) return 3;
+                    if (fds[0].revents & (POLLHUP | POLLERR) && !(fds[0].revents & POLLIN)) return 2;
+                    if (fds[1].revents & POLLIN) return 1;
+                    if (fds[0].revents & POLLIN) return 0;
+                    // Spurious wake — loop.
                 }
-                // Prioritise gdb POLLHUP over POLLIN so we exit cleanly
-                // when gdb crashes mid-response.
-                if (fds[1].revents & (POLLHUP | POLLERR)) return 3;
-                if (fds[0].revents & (POLLHUP | POLLERR) && !(fds[0].revents & POLLIN)) return 2;
-                if (fds[1].revents & POLLIN) return 1;
-                if (fds[0].revents & POLLIN) return 0;
-                // Spurious wake — loop.
-            }
+            #endif
         }
     }
 
@@ -559,24 +582,29 @@ public class DapServer {
     // them in practice).
     private string ReadFromFd(int which) {
         @c {
-            int fd = (which == 0) ? 0 : (int) self->GdbOutFd;
-            char buf[16384];
-            ssize_t n;
-            for (;;) {
-                n = read(fd, buf, sizeof(buf));
-                if (n < 0 && errno == EINTR) continue;
-                break;
-            }
-            if (n <= 0) {
+            #ifdef _WIN32
+                (void) which;
                 return (code_string) "";
-            }
-            char* r = (char*) GC_MALLOC((size_t) n + 1);
-            if (r == NULL) {
-                return (code_string) "";
-            }
-            memcpy(r, buf, (size_t) n);
-            r[n] = '\0';
-            return (code_string) r;
+            #else
+                int fd = (which == 0) ? 0 : (int) self->GdbOutFd;
+                char buf[16384];
+                ssize_t n;
+                for (;;) {
+                    n = read(fd, buf, sizeof(buf));
+                    if (n < 0 && errno == EINTR) continue;
+                    break;
+                }
+                if (n <= 0) {
+                    return (code_string) "";
+                }
+                char* r = (char*) GC_MALLOC((size_t) n + 1);
+                if (r == NULL) {
+                    return (code_string) "";
+                }
+                memcpy(r, buf, (size_t) n);
+                r[n] = '\0';
+                return (code_string) r;
+            #endif
         }
     }
 
@@ -586,20 +614,30 @@ public class DapServer {
     // NULs in the payload are truncated, same caveat as ReadFromFd.
     public void WriteToFd(int which, string s) {
         @c {
-            int fd = (which == 1) ? (int) self->GdbInFd : 1;
-            if (fd < 0) { return; }
-            const char* p = (const char*) s;
-            size_t len = strlen(p);
-            size_t off = 0;
-            while (off < len) {
-                ssize_t w = write(fd, p + off, len - off);
-                if (w < 0) {
-                    if (errno == EINTR) continue;
-                    self->StopRequested = 1;
-                    break;
+            #ifdef _WIN32
+                // Stdout-only fallback path for the raw / non-bridge code
+                // emits via Console.Write* elsewhere. The bridge never runs
+                // here, so the gdb-stdin branch is dead — silently no-op.
+                if (which == 2) {
+                    fputs((const char*) s, stdout);
+                    fflush(stdout);
                 }
-                off += (size_t) w;
-            }
+            #else
+                int fd = (which == 1) ? (int) self->GdbInFd : 1;
+                if (fd < 0) { return; }
+                const char* p = (const char*) s;
+                size_t len = strlen(p);
+                size_t off = 0;
+                while (off < len) {
+                    ssize_t w = write(fd, p + off, len - off);
+                    if (w < 0) {
+                        if (errno == EINTR) continue;
+                        self->StopRequested = 1;
+                        break;
+                    }
+                    off += (size_t) w;
+                }
+            #endif
         }
     }
 
@@ -607,10 +645,12 @@ public class DapServer {
     // are coming so it can shut down cleanly. Idempotent.
     public void CloseGdbStdin() {
         @c {
-            if (self->GdbInFd >= 0) {
-                close((int) self->GdbInFd);
-                self->GdbInFd = -1;
-            }
+            #ifndef _WIN32
+                if (self->GdbInFd >= 0) {
+                    close((int) self->GdbInFd);
+                    self->GdbInFd = -1;
+                }
+            #endif
         }
     }
 
@@ -1570,10 +1610,12 @@ public class DapServer {
     // Final cleanup — close both pipe FDs and reap the gdb child.
     private void Cleanup() {
         @c {
-            if (self->GdbInFd  >= 0) { close((int) self->GdbInFd);  self->GdbInFd  = -1; }
-            if (self->GdbOutFd >= 0) { close((int) self->GdbOutFd); self->GdbOutFd = -1; }
-            int status = 0;
-            if (self->GdbPid > 0) { waitpid((pid_t) self->GdbPid, &status, 0); }
+            #ifndef _WIN32
+                if (self->GdbInFd  >= 0) { close((int) self->GdbInFd);  self->GdbInFd  = -1; }
+                if (self->GdbOutFd >= 0) { close((int) self->GdbOutFd); self->GdbOutFd = -1; }
+                int status = 0;
+                if (self->GdbPid > 0) { waitpid((pid_t) self->GdbPid, &status, 0); }
+            #endif
         }
     }
 
@@ -1674,6 +1716,17 @@ public class DapServer {
     // on execvp failure it prints and returns 127.
     private int ExecBackend(string exe) {
         @c {
+            #ifdef _WIN32
+                // Windows: no execvp here — execvp on MSVCRT would spawn
+                // a child without replacing the process image, which
+                // breaks DAP's contract that stdio is wired straight to
+                // the backend. amc dap on Windows is a Phase-7+ item;
+                // for now emit a clean error and return 127 (same exit
+                // code the no-backend branch uses on POSIX).
+                (void) exe;
+                fprintf(stderr, "amc dap: not supported on Windows yet (see docs/proposals/dap-strategy.md).\n");
+                return 127;
+            #else
             // Strip the `gdb:` sentinel DetectBackend added for the
             // gdb fallback path and remember it so we can inject the
             // `--dap` arg lldb-dap doesn't need.
@@ -1725,6 +1778,7 @@ public class DapServer {
             perror("amc dap: execvp");
             free(argv);
             return 127;
+            #endif
         }
     }
 }
