@@ -28,7 +28,7 @@ public class NewCommand {
     public NewCommand() {}
 
     public static void PrintUsage() {
-        Console.WriteError("Usage: amc new <name> [--template <kind>] [--vscode] [--force]")
+        Console.WriteError("Usage: amc new <name> [--template <kind>] [--no-vscode] [--force]")
         Console.WriteError("")
         Console.WriteError("Scaffold a new Amalgame project named <name>.")
         Console.WriteError("")
@@ -48,10 +48,11 @@ public class NewCommand {
         Console.WriteError("")
         Console.WriteError("Flags:")
         Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service, forms, ui-web-form.")
-        Console.WriteError("  --vscode             Also write .vscode/launch.json + settings.json")
-        Console.WriteError("                       so F5 launches the binary under `amc dap` with")
-        Console.WriteError("                       breakpoints on the .am sources. Opt-in to avoid")
-        Console.WriteError("                       polluting projects edited in other editors.")
+        Console.WriteError("  --no-vscode          Skip the .vscode/ scaffold (launch.json + settings.json")
+        Console.WriteError("                       + tasks.json). On by default so F5 in VS Code launches")
+        Console.WriteError("                       the binary under `amc dap` with .am-level breakpoints.")
+        Console.WriteError("                       Pass --no-vscode for projects edited in other editors")
+        Console.WriteError("                       (Neovim, Helix, IntelliJ).")
         Console.WriteError("  --force              Overwrite if <name>/ already exists.")
         Console.WriteError("  -h, --help           Print this help and exit.")
     }
@@ -60,7 +61,7 @@ public class NewCommand {
         var name:       string = ""
         var template:   string = "exe"
         var force:      bool   = false
-        var wantVscode: bool   = false
+        var wantVscode: bool   = true
 
         var i: int = 2
         while (i < argc) {
@@ -72,7 +73,10 @@ public class NewCommand {
             if (a == "--force") {
                 force = true
             } else if (a == "--vscode") {
+                // Accepted for backward compatibility; default is now on.
                 wantVscode = true
+            } else if (a == "--no-vscode") {
+                wantVscode = false
             } else if (a == "--template") {
                 if (i + 1 >= argc) {
                     Console.WriteError("amc new: --template needs a value")
@@ -145,8 +149,9 @@ public class NewCommand {
             rc = NewCommand.ScaffoldTest(name, baseName)
         }
         if (rc != 0) { return rc }
-        // Opt-in VS Code wiring. Only after the template succeeded —
-        // no partial scaffolds with a stray .vscode/.
+        // VS Code wiring (default-on, --no-vscode opts out). Only after
+        // the template succeeded — no partial scaffolds with a stray
+        // .vscode/.
         if (wantVscode) {
             return NewCommand.WriteVscodeConfig(name, baseName, template)
         }
@@ -299,11 +304,11 @@ public class NewCommand {
         return 0
     }
 
-    // ── VS Code wiring (opt-in, --vscode flag) ────────
+    // ── VS Code wiring (default-on, --no-vscode opts out) ────
     // Writes .vscode/launch.json + .vscode/settings.json so F5 in
     // VS Code launches the project's binary under `amc dap` with
-    // .am-level breakpoints. Opt-in only — projects edited in
-    // other editors (Neovim, Helix, IntelliJ) stay clean.
+    // .am-level breakpoints. Skipped when --no-vscode is passed —
+    // projects edited in other editors (Neovim, Helix, IntelliJ).
     //
     // launch.json hard-codes program = ${workspaceFolder}/<base>,
     // which matches the build.sh output for exe + service. For
@@ -495,10 +500,10 @@ public class NewCommand {
         s = s + "lldb-18 ./" + name + "    # then `breakpoint set --file src/main.am --line 5` etc.\n"
         s = s + "```\n"
         s = s + "\n"
-        s = s + "If you scaffolded with `amc new --vscode`, F5 in VS Code\n"
-        s = s + "rebuilds with `-g` automatically (via the `preLaunchTask`\n"
-        s = s + "in `.vscode/launch.json`) and stops on breakpoints set in\n"
-        s = s + "`src/main.am` directly.\n"
+        s = s + "F5 in VS Code rebuilds with `-g` automatically (via the\n"
+        s = s + "`preLaunchTask` in `.vscode/launch.json`) and stops on\n"
+        s = s + "breakpoints set in `src/main.am` directly. Pass\n"
+        s = s + "`--no-vscode` to `amc new` to skip that scaffold.\n"
         s = s + "\n"
         s = s + "## Test\n"
         s = s + "\n"
@@ -886,9 +891,9 @@ public class NewCommand {
         s = s + "- **Linux / macOS:** `./build.sh -g` then `lldb-18 ./" + name + "`\n"
         s = s + "- **Windows:**       `.\\build.ps1 -g` then `gdb ./" + name + ".exe`\n"
         s = s + "\n"
-        s = s + "If you scaffolded with `amc new --vscode`, F5 in VS Code\n"
-        s = s + "rebuilds with `-g` automatically (via the `preLaunchTask`)\n"
-        s = s + "and stops on breakpoints set in `src/main.am`.\n"
+        s = s + "F5 in VS Code rebuilds with `-g` automatically (via the\n"
+        s = s + "`preLaunchTask`) and stops on breakpoints set in `src/main.am`.\n"
+        s = s + "Pass `--no-vscode` to `amc new` to skip that scaffold.\n"
         s = s + "\n"
         s = s + "## Linux — install under systemd\n"
         s = s + "\n"
@@ -969,7 +974,9 @@ public class NewCommand {
         s = s + "a.out\n"
         s = s + "\n"
         s = s + "# Editor state\n"
-        s = s + ".vscode/\n"
+        s = s + "# .vscode/ is scaffolded by `amc new` and meant to be committed\n"
+        s = s + "# (project-shared launch.json / tasks.json). Add it here if you\n"
+        s = s + "# prefer to keep it local-only.\n"
         s = s + ".idea/\n"
         s = s + "*.swp\n"
         return s
