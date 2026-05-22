@@ -607,8 +607,13 @@ foreach ($sf in $staged) {
     if ($sf.DestName -eq "amc.exe") { $amcComponent = $sf.ComponentId; break }
 }
 if ($null -ne $amcComponent) {
+    # Name prefix chars (https://learn.microsoft.com/windows/win32/msi/environment-table):
+    #   `=` set on install, `-` remove on uninstall.
+    # Adding `*` would make it system-wide (HKLM) and need admin; we
+    # want per-user (HKCU), so no `*`. `[~]` in Value preserves the
+    # existing PATH and appends our bin dir to it.
     Insert-Row "INSERT INTO ``Environment`` (``Environment``, ``Name``, ``Value``, ``Component_``) VALUES (?, ?, ?, ?)" @(
-        "EnvPathAppend", "=-*PATH", "[~];[INSTALLLOCATION]bin", $amcComponent
+        "EnvPathAppend", "=-PATH", "[~];[INSTALLLOCATION]bin", $amcComponent
     )
 } else {
     Write-Warning "amc.exe not found in stage — PATH manipulation rows skipped."
