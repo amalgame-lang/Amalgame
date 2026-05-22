@@ -523,8 +523,10 @@ $properties = @{
     "Manufacturer"       = $ManufacturerName
     "ProductLanguage"    = "1033"
     "UpgradeCode"        = $UpgradeCode
-    "ALLUSERS"           = "2"   # per-machine if elevated, else per-user
-    "MSIINSTALLPERUSER"  = "1"   # default to per-user (lowest privs)
+    "ALLUSERS"           = "1"   # per-machine install (requires UAC)
+    # MSIINSTALLPERUSER intentionally NOT set — strict per-machine mode.
+    # ProgramFiles64Folder resolves to C:\Program Files\ when ALLUSERS=1.
+    # Override via command line: msiexec /i amalgame.msi INSTALLLOCATION="..."
     "ARPPRODUCTICON"     = "icon.ico"
     "ARPHELPLINK"        = "https://github.com/amalgame-lang/Amalgame"
     "ARPURLINFOABOUT"    = "https://github.com/amalgame-lang/Amalgame"
@@ -608,12 +610,13 @@ foreach ($sf in $staged) {
 }
 if ($null -ne $amcComponent) {
     # Name prefix chars (https://learn.microsoft.com/windows/win32/msi/environment-table):
-    #   `=` set on install, `-` remove on uninstall.
-    # Adding `*` would make it system-wide (HKLM) and need admin; we
-    # want per-user (HKCU), so no `*`. `[~]` in Value preserves the
-    # existing PATH and appends our bin dir to it.
+    #   `=` set on install, `-` remove on uninstall, `*` system-wide (HKLM).
+    # We use HKLM because the package is now per-machine (ALLUSERS=1):
+    # the bin dir lives under Program Files and is shared by every user,
+    # so the PATH entry should be too. UAC at install grants the rights.
+    # `[~]` in Value preserves the existing PATH and appends our bin dir.
     Insert-Row "INSERT INTO ``Environment`` (``Environment``, ``Name``, ``Value``, ``Component_``) VALUES (?, ?, ?, ?)" @(
-        "EnvPathAppend", "=-PATH", "[~];[INSTALLLOCATION]bin", $amcComponent
+        "EnvPathAppend", "=-*PATH", "[~];[INSTALLLOCATION]bin", $amcComponent
     )
 } else {
     Write-Warning "amc.exe not found in stage — PATH manipulation rows skipped."
