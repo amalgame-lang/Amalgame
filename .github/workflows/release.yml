@@ -411,6 +411,61 @@ jobs:
           Remove-Item -Recurse -Force winlibs-tmp, mingw.zip
           Test-Path install\windows\gcc-bundle\bin\gcc.exe
 
+      - name: Trim gcc-bundle (drop C++/Fortran/Ada/Go/docs)
+        shell: pwsh
+        run: |
+          # amc only ever shells out to `gcc` to compile C. We can drop
+          # every other language frontend + their runtimes + docs and
+          # still produce identical .exe output. Net: ~500 MB → ~150 MB.
+          $bundle = "install\windows\gcc-bundle"
+          $before = (Get-ChildItem -Recurse -File $bundle | Measure-Object Length -Sum).Sum
+          Write-Host ("  before trim: {0:N0} MB" -f ($before / 1MB))
+
+          # 1. Docs/man/info/locale — pure dead weight at install time.
+          foreach ($d in 'share\doc','share\man','share\info','share\locale','share\gcc-*') {
+            Remove-Item -Recurse -Force "$bundle\$d" -ErrorAction SilentlyContinue
+          }
+
+          # 2. C++ frontend: driver, cc1plus, libstdc++, headers.
+          Remove-Item -Force "$bundle\bin\g++.exe","$bundle\bin\c++.exe","$bundle\bin\x86_64-w64-mingw32-g++.exe","$bundle\bin\x86_64-w64-mingw32-c++.exe" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "libstdc++*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "libsupc++*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "$bundle\include\c++" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle\libexec -Recurse -Filter "cc1plus.exe" | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # 3. Fortran frontend + runtime.
+          Remove-Item -Force "$bundle\bin\gfortran.exe","$bundle\bin\x86_64-w64-mingw32-gfortran.exe" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "libgfortran*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle\libexec -Recurse -Filter "f951.exe" | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # 4. Ada frontend + runtime.
+          Get-ChildItem -Path $bundle\bin -Filter "gnat*.exe" -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "libgnat*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle\libexec -Recurse -Filter "gnat1.exe" | Remove-Item -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "$bundle\include\ada" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "adainclude" -Recurse -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "adalib" -Recurse -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+          # 5. Go frontend.
+          Remove-Item -Force "$bundle\bin\gccgo.exe","$bundle\bin\go.exe","$bundle\bin\gofmt.exe","$bundle\bin\x86_64-w64-mingw32-gccgo.exe" -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "libgo*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle\libexec -Recurse -Filter "go1.exe" | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # 6. Objective-C frontend (cc1obj).
+          Get-ChildItem -Path $bundle\libexec -Recurse -Filter "cc1obj*.exe" | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle -Filter "libobjc*" -Recurse -File | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # 7. install-tools and plugin headers (install-time only / dev only).
+          Get-ChildItem -Path $bundle -Filter "install-tools" -Recurse -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $bundle\lib\gcc -Filter "plugin" -Recurse -Directory | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+          $after = (Get-ChildItem -Recurse -File $bundle | Measure-Object Length -Sum).Sum
+          Write-Host ("  after  trim: {0:N0} MB" -f ($after / 1MB))
+          Write-Host ("  saved      : {0:N0} MB" -f (($before - $after) / 1MB))
+          # Sanity check: gcc.exe and ld.exe must survive.
+          if (-not (Test-Path "$bundle\bin\gcc.exe")) { throw "trim ate gcc.exe!" }
+          if (-not (Test-Path "$bundle\bin\ld.exe"))  { throw "trim ate ld.exe!" }
+
       - name: Build amalgame-<ver>.msi (pure-PowerShell)
         shell: pwsh
         working-directory: install\windows
