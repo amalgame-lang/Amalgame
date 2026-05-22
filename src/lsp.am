@@ -116,6 +116,24 @@ public class LspServer {
                 let uri: string = td.Get("uri").AsString()
                 let txt: string = td.Get("text").AsString()
                 this.UpsertDoc(uri, txt)
+                // If the opened file is under the cached workspace
+                // root but not in the sibling list, the cache was
+                // built before this file existed — likely an
+                // external create (`Write` from an AI editor, git
+                // pull, scaffolder) the LSP didn't observe. Drop
+                // the sibling cache so the next BuildWorkspaceResolver
+                // re-walks the tree. Complements the workspace/
+                // didCreateFiles capability we now advertise:
+                // VS Code-side creates fire that explicit event,
+                // external creates land here.
+                let opened: string = LspServer.UriToPath(uri)
+                if (String_Length(this.CachedRoot) > 0
+                    && String_StartsWith(opened, this.CachedRoot)
+                    && !this.HasCachedSibling(opened)) {
+                    this.CachedRoot         = ""
+                    this.CachedSiblingPaths = new List<string>()
+                    this.CachedSiblingProgs = new List<AstNode>()
+                }
                 this.InvalidateResolverCache()
                 this.PublishDiagnostics(uri, txt)
             } else if (method == "textDocument/didChange") {
@@ -339,7 +357,18 @@ public class LspServer {
         // box to the actual identifier span.
         // callHierarchyProvider: true → Shift+Alt+H "Show Call
         // Hierarchy", supports both incoming and outgoing calls.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]}}}}"
+        // `workspace.fileOperations.didCreate/didDelete/didRename`
+        // — register the .am glob so VS Code fires the matching
+        // notifications when the user adds / removes / renames a
+        // file through the editor. Without this, the existing
+        // workspace/didCreateFiles handler stays dead and the
+        // sibling cache goes stale whenever a new .am lands mid-
+        // session (the "Unknown symbol 'MiParser'" false positive
+        // from src/dap.am after src/dap/mi_parser.am was added).
+        // External creations (terminal, git pull) still bypass this
+        // — for those, the didOpen handler invalidates the cache
+        // when the opened path isn't already cached.
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]},\"workspace\":{\"fileOperations\":{\"didCreate\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]},\"didDelete\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]},\"didRename\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]}}}}}}"
         this.Send(body)
     }
 
@@ -460,13 +489,27 @@ public class LspServer {
         return ""
     }
 
+    // Linear lookup over the cached sibling paths. Used by the
+    // didOpen handler to detect newly-created files the workspace
+    // walk didn't observe at LSP startup.
+    private bool HasCachedSibling(string path) {
+        let n: int = this.CachedSiblingPaths.Count()
+        var found: bool = false
+        for i in 0..n {
+            if (this.CachedSiblingPaths.Get(i) == path) { found = true }
+        }
+        return found
+    }
+
     // Populate the workspace cache on first use, or after the user
     // navigates to a different project root. Once populated, the
     // cache lives for the LSP server's lifetime — siblings change
     // rarely in practice (the active file's edits override the
-    // cached entry per request, see BuildWorkspaceResolver). The
-    // explicit invalidation hooks for didCreate / didDelete /
-    // out-of-band edits land in slice 2.
+    // cached entry per request, see BuildWorkspaceResolver).
+    // Invalidation hooks: workspace/didCreate/didDelete/didRename
+    // (advertised as capabilities in the initialize response) and a
+    // didOpen heuristic that catches external file creations the
+    // editor itself didn't generate.
     private void EnsureWorkspaceCache(string currentPath) {
         let root: string = LspServer.FindWorkspaceRoot(currentPath)
         if (String_Length(root) == 0) { return }
