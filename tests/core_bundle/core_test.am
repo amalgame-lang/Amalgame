@@ -98,9 +98,7 @@ class Program {
     // String_Length on UTF-8 strings returns byte count (matches `${#var}` in bash).
     public static string LspFrame(string body) {
         let n: int = String_Length(body)
-        // NOTE: AM lexer mis-handles `\r` (treats as backslash+r). Use
-        // `` for the CR byte. `\n` works as expected.
-        return "Content-Length: " + String_FromInt(n) + "\n\n" + body
+        return "Content-Length: " + String_FromInt(n) + "\r\n\r\n" + body
     }
 
     // Pipe the bytes of `fixturePath` into `./amc lsp` and return the

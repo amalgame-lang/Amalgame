@@ -768,7 +768,7 @@ public class Toml {
             else if (c == "\"") { out = out + "\\\"" }
             else if (c == "\n") { out = out + "\\n" }
             else if (c == "\t") { out = out + "\\t" }
-            else if (c == "\r") { out = out + "\\r" }
+            else if (c == String_FromByte(13)) { out = out + "\\r" }  // see lexer.am "\r" workaround
             else                { out = out + c }
         }
         return out
