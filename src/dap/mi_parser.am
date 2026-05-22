@@ -1,0 +1,372 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ═══════════════════════════════════════════════════════
+//  mi_parser.am  —  gdb MI3 parser
+// ═══════════════════════════════════════════════════════
+//
+// Parses one line of gdb MI3 output into a structured `MiRecord`.
+// See `docs/proposals/dap-strategy.md` for the grammar primer and
+// `RunSelfTestMi` in `dap.am` for the canned-input regression suite.
+//
+// Grammar (subset relevant to the DAP bridge):
+//   record       = [token] (result | exec-async | status-async
+//                          | notify-async | stream | prompt)
+//   token        = digit+
+//   result       = "^" class ("," result-list)?
+//   exec-async   = "*" class ("," result-list)?
+//   status-async = "+" class ("," result-list)?
+//   notify-async = "=" class ("," result-list)?
+//   stream       = ("~" | "@" | "&") c-string
+//   prompt       = "(gdb)"
+//   class        = ident
+//   result-list  = result-pair ("," result-pair)*
+//   result-pair  = ident "=" value
+//   value        = c-string | tuple | list
+//   tuple        = "{" (result-pair ("," result-pair)*)? "}"
+//   list         = "[" (list-item ("," list-item)*)? "]"
+//   list-item    = value | result-pair
+//   c-string     = "\"" any-escaped* "\""
+//
+// MI is line-oriented: each record terminates at the newline. The
+// bridge reads gdb's stdout in chunks, splits on "\n", and feeds each
+// non-empty line to `MiParser.ParseRecord`. A `(gdb)` line marks the
+// end of one logical response.
+
+// ── MiValue: discriminated value union ──────────────────
+//
+// Kind == 0  → string scalar; payload in `Str`.
+// Kind == 1  → tuple; payload in (TupleKeys, TupleVals), parallel.
+// Kind == 2  → list; payload in (ListKeys, ListItems), parallel.
+//              ListKeys[i] is "" for bare-value list items and the
+//              key string for keyed items (`stack=[frame={...},
+//              frame={...}]` → ListKeys = ["frame","frame"]).
+
+public class MiValue {
+    public Kind:       int           // 0=string, 1=tuple, 2=list
+    public Str:        string        // populated when Kind==0
+    public TupleKeys:  List<string>  // when Kind==1
+    public TupleVals:  List<MiValue> // when Kind==1
+    public ListKeys:   List<string>  // when Kind==2 (parallel to ListItems)
+    public ListItems:  List<MiValue> // when Kind==2
+
+    public MiValue() {
+        this.Kind       = 0
+        this.Str        = ""
+        this.TupleKeys  = new List<string>()
+        this.TupleVals  = new List<MiValue>()
+        this.ListKeys   = new List<string>()
+        this.ListItems  = new List<MiValue>()
+    }
+
+    // Convenience: get the tuple value for a given key, or null if
+    // absent. Linear scan — tuple sizes are small (<20 fields per
+    // gdb record in practice).
+    public MiValue FieldOrNull(string key) {
+        let n: int = this.TupleKeys.Count()
+        var found: MiValue = null
+        for i in 0..n {
+            if (this.TupleKeys.Get(i) == key) { found = this.TupleVals.Get(i) }
+        }
+        return found
+    }
+
+    // Convenience for the common "field is a string" case. Returns
+    // empty string when the key is missing or the value is non-string.
+    public string FieldString(string key) {
+        let v: MiValue = this.FieldOrNull(key)
+        if (v == null)    { return "" }
+        if (v.Kind != 0)  { return "" }
+        return v.Str
+    }
+}
+
+// ── MiRecord: one line of MI output ─────────────────────
+//
+// RecordKind values match the grammar above:
+//   0 = result      ("^done,..." / "^error,..." / "^running")
+//   1 = exec-async  ("*stopped,..." / "*running,...")
+//   2 = status-async ("+download-status,...")
+//   3 = notify-async ("=thread-group-added,...")
+//   4 = console-stream ("~\"...\"")
+//   5 = target-stream  ("@\"...\"")
+//   6 = log-stream     ("&\"...\"")
+//   7 = prompt         ("(gdb)")
+//
+// Token is the command's caller-chosen integer; -1 when absent.
+// `Class` carries the post-prefix verb (`done`/`error`/`stopped`/...).
+// `Results` + `Values` are parallel lists of the comma-separated
+// key=value pairs. `StreamText` holds the parsed c-string body of a
+// stream record (already un-escaped).
+
+public class MiRecord {
+    public RecordKind: int
+    public Token:      int
+    public Class:      string
+    public Results:    List<string>
+    public Values:     List<MiValue>
+    public StreamText: string
+
+    public MiRecord() {
+        this.RecordKind = 0
+        this.Token      = -1
+        this.Class      = ""
+        this.Results    = new List<string>()
+        this.Values     = new List<MiValue>()
+        this.StreamText = ""
+    }
+
+    // Same convenience accessor as MiValue but on the top-level
+    // result list — `^done,stack=[...]` → ResultOrNull("stack").
+    public MiValue ResultOrNull(string key) {
+        let n: int = this.Results.Count()
+        var found: MiValue = null
+        for i in 0..n {
+            if (this.Results.Get(i) == key) { found = this.Values.Get(i) }
+        }
+        return found
+    }
+}
+
+// ── MiParser: recursive-descent over one MI line ────────
+
+public class MiParser {
+    public Input: string
+    public Pos:   int
+
+    public MiParser(string input) {
+        this.Input = input
+        this.Pos   = 0
+    }
+
+    // Peek the byte at the current position without consuming. Returns
+    // empty string at EOF — the parser's branches treat that as "no
+    // match" uniformly.
+    private string Peek() {
+        if (this.Pos >= String_Length(this.Input)) { return "" }
+        return String_Substring(this.Input, this.Pos, 1)
+    }
+
+    // Per-char predicate helpers. Amalgame's cgen lowers relational
+    // string ops (`c >= "0"`) to pointer comparisons (strings are
+    // `char*` under the hood and there's no strcmp routing yet), so
+    // single-char ranges go through a membership test on a charset
+    // string. Mirrors the pattern in `src/stdlib/json.am`'s `IsDigit`.
+    private static bool IsAlpha(string c) {
+        if (String_Length(c) == 0) { return false }
+        return String_IndexOf("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", c) >= 0
+    }
+    private static bool IsDigit(string c) {
+        if (String_Length(c) == 0) { return false }
+        return String_IndexOf("0123456789", c) >= 0
+    }
+
+    // Read a contiguous run of ident chars [A-Za-z0-9_-]. MI keys
+    // routinely contain hyphens (`thread-id`, `stopped-threads`),
+    // so the predicate is strictly more permissive than C identifiers.
+    private string ParseIdent() {
+        var out: string = ""
+        while (this.Pos < String_Length(this.Input)) {
+            let c: string = String_Substring(this.Input, this.Pos, 1)
+            let isAlpha: bool = MiParser.IsAlpha(c)
+            let isDigit: bool = MiParser.IsDigit(c)
+            let isMore:  bool = c == "_" || c == "-"
+            if (isAlpha || isDigit || isMore) {
+                out = out + c
+                this.Pos = this.Pos + 1
+            } else { break }
+        }
+        return out
+    }
+
+    // C-style string literal — the leading `"` MUST be present at
+    // the current position. Consumes through the closing `"`,
+    // un-escapes the common shapes (`\"`, `\\`, `\n`, `\t`, `\r`),
+    // and returns the un-escaped contents. Unknown escapes are
+    // passed through verbatim (e.g. `\xHH` → `xHH`); gdb almost
+    // never emits anything but the basic five.
+    private string ParseCString() {
+        if (this.Peek() != "\"") { return "" }
+        this.Pos = this.Pos + 1
+        var out: string = ""
+        let n: int = String_Length(this.Input)
+        while (this.Pos < n) {
+            let c: string = String_Substring(this.Input, this.Pos, 1)
+            if (c == "\"") {
+                this.Pos = this.Pos + 1
+                return out
+            }
+            if (c == "\\") {
+                this.Pos = this.Pos + 1
+                if (this.Pos >= n) {
+                    // Truncated escape — keep the bare backslash.
+                    out = out + "\\"
+                    return out
+                }
+                let esc: string = String_Substring(this.Input, this.Pos, 1)
+                if      (esc == "n")  { out = out + "\n" }
+                else if (esc == "t")  { out = out + "\t" }
+                else if (esc == "r")  { out = out + "\r" }
+                else if (esc == "\"") { out = out + "\"" }
+                else if (esc == "\\") { out = out + "\\" }
+                else                  { out = out + esc }
+                this.Pos = this.Pos + 1
+                continue
+            }
+            out = out + c
+            this.Pos = this.Pos + 1
+        }
+        return out
+    }
+
+    // Dispatch on the leading byte to pick the value shape.
+    public MiValue ParseValue() {
+        let c: string = this.Peek()
+        if (c == "\"") {
+            let v: MiValue = new MiValue()
+            v.Kind = 0
+            v.Str  = this.ParseCString()
+            return v
+        }
+        if (c == "{") { return this.ParseTuple() }
+        if (c == "[") { return this.ParseList() }
+        // Unknown — return an empty string value so the caller's
+        // chain doesn't blow up. gdb never emits naked literals
+        // outside the three known wrappers.
+        return new MiValue()
+    }
+
+    private MiValue ParseTuple() {
+        let v: MiValue = new MiValue()
+        v.Kind = 1
+        if (this.Peek() != "{") { return v }
+        this.Pos = this.Pos + 1
+        if (this.Peek() == "}") {
+            this.Pos = this.Pos + 1
+            return v
+        }
+        let n: int = String_Length(this.Input)
+        while (this.Pos < n) {
+            let key: string = this.ParseIdent()
+            if (this.Peek() == "=") { this.Pos = this.Pos + 1 }
+            let val: MiValue = this.ParseValue()
+            v.TupleKeys.Add(key)
+            v.TupleVals.Add(val)
+            if (this.Peek() == ",") {
+                this.Pos = this.Pos + 1
+                continue
+            }
+            if (this.Peek() == "}") {
+                this.Pos = this.Pos + 1
+                return v
+            }
+            break
+        }
+        return v
+    }
+
+    private MiValue ParseList() {
+        let v: MiValue = new MiValue()
+        v.Kind = 2
+        if (this.Peek() != "[") { return v }
+        this.Pos = this.Pos + 1
+        if (this.Peek() == "]") {
+            this.Pos = this.Pos + 1
+            return v
+        }
+        let n: int = String_Length(this.Input)
+        while (this.Pos < n) {
+            // Lookahead: a list item is either `<ident>=<value>`
+            // (keyed) or a bare `<value>`. We try the ident path
+            // first; if no `=` follows, restore position and reparse
+            // the same span as a value.
+            let savedPos: int = this.Pos
+            let maybeKey: string = this.ParseIdent()
+            if (String_Length(maybeKey) > 0 && this.Peek() == "=") {
+                this.Pos = this.Pos + 1
+                let val: MiValue = this.ParseValue()
+                v.ListKeys.Add(maybeKey)
+                v.ListItems.Add(val)
+            } else {
+                this.Pos = savedPos
+                let val: MiValue = this.ParseValue()
+                v.ListKeys.Add("")
+                v.ListItems.Add(val)
+            }
+            if (this.Peek() == ",") {
+                this.Pos = this.Pos + 1
+                continue
+            }
+            if (this.Peek() == "]") {
+                this.Pos = this.Pos + 1
+                return v
+            }
+            break
+        }
+        return v
+    }
+
+    // Parse one complete MI record — caller is responsible for
+    // having split input on newlines.
+    public MiRecord ParseRecord() {
+        let rec: MiRecord = new MiRecord()
+        // Optional integer token prefix.
+        var tokenStr: string = ""
+        while (this.Pos < String_Length(this.Input)) {
+            let c: string = String_Substring(this.Input, this.Pos, 1)
+            if (MiParser.IsDigit(c)) {
+                tokenStr = tokenStr + c
+                this.Pos = this.Pos + 1
+            } else { break }
+        }
+        if (String_Length(tokenStr) > 0) {
+            rec.Token = String_ToInt(tokenStr)
+        }
+        let prefix: string = this.Peek()
+        if      (prefix == "^") { rec.RecordKind = 0 }
+        else if (prefix == "*") { rec.RecordKind = 1 }
+        else if (prefix == "+") { rec.RecordKind = 2 }
+        else if (prefix == "=") { rec.RecordKind = 3 }
+        else if (prefix == "~") { rec.RecordKind = 4 }
+        else if (prefix == "@") { rec.RecordKind = 5 }
+        else if (prefix == "&") { rec.RecordKind = 6 }
+        else if (prefix == "(") {
+            // "(gdb)" prompt — no further fields.
+            rec.RecordKind = 7
+            return rec
+        } else {
+            // Unrecognised — leave RecordKind at default (0,result)
+            // and an empty Class so the caller can log + skip.
+            return rec
+        }
+        this.Pos = this.Pos + 1
+        // Stream records carry a single c-string payload, no class.
+        if (rec.RecordKind == 4 || rec.RecordKind == 5 || rec.RecordKind == 6) {
+            rec.StreamText = this.ParseCString()
+            return rec
+        }
+        // Result/async records: <class>[,<result-list>]
+        rec.Class = this.ParseIdent()
+        if (this.Peek() == ",") {
+            this.Pos = this.Pos + 1
+            this.ParseResultList(rec)
+        }
+        return rec
+    }
+
+    private void ParseResultList(MiRecord rec) {
+        let n: int = String_Length(this.Input)
+        while (this.Pos < n) {
+            let key: string = this.ParseIdent()
+            if (String_Length(key) == 0) { break }
+            if (this.Peek() == "=") { this.Pos = this.Pos + 1 }
+            let val: MiValue = this.ParseValue()
+            rec.Results.Add(key)
+            rec.Values.Add(val)
+            if (this.Peek() != ",") { break }
+            this.Pos = this.Pos + 1
+        }
+    }
+}

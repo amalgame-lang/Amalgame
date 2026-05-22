@@ -29,6 +29,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/stdlib/msgpack.am \
              src/stdlib/amc_buildinfo.am \
              src/lsp.am \
+             src/dap/mi_parser.am \
              src/dap.am \
              src/migrate.am \
              src/generate.am \

@@ -10,11 +10,14 @@
 > session each. See [`## 📋 Next sessions (3 dedicated items)`](#-next-sessions-3-dedicated-items)
 > at the bottom of this file for the full scope of each.
 >
-> - **4a. LSP package discovery** (~1-2 days) — wire the existing
->   `amc package suggest --json` into the LSP: completion on
->   `import Amalgame.…`, diagnostic + codeAction "install missing
->   package" when an unknown symbol matches a known package class,
->   `amc build` auto-suggest on unresolved import.
+> - ~~**4a. LSP package discovery**~~ ✅ **shipped 2026-05-22**.
+>   `import Amalgame.<cursor>` completion now lists installed +
+>   bundled + cached-uninstalled namespaces (heuristic slug→ns).
+>   CodeAction quickfix emits both "Install package X" (display)
+>   and "Add import Amalgame.X.Y" (WorkspaceEdit). `amc build`
+>   prints a `hint:` block on resolve failure with the matching
+>   `amc package add …` commands. See the "Next sessions" entry
+>   below for the full breakdown.
 > - **4b. DAP MI bridge custom** (~1-2 weeks) — drop the proxy-mince
 >   `amc dap` for a full MI parser that translates gdb-MI ↔ DAP
 >   in-process. Already framed as "Approche A v0.9.0+" above —
@@ -493,27 +496,38 @@ before the next big language addition.
       Chained calls on user classes (`x.Foo().Bar().Baz()`)
       still propagate; verified via the new `ArgParser` fluent
       registration API.
-- [ ] **CGen: propagate nested-generics through cross-package
-      calls** — v0.8.19 ships an intercept-`void`-receiver
-      workaround that dispatches known list verbs (Get/Count/Size
-      /Add/...) through `AmalgameList_<m>` when the receiver's
-      static type erased to `void*`. The deeper fix is to make
-      `MethodRetTypes` carry the inner generic param across
-      package boundaries — `PostgreSQL.QueryAll → List<List<string>>`
-      should let `rows.Get(0)` infer `List<string>` and
-      `row0.Get(0)` infer `string`, with the matching `(code_string)`
-      cast applied automatically. Today the AmalgameList_get
-      fallback returns `void*`, which the user then casts
-      manually. Touches: PackageRegistry manifest schema (let
-      `[stdlib.functions]` declare the full generic shape, not
-      just `returns = "AmalgameList*"`), `MethodRetSet/Get`
-      registry (key on `(class, method)` → full generic type
-      string), and `EmitCalleeStr`'s lookup that propagates
-      through `__local__`/`__local_map__`. Estimated 1-2 days;
-      unblocks Map dispatch on `void*` too (currently same
-      workaround would be needed for `dict.Get(k)` chained
-      through opaque). The intercept-void workaround in v0.8.19
-      stays as a safety belt either way.
+- [x] **CGen: propagate nested-generics through cross-package
+      calls** — **shipped through v0.8.40** (verified 2026-05-22).
+      The full pipeline lives in `src/generator/c_gen.am` and
+      `src/package_registry.am`:
+        - Manifest: `[stdlib.functions]` accepts an optional
+          `returns_generic = "List<List<string>>"` alongside the
+          bare `returns = "AmalgameList*"`. Parsed into
+          `PackageRegistry.FuncRetsRaw` (`package_registry.am:367`).
+        - Registry: `MethodRetRawSet/Get` keyed on
+          `<MangledClass>::<Method>` stores the AM-level raw
+          shape, populated for external packages at
+          `c_gen.am:1810` and for in-bundle decls at
+          `c_gen.am:2099/2578/2786`.
+        - Consumer-side inference: `let xs = recv.M(...)` tries
+          three lookup keys at `c_gen.am:3343-3371` — bare
+          receiver name, `ExternalClassMangled(name)`,
+          `LocalTypeGet(name) → bareT` — then a last-chance
+          `.Get(...)` peel via `RecoverChainedListElemRaw`.
+        - Emit: `RecoverChainedListElemRaw` (`c_gen.am:798`)
+          walks chained `.Get(i).Get(j)…` and peels via
+          `PeelOneGenericLayer` (`c_gen.am:771`). The `.Get(i)`
+          branch in `TryEmitListCall` consults this before
+          falling through to `(void*)`.
+        - Verified: `tests/samples/nested_generics.am` emits
+          fully-typed C for 2-deep, 3-deep, and cross-class
+          instance call shapes. No `(void*)` fallbacks left.
+      The intercept-void workaround in v0.8.19 stays as a safety
+      belt for packages that ship without a `returns_generic`
+      annotation. No installed package today returns
+      `AmalgameList*`/`AmalgameMap*` — the future
+      `amalgame-database-postgresql` (with `QueryAll`) will be
+      the first real consumer of this convention.
 - [x] **CGen: chained `obj.Field.Method()` /
       `obj.Method().Method()` (resolved)** — `EmitCalleeStr`
       now handles both shapes: when the receiver is a CALL, the
@@ -2024,81 +2038,156 @@ Picked at the end of the v0.0.5 → v0.0.10 `amalgame-ui-web` wave
 
 ### 4a. LSP package discovery — wire `amc package suggest` into the LSP
 
-**Scope** : ~1-2 days · `src/lsp.am` + small primitives.
+**Status**: **shipped 2026-05-22** (all four sub-items below). The
+slug→namespace heuristic stays best-effort; `[[package]].namespace`
+in the curated index (not yet present) would replace it cleanly.
 
-The `amc package suggest <name|ns> --json` command already exists
-(v0.7.x+) and matches against class names, namespaces, and
-description substrings. It returns the package + tag + match
-reason. Pieces still missing from the developer experience:
+- [x] **Completion on `import Amalgame.<cursor>`** —
+      `SendImportCompletion` in `src/lsp.am` now lists three
+      sources: installed packages (from `amalgame.lock`), bundled
+      stdlib roots, and **cached-but-uninstalled** packages parsed
+      from `~/.amalgame/cache/packages-index.toml`. Uninstalled
+      entries have a `"↓ install <name>"` detail string and their
+      namespace is inferred from the URL via the slug heuristic
+      (`InferNamespaceFromUrl` — `amalgame-database-nosql-redis` →
+      `Amalgame.Database.NoSQL.Redis`, with a small all-caps lookup
+      table for SDL/TLS/UI/IO/MQTT/NATS/AMQP/NoSQL/SQLite/DuckDB/
+      RabbitMQ/MongoDB/WebSocket/PostgreSQL/MySQL/MariaDB/MSSQL/
+      DynamoDB/ML/AI/ORM). De-duped across the three sources.
+- [x] **Diagnostic** : resolver already publishes
+      `Unknown symbol 'X'` (no change needed).
+- [x] **CodeAction quickfix** : `CollectPackageInstallSuggestions`
+      now emits **two** actions per matched package:
+        1. `Install package <name>@<tag>` — `command`-only action
+           that displays the install command in the editor (no
+           auto-install).
+        2. `Add import <Amalgame.X.Y>` — real `WorkspaceEdit` that
+           inserts the import at the right line (after the
+           namespace + existing imports, before the first decl).
+           `isPreferred:true` so Ctrl+. defaults to it. Skipped
+           when the import is already present in the file.
+- [x] **`amc build` auto-suggest** —
+      `Program.PrintPackageSuggestionsForOutput` (in `main.am`)
+      runs after a failed amc compile in `BuildOneBinary`. Scans
+      the compile's stdout for `Unknown symbol 'X'` lines, dedupes
+      symbols, shells out to `amc package suggest --json X`, and
+      prints a `hint:` block listing the `amc package add …`
+      commands. Same safety stance — display only.
 
-1. **Completion on `import Amalgame.<cursor>`** — when the
-   client requests `textDocument/completion` inside an `import`
-   directive, the LSP should propose:
-   - namespaces of installed packages (read from
-     `~/.amalgame/packages/<pkg>/amalgame.toml` `[stdlib].namespace`)
-   - namespaces of cached-but-uninstalled packages (from the
-     official index `~/.amalgame/cache/packages-index.toml`,
-     `[[version]].namespace`) marked with a "↓ install" hint.
-2. **Diagnostic** : `unknown symbol 'Window'` published as a
-   regular diagnostic when an identifier isn't resolved.
-3. **CodeAction quickfix** : on the diagnostic, expose two
-   commands —
-   - `Run amc package add ui-web` (shown to the user as an
-     external command they confirm before running)
-   - `Add import Amalgame.UI.Web at the top of the file`
-   The LSP doesn't auto-install — it only displays the
-   command. The decision (run / dismiss) is the user's.
-4. **`amc build` auto-suggest** — if the compile fails with an
-   unresolved import, run `package suggest` on the imported
-   namespace and print the install command in the error message
-   (no auto-install — same safety stance).
-
-**Acceptance**: typing `Window` in a fresh project with no
-imports triggers a diagnostic + codeAction; clicking the action
-adds the import + suggests the install command. Compiling the
-same file with `amc build` prints `Suggestion: amc package add
-ui-web && import Amalgame.UI.Web` in the diagnostic output.
-
-**Touches** : `src/lsp.am` (HandleCompletion + new
-codeActionProvider branch), `src/package_registry.am`
-(`SuggestForNamespace(ns)` helper), `src/build_cmd.am`
-(post-error hint).
+**Touches** : `src/lsp.am` (4 new private static helpers:
+`SegmentToNamespacePart`, `InferNamespaceFromUrl`,
+`FindImportInsertionLine`, `HasImport`, `PackageImportActionJson`,
+`ContainsString`; extended `SendImportCompletion` +
+`CollectPackageInstallSuggestions`), `src/main.am` (1 new
+`PrintPackageSuggestionsForOutput` + 1-line call from
+`BuildOneBinary`). No changes to `package_registry.am` —
+the `SuggestForNamespace` helper turned out unnecessary
+(the LSP shells out to the existing CLI verb for the
+codeAction path, and reads the index directly for the
+completion path).
 
 ### 4b. DAP MI bridge custom (Approche A migration)
 
-**Scope** : ~6-10 h per `docs/proposals/dap-strategy.md` ·
-already framed in the top-of-file block as the "v0.9.0+
-migration". The v0.8.0 proxy-mince is fine for basic stepping +
-breakpoints, but degrades on:
+**Status (2026-05-22)**: Phases 1 + 3 shipped. Phase 2 (the
+fork+pipe2+poll loop that actually invokes gdb) is gated on
+`gdb` being installed on the dev host; phases 4-6 layer on top.
 
-- Pretty-print `AmalgameList*` / `AmalgameMap*` (currently
-  shown as opaque pointers)
-- Frame filtering for runtime helpers (`Amalgame_*`, `_runtime.h`
-  routines noise the call stack)
-- Closure env objects (the captured locals are inside a
-  generated `LamEnv_N` struct, illegible in the gdb view)
+**Design doc** : [`docs/proposals/dap-strategy.md`](docs/proposals/dap-strategy.md)
+— 7-phase migration plan with grammar primer + DAP↔MI table.
 
-**Triggers**: as soon as a real debug user-facing session
-becomes painful. This is **not** a nice-to-have — the deferred
-migration is tracked as explicit tech debt.
+**Phases shipped:**
 
-**Approach** :
-- `amc dap` keeps the DAP serializer towards the client.
-- Internally, instead of forwarding to `gdb --dap`, spawn `gdb
-  --interpreter=mi3` and parse the MI protocol.
-- Translate DAP requests (`setBreakpoints`, `stackTrace`,
-  `variables`, etc.) to MI commands (`-break-insert`,
-  `-stack-list-frames`, `-stack-list-variables`); translate MI
-  responses back to DAP shape.
-- Per-type pretty-printers in AM: a registry keyed by C type
-  name → format function. Default ones for
-  `AmalgameList*`/`AmalgameMap*`/`AmalgameSet*`/`AmalgameClosure*`.
-- Frame filter: hide frames whose function name matches
-  `^_runtime_` or `^Amalgame_` unless `--show-runtime` is set.
+- [x] **Phase 1 — scaffolding + flags.** `src/dap.am` refactored
+      into `Run()` → `ParseFlags()` → `RunRaw()` | `RunBridge()`
+      dispatch. New flags: `--raw` (force the v0.8.0 execvp proxy
+      path, default until the bridge is feature-complete),
+      `--show-runtime` (disable frame filter once the bridge
+      filters them), `--bridge` (forward-compat opt-in, no-op for
+      now), and the hidden `--self-test-mi` regression flag.
+      Flag-aware argv filtering in `ExecBackend` so the backend
+      never sees amc-internal flags. `RunBridge()` currently
+      delegates to `RunRaw()` — Phase 2 replaces the body.
 
-**Touches** : `src/dap.am` (rewrite from proxy to bridge),
-`src/dap/mi_parser.am` (new), `src/dap/pretty_printers.am`
-(new).
+- [x] **Phase 3 — MI3 parser.** `src/dap/mi_parser.am` (~290 LoC):
+      `MiValue` discriminated union (string / tuple / list, with
+      keyed-list support for `stack=[frame=…,frame=…]`),
+      `MiRecord` envelope (result / exec-async / status-async /
+      notify-async / 3 stream kinds / `(gdb)` prompt), and the
+      `MiParser` recursive-descent walker. Handles c-string
+      un-escaping (`\"`, `\n`, `\t`, `\r`, `\\`), nested
+      tuples/lists, empty containers, optional tokens. Wired
+      through `gen_test.am` (parsed + 3-pass cgen) so it joins
+      the amc bundle. Self-tested via `amc dap --self-test-mi`
+      against 8 canned inputs from the gdb manual (result with
+      tuple, *stopped event with nested frame, keyed list,
+      bare-tuple list, escaped \\n in stream, (gdb) prompt,
+      empty `{}` / `[]`, escaped `\"` inside string). Wired into
+      `tests/run_tests.sh` as "dap: MI parser self-test".
+
+**Phases shipped (gdb-tested):**
+
+- [x] **Phase 2 — fork+pipe2+poll loop.** `SpawnGdb()` uses
+      `pipe2(O_CLOEXEC)` + `fork(2)` + `dup2(2)` + `execlp("gdb",
+      "--interpreter=mi3", "--nx", "--quiet")`. The parent enters
+      `PollOnce()` (a thin @c primitive on `poll(2)`) and pumps
+      bytes via `ReadFromFd` / `WriteToFd` (also @c primitives).
+      AM-side handlers (`OnDapInput` / `OnGdbOutput`) split chunks
+      into frames/lines for dispatch. Clean teardown via
+      `Cleanup()` (close FDs + `waitpid`). Opt-in via `--bridge`
+      until Phase 7; absent that flag, RunBridge() still falls
+      through to RunRaw.
+- [x] **Phase 4 (partial — DAP framing + handshake)**. `OnDapInput`
+      accumulates bytes into `DapInputBuf`, peels off complete
+      `Content-Length: N\r\n\r\n<body>` frames via
+      `TryExtractDapFrame`, JSON-parses each body and routes via
+      `HandleDapMessage`. Handlers shipped:
+        - `initialize` → response with phase-1 capabilities (no
+          configurationDone yet) + emit `initialized` event per spec.
+        - `disconnect` → response, send `-gdb-exit` to gdb,
+          `CloseGdbStdin`, set `StopRequested`.
+        - everything else → `SendDapErrorResponse` with
+          `"not implemented in --bridge yet"`.
+      Reverse side: `OnGdbOutput` accumulates `GdbInputBuf`, splits
+      on `\n`, parses each non-empty line through `MiParser`,
+      dispatches result records to `HandleMiResult` (stub — token-
+      correlation for response building lands with Phase 4 main).
+      Verified end-to-end via `tests/run_tests.sh` "dap: bridge
+      initialize handshake" — scripted DAP session through real
+      gdb 13.1, validates initialize-response + initialized-event
+      + disconnect-response on stdout.
+
+**Phases remaining for full bridge:**
+
+- [ ] **Phase 4 main — DAP↔MI translation (the 12 substantive
+      verbs).** Per-verb handlers for `launch` (`-file-exec-and-
+      symbols`, `-exec-arguments`), `setBreakpoints`
+      (`-break-delete-list` + `-break-insert`),
+      `configurationDone` (`-exec-run`), `threads` (synthetic
+      single thread), `stackTrace` (`-stack-list-frames`),
+      `scopes` (synthetic Locals scope), `variables`
+      (`-stack-list-variables --simple-values`), `continue`
+      (`-exec-continue`), `next` / `stepIn` / `stepOut`
+      (`-exec-next` / `-exec-step` / `-exec-finish`), `pause`
+      (`-exec-interrupt`), `evaluate`
+      (`-data-evaluate-expression`). Each handler needs MI token
+      correlation (the `MiTokens` triple-list is in place) and
+      response-building from the matched MI result record.
+      Estimated 500-700 LoC of careful state-machine work; gates
+      a real VS Code debug session.
+- [ ] **Phase 5 — pretty-printer registry.** Default registrants
+      for `AmalgameList*` / `AmalgameMap*` / `AmalgameSet*` /
+      `AmalgameClosure*` / `code_string`.
+- [ ] **Phase 6 — frame filter + step-until-visible.** Hide
+      `^_runtime_` / `^Amalgame_` from stack traces; auto-step
+      out of hidden frames after `stepIn`, up to an 8-hop budget.
+- [ ] **Phase 7 — flip default + remove `--bridge`.** When the
+      bridge is robust, make it the default; `--raw` becomes the
+      opt-out.
+
+**Pre-existing fallback unchanged** : `amc dap --raw` still
+`execvp`s the host's DAP backend (lldb-dap on macOS, gdb --dap on
+Linux/MSYS2 with gdb ≥ 14). v0.8.0 behaviour preserved bit-for-bit
+so users can always escape a bridge regression.
 
 ### 3. Menubar OS-native (Win32 + NSMenu + GtkMenuBar)
 

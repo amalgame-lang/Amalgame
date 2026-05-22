@@ -5,39 +5,749 @@ import Amalgame.IO
 import Amalgame.Process
 import Amalgame.String
 
-// `@c { … }` blocks below need execvp / perror / malloc visible.
-// _runtime.h already brings in <stdio.h>, <stdlib.h>, <string.h>; we
-// only need <unistd.h> for execvp.
+// `@c { … }` blocks below need execvp / fork / pipe2 / poll /
+// perror / malloc visible. _runtime.h already brings in <stdio.h>,
+// <stdlib.h>, <string.h>; we only need <unistd.h> for execvp/fork/
+// pipe2 and <poll.h> for poll(2) (used by the bridge — Phase 2+).
 @c_include "<unistd.h>"
+@c_include "<poll.h>"
+@c_include "<sys/wait.h>"
+@c_include "<fcntl.h>"
+@c_include "<errno.h>"
+@c_include "<signal.h>"
 
 // ═══════════════════════════════════════════════════════
-//  dap.am  —  amc dap: Debug Adapter Protocol proxy
+//  dap.am  —  amc dap: Debug Adapter Protocol
 // ═══════════════════════════════════════════════════════
 //
-// v0.8.0 strategy: thin proxy. The Amalgame binary holds an `execvp()`
-// to whichever DAP-native backend the host provides (lldb-dap on
-// Linux+macOS, gdb --dap on systems with gdb ≥ 14). Once exec'd the
-// kernel replaces our process image; stdin/stdout — already wired by
-// the DAP client (VS Code, Neovim, etc.) to its JSON-RPC pipes —
-// flow directly to the backend with no in-amc copy. The cgen-emitted
-// `#line N "foo.am"` directives let the backend's DWARF reader
-// resolve .am source paths natively, so the client can set
-// breakpoints on .am files and they bind to the right C address
-// without any message rewriting on the wire.
+// Two operating modes:
 //
-// Forward path for v0.9.0+ (Approche A, see project_dap_strategy.md
-// in auto-memory + ROADMAP_COMPLET.md): swap execvp for a fork +
-// pipe2 + poll() loop and rewrite messages on the way through —
-// pretty-print AmalgameList*/AmalgameMap*, filter Amalgame_*/runtime
-// frames, decode closures. The proxy stays as a fallback (e.g.
-// `amc dap --raw`) so users can still drop into the native backend.
+// 1. **Raw / proxy** (Approche C, shipped v0.8.0; `amc dap --raw` or
+//    the macOS default while the bridge is gdb-only):
+//    `execvp()` the host's DAP-native backend — `lldb-dap` (Linux
+//    /macOS via LLVM) or `gdb --dap` (Linux/Windows MSYS2 with
+//    gdb ≥ 14). The kernel replaces our process image; stdin/stdout
+//    flow directly between the DAP client and the backend with no
+//    in-amc copy. cgen-emitted `#line N "foo.am"` directives let the
+//    backend resolve .am source paths natively via DWARF.
+//
+// 2. **Bridge** (Approche A, design in `docs/proposals/dap-strategy.md`;
+//    gradual rollout):
+//    `fork + pipe2 + poll(2)` to spawn `gdb --interpreter=mi3`. Every
+//    DAP request and gdb MI response passes through amc, which
+//    rewrites the relevant ones:
+//      - pretty-print AmalgameList* / Map* / Set* / Closure* / code_string
+//      - filter `^_runtime_` / `^Amalgame_` frames from stackTrace
+//      - decode `LamEnv_N` closure captures
+//    Falls back to RunRaw on hosts without gdb, so the bridge stays
+//    optional.
+//
+// Phase 1 of the bridge migration (the present revision) ships the
+// flag plumbing (`--raw`, `--show-runtime`, `--bridge`) and an
+// internal dispatch boundary. `RunBridge()` currently no-ops back to
+// `RunRaw()` — Phase 2 replaces it with the actual fork+pipe2+poll
+// loop.
 
 public class DapServer {
 
+    // Opt-out of the bridge; force the v0.8.0 execvp proxy. Useful
+    // when the bridge has a regression or the user wants the macOS
+    // lldb-dap codepath even on a host that also has gdb installed.
+    public Raw: bool
+
+    // When the bridge is filtering frames, expose `^Amalgame_` and
+    // `^_runtime_` frames in the call stack anyway. Lets users debug
+    // runtime-level issues without having to drop into `--raw`.
+    public ShowRuntime: bool
+
+    // Bridge state — populated by SpawnGdb, drained by PollLoop and
+    // closed during cleanup. Field types match the C pid_t (signed
+    // 32-bit on every platform amc targets) and the int FDs returned
+    // by pipe2/dup2.
+    public GdbInFd:       int
+    public GdbOutFd:      int
+    public GdbPid:        int
+    public StopRequested: bool
+    public StdinOpen:     bool
+
+    // Per-direction byte accumulators for the framing-aware I/O
+    // pumps. DAP input is `Content-Length: N\r\n\r\n<json>`;
+    // gdb output is line-oriented MI3 with `(gdb)` prompts.
+    // Partial frames live here between poll iterations.
+    public DapInputBuf: string
+    public GdbInputBuf: string
+
+    // Token counter for MI commands. Each `Pos-MI-cmd` sent to gdb
+    // gets a fresh `<token>-…` prefix so responses can be correlated
+    // back to the DAP request id. Map MiToken→DapRequestId+kind.
+    public NextMiToken:   int
+    public MiTokens:      List<int>     // outstanding command tokens
+    public MiTokensReq:   List<int>     // parallel: dap request id
+    public MiTokensKind:  List<string>  // parallel: dap method that issued it
+
+    // DAP spec requires every outbound message (request/response/
+    // event) to carry a monotonically increasing `seq` independent
+    // of request_seq. Bumped by NextOutSeq().
+    public _outSeqCounter: int
+
     public DapServer() {
+        this.Raw           = false
+        this.ShowRuntime   = false
+        this.GdbInFd       = -1
+        this.GdbOutFd      = -1
+        this.GdbPid        = -1
+        this.StopRequested = false
+        this.StdinOpen     = true
+        this.DapInputBuf   = ""
+        this.GdbInputBuf   = ""
+        this.NextMiToken   = 100
+        this.MiTokens      = new List<int>()
+        this.MiTokensReq   = new List<int>()
+        this.MiTokensKind  = new List<string>()
+        this._outSeqCounter = 0
     }
 
     public int Run() {
+        // Strip our own flags from the argv tail before dispatch so
+        // RunRaw / RunBridge don't have to know about them.
+        this.ParseFlags()
+        // Hidden self-test flag: exercise the MI parser against
+        // canned inputs from the gdb manual without needing gdb
+        // itself. Returns 0 on PASS, 1 on FAIL. Wired into
+        // run_tests.sh's "amc dap" section.
+        if (this.HasFlag("--self-test-mi")) {
+            return DapServer.RunSelfTestMi()
+        }
+        if (this.Raw) {
+            return this.RunRaw()
+        }
+        return this.RunBridge()
+    }
+
+    // Check whether a particular flag was passed on argv[2..]. Used
+    // by hidden test flags so they don't have to be threaded through
+    // ParseFlags' bit-set table.
+    private bool HasFlag(string needle) {
+        var found: bool = false
+        @c {
+            for (int i = 2; i < code_argc; i++) {
+                if (code_argv[i] == NULL) continue;
+                if (strcmp(code_argv[i], (const char*) needle) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+        }
+        return found
+    }
+
+    // Exercise MiParser against a representative slice of gdb MI3
+    // output. Returns 0 on all PASS, 1 on first FAIL. Emits PASS/FAIL
+    // lines on stdout so run_tests.sh can grep for them.
+    //
+    // Coverage: result records (with + without token), exec-async
+    // *stopped events, stack-list-frames lists of `frame=…` pairs,
+    // nested tuples, console-stream records with escape sequences,
+    // and the bare `(gdb)` prompt.
+    private static int RunSelfTestMi() {
+        var failures: int = 0
+        // ── Case 1 — simple result with one tuple field ─────
+        let in1: string = "1^done,bkpt={number=\"1\",file=\"hello.c\",line=\"5\"}"
+        let p1 = new MiParser(in1)
+        let r1: MiRecord = p1.ParseRecord()
+        if (r1.Token == 1 && r1.RecordKind == 0 && r1.Class == "done") {
+            let bkpt: MiValue = r1.ResultOrNull("bkpt")
+            if (bkpt != null && bkpt.Kind == 1
+                && bkpt.FieldString("number") == "1"
+                && bkpt.FieldString("file")   == "hello.c"
+                && bkpt.FieldString("line")   == "5") {
+                Console.WriteLine("[PASS] mi: result with tuple field")
+            } else {
+                Console.WriteLine("[FAIL] mi: result tuple fields")
+                failures = failures + 1
+            }
+        } else {
+            Console.WriteLine("[FAIL] mi: result envelope (token/kind/class)")
+            failures = failures + 1
+        }
+        // ── Case 2 — *stopped event with nested frame ──────
+        let in2: string = "*stopped,reason=\"breakpoint-hit\",frame={addr=\"0x4007a0\",func=\"main\",file=\"hello.c\",line=\"5\"},thread-id=\"1\""
+        let p2 = new MiParser(in2)
+        let r2: MiRecord = p2.ParseRecord()
+        if (r2.RecordKind == 1 && r2.Class == "stopped"
+            && r2.Token == -1) {
+            let reason: string = ""
+            let nResults: int = r2.Results.Count()
+            var seenReason: bool = false
+            var seenTid:    bool = false
+            for i in 0..nResults {
+                let v: MiValue = r2.Values.Get(i)
+                if (r2.Results.Get(i) == "reason"    && v.Str == "breakpoint-hit") { seenReason = true }
+                if (r2.Results.Get(i) == "thread-id" && v.Str == "1")              { seenTid    = true }
+            }
+            let frame: MiValue = r2.ResultOrNull("frame")
+            if (seenReason && seenTid && frame != null && frame.FieldString("func") == "main") {
+                Console.WriteLine("[PASS] mi: stopped event w/ nested frame")
+            } else {
+                Console.WriteLine("[FAIL] mi: stopped event fields")
+                failures = failures + 1
+            }
+        } else {
+            Console.WriteLine("[FAIL] mi: stopped event envelope")
+            failures = failures + 1
+        }
+        // ── Case 3 — list of keyed `frame=` items ──────────
+        let in3: string = "^done,stack=[frame={level=\"0\",func=\"f0\"},frame={level=\"1\",func=\"f1\"}]"
+        let p3 = new MiParser(in3)
+        let r3: MiRecord = p3.ParseRecord()
+        let stack: MiValue = r3.ResultOrNull("stack")
+        if (stack != null && stack.Kind == 2 && stack.ListItems.Count() == 2
+            && stack.ListKeys.Get(0) == "frame" && stack.ListKeys.Get(1) == "frame"
+            && stack.ListItems.Get(0).FieldString("func") == "f0"
+            && stack.ListItems.Get(1).FieldString("func") == "f1") {
+            Console.WriteLine("[PASS] mi: stack=[frame=…,frame=…]")
+        } else {
+            Console.WriteLine("[FAIL] mi: keyed-list parsing")
+            failures = failures + 1
+        }
+        // ── Case 4 — list of bare-value tuples ─────────────
+        let in4: string = "^done,locals=[{name=\"A\",value=\"1\"},{name=\"B\",value=\"2\"}]"
+        let p4 = new MiParser(in4)
+        let r4: MiRecord = p4.ParseRecord()
+        let locs: MiValue = r4.ResultOrNull("locals")
+        if (locs != null && locs.Kind == 2 && locs.ListItems.Count() == 2
+            && locs.ListKeys.Get(0) == "" && locs.ListKeys.Get(1) == ""
+            && locs.ListItems.Get(0).FieldString("name") == "A"
+            && locs.ListItems.Get(1).FieldString("value") == "2") {
+            Console.WriteLine("[PASS] mi: locals=[{…},{…}]")
+        } else {
+            Console.WriteLine("[FAIL] mi: bare-tuple-list parsing")
+            failures = failures + 1
+        }
+        // ── Case 5 — console-stream w/ escapes ─────────────
+        let in5: string = "~\"Breakpoint 1 at 0x4007a0: file hello.c, line 5.\\n\""
+        let p5 = new MiParser(in5)
+        let r5: MiRecord = p5.ParseRecord()
+        if (r5.RecordKind == 4 && String_IndexOf(r5.StreamText, "Breakpoint 1") == 0
+            && String_IndexOf(r5.StreamText, "\n") >= 0) {
+            Console.WriteLine("[PASS] mi: console-stream w/ \\n escape")
+        } else {
+            Console.WriteLine("[FAIL] mi: stream unescape")
+            failures = failures + 1
+        }
+        // ── Case 6 — (gdb) prompt ──────────────────────────
+        let in6: string = "(gdb)"
+        let p6 = new MiParser(in6)
+        let r6: MiRecord = p6.ParseRecord()
+        if (r6.RecordKind == 7) {
+            Console.WriteLine("[PASS] mi: (gdb) prompt")
+        } else {
+            Console.WriteLine("[FAIL] mi: (gdb) prompt detection")
+            failures = failures + 1
+        }
+        // ── Case 7 — empty list / empty tuple ──────────────
+        let in7: string = "^done,foo={},bar=[]"
+        let p7 = new MiParser(in7)
+        let r7: MiRecord = p7.ParseRecord()
+        let foo: MiValue = r7.ResultOrNull("foo")
+        let bar: MiValue = r7.ResultOrNull("bar")
+        if (foo != null && foo.Kind == 1 && foo.TupleKeys.Count() == 0
+            && bar != null && bar.Kind == 2 && bar.ListItems.Count() == 0) {
+            Console.WriteLine("[PASS] mi: empty {} and []")
+        } else {
+            Console.WriteLine("[FAIL] mi: empty containers")
+            failures = failures + 1
+        }
+        // ── Case 8 — escaped quote inside string ───────────
+        let in8: string = "^done,msg=\"he said \\\"hi\\\"\""
+        let p8 = new MiParser(in8)
+        let r8: MiRecord = p8.ParseRecord()
+        let msgVal: MiValue = r8.ResultOrNull("msg")
+        var msg: string = ""
+        if (msgVal != null) { msg = msgVal.Str }
+        if (msg == "he said \"hi\"") {
+            Console.WriteLine("[PASS] mi: escaped \\\" inside string")
+        } else {
+            Console.WriteLine("[FAIL] mi: escape inside string (got '" + msg + "')")
+            failures = failures + 1
+        }
+        if (failures > 0) {
+            Console.WriteError("amc dap --self-test-mi: " + String_FromInt(failures) + " case(s) failed")
+            return 1
+        }
+        return 0
+    }
+
+    // Set this.Raw / this.ShowRuntime from argv. ExecBackend's argv
+    // builder re-scans argv to skip the same flags when building the
+    // backend's argv vector — we don't mutate code_argv here so the
+    // builder can stay simple.
+    private void ParseFlags() {
+        @c {
+            for (int i = 2; i < code_argc; i++) {
+                if (code_argv[i] == NULL) continue;
+                const char* a = code_argv[i];
+                if (strcmp(a, "--raw") == 0) {
+                    self->Raw = 1;
+                } else if (strcmp(a, "--show-runtime") == 0) {
+                    self->ShowRuntime = 1;
+                }
+                // `--bridge` is recognised in the argv scan below
+                // (so it's stripped from the backend's view) — it's
+                // a no-op flag while Phase 1 ships, kept for forward
+                // compat with scripts.
+            }
+            return;
+        }
+    }
+
+    // Bridge entry point. Spawns `gdb --interpreter=mi3`, enters a
+    // poll-driven I/O loop that pipes DAP traffic between the client
+    // (stdin/stdout) and gdb (pipe FDs).
+    //
+    // During the migration the bridge is opt-in via `--bridge`. The
+    // default codepath stays on `RunRaw()` so users get the
+    // (well-trodden) v0.8.0 execvp proxy until Phase 7 flips the
+    // default. When gdb isn't on PATH, we transparently fall back
+    // to the proxy — the user gets a working session either way.
+    //
+    // Phase 2a (this commit) ships **passthrough**: bytes from the
+    // client go straight to gdb's stdin, bytes from gdb come straight
+    // out on stdout. No DAP framing, no MI parsing, no translation —
+    // that's Phase 2b+. The current shape is testable end-to-end with
+    // `echo '-gdb-version' | amc dap --bridge` against gdb directly.
+    public int RunBridge() {
+        if (!this.HasFlag("--bridge")) {
+            return this.RunRaw()
+        }
+        let gdbPath: string = DapServer.Probe("gdb")
+        if (String_Length(gdbPath) == 0) {
+            Console.WriteError("amc dap --bridge: gdb not on PATH; falling back to --raw")
+            return this.RunRaw()
+        }
+        let spawnRc: int = this.SpawnGdb(gdbPath)
+        if (spawnRc != 0) {
+            return spawnRc
+        }
+        return this.PollLoop()
+    }
+
+    // fork + pipe2 + dup2 + execlp the gdb child. Returns 0 on
+    // success with this.GdbInFd / GdbOutFd / GdbPid populated; 1
+    // on any setup failure (a perror is printed inside the @c block).
+    //
+    // `--nx` skips ~/.gdbinit so user configuration doesn't surprise
+    // the bridge; `--quiet` drops the GDB version banner stream
+    // records (still emitted on `=thread-group-added` for free).
+    private int SpawnGdb(string gdbPath) {
+        @c {
+            int parentToChild[2];  // parent writes, child reads → gdb stdin
+            int childToParent[2];  // child writes, parent reads → gdb stdout
+            if (pipe2(parentToChild, O_CLOEXEC) < 0) {
+                perror("amc dap --bridge: pipe2 in");
+                return 1;
+            }
+            if (pipe2(childToParent, O_CLOEXEC) < 0) {
+                perror("amc dap --bridge: pipe2 out");
+                close(parentToChild[0]); close(parentToChild[1]);
+                return 1;
+            }
+            pid_t pid = fork();
+            if (pid < 0) {
+                perror("amc dap --bridge: fork");
+                close(parentToChild[0]); close(parentToChild[1]);
+                close(childToParent[0]); close(childToParent[1]);
+                return 1;
+            }
+            if (pid == 0) {
+                // Child — wire pipes to stdin/stdout, exec gdb.
+                // dup2 clears O_CLOEXEC on the target FDs (0, 1) so
+                // they survive the exec. The original pipe FDs still
+                // have O_CLOEXEC set so they auto-close. We also
+                // close them explicitly for clarity.
+                if (dup2(parentToChild[0], 0) < 0) { perror("dup2 stdin");  _exit(127); }
+                if (dup2(childToParent[1], 1) < 0) { perror("dup2 stdout"); _exit(127); }
+                close(parentToChild[0]); close(parentToChild[1]);
+                close(childToParent[0]); close(childToParent[1]);
+                execlp((const char*) gdbPath,
+                       "gdb", "--interpreter=mi3", "--nx", "--quiet",
+                       (char*) NULL);
+                perror("amc dap --bridge: execlp gdb");
+                _exit(127);
+            }
+            // Parent — close the child-side FDs, stash the rest.
+            close(parentToChild[0]);
+            close(childToParent[1]);
+            self->GdbInFd  = parentToChild[1];
+            self->GdbOutFd = childToParent[0];
+            self->GdbPid   = (i64) pid;
+            // SIGPIPE on a closed stdout (client disconnected) would
+            // kill us silently; turn it into a regular EPIPE that
+            // PollLoop catches via POLLHUP/read==-1.
+            signal(SIGPIPE, SIG_IGN);
+            return 0;
+        }
+    }
+
+    // Main bridge I/O loop. Structured as AM code calling thin @c
+    // primitives so DAP/MI parsing + per-verb dispatch can live in
+    // Amalgame. The C side handles only the poll/read/write syscalls
+    // and the gdb child cleanup.
+    private int PollLoop() {
+        while (!this.StopRequested) {
+            let what: int = this.PollOnce()
+            if (what == 0) {
+                // stdin readable — pull bytes, accumulate, parse
+                // out any complete DAP frames, dispatch each.
+                let chunk: string = this.ReadFromFd(0)
+                if (String_Length(chunk) == 0) {
+                    this.StdinOpen = false
+                    this.CloseGdbStdin()
+                } else {
+                    this.OnDapInput(chunk)
+                }
+            } else if (what == 1) {
+                // gdb readable — pull bytes, accumulate, split on
+                // newlines, parse each line as an MiRecord, dispatch.
+                let chunk: string = this.ReadFromFd(1)
+                if (String_Length(chunk) == 0) { break }
+                this.OnGdbOutput(chunk)
+            } else if (what == 2) {
+                // stdin POLLHUP — client closed, drain gdb until it
+                // exits too.
+                this.StdinOpen = false
+                this.CloseGdbStdin()
+            } else if (what == 3) {
+                // gdb POLLHUP — exit the loop, fall through to cleanup.
+                break
+            } else {
+                break
+            }
+        }
+        this.Cleanup()
+        return 0
+    }
+
+    // poll(2) on stdin (when open) and gdb-stdout. Returns:
+    //   0 = stdin readable     1 = gdb readable
+    //   2 = stdin POLLHUP/ERR  3 = gdb POLLHUP/ERR
+    //   4 = poll failure
+    private int PollOnce() {
+        @c {
+            struct pollfd fds[2];
+            fds[0].fd = self->StdinOpen ? 0 : -1;
+            fds[0].events = POLLIN;
+            fds[1].fd = (int) self->GdbOutFd;
+            fds[1].events = POLLIN;
+            for (;;) {
+                fds[0].revents = 0;
+                fds[1].revents = 0;
+                int pr = poll(fds, 2, -1);
+                if (pr < 0) {
+                    if (errno == EINTR) continue;
+                    perror("amc dap --bridge: poll");
+                    return 4;
+                }
+                // Prioritise gdb POLLHUP over POLLIN so we exit cleanly
+                // when gdb crashes mid-response.
+                if (fds[1].revents & (POLLHUP | POLLERR)) return 3;
+                if (fds[0].revents & (POLLHUP | POLLERR) && !(fds[0].revents & POLLIN)) return 2;
+                if (fds[1].revents & POLLIN) return 1;
+                if (fds[0].revents & POLLIN) return 0;
+                // Spurious wake — loop.
+            }
+        }
+    }
+
+    // Read up to 16 KB from either fd: 0 = client stdin, 1 = gdb
+    // stdout. Returns the chunk as a GC-allocated string, or "" on
+    // EOF/error. NUL terminator is appended so the result is a valid
+    // `code_string`; embedded NULs would be lost (DAP/MI never use
+    // them in practice).
+    private string ReadFromFd(int which) {
+        @c {
+            int fd = (which == 0) ? 0 : (int) self->GdbOutFd;
+            char buf[16384];
+            ssize_t n;
+            for (;;) {
+                n = read(fd, buf, sizeof(buf));
+                if (n < 0 && errno == EINTR) continue;
+                break;
+            }
+            if (n <= 0) {
+                return (code_string) "";
+            }
+            char* r = (char*) GC_MALLOC((size_t) n + 1);
+            if (r == NULL) {
+                return (code_string) "";
+            }
+            memcpy(r, buf, (size_t) n);
+            r[n] = '\0';
+            return (code_string) r;
+        }
+    }
+
+    // Write a buffer either to gdb's stdin (which=1) or to the
+    // client's stdout (which=2). Retries on EINTR, surfaces EPIPE/
+    // ENOSPC by marking StopRequested. strlen-bounded — embedded
+    // NULs in the payload are truncated, same caveat as ReadFromFd.
+    public void WriteToFd(int which, string s) {
+        @c {
+            int fd = (which == 1) ? (int) self->GdbInFd : 1;
+            if (fd < 0) { return; }
+            const char* p = (const char*) s;
+            size_t len = strlen(p);
+            size_t off = 0;
+            while (off < len) {
+                ssize_t w = write(fd, p + off, len - off);
+                if (w < 0) {
+                    if (errno == EINTR) continue;
+                    self->StopRequested = 1;
+                    break;
+                }
+                off += (size_t) w;
+            }
+        }
+    }
+
+    // Close the write-end of gdb-stdin. Tells gdb no more commands
+    // are coming so it can shut down cleanly. Idempotent.
+    public void CloseGdbStdin() {
+        @c {
+            if (self->GdbInFd >= 0) {
+                close((int) self->GdbInFd);
+                self->GdbInFd = -1;
+            }
+        }
+    }
+
+    // Handle a chunk of bytes received from the DAP client.
+    // Accumulates into DapInputBuf, peels off complete frames
+    // (`Content-Length: N\r\n\r\n<N bytes>`), dispatches each frame's
+    // JSON body through HandleDapMessage. Partial frames stay
+    // buffered for the next chunk.
+    private void OnDapInput(string chunk) {
+        this.DapInputBuf = this.DapInputBuf + chunk
+        while (true) {
+            let body: string = this.TryExtractDapFrame()
+            if (String_Length(body) == 0) { break }
+            this.HandleDapMessage(body)
+        }
+    }
+
+    // Try to peel one complete DAP frame off DapInputBuf. Returns the
+    // JSON body (header consumed) on success, "" if more bytes are
+    // needed. Mutates DapInputBuf to drop the consumed prefix.
+    //
+    // Malformed headers (no Content-Length) drop everything up to and
+    // including the next `\r\n\r\n` and return "". The bridge doesn't
+    // hard-fail on the input pipe — a buggy client shouldn't take
+    // down gdb.
+    // CRLF used by DAP framing. The bootstrap amc lexer mis-handles
+    // `"\r"` (and `"\x0d"`) literals — same trap lsp.am hit, see
+    // `LspServer.Cr()` for the original workaround. We pre-build the
+    // CRLFCRLF separator once per process.
+    private static string Crlf() { return String_FromByte(13) + "\n" }
+    private static string CrlfCrlf() { return DapServer.Crlf() + DapServer.Crlf() }
+
+    private string TryExtractDapFrame() {
+        let buf: string = this.DapInputBuf
+        let headEnd: int = String_IndexOf(buf, DapServer.CrlfCrlf())
+        if (headEnd < 0) { return "" }
+        let header: string = String_Substring(buf, 0, headEnd)
+        let needle: string = "Content-Length:"
+        let lpi: int = String_IndexOf(header, needle)
+        if (lpi < 0) {
+            // No length — drop the header and resync.
+            this.DapInputBuf = String_Substring(buf, headEnd + 4, String_Length(buf) - headEnd - 4)
+            return ""
+        }
+        let valueStart: int = lpi + String_Length(needle)
+        var lenN: int = 0
+        var i: int = valueStart
+        // Skip whitespace, then collect digits.
+        while (i < String_Length(header)) {
+            let c: string = String_Substring(header, i, 1)
+            if (c == " " || c == "\t") { i = i + 1 } else { break }
+        }
+        while (i < String_Length(header)) {
+            let c: string = String_Substring(header, i, 1)
+            if (MiParser.IsDigit(c)) {
+                lenN = lenN * 10 + String_ToInt(c)
+                i = i + 1
+            } else { break }
+        }
+        let bodyStart: int = headEnd + 4
+        let bufLen: int = String_Length(buf)
+        if (bufLen - bodyStart < lenN) { return "" }
+        let body: string = String_Substring(buf, bodyStart, lenN)
+        this.DapInputBuf = String_Substring(buf, bodyStart + lenN, bufLen - bodyStart - lenN)
+        return body
+    }
+
+    // Emit a DAP frame to the client: prepend the Content-Length
+    // header and write everything to stdout. Caller ensures `body`
+    // is valid JSON; we don't validate.
+    public void SendDapFrame(string body) {
+        let frame: string = "Content-Length: " + String_FromInt(String_Length(body)) + DapServer.CrlfCrlf() + body
+        this.WriteToFd(2, frame)
+    }
+
+    // Handle a chunk of bytes received from gdb. Accumulates,
+    // splits on \n, parses each non-empty line through MiParser,
+    // dispatches by record kind via HandleMiRecord. Carries over
+    // any trailing partial line in GdbInputBuf for the next chunk.
+    private void OnGdbOutput(string chunk) {
+        this.GdbInputBuf = this.GdbInputBuf + chunk
+        let buf: string = this.GdbInputBuf
+        let bufLen: int = String_Length(buf)
+        var pos: int = 0
+        while (pos < bufLen) {
+            let rest: string = String_Substring(buf, pos, bufLen - pos)
+            let nl: int = String_IndexOf(rest, "\n")
+            if (nl < 0) { break }
+            let raw: string = String_Substring(buf, pos, nl)
+            let line: string = String_Trim(raw)
+            if (String_Length(line) > 0) {
+                this.HandleMiLine(line)
+            }
+            pos = pos + nl + 1
+        }
+        this.GdbInputBuf = String_Substring(buf, pos, bufLen - pos)
+    }
+
+    // Parse one MI3 line and dispatch by record kind. The (gdb)
+    // prompt is implicit synchronisation; we don't act on it
+    // directly but log it at high verbosity for debugging.
+    private void HandleMiLine(string line) {
+        let parser = new MiParser(line)
+        let rec: MiRecord = parser.ParseRecord()
+        // Phase 2b: for now we just dispatch result records. Async
+        // (*stopped, etc.) records will route through their own
+        // handler in Phase 4. Stream + prompt records are dropped —
+        // they're useful in interactive gdb but redundant under DAP.
+        if (rec.RecordKind == 0) {
+            this.HandleMiResult(rec)
+        }
+        // else: stream/async/prompt — silent for now.
+    }
+
+    // Top-level result-record dispatch. Token correlation will land
+    // in Phase 4; the Phase 2b stub just exists so the parser is
+    // exercised end-to-end against real gdb output.
+    private void HandleMiResult(MiRecord rec) {
+        // Intentionally empty body for Phase 2b. The MI parser is
+        // running on every gdb line; routing into DAP responses
+        // happens in Phase 4 once the per-verb translators land.
+        return
+    }
+
+    // Dispatch a complete DAP request body. Body is the raw JSON
+    // string; we parse it with Amalgame.Json.Parse, peel off
+    // `seq` / `command` / `arguments`, and route to the per-verb
+    // handlers. Unknown commands get a non-success response so the
+    // client doesn't hang waiting.
+    private void HandleDapMessage(string body) {
+        let parsed: JsonResult = Json.Parse(body)
+        if (!parsed.Ok) {
+            // Malformed DAP — silently drop. A buggy client shouldn't
+            // tear down the bridge.
+            return
+        }
+        let root: JsonValue = parsed.Value
+        if (root.IsNull()) { return }
+        let typeStr: string = root.Get("type").AsString()
+        if (typeStr != "request") {
+            // Only requests are translatable; responses/events from
+            // the client side never happen in a normal DAP session.
+            return
+        }
+        let seq: int = root.Get("seq").AsInt()
+        let command: string = root.Get("command").AsString()
+        let args: JsonValue = root.Get("arguments")
+        if      (command == "initialize") { this.HandleInitialize(seq, args) }
+        else if (command == "disconnect") { this.HandleDisconnect(seq, args) }
+        else                              { this.SendDapErrorResponse(seq, command, "not implemented in --bridge yet") }
+    }
+
+    // Reply with our capabilities. Phase 2b advertises only the
+    // basics; Phase 4 will flip on supportsConfigurationDoneRequest
+    // / supportsEvaluateForHovers etc. as their handlers land.
+    private void HandleInitialize(int seq, JsonValue args) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"initialize\"" +
+            ",\"body\":{" +
+                "\"supportsConfigurationDoneRequest\":false," +
+                "\"supportsTerminateRequest\":true," +
+                "\"supportTerminateDebuggee\":true" +
+            "}}"
+        this.SendDapFrame(body)
+        // Spec says a server emits `initialized` event right after
+        // a successful initialize response. Phase 2b emits it so
+        // VS Code knows to send any setup requests next (even though
+        // we'll error those for now).
+        let evt: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"event\"" +
+            ",\"event\":\"initialized\"}"
+        this.SendDapFrame(evt)
+    }
+
+    // Tear down the gdb side and let the loop drain. We respond
+    // BEFORE closing GdbInFd so the client gets confirmation before
+    // the bridge exits.
+    private void HandleDisconnect(int seq, JsonValue args) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"disconnect\"}"
+        this.SendDapFrame(body)
+        // Tell gdb to exit cleanly so it reaps its child too.
+        this.WriteToFd(1, "-gdb-exit\n")
+        this.CloseGdbStdin()
+        this.StopRequested = true
+    }
+
+    // Stock error reply for unimplemented commands during the
+    // Phase 2b → Phase 4 migration. Once Phase 4 lands every verb
+    // will have its own success path and this is the bare fallback.
+    private void SendDapErrorResponse(int seq, string command, string reason) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":false" +
+            ",\"command\":\"" + Json.EscapeString(command) + "\"" +
+            ",\"message\":\"" + Json.EscapeString(reason) + "\"}"
+        this.SendDapFrame(body)
+    }
+
+    // Monotonic seq counter for our side of the conversation.
+    // DAP requires every message (request/response/event) to carry
+    // a strictly increasing `seq` field, separate from the
+    // request_seq correlation. Start at 1.
+    private int NextOutSeq() {
+        @c {
+            self->_outSeqCounter += 1;
+            return self->_outSeqCounter;
+        }
+    }
+
+    // Final cleanup — close both pipe FDs and reap the gdb child.
+    private void Cleanup() {
+        @c {
+            if (self->GdbInFd  >= 0) { close((int) self->GdbInFd);  self->GdbInFd  = -1; }
+            if (self->GdbOutFd >= 0) { close((int) self->GdbOutFd); self->GdbOutFd = -1; }
+            int status = 0;
+            if (self->GdbPid > 0) { waitpid((pid_t) self->GdbPid, &status, 0); }
+        }
+    }
+
+    // Raw / proxy entry point: detect a DAP-native backend on PATH
+    // and execvp() it. Same behaviour shipped in v0.8.0.
+    public int RunRaw() {
         let exe: string = this.DetectBackend()
         if (String_Length(exe) == 0) {
             Console.WriteError("amc dap: no DAP backend found in PATH.")
@@ -127,10 +837,9 @@ public class DapServer {
 
     // Replace this process with the backend. argv[0] is the resolved
     // backend path; argv[1..] forwards `amc dap`'s own argv from
-    // index 2 onward, so the user can pass DAP-server options
-    // (--port, --comm-file, etc.) like `amc dap --port 12345`.
-    // On success this never returns; on execvp failure it prints
-    // and returns 127.
+    // index 2 onward — except `--raw` / `--show-runtime` / `--bridge`
+    // which are amc-internal flags. On success this never returns;
+    // on execvp failure it prints and returns 127.
     private int ExecBackend(string exe) {
         @c {
             // Strip the `gdb:` sentinel DetectBackend added for the
@@ -144,13 +853,21 @@ public class DapServer {
             }
             int parentArgc = code_argc;
             char** parentArgv = code_argv;
-            // argv layout:
-            //   lldb-dap : [exe,            forwarded_args..., NULL]
-            //   gdb      : [exe, "--dap",   forwarded_args..., NULL]
             int fwd = parentArgc - 2;
             if (fwd < 0) { fwd = 0; }
+            // Pre-count surviving args after filtering our own flags.
+            int filteredFwd = 0;
+            for (int i = 0; i < fwd; i++) {
+                const char* a = parentArgv[2 + i];
+                if (a == NULL) continue;
+                if (strcmp(a, "--raw") == 0) continue;
+                if (strcmp(a, "--show-runtime") == 0) continue;
+                if (strcmp(a, "--bridge") == 0) continue;
+                if (strcmp(a, "--self-test-mi") == 0) continue;
+                filteredFwd++;
+            }
             int extra = isGdb ? 1 : 0;
-            int n = 1 + extra + fwd + 1;
+            int n = 1 + extra + filteredFwd + 1;
             char** argv = (char**) malloc(sizeof(char*) * (size_t) n);
             if (argv == NULL) {
                 fprintf(stderr, "amc dap: out of memory building argv\n");
@@ -162,7 +879,13 @@ public class DapServer {
                 argv[pos++] = (char*) "--dap";
             }
             for (int i = 0; i < fwd; i++) {
-                argv[pos++] = parentArgv[2 + i];
+                const char* a = parentArgv[2 + i];
+                if (a == NULL) continue;
+                if (strcmp(a, "--raw") == 0) continue;
+                if (strcmp(a, "--show-runtime") == 0) continue;
+                if (strcmp(a, "--bridge") == 0) continue;
+                if (strcmp(a, "--self-test-mi") == 0) continue;
+                argv[pos++] = (char*) a;
             }
             argv[pos] = (char*) 0;
             execvp(exeStr, argv);

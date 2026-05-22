@@ -1879,11 +1879,17 @@ public class LspServer {
 
     // For every `Unknown symbol 'X'` resolver diagnostic whose
     // position lies in the requested code-action range, shell out to
-    // `amc package suggest --json X` and emit one CodeAction per
-    // suggested package. The action is informational — its `command`
-    // shows the install command in the editor's status bar; we
-    // explicitly do NOT auto-install. The user runs the command
-    // themselves.
+    // `amc package suggest --json X` and emit TWO CodeActions per
+    // suggested package:
+    //   1. "Install package <name>" — informational `command` field
+    //      (no auto-install — the user runs `amc package add` in
+    //      their terminal).
+    //   2. "Add import <Amalgame.X.Y>" — a real `WorkspaceEdit` that
+    //      inserts the import directly. Namespace inferred from the
+    //      package URL via the slug heuristic; the dominant case is
+    //      "package not installed yet" so we can't read its
+    //      manifest. Skipped when the file already imports the
+    //      namespace (avoids duplicate-import noise).
     private void CollectPackageInstallSuggestions(FullResolver resolver, string uri, string path, int sLine, int eLine, List<string> out) {
         let errN: int = resolver.RawErrors.Count()
         if (errN == 0) { return }
@@ -1929,13 +1935,34 @@ public class LspServer {
             if (doc.IsNull() || !doc.IsArray()) { continue }
             let arr: List<JsonValue> = doc.AsArray()
             let nResults: int = arr.Count()
+            // Read the open document once per suggest call so the
+            // import-insertion line is consistent across every
+            // proposed package. LookupDoc returns "" if the doc
+            // isn't tracked — in that case skip the WorkspaceEdit
+            // half and emit the Install-only action.
+            let docSource: string = this.LookupDoc(uri)
+            var insertLine: int = -1
+            if (String_Length(docSource) > 0) {
+                insertLine = LspServer.FindImportInsertionLine(docSource)
+            }
             for ri in 0..nResults {
                 let entry: JsonValue = arr.Get(ri)
                 let pkgName: string = entry.Get("name").AsString()
                 if (String_Length(pkgName) == 0) { continue }
                 let pkgTag: string  = entry.Get("latest_compatible_tag").AsString()
                 let pkgDesc: string = entry.Get("description").AsString()
+                let pkgUrl: string  = entry.Get("url").AsString()
                 out.Add(LspServer.PackageInstallActionJson(pkgName, pkgTag, pkgDesc, symName))
+                // Sister "Add import" quickfix. Skipped when:
+                //   - we couldn't derive a namespace (empty URL)
+                //   - the file is empty / not tracked
+                //   - the same import already exists
+                if (insertLine >= 0) {
+                    let ns: string = LspServer.InferNamespaceFromUrl(pkgUrl)
+                    if (String_Length(ns) > 0 && !LspServer.HasImport(docSource, ns)) {
+                        out.Add(LspServer.PackageImportActionJson(uri, insertLine, ns, symName))
+                    }
+                }
             }
         }
     }
@@ -1991,6 +2018,131 @@ public class LspServer {
         if (String_Length(pkgTag) > 0) { cmdArgs = cmdArgs + "@" + pkgTag }
         let cmd: string = "{\"title\":\"" + Json.EscapeString(label) + "\",\"command\":\"" + Json.EscapeString(cmdArgs) + "\"}"
         return "{\"title\":\"" + Json.EscapeString(label) + "\",\"kind\":\"quickfix\",\"command\":" + cmd + "}"
+    }
+
+    // Map a single slug segment (e.g. "ui", "sdl", "sqlite") to its
+    // Amalgame namespace part. Most segments TitleCase ("redis" →
+    // "Redis", "math" → "Math"); a small all-caps lookup covers the
+    // ecosystem's standard abbreviations.
+    private static string SegmentToNamespacePart(string seg) {
+        let s: string = String_ToLower(seg)
+        if (s == "sdl")       { return "SDL" }
+        if (s == "tls")       { return "TLS" }
+        if (s == "ui")        { return "UI" }
+        if (s == "io")        { return "IO" }
+        if (s == "mqtt")      { return "MQTT" }
+        if (s == "nats")      { return "NATS" }
+        if (s == "amqp")      { return "AMQP" }
+        if (s == "nosql")     { return "NoSQL" }
+        if (s == "sqlite")    { return "SQLite" }
+        if (s == "duckdb")    { return "DuckDB" }
+        if (s == "rabbitmq")  { return "RabbitMQ" }
+        if (s == "mongodb")   { return "MongoDB" }
+        if (s == "websocket") { return "WebSocket" }
+        if (s == "ml")         { return "ML" }
+        if (s == "ai")         { return "AI" }
+        if (s == "orm")        { return "ORM" }
+        if (s == "postgresql") { return "PostgreSQL" }
+        if (s == "mysql")      { return "MySQL" }
+        if (s == "mariadb")    { return "MariaDB" }
+        if (s == "mssql")      { return "MSSQL" }
+        if (s == "dynamodb")   { return "DynamoDB" }
+        let n: int = String_Length(s)
+        if (n == 0) { return "" }
+        let firstUpper: string = String_ToUpper(String_Substring(s, 0, 1))
+        if (n == 1) { return firstUpper }
+        return firstUpper + String_Substring(s, 1, n - 1)
+    }
+
+    // Infer the Amalgame namespace of a package from its URL (or a
+    // bare slug). Heuristic, best-effort: the last URL segment has
+    // its `amalgame-` prefix stripped, then is split on `-` and each
+    // sub-segment passes through SegmentToNamespacePart. Joined with
+    // `.` under the `Amalgame.` root.
+    //
+    // Examples:
+    //   "github.com/amalgame-lang/amalgame-ui-web"            → "Amalgame.UI.Web"
+    //   "github.com/amalgame-lang/amalgame-database-nosql-redis" → "Amalgame.Database.NoSQL.Redis"
+    //   "amalgame-math-vec"                                    → "Amalgame.Math.Vec"
+    //   "" (empty)                                             → "" (caller must check)
+    private static string InferNamespaceFromUrl(string url) {
+        if (String_Length(url) == 0) { return "" }
+        var slug: string = url
+        let slashIdx: int = String_LastIndexOf(url, "/")
+        if (slashIdx >= 0 && slashIdx + 1 < String_Length(url)) {
+            slug = String_Substring(url, slashIdx + 1, String_Length(url) - slashIdx - 1)
+        }
+        if (String_StartsWith(slug, "amalgame-")) {
+            slug = String_Substring(slug, 9, String_Length(slug) - 9)
+        }
+        if (String_Length(slug) == 0) { return "" }
+        let parts: List<string> = String_Split(slug, "-")
+        var ns: string = "Amalgame"
+        let n: int = parts.Count()
+        for i in 0..n {
+            let part: string = parts.Get(i)
+            if (String_Length(part) == 0) { continue }
+            ns = ns + "." + LspServer.SegmentToNamespacePart(part)
+        }
+        return ns
+    }
+
+    // Pick the line index (0-based, LSP convention) at which to
+    // insert a new `import X` statement. Walks the source from the
+    // top, anchoring on the namespace line (if any) and the last
+    // consecutive import line. Returns 0 for files that start
+    // directly with a declaration.
+    //
+    // Stops at the first non-blank, non-comment, non-namespace,
+    // non-import statement — so a `// header` block above the
+    // namespace doesn't push the insertion below it.
+    private static int FindImportInsertionLine(string source) {
+        let lines: List<string> = String_Split(source, "\n")
+        let n: int = lines.Count()
+        var lastAnchor: int = -1
+        for i in 0..n {
+            let trimmed: string = String_Trim(lines.Get(i))
+            if (String_Length(trimmed) == 0) { continue }
+            if (String_StartsWith(trimmed, "//")) { continue }
+            if (String_StartsWith(trimmed, "namespace ")) {
+                lastAnchor = i
+                continue
+            }
+            if (String_StartsWith(trimmed, "import ")) {
+                lastAnchor = i
+                continue
+            }
+            break
+        }
+        return lastAnchor + 1
+    }
+
+    // True when `source` already contains a line of the form
+    // `import <ns>` (trimmed). Used to skip the "Add import"
+    // quickfix when the import is already in place.
+    private static bool HasImport(string source, string ns) {
+        let lines: List<string> = String_Split(source, "\n")
+        let n: int = lines.Count()
+        let needle: string = "import " + ns
+        var found: bool = false
+        for i in 0..n {
+            if (String_Trim(lines.Get(i)) == needle) { found = true }
+        }
+        return found
+    }
+
+    // Build the CodeAction JSON for the "Add import <ns>" quickfix.
+    // Emits a WorkspaceEdit with a zero-width TextEdit at the
+    // computed insertion line — the editor applies it on click.
+    // `isPreferred:true` makes Ctrl+. default to this action.
+    private static string PackageImportActionJson(string uri, int insertLine, string ns, string symName) {
+        let posStr: string = "{\"line\":" + String_FromInt(insertLine) + ",\"character\":0}"
+        let range: string  = "{\"start\":" + posStr + ",\"end\":" + posStr + "}"
+        let newText: string = "import " + ns + "\n"
+        let edit: string = "{\"range\":" + range + ",\"newText\":\"" + Json.EscapeString(newText) + "\"}"
+        let changes: string = "{\"" + Json.EscapeString(uri) + "\":[" + edit + "]}"
+        let title: string = "Add import " + ns + " (for '" + symName + "')"
+        return "{\"title\":\"" + Json.EscapeString(title) + "\",\"kind\":\"quickfix\",\"isPreferred\":true,\"edit\":{\"changes\":" + changes + "}}"
     }
 
     // Walk the AST collecting CodeAction JSONs for every annotation-
@@ -2450,15 +2602,25 @@ public class LspServer {
         return String_StartsWith(lineText, "import ") || lineText == "import"
     }
 
-    // Build CompletionItem[] from installed-package namespaces. Reads
-    // the workspace's amalgame.lock via PackageRegistry; falls back
-    // to an empty list when no lockfile is present (the user gets
-    // their regular global completion instead).
+    // Build CompletionItem[] from three sources, in this order:
+    //   1. Installed packages (workspace `amalgame.lock` →
+    //      LoadedPackage.Ns)
+    //   2. Bundled stdlib roots (hardcoded list)
+    //   3. Cached-but-not-installed packages from the official
+    //      index (`~/.amalgame/cache/packages-index.toml`,
+    //      namespaces inferred from the URL slug). Marked
+    //      `↓ install <name>` in the detail so the user sees
+    //      they're not local yet.
+    // De-duplicated across all three: if the user has `redis`
+    // installed, the index-derived `Amalgame.Database.NoSQL.Redis`
+    // proposal is skipped (the installed one wins, with its real
+    // tag in the detail).
     private void SendImportCompletion(int id) {
         let lockPath: string  = this.CachedRoot + "/amalgame.lock"
         let cacheRoot: string = PackageRegistry.AmalgameHome() + "/packages"
         var items: string = ""
         var first: bool = true
+        let seen: List<string> = new List<string>()
         if (File.Exists(lockPath)) {
             let reg = PackageRegistry.LoadFrom(lockPath, cacheRoot)
             let n: int = reg.Packages.Count()
@@ -2470,6 +2632,7 @@ public class LspServer {
                 // CompletionItemKind 9 = Module
                 if (!first) { items = items + "," }
                 items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"" + Json.EscapeString(detail) + "\"}"
+                seen.Add(ns)
                 first = false
             }
         }
@@ -2480,12 +2643,60 @@ public class LspServer {
         let bn: int = bundled.Count()
         for bi in 0..bn {
             let ns: string = bundled.Get(bi)
+            if (LspServer.ContainsString(seen, ns)) { continue }
             if (!first) { items = items + "," }
             items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"bundled stdlib\"}"
+            seen.Add(ns)
             first = false
+        }
+        // Cached-but-uninstalled packages from the official index.
+        // Namespace inferred from the URL slug — heuristic, won't
+        // surface non-`amalgame-*` packages but covers every
+        // official package shipped today. Detail is prefixed with
+        // an arrow so the user notices the install gap. Skipped
+        // silently when the index isn't cached locally (no network
+        // probe — the LSP stays offline-only).
+        let indexPath: string = PackageRegistry.AmalgameHome() + "/.amalgame/cache/packages-index.toml"
+        if (File.Exists(indexPath)) {
+            let indexSrc: string = File.ReadAll(indexPath)
+            if (String_Length(indexSrc) > 0) {
+                let doc: TomlValue = Toml.Parse(indexSrc)
+                if (!doc.IsNull()) {
+                    let pkgArr: TomlValue = doc.Get("package")
+                    if (pkgArr.IsArray()) {
+                        let ni: int = pkgArr.Count()
+                        for ii in 0..ni {
+                            let entry: TomlValue = pkgArr.At(ii)
+                            let nameS: string = entry.Get("name").AsString()
+                            let urlS:  string = entry.Get("url").AsString()
+                            if (String_Length(nameS) == 0) { continue }
+                            let ns: string = LspServer.InferNamespaceFromUrl(urlS)
+                            if (String_Length(ns) == 0) { continue }
+                            if (LspServer.ContainsString(seen, ns)) { continue }
+                            if (!first) { items = items + "," }
+                            let detail: string = "\\u2193 install " + nameS
+                            items = items + "{\"label\":\"" + Json.EscapeString(ns) + "\",\"kind\":9,\"detail\":\"" + detail + "\"}"
+                            seen.Add(ns)
+                            first = false
+                        }
+                    }
+                }
+            }
         }
         let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"isIncomplete\":false,\"items\":[" + items + "]}}"
         this.Send(body)
+    }
+
+    // Linear search helper for the small dedup lists used by
+    // SendImportCompletion. List sizes are O(packages) — a few
+    // dozen at most — so the O(n) scan is fine.
+    private static bool ContainsString(List<string> xs, string needle) {
+        let n: int = xs.Count()
+        var found: bool = false
+        for i in 0..n {
+            if (xs.Get(i) == needle) { found = true }
+        }
+        return found
     }
 
     // Hardcoded bundled-stdlib namespaces. Mirrors what
