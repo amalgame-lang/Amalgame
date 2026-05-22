@@ -431,18 +431,26 @@ jobs:
           Write-Host "Using $iscc"
           "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Build amalgame-<ver>-setup.exe
+      - name: Build amalgame-<ver>-setup.exe (InnoSetup, fallback)
         shell: pwsh
         working-directory: install\windows
-        # InnoSetup .exe (proven path). The PowerShell MSI builder
-        # at install/windows/build-msi.ps1 is on hold — needs
-        # interactive Windows debugging that doesn't fit in a CI
-        # loop. Once it's validated locally, switch this step back
-        # to call build-msi.ps1 (the .iss can stay as a fallback).
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $stage = "..\..\dist\amc-$version-windows-x86_64"
           & "${{ steps.iscc.outputs.path }}" "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
+          Get-ChildItem Output
+
+      - name: Build amalgame-<ver>.msi (pure-PowerShell)
+        shell: pwsh
+        working-directory: install\windows
+        # Pure-PowerShell MSI builder, validated locally end-to-end
+        # (dual-mode default-per-user). On clean GH runners there's no
+        # file-lock contention from a previous .msi, so the canonical
+        # output path lands first try.
+        run: |
+          $version = "${{ steps.ver.outputs.version }}"
+          $stage = "..\..\dist\amc-$version-windows-x86_64"
+          .\build-msi.ps1 -Version $version -StageDir $stage
           Get-ChildItem Output
 
       - name: Hash the installers for checksums
