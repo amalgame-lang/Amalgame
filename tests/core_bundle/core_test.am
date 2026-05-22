@@ -533,7 +533,11 @@ class Program {
         let g_inline_c: List<CoreCase> = new List<CoreCase>()
         g_inline_c.Add(new CoreCase("inline-C: return value", "len=8"))
         g_inline_c.Add(new CoreCase("inline-C: local + multi-stmt", "doubled=42"))
-        g_inline_c.Add(new CoreCase("inline-C: brace torture", "braces=ab}c{de"))
+        // Braces spliced via String_FromByte so the source literal doesn't
+        // contain a `{` (would confuse syntax highlighters into treating the
+        // rest of the file as "inside a string"). 123='{', 125='}'.
+        g_inline_c.Add(new CoreCase("inline-C: brace torture",
+            "braces=ab" + String_FromByte(125) + "c" + String_FromByte(123) + "de"))
         g_inline_c.Add(new CoreCase("inline-C: void side-effect", "!done"))
         Program.RunGroup("./tests/samples/inline_c.am", "inline_c", g_inline_c)
 
