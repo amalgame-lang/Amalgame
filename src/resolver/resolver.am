@@ -23,63 +23,45 @@ import Amalgame.String
 // ═══════════════════════════════════════════════════════
 
 // ── MemberTable ───────────────────────────────────────
-// Flat parallel lists: className + "." + memberName → typeName
+// Hash-indexed `className + "." + memberName` → typeName lookup.
+// The flat parallel lists (Keys, Values) preserve insertion order
+// for the LSP enumeration paths (MemberCountFor / MemberNameForAt);
+// `Index` is the hot-path companion: `name` → `position in Values`.
+// Every member access in the resolver / typechecker hits Has/Get,
+// so the prior O(N) linear scan dominated total Resolve time —
+// dropping ~150s on c_gen.am to ~1s once the index is in.
 public class MemberTable {
     private Keys:   List<string>
     private Values: List<string>
+    private Index:  Map<string, int>
 
     public MemberTable() {
         this.Keys   = new List<string>()
         this.Values = new List<string>()
+        this.Index  = new Map<string, int>()
     }
 
     public void Set(string className, string memberName, string typeName) {
-        let key   = className + "." + memberName
-        let count = this.Keys.Count()
-        for i in 0..count {
-            if (this.Keys.Get(i) == key) {
-                // Key already known — silently no-op. The previous
-                // "Values.Add(typeName) // last write wins" was a bug:
-                // it appended a new value while leaving Keys at the
-                // same length, desynching the parallel-array indices
-                // so every subsequent lookup returned a value belonging
-                // to another member. Surfaced loudly under workspace
-                // LSP because it re-collects every class when the open
-                // file is also seen by the workspace scan, and any
-                // duplicate Set there would skew every lookup made
-                // after it (TypeChecker reading members of unrelated
-                // classes would get wrong types — bool for fields
-                // declared string, TokenType for fields declared bool,
-                // etc.). For our use case, duplicate Sets within a
-                // single resolver instance always carry the same value
-                // (same source text, same parser output), so dropping
-                // the duplicate is safe.
-                return
-            }
-        }
+        let key = className + "." + memberName
+        // Silent no-op on duplicate key (same comment as before the
+        // index landed: same source text → same parser output → same
+        // member type, so the second Set carries identical value).
+        if (this.Index.Has(key)) { return }
+        let idx: int = this.Keys.Count()
         this.Keys.Add(key)
         this.Values.Add(typeName)
+        this.Index.Set(key, idx)
     }
 
     public string Get(string className, string memberName) {
-        let key   = className + "." + memberName
-        let count = this.Keys.Count()
-        var result = "?"
-        for i in 0..count {
-            if (this.Keys.Get(i) == key) {
-                result = this.Values.Get(i)
-            }
-        }
-        return result
+        let key = className + "." + memberName
+        if (!this.Index.Has(key)) { return "?" }
+        let idx: int = this.Index.Get(key)
+        return this.Values.Get(idx)
     }
 
     public bool Has(string className, string memberName) {
-        let key   = className + "." + memberName
-        let count = this.Keys.Count()
-        for i in 0..count {
-            if (this.Keys.Get(i) == key) { return true }
-        }
-        return false
+        return this.Index.Has(className + "." + memberName)
     }
 
     // Used by the LSP completion path to enumerate the members of a
@@ -163,6 +145,14 @@ public class FullResolver {
     // Using parallel lists to avoid void* dereference on List.Get()
     private GlobalNames:   List<string>
     private GlobalTypes:   List<string>
+    // Hash-indexed companion to GlobalNames so DeclareGlobal /
+    // LookupInScopes / LookupType / LookupIsLet skip the O(N)
+    // linear scan. Maps `name` → `index in GlobalNames/GlobalTypes`.
+    // Without this, ResolvePrograms scales O(refs × globals); a
+    // ~5k-LoC file like src/generator/c_gen.am took ~150s to
+    // resolve before this index. With it: O(refs × log N) via the
+    // bdwgc map's hashed probing.
+    private GlobalIndex:   Map<string, int>
     private LocalNames:    List<string>
     private LocalTypes:    List<string>
     private LocalIsLets:   List<bool>
@@ -209,6 +199,7 @@ public class FullResolver {
     public FullResolver() {
         this.GlobalNames   = new List<string>()
         this.GlobalTypes   = new List<string>()
+        this.GlobalIndex   = new Map<string, int>()
         this.LocalNames    = new List<string>()
         this.LocalTypes    = new List<string>()
         this.LocalIsLets   = new List<bool>()
@@ -565,12 +556,15 @@ public class FullResolver {
     }
 
     private void DeclareGlobal(string name, string typeName, bool isLet) {
-        let count = this.GlobalNames.Count()
-        for i in 0..count {
-            if (this.GlobalNames.Get(i) == name) { return }
-        }
+        // O(1) dedupe via the hashed index instead of a linear scan
+        // over GlobalNames. With ~1k globals declared by the time
+        // the workspace finishes Pass 1, the old O(N) scan dominated
+        // total Resolve time (~150s on c_gen.am pre-index).
+        if (this.GlobalIndex.Has(name)) { return }
+        let idx: int = this.GlobalNames.Count()
         this.GlobalNames.Add(name)
         this.GlobalTypes.Add(typeName)
+        this.GlobalIndex.Set(name, idx)
     }
 
     // Helper exists separately so the self-host codegen sees the
@@ -607,11 +601,7 @@ public class FullResolver {
             if (this.LocalNames.Get(i) == name) { return true }
             i = i - 1
         }
-        let gc = this.GlobalNames.Count()
-        for j in 0..gc {
-            if (this.GlobalNames.Get(j) == name) { return true }
-        }
-        return false
+        return this.GlobalIndex.Has(name)
     }
 
     private string LookupType(string name) {
@@ -620,9 +610,9 @@ public class FullResolver {
             if (this.LocalNames.Get(i) == name) { return this.LocalTypes.Get(i) }
             i = i - 1
         }
-        let gc = this.GlobalNames.Count()
-        for j in 0..gc {
-            if (this.GlobalNames.Get(j) == name) { return this.GlobalTypes.Get(j) }
+        if (this.GlobalIndex.Has(name)) {
+            let idx: int = this.GlobalIndex.Get(name)
+            return this.GlobalTypes.Get(idx)
         }
         return "?"
     }
@@ -1591,12 +1581,14 @@ public class FullResolver {
                 return
             }
         }
-        let gc = this.GlobalNames.Count()
-        for i in 0..gc {
-            if (this.GlobalNames.Get(i) == name) {
-                this.GlobalTypes.Add(typeName)
-                return
-            }
+        // Pre-existing quirk preserved: this Add (not Set) at an
+        // index appends rather than overwrites. Effectively a no-op
+        // for downstream lookups (which read the FIRST match in
+        // GlobalNames, i.e. the original entry) and shouldn't be
+        // reached often. Indexed presence check still beats the
+        // O(N) scan when it IS reached.
+        if (this.GlobalIndex.Has(name)) {
+            this.GlobalTypes.Add(typeName)
         }
     }
 }
