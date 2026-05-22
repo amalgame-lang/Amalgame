@@ -303,6 +303,15 @@ if (Test-Path $postinstallSrc) {
     Add-StageFile -AbsSource $postinstallSrc -InstallRelDir "share/amalgame/install" -DestName "postinstall.ps1"
 }
 
+# run-hidden.vbs — wscript launcher that fully suppresses the PS
+# console window during CA_PostInstall (powershell.exe -WindowStyle
+# Hidden still flashes its conhost briefly; wscript has no console
+# of its own, so spawning PS from there is invisible).
+$hiddenLauncherSrc = Join-Path $ScriptRoot "run-hidden.vbs"
+if (Test-Path $hiddenLauncherSrc) {
+    Add-StageFile -AbsSource $hiddenLauncherSrc -InstallRelDir "share/amalgame/install" -DestName "run-hidden.vbs"
+}
+
 # Optional bundled MinGW gcc.
 $GccBundleDir = Join-Path $ScriptRoot "gcc-bundle"
 if ($IncludeGccBundle -and (Test-Path (Join-Path $GccBundleDir "bin\gcc.exe"))) {
@@ -523,12 +532,12 @@ $properties = @{
     "Manufacturer"       = $ManufacturerName
     "ProductLanguage"    = "1033"
     "UpgradeCode"        = $UpgradeCode
-    "ALLUSERS"           = "2"   # dual mode — per-machine if elevated, else per-user
-    "MSIINSTALLPERUSER"  = "1"   # default to per-user when not elevated (no UAC needed)
-    # On corporate / locked-down machines users often can't elevate.
-    # Per-user install lands under %LOCALAPPDATA%\Programs\Amalgame.
-    # Override via command line:
-    #   msiexec /i amalgame.msi INSTALLLOCATION="D:\Apps\Amalgame"
+    "ALLUSERS"           = "1"   # per-machine install (Program Files, requires UAC)
+    # MSIINSTALLPERUSER intentionally NOT set — strict per-machine mode.
+    # The InstallScopeDlg (authored further down) lets the user flip to
+    # per-user via the wizard if they don't have admin rights.
+    # ProgramFiles64Folder resolves to C:\Program Files\ when ALLUSERS=1.
+    # Override path via command line: msiexec /i amalgame.msi INSTALLLOCATION="..."
     "ARPPRODUCTICON"     = "icon.ico"
     "ARPHELPLINK"        = "https://github.com/amalgame-lang/Amalgame"
     "ARPURLINFOABOUT"    = "https://github.com/amalgame-lang/Amalgame"
@@ -612,13 +621,13 @@ foreach ($sf in $staged) {
 }
 if ($null -ne $amcComponent) {
     # Name prefix chars (https://learn.microsoft.com/windows/win32/msi/environment-table):
-    #   `=` set on install, `-` remove on uninstall.
-    # No `*` here: this is a per-user install (dual-mode falls back to
-    # per-user on non-elevated machines), so PATH goes to HKCU. Writing
-    # HKLM would need admin and trip "insufficient privileges".
+    #   `=` set on install, `-` remove on uninstall, `*` system-wide (HKLM).
+    # Per-machine install (ALLUSERS=1) → bin dir under Program Files
+    # shared by every user → PATH should be HKLM too. UAC at install
+    # grants the rights.
     # `[~]` in Value preserves the existing PATH and appends our bin dir.
     Insert-Row "INSERT INTO ``Environment`` (``Environment``, ``Name``, ``Value``, ``Component_``) VALUES (?, ?, ?, ?)" @(
-        "EnvPathAppend", "=-PATH", "[~];[INSTALLLOCATION]bin", $amcComponent
+        "EnvPathAppend", "=-*PATH", "[~];[INSTALLLOCATION]bin", $amcComponent
     )
 } else {
     Write-Warning "amc.exe not found in stage — PATH manipulation rows skipped."
@@ -675,28 +684,27 @@ if ($gsKey -and $amcComponent) {
 # runtime; brackets get expanded by the engine. We also pass
 # [INSTALLLOCATION] so the script knows where it's installed.
 
-# Hardcoded path to PowerShell 5.1 — always present on every
-# supported Windows host (10/11/Server 2016+). Using [SystemFolder]
-# here would seem cleaner, but deferred CustomActions only have
-# access to CustomActionData / ProductCode / UserSID at runtime, so
-# property placeholders in Type-50 Source don't reliably resolve.
-# The literal path sidesteps the issue.
+# Hardcoded path to wscript.exe — always present on every supported
+# Windows host (XP+). We invoke run-hidden.vbs via wscript rather
+# than powershell.exe directly because wscript has no console host
+# at all, so spawning PS from inside it suppresses the brief console
+# flash that even `powershell -WindowStyle Hidden` produces (PS
+# creates conhost first, then applies the style — too late).
+# Using [SystemFolder] would seem cleaner, but deferred CustomActions
+# only have access to CustomActionData / ProductCode / UserSID at
+# runtime, so property placeholders in Type-50 Source don't reliably
+# resolve. The literal path sidesteps the issue.
 Insert-Row "INSERT INTO ``Property`` (``Property``, ``Value``) VALUES (?, ?)" @(
-    "POWERSHELL_EXE", "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+    "WSCRIPT_EXE", "C:\Windows\System32\wscript.exe"
 )
 
-# Command-line for the deferred CA. Two notable details:
-#   - `[INSTALLLOCATION]` always expands with a trailing backslash;
-#     wrapping it in `"…"` produces a closing `\"` which the C
-#     runtime arg parser treats as an escaped quote → unterminated
-#     string. Mitigation: don't quote-wrap [INSTALLLOCATION] alone;
-#     join it with a non-backslash trailing segment so the closing
-#     quote isn't preceded by `\`.
-#   - We DON'T pass -InstallLocation here — postinstall.ps1 derives
-#     it from $PSCommandPath, sidestepping the trailing-backslash
-#     question entirely.
-$psPostArgsInstall   = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode install'
-$psPostArgsUninstall = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode uninstall'
+# Command-line for the deferred CA. run-hidden.vbs takes the .ps1
+# path as arg 0 and forwards the rest of the args verbatim. The
+# extra trailing segment (`\\run-hidden.vbs`) after [INSTALLLOCATION]
+# avoids the closing-backslash-quote ambiguity that bites when
+# `"[INSTALLLOCATION]"` gets expanded to a path ending in `\`.
+$psPostArgsInstall   = '//nologo "[INSTALLLOCATION]share\amalgame\install\run-hidden.vbs" "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode install'
+$psPostArgsUninstall = '//nologo "[INSTALLLOCATION]share\amalgame\install\run-hidden.vbs" "[INSTALLLOCATION]share\amalgame\install\postinstall.ps1" -Mode uninstall'
 
 # Type 1074 = 50 (exec property + cmdline) + 1024 (deferred). We
 # DON'T set 2048 (NoImpersonate) — the post-install work writes to
@@ -705,10 +713,10 @@ $psPostArgsUninstall = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -
 # LocalSystem and the vsix install / sample scaffold would target
 # the wrong user profile.
 Insert-Row "INSERT INTO ``CustomAction`` (``Action``, ``Type``, ``Source``, ``Target``, ``ExtendedType``) VALUES (?, ?, ?, ?, ?)" @(
-    "CA_PostInstall", [int]1074, "POWERSHELL_EXE", $psPostArgsInstall, $null
+    "CA_PostInstall", [int]1074, "WSCRIPT_EXE", $psPostArgsInstall, $null
 )
 Insert-Row "INSERT INTO ``CustomAction`` (``Action``, ``Type``, ``Source``, ``Target``, ``ExtendedType``) VALUES (?, ?, ?, ?, ?)" @(
-    "CA_PostUninstall", [int]1074, "POWERSHELL_EXE", $psPostArgsUninstall, $null
+    "CA_PostUninstall", [int]1074, "WSCRIPT_EXE", $psPostArgsUninstall, $null
 )
 
 # ── InstallExecuteSequence (canonical Windows Installer actions) ──
