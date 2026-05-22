@@ -59,8 +59,8 @@ static inline code_string File_ReadAll(code_string path) {
     rewind(f);
 
     char* buf = (char*) GC_MALLOC(size + 1);
-    fread(buf, 1, size, f);
-    buf[size] = '\0';
+    size_t got = fread(buf, 1, (size_t) size, f);
+    buf[got] = '\0';
     fclose(f);
     return buf;
 }

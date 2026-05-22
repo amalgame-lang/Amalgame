@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <math.h>
@@ -62,7 +63,7 @@ static inline bool code_string_equals(
 
 static inline code_string code_int_to_string(i64 n) {
     char* buf = (char*) GC_MALLOC(32);
-    snprintf(buf, 32, "%ld", n);
+    snprintf(buf, 32, "%" PRId64, n);
     return buf;
 }
 
