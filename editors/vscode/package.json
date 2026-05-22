@@ -15,11 +15,7 @@
   },
   "categories": ["Programming Languages", "Debuggers"],
   "main": "./extension.js",
-  "activationEvents": [
-    "onLanguage:amalgame",
-    "onDebugResolve:amc",
-    "onDebugDynamicConfigurations:amc"
-  ],
+  "activationEvents": [],
   "contributes": {
     "languages": [
       {
