@@ -262,6 +262,16 @@ jobs:
             mingw-w64-x86_64-gc
             zip
 
+      - name: Determine version
+        id: ver
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          if [ "$REF" = "$GITHUB_REF" ]; then
+            REF="${{ github.event.inputs.tag }}"
+          fi
+          VERSION="${REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Stamp build provenance into amc_buildinfo.am
         # build_amc.sh's Step 0 normally does this from the .am.in
         # template; the Windows job uses the pre-generated src/amc_lib.c
@@ -273,26 +283,39 @@ jobs:
               -e "s|__BUILD_DATE__|$BI_BUILD_DATE|g" \
               src/stdlib/amc_buildinfo.am.in > src/stdlib/amc_buildinfo.am
 
+      - name: Compile Windows resource file (VERSIONINFO + icon)
+        # Substitute version + year into amc.rc.in, then run windres
+        # (ships with MinGW) to produce amc-res.o. Linking that .o into
+        # amc.exe stamps the binary with the metadata Explorer shows
+        # under Properties → Details + the application icon.
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          # 0.8.43 → 0,8,43,0 (FILEVERSION binary form needs 4 components)
+          V_COMMA=$(echo "$V" | awk -F. '{ printf "%d,%d,%d,%d", $1, $2, $3, ($4=="" ? 0 : $4) }')
+          V_DOTTED="${V}.0"
+          YEAR=$(date -u +%Y)
+          # Copy the .ico next to the .rc so the `1 ICON "amalgame.ico"`
+          # directive resolves; windres looks relative to the .rc file.
+          cp install/windows/assets/amalgame.ico amalgame.ico
+          sed -e "s|__VERSION_COMMA__|$V_COMMA|g" \
+              -e "s|__VERSION_DOTTED__|$V_DOTTED|g" \
+              -e "s|__YEAR__|$YEAR|g" \
+              install/windows/amc.rc.in > amc.rc
+          windres amc.rc -O coff -o amc-res.o
+          ls -l amc-res.o
+
       - name: Build amc.exe from tracked amc_lib.c
         run: |
+          # Link the resource object so Explorer / AV scanners see the
+          # version metadata + icon embedded in the PE.
           gcc -O2 -Iruntime \
-              src/amc_lib.c \
+              src/amc_lib.c amc-res.o \
               -lgc -lm -lws2_32 -lbcrypt -o amc.exe
 
       - name: Pre-compile user-facing stdlib (libamalgame.a)
         run: |
           # tools/build-stdlib.sh auto-detects ./amc vs ./amc.exe.
           ./tools/build-stdlib.sh
-
-      - name: Determine version
-        id: ver
-        run: |
-          REF="${GITHUB_REF#refs/tags/}"
-          if [ "$REF" = "$GITHUB_REF" ]; then
-            REF="${{ github.event.inputs.tag }}"
-          fi
-          VERSION="${REF#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Stage release artifacts
         run: |

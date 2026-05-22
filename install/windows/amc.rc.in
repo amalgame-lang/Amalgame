@@ -1,0 +1,48 @@
+// amc.rc.in — Windows resource template for amc.exe
+//
+// Embeds:
+//   1. Application icon (the same .ico the MSI shortcuts use).
+//   2. VERSIONINFO block — what shows in Explorer "Properties → Details".
+//
+// AV products (Trend, Symantec, SmartScreen) read the FileDescription /
+// CompanyName / ProductName fields and weigh them in their heuristics:
+// unsigned binaries with full metadata still get flagged less than bare
+// ones. Code-signing remains the real fix, but this is a cheap win.
+//
+// Processed by the Windows build step (.github/workflows/release.yml):
+//   __VERSION_COMMA__  → 0,8,43,0     (FILEVERSION  / PRODUCTVERSION binary)
+//   __VERSION_DOTTED__ → 0.8.43.0     (string-form file/product version)
+//   __YEAR__           → 2026         (LegalCopyright)
+
+1 ICON "amalgame.ico"
+
+1 VERSIONINFO
+FILEVERSION    __VERSION_COMMA__
+PRODUCTVERSION __VERSION_COMMA__
+FILEFLAGSMASK  0x3FL
+FILEFLAGS      0x0L
+FILEOS         0x40004L  // VOS_NT_WINDOWS32
+FILETYPE       0x1L      // VFT_APP
+FILESUBTYPE    0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        // 040904B0 = English (US) + Unicode codepage 1200.
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Bastien MOUGET"
+            VALUE "FileDescription",  "Amalgame Compiler (amc)"
+            VALUE "FileVersion",      "__VERSION_DOTTED__"
+            VALUE "InternalName",     "amc"
+            VALUE "LegalCopyright",   "Copyright (C) __YEAR__ Bastien MOUGET. MIT licensed."
+            VALUE "OriginalFilename", "amc.exe"
+            VALUE "ProductName",      "Amalgame"
+            VALUE "ProductVersion",   "__VERSION_DOTTED__"
+            VALUE "Comments",         "https://github.com/amalgame-lang/Amalgame"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

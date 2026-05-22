@@ -7479,7 +7479,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.43";
+    return "0.8.44";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
