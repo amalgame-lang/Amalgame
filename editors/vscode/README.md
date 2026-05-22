@@ -35,10 +35,13 @@ The extension activates when you open a `.am` file. It expects
 
 ## Configuration
 
-| Setting                | Default | What it does                                                                  |
-|------------------------|---------|-------------------------------------------------------------------------------|
-| `amalgame.serverPath`  | `amc`   | Path to the amc binary used as the LSP server. Use `${workspaceFolder}/amc` to point at a local build. |
-| `amalgame.enableLsp`   | `true`  | Enable the LSP client. Set to `false` to fall back to syntax-only highlighting. |
+| Setting                     | Default | What it does                                                                  |
+|-----------------------------|---------|-------------------------------------------------------------------------------|
+| `amalgame.serverPath`       | `amc`   | Path to the amc binary used as the LSP server. Use `${workspaceFolder}/amc` to point at a local build. |
+| `amalgame.enableLsp`        | `true`  | Enable the LSP client. Set to `false` to fall back to syntax-only highlighting. |
+| `amalgame.dapServerPath`    | `""`    | Path to the amc binary used as the DAP server. Empty string falls back to `amalgame.serverPath`. |
+| `amalgame.dapBridge`        | `true`  | Run `amc dap` in bridge mode (`--bridge`): translates DAP↔gdb-MI in amc, pretty-prints `AmalgameList`/`Map`/`Set`/`Closure` values, filters runtime frames. Set to `false` to fall back to the v0.8.0 execvp proxy (lldb-dap on macOS, `gdb --dap` on gdb ≥ 14). |
+| `amalgame.dapShowRuntime`   | `false` | When bridge mode is on, include `Amalgame_*` / `_runtime_*` / `GC_*` frames in the call stack. Useful for runtime-level debugging. |
 
 ## Trying it out
 

@@ -44,6 +44,13 @@ function activate(context) {
     // to `amalgame.serverPath`, then literal `amc`) every time
     // a debug session starts — so changing the setting takes
     // effect on the next F5 without a reload.
+    //
+    // Bridge mode (default since amc 0.8.46+, opt-out via
+    // `amalgame.dapBridge`: false) translates DAP↔gdb-MI in
+    // amc itself so List/Map/Set/Closure values pretty-print and
+    // runtime frames are filtered. Phase 7 of the DAP roadmap
+    // will flip the amc-side default and drop the `--bridge`
+    // gate; until then we pass the flag explicitly.
     const dapChannel = window.createOutputChannel('Amalgame DAP');
     const factory = {
         createDebugAdapterDescriptor(_session, _executable) {
@@ -52,8 +59,13 @@ function activate(context) {
             const rawLsp = (cfg.get('serverPath', 'amc') || '').trim();
             const raw = rawDap || rawLsp || 'amc';
             const resolved = resolveServerPath(raw);
-            dapChannel.appendLine(`[dap] launching adapter: ${resolved} dap`);
-            return new vscode.DebugAdapterExecutable(resolved, ['dap']);
+            const useBridge = cfg.get('dapBridge', true);
+            const showRuntime = cfg.get('dapShowRuntime', false);
+            const args = ['dap'];
+            if (useBridge) { args.push('--bridge'); }
+            if (showRuntime) { args.push('--show-runtime'); }
+            dapChannel.appendLine(`[dap] launching adapter: ${resolved} ${args.join(' ')}`);
+            return new vscode.DebugAdapterExecutable(resolved, args);
         }
     };
     context.subscriptions.push(
