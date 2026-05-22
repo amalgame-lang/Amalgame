@@ -425,7 +425,7 @@ public class NewCommand {
 
     private static string MainAmExe(string name) {
         var s: string = ""
-        s = s + "namespace " + name + "\n"
+        s = s + "namespace " + NewCommand.SanitizeIdent(name) + "\n"
         s = s + "\n"
         s = s + "import Amalgame.Collections\n"
         s = s + "import Amalgame.IO\n"
@@ -515,7 +515,9 @@ public class NewCommand {
 
     private static string LibAm(string name) {
         var s: string = ""
-        s = s + "namespace " + name + "\n"
+        let ident: string = NewCommand.SanitizeIdent(name)
+        let cls:   string = NewCommand.Capitalize(ident)
+        s = s + "namespace " + ident + "\n"
         s = s + "\n"
         s = s + "import Amalgame.String\n"
         s = s + "\n"
@@ -523,8 +525,8 @@ public class NewCommand {
         s = s + "// Marker comment is read by `amc --lib` to skip the missing-Main check.\n"
         s = s + "// See https://github.com/amalgame-lang/Amalgame for the reference.\n"
         s = s + "\n"
-        s = s + "public class " + NewCommand.Capitalize(name) + " {\n"
-        s = s + "    public " + NewCommand.Capitalize(name) + "() {}\n"
+        s = s + "public class " + cls + " {\n"
+        s = s + "    public " + cls + "() {}\n"
         s = s + "\n"
         s = s + "    public string Greet(string who) {\n"
         s = s + "        return \"Hello, \" + who + \", from " + name + "!\"\n"
@@ -602,7 +604,7 @@ public class NewCommand {
 
     private static string MainAmService(string name) {
         var s: string = ""
-        s = s + "namespace " + name + "\n"
+        s = s + "namespace " + NewCommand.SanitizeIdent(name) + "\n"
         s = s + "\n"
         s = s + "import Amalgame.Collections\n"
         s = s + "import Amalgame.IO\n"
@@ -1048,6 +1050,36 @@ public class NewCommand {
         let head: string = String_Substring(s, 0, 1)
         let tail: string = String_Substring(s, 1, String_Length(s) - 1)
         return String_ToUpper(head) + tail
+    }
+
+    // Coerce a project name into a valid Amalgame identifier for use
+    // in `namespace <X>` and `public class <X>` emit sites. Chars
+    // outside [A-Za-z0-9_] become `_`; a digit-leading result gets
+    // an underscore prefix; the empty string falls back to "Project".
+    // Display text (READMEs, file paths, console messages) keeps the
+    // user's original name — only the AM identifiers are coerced.
+    //
+    // Closes the bug where `amc new my-app` scaffolded `namespace
+    // my-app` and gcc rejected the cgen output with `'a' undeclared`
+    // because the parser had seen `my - app` (subtraction).
+    private static string SanitizeIdent(string s) {
+        var out: string = ""
+        let n: int = String_Length(s)
+        let alpha: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        let digit: string = "0123456789"
+        for i in 0..n {
+            let c: string = String_Substring(s, i, 1)
+            let isAlpha: bool = String_IndexOf(alpha, c) >= 0
+            let isDigit: bool = String_IndexOf(digit, c) >= 0
+            if (isAlpha || isDigit || c == "_") { out = out + c }
+            else                                 { out = out + "_" }
+        }
+        if (String_Length(out) == 0) { return "Project" }
+        let first: string = String_Substring(out, 0, 1)
+        if (String_IndexOf(digit, first) >= 0) {
+            return "_" + out
+        }
+        return out
     }
 
     // Last segment of a slash-separated path. `foo/bar/baz` → `baz`.
