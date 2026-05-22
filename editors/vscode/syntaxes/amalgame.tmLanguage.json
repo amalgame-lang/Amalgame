@@ -94,8 +94,9 @@
               "match": "\\\\(n|t|r|\"|\\\\|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4})"
             },
             {
+              "comment": "String interpolation: only triggered when `{` is followed by an identifier start (letter or underscore), matching cgen's IsValidInterpExpr. Bare `{` in JSON/CSS/JS embedded literals passes through as plain string content.",
               "name": "meta.embedded.expression.amalgame",
-              "begin": "\\{",
+              "begin": "\\{(?=[A-Za-z_])",
               "end": "\\}",
               "patterns": [
                 { "include": "#identifiers" },
