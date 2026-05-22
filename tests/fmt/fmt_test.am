@@ -1,0 +1,136 @@
+// Migrated from tests/run_fmt_tests.sh — verifies `amc fmt` is
+// idempotent (fmt(fmt(x)) == fmt(x)) and semantics-preserving
+// (the formatted source compiles + runs with the same stdout as
+// the original).
+//
+// Driven by `amc test` discovery (*_test.am). Assumes CWD is the
+// Amalgame repo root, so `./amc` and `tests/samples/` resolve.
+
+class FmtCase {
+    public Name: string
+    public Sample: string
+
+    public FmtCase(name: string, sample: string) {
+        this.Name = name
+        this.Sample = sample
+    }
+}
+
+class RunResult {
+    public Ok: bool
+    public Stdout: string
+
+    public RunResult(ok: bool, stdout: string) {
+        this.Ok = ok
+        this.Stdout = stdout
+    }
+}
+
+class Program {
+    public static string Tmp(string caseName, string suffix) {
+        // Per-case unique path. caseName is the sample's basename
+        // (no path chars), suffix distinguishes the call site.
+        return "/tmp/amc_fmt_test_" + caseName + "_" + suffix
+    }
+
+    // Run `./amc fmt <in>` and write stdout to `<out>`. Returns true on success.
+    public static bool RunFmt(string inPath, string outPath) {
+        let cmd = "./amc fmt '" + inPath + "' > '" + outPath + "' 2>/dev/null"
+        let r = Process.RunCapture(cmd)
+        return r.Exit == 0
+    }
+
+    // amc + gcc the sample, then run it. Returns Ok=false on any
+    // compile/link/run error so callers can surface a [FAIL] with
+    // the right label.
+    public static RunResult CompileAndRun(string srcPath, string tag) {
+        let outBin = Program.Tmp(tag, "bin")
+        let outC   = outBin + ".c"
+        let amcCmd = "./amc '" + srcPath + "' -o '" + outBin + "' --quiet 2>/dev/null"
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) { return new RunResult(false, "") }
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lcurl -lz -o '" + outBin + "' 2>/dev/null"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) { return new RunResult(false, "") }
+        let rr = Process.RunCapture("'" + outBin + "'")
+        return new RunResult(rr.Exit == 0, rr.Stdout)
+    }
+
+    // Idempotence: fmt twice, compare byte-exact.
+    public static void CheckIdempotent(FmtCase c) {
+        let label = c.Name + " — idempotent"
+        if (!File.Exists(c.Sample)) {
+            Console.WriteLine("[FAIL] " + label + " (sample not found: " + c.Sample + ")")
+            return
+        }
+        let out1 = Program.Tmp(c.Name, "idem1.am")
+        let out2 = Program.Tmp(c.Name, "idem2.am")
+        if (!Program.RunFmt(c.Sample, out1)) {
+            Console.WriteLine("[FAIL] " + label + " (fmt #1 failed)")
+            return
+        }
+        if (!Program.RunFmt(out1, out2)) {
+            Console.WriteLine("[FAIL] " + label + " (fmt #2 failed)")
+            return
+        }
+        let a = File.ReadAll(out1)
+        let b = File.ReadAll(out2)
+        if (a == b) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (not idempotent)")
+        }
+        File.Delete(out1)
+        File.Delete(out2)
+    }
+
+    // Semantic: the formatted output runs with the same stdout
+    // as the original. Both must compile cleanly.
+    public static void CheckSemantic(FmtCase c) {
+        let label = c.Name + " — semantic OK"
+        if (!File.Exists(c.Sample)) {
+            Console.WriteLine("[FAIL] " + label + " (sample not found: " + c.Sample + ")")
+            return
+        }
+        let fmtd = Program.Tmp(c.Name, "sem.am")
+        if (!Program.RunFmt(c.Sample, fmtd)) {
+            Console.WriteLine("[FAIL] " + label + " (fmt failed)")
+            return
+        }
+        let orig = Program.CompileAndRun(c.Sample, c.Name + "_orig")
+        if (!orig.Ok) {
+            Console.WriteLine("[FAIL] " + label + " (original failed to build/run)")
+            File.Delete(fmtd)
+            return
+        }
+        let fmt = Program.CompileAndRun(fmtd, c.Name + "_fmt")
+        if (!fmt.Ok) {
+            Console.WriteLine("[FAIL] " + label + " (formatted failed to build/run)")
+            File.Delete(fmtd)
+            return
+        }
+        if (orig.Stdout == fmt.Stdout) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (stdout differs)")
+        }
+        File.Delete(fmtd)
+    }
+
+    public static void Main() {
+        let cases: List<FmtCase> = new List<FmtCase>()
+        cases.Add(new FmtCase("fmt_basic.am",    "./tests/samples/fmt_basic.am"))
+        cases.Add(new FmtCase("list_comp.am",    "./tests/samples/list_comp.am"))
+        cases.Add(new FmtCase("match_expr.am",   "./tests/samples/match_expr.am"))
+        cases.Add(new FmtCase("fmt_comments.am", "./tests/samples/fmt_comments.am"))
+        cases.Add(new FmtCase("fmt_imports.am",  "./tests/samples/fmt_imports.am"))
+        cases.Add(new FmtCase("try_catch.am",    "./tests/samples/try_catch.am"))
+
+        let n = cases.Count()
+        for i in 0..n {
+            let c = cases.Get(i)
+            Program.CheckIdempotent(c)
+            Program.CheckSemantic(c)
+        }
+    }
+}

@@ -1,0 +1,11 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 328
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_fold.am","languageId":"amalgame","version":1,"text":"import Amalgame.Console\nimport Amalgame.String\n\n// header A\n// header B\n// header C\nclass Foo {\n    function Bar() {\n        let x = 1\n        let y = 2\n    }\n}\n"}}}Content-Length: 121
+
+{"jsonrpc":"2.0","id":5,"method":"textDocument/foldingRange","params":{"textDocument":{"uri":"file:///tmp/lsp_fold.am"}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}

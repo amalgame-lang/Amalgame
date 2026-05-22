@@ -1,0 +1,11 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 224
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_imp.am","languageId":"amalgame","version":1,"text":"import Amalgame.\nclass Program {\n    public static void Main() {}\n}"}}}Content-Length: 156
+
+{"jsonrpc":"2.0","id":40,"method":"textDocument/completion","params":{"textDocument":{"uri":"file:///tmp/lsp_imp.am"},"position":{"line":0,"character":16}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}

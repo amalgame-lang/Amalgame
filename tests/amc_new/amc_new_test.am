@@ -1,0 +1,247 @@
+// Migrated from tests/run_amc_new_tests.sh — smoke tests for the
+// `amc new` scaffolder. Mirrors every assertion the bash runner
+// emits, then a few extras for cgen-side regressions.
+//
+// Driven by `amc test` discovery. Assumes CWD is the repo root so
+// `./amc` and `runtime/` resolve. Each scaffold lands in a
+// per-process temp dir cleaned up at exit.
+
+class Program {
+    // ── Process helpers ────────────────────────────
+
+    public static int RunSilent(string cmd) {
+        let r = Process.RunCapture(cmd + " >/dev/null 2>&1")
+        return r.Exit
+    }
+
+    public static string RunCapture(string cmd) {
+        let r = Process.RunCapture(cmd + " 2>&1")
+        return r.Stdout
+    }
+
+    public static bool DirExists(string path) {
+        return Program.RunSilent("test -d '" + path + "'") == 0
+    }
+
+    // ── Assertion primitives ───────────────────────
+
+    public static void AssertFile(string label, string path) {
+        if (File.Exists(path)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (missing file: " + path + ")")
+        }
+    }
+
+    public static void AssertDir(string label, string path) {
+        if (Program.DirExists(path)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (missing dir: " + path + ")")
+        }
+    }
+
+    public static void AssertFileContains(string label, string path, string needle) {
+        if (!File.Exists(path)) {
+            Console.WriteLine("[FAIL] " + label + " (file not found: " + path + ")")
+            return
+        }
+        let body = File.ReadAll(path)
+        if (String_Contains(body, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (needle '" + needle + "' missing)")
+        }
+    }
+
+    public static void AssertFileLacks(string label, string path, string needle) {
+        if (!File.Exists(path)) {
+            Console.WriteLine("[FAIL] " + label + " (file not found: " + path + ")")
+            return
+        }
+        let body = File.ReadAll(path)
+        if (!String_Contains(body, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (forbidden '" + needle + "' present)")
+        }
+    }
+
+    // True iff the file has a line equal to `wanted` (with optional
+    // trailing whitespace). Mirrors `grep -q "^line$"`.
+    public static void AssertFileHasLine(string label, string path, string wanted) {
+        if (!File.Exists(path)) {
+            Console.WriteLine("[FAIL] " + label + " (file not found: " + path + ")")
+            return
+        }
+        let body = File.ReadAll(path)
+        let lines: List<string> = String_Split(body, "\n")
+        let n: int = lines.Count()
+        var found = false
+        for i in 0..n {
+            let line: string = String_TrimEnd(lines.Get(i))
+            if (line == wanted) { found = true }
+        }
+        if (found) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (line '" + wanted + "' absent)")
+        }
+    }
+
+    public static void AssertExitZero(string label, string cmd) {
+        let exit = Program.RunSilent(cmd)
+        if (exit == 0) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (exit=" + String_FromInt(exit) + ")")
+        }
+    }
+
+    public static void AssertCmdOutputContains(string label, string cmd, string needle) {
+        let out = Program.RunCapture(cmd)
+        if (String_Contains(out, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (output lacks '" + needle + "')")
+        }
+    }
+
+    // ── Compile + run a scaffolded exe ─────────────
+
+    public static void AssertScaffoldRuns(string label, string srcPath, string greet) {
+        let outBin = srcPath + ".bin"
+        let outC = outBin + ".c"
+        let amcCmd = "./amc '" + srcPath + "' -o '" + outBin + "' --quiet 2>/dev/null"
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (amc compile failed)")
+            return
+        }
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lcurl -lz -o '" + outBin + "' 2>/dev/null"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (gcc link failed)")
+            return
+        }
+        let rr = Process.RunCapture("'" + outBin + "'")
+        if (rr.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (runtime exit=" + String_FromInt(rr.Exit) + ")")
+            return
+        }
+        if (String_Contains(rr.Stdout, greet)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (greet '" + greet + "' missing, got: " + rr.Stdout + ")")
+        }
+    }
+
+    // ── Setup / teardown ───────────────────────────
+
+    public static string MakeTmpRoot() {
+        let r = Process.RunCapture("mktemp -d -t amc-new-test-XXXXXX")
+        return String_Trim(r.Stdout)
+    }
+
+    public static void CleanupTmpRoot(string root) {
+        if (String_Length(root) > 0) {
+            Process.RunCapture("rm -rf '" + root + "'")
+        }
+    }
+
+    // ── Main ───────────────────────────────────────
+
+    public static void Main() {
+        let tmp = Program.MakeTmpRoot()
+        if (String_Length(tmp) == 0) {
+            Console.WriteLine("[FAIL] mktemp -d failed")
+            return
+        }
+        // ── exe template ──────────────────────────
+        let exetest = tmp + "/exetest"
+        Program.RunSilent("./amc new '" + exetest + "'")
+        Program.AssertDir ("exe: project dir",       exetest)
+        Program.AssertDir ("exe: src/",              exetest + "/src")
+        Program.AssertDir ("exe: tests/",            exetest + "/tests")
+        Program.AssertFile("exe: src/main.am",       exetest + "/src/main.am")
+        Program.AssertFile("exe: tests/hello_test.am", exetest + "/tests/hello_test.am")
+        Program.AssertFile("exe: build.sh",          exetest + "/build.sh")
+        Program.AssertFile("exe: README.md",         exetest + "/README.md")
+        Program.AssertFile("exe: .gitignore",        exetest + "/.gitignore")
+        Program.AssertScaffoldRuns("exe: scaffolded binary greets",
+            exetest + "/src/main.am",
+            "Hello from exetest")
+
+        // ── Hyphenated-name regression ────────────
+        let hyph = tmp + "/track-d-test"
+        Program.RunSilent("./amc new '" + hyph + "' --no-vscode")
+        Program.AssertFile("hyph: src/main.am exists", hyph + "/src/main.am")
+        Program.AssertFileHasLine("hyph: namespace sanitised",
+            hyph + "/src/main.am",
+            "namespace track_d_test")
+        Program.AssertScaffoldRuns("hyph: scaffolded binary greets",
+            hyph + "/src/main.am",
+            "Hello from track-d-test")
+
+        // ── lib template ──────────────────────────
+        let libtest = tmp + "/libtest"
+        Program.RunSilent("./amc new '" + libtest + "' --template lib")
+        Program.AssertDir ("lib: src/",            libtest + "/src")
+        Program.AssertFile("lib: src/libtest.am",  libtest + "/src/libtest.am")
+        Program.AssertFile("lib: build.sh",        libtest + "/build.sh")
+        Program.AssertFile("lib: README.md",       libtest + "/README.md")
+
+        // ── test template ─────────────────────────
+        let onlytest = tmp + "/onlytest"
+        Program.RunSilent("./amc new '" + onlytest + "' --template test")
+        Program.AssertDir ("test: tests/",                  onlytest + "/tests")
+        Program.AssertFile("test: tests/onlytest_test.am",  onlytest + "/tests/onlytest_test.am")
+        Program.AssertFile("test: README.md",               onlytest + "/README.md")
+
+        // ── service template ──────────────────────
+        let myd = tmp + "/myd"
+        Program.RunSilent("./amc new '" + myd + "' --template service")
+        Program.AssertDir ("service: src/",          myd + "/src")
+        Program.AssertFile("service: src/main.am",   myd + "/src/main.am")
+        Program.AssertFile("service: myd.service",   myd + "/myd.service")
+        Program.AssertFile("service: install.sh",    myd + "/install.sh")
+        Program.AssertFile("service: build.sh",      myd + "/build.sh")
+        Program.AssertFile("service: install.ps1",   myd + "/install.ps1")
+        Program.AssertFile("service: build.ps1",     myd + "/build.ps1")
+        Program.AssertFile("service: .gitignore",    myd + "/.gitignore")
+        Program.AssertFile("service: README.md",     myd + "/README.md")
+        Program.AssertFileContains("service: uses Service.RunAsService",
+            myd + "/src/main.am", "Service.RunAsService")
+        Program.AssertFileContains("service: uses ShouldStop loop",
+            myd + "/src/main.am", "ShouldStop")
+        Program.AssertFileContains("service: uses Log.Info",
+            myd + "/src/main.am", "Log.Info")
+        Program.AssertFileContains("service: systemd ExecStart baked",
+            myd + "/myd.service", "ExecStart=/usr/local/bin/myd")
+        Program.AssertFileContains("service: install.ps1 uses sc.exe",
+            myd + "/install.ps1", "sc.exe create")
+        Program.AssertFileLacks("service: install.ps1 lacks NSSM",
+            myd + "/install.ps1", "nssm")
+
+        // ── Refusal on existing dir without --force ─
+        Program.AssertCmdOutputContains("refusal: exists w/o --force",
+            "./amc new '" + exetest + "'",
+            "already exists")
+
+        // ── --force overwrites ────────────────────
+        Program.AssertExitZero("force: overwrites existing dir",
+            "./amc new '" + exetest + "' --force")
+
+        // ── Bad name rejected ─────────────────────
+        Program.AssertCmdOutputContains("validation: bad-name '@' rejected",
+            "./amc new '" + tmp + "/bad@name'",
+            "not a safe project name")
+
+        // ── Missing name rejected ─────────────────
+        Program.AssertCmdOutputContains("validation: missing <name>",
+            "./amc new",
+            "missing <name>")
+
+        Program.CleanupTmpRoot(tmp)
+    }
+}

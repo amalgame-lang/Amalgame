@@ -1,0 +1,497 @@
+// Migrated from tests/run_stdlib_tests.sh — 180 stdlib assertions across
+// 8 samples. Each sample compiles + runs ONCE; the captured stdout is
+// scanned for each assertion's expected substring. Mirrors the bash
+// runner case-for-case (PASS count must match).
+//
+// Driven by `amc test` discovery (*_test.am). Assumes CWD is the repo
+// root so `./amc`, `./tests/samples/`, and `src/stdlib/` resolve.
+
+class StdlibCase {
+    public Label: string
+    public Needle: string
+    public StdlibCase(label: string, needle: string) {
+        this.Label = label
+        this.Needle = needle
+    }
+}
+
+class Program {
+    // Compile `sample` + `extras` (space-separated extra .am inputs),
+    // link with libgc/m/curl/z, run, and return captured stdout. Empty
+    // string returned on any compile/link/run error — caller surfaces a
+    // distinguishable FAIL via the special "<<compile-fail>>" sentinel.
+    public static string CompileAndRunOnce(string sample, string extras, string tag) {
+        let outBin = "/tmp/amc_stdlib_" + tag + "_bin"
+        let outC = outBin + ".c"
+        // File order matters: extras (libraries) must come BEFORE the
+        // sample so amc's resolver sees their class decls first. This
+        // mirrors the bash runner's `$AMC -o out $extras $file` order.
+        let amcCmd = "./amc -o '" + outBin + "' " + extras + " '" + sample + "' --quiet 2>/dev/null"
+        let cr = Process.RunCapture(amcCmd)
+        if (cr.Exit != 0) { return "<<compile-fail>>" }
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lcurl -lz -ldl -lpthread -o '" + outBin + "' 2>/dev/null"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) { return "<<link-fail>>" }
+        let rr = Process.RunCapture("'" + outBin + "' 2>&1")
+        return rr.Stdout
+    }
+
+    public static void RunGroup(string sample, string extras, string tag, List<StdlibCase> cases) {
+        let captured = Program.CompileAndRunOnce(sample, extras, tag)
+        let n: int = cases.Count()
+        if (captured == "<<compile-fail>>") {
+            for i in 0..n {
+                let c1 = cases.Get(i)
+                Console.WriteLine("[FAIL] " + c1.Label + " (amc compile failed for " + sample + ")")
+            }
+            return
+        }
+        if (captured == "<<link-fail>>") {
+            for i in 0..n {
+                let c2 = cases.Get(i)
+                Console.WriteLine("[FAIL] " + c2.Label + " (gcc link failed for " + sample + ")")
+            }
+            return
+        }
+        for i in 0..n {
+            let c = cases.Get(i)
+            if (String_Contains(captured, c.Needle)) {
+                Console.WriteLine("[PASS] " + c.Label)
+            } else {
+                Console.WriteLine("[FAIL] " + c.Label + " (missing: " + c.Needle + ")")
+            }
+        }
+    }
+
+    // ── PackageManager e2e helpers ─────────────────
+
+    public static string ShellRead(string cmd) {
+        let r = Process.RunCapture(cmd)
+        return String_Trim(r.Stdout)
+    }
+
+    public static int ShellExit(string cmd) {
+        let r = Process.RunCapture(cmd + " >/dev/null 2>&1")
+        return r.Exit
+    }
+
+    public static void AssertGrepFile(string label, string file, string pattern) {
+        let exit = Program.ShellExit("grep -qE \"" + pattern + "\" '" + file + "'")
+        if (exit == 0) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (pattern not found in " + file + ")")
+        }
+    }
+
+    public static void AssertGrepNotFile(string label, string file, string pattern) {
+        let exit = Program.ShellExit("grep -qE \"" + pattern + "\" '" + file + "'")
+        if (exit != 0) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (forbidden pattern present in " + file + ")")
+        }
+    }
+
+    // Validates Toml → PackageRegistry → Resolver → CGen end-to-end:
+    // compiles a user program that imports a class only known to the
+    // compiler via the fixture amalgame.lock + cached manifest, and
+    // asserts the generated C has the right symbols + types + include.
+    public static void RunPmE2E() {
+        let tmp = Program.ShellRead("mktemp -d -t pm-e2e-XXXXXX")
+        if (String_Length(tmp) == 0) {
+            Console.WriteLine("[FAIL] PM e2e: mktemp failed")
+            return
+        }
+
+        // amalgame.lock fixture
+        let lockBody = "[[package]]\nname = \"fake-pkg\"\ngit  = \"example.com/fake/fake-pkg\"\ntag  = \"v0.1.0\"\nrev  = \"deadbeefcafebabe0000000000000000000000ab\"\n"
+        File.WriteAll(tmp + "/amalgame.lock", lockBody)
+
+        // user.am fixture — same body as the bash heredoc
+        let userBody = "public class Program {\n    public static void Main() {\n        let r = FakePkg.Init()\n        let t: int = FakePkg.Tick(r)\n        let ok: bool = FakePkg.IsOk(r)\n        var okStr: string = \"false\"\n        if (ok) { okStr = \"true\" }\n        Console.WriteLine(\"e2e tick=\" + String_FromInt(t) + \" ok=\" + okStr)\n        FakePkg.Close(r)\n    }\n}\n"
+        File.WriteAll(tmp + "/user.am", userBody)
+
+        let amcAbs = Program.ShellRead("realpath ./amc")
+        let cacheAbs = Program.ShellRead("realpath tests/fixtures/pm/cache")
+        let runtimeAbs = Program.ShellRead("realpath runtime")
+
+        // amc compile under the fixture env
+        let amcCmd = "(cd '" + tmp + "' && AMALGAME_PACKAGES_DIR='" + cacheAbs + "' '" + amcAbs + "' -o out user.am --quiet) > '" + tmp + "/amc.log' 2>&1"
+        let amcExit = Program.ShellExit(amcCmd)
+        if (amcExit != 0) {
+            Console.WriteLine("[FAIL] PM e2e: amc compile (exit=" + String_FromInt(amcExit) + ")")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+        Console.WriteLine("[PASS] PM e2e: amc compile")
+
+        // 5 grep assertions against the generated C
+        let outC = tmp + "/out.c"
+        Program.AssertGrepFile("PM e2e: header included",      outC, "#include.*fake_pkg.h")
+        Program.AssertGrepFile("PM e2e: FakePkg.Init typed",   outC, "AmalgameFakePkg\\* .*= Amalgame_Fake_FakePkg_Init")
+        Program.AssertGrepFile("PM e2e: FakePkg.Tick i64",     outC, "i64 .*= Amalgame_Fake_FakePkg_Tick")
+        Program.AssertGrepFile("PM e2e: FakePkg.IsOk bool",    outC, "code_bool .*= Amalgame_Fake_FakePkg_IsOk")
+        Program.AssertGrepFile("PM e2e: FakePkg.Close called", outC, "Amalgame_Fake_FakePkg_Close\\(")
+
+        // gcc + run
+        let gccCmd = "gcc -O2 -I'" + runtimeAbs + "' '" + outC + "' -lgc -lm -lz -o '" + tmp + "/out' 2>'" + tmp + "/gcc.log'"
+        Program.ShellExit(gccCmd)
+        let runOut = Program.ShellRead("'" + tmp + "/out' 2>&1")
+        if (String_Contains(runOut, "e2e tick=1 ok=true")) {
+            Console.WriteLine("[PASS] PM e2e: gcc + run")
+        } else {
+            Console.WriteLine("[FAIL] PM e2e: gcc + run (got: " + runOut + ")")
+        }
+
+        Program.ShellExit("rm -rf '" + tmp + "'")
+    }
+
+    // Mirrors PackageRegistry.PlatformTag(): "linux-x86_64" / "macos-arm64" / etc.
+    public static string PlatformTag() {
+        let os = Program.ShellRead("uname -s")
+        let arch = Program.ShellRead("uname -m")
+        var osTag: string = "unknown"
+        if (String_Contains(os, "Linux"))   { osTag = "linux" }
+        if (String_Contains(os, "Darwin"))  { osTag = "macos" }
+        if (String_Contains(os, "MINGW"))   { osTag = "windows" }
+        if (String_Contains(os, "MSYS"))    { osTag = "windows" }
+        if (String_Contains(os, "CYGWIN"))  { osTag = "windows" }
+        var archTag: string = arch
+        if (arch == "amd64")   { archTag = "x86_64" }
+        if (arch == "aarch64") { archTag = "arm64" }
+        return osTag + "-" + archTag
+    }
+
+    public static void RunPmFacadeE2E() {
+        let tmp = Program.ShellRead("mktemp -d -t pm-facade-e2e-XXXXXX")
+        if (String_Length(tmp) == 0) {
+            Console.WriteLine("[FAIL] facade e2e: mktemp failed")
+            return
+        }
+        Program.ShellExit("cp -r tests/fixtures/pm-facade/cache '" + tmp + "/cache'")
+        Program.ShellExit("cp tests/fixtures/pm-facade/amalgame.lock '" + tmp + "/amalgame.lock'")
+
+        let pkgDir = tmp + "/cache/example.com/fake/fake-facade/v0.1.0_deadbeef"
+        let plat = Program.PlatformTag()
+        let buildDir = pkgDir + "/build/" + plat
+        Program.ShellExit("mkdir -p '" + buildDir + "'")
+
+        let amcAbs = Program.ShellRead("realpath ./amc")
+        let runtimeAbs = Program.ShellRead("realpath runtime")
+        let cacheAbs = tmp + "/cache"
+        let base = buildDir + "/FakeFacade-facade"
+        let archive = buildDir + "/libamalgame-pkg-FakeFacade.a"
+
+        // ── 1. amc --lib precompile ──
+        let precompileCmd = "(cd '" + tmp + "' && AMALGAME_PACKAGES_DIR='" + cacheAbs + "' '" + amcAbs + "' --lib --quiet '" + pkgDir + "/facade.am' -o '" + base + "') > '" + tmp + "/precompile.log' 2>&1"
+        let pcExit = Program.ShellExit(precompileCmd)
+        if (pcExit != 0) {
+            Console.WriteLine("[FAIL] facade e2e: amc --lib (exit=" + String_FromInt(pcExit) + ")")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+        Console.WriteLine("[PASS] facade e2e: amc --lib")
+
+        // ── 2. Self-dispatch local shape (both symbols must be present) ──
+        let baseC = base + ".c"
+        let hasMake  = Program.ShellExit("grep -q 'Amalgame_Fake_FakeFacade_FakeFacade_Make(x)' '" + baseC + "'")
+        let hasTwice = Program.ShellExit("grep -q 'Amalgame_Fake_FakeFacade_FakeFacade_Twice(m)' '" + baseC + "'")
+        if (hasMake == 0 && hasTwice == 0) {
+            Console.WriteLine("[PASS] facade e2e: self-dispatch local shape")
+        } else {
+            Console.WriteLine("[FAIL] facade e2e: self-dispatch local shape (lowered to PkgClass)")
+        }
+
+        // ── 3. gcc -c ──
+        let gccCExit = Program.ShellExit("gcc -O2 -I'" + runtimeAbs + "' -w -c '" + baseC + "' -o '" + base + ".o' > '" + tmp + "/gcc.log' 2>&1")
+        if (gccCExit == 0) {
+            Console.WriteLine("[PASS] facade e2e: gcc -c")
+        } else {
+            Console.WriteLine("[FAIL] facade e2e: gcc -c")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+
+        // ── 4. ar rcs ──
+        let arExit = Program.ShellExit("ar rcs '" + archive + "' '" + base + ".o'")
+        if (arExit == 0) {
+            Console.WriteLine("[PASS] facade e2e: ar rcs")
+        } else {
+            Console.WriteLine("[FAIL] facade e2e: ar rcs")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+
+        // ── 5. archive exists ──
+        let arSize = Program.ShellExit("test -s '" + archive + "'")
+        if (arSize == 0) {
+            Console.WriteLine("[PASS] facade e2e: archive exists")
+        } else {
+            Console.WriteLine("[FAIL] facade e2e: archive exists (missing " + archive + ")")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+
+        // ── 6. user.am compiles ──
+        let userBody = "namespace UserApp\n\npublic class Program {\n    public static void Main() {\n        let v: int = FakeFacade.Make(41)\n        let w: int = FakeFacade.Twice(v)\n        let z: int = FakeFacade.MakeThenTwice(41)\n        Console.WriteLine(\"got \" + String_FromInt(w) + \" z=\" + String_FromInt(z))\n    }\n}\n"
+        File.WriteAll(tmp + "/user.am", userBody)
+        let userCmd = "(cd '" + tmp + "' && AMALGAME_PACKAGES_DIR='" + cacheAbs + "' '" + amcAbs + "' -o out user.am --quiet) > '" + tmp + "/usercompile.log' 2>&1"
+        let userExit = Program.ShellExit(userCmd)
+        if (userExit == 0) {
+            Console.WriteLine("[PASS] facade e2e: amc compile")
+        } else {
+            Console.WriteLine("[FAIL] facade e2e: amc compile (exit=" + String_FromInt(userExit) + ")")
+            Program.ShellExit("rm -rf '" + tmp + "'")
+            return
+        }
+
+        // ── 7. Forward decl emitted ──
+        Program.AssertGrepFile("facade e2e: forward decl emitted",
+            tmp + "/out.c",
+            "Amalgame_Fake_FakeFacade_FakeFacade_Make\\(i64 x\\);")
+
+        // ── 8. Body NOT emitted ──
+        Program.AssertGrepNotFile("facade e2e: body NOT emitted",
+            tmp + "/out.c",
+            "return x \\* 2;")
+
+        // ── 9. gcc + run ──
+        Program.ShellExit("gcc -O2 -I'" + runtimeAbs + "' '" + tmp + "/out.c' '" + archive + "' -lgc -lm -lz -ldl -lpthread -o '" + tmp + "/out' 2> '" + tmp + "/link.log'")
+        let runOut = Program.ShellRead("'" + tmp + "/out' 2>&1")
+        if (runOut == "got 84 z=84") {
+            Console.WriteLine("[PASS] facade e2e: gcc + run")
+        } else {
+            Console.WriteLine("[FAIL] facade e2e: gcc + run (got: " + runOut + ")")
+        }
+
+        Program.ShellExit("rm -rf '" + tmp + "'")
+    }
+
+    public static void Main() {
+        // ── io (9 cases) ──
+        let g_io: List<StdlibCase> = new List<StdlibCase>()
+        g_io.Add(new StdlibCase("IO: Console.WriteLine", "IO test start"))
+        g_io.Add(new StdlibCase("IO: File.WriteAll", "write ok: true"))
+        g_io.Add(new StdlibCase("IO: File.Exists", "exists: true"))
+        g_io.Add(new StdlibCase("IO: File.ReadAll", "content: Hello from Amalgame!"))
+        g_io.Add(new StdlibCase("IO: File.Size", "size: 20"))
+        g_io.Add(new StdlibCase("IO: File.Delete", "deleted: true"))
+        g_io.Add(new StdlibCase("IO: Path.Combine", "path: /tmp/test.txt"))
+        g_io.Add(new StdlibCase("IO: Path.GetExtension", "ext: .am"))
+        g_io.Add(new StdlibCase("IO: Path.GetFilename", "file: hello.am"))
+        Program.RunGroup("./tests/samples/stdlib_io.am", "", "io", g_io)
+
+        // ── string (13 cases) ──
+        let g_string: List<StdlibCase> = new List<StdlibCase>()
+        g_string.Add(new StdlibCase("String: Length('Hello')", "len = 5"))
+        g_string.Add(new StdlibCase("String: Contains", "contains = true"))
+        g_string.Add(new StdlibCase("String: StartsWith", "startsWith = true"))
+        g_string.Add(new StdlibCase("String: EndsWith", "endsWith = true"))
+        g_string.Add(new StdlibCase("String: IndexOf", "indexOf = 6"))
+        g_string.Add(new StdlibCase("String: ToUpper", "upper = HELLO"))
+        g_string.Add(new StdlibCase("String: ToLower", "lower = world"))
+        g_string.Add(new StdlibCase("String: Trim", "trim = 'hello'"))
+        g_string.Add(new StdlibCase("String: Replace", "replace = Hello Amalgame"))
+        g_string.Add(new StdlibCase("String: Repeat", "repeat = ababab"))
+        g_string.Add(new StdlibCase("String: ToInt", "toInt = 42"))
+        g_string.Add(new StdlibCase("String: FromInt", "fromInt = 123"))
+        g_string.Add(new StdlibCase("String: IsEmpty", "isEmpty = true"))
+        Program.RunGroup("./tests/samples/stdlib_string.am", "", "string", g_string)
+
+        // ── collections (12 cases) ──
+        let g_collections: List<StdlibCase> = new List<StdlibCase>()
+        g_collections.Add(new StdlibCase("Collections: List.Add/Count", "count: 3"))
+        g_collections.Add(new StdlibCase("Collections: List.IsEmpty", "empty: false"))
+        g_collections.Add(new StdlibCase("Collections: List.Remove", "after remove: 2"))
+        g_collections.Add(new StdlibCase("Collections: List.First/Last", "first: 10"))
+        g_collections.Add(new StdlibCase("Collections: Map.Set/Size", "map size: 3"))
+        g_collections.Add(new StdlibCase("Collections: Map.Has", "has alpha: true"))
+        g_collections.Add(new StdlibCase("Collections: Map.Has missing", "has delta: false"))
+        g_collections.Add(new StdlibCase("Collections: Map.Remove", "after remove: 2"))
+        g_collections.Add(new StdlibCase("Collections: Set.Add/Size", "set size: 2"))
+        g_collections.Add(new StdlibCase("Collections: Set.Contains", "has mage: true"))
+        g_collections.Add(new StdlibCase("Collections: Set.Contains miss", "has healer: false"))
+        g_collections.Add(new StdlibCase("Collections: Set.Remove", "after remove: 1"))
+        Program.RunGroup("./tests/samples/stdlib_collections.am", "", "collections", g_collections)
+
+        // ── json (24 cases) ──
+        let g_json: List<StdlibCase> = new List<StdlibCase>()
+        g_json.Add(new StdlibCase("Json: parse null", "[PASS] parse null"))
+        g_json.Add(new StdlibCase("Json: parse true", "[PASS] parse true"))
+        g_json.Add(new StdlibCase("Json: parse false", "[PASS] parse false"))
+        g_json.Add(new StdlibCase("Json: parse int", "[PASS] parse int"))
+        g_json.Add(new StdlibCase("Json: parse negative int", "[PASS] parse negative int"))
+        g_json.Add(new StdlibCase("Json: parse float kind", "[PASS] parse float kind"))
+        g_json.Add(new StdlibCase("Json: parse string", "[PASS] parse string"))
+        g_json.Add(new StdlibCase("Json: parse escapes", "[PASS] parse escapes"))
+        g_json.Add(new StdlibCase("Json: parse empty array", "[PASS] parse empty array"))
+        g_json.Add(new StdlibCase("Json: parse empty object", "[PASS] parse empty object"))
+        g_json.Add(new StdlibCase("Json: parse nested object", "[PASS] parse nested object"))
+        g_json.Add(new StdlibCase("Json: parse LSP request", "[PASS] parse LSP request"))
+        g_json.Add(new StdlibCase("Json: parse usage stats", "[PASS] parse usage stats"))
+        g_json.Add(new StdlibCase("Json: Has key", "[PASS] Has key"))
+        g_json.Add(new StdlibCase("Json: error truncated", "[PASS] error truncated"))
+        g_json.Add(new StdlibCase("Json: error trailing comma", "[PASS] error trailing comma"))
+        g_json.Add(new StdlibCase("Json: error non-json", "[PASS] error non-json"))
+        g_json.Add(new StdlibCase("Json: encode null", "[PASS] encode null"))
+        g_json.Add(new StdlibCase("Json: encode bool", "[PASS] encode bool"))
+        g_json.Add(new StdlibCase("Json: encode int", "[PASS] encode int"))
+        g_json.Add(new StdlibCase("Json: encode string", "[PASS] encode string"))
+        g_json.Add(new StdlibCase("Json: encode escape", "[PASS] encode escape"))
+        g_json.Add(new StdlibCase("Json: round-trip nested", "[PASS] round-trip nested"))
+        g_json.Add(new StdlibCase("Json: escape direct", "[PASS] escape direct"))
+        Program.RunGroup("./tests/samples/stdlib_json.am", "src/stdlib/json.am", "json", g_json)
+
+        // ── msgpack (14 cases) ──
+        let g_msgpack: List<StdlibCase> = new List<StdlibCase>()
+        g_msgpack.Add(new StdlibCase("MP: encode nil", "[PASS] encode nil"))
+        g_msgpack.Add(new StdlibCase("MP: decode nil", "[PASS] decode nil"))
+        g_msgpack.Add(new StdlibCase("MP: encode true", "[PASS] encode true"))
+        g_msgpack.Add(new StdlibCase("MP: decode true", "[PASS] decode true"))
+        g_msgpack.Add(new StdlibCase("MP: encode fixint", "[PASS] encode fixint"))
+        g_msgpack.Add(new StdlibCase("MP: decode fixint", "[PASS] decode fixint"))
+        g_msgpack.Add(new StdlibCase("MP: roundtrip negfix", "[PASS] roundtrip negfix"))
+        g_msgpack.Add(new StdlibCase("MP: roundtrip int16", "[PASS] roundtrip int16"))
+        g_msgpack.Add(new StdlibCase("MP: encode fixstr", "[PASS] encode fixstr"))
+        g_msgpack.Add(new StdlibCase("MP: decode fixstr", "[PASS] decode fixstr"))
+        g_msgpack.Add(new StdlibCase("MP: encode fixarray", "[PASS] encode fixarray"))
+        g_msgpack.Add(new StdlibCase("MP: decode fixarray", "[PASS] decode fixarray"))
+        g_msgpack.Add(new StdlibCase("MP: decode fixmap shape", "[PASS] decode fixmap shape"))
+        g_msgpack.Add(new StdlibCase("MP: decode fixmap values", "[PASS] decode fixmap values"))
+        Program.RunGroup("./tests/samples/stdlib_msgpack.am", "src/stdlib/json.am src/stdlib/msgpack.am", "msgpack", g_msgpack)
+
+        // ── path (21 cases) ──
+        let g_path: List<StdlibCase> = new List<StdlibCase>()
+        g_path.Add(new StdlibCase("Path: combine", "[PASS] combined"))
+        g_path.Add(new StdlibCase("Path: combine trailing", "[PASS] combined trailing"))
+        g_path.Add(new StdlibCase("Path: directory", "[PASS] directory"))
+        g_path.Add(new StdlibCase("Path: directory no-slash", "[PASS] directory no-slash"))
+        g_path.Add(new StdlibCase("Path: filename", "[PASS] filename"))
+        g_path.Add(new StdlibCase("Path: extension", "[PASS] extension"))
+        g_path.Add(new StdlibCase("Path: extension multi", "[PASS] extension multi"))
+        g_path.Add(new StdlibCase("Path: extension none", "[PASS] extension none"))
+        g_path.Add(new StdlibCase("Path: stem", "[PASS] stem"))
+        g_path.Add(new StdlibCase("Path: stem dotfile", "[PASS] stem dotfile"))
+        g_path.Add(new StdlibCase("Path: isabs posix", "[PASS] isabs posix"))
+        g_path.Add(new StdlibCase("Path: isabs drive", "[PASS] isabs drive"))
+        g_path.Add(new StdlibCase("Path: isabs relative", "[PASS] isabs relative"))
+        g_path.Add(new StdlibCase("Path: isabs empty", "[PASS] isabs empty"))
+        g_path.Add(new StdlibCase("Path: normalize relative", "[PASS] normalize relative"))
+        g_path.Add(new StdlibCase("Path: normalize dot", "[PASS] normalize dot"))
+        g_path.Add(new StdlibCase("Path: normalize absolute", "[PASS] normalize absolute"))
+        g_path.Add(new StdlibCase("Path: normalize empty", "[PASS] normalize empty"))
+        g_path.Add(new StdlibCase("Path: normalize root", "[PASS] normalize root"))
+        g_path.Add(new StdlibCase("Path: normalize parent", "[PASS] normalize parent"))
+        g_path.Add(new StdlibCase("Path: sep length", "[PASS] sep length"))
+        Program.RunGroup("./tests/samples/stdlib_path.am", "src/stdlib/path.am", "path", g_path)
+
+        // ── toml (23 cases) ──
+        let g_toml: List<StdlibCase> = new List<StdlibCase>()
+        g_toml.Add(new StdlibCase("Toml: parse empty", "[PASS] parse empty"))
+        g_toml.Add(new StdlibCase("Toml: kv string", "[PASS] kv string"))
+        g_toml.Add(new StdlibCase("Toml: kv int", "[PASS] kv int"))
+        g_toml.Add(new StdlibCase("Toml: kv neg int", "[PASS] kv neg int"))
+        g_toml.Add(new StdlibCase("Toml: kv bool true", "[PASS] kv bool true"))
+        g_toml.Add(new StdlibCase("Toml: kv bool false", "[PASS] kv bool false"))
+        g_toml.Add(new StdlibCase("Toml: string escapes", "[PASS] string escapes"))
+        g_toml.Add(new StdlibCase("Toml: literal string", "[PASS] literal string"))
+        g_toml.Add(new StdlibCase("Toml: comments tolerated", "[PASS] comments tolerated"))
+        g_toml.Add(new StdlibCase("Toml: array strings", "[PASS] array strings"))
+        g_toml.Add(new StdlibCase("Toml: array ints", "[PASS] array ints"))
+        g_toml.Add(new StdlibCase("Toml: table", "[PASS] table"))
+        g_toml.Add(new StdlibCase("Toml: nested table", "[PASS] nested table"))
+        g_toml.Add(new StdlibCase("Toml: inline table", "[PASS] inline table"))
+        g_toml.Add(new StdlibCase("Toml: manifest package.name", "[PASS] manifest package.name"))
+        g_toml.Add(new StdlibCase("Toml: manifest stdlib.class", "[PASS] manifest stdlib.class"))
+        g_toml.Add(new StdlibCase("Toml: manifest dep tag", "[PASS] manifest dep tag"))
+        g_toml.Add(new StdlibCase("Toml: missing key is null", "[PASS] missing key chain is null"))
+        g_toml.Add(new StdlibCase("Toml: has present+absent", "[PASS] has present + absent"))
+        g_toml.Add(new StdlibCase("Toml: aot count", "[PASS] aot count"))
+        g_toml.Add(new StdlibCase("Toml: aot entry 0", "[PASS] aot entry 0"))
+        g_toml.Add(new StdlibCase("Toml: aot entry 1", "[PASS] aot entry 1"))
+        g_toml.Add(new StdlibCase("Toml: roundtrip simple", "[PASS] roundtrip simple"))
+        Program.RunGroup("./tests/samples/stdlib_toml.am", "src/stdlib/toml.am", "toml", g_toml)
+
+        // ── pr (64 cases) ──
+        let g_pr: List<StdlibCase> = new List<StdlibCase>()
+        g_pr.Add(new StdlibCase("PR: one package", "[PASS] one package"))
+        g_pr.Add(new StdlibCase("PR: name", "[PASS] name"))
+        g_pr.Add(new StdlibCase("PR: class name", "[PASS] class name"))
+        g_pr.Add(new StdlibCase("PR: namespace", "[PASS] namespace"))
+        g_pr.Add(new StdlibCase("PR: header path", "[PASS] header path"))
+        g_pr.Add(new StdlibCase("PR: func count", "[PASS] func count"))
+        g_pr.Add(new StdlibCase("PR: Init returns pointer", "[PASS] Init returns pointer"))
+        g_pr.Add(new StdlibCase("PR: Tick returns i64", "[PASS] Tick returns i64"))
+        g_pr.Add(new StdlibCase("PR: IsOk returns bool", "[PASS] IsOk returns bool"))
+        g_pr.Add(new StdlibCase("PR: Close returns void", "[PASS] Close returns void"))
+        g_pr.Add(new StdlibCase("PR: ClassNames aggregate", "[PASS] ClassNames aggregate"))
+        g_pr.Add(new StdlibCase("PR: Headers aggregate", "[PASS] Headers aggregate"))
+        g_pr.Add(new StdlibCase("PR: strip star", "[PASS] strip star"))
+        g_pr.Add(new StdlibCase("PR: passthrough primitive", "[PASS] passthrough primitive"))
+        g_pr.Add(new StdlibCase("PR: missing lock empty", "[PASS] missing lock empty"))
+        g_pr.Add(new StdlibCase("PR: cflags parsed", "[PASS] cflags parsed"))
+        g_pr.Add(new StdlibCase("PR: cxxflags parsed", "[PASS] cxxflags parsed"))
+        g_pr.Add(new StdlibCase("PR: libs count", "[PASS] libs count"))
+        g_pr.Add(new StdlibCase("PR: libs[0]", "[PASS] libs[0]"))
+        g_pr.Add(new StdlibCase("PR: libs[1]", "[PASS] libs[1]"))
+        g_pr.Add(new StdlibCase("PR: supports schema v1", "[PASS] supports schema v1"))
+        g_pr.Add(new StdlibCase("PR: detects .cpp", "[PASS] detects .cpp"))
+        g_pr.Add(new StdlibCase("PR: detects .cc", "[PASS] detects .cc"))
+        g_pr.Add(new StdlibCase("PR: detects .cxx", "[PASS] detects .cxx"))
+        g_pr.Add(new StdlibCase("PR: .c not cxx", "[PASS] .c not cxx"))
+        g_pr.Add(new StdlibCase("PR: no cxx sources", "[PASS] no cxx sources"))
+        g_pr.Add(new StdlibCase("PR: CollectLibs", "[PASS] CollectLibs"))
+        g_pr.Add(new StdlibCase("PR: precompile parsed", "[PASS] precompile parsed"))
+        g_pr.Add(new StdlibCase("PR: pkgdir populated", "[PASS] pkgdir populated"))
+        g_pr.Add(new StdlibCase("PR: facade empty default", "[PASS] facade empty for fake-pkg"))
+        g_pr.Add(new StdlibCase("PR: platform tag shape", "[PASS] platform tag shape"))
+        g_pr.Add(new StdlibCase("PR: precompile cache path", "[PASS] precompile cache path"))
+        g_pr.Add(new StdlibCase("PR: empty calib no eta", "[PASS] empty calibration no eta"))
+        g_pr.Add(new StdlibCase("PR: sample counts", "[PASS] sample counts"))
+        g_pr.Add(new StdlibCase("PR: cxx eta", "[PASS] cxx eta"))
+        g_pr.Add(new StdlibCase("PR: c eta", "[PASS] c eta"))
+        g_pr.Add(new StdlibCase("PR: unknown lang no eta", "[PASS] unknown lang no eta"))
+        g_pr.Add(new StdlibCase("PR: ge satisfied", "[PASS] ge satisfied"))
+        g_pr.Add(new StdlibCase("PR: ge unsatisfied", "[PASS] ge unsatisfied"))
+        g_pr.Add(new StdlibCase("PR: gt strict", "[PASS] gt strict"))
+        g_pr.Add(new StdlibCase("PR: gt strict equal", "[PASS] gt strict equal"))
+        g_pr.Add(new StdlibCase("PR: le equal", "[PASS] le equal"))
+        g_pr.Add(new StdlibCase("PR: lt strict", "[PASS] lt strict"))
+        g_pr.Add(new StdlibCase("PR: lt strict equal", "[PASS] lt strict equal"))
+        g_pr.Add(new StdlibCase("PR: eq match", "[PASS] eq match"))
+        g_pr.Add(new StdlibCase("PR: eq miss", "[PASS] eq miss"))
+        g_pr.Add(new StdlibCase("PR: caret 1.x within", "[PASS] caret 1.x within"))
+        g_pr.Add(new StdlibCase("PR: caret 1.x reject major", "[PASS] caret 1.x reject major"))
+        g_pr.Add(new StdlibCase("PR: caret 0.x within", "[PASS] caret 0.x within"))
+        g_pr.Add(new StdlibCase("PR: caret 0.x reject minor", "[PASS] caret 0.x reject minor"))
+        g_pr.Add(new StdlibCase("PR: caret 0.0.x exact", "[PASS] caret 0.0.x exact"))
+        g_pr.Add(new StdlibCase("PR: caret 0.0.x reject patch", "[PASS] caret 0.0.x reject patch"))
+        g_pr.Add(new StdlibCase("PR: tilde within", "[PASS] tilde within"))
+        g_pr.Add(new StdlibCase("PR: tilde reject minor", "[PASS] tilde reject minor"))
+        g_pr.Add(new StdlibCase("PR: bare ge", "[PASS] bare ge"))
+        g_pr.Add(new StdlibCase("PR: multiclass one package", "[PASS] multiclass: one package"))
+        g_pr.Add(new StdlibCase("PR: multiclass count", "[PASS] multiclass: ClassNames count"))
+        g_pr.Add(new StdlibCase("PR: multiclass primary", "[PASS] multiclass: ClassName is first"))
+        g_pr.Add(new StdlibCase("PR: multiclass all names", "[PASS] multiclass: all class names"))
+        g_pr.Add(new StdlibCase("PR: multiclass func count", "[PASS] multiclass: func count"))
+        g_pr.Add(new StdlibCase("PR: multiclass namespace", "[PASS] multiclass: namespace"))
+        g_pr.Add(new StdlibCase("PR: mc retgen parallel", "[PASS] multiclass: FuncRetsRaw parallel"))
+        g_pr.Add(new StdlibCase("PR: mc retgen value", "[PASS] multiclass: returns_generic parsed"))
+        g_pr.Add(new StdlibCase("PR: mc retgen empty", "[PASS] multiclass: missing returns_generic empty"))
+        Program.RunGroup("./tests/samples/stdlib_package_registry.am", "src/stdlib/toml.am src/package_registry.am", "pr", g_pr)
+
+        // ── PackageManager e2e (full pipeline) ──
+        Program.RunPmE2E()
+
+        // ── PackageManager facade e2e (project F follow-up) ──
+        Program.RunPmFacadeE2E()
+
+        // ── skipped (moved to amalgame-net-http) ──
+        Console.WriteLine("[SKIP] Net: Http.Get status (moved to amalgame-net-http package (v0.8.31+))")
+        Console.WriteLine("[SKIP] Net: Http.Get ok (moved to amalgame-net-http package (v0.8.31+))")
+        Console.WriteLine("[SKIP] Net: Http.GetHeaders (moved to amalgame-net-http package (v0.8.31+))")
+        Console.WriteLine("[SKIP] Net: Http.Post (moved to amalgame-net-http package (v0.8.31+))")
+        Console.WriteLine("[SKIP] Net: done (moved to amalgame-net-http package (v0.8.31+))")
+    }
+}

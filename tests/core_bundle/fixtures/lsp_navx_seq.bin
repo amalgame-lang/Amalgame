@@ -1,0 +1,21 @@
+Content-Length: 58
+
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}Content-Length: 433
+
+{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am","languageId":"amalgame","version":1,"text":"class Foo {\n    public Name: string\n    public Foo() {\n        this.Name = \"x\"\n    }\n    public string Greet() {\n        return \"hi \" + this.Name\n    }\n}\nclass Program {\n    public static void Main() {\n        let f = new Foo()\n        let s = f.Greet()\n    }\n}"}}}Content-Length: 159
+
+{"jsonrpc":"2.0","id":20,"method":"textDocument/prepareRename","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18}}}Content-Length: 170
+
+{"jsonrpc":"2.0","id":21,"method":"textDocument/rename","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18},"newName":"SayHi"}}Content-Length: 78
+
+{"jsonrpc":"2.0","id":22,"method":"workspace/symbol","params":{"query":"Foo"}}Content-Length: 118
+
+{"jsonrpc":"2.0","id":23,"method":"textDocument/inlayHint","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"}}}Content-Length: 225
+
+{"jsonrpc":"2.0","id":24,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"range":{"start":{"line":11,"character":0},"end":{"line":11,"character":30}},"context":{"diagnostics":[]}}}Content-Length: 166
+
+{"jsonrpc":"2.0","id":25,"method":"textDocument/prepareCallHierarchy","params":{"textDocument":{"uri":"file:///tmp/lsp_nav.am"},"position":{"line":5,"character":18}}}Content-Length: 44
+
+{"jsonrpc":"2.0","id":2,"method":"shutdown"}Content-Length: 33
+
+{"jsonrpc":"2.0","method":"exit"}
