@@ -395,26 +395,27 @@ public class DapServer {
 
     // Bridge entry point. Spawns `gdb --interpreter=mi3`, enters a
     // poll-driven I/O loop that pipes DAP traffic between the client
-    // (stdin/stdout) and gdb (pipe FDs).
+    // (stdin/stdout) and gdb (pipe FDs). Translates DAP↔MI in
+    // amc itself so List/Map/Set/Closure values pretty-print and
+    // runtime frames are filtered. See docs/proposals/dap-strategy.md
+    // for the per-verb translation table.
     //
-    // During the migration the bridge is opt-in via `--bridge`. The
-    // default codepath stays on `RunRaw()` so users get the
-    // (well-trodden) v0.8.0 execvp proxy until Phase 7 flips the
-    // default. When gdb isn't on PATH, we transparently fall back
-    // to the proxy — the user gets a working session either way.
+    // Phase 7 (this revision): the bridge is the default whenever
+    // gdb is on PATH. The legacy `--bridge` flag is still recognised
+    // + filtered in ExecBackend's argv builder for forward-compat
+    // with editor configs that hard-code it. Hosts without gdb
+    // (macOS-only via Xcode CLT 14+'s lldb-dap, or older Linux
+    // distros) fall through to RunRaw transparently — the user
+    // gets a working debug session either way.
     //
-    // Phase 2a (this commit) ships **passthrough**: bytes from the
-    // client go straight to gdb's stdin, bytes from gdb come straight
-    // out on stdout. No DAP framing, no MI parsing, no translation —
-    // that's Phase 2b+. The current shape is testable end-to-end with
-    // `echo '-gdb-version' | amc dap --bridge` against gdb directly.
+    // `amc dap --raw` is the explicit opt-out for users hitting a
+    // bridge regression.
     public int RunBridge() {
-        if (!this.HasFlag("--bridge")) {
-            return this.RunRaw()
-        }
         let gdbPath: string = DapServer.Probe("gdb")
         if (String_Length(gdbPath) == 0) {
-            Console.WriteError("amc dap --bridge: gdb not on PATH; falling back to --raw")
+            // No gdb available → fall through to the lldb-dap /
+            // gdb-dap proxy. Silent (no warning) since this is the
+            // expected path on a stock macOS install.
             return this.RunRaw()
         }
         let spawnRc: int = this.SpawnGdb(gdbPath)
