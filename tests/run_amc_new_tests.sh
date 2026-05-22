@@ -71,6 +71,37 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# ── hyphenated-name regression ────────────────
+# Project names with hyphens (`my-app`, `track-d-test`) must
+# still produce a valid AM identifier in the `namespace` line.
+# Pre-fix the scaffolder emitted `namespace my-app` and gcc bailed
+# on the cgen with `'a' undeclared` because the parser saw it as
+# `namespace my - app` (subtraction). SanitizeIdent converts
+# non-identifier chars to `_` only for the AM-side identifiers;
+# the user's literal directory name still appears in README +
+# console-greeting strings.
+"$AMC" new "$TMP/track-d-test" --no-vscode > /dev/null 2>&1
+assert_file "$TMP/track-d-test/src/main.am"
+if grep -q "^namespace track_d_test\$" "$TMP/track-d-test/src/main.am" 2>/dev/null; then
+    PASS=$((PASS + 1))
+else
+    echo -e "  ${RED}FAIL${NC} hyphenated name did not sanitise namespace"
+    FAIL=$((FAIL + 1))
+fi
+"$AMC" "$TMP/track-d-test/src/main.am" -o "$TMP/track-d-test/out" > /dev/null 2>&1
+if [ -f "$TMP/track-d-test/out.c" ]; then
+    gcc -O2 -Iruntime "$TMP/track-d-test/out.c" -lgc -lm -lcurl -lz -o "$TMP/track-d-test/out" 2>/dev/null
+    if [ -x "$TMP/track-d-test/out" ] && "$TMP/track-d-test/out" 2>&1 | grep -q "Hello from track-d-test"; then
+        PASS=$((PASS + 1))
+    else
+        echo -e "  ${RED}FAIL${NC} hyphenated-name scaffold did not build+run"
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo -e "  ${RED}FAIL${NC} hyphenated-name scaffold did not produce .c"
+    FAIL=$((FAIL + 1))
+fi
+
 # ── lib template ──────────────────────────────
 "$AMC" new "$TMP/libtest" --template lib > /dev/null 2>&1
 assert_dir  "$TMP/libtest/src"
