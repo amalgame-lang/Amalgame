@@ -996,7 +996,7 @@ DAP_MI_OUT="$("$AMC" dap --self-test-mi 2>&1)"
 DAP_MI_RC=$?
 DAP_MI_PASS=$(echo "$DAP_MI_OUT" | grep -c '^\[PASS\]')
 DAP_MI_FAIL=$(echo "$DAP_MI_OUT" | grep -c '^\[FAIL\]')
-if [ "$DAP_MI_RC" = "0" ] && [ "$DAP_MI_FAIL" = "0" ] && [ "$DAP_MI_PASS" -ge "8" ]; then
+if [ "$DAP_MI_RC" = "0" ] && [ "$DAP_MI_FAIL" = "0" ] && [ "$DAP_MI_PASS" -ge "9" ]; then
     echo -e "${GREEN}PASS${NC} ($DAP_MI_PASS cases)"
     PASS=$((PASS + 1))
 else

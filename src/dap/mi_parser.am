@@ -162,6 +162,10 @@ public class MiParser {
         if (String_Length(c) == 0) { return false }
         return String_IndexOf("0123456789", c) >= 0
     }
+    private static bool IsOctalDigit(string c) {
+        if (String_Length(c) == 0) { return false }
+        return String_IndexOf("01234567", c) >= 0
+    }
 
     // Read a contiguous run of ident chars [A-Za-z0-9_-]. MI keys
     // routinely contain hyphens (`thread-id`, `stopped-threads`),
@@ -206,6 +210,33 @@ public class MiParser {
                     return out
                 }
                 let esc: string = String_Substring(this.Input, this.Pos, 1)
+                // Octal escape `\NNN` (1-3 octal digits). gdb MI
+                // encodes every non-ASCII byte this way, so UTF-8
+                // paths like `/tmp/D\303\251veloppement/...` arrive
+                // here. Skipping this branch would let the digits
+                // leak into the un-escaped string as literals — the
+                // exact `D303251veloppement` rendering the bridge
+                // shipped with before this fix.
+                if (MiParser.IsOctalDigit(esc)) {
+                    var b: int = String_ToInt(esc)
+                    this.Pos = this.Pos + 1
+                    if (this.Pos < n) {
+                        let c2: string = String_Substring(this.Input, this.Pos, 1)
+                        if (MiParser.IsOctalDigit(c2)) {
+                            b = b * 8 + String_ToInt(c2)
+                            this.Pos = this.Pos + 1
+                            if (this.Pos < n) {
+                                let c3: string = String_Substring(this.Input, this.Pos, 1)
+                                if (MiParser.IsOctalDigit(c3)) {
+                                    b = b * 8 + String_ToInt(c3)
+                                    this.Pos = this.Pos + 1
+                                }
+                            }
+                        }
+                    }
+                    out = out + String_FromByte(b)
+                    continue
+                }
                 if      (esc == "n")  { out = out + "\n" }
                 else if (esc == "t")  { out = out + "\t" }
                 else if (esc == "r")  { out = out + "\r" }
