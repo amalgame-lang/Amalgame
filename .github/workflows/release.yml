@@ -16,7 +16,7 @@ jobs:
   # The .vsix is gitignored (binary blob shouldn't live in the repo), so we
   # build it once with vsce here and share through an artifact. The three
   # platform jobs download it and drop it under share/amalgame/editors/vscode/
-  # in their respective tarballs so install.sh / amalgame.iss can auto-install
+  # in their respective tarballs so install.sh / build-msi.ps1 can auto-install
   # the extension without a network round-trip.
   build-vsix:
     name: Build VS Code extension .vsix
@@ -85,7 +85,7 @@ jobs:
           NAME="amc-${{ steps.ver.outputs.version }}-linux-x86_64"
           # XDG-style layout (v0.8.1+): the tarball mirrors the
           # install-prefix tree so installers (install/install.sh,
-          # install/windows/amalgame.iss) can `cp -r $NAME/* $PREFIX/`
+          # install/windows/build-msi.ps1) can `cp -r $NAME/* $PREFIX/`
           # with no per-file rewiring. amc's Program.ResolveRuntimeDir /
           # ResolveLibAmalgameA probe <bin>/../share/amalgame/{runtime,lib}
           # — match that exactly so $AMC_RUNTIME stays an opt-in
@@ -123,7 +123,7 @@ jobs:
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
           cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
           # Latest VS Code extension .vsix — install.sh /
-          # amalgame.iss auto-install it on detected editors so users
+          # postinstall.ps1 auto-install it on detected editors so users
           # land on a working LSP + debug setup without extra steps.
           LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
           cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
@@ -406,39 +406,10 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile mingw.zip -UseBasicParsing
           Expand-Archive mingw.zip -DestinationPath winlibs-tmp
           # winlibs.zip extracts to mingw64/{bin,lib,...} — move it under
-          # install/windows/gcc-bundle so amalgame.iss's #if FileExists
-          # check picks it up.
+          # install/windows/gcc-bundle so the MSI builder picks it up.
           Move-Item winlibs-tmp\mingw64 install\windows\gcc-bundle
           Remove-Item -Recurse -Force winlibs-tmp, mingw.zip
           Test-Path install\windows\gcc-bundle\bin\gcc.exe
-
-      - name: Locate preinstalled Inno Setup
-        id: iscc
-        shell: pwsh
-        run: |
-          # windows-latest ships Inno Setup 6 preinstalled (currently v6.7.1).
-          # Both 32-bit and 64-bit Program Files locations are checked since
-          # GitHub has historically used both across image generations.
-          $candidates = @(
-            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-            "C:\Program Files\Inno Setup 6\ISCC.exe"
-          )
-          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $iscc) {
-            Write-Error "ISCC.exe not found on the runner. Image may have dropped it — fall back to: choco install innosetup -y --force"
-            exit 1
-          }
-          Write-Host "Using $iscc"
-          "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Build amalgame-<ver>-setup.exe (InnoSetup, fallback)
-        shell: pwsh
-        working-directory: install\windows
-        run: |
-          $version = "${{ steps.ver.outputs.version }}"
-          $stage = "..\..\dist\amc-$version-windows-x86_64"
-          & "${{ steps.iscc.outputs.path }}" "/DAmcVersion=$version" "/DAmcStageDir=$stage" amalgame.iss
-          Get-ChildItem Output
 
       - name: Build amalgame-<ver>.msi (pure-PowerShell)
         shell: pwsh
@@ -447,17 +418,20 @@ jobs:
         # (dual-mode default-per-user). On clean GH runners there's no
         # file-lock contention from a previous .msi, so the canonical
         # output path lands first try.
+        # -IncludeGccBundle: package the winlibs MinGW-w64 toolchain
+        # downloaded above under share/amalgame/gcc/, so `amc build`
+        # works out of the box on machines that don't already have gcc.
         run: |
           $version = "${{ steps.ver.outputs.version }}"
           $stage = "..\..\dist\amc-$version-windows-x86_64"
-          .\build-msi.ps1 -Version $version -StageDir $stage
+          .\build-msi.ps1 -Version $version -StageDir $stage -IncludeGccBundle
           Get-ChildItem Output
 
       - name: Hash the installers for checksums
         shell: pwsh
         working-directory: install\windows\Output
         run: |
-          Get-ChildItem *.exe, *.msi -ErrorAction SilentlyContinue | ForEach-Object {
+          Get-ChildItem *.msi -ErrorAction SilentlyContinue | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $($_.Name)" | Out-File -Encoding ascii "$($_.Name).sha256"
           }
@@ -466,7 +440,6 @@ jobs:
         with:
           name: release-windows-installer
           path: |
-            install/windows/Output/*.exe
             install/windows/Output/*.msi
             install/windows/Output/*.sha256
           retention-days: 7
@@ -508,6 +481,5 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.zip
-            dist/*.exe
             dist/*.msi
             dist/checksums.sha256
