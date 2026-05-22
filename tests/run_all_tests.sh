@@ -1,8 +1,20 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────
-#  Amalgame — Full Test Suite (Core + Stdlib)
+#  Amalgame — Full Test Suite (transitional wrapper)
 #  Usage: ./tests/run_all_tests.sh
 #  Used by CI/CD before releases.
+#
+#  Since 2026-05-22 the canonical test entry point is the AM bundles:
+#      ./amc test ./tests/fmt/
+#      ./amc test ./tests/amc_new/
+#      ./amc test ./tests/stdlib_bundle/
+#      ./amc test ./tests/core_bundle/
+#
+#  This wrapper lances BOTH the legacy bash runners AND the AM bundles
+#  in parallel to verify zero-delta during the migration. Once the AM
+#  bundles ship a few stable releases (and the 4 fixture *_test.am
+#  files move out of the auto-discovery path), the bash runners get
+#  dropped and this wrapper collapses to `./amc test ./tests/`.
 # ─────────────────────────────────────────────────────
 
 set -e

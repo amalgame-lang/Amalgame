@@ -69,20 +69,31 @@ Notes:
 The build is hermetic — no environment variables, no global state.
 Re-running `./build_amc.sh` is always safe.
 
-## `./tests/run_all_tests.sh` — test suite
+## Tests — AM bundles via `amc test`
 
-Two suites:
+Since 2026-05-22 the test suite lives as discoverable `*_test.am`
+bundles driven by `amc test`. Each bundle compiles its samples once
+and grep-checks the captured stdout for every assertion — about 6×
+faster than the legacy bash runners (stdlib alone: 3m34s → 8s).
 
-- **Core / advanced / namespace / interfaces / enums / match / lib /
-  stdlib basics** (`tests/run_tests.sh`) — runs each `tests/samples/*.am`
-  through `./amc` and grep-checks the output.
-- **Stdlib** (`tests/run_stdlib_tests.sh`) — focused on
-  String/Collections/Net runtime.
+| Bundle                            | Cas  | Couverture                                       |
+| --------------------------------- | ---- | ------------------------------------------------ |
+| `tests/fmt/fmt_test.am`           | 12   | Formatter idempotence + semantic preservation    |
+| `tests/amc_new/amc_new_test.am`   | 38   | `amc new` scaffolder smoke tests                 |
+| `tests/stdlib_bundle/stdlib_test.am` | 196  | IO/String/Collections/Json/Toml/Path/MsgPack/PR + 2 e2e |
+| `tests/core_bundle/core_test.am`  | 325  | Core lang, namespace, interfaces, enums, lambda, LSP, DAP, LLM tooling |
+| **Total**                         | **571** | + 5 SKIP (HTTP moved to amalgame-net-http)  |
 
 ```bash
-./tests/run_all_tests.sh
-# → 363 PASS / 0 FAIL / 0 SKIP
+./amc test ./tests/core_bundle/     # une suite (29s)
+./amc test ./tests/stdlib_bundle/   # stdlib uniquement (8s)
+./tests/run_all_tests.sh            # tout (~42s) — wrapper qui boucle sur les 4 bundles
+                                    # ET lance les bash runners en filet de sécurité
 ```
+
+Les runners bash (`tests/run_*.sh`) sont conservés comme filet
+pendant la transition et seront supprimés après quelques releases
+stables. Voir `ROADMAP_COMPLET.md` pour le plan de cleanup.
 
 ## Continuous integration
 

@@ -1,7 +1,13 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────
-#  Amalgame Standard Library — Test Runner
+#  Amalgame Standard Library — Test Runner (LEGACY)
 #  Usage: ./tests/run_stdlib_tests.sh
+#
+#  DEPRECATED 2026-05-22 — superseded by tests/stdlib_bundle/stdlib_test.am
+#  Run via: ./amc test ./tests/stdlib_bundle/   (~27× faster: 3m34s → 8s)
+#
+#  Kept as safety net during the migration; will be removed once the
+#  AM bundle ships a few stable releases.
 #
 #  Tests each stdlib module independently.
 #  Some tests may require filesystem access (/tmp).

@@ -671,8 +671,12 @@ priorities in rough order:
 > - `./build_amc.sh`: ~2-3s end-to-end (Step 0 sed-stamps build
 >   provenance into `amc_buildinfo.am`; Step 4 builds
 >   `lib/libamalgame.a` ≈ 200 KB).
-> - `./tests/run_all_tests.sh`: **613/613 PASS** (216 core + 351
->   stdlib + 12 fmt + 34 amc-new).
+> - `./tests/run_all_tests.sh`: **571/571 PASS + 5 SKIP** across the
+>   four AM bundles (`tests/fmt/`, `tests/amc_new/`,
+>   `tests/stdlib_bundle/`, `tests/core_bundle/`). The wrapper also
+>   runs the legacy bash runners (`tests/run_*.sh`) as a safety net
+>   during the migration. Drop them once stable: `./amc test ./tests/`
+>   will become the single entry point. Runtime ~42s (was ~4m35s).
 > - libgc-dev + libcurl4-openssl-dev + zlib1g-dev required for the
 >   bootstrap. MSYS2 also needs `mingw-w64-x86_64-libsystre` for
 >   POSIX `<regex.h>`.
@@ -707,10 +711,13 @@ Current state (May 2026, v0.6.0):
   Windows winsock2 via #ifdef _WIN32 in Amalgame_Net.h). libcurl is
   required by the runtime for the Net module + the claude-api /
   chatgpt / gemini providers.
-- Test runner (./tests/run_all_tests.sh) drives ./amc directly.
-  Build artefacts go to /tmp via mktemp; the source tree stays
-  clean. Currently **205 core / 258 stdlib / 12 fmt / 34 amc-new
-  = 509 PASS / 0 FAIL / 0 SKIP** across the sub-suites.
+- Tests live as AM bundles (tests/fmt/, tests/amc_new/,
+  tests/stdlib_bundle/, tests/core_bundle/) driven by `amc test`.
+  ./tests/run_all_tests.sh is the transitional wrapper that loops
+  on the four bundles AND lances the legacy bash runners
+  (tests/run_*.sh) as a safety net. Build artefacts go to /tmp via
+  mktemp; the source tree stays clean. Currently **325 core / 196
+  stdlib / 12 fmt / 38 amc-new = 571 PASS + 5 SKIP** in ~42s.
 - Multi-OS CI (.github/workflows/ci.yml) — Linux + macOS + Windows
   MSYS2. All three platforms gcc the snapshot/amc_lib.c then chain
   through build_amc.sh.
@@ -1210,11 +1217,17 @@ Compiler / tooling backlog:
     migrate.am / generate.am /
     explain.am / new_cmd.am
   tests/
-    run_all_tests.sh
-    run_tests.sh
-    run_stdlib_tests.sh
-    run_fmt_tests.sh
-    run_amc_new_tests.sh
+    fmt/fmt_test.am                ← AM bundle: formatter
+    amc_new/amc_new_test.am        ← AM bundle: scaffolder
+    stdlib_bundle/stdlib_test.am   ← AM bundle: stdlib (incl. PM e2e)
+    core_bundle/
+      core_test.am                 ← AM bundle: lang + LSP + DAP + LLM
+      fixtures/lsp_*.bin           ← pre-computed JSON-RPC sequences
+    run_all_tests.sh               ← wrapper: AM bundles + bash safety net
+    run_tests.sh                   ← legacy bash, to be dropped
+    run_stdlib_tests.sh            ← legacy bash, to be dropped
+    run_fmt_tests.sh               ← legacy bash, to be dropped
+    run_amc_new_tests.sh           ← legacy bash, to be dropped
     fixtures/pm/                   ← package-manager test fixtures
     samples/                       ← .am test inputs
   tools/

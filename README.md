@@ -118,8 +118,15 @@ git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
 ./amc --version          # amc 0.4.14
-./tests/run_all_tests.sh
+./tests/run_all_tests.sh # full suite (~42s in AM bundles + bash safety net)
 ```
+
+Tests live as discoverable `*_test.am` bundles under `tests/fmt/`,
+`tests/amc_new/`, `tests/stdlib_bundle/`, and `tests/core_bundle/`,
+each runnable individually via `./amc test ./tests/<bundle>/`. The
+bash runners (`tests/run_*.sh`) are kept as a transitional safety
+net and will be dropped once the AM bundles ship a few stable
+releases (see ROADMAP_COMPLET.md for the migration plan).
 
 ### macOS
 

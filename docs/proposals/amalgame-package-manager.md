@@ -16,7 +16,7 @@ compiler tree:
   their `<Class>_<Method>` → return-type table, and their `#include`
   in the prelude emit
 - `src/resolver/resolver.am` declares every `<Class>_<Method>` global
-- `tests/run_stdlib_tests.sh` knows about each test fixture + its
+- `tests/stdlib_bundle/stdlib_test.am` knows about each test fixture + its
   TCP-reachability gate
 
 This works fine at N=3 backends. It will not at N=10:

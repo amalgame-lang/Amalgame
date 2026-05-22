@@ -134,7 +134,8 @@ gcc -Iruntime consumer.c greeter.o -lgc -lm -lcurl -o app
 ```
 
 A live e2e test is at `tests/samples/lib_e2e.am` /
-`lib_e2e_consumer.c` and runs as part of `tests/run_tests.sh`.
+`lib_e2e_consumer.c` and runs as part of `tests/core_bundle/core_test.am`
+(invoke with `./amc test ./tests/core_bundle/`).
 
 ## Calling C from Amalgame
 

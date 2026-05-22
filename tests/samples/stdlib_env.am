@@ -12,7 +12,7 @@ public class Program {
         let hasPath: bool = Env.Has("PATH")
         Console.WriteLine("hasPath: {hasPath}")
 
-        // A name we set exclusively for this test in run_tests.sh
+        // A name we set exclusively for this test in tests/core_bundle/core_test.am (envPrefix on RunGroupEnv)
         // (AMC_ENV_PROBE=hello). Asserts read-back returns the value.
         let probe: string = Env.Get("AMC_ENV_PROBE")
         Console.WriteLine("probe: {probe}")

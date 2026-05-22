@@ -1,5 +1,5 @@
 // Stdlib test: Amalgame.Json — parser, encoder, round-trip.
-// Run by tests/run_stdlib_tests.sh; each line below produces one
+// Run by tests/stdlib_bundle/stdlib_test.am; each line below produces one
 // match string the runner asserts on.
 //
 // Style note: many assertions extract intermediate locals

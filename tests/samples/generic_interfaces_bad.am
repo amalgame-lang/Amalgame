@@ -2,7 +2,7 @@ namespace Tests
 
 // Negative-test sample: the typechecker MUST reject this file because
 // Bad implements IComparable<int> but its Compare method takes a string
-// where the contract requires int. Driven by tests/run_tests.sh under
+// where the contract requires int. Driven by tests/core_bundle/core_test.am under
 // `run_check_fail` — looks for the diagnostic substring.
 
 public interface IComparable<T> {

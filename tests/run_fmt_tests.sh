@@ -1,8 +1,13 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────
-#  Amalgame — Formatter Tests
+#  Amalgame — Formatter Tests (LEGACY)
 #  Verifies amc fmt is idempotent and preserves semantics.
 #  Usage: ./tests/run_fmt_tests.sh
+#
+#  DEPRECATED 2026-05-22 — superseded by tests/fmt/fmt_test.am
+#  Run via: ./amc test ./tests/fmt/
+#
+#  Kept as safety net during the migration.
 # ─────────────────────────────────────────────────────
 
 set -u
