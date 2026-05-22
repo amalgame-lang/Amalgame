@@ -34,7 +34,7 @@ BEGIN
             VALUE "FileDescription",  "Amalgame Compiler (amc)"
             VALUE "FileVersion",      "__VERSION_DOTTED__"
             VALUE "InternalName",     "amc"
-            VALUE "LegalCopyright",   "Copyright (C) __YEAR__ Bastien MOUGET. MIT licensed."
+            VALUE "LegalCopyright",   "Copyright (C) __YEAR__ Bastien MOUGET. Apache-2.0 licensed."
             VALUE "OriginalFilename", "amc.exe"
             VALUE "ProductName",      "Amalgame"
             VALUE "ProductVersion",   "__VERSION_DOTTED__"
