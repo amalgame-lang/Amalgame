@@ -92,6 +92,7 @@ consumes it. The legend:
 | `listen` | `[string]` | `[":3000"]` | `MOSAIC_SERVER_LISTEN` | Bind addresses. Multiple = multi-port. |
 | `workers` | `int` | `0` (auto = 2 × CPUs) | `MOSAIC_SERVER_WORKERS` | Worker pool size. *planned (needs amalgame-threading)* |
 | `queue_size` | `int` | `0` (auto = workers × 4) | `MOSAIC_SERVER_QUEUE_SIZE` | Backlog. *planned* |
+| `engine` | `string` | `"mt"` | `MOSAIC_SERVER_ENGINE` | `"mt"` = `WebApp.ServeMtWith` (default, cross-platform), `"async"` = `WebApp.ServeAsyncWith` (Linux only, fiber-per-conn via amalgame-async ≥ v0.2.2). *planned wiring — pre-v0.13.0 apps must call `ServeAsyncWith` directly until the config key lands.* See [docs/proposals/amalgame-async.md](proposals/amalgame-async.md) for the trade-offs (1.5×–9× throughput on I/O-bound handlers, handles 2k concurrent connections where mt collapses at 1k–2k on 2-core boxes) |
 
 ---
 

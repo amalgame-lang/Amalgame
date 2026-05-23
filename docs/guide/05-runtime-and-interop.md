@@ -305,8 +305,32 @@ let len = String.Length(text)         // O(strlen)
 for i in 0..len { /* … */ }            // body is O(1) per iteration
 ```
 
-## Threading
+## Threading & async — external packages
 
-Single-threaded. The GC is configured for the main thread only. If
-you fork or use POSIX threads from the runtime headers, you're on
-your own.
+The bundled runtime is single-threaded by default; the GC is
+configured for the main thread only. Two ecosystem packages take
+care of concurrency so you don't have to hand-roll `@c { … }` blocks
+around pthread / ucontext:
+
+- **[`amalgame-threading`](https://github.com/amalgame-lang/amalgame-threading)**
+  — POSIX threads + Mutex + bounded Channel + `Thread.Spawn /
+  Join / Sleep`. Every spawned thread is registered with bdwgc
+  (via `GC_pthread_create`) so locals stay scannable. Right tool
+  for CPU-bound work that benefits from multi-core.
+- **[`amalgame-async`](https://github.com/amalgame-lang/amalgame-async)**
+  — stackful coroutines on POSIX ucontext, single-threaded
+  round-robin scheduler with parking channels, epoll-driven
+  `WaitFdReadable` / `WaitFdWritable` (Linux), cooperative
+  `FiberCancel` / `IsCancelled`, and an ergonomic
+  `WithTimeout(closure, arg, ms)` helper. Right tool for
+  I/O-bound work — see the bench in
+  [docs/proposals/amalgame-async.md](../proposals/amalgame-async.md)
+  showing 1.5×–9× throughput vs thread-per-conn on HTTP/1.1
+  workloads.
+
+They compose orthogonally (spawn N OS threads, run a scheduler in
+each — M:N is planned for `amalgame-async` v0.4). If you fork or
+spin POSIX threads from your own `@c { … }` blocks without going
+through either package, you're on your own with libgc safety: the
+`GC_pthread_create` wrapper is what keeps the collector aware of
+new threads' stacks.

@@ -709,7 +709,12 @@ non-zero when any error was reported.
   the element type `int` isn't propagated through every method call —
   see [04-stdlib.md](04-stdlib.md#listt) for which methods preserve
   the element type).
-- Spread / rest (`...args`), async / await.
+- Spread / rest (`...args`). (Async / await isn't a *language* feature
+  but the [`amalgame-async`](https://github.com/amalgame-lang/amalgame-async)
+  package gives you the same patterns — `Async.FiberSpawn`,
+  `Async.WithTimeout`, `Async.FiberCancel`. amc-side syntactic sugar
+  is a future desugaring pass; the runtime is stackful so it doesn't
+  need the CPS state-machine transform Rust / C# need.)
 - Same-name list-comprehension nesting (use distinct loop vars).
 
 See [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md) for the full
