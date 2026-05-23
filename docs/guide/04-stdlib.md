@@ -29,6 +29,10 @@ once with `amc package add <shortname>`:
 | `Amalgame.Service`           | `service`          | [amalgame-service](https://github.com/amalgame-lang/amalgame-service)                      |
 | `Amalgame.IO.FileWatcher`    | `io-filewatcher`   | [amalgame-io-filewatcher](https://github.com/amalgame-lang/amalgame-io-filewatcher)        |
 | `Amalgame.Formats.Yaml`      | `yaml`             | [amalgame-yaml](https://github.com/amalgame-lang/amalgame-yaml)                            |
+| `Amalgame.Threading`         | `threading`        | [amalgame-threading](https://github.com/amalgame-lang/amalgame-threading) — pthread Mutex / Channel / Thread.Spawn |
+| `Amalgame.Async`             | `async`            | [amalgame-async](https://github.com/amalgame-lang/amalgame-async) — stackful coroutines (Fiber / Channel / Scheduler) + epoll I/O + cancellation + WithTimeout (Linux) |
+| `Amalgame.Net.Http`          | `net-http`         | [amalgame-net-http](https://github.com/amalgame-lang/amalgame-net-http) — HTTP/1.1 + HTTP/2 (h2c + HTTPS+ALPN) + WebSocket, including `Http1.ServeAsync(With)` (Linux fiber-driven) |
+| `Amalgame.Web`               | `web`              | [amalgame-web](https://github.com/amalgame-lang/amalgame-web) — Mosaic web framework: Router + Sessions + WebContext + 6 `Serve*` entry points |
 
 Each package has its own README documenting its surface; they
 follow the same `Class.Method(args)` style as the bundled stdlib.

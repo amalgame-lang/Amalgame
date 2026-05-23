@@ -42,7 +42,7 @@
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-22 · `amc 0.8.40+` · self-hosted · **test suite migrated to AM bundles via `amc test`**: 325 core + 196 stdlib + 38 amc-new + 12 fmt = **571 PASS + 5 SKIP in ~42s (was ~4m35s)** · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
+> Updated 2026-05-23 · `amc 0.8.45+` · **HTTP/1.1 fiber-driven async stack landed across 16 versions in 2 sessions** (amalgame-async v0.1→v0.2.3, amalgame-net-http v0.9→v0.9.5, amalgame-web v0.12→v0.12.4; full bench + cancellation + graceful shutdown + WithTimeout) · `amc 0.8.40+` · self-hosted · **test suite migrated to AM bundles via `amc test`**: 325 core + 196 stdlib + 38 amc-new + 12 fmt = **571 PASS + 5 SKIP in ~42s (was ~4m35s)** · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
 
 This document is the canonical "what's done, what's next" board.
 For architecture and contribution guidance see
@@ -247,9 +247,76 @@ In rough order of usefulness × effort:
       pending: variadic call sites `f(...args)` and variadic
       param definitions `(...xs: T[])` — both need new
       function-signature syntax (out of MVP scope).
-- [ ] **`async` / `await`** — coroutines via ucontext or setjmp.
-      Substantial: runtime + AST + CGen. Defer until there's a concrete
-      use case.
+- [~] **`async` / `await`** — **complete HTTP/1.1 async stack
+      shipped 2026-05-22 → 2026-05-23 across three packages**.
+      Linux-only (epoll); kqueue/IOCP planned but unshipped.
+      Async sugar in amc itself stays a v0.5+ desugaring pass
+      (trivial because the runtime is stackful — no CPS
+      state-machine to generate). `amc package add web` now
+      pulls everything in transitively.
+
+      **amalgame-async** (5 versions): Fiber/Channel/Scheduler
+      on POSIX ucontext (v0.1.0) → epoll I/O parking (v0.2.0)
+      → critical cross-TU `static` → `weak` symbol fix
+      (v0.2.1, found during Mosaic integration: each .o file had
+      its own `_amasync_sched` so fibers spawned in net-http.o
+      were invisible to FiberCurrentId() in user-app.o, making
+      every request silently sequential at 9× the cost) →
+      cooperative cancellation `FiberCancel` + `IsCancelled`
+      (v0.2.2) → `WithTimeout(closure, arg, ms)` ergonomic
+      helper (v0.2.3). 16/16 tests green.
+
+      **amalgame-net-http** (6 versions): `H1Server_RawFd` /
+      `H1Conn_RawFd` accessors (v0.9.0) → `Http1.ServeAsync`
+      fiber-driven HTTP/1.1 (v0.9.1, async-aware
+      recv/send via `MSG_DONTWAIT` + `WaitFd*` on EAGAIN) →
+      keep-alive across requests on the async path (v0.9.2)
+      → `Http1.ServeAsyncWith(port, cfg, handler)` honoring
+      `HttpServerConfig` (v0.9.3) → per-phase header/body
+      timeouts plumbed into the async recv loop (v0.9.4) →
+      graceful shutdown via `FiberCancel` (v0.9.5, in-flight
+      handlers wake in ~1 ms instead of waiting for their
+      configured 30 s read timeouts).
+
+      **amalgame-web** (5 versions): `WebApp.ServeAsync(port)`
+      drop-in (v0.12.0) → `WebApp.ServeAsyncWith(port, cfg)`
+      (v0.12.2) → transitive dep pins to keep up with the
+      sub-stack (v0.12.1 / v0.12.3 / v0.12.4). The full
+      `Serve / ServeMt / ServeWith / ServeMtWith / ServeAsync
+      / ServeAsyncWith` matrix is now live on `WebApp`.
+
+      **Empirical bench** (100 ms I/O-bound handler, asyncio
+      client, 2-core / 4 GB Linux), `amalgame-net-http/bench/`:
+
+      | N    | `ServeMt`             | `ServeAsync`           |
+      |------|-----------------------|------------------------|
+      | 100  | 1152 ms · 100/100     | **123 ms** · 100/100   |
+      | 500  | 2071 ms · 500/500     | **1374 ms** · 500/500  |
+      | 1000 | 2932 ms · 1000/1000   | **1628 ms** · 1000/1000 |
+      | 2000 | 31220 ms · **1665/2000** ⚠ | **1453 ms · 2000/2000** ✅ |
+
+      ServeMt collapses between 1k–2k concurrent connections
+      on a 2-core box (pthread setup + scheduler contention);
+      ServeAsync handles 2k cleanly in 1.5 s. Throughput 1.5×
+      – 9× across the range. Memory: ~64 KB / fiber eager vs
+      pthread 8 MB lazy.
+
+      Repos: github.com/amalgame-lang/{amalgame-async,
+      amalgame-net-http, amalgame-web}. Design rationale +
+      cross-cutting roadmap in `docs/proposals/amalgame-async.md`.
+
+      **What's still deferred**: `Async.Select` (needs runtime-
+      integrated multi-channel wait queues to avoid the naïve
+      "loser readers consume + discard values" bug — design
+      doc complete, implementation deferred to v0.4 alongside
+      M:N scheduling), kqueue (BSD + macOS) + Windows Fibers /
+      IOCP backends (need platform validation), timer wheel
+      for >1k sleepers, M:N (per-thread scheduler via TLS),
+      Async H2 / Https / Ws / Wss (gated on amalgame-tls
+      fiber-aware I/O), amc-side `async fn` / `await expr`
+      sugar (trivial desugaring to `FiberSpawn` + channel
+      receive; landed as language work when a real Mosaic
+      consumer pushes for it).
 
 ---
 
