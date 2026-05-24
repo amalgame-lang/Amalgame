@@ -1596,20 +1596,29 @@ implementation effort.
           `BackendName()` accessor reports `"inotify"` or
           `"polling"` for diagnostics. Polling stays the fallback
           when `inotify_init` fails (kernel limit, container).
+        - [x] **Rename pairing** (v0.5.0,
+          [release](https://github.com/amalgame-lang/amalgame-io-filewatcher/releases/tag/v0.5.0)).
+          `IN_MOVED_FROM` + `IN_MOVED_TO` events sharing a cookie
+          collapse into one `Renamed` event with both paths (the
+          `WatchEvent.PathOf()` is the old path, `RenamedToOf()`
+          is the new one). Unpaired moves fall back to `Deleted`
+          (escaped the watched tree) / `Created` (moved in from
+          outside). DirectoryWatcher only — FileWatcher single-file
+          can't pair (only one inode watched). Polling backend
+          still surfaces renames as Deleted+Created (the diff has
+          no way to correlate the two paths).
         - [ ] **FSEvents (macOS) + ReadDirectoryChangesW (Windows)**
           — same auto-detect pattern, surface unchanged. Deferred
           to v0.6 (polling fallback works today, just not reactive).
-        - [ ] **Rename pairing** — `IN_MOVED_FROM` + `IN_MOVED_TO`
-          cookies → emit `Renamed` instead of `Deleted` + `Created`.
-          Deferred to v0.5.
         - [ ] **Use cases unblocked** — `amc build --watch`
           arborescent reactive, `amc test --watch`, dev-server hot
           reload, config-file reload across a whole dir, log tail
           tools. Spec ready, depends on the consumer wiring it up.
-      Verified end-to-end: **22 PASS** (7 v1 + 11 v2 + 4 v0.4
-      inotify-specific) in
+      Verified end-to-end: **25 PASS** (7 v1 + 11 v2 + 4 v0.4
+      inotify-specific + 3 v0.5 rename-pairing) in
       `amalgame-io-filewatcher/tests/run_tests.sh` against amc
-      v0.8.47. The 4 v0.4-specific cases SKIP cleanly on non-Linux.
+      v0.8.47. The 7 v0.4/v0.5-specific cases SKIP cleanly on
+      non-Linux.
 - [x] **`Amalgame.Math` advanced — Vec3/Vec4/Mat4 (v0.7.0)** —
       `Amalgame.Math.Vec` ships scalar (no SIMD) implementations
       of `Vec3` (Add/Sub/Scale/Dot/Cross/Length/Normalize/Equals
