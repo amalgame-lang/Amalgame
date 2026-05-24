@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-24T09:56:27+02:00
-Git rev:  f9d32c90905346d0dda8a1e48286b5f18ebaee7d
-Branch:   fix/cross-pkg-enum-dispatch
+Captured: 2026-05-24T10:07:47+02:00
+Git rev:  eb2cf71c68133eb37bfb98e8d795e1937d5cc1f7
+Branch:   chore/bump-0.8.47
 Tests:    (skipped) passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
