@@ -829,15 +829,44 @@ public class Program {
     // will need a richer install story (--runtime, AMC_RUNTIME env
     // var) which is left for a follow-up.
     public static int RunTest(int argc) {
-        var dir = "."
+        var dir       = "."
+        var filterPat = ""
+        var ciMode    = false
+        var listOnly  = false
         var i = 2
         while (i < argc) {
             let a = Args_Get(i)
-            if (String_StartsWith(a, "-")) {
+            if (a == "--filter" && i + 1 < argc) {
+                // Only run *_test.am files whose discovered path
+                // contains <pat> (plain substring, not regex). Lets
+                // you re-run a single failing case without grepping
+                // for the bundle directory: `--filter websocket`.
+                i = i + 1
+                filterPat = Args_Get(i)
+            } else if (a == "--ci") {
+                // Terse output: drop per-file headers + [PASS]/[SKIP]
+                // lines; keep [FAIL], COMPILE-FAIL, and the tally.
+                // Keeps CI logs scannable when nothing's broken.
+                ciMode = true
+            } else if (a == "--list") {
+                // Print discovered test paths (after --filter) and
+                // exit 0 without compiling or running. Useful for
+                // test-explorer UIs and quick sanity-checks.
+                listOnly = true
+            } else if (a == "-h" || a == "--help") {
+                Console.WriteLine("Usage: amc test [<dir>] [options]")
+                Console.WriteLine("  <dir>           Root to discover *_test.am under (default: .)")
+                Console.WriteLine("Options:")
+                Console.WriteLine("  --filter <pat>  Only run tests whose path contains <pat>")
+                Console.WriteLine("  --ci            Terse output (drop PASS/SKIP, keep FAIL + tally)")
+                Console.WriteLine("  --list          Print discovered paths and exit (no compile, no run)")
+                return 0
+            } else if (String_StartsWith(a, "-")) {
                 Console.WriteError("amc test: unknown option '" + a + "'")
                 return 1
+            } else {
+                dir = a
             }
-            dir = a
             i = i + 1
         }
 
@@ -895,20 +924,34 @@ public class Program {
             Console.WriteError(discovered.Stdout)
             return 1
         }
-        let lines: List<string> = String_Split(String_Trim(discovered.Stdout), "\n")
+        let raw: List<string> = String_Split(String_Trim(discovered.Stdout), "\n")
+        // Normalize: trim every entry and drop blanks (String_Split
+        // on "" yields a single empty entry; the `find` trailing
+        // newline can yield one too). Also apply --filter here so
+        // downstream code sees a clean, ready-to-iterate list.
+        let lines:  List<string> = new List<string>()
+        let rawN: int = raw.Count()
+        for ri in 0..rawN {
+            let r = String_Trim(raw.Get(ri))
+            if (String_Length(r) == 0) { continue }
+            if (String_Length(filterPat) > 0 && !String_Contains(r, filterPat)) { continue }
+            lines.Add(r)
+        }
         let nLines = lines.Count()
         if (nLines == 0) {
-            Console.WriteLine("No *_test.am files found under " + dir)
+            if (String_Length(filterPat) > 0) {
+                Console.WriteLine("No *_test.am files matched filter '" + filterPat + "' under " + dir)
+            } else {
+                Console.WriteLine("No *_test.am files found under " + dir)
+            }
             return 0
         }
-        // String_Split on "" returns a single empty entry; treat
-        // that as "no files" too.
-        if (nLines == 1) {
-            let only = String_Trim(lines.Get(0))
-            if (String_Length(only) == 0) {
-                Console.WriteLine("No *_test.am files found under " + dir)
-                return 0
+        // --list: print discovered paths (already filtered) and exit.
+        if (listOnly) {
+            for li in 0..nLines {
+                Console.WriteLine(lines.Get(li))
             }
+            return 0
         }
 
         var amcPath: string = Program.ResolveSelfPath()
@@ -923,7 +966,7 @@ public class Program {
         for li in 0..nLines {
             let path = String_Trim(lines.Get(li))
             if (String_Length(path) == 0) { continue }
-            Console.WriteLine("── " + path)
+            if (!ciMode) { Console.WriteLine("── " + path) }
 
             // Step 1 — amc <test>.am -o <tmp>  → produces <tmp>.c
             let outBin = "/tmp/amc_test_" + String_FromInt(li)
@@ -931,7 +974,8 @@ public class Program {
             let amcCmd = amcPath + " " + path + " -o " + outBin + " --quiet"
             let cr = Process.RunCapture(amcCmd)
             if (cr.Exit != 0) {
-                Console.WriteLine("  [COMPILE-FAIL]")
+                if (ciMode) { Console.WriteLine("  [COMPILE-FAIL] in " + path) }
+                else        { Console.WriteLine("  [COMPILE-FAIL]") }
                 Console.Write(cr.Stdout)
                 compileFail = compileFail + 1
                 continue
@@ -961,7 +1005,8 @@ public class Program {
                 compileCmd = compileCmd + " -c " + outC + " -o " + objOut + " 2>&1"
                 let stageA = Process.RunCapture(compileCmd)
                 if (stageA.Exit != 0) {
-                    Console.WriteLine("  [LINK-FAIL]")
+                    if (ciMode) { Console.WriteLine("  [LINK-FAIL] in " + path) }
+                    else        { Console.WriteLine("  [LINK-FAIL]") }
                     Console.Write(stageA.Stdout)
                     compileFail = compileFail + 1
                     continue
@@ -999,7 +1044,8 @@ public class Program {
             gccCmd = gccCmd + " -o " + outBin + " 2>&1"
             let gcc = Process.RunCapture(gccCmd)
             if (gcc.Exit != 0) {
-                Console.WriteLine("  [LINK-FAIL]")
+                if (ciMode) { Console.WriteLine("  [LINK-FAIL] in " + path) }
+                else        { Console.WriteLine("  [LINK-FAIL]") }
                 Console.Write(gcc.Stdout)
                 compileFail = compileFail + 1
                 continue
@@ -1013,20 +1059,25 @@ public class Program {
             for ln in 0..on {
                 let lineStr = outLines.Get(ln)
                 if (String_StartsWith(lineStr, "[PASS]")) {
-                    Console.WriteLine("  " + lineStr)
+                    if (!ciMode) { Console.WriteLine("  " + lineStr) }
                     pass = pass + 1
                 } else if (String_StartsWith(lineStr, "[FAIL]")) {
+                    // FAILs always surface — print the file path in
+                    // --ci so a CI log scanner can locate the test
+                    // without the per-file header.
+                    if (ciMode) { Console.WriteLine("  [FAIL] in " + path) }
                     Console.WriteLine("  " + lineStr)
                     fail = fail + 1
                 } else if (String_StartsWith(lineStr, "[SKIP]")) {
-                    Console.WriteLine("  " + lineStr)
+                    if (!ciMode) { Console.WriteLine("  " + lineStr) }
                     skip = skip + 1
                 }
             }
             // Surface a non-zero exit even if no tag lines were
             // emitted — covers tests that crash before printing.
             if (rr.Exit != 0 && pass == 0 && fail == 0 && skip == 0) {
-                Console.WriteLine("  [FAIL] <crash> exit=" + String_FromInt(rr.Exit))
+                if (ciMode) { Console.WriteLine("  [FAIL] <crash> in " + path + " exit=" + String_FromInt(rr.Exit)) }
+                else        { Console.WriteLine("  [FAIL] <crash> exit=" + String_FromInt(rr.Exit)) }
                 fail = fail + 1
             }
         }

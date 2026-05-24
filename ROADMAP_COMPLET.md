@@ -328,26 +328,24 @@ marked SKIP in the test bundles (`SKIP_SELFHOST` in the legacy
 list in `tests/core_bundle/core_test.am`) so the suite stays
 green; each one needs its own fix.
 
-- [ ] **Cross-package enum dispatch — `Pkg.EnumKind.Variant`
-      mis-mangled with the consumer's namespace prefix**
-      (surfaced 2026-05-24 while shipping
-      amalgame-io-filewatcher v0.2.0). A package declares
-      `public enum X { A, B, C }` in `namespace Foo.Bar`; the
-      consumer in `namespace App` writes `X.A` and cgen emits
-      `App_X_A` instead of `Foo_Bar_X_A`. Link fails with
-      "undefined reference to `App_X_A`". The PR #521 fix for
-      cross-package CLASS dispatch (`ExternalClassMangled`
-      consulted before `SymName`) didn't wire the same path for
-      ENUM_DECL. Symmetric fix expected: a similar lookup against
-      external programs' enum tables in `EmitCalleeStr`'s
-      MEMBER-on-IDENTIFIER branch (~10 LoC in
-      `src/generator/c_gen.am`). **Workaround in the meantime**
-      (used by `amalgame-io-filewatcher` and recommended for any
-      package wanting to expose an enum to consumers): model the
-      enum as a `public class` with static int methods
-      (`Created() / Modified() / …`) — those go through the
-      already-fixed cross-package static-call path. Call site
-      becomes `WatchEventKind.Created()` (parens needed).
+- [x] **Cross-package enum dispatch — `Pkg.EnumKind.Variant`
+      mis-mangled with the consumer's namespace prefix** —
+      **fixed 2026-05-24** (amc v0.8.47, PR #535). The
+      MEMBER-on-IDENTIFIER branches of both `EmitExprStr` (bare
+      variant access `X.A`) and `EmitCalleeStr` (algebraic enum
+      constructor `Shape.Circle(5)`) now consult
+      `ExternalEnumMangled(tname)` before falling through to
+      `SymName(tname)`, symmetric to PR #521's
+      `ExternalClassMangled` lookup for CLASS dispatch. A
+      consumer in `namespace App` writing `WatchEventKind.Created`
+      against a package's `public enum WatchEventKind` (declared
+      in `namespace Foo.Bar`) now correctly lowers to
+      `Foo_Bar_WatchEventKind_Created` instead of
+      `App_WatchEventKind_Created`. ~20 LoC in
+      `src/generator/c_gen.am`. Verified end-to-end by
+      `amalgame-io-filewatcher v0.3.0`, which migrated
+      `WatchEventKind` from the class-with-static-int-methods
+      workaround back to a real enum.
 
 - [x] **Facade-package ABI bug — same-class static dispatch
       vs PkgClassMangledPrefix** — **fixed 2026-05-19**.
