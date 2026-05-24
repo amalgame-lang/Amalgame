@@ -1,0 +1,172 @@
+namespace Amalgame.Math
+
+import Amalgame.Collections
+
+// ═══════════════════════════════════════════════════════
+//  math.am — Math constants + functions (post-v0.7.5 migration)
+// ═══════════════════════════════════════════════════════
+//
+// Pure-Amalgame facade replacing `runtime/Amalgame_Math.h`. The
+// `@c { … }` blocks delegate to libm primitives that have no
+// AM equivalent (`sqrt`, `sin`, `cos`, `pow`, …); the rest is
+// Amalgame proper (`Gcd`, `Lcm`, `AbsI`, `IsPrime`, `ApproxEq`,
+// `MinF` / `MaxF` and friends).
+//
+// Symbol mangling: `Math.Sqrt(x)` lowers to
+// `Amalgame_Math_Math_Sqrt(x)` via the standard package-class
+// namespace path — no isCoreStdlib short-circuit anymore. Callers
+// of the old flat `Math_Sqrt(x)` form must migrate to the
+// qualified spelling.
+//
+// The LCG primitives (Math_Random / Math_SeedRandom / Math_RandomInt)
+// from the v0.5-era runtime header are gone — the Amalgame.Random
+// PCG-32 stream + crypto entropy facade replaces them.
+
+@c {
+    #include <math.h>
+    #define AMALGAME_MATH_PI    3.14159265358979323846
+    #define AMALGAME_MATH_E     2.71828182845904523536
+    #define AMALGAME_MATH_TAU   6.28318530717958647692
+    #define AMALGAME_MATH_SQRT2 1.41421356237309504880
+    #define AMALGAME_MATH_LN2   0.69314718055994530942
+    #define AMALGAME_MATH_LN10  2.30258509299404568402
+    #define AMALGAME_MATH_INF   (1.0 / 0.0)
+}
+
+public class Math {
+    // ─── Constants ──────────────────────────────────
+    public static float PI()    { @c { return AMALGAME_MATH_PI; } }
+    public static float E()     { @c { return AMALGAME_MATH_E; } }
+    public static float TAU()   { @c { return AMALGAME_MATH_TAU; } }
+    public static float SQRT2() { @c { return AMALGAME_MATH_SQRT2; } }
+    public static float LN2()   { @c { return AMALGAME_MATH_LN2; } }
+    public static float LN10()  { @c { return AMALGAME_MATH_LN10; } }
+    public static float INF()   { @c { return AMALGAME_MATH_INF; } }
+
+    // ─── Basic ──────────────────────────────────────
+    public static float Abs(x: float)               { @c { return fabs(x); } }
+    public static float Sqrt(x: float)              { @c { return sqrt(x); } }
+    public static float Cbrt(x: float)              { @c { return cbrt(x); } }
+    public static float Pow(base: float, exp: float) { @c { return pow(base, exp); } }
+    public static float Exp(x: float)               { @c { return exp(x); } }
+    public static float Log(x: float)               { @c { return log(x); } }
+    public static float Log2(x: float)              { @c { return log2(x); } }
+    public static float Log10(x: float)             { @c { return log10(x); } }
+
+    // ─── Rounding ───────────────────────────────────
+    public static float Floor(x: float) { @c { return floor(x); } }
+    public static float Ceil(x: float)  { @c { return ceil(x); } }
+    public static float Round(x: float) { @c { return round(x); } }
+    public static float Trunc(x: float) { @c { return trunc(x); } }
+
+    // ─── Min / Max / Clamp ──────────────────────────
+    public static float MaxF(a: float, b: float) {
+        if (a > b) { return a }
+        return b
+    }
+    public static float MinF(a: float, b: float) {
+        if (a < b) { return a }
+        return b
+    }
+    public static int MaxI(a: int, b: int) {
+        if (a > b) { return a }
+        return b
+    }
+    public static int MinI(a: int, b: int) {
+        if (a < b) { return a }
+        return b
+    }
+    public static float ClampF(v: float, lo: float, hi: float) {
+        if (v < lo) { return lo }
+        if (v > hi) { return hi }
+        return v
+    }
+    public static int ClampI(v: int, lo: int, hi: int) {
+        if (v < lo) { return lo }
+        if (v > hi) { return hi }
+        return v
+    }
+
+    // ─── Sign ───────────────────────────────────────
+    public static int Sign(x: float) {
+        if (x > 0.0) { return 1 }
+        if (x < 0.0) { return -1 }
+        return 0
+    }
+    public static float CopySign(mag: float, sign: float) {
+        @c { return copysign(mag, sign); }
+    }
+
+    // ─── Trigonometry ───────────────────────────────
+    public static float Sin(x: float)   { @c { return sin(x); } }
+    public static float Cos(x: float)   { @c { return cos(x); } }
+    public static float Tan(x: float)   { @c { return tan(x); } }
+    public static float Asin(x: float)  { @c { return asin(x); } }
+    public static float Acos(x: float)  { @c { return acos(x); } }
+    public static float Atan(x: float)  { @c { return atan(x); } }
+    public static float Atan2(y: float, x: float) { @c { return atan2(y, x); } }
+    public static float Sinh(x: float)  { @c { return sinh(x); } }
+    public static float Cosh(x: float)  { @c { return cosh(x); } }
+    public static float Tanh(x: float)  { @c { return tanh(x); } }
+
+    public static float ToRadians(deg: float) {
+        return deg * Math.PI() / 180.0
+    }
+    public static float ToDegrees(rad: float) {
+        return rad * 180.0 / Math.PI()
+    }
+
+    // ─── Integer math ───────────────────────────────
+    public static int AbsI(x: int) {
+        if (x < 0) { return -x }
+        return x
+    }
+    public static int PowI(base: int, e: int) {
+        var r: int = 1
+        for i in 0..e {
+            r = r * base
+        }
+        return r
+    }
+    public static int Gcd(a: int, b: int) {
+        var aa: int = a
+        var bb: int = b
+        while (bb != 0) {
+            let t: int = bb
+            bb = aa % bb
+            aa = t
+        }
+        if (aa < 0) { return -aa }
+        return aa
+    }
+    public static int Lcm(a: int, b: int) {
+        let g: int = Math.Gcd(a, b)
+        if (g == 0) { return 0 }
+        let q: int = a / g
+        let r: int = q * b
+        return Math.AbsI(r)
+    }
+    public static bool IsPrime(n: int) {
+        if (n < 2) { return false }
+        if (n == 2) { return true }
+        if (n % 2 == 0) { return false }
+        var i: int = 3
+        while (i * i <= n) {
+            if (n % i == 0) { return false }
+            i = i + 2
+        }
+        return true
+    }
+
+    // ─── Floating-point checks ──────────────────────
+    public static bool IsNaN(x: float)    { @c { return isnan(x); } }
+    public static bool IsInf(x: float)    { @c { return isinf(x); } }
+    public static bool IsFinite(x: float) { @c { return isfinite(x); } }
+    public static bool ApproxEq(a: float, b: float, eps: float) {
+        let d: float = a - b
+        if (d < 0.0) {
+            return -d <= eps
+        }
+        return d <= eps
+    }
+}

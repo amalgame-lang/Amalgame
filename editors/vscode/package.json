@@ -57,7 +57,7 @@
         "amalgame.dapBridge": {
           "type": "boolean",
           "default": true,
-          "description": "Run `amc dap` in bridge mode (`--bridge`). The bridge translates DAP↔gdb-MI in-process so List/Map/Set/Closure variables pretty-print with summaries + drill-down, and runtime helper frames (Amalgame_*, _runtime_*, GC_*) are hidden from the call stack. Disable to fall back to the v0.8.0 `execvp` proxy (lldb-dap on macOS, gdb --dap on Linux gdb ≥ 14)."
+          "description": "Run `amc dap` in bridge mode (default since amc Phase 7 / post-v0.8.46). The bridge translates DAP↔gdb-MI in-process so List/Map/Set/Closure variables pretty-print with summaries + drill-down, and runtime helper frames (Amalgame_*, _runtime_*, GC_*) are hidden from the call stack. Disable to opt back into the v0.8.0 `execvp` proxy via `amc dap --raw` (lldb-dap on macOS, gdb --dap on Linux gdb ≥ 14)."
         },
         "amalgame.dapShowRuntime": {
           "type": "boolean",

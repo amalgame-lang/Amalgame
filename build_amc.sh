@@ -44,10 +44,12 @@ AMC_SOURCES="src/lexer/token.am \
 #
 # If neither exists, build snapshot/amc from the tracked snapshot/amc_lib.c:
 #   gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lz -o snapshot/amc
-# Pre-flight: warn early if libgc-dev / libcurl headers are missing.
-# Both are required by the runtime — the snapshot-bootstrap recovery
-# step below will fail with "fatal error: gc.h" otherwise, which is
-# the single most common bootstrap failure on a fresh machine.
+# Pre-flight: warn early if libgc-dev headers are missing. It's the
+# only runtime dep amc still links against (libcurl was dropped in
+# v0.8.31 when HTTP moved to the amalgame-net-http external package).
+# Without <gc.h> the snapshot-bootstrap recovery step below fails
+# with "fatal error: gc.h", which is the single most common bootstrap
+# failure on a fresh machine.
 if ! echo '#include <gc.h>' | gcc -E -x c - >/dev/null 2>&1; then
     echo "WARNING: <gc.h> not found — libgc-dev / bdw-gc may be missing." >&2
     echo "         Debian/Ubuntu: apt install libgc-dev" >&2
@@ -85,7 +87,6 @@ else
     echo "                (Fedora:        dnf install gc-devel)" >&2
     echo "                (macOS Homebrew: brew install bdw-gc)" >&2
     echo "                (MSYS2:         pacman -S mingw-w64-x86_64-gc)" >&2
-    echo "  • libcurl development headers (libcurl4-openssl-dev / curl-devel / curl)" >&2
     echo "" >&2
     echo "Then:" >&2
     echo "  gcc -O2 -Iruntime \\" >&2

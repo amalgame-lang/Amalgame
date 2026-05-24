@@ -21,19 +21,20 @@ known-good snapshot:
 From a clean clone:
 
 ```bash
-gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc
 ./build_amc.sh
 ```
 
 Dependencies (Linux):
 
 - gcc
-- libgc-dev
-- libcurl4-openssl-dev (for the Amalgame stdlib's Net module)
+- libgc-dev (Boehm GC — the only runtime dep since v0.8.31; HTTP
+  moved to the `amalgame-net-http` external package, dropping the
+  libcurl link)
 
-macOS uses `brew install bdw-gc curl`; Windows uses MSYS2 MinGW64
-(`mingw-w64-x86_64-{gcc,gc,curl}`). The same `snapshot/amc_lib.c` is
-the cross-platform entry point everywhere.
+macOS uses `brew install bdw-gc`; Windows uses MSYS2 MinGW64
+(`mingw-w64-x86_64-{gcc,gc}`). The same `snapshot/amc_lib.c` is the
+cross-platform entry point everywhere.
 
 ## `./build_amc.sh` — self-host build
 
@@ -43,7 +44,7 @@ The five-second loop:
 Step 1   ./amc src/lexer/*.am src/parser/*.am … src/generator/gen_test.am -o gen_test
          gcc -O2 -Iruntime gen_test.c -o gen_test
 Step 2   ./gen_test                 # generates src/amc_lib.c (and inspection bundles)
-Step 3   gcc -Iruntime src/amc_lib.c -lgc -lm -lcurl -o amc
+Step 3   gcc -Iruntime src/amc_lib.c -lgc -lm -o amc
 ```
 
 Notes:
@@ -71,29 +72,32 @@ Re-running `./build_amc.sh` is always safe.
 
 ## Tests — AM bundles via `amc test`
 
-Since 2026-05-22 the test suite lives as discoverable `*_test.am`
-bundles driven by `amc test`. Each bundle compiles its samples once
-and grep-checks the captured stdout for every assertion — about 6×
-faster than the legacy bash runners (stdlib alone: 3m34s → 8s).
+Depuis 2026-05-22 la suite de tests vit comme des bundles `*_test.am`
+auto-découverts par `amc test`. Chaque bundle compile ses samples une
+seule fois et grep-vérifie la stdout capturée pour chaque assertion —
+~6× plus rapide que les anciens runners bash (stdlib : 3m34s → 8s).
+Les runners bash legacy ont été supprimés le 2026-05-24 ; `amc test`
+est désormais le seul chemin.
 
 | Bundle                            | Cas  | Couverture                                       |
 | --------------------------------- | ---- | ------------------------------------------------ |
 | `tests/fmt/fmt_test.am`           | 12   | Formatter idempotence + semantic preservation    |
 | `tests/amc_new/amc_new_test.am`   | 38   | `amc new` scaffolder smoke tests                 |
 | `tests/stdlib_bundle/stdlib_test.am` | 196  | IO/String/Collections/Json/Toml/Path/MsgPack/PR + 2 e2e |
-| `tests/core_bundle/core_test.am`  | 325  | Core lang, namespace, interfaces, enums, lambda, LSP, DAP, LLM tooling |
-| **Total**                         | **571** | + 5 SKIP (HTTP moved to amalgame-net-http)  |
+| `tests/core_bundle/core_test.am`  | 332  | Core lang, namespace, interfaces, enums, lambda, LSP, DAP, LLM tooling |
+| **Total**                         | **578** | + 5 SKIP (HTTP moved to amalgame-net-http)  |
 
 ```bash
+./amc test ./tests/                 # tout (~42s) — auto-discovery
 ./amc test ./tests/core_bundle/     # une suite (29s)
 ./amc test ./tests/stdlib_bundle/   # stdlib uniquement (8s)
-./tests/run_all_tests.sh            # tout (~42s) — wrapper qui boucle sur les 4 bundles
-                                    # ET lance les bash runners en filet de sécurité
+./tests/run_all_tests.sh            # wrapper d'une ligne autour de `amc test ./tests/`
 ```
 
-Les runners bash (`tests/run_*.sh`) sont conservés comme filet
-pendant la transition et seront supprimés après quelques releases
-stables. Voir `ROADMAP_COMPLET.md` pour le plan de cleanup.
+`amc test` prune les répertoires `fixtures/` lors du crawl : les
+fichiers fixture (LSP workspace, test-runner self-test) restent
+accessibles via un chemin explicite (`amc test ./tests/fixtures/<x>/`)
+mais ne sont pas auto-exécutés depuis la racine.
 
 ## Continuous integration
 
@@ -121,7 +125,7 @@ portable and produces a working binary.
 | publish       | aggregates checksums, creates a GitHub Release           |
 
 The Windows zip bundles the MinGW DLLs the binary actually links
-against (libgc, libcurl, libgcc_s_seh, libwinpthread, etc.) — users
+against (libgc, libgcc_s_seh, libwinpthread, etc.) — users
 install the zip and run `amc.exe` without any external dependency.
 
 Trigger a release:
@@ -203,14 +207,20 @@ echo -e 'Content-Length: 41\r\n\r\n{"jsonrpc":"2.0","id":1,"method":"initialize"
 
 ## Debugging `.am` programs (`amc dap`, since v0.8.0)
 
-`amc dap` is a Debug Adapter Protocol proxy. It detects a
-DAP-native backend on the host (`lldb-dap` from LLVM 18+ today,
-`gdb --dap` from gdb 14+ planned for v0.8.1) and `execvp()`s
-into it. stdin/stdout — already wired by the DAP client to its
-JSON-RPC pipes — flow directly to the backend with no in-amc
-copy. No source map files: cgen emits `#line N "foo.am"`
-directives so DWARF carries the `.am` filenames and line
-numbers natively.
+`amc dap` is a Debug Adapter Protocol server. Since Phase 7
+(post-v0.8.46) it defaults to **bridge mode**: amc spawns
+`gdb --interpreter=mi3` itself and translates DAP↔gdb-MI
+in-process so `AmalgameList*` / `AmalgameMap*` / `AmalgameSet*`
+/ `AmalgameClosure*` variables pretty-print with summaries and
+expandable children, and runtime helper frames (`Amalgame_*`,
+`_runtime_*`, `GC_*`) are hidden from the call stack. On hosts
+without gdb (stock macOS, etc.), `amc dap` falls back
+transparently to the legacy proxy. `amc dap --raw` is the
+explicit opt-out: it `execvp()`s into the host's DAP-native
+backend (`lldb-dap` on macOS, `gdb --dap` on Linux/MSYS2 with
+gdb ≥ 14), exactly like v0.8.0 used to. No source map files
+either way: cgen emits `#line N "foo.am"` directives so DWARF
+carries the `.am` filenames and line numbers natively.
 
 ### Prerequisites
 
@@ -259,15 +269,21 @@ instruction address with no extra setup.
 
 ### Strategy & limits
 
-v0.8.0 ships the transparent proxy (Approche C in
-`ROADMAP_COMPLET.md`). It's intentionally minimal — no
-Amalgame-specific pretty-printers, no frame filtering, no
-closure decoding. The `AmalgameList*` / `AmalgameMap*` types
-show as opaque pointers; runtime frames (`Amalgame_*` /
-`_runtime.h`) interleave with user frames in the stack trace.
+The Phase 7 flip (post-v0.8.46) made the in-process bridge
+("Approche A") the default. amc spawns
+`gdb --interpreter=mi3 --nx --quiet` via fork + pipe + `poll()`,
+parses MI3 records, and rewrites traffic in both directions:
 
-The post-v0.8.x trajectory ("Approche A") replaces the
-`execvp` with a fork + pipe + `poll()` bridge and rewrites
-messages on the way through — pretty-print collections, filter
-runtime frames, decode closures. The proxy stays as a fallback
-(`amc dap --raw` is the planned flag).
+- `AmalgameList*` displays as `List[N]` with children `[0]`…
+  `[N-1]`; `AmalgameMap*` / `AmalgameSet*` mirror with their
+  sizes; `AmalgameClosure*` displays as `λ env=0x…`.
+- Stack frames matching `^Amalgame_`, `^_runtime_`, `^GC_` are
+  filtered out; `stepIn` auto-steps until it lands on a visible
+  frame (8-hop budget) so users never get stranded mid-runtime.
+- `amc dap --show-runtime` keeps every frame visible.
+
+The legacy v0.8.0 proxy (Approche C) is still available as
+`amc dap --raw`: a transparent `execvp` to `lldb-dap` on macOS
+or `gdb --dap` on Linux/MSYS2. Useful for users hitting a
+bridge regression, or for hosts where gdb isn't installed
+(amc auto-falls-back in that case — no flag needed).
