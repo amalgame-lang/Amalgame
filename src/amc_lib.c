@@ -132,6 +132,8 @@ Amalgame_Compiler_AstNode* Amalgame_Compiler_Ast_InlineCLink(code_string lib, i6
 Amalgame_Compiler_Lexer* Amalgame_Compiler_Lexer_new(code_string source, code_string filename);
 static code_bool Amalgame_Compiler_Lexer_IsSpace(Amalgame_Compiler_Lexer* self, code_string c);
 static code_bool Amalgame_Compiler_Lexer_IsDigit(Amalgame_Compiler_Lexer* self, code_string c);
+static code_bool Amalgame_Compiler_Lexer_IsHexDigit(Amalgame_Compiler_Lexer* self, code_string c);
+static code_bool Amalgame_Compiler_Lexer_IsBinDigit(Amalgame_Compiler_Lexer* self, code_string c);
 static code_bool Amalgame_Compiler_Lexer_IsAlpha(Amalgame_Compiler_Lexer* self, code_string c);
 static code_bool Amalgame_Compiler_Lexer_IsAlphaNum(Amalgame_Compiler_Lexer* self, code_string c);
 static code_string Amalgame_Compiler_Lexer_CharAt(Amalgame_Compiler_Lexer* self, i64 i);
@@ -1588,6 +1590,8 @@ struct _Amalgame_Compiler_Lexer {
 
 static code_bool Amalgame_Compiler_Lexer_IsSpace(Amalgame_Compiler_Lexer* self, code_string c);
 static code_bool Amalgame_Compiler_Lexer_IsDigit(Amalgame_Compiler_Lexer* self, code_string c);
+static code_bool Amalgame_Compiler_Lexer_IsHexDigit(Amalgame_Compiler_Lexer* self, code_string c);
+static code_bool Amalgame_Compiler_Lexer_IsBinDigit(Amalgame_Compiler_Lexer* self, code_string c);
 static code_bool Amalgame_Compiler_Lexer_IsAlpha(Amalgame_Compiler_Lexer* self, code_string c);
 static code_bool Amalgame_Compiler_Lexer_IsAlphaNum(Amalgame_Compiler_Lexer* self, code_string c);
 static code_string Amalgame_Compiler_Lexer_CharAt(Amalgame_Compiler_Lexer* self, i64 i);
@@ -1637,991 +1641,1045 @@ static code_bool Amalgame_Compiler_Lexer_IsDigit(Amalgame_Compiler_Lexer* self, 
     return String_Contains("0123456789", c);
 }
 
-static code_bool Amalgame_Compiler_Lexer_IsAlpha(Amalgame_Compiler_Lexer* self, code_string c) {
+static code_bool Amalgame_Compiler_Lexer_IsHexDigit(Amalgame_Compiler_Lexer* self, code_string c) {
     #line 33 "./src/lexer/lexer.am"
+    return String_Contains("0123456789abcdefABCDEF", c);
+}
+
+static code_bool Amalgame_Compiler_Lexer_IsBinDigit(Amalgame_Compiler_Lexer* self, code_string c) {
+    #line 37 "./src/lexer/lexer.am"
+    return (code_string_equals(c, "0")) || (code_string_equals(c, "1"));
+}
+
+static code_bool Amalgame_Compiler_Lexer_IsAlpha(Amalgame_Compiler_Lexer* self, code_string c) {
+    #line 41 "./src/lexer/lexer.am"
     return String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", c);
 }
 
 static code_bool Amalgame_Compiler_Lexer_IsAlphaNum(Amalgame_Compiler_Lexer* self, code_string c) {
-    #line 37 "./src/lexer/lexer.am"
+    #line 45 "./src/lexer/lexer.am"
     return Amalgame_Compiler_Lexer_IsAlpha(self, c) || Amalgame_Compiler_Lexer_IsDigit(self, c);
 }
 
 static code_string Amalgame_Compiler_Lexer_CharAt(Amalgame_Compiler_Lexer* self, i64 i) {
-    #line 41 "./src/lexer/lexer.am"
+    #line 49 "./src/lexer/lexer.am"
     if ((i < 0) || (i >= String_Length(self->Source))) {
         return "";
     }
-    #line 42 "./src/lexer/lexer.am"
+    #line 50 "./src/lexer/lexer.am"
     return String_Substring(self->Source, i, 1);
 }
 
 static void Amalgame_Compiler_Lexer_AddToken(Amalgame_Compiler_Lexer* self, Amalgame_Compiler_TokenType t, code_string value) {
-    #line 46 "./src/lexer/lexer.am"
+    #line 54 "./src/lexer/lexer.am"
     Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(t, value, self->Line, self->Column, self->Filename);
-    #line 47 "./src/lexer/lexer.am"
+    #line 55 "./src/lexer/lexer.am"
     AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
 }
 
 static code_string Amalgame_Compiler_Lexer_Advance(Amalgame_Compiler_Lexer* self) {
-    #line 51 "./src/lexer/lexer.am"
+    #line 59 "./src/lexer/lexer.am"
     code_string ch = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-    #line 52 "./src/lexer/lexer.am"
+    #line 60 "./src/lexer/lexer.am"
     self->Pos = (self->Pos + 1);
-    #line 53 "./src/lexer/lexer.am"
+    #line 61 "./src/lexer/lexer.am"
     self->Column = (self->Column + 1);
-    #line 54 "./src/lexer/lexer.am"
+    #line 62 "./src/lexer/lexer.am"
     return ch;
 }
 
 static void Amalgame_Compiler_Lexer_SkipWhitespace(Amalgame_Compiler_Lexer* self) {
-    #line 58 "./src/lexer/lexer.am"
+    #line 66 "./src/lexer/lexer.am"
     while (self->Pos < String_Length(self->Source)) {
-        #line 59 "./src/lexer/lexer.am"
+        #line 67 "./src/lexer/lexer.am"
         code_string c = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-        #line 60 "./src/lexer/lexer.am"
+        #line 68 "./src/lexer/lexer.am"
         if (Amalgame_Compiler_Lexer_IsSpace(self, c)) {
-            #line 61 "./src/lexer/lexer.am"
+            #line 69 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
         } else {
-            #line 63 "./src/lexer/lexer.am"
+            #line 71 "./src/lexer/lexer.am"
             break;
         }
     }
 }
 
 static void Amalgame_Compiler_Lexer_ReadLineComment(Amalgame_Compiler_Lexer* self) {
-    #line 69 "./src/lexer/lexer.am"
+    #line 77 "./src/lexer/lexer.am"
     i64 startLine = self->Line;
-    #line 70 "./src/lexer/lexer.am"
+    #line 78 "./src/lexer/lexer.am"
     i64 startCol = self->Column;
-    #line 71 "./src/lexer/lexer.am"
+    #line 79 "./src/lexer/lexer.am"
     i64 start = self->Pos;
-    #line 72 "./src/lexer/lexer.am"
+    #line 80 "./src/lexer/lexer.am"
     while ((self->Pos < String_Length(self->Source)) && (!code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\n"))) {
-        #line 73 "./src/lexer/lexer.am"
+        #line 81 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_Advance(self);
     }
-    #line 75 "./src/lexer/lexer.am"
+    #line 83 "./src/lexer/lexer.am"
     code_string raw = String_Substring(self->Source, start, self->Pos - start);
-    #line 76 "./src/lexer/lexer.am"
+    #line 84 "./src/lexer/lexer.am"
     Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_COMMENT, raw, startLine, startCol, self->Filename);
-    #line 77 "./src/lexer/lexer.am"
+    #line 85 "./src/lexer/lexer.am"
     AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
 }
 
 AmalgameList* Amalgame_Compiler_Lexer_Tokenize(Amalgame_Compiler_Lexer* self) {
-    #line 81 "./src/lexer/lexer.am"
+    #line 89 "./src/lexer/lexer.am"
     while (self->Pos < String_Length(self->Source)) {
-        #line 82 "./src/lexer/lexer.am"
+        #line 90 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_SkipWhitespace(self);
-        #line 83 "./src/lexer/lexer.am"
+        #line 91 "./src/lexer/lexer.am"
         if (self->Pos >= String_Length(self->Source)) {
             break;
         }
-        #line 84 "./src/lexer/lexer.am"
+        #line 92 "./src/lexer/lexer.am"
         code_string ch = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-        #line 85 "./src/lexer/lexer.am"
+        #line 93 "./src/lexer/lexer.am"
         if ((code_string_equals(ch, "/")) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "/"))) {
-            #line 86 "./src/lexer/lexer.am"
+            #line 94 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_ReadLineComment(self);
         } else if (code_string_equals(ch, "\n")) {
-            #line 88 "./src/lexer/lexer.am"
+            #line 96 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_NEWLINE, "\\n");
-            #line 89 "./src/lexer/lexer.am"
+            #line 97 "./src/lexer/lexer.am"
             self->Pos = (self->Pos + 1);
-            #line 90 "./src/lexer/lexer.am"
+            #line 98 "./src/lexer/lexer.am"
             self->Line = (self->Line + 1);
-            #line 91 "./src/lexer/lexer.am"
+            #line 99 "./src/lexer/lexer.am"
             self->Column = 1;
         } else if (code_string_equals(ch, "\"")) {
-            #line 93 "./src/lexer/lexer.am"
+            #line 101 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_ReadString(self);
         } else if (Amalgame_Compiler_Lexer_IsDigit(self, ch)) {
-            #line 95 "./src/lexer/lexer.am"
+            #line 103 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_ReadNumber(self);
         } else if (Amalgame_Compiler_Lexer_IsAlpha(self, ch)) {
-            #line 97 "./src/lexer/lexer.am"
+            #line 105 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_ReadIdentifier(self);
         } else if (Amalgame_Compiler_Lexer_IsSpace(self, ch)) {
-            #line 99 "./src/lexer/lexer.am"
+            #line 107 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
         } else {
-            #line 101 "./src/lexer/lexer.am"
+            #line 109 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_ReadSymbol(self);
         }
     }
-    #line 104 "./src/lexer/lexer.am"
+    #line 112 "./src/lexer/lexer.am"
     Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_EOF, "");
-    #line 105 "./src/lexer/lexer.am"
+    #line 113 "./src/lexer/lexer.am"
     return self->Tokens;
 }
 
 static void Amalgame_Compiler_Lexer_ReadString(Amalgame_Compiler_Lexer* self) {
-    #line 109 "./src/lexer/lexer.am"
+    #line 117 "./src/lexer/lexer.am"
     Amalgame_Compiler_Lexer_Advance(self);
-    #line 112 "./src/lexer/lexer.am"
+    #line 120 "./src/lexer/lexer.am"
     if ((code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\"")) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "\""))) {
-        #line 113 "./src/lexer/lexer.am"
+        #line 121 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_Advance(self);
-        #line 114 "./src/lexer/lexer.am"
+        #line 122 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_Advance(self);
-        #line 115 "./src/lexer/lexer.am"
+        #line 123 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_ReadTripleQuoted(self);
-        #line 116 "./src/lexer/lexer.am"
+        #line 124 "./src/lexer/lexer.am"
         return;
     }
-    #line 118 "./src/lexer/lexer.am"
+    #line 126 "./src/lexer/lexer.am"
     code_string value = "";
-    #line 119 "./src/lexer/lexer.am"
+    #line 127 "./src/lexer/lexer.am"
     while ((self->Pos < String_Length(self->Source)) && (!code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\""))) {
-        #line 120 "./src/lexer/lexer.am"
+        #line 128 "./src/lexer/lexer.am"
         code_string c = Amalgame_Compiler_Lexer_Advance(self);
-        #line 121 "./src/lexer/lexer.am"
+        #line 129 "./src/lexer/lexer.am"
         if (code_string_equals(c, "\\")) {
-            #line 122 "./src/lexer/lexer.am"
+            #line 130 "./src/lexer/lexer.am"
             code_string esc = Amalgame_Compiler_Lexer_Advance(self);
-            #line 123 "./src/lexer/lexer.am"
+            #line 131 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "n")) {
                 value = (code_string_concat(value, "\n"));
             }
-            #line 124 "./src/lexer/lexer.am"
+            #line 132 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "t")) {
                 value = (code_string_concat(value, "\t"));
             }
-            #line 131 "./src/lexer/lexer.am"
+            #line 139 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "r")) {
                 value = (code_string_concat(value, String_FromByte(13)));
             }
-            #line 132 "./src/lexer/lexer.am"
+            #line 140 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "\"")) {
                 value = (code_string_concat(value, "\""));
             }
-            #line 133 "./src/lexer/lexer.am"
+            #line 141 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "\\")) {
                 value = (code_string_concat(value, "\\"));
             }
-            #line 135 "./src/lexer/lexer.am"
+            #line 143 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "x")) {
-                #line 136 "./src/lexer/lexer.am"
+                #line 144 "./src/lexer/lexer.am"
                 code_string h1 = Amalgame_Compiler_Lexer_Advance(self);
-                #line 137 "./src/lexer/lexer.am"
+                #line 145 "./src/lexer/lexer.am"
                 code_string h2 = Amalgame_Compiler_Lexer_Advance(self);
-                #line 138 "./src/lexer/lexer.am"
+                #line 146 "./src/lexer/lexer.am"
                 i64 byte = (Amalgame_Compiler_Lexer_HexNibble(self, h1) * 16) + Amalgame_Compiler_Lexer_HexNibble(self, h2);
-                #line 139 "./src/lexer/lexer.am"
+                #line 147 "./src/lexer/lexer.am"
                 value = (code_string_concat(value, String_FromByte(byte)));
             }
-            #line 142 "./src/lexer/lexer.am"
+            #line 150 "./src/lexer/lexer.am"
             if (code_string_equals(esc, "u")) {
-                #line 143 "./src/lexer/lexer.am"
+                #line 151 "./src/lexer/lexer.am"
                 code_string u1 = Amalgame_Compiler_Lexer_Advance(self);
-                #line 144 "./src/lexer/lexer.am"
+                #line 152 "./src/lexer/lexer.am"
                 code_string u2 = Amalgame_Compiler_Lexer_Advance(self);
-                #line 145 "./src/lexer/lexer.am"
+                #line 153 "./src/lexer/lexer.am"
                 code_string u3 = Amalgame_Compiler_Lexer_Advance(self);
-                #line 146 "./src/lexer/lexer.am"
+                #line 154 "./src/lexer/lexer.am"
                 code_string u4 = Amalgame_Compiler_Lexer_Advance(self);
-                #line 147 "./src/lexer/lexer.am"
+                #line 155 "./src/lexer/lexer.am"
                 i64 cp = (((Amalgame_Compiler_Lexer_HexNibble(self, u1) * 4096) + (Amalgame_Compiler_Lexer_HexNibble(self, u2) * 256)) + (Amalgame_Compiler_Lexer_HexNibble(self, u3) * 16)) + Amalgame_Compiler_Lexer_HexNibble(self, u4);
-                #line 148 "./src/lexer/lexer.am"
+                #line 156 "./src/lexer/lexer.am"
                 value = (code_string_concat(value, String_FromCodepoint(cp)));
             }
         } else {
-            #line 151 "./src/lexer/lexer.am"
+            #line 159 "./src/lexer/lexer.am"
             value = (code_string_concat(value, c));
         }
     }
-    #line 154 "./src/lexer/lexer.am"
+    #line 162 "./src/lexer/lexer.am"
     if (self->Pos < String_Length(self->Source)) {
         Amalgame_Compiler_Lexer_Advance(self);
     }
-    #line 155 "./src/lexer/lexer.am"
+    #line 163 "./src/lexer/lexer.am"
     Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
 }
 
 static void Amalgame_Compiler_Lexer_ReadTripleQuoted(Amalgame_Compiler_Lexer* self) {
-    #line 162 "./src/lexer/lexer.am"
+    #line 170 "./src/lexer/lexer.am"
     code_string value = "";
-    #line 163 "./src/lexer/lexer.am"
+    #line 171 "./src/lexer/lexer.am"
     i64 len = String_Length(self->Source);
-    #line 164 "./src/lexer/lexer.am"
+    #line 172 "./src/lexer/lexer.am"
     while (self->Pos < len) {
-        #line 166 "./src/lexer/lexer.am"
+        #line 174 "./src/lexer/lexer.am"
         if (((code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\"")) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "\""))) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 2), "\""))) {
-            #line 167 "./src/lexer/lexer.am"
+            #line 175 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 168 "./src/lexer/lexer.am"
+            #line 176 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 169 "./src/lexer/lexer.am"
+            #line 177 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 170 "./src/lexer/lexer.am"
+            #line 178 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
-            #line 171 "./src/lexer/lexer.am"
+            #line 179 "./src/lexer/lexer.am"
             return;
         }
-        #line 173 "./src/lexer/lexer.am"
+        #line 181 "./src/lexer/lexer.am"
         code_string c = Amalgame_Compiler_Lexer_Advance(self);
-        #line 175 "./src/lexer/lexer.am"
+        #line 183 "./src/lexer/lexer.am"
         if (code_string_equals(c, "\n")) {
-            #line 176 "./src/lexer/lexer.am"
+            #line 184 "./src/lexer/lexer.am"
             self->Line = (self->Line + 1);
-            #line 177 "./src/lexer/lexer.am"
+            #line 185 "./src/lexer/lexer.am"
             self->Column = 1;
         }
-        #line 179 "./src/lexer/lexer.am"
+        #line 187 "./src/lexer/lexer.am"
         value = (code_string_concat(value, c));
     }
-    #line 182 "./src/lexer/lexer.am"
+    #line 190 "./src/lexer/lexer.am"
     Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_STRING, value);
 }
 
 static void Amalgame_Compiler_Lexer_TryReadInlineCOrAt(Amalgame_Compiler_Lexer* self, i64 startCol) {
-    #line 190 "./src/lexer/lexer.am"
+    #line 198 "./src/lexer/lexer.am"
     i64 len = String_Length(self->Source);
-    #line 191 "./src/lexer/lexer.am"
+    #line 199 "./src/lexer/lexer.am"
     if (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "c")) {
-        #line 192 "./src/lexer/lexer.am"
+        #line 200 "./src/lexer/lexer.am"
         i64 look = self->Pos + 1;
-        #line 193 "./src/lexer/lexer.am"
+        #line 201 "./src/lexer/lexer.am"
         while (look < len) {
-            #line 194 "./src/lexer/lexer.am"
+            #line 202 "./src/lexer/lexer.am"
             code_string lc = String_Substring(self->Source, look, 1);
-            #line 195 "./src/lexer/lexer.am"
+            #line 203 "./src/lexer/lexer.am"
             if ((code_string_equals(lc, " ")) || (code_string_equals(lc, "\t"))) {
                 look = (look + 1);
             } else {
-                #line 196 "./src/lexer/lexer.am"
+                #line 204 "./src/lexer/lexer.am"
                 break;
             }
         }
-        #line 198 "./src/lexer/lexer.am"
+        #line 206 "./src/lexer/lexer.am"
         if ((look < len) && (code_string_equals(String_Substring(self->Source, look, 1), "{"))) {
-            #line 199 "./src/lexer/lexer.am"
+            #line 207 "./src/lexer/lexer.am"
             i64 consumed = look - self->Pos;
-            #line 200 "./src/lexer/lexer.am"
+            #line 208 "./src/lexer/lexer.am"
             for (i64 k = 0; k < consumed; k++) {
                 Amalgame_Compiler_Lexer_Advance(self);
             }
-            #line 201 "./src/lexer/lexer.am"
+            #line 209 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 202 "./src/lexer/lexer.am"
+            #line 210 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_ReadInlineCBody(self, startCol);
-            #line 203 "./src/lexer/lexer.am"
+            #line 211 "./src/lexer/lexer.am"
             return;
         }
     }
-    #line 206 "./src/lexer/lexer.am"
+    #line 214 "./src/lexer/lexer.am"
     Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_AT, "@");
 }
 
 static void Amalgame_Compiler_Lexer_ReadInlineCBody(Amalgame_Compiler_Lexer* self, i64 startCol) {
-    #line 216 "./src/lexer/lexer.am"
+    #line 224 "./src/lexer/lexer.am"
     i64 startLine = self->Line;
-    #line 217 "./src/lexer/lexer.am"
+    #line 225 "./src/lexer/lexer.am"
     code_string body = "";
-    #line 218 "./src/lexer/lexer.am"
+    #line 226 "./src/lexer/lexer.am"
     i64 depth = 1;
-    #line 219 "./src/lexer/lexer.am"
+    #line 227 "./src/lexer/lexer.am"
     i64 len = String_Length(self->Source);
-    #line 220 "./src/lexer/lexer.am"
+    #line 228 "./src/lexer/lexer.am"
     while ((self->Pos < len) && (depth > 0)) {
-        #line 221 "./src/lexer/lexer.am"
+        #line 229 "./src/lexer/lexer.am"
         code_string c = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-        #line 222 "./src/lexer/lexer.am"
+        #line 230 "./src/lexer/lexer.am"
         if (code_string_equals(c, "\"")) {
-            #line 223 "./src/lexer/lexer.am"
+            #line 231 "./src/lexer/lexer.am"
             body = (code_string_concat(body, c));
-            #line 224 "./src/lexer/lexer.am"
+            #line 232 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 225 "./src/lexer/lexer.am"
+            #line 233 "./src/lexer/lexer.am"
             while (self->Pos < len) {
-                #line 226 "./src/lexer/lexer.am"
+                #line 234 "./src/lexer/lexer.am"
                 code_string sc = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-                #line 227 "./src/lexer/lexer.am"
+                #line 235 "./src/lexer/lexer.am"
                 body = (code_string_concat(body, sc));
-                #line 228 "./src/lexer/lexer.am"
+                #line 236 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_Advance(self);
-                #line 229 "./src/lexer/lexer.am"
+                #line 237 "./src/lexer/lexer.am"
                 if ((code_string_equals(sc, "\\")) && (self->Pos < len)) {
-                    #line 230 "./src/lexer/lexer.am"
+                    #line 238 "./src/lexer/lexer.am"
                     body = (code_string_concat(body, Amalgame_Compiler_Lexer_CharAt(self, self->Pos)));
-                    #line 231 "./src/lexer/lexer.am"
+                    #line 239 "./src/lexer/lexer.am"
                     Amalgame_Compiler_Lexer_Advance(self);
                 } else if (code_string_equals(sc, "\"")) {
-                    #line 233 "./src/lexer/lexer.am"
+                    #line 241 "./src/lexer/lexer.am"
                     break;
                 } else if (code_string_equals(sc, "\n")) {
-                    #line 235 "./src/lexer/lexer.am"
+                    #line 243 "./src/lexer/lexer.am"
                     self->Line = (self->Line + 1);
-                    #line 236 "./src/lexer/lexer.am"
+                    #line 244 "./src/lexer/lexer.am"
                     self->Column = 1;
                 }
             }
-            #line 239 "./src/lexer/lexer.am"
+            #line 247 "./src/lexer/lexer.am"
             continue;
         }
-        #line 241 "./src/lexer/lexer.am"
+        #line 249 "./src/lexer/lexer.am"
         if (code_string_equals(c, "'")) {
-            #line 242 "./src/lexer/lexer.am"
+            #line 250 "./src/lexer/lexer.am"
             body = (code_string_concat(body, c));
-            #line 243 "./src/lexer/lexer.am"
+            #line 251 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 244 "./src/lexer/lexer.am"
+            #line 252 "./src/lexer/lexer.am"
             while (self->Pos < len) {
-                #line 245 "./src/lexer/lexer.am"
+                #line 253 "./src/lexer/lexer.am"
                 code_string sc = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-                #line 246 "./src/lexer/lexer.am"
+                #line 254 "./src/lexer/lexer.am"
                 body = (code_string_concat(body, sc));
-                #line 247 "./src/lexer/lexer.am"
+                #line 255 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_Advance(self);
-                #line 248 "./src/lexer/lexer.am"
+                #line 256 "./src/lexer/lexer.am"
                 if ((code_string_equals(sc, "\\")) && (self->Pos < len)) {
-                    #line 249 "./src/lexer/lexer.am"
+                    #line 257 "./src/lexer/lexer.am"
                     body = (code_string_concat(body, Amalgame_Compiler_Lexer_CharAt(self, self->Pos)));
-                    #line 250 "./src/lexer/lexer.am"
+                    #line 258 "./src/lexer/lexer.am"
                     Amalgame_Compiler_Lexer_Advance(self);
                 } else if (code_string_equals(sc, "'")) {
-                    #line 252 "./src/lexer/lexer.am"
+                    #line 260 "./src/lexer/lexer.am"
                     break;
                 }
             }
-            #line 255 "./src/lexer/lexer.am"
+            #line 263 "./src/lexer/lexer.am"
             continue;
         }
-        #line 257 "./src/lexer/lexer.am"
+        #line 265 "./src/lexer/lexer.am"
         if ((code_string_equals(c, "/")) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "/"))) {
-            #line 258 "./src/lexer/lexer.am"
+            #line 266 "./src/lexer/lexer.am"
             body = (code_string_concat(body, c));
-            #line 259 "./src/lexer/lexer.am"
+            #line 267 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 260 "./src/lexer/lexer.am"
+            #line 268 "./src/lexer/lexer.am"
             while ((self->Pos < len) && (!code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "\n"))) {
-                #line 261 "./src/lexer/lexer.am"
+                #line 269 "./src/lexer/lexer.am"
                 body = (code_string_concat(body, Amalgame_Compiler_Lexer_CharAt(self, self->Pos)));
-                #line 262 "./src/lexer/lexer.am"
+                #line 270 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_Advance(self);
             }
-            #line 264 "./src/lexer/lexer.am"
+            #line 272 "./src/lexer/lexer.am"
             continue;
         }
-        #line 266 "./src/lexer/lexer.am"
+        #line 274 "./src/lexer/lexer.am"
         if ((code_string_equals(c, "/")) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "*"))) {
-            #line 267 "./src/lexer/lexer.am"
+            #line 275 "./src/lexer/lexer.am"
             body = (code_string_concat(body, c));
-            #line 268 "./src/lexer/lexer.am"
+            #line 276 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 269 "./src/lexer/lexer.am"
+            #line 277 "./src/lexer/lexer.am"
             body = (code_string_concat(body, Amalgame_Compiler_Lexer_CharAt(self, self->Pos)));
-            #line 270 "./src/lexer/lexer.am"
+            #line 278 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 271 "./src/lexer/lexer.am"
+            #line 279 "./src/lexer/lexer.am"
             while (self->Pos < len) {
-                #line 272 "./src/lexer/lexer.am"
+                #line 280 "./src/lexer/lexer.am"
                 code_string cc = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-                #line 273 "./src/lexer/lexer.am"
+                #line 281 "./src/lexer/lexer.am"
                 body = (code_string_concat(body, cc));
-                #line 274 "./src/lexer/lexer.am"
+                #line 282 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_Advance(self);
-                #line 275 "./src/lexer/lexer.am"
+                #line 283 "./src/lexer/lexer.am"
                 if (code_string_equals(cc, "\n")) {
-                    #line 276 "./src/lexer/lexer.am"
+                    #line 284 "./src/lexer/lexer.am"
                     self->Line = (self->Line + 1);
-                    #line 277 "./src/lexer/lexer.am"
+                    #line 285 "./src/lexer/lexer.am"
                     self->Column = 1;
                 }
-                #line 279 "./src/lexer/lexer.am"
+                #line 287 "./src/lexer/lexer.am"
                 if (((code_string_equals(cc, "*")) && (self->Pos < len)) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "/"))) {
-                    #line 280 "./src/lexer/lexer.am"
+                    #line 288 "./src/lexer/lexer.am"
                     body = (code_string_concat(body, Amalgame_Compiler_Lexer_CharAt(self, self->Pos)));
-                    #line 281 "./src/lexer/lexer.am"
+                    #line 289 "./src/lexer/lexer.am"
                     Amalgame_Compiler_Lexer_Advance(self);
-                    #line 282 "./src/lexer/lexer.am"
+                    #line 290 "./src/lexer/lexer.am"
                     break;
                 }
             }
-            #line 285 "./src/lexer/lexer.am"
+            #line 293 "./src/lexer/lexer.am"
             continue;
         }
-        #line 287 "./src/lexer/lexer.am"
+        #line 295 "./src/lexer/lexer.am"
         if (code_string_equals(c, "{")) {
-            #line 288 "./src/lexer/lexer.am"
+            #line 296 "./src/lexer/lexer.am"
             depth = (depth + 1);
-            #line 289 "./src/lexer/lexer.am"
+            #line 297 "./src/lexer/lexer.am"
             body = (code_string_concat(body, c));
-            #line 290 "./src/lexer/lexer.am"
+            #line 298 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 291 "./src/lexer/lexer.am"
+            #line 299 "./src/lexer/lexer.am"
             continue;
         }
-        #line 293 "./src/lexer/lexer.am"
+        #line 301 "./src/lexer/lexer.am"
         if (code_string_equals(c, "}")) {
-            #line 294 "./src/lexer/lexer.am"
+            #line 302 "./src/lexer/lexer.am"
             depth = (depth - 1);
-            #line 295 "./src/lexer/lexer.am"
+            #line 303 "./src/lexer/lexer.am"
             if (depth == 0) {
-                #line 296 "./src/lexer/lexer.am"
+                #line 304 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_Advance(self);
-                #line 297 "./src/lexer/lexer.am"
+                #line 305 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_INLINE_C, body, startLine, startCol, self->Filename);
-                #line 298 "./src/lexer/lexer.am"
+                #line 306 "./src/lexer/lexer.am"
                 AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
-                #line 299 "./src/lexer/lexer.am"
+                #line 307 "./src/lexer/lexer.am"
                 return;
             }
-            #line 301 "./src/lexer/lexer.am"
+            #line 309 "./src/lexer/lexer.am"
             body = (code_string_concat(body, c));
-            #line 302 "./src/lexer/lexer.am"
+            #line 310 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 303 "./src/lexer/lexer.am"
+            #line 311 "./src/lexer/lexer.am"
             continue;
         }
-        #line 305 "./src/lexer/lexer.am"
+        #line 313 "./src/lexer/lexer.am"
         if (code_string_equals(c, "\n")) {
-            #line 306 "./src/lexer/lexer.am"
+            #line 314 "./src/lexer/lexer.am"
             self->Line = (self->Line + 1);
-            #line 307 "./src/lexer/lexer.am"
+            #line 315 "./src/lexer/lexer.am"
             self->Column = 1;
         }
-        #line 309 "./src/lexer/lexer.am"
+        #line 317 "./src/lexer/lexer.am"
         body = (code_string_concat(body, c));
-        #line 310 "./src/lexer/lexer.am"
+        #line 318 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_Advance(self);
     }
-    #line 314 "./src/lexer/lexer.am"
+    #line 322 "./src/lexer/lexer.am"
     Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_INLINE_C, body, startLine, startCol, self->Filename);
-    #line 315 "./src/lexer/lexer.am"
+    #line 323 "./src/lexer/lexer.am"
     AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
 }
 
 static i64 Amalgame_Compiler_Lexer_HexNibble(Amalgame_Compiler_Lexer* self, code_string ch) {
-    #line 319 "./src/lexer/lexer.am"
+    #line 327 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "0")) {
         return 0;
     }
-    #line 320 "./src/lexer/lexer.am"
+    #line 328 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "1")) {
         return 1;
     }
-    #line 321 "./src/lexer/lexer.am"
+    #line 329 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "2")) {
         return 2;
     }
-    #line 322 "./src/lexer/lexer.am"
+    #line 330 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "3")) {
         return 3;
     }
-    #line 323 "./src/lexer/lexer.am"
+    #line 331 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "4")) {
         return 4;
     }
-    #line 324 "./src/lexer/lexer.am"
+    #line 332 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "5")) {
         return 5;
     }
-    #line 325 "./src/lexer/lexer.am"
+    #line 333 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "6")) {
         return 6;
     }
-    #line 326 "./src/lexer/lexer.am"
+    #line 334 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "7")) {
         return 7;
     }
-    #line 327 "./src/lexer/lexer.am"
+    #line 335 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "8")) {
         return 8;
     }
-    #line 328 "./src/lexer/lexer.am"
+    #line 336 "./src/lexer/lexer.am"
     if (code_string_equals(ch, "9")) {
         return 9;
     }
-    #line 329 "./src/lexer/lexer.am"
+    #line 337 "./src/lexer/lexer.am"
     if ((code_string_equals(ch, "a")) || (code_string_equals(ch, "A"))) {
         return 10;
     }
-    #line 330 "./src/lexer/lexer.am"
+    #line 338 "./src/lexer/lexer.am"
     if ((code_string_equals(ch, "b")) || (code_string_equals(ch, "B"))) {
         return 11;
     }
-    #line 331 "./src/lexer/lexer.am"
+    #line 339 "./src/lexer/lexer.am"
     if ((code_string_equals(ch, "c")) || (code_string_equals(ch, "C"))) {
         return 12;
     }
-    #line 332 "./src/lexer/lexer.am"
+    #line 340 "./src/lexer/lexer.am"
     if ((code_string_equals(ch, "d")) || (code_string_equals(ch, "D"))) {
         return 13;
     }
-    #line 333 "./src/lexer/lexer.am"
+    #line 341 "./src/lexer/lexer.am"
     if ((code_string_equals(ch, "e")) || (code_string_equals(ch, "E"))) {
         return 14;
     }
-    #line 334 "./src/lexer/lexer.am"
+    #line 342 "./src/lexer/lexer.am"
     if ((code_string_equals(ch, "f")) || (code_string_equals(ch, "F"))) {
         return 15;
     }
-    #line 335 "./src/lexer/lexer.am"
+    #line 343 "./src/lexer/lexer.am"
     return 0;
 }
 
 static void Amalgame_Compiler_Lexer_ReadNumber(Amalgame_Compiler_Lexer* self) {
-    #line 339 "./src/lexer/lexer.am"
+    #line 347 "./src/lexer/lexer.am"
     i64 startCol = self->Column;
-    #line 340 "./src/lexer/lexer.am"
+    #line 351 "./src/lexer/lexer.am"
+    if ((code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "0")) && ((code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "x")) || (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "X")))) {
+        #line 352 "./src/lexer/lexer.am"
+        code_string hex = Amalgame_Compiler_Lexer_Advance(self);
+        #line 353 "./src/lexer/lexer.am"
+        hex = (code_string_concat(hex, Amalgame_Compiler_Lexer_Advance(self)));
+        #line 354 "./src/lexer/lexer.am"
+        while ((self->Pos < String_Length(self->Source)) && Amalgame_Compiler_Lexer_IsHexDigit(self, Amalgame_Compiler_Lexer_CharAt(self, self->Pos))) {
+            #line 355 "./src/lexer/lexer.am"
+            hex = (code_string_concat(hex, Amalgame_Compiler_Lexer_Advance(self)));
+        }
+        #line 357 "./src/lexer/lexer.am"
+        Amalgame_Compiler_Token* htok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_INTEGER, hex, self->Line, startCol, self->Filename);
+        #line 358 "./src/lexer/lexer.am"
+        AmalgameList_add(self->Tokens, (void*)(intptr_t)(htok));
+        #line 359 "./src/lexer/lexer.am"
+        return;
+    }
+    #line 364 "./src/lexer/lexer.am"
+    if ((code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "0")) && ((code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "b")) || (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1), "B")))) {
+        #line 365 "./src/lexer/lexer.am"
+        Amalgame_Compiler_Lexer_Advance(self);
+        #line 366 "./src/lexer/lexer.am"
+        Amalgame_Compiler_Lexer_Advance(self);
+        #line 367 "./src/lexer/lexer.am"
+        i64 dec = 0;
+        #line 368 "./src/lexer/lexer.am"
+        while ((self->Pos < String_Length(self->Source)) && Amalgame_Compiler_Lexer_IsBinDigit(self, Amalgame_Compiler_Lexer_CharAt(self, self->Pos))) {
+            #line 369 "./src/lexer/lexer.am"
+            code_string bch = Amalgame_Compiler_Lexer_Advance(self);
+            #line 370 "./src/lexer/lexer.am"
+            dec = (dec * 2);
+            #line 371 "./src/lexer/lexer.am"
+            if (code_string_equals(bch, "1")) {
+                dec = (dec + 1);
+            }
+        }
+        #line 373 "./src/lexer/lexer.am"
+        Amalgame_Compiler_Token* btok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_INTEGER, String_FromInt(dec), self->Line, startCol, self->Filename);
+        #line 374 "./src/lexer/lexer.am"
+        AmalgameList_add(self->Tokens, (void*)(intptr_t)(btok));
+        #line 375 "./src/lexer/lexer.am"
+        return;
+    }
+    #line 378 "./src/lexer/lexer.am"
     code_string value = "";
-    #line 341 "./src/lexer/lexer.am"
+    #line 379 "./src/lexer/lexer.am"
     code_bool isFloat = 0;
-    #line 342 "./src/lexer/lexer.am"
+    #line 380 "./src/lexer/lexer.am"
     while ((self->Pos < String_Length(self->Source)) && Amalgame_Compiler_Lexer_IsDigit(self, Amalgame_Compiler_Lexer_CharAt(self, self->Pos))) {
-        #line 343 "./src/lexer/lexer.am"
+        #line 381 "./src/lexer/lexer.am"
         value = (code_string_concat(value, Amalgame_Compiler_Lexer_Advance(self)));
     }
-    #line 345 "./src/lexer/lexer.am"
+    #line 383 "./src/lexer/lexer.am"
     if (((self->Pos < String_Length(self->Source)) && (code_string_equals(Amalgame_Compiler_Lexer_CharAt(self, self->Pos), "."))) && Amalgame_Compiler_Lexer_IsDigit(self, Amalgame_Compiler_Lexer_CharAt(self, self->Pos + 1))) {
-        #line 346 "./src/lexer/lexer.am"
+        #line 384 "./src/lexer/lexer.am"
         isFloat = 1;
-        #line 347 "./src/lexer/lexer.am"
+        #line 385 "./src/lexer/lexer.am"
         value = (code_string_concat(value, Amalgame_Compiler_Lexer_Advance(self)));
-        #line 348 "./src/lexer/lexer.am"
+        #line 386 "./src/lexer/lexer.am"
         while ((self->Pos < String_Length(self->Source)) && Amalgame_Compiler_Lexer_IsDigit(self, Amalgame_Compiler_Lexer_CharAt(self, self->Pos))) {
-            #line 349 "./src/lexer/lexer.am"
+            #line 387 "./src/lexer/lexer.am"
             value = (code_string_concat(value, Amalgame_Compiler_Lexer_Advance(self)));
         }
     }
-    #line 352 "./src/lexer/lexer.am"
+    #line 390 "./src/lexer/lexer.am"
     if (isFloat) {
-        #line 353 "./src/lexer/lexer.am"
+        #line 391 "./src/lexer/lexer.am"
         Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_FLOAT, value, self->Line, startCol, self->Filename);
-        #line 354 "./src/lexer/lexer.am"
+        #line 392 "./src/lexer/lexer.am"
         AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
     } else {
-        #line 356 "./src/lexer/lexer.am"
+        #line 394 "./src/lexer/lexer.am"
         Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(Amalgame_Compiler_TokenType_INTEGER, value, self->Line, startCol, self->Filename);
-        #line 357 "./src/lexer/lexer.am"
+        #line 395 "./src/lexer/lexer.am"
         AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
     }
 }
 
 static void Amalgame_Compiler_Lexer_ReadIdentifier(Amalgame_Compiler_Lexer* self) {
-    #line 362 "./src/lexer/lexer.am"
+    #line 400 "./src/lexer/lexer.am"
     i64 startCol = self->Column;
-    #line 363 "./src/lexer/lexer.am"
+    #line 401 "./src/lexer/lexer.am"
     code_string value = "";
-    #line 364 "./src/lexer/lexer.am"
+    #line 402 "./src/lexer/lexer.am"
     while ((self->Pos < String_Length(self->Source)) && Amalgame_Compiler_Lexer_IsAlphaNum(self, Amalgame_Compiler_Lexer_CharAt(self, self->Pos))) {
-        #line 365 "./src/lexer/lexer.am"
+        #line 403 "./src/lexer/lexer.am"
         value = (code_string_concat(value, Amalgame_Compiler_Lexer_Advance(self)));
     }
-    #line 367 "./src/lexer/lexer.am"
+    #line 405 "./src/lexer/lexer.am"
     Amalgame_Compiler_TokenType tt = Amalgame_Compiler_Lexer_LookupKeyword(self, value);
-    #line 368 "./src/lexer/lexer.am"
+    #line 406 "./src/lexer/lexer.am"
     Amalgame_Compiler_Token* tok = Amalgame_Compiler_Token_new(tt, value, self->Line, startCol, self->Filename);
-    #line 369 "./src/lexer/lexer.am"
+    #line 407 "./src/lexer/lexer.am"
     AmalgameList_add(self->Tokens, (void*)(intptr_t)(tok));
 }
 
 static Amalgame_Compiler_TokenType Amalgame_Compiler_Lexer_LookupKeyword(Amalgame_Compiler_Lexer* self, code_string word) {
-    #line 373 "./src/lexer/lexer.am"
+    #line 411 "./src/lexer/lexer.am"
     if (code_string_equals(word, "let")) {
         return Amalgame_Compiler_TokenType_KW_LET;
     }
-    #line 374 "./src/lexer/lexer.am"
+    #line 412 "./src/lexer/lexer.am"
     if (code_string_equals(word, "var")) {
         return Amalgame_Compiler_TokenType_KW_VAR;
     }
-    #line 375 "./src/lexer/lexer.am"
+    #line 413 "./src/lexer/lexer.am"
     if (code_string_equals(word, "if")) {
         return Amalgame_Compiler_TokenType_KW_IF;
     }
-    #line 376 "./src/lexer/lexer.am"
+    #line 414 "./src/lexer/lexer.am"
     if (code_string_equals(word, "else")) {
         return Amalgame_Compiler_TokenType_KW_ELSE;
     }
-    #line 377 "./src/lexer/lexer.am"
+    #line 415 "./src/lexer/lexer.am"
     if (code_string_equals(word, "for")) {
         return Amalgame_Compiler_TokenType_KW_FOR;
     }
-    #line 378 "./src/lexer/lexer.am"
+    #line 416 "./src/lexer/lexer.am"
     if (code_string_equals(word, "while")) {
         return Amalgame_Compiler_TokenType_KW_WHILE;
     }
-    #line 379 "./src/lexer/lexer.am"
+    #line 417 "./src/lexer/lexer.am"
     if (code_string_equals(word, "return")) {
         return Amalgame_Compiler_TokenType_KW_RETURN;
     }
-    #line 380 "./src/lexer/lexer.am"
+    #line 418 "./src/lexer/lexer.am"
     if (code_string_equals(word, "class")) {
         return Amalgame_Compiler_TokenType_KW_CLASS;
     }
-    #line 381 "./src/lexer/lexer.am"
+    #line 419 "./src/lexer/lexer.am"
     if (code_string_equals(word, "public")) {
         return Amalgame_Compiler_TokenType_KW_PUBLIC;
     }
-    #line 382 "./src/lexer/lexer.am"
+    #line 420 "./src/lexer/lexer.am"
     if (code_string_equals(word, "private")) {
         return Amalgame_Compiler_TokenType_KW_PRIVATE;
     }
-    #line 383 "./src/lexer/lexer.am"
+    #line 421 "./src/lexer/lexer.am"
     if (code_string_equals(word, "static")) {
         return Amalgame_Compiler_TokenType_KW_STATIC;
     }
-    #line 384 "./src/lexer/lexer.am"
+    #line 422 "./src/lexer/lexer.am"
     if (code_string_equals(word, "new")) {
         return Amalgame_Compiler_TokenType_KW_NEW;
     }
-    #line 385 "./src/lexer/lexer.am"
+    #line 423 "./src/lexer/lexer.am"
     if (code_string_equals(word, "this")) {
         return Amalgame_Compiler_TokenType_KW_THIS;
     }
-    #line 386 "./src/lexer/lexer.am"
+    #line 424 "./src/lexer/lexer.am"
     if (code_string_equals(word, "null")) {
         return Amalgame_Compiler_TokenType_KW_NULL;
     }
-    #line 387 "./src/lexer/lexer.am"
+    #line 425 "./src/lexer/lexer.am"
     if (code_string_equals(word, "true")) {
         return Amalgame_Compiler_TokenType_KW_TRUE;
     }
-    #line 388 "./src/lexer/lexer.am"
+    #line 426 "./src/lexer/lexer.am"
     if (code_string_equals(word, "false")) {
         return Amalgame_Compiler_TokenType_KW_FALSE;
     }
-    #line 389 "./src/lexer/lexer.am"
+    #line 427 "./src/lexer/lexer.am"
     if (code_string_equals(word, "import")) {
         return Amalgame_Compiler_TokenType_KW_IMPORT;
     }
-    #line 390 "./src/lexer/lexer.am"
+    #line 428 "./src/lexer/lexer.am"
     if (code_string_equals(word, "namespace")) {
         return Amalgame_Compiler_TokenType_KW_NAMESPACE;
     }
-    #line 391 "./src/lexer/lexer.am"
+    #line 429 "./src/lexer/lexer.am"
     if (code_string_equals(word, "enum")) {
         return Amalgame_Compiler_TokenType_KW_ENUM;
     }
-    #line 392 "./src/lexer/lexer.am"
+    #line 430 "./src/lexer/lexer.am"
     if (code_string_equals(word, "match")) {
         return Amalgame_Compiler_TokenType_KW_MATCH;
     }
-    #line 393 "./src/lexer/lexer.am"
+    #line 431 "./src/lexer/lexer.am"
     if (code_string_equals(word, "in")) {
         return Amalgame_Compiler_TokenType_KW_IN;
     }
-    #line 394 "./src/lexer/lexer.am"
+    #line 432 "./src/lexer/lexer.am"
     if (code_string_equals(word, "is")) {
         return Amalgame_Compiler_TokenType_KW_IS;
     }
-    #line 395 "./src/lexer/lexer.am"
+    #line 433 "./src/lexer/lexer.am"
     if (code_string_equals(word, "as")) {
         return Amalgame_Compiler_TokenType_KW_AS;
     }
-    #line 396 "./src/lexer/lexer.am"
+    #line 434 "./src/lexer/lexer.am"
     if (code_string_equals(word, "void")) {
         return Amalgame_Compiler_TokenType_KW_VOID;
     }
-    #line 397 "./src/lexer/lexer.am"
+    #line 435 "./src/lexer/lexer.am"
     if (code_string_equals(word, "int")) {
         return Amalgame_Compiler_TokenType_KW_INT;
     }
-    #line 398 "./src/lexer/lexer.am"
+    #line 436 "./src/lexer/lexer.am"
     if (code_string_equals(word, "string")) {
         return Amalgame_Compiler_TokenType_KW_STRING_TYPE;
     }
-    #line 399 "./src/lexer/lexer.am"
+    #line 437 "./src/lexer/lexer.am"
     if (code_string_equals(word, "bool")) {
         return Amalgame_Compiler_TokenType_KW_BOOL_TYPE;
     }
-    #line 400 "./src/lexer/lexer.am"
+    #line 438 "./src/lexer/lexer.am"
     if (code_string_equals(word, "float")) {
         return Amalgame_Compiler_TokenType_KW_FLOAT_TYPE;
     }
-    #line 401 "./src/lexer/lexer.am"
+    #line 439 "./src/lexer/lexer.am"
     if (code_string_equals(word, "try")) {
         return Amalgame_Compiler_TokenType_KW_TRY;
     }
-    #line 402 "./src/lexer/lexer.am"
+    #line 440 "./src/lexer/lexer.am"
     if (code_string_equals(word, "catch")) {
         return Amalgame_Compiler_TokenType_KW_CATCH;
     }
-    #line 403 "./src/lexer/lexer.am"
+    #line 441 "./src/lexer/lexer.am"
     if (code_string_equals(word, "throw")) {
         return Amalgame_Compiler_TokenType_KW_THROW;
     }
-    #line 404 "./src/lexer/lexer.am"
+    #line 442 "./src/lexer/lexer.am"
     if (code_string_equals(word, "finally")) {
         return Amalgame_Compiler_TokenType_KW_FINALLY;
     }
-    #line 405 "./src/lexer/lexer.am"
+    #line 443 "./src/lexer/lexer.am"
     if (code_string_equals(word, "interface")) {
         return Amalgame_Compiler_TokenType_KW_INTERFACE;
     }
-    #line 406 "./src/lexer/lexer.am"
+    #line 444 "./src/lexer/lexer.am"
     if (code_string_equals(word, "record")) {
         return Amalgame_Compiler_TokenType_KW_RECORD;
     }
-    #line 407 "./src/lexer/lexer.am"
+    #line 445 "./src/lexer/lexer.am"
     if (code_string_equals(word, "func")) {
         return Amalgame_Compiler_TokenType_KW_FUNC;
     }
-    #line 408 "./src/lexer/lexer.am"
+    #line 446 "./src/lexer/lexer.am"
     if (code_string_equals(word, "guard")) {
         return Amalgame_Compiler_TokenType_KW_GUARD;
     }
-    #line 409 "./src/lexer/lexer.am"
+    #line 447 "./src/lexer/lexer.am"
     return Amalgame_Compiler_TokenType_IDENTIFIER;
 }
 
 static void Amalgame_Compiler_Lexer_ReadSymbol(Amalgame_Compiler_Lexer* self) {
-    #line 413 "./src/lexer/lexer.am"
+    #line 451 "./src/lexer/lexer.am"
     i64 startCol = self->Column;
-    #line 414 "./src/lexer/lexer.am"
+    #line 452 "./src/lexer/lexer.am"
     code_string c = Amalgame_Compiler_Lexer_Advance(self);
-    #line 415 "./src/lexer/lexer.am"
+    #line 453 "./src/lexer/lexer.am"
     code_string c2 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-    #line 417 "./src/lexer/lexer.am"
+    #line 455 "./src/lexer/lexer.am"
     if (code_string_equals(c, "+")) {
-        #line 418 "./src/lexer/lexer.am"
+        #line 456 "./src/lexer/lexer.am"
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 419 "./src/lexer/lexer.am"
+            #line 457 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PLUS_EQ, "+=");
         } else {
-            #line 420 "./src/lexer/lexer.am"
+            #line 458 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PLUS, "+");
         }
     } else if (code_string_equals(c, "%")) {
-        #line 422 "./src/lexer/lexer.am"
+        #line 460 "./src/lexer/lexer.am"
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 423 "./src/lexer/lexer.am"
+            #line 461 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PERCENT_EQ, "%=");
         } else {
-            #line 424 "./src/lexer/lexer.am"
+            #line 462 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PERCENT, "%");
         }
     } else if (code_string_equals(c, "@")) {
-        #line 426 "./src/lexer/lexer.am"
+        #line 464 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_TryReadInlineCOrAt(self, startCol);
     } else if (code_string_equals(c, "(")) {
-        #line 427 "./src/lexer/lexer.am"
+        #line 465 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_LPAREN, "(");
     } else if (code_string_equals(c, ")")) {
-        #line 428 "./src/lexer/lexer.am"
+        #line 466 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_RPAREN, ")");
     } else if (code_string_equals(c, "{")) {
-        #line 429 "./src/lexer/lexer.am"
+        #line 467 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_LBRACE, "{");
     } else if (code_string_equals(c, "}")) {
-        #line 430 "./src/lexer/lexer.am"
+        #line 468 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_RBRACE, "}");
     } else if (code_string_equals(c, "[")) {
-        #line 431 "./src/lexer/lexer.am"
+        #line 469 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_LBRACKET, "[");
     } else if (code_string_equals(c, "]")) {
-        #line 432 "./src/lexer/lexer.am"
+        #line 470 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_RBRACKET, "]");
     } else if (code_string_equals(c, ",")) {
-        #line 433 "./src/lexer/lexer.am"
+        #line 471 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_COMMA, ",");
     } else if (code_string_equals(c, ";")) {
-        #line 434 "./src/lexer/lexer.am"
+        #line 472 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_SEMICOLON, ";");
     } else if (code_string_equals(c, "/")) {
-        #line 436 "./src/lexer/lexer.am"
+        #line 474 "./src/lexer/lexer.am"
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 437 "./src/lexer/lexer.am"
+            #line 475 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SLASH_EQ, "/=");
         } else {
-            #line 438 "./src/lexer/lexer.am"
+            #line 476 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SLASH, "/");
         }
     } else if (code_string_equals(c, "-")) {
-        #line 441 "./src/lexer/lexer.am"
+        #line 479 "./src/lexer/lexer.am"
         if (code_string_equals(c2, ">")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 442 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_THIN_ARROW, "->");
-        } else if (code_string_equals(c2, "=")) {
-            #line 443 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 444 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_MINUS_EQ, "-=");
-        } else {
-            #line 445 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_MINUS, "-");
-        }
-    } else if (code_string_equals(c, "*")) {
-        #line 447 "./src/lexer/lexer.am"
-        if (code_string_equals(c2, "=")) {
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 448 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR_EQ, "*=");
-        } else {
-            #line 449 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR, "*");
-        }
-    } else if (code_string_equals(c, "=")) {
-        #line 451 "./src/lexer/lexer.am"
-        if (code_string_equals(c2, "=")) {
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 452 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_EQEQ, "==");
-        } else if (code_string_equals(c2, ">")) {
-            #line 453 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 454 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_ARROW, "=>");
-        } else {
-            #line 455 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_EQ, "=");
-        }
-    } else if (code_string_equals(c, "!")) {
-        #line 457 "./src/lexer/lexer.am"
-        if (code_string_equals(c2, "=")) {
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 458 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_NEQ, "!=");
-        } else {
-            #line 459 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_NOT, "!");
-        }
-    } else if (code_string_equals(c, "<")) {
-        #line 461 "./src/lexer/lexer.am"
-        if (code_string_equals(c2, "=")) {
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 462 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_LTE, "<=");
-        } else if (code_string_equals(c2, "<")) {
-            #line 463 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 464 "./src/lexer/lexer.am"
-            code_string c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-            #line 465 "./src/lexer/lexer.am"
-            if (code_string_equals(c3, "=")) {
-                Amalgame_Compiler_Lexer_Advance(self);
-                #line 466 "./src/lexer/lexer.am"
-                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHL_EQ, "<<=");
-            } else {
-                #line 467 "./src/lexer/lexer.am"
-                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHL, "<<");
-            }
-        } else {
-            #line 468 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_LT, "<");
-        }
-    } else if (code_string_equals(c, ">")) {
-        #line 470 "./src/lexer/lexer.am"
-        if (code_string_equals(c2, "=")) {
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 471 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_GTE, ">=");
-        } else if (code_string_equals(c2, ">")) {
-            #line 472 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_Advance(self);
-            #line 473 "./src/lexer/lexer.am"
-            code_string c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-            #line 474 "./src/lexer/lexer.am"
-            if (code_string_equals(c3, "=")) {
-                Amalgame_Compiler_Lexer_Advance(self);
-                #line 475 "./src/lexer/lexer.am"
-                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHR_EQ, ">>=");
-            } else {
-                #line 476 "./src/lexer/lexer.am"
-                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHR, ">>");
-            }
-        } else {
-            #line 477 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_GT, ">");
-        }
-    } else if (code_string_equals(c, "&")) {
-        #line 479 "./src/lexer/lexer.am"
-        if (code_string_equals(c2, "&")) {
-            Amalgame_Compiler_Lexer_Advance(self);
             #line 480 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AND, "&&");
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_THIN_ARROW, "->");
         } else if (code_string_equals(c2, "=")) {
             #line 481 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
             #line 482 "./src/lexer/lexer.am"
-            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AMP_EQ, "&=");
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_MINUS_EQ, "-=");
         } else {
             #line 483 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_MINUS, "-");
+        }
+    } else if (code_string_equals(c, "*")) {
+        #line 485 "./src/lexer/lexer.am"
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 486 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR_EQ, "*=");
+        } else {
+            #line 487 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_STAR, "*");
+        }
+    } else if (code_string_equals(c, "=")) {
+        #line 489 "./src/lexer/lexer.am"
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 490 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_EQEQ, "==");
+        } else if (code_string_equals(c2, ">")) {
+            #line 491 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 492 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_ARROW, "=>");
+        } else {
+            #line 493 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_EQ, "=");
+        }
+    } else if (code_string_equals(c, "!")) {
+        #line 495 "./src/lexer/lexer.am"
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 496 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_NEQ, "!=");
+        } else {
+            #line 497 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_NOT, "!");
+        }
+    } else if (code_string_equals(c, "<")) {
+        #line 499 "./src/lexer/lexer.am"
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 500 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_LTE, "<=");
+        } else if (code_string_equals(c2, "<")) {
+            #line 501 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 502 "./src/lexer/lexer.am"
+            code_string c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
+            #line 503 "./src/lexer/lexer.am"
+            if (code_string_equals(c3, "=")) {
+                Amalgame_Compiler_Lexer_Advance(self);
+                #line 504 "./src/lexer/lexer.am"
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHL_EQ, "<<=");
+            } else {
+                #line 505 "./src/lexer/lexer.am"
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHL, "<<");
+            }
+        } else {
+            #line 506 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_LT, "<");
+        }
+    } else if (code_string_equals(c, ">")) {
+        #line 508 "./src/lexer/lexer.am"
+        if (code_string_equals(c2, "=")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 509 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_GTE, ">=");
+        } else if (code_string_equals(c2, ">")) {
+            #line 510 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 511 "./src/lexer/lexer.am"
+            code_string c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
+            #line 512 "./src/lexer/lexer.am"
+            if (code_string_equals(c3, "=")) {
+                Amalgame_Compiler_Lexer_Advance(self);
+                #line 513 "./src/lexer/lexer.am"
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHR_EQ, ">>=");
+            } else {
+                #line 514 "./src/lexer/lexer.am"
+                Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SHR, ">>");
+            }
+        } else {
+            #line 515 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_GT, ">");
+        }
+    } else if (code_string_equals(c, "&")) {
+        #line 517 "./src/lexer/lexer.am"
+        if (code_string_equals(c2, "&")) {
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 518 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AND, "&&");
+        } else if (code_string_equals(c2, "=")) {
+            #line 519 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_Advance(self);
+            #line 520 "./src/lexer/lexer.am"
+            Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AMP_EQ, "&=");
+        } else {
+            #line 521 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_AMP, "&");
         }
     } else if (code_string_equals(c, "|")) {
-        #line 485 "./src/lexer/lexer.am"
+        #line 523 "./src/lexer/lexer.am"
         if (code_string_equals(c2, "|")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 486 "./src/lexer/lexer.am"
+            #line 524 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_OR, "||");
         } else if (code_string_equals(c2, "=")) {
-            #line 487 "./src/lexer/lexer.am"
+            #line 525 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 488 "./src/lexer/lexer.am"
+            #line 526 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PIPE_EQ, "|=");
         } else {
-            #line 489 "./src/lexer/lexer.am"
+            #line 527 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_PIPE, "|");
         }
     } else if (code_string_equals(c, ".")) {
-        #line 491 "./src/lexer/lexer.am"
+        #line 529 "./src/lexer/lexer.am"
         if (code_string_equals(c2, ".")) {
-            #line 492 "./src/lexer/lexer.am"
+            #line 530 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 499 "./src/lexer/lexer.am"
+            #line 537 "./src/lexer/lexer.am"
             code_string c3 = Amalgame_Compiler_Lexer_CharAt(self, self->Pos);
-            #line 500 "./src/lexer/lexer.am"
+            #line 538 "./src/lexer/lexer.am"
             if (code_string_equals(c3, ".")) {
-                #line 501 "./src/lexer/lexer.am"
+                #line 539 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_Advance(self);
-                #line 502 "./src/lexer/lexer.am"
+                #line 540 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_SPREAD, "...");
             } else {
-                #line 504 "./src/lexer/lexer.am"
+                #line 542 "./src/lexer/lexer.am"
                 Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_DOTDOT, "..");
             }
         } else {
-            #line 507 "./src/lexer/lexer.am"
+            #line 545 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_DOT, ".");
         }
     } else if (code_string_equals(c, ":")) {
-        #line 509 "./src/lexer/lexer.am"
+        #line 547 "./src/lexer/lexer.am"
         if (code_string_equals(c2, ":")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 510 "./src/lexer/lexer.am"
+            #line 548 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_COLON, "::");
         } else {
-            #line 511 "./src/lexer/lexer.am"
+            #line 549 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_COLON, ":");
         }
     } else if (code_string_equals(c, "?")) {
-        #line 513 "./src/lexer/lexer.am"
+        #line 551 "./src/lexer/lexer.am"
         if (code_string_equals(c2, "?")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 514 "./src/lexer/lexer.am"
+            #line 552 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_COALESCE, "??");
         } else if (code_string_equals(c2, ".")) {
-            #line 515 "./src/lexer/lexer.am"
+            #line 553 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 516 "./src/lexer/lexer.am"
+            #line 554 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_QDOT, "?.");
         } else {
-            #line 517 "./src/lexer/lexer.am"
+            #line 555 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_QMARK, "?");
         }
     } else if (code_string_equals(c, "~")) {
-        #line 519 "./src/lexer/lexer.am"
+        #line 557 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_TILDE, "~");
     } else if (code_string_equals(c, "^")) {
-        #line 521 "./src/lexer/lexer.am"
+        #line 559 "./src/lexer/lexer.am"
         if (code_string_equals(c2, "=")) {
             Amalgame_Compiler_Lexer_Advance(self);
-            #line 522 "./src/lexer/lexer.am"
+            #line 560 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_CARET_EQ, "^=");
         } else {
-            #line 523 "./src/lexer/lexer.am"
+            #line 561 "./src/lexer/lexer.am"
             Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_OP_CARET, "^");
         }
     } else {
-        #line 525 "./src/lexer/lexer.am"
+        #line 563 "./src/lexer/lexer.am"
         Amalgame_Compiler_Lexer_AddToken(self, Amalgame_Compiler_TokenType_UNKNOWN, c);
     }
 }
@@ -24474,12 +24532,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "d71134c0";
+    return "561d20d7";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-22T21:04:39Z";
+    return "2026-05-24T05:23:33Z";
 }
 
 struct _Amalgame_Compiler_LspServer {

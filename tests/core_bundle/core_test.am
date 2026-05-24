@@ -335,6 +335,17 @@ class Program {
         g_variables.Add(new CoreCase("variables", "int: 42"))
         Program.RunGroup("./tests/samples/variables.am", "variables", g_variables)
 
+        // ── hex/binary literals (7 cases) ──
+        let g_hexbin: List<CoreCase> = new List<CoreCase>()
+        g_hexbin.Add(new CoreCase("hex 0xFF",   "h1=255"))
+        g_hexbin.Add(new CoreCase("hex 0x10",   "h2=16"))
+        g_hexbin.Add(new CoreCase("hex 0Xdead", "h3=57005"))
+        g_hexbin.Add(new CoreCase("bin 0b1010", "b1=10"))
+        g_hexbin.Add(new CoreCase("bin 0B1111", "b2=15"))
+        g_hexbin.Add(new CoreCase("bin 0b0",    "b3=0"))
+        g_hexbin.Add(new CoreCase("hex+bin sum","sum=281"))
+        Program.RunGroup("./tests/samples/hex_bin_literals.am", "hex_bin_literals", g_hexbin)
+
         // ── control_flow (1 cases) ──
         let g_control_flow: List<CoreCase> = new List<CoreCase>()
         g_control_flow.Add(new CoreCase("control flow", "Grade: B"))

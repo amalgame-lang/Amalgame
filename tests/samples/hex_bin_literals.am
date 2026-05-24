@@ -1,0 +1,20 @@
+namespace Tests
+
+public class Program {
+    public static void Main(string[] args) {
+        let h1 = 0xFF
+        let h2 = 0x10
+        let h3 = 0Xdead
+        let b1 = 0b1010
+        let b2 = 0B1111
+        let b3 = 0b0
+        let sum = h1 + h2 + b1
+        Console.WriteLine("h1={h1}")
+        Console.WriteLine("h2={h2}")
+        Console.WriteLine("h3={h3}")
+        Console.WriteLine("b1={b1}")
+        Console.WriteLine("b2={b2}")
+        Console.WriteLine("b3={b3}")
+        Console.WriteLine("sum={sum}")
+    }
+}
