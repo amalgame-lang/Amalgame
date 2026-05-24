@@ -7640,7 +7640,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.47";
+    return "0.8.48";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -9697,7 +9697,7 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExprUncached(Amalgame_Com
                 return "i64";
             }
             #line 1138 "./src/generator/c_gen.am"
-            if ((((code_string_equals(calleeStr, "File_Exists")) || (code_string_equals(calleeStr, "File_WriteAll"))) || (code_string_equals(calleeStr, "File_AppendAll"))) || (code_string_equals(calleeStr, "File_Delete"))) {
+            if ((((((code_string_equals(calleeStr, "File_Exists")) || (code_string_equals(calleeStr, "File_WriteAll"))) || (code_string_equals(calleeStr, "File_AppendAll"))) || (code_string_equals(calleeStr, "File_Delete"))) || (code_string_equals(calleeStr, "File_IsFile"))) || (code_string_equals(calleeStr, "File_IsDir"))) {
                 return "code_bool";
             }
             #line 1139 "./src/generator/c_gen.am"
@@ -9713,7 +9713,7 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExprUncached(Amalgame_Com
                 return "code_string";
             }
             #line 1142 "./src/generator/c_gen.am"
-            if (code_string_equals(calleeStr, "File_Size")) {
+            if ((code_string_equals(calleeStr, "File_Size")) || (code_string_equals(calleeStr, "File_Mtime"))) {
                 return "i64";
             }
             #line 1144 "./src/generator/c_gen.am"
@@ -10377,11 +10377,11 @@ static code_string Amalgame_Compiler_CGen_BuiltinCallReturnType(Amalgame_Compile
         return "code_string";
     }
     #line 1577 "./src/generator/c_gen.am"
-    if ((((code_string_equals(cName, "File_Exists")) || (code_string_equals(cName, "File_WriteAll"))) || (code_string_equals(cName, "File_AppendAll"))) || (code_string_equals(cName, "File_Delete"))) {
+    if ((((((code_string_equals(cName, "File_Exists")) || (code_string_equals(cName, "File_WriteAll"))) || (code_string_equals(cName, "File_AppendAll"))) || (code_string_equals(cName, "File_Delete"))) || (code_string_equals(cName, "File_IsFile"))) || (code_string_equals(cName, "File_IsDir"))) {
         return "code_bool";
     }
     #line 1578 "./src/generator/c_gen.am"
-    if (((code_string_equals(cName, "File_Size")) || (code_string_equals(cName, "Args_Count"))) || (code_string_equals(cName, "Exit_Get"))) {
+    if ((((code_string_equals(cName, "File_Size")) || (code_string_equals(cName, "File_Mtime"))) || (code_string_equals(cName, "Args_Count"))) || (code_string_equals(cName, "Exit_Get"))) {
         return "i64";
     }
     #line 1579 "./src/generator/c_gen.am"
@@ -17304,381 +17304,387 @@ static void Amalgame_Compiler_Resolver_RegisterBuiltins(Amalgame_Compiler_Resolv
     AmalgameList_add(builtins, (void*)(intptr_t)("File_Delete"));
     #line 156 "./src/resolver/symbol.am"
     AmalgameList_add(builtins, (void*)(intptr_t)("File_Size"));
-    #line 160 "./src/resolver/symbol.am"
-    AmalgameList_add(builtins, (void*)(intptr_t)("null"));
-    #line 161 "./src/resolver/symbol.am"
-    AmalgameList_add(builtins, (void*)(intptr_t)("true"));
-    #line 162 "./src/resolver/symbol.am"
-    AmalgameList_add(builtins, (void*)(intptr_t)("false"));
+    #line 157 "./src/resolver/symbol.am"
+    AmalgameList_add(builtins, (void*)(intptr_t)("File_Mtime"));
+    #line 158 "./src/resolver/symbol.am"
+    AmalgameList_add(builtins, (void*)(intptr_t)("File_IsFile"));
+    #line 159 "./src/resolver/symbol.am"
+    AmalgameList_add(builtins, (void*)(intptr_t)("File_IsDir"));
     #line 163 "./src/resolver/symbol.am"
-    AmalgameList_add(builtins, (void*)(intptr_t)("this"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("null"));
     #line 164 "./src/resolver/symbol.am"
-    AmalgameList_add(builtins, (void*)(intptr_t)("args"));
+    AmalgameList_add(builtins, (void*)(intptr_t)("true"));
     #line 165 "./src/resolver/symbol.am"
-    i64 count = AmalgameList_count(builtins);
+    AmalgameList_add(builtins, (void*)(intptr_t)("false"));
     #line 166 "./src/resolver/symbol.am"
+    AmalgameList_add(builtins, (void*)(intptr_t)("this"));
+    #line 167 "./src/resolver/symbol.am"
+    AmalgameList_add(builtins, (void*)(intptr_t)("args"));
+    #line 168 "./src/resolver/symbol.am"
+    i64 count = AmalgameList_count(builtins);
+    #line 169 "./src/resolver/symbol.am"
     for (i64 i = 0; i < count; i++) {
-        #line 167 "./src/resolver/symbol.am"
+        #line 170 "./src/resolver/symbol.am"
         code_string name = (code_string)AmalgameList_get(builtins, i);
-        #line 168 "./src/resolver/symbol.am"
+        #line 171 "./src/resolver/symbol.am"
         Amalgame_Compiler_Symbol* sym = Amalgame_Compiler_Symbol_new(name, Amalgame_Compiler_SymKind_BUILTIN);
-        #line 169 "./src/resolver/symbol.am"
+        #line 172 "./src/resolver/symbol.am"
         Amalgame_Compiler_SymbolTable_Declare(self->Global, sym);
     }
 }
 
 void Amalgame_Compiler_Resolver_Resolve(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* prog) {
-    #line 175 "./src/resolver/symbol.am"
+    #line 178 "./src/resolver/symbol.am"
     i64 decls = AmalgameList_count(prog->Children);
-    #line 176 "./src/resolver/symbol.am"
+    #line 179 "./src/resolver/symbol.am"
     for (i64 i = 0; i < decls; i++) {
-        #line 177 "./src/resolver/symbol.am"
+        #line 180 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 178 "./src/resolver/symbol.am"
+        #line 181 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_CollectDecl(self, decl);
     }
-    #line 181 "./src/resolver/symbol.am"
+    #line 184 "./src/resolver/symbol.am"
     for (i64 j = 0; j < decls; j++) {
-        #line 182 "./src/resolver/symbol.am"
+        #line 185 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, j);
-        #line 183 "./src/resolver/symbol.am"
+        #line 186 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_ResolveDecl(self, decl);
     }
 }
 
 void Amalgame_Compiler_Resolver_ResolvePrograms(Amalgame_Compiler_Resolver* self) {
-    #line 188 "./src/resolver/symbol.am"
+    #line 191 "./src/resolver/symbol.am"
     i64 progCount = AmalgameList_count(self->Programs);
-    #line 190 "./src/resolver/symbol.am"
+    #line 193 "./src/resolver/symbol.am"
     for (i64 p = 0; p < progCount; p++) {
-        #line 191 "./src/resolver/symbol.am"
+        #line 194 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* prog = (Amalgame_Compiler_AstNode*)AmalgameList_get(self->Programs, p);
-        #line 192 "./src/resolver/symbol.am"
+        #line 195 "./src/resolver/symbol.am"
         i64 decls = AmalgameList_count(prog->Children);
-        #line 193 "./src/resolver/symbol.am"
+        #line 196 "./src/resolver/symbol.am"
         for (i64 i = 0; i < decls; i++) {
-            #line 194 "./src/resolver/symbol.am"
+            #line 197 "./src/resolver/symbol.am"
             Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-            #line 195 "./src/resolver/symbol.am"
+            #line 198 "./src/resolver/symbol.am"
             Amalgame_Compiler_Resolver_CollectDecl(self, decl);
         }
     }
-    #line 199 "./src/resolver/symbol.am"
+    #line 202 "./src/resolver/symbol.am"
     for (i64 p2 = 0; p2 < progCount; p2++) {
-        #line 200 "./src/resolver/symbol.am"
+        #line 203 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* prog2 = (Amalgame_Compiler_AstNode*)AmalgameList_get(self->Programs, p2);
-        #line 201 "./src/resolver/symbol.am"
+        #line 204 "./src/resolver/symbol.am"
         i64 decls2 = AmalgameList_count(prog2->Children);
-        #line 202 "./src/resolver/symbol.am"
+        #line 205 "./src/resolver/symbol.am"
         for (i64 j = 0; j < decls2; j++) {
-            #line 203 "./src/resolver/symbol.am"
+            #line 206 "./src/resolver/symbol.am"
             Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog2->Children, j);
-            #line 204 "./src/resolver/symbol.am"
+            #line 207 "./src/resolver/symbol.am"
             Amalgame_Compiler_Resolver_ResolveDecl(self, decl);
         }
     }
 }
 
 code_bool Amalgame_Compiler_Resolver_HasErrors(Amalgame_Compiler_Resolver* self) {
-    #line 210 "./src/resolver/symbol.am"
+    #line 213 "./src/resolver/symbol.am"
     return AmalgameList_count(self->Errors) > 0;
 }
 
 code_string Amalgame_Compiler_Resolver_GetErrors(Amalgame_Compiler_Resolver* self) {
-    #line 214 "./src/resolver/symbol.am"
+    #line 217 "./src/resolver/symbol.am"
     code_string result = "";
-    #line 215 "./src/resolver/symbol.am"
+    #line 218 "./src/resolver/symbol.am"
     i64 count = AmalgameList_count(self->Errors);
-    #line 216 "./src/resolver/symbol.am"
+    #line 219 "./src/resolver/symbol.am"
     for (i64 i = 0; i < count; i++) {
-        #line 217 "./src/resolver/symbol.am"
+        #line 220 "./src/resolver/symbol.am"
         code_string e = (code_string)AmalgameList_get(self->Errors, i);
-        #line 218 "./src/resolver/symbol.am"
+        #line 221 "./src/resolver/symbol.am"
         result = (code_string_concat((code_string_concat(result, e)), "\n"));
     }
-    #line 220 "./src/resolver/symbol.am"
+    #line 223 "./src/resolver/symbol.am"
     return result;
 }
 
 static void Amalgame_Compiler_Resolver_CollectDecl(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* decl) {
-    #line 226 "./src/resolver/symbol.am"
+    #line 229 "./src/resolver/symbol.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 227 "./src/resolver/symbol.am"
+    #line 230 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 228 "./src/resolver/symbol.am"
+        #line 231 "./src/resolver/symbol.am"
         Amalgame_Compiler_Symbol* sym = Amalgame_Compiler_Symbol_new(decl->Name, Amalgame_Compiler_SymKind_CLASS);
-        #line 229 "./src/resolver/symbol.am"
+        #line 232 "./src/resolver/symbol.am"
         sym->IsPublic = decl->Flag;
-        #line 230 "./src/resolver/symbol.am"
+        #line 233 "./src/resolver/symbol.am"
         Amalgame_Compiler_SymbolTable_Declare(self->Global, sym);
     }
-    #line 232 "./src/resolver/symbol.am"
+    #line 235 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 233 "./src/resolver/symbol.am"
+        #line 236 "./src/resolver/symbol.am"
         Amalgame_Compiler_Symbol* esym = Amalgame_Compiler_Symbol_new(decl->Name, Amalgame_Compiler_SymKind_ENUM);
-        #line 234 "./src/resolver/symbol.am"
+        #line 237 "./src/resolver/symbol.am"
         esym->IsPublic = decl->Flag;
-        #line 235 "./src/resolver/symbol.am"
+        #line 238 "./src/resolver/symbol.am"
         Amalgame_Compiler_SymbolTable_Declare(self->Global, esym);
     }
 }
 
 static void Amalgame_Compiler_Resolver_ResolveDecl(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* decl) {
-    #line 242 "./src/resolver/symbol.am"
+    #line 245 "./src/resolver/symbol.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 243 "./src/resolver/symbol.am"
+    #line 246 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 244 "./src/resolver/symbol.am"
+        #line 247 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_ResolveClass(self, decl);
     }
 }
 
 static void Amalgame_Compiler_Resolver_ResolveClass(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* cls) {
-    #line 250 "./src/resolver/symbol.am"
-    Amalgame_Compiler_SymbolTable* classScope = Amalgame_Compiler_SymbolTable_new();
-    #line 251 "./src/resolver/symbol.am"
-    classScope->Parent = self->Global;
-    #line 252 "./src/resolver/symbol.am"
-    Amalgame_Compiler_SymbolTable* prev = self->Current;
     #line 253 "./src/resolver/symbol.am"
-    self->Current = classScope;
+    Amalgame_Compiler_SymbolTable* classScope = Amalgame_Compiler_SymbolTable_new();
+    #line 254 "./src/resolver/symbol.am"
+    classScope->Parent = self->Global;
+    #line 255 "./src/resolver/symbol.am"
+    Amalgame_Compiler_SymbolTable* prev = self->Current;
     #line 256 "./src/resolver/symbol.am"
+    self->Current = classScope;
+    #line 259 "./src/resolver/symbol.am"
     i64 members = AmalgameList_count(cls->Children);
-    #line 257 "./src/resolver/symbol.am"
+    #line 260 "./src/resolver/symbol.am"
     for (i64 i = 0; i < members; i++) {
-        #line 258 "./src/resolver/symbol.am"
+        #line 261 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, i);
-        #line 259 "./src/resolver/symbol.am"
+        #line 262 "./src/resolver/symbol.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 260 "./src/resolver/symbol.am"
+        #line 263 "./src/resolver/symbol.am"
         if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-            #line 261 "./src/resolver/symbol.am"
-            Amalgame_Compiler_Symbol* fsym = Amalgame_Compiler_Symbol_new(m->Name, Amalgame_Compiler_SymKind_FIELD);
-            #line 262 "./src/resolver/symbol.am"
-            fsym->TypeName = m->Str;
-            #line 263 "./src/resolver/symbol.am"
-            fsym->IsPublic = m->Flag;
             #line 264 "./src/resolver/symbol.am"
+            Amalgame_Compiler_Symbol* fsym = Amalgame_Compiler_Symbol_new(m->Name, Amalgame_Compiler_SymKind_FIELD);
+            #line 265 "./src/resolver/symbol.am"
+            fsym->TypeName = m->Str;
+            #line 266 "./src/resolver/symbol.am"
+            fsym->IsPublic = m->Flag;
+            #line 267 "./src/resolver/symbol.am"
             Amalgame_Compiler_SymbolTable_Declare(classScope, fsym);
         }
-        #line 266 "./src/resolver/symbol.am"
+        #line 269 "./src/resolver/symbol.am"
         if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 267 "./src/resolver/symbol.am"
-            Amalgame_Compiler_Symbol* msym = Amalgame_Compiler_Symbol_new(m->Name, Amalgame_Compiler_SymKind_METHOD);
-            #line 268 "./src/resolver/symbol.am"
-            msym->TypeName = m->Str;
-            #line 269 "./src/resolver/symbol.am"
-            msym->IsPublic = m->Flag;
             #line 270 "./src/resolver/symbol.am"
-            msym->IsStatic = m->Flag2;
+            Amalgame_Compiler_Symbol* msym = Amalgame_Compiler_Symbol_new(m->Name, Amalgame_Compiler_SymKind_METHOD);
             #line 271 "./src/resolver/symbol.am"
+            msym->TypeName = m->Str;
+            #line 272 "./src/resolver/symbol.am"
+            msym->IsPublic = m->Flag;
+            #line 273 "./src/resolver/symbol.am"
+            msym->IsStatic = m->Flag2;
+            #line 274 "./src/resolver/symbol.am"
             Amalgame_Compiler_SymbolTable_Declare(classScope, msym);
         }
     }
-    #line 276 "./src/resolver/symbol.am"
+    #line 279 "./src/resolver/symbol.am"
     for (i64 j = 0; j < members; j++) {
-        #line 277 "./src/resolver/symbol.am"
+        #line 280 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, j);
-        #line 278 "./src/resolver/symbol.am"
+        #line 281 "./src/resolver/symbol.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 279 "./src/resolver/symbol.am"
+        #line 282 "./src/resolver/symbol.am"
         if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 280 "./src/resolver/symbol.am"
+            #line 283 "./src/resolver/symbol.am"
             Amalgame_Compiler_Resolver_ResolveMethod(self, m, classScope);
         }
     }
-    #line 284 "./src/resolver/symbol.am"
+    #line 287 "./src/resolver/symbol.am"
     self->Current = prev;
 }
 
 static void Amalgame_Compiler_Resolver_ResolveMethod(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* method, Amalgame_Compiler_SymbolTable* classScope) {
-    #line 288 "./src/resolver/symbol.am"
-    Amalgame_Compiler_SymbolTable* methodScope = Amalgame_Compiler_SymbolTable_new();
-    #line 289 "./src/resolver/symbol.am"
-    methodScope->Parent = classScope;
-    #line 290 "./src/resolver/symbol.am"
-    Amalgame_Compiler_SymbolTable* prev = self->Current;
     #line 291 "./src/resolver/symbol.am"
-    self->Current = methodScope;
+    Amalgame_Compiler_SymbolTable* methodScope = Amalgame_Compiler_SymbolTable_new();
+    #line 292 "./src/resolver/symbol.am"
+    methodScope->Parent = classScope;
+    #line 293 "./src/resolver/symbol.am"
+    Amalgame_Compiler_SymbolTable* prev = self->Current;
     #line 294 "./src/resolver/symbol.am"
+    self->Current = methodScope;
+    #line 297 "./src/resolver/symbol.am"
     i64 params = AmalgameList_count(method->Params);
-    #line 295 "./src/resolver/symbol.am"
+    #line 298 "./src/resolver/symbol.am"
     for (i64 i = 0; i < params; i++) {
-        #line 296 "./src/resolver/symbol.am"
-        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 297 "./src/resolver/symbol.am"
-        Amalgame_Compiler_Symbol* psym = Amalgame_Compiler_Symbol_new(p->Name, Amalgame_Compiler_SymKind_PARAM);
-        #line 298 "./src/resolver/symbol.am"
-        psym->TypeName = p->Str;
         #line 299 "./src/resolver/symbol.am"
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
+        #line 300 "./src/resolver/symbol.am"
+        Amalgame_Compiler_Symbol* psym = Amalgame_Compiler_Symbol_new(p->Name, Amalgame_Compiler_SymKind_PARAM);
+        #line 301 "./src/resolver/symbol.am"
+        psym->TypeName = p->Str;
+        #line 302 "./src/resolver/symbol.am"
         Amalgame_Compiler_SymbolTable_Declare(methodScope, psym);
     }
-    #line 303 "./src/resolver/symbol.am"
+    #line 306 "./src/resolver/symbol.am"
     if (method->Body != NULL) {
-        #line 304 "./src/resolver/symbol.am"
+        #line 307 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_ResolveBlock(self, method->Body);
     }
-    #line 307 "./src/resolver/symbol.am"
+    #line 310 "./src/resolver/symbol.am"
     self->Current = prev;
 }
 
 static void Amalgame_Compiler_Resolver_ResolveBlock(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* block) {
-    #line 311 "./src/resolver/symbol.am"
+    #line 314 "./src/resolver/symbol.am"
     i64 stmts = AmalgameList_count(block->Children);
-    #line 312 "./src/resolver/symbol.am"
+    #line 315 "./src/resolver/symbol.am"
     for (i64 i = 0; i < stmts; i++) {
-        #line 313 "./src/resolver/symbol.am"
+        #line 316 "./src/resolver/symbol.am"
         Amalgame_Compiler_AstNode* stmt = (Amalgame_Compiler_AstNode*)AmalgameList_get(block->Children, i);
-        #line 314 "./src/resolver/symbol.am"
+        #line 317 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_ResolveStmt(self, stmt);
     }
 }
 
 static void Amalgame_Compiler_Resolver_ResolveStmt(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 319 "./src/resolver/symbol.am"
+    #line 322 "./src/resolver/symbol.am"
     Amalgame_Compiler_NodeKind k = stmt->Kind;
-    #line 320 "./src/resolver/symbol.am"
+    #line 323 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 321 "./src/resolver/symbol.am"
+        #line 324 "./src/resolver/symbol.am"
         if (stmt->Left != NULL) {
-            #line 322 "./src/resolver/symbol.am"
+            #line 325 "./src/resolver/symbol.am"
             Amalgame_Compiler_Resolver_ResolveExpr(self, stmt->Left);
         }
-        #line 324 "./src/resolver/symbol.am"
+        #line 327 "./src/resolver/symbol.am"
         Amalgame_Compiler_Symbol* vsym = Amalgame_Compiler_Symbol_new(stmt->Name, Amalgame_Compiler_SymKind_LOCAL);
-        #line 325 "./src/resolver/symbol.am"
+        #line 328 "./src/resolver/symbol.am"
         vsym->TypeName = stmt->Str;
-        #line 326 "./src/resolver/symbol.am"
+        #line 329 "./src/resolver/symbol.am"
         Amalgame_Compiler_SymbolTable_Declare(self->Current, vsym);
     }
-    #line 328 "./src/resolver/symbol.am"
+    #line 331 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_RETURN_STMT) {
-        #line 329 "./src/resolver/symbol.am"
+        #line 332 "./src/resolver/symbol.am"
         if (stmt->Left != NULL) {
-            #line 330 "./src/resolver/symbol.am"
+            #line 333 "./src/resolver/symbol.am"
             Amalgame_Compiler_Resolver_ResolveExpr(self, stmt->Left);
         }
     }
-    #line 333 "./src/resolver/symbol.am"
+    #line 336 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 334 "./src/resolver/symbol.am"
+        #line 337 "./src/resolver/symbol.am"
         if (stmt->Cond != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, stmt->Cond);
         }
-        #line 335 "./src/resolver/symbol.am"
+        #line 338 "./src/resolver/symbol.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_Resolver_ResolveBlock(self, stmt->Body);
         }
-        #line 336 "./src/resolver/symbol.am"
+        #line 339 "./src/resolver/symbol.am"
         if (stmt->Else != NULL) {
             Amalgame_Compiler_Resolver_ResolveBlock(self, stmt->Else);
         }
     }
-    #line 338 "./src/resolver/symbol.am"
+    #line 341 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_WHILE_STMT) {
-        #line 339 "./src/resolver/symbol.am"
+        #line 342 "./src/resolver/symbol.am"
         if (stmt->Cond != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, stmt->Cond);
         }
-        #line 340 "./src/resolver/symbol.am"
+        #line 343 "./src/resolver/symbol.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_Resolver_ResolveBlock(self, stmt->Body);
         }
     }
-    #line 342 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_BINARY) {
-        #line 343 "./src/resolver/symbol.am"
-        Amalgame_Compiler_Resolver_ResolveExpr(self, stmt);
-    }
     #line 345 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_CALL) {
+    if (k == Amalgame_Compiler_NodeKind_BINARY) {
         #line 346 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_ResolveExpr(self, stmt);
     }
     #line 348 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_MEMBER) {
+    if (k == Amalgame_Compiler_NodeKind_CALL) {
         #line 349 "./src/resolver/symbol.am"
+        Amalgame_Compiler_Resolver_ResolveExpr(self, stmt);
+    }
+    #line 351 "./src/resolver/symbol.am"
+    if (k == Amalgame_Compiler_NodeKind_MEMBER) {
+        #line 352 "./src/resolver/symbol.am"
         Amalgame_Compiler_Resolver_ResolveExpr(self, stmt);
     }
 }
 
 static void Amalgame_Compiler_Resolver_ResolveExpr(Amalgame_Compiler_Resolver* self, Amalgame_Compiler_AstNode* expr) {
-    #line 354 "./src/resolver/symbol.am"
+    #line 357 "./src/resolver/symbol.am"
     if (expr == NULL) {
         return;
     }
-    #line 355 "./src/resolver/symbol.am"
+    #line 358 "./src/resolver/symbol.am"
     Amalgame_Compiler_NodeKind k = expr->Kind;
-    #line 356 "./src/resolver/symbol.am"
+    #line 359 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 357 "./src/resolver/symbol.am"
+        #line 360 "./src/resolver/symbol.am"
         code_string name = expr->Name;
-        #line 358 "./src/resolver/symbol.am"
+        #line 361 "./src/resolver/symbol.am"
         if (!Amalgame_Compiler_Resolver_LookupInScopes(self, name)) {
-            #line 359 "./src/resolver/symbol.am"
+            #line 362 "./src/resolver/symbol.am"
             i64 line = expr->Line;
-            #line 360 "./src/resolver/symbol.am"
+            #line 363 "./src/resolver/symbol.am"
             code_string ln = String_FromInt(line);
-            #line 361 "./src/resolver/symbol.am"
+            #line 364 "./src/resolver/symbol.am"
             AmalgameList_add(self->Errors, (void*)(intptr_t)(code_string_concat((code_string_concat((code_string_concat("Unknown symbol '", name)), "' at line ")), ln)));
         }
     }
-    #line 364 "./src/resolver/symbol.am"
+    #line 367 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_BINARY) {
-        #line 365 "./src/resolver/symbol.am"
+        #line 368 "./src/resolver/symbol.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Left);
         }
-        #line 366 "./src/resolver/symbol.am"
+        #line 369 "./src/resolver/symbol.am"
         if (expr->Right != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Right);
         }
     }
-    #line 368 "./src/resolver/symbol.am"
+    #line 371 "./src/resolver/symbol.am"
     if (k == Amalgame_Compiler_NodeKind_CALL) {
-        #line 369 "./src/resolver/symbol.am"
+        #line 372 "./src/resolver/symbol.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Left);
         }
-        #line 370 "./src/resolver/symbol.am"
+        #line 373 "./src/resolver/symbol.am"
         i64 argc = AmalgameList_count(expr->Args);
-        #line 371 "./src/resolver/symbol.am"
+        #line 374 "./src/resolver/symbol.am"
         for (i64 i = 0; i < argc; i++) {
-            #line 372 "./src/resolver/symbol.am"
+            #line 375 "./src/resolver/symbol.am"
             Amalgame_Compiler_Resolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
-        }
-    }
-    #line 375 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 376 "./src/resolver/symbol.am"
-        if (expr->Left != NULL) {
-            Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Left);
         }
     }
     #line 378 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
+    if (k == Amalgame_Compiler_NodeKind_MEMBER) {
         #line 379 "./src/resolver/symbol.am"
-        i64 argc2 = AmalgameList_count(expr->Args);
-        #line 380 "./src/resolver/symbol.am"
-        for (i64 i = 0; i < argc2; i++) {
-            #line 381 "./src/resolver/symbol.am"
-            Amalgame_Compiler_Resolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
-        }
-    }
-    #line 384 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_UNARY) {
-        #line 385 "./src/resolver/symbol.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Left);
         }
     }
+    #line 381 "./src/resolver/symbol.am"
+    if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
+        #line 382 "./src/resolver/symbol.am"
+        i64 argc2 = AmalgameList_count(expr->Args);
+        #line 383 "./src/resolver/symbol.am"
+        for (i64 i = 0; i < argc2; i++) {
+            #line 384 "./src/resolver/symbol.am"
+            Amalgame_Compiler_Resolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
+        }
+    }
     #line 387 "./src/resolver/symbol.am"
-    if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
+    if (k == Amalgame_Compiler_NodeKind_UNARY) {
         #line 388 "./src/resolver/symbol.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Left);
         }
-        #line 389 "./src/resolver/symbol.am"
+    }
+    #line 390 "./src/resolver/symbol.am"
+    if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
+        #line 391 "./src/resolver/symbol.am"
+        if (expr->Left != NULL) {
+            Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Left);
+        }
+        #line 392 "./src/resolver/symbol.am"
         if (expr->Right != NULL) {
             Amalgame_Compiler_Resolver_ResolveExpr(self, expr->Right);
         }
@@ -17686,31 +17692,31 @@ static void Amalgame_Compiler_Resolver_ResolveExpr(Amalgame_Compiler_Resolver* s
 }
 
 static code_bool Amalgame_Compiler_Resolver_LookupInScopes(Amalgame_Compiler_Resolver* self, code_string name) {
-    #line 394 "./src/resolver/symbol.am"
-    Amalgame_Compiler_SymbolTable* scope = self->Current;
-    #line 395 "./src/resolver/symbol.am"
-    code_bool found = 0;
-    #line 396 "./src/resolver/symbol.am"
-    i64 safety = 0;
     #line 397 "./src/resolver/symbol.am"
+    Amalgame_Compiler_SymbolTable* scope = self->Current;
+    #line 398 "./src/resolver/symbol.am"
+    code_bool found = 0;
+    #line 399 "./src/resolver/symbol.am"
+    i64 safety = 0;
+    #line 400 "./src/resolver/symbol.am"
     while ((scope != NULL) && !found) {
-        #line 398 "./src/resolver/symbol.am"
+        #line 401 "./src/resolver/symbol.am"
         safety = (safety + 1);
-        #line 399 "./src/resolver/symbol.am"
+        #line 402 "./src/resolver/symbol.am"
         if (safety > 100) {
             break;
         }
-        #line 400 "./src/resolver/symbol.am"
+        #line 403 "./src/resolver/symbol.am"
         if (Amalgame_Compiler_SymbolTable_Has(scope, name)) {
             found = 1;
         }
-        #line 401 "./src/resolver/symbol.am"
+        #line 404 "./src/resolver/symbol.am"
         if (!found) {
-            #line 402 "./src/resolver/symbol.am"
+            #line 405 "./src/resolver/symbol.am"
             scope = scope->Parent;
         }
     }
-    #line 405 "./src/resolver/symbol.am"
+    #line 408 "./src/resolver/symbol.am"
     return found;
 }
 
@@ -18172,807 +18178,813 @@ static void Amalgame_Compiler_FullResolver_RegisterBuiltins(Amalgame_Compiler_Fu
     #line 346 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_Size", "int", 0);
     #line 347 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Combine", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_Mtime", "int", 0);
     #line 348 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetExtension", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_IsFile", "bool", 0);
     #line 349 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetFilename", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "File_IsDir", "bool", 0);
     #line 350 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetDirectory", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Combine", "string", 0);
     #line 351 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetStem", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetExtension", "string", 0);
     #line 352 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetFilename", "string", 0);
     #line 353 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetDirectory", "string", 0);
     #line 354 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_GetStem", "string", 0);
+    #line 355 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_IsAbsolute", "bool", 0);
+    #line 356 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Normalize", "string", 0);
+    #line 357 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Path_Sep", "string", 0);
-    #line 378 "./src/resolver/resolver.am"
+    #line 381 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_ShouldStop", "bool", 0);
-    #line 379 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
-    #line 380 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Sleep", "void", 0);
     #line 382 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Get", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_RequestStop", "void", 0);
     #line 383 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Service_Sleep", "void", 0);
+    #line 385 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Get", "string", 0);
+    #line 386 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Env_Has", "bool", 0);
-    #line 388 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math", "type", 0);
     #line 391 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket", "type", 0);
-    #line 392 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Connect", "WebSocket", 0);
-    #line 393 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_SendText", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Math", "type", 0);
     #line 394 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_ReceiveText", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket", "type", 0);
     #line 395 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Connect", "WebSocket", 0);
     #line 396 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_IsConnected", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_SendText", "bool", 0);
     #line 397 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_GetHost", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_ReceiveText", "string", 0);
     #line 398 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_GetPort", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_Close", "void", 0);
     #line 399 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_AcceptKey", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_IsConnected", "bool", 0);
+    #line 400 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_GetHost", "string", 0);
+    #line 401 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_GetPort", "int", 0);
     #line 402 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress", "type", 0);
-    #line 403 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gzip", "List<int>", 0);
-    #line 404 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gunzip", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "WebSocket_AcceptKey", "string", 0);
     #line 405 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Deflate", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress", "type", 0);
     #line 406 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Inflate", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gzip", "List<int>", 0);
     #line 407 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_GzipString", "List<int>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Gunzip", "List<int>", 0);
     #line 408 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_GunzipString", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Deflate", "List<int>", 0);
+    #line 409 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_Inflate", "List<int>", 0);
+    #line 410 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_GzipString", "List<int>", 0);
     #line 411 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex", "type", 0);
-    #line 412 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match", "type", 0);
-    #line 413 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Test", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Compress_GunzipString", "string", 0);
     #line 414 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Match", "Match", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex", "type", 0);
     #line 415 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Replace", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match", "type", 0);
     #line 416 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_ReplaceAll", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Test", "bool", 0);
     #line 417 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetText", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Match", "Match", 0);
     #line 418 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetStart", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_Replace", "string", 0);
     #line 419 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetEnd", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Regex_ReplaceAll", "string", 0);
     #line 420 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupCount", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetText", "string", 0);
     #line 421 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupText", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetStart", "int", 0);
     #line 422 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupStart", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GetEnd", "int", 0);
     #line 423 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupCount", "int", 0);
+    #line 424 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupText", "string", 0);
+    #line 425 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupStart", "int", 0);
+    #line 426 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Match_GroupEnd", "int", 0);
-    #line 432 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3", "type", 0);
-    #line 433 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4", "type", 0);
-    #line 434 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4", "type", 0);
     #line 435 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_new", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3", "type", 0);
     #line 436 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetX", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4", "type", 0);
     #line 437 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetY", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4", "type", 0);
     #line 438 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetZ", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_new", "Vec3", 0);
     #line 439 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Add", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetX", "float", 0);
     #line 440 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Sub", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetY", "float", 0);
     #line 441 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Scale", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_GetZ", "float", 0);
     #line 442 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Dot", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Add", "Vec3", 0);
     #line 443 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Cross", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Sub", "Vec3", 0);
     #line 444 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Length", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Scale", "Vec3", 0);
     #line 445 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Normalize", "Vec3", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Dot", "float", 0);
     #line 446 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Equals", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Cross", "Vec3", 0);
     #line 447 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_new", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Length", "float", 0);
     #line 448 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetX", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Normalize", "Vec3", 0);
     #line 449 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetY", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec3_Equals", "bool", 0);
     #line 450 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetZ", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_new", "Vec4", 0);
     #line 451 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetW", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetX", "float", 0);
     #line 452 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Add", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetY", "float", 0);
     #line 453 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Sub", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetZ", "float", 0);
     #line 454 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Scale", "Vec4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_GetW", "float", 0);
     #line 455 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Dot", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Add", "Vec4", 0);
     #line 456 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_new", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Sub", "Vec4", 0);
     #line 457 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Identity", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Scale", "Vec4", 0);
     #line 458 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Get", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Vec4_Dot", "float", 0);
     #line 459 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Set", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_new", "Mat4", 0);
     #line 460 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Multiply", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Identity", "Mat4", 0);
     #line 461 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Translate", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Get", "float", 0);
     #line 462 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Scale", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Set", "void", 0);
     #line 463 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateX", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Multiply", "Mat4", 0);
     #line 464 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateY", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Translate", "Mat4", 0);
     #line 465 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateZ", "Mat4", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_Scale", "Mat4", 0);
     #line 466 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateX", "Mat4", 0);
+    #line 467 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateY", "Mat4", 0);
+    #line 468 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_RotateZ", "Mat4", 0);
+    #line 469 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Mat4_TransformVec4", "Vec4", 0);
-    #line 484 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
-    #line 485 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
-    #line 486 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
     #line 487 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_StartsWith", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Length", "int", 0);
     #line 488 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_EndsWith", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IsEmpty", "bool", 0);
     #line 489 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IndexOf", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Contains", "bool", 0);
     #line 490 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_LastIndexOf", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_StartsWith", "bool", 0);
     #line 491 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Substring", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_EndsWith", "bool", 0);
     #line 492 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToUpper", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_IndexOf", "int", 0);
     #line 493 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToLower", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_LastIndexOf", "int", 0);
     #line 494 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Trim", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Substring", "string", 0);
     #line 495 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_TrimStart", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToUpper", "string", 0);
     #line 496 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_TrimEnd", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToLower", "string", 0);
     #line 497 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Replace", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Trim", "string", 0);
     #line 498 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Split", "List<string>", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_TrimStart", "string", 0);
     #line 499 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Join", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_TrimEnd", "string", 0);
     #line 500 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Repeat", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Replace", "string", 0);
     #line 501 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToInt", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Split", "List<string>", 0);
     #line 502 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToFloat", "float", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Join", "string", 0);
     #line 503 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromInt", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_Repeat", "string", 0);
     #line 504 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromByte", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToInt", "int", 0);
     #line 505 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromCodepoint", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_ToFloat", "float", 0);
+    #line 506 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromInt", "string", 0);
     #line 507 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Count", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromByte", "string", 0);
     #line 508 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Get", "string", 0);
-    #line 509 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Set", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromCodepoint", "string", 0);
     #line 510 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Get", "int", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Count", "int", 0);
     #line 511 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromFloat", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Args_Get", "string", 0);
     #line 512 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_From", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Set", "void", 0);
     #line 513 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "Exit_Get", "int", 0);
+    #line 514 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_FromFloat", "string", 0);
+    #line 515 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_From", "string", 0);
+    #line 516 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "String_CharAt", "string", 0);
-    #line 519 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Listen", "?", 0);
-    #line 520 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Accept", "?", 0);
-    #line 521 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Close", "void", 0);
     #line 522 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_IsListening", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Listen", "?", 0);
     #line 523 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Connect", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Accept", "?", 0);
     #line 524 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Send", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_Close", "void", 0);
     #line 525 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Receive", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpServer_IsListening", "bool", 0);
     #line 526 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Connect", "?", 0);
     #line 527 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_IsConnected", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Send", "void", 0);
     #line 528 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Send", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Receive", "string", 0);
     #line 529 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Receive", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_Close", "void", 0);
     #line 530 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Close", "void", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpClient_IsConnected", "bool", 0);
     #line 531 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_IsConnected", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Send", "void", 0);
     #line 532 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_New", "?", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Receive", "string", 0);
     #line 533 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Bind", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_Close", "void", 0);
     #line 534 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Send", "bool", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "TcpConn_IsConnected", "bool", 0);
     #line 535 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Receive", "string", 0);
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_New", "?", 0);
     #line 536 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Bind", "bool", 0);
+    #line 537 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Send", "bool", 0);
+    #line 538 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Receive", "string", 0);
+    #line 539 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, "UdpSocket_Close", "void", 0);
 }
 
 static void Amalgame_Compiler_FullResolver_PushScope(Amalgame_Compiler_FullResolver* self, code_string label) {
-    #line 545 "./src/resolver/resolver.am"
+    #line 548 "./src/resolver/resolver.am"
     AmalgameList_add(self->ScopeStarts, (void*)(intptr_t)(AmalgameList_count(self->LocalNames)));
 }
 
 static void Amalgame_Compiler_FullResolver_PopScope(Amalgame_Compiler_FullResolver* self) {
-    #line 549 "./src/resolver/resolver.am"
+    #line 552 "./src/resolver/resolver.am"
     i64 depth = AmalgameList_count(self->ScopeStarts);
-    #line 550 "./src/resolver/resolver.am"
+    #line 553 "./src/resolver/resolver.am"
     if (depth == 0) {
         return;
     }
-    #line 551 "./src/resolver/resolver.am"
-    i64 mark = (i64)(intptr_t)AmalgameList_get(self->ScopeStarts, depth - 1);
-    #line 552 "./src/resolver/resolver.am"
-    AmalgameList_removeAt(self->ScopeStarts, depth - 1);
     #line 554 "./src/resolver/resolver.am"
+    i64 mark = (i64)(intptr_t)AmalgameList_get(self->ScopeStarts, depth - 1);
+    #line 555 "./src/resolver/resolver.am"
+    AmalgameList_removeAt(self->ScopeStarts, depth - 1);
+    #line 557 "./src/resolver/resolver.am"
     while (AmalgameList_count(self->LocalNames) > mark) {
-        #line 555 "./src/resolver/resolver.am"
-        i64 last = AmalgameList_count(self->LocalNames) - 1;
-        #line 556 "./src/resolver/resolver.am"
-        AmalgameList_removeAt(self->LocalNames, last);
-        #line 557 "./src/resolver/resolver.am"
-        AmalgameList_removeAt(self->LocalTypes, last);
         #line 558 "./src/resolver/resolver.am"
+        i64 last = AmalgameList_count(self->LocalNames) - 1;
+        #line 559 "./src/resolver/resolver.am"
+        AmalgameList_removeAt(self->LocalNames, last);
+        #line 560 "./src/resolver/resolver.am"
+        AmalgameList_removeAt(self->LocalTypes, last);
+        #line 561 "./src/resolver/resolver.am"
         AmalgameList_removeAt(self->LocalIsLets, last);
     }
 }
 
 static i64 Amalgame_Compiler_FullResolver_CurrentScopeStart(Amalgame_Compiler_FullResolver* self) {
-    #line 563 "./src/resolver/resolver.am"
+    #line 566 "./src/resolver/resolver.am"
     i64 depth = AmalgameList_count(self->ScopeStarts);
-    #line 564 "./src/resolver/resolver.am"
+    #line 567 "./src/resolver/resolver.am"
     if (depth == 0) {
         return 0;
     }
-    #line 565 "./src/resolver/resolver.am"
+    #line 568 "./src/resolver/resolver.am"
     return (i64)(intptr_t)AmalgameList_get(self->ScopeStarts, depth - 1);
 }
 
 static void Amalgame_Compiler_FullResolver_DeclareGlobal(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet) {
-    #line 573 "./src/resolver/resolver.am"
+    #line 576 "./src/resolver/resolver.am"
     if (AmalgameMap_has(self->GlobalIndex, name)) {
         return;
     }
-    #line 574 "./src/resolver/resolver.am"
-    i64 idx = AmalgameList_count(self->GlobalNames);
-    #line 575 "./src/resolver/resolver.am"
-    AmalgameList_add(self->GlobalNames, (void*)(intptr_t)(name));
-    #line 576 "./src/resolver/resolver.am"
-    AmalgameList_add(self->GlobalTypes, (void*)(intptr_t)(typeName));
     #line 577 "./src/resolver/resolver.am"
+    i64 idx = AmalgameList_count(self->GlobalNames);
+    #line 578 "./src/resolver/resolver.am"
+    AmalgameList_add(self->GlobalNames, (void*)(intptr_t)(name));
+    #line 579 "./src/resolver/resolver.am"
+    AmalgameList_add(self->GlobalTypes, (void*)(intptr_t)(typeName));
+    #line 580 "./src/resolver/resolver.am"
     AmalgameMap_set(self->GlobalIndex, name, (void*)(intptr_t)(idx));
 }
 
 static void Amalgame_Compiler_FullResolver_DeclareLambdaParam(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* p) {
-    #line 589 "./src/resolver/resolver.am"
+    #line 592 "./src/resolver/resolver.am"
     code_string t = p->Str;
-    #line 590 "./src/resolver/resolver.am"
+    #line 593 "./src/resolver/resolver.am"
     if (String_Length(t) == 0) {
         t = "?";
     }
-    #line 591 "./src/resolver/resolver.am"
+    #line 594 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareCurrent(self, p->Name, t, 1);
 }
 
 static code_bool Amalgame_Compiler_FullResolver_DeclareCurrent(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName, code_bool isLet) {
-    #line 596 "./src/resolver/resolver.am"
+    #line 599 "./src/resolver/resolver.am"
     i64 start = Amalgame_Compiler_FullResolver_CurrentScopeStart(self);
-    #line 597 "./src/resolver/resolver.am"
+    #line 600 "./src/resolver/resolver.am"
     i64 count = AmalgameList_count(self->LocalNames);
-    #line 598 "./src/resolver/resolver.am"
+    #line 601 "./src/resolver/resolver.am"
     for (i64 i = start; i < count; i++) {
-        #line 599 "./src/resolver/resolver.am"
+        #line 602 "./src/resolver/resolver.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return 0;
         }
     }
-    #line 601 "./src/resolver/resolver.am"
-    AmalgameList_add(self->LocalNames, (void*)(intptr_t)(name));
-    #line 602 "./src/resolver/resolver.am"
-    AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
-    #line 603 "./src/resolver/resolver.am"
-    AmalgameList_add(self->LocalIsLets, (void*)(intptr_t)(isLet));
     #line 604 "./src/resolver/resolver.am"
+    AmalgameList_add(self->LocalNames, (void*)(intptr_t)(name));
+    #line 605 "./src/resolver/resolver.am"
+    AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
+    #line 606 "./src/resolver/resolver.am"
+    AmalgameList_add(self->LocalIsLets, (void*)(intptr_t)(isLet));
+    #line 607 "./src/resolver/resolver.am"
     return 1;
 }
 
 static code_bool Amalgame_Compiler_FullResolver_LookupInScopes(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 609 "./src/resolver/resolver.am"
+    #line 612 "./src/resolver/resolver.am"
     i64 i = AmalgameList_count(self->LocalNames) - 1;
-    #line 610 "./src/resolver/resolver.am"
+    #line 613 "./src/resolver/resolver.am"
     while (i >= 0) {
-        #line 611 "./src/resolver/resolver.am"
+        #line 614 "./src/resolver/resolver.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return 1;
         }
-        #line 612 "./src/resolver/resolver.am"
+        #line 615 "./src/resolver/resolver.am"
         i = (i - 1);
     }
-    #line 614 "./src/resolver/resolver.am"
+    #line 617 "./src/resolver/resolver.am"
     return AmalgameMap_has(self->GlobalIndex, name);
 }
 
 static code_string Amalgame_Compiler_FullResolver_LookupType(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 618 "./src/resolver/resolver.am"
+    #line 621 "./src/resolver/resolver.am"
     i64 i = AmalgameList_count(self->LocalNames) - 1;
-    #line 619 "./src/resolver/resolver.am"
+    #line 622 "./src/resolver/resolver.am"
     while (i >= 0) {
-        #line 620 "./src/resolver/resolver.am"
+        #line 623 "./src/resolver/resolver.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return (code_string)AmalgameList_get(self->LocalTypes, i);
         }
-        #line 621 "./src/resolver/resolver.am"
+        #line 624 "./src/resolver/resolver.am"
         i = (i - 1);
     }
-    #line 623 "./src/resolver/resolver.am"
+    #line 626 "./src/resolver/resolver.am"
     if (AmalgameMap_has(self->GlobalIndex, name)) {
-        #line 624 "./src/resolver/resolver.am"
+        #line 627 "./src/resolver/resolver.am"
         i64 idx = (i64)AmalgameMap_get(self->GlobalIndex, name);
-        #line 625 "./src/resolver/resolver.am"
+        #line 628 "./src/resolver/resolver.am"
         return (code_string)AmalgameList_get(self->GlobalTypes, idx);
     }
-    #line 627 "./src/resolver/resolver.am"
+    #line 630 "./src/resolver/resolver.am"
     return "?";
 }
 
 static code_bool Amalgame_Compiler_FullResolver_LookupIsLet(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 631 "./src/resolver/resolver.am"
+    #line 634 "./src/resolver/resolver.am"
     i64 i = AmalgameList_count(self->LocalNames) - 1;
-    #line 632 "./src/resolver/resolver.am"
+    #line 635 "./src/resolver/resolver.am"
     while (i >= 0) {
-        #line 633 "./src/resolver/resolver.am"
+        #line 636 "./src/resolver/resolver.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return (code_bool)(intptr_t)AmalgameList_get(self->LocalIsLets, i);
         }
-        #line 634 "./src/resolver/resolver.am"
+        #line 637 "./src/resolver/resolver.am"
         i = (i - 1);
     }
-    #line 636 "./src/resolver/resolver.am"
+    #line 639 "./src/resolver/resolver.am"
     return 0;
 }
 
 static i64 Amalgame_Compiler_FullResolver_IndexOfLocal(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 643 "./src/resolver/resolver.am"
+    #line 646 "./src/resolver/resolver.am"
     i64 i = AmalgameList_count(self->LocalNames) - 1;
-    #line 644 "./src/resolver/resolver.am"
+    #line 647 "./src/resolver/resolver.am"
     while (i >= 0) {
-        #line 645 "./src/resolver/resolver.am"
+        #line 648 "./src/resolver/resolver.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return i;
         }
-        #line 646 "./src/resolver/resolver.am"
+        #line 649 "./src/resolver/resolver.am"
         i = (i - 1);
     }
-    #line 648 "./src/resolver/resolver.am"
+    #line 651 "./src/resolver/resolver.am"
     return -1;
 }
 
 static void Amalgame_Compiler_FullResolver_AddCapture(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* lam, code_string name, code_string typeName, i64 line, i64 col) {
-    #line 656 "./src/resolver/resolver.am"
+    #line 659 "./src/resolver/resolver.am"
     i64 n = AmalgameList_count(lam->Args);
-    #line 657 "./src/resolver/resolver.am"
+    #line 660 "./src/resolver/resolver.am"
     for (i64 i = 0; i < n; i++) {
-        #line 658 "./src/resolver/resolver.am"
+        #line 661 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i);
-        #line 659 "./src/resolver/resolver.am"
+        #line 662 "./src/resolver/resolver.am"
         if (code_string_equals(arg->Name, name)) {
             return;
         }
     }
-    #line 661 "./src/resolver/resolver.am"
-    Amalgame_Compiler_AstNode* id = Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind_IDENTIFIER, line, col);
-    #line 662 "./src/resolver/resolver.am"
-    id->Name = name;
-    #line 663 "./src/resolver/resolver.am"
-    id->Str = typeName;
     #line 664 "./src/resolver/resolver.am"
+    Amalgame_Compiler_AstNode* id = Amalgame_Compiler_AstNode_new(Amalgame_Compiler_NodeKind_IDENTIFIER, line, col);
+    #line 665 "./src/resolver/resolver.am"
+    id->Name = name;
+    #line 666 "./src/resolver/resolver.am"
+    id->Str = typeName;
+    #line 667 "./src/resolver/resolver.am"
     AmalgameList_add(lam->Args, (void*)(intptr_t)(id));
 }
 
 static void Amalgame_Compiler_FullResolver_TryCaptureLocalByName(Amalgame_Compiler_FullResolver* self, code_string name, i64 line, i64 col) {
-    #line 674 "./src/resolver/resolver.am"
+    #line 677 "./src/resolver/resolver.am"
     if (self->LambdaInProgress == NULL) {
         return;
     }
-    #line 675 "./src/resolver/resolver.am"
+    #line 678 "./src/resolver/resolver.am"
     i64 idx = Amalgame_Compiler_FullResolver_IndexOfLocal(self, name);
-    #line 676 "./src/resolver/resolver.am"
+    #line 679 "./src/resolver/resolver.am"
     if (idx == -1) {
         return;
     }
-    #line 677 "./src/resolver/resolver.am"
+    #line 680 "./src/resolver/resolver.am"
     if (idx >= self->LambdaBoundary) {
         return;
     }
-    #line 678 "./src/resolver/resolver.am"
+    #line 681 "./src/resolver/resolver.am"
     code_string typeName = (code_string)AmalgameList_get(self->LocalTypes, idx);
-    #line 679 "./src/resolver/resolver.am"
+    #line 682 "./src/resolver/resolver.am"
     if ((String_Length(typeName) == 0) || (code_string_equals(typeName, "?"))) {
-        #line 680 "./src/resolver/resolver.am"
+        #line 683 "./src/resolver/resolver.am"
         typeName = "int";
     }
-    #line 682 "./src/resolver/resolver.am"
+    #line 685 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_AddCapture(self, self->LambdaInProgress, name, typeName, line, col);
 }
 
 static void Amalgame_Compiler_FullResolver_CaptureIdentsInInterpExpr(Amalgame_Compiler_FullResolver* self, code_string inner, i64 line, i64 col) {
-    #line 690 "./src/resolver/resolver.am"
-    i64 n = String_Length(inner);
-    #line 691 "./src/resolver/resolver.am"
-    code_string identStart = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
-    #line 692 "./src/resolver/resolver.am"
-    code_string identCont = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
     #line 693 "./src/resolver/resolver.am"
-    i64 i = 0;
+    i64 n = String_Length(inner);
     #line 694 "./src/resolver/resolver.am"
+    code_string identStart = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+    #line 695 "./src/resolver/resolver.am"
+    code_string identCont = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+    #line 696 "./src/resolver/resolver.am"
+    i64 i = 0;
+    #line 697 "./src/resolver/resolver.am"
     while (i < n) {
-        #line 695 "./src/resolver/resolver.am"
+        #line 698 "./src/resolver/resolver.am"
         code_string ch = String_Substring(inner, i, 1);
-        #line 696 "./src/resolver/resolver.am"
+        #line 699 "./src/resolver/resolver.am"
         if (!String_Contains(identStart, ch)) {
-            #line 697 "./src/resolver/resolver.am"
+            #line 700 "./src/resolver/resolver.am"
             i = (i + 1);
-            #line 698 "./src/resolver/resolver.am"
+            #line 701 "./src/resolver/resolver.am"
             continue;
         }
-        #line 700 "./src/resolver/resolver.am"
+        #line 703 "./src/resolver/resolver.am"
         i64 j = i + 1;
-        #line 701 "./src/resolver/resolver.am"
+        #line 704 "./src/resolver/resolver.am"
         while (j < n) {
-            #line 702 "./src/resolver/resolver.am"
+            #line 705 "./src/resolver/resolver.am"
             code_string cj = String_Substring(inner, j, 1);
-            #line 703 "./src/resolver/resolver.am"
+            #line 706 "./src/resolver/resolver.am"
             if (!String_Contains(identCont, cj)) {
                 break;
             }
-            #line 704 "./src/resolver/resolver.am"
+            #line 707 "./src/resolver/resolver.am"
             j = (j + 1);
         }
-        #line 710 "./src/resolver/resolver.am"
+        #line 713 "./src/resolver/resolver.am"
         code_bool skip = 0;
-        #line 711 "./src/resolver/resolver.am"
+        #line 714 "./src/resolver/resolver.am"
         if (i > 0) {
-            #line 712 "./src/resolver/resolver.am"
+            #line 715 "./src/resolver/resolver.am"
             code_string prev = String_Substring(inner, i - 1, 1);
-            #line 713 "./src/resolver/resolver.am"
+            #line 716 "./src/resolver/resolver.am"
             if (code_string_equals(prev, ".")) {
                 skip = 1;
             }
         }
-        #line 715 "./src/resolver/resolver.am"
+        #line 718 "./src/resolver/resolver.am"
         if (!skip) {
-            #line 716 "./src/resolver/resolver.am"
+            #line 719 "./src/resolver/resolver.am"
             code_string name = String_Substring(inner, i, j - i);
-            #line 717 "./src/resolver/resolver.am"
+            #line 720 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_TryCaptureLocalByName(self, name, line, col);
         }
-        #line 719 "./src/resolver/resolver.am"
+        #line 722 "./src/resolver/resolver.am"
         i = j;
     }
 }
 
 static void Amalgame_Compiler_FullResolver_Error(Amalgame_Compiler_FullResolver* self, code_string msg, Amalgame_Compiler_AstNode* node) {
-    #line 726 "./src/resolver/resolver.am"
+    #line 729 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_EmitError(self, msg, node->Line, node->Column);
 }
 
 static void Amalgame_Compiler_FullResolver_ErrorMsg(Amalgame_Compiler_FullResolver* self, code_string msg) {
-    #line 730 "./src/resolver/resolver.am"
+    #line 733 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_EmitError(self, msg, 0, 0);
 }
 
 static void Amalgame_Compiler_FullResolver_EmitError(Amalgame_Compiler_FullResolver* self, code_string msg, i64 line, i64 col) {
-    #line 734 "./src/resolver/resolver.am"
-    code_string file = self->CurrentFile;
-    #line 735 "./src/resolver/resolver.am"
-    code_string ln = String_FromInt(line);
-    #line 736 "./src/resolver/resolver.am"
-    code_string cl = String_FromInt(col);
     #line 737 "./src/resolver/resolver.am"
-    code_string head = code_string_concat((code_string_concat("\nerror[resolver]: ", msg)), "\n");
+    code_string file = self->CurrentFile;
     #line 738 "./src/resolver/resolver.am"
+    code_string ln = String_FromInt(line);
+    #line 739 "./src/resolver/resolver.am"
+    code_string cl = String_FromInt(col);
+    #line 740 "./src/resolver/resolver.am"
+    code_string head = code_string_concat((code_string_concat("\nerror[resolver]: ", msg)), "\n");
+    #line 741 "./src/resolver/resolver.am"
     if ((String_Length(file) > 0) && (line > 0)) {
-        #line 739 "./src/resolver/resolver.am"
+        #line 742 "./src/resolver/resolver.am"
         head = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(head, "  --> ")), file)), ":")), ln)), ":")), cl)), "\n"));
-        #line 740 "./src/resolver/resolver.am"
+        #line 743 "./src/resolver/resolver.am"
         void* snip = Amalgame_Compiler_SourceMap_GetLine(self->Sources, file, line);
-        #line 741 "./src/resolver/resolver.am"
+        #line 744 "./src/resolver/resolver.am"
         head = (code_string_concat(head, Amalgame_Compiler_SourceSnippet_Format(snip, line, col)));
     }
-    #line 743 "./src/resolver/resolver.am"
+    #line 746 "./src/resolver/resolver.am"
     AmalgameList_add(self->Errors, (void*)(intptr_t)(head));
-    #line 747 "./src/resolver/resolver.am"
+    #line 750 "./src/resolver/resolver.am"
     Amalgame_Compiler_ResolverError* raw = Amalgame_Compiler_ResolverError_new(msg, file, line, col);
-    #line 748 "./src/resolver/resolver.am"
+    #line 751 "./src/resolver/resolver.am"
     AmalgameList_add(self->RawErrors, (void*)(intptr_t)(raw));
 }
 
 code_bool Amalgame_Compiler_FullResolver_HasErrors(Amalgame_Compiler_FullResolver* self) {
-    #line 752 "./src/resolver/resolver.am"
+    #line 755 "./src/resolver/resolver.am"
     return AmalgameList_count(self->Errors) > 0;
 }
 
 code_string Amalgame_Compiler_FullResolver_GetErrors(Amalgame_Compiler_FullResolver* self) {
-    #line 756 "./src/resolver/resolver.am"
+    #line 759 "./src/resolver/resolver.am"
     code_string result = "";
-    #line 757 "./src/resolver/resolver.am"
+    #line 760 "./src/resolver/resolver.am"
     i64 count = AmalgameList_count(self->Errors);
-    #line 758 "./src/resolver/resolver.am"
+    #line 761 "./src/resolver/resolver.am"
     for (i64 i = 0; i < count; i++) {
-        #line 759 "./src/resolver/resolver.am"
+        #line 762 "./src/resolver/resolver.am"
         result = (code_string_concat(result, (code_string)AmalgameList_get(self->Errors, i)));
     }
-    #line 761 "./src/resolver/resolver.am"
+    #line 764 "./src/resolver/resolver.am"
     return result;
 }
 
 i64 Amalgame_Compiler_FullResolver_ProgramCount(Amalgame_Compiler_FullResolver* self) {
-    #line 770 "./src/resolver/resolver.am"
+    #line 773 "./src/resolver/resolver.am"
     return AmalgameList_count(self->Programs);
 }
 
 Amalgame_Compiler_AstNode* Amalgame_Compiler_FullResolver_ProgramAt(Amalgame_Compiler_FullResolver* self, i64 i) {
-    #line 774 "./src/resolver/resolver.am"
+    #line 777 "./src/resolver/resolver.am"
     return (Amalgame_Compiler_AstNode*)AmalgameList_get(self->Programs, i);
 }
 
 i64 Amalgame_Compiler_FullResolver_GlobalCount(Amalgame_Compiler_FullResolver* self) {
-    #line 781 "./src/resolver/resolver.am"
+    #line 784 "./src/resolver/resolver.am"
     return AmalgameList_count(self->GlobalNames);
 }
 
 code_string Amalgame_Compiler_FullResolver_GlobalNameAt(Amalgame_Compiler_FullResolver* self, i64 i) {
-    #line 785 "./src/resolver/resolver.am"
+    #line 788 "./src/resolver/resolver.am"
     return (code_string)AmalgameList_get(self->GlobalNames, i);
 }
 
 code_string Amalgame_Compiler_FullResolver_GlobalTypeAt(Amalgame_Compiler_FullResolver* self, i64 i) {
-    #line 789 "./src/resolver/resolver.am"
+    #line 792 "./src/resolver/resolver.am"
     return (code_string)AmalgameList_get(self->GlobalTypes, i);
 }
 
 void Amalgame_Compiler_FullResolver_ResolvePrograms(Amalgame_Compiler_FullResolver* self) {
-    #line 793 "./src/resolver/resolver.am"
+    #line 796 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_CollectAll(self);
-    #line 794 "./src/resolver/resolver.am"
+    #line 797 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_ResolveAll(self);
 }
 
 void Amalgame_Compiler_FullResolver_CollectAll(Amalgame_Compiler_FullResolver* self) {
-    #line 803 "./src/resolver/resolver.am"
+    #line 806 "./src/resolver/resolver.am"
     i64 progCount = AmalgameList_count(self->Programs);
-    #line 804 "./src/resolver/resolver.am"
+    #line 807 "./src/resolver/resolver.am"
     for (i64 p = 0; p < progCount; p++) {
-        #line 805 "./src/resolver/resolver.am"
+        #line 808 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_CollectProgram(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(self->Programs, p));
     }
 }
 
 void Amalgame_Compiler_FullResolver_ResolveAll(Amalgame_Compiler_FullResolver* self) {
-    #line 815 "./src/resolver/resolver.am"
+    #line 818 "./src/resolver/resolver.am"
     i64 progCount = AmalgameList_count(self->Programs);
-    #line 816 "./src/resolver/resolver.am"
+    #line 819 "./src/resolver/resolver.am"
     for (i64 p = 0; p < progCount; p++) {
-        #line 817 "./src/resolver/resolver.am"
+        #line 820 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveProgram(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(self->Programs, p));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_CollectProgram(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* prog) {
-    #line 824 "./src/resolver/resolver.am"
+    #line 827 "./src/resolver/resolver.am"
     i64 count = AmalgameList_count(prog->Children);
-    #line 825 "./src/resolver/resolver.am"
+    #line 828 "./src/resolver/resolver.am"
     for (i64 i = 0; i < count; i++) {
-        #line 826 "./src/resolver/resolver.am"
+        #line 829 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_CollectDecl(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_CollectDecl(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* decl) {
-    #line 831 "./src/resolver/resolver.am"
+    #line 834 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 832 "./src/resolver/resolver.am"
+    #line 835 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 833 "./src/resolver/resolver.am"
+        #line 836 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareGlobal(self, decl->Name, decl->Name, 0);
-        #line 834 "./src/resolver/resolver.am"
+        #line 837 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_CollectClassMembers(self, decl);
     }
-    #line 836 "./src/resolver/resolver.am"
+    #line 839 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 837 "./src/resolver/resolver.am"
+        #line 840 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareGlobal(self, decl->Name, decl->Name, 0);
-        #line 838 "./src/resolver/resolver.am"
+        #line 841 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_CollectEnumMembers(self, decl);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_CollectClassMembers(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* cls) {
-    #line 843 "./src/resolver/resolver.am"
-    code_string name = cls->Name;
-    #line 844 "./src/resolver/resolver.am"
-    AmalgameList* kids = cls->Children;
-    #line 845 "./src/resolver/resolver.am"
-    i64 members = AmalgameList_count(kids);
     #line 846 "./src/resolver/resolver.am"
+    code_string name = cls->Name;
+    #line 847 "./src/resolver/resolver.am"
+    AmalgameList* kids = cls->Children;
+    #line 848 "./src/resolver/resolver.am"
+    i64 members = AmalgameList_count(kids);
+    #line 849 "./src/resolver/resolver.am"
     for (i64 i = 0; i < members; i++) {
-        #line 847 "./src/resolver/resolver.am"
+        #line 850 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_CollectClassMember(self, name, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_CollectClassMember(Amalgame_Compiler_FullResolver* self, code_string className, Amalgame_Compiler_AstNode* m) {
-    #line 852 "./src/resolver/resolver.am"
+    #line 855 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind mk = m->Kind;
-    #line 853 "./src/resolver/resolver.am"
-    if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 854 "./src/resolver/resolver.am"
-        Amalgame_Compiler_MemberTable_Set(self->Members, className, m->Name, m->Str);
-    }
     #line 856 "./src/resolver/resolver.am"
-    if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+    if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
         #line 857 "./src/resolver/resolver.am"
         Amalgame_Compiler_MemberTable_Set(self->Members, className, m->Name, m->Str);
-        #line 861 "./src/resolver/resolver.am"
+    }
+    #line 859 "./src/resolver/resolver.am"
+    if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+        #line 860 "./src/resolver/resolver.am"
+        Amalgame_Compiler_MemberTable_Set(self->Members, className, m->Name, m->Str);
+        #line 864 "./src/resolver/resolver.am"
         AmalgameMap_set(self->MethodNodeIndex, code_string_concat((code_string_concat(className, ".")), m->Name), (void*)(intptr_t)(m));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_CollectEnumMembers(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* en) {
-    #line 866 "./src/resolver/resolver.am"
-    code_string name = en->Name;
-    #line 867 "./src/resolver/resolver.am"
-    AmalgameList* kids = en->Children;
-    #line 868 "./src/resolver/resolver.am"
-    i64 count = AmalgameList_count(kids);
     #line 869 "./src/resolver/resolver.am"
+    code_string name = en->Name;
+    #line 870 "./src/resolver/resolver.am"
+    AmalgameList* kids = en->Children;
+    #line 871 "./src/resolver/resolver.am"
+    i64 count = AmalgameList_count(kids);
+    #line 872 "./src/resolver/resolver.am"
     for (i64 i = 0; i < count; i++) {
-        #line 870 "./src/resolver/resolver.am"
+        #line 873 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_CollectEnumMember(self, name, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_CollectEnumMember(Amalgame_Compiler_FullResolver* self, code_string enumName, Amalgame_Compiler_AstNode* m) {
-    #line 875 "./src/resolver/resolver.am"
+    #line 878 "./src/resolver/resolver.am"
     Amalgame_Compiler_MemberTable_Set(self->Members, enumName, m->Name, enumName);
-    #line 876 "./src/resolver/resolver.am"
+    #line 879 "./src/resolver/resolver.am"
     code_string qualName = code_string_concat((code_string_concat(enumName, "_")), m->Name);
-    #line 877 "./src/resolver/resolver.am"
+    #line 880 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareGlobal(self, qualName, enumName, 0);
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveEnumChild(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* m) {
-    #line 883 "./src/resolver/resolver.am"
+    #line 886 "./src/resolver/resolver.am"
     if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-        #line 884 "./src/resolver/resolver.am"
+        #line 887 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveMethod(self, m);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveProgram(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* prog) {
-    #line 891 "./src/resolver/resolver.am"
+    #line 894 "./src/resolver/resolver.am"
     self->CurrentFile = prog->Str2;
-    #line 892 "./src/resolver/resolver.am"
+    #line 895 "./src/resolver/resolver.am"
     i64 count = AmalgameList_count(prog->Children);
-    #line 893 "./src/resolver/resolver.am"
+    #line 896 "./src/resolver/resolver.am"
     for (i64 i = 0; i < count; i++) {
-        #line 894 "./src/resolver/resolver.am"
+        #line 897 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveDecl(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveDecl(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* decl) {
-    #line 899 "./src/resolver/resolver.am"
+    #line 902 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 900 "./src/resolver/resolver.am"
+    #line 903 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 901 "./src/resolver/resolver.am"
+        #line 904 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveClass(self, decl);
     }
-    #line 903 "./src/resolver/resolver.am"
+    #line 906 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 904 "./src/resolver/resolver.am"
+        #line 907 "./src/resolver/resolver.am"
         AmalgameList* enumKids = decl->Children;
-        #line 905 "./src/resolver/resolver.am"
+        #line 908 "./src/resolver/resolver.am"
         i64 methods = AmalgameList_count(enumKids);
-        #line 906 "./src/resolver/resolver.am"
+        #line 909 "./src/resolver/resolver.am"
         for (i64 i = 0; i < methods; i++) {
-            #line 907 "./src/resolver/resolver.am"
+            #line 910 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_ResolveEnumChild(self, (void*)AmalgameList_get(enumKids, i));
         }
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveClass(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* cls) {
-    #line 913 "./src/resolver/resolver.am"
+    #line 916 "./src/resolver/resolver.am"
     code_string prevClass = self->CurrentClass;
-    #line 914 "./src/resolver/resolver.am"
+    #line 917 "./src/resolver/resolver.am"
     self->CurrentClass = cls->Name;
-    #line 915 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_PushScope(self, code_string_concat("class:", cls->Name));
     #line 918 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_DeclareCurrent(self, "this", cls->Name, 0);
+    Amalgame_Compiler_FullResolver_PushScope(self, code_string_concat("class:", cls->Name));
     #line 921 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_DeclareCurrent(self, "this", cls->Name, 0);
+    #line 924 "./src/resolver/resolver.am"
     AmalgameList* classKids = cls->Children;
-    #line 922 "./src/resolver/resolver.am"
+    #line 925 "./src/resolver/resolver.am"
     i64 members = AmalgameList_count(classKids);
-    #line 923 "./src/resolver/resolver.am"
+    #line 926 "./src/resolver/resolver.am"
     for (i64 i = 0; i < members; i++) {
-        #line 924 "./src/resolver/resolver.am"
+        #line 927 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_PreRegisterMember(self, (void*)AmalgameList_get(classKids, i));
     }
-    #line 928 "./src/resolver/resolver.am"
+    #line 931 "./src/resolver/resolver.am"
     for (i64 j = 0; j < members; j++) {
-        #line 929 "./src/resolver/resolver.am"
+        #line 932 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveMember(self, (void*)AmalgameList_get(classKids, j));
     }
-    #line 932 "./src/resolver/resolver.am"
+    #line 935 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PopScope(self);
-    #line 933 "./src/resolver/resolver.am"
+    #line 936 "./src/resolver/resolver.am"
     self->CurrentClass = prevClass;
 }
 
 static void Amalgame_Compiler_FullResolver_PreRegisterMember(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* m) {
-    #line 937 "./src/resolver/resolver.am"
+    #line 940 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind mk = m->Kind;
-    #line 938 "./src/resolver/resolver.am"
+    #line 941 "./src/resolver/resolver.am"
     if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 939 "./src/resolver/resolver.am"
+        #line 942 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareCurrent(self, m->Name, m->Str, 0);
     }
-    #line 941 "./src/resolver/resolver.am"
+    #line 944 "./src/resolver/resolver.am"
     if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-        #line 942 "./src/resolver/resolver.am"
+        #line 945 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareCurrent(self, m->Name, m->Str, 0);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveMember(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* m) {
-    #line 947 "./src/resolver/resolver.am"
+    #line 950 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind mk = m->Kind;
-    #line 948 "./src/resolver/resolver.am"
+    #line 951 "./src/resolver/resolver.am"
     if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-        #line 949 "./src/resolver/resolver.am"
+        #line 952 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveMethod(self, m);
     }
-    #line 951 "./src/resolver/resolver.am"
+    #line 954 "./src/resolver/resolver.am"
     if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 952 "./src/resolver/resolver.am"
+        #line 955 "./src/resolver/resolver.am"
         if (m->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, m->Left);
         }
@@ -18980,406 +18992,406 @@ static void Amalgame_Compiler_FullResolver_ResolveMember(Amalgame_Compiler_FullR
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveMethod(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* method) {
-    #line 957 "./src/resolver/resolver.am"
+    #line 960 "./src/resolver/resolver.am"
     code_string prevReturn = self->CurrentReturn;
-    #line 958 "./src/resolver/resolver.am"
+    #line 961 "./src/resolver/resolver.am"
     self->CurrentReturn = method->Str;
-    #line 959 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_PushScope(self, code_string_concat("method:", method->Name));
     #line 962 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_PushScope(self, code_string_concat("method:", method->Name));
+    #line 965 "./src/resolver/resolver.am"
     i64 params = AmalgameList_count(method->Params);
-    #line 963 "./src/resolver/resolver.am"
+    #line 966 "./src/resolver/resolver.am"
     for (i64 i = 0; i < params; i++) {
-        #line 964 "./src/resolver/resolver.am"
+        #line 967 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 965 "./src/resolver/resolver.am"
+        #line 968 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareCurrent(self, p->Name, p->Str, 1);
     }
-    #line 969 "./src/resolver/resolver.am"
+    #line 972 "./src/resolver/resolver.am"
     if (method->Body != NULL) {
-        #line 970 "./src/resolver/resolver.am"
+        #line 973 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveBlock(self, method->Body);
     }
-    #line 973 "./src/resolver/resolver.am"
+    #line 976 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PopScope(self);
-    #line 974 "./src/resolver/resolver.am"
+    #line 977 "./src/resolver/resolver.am"
     self->CurrentReturn = prevReturn;
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveBlock(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* block) {
-    #line 978 "./src/resolver/resolver.am"
+    #line 981 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PushScope(self, "block");
-    #line 979 "./src/resolver/resolver.am"
+    #line 982 "./src/resolver/resolver.am"
     i64 stmts = AmalgameList_count(block->Children);
-    #line 980 "./src/resolver/resolver.am"
+    #line 983 "./src/resolver/resolver.am"
     for (i64 i = 0; i < stmts; i++) {
-        #line 981 "./src/resolver/resolver.am"
+        #line 984 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(block->Children, i));
     }
-    #line 983 "./src/resolver/resolver.am"
+    #line 986 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PopScope(self);
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveStmt(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 987 "./src/resolver/resolver.am"
+    #line 990 "./src/resolver/resolver.am"
     if (stmt == NULL) {
         return;
     }
-    #line 988 "./src/resolver/resolver.am"
+    #line 991 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind k = stmt->Kind;
-    #line 990 "./src/resolver/resolver.am"
+    #line 993 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 992 "./src/resolver/resolver.am"
+        #line 995 "./src/resolver/resolver.am"
         if (stmt->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Left);
         }
-        #line 993 "./src/resolver/resolver.am"
+        #line 996 "./src/resolver/resolver.am"
         code_bool isLet = stmt->Flag == 0;
-        #line 998 "./src/resolver/resolver.am"
+        #line 1001 "./src/resolver/resolver.am"
         code_string declType = stmt->Str;
-        #line 999 "./src/resolver/resolver.am"
+        #line 1002 "./src/resolver/resolver.am"
         if ((String_Length(declType) == 0) && (stmt->Left != NULL)) {
-            #line 1000 "./src/resolver/resolver.am"
+            #line 1003 "./src/resolver/resolver.am"
             declType = Amalgame_Compiler_FullResolver_InferExprType(self, stmt->Left);
         }
-        #line 1002 "./src/resolver/resolver.am"
+        #line 1005 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareCurrent(self, stmt->Name, declType, isLet);
-        #line 1003 "./src/resolver/resolver.am"
+        #line 1006 "./src/resolver/resolver.am"
         return;
     }
-    #line 1005 "./src/resolver/resolver.am"
+    #line 1008 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_RETURN_STMT) {
-        #line 1006 "./src/resolver/resolver.am"
+        #line 1009 "./src/resolver/resolver.am"
         if (stmt->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Left);
         }
-        #line 1007 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1009 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
         #line 1010 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_ResolveIf(self, stmt);
-        #line 1011 "./src/resolver/resolver.am"
         return;
     }
-    #line 1013 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_WHILE_STMT) {
+    #line 1012 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
+        #line 1013 "./src/resolver/resolver.am"
+        Amalgame_Compiler_FullResolver_ResolveIf(self, stmt);
         #line 1014 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1016 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_WHILE_STMT) {
+        #line 1017 "./src/resolver/resolver.am"
         if (stmt->Cond != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Cond);
         }
-        #line 1015 "./src/resolver/resolver.am"
+        #line 1018 "./src/resolver/resolver.am"
         self->LoopDepth = (self->LoopDepth + 1);
-        #line 1016 "./src/resolver/resolver.am"
+        #line 1019 "./src/resolver/resolver.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt->Body);
         }
-        #line 1017 "./src/resolver/resolver.am"
+        #line 1020 "./src/resolver/resolver.am"
         self->LoopDepth = (self->LoopDepth - 1);
-        #line 1018 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1020 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_FOR_IN_STMT) {
         #line 1021 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_ResolveForIn(self, stmt);
-        #line 1022 "./src/resolver/resolver.am"
         return;
     }
-    #line 1024 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_BREAK_STMT) {
+    #line 1023 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_FOR_IN_STMT) {
+        #line 1024 "./src/resolver/resolver.am"
+        Amalgame_Compiler_FullResolver_ResolveForIn(self, stmt);
         #line 1025 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1027 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_BREAK_STMT) {
+        #line 1028 "./src/resolver/resolver.am"
         if (self->LoopDepth == 0) {
             Amalgame_Compiler_FullResolver_Error(self, "'break' outside loop", stmt);
         }
-        #line 1026 "./src/resolver/resolver.am"
+        #line 1029 "./src/resolver/resolver.am"
         return;
     }
-    #line 1028 "./src/resolver/resolver.am"
+    #line 1031 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_CONTINUE_STMT) {
-        #line 1029 "./src/resolver/resolver.am"
+        #line 1032 "./src/resolver/resolver.am"
         if (self->LoopDepth == 0) {
             Amalgame_Compiler_FullResolver_Error(self, "'continue' outside loop", stmt);
         }
-        #line 1030 "./src/resolver/resolver.am"
+        #line 1033 "./src/resolver/resolver.am"
         return;
     }
-    #line 1032 "./src/resolver/resolver.am"
+    #line 1035 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_TRY_STMT) {
-        #line 1033 "./src/resolver/resolver.am"
+        #line 1036 "./src/resolver/resolver.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt->Body);
         }
-        #line 1034 "./src/resolver/resolver.am"
+        #line 1037 "./src/resolver/resolver.am"
         if (stmt->Else != NULL) {
-            #line 1035 "./src/resolver/resolver.am"
+            #line 1038 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_PushScope(self, "catch");
-            #line 1036 "./src/resolver/resolver.am"
+            #line 1039 "./src/resolver/resolver.am"
             if (String_Length(stmt->Name) > 0) {
-                #line 1037 "./src/resolver/resolver.am"
+                #line 1040 "./src/resolver/resolver.am"
                 Amalgame_Compiler_FullResolver_DeclareCurrent(self, stmt->Name, "void*", 1);
             }
-            #line 1039 "./src/resolver/resolver.am"
+            #line 1042 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt->Else);
-            #line 1040 "./src/resolver/resolver.am"
+            #line 1043 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_PopScope(self);
         }
-        #line 1042 "./src/resolver/resolver.am"
+        #line 1045 "./src/resolver/resolver.am"
         if (stmt->Cond != NULL) {
             Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt->Cond);
         }
-        #line 1043 "./src/resolver/resolver.am"
+        #line 1046 "./src/resolver/resolver.am"
         return;
     }
-    #line 1045 "./src/resolver/resolver.am"
+    #line 1048 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_THROW_STMT) {
-        #line 1046 "./src/resolver/resolver.am"
+        #line 1049 "./src/resolver/resolver.am"
         if (stmt->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Left);
         }
-        #line 1047 "./src/resolver/resolver.am"
+        #line 1050 "./src/resolver/resolver.am"
         return;
     }
-    #line 1049 "./src/resolver/resolver.am"
+    #line 1052 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_INLINE_C) {
-        #line 1051 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1053 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
         #line 1054 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1056 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
+        #line 1057 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveAssign(self, stmt);
-        #line 1055 "./src/resolver/resolver.am"
+        #line 1058 "./src/resolver/resolver.am"
         return;
     }
-    #line 1058 "./src/resolver/resolver.am"
+    #line 1061 "./src/resolver/resolver.am"
     if (code_string_equals(stmt->Name, "__match__")) {
-        #line 1059 "./src/resolver/resolver.am"
+        #line 1062 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveMatch(self, stmt);
-        #line 1060 "./src/resolver/resolver.am"
+        #line 1063 "./src/resolver/resolver.am"
         return;
     }
-    #line 1063 "./src/resolver/resolver.am"
+    #line 1066 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 1064 "./src/resolver/resolver.am"
+        #line 1067 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt);
-        #line 1065 "./src/resolver/resolver.am"
+        #line 1068 "./src/resolver/resolver.am"
         return;
     }
-    #line 1068 "./src/resolver/resolver.am"
+    #line 1071 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt);
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveIf(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 1072 "./src/resolver/resolver.am"
+    #line 1075 "./src/resolver/resolver.am"
     if (stmt->Cond != NULL) {
         Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Cond);
     }
-    #line 1073 "./src/resolver/resolver.am"
+    #line 1076 "./src/resolver/resolver.am"
     if (stmt->Body != NULL) {
         Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt->Body);
     }
-    #line 1074 "./src/resolver/resolver.am"
+    #line 1077 "./src/resolver/resolver.am"
     if (stmt->Else != NULL) {
-        #line 1075 "./src/resolver/resolver.am"
+        #line 1078 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveElseBranch(self, stmt->Else);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveElseBranch(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* branch) {
-    #line 1080 "./src/resolver/resolver.am"
+    #line 1083 "./src/resolver/resolver.am"
     if (branch == NULL) {
         return;
     }
-    #line 1081 "./src/resolver/resolver.am"
+    #line 1084 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind bk = branch->Kind;
-    #line 1082 "./src/resolver/resolver.am"
+    #line 1085 "./src/resolver/resolver.am"
     if (bk == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 1083 "./src/resolver/resolver.am"
+        #line 1086 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveIf(self, branch);
     } else {
-        #line 1085 "./src/resolver/resolver.am"
+        #line 1088 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveBlock(self, branch);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveForIn(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 1091 "./src/resolver/resolver.am"
+    #line 1094 "./src/resolver/resolver.am"
     if (stmt->Left != NULL) {
         Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Left);
     }
-    #line 1092 "./src/resolver/resolver.am"
-    Amalgame_Compiler_FullResolver_PushScope(self, "for-in");
-    #line 1094 "./src/resolver/resolver.am"
-    code_string elemType = "?";
     #line 1095 "./src/resolver/resolver.am"
+    Amalgame_Compiler_FullResolver_PushScope(self, "for-in");
+    #line 1097 "./src/resolver/resolver.am"
+    code_string elemType = "?";
+    #line 1098 "./src/resolver/resolver.am"
     if (stmt->Left != NULL) {
-        #line 1096 "./src/resolver/resolver.am"
+        #line 1099 "./src/resolver/resolver.am"
         code_string colType = Amalgame_Compiler_FullResolver_InferExprType(self, stmt->Left);
-        #line 1097 "./src/resolver/resolver.am"
+        #line 1100 "./src/resolver/resolver.am"
         elemType = Amalgame_Compiler_FullResolver_CollectionElemType(self, colType);
     }
-    #line 1099 "./src/resolver/resolver.am"
+    #line 1102 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_DeclareCurrent(self, stmt->Name, elemType, 1);
-    #line 1100 "./src/resolver/resolver.am"
+    #line 1103 "./src/resolver/resolver.am"
     self->LoopDepth = (self->LoopDepth + 1);
-    #line 1101 "./src/resolver/resolver.am"
+    #line 1104 "./src/resolver/resolver.am"
     if (stmt->Body != NULL) {
         Amalgame_Compiler_FullResolver_ResolveBlock(self, stmt->Body);
     }
-    #line 1102 "./src/resolver/resolver.am"
+    #line 1105 "./src/resolver/resolver.am"
     self->LoopDepth = (self->LoopDepth - 1);
-    #line 1103 "./src/resolver/resolver.am"
+    #line 1106 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PopScope(self);
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveAssign(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 1107 "./src/resolver/resolver.am"
+    #line 1110 "./src/resolver/resolver.am"
     if (stmt->Left != NULL) {
         Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Left);
     }
-    #line 1108 "./src/resolver/resolver.am"
+    #line 1111 "./src/resolver/resolver.am"
     if (stmt->Right != NULL) {
         Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Right);
     }
-    #line 1110 "./src/resolver/resolver.am"
+    #line 1113 "./src/resolver/resolver.am"
     if ((stmt->Left != NULL) && (stmt->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-        #line 1111 "./src/resolver/resolver.am"
+        #line 1114 "./src/resolver/resolver.am"
         code_string varName = stmt->Left->Name;
-        #line 1112 "./src/resolver/resolver.am"
+        #line 1115 "./src/resolver/resolver.am"
         if (Amalgame_Compiler_FullResolver_LookupIsLet(self, varName)) {
-            #line 1113 "./src/resolver/resolver.am"
+            #line 1116 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_Error(self, code_string_concat((code_string_concat("Cannot assign to immutable binding '", varName)), "'"), stmt->Left);
         }
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveMatch(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 1119 "./src/resolver/resolver.am"
+    #line 1122 "./src/resolver/resolver.am"
     if (stmt->Left != NULL) {
         Amalgame_Compiler_FullResolver_ResolveExpr(self, stmt->Left);
     }
-    #line 1120 "./src/resolver/resolver.am"
+    #line 1123 "./src/resolver/resolver.am"
     i64 armCount = AmalgameList_count(stmt->Children);
-    #line 1121 "./src/resolver/resolver.am"
+    #line 1124 "./src/resolver/resolver.am"
     for (i64 i = 0; i < armCount; i++) {
-        #line 1122 "./src/resolver/resolver.am"
+        #line 1125 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveMatchArm(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(stmt->Children, i));
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveMatchArm(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* arm) {
-    #line 1127 "./src/resolver/resolver.am"
+    #line 1130 "./src/resolver/resolver.am"
     if (arm == NULL) {
         return;
     }
-    #line 1128 "./src/resolver/resolver.am"
+    #line 1131 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PushScope(self, "match-arm");
-    #line 1130 "./src/resolver/resolver.am"
+    #line 1133 "./src/resolver/resolver.am"
     if (arm->Left != NULL) {
         Amalgame_Compiler_FullResolver_ResolveExpr(self, arm->Left);
     }
-    #line 1131 "./src/resolver/resolver.am"
+    #line 1134 "./src/resolver/resolver.am"
     Amalgame_Compiler_AstNode* armBody = arm->Right;
-    #line 1132 "./src/resolver/resolver.am"
+    #line 1135 "./src/resolver/resolver.am"
     if (armBody != NULL) {
-        #line 1133 "./src/resolver/resolver.am"
+        #line 1136 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveArmBody(self, armBody);
     }
-    #line 1135 "./src/resolver/resolver.am"
+    #line 1138 "./src/resolver/resolver.am"
     Amalgame_Compiler_FullResolver_PopScope(self);
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveArmBody(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* body) {
-    #line 1139 "./src/resolver/resolver.am"
+    #line 1142 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind bk = body->Kind;
-    #line 1140 "./src/resolver/resolver.am"
+    #line 1143 "./src/resolver/resolver.am"
     if (bk == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 1141 "./src/resolver/resolver.am"
+        #line 1144 "./src/resolver/resolver.am"
         AmalgameList* kids = body->Children;
-        #line 1142 "./src/resolver/resolver.am"
+        #line 1145 "./src/resolver/resolver.am"
         i64 count = AmalgameList_count(kids);
-        #line 1143 "./src/resolver/resolver.am"
+        #line 1146 "./src/resolver/resolver.am"
         for (i64 i = 0; i < count; i++) {
-            #line 1144 "./src/resolver/resolver.am"
+            #line 1147 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_ResolveStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i));
         }
     } else {
-        #line 1147 "./src/resolver/resolver.am"
+        #line 1150 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_ResolveStmt(self, body);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_PatchLambdaParamTypes(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* call) {
-    #line 1168 "./src/resolver/resolver.am"
+    #line 1171 "./src/resolver/resolver.am"
     if (call->Left == NULL) {
         return;
     }
-    #line 1169 "./src/resolver/resolver.am"
+    #line 1172 "./src/resolver/resolver.am"
     if (call->Left->Kind != Amalgame_Compiler_NodeKind_MEMBER) {
         return;
     }
-    #line 1170 "./src/resolver/resolver.am"
+    #line 1173 "./src/resolver/resolver.am"
     code_string methodName = call->Left->Name;
-    #line 1171 "./src/resolver/resolver.am"
+    #line 1174 "./src/resolver/resolver.am"
     code_bool isSingleT = 0;
-    #line 1172 "./src/resolver/resolver.am"
+    #line 1175 "./src/resolver/resolver.am"
     if (code_string_equals(methodName, "Map")) {
         isSingleT = 1;
     } else if (code_string_equals(methodName, "Filter")) {
-        #line 1173 "./src/resolver/resolver.am"
-        isSingleT = 1;
-    } else if (code_string_equals(methodName, "ForEach")) {
-        #line 1174 "./src/resolver/resolver.am"
-        isSingleT = 1;
-    } else if (code_string_equals(methodName, "Any")) {
-        #line 1175 "./src/resolver/resolver.am"
-        isSingleT = 1;
-    } else if (code_string_equals(methodName, "All")) {
         #line 1176 "./src/resolver/resolver.am"
         isSingleT = 1;
-    } else if (code_string_equals(methodName, "CountIf")) {
+    } else if (code_string_equals(methodName, "ForEach")) {
         #line 1177 "./src/resolver/resolver.am"
         isSingleT = 1;
+    } else if (code_string_equals(methodName, "Any")) {
+        #line 1178 "./src/resolver/resolver.am"
+        isSingleT = 1;
+    } else if (code_string_equals(methodName, "All")) {
+        #line 1179 "./src/resolver/resolver.am"
+        isSingleT = 1;
+    } else if (code_string_equals(methodName, "CountIf")) {
+        #line 1180 "./src/resolver/resolver.am"
+        isSingleT = 1;
     }
-    #line 1178 "./src/resolver/resolver.am"
+    #line 1181 "./src/resolver/resolver.am"
     if (!isSingleT) {
         return;
     }
-    #line 1179 "./src/resolver/resolver.am"
+    #line 1182 "./src/resolver/resolver.am"
     if (call->Left->Left == NULL) {
         return;
     }
-    #line 1180 "./src/resolver/resolver.am"
+    #line 1183 "./src/resolver/resolver.am"
     code_string recvType = Amalgame_Compiler_FullResolver_InferExprType(self, call->Left->Left);
-    #line 1181 "./src/resolver/resolver.am"
+    #line 1184 "./src/resolver/resolver.am"
     code_string elem = Amalgame_Compiler_FullResolver_CollectionElemType(self, recvType);
-    #line 1182 "./src/resolver/resolver.am"
+    #line 1185 "./src/resolver/resolver.am"
     if (String_Length(elem) == 0) {
         return;
     }
-    #line 1183 "./src/resolver/resolver.am"
+    #line 1186 "./src/resolver/resolver.am"
     if (code_string_equals(elem, "?")) {
         return;
     }
-    #line 1184 "./src/resolver/resolver.am"
+    #line 1187 "./src/resolver/resolver.am"
     i64 argc = AmalgameList_count(call->Args);
-    #line 1185 "./src/resolver/resolver.am"
+    #line 1188 "./src/resolver/resolver.am"
     for (i64 i = 0; i < argc; i++) {
-        #line 1186 "./src/resolver/resolver.am"
+        #line 1189 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(call->Args, i);
-        #line 1187 "./src/resolver/resolver.am"
+        #line 1190 "./src/resolver/resolver.am"
         if ((arg->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(arg->Name, "__lambda__"))) {
-            #line 1188 "./src/resolver/resolver.am"
+            #line 1191 "./src/resolver/resolver.am"
             i64 pn = AmalgameList_count(arg->Params);
-            #line 1189 "./src/resolver/resolver.am"
+            #line 1192 "./src/resolver/resolver.am"
             if (pn >= 1) {
-                #line 1190 "./src/resolver/resolver.am"
+                #line 1193 "./src/resolver/resolver.am"
                 Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(arg->Params, 0);
-                #line 1191 "./src/resolver/resolver.am"
+                #line 1194 "./src/resolver/resolver.am"
                 if ((String_Length(p->Str) == 0) || (code_string_equals(p->Str, "?"))) {
-                    #line 1192 "./src/resolver/resolver.am"
+                    #line 1195 "./src/resolver/resolver.am"
                     p->Str = elem;
                 }
             }
@@ -19388,74 +19400,74 @@ static void Amalgame_Compiler_FullResolver_PatchLambdaParamTypes(Amalgame_Compil
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_FullResolver_FindMethodInPrograms(Amalgame_Compiler_FullResolver* self, code_string className, code_string methodName) {
-    #line 1223 "./src/resolver/resolver.am"
+    #line 1226 "./src/resolver/resolver.am"
     code_string key = code_string_concat((code_string_concat(className, ".")), methodName);
-    #line 1224 "./src/resolver/resolver.am"
+    #line 1227 "./src/resolver/resolver.am"
     if (!AmalgameMap_has(self->MethodNodeIndex, key)) {
         return NULL;
     }
-    #line 1225 "./src/resolver/resolver.am"
+    #line 1228 "./src/resolver/resolver.am"
     return (Amalgame_Compiler_AstNode*)AmalgameMap_get(self->MethodNodeIndex, key);
 }
 
 static void Amalgame_Compiler_FullResolver_PatchLambdasFromTypedClosureParams(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* call, Amalgame_Compiler_AstNode* methodDecl) {
-    #line 1229 "./src/resolver/resolver.am"
+    #line 1232 "./src/resolver/resolver.am"
     if (methodDecl == NULL) {
         return;
     }
-    #line 1230 "./src/resolver/resolver.am"
-    i64 pn = AmalgameList_count(methodDecl->Params);
-    #line 1231 "./src/resolver/resolver.am"
-    i64 argc = AmalgameList_count(call->Args);
-    #line 1232 "./src/resolver/resolver.am"
-    i64 lim = (pn < argc ? pn : argc);
     #line 1233 "./src/resolver/resolver.am"
+    i64 pn = AmalgameList_count(methodDecl->Params);
+    #line 1234 "./src/resolver/resolver.am"
+    i64 argc = AmalgameList_count(call->Args);
+    #line 1235 "./src/resolver/resolver.am"
+    i64 lim = (pn < argc ? pn : argc);
+    #line 1236 "./src/resolver/resolver.am"
     for (i64 ai = 0; ai < lim; ai++) {
-        #line 1234 "./src/resolver/resolver.am"
+        #line 1237 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(call->Args, ai);
-        #line 1235 "./src/resolver/resolver.am"
+        #line 1238 "./src/resolver/resolver.am"
         if (arg->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
             continue;
         }
-        #line 1236 "./src/resolver/resolver.am"
+        #line 1239 "./src/resolver/resolver.am"
         if (!code_string_equals(arg->Name, "__lambda__")) {
             continue;
         }
-        #line 1237 "./src/resolver/resolver.am"
+        #line 1240 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* param = (Amalgame_Compiler_AstNode*)AmalgameList_get(methodDecl->Params, ai);
-        #line 1238 "./src/resolver/resolver.am"
+        #line 1241 "./src/resolver/resolver.am"
         code_string paramT = param->Str;
-        #line 1239 "./src/resolver/resolver.am"
+        #line 1242 "./src/resolver/resolver.am"
         if (!String_StartsWith(paramT, "Closure<")) {
             continue;
         }
-        #line 1240 "./src/resolver/resolver.am"
+        #line 1243 "./src/resolver/resolver.am"
         if (!String_EndsWith(paramT, ">")) {
             continue;
         }
-        #line 1241 "./src/resolver/resolver.am"
-        code_string inner = String_Substring(paramT, 8, String_Length(paramT) - 9);
-        #line 1242 "./src/resolver/resolver.am"
-        AmalgameList* parts = Amalgame_Compiler_FullResolver_SplitTopLevelCommasResolver(self, inner);
-        #line 1243 "./src/resolver/resolver.am"
-        i64 pc = AmalgameList_count(parts);
         #line 1244 "./src/resolver/resolver.am"
+        code_string inner = String_Substring(paramT, 8, String_Length(paramT) - 9);
+        #line 1245 "./src/resolver/resolver.am"
+        AmalgameList* parts = Amalgame_Compiler_FullResolver_SplitTopLevelCommasResolver(self, inner);
+        #line 1246 "./src/resolver/resolver.am"
+        i64 pc = AmalgameList_count(parts);
+        #line 1247 "./src/resolver/resolver.am"
         if (pc < 1) {
             continue;
         }
-        #line 1246 "./src/resolver/resolver.am"
-        i64 argTypeCount = pc - 1;
-        #line 1247 "./src/resolver/resolver.am"
-        i64 lamPn = AmalgameList_count(arg->Params);
-        #line 1248 "./src/resolver/resolver.am"
-        i64 toPatch = (argTypeCount < lamPn ? argTypeCount : lamPn);
         #line 1249 "./src/resolver/resolver.am"
+        i64 argTypeCount = pc - 1;
+        #line 1250 "./src/resolver/resolver.am"
+        i64 lamPn = AmalgameList_count(arg->Params);
+        #line 1251 "./src/resolver/resolver.am"
+        i64 toPatch = (argTypeCount < lamPn ? argTypeCount : lamPn);
+        #line 1252 "./src/resolver/resolver.am"
         for (i64 li = 0; li < toPatch; li++) {
-            #line 1250 "./src/resolver/resolver.am"
+            #line 1253 "./src/resolver/resolver.am"
             Amalgame_Compiler_AstNode* lp = (Amalgame_Compiler_AstNode*)AmalgameList_get(arg->Params, li);
-            #line 1251 "./src/resolver/resolver.am"
+            #line 1254 "./src/resolver/resolver.am"
             if ((String_Length(lp->Str) == 0) || (code_string_equals(lp->Str, "?"))) {
-                #line 1252 "./src/resolver/resolver.am"
+                #line 1255 "./src/resolver/resolver.am"
                 lp->Str = String_Trim((code_string)AmalgameList_get(parts, li));
             }
         }
@@ -19463,507 +19475,507 @@ static void Amalgame_Compiler_FullResolver_PatchLambdasFromTypedClosureParams(Am
 }
 
 static AmalgameList* Amalgame_Compiler_FullResolver_SplitTopLevelCommasResolver(Amalgame_Compiler_FullResolver* self, code_string s) {
-    #line 1261 "./src/resolver/resolver.am"
-    AmalgameList* parts = AmalgameList_new();
-    #line 1262 "./src/resolver/resolver.am"
-    i64 n = String_Length(s);
-    #line 1263 "./src/resolver/resolver.am"
-    i64 depth = 0;
     #line 1264 "./src/resolver/resolver.am"
-    code_string cur = "";
+    AmalgameList* parts = AmalgameList_new();
     #line 1265 "./src/resolver/resolver.am"
+    i64 n = String_Length(s);
+    #line 1266 "./src/resolver/resolver.am"
+    i64 depth = 0;
+    #line 1267 "./src/resolver/resolver.am"
+    code_string cur = "";
+    #line 1268 "./src/resolver/resolver.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1266 "./src/resolver/resolver.am"
+        #line 1269 "./src/resolver/resolver.am"
         code_string ch = String_Substring(s, i, 1);
-        #line 1267 "./src/resolver/resolver.am"
+        #line 1270 "./src/resolver/resolver.am"
         if (code_string_equals(ch, "<")) {
             depth = (depth + 1);
             cur = (code_string_concat(cur, ch));
         } else if (code_string_equals(ch, ">")) {
-            #line 1268 "./src/resolver/resolver.am"
+            #line 1271 "./src/resolver/resolver.am"
             depth = (depth - 1);
             cur = (code_string_concat(cur, ch));
         } else if ((code_string_equals(ch, ",")) && (depth == 0)) {
-            #line 1270 "./src/resolver/resolver.am"
+            #line 1273 "./src/resolver/resolver.am"
             AmalgameList_add(parts, (void*)(intptr_t)(cur));
-            #line 1271 "./src/resolver/resolver.am"
+            #line 1274 "./src/resolver/resolver.am"
             cur = "";
         } else {
-            #line 1273 "./src/resolver/resolver.am"
+            #line 1276 "./src/resolver/resolver.am"
             cur = (code_string_concat(cur, ch));
         }
     }
-    #line 1276 "./src/resolver/resolver.am"
+    #line 1279 "./src/resolver/resolver.am"
     if (String_Length(cur) > 0) {
         AmalgameList_add(parts, (void*)(intptr_t)(cur));
     }
-    #line 1277 "./src/resolver/resolver.am"
+    #line 1280 "./src/resolver/resolver.am"
     return parts;
 }
 
 static void Amalgame_Compiler_FullResolver_PatchLambdaParamTypesGeneric(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1282 "./src/resolver/resolver.am"
+    #line 1285 "./src/resolver/resolver.am"
     if (expr->Kind == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-        #line 1283 "./src/resolver/resolver.am"
+        #line 1286 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* methodDecl = Amalgame_Compiler_FullResolver_FindMethodInPrograms(self, expr->Name, expr->Name);
-        #line 1284 "./src/resolver/resolver.am"
+        #line 1287 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_PatchLambdasFromTypedClosureParams(self, expr, methodDecl);
-        #line 1285 "./src/resolver/resolver.am"
+        #line 1288 "./src/resolver/resolver.am"
         return;
     }
-    #line 1291 "./src/resolver/resolver.am"
+    #line 1294 "./src/resolver/resolver.am"
     if (((expr->Kind == Amalgame_Compiler_NodeKind_CALL) && (expr->Left != NULL)) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER)) {
-        #line 1292 "./src/resolver/resolver.am"
+        #line 1295 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* mem = expr->Left;
-        #line 1293 "./src/resolver/resolver.am"
+        #line 1296 "./src/resolver/resolver.am"
         if (mem->Left == NULL) {
             return;
         }
-        #line 1294 "./src/resolver/resolver.am"
+        #line 1297 "./src/resolver/resolver.am"
         code_string recvClass = "";
-        #line 1295 "./src/resolver/resolver.am"
+        #line 1298 "./src/resolver/resolver.am"
         if (mem->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-            #line 1296 "./src/resolver/resolver.am"
+            #line 1299 "./src/resolver/resolver.am"
             code_string recvName = mem->Left->Name;
-            #line 1297 "./src/resolver/resolver.am"
+            #line 1300 "./src/resolver/resolver.am"
             if (Amalgame_Compiler_FullResolver_LookupInScopes(self, recvName)) {
-                #line 1298 "./src/resolver/resolver.am"
+                #line 1301 "./src/resolver/resolver.am"
                 code_string t = Amalgame_Compiler_FullResolver_GetTypeName(self, recvName);
-                #line 1299 "./src/resolver/resolver.am"
+                #line 1302 "./src/resolver/resolver.am"
                 if (code_string_equals(t, recvName)) {
-                    #line 1302 "./src/resolver/resolver.am"
+                    #line 1305 "./src/resolver/resolver.am"
                     recvClass = recvName;
                 } else if ((String_Length(t) > 0) && (!code_string_equals(t, "?"))) {
-                    #line 1307 "./src/resolver/resolver.am"
+                    #line 1310 "./src/resolver/resolver.am"
                     if (String_EndsWith(t, "?")) {
-                        #line 1308 "./src/resolver/resolver.am"
+                        #line 1311 "./src/resolver/resolver.am"
                         recvClass = String_Substring(t, 0, String_Length(t) - 1);
                     } else {
-                        #line 1310 "./src/resolver/resolver.am"
+                        #line 1313 "./src/resolver/resolver.am"
                         recvClass = t;
                     }
                 }
             }
         }
-        #line 1315 "./src/resolver/resolver.am"
+        #line 1318 "./src/resolver/resolver.am"
         if (String_Length(recvClass) == 0) {
             return;
         }
-        #line 1316 "./src/resolver/resolver.am"
+        #line 1319 "./src/resolver/resolver.am"
         Amalgame_Compiler_AstNode* methodDecl = Amalgame_Compiler_FullResolver_FindMethodInPrograms(self, recvClass, mem->Name);
-        #line 1317 "./src/resolver/resolver.am"
+        #line 1320 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_PatchLambdasFromTypedClosureParams(self, expr, methodDecl);
     }
 }
 
 static void Amalgame_Compiler_FullResolver_ResolveExpr(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1324 "./src/resolver/resolver.am"
+    #line 1327 "./src/resolver/resolver.am"
     if (expr == NULL) {
         return;
     }
-    #line 1325 "./src/resolver/resolver.am"
+    #line 1328 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind k = expr->Kind;
-    #line 1327 "./src/resolver/resolver.am"
+    #line 1330 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 1329 "./src/resolver/resolver.am"
+        #line 1332 "./src/resolver/resolver.am"
         if (code_string_equals(expr->Name, "_unknown_")) {
             return;
         }
-        #line 1333 "./src/resolver/resolver.am"
+        #line 1336 "./src/resolver/resolver.am"
         if (code_string_equals(expr->Name, "_")) {
             return;
         }
-        #line 1334 "./src/resolver/resolver.am"
+        #line 1337 "./src/resolver/resolver.am"
         if (!Amalgame_Compiler_FullResolver_LookupInScopes(self, expr->Name)) {
-            #line 1335 "./src/resolver/resolver.am"
+            #line 1338 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_Error(self, code_string_concat((code_string_concat("Unknown symbol '", expr->Name)), "'"), expr);
-            #line 1336 "./src/resolver/resolver.am"
+            #line 1339 "./src/resolver/resolver.am"
             return;
         }
-        #line 1344 "./src/resolver/resolver.am"
+        #line 1347 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_TryCaptureLocalByName(self, expr->Name, expr->Line, expr->Column);
-        #line 1345 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1347 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_BINARY) {
         #line 1348 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1350 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_BINARY) {
+        #line 1351 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1349 "./src/resolver/resolver.am"
+        #line 1352 "./src/resolver/resolver.am"
         if (expr->Right != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Right);
         }
-        #line 1350 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1352 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_UNARY) {
         #line 1353 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1355 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_UNARY) {
+        #line 1356 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1354 "./src/resolver/resolver.am"
+        #line 1357 "./src/resolver/resolver.am"
         return;
     }
-    #line 1356 "./src/resolver/resolver.am"
+    #line 1359 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 1358 "./src/resolver/resolver.am"
+        #line 1361 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1359 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1361 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_CALL) {
         #line 1362 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1364 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_CALL) {
+        #line 1365 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1367 "./src/resolver/resolver.am"
+        #line 1370 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_PatchLambdaParamTypes(self, expr);
-        #line 1373 "./src/resolver/resolver.am"
+        #line 1376 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_PatchLambdaParamTypesGeneric(self, expr);
-        #line 1374 "./src/resolver/resolver.am"
+        #line 1377 "./src/resolver/resolver.am"
         i64 argc = AmalgameList_count(expr->Args);
-        #line 1375 "./src/resolver/resolver.am"
-        for (i64 i = 0; i < argc; i++) {
-            #line 1376 "./src/resolver/resolver.am"
-            Amalgame_Compiler_FullResolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
-        }
         #line 1378 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1380 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-        #line 1382 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_PatchLambdaParamTypesGeneric(self, expr);
-        #line 1383 "./src/resolver/resolver.am"
-        i64 argc = AmalgameList_count(expr->Args);
-        #line 1384 "./src/resolver/resolver.am"
         for (i64 i = 0; i < argc; i++) {
-            #line 1385 "./src/resolver/resolver.am"
+            #line 1379 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
         }
-        #line 1387 "./src/resolver/resolver.am"
+        #line 1381 "./src/resolver/resolver.am"
         return;
     }
-    #line 1389 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
+    #line 1383 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
+        #line 1385 "./src/resolver/resolver.am"
+        Amalgame_Compiler_FullResolver_PatchLambdaParamTypesGeneric(self, expr);
+        #line 1386 "./src/resolver/resolver.am"
+        i64 argc = AmalgameList_count(expr->Args);
+        #line 1387 "./src/resolver/resolver.am"
+        for (i64 i = 0; i < argc; i++) {
+            #line 1388 "./src/resolver/resolver.am"
+            Amalgame_Compiler_FullResolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
+        }
         #line 1390 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1392 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
+        #line 1393 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1391 "./src/resolver/resolver.am"
+        #line 1394 "./src/resolver/resolver.am"
         if (expr->Right != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Right);
         }
-        #line 1392 "./src/resolver/resolver.am"
+        #line 1395 "./src/resolver/resolver.am"
         return;
     }
-    #line 1394 "./src/resolver/resolver.am"
+    #line 1397 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LIST_COMP) {
-        #line 1399 "./src/resolver/resolver.am"
-        if (expr->Right != NULL) {
-            Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Right);
-        }
-        #line 1400 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_PushScope(self, "list-comp");
-        #line 1401 "./src/resolver/resolver.am"
-        code_string elemType = "?";
         #line 1402 "./src/resolver/resolver.am"
         if (expr->Right != NULL) {
-            #line 1403 "./src/resolver/resolver.am"
+            Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Right);
+        }
+        #line 1403 "./src/resolver/resolver.am"
+        Amalgame_Compiler_FullResolver_PushScope(self, "list-comp");
+        #line 1404 "./src/resolver/resolver.am"
+        code_string elemType = "?";
+        #line 1405 "./src/resolver/resolver.am"
+        if (expr->Right != NULL) {
+            #line 1406 "./src/resolver/resolver.am"
             code_string colType = Amalgame_Compiler_FullResolver_InferExprType(self, expr->Right);
-            #line 1404 "./src/resolver/resolver.am"
+            #line 1407 "./src/resolver/resolver.am"
             elemType = Amalgame_Compiler_FullResolver_CollectionElemType(self, colType);
         }
-        #line 1406 "./src/resolver/resolver.am"
+        #line 1409 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_DeclareCurrent(self, expr->Str, elemType, 1);
-        #line 1407 "./src/resolver/resolver.am"
+        #line 1410 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1408 "./src/resolver/resolver.am"
+        #line 1411 "./src/resolver/resolver.am"
         if (expr->Cond != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Cond);
         }
-        #line 1409 "./src/resolver/resolver.am"
+        #line 1412 "./src/resolver/resolver.am"
         Amalgame_Compiler_FullResolver_PopScope(self);
-        #line 1410 "./src/resolver/resolver.am"
+        #line 1413 "./src/resolver/resolver.am"
         return;
     }
-    #line 1412 "./src/resolver/resolver.am"
+    #line 1415 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LIST_LITERAL) {
-        #line 1415 "./src/resolver/resolver.am"
+        #line 1418 "./src/resolver/resolver.am"
         i64 nc = AmalgameList_count(expr->Children);
-        #line 1416 "./src/resolver/resolver.am"
+        #line 1419 "./src/resolver/resolver.am"
         for (i64 i = 0; i < nc; i++) {
-            #line 1417 "./src/resolver/resolver.am"
+            #line 1420 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_ResolveExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Children, i));
         }
-        #line 1419 "./src/resolver/resolver.am"
-        return;
-    }
-    #line 1421 "./src/resolver/resolver.am"
-    if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
         #line 1422 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_ResolveAssign(self, expr);
-        #line 1423 "./src/resolver/resolver.am"
         return;
     }
-    #line 1425 "./src/resolver/resolver.am"
+    #line 1424 "./src/resolver/resolver.am"
+    if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
+        #line 1425 "./src/resolver/resolver.am"
+        Amalgame_Compiler_FullResolver_ResolveAssign(self, expr);
+        #line 1426 "./src/resolver/resolver.am"
+        return;
+    }
+    #line 1428 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 1429 "./src/resolver/resolver.am"
+        #line 1432 "./src/resolver/resolver.am"
         if (code_string_equals(expr->Name, "__match__")) {
-            #line 1430 "./src/resolver/resolver.am"
+            #line 1433 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_ResolveMatch(self, expr);
-            #line 1431 "./src/resolver/resolver.am"
+            #line 1434 "./src/resolver/resolver.am"
             return;
         }
-        #line 1434 "./src/resolver/resolver.am"
+        #line 1437 "./src/resolver/resolver.am"
         if (expr->Cond != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Cond);
         }
-        #line 1435 "./src/resolver/resolver.am"
+        #line 1438 "./src/resolver/resolver.am"
         if (expr->Body != NULL) {
             Amalgame_Compiler_FullResolver_ResolveBlock(self, expr->Body);
         }
-        #line 1436 "./src/resolver/resolver.am"
+        #line 1439 "./src/resolver/resolver.am"
         if (expr->Else != NULL) {
             Amalgame_Compiler_FullResolver_ResolveElseBranch(self, expr->Else);
         }
-        #line 1437 "./src/resolver/resolver.am"
+        #line 1440 "./src/resolver/resolver.am"
         return;
     }
-    #line 1439 "./src/resolver/resolver.am"
+    #line 1442 "./src/resolver/resolver.am"
     if ((k == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(expr->Name, "__lambda__"))) {
-        #line 1451 "./src/resolver/resolver.am"
-        Amalgame_Compiler_AstNode* prevLam = self->LambdaInProgress;
-        #line 1452 "./src/resolver/resolver.am"
-        i64 prevBoundary = self->LambdaBoundary;
-        #line 1453 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_PushScope(self, "lambda");
         #line 1454 "./src/resolver/resolver.am"
-        self->LambdaInProgress = expr;
+        Amalgame_Compiler_AstNode* prevLam = self->LambdaInProgress;
         #line 1455 "./src/resolver/resolver.am"
-        self->LambdaBoundary = AmalgameList_count(self->LocalNames);
+        i64 prevBoundary = self->LambdaBoundary;
         #line 1456 "./src/resolver/resolver.am"
-        i64 pn = AmalgameList_count(expr->Params);
+        Amalgame_Compiler_FullResolver_PushScope(self, "lambda");
         #line 1457 "./src/resolver/resolver.am"
+        self->LambdaInProgress = expr;
+        #line 1458 "./src/resolver/resolver.am"
+        self->LambdaBoundary = AmalgameList_count(self->LocalNames);
+        #line 1459 "./src/resolver/resolver.am"
+        i64 pn = AmalgameList_count(expr->Params);
+        #line 1460 "./src/resolver/resolver.am"
         for (i64 pi = 0; pi < pn; pi++) {
-            #line 1458 "./src/resolver/resolver.am"
+            #line 1461 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_DeclareLambdaParam(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Params, pi));
         }
-        #line 1460 "./src/resolver/resolver.am"
+        #line 1463 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
             Amalgame_Compiler_FullResolver_ResolveExpr(self, expr->Left);
         }
-        #line 1461 "./src/resolver/resolver.am"
+        #line 1464 "./src/resolver/resolver.am"
         if (expr->Body != NULL) {
             Amalgame_Compiler_FullResolver_ResolveBlock(self, expr->Body);
         }
-        #line 1462 "./src/resolver/resolver.am"
-        Amalgame_Compiler_FullResolver_PopScope(self);
-        #line 1463 "./src/resolver/resolver.am"
-        self->LambdaInProgress = prevLam;
-        #line 1464 "./src/resolver/resolver.am"
-        self->LambdaBoundary = prevBoundary;
         #line 1465 "./src/resolver/resolver.am"
+        Amalgame_Compiler_FullResolver_PopScope(self);
+        #line 1466 "./src/resolver/resolver.am"
+        self->LambdaInProgress = prevLam;
+        #line 1467 "./src/resolver/resolver.am"
+        self->LambdaBoundary = prevBoundary;
+        #line 1468 "./src/resolver/resolver.am"
         return;
     }
-    #line 1467 "./src/resolver/resolver.am"
+    #line 1470 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-        #line 1477 "./src/resolver/resolver.am"
+        #line 1480 "./src/resolver/resolver.am"
         if (self->LambdaInProgress == NULL) {
             return;
         }
-        #line 1478 "./src/resolver/resolver.am"
-        code_string raw = expr->Str;
-        #line 1479 "./src/resolver/resolver.am"
-        i64 rn = String_Length(raw);
-        #line 1480 "./src/resolver/resolver.am"
-        i64 ri = 0;
         #line 1481 "./src/resolver/resolver.am"
+        code_string raw = expr->Str;
+        #line 1482 "./src/resolver/resolver.am"
+        i64 rn = String_Length(raw);
+        #line 1483 "./src/resolver/resolver.am"
+        i64 ri = 0;
+        #line 1484 "./src/resolver/resolver.am"
         while (ri < rn) {
-            #line 1482 "./src/resolver/resolver.am"
+            #line 1485 "./src/resolver/resolver.am"
             code_string rch = String_Substring(raw, ri, 1);
-            #line 1483 "./src/resolver/resolver.am"
+            #line 1486 "./src/resolver/resolver.am"
             if (!code_string_equals(rch, "{")) {
-                #line 1484 "./src/resolver/resolver.am"
+                #line 1487 "./src/resolver/resolver.am"
                 ri = (ri + 1);
-                #line 1485 "./src/resolver/resolver.am"
+                #line 1488 "./src/resolver/resolver.am"
                 continue;
             }
-            #line 1487 "./src/resolver/resolver.am"
+            #line 1490 "./src/resolver/resolver.am"
             code_string rest = String_Substring(raw, ri + 1, (rn - ri) - 1);
-            #line 1488 "./src/resolver/resolver.am"
+            #line 1491 "./src/resolver/resolver.am"
             i64 close = String_IndexOf(rest, "}");
-            #line 1489 "./src/resolver/resolver.am"
+            #line 1492 "./src/resolver/resolver.am"
             if (close <= 0) {
-                #line 1490 "./src/resolver/resolver.am"
+                #line 1493 "./src/resolver/resolver.am"
                 ri = (ri + 1);
-                #line 1491 "./src/resolver/resolver.am"
+                #line 1494 "./src/resolver/resolver.am"
                 continue;
             }
-            #line 1493 "./src/resolver/resolver.am"
+            #line 1496 "./src/resolver/resolver.am"
             code_string inner = String_Substring(raw, ri + 1, close);
-            #line 1494 "./src/resolver/resolver.am"
+            #line 1497 "./src/resolver/resolver.am"
             Amalgame_Compiler_FullResolver_CaptureIdentsInInterpExpr(self, inner, expr->Line, expr->Column);
-            #line 1495 "./src/resolver/resolver.am"
+            #line 1498 "./src/resolver/resolver.am"
             ri = (((ri + 1) + close) + 1);
         }
-        #line 1497 "./src/resolver/resolver.am"
+        #line 1500 "./src/resolver/resolver.am"
         return;
     }
 }
 
 static code_string Amalgame_Compiler_FullResolver_InferExprType(Amalgame_Compiler_FullResolver* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1505 "./src/resolver/resolver.am"
+    #line 1508 "./src/resolver/resolver.am"
     if (expr == NULL) {
         return "?";
     }
-    #line 1506 "./src/resolver/resolver.am"
+    #line 1509 "./src/resolver/resolver.am"
     Amalgame_Compiler_NodeKind k = expr->Kind;
-    #line 1507 "./src/resolver/resolver.am"
+    #line 1510 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
         return Amalgame_Compiler_FullResolver_LookupType(self, expr->Name);
     }
-    #line 1508 "./src/resolver/resolver.am"
+    #line 1511 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_INT) {
         return "int";
     }
-    #line 1509 "./src/resolver/resolver.am"
+    #line 1512 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_FLOAT) {
         return "float";
     }
-    #line 1510 "./src/resolver/resolver.am"
+    #line 1513 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
         return "string";
     }
-    #line 1511 "./src/resolver/resolver.am"
+    #line 1514 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_BOOL) {
         return "bool";
     }
-    #line 1512 "./src/resolver/resolver.am"
+    #line 1515 "./src/resolver/resolver.am"
     if ((k == Amalgame_Compiler_NodeKind_BINARY) && (code_string_equals(expr->Str, ".."))) {
         return "range";
     }
-    #line 1516 "./src/resolver/resolver.am"
+    #line 1519 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-        #line 1517 "./src/resolver/resolver.am"
+        #line 1520 "./src/resolver/resolver.am"
         if (String_Length(self->CurrentClass) > 0) {
-            #line 1518 "./src/resolver/resolver.am"
+            #line 1521 "./src/resolver/resolver.am"
             return self->CurrentClass;
         }
     }
-    #line 1521 "./src/resolver/resolver.am"
+    #line 1524 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-        #line 1525 "./src/resolver/resolver.am"
+        #line 1528 "./src/resolver/resolver.am"
         if (String_Length(expr->Str2) > 0) {
-            #line 1526 "./src/resolver/resolver.am"
+            #line 1529 "./src/resolver/resolver.am"
             return code_string_concat((code_string_concat((code_string_concat(expr->Name, "<")), expr->Str2)), ">");
         }
-        #line 1528 "./src/resolver/resolver.am"
+        #line 1531 "./src/resolver/resolver.am"
         return expr->Name;
     }
-    #line 1530 "./src/resolver/resolver.am"
+    #line 1533 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 1531 "./src/resolver/resolver.am"
+        #line 1534 "./src/resolver/resolver.am"
         if (expr->Left != NULL) {
-            #line 1532 "./src/resolver/resolver.am"
+            #line 1535 "./src/resolver/resolver.am"
             code_string targetType = Amalgame_Compiler_FullResolver_InferExprType(self, expr->Left);
-            #line 1533 "./src/resolver/resolver.am"
+            #line 1536 "./src/resolver/resolver.am"
             return Amalgame_Compiler_MemberTable_Get(self->Members, targetType, expr->Name);
         }
     }
-    #line 1536 "./src/resolver/resolver.am"
+    #line 1539 "./src/resolver/resolver.am"
     if (k == Amalgame_Compiler_NodeKind_CALL) {
-        #line 1545 "./src/resolver/resolver.am"
+        #line 1548 "./src/resolver/resolver.am"
         if ((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER)) {
-            #line 1546 "./src/resolver/resolver.am"
+            #line 1549 "./src/resolver/resolver.am"
             code_string mname = expr->Left->Name;
-            #line 1547 "./src/resolver/resolver.am"
+            #line 1550 "./src/resolver/resolver.am"
             if ((code_string_equals(mname, "Filter")) || (code_string_equals(mname, "ForEach"))) {
-                #line 1548 "./src/resolver/resolver.am"
+                #line 1551 "./src/resolver/resolver.am"
                 if (expr->Left->Left != NULL) {
-                    #line 1549 "./src/resolver/resolver.am"
+                    #line 1552 "./src/resolver/resolver.am"
                     return Amalgame_Compiler_FullResolver_InferExprType(self, expr->Left->Left);
                 }
             }
         }
     }
-    #line 1554 "./src/resolver/resolver.am"
+    #line 1557 "./src/resolver/resolver.am"
     return "?";
 }
 
 static code_string Amalgame_Compiler_FullResolver_CollectionElemType(Amalgame_Compiler_FullResolver* self, code_string typeKey) {
-    #line 1558 "./src/resolver/resolver.am"
+    #line 1561 "./src/resolver/resolver.am"
     if ((code_string_equals(typeKey, "range")) || (code_string_equals(typeKey, "int"))) {
         return "int";
     }
-    #line 1559 "./src/resolver/resolver.am"
+    #line 1562 "./src/resolver/resolver.am"
     if (String_StartsWith(typeKey, "List<") && String_EndsWith(typeKey, ">")) {
-        #line 1560 "./src/resolver/resolver.am"
+        #line 1563 "./src/resolver/resolver.am"
         return String_Substring(typeKey, 5, String_Length(typeKey) - 6);
     }
-    #line 1562 "./src/resolver/resolver.am"
+    #line 1565 "./src/resolver/resolver.am"
     if (String_StartsWith(typeKey, "Set<") && String_EndsWith(typeKey, ">")) {
-        #line 1563 "./src/resolver/resolver.am"
+        #line 1566 "./src/resolver/resolver.am"
         return String_Substring(typeKey, 4, String_Length(typeKey) - 5);
     }
-    #line 1565 "./src/resolver/resolver.am"
+    #line 1568 "./src/resolver/resolver.am"
     if (String_EndsWith(typeKey, "[]")) {
-        #line 1566 "./src/resolver/resolver.am"
+        #line 1569 "./src/resolver/resolver.am"
         return String_Substring(typeKey, 0, String_Length(typeKey) - 2);
     }
-    #line 1568 "./src/resolver/resolver.am"
+    #line 1571 "./src/resolver/resolver.am"
     return "?";
 }
 
 code_string Amalgame_Compiler_FullResolver_GetMemberType(Amalgame_Compiler_FullResolver* self, code_string className, code_string memberName) {
-    #line 1574 "./src/resolver/resolver.am"
+    #line 1577 "./src/resolver/resolver.am"
     return Amalgame_Compiler_MemberTable_Get(self->Members, className, memberName);
 }
 
 code_bool Amalgame_Compiler_FullResolver_HasMember(Amalgame_Compiler_FullResolver* self, code_string className, code_string memberName) {
-    #line 1578 "./src/resolver/resolver.am"
+    #line 1581 "./src/resolver/resolver.am"
     return Amalgame_Compiler_MemberTable_Has(self->Members, className, memberName);
 }
 
 code_string Amalgame_Compiler_FullResolver_GetVarType(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 1582 "./src/resolver/resolver.am"
+    #line 1585 "./src/resolver/resolver.am"
     return Amalgame_Compiler_FullResolver_LookupType(self, name);
 }
 
 code_bool Amalgame_Compiler_FullResolver_HasSymbol(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 1590 "./src/resolver/resolver.am"
+    #line 1593 "./src/resolver/resolver.am"
     return Amalgame_Compiler_FullResolver_LookupInScopes(self, name);
 }
 
 code_string Amalgame_Compiler_FullResolver_GetTypeName(Amalgame_Compiler_FullResolver* self, code_string name) {
-    #line 1594 "./src/resolver/resolver.am"
+    #line 1597 "./src/resolver/resolver.am"
     return Amalgame_Compiler_FullResolver_LookupType(self, name);
 }
 
 void Amalgame_Compiler_FullResolver_SetTypeName(Amalgame_Compiler_FullResolver* self, code_string name, code_string typeName) {
-    #line 1598 "./src/resolver/resolver.am"
+    #line 1601 "./src/resolver/resolver.am"
     i64 lc = AmalgameList_count(self->LocalNames);
-    #line 1599 "./src/resolver/resolver.am"
+    #line 1602 "./src/resolver/resolver.am"
     for (i64 i = 0; i < lc; i++) {
-        #line 1600 "./src/resolver/resolver.am"
+        #line 1603 "./src/resolver/resolver.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
-            #line 1601 "./src/resolver/resolver.am"
+            #line 1604 "./src/resolver/resolver.am"
             AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
-            #line 1602 "./src/resolver/resolver.am"
+            #line 1605 "./src/resolver/resolver.am"
             return;
         }
     }
-    #line 1611 "./src/resolver/resolver.am"
+    #line 1614 "./src/resolver/resolver.am"
     if (AmalgameMap_has(self->GlobalIndex, name)) {
-        #line 1612 "./src/resolver/resolver.am"
+        #line 1615 "./src/resolver/resolver.am"
         AmalgameList_add(self->GlobalTypes, (void*)(intptr_t)(typeName));
     }
 }
@@ -24544,12 +24556,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "d7b01789";
+    return "a90706c3";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-24T09:13:51Z";
+    return "2026-05-24T15:44:54Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
