@@ -39,23 +39,13 @@ trap 'rm -rf "$BUILD"' EXIT
 
 echo "── libamalgame.a — pre-compile user-facing stdlib modules ──"
 
-# v0.8.49: amc auto-includes every cached package's runtime header
-# (via its package-registry registration). If any of those headers
-# transitively `#include` another package's header (e.g. net-http
-# v0.9.1+'s Amalgame_Net_Http.h includes "Amalgame_Async.h"), gcc
-# needs the sibling's runtime/ on -I. Pre-cook the flags from the
-# cache; user-set CPPFLAGS keeps precedence (appended last).
-PKG_INCLUDES=""
-if [ -d "$HOME/.amalgame/packages/github.com/amalgame-lang" ]; then
-    for pkg_parent in "$HOME/.amalgame/packages/github.com/amalgame-lang"/*/; do
-        latest=$(ls -1 "$pkg_parent" 2>/dev/null | sort -V | tail -1)
-        runtime_dir="${pkg_parent}${latest}/runtime"
-        if [ -n "$latest" ] && [ -d "$runtime_dir" ]; then
-            PKG_INCLUDES="$PKG_INCLUDES -I${runtime_dir}"
-        fi
-    done
-fi
-CPPFLAGS="$PKG_INCLUDES ${CPPFLAGS:-}"
+# v0.8.51: cgen now filters #include emission to only packages the
+# source imports. The bundled stdlib modules (path/math/json/toml/…)
+# import zero external packages, so their generated .c files contain
+# no pkg-runtime headers → no -I walk needed. The PKG_INCLUDES probe
+# lived here briefly in v0.8.49–v0.8.50 to compensate for the
+# auto-include-every-cached-pkg bug; dropped after the filter shipped.
+CPPFLAGS="${CPPFLAGS:-}"
 
 # Sanity: amc must exist. Windows / MSYS2 produces amc.exe — pick
 # whichever is on disk so we don't have to rename across platforms.
