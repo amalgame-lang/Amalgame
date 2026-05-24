@@ -617,10 +617,13 @@ before the next big language addition.
           instance call shapes. No `(void*)` fallbacks left.
       The intercept-void workaround in v0.8.19 stays as a safety
       belt for packages that ship without a `returns_generic`
-      annotation. No installed package today returns
-      `AmalgameList*`/`AmalgameMap*` — the future
-      `amalgame-database-postgresql` (with `QueryAll`) will be
-      the first real consumer of this convention.
+      annotation. **First real consumer shipped 2026-05-24** as
+      [amalgame-database-postgresql v0.2.0](https://github.com/amalgame-lang/amalgame-database-postgresql/releases/tag/v0.2.0):
+      `QueryAll = { returns = "AmalgameList*", returns_generic =
+      "List<List<string>>" }` lets consumers chain
+      `rows.Get(i).Get(j)` to a properly-typed `string` cell with
+      zero explicit annotations. Verified end-to-end against the
+      package's CI postgres:16-alpine service container.
 - [x] **CGen: chained `obj.Field.Method()` /
       `obj.Method().Method()` (resolved)** — `EmitCalleeStr`
       now handles both shapes: when the receiver is a CALL, the
@@ -1377,12 +1380,23 @@ implementation effort.
           v0.5.3 C++ pipeline (`[stdlib].sources` of type
           `.cpp/.cc/.cxx` compile with g++, manifest gains
           `cflags`/`cxxflags`/`libs`/`schema-version` keys).
-        - **PostgreSQL** (`libpq` client) — link to system
-          `libpq` (heavy to vendor — vendor only the headers,
-          dynamic-link the .so/.dylib/.dll). Surface adds
-          `SetUser` / `SetPass` / connection-string variants for
-          network auth. PostgreSQL licence is permissive (BSD-
-          style), compatible with Apache-2.0.
+        - [x] **PostgreSQL** (`libpq` client) — shipped 2026-05-24
+          as [amalgame-database-postgresql v0.2.0](https://github.com/amalgame-lang/amalgame-database-postgresql/releases/tag/v0.2.0).
+          Dynamic-linked to the system libpq (no vendored sources;
+          `apt install libpq-dev` / `brew install libpq` / etc.).
+          Connection via libpq connstring or `PG*` env vars (libpq
+          reads them when `Open("")` is called). Surface:
+          `Open / Close / IsOpen / LastError / Exec / QueryAll /
+          Changes / ServerVersion`. Since v0.2.0 the manifest
+          declares `returns_generic = "List<List<string>>"` on
+          `QueryAll` so consumers chain `rows.Get(i).Get(j)` to a
+          typed `string` cell with no explicit annotations (first
+          real exercise of the v0.8.40 cgen convention). CI
+          validates against `postgres:16-alpine` via GH Actions
+          service container. **v2 backlog**: parameter binding
+          (`PQexecParams`), prepared statements, typed column
+          accessors (`AsInt`/`AsBytes`/`AsTimestamp`), COPY-protocol
+          bulk insert, async query mode, LISTEN/NOTIFY, cursors.
         - **MySQL / MariaDB** (`libmariadbclient`) — same
           dynamic-link path as Postgres. Lower priority.
           MariaDB connector under LGPL-2.1 → fine to dynamic-link
