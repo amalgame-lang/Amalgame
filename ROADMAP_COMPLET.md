@@ -328,6 +328,27 @@ marked SKIP in the test bundles (`SKIP_SELFHOST` in the legacy
 list in `tests/core_bundle/core_test.am`) so the suite stays
 green; each one needs its own fix.
 
+- [ ] **Cross-package enum dispatch — `Pkg.EnumKind.Variant`
+      mis-mangled with the consumer's namespace prefix**
+      (surfaced 2026-05-24 while shipping
+      amalgame-io-filewatcher v0.2.0). A package declares
+      `public enum X { A, B, C }` in `namespace Foo.Bar`; the
+      consumer in `namespace App` writes `X.A` and cgen emits
+      `App_X_A` instead of `Foo_Bar_X_A`. Link fails with
+      "undefined reference to `App_X_A`". The PR #521 fix for
+      cross-package CLASS dispatch (`ExternalClassMangled`
+      consulted before `SymName`) didn't wire the same path for
+      ENUM_DECL. Symmetric fix expected: a similar lookup against
+      external programs' enum tables in `EmitCalleeStr`'s
+      MEMBER-on-IDENTIFIER branch (~10 LoC in
+      `src/generator/c_gen.am`). **Workaround in the meantime**
+      (used by `amalgame-io-filewatcher` and recommended for any
+      package wanting to expose an enum to consumers): model the
+      enum as a `public class` with static int methods
+      (`Created() / Modified() / …`) — those go through the
+      already-fixed cross-package static-call path. Call site
+      becomes `WatchEventKind.Created()` (parens needed).
+
 - [x] **Facade-package ABI bug — same-class static dispatch
       vs PkgClassMangledPrefix** — **fixed 2026-05-19**.
       `CGen.LocalClasses` field added + populated by
@@ -1547,34 +1568,38 @@ implementation effort.
       hard to test reliably across filesystems). Covers the
       "reload a config file" / "rebuild on source change" 80%
       use case.
-- [ ] **FileWatcher v2 — events + DirectoryWatcher + inotify** —
-      v1 is intentionally minimal; v2 fleshes it out:
-        - **Event types** — instead of a boolean `Changed()`,
-          expose `WatchEvent` records with `Kind`
-          (`Created` / `Modified` / `Deleted` / `Renamed`),
-          `Path`, `RenamedTo` (for Renamed only), `Timestamp`.
-          Polling backend infers Kind from the mtime/size/exist
-          flip; the platform-native backends below get the Kind
-          straight from the kernel.
-        - **DirectoryWatcher** — `new DirectoryWatcher(path,
-          recursive: bool)` returns events for every file in
-          the dir (or subtree). Polling backend walks the dir
-          and diffs the file-list snapshot; native backends
-          subscribe at the dir level.
-        - **Native backends** — `inotify` on Linux, `FSEvents`
+- [~] **FileWatcher v2 — events + DirectoryWatcher + inotify** —
+      polling slice **shipped 2026-05-24** as
+      [amalgame-io-filewatcher v0.2.0](https://github.com/amalgame-lang/amalgame-io-filewatcher/releases/tag/v0.2.0);
+      native backends still pending.
+        - [x] **Event types** — `WatchEvent { Kind, Path,
+          RenamedTo, TimestampMs }` with accessors. Kind via
+          `WatchEventKind` class (static int methods
+          `Created()` / `Modified()` / `Deleted()` / `Renamed()`;
+          modeled as a class because cgen doesn't yet dispatch
+          external-package enums — see "Compiler — open bugs"
+          below). Polling backend infers Kind from the
+          mtime/exist flip; `Renamed` is reserved for the
+          native backends.
+        - [x] **DirectoryWatcher** — `new DirectoryWatcher(path,
+          recursive: bool)`. Walks the dir on every `Poll()` and
+          diffs via two `Map<string,int>` lookups (O(N+M)). New
+          runtime helper `amalgame_fw_walk` wraps POSIX
+          `opendir/readdir` + Windows `FindFirstFileA/FindNextFileA`.
+        - [ ] **Native backends** — `inotify` on Linux, `FSEvents`
           on macOS, `ReadDirectoryChangesW` on Windows. The
-          polling backend stays as a portable fallback (and
+          polling backend stays as the portable fallback (and
           the test default — exact, no kernel queue to drain).
           Surface stays the same `WatchEvent` shape so user
-          code doesn't branch on platform.
-        - **Use cases unblocked** — `amc build --watch` (post-C),
-          `amc test --watch`, dev-server hot reload, config-
-          file reload across a whole dir, log tail tools.
-      Estimated ~1 day for the event-typed polling backend,
-      another ~1.5 days for the three native backends. Worth
-      splitting into two PRs (v2-events then v2-native) so
-      `amc build --watch` lands as soon as the events shape is
-      stable.
+          code doesn't branch on platform. **Deferred to v0.3.**
+        - [ ] **Use cases unblocked** — `amc build --watch`
+          arborescent (post-C), `amc test --watch`, dev-server
+          hot reload, config-file reload across a whole dir,
+          log tail tools. Spec ready, depends on the consumer
+          actually wiring it up.
+      Verified end-to-end: **18 PASS** (7 v1 + 11 v2) in
+      `amalgame-io-filewatcher/tests/run_tests.sh` against amc
+      v0.8.45.
 - [x] **`Amalgame.Math` advanced — Vec3/Vec4/Mat4 (v0.7.0)** —
       `Amalgame.Math.Vec` ships scalar (no SIMD) implementations
       of `Vec3` (Add/Sub/Scale/Dot/Cross/Length/Normalize/Equals
