@@ -129,7 +129,7 @@ class Program {
         File.WriteAll(tmp + "/amalgame.lock", lockBody)
 
         // user.am fixture — same body as the bash heredoc
-        let userBody = "public class Program {\n    public static void Main() {\n        let r = FakePkg.Init()\n        let t: int = FakePkg.Tick(r)\n        let ok: bool = FakePkg.IsOk(r)\n        var okStr: string = \"false\"\n        if (ok) { okStr = \"true\" }\n        Console.WriteLine(\"e2e tick=\" + String_FromInt(t) + \" ok=\" + okStr)\n        FakePkg.Close(r)\n    }\n}\n"
+        let userBody = "import Amalgame.Fake.FakePkg\n\npublic class Program {\n    public static void Main() {\n        let r = FakePkg.Init()\n        let t: int = FakePkg.Tick(r)\n        let ok: bool = FakePkg.IsOk(r)\n        var okStr: string = \"false\"\n        if (ok) { okStr = \"true\" }\n        Console.WriteLine(\"e2e tick=\" + String_FromInt(t) + \" ok=\" + okStr)\n        FakePkg.Close(r)\n    }\n}\n"
         File.WriteAll(tmp + "/user.am", userBody)
 
         let amcAbs = Program.ShellRead("realpath ./amc")
@@ -254,7 +254,7 @@ class Program {
         }
 
         // ── 6. user.am compiles ──
-        let userBody = "namespace UserApp\n\npublic class Program {\n    public static void Main() {\n        let v: int = FakeFacade.Make(41)\n        let w: int = FakeFacade.Twice(v)\n        let z: int = FakeFacade.MakeThenTwice(41)\n        Console.WriteLine(\"got \" + String_FromInt(w) + \" z=\" + String_FromInt(z))\n    }\n}\n"
+        let userBody = "namespace UserApp\n\nimport Amalgame.Fake.FakeFacade\n\npublic class Program {\n    public static void Main() {\n        let v: int = FakeFacade.Make(41)\n        let w: int = FakeFacade.Twice(v)\n        let z: int = FakeFacade.MakeThenTwice(41)\n        Console.WriteLine(\"got \" + String_FromInt(w) + \" z=\" + String_FromInt(z))\n    }\n}\n"
         File.WriteAll(tmp + "/user.am", userBody)
         let userCmd = "(cd '" + tmp + "' && AMALGAME_PACKAGES_DIR='" + cacheAbs + "' '" + amcAbs + "' -o out user.am --quiet) > '" + tmp + "/usercompile.log' 2>&1"
         let userExit = Program.ShellExit(userCmd)

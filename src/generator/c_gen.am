@@ -139,10 +139,27 @@ public class CGen {
     public PkgFuncs:      List<string>
     public PkgFuncCTypes: List<string>
     public PkgHeaders:    List<string>
+    // Parallel to PkgHeaders: namespace of the package contributing
+    // each header (e.g. "Amalgame.Database.NoSQL.Redis"). Used by
+    // EmitHeader to filter `#include` emission to only the packages
+    // the source actually imports (post-v0.8.50 refactor — avoids
+    // dragging duckdb / mongodb / postgresql preprocessing into every
+    // .c when those are in the cache but not imported).
+    public PkgHeaderNs:   List<string>
     // Parallel to PkgClasses: stores the namespace each registered
     // class came from (e.g. "Amalgame.Database.NoSQL.Redis"), so
     // the isStdlib short-circuit can mangle calls correctly.
     public PkgClassNs:    List<string>
+
+    // v0.8.51: namespaces imported by the source under compilation.
+    // Populated by SetImportedNamespaces() (called from main.am after
+    // parse pass). When non-empty AND ImportsFiltered is true, the
+    // pkg-header / pkg-class-typedef emission filters out packages
+    // whose namespace does NOT match any import. When false (default),
+    // every registered package's header is emitted (back-compat path
+    // for callers that haven't been updated to feed imports).
+    public ImportedNs:       List<string>
+    public ImportsFiltered:  bool
 
     // Project F (v0.7.5+): external files registered via --external.
     // Short class names + their own mangled-ns prefix. Call sites
@@ -211,7 +228,10 @@ public class CGen {
         this.PkgFuncs          = new List<string>()
         this.PkgFuncCTypes     = new List<string>()
         this.PkgHeaders        = new List<string>()
+        this.PkgHeaderNs       = new List<string>()
         this.PkgClassNs        = new List<string>()
+        this.ImportedNs        = new List<string>()
+        this.ImportsFiltered   = false
         this.ExternalClasses   = new List<string>()
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
@@ -237,6 +257,19 @@ public class CGen {
         let ns = prog.Str
         if (String_Length(ns) > 0) {
             this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+        // v0.8.51: single-file callers (LSP, gen_test) auto-extract
+        // imports from prog.Args (parser stores them there as Ident
+        // qnames). Skip if SetImportedNamespaces has already been
+        // called explicitly — that caller knows what it wants.
+        if (!this.ImportsFiltered) {
+            let autoImports = new List<string>()
+            let ai: int = prog.Args.Count()
+            for ii in 0..ai {
+                let impNode: AstNode = prog.Args.Get(ii)
+                autoImports.Add(impNode.Str)
+            }
+            this.SetImportedNamespaces(autoImports)
         }
         this.EmitHeader()
         let decls = prog.Children.Count()
@@ -284,6 +317,15 @@ public class CGen {
             let cns: string = this.PkgClassNs.Get(pi)
             let cnsPrefix: string = String_Replace(cns, ".", "_")
             if (cnsPrefix == this.NsPrefix) { continue }
+            // v0.8.51: same filter as EmitHeader — only forward-declare
+            // pkg-class structs for packages the source imports. The
+            // matching typedef would otherwise reference an `#include`
+            // we just skipped, leaving gcc with an unused incomplete
+            // type at best, or a `unknown type name` at worst when a
+            // sibling package's header transitively expected it.
+            if (this.ImportsFiltered) {
+                if (!this.NamespaceImported(cns)) { continue }
+            }
             let mangled: string = this.PkgClassMangledPrefix(cname)
             if (String_Length(mangled) > 0) {
                 this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* pkg-class */")
@@ -1735,9 +1777,57 @@ public class CGen {
         // hardcoded above through v0.5 until PR 4/5 extract them.
         let pkgHdrN: int = this.PkgHeaders.Count()
         for ph in 0..pkgHdrN {
+            // v0.8.51: skip headers from packages the source doesn't
+            // import. Without this filter, every cached package in
+            // amalgame.lock contributes an `#include` to every .c —
+            // gcc then preprocesses (e.g.) 10MB of duckdb C++ headers
+            // for a trivial `path.c` that only uses Collections.
+            if (this.ImportsFiltered) {
+                let phNs: string = this.PkgHeaderNs.Get(ph)
+                if (!this.NamespaceImported(phNs)) {
+                    continue
+                }
+            }
             this.Out.EmitLine("#include \"" + this.PkgHeaders.Get(ph) + "\"")
         }
         this.Out.EmitBlank()
+    }
+
+    // Returns true if `ns` is covered by at least one import in
+    // ImportedNs. Matching is bidirectional on dot boundaries:
+    //   - exact equal:                  "Amalgame.Web" ↔ "Amalgame.Web"
+    //   - import is a parent of ns:     "Amalgame.Web" → "Amalgame.Web.Static"
+    //   - import is a sub-ns of pkg.Ns: "Amalgame.Web.Static" → pkg with ns "Amalgame.Web"
+    // Sub-ns matching covers multi-class packages: e.g. amalgame-web
+    // exposes `Amalgame.Web` and also `Amalgame.Web.Mosaic`. A user
+    // importing only `Amalgame.Web.Mosaic.Routes` still needs the
+    // parent package's runtime header included.
+    public bool NamespaceImported(string ns) {
+        let nsLen: int = String_Length(ns)
+        let n: int = this.ImportedNs.Count()
+        for i in 0..n {
+            let imp: string = this.ImportedNs.Get(i)
+            if (imp == ns) { return true }
+            let impLen: int = String_Length(imp)
+            if (impLen > nsLen) {
+                // imp starts with ns + "."
+                if (String_StartsWith(imp, ns + ".")) { return true }
+            } else {
+                // ns starts with imp + "."
+                if (String_StartsWith(ns, imp + ".")) { return true }
+            }
+        }
+        return false
+    }
+
+    // v0.8.51: feed the imports parsed from the source (`prog.Args`
+    // identifiers, qualified names like "Amalgame.Net.Http"). Must be
+    // called BEFORE BeginMulti / Generate / EmitHeader. Switches the
+    // PkgHeader / PkgClass-typedef emission into filtered mode so
+    // only headers from imported packages reach gcc.
+    public void SetImportedNamespaces(List<string> imports) {
+        this.ImportedNs = imports
+        this.ImportsFiltered = true
     }
 
     public void EmitNetHeader() {
@@ -1765,6 +1855,7 @@ public class CGen {
         this.PkgFuncs       = new List<string>()
         this.PkgFuncCTypes  = new List<string>()
         this.PkgHeaders     = new List<string>()
+        this.PkgHeaderNs    = new List<string>()
         this.PkgClassNs     = new List<string>()
         this.PkgOpaqueTypes = new List<string>()
         let n: int = reg.Packages.Count()
@@ -1779,6 +1870,7 @@ public class CGen {
                 this.PkgClassNs.Add(p.Ns)
             }
             this.PkgHeaders.Add(p.Header)
+            this.PkgHeaderNs.Add(p.Ns)
             // C symbols use the full namespace-mangled form so
             // packages can't collide at link time when two of them
             // happen to expose the same short class name.

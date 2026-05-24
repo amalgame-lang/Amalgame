@@ -270,7 +270,321 @@ picked up à la carte):
   `RespondFile`. Need a runtime variant that emits the
   headers + Content-Length but skips the bytes.
 
-### 7. WebDAV server
+### 7. VPN — WireGuard binding
+
+The thing nginx/apache don't even pretend to do, but every
+infrastructure stack ends up needing. WireGuard is the modern
+answer (kernel-fast, simple protocol, batteries-included
+clients on every OS).
+
+Three implementation tiers, in increasing ambition:
+
+- **Tier A — `wg-quick` wrapper.** Shell out to the system
+  `wg` / `wg-quick` CLI. Trivial (~150 LoC), zero new C deps,
+  delegates all crypto + kernel-module work to the existing
+  wireguard-tools package. Caller manages config files.
+- **Tier B — libwireguard binding.** Dynamic link to the C
+  library when available, so config can live in AM-side
+  builders (`Wg.NewInterface().AddPeer(...).Up()`) without
+  shelling out. Falls back to Tier A when libwireguard isn't
+  present.
+- **Tier C — pure-AM Noise IKpsk2 implementation.** Re-implement
+  the WireGuard handshake + transport in Amalgame on top of
+  `amalgame-crypto` (Curve25519, ChaCha20-Poly1305, Blake2s,
+  HKDF). Ambitious — the handshake is subtle and audit-prone.
+  Probably not worth it; userspace WireGuard exists already
+  (boringtun) and binding it is cheaper than rewriting.
+
+**Package:** `amalgame-net-vpn` (new).
+
+**Minimum viable surface (Tier A):**
+
+```amalgame
+import Amalgame.Net.Vpn
+
+let iface = Wg.Interface("wg0")
+    .PrivateKey(File.ReadAll("/etc/wireguard/wg0.key"))
+    .ListenPort(51820)
+    .AddPeer(
+        Wg.Peer()
+            .PublicKey("abc…=")
+            .AllowedIPs(["10.0.0.2/32"])
+            .Endpoint("vpn.example.com:51820"))
+
+iface.Up()
+defer iface.Down()
+```
+
+Implementation sketch (Tier A): each builder method appends to
+an in-memory config buffer, `Up()` writes it to a temp file +
+`wg-quick up <tmp>`. `Down()` likewise. Status helpers
+(`iface.PeerStatus()`, `iface.Stats()`) shell `wg show` and
+parse the output.
+
+**Dependencies:** `wireguard-tools` system package (Tier A);
+`libwireguard.so` (Tier B); none for Tier C beyond
+`amalgame-crypto`.
+
+**Crypto note:** WireGuard relies on Curve25519 + ChaCha20-Poly1305
++ Blake2s. `amalgame-crypto` ships HMAC-SHA-256 + JWS-strict
+ES256/RS256 today — adding the WG primitive set is a precondition
+for Tier B/C. ~300 LoC additional in crypto.
+
+**Priority:** MEDIUM. Two real demand drivers:
+- Site-to-site between deploys (replaces tinc / OpenVPN clumsy setups).
+- Per-user mesh (Tailscale-equivalent — Amalgame app exposing
+  a relay/coordinator endpoint).
+
+### 8. CDN — edge cache + origin pull
+
+Edge caching with origin pull, `Vary`-aware revalidate, geo-routing
+hooks. Cloudflare/Fastly territory. Pairs directly with the v0.13.0
+`Static` middleware on the origin side: edge nodes pull, cache,
+respect `Cache-Control` + ETag + `Last-Modified`, serve to clients.
+
+**Package:** `amalgame-net-cdn` (new). Runs as a standalone binary
+that fronts an origin (your `WebApp.Serve(8080)` instance) and
+listens on the public port. Or runs as a Mosaic middleware for the
+"all-in-one origin + edge" small-scale case.
+
+**Minimum viable surface:**
+
+```amalgame
+import Amalgame.Net.Cdn
+
+let edge = new Cdn()
+edge.Origin("http://origin.internal:8080")
+edge.CacheDir("/var/cache/amalgame-cdn")
+edge.MaxCacheSize(50 * 1024 * 1024 * 1024)    // 50 GB
+edge.Listen(":80", ":443")                     // termination via amalgame-tls
+
+// Optional: cache-key tweaks
+edge.VaryOn(["Accept-Encoding", "Accept-Language"])
+edge.PurgeRoute("/_purge")                     // POST /_purge {path:"/x"}
+
+edge.Serve()
+```
+
+**Implementation sketch:**
+
+- HTTP/1.1 + HTTP/2 listener (reuse `amalgame-net-http` server).
+- LRU cache keyed by `(method, host, path, vary-hash)`. Eviction
+  via combination of LRU + age (`Cache-Control: max-age`).
+- Storage: filesystem (atomic rename for write, hardlink for
+  dedup). RAM index (size, mtime, vary-hash, etag).
+- Revalidation: when a cached entry's `max-age` expires, fire a
+  conditional GET to origin (`If-None-Match: <etag>` /
+  `If-Modified-Since: <date>`). 304 from origin → bump mtime;
+  200 → replace.
+- Pass-through for `no-store` / `private` / `Authorization` /
+  `Set-Cookie` (cache-invalidating semantics, by RFC 7234).
+- Purge endpoint: POST `/_purge` with a JSON body of paths;
+  authenticated via shared secret in `Authorization`.
+
+**What's deferred to v0.2:**
+
+- **Geo-routing** (multiple edges, DNS-based or Anycast). v0.1
+  is single-node — for true geo, you run N edges with the same
+  origin, geo-DNS does the rest. The package doesn't need
+  awareness of "which edge am I" beyond a config knob.
+- **Image-resize at edge** (Cloudflare Polish-style). Out of
+  scope — that's a media-processing pipeline, not a CDN.
+- **HTTP/3 (QUIC).** Needs `amalgame-net-quic` (not yet
+  designed). Defer to v0.3.
+
+**Dependencies:** `amalgame-net-http` (server + client both —
+client used for origin pull), `amalgame-tls` (HTTPS termination
+at the edge), `amalgame-datetime` (Cache-Control max-age
+arithmetic, HTTP-date parsing).
+
+**Priority:** HIGH if you ship at scale; LOW otherwise. The
+80/20 path for most Mosaic deployments today is to put Cloudflare
+or Fastly in front and skip writing this. But for sovereign /
+self-hosted / air-gapped scenarios, having a first-class CDN
+package matters. ~6-8 days for v0.1.
+
+### 9. gRPC server
+
+The other half of "modern microservice 2026". HTTP/2 + protobuf,
+strongly typed, streaming-capable. amc + nghttp2 already ship the
+transport (since `amalgame-net-http` v0.2.0); the missing layer is
+the protobuf parser/emitter + the codegen that turns `.proto` IDLs
+into AM service classes.
+
+**Package:** `amalgame-net-grpc` (new).
+
+**Minimum viable surface:**
+
+```amalgame
+import Amalgame.Net.Grpc
+import App.Generated   // emitted by `amc grpc-gen <foo.proto>`
+
+public class GreeterImpl extends App.Generated.GreeterService {
+    public override Future<HelloReply> SayHello(HelloRequest req) {
+        let r = HelloReply.New()
+        r.Message = "Hello, " + req.Name
+        return Future.Resolved(r)
+    }
+}
+
+let srv = GrpcServer.New()
+srv.Register(new GreeterImpl())
+srv.Serve(50051)
+```
+
+**Implementation sketch:**
+
+- **Protobuf v3 parser** in `amalgame-formats-protobuf` (new
+  sibling of `amalgame-formats-json`). Pure-AM, ~600 LoC.
+  Streams + recursive messages + the wire-format tag/wiretype
+  encoding.
+- **`.proto` IDL compiler** as an `amc grpc-gen` subcommand
+  (or stand-alone `mosaic grpc`). Parses `.proto` files,
+  emits AM classes with field accessors + a service trait the
+  user extends.
+- **gRPC framing** — HTTP/2 trailers (`grpc-status`,
+  `grpc-message`), length-prefixed messages, server-streaming
+  + client-streaming + bidi via H2 stream IDs.
+- **Reflection service** (v1alpha) optional — enables
+  `grpcurl` exploration without the `.proto` files.
+
+**Deferred to v0.2:**
+
+- gRPC-Web (browser variant — base64-encoded length-prefixed
+  over HTTP/1.1).
+- TLS + ALPN h2 termination (just plug `amalgame-tls` on the
+  port).
+- Interceptors (middleware: auth, retry, deadline propagation).
+
+**Dependencies:** `amalgame-net-http` (H2Server + nghttp2),
+`amalgame-formats-protobuf` (new), `amalgame-async` (streaming
+endpoints).
+
+**Priority:** HIGH — biggest "missing modern" piece of the stack.
+Pair this with `amalgame-net-cdn` and a sovereign deployment is
+basically complete. ~3-4 days for v0.1 (server + unary RPC),
++2 days for streaming, +1 day for the codegen polish.
+
+### 10. DNS server (incl. DNS-over-HTTPS)
+
+Authoritative DNS responder, with DNS-over-HTTPS (RFC 8484) as
+the headline modern variant. Privacy-aware stacks publish DoH
+endpoints alongside their HTTPS API; ad-blocker / split-horizon
+self-hosters want full authoritative DNS.
+
+**Package:** `amalgame-net-dns` (new).
+
+**Minimum viable surface:**
+
+```amalgame
+import Amalgame.Net.Dns
+
+let zone = Dns.Zone("example.com")
+zone.A    ("@",    "192.0.2.10",     300)
+zone.A    ("www",  "192.0.2.10",     300)
+zone.AAAA ("@",    "2001:db8::10",   300)
+zone.MX   ("@",    10, "mx.example.com.", 300)
+zone.TXT  ("@",    "v=spf1 mx -all", 300)
+
+let srv = DnsServer.New()
+srv.AddZone(zone)
+srv.ListenUdp(":53")    // classic UDP
+srv.ListenTcp(":53")    // large response fallback
+srv.ListenDoh(":443", "cert.pem", "key.pem")  // RFC 8484
+srv.Serve()
+```
+
+**Implementation sketch:**
+
+- **Wire-format parser/emitter** (RFC 1035 + DNS extensions):
+  header, question, answer/authority/additional sections, label
+  compression. ~400 LoC pure-AM.
+- **Zone file ingestion** (BIND format) optional — config-from-
+  TOML is the primary path; BIND-zone is for migrations.
+- **DoH layer:** GET/POST `/dns-query` accepting
+  `application/dns-message`. Reuses the existing HTTPS server
+  (`amalgame-tls` + `amalgame-net-http`).
+- **AXFR / IXFR zone transfer**, **DNSSEC signing** — explicit
+  v0.2 features. v0.1 = unsigned authoritative-only.
+
+**Recursive resolver:** NOT in scope. The package is
+authoritative-only. If you want a recursive caching resolver,
+proxy to a public DoH endpoint (Cloudflare / Quad9) via the
+reverse-proxy (#1).
+
+**Dependencies:** `amalgame-net-http` (for DoH listener),
+`amalgame-tls`. UDP socket support is in the bundled runtime
+already (`UdpSocket` since v0.6.x).
+
+**Priority:** MEDIUM. Real demand from:
+- DoH endpoints for privacy-aware apps (publish over your
+  existing TLS termination).
+- Self-hosted home/SMB DNS (replaces BIND + Pi-hole stacks).
+- Split-horizon DNS for VPN deployments (pairs with #7 VPN).
+
+~3 days for v0.1 (authoritative + DoH); +2 days for DNSSEC
+signing if needed.
+
+### 11. Server-Sent Events (SSE)
+
+One-way push channel from server to browser over a long-lived
+HTTP/1.1 or HTTP/2 connection. Way simpler than WebSocket — no
+upgrade dance, no framing, just text lines with a
+`text/event-stream` content-type. Native `EventSource` API in
+every browser.
+
+**Package:** middleware inside `amalgame-net-http` (small enough
+to not warrant a separate package). Lives next to the existing
+WebSocket server.
+
+**Minimum viable surface:**
+
+```amalgame
+import Amalgame.Net.Http
+
+let app = WebApp.New()
+app.Get("/events", ctx => {
+    let stream = Sse.NewStream(ctx)
+    // Push periodic updates
+    stream.Send("counter", "1")
+    stream.Send("counter", "2")
+    stream.Comment("keep-alive")
+    return stream.Response()    // 200 with Content-Type: text/event-stream
+})
+```
+
+**Implementation sketch:**
+
+- `Sse.NewStream(ctx)` builder that wraps the underlying
+  `H1Conn` / `H2Conn`. Each `.Send(event, data)` writes one
+  framed event (`event: <name>\ndata: <payload>\n\n`).
+- Auto-injects `Cache-Control: no-cache`,
+  `Connection: keep-alive` (HTTP/1.1) headers.
+- `Sse.Reconnect(id, retryMs)` helpers for the standard
+  reconnect protocol.
+- Per-stream cleanup on client disconnect (TCP RST handler) —
+  reuses the H1Conn closed-callback already in
+  `amalgame-net-http`.
+
+**Why prefer over WebSocket:**
+- Native browser auto-reconnect.
+- Works through HTTP/2 multiplexing (no separate connection
+  pool).
+- Trivially proxyable through any HTTP/1.1 stack (CDN, reverse
+  proxy, load balancer).
+- Text-based, easy to debug with `curl -N`.
+
+**Deferred:** binary frames (use WebSocket for those — SSE is
+text-only by design).
+
+**Dependencies:** none beyond what `amalgame-net-http` already
+links. No new package.
+
+**Priority:** **LOW-HANGING FRUIT** — ~150 LoC, ~half a day, no
+new deps. Should ship with the next `amalgame-net-http` patch
+release rather than a separate proposal slot.
+
+### 12. WebDAV server
 
 The Apache mod_dav equivalent.  Used for shared filesystems
 exposed over HTTP (calendars via CalDAV, contacts via CardDAV,
@@ -294,14 +608,29 @@ Year-1 priority for the web stack:
    unblocks "front of N upstreams" deploys).  ~2-3 days.
 3. **Load balancing** in `amalgame-net-proxy` v0.2 (extends 2).
    ~1-2 days.
-4. **TCP/UDP raw proxy** in `amalgame-net-stream` (impact: DB +
+4. **gRPC server** in `amalgame-net-grpc` (#9; impact: modern
+   microservice gap closed — pairs with the nghttp2 transport
+   already shipped).  ~3-4 days.
+5. **Server-Sent Events (SSE)** as middleware in
+   `amalgame-net-http` (#11; impact: any app gets a push channel
+   in half a day).  Should land as the next net-http patch
+   release, not its own slot.
+6. **TCP/UDP raw proxy** in `amalgame-net-stream` (impact: DB +
    broker fronts).  ~1 day.
 
 Year-2 (or punt to "if someone wants it"):
 
-5. **SFTP** via `amalgame-net-ssh` (libssh2 binding).
-6. **SMTP relay** via `amalgame-net-smtp`.
-7. **WebDAV** (lowest).
+7.  **VPN** via `amalgame-net-vpn` (#7; WireGuard binding,
+    Tier A `wg` CLI wrapper first).  ~2-3 days.
+8.  **DNS server / DoH** via `amalgame-net-dns` (#10; pairs
+    with VPN for split-horizon, with HTTPS termination for DoH).
+    ~3 days.
+9.  **CDN** via `amalgame-net-cdn` (#8; only if shipping
+    sovereign / air-gapped — most deployments will Cloudflare).
+    ~6-8 days.
+10. **SFTP** via `amalgame-net-ssh` (libssh2 binding).
+11. **SMTP relay** via `amalgame-net-smtp`.
+12. **WebDAV** (lowest).
 
 ### Static follow-ups (à la carte, not blocking the next item above)
 

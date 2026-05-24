@@ -186,30 +186,69 @@ public class AmalgameCompiler {
         // identified by matching its registered namespace against
         // the one detected on line 128.
         let pkgCount: int = pkgReg.Packages.Count()
-        for pi in 0..pkgCount {
-            let lp: LoadedPackage = pkgReg.Packages.Get(pi)
-            var isSelf: bool = false
-            if (this.IsLib) {
-                let lpPrefix: string = String_Replace(lp.Ns, ".", "_")
-                if (lpPrefix == nsPrefix) {
-                    isSelf = true
+
+        // v0.8.51: only attach a package as `--external` if the source
+        // (or another attached package, transitively) actually imports
+        // its namespace. Pre-fix, EVERY package in amalgame.lock was
+        // attached unconditionally — that pulled in every cached
+        // package's runtime header on top, so `path.c` (which only
+        // imports Amalgame.Collections) ended up preprocessing duckdb,
+        // mongodb, postgresql … if those were also in the cache.
+        //
+        // Algorithm: BFS over imports.
+        //   1. seed `requiredNs` from user input files' `import` lines
+        //   2. for each not-yet-attached package whose Ns matches
+        //      requiredNs, attach it AND add its own files' imports
+        //      to requiredNs
+        //   3. iterate until fixpoint
+        // Header / forward-decl emission downstream then mirrors this
+        // attach set, keeping the .c clean of unused packages.
+        let requiredNs: List<string> = new List<string>()
+        AmalgameCompiler.ScanImportsInto(inputFiles, requiredNs)
+        let pkgAttached: List<bool> = new List<bool>()
+        for pi0 in 0..pkgCount { pkgAttached.Add(false) }
+        var attachChanged: bool = true
+        while (attachChanged) {
+            attachChanged = false
+            for pi in 0..pkgCount {
+                if (pkgAttached.Get(pi)) { continue }
+                let lp: LoadedPackage = pkgReg.Packages.Get(pi)
+                var isSelf: bool = false
+                if (this.IsLib) {
+                    let lpPrefix: string = String_Replace(lp.Ns, ".", "_")
+                    if (lpPrefix == nsPrefix) {
+                        isSelf = true
+                    }
                 }
-            }
-            if (isSelf) { continue }
-            // v0.8.39: attach both the facade AND every `[stdlib].sources`
-            // entry of the package so consumers don't have to enumerate
-            // each split file via --external.  Pre-split packages (one
-            // file in facade.am, no sources) keep working since the
-            // sources loop just runs zero times.
-            if (String_Length(lp.Facade) > 0) {
-                this.ExternalFiles.Add(lp.Facade)
-            }
-            let lpSrcCount: int = lp.Sources.Count()
-            for si in 0..lpSrcCount {
-                let srcPath: string = lp.Sources.Get(si)
-                if (String_EndsWith(srcPath, ".am")) {
-                    this.ExternalFiles.Add(srcPath)
+                if (isSelf) {
+                    pkgAttached.Set(pi, true)
+                    continue
                 }
+                if (!AmalgameCompiler.NamespaceCoveredBy(requiredNs, lp.Ns)) {
+                    continue
+                }
+                // Attach: same logic as pre-v0.8.51 (facade + .am
+                // entries of [stdlib].sources). Then merge this
+                // package's own imports into requiredNs so the next
+                // iteration picks up transitive deps.
+                if (String_Length(lp.Facade) > 0) {
+                    this.ExternalFiles.Add(lp.Facade)
+                }
+                let lpSrcCount: int = lp.Sources.Count()
+                let pkgScanList: List<string> = new List<string>()
+                if (String_Length(lp.Facade) > 0) {
+                    pkgScanList.Add(lp.Facade)
+                }
+                for si in 0..lpSrcCount {
+                    let srcPath: string = lp.Sources.Get(si)
+                    if (String_EndsWith(srcPath, ".am")) {
+                        this.ExternalFiles.Add(srcPath)
+                        pkgScanList.Add(srcPath)
+                    }
+                }
+                AmalgameCompiler.ScanImportsInto(pkgScanList, requiredNs)
+                pkgAttached.Set(pi, true)
+                attachChanged = true
             }
         }
 
@@ -230,6 +269,13 @@ public class AmalgameCompiler {
         // Skip namespaces the user is *defining* (matches the self-skip
         // rule above for installed-package facades) and any file already
         // queued as an input or external (avoids duplicate typedef).
+        // v0.8.51: importedNs is populated below by the bundled-stdlib
+        // auto-attach scanner (it walks user inputs + each registered
+        // package's facade/sources looking for `import` lines). We hoist
+        // it out of that block so the cgen below can reuse it to filter
+        // `#include` emission to only the packages the source actually
+        // imports — see SetImportedNamespaces in c_gen.am.
+        let importedNs: List<string> = new List<string>()
         let amcPathForStdlib: string = Program.ResolveSelfPath()
         let stdlibDir: string = Program.ResolveStdlibSrcDir(amcPathForStdlib)
         if (String_Length(stdlibDir) > 0) {
@@ -265,7 +311,8 @@ public class AmalgameCompiler {
             //     must NOT also be auto-attached as external)
             // Also record each input file's basename for a second-line
             // dedup that survives relative-vs-absolute path drift.
-            let importedNs: List<string> = new List<string>()
+            // importedNs is declared above the if-block so the cgen
+            // can consume it for #include filtering.
             let inputNs:    List<string> = new List<string>()
             let inputLeafs: List<string> = new List<string>()
 
@@ -409,6 +456,13 @@ public class AmalgameCompiler {
         // ── CGen init ─────────────────────────────────
         let gen = new CGen()
         gen.RegisterPackages(pkgReg)
+        // v0.8.51: feed the source's actual imports BEFORE BeginMulti
+        // so EmitHeader skips `#include` lines for cached packages the
+        // source doesn't use. Pre-fix, every package in amalgame.lock
+        // (duckdb / mongo / postgresql / ...) contributed an #include
+        // to every .c — gcc preprocessed 10MB+ of C++ headers for a
+        // trivial path.c that only imported Amalgame.Collections.
+        gen.SetImportedNamespaces(requiredNs)
         gen.BeginMulti(nsPrefix)
 
         // ── Parse all files & Pass 1 ──────────────────
@@ -643,6 +697,66 @@ public class AmalgameCompiler {
             Console.WriteError("  cgen:      " + phaseSw.Reset())
         }
         this.Diag.PrintCompileOk("Build")
+    }
+
+    // v0.8.51: walk a list of .am file paths, append every `import X.Y`
+    // qname found at top-of-file into `out`. Skips `//` line comments
+    // and inline trailing comments. Mirrors the same shape used by the
+    // bundled-stdlib auto-attach scan further down — kept narrow on
+    // purpose (line-at-a-time, no real parser) so it can run BEFORE the
+    // full parser is invoked.
+    public static void ScanImportsInto(List<string> files, List<string> out) {
+        let n: int = files.Count()
+        for i in 0..n {
+            let path: string = files.Get(i)
+            let src: string = File.ReadAll(path)
+            let lines: List<string> = String_Split(src, "\n")
+            let ln: int = lines.Count()
+            var idx: int = 0
+            while (idx < ln) {
+                let raw: string = lines.Get(idx)
+                let trimmed: string = String_TrimStart(raw)
+                if (String_StartsWith(trimmed, "//")) {
+                    idx = idx + 1
+                    continue
+                }
+                if (String_StartsWith(trimmed, "import ")) {
+                    let after: string = String_From(trimmed, 7)
+                    var body: string = after
+                    let cmt: int = String_IndexOf(after, "//")
+                    if (cmt >= 0) {
+                        body = String_Substring(after, 0, cmt)
+                    }
+                    let imp: string = String_Trim(body)
+                    if (String_Length(imp) > 0) {
+                        out.Add(imp)
+                    }
+                }
+                idx = idx + 1
+            }
+        }
+    }
+
+    // True if at least one entry of `nsList` covers `target` per the
+    // bidirectional dot-prefix rule: equal, or one is a dotted-prefix
+    // of the other. Handles e.g. `import Amalgame.Web` covering a
+    // package whose ns is `Amalgame.Web.Mosaic`, and the reverse case
+    // where `import Amalgame.Web.Static` matches the parent package
+    // `Amalgame.Web`. Mirrors CGen.NamespaceImported.
+    public static bool NamespaceCoveredBy(List<string> nsList, string target) {
+        let tgtLen: int = String_Length(target)
+        let n: int = nsList.Count()
+        for i in 0..n {
+            let entry: string = nsList.Get(i)
+            if (entry == target) { return true }
+            let entryLen: int = String_Length(entry)
+            if (entryLen > tgtLen) {
+                if (String_StartsWith(entry, target + ".")) { return true }
+            } else {
+                if (String_StartsWith(target, entry + ".")) { return true }
+            }
+        }
+        return false
     }
 }
 
