@@ -1569,37 +1569,49 @@ implementation effort.
       "reload a config file" / "rebuild on source change" 80%
       use case.
 - [~] **FileWatcher v2 — events + DirectoryWatcher + inotify** —
-      polling slice **shipped 2026-05-24** as
-      [amalgame-io-filewatcher v0.2.0](https://github.com/amalgame-lang/amalgame-io-filewatcher/releases/tag/v0.2.0);
-      native backends still pending.
-        - [x] **Event types** — `WatchEvent { Kind, Path,
-          RenamedTo, TimestampMs }` with accessors. Kind via
-          `WatchEventKind` class (static int methods
-          `Created()` / `Modified()` / `Deleted()` / `Renamed()`;
-          modeled as a class because cgen doesn't yet dispatch
-          external-package enums — see "Compiler — open bugs"
-          below). Polling backend infers Kind from the
-          mtime/exist flip; `Renamed` is reserved for the
-          native backends.
-        - [x] **DirectoryWatcher** — `new DirectoryWatcher(path,
-          recursive: bool)`. Walks the dir on every `Poll()` and
-          diffs via two `Map<string,int>` lookups (O(N+M)). New
-          runtime helper `amalgame_fw_walk` wraps POSIX
+      polling + Linux inotify slices **shipped 2026-05-24**.
+      macOS/Windows native backends still pending.
+        - [x] **Event types** (v0.2.0) — `WatchEvent { Kind, Path,
+          RenamedTo, TimestampMs }` with accessors. `WatchEventKind`
+          shipped as class-with-statics in v0.2.0, migrated to a
+          real enum in v0.3.0 once amc v0.8.47's cross-package
+          enum dispatch fix landed.
+        - [x] **DirectoryWatcher** (v0.2.0) — `new DirectoryWatcher(
+          path, recursive: bool)`. Walks the dir on every `Poll()`
+          and diffs via two `Map<string,int>` lookups (O(N+M)).
+          Runtime helper `amalgame_fw_walk` wraps POSIX
           `opendir/readdir` + Windows `FindFirstFileA/FindNextFileA`.
-        - [ ] **Native backends** — `inotify` on Linux, `FSEvents`
-          on macOS, `ReadDirectoryChangesW` on Windows. The
-          polling backend stays as the portable fallback (and
-          the test default — exact, no kernel queue to drain).
-          Surface stays the same `WatchEvent` shape so user
-          code doesn't branch on platform. **Deferred to v0.3.**
+        - [x] **inotify backend on Linux** (v0.4.0,
+          [release](https://github.com/amalgame-lang/amalgame-io-filewatcher/releases/tag/v0.4.0)).
+          Auto-detected at constructor time: `inotify_init1(IN_NONBLOCK |
+          IN_CLOEXEC)` → watches on the file (FileWatcher) or every
+          subtree directory (DirectoryWatcher, recursive). `Poll()`
+          drains the kernel queue via non-blocking `read(2)` — events
+          propagate within ms instead of waiting on the polling
+          interval. Atomic-rename pattern handled (vim/IDE writes
+          tmp + rename → emit Deleted + synthetic Created on re-add).
+          Recursive mode grows the watch set on
+          `IN_CREATE | IN_ISDIR` + walks new subtree for files that
+          snuck in during the `mkdir → inotify_add_watch` race.
+          Created+Modified dedupe drops the redundant `IN_MODIFY`
+          that `open(O_CREAT) + write` fires alongside `IN_CREATE`.
+          `BackendName()` accessor reports `"inotify"` or
+          `"polling"` for diagnostics. Polling stays the fallback
+          when `inotify_init` fails (kernel limit, container).
+        - [ ] **FSEvents (macOS) + ReadDirectoryChangesW (Windows)**
+          — same auto-detect pattern, surface unchanged. Deferred
+          to v0.6 (polling fallback works today, just not reactive).
+        - [ ] **Rename pairing** — `IN_MOVED_FROM` + `IN_MOVED_TO`
+          cookies → emit `Renamed` instead of `Deleted` + `Created`.
+          Deferred to v0.5.
         - [ ] **Use cases unblocked** — `amc build --watch`
-          arborescent (post-C), `amc test --watch`, dev-server
-          hot reload, config-file reload across a whole dir,
-          log tail tools. Spec ready, depends on the consumer
-          actually wiring it up.
-      Verified end-to-end: **18 PASS** (7 v1 + 11 v2) in
+          arborescent reactive, `amc test --watch`, dev-server hot
+          reload, config-file reload across a whole dir, log tail
+          tools. Spec ready, depends on the consumer wiring it up.
+      Verified end-to-end: **22 PASS** (7 v1 + 11 v2 + 4 v0.4
+      inotify-specific) in
       `amalgame-io-filewatcher/tests/run_tests.sh` against amc
-      v0.8.45.
+      v0.8.47. The 4 v0.4-specific cases SKIP cleanly on non-Linux.
 - [x] **`Amalgame.Math` advanced — Vec3/Vec4/Mat4 (v0.7.0)** —
       `Amalgame.Math.Vec` ships scalar (no SIMD) implementations
       of `Vec3` (Add/Sub/Scale/Dot/Cross/Length/Normalize/Equals
