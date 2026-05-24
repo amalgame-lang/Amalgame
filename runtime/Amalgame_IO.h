@@ -106,6 +106,35 @@ static inline i64 File_Size(code_string path) {
     return (i64) st.st_size;
 }
 
+/* Last-modification time as a Unix epoch (seconds since 1970-01-01 UTC).
+ * Returns -1 if the path doesn't exist or stat() fails. Used by HTTP
+ * static-file serving (Last-Modified header, ETag = "size-mtime"). */
+static inline i64 File_Mtime(code_string path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return -1;
+    return (i64) st.st_mtime;
+}
+
+/* True iff `path` exists AND points to a regular file (not a directory,
+ * symlink-to-dir, device, fifo, etc.). Distinct from File_Exists, which
+ * accepts any inode type. The static-file middleware uses this to
+ * reject GET /assets/ (a directory) with a 403 rather than passing the
+ * dir path to File_ReadAll (where fopen() silently succeeds on some
+ * platforms and yields garbage). */
+static inline code_bool File_IsFile(code_string path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    return S_ISREG(st.st_mode) ? true : false;
+}
+
+/* True iff `path` exists AND points to a directory. Symmetric companion
+ * to File_IsFile for callers that need to branch on inode type. */
+static inline code_bool File_IsDir(code_string path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    return S_ISDIR(st.st_mode) ? true : false;
+}
+
 /* Cross-platform recursive mkdir — equivalent to POSIX `mkdir -p`.
  * On Windows we shell out to cmd.exe via Process_Run elsewhere, but
  * `mkdir -p name` runs `mkdir -p` literally there (cmd's mkdir has

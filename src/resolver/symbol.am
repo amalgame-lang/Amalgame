@@ -154,6 +154,9 @@ public class Resolver {
         builtins.Add("File_Exists")
         builtins.Add("File_Delete")
         builtins.Add("File_Size")
+        builtins.Add("File_Mtime")
+        builtins.Add("File_IsFile")
+        builtins.Add("File_IsDir")
         // Math migrated to AM post-v0.7.5 — flat `Math_X` runtime
         // helpers are gone, callers use qualified `Math.X(...)`.
         // Special
