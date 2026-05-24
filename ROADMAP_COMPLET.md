@@ -622,8 +622,12 @@ before the next big language addition.
       `QueryAll = { returns = "AmalgameList*", returns_generic =
       "List<List<string>>" }` lets consumers chain
       `rows.Get(i).Get(j)` to a properly-typed `string` cell with
-      zero explicit annotations. Verified end-to-end against the
-      package's CI postgres:16-alpine service container.
+      zero explicit annotations. Same-day batch rollout to the
+      five SQL siblings — **sqlite v0.3.0, mysql v0.2.0,
+      duckdb v0.2.0, mssql v0.2.0, oracle v0.2.0** — flips each
+      QueryAll manifest line to the typed form; consumer-side
+      annotations dropped from all five test fixtures with the
+      assertions still passing.
 - [x] **CGen: chained `obj.Field.Method()` /
       `obj.Method().Method()` (resolved)** — `EmitCalleeStr`
       now handles both shapes: when the receiver is a CALL, the
@@ -1363,52 +1367,60 @@ implementation effort.
       backend's surface gets enriched in ways that lock in
       an ORM shape (e.g. typed column accessors, prepared-
       statement caches, transaction handles).
-- [ ] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
-      extend the `Amalgame.Database.*` namespace with bindings to
-      other relational engines. Each gets its own header
-      (`Amalgame_Database_<Engine>.h`) and resolver-declared
-      globals so users opt-in to the surface they need without
-      compiling everything. Shared `Result` / `Rows` types
-      consolidate into a common `Amalgame_Database.h` once a
-      third engine lands and the pattern is clear.
-        - [x] **DuckDB** (v0.5.3, `amalgame-database-duckdb`) —
-          vendored C++ amalgamation (`duckdb.cpp` + `duckdb.h`, MIT
-          licence). OLAP-flavoured workloads; columnar storage +
-          vectorised execution. Surface mirrors SQLite
-          (Open/Close/IsOpen/Exec/QueryAll/LastError) so callers
-          swap engines without rewriting. Shipped alongside the
-          v0.5.3 C++ pipeline (`[stdlib].sources` of type
-          `.cpp/.cc/.cxx` compile with g++, manifest gains
-          `cflags`/`cxxflags`/`libs`/`schema-version` keys).
-        - [x] **PostgreSQL** (`libpq` client) — shipped 2026-05-24
-          as [amalgame-database-postgresql v0.2.0](https://github.com/amalgame-lang/amalgame-database-postgresql/releases/tag/v0.2.0).
-          Dynamic-linked to the system libpq (no vendored sources;
-          `apt install libpq-dev` / `brew install libpq` / etc.).
-          Connection via libpq connstring or `PG*` env vars (libpq
-          reads them when `Open("")` is called). Surface:
-          `Open / Close / IsOpen / LastError / Exec / QueryAll /
-          Changes / ServerVersion`. Since v0.2.0 the manifest
-          declares `returns_generic = "List<List<string>>"` on
-          `QueryAll` so consumers chain `rows.Get(i).Get(j)` to a
-          typed `string` cell with no explicit annotations (first
-          real exercise of the v0.8.40 cgen convention). CI
-          validates against `postgres:16-alpine` via GH Actions
-          service container. **v2 backlog**: parameter binding
-          (`PQexecParams`), prepared statements, typed column
-          accessors (`AsInt`/`AsBytes`/`AsTimestamp`), COPY-protocol
-          bulk insert, async query mode, LISTEN/NOTIFY, cursors.
-        - **MySQL / MariaDB** (`libmariadbclient`) — same
-          dynamic-link path as Postgres. Lower priority.
-          MariaDB connector under LGPL-2.1 → fine to dynamic-link
-          (LGPL doesn't taint dynamically-linked consumers).
-        - **Oracle Database** — only the **Oracle Instant Client**
-          (free download, proprietary) ships the headers + libs
-          needed (`oci.h`, `libclntsh.so` / `oci.dll`). Cannot
-          vendor; must dynamic-link at runtime and document the
-          one-time `Instant Client` install for the operator.
-          Connection: `oraclite.<host>:<port>/<service>`. Surface
-          adds session pooling (`OCISessionPool*`) since Oracle
-          connections are expensive to set up.
+- [x] **`Amalgame.Database.<Engine>` siblings — SQL backends** —
+      five engines shipped under `Amalgame.Database.*`. Each one is
+      its own package with its own `Amalgame_Database_<Engine>.h`
+      runtime header and `class = "<Engine>"` manifest. Common
+      surface: `Open / Close / IsOpen / LastError / Exec /
+      QueryAll / Changes / [ServerVersion]`. As of the
+      2026-05-24 batch, every QueryAll declares
+      `returns_generic = "List<List<string>>"` (amc 0.8.40+ pattern)
+      so consumers chain `rows.Get(i).Get(j)` to a typed `string`
+      cell with zero annotations.
+        - [x] **DuckDB** v0.2.0 (`amalgame-database-duckdb`) —
+          vendored C++ amalgamation (`duckdb.cpp` + `duckdb.h`,
+          MIT). OLAP-flavoured workloads; columnar storage +
+          vectorised execution. Shipped alongside the v0.5.3
+          C++ pipeline (`.cpp` sources, `cxxflags`, `libstdc++`
+          link). `returns_generic` bump 2026-05-24.
+        - [x] **PostgreSQL** v0.2.0 (`amalgame-database-postgresql`)
+          — dynamic-linked to system libpq. Connection via libpq
+          connstring or `PG*` env vars (libpq reads them when
+          `Open("")` is called). First real exercise of the
+          v0.8.40 cgen `returns_generic` convention. CI validates
+          against `postgres:16-alpine`.
+          **v2 backlog**: parameter binding (`PQexecParams`),
+          prepared statements, typed column accessors (`AsInt` /
+          `AsBytes` / `AsTimestamp`), COPY-protocol bulk insert,
+          async query mode, LISTEN/NOTIFY, cursors.
+        - [x] **SQLite** v0.3.0 (`amalgame-database-sqlite`) —
+          vendored amalgamation (`sqlite3.c`), no system dep,
+          precompile-on-install. `returns_generic` bump 2026-05-24.
+        - [x] **MySQL / MariaDB** v0.2.0 (`amalgame-database-mysql`)
+          — dynamic-linked to libmariadb (`-lmariadb` —
+          libmysqlclient is API-compatible but only Fedora/RHEL
+          ships `-lmysqlclient`). `returns_generic` bump 2026-05-24.
+        - [x] **Microsoft SQL Server** v0.2.0
+          (`amalgame-database-mssql`) — dynamic-linked to unixODBC
+          + the MS ODBC Driver 18 (`msodbcsql18`). Connection-string
+          based. `returns_generic` bump 2026-05-24.
+        - [x] **Oracle Database** v0.2.0 (`amalgame-database-oracle`)
+          — dynamic-linked to libclntsh from the Oracle Instant
+          Client (free download, proprietary; user installs the
+          unpacked zip into `$ORACLE_HOME`). `returns_generic`
+          bump 2026-05-24. Ubuntu 24.04 needs the `libaio.so.1 →
+          libaio.so.1t64` symlink (CI handles this; documented in
+          the package's README).
+
+      **Shared v2 backlog across all five** (when a real consumer
+      pushes for it): parameter binding (engine-specific —
+      `?`/`$1`/`:1`), prepared statement reuse, typed column
+      accessors (`AsInt`/`AsFloat`/`AsBytes`/`AsTimestamp`),
+      transaction handles (`Begin`/`Commit`/`Rollback`), COPY /
+      bulk-load shortcuts, async/streaming for large result sets.
+      These need an ORM design decision first (see the ORM item
+      below) since the v2 surface choices feed into what an ORM
+      layer can build on.
         - **Microsoft SQL Server** — three viable client paths:
           1. **MS ODBC Driver for SQL Server** — proprietary
              distributable from Microsoft; works on Linux / macOS /
