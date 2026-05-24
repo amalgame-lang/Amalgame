@@ -3634,6 +3634,16 @@ public class CGen {
                     let firstChar = String_Substring(tname, 0, 1)
                     let isUpper = firstChar == String_ToUpper(firstChar)
                     if (isUpper) {
+                        // Cross-package enum variant: a package's
+                        // `WatchEventKind.Created` referenced from a consumer
+                        // namespace. The variant's C symbol lives under the
+                        // package's namespace, not the consumer's. Symmetric to
+                        // ExternalClassMangled for cross-package CLASS dispatch
+                        // (PR #521).
+                        let externalEnumMangled: string = this.ExternalEnumMangled(tname)
+                        if (String_Length(externalEnumMangled) > 0) {
+                            return externalEnumMangled + "_" + expr.Name
+                        }
                         // Enum or static class access: TokenType.NEWLINE → Ns_TokenType_NEWLINE
                         return this.SymName(tname) + "_" + expr.Name
                     }
@@ -4649,6 +4659,14 @@ public class CGen {
                         let externalMangled: string = this.ExternalClassMangled(tname)
                         if (String_Length(externalMangled) > 0) {
                             return externalMangled + "_" + mname
+                        }
+                        // Cross-package algebraic enum variant constructor:
+                        // `Shape.Circle(5)` from a package whose enum was
+                        // registered via --external. Same shape fix as the
+                        // bare-enum-variant access in EmitExprStr.
+                        let externalEnumMangled: string = this.ExternalEnumMangled(tname)
+                        if (String_Length(externalEnumMangled) > 0) {
+                            return externalEnumMangled + "_" + mname
                         }
                         // Core stdlib classes lower to the flat
                         // `ClassName_Method` symbol — they're

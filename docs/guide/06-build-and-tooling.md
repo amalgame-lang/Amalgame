@@ -94,6 +94,15 @@ est désormais le seul chemin.
 ./tests/run_all_tests.sh            # wrapper d'une ligne autour de `amc test ./tests/`
 ```
 
+### Flags
+
+| Flag             | Effet                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| `--filter <pat>` | N'exécute que les `*_test.am` dont le chemin contient `<pat>` (substring, pas une regex)    |
+| `--ci`           | Sortie terse : drop `[PASS]`/`[SKIP]` et les en-têtes par fichier, garde `[FAIL]` + tally  |
+| `--list`         | Imprime les chemins découverts (post-filter) et exit 0 — pas de compile, pas de run         |
+| `--help` / `-h`  | Imprime ce tableau                                                                          |
+
 `amc test` prune les répertoires `fixtures/` lors du crawl : les
 fichiers fixture (LSP workspace, test-runner self-test) restent
 accessibles via un chemin explicite (`amc test ./tests/fixtures/<x>/`)
