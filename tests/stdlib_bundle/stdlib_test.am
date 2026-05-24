@@ -29,7 +29,27 @@ class Program {
         let amcCmd = "./amc -o '" + outBin + "' " + extras + " '" + sample + "' --quiet 2>/dev/null"
         let cr = Process.RunCapture(amcCmd)
         if (cr.Exit != 0) { return "<<compile-fail>>" }
-        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lz -ldl -lpthread -o '" + outBin + "' 2>/dev/null"
+        // v0.8.49 — amc auto-injects #include lines for every cached
+        // package's runtime header. If any of those headers
+        // transitively #include another (net-http v0.9.1+ pulls in
+        // Amalgame_Async.h), gcc needs `-I<dep>/runtime`. Walk the
+        // cache once and splice the flags.
+        var pkgIncs: string = ""
+        let lsCmd = "ls -1 $HOME/.amalgame/packages/github.com/amalgame-lang 2>/dev/null"
+        let lsRes = Process.RunCapture(lsCmd)
+        if (lsRes.Exit == 0) {
+            let repos: List<string> = String_Split(lsRes.Stdout, "\n")
+            let rn: int = repos.Count()
+            for ri in 0..rn {
+                let repo: string = String_Trim(repos.Get(ri))
+                if (String_Length(repo) == 0) { continue }
+                let lsLatest = Process.RunCapture("ls -1 $HOME/.amalgame/packages/github.com/amalgame-lang/" + repo + " 2>/dev/null | sort -V | tail -1")
+                let latest: string = String_Trim(lsLatest.Stdout)
+                if (String_Length(latest) == 0) { continue }
+                pkgIncs = pkgIncs + " -I$HOME/.amalgame/packages/github.com/amalgame-lang/" + repo + "/" + latest + "/runtime"
+            }
+        }
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime" + pkgIncs + " '" + outC + "' -lgc -lm -lz -ldl -lpthread -o '" + outBin + "' 2>/dev/null"
         let gc = Process.RunCapture(gccCmd)
         if (gc.Exit != 0) { return "<<link-fail>>" }
         let rr = Process.RunCapture("'" + outBin + "' 2>&1")

@@ -348,41 +348,16 @@ public class AddCommand {
         Console.WriteLine("Validated " + mfNameStr + " v" + mfVerStr + " (licence " + mfLicStr + ")")
         Console.WriteLine("Cached at " + pkgDir)
 
-        // ── 4b. Optional precompile ───────────────────────
-        // If `[stdlib].precompile = true` and the user didn't pass
-        // `--no-precompile`, compile every `[stdlib].sources` entry
-        // into a persistent .o under `<pkg-dir>/build/<platform>/`.
-        // Subsequent `amc test` / `amc build` skip recompilation.
-        // No-op if the manifest doesn't declare `precompile = true`
-        // or doesn't ship sources.
-        if (!noPrecompile) {
-            let stdlibTblPre: TomlValue = manifest.Get("stdlib")
-            if (stdlibTblPre.IsTable()) {
-                if (stdlibTblPre.Get("precompile").AsBool()) {
-                    let pkgVer: string = mfNameStr + "@" + tag
-                    AddCommand.PrecompilePackage(pkgDir, stdlibTblPre, pkgVer)
-                }
-                // Project F follow-up: `[stdlib].facade = "facade.am"`
-                // opts the package into a pure-AM facade that gets
-                // pre-compiled into a per-package archive at
-                // <pkgDir>/build/<platform>/libamalgame-pkg-<class>.a.
-                // Independent of `precompile = true` — a pure-AM
-                // package may have a facade and no C sources.
-                let facadeRel: string = stdlibTblPre.Get("facade").AsString()
-                if (String_Length(facadeRel) > 0) {
-                    AddCommand.PrecompileFacade(pkgDir, stdlibTblPre)
-                }
-            }
-        }
-
         // ── 4d. Transitive deps (amc v0.8.39+) ───────────
-        // If the manifest declares a top-level [dependencies] table,
-        // recursively install each entry before wiring this package
-        // into the consumer's amalgame.toml. Keeps the lock build
-        // (step 6) ordering stable — deps land first, this package
-        // last. amc walks one package at a time so a transitive
-        // failure surfaces with the failing package's name, not as
-        // a downstream link error.
+        // v0.8.49: moved BEFORE precompile (4b). Rationale: when this
+        // package's runtime header `#include`s a transitive dep's
+        // header (e.g. net-http's Amalgame_Net_Http.h includes
+        // amalgame-async's Amalgame_Async.h since v0.9.1), the
+        // precompile step needs the dep's runtime/ on gcc's -I path.
+        // If we precompile first, the dep isn't installed yet → gcc
+        // fails. Installing transitives first puts them in the cache
+        // so PrecompileFacade's -I walk (also added in v0.8.49) can
+        // see them.
         //
         // Schema (compatible with the consumer-level [dependencies]
         // form amc uses to track direct user deps):
@@ -407,14 +382,14 @@ public class AddCommand {
                 var transSpec: string = ""
                 if (depVal.IsString()) {
                     // Short form: `amalgame-crypto = ">=0.3.0"`.
-                    // Resolve the package name to its shortname for
-                    // the index — strip the conventional `amalgame-`
-                    // prefix when present.
-                    var depShort: string = depKey
-                    if (String_StartsWith(depShort, "amalgame-")) {
-                        depShort = String_Substring(depShort, 9, String_Length(depShort) - 9)
-                    }
-                    transSpec = depShort
+                    // Resolve the package name to its packages-index
+                    // shortname (curated, not mechanically derivable).
+                    // ShortnameFromDepKey looks up the URL in the
+                    // index — handles cases where the shortname has
+                    // multiple dash-segments (`net-http`,
+                    // `io-filewatcher`) or differs from the URL leaf
+                    // (`amalgame-database-nosql-redis` → `redis`).
+                    transSpec = AddCommand.ShortnameFromDepKey(depKey)
                 } else if (depVal.IsTable()) {
                     let depGit: string = depVal.Get("git").AsString()
                     let depTag: string = depVal.Get("tag").AsString()
@@ -431,6 +406,37 @@ public class AddCommand {
                 if (trc != 0) {
                     Console.WriteError("transitive dependency " + depKey + " failed (" + transSpec + ")")
                     return trc
+                }
+            }
+        }
+
+        // ── 4b. Optional precompile ───────────────────────
+        // If `[stdlib].precompile = true` and the user didn't pass
+        // `--no-precompile`, compile every `[stdlib].sources` entry
+        // into a persistent .o under `<pkg-dir>/build/<platform>/`.
+        // Subsequent `amc test` / `amc build` skip recompilation.
+        // No-op if the manifest doesn't declare `precompile = true`
+        // or doesn't ship sources.
+        //
+        // v0.8.49: runs AFTER transitive deps so PrecompileFacade
+        // can resolve transitive header includes — see the 4d
+        // rationale above.
+        if (!noPrecompile) {
+            let stdlibTblPre: TomlValue = manifest.Get("stdlib")
+            if (stdlibTblPre.IsTable()) {
+                if (stdlibTblPre.Get("precompile").AsBool()) {
+                    let pkgVer: string = mfNameStr + "@" + tag
+                    AddCommand.PrecompilePackage(pkgDir, stdlibTblPre, pkgVer)
+                }
+                // Project F follow-up: `[stdlib].facade = "facade.am"`
+                // opts the package into a pure-AM facade that gets
+                // pre-compiled into a per-package archive at
+                // <pkgDir>/build/<platform>/libamalgame-pkg-<class>.a.
+                // Independent of `precompile = true` — a pure-AM
+                // package may have a facade and no C sources.
+                let facadeRel: string = stdlibTblPre.Get("facade").AsString()
+                if (String_Length(facadeRel) > 0) {
+                    AddCommand.PrecompileFacade(pkgDir, stdlibTblPre, depsTable)
                 }
             }
         }
@@ -569,6 +575,14 @@ public class AddCommand {
             if (String_Length(amcRuntime) > 0) {
                 cmd = cmd + " -I'" + amcRuntime + "'"
             }
+            // v0.8.49: same -I-walks-the-cache rationale as
+            // PrecompileFacade and build_amc.sh — amc auto-emits
+            // includes for every cached package.
+            let cachedPkgDirs: List<string> = AddCommand.AllCachedRuntimeDirs()
+            let cpn: int = cachedPkgDirs.Count()
+            for cpi in 0..cpn {
+                cmd = cmd + " -I'" + cachedPkgDirs.Get(cpi) + "'"
+            }
             if (isCxx && String_Length(cxxflags) > 0) {
                 cmd = cmd + " " + cxxflags
             }
@@ -635,7 +649,7 @@ public class AddCommand {
     // On any step's failure: report and return — install still
     // succeeds (the user can fall back to non-external mode by
     // ignoring the facade, or re-run `amc package add` later).
-    public static void PrecompileFacade(string pkgDir, TomlValue stdlibTbl) {
+    public static void PrecompileFacade(string pkgDir, TomlValue stdlibTbl, TomlValue depsTbl) {
         let className: string = stdlibTbl.Get("class").AsString()
         if (String_Length(className) == 0) { return }
         let facadeRel: string = stdlibTbl.Get("facade").AsString()
@@ -716,6 +730,25 @@ public class AddCommand {
         var gccCmd: string = "gcc -O2 -Iruntime -I'" + pkgDir + "/runtime'"
         if (String_Length(amcRuntime) > 0) {
             gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+        }
+        // v0.8.49: propagate -I for EVERY cached package's runtime/.
+        // Two reasons:
+        //   1. amc's resolver auto-emits a #include line for every
+        //      cached `[stdlib].header` into the generated C — even
+        //      for packages this facade doesn't directly use. The
+        //      precompile must therefore see every header.
+        //   2. When this package's own runtime header transitively
+        //      #include's a sibling's header (e.g. net-http
+        //      v0.9.1+'s Amalgame_Net_Http.h → "Amalgame_Async.h"),
+        //      gcc needs the sibling's runtime/ on -I.
+        // Walking the cache covers both. The depsTbl argument is
+        // kept for future selective use (-I only for declared deps)
+        // but for now we always go broad — matches what the
+        // bootstrap and build-stdlib.sh do.
+        let cachedDirs: List<string> = AddCommand.AllCachedRuntimeDirs()
+        let cdn: int = cachedDirs.Count()
+        for ci in 0..cdn {
+            gccCmd = gccCmd + " -I'" + cachedDirs.Get(ci) + "'"
         }
         let cflagsVal: TomlValue = stdlibTbl.Get("cflags")
         let cflagsStr: string = cflagsVal.AsString()
@@ -2683,6 +2716,121 @@ public class AddCommand {
         }
         Console.WriteError("'" + lhs + "' not found in packages-index — passing through as URL")
         return spec
+    }
+
+    // v0.8.49 — Enumerate every cached package's runtime/ directory
+    // (newest installed version of each), suitable for gcc -I
+    // augmentation when amc auto-includes their headers. Mirrors
+    // the cache walk in build_amc.sh + tools/build-stdlib.sh.
+    public static List<string> AllCachedRuntimeDirs() {
+        let out = new List<string>()
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let orgRoot: string = cacheRoot + "/github.com/amalgame-lang"
+        if (!File.Exists(orgRoot)) { return out }
+        let listCmd: string = "ls -1 '" + orgRoot + "' 2>/dev/null"
+        let res = Process_RunCapture(listCmd)
+        if (res.Exit != 0) { return out }
+        let lines: List<string> = String_Split(res.Stdout, "\n")
+        let n: int = lines.Count()
+        for i in 0..n {
+            let repo: string = String_Trim(lines.Get(i))
+            if (String_Length(repo) == 0) { continue }
+            let dir: string = AddCommand.LatestCacheRuntimeDir(repo)
+            if (String_Length(dir) > 0) {
+                out.Add(dir)
+            }
+        }
+        return out
+    }
+
+    // v0.8.49 — Given a [dependencies] table key like `amalgame-async`,
+    // find the cached package's runtime/ directory so it can be
+    // added to the gcc -I path when precompiling a sibling package's
+    // facade whose runtime header transitively includes it.
+    //
+    // Strategy: cache layout is
+    //   ~/.amalgame/packages/github.com/amalgame-lang/<depKey>/<tag>_<sha>/
+    // Pick the newest installed `<tag>_<sha>` (sort -V, semver-aware)
+    // and return its `runtime/` subdirectory.
+    //
+    // Returns "" when:
+    //   - third-party dep (no `amalgame-` prefix; we can't guess the
+    //     cache path), or
+    //   - the package isn't in the cache yet (shouldn't happen given
+    //     the v0.8.49 install-before-precompile reorder, but stay
+    //     defensive — empty -I is harmless), or
+    //   - the cache dir exists but has no runtime/ (header-less
+    //     packages — pure-AM with no @c bindings).
+    public static string LatestCacheRuntimeDir(string depKey) {
+        if (!String_StartsWith(depKey, "amalgame-")) {
+            return ""
+        }
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let pkgCacheParent: string = cacheRoot + "/github.com/amalgame-lang/" + depKey
+        if (!File.Exists(pkgCacheParent)) {
+            return ""
+        }
+        // sort -V honors semver; lex sort would pick v0.3.0 over
+        // v0.13.0. The cache entry suffix `_<sha>` doesn't interfere
+        // with -V because everything before the underscore (the tag)
+        // already disambiguates.
+        let listCmd: string = "ls -1 '" + pkgCacheParent + "' 2>/dev/null | sort -V | tail -1"
+        let res = Process_RunCapture(listCmd)
+        if (res.Exit != 0) { return "" }
+        let entry: string = String_Trim(res.Stdout)
+        if (String_Length(entry) == 0) { return "" }
+        let runtimeDir: string = pkgCacheParent + "/" + entry + "/runtime"
+        if (!File.Exists(runtimeDir)) { return "" }
+        return runtimeDir
+    }
+
+    // v0.8.49 — Resolve a [dependencies] table key like
+    // `amalgame-database-nosql-redis` to its packages-index
+    // shortname (`redis`) by URL match. Naïve `amalgame-`-prefix
+    // stripping is wrong for many packages: it would yield
+    // `database-nosql-redis` (no such index entry) and `http`
+    // (instead of `net-http`). Index shortnames are curated, not
+    // mechanically derivable from the URL slug.
+    //
+    // Returns:
+    //   - the curated shortname when a matching [[package]] entry
+    //     is found in the index (URL ends with `/<depKey>`)
+    //   - depKey unchanged for third-party deps (no `amalgame-`
+    //     prefix) — they keep their own naming
+    //   - on index fetch/parse failure, falls back to the legacy
+    //     leaf-of-URL (DepNameFromSlug) so existing installs don't
+    //     hard-fail offline
+    public static string ShortnameFromDepKey(string depKey) {
+        if (!String_StartsWith(depKey, "amalgame-")) {
+            return depKey
+        }
+        let indexSrc: string = AddCommand.FetchIndex()
+        if (String_Length(indexSrc) == 0) {
+            return AddCommand.DepNameFromSlug(depKey)
+        }
+        let doc = Toml.Parse(indexSrc)
+        if (doc.IsNull()) {
+            return AddCommand.DepNameFromSlug(depKey)
+        }
+        let pkgArr: TomlValue = doc.Get("package")
+        if (!pkgArr.IsArray()) {
+            return AddCommand.DepNameFromSlug(depKey)
+        }
+        let urlSuffix: string = "/" + depKey
+        let n: int = pkgArr.Count()
+        for i in 0..n {
+            let entry: TomlValue = pkgArr.At(i)
+            let url: string = entry.Get("url").AsString()
+            if (String_EndsWith(url, urlSuffix)) {
+                let name: string = entry.Get("name").AsString()
+                if (String_Length(name) > 0) {
+                    return name
+                }
+            }
+        }
+        // Not in index — last-resort leaf. This path used to be
+        // the default before v0.8.49.
+        return AddCommand.DepNameFromSlug(depKey)
     }
 
     // Look for an existing `<tag>_<sha>` directory under baseDir.
