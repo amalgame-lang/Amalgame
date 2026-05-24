@@ -29,7 +29,7 @@ class Program {
         let amcCmd = "./amc -o '" + outBin + "' " + extras + " '" + sample + "' --quiet 2>/dev/null"
         let cr = Process.RunCapture(amcCmd)
         if (cr.Exit != 0) { return "<<compile-fail>>" }
-        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lcurl -lz -ldl -lpthread -o '" + outBin + "' 2>/dev/null"
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lz -ldl -lpthread -o '" + outBin + "' 2>/dev/null"
         let gc = Process.RunCapture(gccCmd)
         if (gc.Exit != 0) { return "<<link-fail>>" }
         let rr = Process.RunCapture("'" + outBin + "' 2>&1")

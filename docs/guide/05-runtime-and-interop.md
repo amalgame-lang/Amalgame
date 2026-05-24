@@ -128,7 +128,7 @@ int main(void) {
 ```
 
 ```bash
-gcc -Iruntime consumer.c greeter.o -lgc -lm -lcurl -o app
+gcc -Iruntime consumer.c greeter.o -lgc -lm -o app
 ./app
 # Hello, World!
 ```

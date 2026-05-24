@@ -49,7 +49,7 @@ class Program {
         let amcCmd = "./amc '" + srcPath + "' -o '" + outBin + "' --quiet 2>/dev/null"
         let cr = Process.RunCapture(amcCmd)
         if (cr.Exit != 0) { return new RunResult(false, "") }
-        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lcurl -lz -o '" + outBin + "' 2>/dev/null"
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lz -o '" + outBin + "' 2>/dev/null"
         let gc = Process.RunCapture(gccCmd)
         if (gc.Exit != 0) { return new RunResult(false, "") }
         let rr = Process.RunCapture("'" + outBin + "'")

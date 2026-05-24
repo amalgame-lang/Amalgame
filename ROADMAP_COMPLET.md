@@ -822,24 +822,27 @@ before the next big language addition.
       `RunLibLinkTest`, plus `LspFrame` for DAP framing). LSP
       sequences live as pre-computed fixtures under
       `tests/core_bundle/fixtures/lsp_*.bin`; the xdir fixture is
-      built at runtime to embed the absolute path. `run_all_tests.sh`
-      keeps both paths green during the transition (loop on the 4
-      bundle dirs + lance les bash). **Follow-ups before dropping
-      the bash:**
-        - 4 fixture `*_test.am` under `tests/samples/test_runner/`,
-          `tests/samples/lint_test.am`, and
-          `tests/fixtures/lsp-workspace/tests/byteio_test.am` must
-          move out of the auto-discovery path (or `amc test` needs
-          an `--exclude` flag). Otherwise `amc test ./tests/` would
-          pick them up (and `mixed_test.am` deliberately emits
-          `[FAIL]`).
-        - Compiler bug surfaced: the AM lexer mis-handles `\r`
-          (treats as backslash+r — `"\r"` is 2 bytes). Workaround
-          is a literal CR byte in `LspFrame`; fix is straightforward
-          in `src/lexer/lexer.am`'s escape table.
-      Once those two follow-ups land and the bundles stay green
-      across a few releases, drop the 4 `tests/run_*.sh` and let
-      `run_all_tests.sh` collapse to `./amc test ./tests/`.
+      built at runtime to embed the absolute path.
+      **Bash runners dropped 2026-05-24** (decision: running both
+      systems was getting risky — a new test added to one side and
+      forgotten in the other becomes a silent gap). The 4 legacy
+      `tests/run_*.sh` deleted from the tree; `run_all_tests.sh`
+      collapsed to a one-line wrapper around `./amc test ./tests/`.
+      Two enabling cleanups landed at the same time:
+        - `amc test` learned to `-prune` `fixtures/` subdirs during
+          recursive crawl. Canonical fixture files (LSP workspace,
+          test-runner self-test) no longer auto-execute when running
+          from above; explicit paths (`amc test ./tests/fixtures/<x>/`)
+          still work. `tests/samples/test_runner/` was moved to
+          `tests/fixtures/test_runner/` and `lint_test.am` was
+          renamed to `lint_sample.am` for clarity.
+        - The `\r` lexer bug noted as a blocker turned out to be
+          already fixed in the current amc — the `String_FromByte(13)`
+          belt in `lexer.am` stays as a *bootstrap* guard (the
+          ancestral amc miscompiles its own `"\r"` literals), but
+          user-side `"\r"` works end-to-end.
+      CI workflow + docs (README, DEVELOPER_GUIDE, docs/guide/01,06)
+      updated to point at `amc test ./tests/` exclusively.
 - [x] **`amc --lint`** (v0.3.3 unreachable, v0.3.4 unused/shadow)
       — `src/linter.am` walks the AST and flags:
       unreachable code after `return` / `throw` / `break` /
@@ -1131,8 +1134,21 @@ before the next big language addition.
         input, magic-byte verification, large input, and round-
         trips. Zip archive support stays deferred (different
         scope — central directory + per-file headers).
-      - [ ] `Amalgame.Threading` — at minimum a thread pool +
-        Mutex/Channel; needs runtime-side care around libgc.
+      - [x] `Amalgame.Threading` — shipped as external package
+        [amalgame-threading](https://github.com/amalgame-lang/amalgame-threading)
+        v0.1.0 (`amc package add threading`). Surface: `Threading.
+        MutexNew/Lock/Unlock/TryLock`, `Threading.ChannelNew(cap)/
+        Send/Receive/TrySend/TryReceive/Close/IsClosed/Count/
+        Capacity`, `Threading.ThreadSpawn(closure, arg)/Join/
+        Sleep/IsAlive`. Wraps pthread + bdwgc-safe registration via
+        `GC_pthread_create`. Linux/macOS/MSYS2 today; native Win32
+        threads (CRITICAL_SECTION) is v2. Verified on 2026-05-24
+        (`Threading.ThreadSpawn` + Channel round-trip across
+        threads). **Still on backlog for v2**: ergonomic
+        `Mutex.New()` / `Channel.New()` / `Thread.Spawn()` shorthand
+        (needs `classes = [...]` multi-class manifest), built-in
+        `ThreadPool` (user-composable from Spawn + Channel today),
+        ReadWriteLock / Semaphore / Condition / TLS / atomics.
       Each is a small project on its own; ship as separate PRs
       and add docs/guide entries in lockstep. Tied to the open
       "Stdlib delivery model" design question below.
@@ -2013,23 +2029,32 @@ MQTT, DuckDB — are mostly thin C bindings, so the gain is small).
   direction per user request, see action item below); D is
   complementary and can layer on top.
 
-- [ ] **Pre-compiled user-facing stdlib (option E above)** —
-      concrete action item. `tools/build-stdlib.sh` (or a
-      `build_amc.sh` post-step) compiles every user-facing
-      `src/stdlib/*.am` into a single `libamalgame.a` shipped
-      alongside the `amc` binary. `amc -o foo foo.am` discovers
-      the lib via `$AMALGAME_HOME/lib/libamalgame.a` (or
-      `<install_prefix>/lib/`) and links against it instead of
-      re-parsing the `.am` sources. Per-platform builds tracked
-      by the release workflow. `import Amalgame.Path` becomes
-      a *real* directive — it tells the resolver which symbols
-      to pull from the lib's symbol catalogue. The compiler-
-      internal `.am` files (lexer / parser / cgen / typechecker /
-      …) stay in the bootstrap pipeline; only the user-facing
-      facades migrate. Estimated 2–3 days: build script + the
-      "imports are physical" half of the module system. Pairs
-      with the F-bundled-with-installer item in Distribution
-      and the H-Windows-MSI installer below.
+- [x] **Pre-compiled user-facing stdlib (option E above)** —
+      ✅ **shipped** (verified 2026-05-24).
+      `tools/build-stdlib.sh` runs as Step 4 of `build_amc.sh`
+      and pre-compiles every user-facing facade in `src/stdlib/`
+      (`path`, `math`, `math_vec`, `json`, `toml`, `msgpack`)
+      into a single `lib/libamalgame.a` (~110 KB, gcc -O2).
+      `main.am` discovers the archive via `ResolveLibAmalgameAPath`
+      (checks `lib/` next to source-tree `amc`, then
+      `<prefix>/share/amalgame/lib/` for installed releases) and
+      splices it into the gcc link line for every user build, so
+      `amc build foo.am` skips re-parsing the bundled facades.
+      `main.am`'s `stdlibEntries` auto-attaches the matching `.am`
+      as `--external` whenever the user `import`s the namespace, so
+      the resolver gets the type info (the .o in the archive
+      provides the link-time symbols). `import Amalgame.Math` is
+      effectively a real directive now. The release workflow
+      packages the archive at `<install>/share/amalgame/lib/`
+      alongside the runtime headers and stdlib sources. The
+      compiler-internal `.am` files (lexer / parser / cgen /
+      typechecker / …) stay in the bootstrap pipeline.
+      **Still pending (small):** a "real" symbol-catalogue half of
+      the module system that would let amc reject `import
+      Amalgame.X` when the namespace isn't in the manifest (today
+      the import is informational + auto-attach picks up any
+      matching facade silently). Layer on top via item D when a
+      real consumer complains.
 - **Error vs. exception model** — `try/catch/throw` works in
   self-host via setjmp/longjmp. Worth considering a Rust-like
   `Result<T, E>` plus `?` operator for short-circuiting as a
@@ -2399,14 +2424,16 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
 
 **Phases remaining:**
 
-- [ ] **Phase 7 — flip default to bridge.** Drop the `--bridge`
-      gate in `RunBridge()`; `--raw` becomes the opt-out. Update
-      `editors/vscode/extension.js` (currently spawns
-      `amc dap` with no extra arg — would Just Work) and the
-      `docs/guide/06-build-and-tooling.md` debug section.
-      Optional: walk back the macOS lldb-dap detection in
-      `RunRaw()` to NOT block on a missing gdb, so non-Linux
-      hosts fall through to `--raw` automatically.
+- [x] **Phase 7 — flip default to bridge** (shipped 2026-05-24).
+      `Run()` dispatches to `RunBridge()` by default; `--raw` is
+      the explicit opt-out. `RunBridge()` auto-falls-back to
+      `RunRaw()` when gdb is not on PATH (macOS / older distros)
+      so non-Linux hosts get a working debug session without any
+      extra flag. The `--bridge` argv token is still recognised
+      + stripped for forward-compat with editor configs that
+      hard-code it. VS Code extension flipped (`amalgame.dapBridge`
+      now defaults to true and emits `--raw` when set to false);
+      `docs/guide/06-build-and-tooling.md` debug section rewritten.
 
 - [ ] **AmalgameMap / AmalgameSet child drill-down.** Phase 5C
       ships only the AmalgameList branch. Map and Set wrap a

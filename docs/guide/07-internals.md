@@ -230,7 +230,7 @@ Pipeline per test file:
    (path from `Args_Get(0)`) with `-o /tmp/amc_test_<idx>` and
    `--quiet`. Emits `<tmp>.c`.
 3. **Compile to native** — `gcc -O2 -Iruntime -I'<amcRuntime>'
-   <tmp>.c <pkg-objs…> -lgc -lm -lcurl -ldl -lpthread -o <tmp>`.
+   <tmp>.c <pkg-objs…> -lgc -lm -ldl -lpthread -o <tmp>`.
    The pre-compiled package `.o` files from step 0 are spliced in
    so vendoring backends (SQLite, future DuckDB) link cleanly with
    no user intervention. `-ldl` / `-lpthread` are unconditional —

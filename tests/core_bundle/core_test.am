@@ -824,10 +824,10 @@ class Program {
             "")
 
         // run_amc_test_check (4 cases)
-        Program.RunAmcTestCheck("amc test: discovers",  "./tests/samples/test_runner",  "arith_test.am")
-        Program.RunAmcTestCheck("amc test: pass tally", "./tests/samples/test_runner",  "PASS: 4")
-        Program.RunAmcTestCheck("amc test: fail tally", "./tests/samples/test_runner",  "FAIL: 1")
-        Program.RunAmcTestCheck("amc test: skip tally", "./tests/samples/test_runner",  "SKIP: 1")
+        Program.RunAmcTestCheck("amc test: discovers",  "./tests/fixtures/test_runner",  "arith_test.am")
+        Program.RunAmcTestCheck("amc test: pass tally", "./tests/fixtures/test_runner",  "PASS: 4")
+        Program.RunAmcTestCheck("amc test: fail tally", "./tests/fixtures/test_runner",  "FAIL: 1")
+        Program.RunAmcTestCheck("amc test: skip tally", "./tests/fixtures/test_runner",  "SKIP: 1")
 
         // run_c_check (Namespace) — 4 cases
         Program.RunCCheck("namespace C prefix",  "./tests/samples/namespace.am", "MyApp_Models_Player", "")
@@ -856,7 +856,7 @@ class Program {
 
         // run_lint_check (4 cases)
         Program.RunLintCheck("lint: dead code",
-            "./tests/samples/lint_test.am",
+            "./tests/samples/lint_sample.am",
             "unreachable code after")
         Program.RunLintCheck("lint: unused local",
             "./tests/samples/lint_unused_shadow.am",
