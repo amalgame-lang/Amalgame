@@ -650,7 +650,18 @@ public class AddCommand {
     // succeeds (the user can fall back to non-external mode by
     // ignoring the facade, or re-run `amc package add` later).
     public static void PrecompileFacade(string pkgDir, TomlValue stdlibTbl, TomlValue depsTbl) {
-        let className: string = stdlibTbl.Get("class").AsString()
+        // v0.8.50: read class name from either `class` (single) or
+        // `classes = [...]` (multi). Pre-v0.8.50 only looked at
+        // `class` and silently returned for multi-class manifests
+        // (amalgame-web, amalgame-net-http) — their facades got
+        // skipped, consumer links failed on missing symbols.
+        var className: string = stdlibTbl.Get("class").AsString()
+        if (String_Length(className) == 0) {
+            let classesArr: TomlValue = stdlibTbl.Get("classes")
+            if (classesArr.IsArray() && classesArr.Count() > 0) {
+                className = classesArr.At(0).AsString()
+            }
+        }
         if (String_Length(className) == 0) { return }
         let facadeRel: string = stdlibTbl.Get("facade").AsString()
         if (String_Length(facadeRel) == 0) { return }
@@ -705,8 +716,31 @@ public class AddCommand {
 
         Console.WriteLine("  Compiling facade " + facadeRel + " → libamalgame-pkg-" + className + ".a")
 
+        // v0.8.50: include [stdlib].sources in the facade compile.
+        // amalgame-web v0.7.x+ ships multi-class facades by splitting
+        // each middleware into its own .am file (session.am,
+        // web_app.am, static.am, …). Without these, the precompiled
+        // .a only contains the facade.am classes (Router for web,
+        // HttpRequest for net-http) and consumer links fail with
+        // undefined `Amalgame_Web_WebApp_New` / `_Static_New` etc.
+        var facadeSourcesAbs: string = "'" + facadeAbs + "'"
+        let srcArr: TomlValue = stdlibTbl.Get("sources")
+        if (srcArr.IsArray()) {
+            let srcN: int = srcArr.Count()
+            for si in 0..srcN {
+                let srcRel: string = srcArr.At(si).AsString()
+                if (String_Length(srcRel) == 0) { continue }
+                let srcAbs: string = pkgDir + "/" + srcRel
+                if (!File.Exists(srcAbs)) { continue }
+                // Skip the facade.am itself if it's also listed
+                // in `sources` (shouldn't be, but defensive).
+                if (srcRel == facadeRel) { continue }
+                facadeSourcesAbs = facadeSourcesAbs + " '" + srcAbs + "'"
+            }
+        }
+
         // Step 1 — amc --lib --quiet
-        let amcCmd: string = amcPath + " --lib --quiet '" + facadeAbs + "' -o '" + baseOut + "' 2>&1"
+        let amcCmd: string = amcPath + " --lib --quiet " + facadeSourcesAbs + " -o '" + baseOut + "' 2>&1"
         let amcRes = Process.RunCapture(amcCmd)
         if (amcRes.Exit != 0) {
             Console.WriteError("  FAILED to compile facade (amc):")
