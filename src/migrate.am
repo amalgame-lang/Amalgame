@@ -525,7 +525,7 @@ public class MigrateCommand {
         p = p + "- Console output: `Console.WriteLine(\"x=" + lb + "x" + rb + "\")` (string interpolation).\n"
         p = p + "- File I/O: `File.ReadAll(path)`, `File.WriteAll(path, text)`.\n"
         p = p + "- Process: `Process.RunCapture(cmd)` returns an exit + stdout.\n"
-        p = p + "- HTTP: `Http.Get(url)`, `Http.Post(url, body)` from the runtime.\n"
+        p = p + "- HTTP: install the `amalgame-net-http` package (`amc package add net-http`) for client + server.\n"
         p = p + "- Comments: `//` line, `/* ... */` block.\n"
         p = p + "- Null-safe: `obj?.Field`, `a ?? b`. Nullable type: `Foo?`.\n"
         p = p + "- Enum: `enum Direction " + lb + " North, South, East, West " + rb + "`.\n"

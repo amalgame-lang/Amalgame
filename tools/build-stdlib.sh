@@ -21,15 +21,14 @@
 #
 # Modules covered:
 #   - Standalone (no cross-stdlib references):
-#     random, encoding, crypto, datetime, logging, path, service,
-#     json, toml, yaml
+#     path, math, math_vec, json, toml
 #   - Cross-stdlib (uses `--external` to thread other modules through):
 #     msgpack (references Json's JsonValue)
 #
-# Math.Vec stays out — its real impl lives in
-# `runtime/Amalgame_Math_Vec.h` (the AM file is a facade stub for
-# the resolver). Same shape as path / logging / service for the
-# v0.7.4-style isCoreStdlib dispatch path.
+# Other user-facing modules (random / encoding / crypto / datetime /
+# logging / service / io-filewatcher / yaml / regex / compress /
+# websocket) live in external packages under amalgame-lang/ and are
+# installed on demand via `amc package add`.
 
 set -e
 cd "$(dirname "$0")/.."
@@ -58,7 +57,7 @@ fi
 #
 # Standalone modules — no cross-stdlib references. amc compiles
 # each one in isolation.
-MODULES_STANDALONE="path json toml"
+MODULES_STANDALONE="path math math_vec json toml"
 
 # Cross-stdlib modules — passed `--external <dep.am>` so the cgen
 # routes inter-module references through the dependency's own

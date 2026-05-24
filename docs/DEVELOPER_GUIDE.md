@@ -60,9 +60,8 @@ tests/
     core_test.am                ← bundle AM: 325 cas core (lang, LSP, DAP, LLM)
     fixtures/lsp_*.bin          ← séquences JSON-RPC pré-calculées pour les LSP tests
   samples/                      ← programmes .am compilés par les bundles
-  fixtures/                     ← fixtures e2e (PM cache, LSP workspace, …)
-  run_*.sh                      ← legacy bash runners (safety net, à supprimer)
-  run_all_tests.sh              ← wrapper: boucle sur les bundles + lance le bash
+  fixtures/                     ← pruné par `amc test` (LSP workspace, test_runner self-test, …)
+  run_all_tests.sh              ← wrapper d'une ligne autour de `amc test ./tests/`
 ```
 
 ---
@@ -252,17 +251,20 @@ File_CloseWrite();             // ferme
 
 ### Lancer tous les tests
 ```bash
-./tests/run_all_tests.sh                # full suite, ~42s (571 PASS / 0 FAIL / 5 SKIP)
+./tests/run_all_tests.sh                # full suite (578 PASS / 0 FAIL / 5 SKIP, ~42s)
+./amc test ./tests/                     # équivalent direct (le wrapper appelle ça)
 ./amc test ./tests/core_bundle/         # une suite seule (325 PASS, ~29s)
 ./amc test ./tests/stdlib_bundle/       # stdlib (196 PASS / 5 SKIP, ~8s)
 ./amc test ./tests/fmt/                 # formatter (12 PASS, ~3s)
 ./amc test ./tests/amc_new/             # scaffolder (38 PASS, ~1s)
 ```
 
-Les bundles AM (`tests/<suite>/*_test.am`) sont la voie canonique
-depuis 2026-05-22. Les bash runners (`tests/run_*.sh`) restent en
-filet pendant la transition — `run_all_tests.sh` les lance en
-parallèle pour vérifier la parité.
+Les bundles AM (`tests/<suite>/*_test.am`) sont la **seule** voie de
+test depuis 2026-05-24 — les 4 bash runners legacy (`run_tests.sh`,
+`run_stdlib_tests.sh`, `run_fmt_tests.sh`, `run_amc_new_tests.sh`)
+ont été supprimés après la période de parité safety-net. `amc test`
+prune `fixtures/` pour ne pas auto-exécuter les fichiers fixture
+quand on crawle depuis `./tests/`.
 
 ### Ajouter un test
 

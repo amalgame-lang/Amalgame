@@ -12,7 +12,7 @@ follow up with `gcc`:
 
 ```bash
 amc hello.am -o hello                                    # → hello.c
-gcc -Iruntime hello.c -lgc -lm -lcurl -o hello           # → hello (binary)
+gcc -Iruntime hello.c -lgc -lm -o hello           # → hello (binary)
 ./hello
 ```
 
@@ -270,7 +270,7 @@ custom flags, embedded targets).
 amc build hello.am && ./hello   # since v0.7.9
 # OR the explicit two-step form
 amc hello.am -o hello
-gcc -Iruntime hello.c -lgc -lm -lcurl -lz -o hello
+gcc -Iruntime hello.c -lgc -lm -lz -o hello
 ./hello
 ```
 
@@ -302,7 +302,7 @@ amc \
     src/main.am \
     -o build/app
 
-gcc -O2 -Iruntime build/app.c -lgc -lm -lcurl -o build/app
+gcc -O2 -Iruntime build/app.c -lgc -lm -o build/app
 ```
 
 ### Rebuild the compiler itself
