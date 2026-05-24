@@ -118,7 +118,7 @@ class Program {
             Console.WriteLine("[FAIL] " + label + " (amc compile failed)")
             return
         }
-        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lcurl -lz -o '" + outBin + "' 2>/dev/null"
+        let gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Iruntime '" + outC + "' -lgc -lm -lz -o '" + outBin + "' 2>/dev/null"
         let gc = Process.RunCapture(gccCmd)
         if (gc.Exit != 0) {
             Console.WriteLine("[FAIL] " + label + " (gcc link failed)")

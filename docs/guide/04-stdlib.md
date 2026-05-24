@@ -282,19 +282,14 @@ for a later release.
 > Generic element types are erased to `void*` at the C level (see
 > chapter 5). Boxing for primitive types uses `(void*)(intptr_t)v`.
 
-## Net — HTTP and TCP
+## Net — TCP and UDP
 
-`runtime/Amalgame_Net.h` · backed by libcurl + POSIX sockets
+`runtime/Amalgame_Net.h` · POSIX sockets / Winsock2
 
-### HTTP
-
-| `Http.Get(url: string) : HttpResponse`              |             |
-| `Http.Post(url, body) : HttpResponse`               |             |
-| `Http.GetWithHeaders(url, headers) : HttpResponse`  |             |
-| `Http.GetTimeout(url, ms) : HttpResponse`           |             |
-| `Http.PostJson(url, jsonBody) : HttpResponse`       |             |
-
-`HttpResponse` exposes `Status`, `Body`, `Headers`.
+> HTTP moved out of the bundled runtime in v0.8.31 — install the
+> `amalgame-net-http` external package (`amc package add net-http`)
+> for the pure-AM HTTP/1.1 client + server. amc itself no longer
+> links libcurl.
 
 ### TCP
 
@@ -684,7 +679,7 @@ and can be linked by hand:
 ```
 PKG=~/.amalgame/packages/github.com/amalgame-lang/amalgame-database-sqlite/v0.2.0_*
 gcc -O2 -Iruntime -w -c $PKG/runtime/Amalgame_Database/sqlite/sqlite3.c -o sqlite3.o
-gcc -O2 -Iruntime your_program.c sqlite3.o -lgc -lm -lcurl -ldl -lpthread -o your_program
+gcc -O2 -Iruntime your_program.c sqlite3.o -lgc -lm -ldl -lpthread -o your_program
 ```
 
 A future `amc build` will wire this step for non-test binaries

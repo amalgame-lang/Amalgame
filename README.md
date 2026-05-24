@@ -39,7 +39,7 @@ public class Greeter {
 
 Amalgame is a small, statically-typed language whose compiler (`amc`)
 is written in Amalgame and emits portable C. The runtime is a thin
-header-only layer over libc, libgc (Boehm GC) and libcurl.
+header-only layer over libc and libgc (Boehm GC).
 
 - **Self-hosted.** The compiler bootstraps itself in about five
   seconds. A tracked `snapshot/amc_lib.c` (known-good portable C)
@@ -113,40 +113,39 @@ A more thorough tour is in [docs/guide/02-language-tour.md](docs/guide/02-langua
 ### Linux
 
 ```bash
-sudo apt install gcc libgc-dev libcurl4-openssl-dev
+sudo apt install gcc libgc-dev
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
-gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -o snapshot/amc
 ./build_amc.sh           # builds ./amc from src/ via the snapshot
 ./amc --version          # amc 0.4.14
-./tests/run_all_tests.sh # full suite (~42s in AM bundles + bash safety net)
+./tests/run_all_tests.sh # full suite via `amc test ./tests/` (~42s)
 ```
 
 Tests live as discoverable `*_test.am` bundles under `tests/fmt/`,
 `tests/amc_new/`, `tests/stdlib_bundle/`, and `tests/core_bundle/`,
-each runnable individually via `./amc test ./tests/<bundle>/`. The
-bash runners (`tests/run_*.sh`) are kept as a transitional safety
-net and will be dropped once the AM bundles ship a few stable
-releases (see ROADMAP_COMPLET.md for the migration plan).
+each runnable individually via `./amc test ./tests/<bundle>/`.
+`tests/run_all_tests.sh` is a one-line wrapper that calls
+`./amc test ./tests/` (legacy bash runners were dropped 2026-05-24).
+`tests/fixtures/` is pruned from auto-discovery so canonical fixture
+files don't get re-executed when crawling from above.
 
 ### macOS
 
 ```bash
-brew install bdw-gc curl
+brew install bdw-gc
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
 GC_PREFIX=$(brew --prefix bdw-gc)
-CURL_PREFIX=$(brew --prefix curl)
-gcc -O2 -Iruntime -I"$GC_PREFIX/include" -I"$CURL_PREFIX/include" \
-    -L"$GC_PREFIX/lib" -L"$CURL_PREFIX/lib" \
-    snapshot/amc_lib.c -lgc -lm -lcurl -o amc
+gcc -O2 -Iruntime -I"$GC_PREFIX/include" -L"$GC_PREFIX/lib" \
+    snapshot/amc_lib.c -lgc -lm -o amc
 ./amc --version
 ```
 
 ### Windows (MSYS2 MINGW64)
 
 ```bash
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc mingw-w64-x86_64-curl
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-gc
 git clone https://github.com/amalgame-lang/Amalgame.git && cd Amalgame
-gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -lws2_32 -o amc.exe
+gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lz -lws2_32 -o amc.exe
 ./amc.exe --version
 ```
 
@@ -166,7 +165,7 @@ public class Program {
 
 ```bash
 ./amc hello.am -o hello
-gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
+gcc -Iruntime hello.c -lgc -lm -o hello
 ./hello
 # → Hello, Amalgame!
 ```

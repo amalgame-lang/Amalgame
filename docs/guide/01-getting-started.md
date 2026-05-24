@@ -6,7 +6,7 @@ Amalgame transpiles to portable C. Compiling an Amalgame program is
 always a **two-step** process:
 
 1. `amc your.am -o your` produces `your.c` (a `.c` file, NOT a binary).
-2. `gcc your.c -lgc -lm -lcurl -o your` produces the actual native
+2. `gcc your.c -lgc -lm -o your` produces the actual native
    binary.
 
 The `amc` you run in step 1 is itself the output of that exact same
@@ -17,14 +17,14 @@ pipeline applied to the compiler's own sources in `src/`.
 ### Linux (Debian/Ubuntu)
 
 ```bash
-sudo apt install -y gcc libgc-dev libcurl4-openssl-dev
+sudo apt install -y gcc libgc-dev
 
 git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
 gcc -O2 -Iruntime snapshot/amc_lib.c \
-    -lgc -lm -lcurl -o snapshot/amc   # one-time: bootstrap from tracked C
+    -lgc -lm -o snapshot/amc   # one-time: bootstrap from tracked C
 ./build_amc.sh                         # builds the self-hosted amc into ./amc (~5s)
-./tests/run_all_tests.sh               # full suite: 571 PASS in ~42s
+./tests/run_all_tests.sh               # full suite: 578 PASS in ~42s
 ```
 
 Individual test suites can be run via `./amc test ./tests/<bundle>/`
@@ -38,7 +38,7 @@ brew install bdw-gc curl
 git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
 gcc -O2 -Iruntime src/amc_lib.c \
-    -lgc -lm -lcurl -o amc
+    -lgc -lm -o amc
 ./amc --version
 ```
 
@@ -53,7 +53,7 @@ pacman -S mingw-w64-x86_64-{gcc,gc,curl}
 git clone https://github.com/amalgame-lang/Amalgame.git
 cd Amalgame
 gcc -O2 -Iruntime src/amc_lib.c \
-    -lgc -lm -lcurl -o amc.exe
+    -lgc -lm -o amc.exe
 ./amc.exe --version
 ```
 
@@ -85,7 +85,7 @@ Compile and run:
 
 ```bash
 ./amc hello.am -o hello
-gcc -Iruntime hello.c -lgc -lm -lcurl -o hello
+gcc -Iruntime hello.c -lgc -lm -o hello
 ./hello
 # → Hello, Amalgame!
 ```
@@ -121,7 +121,7 @@ public class Program {
 ```
 
 ```bash
-./amc add.am -o add && gcc -Iruntime add.c -lgc -lm -lcurl -o add && ./add
+./amc add.am -o add && gcc -Iruntime add.c -lgc -lm -o add && ./add
 # → 2 + 3 = 5
 ```
 

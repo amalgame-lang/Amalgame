@@ -39,18 +39,12 @@ jobs:
       - name: Verify amc reports its version
         run: ./amc --version
 
-      # The CI runs only the AM test bundles via `amc test` — ~42s instead
-      # of ~5min for `run_all_tests.sh` which also lances the legacy bash
-      # runners as a safety net. The bash runners stay green as a manual
-      # cross-check (used by tools/release.sh + tools/save-snapshot.sh)
-      # and will be dropped once the AM bundles have a few stable releases.
-      - name: Run AM test bundles
-        run: |
-          set -e
-          for bundle in tests/fmt tests/amc_new tests/stdlib_bundle tests/core_bundle; do
-            echo "── $bundle ──"
-            ./amc test "./$bundle/"
-          done
+      # Single entry point — `amc test ./tests/` auto-discovers every
+      # *_test.am bundle (fmt / amc_new / stdlib_bundle / core_bundle)
+      # and prunes `fixtures/` subdirs. The legacy bash runners were
+      # dropped 2026-05-24 after a parity safety-net period.
+      - name: Run AM test suite
+        run: ./tests/run_all_tests.sh
 
       - name: Upload generated artifacts on failure
         if: failure()

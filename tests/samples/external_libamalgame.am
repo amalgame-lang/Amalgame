@@ -16,7 +16,7 @@
 //       --external src/stdlib/json.am \
 //       --external src/stdlib/msgpack.am
 //   gcc -O2 -Iruntime <out>.c lib/libamalgame.a \
-//       -lgc -lm -lcurl -lz -o <out>
+//       -lgc -lm -lz -o <out>
 
 namespace App
 

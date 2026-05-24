@@ -66,12 +66,20 @@ Sibling repos under `/home/neitsab/Développement/amalgame-*/`.
 
 ## Open architectural decisions (validated 2026-05-18)
 
-- **Math + Math.Vec should NOT be external packages.** They're
-  fundamental — every program that does numbers uses them. The
-  migration to external in v0.7.5 was a mistake. PR-worthy cleanup:
-  bring them back as bundled stdlib.
-- **libcurl should NOT be an amc build dep.** `Amalgame_Net.h` currently
-  exposes `Http_Get/Post/...` via libcurl, which forces every amc
-  binary to link curl. The new `amalgame-net-http` package replaces
-  this. Plan: remove HTTP from `Amalgame_Net.h`, drop `-lcurl` from
-  `build_amc.sh`. Out of scope for the current web-stack push.
+- ~~**Math + Math.Vec should NOT be external packages.**~~ ✅
+  **rapatriés 2026-05-24**. `src/stdlib/math.am` +
+  `src/stdlib/math_vec.am` shippent à nouveau dans le bundle ;
+  `tools/build-stdlib.sh` les pré-compile dans `libamalgame.a` et
+  `main.am`'s `stdlibEntries` les auto-attache dès qu'un
+  `import Amalgame.Math` / `import Amalgame.Math.Vec` apparaît.
+  Les repos externes `amalgame-math` / `amalgame-math-vec` restent
+  listés pour archéologie mais ne sont plus nécessaires.
+- ~~**libcurl should NOT be an amc build dep.**~~ ✅ **complété
+  2026-05-24**. HTTP avait déjà été retiré de `Amalgame_Net.h` en
+  v0.8.31 (commenté dans le header) ; il restait à droper `-lcurl`
+  des link-flags émis par amc (main.am + new_cmd.am scaffolders),
+  des test runners (run_*.sh + *_test.am bundles), de
+  `build_amc.sh` (preflight + recovery message), du builtin `Http`
+  resolver, de la doc README + docs/guide/*. `ldd ./amc | grep curl`
+  est maintenant vide. Reste lib*curl* ailleurs : externe au repo
+  amc (`amalgame-net-curl` planifié pour un binding optionnel).

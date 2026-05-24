@@ -245,6 +245,8 @@ public class AmalgameCompiler {
             // same on-disk .am facade.
             let stdlibEntries: List<string> = new List<string>()
             stdlibEntries.Add("Amalgame.Path|path.am")
+            stdlibEntries.Add("Amalgame.Math|math.am")
+            stdlibEntries.Add("Amalgame.Math.Vec|math_vec.am")
             stdlibEntries.Add("Amalgame.Formats.Json|json.am")
             stdlibEntries.Add("Amalgame.Json|json.am")
             stdlibEntries.Add("Amalgame.Formats.Toml|toml.am")
@@ -880,7 +882,13 @@ public class Program {
 
         // Discovery: shell out to `find`. Works on POSIX and on
         // Windows MSYS2 (the only Windows path the repo CI exercises).
-        let findCmd = "find " + dir + " -name '*_test.am' -type f"
+        // Convention: `fixtures/` subdirectories are pruned so canonical
+        // test-input files (LSP workspace fixtures, test-runner self-test
+        // fixtures, etc.) don't get auto-executed when crawling a tree
+        // from above. Users who *want* to run a fixture explicitly can
+        // still do `amc test ./tests/fixtures/<name>/` — the prune only
+        // applies to nested `fixtures` directories, not the input root.
+        let findCmd = "find " + dir + " -name fixtures -prune -o -name '*_test.am' -type f -print"
         let discovered = Process.RunCapture(findCmd)
         if (discovered.Exit != 0) {
             Console.WriteError("amc test: failed to enumerate tests in " + dir)
@@ -980,7 +988,7 @@ public class Program {
             for fai in 0..nFAr {
                 gccCmd = gccCmd + " '" + facadeArs.Get(fai) + "'"
             }
-            gccCmd = gccCmd + " -lgc -lm -lcurl -lz -ldl -lpthread"
+            gccCmd = gccCmd + " -lgc -lm -lz -ldl -lpthread"
             // Splice per-package libs (-l<name>). Each loaded
             // package contributes zero or more bare names via
             // its manifest's [stdlib].libs array.
@@ -1356,7 +1364,7 @@ public class Program {
         if (String_Length(libamalgameA) > 0) {
             gccCmd = gccCmd + " '" + libamalgameA + "'"
         }
-        gccCmd = gccCmd + " -lgc -lm -lcurl -lz -ldl -lpthread"
+        gccCmd = gccCmd + " -lgc -lm -lz -ldl -lpthread"
         let nLibs: int = pkgLibs.Count()
         for plj in 0..nLibs {
             gccCmd = gccCmd + " -l" + pkgLibs.Get(plj)
