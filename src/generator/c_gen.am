@@ -248,6 +248,13 @@ public class CGen {
         this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
         this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
         this.FieldTypeSet("AmalgameTcpServer",    "Port",     "i64")
+        // v0.8.52: UDP socket fields + UdpDatagram for ReceiveFrom.
+        this.FieldTypeSet("AmalgameUdpSocket",    "BoundPort", "i64")
+        this.FieldTypeSet("AmalgameUdpSocket",    "Bound",    "code_bool")
+        this.FieldTypeSet("AmalgameUdpDatagram",  "Data",     "code_string")
+        this.FieldTypeSet("AmalgameUdpDatagram",  "DataLen",  "i64")
+        this.FieldTypeSet("AmalgameUdpDatagram",  "FromIp",   "code_string")
+        this.FieldTypeSet("AmalgameUdpDatagram",  "FromPort", "i64")
         this.FieldTypeSet("AmalgameProcessResult", "Exit",   "i64")
         this.FieldTypeSet("AmalgameProcessResult", "Stdout", "code_string")
         this.FieldTypeSet("AmalgameProcessResult", "Stderr", "code_string")
@@ -1229,6 +1236,9 @@ public class CGen {
                 if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
                 if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
                 if (calleeStr == "TcpConn_Receive") { return "code_string" }
+                // v0.8.52: UDP socket + datagram return types.
+                if (calleeStr == "UdpSocket_New") { return "AmalgameUdpSocket*" }
+                if (calleeStr == "UdpSocket_ReceiveFrom") { return "AmalgameUdpDatagram*" }
                 // Math + Math.Vec migrated to AM (post-v0.7.5);
                 // their runtime helpers no longer exist. Math.X /
                 // Vec3.X / Vec4.X / Mat4.X lower via the regular

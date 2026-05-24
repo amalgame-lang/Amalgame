@@ -512,6 +512,17 @@ class Program {
         // ── PackageManager facade e2e (project F follow-up) ──
         Program.RunPmFacadeE2E()
 
+        // ── UDP (v0.8.52: ReceiveFrom + ephemeral BoundPort fix) ──
+        let g_udp: List<StdlibCase> = new List<StdlibCase>()
+        g_udp.Add(new StdlibCase("UDP: ephemeral bind reports port", "[PASS] UDP ephemeral bind reports port"))
+        g_udp.Add(new StdlibCase("UDP: Send to ephemeral port", "[PASS] UDP Send to ephemeral port"))
+        g_udp.Add(new StdlibCase("UDP: ReceiveFrom non-null", "[PASS] UDP ReceiveFrom non-null"))
+        g_udp.Add(new StdlibCase("UDP: ReceiveFrom payload matches", "[PASS] UDP ReceiveFrom payload matches"))
+        g_udp.Add(new StdlibCase("UDP: ReceiveFrom FromIp loopback", "[PASS] UDP ReceiveFrom FromIp is loopback"))
+        g_udp.Add(new StdlibCase("UDP: ReceiveFrom FromPort matches", "[PASS] UDP ReceiveFrom FromPort matches sender"))
+        g_udp.Add(new StdlibCase("UDP: ReceiveFrom timeout null", "[PASS] UDP ReceiveFrom timeout returns null"))
+        Program.RunGroup("./tests/samples/stdlib_udp.am", "", "udp", g_udp)
+
         // ── skipped (moved to amalgame-net-http) ──
         Console.WriteLine("[SKIP] Net: Http.Get status (moved to amalgame-net-http package (v0.8.31+))")
         Console.WriteLine("[SKIP] Net: Http.Get ok (moved to amalgame-net-http package (v0.8.31+))")
