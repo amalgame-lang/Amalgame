@@ -1,0 +1,80 @@
+// Stdlib test: Amalgame.Net UDP — covers the v0.8.52 additions
+//   - UdpSocket_Bind(s, 0) now reports the kernel-assigned port
+//     in s.BoundPort (was 0 before v0.8.52 — ephemeral binders
+//     couldn't advertise themselves)
+//   - UdpSocket_ReceiveFrom(s, max, timeoutMs) returns an
+//     AmalgameUdpDatagram* with Data/DataLen/FromIp/FromPort,
+//     uses select() for bounded waits
+//
+// Self-contained: binds two loopback UDP sockets, sends from a→b
+// and verifies b receives the bytes + knows a's source port.
+
+namespace Tests
+
+import Amalgame.Net
+
+public class Program {
+    public static void Main(string[] args) {
+        Console.WriteLine("UDP test start")
+
+        // ── Ephemeral bind reports real port ────────────────
+        let a = UdpSocket_New()
+        let okA: bool = UdpSocket_Bind(a, 0)
+        if (okA && a.BoundPort > 0) {
+            Console.WriteLine("[PASS] UDP ephemeral bind reports port")
+        } else {
+            Console.WriteLine("[FAIL] UDP ephemeral bind reports port")
+        }
+
+        let b = UdpSocket_New()
+        let okB: bool = UdpSocket_Bind(b, 0)
+        if (!okB || b.BoundPort <= 0) {
+            Console.WriteLine("[FAIL] UDP ephemeral bind b")
+            return
+        }
+
+        // ── a → b loopback round-trip ──────────────────────
+        let payload = "hello v0.8.52"
+        let sent: bool = UdpSocket_Send(a, "127.0.0.1", b.BoundPort, payload)
+        if (sent) {
+            Console.WriteLine("[PASS] UDP Send to ephemeral port")
+        } else {
+            Console.WriteLine("[FAIL] UDP Send to ephemeral port")
+        }
+
+        // 500 ms is plenty for a loopback delivery.
+        let dg = UdpSocket_ReceiveFrom(b, 65536, 500)
+        if (dg != null) {
+            Console.WriteLine("[PASS] UDP ReceiveFrom non-null")
+            if (dg.Data == payload) {
+                Console.WriteLine("[PASS] UDP ReceiveFrom payload matches")
+            } else {
+                Console.WriteLine("[FAIL] UDP ReceiveFrom payload mismatch")
+            }
+            if (dg.FromIp == "127.0.0.1") {
+                Console.WriteLine("[PASS] UDP ReceiveFrom FromIp is loopback")
+            } else {
+                Console.WriteLine("[FAIL] UDP ReceiveFrom FromIp = {dg.FromIp}")
+            }
+            if (dg.FromPort == a.BoundPort) {
+                Console.WriteLine("[PASS] UDP ReceiveFrom FromPort matches sender")
+            } else {
+                Console.WriteLine("[FAIL] UDP ReceiveFrom FromPort = {dg.FromPort} vs sender {a.BoundPort}")
+            }
+        } else {
+            Console.WriteLine("[FAIL] UDP ReceiveFrom returned null")
+        }
+
+        // ── Timeout returns null cleanly ───────────────────
+        let dgT = UdpSocket_ReceiveFrom(b, 65536, 50)
+        if (dgT == null) {
+            Console.WriteLine("[PASS] UDP ReceiveFrom timeout returns null")
+        } else {
+            Console.WriteLine("[FAIL] UDP ReceiveFrom timeout returned data")
+        }
+
+        UdpSocket_Close(a)
+        UdpSocket_Close(b)
+        Console.WriteLine("UDP test done")
+    }
+}
