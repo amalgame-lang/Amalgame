@@ -39,6 +39,8 @@ static void _amnet_init_once(void) {
 static int _amnet_close_socket(int fd) { return closesocket(fd); }
 #else
 #  include <sys/socket.h>
+#  include <sys/select.h>
+#  include <sys/time.h>
 #  include <netinet/in.h>
 #  include <arpa/inet.h>
 #  include <netdb.h>
@@ -239,7 +241,23 @@ static inline code_bool UdpSocket_Bind(AmalgameUdpSocket* s, i64 port) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons((uint16_t)port);
     if (bind(s->_fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
-        s->Bound = true; s->BoundPort = port; return true;
+        s->Bound = true;
+        if (port == 0) {
+            /* Caller asked for an ephemeral port — read back the
+             * actual port the kernel assigned. Before v0.8.52 we
+             * stored 0, which left every ephemeral binder unable
+             * to advertise itself. */
+            struct sockaddr_in actual = {0};
+            socklen_t alen = sizeof(actual);
+            if (getsockname(s->_fd, (struct sockaddr*)&actual, &alen) == 0) {
+                s->BoundPort = (i64) ntohs(actual.sin_port);
+            } else {
+                s->BoundPort = 0;
+            }
+        } else {
+            s->BoundPort = port;
+        }
+        return true;
     }
     return false;
 }
@@ -265,6 +283,66 @@ static inline code_string UdpSocket_Receive(AmalgameUdpSocket* s,
 static inline void UdpSocket_Close(AmalgameUdpSocket* s) {
     if (!s || s->_fd < 0) return;
     _amnet_close_socket(s->_fd); s->_fd = -1;
+}
+
+/* ────────────────────────────────────────────────────────
+ * UdpDatagram (v0.8.52) — single UDP packet with sender info.
+ *
+ * Returned by UdpSocket.ReceiveFrom. The plain UdpSocket.Receive
+ * above uses recv() and so cannot tell callers who sent the
+ * packet — fine for client-style UDP but useless for any peer-to-
+ * peer protocol (ACK routing, request/response, etc.). ReceiveFrom
+ * uses recvfrom() and exposes the source ip:port. It also accepts
+ * a millisecond timeout (select-driven) so the receive loop can
+ * be bounded — required for any retry/ack pattern.
+ * ──────────────────────────────────────────────────────── */
+
+typedef struct {
+    code_string Data;     /* NUL-terminated for AM string ergonomics */
+    i64         DataLen;  /* real byte count — Data may contain NULs */
+    code_string FromIp;   /* "192.168.1.42" */
+    i64         FromPort;
+} AmalgameUdpDatagram;
+
+static inline AmalgameUdpDatagram* UdpSocket_ReceiveFrom(
+        AmalgameUdpSocket* s, i64 maxBytes, i64 timeoutMs) {
+    if (!s || s->_fd < 0) return NULL;
+    if (maxBytes <= 0) maxBytes = 4096;
+
+    /* Bounded wait via select(). timeoutMs<0 = block forever. */
+    if (timeoutMs >= 0) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(s->_fd, &rfds);
+        struct timeval tv;
+        tv.tv_sec  = timeoutMs / 1000;
+        tv.tv_usec = (timeoutMs % 1000) * 1000;
+        int rv = select(s->_fd + 1, &rfds, NULL, NULL, &tv);
+        if (rv <= 0) return NULL;   /* timeout / interrupt / error → null */
+    }
+
+    char* buf = (char*) GC_MALLOC((size_t) maxBytes + 1);
+    struct sockaddr_in from = {0};
+    socklen_t flen = sizeof(from);
+    ssize_t n = recvfrom(s->_fd, buf, (size_t) maxBytes, 0,
+                         (struct sockaddr*)&from, &flen);
+    if (n < 0) return NULL;
+    buf[n] = '\0';
+
+    char ipbuf[INET_ADDRSTRLEN];
+    if (!inet_ntop(AF_INET, &from.sin_addr, ipbuf, sizeof(ipbuf))) {
+        ipbuf[0] = '\0';
+    }
+    char* ipcopy = (char*) GC_MALLOC(strlen(ipbuf) + 1);
+    strcpy(ipcopy, ipbuf);
+
+    AmalgameUdpDatagram* dg =
+        (AmalgameUdpDatagram*) GC_MALLOC(sizeof(AmalgameUdpDatagram));
+    dg->Data     = buf;
+    dg->DataLen  = (i64) n;
+    dg->FromIp   = ipcopy;
+    dg->FromPort = (i64) ntohs(from.sin_port);
+    return dg;
 }
 
 #endif /* AMALGAME_NET_H */
