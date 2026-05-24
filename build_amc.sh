@@ -110,7 +110,23 @@ if [ ! -f gen_test.c ]; then
     echo "Step 1 failed: gen_test.c was not produced" >&2
     exit 1
 fi
-gcc -O2 -Iruntime -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable gen_test.c -lgc -lm -lz -o gen_test
+# v0.8.49: amc auto-registers every cached package's runtime
+# header in gen_test.c's include list. If any cached package's
+# runtime header transitively includes another's (e.g. net-http
+# v0.9.1+'s Amalgame_Net_Http.h includes "Amalgame_Async.h"),
+# gcc needs the dep's runtime/ on the -I path. Walk the cache
+# and pre-cook the flags.
+PKG_INCLUDES=""
+if [ -d "$HOME/.amalgame/packages/github.com/amalgame-lang" ]; then
+    for pkg_parent in "$HOME/.amalgame/packages/github.com/amalgame-lang"/*/; do
+        latest=$(ls -1 "$pkg_parent" 2>/dev/null | sort -V | tail -1)
+        runtime_dir="${pkg_parent}${latest}/runtime"
+        if [ -n "$latest" ] && [ -d "$runtime_dir" ]; then
+            PKG_INCLUDES="$PKG_INCLUDES -I${runtime_dir}"
+        fi
+    done
+fi
+gcc -O2 -Iruntime $PKG_INCLUDES -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable gen_test.c -lgc -lm -lz -o gen_test
 
 echo "=== Step 2: Generate all bundles + amc_lib.c ==="
 time ./gen_test
@@ -129,7 +145,7 @@ echo "=== Step 3: Compile amc ==="
 # directly into `src/stdlib/amc_buildinfo.am` as AM literal
 # strings, which are already baked into the amc_lib.c we're
 # about to link.
-gcc -Iruntime \
+gcc -Iruntime $PKG_INCLUDES \
     -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable \
     src/amc_lib.c \
     -lgc -lm -lz -o amc
