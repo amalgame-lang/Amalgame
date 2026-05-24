@@ -1135,11 +1135,11 @@ public class CGen {
                 if (calleeStr == "AmalgameList_count") { return "i64" }
                 if (String_StartsWith(calleeStr, "AmalgameList_count")) { return "i64" }
                 // File stdlib return types
-                if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete") { return "code_bool" }
+                if (calleeStr == "File_Exists" || calleeStr == "File_WriteAll" || calleeStr == "File_AppendAll" || calleeStr == "File_Delete" || calleeStr == "File_IsFile" || calleeStr == "File_IsDir") { return "code_bool" }
                 if (calleeStr == "File_WriteLines" || calleeStr == "File_OpenWrite" || calleeStr == "File_StreamLine" || calleeStr == "File_CloseWrite") { return "void" }
                 if (calleeStr == "File_WriteLines") { return "void" }
                 if (calleeStr == "File_ReadAll" || calleeStr == "File_ReadLine") { return "code_string" }
-                if (calleeStr == "File_Size") { return "i64" }
+                if (calleeStr == "File_Size" || calleeStr == "File_Mtime") { return "i64" }
                 // Path stdlib return types
                 if (calleeStr == "Path_Combine" || calleeStr == "Path_GetExtension" || calleeStr == "Path_GetFilename" || calleeStr == "Path_GetDirectory" || calleeStr == "Path_GetStem" || calleeStr == "Path_Normalize" || calleeStr == "Path_Sep") { return "code_string" }
                 if (calleeStr == "Path_IsAbsolute") { return "code_bool" }
@@ -1574,8 +1574,8 @@ public class CGen {
         // migration. Math.X qualified calls lower via namespace
         // mangling, return type comes from the AM signature.
         if (cName == "File_ReadAll") { return "code_string" }
-        if (cName == "File_Exists" || cName == "File_WriteAll" || cName == "File_AppendAll" || cName == "File_Delete") { return "code_bool" }
-        if (cName == "File_Size" || cName == "Args_Count" || cName == "Exit_Get") { return "i64" }
+        if (cName == "File_Exists" || cName == "File_WriteAll" || cName == "File_AppendAll" || cName == "File_Delete" || cName == "File_IsFile" || cName == "File_IsDir") { return "code_bool" }
+        if (cName == "File_Size" || cName == "File_Mtime" || cName == "Args_Count" || cName == "Exit_Get") { return "i64" }
         if (cName == "Args_Get") { return "code_string" }
         return ""
     }

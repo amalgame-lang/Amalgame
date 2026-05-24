@@ -1,9 +1,10 @@
 # Beyond HTTP — nginx/apache-equivalent capabilities
 
-**Status:** roadmap inventory — not yet started. Captures
-features the Amalgame web stack needs to match nginx / apache /
-HAProxy / Postfix territory.  No code yet; this is here so the
-package boundary + priority is decided before someone starts.
+**Status:** in-progress. **#6 Static file serving shipped
+2026-05-24** in amalgame-web v0.13.0 — see [#6 entry below](#6-static-file-serving-shipped-v0130-2026-05-24).
+The remaining inventory captures features the Amalgame web
+stack still needs to match nginx / apache / HAProxy / Postfix
+territory.
 
 ## Why this doc
 
@@ -194,29 +195,80 @@ loading / cert chain helpers).
 (presigned URLs, multipart POST).  SFTP is still standard
 for "drop files in this dir" automation between systems.
 
-### 6. Static file serving
+### 6. Static file serving — SHIPPED v0.13.0 (2026-05-24)
 
-Apache and nginx both have this baked in — return files from
-disk with correct MIME type, range requests, ETag, Last-Modified,
-optional gzip.
-
-**Package:** part of `amalgame-web` (the framework, since the
-typical use is "serve `static/` from my Mosaic app"), via a
-`WebApp.Static(prefix, dir)` middleware.
+Lives in `amalgame-web` v0.13.0 as the `Static` class, wired
+into the WebApp pipeline between CSRF validation and the
+router.
 
 ```amalgame
-let app = new WebApp()
-app.Static("/assets", "./static")             // GET /assets/foo.css
-app.Static("/", "./public")                   // SPA fallback
+let app = WebApp.New()
+    .WithStatic(Static.New("/assets", "./public").WithCacheMaxAge(3600))
+    .Get("/", ctx => HttpResponse.New().Html("<h1>Hi</h1>"))
+app.Serve(8080)
 ```
 
-Implementation: O_RDONLY + sendfile() syscall on Linux for
-zero-copy.  Range parsing (`Range: bytes=0-1023`).  ETag from
-`stat()` mtime + size.  ~300 LoC.
+**Behavior matrix:**
 
-**Priority:** HIGH — almost every Mosaic app needs `/assets`.
-Currently users have to write a route per file or copy nginx's
-config style by hand.
+| Status | When |
+|---|---|
+| 200 | file served, `Content-Type` + ETag (+ `Cache-Control`?) |
+| 304 | `If-None-Match` matches the strong ETag (`"size-mtime"`) |
+| 403 | exact-prefix request (no dir listing); sub-directory; `../` traversal escape |
+| 404 | file missing |
+| 405 | method other than GET / HEAD |
+
+**Security:** containment check — normalized full path must
+start with normalized root prefix. Blocks `../` even after
+`Path_Normalize` collapses the dots, because escaping `..`
+removes the root segment itself. No auto-indexing
+(intentional — `Options +Indexes` is a recurring source of
+accidental exposure).
+
+**Binary safety:** response uses `HttpResponse.File(path)` →
+`H1Conn_RespondFile` (net-http v0.9.6), so PNG / JPEG / PDF /
+WASM survive NUL bytes intact. This was the big runtime
+diff vs the original proposal — `H1Conn_Respond` `strlen()`s
+the body, which truncates anything with a NUL.
+
+**MIME coverage:** ~35 extensions baked in (HTML/CSS/JS/WASM
++ image formats + font formats + PDF + archives + YAML/TOML).
+Unknown → `application/octet-stream`. Case-insensitive.
+
+**Multi-PR dependency chain:**
+
+1. [Amalgame#543](https://github.com/amalgame-lang/Amalgame/pull/543) — runtime helpers `File_Mtime` / `File_IsFile` / `File_IsDir` (amc v0.8.48)
+2. [amalgame-net-http#12](https://github.com/amalgame-lang/amalgame-net-http/pull/12) — `H1Conn_RespondBytes` / `H1Conn_RespondFile` + `HttpResponse.File()` (v0.9.6)
+3. [amalgame-web#20](https://github.com/amalgame-lang/amalgame-web/pull/20) — `Static` class + `WithStatic()` builder (v0.13.0)
+
+**Deferred to follow-up PRs** (scope kept tight to ship the
+v0.1 quickly — each item below is independent and can be
+picked up à la carte):
+
+- **`Range: bytes=N-M` requests.** Needs a runtime
+  `H1Conn_RespondFileRange(c, status, ct, path, offset,
+  length)` that `fseek`s + sends a slice. Today the whole
+  file is sent. Blocks resumable downloads + media seeking.
+- **`Last-Modified` / `If-Modified-Since`.** Needs an
+  HTTP-date helper in `amalgame-datetime` (today's
+  `FormatIso` emits ISO 8601 which `If-Modified-Since`
+  consumers don't grok). ETag covers the common
+  cache-revalidation path on its own — every browser honors
+  `If-None-Match` — so this is cosmetic, not blocking.
+- **`sendfile(2)` zero-copy.** `H1Conn_RespondFile`
+  currently `GC_MALLOC`s the full body before sending. Fine
+  for typical assets (<10 MB), wasteful for large
+  downloads. Wire-up: `sendfile(out_fd, in_fd, &offset,
+  len)` after sending the headers. Linux only initially;
+  `mmap+write` fallback elsewhere.
+- **Pre-compressed variant selection.** When `foo.css.gz` /
+  `foo.css.br` exists next to `foo.css`, pick it based on
+  `Accept-Encoding`. ~30 LoC in `Static.Serve` once the file
+  resolution is factored out.
+- **HEAD requests skip the body.** Today HEAD is accepted
+  (same code path as GET) but still ships the body via
+  `RespondFile`. Need a runtime variant that emits the
+  headers + Content-Length but skips the bytes.
 
 ### 7. WebDAV server
 
@@ -233,8 +285,11 @@ generic file shares).
 
 Year-1 priority for the web stack:
 
-1. **Static file serving** in `amalgame-web` (impact: every
-   Mosaic app benefits).  ~1 day.
+1. ~~**Static file serving** in `amalgame-web`~~ ✅ **shipped
+   v0.13.0 (2026-05-24)**. Took 1.5 days end-to-end across 3
+   PRs (runtime helpers + binary-safe net-http pipeline +
+   middleware) — the extra 0.5 day was buying out `strlen()`
+   from the wire-out path so PNG/JPEG don't truncate at NULs.
 2. **Reverse proxy** in `amalgame-net-proxy` v0.1 (impact:
    unblocks "front of N upstreams" deploys).  ~2-3 days.
 3. **Load balancing** in `amalgame-net-proxy` v0.2 (extends 2).
@@ -247,6 +302,14 @@ Year-2 (or punt to "if someone wants it"):
 5. **SFTP** via `amalgame-net-ssh` (libssh2 binding).
 6. **SMTP relay** via `amalgame-net-smtp`.
 7. **WebDAV** (lowest).
+
+### Static follow-ups (à la carte, not blocking the next item above)
+
+- **`Range:` requests** — 1 day (runtime `H1Conn_RespondFileRange` + Static.Serve parsing).
+- **HEAD body skip** — 0.5 day (runtime variant of `RespondFile`).
+- **Pre-compressed variant selection** — 0.5 day (in Static.Serve only).
+- **`Last-Modified` / `If-Modified-Since`** — 1 day (HTTP-date helper in `amalgame-datetime` first).
+- **`sendfile(2)`** — 1-1.5 day (Linux-first, mmap fallback later).
 
 ## What's NOT in scope
 

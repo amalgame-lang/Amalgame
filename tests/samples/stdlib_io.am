@@ -18,6 +18,21 @@ public class Program {
         let size = File_Size("/tmp/amalgame_test.txt")
         Console.WriteLine("size: {size}")
 
+        let isFile = File_IsFile("/tmp/amalgame_test.txt")
+        Console.WriteLine("isFile: {isFile}")
+
+        let isDir = File_IsDir("/tmp/amalgame_test.txt")
+        Console.WriteLine("isDir(file): {isDir}")
+
+        let isDirTmp = File_IsDir("/tmp")
+        Console.WriteLine("isDir(/tmp): {isDirTmp}")
+
+        let mtimePositive = File_Mtime("/tmp/amalgame_test.txt") > 0
+        Console.WriteLine("mtime > 0: {mtimePositive}")
+
+        let mtimeMissing = File_Mtime("/nope/does/not/exist")
+        Console.WriteLine("mtime missing: {mtimeMissing}")
+
         let combined = Path_Combine("/tmp", "test.txt")
         Console.WriteLine("path: {combined}")
 

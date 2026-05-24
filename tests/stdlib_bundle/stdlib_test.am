@@ -269,13 +269,18 @@ class Program {
     }
 
     public static void Main() {
-        // ── io (9 cases) ──
+        // ── io (14 cases) ──
         let g_io: List<StdlibCase> = new List<StdlibCase>()
         g_io.Add(new StdlibCase("IO: Console.WriteLine", "IO test start"))
         g_io.Add(new StdlibCase("IO: File.WriteAll", "write ok: true"))
         g_io.Add(new StdlibCase("IO: File.Exists", "exists: true"))
         g_io.Add(new StdlibCase("IO: File.ReadAll", "content: Hello from Amalgame!"))
         g_io.Add(new StdlibCase("IO: File.Size", "size: 20"))
+        g_io.Add(new StdlibCase("IO: File.IsFile", "isFile: true"))
+        g_io.Add(new StdlibCase("IO: File.IsDir(file)", "isDir(file): false"))
+        g_io.Add(new StdlibCase("IO: File.IsDir(dir)", "isDir(/tmp): true"))
+        g_io.Add(new StdlibCase("IO: File.Mtime > 0", "mtime > 0: true"))
+        g_io.Add(new StdlibCase("IO: File.Mtime missing", "mtime missing: -1"))
         g_io.Add(new StdlibCase("IO: File.Delete", "deleted: true"))
         g_io.Add(new StdlibCase("IO: Path.Combine", "path: /tmp/test.txt"))
         g_io.Add(new StdlibCase("IO: Path.GetExtension", "ext: .am"))
