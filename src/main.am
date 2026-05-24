@@ -206,7 +206,10 @@ public class AmalgameCompiler {
             }
             let lpSrcCount: int = lp.Sources.Count()
             for si in 0..lpSrcCount {
-                this.ExternalFiles.Add(lp.Sources.Get(si))
+                let srcPath: string = lp.Sources.Get(si)
+                if (String_EndsWith(srcPath, ".am")) {
+                    this.ExternalFiles.Add(srcPath)
+                }
             }
         }
 
