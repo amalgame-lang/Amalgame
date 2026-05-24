@@ -29,6 +29,14 @@ public class Lexer {
         return String_Contains("0123456789", c)
     }
 
+    private bool IsHexDigit(string c) {
+        return String_Contains("0123456789abcdefABCDEF", c)
+    }
+
+    private bool IsBinDigit(string c) {
+        return c == "0" || c == "1"
+    }
+
     private bool IsAlpha(string c) {
         return String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", c)
     }
@@ -337,6 +345,36 @@ public class Lexer {
 
     private void ReadNumber() {
         var startCol = this.Column
+
+        // Hex literal: `0x...` or `0X...`. Pass through verbatim — C accepts
+        // `0xFF` natively so we hand it straight to the codegen.
+        if (this.CharAt(this.Pos) == "0" && (this.CharAt(this.Pos + 1) == "x" || this.CharAt(this.Pos + 1) == "X")) {
+            var hex = this.Advance()
+            hex = hex + this.Advance()
+            while (this.Pos < String_Length(this.Source) && this.IsHexDigit(this.CharAt(this.Pos))) {
+                hex = hex + this.Advance()
+            }
+            let htok = new Token(TokenType.INTEGER, hex, this.Line, startCol, this.Filename)
+            this.Tokens.Add(htok)
+            return
+        }
+
+        // Binary literal: `0b...` or `0B...`. C has no portable binary
+        // literal (it's a GCC extension), so convert to decimal here.
+        if (this.CharAt(this.Pos) == "0" && (this.CharAt(this.Pos + 1) == "b" || this.CharAt(this.Pos + 1) == "B")) {
+            this.Advance()
+            this.Advance()
+            var dec = 0
+            while (this.Pos < String_Length(this.Source) && this.IsBinDigit(this.CharAt(this.Pos))) {
+                let bch = this.Advance()
+                dec = dec * 2
+                if (bch == "1") { dec = dec + 1 }
+            }
+            let btok = new Token(TokenType.INTEGER, String_FromInt(dec), this.Line, startCol, this.Filename)
+            this.Tokens.Add(btok)
+            return
+        }
+
         var value    = ""
         var isFloat  = false
         while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {

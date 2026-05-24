@@ -30,6 +30,18 @@ Primitive types: `int` (i64), `float` / `double`, `bool`, `string`
 (C `char*`), `void`. Array types use `T[]` (e.g. `string[]`).
 Nullable types use `T?` (e.g. `User?`).
 
+Integer literals accept three bases (v0.8.46+):
+
+```kotlin
+let dec = 255       // decimal
+let hex = 0xFF      // hexadecimal — also 0X..., digits 0-9 a-f A-F
+let bin = 0b1111    // binary       — also 0B..., digits 0/1
+```
+
+All three produce the same `int` value (`255`). Hex literals are passed
+through to C verbatim; binary literals are lowered to decimal at lex
+time so the C output stays portable (`0b...` is a GCC extension).
+
 ## Operators
 
 ```kotlin

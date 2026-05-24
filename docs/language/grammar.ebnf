@@ -453,10 +453,14 @@ StringInterp
     = SimpleString          (* contenant au moins un `{IDENT [.IDENT]* [(args)]}` *)
     ;
 
-INTEGER = DIGIT { DIGIT } ;
+INTEGER = DEC_INT | HEX_INT | BIN_INT ;
+DEC_INT = DIGIT { DIGIT } ;
+HEX_INT = "0" ( "x" | "X" ) HEX { HEX } ;
+BIN_INT = "0" ( "b" | "B" ) BIN { BIN } ;
 FLOAT   = DIGIT { DIGIT } "." DIGIT { DIGIT } ;
 
 DIGIT   = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+BIN     = "0" | "1" ;
 HEX     = DIGIT | "a" | "b" | "c" | "d" | "e" | "f"
                 | "A" | "B" | "C" | "D" | "E" | "F" ;
 
