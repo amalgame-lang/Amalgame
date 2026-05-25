@@ -1239,6 +1239,8 @@ public class CGen {
                 // v0.8.52: UDP socket + datagram return types.
                 if (calleeStr == "UdpSocket_New") { return "AmalgameUdpSocket*" }
                 if (calleeStr == "UdpSocket_ReceiveFrom") { return "AmalgameUdpDatagram*" }
+                // v0.8.53: SO_RCVBUF tunable returns kernel-granted bytes.
+                if (calleeStr == "UdpSocket_SetRecvBuf") { return "i64" }
                 // Math + Math.Vec migrated to AM (post-v0.7.5);
                 // their runtime helpers no longer exist. Math.X /
                 // Vec3.X / Vec4.X / Mat4.X lower via the regular
