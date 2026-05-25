@@ -244,10 +244,16 @@ public class CGen {
         this.InferCacheVals    = new List<string>()
         // Pre-register stdlib struct fields (libcurl-backed
         // AmalgameHttpResponse dropped in v0.8.31 — see resolver.am).
-        this.FieldTypeSet("AmalgameTcpConn",      "RemoteIp", "code_string")
-        this.FieldTypeSet("AmalgameTcpConn",      "Fd",       "i64")
-        this.FieldTypeSet("AmalgameTcpServer",    "Fd",       "i64")
-        this.FieldTypeSet("AmalgameTcpServer",    "Port",     "i64")
+        this.FieldTypeSet("AmalgameTcpConn",      "RemoteIp",   "code_string")
+        this.FieldTypeSet("AmalgameTcpConn",      "RemotePort", "i64")
+        this.FieldTypeSet("AmalgameTcpConn",      "Connected",  "code_bool")
+        this.FieldTypeSet("AmalgameTcpConn",      "Fd",         "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Fd",         "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Port",       "i64")
+        this.FieldTypeSet("AmalgameTcpServer",    "Listening",  "code_bool")
+        this.FieldTypeSet("AmalgameTcpClient",    "Connected",  "code_bool")
+        this.FieldTypeSet("AmalgameTcpClient",    "RemoteHost", "code_string")
+        this.FieldTypeSet("AmalgameTcpClient",    "RemotePort", "i64")
         // v0.8.52: UDP socket fields + UdpDatagram for ReceiveFrom.
         this.FieldTypeSet("AmalgameUdpSocket",    "BoundPort", "i64")
         this.FieldTypeSet("AmalgameUdpSocket",    "Bound",    "code_bool")
@@ -1234,6 +1240,7 @@ public class CGen {
                 if (calleeStr == "String_StartsWith" || calleeStr == "String_EndsWith" || calleeStr == "String_Contains" || calleeStr == "String_IsEmpty") { return "code_bool" }
                 if (calleeStr == "TcpServer_Listen") { return "AmalgameTcpServer*" }
                 if (calleeStr == "TcpServer_Accept") { return "AmalgameTcpConn*" }
+                if (calleeStr == "TcpClient_Connect") { return "AmalgameTcpClient*" }
                 if (calleeStr == "TcpServer_IsListening" || calleeStr == "TcpConn_Send" || calleeStr == "TcpConn_Close" || calleeStr == "TcpServer_Stop") { return "code_bool" }
                 if (calleeStr == "TcpConn_Receive") { return "code_string" }
                 // v0.8.52: UDP socket + datagram return types.
