@@ -147,12 +147,18 @@ public class MsgPack {
             out.Add(MsgPack.ByteOf(v, 0))
             return
         }
-        // Larger ints fall back to int 32 truncation — int 64 deferred.
-        out.Add(210)
-        out.Add(MsgPack.ByteOf(v, 3))
-        out.Add(MsgPack.ByteOf(v, 2))
-        out.Add(MsgPack.ByteOf(v, 1))
-        out.Add(MsgPack.ByteOf(v, 0))
+        // int 64 — signed two's complement big-endian. Use ByteOfI64
+        // because ByteOf's +0x1000000 offset trick only fixes the
+        // negative-modulo for byte indices 0..3.
+        out.Add(211)              // 0xd3
+        out.Add(MsgPack.ByteOfI64(v, 7))
+        out.Add(MsgPack.ByteOfI64(v, 6))
+        out.Add(MsgPack.ByteOfI64(v, 5))
+        out.Add(MsgPack.ByteOfI64(v, 4))
+        out.Add(MsgPack.ByteOfI64(v, 3))
+        out.Add(MsgPack.ByteOfI64(v, 2))
+        out.Add(MsgPack.ByteOfI64(v, 1))
+        out.Add(MsgPack.ByteOfI64(v, 0))
     }
 
     private static void EncodeString(s: string, out: List<int>) {
@@ -223,6 +229,15 @@ public class MsgPack {
         let shifted: int = v / MsgPack.Pow256(byteIdx)
         let withOffset: int = shifted + 16777216
         return withOffset % 256
+    }
+
+    // int 64 byte extraction. ByteOf's modulo-based math gets the
+    // signs wrong for negative i64. Using the bitwise shift + mask
+    // gives the raw two's-complement byte directly — same as a C
+    // (uint8_t)(v >> (idx*8)) cast.
+    private static int ByteOfI64(v: int, byteIdx: int) {
+        let shifted: int = v >> (byteIdx * 8)
+        return shifted & 255
     }
 
     private static int Pow256(n: int) {
@@ -313,6 +328,25 @@ public class MsgPack {
             let raw: int = b3 * 16777216 + b2 * 65536 + b1 * 256 + b0
             let v = new JsonValue()
             if (raw >= 2147483648) { v.SetInt(raw - 4294967296) } else { v.SetInt(raw) }
+            return v
+        }
+        // int 64 — big-endian, signed two's complement. Reassemble
+        // each byte's contribution as `byte << (idx*8)` and OR them.
+        // For negative source the top byte produces a high-bit-set
+        // i64 whose signed representation is already correct; no
+        // sign-correction needed thanks to two's complement.
+        if (b == 211) {
+            let b7: int = c.Read()
+            let b6: int = c.Read()
+            let b5: int = c.Read()
+            let b4: int = c.Read()
+            let b3: int = c.Read()
+            let b2: int = c.Read()
+            let b1: int = c.Read()
+            let b0: int = c.Read()
+            let raw: int = (b7 << 56) | (b6 << 48) | (b5 << 40) | (b4 << 32) | (b3 << 24) | (b2 << 16) | (b1 << 8) | b0
+            let v = new JsonValue()
+            v.SetInt(raw)
             return v
         }
         // str 8 / 16

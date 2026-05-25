@@ -749,6 +749,7 @@ static void Amalgame_Compiler_MsgPack_EncodeString(code_string s, AmalgameList* 
 static void Amalgame_Compiler_MsgPack_EncodeArrayHeader(i64 n, AmalgameList* out);
 static void Amalgame_Compiler_MsgPack_EncodeMapHeader(i64 n, AmalgameList* out);
 static i64 Amalgame_Compiler_MsgPack_ByteOf(i64 v, i64 byteIdx);
+static i64 Amalgame_Compiler_MsgPack_ByteOfI64(i64 v, i64 byteIdx);
 static i64 Amalgame_Compiler_MsgPack_Pow256(i64 n);
 static i64 Amalgame_Compiler_MsgPack_ByteOfChar(code_string c);
 static code_string Amalgame_Compiler_MsgPack_AsciiTable();
@@ -7647,7 +7648,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.53";
+    return "0.8.54";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -24150,6 +24151,7 @@ static void Amalgame_Compiler_MsgPack_EncodeString(code_string s, AmalgameList* 
 static void Amalgame_Compiler_MsgPack_EncodeArrayHeader(i64 n, AmalgameList* out);
 static void Amalgame_Compiler_MsgPack_EncodeMapHeader(i64 n, AmalgameList* out);
 static i64 Amalgame_Compiler_MsgPack_ByteOf(i64 v, i64 byteIdx);
+static i64 Amalgame_Compiler_MsgPack_ByteOfI64(i64 v, i64 byteIdx);
 static i64 Amalgame_Compiler_MsgPack_Pow256(i64 n);
 static i64 Amalgame_Compiler_MsgPack_ByteOfChar(code_string c);
 static code_string Amalgame_Compiler_MsgPack_AsciiTable();
@@ -24296,372 +24298,414 @@ static void Amalgame_Compiler_MsgPack_EncodeInt(i64 v, AmalgameList* out) {
         #line 148 "./src/stdlib/msgpack.am"
         return;
     }
-    #line 151 "./src/stdlib/msgpack.am"
-    AmalgameList_add(out, (void*)(intptr_t)(210));
-    #line 152 "./src/stdlib/msgpack.am"
-    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 3)));
     #line 153 "./src/stdlib/msgpack.am"
-    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 2)));
+    AmalgameList_add(out, (void*)(intptr_t)(211));
     #line 154 "./src/stdlib/msgpack.am"
-    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 1)));
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 7)));
     #line 155 "./src/stdlib/msgpack.am"
-    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOf(v, 0)));
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 6)));
+    #line 156 "./src/stdlib/msgpack.am"
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 5)));
+    #line 157 "./src/stdlib/msgpack.am"
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 4)));
+    #line 158 "./src/stdlib/msgpack.am"
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 3)));
+    #line 159 "./src/stdlib/msgpack.am"
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 2)));
+    #line 160 "./src/stdlib/msgpack.am"
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 1)));
+    #line 161 "./src/stdlib/msgpack.am"
+    AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfI64(v, 0)));
 }
 
 static void Amalgame_Compiler_MsgPack_EncodeString(code_string s, AmalgameList* out) {
-    #line 159 "./src/stdlib/msgpack.am"
+    #line 165 "./src/stdlib/msgpack.am"
     i64 n = String_Length(s);
-    #line 160 "./src/stdlib/msgpack.am"
+    #line 166 "./src/stdlib/msgpack.am"
     if (n <= 31) {
-        #line 161 "./src/stdlib/msgpack.am"
+        #line 167 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(160 + n));
     } else if (n <= 255) {
-        #line 163 "./src/stdlib/msgpack.am"
+        #line 169 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(217));
-        #line 164 "./src/stdlib/msgpack.am"
+        #line 170 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(n));
     } else if (n <= 65535) {
-        #line 167 "./src/stdlib/msgpack.am"
+        #line 173 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(218));
-        #line 168 "./src/stdlib/msgpack.am"
+        #line 174 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)((n / 256) % 256));
-        #line 169 "./src/stdlib/msgpack.am"
+        #line 175 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(n % 256));
     } else {
-        #line 172 "./src/stdlib/msgpack.am"
+        #line 178 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(218));
-        #line 173 "./src/stdlib/msgpack.am"
+        #line 179 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(255));
-        #line 174 "./src/stdlib/msgpack.am"
+        #line 180 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(255));
     }
-    #line 176 "./src/stdlib/msgpack.am"
+    #line 182 "./src/stdlib/msgpack.am"
     i64 cap = n;
-    #line 177 "./src/stdlib/msgpack.am"
+    #line 183 "./src/stdlib/msgpack.am"
     if (cap > 65535) {
         cap = 65535;
     }
-    #line 178 "./src/stdlib/msgpack.am"
+    #line 184 "./src/stdlib/msgpack.am"
     for (i64 i = 0; i < cap; i++) {
-        #line 179 "./src/stdlib/msgpack.am"
+        #line 185 "./src/stdlib/msgpack.am"
         code_string ch = String_Substring(s, i, 1);
-        #line 180 "./src/stdlib/msgpack.am"
+        #line 186 "./src/stdlib/msgpack.am"
         AmalgameList_add(out, (void*)(intptr_t)(Amalgame_Compiler_MsgPack_ByteOfChar(ch)));
     }
 }
 
 static void Amalgame_Compiler_MsgPack_EncodeArrayHeader(i64 n, AmalgameList* out) {
-    #line 185 "./src/stdlib/msgpack.am"
+    #line 191 "./src/stdlib/msgpack.am"
     if (n <= 15) {
-        #line 186 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)(144 + n));
-        #line 187 "./src/stdlib/msgpack.am"
-        return;
-    }
-    #line 189 "./src/stdlib/msgpack.am"
-    if (n <= 65535) {
-        #line 190 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)(220));
-        #line 191 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)((n / 256) % 256));
         #line 192 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+        AmalgameList_add(out, (void*)(intptr_t)(144 + n));
         #line 193 "./src/stdlib/msgpack.am"
         return;
     }
-    #line 196 "./src/stdlib/msgpack.am"
+    #line 195 "./src/stdlib/msgpack.am"
+    if (n <= 65535) {
+        #line 196 "./src/stdlib/msgpack.am"
+        AmalgameList_add(out, (void*)(intptr_t)(220));
+        #line 197 "./src/stdlib/msgpack.am"
+        AmalgameList_add(out, (void*)(intptr_t)((n / 256) % 256));
+        #line 198 "./src/stdlib/msgpack.am"
+        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+        #line 199 "./src/stdlib/msgpack.am"
+        return;
+    }
+    #line 202 "./src/stdlib/msgpack.am"
     AmalgameList_add(out, (void*)(intptr_t)(220));
-    #line 197 "./src/stdlib/msgpack.am"
+    #line 203 "./src/stdlib/msgpack.am"
     AmalgameList_add(out, (void*)(intptr_t)(255));
-    #line 198 "./src/stdlib/msgpack.am"
+    #line 204 "./src/stdlib/msgpack.am"
     AmalgameList_add(out, (void*)(intptr_t)(255));
 }
 
 static void Amalgame_Compiler_MsgPack_EncodeMapHeader(i64 n, AmalgameList* out) {
-    #line 202 "./src/stdlib/msgpack.am"
+    #line 208 "./src/stdlib/msgpack.am"
     if (n <= 15) {
-        #line 203 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)(128 + n));
-        #line 204 "./src/stdlib/msgpack.am"
-        return;
-    }
-    #line 206 "./src/stdlib/msgpack.am"
-    if (n <= 65535) {
-        #line 207 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)(222));
-        #line 208 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)((n / 256) % 256));
         #line 209 "./src/stdlib/msgpack.am"
-        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+        AmalgameList_add(out, (void*)(intptr_t)(128 + n));
         #line 210 "./src/stdlib/msgpack.am"
         return;
     }
     #line 212 "./src/stdlib/msgpack.am"
+    if (n <= 65535) {
+        #line 213 "./src/stdlib/msgpack.am"
+        AmalgameList_add(out, (void*)(intptr_t)(222));
+        #line 214 "./src/stdlib/msgpack.am"
+        AmalgameList_add(out, (void*)(intptr_t)((n / 256) % 256));
+        #line 215 "./src/stdlib/msgpack.am"
+        AmalgameList_add(out, (void*)(intptr_t)(n % 256));
+        #line 216 "./src/stdlib/msgpack.am"
+        return;
+    }
+    #line 218 "./src/stdlib/msgpack.am"
     AmalgameList_add(out, (void*)(intptr_t)(222));
-    #line 213 "./src/stdlib/msgpack.am"
+    #line 219 "./src/stdlib/msgpack.am"
     AmalgameList_add(out, (void*)(intptr_t)(255));
-    #line 214 "./src/stdlib/msgpack.am"
+    #line 220 "./src/stdlib/msgpack.am"
     AmalgameList_add(out, (void*)(intptr_t)(255));
 }
 
 static i64 Amalgame_Compiler_MsgPack_ByteOf(i64 v, i64 byteIdx) {
-    #line 223 "./src/stdlib/msgpack.am"
+    #line 229 "./src/stdlib/msgpack.am"
     i64 shifted = v / Amalgame_Compiler_MsgPack_Pow256(byteIdx);
-    #line 224 "./src/stdlib/msgpack.am"
+    #line 230 "./src/stdlib/msgpack.am"
     i64 withOffset = shifted + 16777216;
-    #line 225 "./src/stdlib/msgpack.am"
+    #line 231 "./src/stdlib/msgpack.am"
     return withOffset % 256;
 }
 
+static i64 Amalgame_Compiler_MsgPack_ByteOfI64(i64 v, i64 byteIdx) {
+    #line 239 "./src/stdlib/msgpack.am"
+    i64 shifted = v >> (byteIdx * 8);
+    #line 240 "./src/stdlib/msgpack.am"
+    return shifted & 255;
+}
+
 static i64 Amalgame_Compiler_MsgPack_Pow256(i64 n) {
-    #line 229 "./src/stdlib/msgpack.am"
+    #line 244 "./src/stdlib/msgpack.am"
     i64 r = 1;
-    #line 230 "./src/stdlib/msgpack.am"
+    #line 245 "./src/stdlib/msgpack.am"
     i64 i = 0;
-    #line 231 "./src/stdlib/msgpack.am"
+    #line 246 "./src/stdlib/msgpack.am"
     while (i < n) {
         r = (r * 256);
         i = (i + 1);
     }
-    #line 232 "./src/stdlib/msgpack.am"
+    #line 247 "./src/stdlib/msgpack.am"
     return r;
 }
 
 static i64 Amalgame_Compiler_MsgPack_ByteOfChar(code_string c) {
-    #line 240 "./src/stdlib/msgpack.am"
+    #line 255 "./src/stdlib/msgpack.am"
     code_string table = Amalgame_Compiler_MsgPack_AsciiTable();
-    #line 241 "./src/stdlib/msgpack.am"
+    #line 256 "./src/stdlib/msgpack.am"
     i64 idx = String_IndexOf(table, c);
-    #line 242 "./src/stdlib/msgpack.am"
+    #line 257 "./src/stdlib/msgpack.am"
     if (idx < 0) {
         return 63;
     }
-    #line 243 "./src/stdlib/msgpack.am"
+    #line 258 "./src/stdlib/msgpack.am"
     return idx + 32;
 }
 
 static code_string Amalgame_Compiler_MsgPack_AsciiTable() {
-    #line 252 "./src/stdlib/msgpack.am"
+    #line 267 "./src/stdlib/msgpack.am"
     return " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_DecodeJson(AmalgameList* bytes) {
-    #line 258 "./src/stdlib/msgpack.am"
+    #line 273 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_MsgPackCursor* cursor = Amalgame_Compiler_MsgPackCursor_new(bytes);
-    #line 259 "./src/stdlib/msgpack.am"
+    #line 274 "./src/stdlib/msgpack.am"
     return Amalgame_Compiler_MsgPack_DecodeOne(cursor);
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_DecodeOne(Amalgame_Compiler_MsgPackCursor* c) {
-    #line 263 "./src/stdlib/msgpack.am"
+    #line 278 "./src/stdlib/msgpack.am"
     if (Amalgame_Compiler_MsgPackCursor_AtEnd(c)) {
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 264 "./src/stdlib/msgpack.am"
+    #line 279 "./src/stdlib/msgpack.am"
     i64 b = Amalgame_Compiler_MsgPackCursor_Read(c);
-    #line 266 "./src/stdlib/msgpack.am"
+    #line 281 "./src/stdlib/msgpack.am"
     if (b == 192) {
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 268 "./src/stdlib/msgpack.am"
+    #line 283 "./src/stdlib/msgpack.am"
     if (b == 194) {
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
         Amalgame_Compiler_JsonValue_SetBool(v, 0);
         return v;
     }
-    #line 269 "./src/stdlib/msgpack.am"
+    #line 284 "./src/stdlib/msgpack.am"
     if (b == 195) {
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
         Amalgame_Compiler_JsonValue_SetBool(v, 1);
         return v;
     }
-    #line 271 "./src/stdlib/msgpack.am"
+    #line 286 "./src/stdlib/msgpack.am"
     if ((b >= 0) && (b <= 127)) {
-        #line 272 "./src/stdlib/msgpack.am"
+        #line 287 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
         Amalgame_Compiler_JsonValue_SetInt(v, b);
         return v;
     }
-    #line 275 "./src/stdlib/msgpack.am"
+    #line 290 "./src/stdlib/msgpack.am"
     if (b >= 224) {
-        #line 276 "./src/stdlib/msgpack.am"
+        #line 291 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
         Amalgame_Compiler_JsonValue_SetInt(v, b - 256);
         return v;
     }
-    #line 279 "./src/stdlib/msgpack.am"
+    #line 294 "./src/stdlib/msgpack.am"
     if ((b >= 160) && (b <= 191)) {
-        #line 280 "./src/stdlib/msgpack.am"
+        #line 295 "./src/stdlib/msgpack.am"
         i64 n = b - 160;
-        #line 281 "./src/stdlib/msgpack.am"
+        #line 296 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadStrInto(c, n);
     }
-    #line 284 "./src/stdlib/msgpack.am"
+    #line 299 "./src/stdlib/msgpack.am"
     if ((b >= 144) && (b <= 159)) {
-        #line 285 "./src/stdlib/msgpack.am"
+        #line 300 "./src/stdlib/msgpack.am"
         i64 n = b - 144;
-        #line 286 "./src/stdlib/msgpack.am"
+        #line 301 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadArrayInto(c, n);
     }
-    #line 289 "./src/stdlib/msgpack.am"
+    #line 304 "./src/stdlib/msgpack.am"
     if ((b >= 128) && (b <= 143)) {
-        #line 290 "./src/stdlib/msgpack.am"
+        #line 305 "./src/stdlib/msgpack.am"
         i64 n = b - 128;
-        #line 291 "./src/stdlib/msgpack.am"
+        #line 306 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadMapInto(c, n);
     }
-    #line 294 "./src/stdlib/msgpack.am"
+    #line 309 "./src/stdlib/msgpack.am"
     if (b == 208) {
-        #line 295 "./src/stdlib/msgpack.am"
+        #line 310 "./src/stdlib/msgpack.am"
         i64 raw = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 296 "./src/stdlib/msgpack.am"
+        #line 311 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-        #line 297 "./src/stdlib/msgpack.am"
+        #line 312 "./src/stdlib/msgpack.am"
         if (raw >= 128) {
             Amalgame_Compiler_JsonValue_SetInt(v, raw - 256);
         } else {
             Amalgame_Compiler_JsonValue_SetInt(v, raw);
         }
-        #line 298 "./src/stdlib/msgpack.am"
+        #line 313 "./src/stdlib/msgpack.am"
         return v;
     }
-    #line 300 "./src/stdlib/msgpack.am"
+    #line 315 "./src/stdlib/msgpack.am"
     if (b == 209) {
-        #line 301 "./src/stdlib/msgpack.am"
+        #line 316 "./src/stdlib/msgpack.am"
         i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 302 "./src/stdlib/msgpack.am"
+        #line 317 "./src/stdlib/msgpack.am"
         i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 303 "./src/stdlib/msgpack.am"
+        #line 318 "./src/stdlib/msgpack.am"
         i64 raw = (hi * 256) + lo;
-        #line 304 "./src/stdlib/msgpack.am"
+        #line 319 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-        #line 305 "./src/stdlib/msgpack.am"
+        #line 320 "./src/stdlib/msgpack.am"
         if (raw >= 32768) {
             Amalgame_Compiler_JsonValue_SetInt(v, raw - 65536);
         } else {
             Amalgame_Compiler_JsonValue_SetInt(v, raw);
         }
-        #line 306 "./src/stdlib/msgpack.am"
+        #line 321 "./src/stdlib/msgpack.am"
         return v;
     }
-    #line 308 "./src/stdlib/msgpack.am"
+    #line 323 "./src/stdlib/msgpack.am"
     if (b == 210) {
-        #line 309 "./src/stdlib/msgpack.am"
+        #line 324 "./src/stdlib/msgpack.am"
         i64 b3 = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 310 "./src/stdlib/msgpack.am"
+        #line 325 "./src/stdlib/msgpack.am"
         i64 b2 = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 311 "./src/stdlib/msgpack.am"
+        #line 326 "./src/stdlib/msgpack.am"
         i64 b1 = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 312 "./src/stdlib/msgpack.am"
+        #line 327 "./src/stdlib/msgpack.am"
         i64 b0 = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 313 "./src/stdlib/msgpack.am"
+        #line 328 "./src/stdlib/msgpack.am"
         i64 raw = (((b3 * 16777216) + (b2 * 65536)) + (b1 * 256)) + b0;
-        #line 314 "./src/stdlib/msgpack.am"
+        #line 329 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-        #line 315 "./src/stdlib/msgpack.am"
+        #line 330 "./src/stdlib/msgpack.am"
         if (raw >= 2147483648) {
             Amalgame_Compiler_JsonValue_SetInt(v, raw - 4294967296);
         } else {
             Amalgame_Compiler_JsonValue_SetInt(v, raw);
         }
-        #line 316 "./src/stdlib/msgpack.am"
+        #line 331 "./src/stdlib/msgpack.am"
         return v;
     }
-    #line 319 "./src/stdlib/msgpack.am"
+    #line 338 "./src/stdlib/msgpack.am"
+    if (b == 211) {
+        #line 339 "./src/stdlib/msgpack.am"
+        i64 b7 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 340 "./src/stdlib/msgpack.am"
+        i64 b6 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 341 "./src/stdlib/msgpack.am"
+        i64 b5 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 342 "./src/stdlib/msgpack.am"
+        i64 b4 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 343 "./src/stdlib/msgpack.am"
+        i64 b3 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 344 "./src/stdlib/msgpack.am"
+        i64 b2 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 345 "./src/stdlib/msgpack.am"
+        i64 b1 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 346 "./src/stdlib/msgpack.am"
+        i64 b0 = Amalgame_Compiler_MsgPackCursor_Read(c);
+        #line 347 "./src/stdlib/msgpack.am"
+        i64 raw = (((((((b7 << 56) | (b6 << 48)) | (b5 << 40)) | (b4 << 32)) | (b3 << 24)) | (b2 << 16)) | (b1 << 8)) | b0;
+        #line 348 "./src/stdlib/msgpack.am"
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        #line 349 "./src/stdlib/msgpack.am"
+        Amalgame_Compiler_JsonValue_SetInt(v, raw);
+        #line 350 "./src/stdlib/msgpack.am"
+        return v;
+    }
+    #line 353 "./src/stdlib/msgpack.am"
     if (b == 217) {
-        #line 320 "./src/stdlib/msgpack.am"
+        #line 354 "./src/stdlib/msgpack.am"
         i64 n = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 321 "./src/stdlib/msgpack.am"
+        #line 355 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadStrInto(c, n);
     }
-    #line 323 "./src/stdlib/msgpack.am"
+    #line 357 "./src/stdlib/msgpack.am"
     if (b == 218) {
-        #line 324 "./src/stdlib/msgpack.am"
+        #line 358 "./src/stdlib/msgpack.am"
         i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 325 "./src/stdlib/msgpack.am"
+        #line 359 "./src/stdlib/msgpack.am"
         i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 326 "./src/stdlib/msgpack.am"
+        #line 360 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadStrInto(c, (hi * 256) + lo);
     }
-    #line 329 "./src/stdlib/msgpack.am"
+    #line 363 "./src/stdlib/msgpack.am"
     if (b == 220) {
-        #line 330 "./src/stdlib/msgpack.am"
+        #line 364 "./src/stdlib/msgpack.am"
         i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 331 "./src/stdlib/msgpack.am"
+        #line 365 "./src/stdlib/msgpack.am"
         i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 332 "./src/stdlib/msgpack.am"
+        #line 366 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadArrayInto(c, (hi * 256) + lo);
     }
-    #line 335 "./src/stdlib/msgpack.am"
+    #line 369 "./src/stdlib/msgpack.am"
     if (b == 222) {
-        #line 336 "./src/stdlib/msgpack.am"
+        #line 370 "./src/stdlib/msgpack.am"
         i64 hi = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 337 "./src/stdlib/msgpack.am"
+        #line 371 "./src/stdlib/msgpack.am"
         i64 lo = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 338 "./src/stdlib/msgpack.am"
+        #line 372 "./src/stdlib/msgpack.am"
         return Amalgame_Compiler_MsgPack_ReadMapInto(c, (hi * 256) + lo);
     }
-    #line 341 "./src/stdlib/msgpack.am"
+    #line 375 "./src/stdlib/msgpack.am"
     return Amalgame_Compiler_JsonValue_new();
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadStrInto(Amalgame_Compiler_MsgPackCursor* c, i64 n) {
-    #line 345 "./src/stdlib/msgpack.am"
+    #line 379 "./src/stdlib/msgpack.am"
     code_string table = Amalgame_Compiler_MsgPack_AsciiTable();
-    #line 346 "./src/stdlib/msgpack.am"
+    #line 380 "./src/stdlib/msgpack.am"
     code_string s = "";
-    #line 347 "./src/stdlib/msgpack.am"
+    #line 381 "./src/stdlib/msgpack.am"
     for (i64 i = 0; i < n; i++) {
-        #line 348 "./src/stdlib/msgpack.am"
+        #line 382 "./src/stdlib/msgpack.am"
         i64 b = Amalgame_Compiler_MsgPackCursor_Read(c);
-        #line 349 "./src/stdlib/msgpack.am"
+        #line 383 "./src/stdlib/msgpack.am"
         if ((b >= 32) && (b <= 126)) {
-            #line 350 "./src/stdlib/msgpack.am"
+            #line 384 "./src/stdlib/msgpack.am"
             s = (code_string_concat(s, String_Substring(table, b - 32, 1)));
         } else {
-            #line 352 "./src/stdlib/msgpack.am"
+            #line 386 "./src/stdlib/msgpack.am"
             s = (code_string_concat(s, "?"));
         }
     }
-    #line 355 "./src/stdlib/msgpack.am"
+    #line 389 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 356 "./src/stdlib/msgpack.am"
+    #line 390 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_JsonValue_SetString(v, s);
-    #line 357 "./src/stdlib/msgpack.am"
+    #line 391 "./src/stdlib/msgpack.am"
     return v;
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadArrayInto(Amalgame_Compiler_MsgPackCursor* c, i64 n) {
-    #line 361 "./src/stdlib/msgpack.am"
+    #line 395 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 362 "./src/stdlib/msgpack.am"
+    #line 396 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_JsonValue_SetArray(v, AmalgameList_new());
-    #line 363 "./src/stdlib/msgpack.am"
+    #line 397 "./src/stdlib/msgpack.am"
     for (i64 i = 0; i < n; i++) {
-        #line 364 "./src/stdlib/msgpack.am"
+        #line 398 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* elem = Amalgame_Compiler_MsgPack_DecodeOne(c);
-        #line 365 "./src/stdlib/msgpack.am"
+        #line 399 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue_AppendItem(v, elem);
     }
-    #line 367 "./src/stdlib/msgpack.am"
+    #line 401 "./src/stdlib/msgpack.am"
     return v;
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_MsgPack_ReadMapInto(Amalgame_Compiler_MsgPackCursor* c, i64 n) {
-    #line 371 "./src/stdlib/msgpack.am"
+    #line 405 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 372 "./src/stdlib/msgpack.am"
+    #line 406 "./src/stdlib/msgpack.am"
     Amalgame_Compiler_JsonValue_SetObject(v, AmalgameList_new(), AmalgameList_new());
-    #line 373 "./src/stdlib/msgpack.am"
+    #line 407 "./src/stdlib/msgpack.am"
     for (i64 i = 0; i < n; i++) {
-        #line 374 "./src/stdlib/msgpack.am"
+        #line 408 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* k = Amalgame_Compiler_MsgPack_DecodeOne(c);
-        #line 375 "./src/stdlib/msgpack.am"
+        #line 409 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue* val = Amalgame_Compiler_MsgPack_DecodeOne(c);
-        #line 376 "./src/stdlib/msgpack.am"
+        #line 410 "./src/stdlib/msgpack.am"
         Amalgame_Compiler_JsonValue_AppendEntry(v, Amalgame_Compiler_JsonValue_AsString(k), val);
     }
-    #line 378 "./src/stdlib/msgpack.am"
+    #line 412 "./src/stdlib/msgpack.am"
     return v;
 }
 
@@ -24678,12 +24722,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "3872acff";
+    return "717b97ee";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-25T06:32:40Z";
+    return "2026-05-25T06:50:18Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
