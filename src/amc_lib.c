@@ -7648,7 +7648,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.54";
+    return "0.8.55";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -8328,207 +8328,219 @@ Amalgame_Compiler_CGen* Amalgame_Compiler_CGen_new() {
     #line 247 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpConn", "RemoteIp", "code_string");
     #line 248 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpConn", "Fd", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpConn", "RemotePort", "i64");
     #line 249 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Fd", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpConn", "Connected", "code_bool");
     #line 250 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Port", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpConn", "Fd", "i64");
+    #line 251 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Fd", "i64");
     #line 252 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpSocket", "BoundPort", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Port", "i64");
     #line 253 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpSocket", "Bound", "code_bool");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpServer", "Listening", "code_bool");
     #line 254 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "Data", "code_string");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpClient", "Connected", "code_bool");
     #line 255 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "DataLen", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpClient", "RemoteHost", "code_string");
     #line 256 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "FromIp", "code_string");
-    #line 257 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "FromPort", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameTcpClient", "RemotePort", "i64");
     #line 258 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Exit", "i64");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpSocket", "BoundPort", "i64");
     #line 259 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Stdout", "code_string");
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpSocket", "Bound", "code_bool");
     #line 260 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "Data", "code_string");
+    #line 261 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "DataLen", "i64");
+    #line 262 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "FromIp", "code_string");
+    #line 263 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameUdpDatagram", "FromPort", "i64");
+    #line 264 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Exit", "i64");
+    #line 265 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Stdout", "code_string");
+    #line 266 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_FieldTypeSet(self, "AmalgameProcessResult", "Stderr", "code_string");
     return self;
 }
 
 code_string Amalgame_Compiler_CGen_Generate(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 264 "./src/generator/c_gen.am"
+    #line 270 "./src/generator/c_gen.am"
     code_string ns = prog->Str;
-    #line 265 "./src/generator/c_gen.am"
+    #line 271 "./src/generator/c_gen.am"
     if (String_Length(ns) > 0) {
-        #line 266 "./src/generator/c_gen.am"
+        #line 272 "./src/generator/c_gen.am"
         self->NsPrefix = String_Replace(ns, ".", "_");
     }
-    #line 272 "./src/generator/c_gen.am"
+    #line 278 "./src/generator/c_gen.am"
     if (!self->ImportsFiltered) {
-        #line 273 "./src/generator/c_gen.am"
+        #line 279 "./src/generator/c_gen.am"
         AmalgameList* autoImports = AmalgameList_new();
-        #line 274 "./src/generator/c_gen.am"
+        #line 280 "./src/generator/c_gen.am"
         i64 ai = AmalgameList_count(prog->Args);
-        #line 275 "./src/generator/c_gen.am"
+        #line 281 "./src/generator/c_gen.am"
         for (i64 ii = 0; ii < ai; ii++) {
-            #line 276 "./src/generator/c_gen.am"
+            #line 282 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* impNode = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Args, ii);
-            #line 277 "./src/generator/c_gen.am"
+            #line 283 "./src/generator/c_gen.am"
             AmalgameList_add(autoImports, (void*)(intptr_t)(impNode->Str));
         }
-        #line 279 "./src/generator/c_gen.am"
+        #line 285 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_SetImportedNamespaces(self, autoImports);
     }
-    #line 281 "./src/generator/c_gen.am"
+    #line 287 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_EmitHeader(self);
-    #line 282 "./src/generator/c_gen.am"
+    #line 288 "./src/generator/c_gen.am"
     i64 decls = AmalgameList_count(prog->Children);
-    #line 283 "./src/generator/c_gen.am"
+    #line 289 "./src/generator/c_gen.am"
     for (i64 i = 0; i < decls; i++) {
-        #line 284 "./src/generator/c_gen.am"
+        #line 290 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 285 "./src/generator/c_gen.am"
+        #line 291 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitForwardDecl(self, decl);
     }
-    #line 287 "./src/generator/c_gen.am"
+    #line 293 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
-    #line 290 "./src/generator/c_gen.am"
+    #line 296 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_EmitConstructorForwards(self, prog);
-    #line 291 "./src/generator/c_gen.am"
+    #line 297 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
-    #line 292 "./src/generator/c_gen.am"
+    #line 298 "./src/generator/c_gen.am"
     for (i64 j = 0; j < decls; j++) {
-        #line 293 "./src/generator/c_gen.am"
+        #line 299 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, j);
-        #line 294 "./src/generator/c_gen.am"
+        #line 300 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitDecl(self, decl);
     }
-    #line 296 "./src/generator/c_gen.am"
+    #line 302 "./src/generator/c_gen.am"
     return Amalgame_Compiler_Emitter_GetOutput(self->Out);
 }
 
 void Amalgame_Compiler_CGen_SetStreaming(Amalgame_Compiler_CGen* self, code_bool v) {
-    #line 301 "./src/generator/c_gen.am"
+    #line 307 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_SetStreaming(self->Out, v);
 }
 
 void Amalgame_Compiler_CGen_BeginMulti(Amalgame_Compiler_CGen* self, code_string ns) {
-    #line 305 "./src/generator/c_gen.am"
+    #line 311 "./src/generator/c_gen.am"
     if (String_Length(ns) > 0) {
-        #line 306 "./src/generator/c_gen.am"
+        #line 312 "./src/generator/c_gen.am"
         self->NsPrefix = String_Replace(ns, ".", "_");
     }
-    #line 308 "./src/generator/c_gen.am"
+    #line 314 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_EmitHeader(self);
-    #line 321 "./src/generator/c_gen.am"
+    #line 327 "./src/generator/c_gen.am"
     i64 pc = AmalgameList_count(self->PkgClasses);
-    #line 322 "./src/generator/c_gen.am"
+    #line 328 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pc; pi++) {
-        #line 323 "./src/generator/c_gen.am"
+        #line 329 "./src/generator/c_gen.am"
         code_string cname = (code_string)AmalgameList_get(self->PkgClasses, pi);
-        #line 324 "./src/generator/c_gen.am"
+        #line 330 "./src/generator/c_gen.am"
         code_string cns = (code_string)AmalgameList_get(self->PkgClassNs, pi);
-        #line 325 "./src/generator/c_gen.am"
+        #line 331 "./src/generator/c_gen.am"
         code_string cnsPrefix = String_Replace(cns, ".", "_");
-        #line 326 "./src/generator/c_gen.am"
+        #line 332 "./src/generator/c_gen.am"
         if (code_string_equals(cnsPrefix, self->NsPrefix)) {
             continue;
         }
-        #line 333 "./src/generator/c_gen.am"
+        #line 339 "./src/generator/c_gen.am"
         if (self->ImportsFiltered) {
-            #line 334 "./src/generator/c_gen.am"
+            #line 340 "./src/generator/c_gen.am"
             if (!Amalgame_Compiler_CGen_NamespaceImported(self, cns)) {
                 continue;
             }
         }
-        #line 336 "./src/generator/c_gen.am"
+        #line 342 "./src/generator/c_gen.am"
         code_string mangled = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, cname);
-        #line 337 "./src/generator/c_gen.am"
+        #line 343 "./src/generator/c_gen.am"
         if (String_Length(mangled) > 0) {
-            #line 338 "./src/generator/c_gen.am"
+            #line 344 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef struct _", mangled)), " ")), mangled)), "; /* pkg-class */"));
         }
     }
 }
 
 void Amalgame_Compiler_CGen_AddFilePass1(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 344 "./src/generator/c_gen.am"
+    #line 350 "./src/generator/c_gen.am"
     i64 decls = AmalgameList_count(prog->Children);
-    #line 345 "./src/generator/c_gen.am"
+    #line 351 "./src/generator/c_gen.am"
     for (i64 i = 0; i < decls; i++) {
-        #line 346 "./src/generator/c_gen.am"
+        #line 352 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 347 "./src/generator/c_gen.am"
+        #line 353 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitForwardDecl(self, decl);
     }
 }
 
 void Amalgame_Compiler_CGen_EmitSeparator(Amalgame_Compiler_CGen* self) {
-    #line 352 "./src/generator/c_gen.am"
+    #line 358 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
 void Amalgame_Compiler_CGen_AddFilePass2(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog, code_string sourcePath) {
-    #line 361 "./src/generator/c_gen.am"
+    #line 367 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_AddFilePass2Forwards(self, prog);
-    #line 362 "./src/generator/c_gen.am"
+    #line 368 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_AddFilePass2Bodies(self, prog, sourcePath);
 }
 
 void Amalgame_Compiler_CGen_AddFilePass2Forwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 372 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_EmitConstructorForwards(self, prog);
-    #line 373 "./src/generator/c_gen.am"
-    Amalgame_Compiler_CGen_EmitMethodForwards(self, prog);
     #line 378 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_EmitConstructorForwards(self, prog);
+    #line 379 "./src/generator/c_gen.am"
+    Amalgame_Compiler_CGen_EmitMethodForwards(self, prog);
+    #line 384 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_EmitLambdaForwards(self, prog);
 }
 
 void Amalgame_Compiler_CGen_AddFilePass2Bodies(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog, code_string sourcePath) {
-    #line 389 "./src/generator/c_gen.am"
+    #line 395 "./src/generator/c_gen.am"
     self->CurrentSource = sourcePath;
-    #line 390 "./src/generator/c_gen.am"
+    #line 396 "./src/generator/c_gen.am"
     self->LastLineEmitted = -1;
-    #line 392 "./src/generator/c_gen.am"
+    #line 398 "./src/generator/c_gen.am"
     i64 decls = AmalgameList_count(prog->Children);
-    #line 393 "./src/generator/c_gen.am"
+    #line 399 "./src/generator/c_gen.am"
     for (i64 j = 0; j < decls; j++) {
-        #line 394 "./src/generator/c_gen.am"
+        #line 400 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, j);
-        #line 395 "./src/generator/c_gen.am"
+        #line 401 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitDecl(self, decl);
     }
-    #line 400 "./src/generator/c_gen.am"
+    #line 406 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_EmitLambdaBodies(self, prog);
 }
 
 static void Amalgame_Compiler_CGen_EmitMethodForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 408 "./src/generator/c_gen.am"
+    #line 414 "./src/generator/c_gen.am"
     i64 decls = AmalgameList_count(prog->Children);
-    #line 409 "./src/generator/c_gen.am"
+    #line 415 "./src/generator/c_gen.am"
     for (i64 i = 0; i < decls; i++) {
-        #line 410 "./src/generator/c_gen.am"
+        #line 416 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 411 "./src/generator/c_gen.am"
+        #line 417 "./src/generator/c_gen.am"
         if (decl->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-            #line 412 "./src/generator/c_gen.am"
+            #line 418 "./src/generator/c_gen.am"
             code_string cname = Amalgame_Compiler_CGen_SymName(self, decl->Name);
-            #line 413 "./src/generator/c_gen.am"
+            #line 419 "./src/generator/c_gen.am"
             i64 members = AmalgameList_count(decl->Children);
-            #line 414 "./src/generator/c_gen.am"
+            #line 420 "./src/generator/c_gen.am"
             for (i64 j = 0; j < members; j++) {
-                #line 415 "./src/generator/c_gen.am"
+                #line 421 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, j);
-                #line 416 "./src/generator/c_gen.am"
+                #line 422 "./src/generator/c_gen.am"
                 if ((m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (!code_string_equals(m->Name, decl->Name))) {
-                    #line 417 "./src/generator/c_gen.am"
+                    #line 423 "./src/generator/c_gen.am"
                     code_bool isPublic = m->Flag;
-                    #line 418 "./src/generator/c_gen.am"
+                    #line 424 "./src/generator/c_gen.am"
                     code_string prefix = "";
-                    #line 419 "./src/generator/c_gen.am"
+                    #line 425 "./src/generator/c_gen.am"
                     if (!isPublic) {
                         prefix = "static ";
                     }
-                    #line 420 "./src/generator/c_gen.am"
+                    #line 426 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat(prefix, Amalgame_Compiler_CGen_MethodSig(self, m, cname))), ";"));
                 }
             }
@@ -8537,56 +8549,56 @@ static void Amalgame_Compiler_CGen_EmitMethodForwards(Amalgame_Compiler_CGen* se
 }
 
 static void Amalgame_Compiler_CGen_EmitConstructorForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 428 "./src/generator/c_gen.am"
+    #line 434 "./src/generator/c_gen.am"
     i64 decls = AmalgameList_count(prog->Children);
-    #line 429 "./src/generator/c_gen.am"
+    #line 435 "./src/generator/c_gen.am"
     for (i64 i = 0; i < decls; i++) {
-        #line 430 "./src/generator/c_gen.am"
+        #line 436 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
-        #line 431 "./src/generator/c_gen.am"
+        #line 437 "./src/generator/c_gen.am"
         if (decl->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-            #line 432 "./src/generator/c_gen.am"
+            #line 438 "./src/generator/c_gen.am"
             code_string name = Amalgame_Compiler_CGen_SymName(self, decl->Name);
-            #line 433 "./src/generator/c_gen.am"
+            #line 439 "./src/generator/c_gen.am"
             code_bool ctorFound = 0;
-            #line 434 "./src/generator/c_gen.am"
+            #line 440 "./src/generator/c_gen.am"
             i64 members = AmalgameList_count(decl->Children);
-            #line 435 "./src/generator/c_gen.am"
+            #line 441 "./src/generator/c_gen.am"
             for (i64 j = 0; j < members; j++) {
-                #line 436 "./src/generator/c_gen.am"
+                #line 442 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, j);
-                #line 437 "./src/generator/c_gen.am"
+                #line 443 "./src/generator/c_gen.am"
                 if ((m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(m->Name, decl->Name))) {
-                    #line 438 "./src/generator/c_gen.am"
+                    #line 444 "./src/generator/c_gen.am"
                     ctorFound = 1;
-                    #line 439 "./src/generator/c_gen.am"
+                    #line 445 "./src/generator/c_gen.am"
                     code_string sig = code_string_concat((code_string_concat((code_string_concat(name, "* ")), name)), "_new(");
-                    #line 440 "./src/generator/c_gen.am"
+                    #line 446 "./src/generator/c_gen.am"
                     i64 pcount = AmalgameList_count(m->Params);
-                    #line 441 "./src/generator/c_gen.am"
+                    #line 447 "./src/generator/c_gen.am"
                     code_bool first = 1;
-                    #line 442 "./src/generator/c_gen.am"
+                    #line 448 "./src/generator/c_gen.am"
                     for (i64 pi = 0; pi < pcount; pi++) {
-                        #line 443 "./src/generator/c_gen.am"
+                        #line 449 "./src/generator/c_gen.am"
                         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
-                        #line 444 "./src/generator/c_gen.am"
+                        #line 450 "./src/generator/c_gen.am"
                         if (!first) {
                             sig = (code_string_concat(sig, ", "));
                         }
-                        #line 445 "./src/generator/c_gen.am"
+                        #line 451 "./src/generator/c_gen.am"
                         sig = (code_string_concat((code_string_concat((code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str))), " ")), p->Name));
-                        #line 446 "./src/generator/c_gen.am"
+                        #line 452 "./src/generator/c_gen.am"
                         first = 0;
                     }
-                    #line 448 "./src/generator/c_gen.am"
+                    #line 454 "./src/generator/c_gen.am"
                     sig = (code_string_concat(sig, ");"));
-                    #line 449 "./src/generator/c_gen.am"
+                    #line 455 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, sig);
                 }
             }
-            #line 455 "./src/generator/c_gen.am"
+            #line 461 "./src/generator/c_gen.am"
             if (!ctorFound) {
-                #line 456 "./src/generator/c_gen.am"
+                #line 462 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(name, "* ")), name)), "_new();"));
             }
         }
@@ -8594,533 +8606,533 @@ static void Amalgame_Compiler_CGen_EmitConstructorForwards(Amalgame_Compiler_CGe
 }
 
 static void Amalgame_Compiler_CGen_EmitLambdaForwards(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* node) {
-    #line 469 "./src/generator/c_gen.am"
+    #line 475 "./src/generator/c_gen.am"
     if (node == NULL) {
         return;
     }
-    #line 470 "./src/generator/c_gen.am"
+    #line 476 "./src/generator/c_gen.am"
     if ((node->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(node->Name, "__lambda__"))) {
-        #line 471 "./src/generator/c_gen.am"
+        #line 477 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitOneLambdaForward(self, node);
     }
-    #line 473 "./src/generator/c_gen.am"
+    #line 479 "./src/generator/c_gen.am"
     if (node->Left != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, node->Left);
     }
-    #line 474 "./src/generator/c_gen.am"
+    #line 480 "./src/generator/c_gen.am"
     if (node->Right != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, node->Right);
     }
-    #line 475 "./src/generator/c_gen.am"
+    #line 481 "./src/generator/c_gen.am"
     if (node->Cond != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, node->Cond);
     }
-    #line 476 "./src/generator/c_gen.am"
+    #line 482 "./src/generator/c_gen.am"
     if (node->Body != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, node->Body);
     }
-    #line 477 "./src/generator/c_gen.am"
+    #line 483 "./src/generator/c_gen.am"
     if (node->Else != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, node->Else);
     }
-    #line 478 "./src/generator/c_gen.am"
+    #line 484 "./src/generator/c_gen.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 479 "./src/generator/c_gen.am"
+    #line 485 "./src/generator/c_gen.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 480 "./src/generator/c_gen.am"
+        #line 486 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i));
     }
-    #line 482 "./src/generator/c_gen.am"
+    #line 488 "./src/generator/c_gen.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 483 "./src/generator/c_gen.am"
+    #line 489 "./src/generator/c_gen.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 484 "./src/generator/c_gen.am"
+        #line 490 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j));
     }
-    #line 486 "./src/generator/c_gen.am"
+    #line 492 "./src/generator/c_gen.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 487 "./src/generator/c_gen.am"
+    #line 493 "./src/generator/c_gen.am"
     for (i64 k = 0; k < an; k++) {
-        #line 488 "./src/generator/c_gen.am"
+        #line 494 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitLambdaForwards(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k));
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitLambdaBodies(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* node) {
-    #line 493 "./src/generator/c_gen.am"
+    #line 499 "./src/generator/c_gen.am"
     if (node == NULL) {
         return;
     }
-    #line 494 "./src/generator/c_gen.am"
+    #line 500 "./src/generator/c_gen.am"
     if ((node->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(node->Name, "__lambda__"))) {
-        #line 495 "./src/generator/c_gen.am"
+        #line 501 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitOneLambdaBody(self, node);
     }
-    #line 497 "./src/generator/c_gen.am"
+    #line 503 "./src/generator/c_gen.am"
     if (node->Left != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, node->Left);
     }
-    #line 498 "./src/generator/c_gen.am"
+    #line 504 "./src/generator/c_gen.am"
     if (node->Right != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, node->Right);
     }
-    #line 499 "./src/generator/c_gen.am"
+    #line 505 "./src/generator/c_gen.am"
     if (node->Cond != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, node->Cond);
     }
-    #line 500 "./src/generator/c_gen.am"
+    #line 506 "./src/generator/c_gen.am"
     if (node->Body != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, node->Body);
     }
-    #line 501 "./src/generator/c_gen.am"
+    #line 507 "./src/generator/c_gen.am"
     if (node->Else != NULL) {
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, node->Else);
     }
-    #line 502 "./src/generator/c_gen.am"
+    #line 508 "./src/generator/c_gen.am"
     i64 cn = AmalgameList_count(node->Children);
-    #line 503 "./src/generator/c_gen.am"
+    #line 509 "./src/generator/c_gen.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 504 "./src/generator/c_gen.am"
+        #line 510 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Children, i));
     }
-    #line 506 "./src/generator/c_gen.am"
+    #line 512 "./src/generator/c_gen.am"
     i64 pn = AmalgameList_count(node->Params);
-    #line 507 "./src/generator/c_gen.am"
+    #line 513 "./src/generator/c_gen.am"
     for (i64 j = 0; j < pn; j++) {
-        #line 508 "./src/generator/c_gen.am"
+        #line 514 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Params, j));
     }
-    #line 510 "./src/generator/c_gen.am"
+    #line 516 "./src/generator/c_gen.am"
     i64 an = AmalgameList_count(node->Args);
-    #line 511 "./src/generator/c_gen.am"
+    #line 517 "./src/generator/c_gen.am"
     for (i64 k = 0; k < an; k++) {
-        #line 512 "./src/generator/c_gen.am"
+        #line 518 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitLambdaBodies(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(node->Args, k));
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitOneLambdaForward(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* lam) {
-    #line 520 "./src/generator/c_gen.am"
-    i64 id = self->LambdaCounter;
-    #line 521 "./src/generator/c_gen.am"
-    self->LambdaCounter = (id + 1);
-    #line 522 "./src/generator/c_gen.am"
-    code_string idStr = String_FromInt(id);
-    #line 523 "./src/generator/c_gen.am"
-    lam->Str2 = idStr;
-    #line 524 "./src/generator/c_gen.am"
-    code_string envName = code_string_concat("LamEnv_", idStr);
-    #line 525 "./src/generator/c_gen.am"
-    code_string fnName = code_string_concat((code_string_concat("lam_", idStr)), "_fn");
     #line 526 "./src/generator/c_gen.am"
-    i64 cn = AmalgameList_count(lam->Args);
+    i64 id = self->LambdaCounter;
     #line 527 "./src/generator/c_gen.am"
-    i64 pn = AmalgameList_count(lam->Params);
+    self->LambdaCounter = (id + 1);
+    #line 528 "./src/generator/c_gen.am"
+    code_string idStr = String_FromInt(id);
+    #line 529 "./src/generator/c_gen.am"
+    lam->Str2 = idStr;
     #line 530 "./src/generator/c_gen.am"
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("typedef struct ", envName)), " {"));
+    code_string envName = code_string_concat("LamEnv_", idStr);
     #line 531 "./src/generator/c_gen.am"
-    Amalgame_Compiler_Emitter_Indent_(self->Out);
+    code_string fnName = code_string_concat((code_string_concat("lam_", idStr)), "_fn");
     #line 532 "./src/generator/c_gen.am"
+    i64 cn = AmalgameList_count(lam->Args);
+    #line 533 "./src/generator/c_gen.am"
+    i64 pn = AmalgameList_count(lam->Params);
+    #line 536 "./src/generator/c_gen.am"
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("typedef struct ", envName)), " {"));
+    #line 537 "./src/generator/c_gen.am"
+    Amalgame_Compiler_Emitter_Indent_(self->Out);
+    #line 538 "./src/generator/c_gen.am"
     if (cn == 0) {
-        #line 533 "./src/generator/c_gen.am"
+        #line 539 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "char _empty;");
     } else {
-        #line 535 "./src/generator/c_gen.am"
+        #line 541 "./src/generator/c_gen.am"
         for (i64 i = 0; i < cn; i++) {
-            #line 536 "./src/generator/c_gen.am"
+            #line 542 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* cap = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i);
-            #line 537 "./src/generator/c_gen.am"
+            #line 543 "./src/generator/c_gen.am"
             code_string ct = Amalgame_Compiler_CGen_TypeToC(self, cap->Str);
-            #line 538 "./src/generator/c_gen.am"
+            #line 544 "./src/generator/c_gen.am"
             if ((String_Length(ct) == 0) || (code_string_equals(ct, "void"))) {
-                #line 539 "./src/generator/c_gen.am"
+                #line 545 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("void* _", cap->Name)), ";"));
             } else {
-                #line 541 "./src/generator/c_gen.am"
+                #line 547 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(ct, " _")), cap->Name)), ";"));
             }
         }
     }
-    #line 545 "./src/generator/c_gen.am"
+    #line 551 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Dedent(self->Out);
-    #line 546 "./src/generator/c_gen.am"
+    #line 552 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} ", envName)), ";"));
-    #line 549 "./src/generator/c_gen.am"
+    #line 555 "./src/generator/c_gen.am"
     code_string fwdLine = code_string_concat((code_string_concat("static void* ", fnName)), "(void* __envRaw");
-    #line 550 "./src/generator/c_gen.am"
+    #line 556 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 551 "./src/generator/c_gen.am"
+        #line 557 "./src/generator/c_gen.am"
         fwdLine = (code_string_concat((code_string_concat(fwdLine, ", void* __arg")), String_FromInt(pi)));
     }
-    #line 553 "./src/generator/c_gen.am"
+    #line 559 "./src/generator/c_gen.am"
     fwdLine = (code_string_concat(fwdLine, ");"));
-    #line 554 "./src/generator/c_gen.am"
+    #line 560 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, fwdLine);
 }
 
 static void Amalgame_Compiler_CGen_EmitOneLambdaBody(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* lam) {
-    #line 559 "./src/generator/c_gen.am"
+    #line 565 "./src/generator/c_gen.am"
     code_string idStr = lam->Str2;
-    #line 560 "./src/generator/c_gen.am"
+    #line 566 "./src/generator/c_gen.am"
     code_string envName = code_string_concat("LamEnv_", idStr);
-    #line 561 "./src/generator/c_gen.am"
+    #line 567 "./src/generator/c_gen.am"
     code_string fnName = code_string_concat((code_string_concat("lam_", idStr)), "_fn");
-    #line 562 "./src/generator/c_gen.am"
+    #line 568 "./src/generator/c_gen.am"
     i64 cn = AmalgameList_count(lam->Args);
-    #line 563 "./src/generator/c_gen.am"
+    #line 569 "./src/generator/c_gen.am"
     i64 pn = AmalgameList_count(lam->Params);
-    #line 573 "./src/generator/c_gen.am"
+    #line 579 "./src/generator/c_gen.am"
     code_string sigLine = code_string_concat((code_string_concat("static void* ", fnName)), "(void* __envRaw");
-    #line 574 "./src/generator/c_gen.am"
+    #line 580 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 575 "./src/generator/c_gen.am"
+        #line 581 "./src/generator/c_gen.am"
         sigLine = (code_string_concat((code_string_concat(sigLine, ", void* __arg")), String_FromInt(pi)));
     }
-    #line 577 "./src/generator/c_gen.am"
+    #line 583 "./src/generator/c_gen.am"
     sigLine = (code_string_concat(sigLine, ") {"));
-    #line 578 "./src/generator/c_gen.am"
+    #line 584 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, sigLine);
-    #line 579 "./src/generator/c_gen.am"
+    #line 585 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Indent_(self->Out);
-    #line 580 "./src/generator/c_gen.am"
+    #line 586 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(envName, "* __env = (")), envName)), "*)__envRaw;"));
-    #line 582 "./src/generator/c_gen.am"
+    #line 588 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 583 "./src/generator/c_gen.am"
+        #line 589 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, pi);
-        #line 584 "./src/generator/c_gen.am"
+        #line 590 "./src/generator/c_gen.am"
         code_string pTypeRaw = p->Str;
-        #line 585 "./src/generator/c_gen.am"
+        #line 591 "./src/generator/c_gen.am"
         code_string pTypeC = "i64";
-        #line 586 "./src/generator/c_gen.am"
+        #line 592 "./src/generator/c_gen.am"
         if ((String_Length(pTypeRaw) > 0) && (!code_string_equals(pTypeRaw, "?"))) {
-            #line 587 "./src/generator/c_gen.am"
+            #line 593 "./src/generator/c_gen.am"
             pTypeC = Amalgame_Compiler_CGen_TypeToC(self, pTypeRaw);
         }
-        #line 589 "./src/generator/c_gen.am"
+        #line 595 "./src/generator/c_gen.am"
         code_string argName = code_string_concat("__arg", String_FromInt(pi));
-        #line 590 "./src/generator/c_gen.am"
+        #line 596 "./src/generator/c_gen.am"
         if (Amalgame_Compiler_CGen_IsCPointerType(self, pTypeC)) {
-            #line 591 "./src/generator/c_gen.am"
+            #line 597 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(pTypeC, " ")), p->Name)), " = (")), pTypeC)), ")")), argName)), ";"));
         } else {
-            #line 593 "./src/generator/c_gen.am"
+            #line 599 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(pTypeC, " ")), p->Name)), " = ")), Amalgame_Compiler_CGen_UnboxScalar(self, pTypeC, argName))), ";"));
         }
     }
-    #line 597 "./src/generator/c_gen.am"
+    #line 603 "./src/generator/c_gen.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 598 "./src/generator/c_gen.am"
+        #line 604 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* cap = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i);
-        #line 599 "./src/generator/c_gen.am"
+        #line 605 "./src/generator/c_gen.am"
         code_string ct = Amalgame_Compiler_CGen_TypeToC(self, cap->Str);
-        #line 600 "./src/generator/c_gen.am"
+        #line 606 "./src/generator/c_gen.am"
         if ((String_Length(ct) == 0) || (code_string_equals(ct, "void"))) {
-            #line 601 "./src/generator/c_gen.am"
+            #line 607 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("void* ", cap->Name)), " = __env->_")), cap->Name)), ";"));
         } else {
-            #line 603 "./src/generator/c_gen.am"
+            #line 609 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(ct, " ")), cap->Name)), " = __env->_")), cap->Name)), ";"));
         }
-        #line 605 "./src/generator/c_gen.am"
+        #line 611 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, cap->Name, ct);
     }
-    #line 610 "./src/generator/c_gen.am"
+    #line 616 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 611 "./src/generator/c_gen.am"
+        #line 617 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, pi);
-        #line 612 "./src/generator/c_gen.am"
+        #line 618 "./src/generator/c_gen.am"
         code_string pTypeRaw = p->Str;
-        #line 613 "./src/generator/c_gen.am"
+        #line 619 "./src/generator/c_gen.am"
         code_string pTypeC = "i64";
-        #line 614 "./src/generator/c_gen.am"
+        #line 620 "./src/generator/c_gen.am"
         if ((String_Length(pTypeRaw) > 0) && (!code_string_equals(pTypeRaw, "?"))) {
-            #line 615 "./src/generator/c_gen.am"
+            #line 621 "./src/generator/c_gen.am"
             pTypeC = Amalgame_Compiler_CGen_TypeToC(self, pTypeRaw);
         }
-        #line 617 "./src/generator/c_gen.am"
+        #line 623 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, pTypeC);
     }
-    #line 623 "./src/generator/c_gen.am"
+    #line 629 "./src/generator/c_gen.am"
     if (lam->Body != NULL) {
-        #line 624 "./src/generator/c_gen.am"
+        #line 630 "./src/generator/c_gen.am"
         code_bool prevInLam = self->InLambdaBody;
-        #line 625 "./src/generator/c_gen.am"
+        #line 631 "./src/generator/c_gen.am"
         self->InLambdaBody = 1;
-        #line 626 "./src/generator/c_gen.am"
+        #line 632 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitBlock(self, lam->Body);
-        #line 627 "./src/generator/c_gen.am"
+        #line 633 "./src/generator/c_gen.am"
         self->InLambdaBody = prevInLam;
-        #line 628 "./src/generator/c_gen.am"
+        #line 634 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, "0"))), ";"));
     } else if (lam->Left != NULL) {
-        #line 630 "./src/generator/c_gen.am"
+        #line 636 "./src/generator/c_gen.am"
         code_string bodyStr = Amalgame_Compiler_CGen_EmitExprStr(self, lam->Left);
-        #line 631 "./src/generator/c_gen.am"
+        #line 637 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, bodyStr))), ";"));
     } else {
-        #line 633 "./src/generator/c_gen.am"
+        #line 639 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, "0"))), ";"));
     }
-    #line 636 "./src/generator/c_gen.am"
+    #line 642 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 637 "./src/generator/c_gen.am"
+        #line 643 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, pi);
-        #line 638 "./src/generator/c_gen.am"
+        #line 644 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, "");
     }
-    #line 640 "./src/generator/c_gen.am"
+    #line 646 "./src/generator/c_gen.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 641 "./src/generator/c_gen.am"
+        #line 647 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* cap = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i);
-        #line 642 "./src/generator/c_gen.am"
+        #line 648 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, cap->Name, "");
     }
-    #line 644 "./src/generator/c_gen.am"
+    #line 650 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Dedent(self->Out);
-    #line 645 "./src/generator/c_gen.am"
+    #line 651 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
 }
 
 code_string Amalgame_Compiler_CGen_FinishMulti(Amalgame_Compiler_CGen* self) {
-    #line 649 "./src/generator/c_gen.am"
+    #line 655 "./src/generator/c_gen.am"
     return Amalgame_Compiler_Emitter_GetOutput(self->Out);
 }
 
 AmalgameList* Amalgame_Compiler_CGen_GetLines(Amalgame_Compiler_CGen* self) {
-    #line 653 "./src/generator/c_gen.am"
+    #line 659 "./src/generator/c_gen.am"
     return self->Out->Lines;
 }
 
 static code_string Amalgame_Compiler_CGen_SymName(Amalgame_Compiler_CGen* self, code_string name) {
-    #line 657 "./src/generator/c_gen.am"
+    #line 663 "./src/generator/c_gen.am"
     code_string ns = self->NsPrefix;
-    #line 658 "./src/generator/c_gen.am"
+    #line 664 "./src/generator/c_gen.am"
     if (String_Length(ns) > 0) {
-        #line 659 "./src/generator/c_gen.am"
+        #line 665 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat(ns, "_")), name);
     }
-    #line 661 "./src/generator/c_gen.am"
+    #line 667 "./src/generator/c_gen.am"
     return name;
 }
 
 static void Amalgame_Compiler_CGen_LocalTypeSet(Amalgame_Compiler_CGen* self, code_string varName, code_string ctype) {
-    #line 669 "./src/generator/c_gen.am"
+    #line 675 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->LocalTypeNames);
-    #line 670 "./src/generator/c_gen.am"
+    #line 676 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 671 "./src/generator/c_gen.am"
+        #line 677 "./src/generator/c_gen.am"
         code_string k = (code_string)AmalgameList_get(self->LocalTypeNames, i);
-        #line 672 "./src/generator/c_gen.am"
+        #line 678 "./src/generator/c_gen.am"
         if (code_string_equals(k, varName)) {
-            #line 676 "./src/generator/c_gen.am"
+            #line 682 "./src/generator/c_gen.am"
             AmalgameList_add(self->LocalTypeNames, (void*)(intptr_t)(varName));
-            #line 677 "./src/generator/c_gen.am"
+            #line 683 "./src/generator/c_gen.am"
             AmalgameList_add(self->LocalTypeCType, (void*)(intptr_t)(ctype));
-            #line 678 "./src/generator/c_gen.am"
+            #line 684 "./src/generator/c_gen.am"
             return;
         }
     }
-    #line 681 "./src/generator/c_gen.am"
+    #line 687 "./src/generator/c_gen.am"
     AmalgameList_add(self->LocalTypeNames, (void*)(intptr_t)(varName));
-    #line 682 "./src/generator/c_gen.am"
+    #line 688 "./src/generator/c_gen.am"
     AmalgameList_add(self->LocalTypeCType, (void*)(intptr_t)(ctype));
 }
 
 static code_string Amalgame_Compiler_CGen_LocalTypeGet(Amalgame_Compiler_CGen* self, code_string varName) {
-    #line 687 "./src/generator/c_gen.am"
+    #line 693 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->LocalTypeNames);
-    #line 688 "./src/generator/c_gen.am"
+    #line 694 "./src/generator/c_gen.am"
     code_string result = "";
-    #line 689 "./src/generator/c_gen.am"
+    #line 695 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 690 "./src/generator/c_gen.am"
+        #line 696 "./src/generator/c_gen.am"
         code_string k = (code_string)AmalgameList_get(self->LocalTypeNames, i);
-        #line 691 "./src/generator/c_gen.am"
+        #line 697 "./src/generator/c_gen.am"
         if (code_string_equals(k, varName)) {
-            #line 692 "./src/generator/c_gen.am"
+            #line 698 "./src/generator/c_gen.am"
             result = (code_string)AmalgameList_get(self->LocalTypeCType, i);
         }
     }
-    #line 695 "./src/generator/c_gen.am"
+    #line 701 "./src/generator/c_gen.am"
     return result;
 }
 
 static void Amalgame_Compiler_CGen_LocalTypeClear(Amalgame_Compiler_CGen* self) {
-    #line 699 "./src/generator/c_gen.am"
+    #line 705 "./src/generator/c_gen.am"
     self->LocalTypeNames = AmalgameList_new();
-    #line 700 "./src/generator/c_gen.am"
+    #line 706 "./src/generator/c_gen.am"
     self->LocalTypeCType = AmalgameList_new();
 }
 
 static void Amalgame_Compiler_CGen_FieldTypeSet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName, code_string ctype) {
-    #line 704 "./src/generator/c_gen.am"
+    #line 710 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, ".")), fieldName);
-    #line 705 "./src/generator/c_gen.am"
+    #line 711 "./src/generator/c_gen.am"
     AmalgameList_add(self->FieldNames, (void*)(intptr_t)(key));
-    #line 706 "./src/generator/c_gen.am"
+    #line 712 "./src/generator/c_gen.am"
     AmalgameList_add(self->FieldCTypes, (void*)(intptr_t)(ctype));
 }
 
 static code_string Amalgame_Compiler_CGen_FieldTypeGet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName) {
-    #line 710 "./src/generator/c_gen.am"
+    #line 716 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, ".")), fieldName);
-    #line 711 "./src/generator/c_gen.am"
+    #line 717 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->FieldNames);
-    #line 712 "./src/generator/c_gen.am"
+    #line 718 "./src/generator/c_gen.am"
     code_string result = "";
-    #line 713 "./src/generator/c_gen.am"
+    #line 719 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 714 "./src/generator/c_gen.am"
+        #line 720 "./src/generator/c_gen.am"
         code_string k = (code_string)AmalgameList_get(self->FieldNames, i);
-        #line 715 "./src/generator/c_gen.am"
+        #line 721 "./src/generator/c_gen.am"
         if (code_string_equals(k, key)) {
-            #line 716 "./src/generator/c_gen.am"
+            #line 722 "./src/generator/c_gen.am"
             result = (code_string)AmalgameList_get(self->FieldCTypes, i);
         }
     }
-    #line 719 "./src/generator/c_gen.am"
+    #line 725 "./src/generator/c_gen.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_CGen_ResolveReceiverClass(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* node) {
-    #line 727 "./src/generator/c_gen.am"
+    #line 733 "./src/generator/c_gen.am"
     if (node == NULL) {
         return "";
     }
-    #line 728 "./src/generator/c_gen.am"
+    #line 734 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind nk = node->Kind;
-    #line 729 "./src/generator/c_gen.am"
+    #line 735 "./src/generator/c_gen.am"
     if (nk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
         return self->CurrentClass;
     }
-    #line 730 "./src/generator/c_gen.am"
+    #line 736 "./src/generator/c_gen.am"
     if (nk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 731 "./src/generator/c_gen.am"
+        #line 737 "./src/generator/c_gen.am"
         code_string t = Amalgame_Compiler_CGen_LocalTypeGet(self, node->Name);
-        #line 732 "./src/generator/c_gen.am"
+        #line 738 "./src/generator/c_gen.am"
         if (String_Length(t) == 0) {
             return "";
         }
-        #line 733 "./src/generator/c_gen.am"
+        #line 739 "./src/generator/c_gen.am"
         return String_Replace(t, "*", "");
     }
-    #line 735 "./src/generator/c_gen.am"
+    #line 741 "./src/generator/c_gen.am"
     if (nk == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 736 "./src/generator/c_gen.am"
+        #line 742 "./src/generator/c_gen.am"
         code_string parentCls = Amalgame_Compiler_CGen_ResolveReceiverClass(self, node->Left);
-        #line 737 "./src/generator/c_gen.am"
+        #line 743 "./src/generator/c_gen.am"
         if (String_Length(parentCls) == 0) {
             return "";
         }
-        #line 738 "./src/generator/c_gen.am"
+        #line 744 "./src/generator/c_gen.am"
         code_string ft = Amalgame_Compiler_CGen_FieldTypeGet(self, parentCls, node->Name);
-        #line 739 "./src/generator/c_gen.am"
+        #line 745 "./src/generator/c_gen.am"
         if (String_Length(ft) == 0) {
             return "";
         }
-        #line 740 "./src/generator/c_gen.am"
+        #line 746 "./src/generator/c_gen.am"
         return String_Replace(ft, "*", "");
     }
-    #line 742 "./src/generator/c_gen.am"
+    #line 748 "./src/generator/c_gen.am"
     return "";
 }
 
 static void Amalgame_Compiler_CGen_TrackMapResultElem(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 753 "./src/generator/c_gen.am"
+    #line 759 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* call = stmt->Left;
-    #line 754 "./src/generator/c_gen.am"
+    #line 760 "./src/generator/c_gen.am"
     if (call == NULL) {
         return;
     }
-    #line 755 "./src/generator/c_gen.am"
+    #line 761 "./src/generator/c_gen.am"
     if (AmalgameList_count(call->Args) == 0) {
         return;
     }
-    #line 756 "./src/generator/c_gen.am"
+    #line 762 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* lam = (Amalgame_Compiler_AstNode*)AmalgameList_get(call->Args, 0);
-    #line 757 "./src/generator/c_gen.am"
+    #line 763 "./src/generator/c_gen.am"
     if (lam == NULL) {
         return;
     }
-    #line 758 "./src/generator/c_gen.am"
+    #line 764 "./src/generator/c_gen.am"
     if (lam->Kind != Amalgame_Compiler_NodeKind_METHOD_DECL) {
         return;
     }
-    #line 759 "./src/generator/c_gen.am"
+    #line 765 "./src/generator/c_gen.am"
     if (!code_string_equals(lam->Name, "__lambda__")) {
         return;
     }
-    #line 760 "./src/generator/c_gen.am"
+    #line 766 "./src/generator/c_gen.am"
     if (lam->Left == NULL) {
         return;
     }
-    #line 761 "./src/generator/c_gen.am"
+    #line 767 "./src/generator/c_gen.am"
     i64 pn = AmalgameList_count(lam->Params);
-    #line 762 "./src/generator/c_gen.am"
+    #line 768 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 763 "./src/generator/c_gen.am"
+        #line 769 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, pi);
-        #line 764 "./src/generator/c_gen.am"
+        #line 770 "./src/generator/c_gen.am"
         code_string pTypeRaw = p->Str;
-        #line 765 "./src/generator/c_gen.am"
+        #line 771 "./src/generator/c_gen.am"
         code_string pTypeC = "i64";
-        #line 766 "./src/generator/c_gen.am"
+        #line 772 "./src/generator/c_gen.am"
         if ((String_Length(pTypeRaw) > 0) && (!code_string_equals(pTypeRaw, "?"))) {
-            #line 767 "./src/generator/c_gen.am"
+            #line 773 "./src/generator/c_gen.am"
             pTypeC = Amalgame_Compiler_CGen_TypeToC(self, pTypeRaw);
         }
-        #line 769 "./src/generator/c_gen.am"
+        #line 775 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, pTypeC);
     }
-    #line 771 "./src/generator/c_gen.am"
+    #line 777 "./src/generator/c_gen.am"
     code_string retC = Amalgame_Compiler_CGen_InferTypeFromExpr(self, lam->Left);
-    #line 772 "./src/generator/c_gen.am"
+    #line 778 "./src/generator/c_gen.am"
     for (i64 pi = 0; pi < pn; pi++) {
-        #line 773 "./src/generator/c_gen.am"
+        #line 779 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, pi);
-        #line 774 "./src/generator/c_gen.am"
+        #line 780 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, "");
     }
-    #line 776 "./src/generator/c_gen.am"
+    #line 782 "./src/generator/c_gen.am"
     if ((String_Length(retC) > 0) && (!code_string_equals(retC, "void*"))) {
-        #line 777 "./src/generator/c_gen.am"
+        #line 783 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_ListElemSet(self, "__local__", stmt->Name, retC);
     }
 }
 
 static void Amalgame_Compiler_CGen_TrackGenericLocal(Amalgame_Compiler_CGen* self, code_string varName, code_string rawType) {
-    #line 787 "./src/generator/c_gen.am"
+    #line 793 "./src/generator/c_gen.am"
     if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
-        #line 788 "./src/generator/c_gen.am"
+        #line 794 "./src/generator/c_gen.am"
         code_string inner = String_Substring(rawType, 5, String_Length(rawType) - 6);
-        #line 789 "./src/generator/c_gen.am"
+        #line 795 "./src/generator/c_gen.am"
         if (String_Length(inner) > 0) {
-            #line 790 "./src/generator/c_gen.am"
-            Amalgame_Compiler_CGen_ListElemSet(self, "__local__", varName, Amalgame_Compiler_CGen_TypeToC(self, inner));
             #line 796 "./src/generator/c_gen.am"
+            Amalgame_Compiler_CGen_ListElemSet(self, "__local__", varName, Amalgame_Compiler_CGen_TypeToC(self, inner));
+            #line 802 "./src/generator/c_gen.am"
             Amalgame_Compiler_CGen_ListElemSet(self, "__local_raw__", varName, inner);
         }
-        #line 798 "./src/generator/c_gen.am"
+        #line 804 "./src/generator/c_gen.am"
         return;
     }
-    #line 800 "./src/generator/c_gen.am"
+    #line 806 "./src/generator/c_gen.am"
     if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
-        #line 801 "./src/generator/c_gen.am"
+        #line 807 "./src/generator/c_gen.am"
         code_string inner = String_Substring(rawType, 4, String_Length(rawType) - 5);
-        #line 802 "./src/generator/c_gen.am"
+        #line 808 "./src/generator/c_gen.am"
         i64 comma = String_IndexOf(inner, ",");
-        #line 803 "./src/generator/c_gen.am"
+        #line 809 "./src/generator/c_gen.am"
         if (comma > 0) {
-            #line 804 "./src/generator/c_gen.am"
+            #line 810 "./src/generator/c_gen.am"
             code_string vRaw = String_Substring(inner, comma + 1, (String_Length(inner) - comma) - 1);
-            #line 805 "./src/generator/c_gen.am"
+            #line 811 "./src/generator/c_gen.am"
             code_string vTrim = String_Trim(vRaw);
-            #line 806 "./src/generator/c_gen.am"
+            #line 812 "./src/generator/c_gen.am"
             if (String_Length(vTrim) > 0) {
-                #line 807 "./src/generator/c_gen.am"
+                #line 813 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_ListElemSet(self, "__local_map__", varName, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
-                #line 811 "./src/generator/c_gen.am"
+                #line 817 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_ListElemSet(self, "__local_map_raw__", varName, vTrim);
             }
         }
@@ -9128,464 +9140,464 @@ static void Amalgame_Compiler_CGen_TrackGenericLocal(Amalgame_Compiler_CGen* sel
 }
 
 static code_string Amalgame_Compiler_CGen_PeelOneGenericLayer(Amalgame_Compiler_CGen* self, code_string rawType) {
-    #line 821 "./src/generator/c_gen.am"
+    #line 827 "./src/generator/c_gen.am"
     if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
-        #line 822 "./src/generator/c_gen.am"
+        #line 828 "./src/generator/c_gen.am"
         return String_Substring(rawType, 5, String_Length(rawType) - 6);
     }
-    #line 824 "./src/generator/c_gen.am"
+    #line 830 "./src/generator/c_gen.am"
     if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
-        #line 825 "./src/generator/c_gen.am"
+        #line 831 "./src/generator/c_gen.am"
         code_string inner = String_Substring(rawType, 4, String_Length(rawType) - 5);
-        #line 828 "./src/generator/c_gen.am"
+        #line 834 "./src/generator/c_gen.am"
         i64 comma = String_IndexOf(inner, ",");
-        #line 829 "./src/generator/c_gen.am"
+        #line 835 "./src/generator/c_gen.am"
         if (comma > 0) {
-            #line 830 "./src/generator/c_gen.am"
+            #line 836 "./src/generator/c_gen.am"
             return String_Trim(String_Substring(inner, comma + 1, (String_Length(inner) - comma) - 1));
         }
     }
-    #line 833 "./src/generator/c_gen.am"
+    #line 839 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_CGen_RecoverChainedListElemRaw(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* recv) {
-    #line 848 "./src/generator/c_gen.am"
+    #line 854 "./src/generator/c_gen.am"
     if (recv == NULL) {
         return "";
     }
-    #line 849 "./src/generator/c_gen.am"
+    #line 855 "./src/generator/c_gen.am"
     if (recv->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 850 "./src/generator/c_gen.am"
+        #line 856 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_ListElemGet(self, "__local_raw__", recv->Name);
     }
-    #line 852 "./src/generator/c_gen.am"
+    #line 858 "./src/generator/c_gen.am"
     if (recv->Kind == Amalgame_Compiler_NodeKind_CALL) {
-        #line 853 "./src/generator/c_gen.am"
+        #line 859 "./src/generator/c_gen.am"
         if (recv->Left == NULL) {
             return "";
         }
-        #line 854 "./src/generator/c_gen.am"
+        #line 860 "./src/generator/c_gen.am"
         if (recv->Left->Kind != Amalgame_Compiler_NodeKind_MEMBER) {
             return "";
         }
-        #line 855 "./src/generator/c_gen.am"
+        #line 861 "./src/generator/c_gen.am"
         if (!code_string_equals(recv->Left->Name, "Get")) {
             return "";
         }
-        #line 856 "./src/generator/c_gen.am"
+        #line 862 "./src/generator/c_gen.am"
         code_string innerElemRaw = Amalgame_Compiler_CGen_RecoverChainedListElemRaw(self, recv->Left->Left);
-        #line 857 "./src/generator/c_gen.am"
+        #line 863 "./src/generator/c_gen.am"
         if (String_Length(innerElemRaw) == 0) {
             return "";
         }
-        #line 858 "./src/generator/c_gen.am"
+        #line 864 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_PeelOneGenericLayer(self, innerElemRaw);
     }
-    #line 860 "./src/generator/c_gen.am"
+    #line 866 "./src/generator/c_gen.am"
     return "";
 }
 
 static void Amalgame_Compiler_CGen_ListElemSet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName, code_string elemCType) {
-    #line 864 "./src/generator/c_gen.am"
+    #line 870 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, ".")), fieldName);
-    #line 865 "./src/generator/c_gen.am"
+    #line 871 "./src/generator/c_gen.am"
     AmalgameList_add(self->ListElemNames, (void*)(intptr_t)(key));
-    #line 866 "./src/generator/c_gen.am"
+    #line 872 "./src/generator/c_gen.am"
     AmalgameList_add(self->ListElemCTypes, (void*)(intptr_t)(elemCType));
 }
 
 static code_string Amalgame_Compiler_CGen_ListElemGet(Amalgame_Compiler_CGen* self, code_string className, code_string fieldName) {
-    #line 870 "./src/generator/c_gen.am"
+    #line 876 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, ".")), fieldName);
-    #line 871 "./src/generator/c_gen.am"
+    #line 877 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->ListElemNames);
-    #line 872 "./src/generator/c_gen.am"
+    #line 878 "./src/generator/c_gen.am"
     code_string result = "";
-    #line 873 "./src/generator/c_gen.am"
+    #line 879 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 874 "./src/generator/c_gen.am"
+        #line 880 "./src/generator/c_gen.am"
         code_string k = (code_string)AmalgameList_get(self->ListElemNames, i);
-        #line 875 "./src/generator/c_gen.am"
+        #line 881 "./src/generator/c_gen.am"
         if (code_string_equals(k, key)) {
-            #line 876 "./src/generator/c_gen.am"
+            #line 882 "./src/generator/c_gen.am"
             result = (code_string)AmalgameList_get(self->ListElemCTypes, i);
         }
     }
-    #line 879 "./src/generator/c_gen.am"
+    #line 885 "./src/generator/c_gen.am"
     return result;
 }
 
 static void Amalgame_Compiler_CGen_MethodRetSet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName, code_string ctype) {
-    #line 883 "./src/generator/c_gen.am"
+    #line 889 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, "::")), methodName);
-    #line 884 "./src/generator/c_gen.am"
+    #line 890 "./src/generator/c_gen.am"
     AmalgameList_add(self->MethodRetNames, (void*)(intptr_t)(key));
-    #line 885 "./src/generator/c_gen.am"
+    #line 891 "./src/generator/c_gen.am"
     AmalgameList_add(self->MethodRetTypes, (void*)(intptr_t)(ctype));
 }
 
 static void Amalgame_Compiler_CGen_MethodRetRawSet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName, code_string rawType) {
-    #line 889 "./src/generator/c_gen.am"
+    #line 895 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, "::")), methodName);
-    #line 890 "./src/generator/c_gen.am"
+    #line 896 "./src/generator/c_gen.am"
     AmalgameList_add(self->MethodRetRawNames, (void*)(intptr_t)(key));
-    #line 891 "./src/generator/c_gen.am"
+    #line 897 "./src/generator/c_gen.am"
     AmalgameList_add(self->MethodRetRawTypes, (void*)(intptr_t)(rawType));
 }
 
 static code_string Amalgame_Compiler_CGen_MethodRetRawGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName) {
-    #line 895 "./src/generator/c_gen.am"
+    #line 901 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, "::")), methodName);
-    #line 896 "./src/generator/c_gen.am"
+    #line 902 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->MethodRetRawNames);
-    #line 897 "./src/generator/c_gen.am"
+    #line 903 "./src/generator/c_gen.am"
     code_string result = "";
-    #line 898 "./src/generator/c_gen.am"
+    #line 904 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 899 "./src/generator/c_gen.am"
+        #line 905 "./src/generator/c_gen.am"
         code_string k = (code_string)AmalgameList_get(self->MethodRetRawNames, i);
-        #line 900 "./src/generator/c_gen.am"
+        #line 906 "./src/generator/c_gen.am"
         if (code_string_equals(k, key)) {
-            #line 901 "./src/generator/c_gen.am"
+            #line 907 "./src/generator/c_gen.am"
             result = (code_string)AmalgameList_get(self->MethodRetRawTypes, i);
         }
     }
-    #line 904 "./src/generator/c_gen.am"
+    #line 910 "./src/generator/c_gen.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_CGen_MethodRetGet(Amalgame_Compiler_CGen* self, code_string className, code_string methodName) {
-    #line 908 "./src/generator/c_gen.am"
+    #line 914 "./src/generator/c_gen.am"
     code_string key = code_string_concat((code_string_concat(className, "::")), methodName);
-    #line 909 "./src/generator/c_gen.am"
+    #line 915 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->MethodRetNames);
-    #line 910 "./src/generator/c_gen.am"
+    #line 916 "./src/generator/c_gen.am"
     code_string result = "";
-    #line 911 "./src/generator/c_gen.am"
+    #line 917 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 912 "./src/generator/c_gen.am"
+        #line 918 "./src/generator/c_gen.am"
         code_string k = (code_string)AmalgameList_get(self->MethodRetNames, i);
-        #line 913 "./src/generator/c_gen.am"
+        #line 919 "./src/generator/c_gen.am"
         if (code_string_equals(k, key)) {
-            #line 914 "./src/generator/c_gen.am"
+            #line 920 "./src/generator/c_gen.am"
             result = (code_string)AmalgameList_get(self->MethodRetTypes, i);
         }
     }
-    #line 917 "./src/generator/c_gen.am"
+    #line 923 "./src/generator/c_gen.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_CGen_InferTypeFromExpr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* expr) {
-    #line 927 "./src/generator/c_gen.am"
+    #line 933 "./src/generator/c_gen.am"
     if (expr == NULL) {
         return "";
     }
-    #line 928 "./src/generator/c_gen.am"
+    #line 934 "./src/generator/c_gen.am"
     i64 key = 0;
-    #line 929 "./src/generator/c_gen.am"
+    #line 935 "./src/generator/c_gen.am"
     { /* inline-C */
         
                     key = (i64)expr;
                 
     }
-    #line 932 "./src/generator/c_gen.am"
+    #line 938 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->InferCacheKeys);
-    #line 933 "./src/generator/c_gen.am"
+    #line 939 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 934 "./src/generator/c_gen.am"
+        #line 940 "./src/generator/c_gen.am"
         if ((i64)(intptr_t)AmalgameList_get(self->InferCacheKeys, i) == key) {
-            #line 935 "./src/generator/c_gen.am"
+            #line 941 "./src/generator/c_gen.am"
             return (code_string)AmalgameList_get(self->InferCacheVals, i);
         }
     }
-    #line 938 "./src/generator/c_gen.am"
+    #line 944 "./src/generator/c_gen.am"
     code_string result = Amalgame_Compiler_CGen_InferTypeFromExprUncached(self, expr);
-    #line 939 "./src/generator/c_gen.am"
+    #line 945 "./src/generator/c_gen.am"
     AmalgameList_add(self->InferCacheKeys, (void*)(intptr_t)(key));
-    #line 940 "./src/generator/c_gen.am"
+    #line 946 "./src/generator/c_gen.am"
     AmalgameList_add(self->InferCacheVals, (void*)(intptr_t)(result));
-    #line 941 "./src/generator/c_gen.am"
+    #line 947 "./src/generator/c_gen.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_CGen_InferTypeFromExprUncached(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* expr) {
-    #line 945 "./src/generator/c_gen.am"
+    #line 951 "./src/generator/c_gen.am"
     if (expr == NULL) {
         return "";
     }
-    #line 946 "./src/generator/c_gen.am"
+    #line 952 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind k = expr->Kind;
-    #line 955 "./src/generator/c_gen.am"
+    #line 961 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-        #line 956 "./src/generator/c_gen.am"
+        #line 962 "./src/generator/c_gen.am"
         if (String_Length(self->CurrentClass) > 0) {
-            #line 957 "./src/generator/c_gen.am"
+            #line 963 "./src/generator/c_gen.am"
             return code_string_concat(self->CurrentClass, "*");
         }
     }
-    #line 960 "./src/generator/c_gen.am"
+    #line 966 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LIST_COMP) {
         return "AmalgameList*";
     }
-    #line 961 "./src/generator/c_gen.am"
+    #line 967 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LIST_LITERAL) {
         return "AmalgameList*";
     }
-    #line 964 "./src/generator/c_gen.am"
+    #line 970 "./src/generator/c_gen.am"
     if ((k == Amalgame_Compiler_NodeKind_IF_STMT) && (code_string_equals(expr->Name, "__match__"))) {
-        #line 965 "./src/generator/c_gen.am"
+        #line 971 "./src/generator/c_gen.am"
         if (AmalgameList_count(expr->Children) > 0) {
-            #line 966 "./src/generator/c_gen.am"
+            #line 972 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* firstArm = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Children, 0);
-            #line 967 "./src/generator/c_gen.am"
+            #line 973 "./src/generator/c_gen.am"
             if (firstArm->Right != NULL) {
-                #line 968 "./src/generator/c_gen.am"
+                #line 974 "./src/generator/c_gen.am"
                 return Amalgame_Compiler_CGen_InferTypeFromExpr(self, firstArm->Right);
             }
         }
-        #line 971 "./src/generator/c_gen.am"
+        #line 977 "./src/generator/c_gen.am"
         return "";
     }
-    #line 975 "./src/generator/c_gen.am"
+    #line 981 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 976 "./src/generator/c_gen.am"
+        #line 982 "./src/generator/c_gen.am"
         if (expr->Body != NULL) {
-            #line 977 "./src/generator/c_gen.am"
+            #line 983 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* body = expr->Body;
-            #line 978 "./src/generator/c_gen.am"
+            #line 984 "./src/generator/c_gen.am"
             if ((body->Kind == Amalgame_Compiler_NodeKind_BLOCK) && (AmalgameList_count(body->Children) > 0)) {
-                #line 979 "./src/generator/c_gen.am"
+                #line 985 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* last = (Amalgame_Compiler_AstNode*)AmalgameList_get(body->Children, AmalgameList_count(body->Children) - 1);
-                #line 980 "./src/generator/c_gen.am"
+                #line 986 "./src/generator/c_gen.am"
                 return Amalgame_Compiler_CGen_InferTypeFromExpr(self, last);
             }
-            #line 982 "./src/generator/c_gen.am"
+            #line 988 "./src/generator/c_gen.am"
             return Amalgame_Compiler_CGen_InferTypeFromExpr(self, body);
         }
-        #line 984 "./src/generator/c_gen.am"
+        #line 990 "./src/generator/c_gen.am"
         return "";
     }
-    #line 986 "./src/generator/c_gen.am"
+    #line 992 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_INT) {
         return "i64";
     }
-    #line 987 "./src/generator/c_gen.am"
+    #line 993 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_FLOAT) {
         return "double";
     }
-    #line 988 "./src/generator/c_gen.am"
+    #line 994 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
         return "code_string";
     }
-    #line 989 "./src/generator/c_gen.am"
+    #line 995 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_BOOL) {
         return "code_bool";
     }
-    #line 990 "./src/generator/c_gen.am"
+    #line 996 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_BINARY) {
-        #line 991 "./src/generator/c_gen.am"
+        #line 997 "./src/generator/c_gen.am"
         code_string bop = expr->Str;
-        #line 992 "./src/generator/c_gen.am"
+        #line 998 "./src/generator/c_gen.am"
         code_bool isCmpOp = (((code_string_equals(bop, "&&")) || (code_string_equals(bop, "||"))) || (code_string_equals(bop, "=="))) || (code_string_equals(bop, "!="));
-        #line 993 "./src/generator/c_gen.am"
+        #line 999 "./src/generator/c_gen.am"
         code_bool isRelOp = (((code_string_equals(bop, "<")) || (code_string_equals(bop, ">"))) || (code_string_equals(bop, "<="))) || (code_string_equals(bop, ">="));
-        #line 994 "./src/generator/c_gen.am"
+        #line 1000 "./src/generator/c_gen.am"
         if (isCmpOp || isRelOp) {
-            #line 995 "./src/generator/c_gen.am"
+            #line 1001 "./src/generator/c_gen.am"
             return "code_bool";
         }
-        #line 998 "./src/generator/c_gen.am"
+        #line 1004 "./src/generator/c_gen.am"
         if (((((code_string_equals(bop, "+")) || (code_string_equals(bop, "-"))) || (code_string_equals(bop, "*"))) || (code_string_equals(bop, "/"))) || (code_string_equals(bop, "%"))) {
-            #line 999 "./src/generator/c_gen.am"
+            #line 1005 "./src/generator/c_gen.am"
             code_string lt = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-            #line 1000 "./src/generator/c_gen.am"
+            #line 1006 "./src/generator/c_gen.am"
             code_string rt = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Right);
-            #line 1001 "./src/generator/c_gen.am"
+            #line 1007 "./src/generator/c_gen.am"
             if ((code_string_equals(lt, "code_string")) || (code_string_equals(rt, "code_string"))) {
                 return "code_string";
             }
-            #line 1002 "./src/generator/c_gen.am"
+            #line 1008 "./src/generator/c_gen.am"
             if (expr->Left != NULL) {
-                #line 1003 "./src/generator/c_gen.am"
+                #line 1009 "./src/generator/c_gen.am"
                 if (expr->Left->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
                     return "code_string";
                 }
-                #line 1004 "./src/generator/c_gen.am"
+                #line 1010 "./src/generator/c_gen.am"
                 if (expr->Left->Kind == Amalgame_Compiler_NodeKind_LITERAL_INT) {
                     return "i64";
                 }
             }
-            #line 1006 "./src/generator/c_gen.am"
+            #line 1012 "./src/generator/c_gen.am"
             if (expr->Right != NULL) {
-                #line 1007 "./src/generator/c_gen.am"
+                #line 1013 "./src/generator/c_gen.am"
                 if (expr->Right->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
                     return "code_string";
                 }
-                #line 1008 "./src/generator/c_gen.am"
+                #line 1014 "./src/generator/c_gen.am"
                 if (expr->Right->Kind == Amalgame_Compiler_NodeKind_LITERAL_INT) {
                     return "i64";
                 }
             }
-            #line 1010 "./src/generator/c_gen.am"
+            #line 1016 "./src/generator/c_gen.am"
             if ((code_string_equals(lt, "i64")) || (code_string_equals(rt, "i64"))) {
                 return "i64";
             }
-            #line 1011 "./src/generator/c_gen.am"
+            #line 1017 "./src/generator/c_gen.am"
             if ((code_string_equals(lt, "double")) || (code_string_equals(rt, "double"))) {
                 return "double";
             }
         }
     }
-    #line 1014 "./src/generator/c_gen.am"
+    #line 1020 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_UNARY) {
-        #line 1015 "./src/generator/c_gen.am"
+        #line 1021 "./src/generator/c_gen.am"
         if (code_string_equals(expr->Str, "!")) {
             return "code_bool";
         }
     }
-    #line 1017 "./src/generator/c_gen.am"
+    #line 1023 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 1019 "./src/generator/c_gen.am"
+        #line 1025 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_LocalTypeGet(self, expr->Name);
     }
-    #line 1021 "./src/generator/c_gen.am"
+    #line 1027 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 1023 "./src/generator/c_gen.am"
+        #line 1029 "./src/generator/c_gen.am"
         if (expr->Left != NULL) {
-            #line 1024 "./src/generator/c_gen.am"
+            #line 1030 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind lk = expr->Left->Kind;
-            #line 1025 "./src/generator/c_gen.am"
+            #line 1031 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                #line 1026 "./src/generator/c_gen.am"
+                #line 1032 "./src/generator/c_gen.am"
                 return Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, expr->Name);
             }
-            #line 1028 "./src/generator/c_gen.am"
+            #line 1034 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                #line 1029 "./src/generator/c_gen.am"
+                #line 1035 "./src/generator/c_gen.am"
                 code_string lname = expr->Left->Name;
-                #line 1030 "./src/generator/c_gen.am"
+                #line 1036 "./src/generator/c_gen.am"
                 code_string varCType = Amalgame_Compiler_CGen_LocalTypeGet(self, lname);
-                #line 1031 "./src/generator/c_gen.am"
+                #line 1037 "./src/generator/c_gen.am"
                 code_string bare = String_Replace(varCType, "*", "");
-                #line 1032 "./src/generator/c_gen.am"
+                #line 1038 "./src/generator/c_gen.am"
                 if (String_Length(bare) > 0) {
-                    #line 1033 "./src/generator/c_gen.am"
+                    #line 1039 "./src/generator/c_gen.am"
                     return Amalgame_Compiler_CGen_FieldTypeGet(self, bare, expr->Name);
                 }
-                #line 1036 "./src/generator/c_gen.am"
+                #line 1042 "./src/generator/c_gen.am"
                 code_string symT = Amalgame_Compiler_CGen_SymName(self, lname);
-                #line 1037 "./src/generator/c_gen.am"
+                #line 1043 "./src/generator/c_gen.am"
                 if (Amalgame_Compiler_CGen_IsEnum(self, symT)) {
                     return symT;
                 }
-                #line 1038 "./src/generator/c_gen.am"
+                #line 1044 "./src/generator/c_gen.am"
                 if (Amalgame_Compiler_CGen_IsEnum(self, lname)) {
                     return Amalgame_Compiler_CGen_SymName(self, lname);
                 }
             }
-            #line 1041 "./src/generator/c_gen.am"
+            #line 1047 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_CALL) {
-                #line 1042 "./src/generator/c_gen.am"
+                #line 1048 "./src/generator/c_gen.am"
                 code_string callRetT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-                #line 1043 "./src/generator/c_gen.am"
+                #line 1049 "./src/generator/c_gen.am"
                 code_string bareCall = String_Replace(callRetT, "*", "");
-                #line 1044 "./src/generator/c_gen.am"
+                #line 1050 "./src/generator/c_gen.am"
                 if (String_Length(bareCall) > 0) {
-                    #line 1045 "./src/generator/c_gen.am"
+                    #line 1051 "./src/generator/c_gen.am"
                     code_string ft = Amalgame_Compiler_CGen_FieldTypeGet(self, bareCall, expr->Name);
-                    #line 1046 "./src/generator/c_gen.am"
+                    #line 1052 "./src/generator/c_gen.am"
                     if (String_Length(ft) > 0) {
                         return ft;
                     }
                 }
             }
-            #line 1051 "./src/generator/c_gen.am"
+            #line 1057 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_MEMBER) {
-                #line 1052 "./src/generator/c_gen.am"
+                #line 1058 "./src/generator/c_gen.am"
                 if (expr->Left->Left != NULL) {
-                    #line 1053 "./src/generator/c_gen.am"
+                    #line 1059 "./src/generator/c_gen.am"
                     Amalgame_Compiler_NodeKind llk2 = expr->Left->Left->Kind;
-                    #line 1054 "./src/generator/c_gen.am"
+                    #line 1060 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                        #line 1055 "./src/generator/c_gen.am"
+                        #line 1061 "./src/generator/c_gen.am"
                         code_string fname2 = expr->Left->Name;
-                        #line 1056 "./src/generator/c_gen.am"
+                        #line 1062 "./src/generator/c_gen.am"
                         code_string parentT = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, fname2);
-                        #line 1057 "./src/generator/c_gen.am"
+                        #line 1063 "./src/generator/c_gen.am"
                         code_string bareP = String_Replace(parentT, "*", "");
-                        #line 1058 "./src/generator/c_gen.am"
+                        #line 1064 "./src/generator/c_gen.am"
                         if (String_Length(bareP) > 0) {
-                            #line 1059 "./src/generator/c_gen.am"
+                            #line 1065 "./src/generator/c_gen.am"
                             code_string ft2 = Amalgame_Compiler_CGen_FieldTypeGet(self, bareP, expr->Name);
-                            #line 1060 "./src/generator/c_gen.am"
+                            #line 1066 "./src/generator/c_gen.am"
                             if (String_Length(ft2) > 0) {
                                 return ft2;
                             }
                         }
                     }
-                    #line 1063 "./src/generator/c_gen.am"
+                    #line 1069 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 1064 "./src/generator/c_gen.am"
+                        #line 1070 "./src/generator/c_gen.am"
                         code_string vname3 = expr->Left->Left->Name;
-                        #line 1065 "./src/generator/c_gen.am"
+                        #line 1071 "./src/generator/c_gen.am"
                         code_string vtype3 = Amalgame_Compiler_CGen_LocalTypeGet(self, vname3);
-                        #line 1066 "./src/generator/c_gen.am"
+                        #line 1072 "./src/generator/c_gen.am"
                         code_string bareV = String_Replace(vtype3, "*", "");
-                        #line 1067 "./src/generator/c_gen.am"
+                        #line 1073 "./src/generator/c_gen.am"
                         if (String_Length(bareV) > 0) {
-                            #line 1068 "./src/generator/c_gen.am"
+                            #line 1074 "./src/generator/c_gen.am"
                             code_string fname3 = expr->Left->Name;
-                            #line 1069 "./src/generator/c_gen.am"
+                            #line 1075 "./src/generator/c_gen.am"
                             code_string parentT3 = Amalgame_Compiler_CGen_FieldTypeGet(self, bareV, fname3);
-                            #line 1070 "./src/generator/c_gen.am"
+                            #line 1076 "./src/generator/c_gen.am"
                             code_string bareP3 = String_Replace(parentT3, "*", "");
-                            #line 1071 "./src/generator/c_gen.am"
+                            #line 1077 "./src/generator/c_gen.am"
                             if (String_Length(bareP3) > 0) {
-                                #line 1072 "./src/generator/c_gen.am"
+                                #line 1078 "./src/generator/c_gen.am"
                                 code_string ft3 = Amalgame_Compiler_CGen_FieldTypeGet(self, bareP3, expr->Name);
-                                #line 1073 "./src/generator/c_gen.am"
+                                #line 1079 "./src/generator/c_gen.am"
                                 if (String_Length(ft3) > 0) {
                                     return ft3;
                                 }
                             }
                         }
                     }
-                    #line 1078 "./src/generator/c_gen.am"
+                    #line 1084 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_MEMBER) {
-                        #line 1079 "./src/generator/c_gen.am"
+                        #line 1085 "./src/generator/c_gen.am"
                         if (expr->Left->Left->Left != NULL) {
-                            #line 1080 "./src/generator/c_gen.am"
+                            #line 1086 "./src/generator/c_gen.am"
                             Amalgame_Compiler_AstNode* lll = expr->Left->Left->Left;
-                            #line 1081 "./src/generator/c_gen.am"
+                            #line 1087 "./src/generator/c_gen.am"
                             if (lll->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                                #line 1082 "./src/generator/c_gen.am"
+                                #line 1088 "./src/generator/c_gen.am"
                                 code_string vn4 = lll->Name;
-                                #line 1083 "./src/generator/c_gen.am"
+                                #line 1089 "./src/generator/c_gen.am"
                                 code_string vt4 = Amalgame_Compiler_CGen_LocalTypeGet(self, vn4);
-                                #line 1084 "./src/generator/c_gen.am"
+                                #line 1090 "./src/generator/c_gen.am"
                                 code_string bare4 = String_Replace(vt4, "*", "");
-                                #line 1085 "./src/generator/c_gen.am"
+                                #line 1091 "./src/generator/c_gen.am"
                                 if (String_Length(bare4) > 0) {
-                                    #line 1086 "./src/generator/c_gen.am"
+                                    #line 1092 "./src/generator/c_gen.am"
                                     code_string fn4 = expr->Left->Left->Name;
-                                    #line 1087 "./src/generator/c_gen.am"
+                                    #line 1093 "./src/generator/c_gen.am"
                                     code_string pt4 = Amalgame_Compiler_CGen_FieldTypeGet(self, bare4, fn4);
-                                    #line 1088 "./src/generator/c_gen.am"
+                                    #line 1094 "./src/generator/c_gen.am"
                                     code_string bp4 = String_Replace(pt4, "*", "");
-                                    #line 1089 "./src/generator/c_gen.am"
+                                    #line 1095 "./src/generator/c_gen.am"
                                     if (String_Length(bp4) > 0) {
-                                        #line 1090 "./src/generator/c_gen.am"
+                                        #line 1096 "./src/generator/c_gen.am"
                                         code_string fn5 = expr->Left->Name;
-                                        #line 1091 "./src/generator/c_gen.am"
+                                        #line 1097 "./src/generator/c_gen.am"
                                         code_string pt5 = Amalgame_Compiler_CGen_FieldTypeGet(self, bp4, fn5);
-                                        #line 1092 "./src/generator/c_gen.am"
+                                        #line 1098 "./src/generator/c_gen.am"
                                         code_string bp5 = String_Replace(pt5, "*", "");
-                                        #line 1093 "./src/generator/c_gen.am"
+                                        #line 1099 "./src/generator/c_gen.am"
                                         if (String_Length(bp5) > 0) {
-                                            #line 1094 "./src/generator/c_gen.am"
+                                            #line 1100 "./src/generator/c_gen.am"
                                             code_string ft5 = Amalgame_Compiler_CGen_FieldTypeGet(self, bp5, expr->Name);
-                                            #line 1095 "./src/generator/c_gen.am"
+                                            #line 1101 "./src/generator/c_gen.am"
                                             if (String_Length(ft5) > 0) {
                                                 return ft5;
                                             }
@@ -9598,472 +9610,476 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExprUncached(Amalgame_Com
                 }
             }
         }
-        #line 1105 "./src/generator/c_gen.am"
+        #line 1111 "./src/generator/c_gen.am"
         return "";
     }
-    #line 1107 "./src/generator/c_gen.am"
+    #line 1113 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-        #line 1108 "./src/generator/c_gen.am"
+        #line 1114 "./src/generator/c_gen.am"
         code_string tname = expr->Name;
-        #line 1109 "./src/generator/c_gen.am"
+        #line 1115 "./src/generator/c_gen.am"
         if (String_StartsWith(tname, "List<") || (code_string_equals(tname, "List"))) {
             return "AmalgameList*";
         }
-        #line 1110 "./src/generator/c_gen.am"
+        #line 1116 "./src/generator/c_gen.am"
         if (String_StartsWith(tname, "Map<") || (code_string_equals(tname, "Map"))) {
             return "AmalgameMap*";
         }
-        #line 1111 "./src/generator/c_gen.am"
+        #line 1117 "./src/generator/c_gen.am"
         if (String_StartsWith(tname, "Set<") || (code_string_equals(tname, "Set"))) {
             return "AmalgameSet*";
         }
-        #line 1118 "./src/generator/c_gen.am"
+        #line 1124 "./src/generator/c_gen.am"
         if (code_string_equals(tname, "Match")) {
             return "AmalgameRegexMatch*";
         }
-        #line 1119 "./src/generator/c_gen.am"
+        #line 1125 "./src/generator/c_gen.am"
         if (code_string_equals(tname, "WebSocket")) {
             return "AmalgameWebSocket*";
         }
-        #line 1120 "./src/generator/c_gen.am"
+        #line 1126 "./src/generator/c_gen.am"
         if (Amalgame_Compiler_CGen_IsEnum(self, tname)) {
             return Amalgame_Compiler_CGen_SymName(self, tname);
         }
-        #line 1125 "./src/generator/c_gen.am"
+        #line 1131 "./src/generator/c_gen.am"
         code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
-        #line 1126 "./src/generator/c_gen.am"
+        #line 1132 "./src/generator/c_gen.am"
         if (String_Length(externalMangled) > 0) {
-            #line 1127 "./src/generator/c_gen.am"
+            #line 1133 "./src/generator/c_gen.am"
             return code_string_concat(externalMangled, "*");
         }
-        #line 1135 "./src/generator/c_gen.am"
+        #line 1141 "./src/generator/c_gen.am"
         return code_string_concat(Amalgame_Compiler_CGen_ClassMangledFor(self, tname), "*");
     }
-    #line 1138 "./src/generator/c_gen.am"
+    #line 1144 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_CALL) {
-        #line 1143 "./src/generator/c_gen.am"
+        #line 1149 "./src/generator/c_gen.am"
         if ((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER)) {
-            #line 1144 "./src/generator/c_gen.am"
+            #line 1150 "./src/generator/c_gen.am"
             code_string mname = expr->Left->Name;
-            #line 1145 "./src/generator/c_gen.am"
+            #line 1151 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Filter")) || (code_string_equals(mname, "Map"))) {
                 return "AmalgameList*";
             }
-            #line 1146 "./src/generator/c_gen.am"
+            #line 1152 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Any")) || (code_string_equals(mname, "All"))) {
                 return "code_bool";
             }
-            #line 1147 "./src/generator/c_gen.am"
+            #line 1153 "./src/generator/c_gen.am"
             if (code_string_equals(mname, "CountIf")) {
                 return "i64";
             }
         }
-        #line 1149 "./src/generator/c_gen.am"
+        #line 1155 "./src/generator/c_gen.am"
         if (expr->Left != NULL) {
-            #line 1150 "./src/generator/c_gen.am"
+            #line 1156 "./src/generator/c_gen.am"
             code_string calleeStr = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Left);
-            #line 1151 "./src/generator/c_gen.am"
+            #line 1157 "./src/generator/c_gen.am"
             if (((((code_string_equals(calleeStr, "AmalgameMap_has")) || (code_string_equals(calleeStr, "AmalgameMap_remove"))) || (code_string_equals(calleeStr, "AmalgameSet_contains"))) || (code_string_equals(calleeStr, "AmalgameSet_remove"))) || (code_string_equals(calleeStr, "AmalgameSet_add"))) {
                 return "code_bool";
             }
-            #line 1152 "./src/generator/c_gen.am"
+            #line 1158 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "AmalgameMap_size")) || (code_string_equals(calleeStr, "AmalgameSet_size"))) {
                 return "i64";
             }
-            #line 1153 "./src/generator/c_gen.am"
+            #line 1159 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "AmalgameList_isEmpty")) || (code_string_equals(calleeStr, "AmalgameList_remove"))) {
                 return "code_bool";
             }
-            #line 1156 "./src/generator/c_gen.am"
+            #line 1162 "./src/generator/c_gen.am"
             code_string algPrefix = "__alg__";
-            #line 1157 "./src/generator/c_gen.am"
+            #line 1163 "./src/generator/c_gen.am"
             i64 enCount2 = AmalgameList_count(self->EnumNames);
-            #line 1158 "./src/generator/c_gen.am"
+            #line 1164 "./src/generator/c_gen.am"
             for (i64 eni = 0; eni < enCount2; eni++) {
-                #line 1159 "./src/generator/c_gen.am"
+                #line 1165 "./src/generator/c_gen.am"
                 code_string ename = (code_string)AmalgameList_get(self->EnumNames, eni);
-                #line 1160 "./src/generator/c_gen.am"
+                #line 1166 "./src/generator/c_gen.am"
                 if (String_StartsWith(ename, algPrefix)) {
-                    #line 1161 "./src/generator/c_gen.am"
+                    #line 1167 "./src/generator/c_gen.am"
                     code_string enumType = String_Substring(ename, String_Length(algPrefix), String_Length(ename) - String_Length(algPrefix));
-                    #line 1162 "./src/generator/c_gen.am"
+                    #line 1168 "./src/generator/c_gen.am"
                     if (String_StartsWith(calleeStr, code_string_concat(enumType, "_"))) {
-                        #line 1163 "./src/generator/c_gen.am"
+                        #line 1169 "./src/generator/c_gen.am"
                         return enumType;
                     }
                 }
             }
-            #line 1169 "./src/generator/c_gen.am"
+            #line 1175 "./src/generator/c_gen.am"
             if ((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-                #line 1170 "./src/generator/c_gen.am"
+                #line 1176 "./src/generator/c_gen.am"
                 code_string calleeLocalType = Amalgame_Compiler_CGen_LocalTypeGet(self, expr->Left->Name);
-                #line 1171 "./src/generator/c_gen.am"
+                #line 1177 "./src/generator/c_gen.am"
                 if (code_string_equals(calleeLocalType, "__macro__")) {
                     return "i64";
                 }
             }
-            #line 1173 "./src/generator/c_gen.am"
-            if ((((code_string_equals(calleeStr, "String_Length")) || (code_string_equals(calleeStr, "String_IndexOf"))) || (code_string_equals(calleeStr, "String_LastIndexOf"))) || (code_string_equals(calleeStr, "String_ToInt"))) {
-                return "i64";
-            }
-            #line 1174 "./src/generator/c_gen.am"
-            if (code_string_equals(calleeStr, "String_ToFloat")) {
-                return "double";
-            }
-            #line 1175 "./src/generator/c_gen.am"
-            if (code_string_equals(calleeStr, "String_ToBool")) {
-                return "code_bool";
-            }
-            #line 1176 "./src/generator/c_gen.am"
-            if ((((code_string_equals(calleeStr, "String_Contains")) || (code_string_equals(calleeStr, "String_StartsWith"))) || (code_string_equals(calleeStr, "String_EndsWith"))) || (code_string_equals(calleeStr, "String_IsEmpty"))) {
-                return "code_bool";
-            }
-            #line 1177 "./src/generator/c_gen.am"
-            if (String_StartsWith(calleeStr, "String_")) {
-                return "code_string";
-            }
             #line 1179 "./src/generator/c_gen.am"
-            if ((code_string_equals(calleeStr, "Args_Count")) || (code_string_equals(calleeStr, "Exit_Get"))) {
+            if ((((code_string_equals(calleeStr, "String_Length")) || (code_string_equals(calleeStr, "String_IndexOf"))) || (code_string_equals(calleeStr, "String_LastIndexOf"))) || (code_string_equals(calleeStr, "String_ToInt"))) {
                 return "i64";
             }
             #line 1180 "./src/generator/c_gen.am"
+            if (code_string_equals(calleeStr, "String_ToFloat")) {
+                return "double";
+            }
+            #line 1181 "./src/generator/c_gen.am"
+            if (code_string_equals(calleeStr, "String_ToBool")) {
+                return "code_bool";
+            }
+            #line 1182 "./src/generator/c_gen.am"
+            if ((((code_string_equals(calleeStr, "String_Contains")) || (code_string_equals(calleeStr, "String_StartsWith"))) || (code_string_equals(calleeStr, "String_EndsWith"))) || (code_string_equals(calleeStr, "String_IsEmpty"))) {
+                return "code_bool";
+            }
+            #line 1183 "./src/generator/c_gen.am"
+            if (String_StartsWith(calleeStr, "String_")) {
+                return "code_string";
+            }
+            #line 1185 "./src/generator/c_gen.am"
+            if ((code_string_equals(calleeStr, "Args_Count")) || (code_string_equals(calleeStr, "Exit_Get"))) {
+                return "i64";
+            }
+            #line 1186 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Args_Get")) {
                 return "code_string";
             }
-            #line 1181 "./src/generator/c_gen.am"
+            #line 1187 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Exit_Set")) {
                 return "void";
             }
-            #line 1182 "./src/generator/c_gen.am"
+            #line 1188 "./src/generator/c_gen.am"
             if (String_EndsWith(calleeStr, "_CharAt")) {
                 return "code_string";
             }
-            #line 1183 "./src/generator/c_gen.am"
+            #line 1189 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "code_string_concat")) {
                 return "code_string";
             }
-            #line 1184 "./src/generator/c_gen.am"
+            #line 1190 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "AmalgameList_count")) {
                 return "i64";
             }
-            #line 1185 "./src/generator/c_gen.am"
+            #line 1191 "./src/generator/c_gen.am"
             if (String_StartsWith(calleeStr, "AmalgameList_count")) {
                 return "i64";
             }
-            #line 1187 "./src/generator/c_gen.am"
+            #line 1193 "./src/generator/c_gen.am"
             if ((((((code_string_equals(calleeStr, "File_Exists")) || (code_string_equals(calleeStr, "File_WriteAll"))) || (code_string_equals(calleeStr, "File_AppendAll"))) || (code_string_equals(calleeStr, "File_Delete"))) || (code_string_equals(calleeStr, "File_IsFile"))) || (code_string_equals(calleeStr, "File_IsDir"))) {
                 return "code_bool";
             }
-            #line 1188 "./src/generator/c_gen.am"
+            #line 1194 "./src/generator/c_gen.am"
             if ((((code_string_equals(calleeStr, "File_WriteLines")) || (code_string_equals(calleeStr, "File_OpenWrite"))) || (code_string_equals(calleeStr, "File_StreamLine"))) || (code_string_equals(calleeStr, "File_CloseWrite"))) {
                 return "void";
             }
-            #line 1189 "./src/generator/c_gen.am"
+            #line 1195 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "File_WriteLines")) {
                 return "void";
             }
-            #line 1190 "./src/generator/c_gen.am"
+            #line 1196 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "File_ReadAll")) || (code_string_equals(calleeStr, "File_ReadLine"))) {
                 return "code_string";
             }
-            #line 1191 "./src/generator/c_gen.am"
+            #line 1197 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "File_Size")) || (code_string_equals(calleeStr, "File_Mtime"))) {
                 return "i64";
             }
-            #line 1193 "./src/generator/c_gen.am"
+            #line 1199 "./src/generator/c_gen.am"
             if (((((((code_string_equals(calleeStr, "Path_Combine")) || (code_string_equals(calleeStr, "Path_GetExtension"))) || (code_string_equals(calleeStr, "Path_GetFilename"))) || (code_string_equals(calleeStr, "Path_GetDirectory"))) || (code_string_equals(calleeStr, "Path_GetStem"))) || (code_string_equals(calleeStr, "Path_Normalize"))) || (code_string_equals(calleeStr, "Path_Sep"))) {
                 return "code_string";
             }
-            #line 1194 "./src/generator/c_gen.am"
+            #line 1200 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Path_IsAbsolute")) {
                 return "code_bool";
             }
-            #line 1198 "./src/generator/c_gen.am"
+            #line 1204 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "Log_GetMinLevel")) || (code_string_equals(calleeStr, "Log_GetFile"))) {
                 return "code_string";
             }
-            #line 1199 "./src/generator/c_gen.am"
+            #line 1205 "./src/generator/c_gen.am"
             if ((((((code_string_equals(calleeStr, "Log_SetMinLevel")) || (code_string_equals(calleeStr, "Log_SetFile"))) || (code_string_equals(calleeStr, "Log_Debug"))) || (code_string_equals(calleeStr, "Log_Info"))) || (code_string_equals(calleeStr, "Log_Warn"))) || (code_string_equals(calleeStr, "Log_Error"))) {
                 return "void";
             }
-            #line 1201 "./src/generator/c_gen.am"
+            #line 1207 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Service_ShouldStop")) {
                 return "code_bool";
             }
-            #line 1202 "./src/generator/c_gen.am"
+            #line 1208 "./src/generator/c_gen.am"
             if (((code_string_equals(calleeStr, "Service_Install")) || (code_string_equals(calleeStr, "Service_RequestStop"))) || (code_string_equals(calleeStr, "Service_Sleep"))) {
                 return "void";
             }
-            #line 1213 "./src/generator/c_gen.am"
+            #line 1219 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Env_Get")) {
                 return "code_string";
             }
-            #line 1214 "./src/generator/c_gen.am"
+            #line 1220 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Env_Has")) {
                 return "code_bool";
             }
-            #line 1215 "./src/generator/c_gen.am"
+            #line 1221 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_RunCapture")) {
                 return "AmalgameProcessResult*";
             }
-            #line 1216 "./src/generator/c_gen.am"
+            #line 1222 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_Run")) {
                 return "i64";
             }
-            #line 1217 "./src/generator/c_gen.am"
+            #line 1223 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_RunCaptureBoth")) {
                 return "AmalgameProcessResult*";
             }
-            #line 1218 "./src/generator/c_gen.am"
+            #line 1224 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_RunCaptureBothTimeout")) {
                 return "AmalgameProcessResult*";
             }
-            #line 1219 "./src/generator/c_gen.am"
+            #line 1225 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_RunTimeout")) {
                 return "i64";
             }
-            #line 1220 "./src/generator/c_gen.am"
+            #line 1226 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_Spawn")) {
                 return "AmalgameProcessHandle*";
             }
-            #line 1221 "./src/generator/c_gen.am"
+            #line 1227 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_IsAlive")) {
                 return "code_bool";
             }
-            #line 1222 "./src/generator/c_gen.am"
+            #line 1228 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_ExitCode")) {
                 return "i64";
             }
-            #line 1223 "./src/generator/c_gen.am"
+            #line 1229 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_Wait")) {
                 return "code_bool";
             }
-            #line 1224 "./src/generator/c_gen.am"
+            #line 1230 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_WriteLine")) {
                 return "code_bool";
             }
-            #line 1225 "./src/generator/c_gen.am"
+            #line 1231 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_ReadLine")) {
                 return "code_string";
             }
-            #line 1226 "./src/generator/c_gen.am"
+            #line 1232 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Process_ReadErrLine")) {
                 return "code_string";
             }
-            #line 1227 "./src/generator/c_gen.am"
+            #line 1233 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "Console_ReadLine")) || (code_string_equals(calleeStr, "Console_ReadBytes"))) {
                 return "code_string";
             }
-            #line 1228 "./src/generator/c_gen.am"
+            #line 1234 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "Console_Flush")) || (code_string_equals(calleeStr, "Console_Write"))) {
                 return "void";
             }
-            #line 1233 "./src/generator/c_gen.am"
+            #line 1239 "./src/generator/c_gen.am"
             if ((((code_string_equals(calleeStr, "String_Length")) || (code_string_equals(calleeStr, "String_IndexOf"))) || (code_string_equals(calleeStr, "String_LastIndexOf"))) || (code_string_equals(calleeStr, "String_ToInt"))) {
                 return "i64";
             }
-            #line 1234 "./src/generator/c_gen.am"
+            #line 1240 "./src/generator/c_gen.am"
             if ((((code_string_equals(calleeStr, "String_StartsWith")) || (code_string_equals(calleeStr, "String_EndsWith"))) || (code_string_equals(calleeStr, "String_Contains"))) || (code_string_equals(calleeStr, "String_IsEmpty"))) {
                 return "code_bool";
             }
-            #line 1235 "./src/generator/c_gen.am"
+            #line 1241 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "TcpServer_Listen")) {
                 return "AmalgameTcpServer*";
             }
-            #line 1236 "./src/generator/c_gen.am"
+            #line 1242 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "TcpServer_Accept")) {
                 return "AmalgameTcpConn*";
             }
-            #line 1237 "./src/generator/c_gen.am"
+            #line 1243 "./src/generator/c_gen.am"
+            if (code_string_equals(calleeStr, "TcpClient_Connect")) {
+                return "AmalgameTcpClient*";
+            }
+            #line 1244 "./src/generator/c_gen.am"
             if ((((code_string_equals(calleeStr, "TcpServer_IsListening")) || (code_string_equals(calleeStr, "TcpConn_Send"))) || (code_string_equals(calleeStr, "TcpConn_Close"))) || (code_string_equals(calleeStr, "TcpServer_Stop"))) {
                 return "code_bool";
             }
-            #line 1238 "./src/generator/c_gen.am"
+            #line 1245 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "TcpConn_Receive")) {
                 return "code_string";
             }
-            #line 1240 "./src/generator/c_gen.am"
+            #line 1247 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "UdpSocket_New")) {
                 return "AmalgameUdpSocket*";
             }
-            #line 1241 "./src/generator/c_gen.am"
+            #line 1248 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "UdpSocket_ReceiveFrom")) {
                 return "AmalgameUdpDatagram*";
             }
-            #line 1243 "./src/generator/c_gen.am"
+            #line 1250 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "UdpSocket_SetRecvBuf")) {
                 return "i64";
             }
-            #line 1255 "./src/generator/c_gen.am"
+            #line 1262 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Regex_Match")) {
                 return "AmalgameRegexMatch*";
             }
-            #line 1256 "./src/generator/c_gen.am"
+            #line 1263 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Regex_Test")) {
                 return "code_bool";
             }
-            #line 1257 "./src/generator/c_gen.am"
+            #line 1264 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "Regex_Replace")) || (code_string_equals(calleeStr, "Regex_ReplaceAll"))) {
                 return "code_string";
             }
-            #line 1258 "./src/generator/c_gen.am"
+            #line 1265 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "Match_GetText")) || (code_string_equals(calleeStr, "Match_GroupText"))) {
                 return "code_string";
             }
-            #line 1259 "./src/generator/c_gen.am"
+            #line 1266 "./src/generator/c_gen.am"
             if (((((code_string_equals(calleeStr, "Match_GetStart")) || (code_string_equals(calleeStr, "Match_GetEnd"))) || (code_string_equals(calleeStr, "Match_GroupCount"))) || (code_string_equals(calleeStr, "Match_GroupStart"))) || (code_string_equals(calleeStr, "Match_GroupEnd"))) {
                 return "i64";
             }
-            #line 1261 "./src/generator/c_gen.am"
+            #line 1268 "./src/generator/c_gen.am"
             if (((((code_string_equals(calleeStr, "Compress_Gzip")) || (code_string_equals(calleeStr, "Compress_Gunzip"))) || (code_string_equals(calleeStr, "Compress_Deflate"))) || (code_string_equals(calleeStr, "Compress_Inflate"))) || (code_string_equals(calleeStr, "Compress_GzipString"))) {
                 return "AmalgameList*";
             }
-            #line 1262 "./src/generator/c_gen.am"
+            #line 1269 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "Compress_GunzipString")) {
                 return "code_string";
             }
-            #line 1264 "./src/generator/c_gen.am"
+            #line 1271 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "WebSocket_Connect")) {
                 return "AmalgameWebSocket*";
             }
-            #line 1265 "./src/generator/c_gen.am"
+            #line 1272 "./src/generator/c_gen.am"
             if ((code_string_equals(calleeStr, "WebSocket_SendText")) || (code_string_equals(calleeStr, "WebSocket_IsConnected"))) {
                 return "code_bool";
             }
-            #line 1266 "./src/generator/c_gen.am"
+            #line 1273 "./src/generator/c_gen.am"
             if (((code_string_equals(calleeStr, "WebSocket_ReceiveText")) || (code_string_equals(calleeStr, "WebSocket_GetHost"))) || (code_string_equals(calleeStr, "WebSocket_AcceptKey"))) {
                 return "code_string";
             }
-            #line 1267 "./src/generator/c_gen.am"
+            #line 1274 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "WebSocket_GetPort")) {
                 return "i64";
             }
-            #line 1268 "./src/generator/c_gen.am"
+            #line 1275 "./src/generator/c_gen.am"
             if (code_string_equals(calleeStr, "WebSocket_Close")) {
                 return "void";
             }
-            #line 1281 "./src/generator/c_gen.am"
+            #line 1288 "./src/generator/c_gen.am"
             i64 pkgN = AmalgameList_count(self->PkgFuncs);
-            #line 1282 "./src/generator/c_gen.am"
+            #line 1289 "./src/generator/c_gen.am"
             for (i64 pkgI = 0; pkgI < pkgN; pkgI++) {
-                #line 1283 "./src/generator/c_gen.am"
+                #line 1290 "./src/generator/c_gen.am"
                 if (code_string_equals(calleeStr, (code_string)AmalgameList_get(self->PkgFuncs, pkgI))) {
-                    #line 1284 "./src/generator/c_gen.am"
+                    #line 1291 "./src/generator/c_gen.am"
                     return (code_string)AmalgameList_get(self->PkgFuncCTypes, pkgI);
                 }
             }
-            #line 1287 "./src/generator/c_gen.am"
+            #line 1294 "./src/generator/c_gen.am"
             if (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
-                #line 1288 "./src/generator/c_gen.am"
+                #line 1295 "./src/generator/c_gen.am"
                 code_string mname2 = expr->Left->Name;
-                #line 1296 "./src/generator/c_gen.am"
+                #line 1303 "./src/generator/c_gen.am"
                 if (code_string_equals(mname2, "Count")) {
                     return "i64";
                 }
-                #line 1297 "./src/generator/c_gen.am"
+                #line 1304 "./src/generator/c_gen.am"
                 if (code_string_equals(mname2, "Size")) {
-                    #line 1298 "./src/generator/c_gen.am"
+                    #line 1305 "./src/generator/c_gen.am"
                     if (expr->Left->Left != NULL) {
-                        #line 1299 "./src/generator/c_gen.am"
+                        #line 1306 "./src/generator/c_gen.am"
                         Amalgame_Compiler_NodeKind llkS = expr->Left->Left->Kind;
-                        #line 1300 "./src/generator/c_gen.am"
+                        #line 1307 "./src/generator/c_gen.am"
                         if (llkS == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                            #line 1301 "./src/generator/c_gen.am"
+                            #line 1308 "./src/generator/c_gen.am"
                             code_string recvT = Amalgame_Compiler_CGen_LocalTypeGet(self, expr->Left->Left->Name);
-                            #line 1302 "./src/generator/c_gen.am"
+                            #line 1309 "./src/generator/c_gen.am"
                             if ((((code_string_equals(recvT, "AmalgameList*")) || (code_string_equals(recvT, "AmalgameMap*"))) || (code_string_equals(recvT, "AmalgameSet*"))) || (code_string_equals(recvT, "AmalgameDict*"))) {
-                                #line 1303 "./src/generator/c_gen.am"
+                                #line 1310 "./src/generator/c_gen.am"
                                 return "i64";
                             }
                         }
-                        #line 1306 "./src/generator/c_gen.am"
+                        #line 1313 "./src/generator/c_gen.am"
                         if (llkS == Amalgame_Compiler_NodeKind_MEMBER) {
-                            #line 1307 "./src/generator/c_gen.am"
+                            #line 1314 "./src/generator/c_gen.am"
                             Amalgame_Compiler_AstNode* ll = expr->Left->Left;
-                            #line 1308 "./src/generator/c_gen.am"
+                            #line 1315 "./src/generator/c_gen.am"
                             if ((ll->Left != NULL) && (ll->Left->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR)) {
-                                #line 1309 "./src/generator/c_gen.am"
+                                #line 1316 "./src/generator/c_gen.am"
                                 code_string ft = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, ll->Name);
-                                #line 1310 "./src/generator/c_gen.am"
+                                #line 1317 "./src/generator/c_gen.am"
                                 if ((((code_string_equals(ft, "AmalgameList*")) || (code_string_equals(ft, "AmalgameMap*"))) || (code_string_equals(ft, "AmalgameSet*"))) || (code_string_equals(ft, "AmalgameDict*"))) {
-                                    #line 1311 "./src/generator/c_gen.am"
+                                    #line 1318 "./src/generator/c_gen.am"
                                     return "i64";
                                 }
                             }
                         }
                     }
                 }
-                #line 1320 "./src/generator/c_gen.am"
+                #line 1327 "./src/generator/c_gen.am"
                 if (code_string_equals(mname2, "Clear")) {
                     return "void";
                 }
-                #line 1321 "./src/generator/c_gen.am"
+                #line 1328 "./src/generator/c_gen.am"
                 if (code_string_equals(mname2, "Reserve")) {
                     return "void";
                 }
-                #line 1322 "./src/generator/c_gen.am"
+                #line 1329 "./src/generator/c_gen.am"
                 if (((((code_string_equals(mname2, "IsEmpty")) || (code_string_equals(mname2, "Has"))) || (code_string_equals(mname2, "Contains"))) || (code_string_equals(mname2, "Remove"))) || (code_string_equals(mname2, "Add"))) {
-                    #line 1324 "./src/generator/c_gen.am"
+                    #line 1331 "./src/generator/c_gen.am"
                     if ((expr->Left->Left != NULL) && (expr->Left->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-                        #line 1325 "./src/generator/c_gen.am"
+                        #line 1332 "./src/generator/c_gen.am"
                         code_string objN = expr->Left->Left->Name;
-                        #line 1326 "./src/generator/c_gen.am"
+                        #line 1333 "./src/generator/c_gen.am"
                         code_string objT = Amalgame_Compiler_CGen_LocalTypeGet(self, objN);
-                        #line 1327 "./src/generator/c_gen.am"
+                        #line 1334 "./src/generator/c_gen.am"
                         if ((code_string_equals(objT, "AmalgameList*")) && (code_string_equals(mname2, "IsEmpty"))) {
                             return "code_bool";
                         }
-                        #line 1328 "./src/generator/c_gen.am"
+                        #line 1335 "./src/generator/c_gen.am"
                         if ((code_string_equals(objT, "AmalgameList*")) && (code_string_equals(mname2, "Remove"))) {
                             return "code_bool";
                         }
-                        #line 1329 "./src/generator/c_gen.am"
+                        #line 1336 "./src/generator/c_gen.am"
                         if ((code_string_equals(objT, "AmalgameMap*")) && ((code_string_equals(mname2, "Has")) || (code_string_equals(mname2, "Remove")))) {
                             return "code_bool";
                         }
-                        #line 1330 "./src/generator/c_gen.am"
+                        #line 1337 "./src/generator/c_gen.am"
                         if ((code_string_equals(objT, "AmalgameSet*")) && (((code_string_equals(mname2, "Contains")) || (code_string_equals(mname2, "Remove"))) || (code_string_equals(mname2, "Add")))) {
                             return "code_bool";
                         }
                     }
                 }
-                #line 1333 "./src/generator/c_gen.am"
+                #line 1340 "./src/generator/c_gen.am"
                 if (code_string_equals(mname2, "Get")) {
-                    #line 1335 "./src/generator/c_gen.am"
+                    #line 1342 "./src/generator/c_gen.am"
                     if (expr->Left->Left != NULL) {
-                        #line 1336 "./src/generator/c_gen.am"
+                        #line 1343 "./src/generator/c_gen.am"
                         Amalgame_Compiler_AstNode* ll = expr->Left->Left;
-                        #line 1337 "./src/generator/c_gen.am"
+                        #line 1344 "./src/generator/c_gen.am"
                         if (ll->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR) {
                         }
-                        #line 1341 "./src/generator/c_gen.am"
+                        #line 1348 "./src/generator/c_gen.am"
                         if (ll->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
-                            #line 1342 "./src/generator/c_gen.am"
+                            #line 1349 "./src/generator/c_gen.am"
                             if (ll->Left != NULL) {
-                                #line 1343 "./src/generator/c_gen.am"
+                                #line 1350 "./src/generator/c_gen.am"
                                 if (ll->Left->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                                    #line 1344 "./src/generator/c_gen.am"
+                                    #line 1351 "./src/generator/c_gen.am"
                                     code_string fn3 = ll->Name;
-                                    #line 1345 "./src/generator/c_gen.am"
+                                    #line 1352 "./src/generator/c_gen.am"
                                     code_string et = Amalgame_Compiler_CGen_ListElemGet(self, self->CurrentClass, fn3);
-                                    #line 1346 "./src/generator/c_gen.am"
+                                    #line 1353 "./src/generator/c_gen.am"
                                     if (String_Length(et) > 0) {
                                         return et;
                                     }
                                 }
-                                #line 1357 "./src/generator/c_gen.am"
+                                #line 1364 "./src/generator/c_gen.am"
                                 if (ll->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                                    #line 1358 "./src/generator/c_gen.am"
+                                    #line 1365 "./src/generator/c_gen.am"
                                     code_string objN3 = ll->Left->Name;
-                                    #line 1359 "./src/generator/c_gen.am"
+                                    #line 1366 "./src/generator/c_gen.am"
                                     code_string objT3 = Amalgame_Compiler_CGen_LocalTypeGet(self, objN3);
-                                    #line 1360 "./src/generator/c_gen.am"
+                                    #line 1367 "./src/generator/c_gen.am"
                                     code_string bareO = String_Replace(objT3, "*", "");
-                                    #line 1361 "./src/generator/c_gen.am"
+                                    #line 1368 "./src/generator/c_gen.am"
                                     if (String_Length(bareO) > 0) {
-                                        #line 1362 "./src/generator/c_gen.am"
+                                        #line 1369 "./src/generator/c_gen.am"
                                         code_string etV = Amalgame_Compiler_CGen_ListElemGet(self, bareO, ll->Name);
-                                        #line 1363 "./src/generator/c_gen.am"
+                                        #line 1370 "./src/generator/c_gen.am"
                                         if (String_Length(etV) > 0) {
                                             return etV;
                                         }
@@ -10071,153 +10087,153 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExprUncached(Amalgame_Com
                                 }
                             }
                         }
-                        #line 1368 "./src/generator/c_gen.am"
+                        #line 1375 "./src/generator/c_gen.am"
                         if (ll->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                            #line 1369 "./src/generator/c_gen.am"
+                            #line 1376 "./src/generator/c_gen.am"
                             code_string vn3 = ll->Name;
-                            #line 1370 "./src/generator/c_gen.am"
+                            #line 1377 "./src/generator/c_gen.am"
                             code_string vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vn3);
-                            #line 1371 "./src/generator/c_gen.am"
-                            code_string bare3 = String_Replace(vtype, "*", "");
                             #line 1378 "./src/generator/c_gen.am"
+                            code_string bare3 = String_Replace(vtype, "*", "");
+                            #line 1385 "./src/generator/c_gen.am"
                             if (String_Length(bare3) > 0) {
-                                #line 1379 "./src/generator/c_gen.am"
+                                #line 1386 "./src/generator/c_gen.am"
                                 code_string urt = Amalgame_Compiler_CGen_MethodRetGet(self, bare3, "Get");
-                                #line 1380 "./src/generator/c_gen.am"
+                                #line 1387 "./src/generator/c_gen.am"
                                 if (String_Length(urt) > 0) {
                                     return urt;
                                 }
                             }
-                            #line 1389 "./src/generator/c_gen.am"
+                            #line 1396 "./src/generator/c_gen.am"
                             code_string listElem = Amalgame_Compiler_CGen_ListElemGet(self, "__local__", vn3);
-                            #line 1390 "./src/generator/c_gen.am"
+                            #line 1397 "./src/generator/c_gen.am"
                             if (String_Length(listElem) > 0) {
                                 return listElem;
                             }
-                            #line 1391 "./src/generator/c_gen.am"
+                            #line 1398 "./src/generator/c_gen.am"
                             code_string mapElem = Amalgame_Compiler_CGen_ListElemGet(self, "__local_map__", vn3);
-                            #line 1392 "./src/generator/c_gen.am"
+                            #line 1399 "./src/generator/c_gen.am"
                             if (String_Length(mapElem) > 0) {
                                 return mapElem;
                             }
                         }
-                        #line 1399 "./src/generator/c_gen.am"
+                        #line 1406 "./src/generator/c_gen.am"
                         if (ll->Kind == Amalgame_Compiler_NodeKind_CALL) {
-                            #line 1400 "./src/generator/c_gen.am"
+                            #line 1407 "./src/generator/c_gen.am"
                             code_string chainT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, ll);
-                            #line 1401 "./src/generator/c_gen.am"
+                            #line 1408 "./src/generator/c_gen.am"
                             code_string chainBare = String_Replace(chainT, "*", "");
-                            #line 1402 "./src/generator/c_gen.am"
+                            #line 1409 "./src/generator/c_gen.am"
                             if (String_Length(chainBare) > 0) {
-                                #line 1403 "./src/generator/c_gen.am"
+                                #line 1410 "./src/generator/c_gen.am"
                                 code_string urt = Amalgame_Compiler_CGen_MethodRetGet(self, chainBare, "Get");
-                                #line 1404 "./src/generator/c_gen.am"
+                                #line 1411 "./src/generator/c_gen.am"
                                 if (String_Length(urt) > 0) {
                                     return urt;
                                 }
                             }
                         }
                     }
-                    #line 1408 "./src/generator/c_gen.am"
+                    #line 1415 "./src/generator/c_gen.am"
                     return "void*";
                 }
-                #line 1410 "./src/generator/c_gen.am"
+                #line 1417 "./src/generator/c_gen.am"
                 if (expr->Left->Left != NULL) {
-                    #line 1411 "./src/generator/c_gen.am"
+                    #line 1418 "./src/generator/c_gen.am"
                     Amalgame_Compiler_NodeKind llk2 = expr->Left->Left->Kind;
-                    #line 1413 "./src/generator/c_gen.am"
+                    #line 1420 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                        #line 1414 "./src/generator/c_gen.am"
+                        #line 1421 "./src/generator/c_gen.am"
                         code_string retT = Amalgame_Compiler_CGen_MethodRetGet(self, self->CurrentClass, mname2);
-                        #line 1415 "./src/generator/c_gen.am"
+                        #line 1422 "./src/generator/c_gen.am"
                         if (String_Length(retT) > 0) {
                             return retT;
                         }
                     }
-                    #line 1422 "./src/generator/c_gen.am"
+                    #line 1429 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_CALL) {
-                        #line 1423 "./src/generator/c_gen.am"
+                        #line 1430 "./src/generator/c_gen.am"
                         code_string chainT2 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left->Left);
-                        #line 1424 "./src/generator/c_gen.am"
+                        #line 1431 "./src/generator/c_gen.am"
                         code_string chainBare2 = String_Replace(chainT2, "*", "");
-                        #line 1425 "./src/generator/c_gen.am"
+                        #line 1432 "./src/generator/c_gen.am"
                         if (String_Length(chainBare2) > 0) {
-                            #line 1426 "./src/generator/c_gen.am"
+                            #line 1433 "./src/generator/c_gen.am"
                             code_string retTC = Amalgame_Compiler_CGen_MethodRetGet(self, chainBare2, mname2);
-                            #line 1427 "./src/generator/c_gen.am"
+                            #line 1434 "./src/generator/c_gen.am"
                             if (String_Length(retTC) > 0) {
                                 return retTC;
                             }
                         }
                     }
-                    #line 1435 "./src/generator/c_gen.am"
+                    #line 1442 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-                        #line 1436 "./src/generator/c_gen.am"
+                        #line 1443 "./src/generator/c_gen.am"
                         code_string recvT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left->Left);
-                        #line 1437 "./src/generator/c_gen.am"
+                        #line 1444 "./src/generator/c_gen.am"
                         code_string recvBare = String_Replace(recvT, "*", "");
-                        #line 1438 "./src/generator/c_gen.am"
+                        #line 1445 "./src/generator/c_gen.am"
                         if (String_Length(recvBare) > 0) {
-                            #line 1439 "./src/generator/c_gen.am"
+                            #line 1446 "./src/generator/c_gen.am"
                             code_string retTN = Amalgame_Compiler_CGen_MethodRetGet(self, recvBare, mname2);
-                            #line 1440 "./src/generator/c_gen.am"
+                            #line 1447 "./src/generator/c_gen.am"
                             if (String_Length(retTN) > 0) {
                                 return retTN;
                             }
                         }
                     }
-                    #line 1444 "./src/generator/c_gen.am"
+                    #line 1451 "./src/generator/c_gen.am"
                     if (llk2 == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 1445 "./src/generator/c_gen.am"
+                        #line 1452 "./src/generator/c_gen.am"
                         code_string cname2 = expr->Left->Left->Name;
-                        #line 1446 "./src/generator/c_gen.am"
+                        #line 1453 "./src/generator/c_gen.am"
                         code_string firstC = String_Substring(cname2, 0, 1);
-                        #line 1447 "./src/generator/c_gen.am"
+                        #line 1454 "./src/generator/c_gen.am"
                         code_bool isUpp = code_string_equals(firstC, String_ToUpper(firstC));
-                        #line 1448 "./src/generator/c_gen.am"
+                        #line 1455 "./src/generator/c_gen.am"
                         if (isUpp) {
-                            #line 1457 "./src/generator/c_gen.am"
+                            #line 1464 "./src/generator/c_gen.am"
                             code_string extMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, cname2);
-                            #line 1458 "./src/generator/c_gen.am"
+                            #line 1465 "./src/generator/c_gen.am"
                             if (String_Length(extMangled) > 0) {
-                                #line 1459 "./src/generator/c_gen.am"
+                                #line 1466 "./src/generator/c_gen.am"
                                 code_string retTE = Amalgame_Compiler_CGen_MethodRetGet(self, extMangled, mname2);
-                                #line 1460 "./src/generator/c_gen.am"
+                                #line 1467 "./src/generator/c_gen.am"
                                 if (String_Length(retTE) > 0) {
                                     return retTE;
                                 }
                             }
-                            #line 1466 "./src/generator/c_gen.am"
+                            #line 1473 "./src/generator/c_gen.am"
                             code_string pkgMangled2 = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, cname2);
-                            #line 1467 "./src/generator/c_gen.am"
+                            #line 1474 "./src/generator/c_gen.am"
                             if ((String_Length(pkgMangled2) > 0) && !Amalgame_Compiler_CGen_IsLocalClass(self, cname2)) {
-                                #line 1468 "./src/generator/c_gen.am"
+                                #line 1475 "./src/generator/c_gen.am"
                                 code_string retTP = Amalgame_Compiler_CGen_MethodRetGet(self, pkgMangled2, mname2);
-                                #line 1469 "./src/generator/c_gen.am"
+                                #line 1476 "./src/generator/c_gen.am"
                                 if (String_Length(retTP) > 0) {
                                     return retTP;
                                 }
                             }
-                            #line 1471 "./src/generator/c_gen.am"
+                            #line 1478 "./src/generator/c_gen.am"
                             code_string symCls = Amalgame_Compiler_CGen_SymName(self, cname2);
-                            #line 1472 "./src/generator/c_gen.am"
+                            #line 1479 "./src/generator/c_gen.am"
                             code_string retT2 = Amalgame_Compiler_CGen_MethodRetGet(self, symCls, mname2);
-                            #line 1473 "./src/generator/c_gen.am"
+                            #line 1480 "./src/generator/c_gen.am"
                             if (String_Length(retT2) > 0) {
                                 return retT2;
                             }
                         }
-                        #line 1476 "./src/generator/c_gen.am"
+                        #line 1483 "./src/generator/c_gen.am"
                         if (!isUpp) {
-                            #line 1477 "./src/generator/c_gen.am"
+                            #line 1484 "./src/generator/c_gen.am"
                             code_string objType = Amalgame_Compiler_CGen_LocalTypeGet(self, cname2);
-                            #line 1478 "./src/generator/c_gen.am"
+                            #line 1485 "./src/generator/c_gen.am"
                             code_string bareCls = String_Replace(objType, "*", "");
-                            #line 1479 "./src/generator/c_gen.am"
+                            #line 1486 "./src/generator/c_gen.am"
                             if (String_Length(bareCls) > 0) {
-                                #line 1480 "./src/generator/c_gen.am"
+                                #line 1487 "./src/generator/c_gen.am"
                                 code_string retT3 = Amalgame_Compiler_CGen_MethodRetGet(self, bareCls, mname2);
-                                #line 1481 "./src/generator/c_gen.am"
+                                #line 1488 "./src/generator/c_gen.am"
                                 if (String_Length(retT3) > 0) {
                                     return retT3;
                                 }
@@ -10228,577 +10244,577 @@ static code_string Amalgame_Compiler_CGen_InferTypeFromExprUncached(Amalgame_Com
             }
         }
     }
-    #line 1489 "./src/generator/c_gen.am"
+    #line 1496 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_bool Amalgame_Compiler_CGen_IsValidInterpExpr(Amalgame_Compiler_CGen* self, code_string s) {
-    #line 1503 "./src/generator/c_gen.am"
+    #line 1510 "./src/generator/c_gen.am"
     i64 n = String_Length(s);
-    #line 1504 "./src/generator/c_gen.am"
+    #line 1511 "./src/generator/c_gen.am"
     if (n == 0) {
         return 0;
     }
-    #line 1505 "./src/generator/c_gen.am"
+    #line 1512 "./src/generator/c_gen.am"
     code_string first = String_Substring(s, 0, 1);
-    #line 1506 "./src/generator/c_gen.am"
+    #line 1513 "./src/generator/c_gen.am"
     code_bool identStart = String_Contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", first);
-    #line 1507 "./src/generator/c_gen.am"
+    #line 1514 "./src/generator/c_gen.am"
     if (!identStart) {
         return 0;
     }
-    #line 1508 "./src/generator/c_gen.am"
+    #line 1515 "./src/generator/c_gen.am"
     code_string identCont = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.";
-    #line 1509 "./src/generator/c_gen.am"
+    #line 1516 "./src/generator/c_gen.am"
     i64 i = 1;
-    #line 1510 "./src/generator/c_gen.am"
+    #line 1517 "./src/generator/c_gen.am"
     while (i < n) {
-        #line 1511 "./src/generator/c_gen.am"
+        #line 1518 "./src/generator/c_gen.am"
         code_string ch = String_Substring(s, i, 1);
-        #line 1512 "./src/generator/c_gen.am"
+        #line 1519 "./src/generator/c_gen.am"
         if (code_string_equals(ch, "(")) {
-            #line 1519 "./src/generator/c_gen.am"
+            #line 1526 "./src/generator/c_gen.am"
             code_string last = String_Substring(s, n - 1, 1);
-            #line 1520 "./src/generator/c_gen.am"
+            #line 1527 "./src/generator/c_gen.am"
             if (code_string_equals(last, ")")) {
                 return 1;
             }
-            #line 1521 "./src/generator/c_gen.am"
+            #line 1528 "./src/generator/c_gen.am"
             return 0;
         }
-        #line 1523 "./src/generator/c_gen.am"
+        #line 1530 "./src/generator/c_gen.am"
         code_bool ok = String_Contains(identCont, ch);
-        #line 1524 "./src/generator/c_gen.am"
+        #line 1531 "./src/generator/c_gen.am"
         if (!ok) {
             return 0;
         }
-        #line 1525 "./src/generator/c_gen.am"
+        #line 1532 "./src/generator/c_gen.am"
         i = (i + 1);
     }
-    #line 1527 "./src/generator/c_gen.am"
+    #line 1534 "./src/generator/c_gen.am"
     return 1;
 }
 
 static code_string Amalgame_Compiler_CGen_EmitInterpolatedString(Amalgame_Compiler_CGen* self, code_string raw) {
-    #line 1537 "./src/generator/c_gen.am"
+    #line 1544 "./src/generator/c_gen.am"
     i64 hasInterp = String_IndexOf(raw, "{");
-    #line 1538 "./src/generator/c_gen.am"
+    #line 1545 "./src/generator/c_gen.am"
     if (hasInterp < 0) {
-        #line 1539 "./src/generator/c_gen.am"
+        #line 1546 "./src/generator/c_gen.am"
         code_string escaped = Amalgame_Compiler_CGen_EscapeStringForC(self, raw);
-        #line 1540 "./src/generator/c_gen.am"
+        #line 1547 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat("\"", escaped)), "\"");
     }
-    #line 1542 "./src/generator/c_gen.am"
+    #line 1549 "./src/generator/c_gen.am"
     i64 len = String_Length(raw);
-    #line 1544 "./src/generator/c_gen.am"
+    #line 1551 "./src/generator/c_gen.am"
     code_bool hasValid = 0;
-    #line 1545 "./src/generator/c_gen.am"
+    #line 1552 "./src/generator/c_gen.am"
     i64 ci = 0;
-    #line 1546 "./src/generator/c_gen.am"
+    #line 1553 "./src/generator/c_gen.am"
     while (ci < len) {
-        #line 1547 "./src/generator/c_gen.am"
+        #line 1554 "./src/generator/c_gen.am"
         code_string cch = String_Substring(raw, ci, 1);
-        #line 1548 "./src/generator/c_gen.am"
+        #line 1555 "./src/generator/c_gen.am"
         if (code_string_equals(cch, "{")) {
-            #line 1549 "./src/generator/c_gen.am"
+            #line 1556 "./src/generator/c_gen.am"
             code_string rest = String_Substring(raw, ci + 1, (len - ci) - 1);
-            #line 1550 "./src/generator/c_gen.am"
+            #line 1557 "./src/generator/c_gen.am"
             i64 close = String_IndexOf(rest, "}");
-            #line 1551 "./src/generator/c_gen.am"
+            #line 1558 "./src/generator/c_gen.am"
             if (close > 0) {
-                #line 1552 "./src/generator/c_gen.am"
+                #line 1559 "./src/generator/c_gen.am"
                 code_string inner = String_Substring(raw, ci + 1, close);
-                #line 1553 "./src/generator/c_gen.am"
+                #line 1560 "./src/generator/c_gen.am"
                 if (Amalgame_Compiler_CGen_IsValidInterpExpr(self, inner)) {
-                    #line 1554 "./src/generator/c_gen.am"
+                    #line 1561 "./src/generator/c_gen.am"
                     hasValid = 1;
-                    #line 1555 "./src/generator/c_gen.am"
+                    #line 1562 "./src/generator/c_gen.am"
                     ci = len;
                 } else {
-                    #line 1557 "./src/generator/c_gen.am"
+                    #line 1564 "./src/generator/c_gen.am"
                     ci = (ci + 1);
                 }
             } else {
-                #line 1560 "./src/generator/c_gen.am"
+                #line 1567 "./src/generator/c_gen.am"
                 ci = (ci + 1);
             }
         } else {
-            #line 1563 "./src/generator/c_gen.am"
+            #line 1570 "./src/generator/c_gen.am"
             ci = (ci + 1);
         }
     }
-    #line 1566 "./src/generator/c_gen.am"
+    #line 1573 "./src/generator/c_gen.am"
     if (!hasValid) {
-        #line 1567 "./src/generator/c_gen.am"
+        #line 1574 "./src/generator/c_gen.am"
         code_string escaped = Amalgame_Compiler_CGen_EscapeStringForC(self, raw);
-        #line 1568 "./src/generator/c_gen.am"
+        #line 1575 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat("\"", escaped)), "\"");
     }
-    #line 1571 "./src/generator/c_gen.am"
+    #line 1578 "./src/generator/c_gen.am"
     code_string result = "\"\"";
-    #line 1572 "./src/generator/c_gen.am"
+    #line 1579 "./src/generator/c_gen.am"
     i64 i = 0;
-    #line 1573 "./src/generator/c_gen.am"
+    #line 1580 "./src/generator/c_gen.am"
     i64 segStart = 0;
-    #line 1574 "./src/generator/c_gen.am"
+    #line 1581 "./src/generator/c_gen.am"
     while (i < len) {
-        #line 1575 "./src/generator/c_gen.am"
+        #line 1582 "./src/generator/c_gen.am"
         code_string ch = String_Substring(raw, i, 1);
-        #line 1576 "./src/generator/c_gen.am"
+        #line 1583 "./src/generator/c_gen.am"
         if (code_string_equals(ch, "{")) {
-            #line 1577 "./src/generator/c_gen.am"
+            #line 1584 "./src/generator/c_gen.am"
             code_string rest2 = String_Substring(raw, i + 1, (len - i) - 1);
-            #line 1578 "./src/generator/c_gen.am"
+            #line 1585 "./src/generator/c_gen.am"
             i64 close2 = String_IndexOf(rest2, "}");
-            #line 1579 "./src/generator/c_gen.am"
+            #line 1586 "./src/generator/c_gen.am"
             if (close2 > 0) {
-                #line 1580 "./src/generator/c_gen.am"
+                #line 1587 "./src/generator/c_gen.am"
                 code_string expr = String_Substring(raw, i + 1, close2);
-                #line 1581 "./src/generator/c_gen.am"
+                #line 1588 "./src/generator/c_gen.am"
                 if (Amalgame_Compiler_CGen_IsValidInterpExpr(self, expr)) {
-                    #line 1582 "./src/generator/c_gen.am"
+                    #line 1589 "./src/generator/c_gen.am"
                     if (i > segStart) {
-                        #line 1583 "./src/generator/c_gen.am"
+                        #line 1590 "./src/generator/c_gen.am"
                         code_string seg = String_Substring(raw, segStart, i - segStart);
-                        #line 1584 "./src/generator/c_gen.am"
+                        #line 1591 "./src/generator/c_gen.am"
                         code_string esc = Amalgame_Compiler_CGen_EscapeStringForC(self, seg);
-                        #line 1585 "./src/generator/c_gen.am"
+                        #line 1592 "./src/generator/c_gen.am"
                         result = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("code_string_concat(", result)), ", \"")), esc)), "\")"));
                     }
-                    #line 1587 "./src/generator/c_gen.am"
+                    #line 1594 "./src/generator/c_gen.am"
                     code_string cExpr = Amalgame_Compiler_CGen_InterpExprToC(self, expr);
-                    #line 1588 "./src/generator/c_gen.am"
+                    #line 1595 "./src/generator/c_gen.am"
                     result = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("code_string_concat(", result)), ", ")), cExpr)), ")"));
-                    #line 1589 "./src/generator/c_gen.am"
+                    #line 1596 "./src/generator/c_gen.am"
                     segStart = (((i + 1) + close2) + 1);
-                    #line 1590 "./src/generator/c_gen.am"
+                    #line 1597 "./src/generator/c_gen.am"
                     i = segStart;
                 } else {
-                    #line 1592 "./src/generator/c_gen.am"
+                    #line 1599 "./src/generator/c_gen.am"
                     i = (i + 1);
                 }
             } else {
-                #line 1595 "./src/generator/c_gen.am"
+                #line 1602 "./src/generator/c_gen.am"
                 i = (i + 1);
             }
         } else {
-            #line 1598 "./src/generator/c_gen.am"
+            #line 1605 "./src/generator/c_gen.am"
             i = (i + 1);
         }
     }
-    #line 1601 "./src/generator/c_gen.am"
+    #line 1608 "./src/generator/c_gen.am"
     if (segStart < len) {
-        #line 1602 "./src/generator/c_gen.am"
+        #line 1609 "./src/generator/c_gen.am"
         code_string seg = String_Substring(raw, segStart, len - segStart);
-        #line 1603 "./src/generator/c_gen.am"
+        #line 1610 "./src/generator/c_gen.am"
         code_string esc = Amalgame_Compiler_CGen_EscapeStringForC(self, seg);
-        #line 1604 "./src/generator/c_gen.am"
+        #line 1611 "./src/generator/c_gen.am"
         result = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("code_string_concat(", result)), ", \"")), esc)), "\")"));
     }
-    #line 1606 "./src/generator/c_gen.am"
+    #line 1613 "./src/generator/c_gen.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_CGen_WrapForInterp(Amalgame_Compiler_CGen* self, code_string cExpr, code_string cType) {
-    #line 1612 "./src/generator/c_gen.am"
+    #line 1619 "./src/generator/c_gen.am"
     if (code_string_equals(cType, "code_string")) {
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", cExpr)), " ? ")), cExpr)), " : \"\")");
     }
-    #line 1613 "./src/generator/c_gen.am"
+    #line 1620 "./src/generator/c_gen.am"
     if (code_string_equals(cType, "i64")) {
         return code_string_concat((code_string_concat("String_FromInt(", cExpr)), ")");
     }
-    #line 1614 "./src/generator/c_gen.am"
+    #line 1621 "./src/generator/c_gen.am"
     if (code_string_equals(cType, "double")) {
         return code_string_concat((code_string_concat("String_FromFloat(", cExpr)), ")");
     }
-    #line 1615 "./src/generator/c_gen.am"
+    #line 1622 "./src/generator/c_gen.am"
     if (code_string_equals(cType, "code_bool")) {
         return code_string_concat((code_string_concat("((", cExpr)), ") ? \"true\" : \"false\")");
     }
-    #line 1617 "./src/generator/c_gen.am"
+    #line 1624 "./src/generator/c_gen.am"
     return code_string_concat((code_string_concat("String_FromInt((i64)(", cExpr)), "))");
 }
 
 static code_string Amalgame_Compiler_CGen_BuiltinCallReturnType(Amalgame_Compiler_CGen* self, code_string cName) {
-    #line 1623 "./src/generator/c_gen.am"
+    #line 1630 "./src/generator/c_gen.am"
     if ((((code_string_equals(cName, "String_Length")) || (code_string_equals(cName, "String_IndexOf"))) || (code_string_equals(cName, "String_LastIndexOf"))) || (code_string_equals(cName, "String_ToInt"))) {
         return "i64";
     }
-    #line 1624 "./src/generator/c_gen.am"
+    #line 1631 "./src/generator/c_gen.am"
     if (code_string_equals(cName, "String_ToFloat")) {
         return "double";
     }
-    #line 1625 "./src/generator/c_gen.am"
+    #line 1632 "./src/generator/c_gen.am"
     if (((((code_string_equals(cName, "String_IsEmpty")) || (code_string_equals(cName, "String_Contains"))) || (code_string_equals(cName, "String_StartsWith"))) || (code_string_equals(cName, "String_EndsWith"))) || (code_string_equals(cName, "String_ToBool"))) {
         return "code_bool";
     }
-    #line 1626 "./src/generator/c_gen.am"
+    #line 1633 "./src/generator/c_gen.am"
     if (String_StartsWith(cName, "String_")) {
         return "code_string";
     }
-    #line 1630 "./src/generator/c_gen.am"
+    #line 1637 "./src/generator/c_gen.am"
     if (code_string_equals(cName, "File_ReadAll")) {
         return "code_string";
     }
-    #line 1631 "./src/generator/c_gen.am"
+    #line 1638 "./src/generator/c_gen.am"
     if ((((((code_string_equals(cName, "File_Exists")) || (code_string_equals(cName, "File_WriteAll"))) || (code_string_equals(cName, "File_AppendAll"))) || (code_string_equals(cName, "File_Delete"))) || (code_string_equals(cName, "File_IsFile"))) || (code_string_equals(cName, "File_IsDir"))) {
         return "code_bool";
     }
-    #line 1632 "./src/generator/c_gen.am"
+    #line 1639 "./src/generator/c_gen.am"
     if ((((code_string_equals(cName, "File_Size")) || (code_string_equals(cName, "File_Mtime"))) || (code_string_equals(cName, "Args_Count"))) || (code_string_equals(cName, "Exit_Get"))) {
         return "i64";
     }
-    #line 1633 "./src/generator/c_gen.am"
+    #line 1640 "./src/generator/c_gen.am"
     if (code_string_equals(cName, "Args_Get")) {
         return "code_string";
     }
-    #line 1634 "./src/generator/c_gen.am"
+    #line 1641 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_CGen_InterpExprToC(Amalgame_Compiler_CGen* self, code_string expr) {
-    #line 1642 "./src/generator/c_gen.am"
+    #line 1649 "./src/generator/c_gen.am"
     i64 parenIdx = String_IndexOf(expr, "(");
-    #line 1643 "./src/generator/c_gen.am"
+    #line 1650 "./src/generator/c_gen.am"
     if (parenIdx > 0) {
-        #line 1644 "./src/generator/c_gen.am"
-        code_string callee = String_Substring(expr, 0, parenIdx);
-        #line 1645 "./src/generator/c_gen.am"
-        code_string rest = String_Substring(expr, parenIdx, String_Length(expr) - parenIdx);
         #line 1651 "./src/generator/c_gen.am"
-        i64 dotIn = String_IndexOf(callee, ".");
+        code_string callee = String_Substring(expr, 0, parenIdx);
         #line 1652 "./src/generator/c_gen.am"
+        code_string rest = String_Substring(expr, parenIdx, String_Length(expr) - parenIdx);
+        #line 1658 "./src/generator/c_gen.am"
+        i64 dotIn = String_IndexOf(callee, ".");
+        #line 1659 "./src/generator/c_gen.am"
         if ((dotIn > 0) && (String_IndexOf(String_Substring(callee, dotIn + 1, (String_Length(callee) - dotIn) - 1), ".") == -1)) {
-            #line 1653 "./src/generator/c_gen.am"
+            #line 1660 "./src/generator/c_gen.am"
             code_string objName = String_Substring(callee, 0, dotIn);
-            #line 1654 "./src/generator/c_gen.am"
+            #line 1661 "./src/generator/c_gen.am"
             code_string mName = String_Substring(callee, dotIn + 1, (String_Length(callee) - dotIn) - 1);
-            #line 1655 "./src/generator/c_gen.am"
+            #line 1662 "./src/generator/c_gen.am"
             code_string objType = Amalgame_Compiler_CGen_LocalTypeGet(self, objName);
-            #line 1656 "./src/generator/c_gen.am"
+            #line 1663 "./src/generator/c_gen.am"
             if ((String_Length(objType) > 0) && String_Contains(objType, "*")) {
-                #line 1657 "./src/generator/c_gen.am"
+                #line 1664 "./src/generator/c_gen.am"
                 code_string bareT = String_Replace(objType, "*", "");
-                #line 1658 "./src/generator/c_gen.am"
+                #line 1665 "./src/generator/c_gen.am"
                 code_string inside = String_Substring(rest, 1, String_Length(rest) - 2);
-                #line 1659 "./src/generator/c_gen.am"
+                #line 1666 "./src/generator/c_gen.am"
                 code_string iCall = "";
-                #line 1660 "./src/generator/c_gen.am"
+                #line 1667 "./src/generator/c_gen.am"
                 if (String_Length(inside) == 0) {
-                    #line 1661 "./src/generator/c_gen.am"
+                    #line 1668 "./src/generator/c_gen.am"
                     iCall = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(bareT, "_")), mName)), "(")), objName)), ")"));
                 } else {
-                    #line 1663 "./src/generator/c_gen.am"
+                    #line 1670 "./src/generator/c_gen.am"
                     iCall = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(bareT, "_")), mName)), "(")), objName)), ", ")), inside)), ")"));
                 }
-                #line 1665 "./src/generator/c_gen.am"
+                #line 1672 "./src/generator/c_gen.am"
                 code_string iRetT = Amalgame_Compiler_CGen_MethodRetGet(self, bareT, mName);
-                #line 1666 "./src/generator/c_gen.am"
+                #line 1673 "./src/generator/c_gen.am"
                 if (String_Length(iRetT) > 0) {
-                    #line 1667 "./src/generator/c_gen.am"
+                    #line 1674 "./src/generator/c_gen.am"
                     return Amalgame_Compiler_CGen_WrapForInterp(self, iCall, iRetT);
                 }
-                #line 1669 "./src/generator/c_gen.am"
+                #line 1676 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", iCall)), " ? ")), iCall)), " : \"\")");
             }
         }
-        #line 1672 "./src/generator/c_gen.am"
+        #line 1679 "./src/generator/c_gen.am"
         code_string cCallee = String_Replace(callee, ".", "_");
-        #line 1673 "./src/generator/c_gen.am"
+        #line 1680 "./src/generator/c_gen.am"
         code_string cCall = code_string_concat(cCallee, rest);
-        #line 1674 "./src/generator/c_gen.am"
+        #line 1681 "./src/generator/c_gen.am"
         code_string retT = Amalgame_Compiler_CGen_BuiltinCallReturnType(self, cCallee);
-        #line 1675 "./src/generator/c_gen.am"
+        #line 1682 "./src/generator/c_gen.am"
         if (String_Length(retT) > 0) {
-            #line 1676 "./src/generator/c_gen.am"
+            #line 1683 "./src/generator/c_gen.am"
             return Amalgame_Compiler_CGen_WrapForInterp(self, cCall, retT);
         }
-        #line 1679 "./src/generator/c_gen.am"
+        #line 1686 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", cCall)), " ? ")), cCall)), " : \"\")");
     }
-    #line 1682 "./src/generator/c_gen.am"
+    #line 1689 "./src/generator/c_gen.am"
     if (String_StartsWith(expr, "this.")) {
-        #line 1683 "./src/generator/c_gen.am"
+        #line 1690 "./src/generator/c_gen.am"
         code_string field = String_Substring(expr, 5, String_Length(expr) - 5);
-        #line 1684 "./src/generator/c_gen.am"
+        #line 1691 "./src/generator/c_gen.am"
         code_string ft = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, field);
-        #line 1685 "./src/generator/c_gen.am"
+        #line 1692 "./src/generator/c_gen.am"
         if (code_string_equals(ft, "i64")) {
             return code_string_concat((code_string_concat("String_FromInt(self->", field)), ")");
         }
-        #line 1686 "./src/generator/c_gen.am"
+        #line 1693 "./src/generator/c_gen.am"
         if (code_string_equals(ft, "double")) {
             return code_string_concat((code_string_concat("String_FromFloat(self->", field)), ")");
         }
-        #line 1687 "./src/generator/c_gen.am"
+        #line 1694 "./src/generator/c_gen.am"
         if (code_string_equals(ft, "code_bool")) {
             return code_string_concat((code_string_concat("((self->", field)), ") ? \"true\" : \"false\")");
         }
-        #line 1688 "./src/generator/c_gen.am"
+        #line 1695 "./src/generator/c_gen.am"
         if (code_string_equals(ft, "code_string")) {
             return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(self->", field)), " ? self->")), field)), " : \"\")");
         }
-        #line 1690 "./src/generator/c_gen.am"
+        #line 1697 "./src/generator/c_gen.am"
         if ((String_Length(ft) > 0) && !String_Contains(ft, "*")) {
             return code_string_concat((code_string_concat("String_FromInt((i64)self->", field)), ")");
         }
-        #line 1691 "./src/generator/c_gen.am"
+        #line 1698 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(self->", field)), " ? self->")), field)), " : \"\")");
     }
-    #line 1694 "./src/generator/c_gen.am"
+    #line 1701 "./src/generator/c_gen.am"
     i64 dotIdx = String_IndexOf(expr, ".");
-    #line 1695 "./src/generator/c_gen.am"
+    #line 1702 "./src/generator/c_gen.am"
     if (dotIdx > 0) {
-        #line 1696 "./src/generator/c_gen.am"
+        #line 1703 "./src/generator/c_gen.am"
         code_string objName = String_Substring(expr, 0, dotIdx);
-        #line 1697 "./src/generator/c_gen.am"
+        #line 1704 "./src/generator/c_gen.am"
         code_string field2 = String_Substring(expr, dotIdx + 1, (String_Length(expr) - dotIdx) - 1);
-        #line 1698 "./src/generator/c_gen.am"
+        #line 1705 "./src/generator/c_gen.am"
         code_string objType = Amalgame_Compiler_CGen_LocalTypeGet(self, objName);
-        #line 1699 "./src/generator/c_gen.am"
+        #line 1706 "./src/generator/c_gen.am"
         code_string bareT = String_Replace(objType, "*", "");
-        #line 1700 "./src/generator/c_gen.am"
+        #line 1707 "./src/generator/c_gen.am"
         if (String_Length(bareT) > 0) {
-            #line 1701 "./src/generator/c_gen.am"
+            #line 1708 "./src/generator/c_gen.am"
             code_string ft2 = Amalgame_Compiler_CGen_FieldTypeGet(self, bareT, field2);
-            #line 1702 "./src/generator/c_gen.am"
+            #line 1709 "./src/generator/c_gen.am"
             if (code_string_equals(ft2, "i64")) {
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("String_FromInt(", objName)), "->")), field2)), ")");
             }
-            #line 1703 "./src/generator/c_gen.am"
+            #line 1710 "./src/generator/c_gen.am"
             if (code_string_equals(ft2, "double")) {
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("String_FromFloat(", objName)), "->")), field2)), ")");
             }
-            #line 1704 "./src/generator/c_gen.am"
+            #line 1711 "./src/generator/c_gen.am"
             if (code_string_equals(ft2, "code_bool")) {
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", objName)), "->")), field2)), ") ? \"true\" : \"false\")");
             }
-            #line 1705 "./src/generator/c_gen.am"
+            #line 1712 "./src/generator/c_gen.am"
             if (code_string_equals(ft2, "code_string")) {
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", objName)), "->")), field2)), " ? ")), objName)), "->")), field2)), " : \"\")");
             }
-            #line 1707 "./src/generator/c_gen.am"
+            #line 1714 "./src/generator/c_gen.am"
             if ((String_Length(ft2) > 0) && !String_Contains(ft2, "*")) {
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("String_FromInt((i64)", objName)), "->")), field2)), ")");
             }
-            #line 1708 "./src/generator/c_gen.am"
+            #line 1715 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", objName)), "->")), field2)), " ? ")), objName)), "->")), field2)), " : \"\")");
         }
     }
-    #line 1712 "./src/generator/c_gen.am"
+    #line 1719 "./src/generator/c_gen.am"
     code_string varC = Amalgame_Compiler_CGen_LocalTypeGet(self, expr);
-    #line 1713 "./src/generator/c_gen.am"
+    #line 1720 "./src/generator/c_gen.am"
     if (code_string_equals(varC, "i64")) {
         return code_string_concat((code_string_concat("String_FromInt(", expr)), ")");
     }
-    #line 1714 "./src/generator/c_gen.am"
+    #line 1721 "./src/generator/c_gen.am"
     if (code_string_equals(varC, "double")) {
         return code_string_concat((code_string_concat("String_FromFloat(", expr)), ")");
     }
-    #line 1715 "./src/generator/c_gen.am"
+    #line 1722 "./src/generator/c_gen.am"
     if (code_string_equals(varC, "code_bool")) {
         return code_string_concat((code_string_concat("(", expr)), " ? \"true\" : \"false\")");
     }
-    #line 1716 "./src/generator/c_gen.am"
+    #line 1723 "./src/generator/c_gen.am"
     if (String_Length(varC) > 0) {
-        #line 1717 "./src/generator/c_gen.am"
+        #line 1724 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", expr)), " ? ")), expr)), " : \"\")");
     }
-    #line 1720 "./src/generator/c_gen.am"
+    #line 1727 "./src/generator/c_gen.am"
     return code_string_concat((code_string_concat("String_FromInt(", expr)), ")");
 }
 
 static code_string Amalgame_Compiler_CGen_EscapeStringForC(Amalgame_Compiler_CGen* self, code_string raw) {
-    #line 1727 "./src/generator/c_gen.am"
+    #line 1734 "./src/generator/c_gen.am"
     code_string s = String_Replace(raw, "\\", "\\\\");
-    #line 1728 "./src/generator/c_gen.am"
+    #line 1735 "./src/generator/c_gen.am"
     s = String_Replace(s, "\"", "\\\"");
-    #line 1729 "./src/generator/c_gen.am"
+    #line 1736 "./src/generator/c_gen.am"
     s = String_Replace(s, "\n", "\\n");
-    #line 1730 "./src/generator/c_gen.am"
-    s = String_Replace(s, "\t", "\\t");
     #line 1737 "./src/generator/c_gen.am"
+    s = String_Replace(s, "\t", "\\t");
+    #line 1744 "./src/generator/c_gen.am"
     s = String_Replace(s, String_FromByte(13), "\\r");
-    #line 1739 "./src/generator/c_gen.am"
+    #line 1746 "./src/generator/c_gen.am"
     s = String_Replace(s, String_FromByte(27), "\\x1b");
-    #line 1740 "./src/generator/c_gen.am"
+    #line 1747 "./src/generator/c_gen.am"
     return s;
 }
 
 static void Amalgame_Compiler_CGen_EmitHeader(Amalgame_Compiler_CGen* self) {
-    #line 1744 "./src/generator/c_gen.am"
+    #line 1751 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include <stdio.h>");
-    #line 1745 "./src/generator/c_gen.am"
+    #line 1752 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include <stdlib.h>");
-    #line 1746 "./src/generator/c_gen.am"
+    #line 1753 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include <string.h>");
-    #line 1747 "./src/generator/c_gen.am"
+    #line 1754 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"_runtime.h\"");
-    #line 1748 "./src/generator/c_gen.am"
+    #line 1755 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_String.h\"");
-    #line 1749 "./src/generator/c_gen.am"
+    #line 1756 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Collections.h\"");
-    #line 1750 "./src/generator/c_gen.am"
+    #line 1757 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_IO.h\"");
-    #line 1765 "./src/generator/c_gen.am"
+    #line 1772 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
-    #line 1766 "./src/generator/c_gen.am"
+    #line 1773 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Console.h\"");
-    #line 1767 "./src/generator/c_gen.am"
+    #line 1774 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Process.h\"");
-    #line 1790 "./src/generator/c_gen.am"
+    #line 1797 "./src/generator/c_gen.am"
     i64 pkgHdrN = AmalgameList_count(self->PkgHeaders);
-    #line 1791 "./src/generator/c_gen.am"
+    #line 1798 "./src/generator/c_gen.am"
     for (i64 ph = 0; ph < pkgHdrN; ph++) {
-        #line 1797 "./src/generator/c_gen.am"
+        #line 1804 "./src/generator/c_gen.am"
         if (self->ImportsFiltered) {
-            #line 1798 "./src/generator/c_gen.am"
+            #line 1805 "./src/generator/c_gen.am"
             code_string phNs = (code_string)AmalgameList_get(self->PkgHeaderNs, ph);
-            #line 1799 "./src/generator/c_gen.am"
+            #line 1806 "./src/generator/c_gen.am"
             if (!Amalgame_Compiler_CGen_NamespaceImported(self, phNs)) {
-                #line 1800 "./src/generator/c_gen.am"
+                #line 1807 "./src/generator/c_gen.am"
                 continue;
             }
         }
-        #line 1803 "./src/generator/c_gen.am"
+        #line 1810 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("#include \"", (code_string)AmalgameList_get(self->PkgHeaders, ph))), "\""));
     }
-    #line 1805 "./src/generator/c_gen.am"
+    #line 1812 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
 code_bool Amalgame_Compiler_CGen_NamespaceImported(Amalgame_Compiler_CGen* self, code_string ns) {
-    #line 1818 "./src/generator/c_gen.am"
+    #line 1825 "./src/generator/c_gen.am"
     i64 nsLen = String_Length(ns);
-    #line 1819 "./src/generator/c_gen.am"
+    #line 1826 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->ImportedNs);
-    #line 1820 "./src/generator/c_gen.am"
+    #line 1827 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1821 "./src/generator/c_gen.am"
+        #line 1828 "./src/generator/c_gen.am"
         code_string imp = (code_string)AmalgameList_get(self->ImportedNs, i);
-        #line 1822 "./src/generator/c_gen.am"
+        #line 1829 "./src/generator/c_gen.am"
         if (code_string_equals(imp, ns)) {
             return 1;
         }
-        #line 1823 "./src/generator/c_gen.am"
+        #line 1830 "./src/generator/c_gen.am"
         i64 impLen = String_Length(imp);
-        #line 1824 "./src/generator/c_gen.am"
+        #line 1831 "./src/generator/c_gen.am"
         if (impLen > nsLen) {
-            #line 1826 "./src/generator/c_gen.am"
+            #line 1833 "./src/generator/c_gen.am"
             if (String_StartsWith(imp, code_string_concat(ns, "."))) {
                 return 1;
             }
         } else {
-            #line 1829 "./src/generator/c_gen.am"
+            #line 1836 "./src/generator/c_gen.am"
             if (String_StartsWith(ns, code_string_concat(imp, "."))) {
                 return 1;
             }
         }
     }
-    #line 1832 "./src/generator/c_gen.am"
+    #line 1839 "./src/generator/c_gen.am"
     return 0;
 }
 
 void Amalgame_Compiler_CGen_SetImportedNamespaces(Amalgame_Compiler_CGen* self, AmalgameList* imports) {
-    #line 1841 "./src/generator/c_gen.am"
+    #line 1848 "./src/generator/c_gen.am"
     self->ImportedNs = imports;
-    #line 1842 "./src/generator/c_gen.am"
+    #line 1849 "./src/generator/c_gen.am"
     self->ImportsFiltered = 1;
 }
 
 void Amalgame_Compiler_CGen_EmitNetHeader(Amalgame_Compiler_CGen* self) {
-    #line 1846 "./src/generator/c_gen.am"
+    #line 1853 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "#include \"Amalgame_Net.h\"");
 }
 
 void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalgame_Compiler_PackageRegistry* reg) {
-    #line 1866 "./src/generator/c_gen.am"
-    self->PkgClasses = AmalgameList_new();
-    #line 1867 "./src/generator/c_gen.am"
-    self->PkgFuncs = AmalgameList_new();
-    #line 1868 "./src/generator/c_gen.am"
-    self->PkgFuncCTypes = AmalgameList_new();
-    #line 1869 "./src/generator/c_gen.am"
-    self->PkgHeaders = AmalgameList_new();
-    #line 1870 "./src/generator/c_gen.am"
-    self->PkgHeaderNs = AmalgameList_new();
-    #line 1871 "./src/generator/c_gen.am"
-    self->PkgClassNs = AmalgameList_new();
-    #line 1872 "./src/generator/c_gen.am"
-    self->PkgOpaqueTypes = AmalgameList_new();
     #line 1873 "./src/generator/c_gen.am"
-    i64 n = AmalgameList_count(reg->Packages);
+    self->PkgClasses = AmalgameList_new();
     #line 1874 "./src/generator/c_gen.am"
+    self->PkgFuncs = AmalgameList_new();
+    #line 1875 "./src/generator/c_gen.am"
+    self->PkgFuncCTypes = AmalgameList_new();
+    #line 1876 "./src/generator/c_gen.am"
+    self->PkgHeaders = AmalgameList_new();
+    #line 1877 "./src/generator/c_gen.am"
+    self->PkgHeaderNs = AmalgameList_new();
+    #line 1878 "./src/generator/c_gen.am"
+    self->PkgClassNs = AmalgameList_new();
+    #line 1879 "./src/generator/c_gen.am"
+    self->PkgOpaqueTypes = AmalgameList_new();
+    #line 1880 "./src/generator/c_gen.am"
+    i64 n = AmalgameList_count(reg->Packages);
+    #line 1881 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 1875 "./src/generator/c_gen.am"
+        #line 1882 "./src/generator/c_gen.am"
         Amalgame_Compiler_LoadedPackage* p = (Amalgame_Compiler_LoadedPackage*)AmalgameList_get(reg->Packages, i);
-        #line 1879 "./src/generator/c_gen.am"
+        #line 1886 "./src/generator/c_gen.am"
         i64 pkgCn = AmalgameList_count(p->ClassNames);
-        #line 1880 "./src/generator/c_gen.am"
+        #line 1887 "./src/generator/c_gen.am"
         for (i64 pkgCi = 0; pkgCi < pkgCn; pkgCi++) {
-            #line 1881 "./src/generator/c_gen.am"
+            #line 1888 "./src/generator/c_gen.am"
             AmalgameList_add(self->PkgClasses, (void*)(intptr_t)((code_string)AmalgameList_get(p->ClassNames, pkgCi)));
-            #line 1882 "./src/generator/c_gen.am"
+            #line 1889 "./src/generator/c_gen.am"
             AmalgameList_add(self->PkgClassNs, (void*)(intptr_t)(p->Ns));
         }
-        #line 1884 "./src/generator/c_gen.am"
-        AmalgameList_add(self->PkgHeaders, (void*)(intptr_t)(p->Header));
-        #line 1885 "./src/generator/c_gen.am"
-        AmalgameList_add(self->PkgHeaderNs, (void*)(intptr_t)(p->Ns));
-        #line 1890 "./src/generator/c_gen.am"
-        i64 fn = AmalgameList_count(p->FuncNames);
         #line 1891 "./src/generator/c_gen.am"
+        AmalgameList_add(self->PkgHeaders, (void*)(intptr_t)(p->Header));
+        #line 1892 "./src/generator/c_gen.am"
+        AmalgameList_add(self->PkgHeaderNs, (void*)(intptr_t)(p->Ns));
+        #line 1897 "./src/generator/c_gen.am"
+        i64 fn = AmalgameList_count(p->FuncNames);
+        #line 1898 "./src/generator/c_gen.am"
         for (i64 j = 0; j < fn; j++) {
-            #line 1892 "./src/generator/c_gen.am"
+            #line 1899 "./src/generator/c_gen.am"
             code_string fName = (code_string)AmalgameList_get(p->FuncNames, j);
-            #line 1893 "./src/generator/c_gen.am"
+            #line 1900 "./src/generator/c_gen.am"
             code_string cType = (code_string)AmalgameList_get(p->FuncRets, j);
-            #line 1894 "./src/generator/c_gen.am"
+            #line 1901 "./src/generator/c_gen.am"
             code_string mangled = Amalgame_Compiler_PackageRegistry_ManglePackageSymbol(p->Ns, fName);
-            #line 1895 "./src/generator/c_gen.am"
+            #line 1902 "./src/generator/c_gen.am"
             AmalgameList_add(self->PkgFuncs, (void*)(intptr_t)(mangled));
-            #line 1896 "./src/generator/c_gen.am"
+            #line 1903 "./src/generator/c_gen.am"
             AmalgameList_add(self->PkgFuncCTypes, (void*)(intptr_t)(cType));
-            #line 1908 "./src/generator/c_gen.am"
+            #line 1915 "./src/generator/c_gen.am"
             if (j < AmalgameList_count(p->FuncRetsRaw)) {
-                #line 1909 "./src/generator/c_gen.am"
+                #line 1916 "./src/generator/c_gen.am"
                 code_string rawShape = (code_string)AmalgameList_get(p->FuncRetsRaw, j);
-                #line 1910 "./src/generator/c_gen.am"
+                #line 1917 "./src/generator/c_gen.am"
                 if (String_Length(rawShape) > 0) {
-                    #line 1911 "./src/generator/c_gen.am"
+                    #line 1918 "./src/generator/c_gen.am"
                     for (i64 pkgCk = 0; pkgCk < pkgCn; pkgCk++) {
-                        #line 1912 "./src/generator/c_gen.am"
+                        #line 1919 "./src/generator/c_gen.am"
                         code_string mc = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, (code_string)AmalgameList_get(p->ClassNames, pkgCk));
-                        #line 1913 "./src/generator/c_gen.am"
+                        #line 1920 "./src/generator/c_gen.am"
                         if (String_Length(mc) > 0) {
-                            #line 1914 "./src/generator/c_gen.am"
+                            #line 1921 "./src/generator/c_gen.am"
                             Amalgame_Compiler_CGen_MethodRetRawSet(self, mc, fName, rawShape);
                         }
                     }
                 }
             }
-            #line 1928 "./src/generator/c_gen.am"
+            #line 1935 "./src/generator/c_gen.am"
             if (String_EndsWith(cType, "*")) {
-                #line 1929 "./src/generator/c_gen.am"
+                #line 1936 "./src/generator/c_gen.am"
                 code_string amType = Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(cType);
-                #line 1930 "./src/generator/c_gen.am"
+                #line 1937 "./src/generator/c_gen.am"
                 if (String_Length(amType) > 0) {
-                    #line 1933 "./src/generator/c_gen.am"
+                    #line 1940 "./src/generator/c_gen.am"
                     code_bool seen = 0;
-                    #line 1934 "./src/generator/c_gen.am"
+                    #line 1941 "./src/generator/c_gen.am"
                     i64 oc = AmalgameList_count(self->PkgOpaqueTypes);
-                    #line 1935 "./src/generator/c_gen.am"
+                    #line 1942 "./src/generator/c_gen.am"
                     for (i64 oi = 0; oi < oc; oi++) {
-                        #line 1936 "./src/generator/c_gen.am"
+                        #line 1943 "./src/generator/c_gen.am"
                         if (code_string_equals((code_string)AmalgameList_get(self->PkgOpaqueTypes, oi), amType)) {
                             seen = 1;
                         }
                     }
-                    #line 1938 "./src/generator/c_gen.am"
+                    #line 1945 "./src/generator/c_gen.am"
                     if (!seen) {
-                        #line 1939 "./src/generator/c_gen.am"
+                        #line 1946 "./src/generator/c_gen.am"
                         AmalgameList_add(self->PkgOpaqueTypes, (void*)(intptr_t)(amType));
                     }
                 }
@@ -10808,90 +10824,90 @@ void Amalgame_Compiler_CGen_RegisterPackages(Amalgame_Compiler_CGen* self, Amalg
 }
 
 void Amalgame_Compiler_CGen_RegisterExternalProg(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 1966 "./src/generator/c_gen.am"
+    #line 1973 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_RegisterExternalProgPass1(self, prog);
-    #line 1967 "./src/generator/c_gen.am"
+    #line 1974 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_RegisterExternalProgPass2(self, prog);
 }
 
 void Amalgame_Compiler_CGen_RegisterExternalProgPass1(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 1985 "./src/generator/c_gen.am"
+    #line 1992 "./src/generator/c_gen.am"
     code_string ns = prog->Str;
-    #line 1986 "./src/generator/c_gen.am"
+    #line 1993 "./src/generator/c_gen.am"
     if (String_Length(ns) == 0) {
         return;
     }
-    #line 1987 "./src/generator/c_gen.am"
+    #line 1994 "./src/generator/c_gen.am"
     code_string nsPrefix = String_Replace(ns, ".", "_");
-    #line 1988 "./src/generator/c_gen.am"
+    #line 1995 "./src/generator/c_gen.am"
     AmalgameList* kids = prog->Children;
-    #line 1989 "./src/generator/c_gen.am"
+    #line 1996 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(kids);
-    #line 1999 "./src/generator/c_gen.am"
+    #line 2006 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2000 "./src/generator/c_gen.am"
+        #line 2007 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i);
-        #line 2001 "./src/generator/c_gen.am"
+        #line 2008 "./src/generator/c_gen.am"
         if (decl->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-            #line 2002 "./src/generator/c_gen.am"
+            #line 2009 "./src/generator/c_gen.am"
             AmalgameList_add(self->ExternalClasses, (void*)(intptr_t)(decl->Name));
-            #line 2003 "./src/generator/c_gen.am"
+            #line 2010 "./src/generator/c_gen.am"
             AmalgameList_add(self->ExternalClassNsArr, (void*)(intptr_t)(nsPrefix));
-            #line 2004 "./src/generator/c_gen.am"
+            #line 2011 "./src/generator/c_gen.am"
             code_string mangled = code_string_concat((code_string_concat(nsPrefix, "_")), decl->Name);
-            #line 2005 "./src/generator/c_gen.am"
+            #line 2012 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef struct _", mangled)), " ")), mangled)), "; /* external */"));
         }
-        #line 2007 "./src/generator/c_gen.am"
+        #line 2014 "./src/generator/c_gen.am"
         if (decl->Kind == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-            #line 2008 "./src/generator/c_gen.am"
+            #line 2015 "./src/generator/c_gen.am"
             code_bool isAlg = 0;
-            #line 2009 "./src/generator/c_gen.am"
+            #line 2016 "./src/generator/c_gen.am"
             i64 vc = AmalgameList_count(decl->Children);
-            #line 2010 "./src/generator/c_gen.am"
+            #line 2017 "./src/generator/c_gen.am"
             for (i64 vi = 0; vi < vc; vi++) {
-                #line 2011 "./src/generator/c_gen.am"
+                #line 2018 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* vm = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, vi);
-                #line 2012 "./src/generator/c_gen.am"
+                #line 2019 "./src/generator/c_gen.am"
                 if (String_Length(vm->Str) > 0) {
                     isAlg = 1;
                 }
             }
-            #line 2014 "./src/generator/c_gen.am"
+            #line 2021 "./src/generator/c_gen.am"
             if (isAlg) {
-                #line 2021 "./src/generator/c_gen.am"
-                code_string mangled = code_string_concat((code_string_concat(nsPrefix, "_")), decl->Name);
-                #line 2022 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef struct _", mangled)), " ")), mangled)), "; /* external alg-enum fwd */"));
-            } else {
-                #line 2024 "./src/generator/c_gen.am"
-                AmalgameList_add(self->ExternalEnums, (void*)(intptr_t)(decl->Name));
-                #line 2025 "./src/generator/c_gen.am"
-                AmalgameList_add(self->ExternalEnumNsArr, (void*)(intptr_t)(nsPrefix));
-                #line 2026 "./src/generator/c_gen.am"
+                #line 2028 "./src/generator/c_gen.am"
                 code_string mangled = code_string_concat((code_string_concat(nsPrefix, "_")), decl->Name);
                 #line 2029 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("typedef enum _", mangled)), " {"));
-                #line 2030 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_Indent_(self->Out);
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef struct _", mangled)), " ")), mangled)), "; /* external alg-enum fwd */"));
+            } else {
                 #line 2031 "./src/generator/c_gen.am"
+                AmalgameList_add(self->ExternalEnums, (void*)(intptr_t)(decl->Name));
+                #line 2032 "./src/generator/c_gen.am"
+                AmalgameList_add(self->ExternalEnumNsArr, (void*)(intptr_t)(nsPrefix));
+                #line 2033 "./src/generator/c_gen.am"
+                code_string mangled = code_string_concat((code_string_concat(nsPrefix, "_")), decl->Name);
+                #line 2036 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("typedef enum _", mangled)), " {"));
+                #line 2037 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_Indent_(self->Out);
+                #line 2038 "./src/generator/c_gen.am"
                 for (i64 vi = 0; vi < vc; vi++) {
-                    #line 2032 "./src/generator/c_gen.am"
+                    #line 2039 "./src/generator/c_gen.am"
                     Amalgame_Compiler_AstNode* vm = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, vi);
-                    #line 2033 "./src/generator/c_gen.am"
+                    #line 2040 "./src/generator/c_gen.am"
                     code_string memberC = code_string_concat((code_string_concat(mangled, "_")), vm->Name);
-                    #line 2034 "./src/generator/c_gen.am"
+                    #line 2041 "./src/generator/c_gen.am"
                     if (vi < (vc - 1)) {
-                        #line 2035 "./src/generator/c_gen.am"
+                        #line 2042 "./src/generator/c_gen.am"
                         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(memberC, ","));
                     } else {
-                        #line 2037 "./src/generator/c_gen.am"
+                        #line 2044 "./src/generator/c_gen.am"
                         Amalgame_Compiler_Emitter_EmitLine(self->Out, memberC);
                     }
                 }
-                #line 2040 "./src/generator/c_gen.am"
+                #line 2047 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 2041 "./src/generator/c_gen.am"
+                #line 2048 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} ", mangled)), "; /* external */"));
             }
         }
@@ -10899,162 +10915,162 @@ void Amalgame_Compiler_CGen_RegisterExternalProgPass1(Amalgame_Compiler_CGen* se
 }
 
 void Amalgame_Compiler_CGen_RegisterExternalProgPass2(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* prog) {
-    #line 2054 "./src/generator/c_gen.am"
+    #line 2061 "./src/generator/c_gen.am"
     code_string ns = prog->Str;
-    #line 2055 "./src/generator/c_gen.am"
+    #line 2062 "./src/generator/c_gen.am"
     if (String_Length(ns) == 0) {
         return;
     }
-    #line 2056 "./src/generator/c_gen.am"
+    #line 2063 "./src/generator/c_gen.am"
     code_string nsPrefix = String_Replace(ns, ".", "_");
-    #line 2057 "./src/generator/c_gen.am"
+    #line 2064 "./src/generator/c_gen.am"
     AmalgameList* kids = prog->Children;
-    #line 2058 "./src/generator/c_gen.am"
+    #line 2065 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(kids);
-    #line 2076 "./src/generator/c_gen.am"
+    #line 2083 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2077 "./src/generator/c_gen.am"
+        #line 2084 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i);
-        #line 2078 "./src/generator/c_gen.am"
+        #line 2085 "./src/generator/c_gen.am"
         if (decl->Kind != Amalgame_Compiler_NodeKind_CLASS_DECL) {
             continue;
         }
-        #line 2079 "./src/generator/c_gen.am"
+        #line 2086 "./src/generator/c_gen.am"
         code_string mangled = code_string_concat((code_string_concat(nsPrefix, "_")), decl->Name);
-        #line 2080 "./src/generator/c_gen.am"
+        #line 2087 "./src/generator/c_gen.am"
         AmalgameList* members = decl->Children;
-        #line 2081 "./src/generator/c_gen.am"
+        #line 2088 "./src/generator/c_gen.am"
         i64 mc = AmalgameList_count(members);
-        #line 2085 "./src/generator/c_gen.am"
+        #line 2092 "./src/generator/c_gen.am"
         for (i64 mi = 0; mi < mc; mi++) {
-            #line 2086 "./src/generator/c_gen.am"
+            #line 2093 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(members, mi);
-            #line 2087 "./src/generator/c_gen.am"
+            #line 2094 "./src/generator/c_gen.am"
             if (m->Kind == Amalgame_Compiler_NodeKind_VAR_DECL) {
-                #line 2088 "./src/generator/c_gen.am"
+                #line 2095 "./src/generator/c_gen.am"
                 code_string rawType = m->Str;
-                #line 2089 "./src/generator/c_gen.am"
+                #line 2096 "./src/generator/c_gen.am"
                 code_string ftype = Amalgame_Compiler_CGen_TypeToC(self, rawType);
-                #line 2090 "./src/generator/c_gen.am"
+                #line 2097 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_FieldTypeSet(self, mangled, m->Name, ftype);
-                #line 2091 "./src/generator/c_gen.am"
+                #line 2098 "./src/generator/c_gen.am"
                 if (String_StartsWith(rawType, "List<")) {
-                    #line 2092 "./src/generator/c_gen.am"
+                    #line 2099 "./src/generator/c_gen.am"
                     code_string inner = String_Substring(rawType, 5, String_Length(rawType) - 6);
-                    #line 2093 "./src/generator/c_gen.am"
+                    #line 2100 "./src/generator/c_gen.am"
                     code_string elemC = Amalgame_Compiler_CGen_TypeToC(self, inner);
-                    #line 2094 "./src/generator/c_gen.am"
+                    #line 2101 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_ListElemSet(self, mangled, m->Name, elemC);
                 }
-                #line 2096 "./src/generator/c_gen.am"
+                #line 2103 "./src/generator/c_gen.am"
                 if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
-                    #line 2097 "./src/generator/c_gen.am"
+                    #line 2104 "./src/generator/c_gen.am"
                     code_string mi2 = String_Substring(rawType, 4, String_Length(rawType) - 5);
-                    #line 2098 "./src/generator/c_gen.am"
+                    #line 2105 "./src/generator/c_gen.am"
                     i64 mcomma = String_IndexOf(mi2, ",");
-                    #line 2099 "./src/generator/c_gen.am"
+                    #line 2106 "./src/generator/c_gen.am"
                     if (mcomma > 0) {
-                        #line 2100 "./src/generator/c_gen.am"
+                        #line 2107 "./src/generator/c_gen.am"
                         code_string vRaw = String_Substring(mi2, mcomma + 1, (String_Length(mi2) - mcomma) - 1);
-                        #line 2101 "./src/generator/c_gen.am"
+                        #line 2108 "./src/generator/c_gen.am"
                         code_string vTrim = String_Trim(vRaw);
-                        #line 2102 "./src/generator/c_gen.am"
+                        #line 2109 "./src/generator/c_gen.am"
                         if (String_Length(vTrim) > 0) {
-                            #line 2103 "./src/generator/c_gen.am"
+                            #line 2110 "./src/generator/c_gen.am"
                             Amalgame_Compiler_CGen_ListElemSet(self, mangled, m->Name, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
                         }
                     }
                 }
-                #line 2111 "./src/generator/c_gen.am"
+                #line 2118 "./src/generator/c_gen.am"
                 if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
-                    #line 2112 "./src/generator/c_gen.am"
+                    #line 2119 "./src/generator/c_gen.am"
                     code_string cinner = String_Substring(rawType, 8, String_Length(rawType) - 9);
-                    #line 2113 "./src/generator/c_gen.am"
+                    #line 2120 "./src/generator/c_gen.am"
                     AmalgameList* cparts = Amalgame_Compiler_CGen_SplitTopLevelCommas(self, cinner);
-                    #line 2114 "./src/generator/c_gen.am"
+                    #line 2121 "./src/generator/c_gen.am"
                     i64 cpc = AmalgameList_count(cparts);
-                    #line 2115 "./src/generator/c_gen.am"
+                    #line 2122 "./src/generator/c_gen.am"
                     if (cpc >= 1) {
-                        #line 2116 "./src/generator/c_gen.am"
+                        #line 2123 "./src/generator/c_gen.am"
                         code_string crawRet = String_Trim((code_string)AmalgameList_get(cparts, cpc - 1));
-                        #line 2117 "./src/generator/c_gen.am"
+                        #line 2124 "./src/generator/c_gen.am"
                         Amalgame_Compiler_CGen_ListElemSet(self, code_string_concat(mangled, "__closure_ret__"), m->Name, Amalgame_Compiler_CGen_TypeToC(self, crawRet));
                     }
                 }
             }
         }
-        #line 2127 "./src/generator/c_gen.am"
+        #line 2134 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("struct _", mangled)), " {"));
-        #line 2128 "./src/generator/c_gen.am"
+        #line 2135 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 2131 "./src/generator/c_gen.am"
+        #line 2138 "./src/generator/c_gen.am"
         code_string parentName = decl->Str;
-        #line 2132 "./src/generator/c_gen.am"
+        #line 2139 "./src/generator/c_gen.am"
         if (String_Length(parentName) > 0) {
-            #line 2133 "./src/generator/c_gen.am"
+            #line 2140 "./src/generator/c_gen.am"
             code_string parentMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, parentName);
-            #line 2134 "./src/generator/c_gen.am"
+            #line 2141 "./src/generator/c_gen.am"
             if (String_Length(parentMangled) > 0) {
-                #line 2135 "./src/generator/c_gen.am"
+                #line 2142 "./src/generator/c_gen.am"
                 i64 pfc = AmalgameList_count(self->FieldNames);
-                #line 2136 "./src/generator/c_gen.am"
+                #line 2143 "./src/generator/c_gen.am"
                 code_string pfPrefix = code_string_concat(parentMangled, ".");
-                #line 2137 "./src/generator/c_gen.am"
+                #line 2144 "./src/generator/c_gen.am"
                 for (i64 pfi = 0; pfi < pfc; pfi++) {
-                    #line 2138 "./src/generator/c_gen.am"
+                    #line 2145 "./src/generator/c_gen.am"
                     code_string pfkey = (code_string)AmalgameList_get(self->FieldNames, pfi);
-                    #line 2139 "./src/generator/c_gen.am"
+                    #line 2146 "./src/generator/c_gen.am"
                     if (String_StartsWith(pfkey, pfPrefix)) {
-                        #line 2140 "./src/generator/c_gen.am"
+                        #line 2147 "./src/generator/c_gen.am"
                         code_string pfname = String_Substring(pfkey, String_Length(pfPrefix), String_Length(pfkey) - String_Length(pfPrefix));
-                        #line 2141 "./src/generator/c_gen.am"
+                        #line 2148 "./src/generator/c_gen.am"
                         code_string pftype = (code_string)AmalgameList_get(self->FieldCTypes, pfi);
-                        #line 2142 "./src/generator/c_gen.am"
+                        #line 2149 "./src/generator/c_gen.am"
                         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(pftype, " ")), pfname)), ";"));
-                        #line 2143 "./src/generator/c_gen.am"
+                        #line 2150 "./src/generator/c_gen.am"
                         Amalgame_Compiler_CGen_FieldTypeSet(self, mangled, pfname, pftype);
                     }
                 }
             }
         }
-        #line 2148 "./src/generator/c_gen.am"
+        #line 2155 "./src/generator/c_gen.am"
         for (i64 mi = 0; mi < mc; mi++) {
-            #line 2149 "./src/generator/c_gen.am"
+            #line 2156 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(members, mi);
-            #line 2150 "./src/generator/c_gen.am"
+            #line 2157 "./src/generator/c_gen.am"
             if (m->Kind == Amalgame_Compiler_NodeKind_VAR_DECL) {
-                #line 2151 "./src/generator/c_gen.am"
+                #line 2158 "./src/generator/c_gen.am"
                 code_string ftype = Amalgame_Compiler_CGen_TypeToC(self, m->Str);
-                #line 2152 "./src/generator/c_gen.am"
+                #line 2159 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(ftype, " ")), m->Name)), ";"));
             }
         }
-        #line 2155 "./src/generator/c_gen.am"
+        #line 2162 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 2156 "./src/generator/c_gen.am"
+        #line 2163 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
     }
-    #line 2161 "./src/generator/c_gen.am"
+    #line 2168 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2162 "./src/generator/c_gen.am"
+        #line 2169 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i);
-        #line 2163 "./src/generator/c_gen.am"
+        #line 2170 "./src/generator/c_gen.am"
         if (decl->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-            #line 2164 "./src/generator/c_gen.am"
+            #line 2171 "./src/generator/c_gen.am"
             code_string mangled = code_string_concat((code_string_concat(nsPrefix, "_")), decl->Name);
-            #line 2165 "./src/generator/c_gen.am"
+            #line 2172 "./src/generator/c_gen.am"
             AmalgameList* members = decl->Children;
-            #line 2166 "./src/generator/c_gen.am"
+            #line 2173 "./src/generator/c_gen.am"
             i64 mc = AmalgameList_count(members);
-            #line 2167 "./src/generator/c_gen.am"
+            #line 2174 "./src/generator/c_gen.am"
             for (i64 mi = 0; mi < mc; mi++) {
-                #line 2168 "./src/generator/c_gen.am"
+                #line 2175 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(members, mi);
-                #line 2169 "./src/generator/c_gen.am"
+                #line 2176 "./src/generator/c_gen.am"
                 if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-                    #line 2170 "./src/generator/c_gen.am"
+                    #line 2177 "./src/generator/c_gen.am"
                     code_string sig = Amalgame_Compiler_CGen_ExternalMethodSig(self, m, mangled, decl->Name);
-                    #line 2171 "./src/generator/c_gen.am"
+                    #line 2178 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(sig, ";"));
                 }
             }
@@ -11063,270 +11079,270 @@ void Amalgame_Compiler_CGen_RegisterExternalProgPass2(Amalgame_Compiler_CGen* se
 }
 
 static code_string Amalgame_Compiler_CGen_ExternalMethodSig(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* method, code_string mangledClass, code_string shortClassName) {
-    #line 2183 "./src/generator/c_gen.am"
+    #line 2190 "./src/generator/c_gen.am"
     code_bool isCtor = code_string_equals(method->Name, shortClassName);
-    #line 2184 "./src/generator/c_gen.am"
+    #line 2191 "./src/generator/c_gen.am"
     code_string retTypeRaw = method->Str;
-    #line 2185 "./src/generator/c_gen.am"
+    #line 2192 "./src/generator/c_gen.am"
     code_string retType = "";
-    #line 2186 "./src/generator/c_gen.am"
+    #line 2193 "./src/generator/c_gen.am"
     if (String_StartsWith(retTypeRaw, "(")) {
-        #line 2187 "./src/generator/c_gen.am"
+        #line 2194 "./src/generator/c_gen.am"
         retType = Amalgame_Compiler_CGen_TupleStructName(self, retTypeRaw);
     } else {
-        #line 2189 "./src/generator/c_gen.am"
+        #line 2196 "./src/generator/c_gen.am"
         retType = Amalgame_Compiler_CGen_TypeToC(self, retTypeRaw);
     }
-    #line 2201 "./src/generator/c_gen.am"
+    #line 2208 "./src/generator/c_gen.am"
     if (!isCtor) {
-        #line 2202 "./src/generator/c_gen.am"
+        #line 2209 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_MethodRetSet(self, mangledClass, method->Name, retType);
-        #line 2203 "./src/generator/c_gen.am"
+        #line 2210 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_MethodRetRawSet(self, mangledClass, method->Name, retTypeRaw);
     }
-    #line 2205 "./src/generator/c_gen.am"
+    #line 2212 "./src/generator/c_gen.am"
     code_string sig = "";
-    #line 2206 "./src/generator/c_gen.am"
+    #line 2213 "./src/generator/c_gen.am"
     if (isCtor) {
-        #line 2207 "./src/generator/c_gen.am"
+        #line 2214 "./src/generator/c_gen.am"
         sig = (code_string_concat((code_string_concat((code_string_concat(mangledClass, "* ")), mangledClass)), "_new("));
     } else {
-        #line 2209 "./src/generator/c_gen.am"
+        #line 2216 "./src/generator/c_gen.am"
         sig = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(retType, " ")), mangledClass)), "_")), method->Name)), "("));
     }
-    #line 2211 "./src/generator/c_gen.am"
-    code_bool isStatic = method->Flag2;
-    #line 2212 "./src/generator/c_gen.am"
-    code_bool first = 1;
-    #line 2213 "./src/generator/c_gen.am"
-    if (!isStatic && !isCtor) {
-        #line 2214 "./src/generator/c_gen.am"
-        sig = (code_string_concat((code_string_concat(sig, mangledClass)), "* self"));
-        #line 2215 "./src/generator/c_gen.am"
-        first = 0;
-    }
-    #line 2217 "./src/generator/c_gen.am"
-    i64 pcount = AmalgameList_count(method->Params);
     #line 2218 "./src/generator/c_gen.am"
-    for (i64 i = 0; i < pcount; i++) {
-        #line 2219 "./src/generator/c_gen.am"
-        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 2220 "./src/generator/c_gen.am"
-        if (!first) {
-            sig = (code_string_concat(sig, ", "));
-        }
+    code_bool isStatic = method->Flag2;
+    #line 2219 "./src/generator/c_gen.am"
+    code_bool first = 1;
+    #line 2220 "./src/generator/c_gen.am"
+    if (!isStatic && !isCtor) {
         #line 2221 "./src/generator/c_gen.am"
-        sig = (code_string_concat((code_string_concat((code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str))), " ")), p->Name));
+        sig = (code_string_concat((code_string_concat(sig, mangledClass)), "* self"));
         #line 2222 "./src/generator/c_gen.am"
         first = 0;
     }
     #line 2224 "./src/generator/c_gen.am"
-    sig = (code_string_concat(sig, ")"));
+    i64 pcount = AmalgameList_count(method->Params);
     #line 2225 "./src/generator/c_gen.am"
+    for (i64 i = 0; i < pcount; i++) {
+        #line 2226 "./src/generator/c_gen.am"
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
+        #line 2227 "./src/generator/c_gen.am"
+        if (!first) {
+            sig = (code_string_concat(sig, ", "));
+        }
+        #line 2228 "./src/generator/c_gen.am"
+        sig = (code_string_concat((code_string_concat((code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str))), " ")), p->Name));
+        #line 2229 "./src/generator/c_gen.am"
+        first = 0;
+    }
+    #line 2231 "./src/generator/c_gen.am"
+    sig = (code_string_concat(sig, ")"));
+    #line 2232 "./src/generator/c_gen.am"
     return sig;
 }
 
 code_string Amalgame_Compiler_CGen_ExternalClassMangled(Amalgame_Compiler_CGen* self, code_string tname) {
-    #line 2232 "./src/generator/c_gen.am"
+    #line 2239 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->ExternalClasses);
-    #line 2233 "./src/generator/c_gen.am"
+    #line 2240 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2234 "./src/generator/c_gen.am"
+        #line 2241 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->ExternalClasses, i), tname)) {
-            #line 2235 "./src/generator/c_gen.am"
+            #line 2242 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat((code_string)AmalgameList_get(self->ExternalClassNsArr, i), "_")), tname);
         }
     }
-    #line 2238 "./src/generator/c_gen.am"
+    #line 2245 "./src/generator/c_gen.am"
     return "";
 }
 
 code_string Amalgame_Compiler_CGen_ExternalEnumMangled(Amalgame_Compiler_CGen* self, code_string tname) {
-    #line 2247 "./src/generator/c_gen.am"
+    #line 2254 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->ExternalEnums);
-    #line 2248 "./src/generator/c_gen.am"
+    #line 2255 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2249 "./src/generator/c_gen.am"
+        #line 2256 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->ExternalEnums, i), tname)) {
-            #line 2250 "./src/generator/c_gen.am"
+            #line 2257 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat((code_string)AmalgameList_get(self->ExternalEnumNsArr, i), "_")), tname);
         }
     }
-    #line 2253 "./src/generator/c_gen.am"
+    #line 2260 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_bool Amalgame_Compiler_CGen_IsExternalClass(Amalgame_Compiler_CGen* self, code_string tname) {
-    #line 2260 "./src/generator/c_gen.am"
+    #line 2267 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->ExternalClasses);
-    #line 2261 "./src/generator/c_gen.am"
+    #line 2268 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2262 "./src/generator/c_gen.am"
+        #line 2269 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->ExternalClasses, i), tname)) {
             return 1;
         }
     }
-    #line 2264 "./src/generator/c_gen.am"
+    #line 2271 "./src/generator/c_gen.am"
     return 0;
 }
 
 static AmalgameList* Amalgame_Compiler_CGen_SplitTopLevelCommas(Amalgame_Compiler_CGen* self, code_string s) {
-    #line 2287 "./src/generator/c_gen.am"
+    #line 2294 "./src/generator/c_gen.am"
     AmalgameList* parts = AmalgameList_new();
-    #line 2288 "./src/generator/c_gen.am"
+    #line 2295 "./src/generator/c_gen.am"
     i64 n = String_Length(s);
-    #line 2289 "./src/generator/c_gen.am"
+    #line 2296 "./src/generator/c_gen.am"
     i64 depth = 0;
-    #line 2290 "./src/generator/c_gen.am"
+    #line 2297 "./src/generator/c_gen.am"
     code_string cur = "";
-    #line 2291 "./src/generator/c_gen.am"
+    #line 2298 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2292 "./src/generator/c_gen.am"
+        #line 2299 "./src/generator/c_gen.am"
         code_string ch = String_Substring(s, i, 1);
-        #line 2293 "./src/generator/c_gen.am"
+        #line 2300 "./src/generator/c_gen.am"
         if (code_string_equals(ch, "<")) {
             depth = (depth + 1);
             cur = (code_string_concat(cur, ch));
         } else if (code_string_equals(ch, ">")) {
-            #line 2294 "./src/generator/c_gen.am"
+            #line 2301 "./src/generator/c_gen.am"
             depth = (depth - 1);
             cur = (code_string_concat(cur, ch));
         } else if ((code_string_equals(ch, ",")) && (depth == 0)) {
-            #line 2296 "./src/generator/c_gen.am"
+            #line 2303 "./src/generator/c_gen.am"
             AmalgameList_add(parts, (void*)(intptr_t)(cur));
-            #line 2297 "./src/generator/c_gen.am"
+            #line 2304 "./src/generator/c_gen.am"
             cur = "";
         } else {
-            #line 2299 "./src/generator/c_gen.am"
+            #line 2306 "./src/generator/c_gen.am"
             cur = (code_string_concat(cur, ch));
         }
     }
-    #line 2302 "./src/generator/c_gen.am"
+    #line 2309 "./src/generator/c_gen.am"
     if (String_Length(cur) > 0) {
         AmalgameList_add(parts, (void*)(intptr_t)(cur));
     }
-    #line 2303 "./src/generator/c_gen.am"
+    #line 2310 "./src/generator/c_gen.am"
     return parts;
 }
 
 static code_bool Amalgame_Compiler_CGen_IsLocalClass(Amalgame_Compiler_CGen* self, code_string tname) {
-    #line 2307 "./src/generator/c_gen.am"
+    #line 2314 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->LocalClasses);
-    #line 2308 "./src/generator/c_gen.am"
+    #line 2315 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2309 "./src/generator/c_gen.am"
+        #line 2316 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalClasses, i), tname)) {
             return 1;
         }
     }
-    #line 2311 "./src/generator/c_gen.am"
+    #line 2318 "./src/generator/c_gen.am"
     return 0;
 }
 
 static code_string Amalgame_Compiler_CGen_PkgClassMangledPrefix(Amalgame_Compiler_CGen* self, code_string tname) {
-    #line 2315 "./src/generator/c_gen.am"
+    #line 2322 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->PkgClasses);
-    #line 2316 "./src/generator/c_gen.am"
+    #line 2323 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2317 "./src/generator/c_gen.am"
+        #line 2324 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->PkgClasses, i), tname)) {
-            #line 2318 "./src/generator/c_gen.am"
+            #line 2325 "./src/generator/c_gen.am"
             code_string ns = (code_string)AmalgameList_get(self->PkgClassNs, i);
-            #line 2319 "./src/generator/c_gen.am"
+            #line 2326 "./src/generator/c_gen.am"
             code_string mangledNs = String_Replace(ns, ".", "_");
-            #line 2320 "./src/generator/c_gen.am"
+            #line 2327 "./src/generator/c_gen.am"
             if (code_string_equals(mangledNs, tname)) {
                 return mangledNs;
             }
-            #line 2321 "./src/generator/c_gen.am"
+            #line 2328 "./src/generator/c_gen.am"
             if (String_EndsWith(mangledNs, code_string_concat("_", tname))) {
-                #line 2322 "./src/generator/c_gen.am"
+                #line 2329 "./src/generator/c_gen.am"
                 return mangledNs;
             }
-            #line 2324 "./src/generator/c_gen.am"
+            #line 2331 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat(mangledNs, "_")), tname);
         }
     }
-    #line 2327 "./src/generator/c_gen.am"
+    #line 2334 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_CGen_ClassMangledFor(Amalgame_Compiler_CGen* self, code_string tname) {
-    #line 2347 "./src/generator/c_gen.am"
+    #line 2354 "./src/generator/c_gen.am"
     if (Amalgame_Compiler_CGen_IsLocalClass(self, tname)) {
-        #line 2348 "./src/generator/c_gen.am"
+        #line 2355 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_SymName(self, tname);
     }
-    #line 2350 "./src/generator/c_gen.am"
+    #line 2357 "./src/generator/c_gen.am"
     code_string pkgMangled = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, tname);
-    #line 2351 "./src/generator/c_gen.am"
+    #line 2358 "./src/generator/c_gen.am"
     if (String_Length(pkgMangled) > 0) {
-        #line 2352 "./src/generator/c_gen.am"
+        #line 2359 "./src/generator/c_gen.am"
         return pkgMangled;
     }
-    #line 2354 "./src/generator/c_gen.am"
+    #line 2361 "./src/generator/c_gen.am"
     return Amalgame_Compiler_CGen_SymName(self, tname);
 }
 
 static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl) {
-    #line 2358 "./src/generator/c_gen.am"
+    #line 2365 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 2359 "./src/generator/c_gen.am"
+    #line 2366 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 2360 "./src/generator/c_gen.am"
+        #line 2367 "./src/generator/c_gen.am"
         code_string name = Amalgame_Compiler_CGen_SymName(self, decl->Name);
-        #line 2362 "./src/generator/c_gen.am"
+        #line 2369 "./src/generator/c_gen.am"
         code_bool isAlg = 0;
-        #line 2363 "./src/generator/c_gen.am"
+        #line 2370 "./src/generator/c_gen.am"
         i64 vc = AmalgameList_count(decl->Children);
-        #line 2364 "./src/generator/c_gen.am"
+        #line 2371 "./src/generator/c_gen.am"
         for (i64 vi = 0; vi < vc; vi++) {
-            #line 2365 "./src/generator/c_gen.am"
+            #line 2372 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* vm = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, vi);
-            #line 2366 "./src/generator/c_gen.am"
+            #line 2373 "./src/generator/c_gen.am"
             if (String_Length(vm->Str) > 0) {
                 isAlg = 1;
             }
         }
-        #line 2368 "./src/generator/c_gen.am"
+        #line 2375 "./src/generator/c_gen.am"
         if (isAlg) {
-            #line 2370 "./src/generator/c_gen.am"
+            #line 2377 "./src/generator/c_gen.am"
             AmalgameList_add(self->EnumNames, (void*)(intptr_t)(code_string_concat("__alg__", name)));
-            #line 2372 "./src/generator/c_gen.am"
+            #line 2379 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef struct _", name)), " ")), name)), "; /* alg-enum fwd */"));
         } else {
-            #line 2375 "./src/generator/c_gen.am"
+            #line 2382 "./src/generator/c_gen.am"
             AmalgameList_add(self->EnumNames, (void*)(intptr_t)(decl->Name));
-            #line 2376 "./src/generator/c_gen.am"
+            #line 2383 "./src/generator/c_gen.am"
             AmalgameList_add(self->EnumNames, (void*)(intptr_t)(name));
-            #line 2377 "./src/generator/c_gen.am"
+            #line 2384 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef enum _", name)), " ")), name)), ";"));
         }
     }
-    #line 2380 "./src/generator/c_gen.am"
+    #line 2387 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 2381 "./src/generator/c_gen.am"
+        #line 2388 "./src/generator/c_gen.am"
         code_string name = Amalgame_Compiler_CGen_SymName(self, decl->Name);
-        #line 2382 "./src/generator/c_gen.am"
+        #line 2389 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("typedef struct _", name)), " ")), name)), ";"));
-        #line 2385 "./src/generator/c_gen.am"
+        #line 2392 "./src/generator/c_gen.am"
         AmalgameList_add(self->LocalClasses, (void*)(intptr_t)(decl->Name));
     }
-    #line 2387 "./src/generator/c_gen.am"
+    #line 2394 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_INLINE_C) {
-        #line 2393 "./src/generator/c_gen.am"
+        #line 2400 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "/* inline-C top-level */");
-        #line 2394 "./src/generator/c_gen.am"
+        #line 2401 "./src/generator/c_gen.am"
         code_string body = decl->Str;
-        #line 2395 "./src/generator/c_gen.am"
+        #line 2402 "./src/generator/c_gen.am"
         if (String_Length(body) > 0) {
-            #line 2396 "./src/generator/c_gen.am"
+            #line 2403 "./src/generator/c_gen.am"
             AmalgameList* lines = String_Split(body, "\n");
-            #line 2397 "./src/generator/c_gen.am"
+            #line 2404 "./src/generator/c_gen.am"
             i64 count = AmalgameList_count(lines);
-            #line 2398 "./src/generator/c_gen.am"
+            #line 2405 "./src/generator/c_gen.am"
             for (i64 i = 0; i < count; i++) {
-                #line 2399 "./src/generator/c_gen.am"
+                #line 2406 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, (code_string)AmalgameList_get(lines, i));
             }
         }
@@ -11334,587 +11350,587 @@ static void Amalgame_Compiler_CGen_EmitForwardDecl(Amalgame_Compiler_CGen* self,
 }
 
 static void Amalgame_Compiler_CGen_EmitDecl(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* decl) {
-    #line 2406 "./src/generator/c_gen.am"
+    #line 2413 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 2407 "./src/generator/c_gen.am"
+    #line 2414 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
         Amalgame_Compiler_CGen_EmitEnum(self, decl);
     }
-    #line 2408 "./src/generator/c_gen.am"
+    #line 2415 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
         Amalgame_Compiler_CGen_EmitClass(self, decl);
     }
-    #line 2409 "./src/generator/c_gen.am"
+    #line 2416 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_INLINE_C_INCLUDE) {
-        #line 2413 "./src/generator/c_gen.am"
+        #line 2420 "./src/generator/c_gen.am"
         code_string arg = decl->Str;
-        #line 2414 "./src/generator/c_gen.am"
+        #line 2421 "./src/generator/c_gen.am"
         if ((String_Length(arg) > 0) && (code_string_equals(String_Substring(arg, 0, 1), "<"))) {
-            #line 2415 "./src/generator/c_gen.am"
+            #line 2422 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat("#include ", arg));
         } else {
-            #line 2417 "./src/generator/c_gen.am"
+            #line 2424 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("#include \"", arg)), "\""));
         }
     }
-    #line 2420 "./src/generator/c_gen.am"
+    #line 2427 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_INLINE_C_LINK) {
-        #line 2425 "./src/generator/c_gen.am"
+        #line 2432 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("/* link: -l", decl->Str)), " */"));
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitEnum(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* en) {
-    #line 2430 "./src/generator/c_gen.am"
+    #line 2437 "./src/generator/c_gen.am"
     code_string name = Amalgame_Compiler_CGen_SymName(self, en->Name);
-    #line 2431 "./src/generator/c_gen.am"
+    #line 2438 "./src/generator/c_gen.am"
     i64 count = AmalgameList_count(en->Children);
-    #line 2434 "./src/generator/c_gen.am"
+    #line 2441 "./src/generator/c_gen.am"
     code_bool isAlgebraic = 0;
-    #line 2435 "./src/generator/c_gen.am"
+    #line 2442 "./src/generator/c_gen.am"
     for (i64 i = 0; i < count; i++) {
-        #line 2436 "./src/generator/c_gen.am"
+        #line 2443 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* member = (Amalgame_Compiler_AstNode*)AmalgameList_get(en->Children, i);
-        #line 2437 "./src/generator/c_gen.am"
+        #line 2444 "./src/generator/c_gen.am"
         if (String_Length(member->Str) > 0) {
             isAlgebraic = 1;
         }
     }
-    #line 2440 "./src/generator/c_gen.am"
+    #line 2447 "./src/generator/c_gen.am"
     if (isAlgebraic) {
-        #line 2443 "./src/generator/c_gen.am"
+        #line 2450 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "typedef enum {");
-        #line 2444 "./src/generator/c_gen.am"
+        #line 2451 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 2445 "./src/generator/c_gen.am"
+        #line 2452 "./src/generator/c_gen.am"
         for (i64 i = 0; i < count; i++) {
-            #line 2446 "./src/generator/c_gen.am"
+            #line 2453 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* member = (Amalgame_Compiler_AstNode*)AmalgameList_get(en->Children, i);
-            #line 2447 "./src/generator/c_gen.am"
+            #line 2454 "./src/generator/c_gen.am"
             code_string mname = code_string_concat((code_string_concat(name, "_TAG_")), member->Name);
-            #line 2448 "./src/generator/c_gen.am"
+            #line 2455 "./src/generator/c_gen.am"
             if (i < (count - 1)) {
-                #line 2449 "./src/generator/c_gen.am"
+                #line 2456 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(mname, ","));
             } else {
-                #line 2451 "./src/generator/c_gen.am"
+                #line 2458 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, mname);
             }
         }
-        #line 2454 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 2455 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} ", name)), "_Tag;"));
-        #line 2456 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitBlank(self->Out);
-        #line 2459 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("struct _", name)), " {"));
-        #line 2460 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Indent_(self->Out);
         #line 2461 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(name, "_Tag tag;"));
+        Amalgame_Compiler_Emitter_Dedent(self->Out);
         #line 2462 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "union {");
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} ", name)), "_Tag;"));
         #line 2463 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitBlank(self->Out);
+        #line 2466 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("struct _", name)), " {"));
+        #line 2467 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 2464 "./src/generator/c_gen.am"
+        #line 2468 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(name, "_Tag tag;"));
+        #line 2469 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, "union {");
+        #line 2470 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Indent_(self->Out);
+        #line 2471 "./src/generator/c_gen.am"
         for (i64 i = 0; i < count; i++) {
-            #line 2465 "./src/generator/c_gen.am"
+            #line 2472 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* member = (Amalgame_Compiler_AstNode*)AmalgameList_get(en->Children, i);
-            #line 2466 "./src/generator/c_gen.am"
+            #line 2473 "./src/generator/c_gen.am"
             code_string payloads = member->Str;
-            #line 2467 "./src/generator/c_gen.am"
+            #line 2474 "./src/generator/c_gen.am"
             if (String_Length(payloads) > 0) {
-                #line 2468 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, "struct {");
-                #line 2469 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_Indent_(self->Out);
-                #line 2471 "./src/generator/c_gen.am"
-                i64 pi = 0;
-                #line 2472 "./src/generator/c_gen.am"
-                code_string pcur = "";
-                #line 2473 "./src/generator/c_gen.am"
-                i64 pci = 0;
-                #line 2474 "./src/generator/c_gen.am"
-                i64 plen = String_Length(payloads);
                 #line 2475 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, "struct {");
+                #line 2476 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_Indent_(self->Out);
+                #line 2478 "./src/generator/c_gen.am"
+                i64 pi = 0;
+                #line 2479 "./src/generator/c_gen.am"
+                code_string pcur = "";
+                #line 2480 "./src/generator/c_gen.am"
+                i64 pci = 0;
+                #line 2481 "./src/generator/c_gen.am"
+                i64 plen = String_Length(payloads);
+                #line 2482 "./src/generator/c_gen.am"
                 while (pci <= plen) {
-                    #line 2476 "./src/generator/c_gen.am"
+                    #line 2483 "./src/generator/c_gen.am"
                     code_string pch = "";
-                    #line 2477 "./src/generator/c_gen.am"
+                    #line 2484 "./src/generator/c_gen.am"
                     if (pci < plen) {
                         pch = String_Substring(payloads, pci, 1);
                     }
-                    #line 2478 "./src/generator/c_gen.am"
+                    #line 2485 "./src/generator/c_gen.am"
                     if ((code_string_equals(pch, ",")) || (pci == plen)) {
-                        #line 2479 "./src/generator/c_gen.am"
+                        #line 2486 "./src/generator/c_gen.am"
                         if (String_Length(pcur) > 0) {
-                            #line 2480 "./src/generator/c_gen.am"
+                            #line 2487 "./src/generator/c_gen.am"
                             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(Amalgame_Compiler_CGen_TypeToC(self, pcur), " _")), String_FromInt(pi))), ";"));
-                            #line 2481 "./src/generator/c_gen.am"
+                            #line 2488 "./src/generator/c_gen.am"
                             pi = (pi + 1);
-                            #line 2482 "./src/generator/c_gen.am"
+                            #line 2489 "./src/generator/c_gen.am"
                             pcur = "";
                         }
                     } else {
-                        #line 2484 "./src/generator/c_gen.am"
+                        #line 2491 "./src/generator/c_gen.am"
                         pcur = (code_string_concat(pcur, pch));
                     }
-                    #line 2485 "./src/generator/c_gen.am"
+                    #line 2492 "./src/generator/c_gen.am"
                     pci = (pci + 1);
                 }
-                #line 2487 "./src/generator/c_gen.am"
+                #line 2494 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 2488 "./src/generator/c_gen.am"
+                #line 2495 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} ", member->Name)), ";"));
             } else {
-                #line 2490 "./src/generator/c_gen.am"
+                #line 2497 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("int ", member->Name)), "_dummy;"));
             }
         }
-        #line 2493 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 2494 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
-        #line 2495 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 2496 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
-        #line 2497 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitBlank(self->Out);
         #line 2500 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Dedent(self->Out);
+        #line 2501 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
+        #line 2502 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Dedent(self->Out);
+        #line 2503 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
+        #line 2504 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitBlank(self->Out);
+        #line 2507 "./src/generator/c_gen.am"
         for (i64 i = 0; i < count; i++) {
-            #line 2501 "./src/generator/c_gen.am"
+            #line 2508 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* member = (Amalgame_Compiler_AstNode*)AmalgameList_get(en->Children, i);
-            #line 2502 "./src/generator/c_gen.am"
+            #line 2509 "./src/generator/c_gen.am"
             code_string payloads = member->Str;
-            #line 2503 "./src/generator/c_gen.am"
+            #line 2510 "./src/generator/c_gen.am"
             code_string params = "";
-            #line 2504 "./src/generator/c_gen.am"
+            #line 2511 "./src/generator/c_gen.am"
             code_string fields = "";
-            #line 2505 "./src/generator/c_gen.am"
+            #line 2512 "./src/generator/c_gen.am"
             if (String_Length(payloads) > 0) {
-                #line 2506 "./src/generator/c_gen.am"
+                #line 2513 "./src/generator/c_gen.am"
                 i64 pi2 = 0;
-                #line 2507 "./src/generator/c_gen.am"
+                #line 2514 "./src/generator/c_gen.am"
                 code_string pcur2 = "";
-                #line 2508 "./src/generator/c_gen.am"
+                #line 2515 "./src/generator/c_gen.am"
                 i64 pci2 = 0;
-                #line 2509 "./src/generator/c_gen.am"
+                #line 2516 "./src/generator/c_gen.am"
                 i64 plen2 = String_Length(payloads);
-                #line 2510 "./src/generator/c_gen.am"
+                #line 2517 "./src/generator/c_gen.am"
                 while (pci2 <= plen2) {
-                    #line 2511 "./src/generator/c_gen.am"
+                    #line 2518 "./src/generator/c_gen.am"
                     code_string pch2 = "";
-                    #line 2512 "./src/generator/c_gen.am"
+                    #line 2519 "./src/generator/c_gen.am"
                     if (pci2 < plen2) {
                         pch2 = String_Substring(payloads, pci2, 1);
                     }
-                    #line 2513 "./src/generator/c_gen.am"
+                    #line 2520 "./src/generator/c_gen.am"
                     if ((code_string_equals(pch2, ",")) || (pci2 == plen2)) {
-                        #line 2514 "./src/generator/c_gen.am"
+                        #line 2521 "./src/generator/c_gen.am"
                         if (String_Length(pcur2) > 0) {
-                            #line 2515 "./src/generator/c_gen.am"
+                            #line 2522 "./src/generator/c_gen.am"
                             code_string ct = Amalgame_Compiler_CGen_TypeToC(self, pcur2);
-                            #line 2516 "./src/generator/c_gen.am"
+                            #line 2523 "./src/generator/c_gen.am"
                             code_string pname = code_string_concat("_", String_FromInt(pi2));
-                            #line 2517 "./src/generator/c_gen.am"
+                            #line 2524 "./src/generator/c_gen.am"
                             if (pi2 > 0) {
                                 params = (code_string_concat(params, ", "));
                                 fields = (code_string_concat(fields, ", "));
                             }
-                            #line 2518 "./src/generator/c_gen.am"
+                            #line 2525 "./src/generator/c_gen.am"
                             params = (code_string_concat((code_string_concat((code_string_concat(params, ct)), " ")), pname));
-                            #line 2519 "./src/generator/c_gen.am"
+                            #line 2526 "./src/generator/c_gen.am"
                             fields = (code_string_concat(fields, pname));
-                            #line 2520 "./src/generator/c_gen.am"
+                            #line 2527 "./src/generator/c_gen.am"
                             pi2 = (pi2 + 1);
-                            #line 2521 "./src/generator/c_gen.am"
+                            #line 2528 "./src/generator/c_gen.am"
                             pcur2 = "";
                         }
                     } else {
-                        #line 2523 "./src/generator/c_gen.am"
+                        #line 2530 "./src/generator/c_gen.am"
                         pcur2 = (code_string_concat(pcur2, pch2));
                     }
-                    #line 2524 "./src/generator/c_gen.am"
+                    #line 2531 "./src/generator/c_gen.am"
                     pci2 = (pci2 + 1);
                 }
             }
-            #line 2527 "./src/generator/c_gen.am"
+            #line 2534 "./src/generator/c_gen.am"
             code_string ctorSig = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("static inline ", name)), " ")), name)), "_")), member->Name)), "(")), params)), ")");
-            #line 2528 "./src/generator/c_gen.am"
+            #line 2535 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(ctorSig, " {"));
-            #line 2529 "./src/generator/c_gen.am"
+            #line 2536 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_Indent_(self->Out);
-            #line 2530 "./src/generator/c_gen.am"
+            #line 2537 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(name, " __v;"));
-            #line 2531 "./src/generator/c_gen.am"
+            #line 2538 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("__v.tag = ", name)), "_TAG_")), member->Name)), ";"));
-            #line 2532 "./src/generator/c_gen.am"
+            #line 2539 "./src/generator/c_gen.am"
             if (String_Length(fields) > 0) {
-                #line 2534 "./src/generator/c_gen.am"
+                #line 2541 "./src/generator/c_gen.am"
                 i64 pi3 = 0;
-                #line 2535 "./src/generator/c_gen.am"
+                #line 2542 "./src/generator/c_gen.am"
                 code_string pcur3 = "";
-                #line 2536 "./src/generator/c_gen.am"
+                #line 2543 "./src/generator/c_gen.am"
                 i64 pci3 = 0;
-                #line 2537 "./src/generator/c_gen.am"
+                #line 2544 "./src/generator/c_gen.am"
                 code_string payloads3 = member->Str;
-                #line 2538 "./src/generator/c_gen.am"
+                #line 2545 "./src/generator/c_gen.am"
                 i64 plen3 = String_Length(payloads3);
-                #line 2539 "./src/generator/c_gen.am"
+                #line 2546 "./src/generator/c_gen.am"
                 while (pci3 <= plen3) {
-                    #line 2540 "./src/generator/c_gen.am"
+                    #line 2547 "./src/generator/c_gen.am"
                     code_string pch3 = "";
-                    #line 2541 "./src/generator/c_gen.am"
+                    #line 2548 "./src/generator/c_gen.am"
                     if (pci3 < plen3) {
                         pch3 = String_Substring(payloads3, pci3, 1);
                     }
-                    #line 2542 "./src/generator/c_gen.am"
+                    #line 2549 "./src/generator/c_gen.am"
                     if ((code_string_equals(pch3, ",")) || (pci3 == plen3)) {
-                        #line 2543 "./src/generator/c_gen.am"
+                        #line 2550 "./src/generator/c_gen.am"
                         if (pi3 >= 0) {
-                            #line 2544 "./src/generator/c_gen.am"
+                            #line 2551 "./src/generator/c_gen.am"
                             code_string fidx = String_FromInt(pi3);
-                            #line 2545 "./src/generator/c_gen.am"
+                            #line 2552 "./src/generator/c_gen.am"
                             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("__v.", member->Name)), "._")), fidx)), " = _")), fidx)), ";"));
-                            #line 2546 "./src/generator/c_gen.am"
+                            #line 2553 "./src/generator/c_gen.am"
                             pi3 = (pi3 + 1);
                         }
-                        #line 2548 "./src/generator/c_gen.am"
+                        #line 2555 "./src/generator/c_gen.am"
                         pcur3 = "";
                     } else {
-                        #line 2549 "./src/generator/c_gen.am"
+                        #line 2556 "./src/generator/c_gen.am"
                         pcur3 = (code_string_concat(pcur3, pch3));
                     }
-                    #line 2550 "./src/generator/c_gen.am"
+                    #line 2557 "./src/generator/c_gen.am"
                     pci3 = (pci3 + 1);
                 }
             }
-            #line 2553 "./src/generator/c_gen.am"
+            #line 2560 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, "return __v;");
-            #line 2554 "./src/generator/c_gen.am"
+            #line 2561 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_Dedent(self->Out);
-            #line 2555 "./src/generator/c_gen.am"
+            #line 2562 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-            #line 2556 "./src/generator/c_gen.am"
+            #line 2563 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitBlank(self->Out);
         }
-        #line 2560 "./src/generator/c_gen.am"
+        #line 2567 "./src/generator/c_gen.am"
         AmalgameList_add(self->EnumNames, (void*)(intptr_t)(code_string_concat("__alg__", name)));
     } else {
-        #line 2563 "./src/generator/c_gen.am"
+        #line 2570 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("enum _", name)), " {"));
-        #line 2564 "./src/generator/c_gen.am"
+        #line 2571 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 2565 "./src/generator/c_gen.am"
+        #line 2572 "./src/generator/c_gen.am"
         for (i64 i = 0; i < count; i++) {
-            #line 2566 "./src/generator/c_gen.am"
+            #line 2573 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* member = (Amalgame_Compiler_AstNode*)AmalgameList_get(en->Children, i);
-            #line 2567 "./src/generator/c_gen.am"
+            #line 2574 "./src/generator/c_gen.am"
             code_string mname = code_string_concat((code_string_concat(name, "_")), member->Name);
-            #line 2568 "./src/generator/c_gen.am"
+            #line 2575 "./src/generator/c_gen.am"
             if (i < (count - 1)) {
-                #line 2569 "./src/generator/c_gen.am"
+                #line 2576 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(mname, ","));
             } else {
-                #line 2571 "./src/generator/c_gen.am"
+                #line 2578 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, mname);
             }
         }
-        #line 2574 "./src/generator/c_gen.am"
+        #line 2581 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 2575 "./src/generator/c_gen.am"
+        #line 2582 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
-        #line 2576 "./src/generator/c_gen.am"
+        #line 2583 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitBlank(self->Out);
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* cls) {
-    #line 2581 "./src/generator/c_gen.am"
-    code_string name = Amalgame_Compiler_CGen_SymName(self, cls->Name);
-    #line 2582 "./src/generator/c_gen.am"
-    i64 members = AmalgameList_count(cls->Children);
-    #line 2585 "./src/generator/c_gen.am"
-    self->CurrentClass = name;
     #line 2588 "./src/generator/c_gen.am"
+    code_string name = Amalgame_Compiler_CGen_SymName(self, cls->Name);
+    #line 2589 "./src/generator/c_gen.am"
+    i64 members = AmalgameList_count(cls->Children);
+    #line 2592 "./src/generator/c_gen.am"
+    self->CurrentClass = name;
+    #line 2595 "./src/generator/c_gen.am"
     for (i64 i = 0; i < members; i++) {
-        #line 2589 "./src/generator/c_gen.am"
+        #line 2596 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, i);
-        #line 2590 "./src/generator/c_gen.am"
+        #line 2597 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 2591 "./src/generator/c_gen.am"
+        #line 2598 "./src/generator/c_gen.am"
         if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-            #line 2592 "./src/generator/c_gen.am"
+            #line 2599 "./src/generator/c_gen.am"
             code_string rawType = m->Str;
-            #line 2593 "./src/generator/c_gen.am"
+            #line 2600 "./src/generator/c_gen.am"
             code_string ftype = Amalgame_Compiler_CGen_TypeToC(self, rawType);
-            #line 2594 "./src/generator/c_gen.am"
+            #line 2601 "./src/generator/c_gen.am"
             Amalgame_Compiler_CGen_FieldTypeSet(self, name, m->Name, ftype);
-            #line 2596 "./src/generator/c_gen.am"
+            #line 2603 "./src/generator/c_gen.am"
             if (String_StartsWith(rawType, "List<")) {
-                #line 2598 "./src/generator/c_gen.am"
+                #line 2605 "./src/generator/c_gen.am"
                 code_string inner = String_Substring(rawType, 5, String_Length(rawType) - 6);
-                #line 2599 "./src/generator/c_gen.am"
+                #line 2606 "./src/generator/c_gen.am"
                 code_string elemC = Amalgame_Compiler_CGen_TypeToC(self, inner);
-                #line 2600 "./src/generator/c_gen.am"
+                #line 2607 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_ListElemSet(self, name, m->Name, elemC);
             }
-            #line 2605 "./src/generator/c_gen.am"
+            #line 2612 "./src/generator/c_gen.am"
             if (String_StartsWith(rawType, "Map<") && String_EndsWith(rawType, ">")) {
-                #line 2606 "./src/generator/c_gen.am"
+                #line 2613 "./src/generator/c_gen.am"
                 code_string mi = String_Substring(rawType, 4, String_Length(rawType) - 5);
-                #line 2607 "./src/generator/c_gen.am"
+                #line 2614 "./src/generator/c_gen.am"
                 i64 mc = String_IndexOf(mi, ",");
-                #line 2608 "./src/generator/c_gen.am"
+                #line 2615 "./src/generator/c_gen.am"
                 if (mc > 0) {
-                    #line 2609 "./src/generator/c_gen.am"
+                    #line 2616 "./src/generator/c_gen.am"
                     code_string vRaw = String_Substring(mi, mc + 1, (String_Length(mi) - mc) - 1);
-                    #line 2610 "./src/generator/c_gen.am"
+                    #line 2617 "./src/generator/c_gen.am"
                     code_string vTrim = String_Trim(vRaw);
-                    #line 2611 "./src/generator/c_gen.am"
+                    #line 2618 "./src/generator/c_gen.am"
                     if (String_Length(vTrim) > 0) {
-                        #line 2612 "./src/generator/c_gen.am"
+                        #line 2619 "./src/generator/c_gen.am"
                         Amalgame_Compiler_CGen_ListElemSet(self, name, m->Name, Amalgame_Compiler_CGen_TypeToC(self, vTrim));
                     }
                 }
             }
-            #line 2623 "./src/generator/c_gen.am"
+            #line 2630 "./src/generator/c_gen.am"
             if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
-                #line 2624 "./src/generator/c_gen.am"
+                #line 2631 "./src/generator/c_gen.am"
                 code_string cinner = String_Substring(rawType, 8, String_Length(rawType) - 9);
-                #line 2625 "./src/generator/c_gen.am"
+                #line 2632 "./src/generator/c_gen.am"
                 AmalgameList* cparts = Amalgame_Compiler_CGen_SplitTopLevelCommas(self, cinner);
-                #line 2626 "./src/generator/c_gen.am"
+                #line 2633 "./src/generator/c_gen.am"
                 i64 cpc = AmalgameList_count(cparts);
-                #line 2627 "./src/generator/c_gen.am"
+                #line 2634 "./src/generator/c_gen.am"
                 if (cpc >= 1) {
-                    #line 2628 "./src/generator/c_gen.am"
+                    #line 2635 "./src/generator/c_gen.am"
                     code_string crawRet = String_Trim((code_string)AmalgameList_get(cparts, cpc - 1));
-                    #line 2629 "./src/generator/c_gen.am"
+                    #line 2636 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_ListElemSet(self, code_string_concat(name, "__closure_ret__"), m->Name, Amalgame_Compiler_CGen_TypeToC(self, crawRet));
                 }
             }
         }
     }
-    #line 2636 "./src/generator/c_gen.am"
+    #line 2643 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("struct _", name)), " {"));
-    #line 2637 "./src/generator/c_gen.am"
+    #line 2644 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Indent_(self->Out);
-    #line 2639 "./src/generator/c_gen.am"
+    #line 2646 "./src/generator/c_gen.am"
     code_string parentName = cls->Str;
-    #line 2640 "./src/generator/c_gen.am"
+    #line 2647 "./src/generator/c_gen.am"
     if (String_Length(parentName) > 0) {
-        #line 2641 "./src/generator/c_gen.am"
+        #line 2648 "./src/generator/c_gen.am"
         code_string parentC = Amalgame_Compiler_CGen_SymName(self, parentName);
-        #line 2643 "./src/generator/c_gen.am"
+        #line 2650 "./src/generator/c_gen.am"
         i64 pfc = AmalgameList_count(self->FieldNames);
-        #line 2644 "./src/generator/c_gen.am"
+        #line 2651 "./src/generator/c_gen.am"
         code_string pfPrefix = code_string_concat(parentC, ".");
-        #line 2645 "./src/generator/c_gen.am"
+        #line 2652 "./src/generator/c_gen.am"
         for (i64 pfi = 0; pfi < pfc; pfi++) {
-            #line 2646 "./src/generator/c_gen.am"
+            #line 2653 "./src/generator/c_gen.am"
             code_string pfkey = (code_string)AmalgameList_get(self->FieldNames, pfi);
-            #line 2647 "./src/generator/c_gen.am"
+            #line 2654 "./src/generator/c_gen.am"
             if (String_StartsWith(pfkey, pfPrefix)) {
-                #line 2648 "./src/generator/c_gen.am"
+                #line 2655 "./src/generator/c_gen.am"
                 code_string pfname = String_Substring(pfkey, String_Length(pfPrefix), String_Length(pfkey) - String_Length(pfPrefix));
-                #line 2649 "./src/generator/c_gen.am"
+                #line 2656 "./src/generator/c_gen.am"
                 code_string pftype = (code_string)AmalgameList_get(self->FieldCTypes, pfi);
-                #line 2650 "./src/generator/c_gen.am"
+                #line 2657 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(pftype, " ")), pfname)), ";"));
-                #line 2652 "./src/generator/c_gen.am"
+                #line 2659 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_FieldTypeSet(self, name, pfname, pftype);
             }
         }
     }
-    #line 2656 "./src/generator/c_gen.am"
+    #line 2663 "./src/generator/c_gen.am"
     for (i64 i = 0; i < members; i++) {
-        #line 2657 "./src/generator/c_gen.am"
+        #line 2664 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, i);
-        #line 2658 "./src/generator/c_gen.am"
+        #line 2665 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 2659 "./src/generator/c_gen.am"
+        #line 2666 "./src/generator/c_gen.am"
         if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-            #line 2660 "./src/generator/c_gen.am"
+            #line 2667 "./src/generator/c_gen.am"
             code_string ftype = Amalgame_Compiler_CGen_TypeToC(self, m->Str);
-            #line 2661 "./src/generator/c_gen.am"
+            #line 2668 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(ftype, " ")), m->Name)), ";"));
         }
     }
-    #line 2664 "./src/generator/c_gen.am"
+    #line 2671 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Dedent(self->Out);
-    #line 2665 "./src/generator/c_gen.am"
+    #line 2672 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "};");
-    #line 2666 "./src/generator/c_gen.am"
+    #line 2673 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
-    #line 2669 "./src/generator/c_gen.am"
+    #line 2676 "./src/generator/c_gen.am"
     for (i64 i = 0; i < members; i++) {
-        #line 2670 "./src/generator/c_gen.am"
+        #line 2677 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, i);
-        #line 2671 "./src/generator/c_gen.am"
+        #line 2678 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 2672 "./src/generator/c_gen.am"
+        #line 2679 "./src/generator/c_gen.am"
         if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 2673 "./src/generator/c_gen.am"
+            #line 2680 "./src/generator/c_gen.am"
             if (!code_string_equals(m->Name, cls->Name)) {
-                #line 2674 "./src/generator/c_gen.am"
-                code_string sig = Amalgame_Compiler_CGen_MethodSig(self, m, name);
-                #line 2675 "./src/generator/c_gen.am"
-                code_bool isPublic = m->Flag;
-                #line 2680 "./src/generator/c_gen.am"
-                code_string retC = Amalgame_Compiler_CGen_TypeToC(self, m->Str);
                 #line 2681 "./src/generator/c_gen.am"
-                Amalgame_Compiler_CGen_MethodRetSet(self, name, m->Name, retC);
+                code_string sig = Amalgame_Compiler_CGen_MethodSig(self, m, name);
                 #line 2682 "./src/generator/c_gen.am"
+                code_bool isPublic = m->Flag;
+                #line 2687 "./src/generator/c_gen.am"
+                code_string retC = Amalgame_Compiler_CGen_TypeToC(self, m->Str);
+                #line 2688 "./src/generator/c_gen.am"
+                Amalgame_Compiler_CGen_MethodRetSet(self, name, m->Name, retC);
+                #line 2689 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_MethodRetRawSet(self, name, m->Name, m->Str);
-                #line 2684 "./src/generator/c_gen.am"
+                #line 2691 "./src/generator/c_gen.am"
                 code_string attrs = "";
-                #line 2685 "./src/generator/c_gen.am"
+                #line 2692 "./src/generator/c_gen.am"
                 code_string decos = m->Str2;
-                #line 2686 "./src/generator/c_gen.am"
+                #line 2693 "./src/generator/c_gen.am"
                 if (String_Length(decos) > 0) {
-                    #line 2687 "./src/generator/c_gen.am"
+                    #line 2694 "./src/generator/c_gen.am"
                     if (String_Contains(code_string_concat((code_string_concat(",", decos)), ","), ",deprecated,")) {
-                        #line 2688 "./src/generator/c_gen.am"
+                        #line 2695 "./src/generator/c_gen.am"
                         attrs = " __attribute__((deprecated))";
                     }
                 }
-                #line 2691 "./src/generator/c_gen.am"
+                #line 2698 "./src/generator/c_gen.am"
                 if (isPublic) {
-                    #line 2692 "./src/generator/c_gen.am"
+                    #line 2699 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat(sig, attrs)), ";"));
                 } else {
-                    #line 2694 "./src/generator/c_gen.am"
+                    #line 2701 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat("static ", sig)), attrs)), ";"));
                 }
             }
         }
     }
-    #line 2699 "./src/generator/c_gen.am"
+    #line 2706 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
-    #line 2703 "./src/generator/c_gen.am"
+    #line 2710 "./src/generator/c_gen.am"
     code_bool ctorFound = 0;
-    #line 2704 "./src/generator/c_gen.am"
+    #line 2711 "./src/generator/c_gen.am"
     for (i64 i = 0; i < members; i++) {
-        #line 2705 "./src/generator/c_gen.am"
+        #line 2712 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, i);
-        #line 2706 "./src/generator/c_gen.am"
+        #line 2713 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 2707 "./src/generator/c_gen.am"
+        #line 2714 "./src/generator/c_gen.am"
         if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 2708 "./src/generator/c_gen.am"
+            #line 2715 "./src/generator/c_gen.am"
             if (code_string_equals(m->Name, cls->Name)) {
-                #line 2709 "./src/generator/c_gen.am"
+                #line 2716 "./src/generator/c_gen.am"
                 ctorFound = 1;
-                #line 2711 "./src/generator/c_gen.am"
+                #line 2718 "./src/generator/c_gen.am"
                 code_string ctorSig = code_string_concat((code_string_concat((code_string_concat(name, "* ")), name)), "_new(");
-                #line 2712 "./src/generator/c_gen.am"
+                #line 2719 "./src/generator/c_gen.am"
                 i64 pcount = AmalgameList_count(m->Params);
-                #line 2713 "./src/generator/c_gen.am"
+                #line 2720 "./src/generator/c_gen.am"
                 code_bool first = 1;
-                #line 2714 "./src/generator/c_gen.am"
+                #line 2721 "./src/generator/c_gen.am"
                 for (i64 pi = 0; pi < pcount; pi++) {
-                    #line 2715 "./src/generator/c_gen.am"
+                    #line 2722 "./src/generator/c_gen.am"
                     Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
-                    #line 2716 "./src/generator/c_gen.am"
+                    #line 2723 "./src/generator/c_gen.am"
                     if (!first) {
                         ctorSig = (code_string_concat(ctorSig, ", "));
                     }
-                    #line 2717 "./src/generator/c_gen.am"
+                    #line 2724 "./src/generator/c_gen.am"
                     ctorSig = (code_string_concat((code_string_concat((code_string_concat(ctorSig, Amalgame_Compiler_CGen_TypeToC(self, p->Str))), " ")), p->Name));
-                    #line 2718 "./src/generator/c_gen.am"
+                    #line 2725 "./src/generator/c_gen.am"
                     first = 0;
                 }
-                #line 2720 "./src/generator/c_gen.am"
-                ctorSig = (code_string_concat(ctorSig, ")"));
-                #line 2721 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(ctorSig, " {"));
-                #line 2722 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_Indent_(self->Out);
-                #line 2723 "./src/generator/c_gen.am"
-                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(name, "* self = (")), name)), "*) GC_MALLOC(sizeof(")), name)), "));"));
-                #line 2725 "./src/generator/c_gen.am"
-                Amalgame_Compiler_CGen_LocalTypeClear(self);
-                #line 2726 "./src/generator/c_gen.am"
-                Amalgame_Compiler_CGen_LocalTypeSet(self, "self", code_string_concat(name, "*"));
                 #line 2727 "./src/generator/c_gen.am"
+                ctorSig = (code_string_concat(ctorSig, ")"));
+                #line 2728 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(ctorSig, " {"));
+                #line 2729 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_Indent_(self->Out);
+                #line 2730 "./src/generator/c_gen.am"
+                Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(name, "* self = (")), name)), "*) GC_MALLOC(sizeof(")), name)), "));"));
+                #line 2732 "./src/generator/c_gen.am"
+                Amalgame_Compiler_CGen_LocalTypeClear(self);
+                #line 2733 "./src/generator/c_gen.am"
+                Amalgame_Compiler_CGen_LocalTypeSet(self, "self", code_string_concat(name, "*"));
+                #line 2734 "./src/generator/c_gen.am"
                 for (i64 pi = 0; pi < pcount; pi++) {
-                    #line 2728 "./src/generator/c_gen.am"
+                    #line 2735 "./src/generator/c_gen.am"
                     Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
-                    #line 2729 "./src/generator/c_gen.am"
+                    #line 2736 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, Amalgame_Compiler_CGen_TypeToC(self, p->Str));
                 }
-                #line 2731 "./src/generator/c_gen.am"
+                #line 2738 "./src/generator/c_gen.am"
                 if (m->Body != NULL) {
-                    #line 2732 "./src/generator/c_gen.am"
+                    #line 2739 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_EmitBlock(self, m->Body);
                 } else {
-                    #line 2740 "./src/generator/c_gen.am"
+                    #line 2747 "./src/generator/c_gen.am"
                     for (i64 pi = 0; pi < pcount; pi++) {
-                        #line 2741 "./src/generator/c_gen.am"
+                        #line 2748 "./src/generator/c_gen.am"
                         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(m->Params, pi);
-                        #line 2743 "./src/generator/c_gen.am"
+                        #line 2750 "./src/generator/c_gen.am"
                         code_bool hasField = 0;
-                        #line 2744 "./src/generator/c_gen.am"
+                        #line 2751 "./src/generator/c_gen.am"
                         for (i64 fi = 0; fi < members; fi++) {
-                            #line 2745 "./src/generator/c_gen.am"
+                            #line 2752 "./src/generator/c_gen.am"
                             Amalgame_Compiler_AstNode* f = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, fi);
-                            #line 2746 "./src/generator/c_gen.am"
+                            #line 2753 "./src/generator/c_gen.am"
                             if ((f->Kind == Amalgame_Compiler_NodeKind_VAR_DECL) && (code_string_equals(f->Name, p->Name))) {
-                                #line 2747 "./src/generator/c_gen.am"
+                                #line 2754 "./src/generator/c_gen.am"
                                 hasField = 1;
                             }
                         }
-                        #line 2750 "./src/generator/c_gen.am"
+                        #line 2757 "./src/generator/c_gen.am"
                         if (hasField) {
-                            #line 2751 "./src/generator/c_gen.am"
+                            #line 2758 "./src/generator/c_gen.am"
                             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("self->", p->Name)), " = ")), p->Name)), ";"));
                         }
                     }
                 }
-                #line 2755 "./src/generator/c_gen.am"
+                #line 2762 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_LocalTypeClear(self);
-                #line 2756 "./src/generator/c_gen.am"
+                #line 2763 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return self;");
-                #line 2757 "./src/generator/c_gen.am"
+                #line 2764 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 2758 "./src/generator/c_gen.am"
+                #line 2765 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-                #line 2759 "./src/generator/c_gen.am"
+                #line 2766 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitBlank(self->Out);
             }
         }
     }
-    #line 2764 "./src/generator/c_gen.am"
+    #line 2771 "./src/generator/c_gen.am"
     if (!ctorFound) {
-        #line 2765 "./src/generator/c_gen.am"
+        #line 2772 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(name, "* ")), name)), "_new() {"));
-        #line 2766 "./src/generator/c_gen.am"
+        #line 2773 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 2767 "./src/generator/c_gen.am"
+        #line 2774 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(name, "* self = (")), name)), "*) GC_MALLOC(sizeof(")), name)), "));"));
-        #line 2768 "./src/generator/c_gen.am"
+        #line 2775 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "return self;");
-        #line 2769 "./src/generator/c_gen.am"
+        #line 2776 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 2770 "./src/generator/c_gen.am"
+        #line 2777 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 2771 "./src/generator/c_gen.am"
+        #line 2778 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitBlank(self->Out);
     }
-    #line 2775 "./src/generator/c_gen.am"
+    #line 2782 "./src/generator/c_gen.am"
     for (i64 j = 0; j < members; j++) {
-        #line 2776 "./src/generator/c_gen.am"
+        #line 2783 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* m2 = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, j);
-        #line 2777 "./src/generator/c_gen.am"
+        #line 2784 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind mk2 = m2->Kind;
-        #line 2778 "./src/generator/c_gen.am"
+        #line 2785 "./src/generator/c_gen.am"
         if (mk2 == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 2779 "./src/generator/c_gen.am"
+            #line 2786 "./src/generator/c_gen.am"
             if (!code_string_equals(m2->Name, cls->Name)) {
-                #line 2780 "./src/generator/c_gen.am"
+                #line 2787 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_EmitMethod(self, m2, name);
             }
         }
@@ -11922,490 +11938,490 @@ static void Amalgame_Compiler_CGen_EmitClass(Amalgame_Compiler_CGen* self, Amalg
 }
 
 static code_string Amalgame_Compiler_CGen_TupleStructName(Amalgame_Compiler_CGen* self, code_string tupleType) {
-    #line 2789 "./src/generator/c_gen.am"
-    code_string inner = String_Substring(tupleType, 1, String_Length(tupleType) - 2);
-    #line 2790 "./src/generator/c_gen.am"
-    code_string parts = String_Replace(inner, " ", "");
-    #line 2791 "./src/generator/c_gen.am"
-    code_string result = "";
-    #line 2792 "./src/generator/c_gen.am"
-    i64 count = 0;
-    #line 2793 "./src/generator/c_gen.am"
-    i64 i2 = 0;
-    #line 2794 "./src/generator/c_gen.am"
-    i64 len2 = String_Length(parts);
-    #line 2795 "./src/generator/c_gen.am"
-    code_string cur = "";
     #line 2796 "./src/generator/c_gen.am"
+    code_string inner = String_Substring(tupleType, 1, String_Length(tupleType) - 2);
+    #line 2797 "./src/generator/c_gen.am"
+    code_string parts = String_Replace(inner, " ", "");
+    #line 2798 "./src/generator/c_gen.am"
+    code_string result = "";
+    #line 2799 "./src/generator/c_gen.am"
+    i64 count = 0;
+    #line 2800 "./src/generator/c_gen.am"
+    i64 i2 = 0;
+    #line 2801 "./src/generator/c_gen.am"
+    i64 len2 = String_Length(parts);
+    #line 2802 "./src/generator/c_gen.am"
+    code_string cur = "";
+    #line 2803 "./src/generator/c_gen.am"
     while (i2 <= len2) {
-        #line 2797 "./src/generator/c_gen.am"
+        #line 2804 "./src/generator/c_gen.am"
         code_string ch = "";
-        #line 2798 "./src/generator/c_gen.am"
+        #line 2805 "./src/generator/c_gen.am"
         if (i2 < len2) {
             ch = String_Substring(parts, i2, 1);
         }
-        #line 2799 "./src/generator/c_gen.am"
+        #line 2806 "./src/generator/c_gen.am"
         if ((code_string_equals(ch, ",")) || (i2 == len2)) {
-            #line 2800 "./src/generator/c_gen.am"
+            #line 2807 "./src/generator/c_gen.am"
             if (String_Length(cur) > 0) {
-                #line 2801 "./src/generator/c_gen.am"
+                #line 2808 "./src/generator/c_gen.am"
                 count = (count + 1);
-                #line 2802 "./src/generator/c_gen.am"
+                #line 2809 "./src/generator/c_gen.am"
                 result = (code_string_concat((code_string_concat(result, "_")), Amalgame_Compiler_CGen_TypeToC(self, cur)));
-                #line 2803 "./src/generator/c_gen.am"
+                #line 2810 "./src/generator/c_gen.am"
                 cur = "";
             }
         } else {
-            #line 2806 "./src/generator/c_gen.am"
+            #line 2813 "./src/generator/c_gen.am"
             cur = (code_string_concat(cur, ch));
         }
-        #line 2808 "./src/generator/c_gen.am"
+        #line 2815 "./src/generator/c_gen.am"
         i2 = (i2 + 1);
     }
-    #line 2810 "./src/generator/c_gen.am"
+    #line 2817 "./src/generator/c_gen.am"
     return code_string_concat((code_string_concat("Tuple", String_FromInt(count))), result);
 }
 
 static void Amalgame_Compiler_CGen_EnsureTupleStruct(Amalgame_Compiler_CGen* self, code_string tupleType) {
-    #line 2815 "./src/generator/c_gen.am"
+    #line 2822 "./src/generator/c_gen.am"
     code_string sname = Amalgame_Compiler_CGen_TupleStructName(self, tupleType);
-    #line 2817 "./src/generator/c_gen.am"
+    #line 2824 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->EnumNames);
-    #line 2818 "./src/generator/c_gen.am"
+    #line 2825 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 2819 "./src/generator/c_gen.am"
+        #line 2826 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->EnumNames, i), (code_string_concat("__tuple__", sname)))) {
             return;
         }
     }
-    #line 2821 "./src/generator/c_gen.am"
-    AmalgameList_add(self->EnumNames, (void*)(intptr_t)(code_string_concat("__tuple__", sname)));
-    #line 2823 "./src/generator/c_gen.am"
-    code_string inner = String_Substring(tupleType, 1, String_Length(tupleType) - 2);
-    #line 2824 "./src/generator/c_gen.am"
-    code_string parts = String_Replace(inner, " ", "");
-    #line 2825 "./src/generator/c_gen.am"
-    Amalgame_Compiler_Emitter_EmitLine(self->Out, "typedef struct {");
-    #line 2826 "./src/generator/c_gen.am"
-    i64 idx = 0;
-    #line 2827 "./src/generator/c_gen.am"
-    code_string cur = "";
     #line 2828 "./src/generator/c_gen.am"
-    i64 i2 = 0;
-    #line 2829 "./src/generator/c_gen.am"
-    i64 len2 = String_Length(parts);
+    AmalgameList_add(self->EnumNames, (void*)(intptr_t)(code_string_concat("__tuple__", sname)));
     #line 2830 "./src/generator/c_gen.am"
+    code_string inner = String_Substring(tupleType, 1, String_Length(tupleType) - 2);
+    #line 2831 "./src/generator/c_gen.am"
+    code_string parts = String_Replace(inner, " ", "");
+    #line 2832 "./src/generator/c_gen.am"
+    Amalgame_Compiler_Emitter_EmitLine(self->Out, "typedef struct {");
+    #line 2833 "./src/generator/c_gen.am"
+    i64 idx = 0;
+    #line 2834 "./src/generator/c_gen.am"
+    code_string cur = "";
+    #line 2835 "./src/generator/c_gen.am"
+    i64 i2 = 0;
+    #line 2836 "./src/generator/c_gen.am"
+    i64 len2 = String_Length(parts);
+    #line 2837 "./src/generator/c_gen.am"
     while (i2 <= len2) {
-        #line 2831 "./src/generator/c_gen.am"
+        #line 2838 "./src/generator/c_gen.am"
         code_string ch = "";
-        #line 2832 "./src/generator/c_gen.am"
+        #line 2839 "./src/generator/c_gen.am"
         if (i2 < len2) {
             ch = String_Substring(parts, i2, 1);
         }
-        #line 2833 "./src/generator/c_gen.am"
+        #line 2840 "./src/generator/c_gen.am"
         if ((code_string_equals(ch, ",")) || (i2 == len2)) {
-            #line 2834 "./src/generator/c_gen.am"
+            #line 2841 "./src/generator/c_gen.am"
             if (String_Length(cur) > 0) {
-                #line 2835 "./src/generator/c_gen.am"
+                #line 2842 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("    ", Amalgame_Compiler_CGen_TypeToC(self, cur))), " _")), String_FromInt(idx))), ";"));
-                #line 2836 "./src/generator/c_gen.am"
+                #line 2843 "./src/generator/c_gen.am"
                 idx = (idx + 1);
-                #line 2837 "./src/generator/c_gen.am"
+                #line 2844 "./src/generator/c_gen.am"
                 cur = "";
             }
         } else {
-            #line 2839 "./src/generator/c_gen.am"
+            #line 2846 "./src/generator/c_gen.am"
             cur = (code_string_concat(cur, ch));
         }
-        #line 2840 "./src/generator/c_gen.am"
+        #line 2847 "./src/generator/c_gen.am"
         i2 = (i2 + 1);
     }
-    #line 2842 "./src/generator/c_gen.am"
+    #line 2849 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} ", sname)), ";"));
 }
 
 static code_string Amalgame_Compiler_CGen_MethodSig(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* method, code_string className) {
-    #line 2846 "./src/generator/c_gen.am"
+    #line 2853 "./src/generator/c_gen.am"
     code_string retTypeRaw = method->Str;
-    #line 2847 "./src/generator/c_gen.am"
+    #line 2854 "./src/generator/c_gen.am"
     code_string retType = "";
-    #line 2849 "./src/generator/c_gen.am"
+    #line 2856 "./src/generator/c_gen.am"
     if (String_StartsWith(retTypeRaw, "(")) {
-        #line 2850 "./src/generator/c_gen.am"
+        #line 2857 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EnsureTupleStruct(self, retTypeRaw);
-        #line 2851 "./src/generator/c_gen.am"
+        #line 2858 "./src/generator/c_gen.am"
         retType = Amalgame_Compiler_CGen_TupleStructName(self, retTypeRaw);
     } else {
-        #line 2853 "./src/generator/c_gen.am"
+        #line 2860 "./src/generator/c_gen.am"
         retType = Amalgame_Compiler_CGen_TypeToC(self, retTypeRaw);
     }
-    #line 2855 "./src/generator/c_gen.am"
-    code_bool isStatic = method->Flag2;
-    #line 2856 "./src/generator/c_gen.am"
-    code_string sig = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(retType, " ")), className)), "_")), method->Name)), "(");
-    #line 2857 "./src/generator/c_gen.am"
-    code_bool first = 1;
-    #line 2858 "./src/generator/c_gen.am"
-    if (!isStatic) {
-        #line 2859 "./src/generator/c_gen.am"
-        sig = (code_string_concat((code_string_concat(sig, className)), "* self"));
-        #line 2860 "./src/generator/c_gen.am"
-        first = 0;
-    }
     #line 2862 "./src/generator/c_gen.am"
-    i64 pcount = AmalgameList_count(method->Params);
+    code_bool isStatic = method->Flag2;
     #line 2863 "./src/generator/c_gen.am"
-    for (i64 i = 0; i < pcount; i++) {
-        #line 2864 "./src/generator/c_gen.am"
-        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 2865 "./src/generator/c_gen.am"
-        if (!first) {
-            sig = (code_string_concat(sig, ", "));
-        }
+    code_string sig = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(retType, " ")), className)), "_")), method->Name)), "(");
+    #line 2864 "./src/generator/c_gen.am"
+    code_bool first = 1;
+    #line 2865 "./src/generator/c_gen.am"
+    if (!isStatic) {
         #line 2866 "./src/generator/c_gen.am"
-        sig = (code_string_concat((code_string_concat((code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str))), " ")), p->Name));
+        sig = (code_string_concat((code_string_concat(sig, className)), "* self"));
         #line 2867 "./src/generator/c_gen.am"
         first = 0;
     }
     #line 2869 "./src/generator/c_gen.am"
-    sig = (code_string_concat(sig, ")"));
+    i64 pcount = AmalgameList_count(method->Params);
     #line 2870 "./src/generator/c_gen.am"
+    for (i64 i = 0; i < pcount; i++) {
+        #line 2871 "./src/generator/c_gen.am"
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
+        #line 2872 "./src/generator/c_gen.am"
+        if (!first) {
+            sig = (code_string_concat(sig, ", "));
+        }
+        #line 2873 "./src/generator/c_gen.am"
+        sig = (code_string_concat((code_string_concat((code_string_concat(sig, Amalgame_Compiler_CGen_TypeToC(self, p->Str))), " ")), p->Name));
+        #line 2874 "./src/generator/c_gen.am"
+        first = 0;
+    }
+    #line 2876 "./src/generator/c_gen.am"
+    sig = (code_string_concat(sig, ")"));
+    #line 2877 "./src/generator/c_gen.am"
     return sig;
 }
 
 static void Amalgame_Compiler_CGen_EmitMethod(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* method, code_string className) {
-    #line 2874 "./src/generator/c_gen.am"
+    #line 2881 "./src/generator/c_gen.am"
     code_string sig = Amalgame_Compiler_CGen_MethodSig(self, method, className);
-    #line 2875 "./src/generator/c_gen.am"
+    #line 2882 "./src/generator/c_gen.am"
     code_bool isPublic = method->Flag;
-    #line 2876 "./src/generator/c_gen.am"
+    #line 2883 "./src/generator/c_gen.am"
     code_string prefix = "";
-    #line 2877 "./src/generator/c_gen.am"
+    #line 2884 "./src/generator/c_gen.am"
     if (!isPublic) {
         prefix = "static ";
     }
-    #line 2879 "./src/generator/c_gen.am"
+    #line 2886 "./src/generator/c_gen.am"
     code_string decos = method->Str2;
-    #line 2880 "./src/generator/c_gen.am"
+    #line 2887 "./src/generator/c_gen.am"
     if (String_Length(decos) > 0) {
-        #line 2881 "./src/generator/c_gen.am"
+        #line 2888 "./src/generator/c_gen.am"
         if (String_Contains(code_string_concat((code_string_concat(",", decos)), ","), ",inline,")) {
-            #line 2882 "./src/generator/c_gen.am"
+            #line 2889 "./src/generator/c_gen.am"
             prefix = (code_string_concat(prefix, "inline "));
         }
     }
-    #line 2886 "./src/generator/c_gen.am"
+    #line 2893 "./src/generator/c_gen.am"
     if (String_StartsWith(method->Str, "(")) {
-        #line 2887 "./src/generator/c_gen.am"
+        #line 2894 "./src/generator/c_gen.am"
         self->CurrentRetType = Amalgame_Compiler_CGen_TupleStructName(self, method->Str);
-        #line 2889 "./src/generator/c_gen.am"
+        #line 2896 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_MethodRetSet(self, className, method->Name, method->Str);
-        #line 2890 "./src/generator/c_gen.am"
+        #line 2897 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_MethodRetRawSet(self, className, method->Name, method->Str);
     } else {
-        #line 2892 "./src/generator/c_gen.am"
+        #line 2899 "./src/generator/c_gen.am"
         self->CurrentRetType = "";
     }
-    #line 2894 "./src/generator/c_gen.am"
+    #line 2901 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat(prefix, sig)), " {"));
-    #line 2895 "./src/generator/c_gen.am"
+    #line 2902 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Indent_(self->Out);
-    #line 2897 "./src/generator/c_gen.am"
+    #line 2904 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_LocalTypeClear(self);
-    #line 2899 "./src/generator/c_gen.am"
+    #line 2906 "./src/generator/c_gen.am"
     code_bool isStatic = method->Flag2;
-    #line 2900 "./src/generator/c_gen.am"
+    #line 2907 "./src/generator/c_gen.am"
     if (!isStatic) {
-        #line 2901 "./src/generator/c_gen.am"
+        #line 2908 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, "self", code_string_concat(className, "*"));
     }
-    #line 2911 "./src/generator/c_gen.am"
+    #line 2918 "./src/generator/c_gen.am"
     i64 pcount = AmalgameList_count(method->Params);
-    #line 2912 "./src/generator/c_gen.am"
+    #line 2919 "./src/generator/c_gen.am"
     for (i64 i = 0; i < pcount; i++) {
-        #line 2913 "./src/generator/c_gen.am"
+        #line 2920 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 2914 "./src/generator/c_gen.am"
+        #line 2921 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, p->Name, Amalgame_Compiler_CGen_TypeToC(self, p->Str));
-        #line 2915 "./src/generator/c_gen.am"
+        #line 2922 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_TrackGenericLocal(self, p->Name, p->Str);
     }
-    #line 2917 "./src/generator/c_gen.am"
+    #line 2924 "./src/generator/c_gen.am"
     if (method->Body != NULL) {
-        #line 2918 "./src/generator/c_gen.am"
+        #line 2925 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitBlock(self, method->Body);
     }
-    #line 2920 "./src/generator/c_gen.am"
+    #line 2927 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_LocalTypeClear(self);
-    #line 2921 "./src/generator/c_gen.am"
+    #line 2928 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Dedent(self->Out);
-    #line 2922 "./src/generator/c_gen.am"
+    #line 2929 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-    #line 2923 "./src/generator/c_gen.am"
+    #line 2930 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitBlank(self->Out);
 }
 
 static code_string Amalgame_Compiler_CGen_EmitIfBranch(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* block) {
-    #line 2931 "./src/generator/c_gen.am"
+    #line 2938 "./src/generator/c_gen.am"
     if (block == NULL) {
         return "0";
     }
-    #line 2932 "./src/generator/c_gen.am"
+    #line 2939 "./src/generator/c_gen.am"
     if (block->Kind == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 2933 "./src/generator/c_gen.am"
+        #line 2940 "./src/generator/c_gen.am"
         AmalgameList* kids = block->Children;
-        #line 2934 "./src/generator/c_gen.am"
+        #line 2941 "./src/generator/c_gen.am"
         if (AmalgameList_count(kids) > 0) {
-            #line 2935 "./src/generator/c_gen.am"
+            #line 2942 "./src/generator/c_gen.am"
             return Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, 0));
         }
-        #line 2937 "./src/generator/c_gen.am"
+        #line 2944 "./src/generator/c_gen.am"
         return "0";
     }
-    #line 2939 "./src/generator/c_gen.am"
+    #line 2946 "./src/generator/c_gen.am"
     return Amalgame_Compiler_CGen_EmitExprStr(self, block);
 }
 
 static void Amalgame_Compiler_CGen_EmitMatch(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 2943 "./src/generator/c_gen.am"
+    #line 2950 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* subject = stmt->Left;
-    #line 2944 "./src/generator/c_gen.am"
+    #line 2951 "./src/generator/c_gen.am"
     code_string subjectStr = Amalgame_Compiler_CGen_EmitExprStr(self, subject);
-    #line 2946 "./src/generator/c_gen.am"
+    #line 2953 "./src/generator/c_gen.am"
     code_string subjectType = "";
-    #line 2947 "./src/generator/c_gen.am"
+    #line 2954 "./src/generator/c_gen.am"
     if ((subject != NULL) && (subject->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-        #line 2948 "./src/generator/c_gen.am"
+        #line 2955 "./src/generator/c_gen.am"
         subjectType = Amalgame_Compiler_CGen_LocalTypeGet(self, subject->Name);
     }
-    #line 2951 "./src/generator/c_gen.am"
+    #line 2958 "./src/generator/c_gen.am"
     code_bool isAlg = 0;
-    #line 2952 "./src/generator/c_gen.am"
+    #line 2959 "./src/generator/c_gen.am"
     if (String_Length(subjectType) > 0) {
-        #line 2953 "./src/generator/c_gen.am"
+        #line 2960 "./src/generator/c_gen.am"
         code_string algKey2 = code_string_concat("__alg__", subjectType);
-        #line 2954 "./src/generator/c_gen.am"
+        #line 2961 "./src/generator/c_gen.am"
         i64 enCount3 = AmalgameList_count(self->EnumNames);
-        #line 2955 "./src/generator/c_gen.am"
+        #line 2962 "./src/generator/c_gen.am"
         for (i64 eni3 = 0; eni3 < enCount3; eni3++) {
-            #line 2956 "./src/generator/c_gen.am"
+            #line 2963 "./src/generator/c_gen.am"
             if (code_string_equals((code_string)AmalgameList_get(self->EnumNames, eni3), algKey2)) {
                 isAlg = 1;
             }
         }
     }
-    #line 2959 "./src/generator/c_gen.am"
+    #line 2966 "./src/generator/c_gen.am"
     i64 armCount = AmalgameList_count(stmt->Children);
-    #line 2960 "./src/generator/c_gen.am"
+    #line 2967 "./src/generator/c_gen.am"
     if (isAlg) {
-        #line 2962 "./src/generator/c_gen.am"
+        #line 2969 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("switch (", subjectStr)), ".tag) {"));
     } else {
-        #line 2965 "./src/generator/c_gen.am"
+        #line 2972 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("{ /* match ", subjectStr)), " */"));
     }
-    #line 2967 "./src/generator/c_gen.am"
+    #line 2974 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Indent_(self->Out);
-    #line 2968 "./src/generator/c_gen.am"
+    #line 2975 "./src/generator/c_gen.am"
     code_bool firstArm = 1;
-    #line 2969 "./src/generator/c_gen.am"
+    #line 2976 "./src/generator/c_gen.am"
     code_bool needsClose = 0;
-    #line 2970 "./src/generator/c_gen.am"
+    #line 2977 "./src/generator/c_gen.am"
     for (i64 i = 0; i < armCount; i++) {
-        #line 2971 "./src/generator/c_gen.am"
+        #line 2978 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* arm = (Amalgame_Compiler_AstNode*)AmalgameList_get(stmt->Children, i);
-        #line 2972 "./src/generator/c_gen.am"
+        #line 2979 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* pat = arm->Left;
-        #line 2973 "./src/generator/c_gen.am"
+        #line 2980 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* body = arm->Right;
-        #line 2974 "./src/generator/c_gen.am"
+        #line 2981 "./src/generator/c_gen.am"
         if (pat == NULL) {
             continue;
         }
-        #line 2975 "./src/generator/c_gen.am"
+        #line 2982 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind pk = pat->Kind;
-        #line 2977 "./src/generator/c_gen.am"
+        #line 2984 "./src/generator/c_gen.am"
         if ((pk == Amalgame_Compiler_NodeKind_IDENTIFIER) && (code_string_equals(pat->Name, "_"))) {
-            #line 2978 "./src/generator/c_gen.am"
+            #line 2985 "./src/generator/c_gen.am"
             if (isAlg) {
-                #line 2979 "./src/generator/c_gen.am"
+                #line 2986 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "default: {");
-                #line 2980 "./src/generator/c_gen.am"
+                #line 2987 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Indent_(self->Out);
-                #line 2981 "./src/generator/c_gen.am"
+                #line 2988 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_EmitMatchBody(self, body);
-                #line 2982 "./src/generator/c_gen.am"
+                #line 2989 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "break;");
-                #line 2983 "./src/generator/c_gen.am"
+                #line 2990 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 2984 "./src/generator/c_gen.am"
+                #line 2991 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-                #line 2985 "./src/generator/c_gen.am"
+                #line 2992 "./src/generator/c_gen.am"
                 needsClose = 0;
             } else {
-                #line 2988 "./src/generator/c_gen.am"
+                #line 2995 "./src/generator/c_gen.am"
                 code_string elsePrefix = (firstArm ? "" : "} else ");
-                #line 2989 "./src/generator/c_gen.am"
+                #line 2996 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(elsePrefix, "{"));
-                #line 2990 "./src/generator/c_gen.am"
+                #line 2997 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Indent_(self->Out);
-                #line 2991 "./src/generator/c_gen.am"
+                #line 2998 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_EmitMatchBody(self, body);
-                #line 2992 "./src/generator/c_gen.am"
+                #line 2999 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 2993 "./src/generator/c_gen.am"
+                #line 3000 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-                #line 2994 "./src/generator/c_gen.am"
+                #line 3001 "./src/generator/c_gen.am"
                 needsClose = 0;
             }
-            #line 2996 "./src/generator/c_gen.am"
+            #line 3003 "./src/generator/c_gen.am"
             firstArm = 0;
         } else {
-            #line 2998 "./src/generator/c_gen.am"
+            #line 3005 "./src/generator/c_gen.am"
             if (isAlg && (pk == Amalgame_Compiler_NodeKind_CALL)) {
-                #line 3000 "./src/generator/c_gen.am"
+                #line 3007 "./src/generator/c_gen.am"
                 code_string variantName = pat->Name;
-                #line 3001 "./src/generator/c_gen.am"
+                #line 3008 "./src/generator/c_gen.am"
                 code_string tagConst = code_string_concat((code_string_concat(subjectType, "_TAG_")), variantName);
-                #line 3002 "./src/generator/c_gen.am"
+                #line 3009 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("case ", tagConst)), ": {"));
-                #line 3003 "./src/generator/c_gen.am"
+                #line 3010 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Indent_(self->Out);
-                #line 3005 "./src/generator/c_gen.am"
+                #line 3012 "./src/generator/c_gen.am"
                 i64 capCount = AmalgameList_count(pat->Args);
-                #line 3006 "./src/generator/c_gen.am"
+                #line 3013 "./src/generator/c_gen.am"
                 for (i64 ci = 0; ci < capCount; ci++) {
-                    #line 3007 "./src/generator/c_gen.am"
+                    #line 3014 "./src/generator/c_gen.am"
                     Amalgame_Compiler_AstNode* capNode = (Amalgame_Compiler_AstNode*)AmalgameList_get(pat->Args, ci);
-                    #line 3008 "./src/generator/c_gen.am"
+                    #line 3015 "./src/generator/c_gen.am"
                     code_string capName = capNode->Name;
-                    #line 3009 "./src/generator/c_gen.am"
+                    #line 3016 "./src/generator/c_gen.am"
                     code_string fidx = String_FromInt(ci);
-                    #line 3010 "./src/generator/c_gen.am"
+                    #line 3017 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("__auto_type ", capName)), " = ")), subjectStr)), ".")), variantName)), "._")), fidx)), ";"));
-                    #line 3011 "./src/generator/c_gen.am"
+                    #line 3018 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_LocalTypeSet(self, capName, "i64");
                 }
-                #line 3013 "./src/generator/c_gen.am"
+                #line 3020 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_EmitMatchBody(self, body);
-                #line 3014 "./src/generator/c_gen.am"
+                #line 3021 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "break;");
-                #line 3015 "./src/generator/c_gen.am"
+                #line 3022 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 3016 "./src/generator/c_gen.am"
+                #line 3023 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-                #line 3017 "./src/generator/c_gen.am"
+                #line 3024 "./src/generator/c_gen.am"
                 needsClose = 0;
             } else {
-                #line 3021 "./src/generator/c_gen.am"
+                #line 3028 "./src/generator/c_gen.am"
                 code_string elsePrefix = (firstArm ? "" : "} else ");
-                #line 3022 "./src/generator/c_gen.am"
+                #line 3029 "./src/generator/c_gen.am"
                 code_bool isBinder = (pk == Amalgame_Compiler_NodeKind_IDENTIFIER) && (!code_string_equals(pat->Name, "_"));
-                #line 3023 "./src/generator/c_gen.am"
+                #line 3030 "./src/generator/c_gen.am"
                 code_string cond = "";
-                #line 3024 "./src/generator/c_gen.am"
+                #line 3031 "./src/generator/c_gen.am"
                 if ((pk == Amalgame_Compiler_NodeKind_BINARY) && (code_string_equals(pat->Str, ".."))) {
-                    #line 3025 "./src/generator/c_gen.am"
+                    #line 3032 "./src/generator/c_gen.am"
                     code_string lo = Amalgame_Compiler_CGen_EmitExprStr(self, pat->Left);
-                    #line 3026 "./src/generator/c_gen.am"
+                    #line 3033 "./src/generator/c_gen.am"
                     code_string hi = Amalgame_Compiler_CGen_EmitExprStr(self, pat->Right);
-                    #line 3027 "./src/generator/c_gen.am"
+                    #line 3034 "./src/generator/c_gen.am"
                     cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(subjectStr, " >= ")), lo)), " && ")), subjectStr)), " <= ")), hi));
                 } else if (pk == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-                    #line 3029 "./src/generator/c_gen.am"
-                    code_string patStr = Amalgame_Compiler_CGen_EmitExprStr(self, pat);
-                    #line 3030 "./src/generator/c_gen.am"
-                    cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("strcmp(", subjectStr)), ", ")), patStr)), ") == 0"));
-                } else if (isBinder) {
-                    #line 3034 "./src/generator/c_gen.am"
-                    cond = "1";
-                } else {
                     #line 3036 "./src/generator/c_gen.am"
                     code_string patStr = Amalgame_Compiler_CGen_EmitExprStr(self, pat);
                     #line 3037 "./src/generator/c_gen.am"
+                    cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("strcmp(", subjectStr)), ", ")), patStr)), ") == 0"));
+                } else if (isBinder) {
+                    #line 3041 "./src/generator/c_gen.am"
+                    cond = "1";
+                } else {
+                    #line 3043 "./src/generator/c_gen.am"
+                    code_string patStr = Amalgame_Compiler_CGen_EmitExprStr(self, pat);
+                    #line 3044 "./src/generator/c_gen.am"
                     cond = (code_string_concat((code_string_concat(subjectStr, " == ")), patStr));
                 }
-                #line 3039 "./src/generator/c_gen.am"
+                #line 3046 "./src/generator/c_gen.am"
                 if (arm->Cond != NULL) {
-                    #line 3042 "./src/generator/c_gen.am"
-                    if (isBinder) {
-                        #line 3043 "./src/generator/c_gen.am"
-                        Amalgame_Compiler_CGen_LocalTypeSet(self, pat->Name, "i64");
-                    }
-                    #line 3045 "./src/generator/c_gen.am"
-                    code_string guardStr = Amalgame_Compiler_CGen_EmitExprStr(self, arm->Cond);
-                    #line 3046 "./src/generator/c_gen.am"
+                    #line 3049 "./src/generator/c_gen.am"
                     if (isBinder) {
                         #line 3050 "./src/generator/c_gen.am"
+                        Amalgame_Compiler_CGen_LocalTypeSet(self, pat->Name, "i64");
+                    }
+                    #line 3052 "./src/generator/c_gen.am"
+                    code_string guardStr = Amalgame_Compiler_CGen_EmitExprStr(self, arm->Cond);
+                    #line 3053 "./src/generator/c_gen.am"
+                    if (isBinder) {
+                        #line 3057 "./src/generator/c_gen.am"
                         cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(({ __auto_type ", pat->Name)), " = ")), subjectStr)), "; ")), guardStr)), "; }))"));
                     } else {
-                        #line 3052 "./src/generator/c_gen.am"
+                        #line 3059 "./src/generator/c_gen.am"
                         cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", cond)), ") && (")), guardStr)), ")"));
                     }
                 }
-                #line 3055 "./src/generator/c_gen.am"
+                #line 3062 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat(elsePrefix, "if (")), cond)), ") {"));
-                #line 3056 "./src/generator/c_gen.am"
+                #line 3063 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Indent_(self->Out);
-                #line 3059 "./src/generator/c_gen.am"
+                #line 3066 "./src/generator/c_gen.am"
                 if (isBinder) {
-                    #line 3060 "./src/generator/c_gen.am"
+                    #line 3067 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("__auto_type ", pat->Name)), " = ")), subjectStr)), ";"));
-                    #line 3061 "./src/generator/c_gen.am"
+                    #line 3068 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_LocalTypeSet(self, pat->Name, "i64");
                 }
-                #line 3063 "./src/generator/c_gen.am"
+                #line 3070 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_EmitMatchBody(self, body);
-                #line 3064 "./src/generator/c_gen.am"
+                #line 3071 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_Dedent(self->Out);
-                #line 3065 "./src/generator/c_gen.am"
+                #line 3072 "./src/generator/c_gen.am"
                 needsClose = 1;
             }
-            #line 3067 "./src/generator/c_gen.am"
+            #line 3074 "./src/generator/c_gen.am"
             firstArm = 0;
         }
     }
-    #line 3071 "./src/generator/c_gen.am"
+    #line 3078 "./src/generator/c_gen.am"
     if (needsClose) {
-        #line 3072 "./src/generator/c_gen.am"
+        #line 3079 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
     }
-    #line 3074 "./src/generator/c_gen.am"
+    #line 3081 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Dedent(self->Out);
-    #line 3075 "./src/generator/c_gen.am"
+    #line 3082 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
 }
 
 static void Amalgame_Compiler_CGen_EmitMatchBody(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* body) {
-    #line 3079 "./src/generator/c_gen.am"
+    #line 3086 "./src/generator/c_gen.am"
     if (body == NULL) {
         return;
     }
-    #line 3080 "./src/generator/c_gen.am"
+    #line 3087 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind bk = body->Kind;
-    #line 3081 "./src/generator/c_gen.am"
+    #line 3088 "./src/generator/c_gen.am"
     if (bk == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 3082 "./src/generator/c_gen.am"
+        #line 3089 "./src/generator/c_gen.am"
         i64 stmts = AmalgameList_count(body->Children);
-        #line 3083 "./src/generator/c_gen.am"
+        #line 3090 "./src/generator/c_gen.am"
         for (i64 si = 0; si < stmts; si++) {
-            #line 3084 "./src/generator/c_gen.am"
+            #line 3091 "./src/generator/c_gen.am"
             Amalgame_Compiler_CGen_EmitStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(body->Children, si));
         }
     } else if (((bk == Amalgame_Compiler_NodeKind_RETURN_STMT) || (bk == Amalgame_Compiler_NodeKind_BREAK_STMT)) || (bk == Amalgame_Compiler_NodeKind_CONTINUE_STMT)) {
-        #line 3089 "./src/generator/c_gen.am"
+        #line 3096 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitStmt(self, body);
     } else {
-        #line 3092 "./src/generator/c_gen.am"
+        #line 3099 "./src/generator/c_gen.am"
         code_string exprStr = Amalgame_Compiler_CGen_EmitExprStr(self, body);
-        #line 3093 "./src/generator/c_gen.am"
+        #line 3100 "./src/generator/c_gen.am"
         if ((String_Length(exprStr) > 0) && (!code_string_equals(exprStr, "_unknown_"))) {
-            #line 3094 "./src/generator/c_gen.am"
+            #line 3101 "./src/generator/c_gen.am"
             if ((bk == Amalgame_Compiler_NodeKind_CALL) || (bk == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-                #line 3096 "./src/generator/c_gen.am"
+                #line 3103 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(exprStr, ";"));
             } else {
-                #line 3098 "./src/generator/c_gen.am"
+                #line 3105 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", exprStr)), ";"));
             }
         }
@@ -12413,1205 +12429,1190 @@ static void Amalgame_Compiler_CGen_EmitMatchBody(Amalgame_Compiler_CGen* self, A
 }
 
 static void Amalgame_Compiler_CGen_EmitIf(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 3105 "./src/generator/c_gen.am"
+    #line 3112 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("if (", Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Cond))), ") {"));
-    #line 3106 "./src/generator/c_gen.am"
+    #line 3113 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Indent_(self->Out);
-    #line 3107 "./src/generator/c_gen.am"
+    #line 3114 "./src/generator/c_gen.am"
     if (stmt->Body != NULL) {
         Amalgame_Compiler_CGen_EmitBlock(self, stmt->Body);
     }
-    #line 3108 "./src/generator/c_gen.am"
+    #line 3115 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_Dedent(self->Out);
-    #line 3109 "./src/generator/c_gen.am"
+    #line 3116 "./src/generator/c_gen.am"
     if (stmt->Else != NULL) {
-        #line 3110 "./src/generator/c_gen.am"
+        #line 3117 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind elseKind = stmt->Else->Kind;
-        #line 3111 "./src/generator/c_gen.am"
+        #line 3118 "./src/generator/c_gen.am"
         if (elseKind == Amalgame_Compiler_NodeKind_IF_STMT) {
-            #line 3113 "./src/generator/c_gen.am"
+            #line 3120 "./src/generator/c_gen.am"
             code_string innerCond = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Else->Cond);
-            #line 3114 "./src/generator/c_gen.am"
-            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} else if (", innerCond)), ") {"));
-            #line 3115 "./src/generator/c_gen.am"
-            Amalgame_Compiler_Emitter_Indent_(self->Out);
-            #line 3116 "./src/generator/c_gen.am"
-            if (stmt->Else->Body != NULL) {
-                Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else->Body);
-            }
-            #line 3117 "./src/generator/c_gen.am"
-            Amalgame_Compiler_Emitter_Dedent(self->Out);
-            #line 3119 "./src/generator/c_gen.am"
-            Amalgame_Compiler_CGen_EmitIfTail(self, stmt->Else);
-        } else {
             #line 3121 "./src/generator/c_gen.am"
-            Amalgame_Compiler_Emitter_EmitLine(self->Out, "} else {");
+            Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} else if (", innerCond)), ") {"));
             #line 3122 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_Indent_(self->Out);
             #line 3123 "./src/generator/c_gen.am"
-            Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else);
+            if (stmt->Else->Body != NULL) {
+                Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else->Body);
+            }
             #line 3124 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_Dedent(self->Out);
-            #line 3125 "./src/generator/c_gen.am"
+            #line 3126 "./src/generator/c_gen.am"
+            Amalgame_Compiler_CGen_EmitIfTail(self, stmt->Else);
+        } else {
+            #line 3128 "./src/generator/c_gen.am"
+            Amalgame_Compiler_Emitter_EmitLine(self->Out, "} else {");
+            #line 3129 "./src/generator/c_gen.am"
+            Amalgame_Compiler_Emitter_Indent_(self->Out);
+            #line 3130 "./src/generator/c_gen.am"
+            Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else);
+            #line 3131 "./src/generator/c_gen.am"
+            Amalgame_Compiler_Emitter_Dedent(self->Out);
+            #line 3132 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
         }
     } else {
-        #line 3128 "./src/generator/c_gen.am"
+        #line 3135 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitIfTail(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 3134 "./src/generator/c_gen.am"
+    #line 3141 "./src/generator/c_gen.am"
     if (stmt->Else == NULL) {
-        #line 3135 "./src/generator/c_gen.am"
+        #line 3142 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3136 "./src/generator/c_gen.am"
+        #line 3143 "./src/generator/c_gen.am"
         return;
     }
-    #line 3138 "./src/generator/c_gen.am"
+    #line 3145 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind elseKind = stmt->Else->Kind;
-    #line 3139 "./src/generator/c_gen.am"
+    #line 3146 "./src/generator/c_gen.am"
     if (elseKind == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 3140 "./src/generator/c_gen.am"
+        #line 3147 "./src/generator/c_gen.am"
         code_string innerCond = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Else->Cond);
-        #line 3141 "./src/generator/c_gen.am"
+        #line 3148 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("} else if (", innerCond)), ") {"));
-        #line 3142 "./src/generator/c_gen.am"
+        #line 3149 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3143 "./src/generator/c_gen.am"
+        #line 3150 "./src/generator/c_gen.am"
         if (stmt->Else->Body != NULL) {
             Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else->Body);
         }
-        #line 3144 "./src/generator/c_gen.am"
+        #line 3151 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3145 "./src/generator/c_gen.am"
+        #line 3152 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitIfTail(self, stmt->Else);
     } else {
-        #line 3147 "./src/generator/c_gen.am"
+        #line 3154 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "} else {");
-        #line 3148 "./src/generator/c_gen.am"
+        #line 3155 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3149 "./src/generator/c_gen.am"
+        #line 3156 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else);
-        #line 3150 "./src/generator/c_gen.am"
+        #line 3157 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3151 "./src/generator/c_gen.am"
+        #line 3158 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitBlock(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* block) {
-    #line 3156 "./src/generator/c_gen.am"
+    #line 3163 "./src/generator/c_gen.am"
     i64 count = AmalgameList_count(block->Children);
-    #line 3157 "./src/generator/c_gen.am"
+    #line 3164 "./src/generator/c_gen.am"
     for (i64 i = 0; i < count; i++) {
-        #line 3158 "./src/generator/c_gen.am"
+        #line 3165 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* stmt = (Amalgame_Compiler_AstNode*)AmalgameList_get(block->Children, i);
-        #line 3159 "./src/generator/c_gen.am"
+        #line 3166 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitStmt(self, stmt);
     }
 }
 
 static void Amalgame_Compiler_CGen_EmitLineDirective(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 3170 "./src/generator/c_gen.am"
+    #line 3177 "./src/generator/c_gen.am"
     if (stmt->Line <= 0) {
         return;
     }
-    #line 3171 "./src/generator/c_gen.am"
+    #line 3178 "./src/generator/c_gen.am"
     if (String_Length(self->CurrentSource) == 0) {
         return;
     }
-    #line 3172 "./src/generator/c_gen.am"
+    #line 3179 "./src/generator/c_gen.am"
     if (stmt->Line == self->LastLineEmitted) {
         return;
     }
-    #line 3173 "./src/generator/c_gen.am"
+    #line 3180 "./src/generator/c_gen.am"
     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("#line ", String_FromInt(stmt->Line))), " \"")), self->CurrentSource)), "\""));
-    #line 3174 "./src/generator/c_gen.am"
+    #line 3181 "./src/generator/c_gen.am"
     self->LastLineEmitted = stmt->Line;
 }
 
 static void Amalgame_Compiler_CGen_EmitStmt(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 3178 "./src/generator/c_gen.am"
+    #line 3185 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_EmitLineDirective(self, stmt);
-    #line 3179 "./src/generator/c_gen.am"
+    #line 3186 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind k = stmt->Kind;
-    #line 3180 "./src/generator/c_gen.am"
+    #line 3187 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 3187 "./src/generator/c_gen.am"
+        #line 3194 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "{");
-        #line 3188 "./src/generator/c_gen.am"
+        #line 3195 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3189 "./src/generator/c_gen.am"
+        #line 3196 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitBlock(self, stmt);
-        #line 3190 "./src/generator/c_gen.am"
+        #line 3197 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3191 "./src/generator/c_gen.am"
+        #line 3198 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3192 "./src/generator/c_gen.am"
+        #line 3199 "./src/generator/c_gen.am"
         return;
     }
-    #line 3194 "./src/generator/c_gen.am"
+    #line 3201 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_TRY_STMT) {
-        #line 3208 "./src/generator/c_gen.am"
-        code_string suffix = String_FromInt(stmt->Line);
-        #line 3209 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "{");
-        #line 3210 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3211 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("jmp_buf _am_prev_env_", suffix)), ";"));
-        #line 3212 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("memcpy(&_am_prev_env_", suffix)), ", &_am_ex.env, sizeof(jmp_buf));"));
-        #line 3213 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("int _am_caught_", suffix)), " = setjmp(_am_ex.env);"));
-        #line 3214 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("if (_am_caught_", suffix)), " == 0) {"));
         #line 3215 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Indent_(self->Out);
+        code_string suffix = String_FromInt(stmt->Line);
         #line 3216 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, "{");
+        #line 3217 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Indent_(self->Out);
+        #line 3218 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("jmp_buf _am_prev_env_", suffix)), ";"));
+        #line 3219 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("memcpy(&_am_prev_env_", suffix)), ", &_am_ex.env, sizeof(jmp_buf));"));
+        #line 3220 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("int _am_caught_", suffix)), " = setjmp(_am_ex.env);"));
+        #line 3221 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("if (_am_caught_", suffix)), " == 0) {"));
+        #line 3222 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Indent_(self->Out);
+        #line 3223 "./src/generator/c_gen.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_CGen_EmitBlock(self, stmt->Body);
         }
-        #line 3217 "./src/generator/c_gen.am"
+        #line 3224 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "_am_ex.active = 0;");
-        #line 3218 "./src/generator/c_gen.am"
+        #line 3225 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3219 "./src/generator/c_gen.am"
+        #line 3226 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "} else {");
-        #line 3220 "./src/generator/c_gen.am"
+        #line 3227 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3221 "./src/generator/c_gen.am"
+        #line 3228 "./src/generator/c_gen.am"
         if (String_Length(stmt->Name) > 0) {
-            #line 3222 "./src/generator/c_gen.am"
+            #line 3229 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("void* ", stmt->Name)), " = _am_ex.value;"));
-            #line 3223 "./src/generator/c_gen.am"
+            #line 3230 "./src/generator/c_gen.am"
             Amalgame_Compiler_CGen_LocalTypeSet(self, stmt->Name, "void*");
         }
-        #line 3225 "./src/generator/c_gen.am"
+        #line 3232 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "_am_ex.active = 0;");
-        #line 3226 "./src/generator/c_gen.am"
+        #line 3233 "./src/generator/c_gen.am"
         if (stmt->Else != NULL) {
             Amalgame_Compiler_CGen_EmitBlock(self, stmt->Else);
         }
-        #line 3227 "./src/generator/c_gen.am"
+        #line 3234 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3228 "./src/generator/c_gen.am"
+        #line 3235 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3229 "./src/generator/c_gen.am"
+        #line 3236 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("memcpy(&_am_ex.env, &_am_prev_env_", suffix)), ", sizeof(jmp_buf));"));
-        #line 3230 "./src/generator/c_gen.am"
+        #line 3237 "./src/generator/c_gen.am"
         if (stmt->Cond != NULL) {
             Amalgame_Compiler_CGen_EmitBlock(self, stmt->Cond);
         }
-        #line 3231 "./src/generator/c_gen.am"
+        #line 3238 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3232 "./src/generator/c_gen.am"
+        #line 3239 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3233 "./src/generator/c_gen.am"
+        #line 3240 "./src/generator/c_gen.am"
         return;
     }
-    #line 3235 "./src/generator/c_gen.am"
+    #line 3242 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_INLINE_C) {
-        #line 3240 "./src/generator/c_gen.am"
+        #line 3247 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "{ /* inline-C */");
-        #line 3241 "./src/generator/c_gen.am"
+        #line 3248 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3242 "./src/generator/c_gen.am"
+        #line 3249 "./src/generator/c_gen.am"
         code_string body = stmt->Str;
-        #line 3243 "./src/generator/c_gen.am"
+        #line 3250 "./src/generator/c_gen.am"
         if (String_Length(body) > 0) {
-            #line 3244 "./src/generator/c_gen.am"
+            #line 3251 "./src/generator/c_gen.am"
             AmalgameList* lines = String_Split(body, "\n");
-            #line 3245 "./src/generator/c_gen.am"
+            #line 3252 "./src/generator/c_gen.am"
             i64 count = AmalgameList_count(lines);
-            #line 3246 "./src/generator/c_gen.am"
+            #line 3253 "./src/generator/c_gen.am"
             for (i64 i = 0; i < count; i++) {
-                #line 3247 "./src/generator/c_gen.am"
+                #line 3254 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, (code_string)AmalgameList_get(lines, i));
             }
         }
-        #line 3250 "./src/generator/c_gen.am"
+        #line 3257 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3251 "./src/generator/c_gen.am"
+        #line 3258 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3252 "./src/generator/c_gen.am"
+        #line 3259 "./src/generator/c_gen.am"
         return;
     }
-    #line 3254 "./src/generator/c_gen.am"
+    #line 3261 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_THROW_STMT) {
-        #line 3258 "./src/generator/c_gen.am"
+        #line 3265 "./src/generator/c_gen.am"
         if (stmt->Left == NULL) {
-            #line 3259 "./src/generator/c_gen.am"
+            #line 3266 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, "_am_throw(NULL, \"Error\", \"\");");
-            #line 3260 "./src/generator/c_gen.am"
+            #line 3267 "./src/generator/c_gen.am"
             return;
         }
-        #line 3262 "./src/generator/c_gen.am"
+        #line 3269 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* v = stmt->Left;
-        #line 3263 "./src/generator/c_gen.am"
+        #line 3270 "./src/generator/c_gen.am"
         if (v->Kind == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-            #line 3264 "./src/generator/c_gen.am"
+            #line 3271 "./src/generator/c_gen.am"
             code_string typeName = v->Name;
-            #line 3265 "./src/generator/c_gen.am"
+            #line 3272 "./src/generator/c_gen.am"
             code_string argsStr = "";
-            #line 3266 "./src/generator/c_gen.am"
+            #line 3273 "./src/generator/c_gen.am"
             i64 ac = AmalgameList_count(v->Args);
-            #line 3267 "./src/generator/c_gen.am"
+            #line 3274 "./src/generator/c_gen.am"
             for (i64 ai = 0; ai < ac; ai++) {
-                #line 3268 "./src/generator/c_gen.am"
+                #line 3275 "./src/generator/c_gen.am"
                 if (ai > 0) {
                     argsStr = (code_string_concat(argsStr, ", "));
                 }
-                #line 3269 "./src/generator/c_gen.am"
+                #line 3276 "./src/generator/c_gen.am"
                 argsStr = (code_string_concat(argsStr, Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(v->Args, ai))));
             }
-            #line 3271 "./src/generator/c_gen.am"
+            #line 3278 "./src/generator/c_gen.am"
             code_string msgStr = "\"\"";
-            #line 3272 "./src/generator/c_gen.am"
+            #line 3279 "./src/generator/c_gen.am"
             if (ac > 0) {
-                #line 3273 "./src/generator/c_gen.am"
+                #line 3280 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* firstArg = (Amalgame_Compiler_AstNode*)AmalgameList_get(v->Args, 0);
-                #line 3274 "./src/generator/c_gen.am"
+                #line 3281 "./src/generator/c_gen.am"
                 if (firstArg->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-                    #line 3275 "./src/generator/c_gen.am"
+                    #line 3282 "./src/generator/c_gen.am"
                     msgStr = Amalgame_Compiler_CGen_EmitExprStr(self, firstArg);
                 }
             }
-            #line 3278 "./src/generator/c_gen.am"
+            #line 3285 "./src/generator/c_gen.am"
             code_string symName = Amalgame_Compiler_CGen_SymName(self, typeName);
-            #line 3279 "./src/generator/c_gen.am"
+            #line 3286 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("_am_throw((void*)(", symName)), "_new(")), argsStr)), ")), \"")), typeName)), "\", ")), msgStr)), ");"));
-            #line 3280 "./src/generator/c_gen.am"
+            #line 3287 "./src/generator/c_gen.am"
             return;
         }
-        #line 3282 "./src/generator/c_gen.am"
+        #line 3289 "./src/generator/c_gen.am"
         code_string valStr = Amalgame_Compiler_CGen_EmitExprStr(self, v);
-        #line 3283 "./src/generator/c_gen.am"
+        #line 3290 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("_am_throw((void*)", valStr)), ", \"Error\", \"\");"));
-        #line 3284 "./src/generator/c_gen.am"
+        #line 3291 "./src/generator/c_gen.am"
         return;
     }
-    #line 3286 "./src/generator/c_gen.am"
+    #line 3293 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 3288 "./src/generator/c_gen.am"
+        #line 3295 "./src/generator/c_gen.am"
         if (code_string_equals(stmt->Str, "__tuple_destructure__")) {
-            #line 3289 "./src/generator/c_gen.am"
+            #line 3296 "./src/generator/c_gen.am"
             code_string rhs = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
-            #line 3290 "./src/generator/c_gen.am"
+            #line 3297 "./src/generator/c_gen.am"
             code_string tmpName = code_string_concat("__tup_", String_FromInt(stmt->Line));
-            #line 3291 "./src/generator/c_gen.am"
+            #line 3298 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("__auto_type ", tmpName)), " = ")), rhs)), ";"));
-            #line 3293 "./src/generator/c_gen.am"
+            #line 3300 "./src/generator/c_gen.am"
             code_string tupleRetType = "";
-            #line 3294 "./src/generator/c_gen.am"
+            #line 3301 "./src/generator/c_gen.am"
             if ((stmt->Left != NULL) && (stmt->Left->Kind == Amalgame_Compiler_NodeKind_CALL)) {
-                #line 3295 "./src/generator/c_gen.am"
+                #line 3302 "./src/generator/c_gen.am"
                 code_string calleeStr2 = Amalgame_Compiler_CGen_EmitCalleeStr(self, stmt->Left->Left);
-                #line 3297 "./src/generator/c_gen.am"
+                #line 3304 "./src/generator/c_gen.am"
                 i64 lastUs = String_LastIndexOf(calleeStr2, "_");
-                #line 3298 "./src/generator/c_gen.am"
+                #line 3305 "./src/generator/c_gen.am"
                 if (lastUs > 0) {
-                    #line 3299 "./src/generator/c_gen.am"
+                    #line 3306 "./src/generator/c_gen.am"
                     code_string cls2 = String_Substring(calleeStr2, 0, lastUs);
-                    #line 3300 "./src/generator/c_gen.am"
+                    #line 3307 "./src/generator/c_gen.am"
                     code_string mth2 = String_Substring(calleeStr2, lastUs + 1, (String_Length(calleeStr2) - lastUs) - 1);
-                    #line 3301 "./src/generator/c_gen.am"
+                    #line 3308 "./src/generator/c_gen.am"
                     tupleRetType = Amalgame_Compiler_CGen_MethodRetGet(self, cls2, mth2);
                 }
             }
-            #line 3304 "./src/generator/c_gen.am"
+            #line 3311 "./src/generator/c_gen.am"
             i64 nc = AmalgameList_count(stmt->Children);
-            #line 3305 "./src/generator/c_gen.am"
+            #line 3312 "./src/generator/c_gen.am"
             for (i64 i = 0; i < nc; i++) {
-                #line 3306 "./src/generator/c_gen.am"
+                #line 3313 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* vnode = (Amalgame_Compiler_AstNode*)AmalgameList_get(stmt->Children, i);
-                #line 3307 "./src/generator/c_gen.am"
+                #line 3314 "./src/generator/c_gen.am"
                 code_string vname = vnode->Name;
-                #line 3308 "./src/generator/c_gen.am"
+                #line 3315 "./src/generator/c_gen.am"
                 code_string idxStr = String_FromInt(i);
-                #line 3309 "./src/generator/c_gen.am"
+                #line 3316 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("__auto_type ", vname)), " = ")), tmpName)), "._")), idxStr)), ";"));
-                #line 3311 "./src/generator/c_gen.am"
+                #line 3318 "./src/generator/c_gen.am"
                 code_string elemType = "void*";
-                #line 3312 "./src/generator/c_gen.am"
+                #line 3319 "./src/generator/c_gen.am"
                 if ((String_Length(tupleRetType) > 2) && String_StartsWith(tupleRetType, "(")) {
-                    #line 3313 "./src/generator/c_gen.am"
+                    #line 3320 "./src/generator/c_gen.am"
                     code_string inner2 = String_Substring(tupleRetType, 1, String_Length(tupleRetType) - 2);
-                    #line 3315 "./src/generator/c_gen.am"
+                    #line 3322 "./src/generator/c_gen.am"
                     i64 ei = 0;
-                    #line 3316 "./src/generator/c_gen.am"
+                    #line 3323 "./src/generator/c_gen.am"
                     code_string cur2 = "";
-                    #line 3317 "./src/generator/c_gen.am"
+                    #line 3324 "./src/generator/c_gen.am"
                     i64 ci2 = 0;
-                    #line 3318 "./src/generator/c_gen.am"
+                    #line 3325 "./src/generator/c_gen.am"
                     i64 ilen = String_Length(inner2);
-                    #line 3319 "./src/generator/c_gen.am"
+                    #line 3326 "./src/generator/c_gen.am"
                     while (ci2 <= ilen) {
-                        #line 3320 "./src/generator/c_gen.am"
+                        #line 3327 "./src/generator/c_gen.am"
                         code_string ch2 = "";
-                        #line 3321 "./src/generator/c_gen.am"
+                        #line 3328 "./src/generator/c_gen.am"
                         if (ci2 < ilen) {
                             ch2 = String_Substring(inner2, ci2, 1);
                         }
-                        #line 3322 "./src/generator/c_gen.am"
+                        #line 3329 "./src/generator/c_gen.am"
                         if ((code_string_equals(ch2, ",")) || (ci2 == ilen)) {
-                            #line 3323 "./src/generator/c_gen.am"
+                            #line 3330 "./src/generator/c_gen.am"
                             if ((ei == i) && (String_Length(cur2) > 0)) {
-                                #line 3324 "./src/generator/c_gen.am"
+                                #line 3331 "./src/generator/c_gen.am"
                                 elemType = Amalgame_Compiler_CGen_TypeToC(self, cur2);
                             }
-                            #line 3326 "./src/generator/c_gen.am"
+                            #line 3333 "./src/generator/c_gen.am"
                             ei = (ei + 1);
-                            #line 3327 "./src/generator/c_gen.am"
+                            #line 3334 "./src/generator/c_gen.am"
                             cur2 = "";
                         } else {
-                            #line 3328 "./src/generator/c_gen.am"
+                            #line 3335 "./src/generator/c_gen.am"
                             cur2 = (code_string_concat(cur2, ch2));
                         }
-                        #line 3329 "./src/generator/c_gen.am"
+                        #line 3336 "./src/generator/c_gen.am"
                         ci2 = (ci2 + 1);
                     }
                 }
-                #line 3332 "./src/generator/c_gen.am"
+                #line 3339 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_LocalTypeSet(self, vname, elemType);
             }
-            #line 3334 "./src/generator/c_gen.am"
+            #line 3341 "./src/generator/c_gen.am"
             return;
         }
-        #line 3341 "./src/generator/c_gen.am"
+        #line 3348 "./src/generator/c_gen.am"
         if (((stmt->Left != NULL) && (stmt->Left->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL)) && (code_string_equals(stmt->Left->Name, "__lambda__"))) {
-            #line 3342 "./src/generator/c_gen.am"
+            #line 3349 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* lam = stmt->Left;
-            #line 3343 "./src/generator/c_gen.am"
+            #line 3350 "./src/generator/c_gen.am"
             code_string id = lam->Str2;
-            #line 3344 "./src/generator/c_gen.am"
+            #line 3351 "./src/generator/c_gen.am"
             code_string envName = code_string_concat("LamEnv_", id);
-            #line 3345 "./src/generator/c_gen.am"
+            #line 3352 "./src/generator/c_gen.am"
             code_string fnName = code_string_concat((code_string_concat("lam_", id)), "_fn");
-            #line 3346 "./src/generator/c_gen.am"
+            #line 3353 "./src/generator/c_gen.am"
             code_string envVar = code_string_concat("__env_", id);
-            #line 3357 "./src/generator/c_gen.am"
+            #line 3364 "./src/generator/c_gen.am"
             code_string typedRet = "";
-            #line 3358 "./src/generator/c_gen.am"
+            #line 3365 "./src/generator/c_gen.am"
             if (String_StartsWith(stmt->Str, "Closure<") && String_EndsWith(stmt->Str, ">")) {
-                #line 3359 "./src/generator/c_gen.am"
+                #line 3366 "./src/generator/c_gen.am"
                 code_string inner = String_Substring(stmt->Str, 8, String_Length(stmt->Str) - 9);
-                #line 3360 "./src/generator/c_gen.am"
+                #line 3367 "./src/generator/c_gen.am"
                 AmalgameList* parts = Amalgame_Compiler_CGen_SplitTopLevelCommas(self, inner);
-                #line 3361 "./src/generator/c_gen.am"
+                #line 3368 "./src/generator/c_gen.am"
                 i64 pc = AmalgameList_count(parts);
-                #line 3362 "./src/generator/c_gen.am"
+                #line 3369 "./src/generator/c_gen.am"
                 i64 pn = AmalgameList_count(lam->Params);
-                #line 3363 "./src/generator/c_gen.am"
+                #line 3370 "./src/generator/c_gen.am"
                 if (pc >= 1) {
-                    #line 3365 "./src/generator/c_gen.am"
-                    typedRet = String_Trim((code_string)AmalgameList_get(parts, pc - 1));
-                    #line 3370 "./src/generator/c_gen.am"
-                    i64 argCount = pc - 1;
-                    #line 3371 "./src/generator/c_gen.am"
-                    i64 toPatch = argCount;
                     #line 3372 "./src/generator/c_gen.am"
+                    typedRet = String_Trim((code_string)AmalgameList_get(parts, pc - 1));
+                    #line 3377 "./src/generator/c_gen.am"
+                    i64 argCount = pc - 1;
+                    #line 3378 "./src/generator/c_gen.am"
+                    i64 toPatch = argCount;
+                    #line 3379 "./src/generator/c_gen.am"
                     if (toPatch > pn) {
                         toPatch = pn;
                     }
-                    #line 3373 "./src/generator/c_gen.am"
+                    #line 3380 "./src/generator/c_gen.am"
                     for (i64 ai = 0; ai < toPatch; ai++) {
-                        #line 3374 "./src/generator/c_gen.am"
+                        #line 3381 "./src/generator/c_gen.am"
                         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Params, ai);
-                        #line 3375 "./src/generator/c_gen.am"
+                        #line 3382 "./src/generator/c_gen.am"
                         if ((String_Length(p->Str) == 0) || (code_string_equals(p->Str, "?"))) {
-                            #line 3376 "./src/generator/c_gen.am"
+                            #line 3383 "./src/generator/c_gen.am"
                             p->Str = String_Trim((code_string)AmalgameList_get(parts, ai));
                         }
                     }
                 }
             }
-            #line 3381 "./src/generator/c_gen.am"
+            #line 3388 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(envName, "* ")), envVar)), " = (")), envName)), "*) code_alloc(sizeof(")), envName)), "));"));
-            #line 3382 "./src/generator/c_gen.am"
+            #line 3389 "./src/generator/c_gen.am"
             i64 cn = AmalgameList_count(lam->Args);
-            #line 3383 "./src/generator/c_gen.am"
+            #line 3390 "./src/generator/c_gen.am"
             for (i64 i = 0; i < cn; i++) {
-                #line 3384 "./src/generator/c_gen.am"
+                #line 3391 "./src/generator/c_gen.am"
                 Amalgame_Compiler_AstNode* cap = (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i);
-                #line 3385 "./src/generator/c_gen.am"
+                #line 3392 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(envVar, "->_")), cap->Name)), " = ")), cap->Name)), ";"));
             }
-            #line 3387 "./src/generator/c_gen.am"
+            #line 3394 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure* ", stmt->Name)), " = AmalgameClosure_new((void*)")), fnName)), ", ")), envVar)), ");"));
-            #line 3388 "./src/generator/c_gen.am"
-            Amalgame_Compiler_CGen_LocalTypeSet(self, stmt->Name, "AmalgameClosure*");
             #line 3395 "./src/generator/c_gen.am"
+            Amalgame_Compiler_CGen_LocalTypeSet(self, stmt->Name, "AmalgameClosure*");
+            #line 3402 "./src/generator/c_gen.am"
             if (String_Length(typedRet) > 0) {
-                #line 3396 "./src/generator/c_gen.am"
+                #line 3403 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_ListElemSet(self, "__closure_ret__", stmt->Name, Amalgame_Compiler_CGen_TypeToC(self, typedRet));
             } else if (lam->Left != NULL) {
-                #line 3398 "./src/generator/c_gen.am"
+                #line 3405 "./src/generator/c_gen.am"
                 code_string retC = Amalgame_Compiler_CGen_InferTypeFromExpr(self, lam->Left);
-                #line 3399 "./src/generator/c_gen.am"
+                #line 3406 "./src/generator/c_gen.am"
                 if (String_Length(retC) > 0) {
-                    #line 3400 "./src/generator/c_gen.am"
+                    #line 3407 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_ListElemSet(self, "__closure_ret__", stmt->Name, retC);
                 }
             }
-            #line 3403 "./src/generator/c_gen.am"
+            #line 3410 "./src/generator/c_gen.am"
             return;
         }
-        #line 3405 "./src/generator/c_gen.am"
+        #line 3412 "./src/generator/c_gen.am"
         code_string t = Amalgame_Compiler_CGen_TypeToC(self, stmt->Str);
-        #line 3407 "./src/generator/c_gen.am"
+        #line 3414 "./src/generator/c_gen.am"
         if ((String_Length(t) == 0) || (code_string_equals(t, "void"))) {
-            #line 3408 "./src/generator/c_gen.am"
+            #line 3415 "./src/generator/c_gen.am"
             t = Amalgame_Compiler_CGen_InferTypeFromExpr(self, stmt->Left);
         }
-        #line 3411 "./src/generator/c_gen.am"
+        #line 3418 "./src/generator/c_gen.am"
         if (String_Length(t) == 0) {
             t = "void*";
         }
-        #line 3413 "./src/generator/c_gen.am"
+        #line 3420 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, stmt->Name, t);
-        #line 3421 "./src/generator/c_gen.am"
+        #line 3428 "./src/generator/c_gen.am"
         if (String_Length(stmt->Str) > 0) {
-            #line 3422 "./src/generator/c_gen.am"
+            #line 3429 "./src/generator/c_gen.am"
             Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, stmt->Str);
         }
-        #line 3424 "./src/generator/c_gen.am"
+        #line 3431 "./src/generator/c_gen.am"
         if ((stmt->Left != NULL) && (stmt->Left->Kind == Amalgame_Compiler_NodeKind_NEW_EXPR)) {
-            #line 3425 "./src/generator/c_gen.am"
+            #line 3432 "./src/generator/c_gen.am"
             if (String_Length(stmt->Left->Str2) > 0) {
-                #line 3426 "./src/generator/c_gen.am"
+                #line 3433 "./src/generator/c_gen.am"
                 code_string synth = code_string_concat((code_string_concat((code_string_concat(stmt->Left->Name, "<")), stmt->Left->Str2)), ">");
-                #line 3427 "./src/generator/c_gen.am"
+                #line 3434 "./src/generator/c_gen.am"
                 Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, synth);
             }
         }
-        #line 3430 "./src/generator/c_gen.am"
+        #line 3437 "./src/generator/c_gen.am"
         if ((stmt->Left != NULL) && (stmt->Left->Kind == Amalgame_Compiler_NodeKind_CALL)) {
-            #line 3443 "./src/generator/c_gen.am"
+            #line 3450 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* callee = stmt->Left->Left;
-            #line 3444 "./src/generator/c_gen.am"
+            #line 3451 "./src/generator/c_gen.am"
             if ((callee != NULL) && (callee->Kind == Amalgame_Compiler_NodeKind_MEMBER)) {
-                #line 3445 "./src/generator/c_gen.am"
+                #line 3452 "./src/generator/c_gen.am"
                 if ((callee->Left != NULL) && (callee->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-                    #line 3446 "./src/generator/c_gen.am"
+                    #line 3453 "./src/generator/c_gen.am"
                     code_string recvName = callee->Left->Name;
-                    #line 3447 "./src/generator/c_gen.am"
+                    #line 3454 "./src/generator/c_gen.am"
                     code_string retRaw = Amalgame_Compiler_CGen_MethodRetRawGet(self, recvName, callee->Name);
-                    #line 3448 "./src/generator/c_gen.am"
+                    #line 3455 "./src/generator/c_gen.am"
                     if (String_Length(retRaw) == 0) {
-                        #line 3449 "./src/generator/c_gen.am"
+                        #line 3456 "./src/generator/c_gen.am"
                         code_string extMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, recvName);
-                        #line 3450 "./src/generator/c_gen.am"
+                        #line 3457 "./src/generator/c_gen.am"
                         if (String_Length(extMangled) > 0) {
-                            #line 3451 "./src/generator/c_gen.am"
+                            #line 3458 "./src/generator/c_gen.am"
                             retRaw = Amalgame_Compiler_CGen_MethodRetRawGet(self, extMangled, callee->Name);
                         }
                     }
-                    #line 3454 "./src/generator/c_gen.am"
+                    #line 3461 "./src/generator/c_gen.am"
                     if (String_Length(retRaw) == 0) {
-                        #line 3455 "./src/generator/c_gen.am"
+                        #line 3462 "./src/generator/c_gen.am"
                         code_string recvType = Amalgame_Compiler_CGen_LocalTypeGet(self, recvName);
-                        #line 3456 "./src/generator/c_gen.am"
+                        #line 3463 "./src/generator/c_gen.am"
                         if (String_Length(recvType) > 0) {
-                            #line 3457 "./src/generator/c_gen.am"
+                            #line 3464 "./src/generator/c_gen.am"
                             code_string bareT = String_Replace(recvType, "*", "");
-                            #line 3458 "./src/generator/c_gen.am"
+                            #line 3465 "./src/generator/c_gen.am"
                             if (String_Length(bareT) > 0) {
-                                #line 3459 "./src/generator/c_gen.am"
+                                #line 3466 "./src/generator/c_gen.am"
                                 retRaw = Amalgame_Compiler_CGen_MethodRetRawGet(self, bareT, callee->Name);
                             }
                         }
                     }
-                    #line 3471 "./src/generator/c_gen.am"
+                    #line 3478 "./src/generator/c_gen.am"
                     if ((String_Length(retRaw) == 0) && (code_string_equals(callee->Name, "Get"))) {
-                        #line 3472 "./src/generator/c_gen.am"
+                        #line 3479 "./src/generator/c_gen.am"
                         retRaw = Amalgame_Compiler_CGen_RecoverChainedListElemRaw(self, callee->Left);
                     }
-                    #line 3474 "./src/generator/c_gen.am"
+                    #line 3481 "./src/generator/c_gen.am"
                     if (String_Length(retRaw) > 0) {
-                        #line 3475 "./src/generator/c_gen.am"
+                        #line 3482 "./src/generator/c_gen.am"
                         Amalgame_Compiler_CGen_TrackGenericLocal(self, stmt->Name, retRaw);
                     }
                 }
-                #line 3486 "./src/generator/c_gen.am"
+                #line 3493 "./src/generator/c_gen.am"
                 code_string mname = callee->Name;
-                #line 3487 "./src/generator/c_gen.am"
+                #line 3494 "./src/generator/c_gen.am"
                 if (code_string_equals(mname, "Filter")) {
-                    #line 3488 "./src/generator/c_gen.am"
+                    #line 3495 "./src/generator/c_gen.am"
                     if ((callee->Left != NULL) && (callee->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-                        #line 3489 "./src/generator/c_gen.am"
+                        #line 3496 "./src/generator/c_gen.am"
                         code_string recvName = callee->Left->Name;
-                        #line 3490 "./src/generator/c_gen.am"
+                        #line 3497 "./src/generator/c_gen.am"
                         code_string recvElem = Amalgame_Compiler_CGen_ListElemGet(self, "__local__", recvName);
-                        #line 3491 "./src/generator/c_gen.am"
+                        #line 3498 "./src/generator/c_gen.am"
                         if (String_Length(recvElem) > 0) {
-                            #line 3492 "./src/generator/c_gen.am"
+                            #line 3499 "./src/generator/c_gen.am"
                             Amalgame_Compiler_CGen_ListElemSet(self, "__local__", stmt->Name, recvElem);
                         }
                     }
                 } else if (code_string_equals(mname, "Map")) {
-                    #line 3496 "./src/generator/c_gen.am"
+                    #line 3503 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_TrackMapResultElem(self, stmt);
                 }
             }
         }
-        #line 3501 "./src/generator/c_gen.am"
+        #line 3508 "./src/generator/c_gen.am"
         code_string rhs = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
-        #line 3502 "./src/generator/c_gen.am"
+        #line 3509 "./src/generator/c_gen.am"
         code_string decl = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(t, " ")), stmt->Name)), " = ")), rhs)), ";");
-        #line 3504 "./src/generator/c_gen.am"
+        #line 3511 "./src/generator/c_gen.am"
         if (code_string_equals(t, "void*")) {
-            #line 3507 "./src/generator/c_gen.am"
+            #line 3514 "./src/generator/c_gen.am"
             if (((String_StartsWith(rhs, "(") && !String_StartsWith(rhs, "(void*)")) && !String_StartsWith(rhs, "({")) && !String_Contains(rhs, "?")) {
-                #line 3509 "./src/generator/c_gen.am"
+                #line 3516 "./src/generator/c_gen.am"
                 i64 closeP = String_IndexOf(rhs, ")");
-                #line 3510 "./src/generator/c_gen.am"
+                #line 3517 "./src/generator/c_gen.am"
                 if (closeP > 1) {
-                    #line 3511 "./src/generator/c_gen.am"
+                    #line 3518 "./src/generator/c_gen.am"
                     code_string castT = String_Substring(rhs, 1, closeP - 1);
-                    #line 3512 "./src/generator/c_gen.am"
+                    #line 3519 "./src/generator/c_gen.am"
                     if (String_Length(castT) > 0) {
-                        #line 3513 "./src/generator/c_gen.am"
+                        #line 3520 "./src/generator/c_gen.am"
                         t = castT;
-                        #line 3514 "./src/generator/c_gen.am"
+                        #line 3521 "./src/generator/c_gen.am"
                         Amalgame_Compiler_CGen_LocalTypeSet(self, stmt->Name, t);
-                        #line 3515 "./src/generator/c_gen.am"
+                        #line 3522 "./src/generator/c_gen.am"
                         decl = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(t, " ")), stmt->Name)), " = ")), rhs)), ";"));
                     }
                 }
             }
         }
-        #line 3520 "./src/generator/c_gen.am"
+        #line 3527 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, decl);
     }
-    #line 3522 "./src/generator/c_gen.am"
+    #line 3529 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_RETURN_STMT) {
-        #line 3523 "./src/generator/c_gen.am"
+        #line 3530 "./src/generator/c_gen.am"
         if (stmt->Left == NULL) {
-            #line 3524 "./src/generator/c_gen.am"
+            #line 3531 "./src/generator/c_gen.am"
             if (self->InLambdaBody) {
-                #line 3526 "./src/generator/c_gen.am"
+                #line 3533 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, "0"))), ";"));
             } else {
-                #line 3528 "./src/generator/c_gen.am"
+                #line 3535 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return;");
             }
         } else {
-            #line 3531 "./src/generator/c_gen.am"
+            #line 3538 "./src/generator/c_gen.am"
             code_string retExpr = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
-            #line 3532 "./src/generator/c_gen.am"
+            #line 3539 "./src/generator/c_gen.am"
             if (code_string_equals(retExpr, "_unknown_")) {
-                #line 3533 "./src/generator/c_gen.am"
+                #line 3540 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, "return;");
             } else if (self->InLambdaBody) {
-                #line 3537 "./src/generator/c_gen.am"
+                #line 3544 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", Amalgame_Compiler_CGen_BoxAsVoid(self, retExpr))), ";"));
             } else if (String_StartsWith(retExpr, "{") && (String_Length(self->CurrentRetType) > 0)) {
-                #line 3540 "./src/generator/c_gen.am"
+                #line 3547 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("return (", self->CurrentRetType)), ")")), retExpr)), ";"));
             } else {
-                #line 3542 "./src/generator/c_gen.am"
+                #line 3549 "./src/generator/c_gen.am"
                 Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("return ", retExpr)), ";"));
             }
         }
     }
-    #line 3546 "./src/generator/c_gen.am"
+    #line 3553 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 3548 "./src/generator/c_gen.am"
+        #line 3555 "./src/generator/c_gen.am"
         if (code_string_equals(stmt->Name, "__match__")) {
-            #line 3549 "./src/generator/c_gen.am"
+            #line 3556 "./src/generator/c_gen.am"
             Amalgame_Compiler_CGen_EmitMatch(self, stmt);
-            #line 3550 "./src/generator/c_gen.am"
+            #line 3557 "./src/generator/c_gen.am"
             return;
         }
-        #line 3552 "./src/generator/c_gen.am"
+        #line 3559 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_EmitIf(self, stmt);
     }
-    #line 3554 "./src/generator/c_gen.am"
+    #line 3561 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_WHILE_STMT) {
-        #line 3555 "./src/generator/c_gen.am"
+        #line 3562 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat("while (", Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Cond))), ") {"));
-        #line 3556 "./src/generator/c_gen.am"
+        #line 3563 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3557 "./src/generator/c_gen.am"
+        #line 3564 "./src/generator/c_gen.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_CGen_EmitBlock(self, stmt->Body);
         }
-        #line 3558 "./src/generator/c_gen.am"
+        #line 3565 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3559 "./src/generator/c_gen.am"
+        #line 3566 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
     }
-    #line 3561 "./src/generator/c_gen.am"
+    #line 3568 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_FOR_IN_STMT) {
-        #line 3562 "./src/generator/c_gen.am"
+        #line 3569 "./src/generator/c_gen.am"
         code_string vn = stmt->Name;
-        #line 3564 "./src/generator/c_gen.am"
+        #line 3571 "./src/generator/c_gen.am"
         if (stmt->Left != NULL) {
-            #line 3565 "./src/generator/c_gen.am"
+            #line 3572 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind iterKind = stmt->Left->Kind;
-            #line 3566 "./src/generator/c_gen.am"
+            #line 3573 "./src/generator/c_gen.am"
             if (iterKind == Amalgame_Compiler_NodeKind_BINARY) {
-                #line 3567 "./src/generator/c_gen.am"
+                #line 3574 "./src/generator/c_gen.am"
                 code_string iterOp = stmt->Left->Str;
-                #line 3568 "./src/generator/c_gen.am"
+                #line 3575 "./src/generator/c_gen.am"
                 if (code_string_equals(iterOp, "..")) {
-                    #line 3570 "./src/generator/c_gen.am"
+                    #line 3577 "./src/generator/c_gen.am"
                     code_string startExpr = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left->Left);
-                    #line 3571 "./src/generator/c_gen.am"
+                    #line 3578 "./src/generator/c_gen.am"
                     code_string endExpr = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left->Right);
-                    #line 3572 "./src/generator/c_gen.am"
+                    #line 3579 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("for (i64 ", vn)), " = ")), startExpr)), "; ")), vn)), " < ")), endExpr)), "; ")), vn)), "++) {"));
-                    #line 3573 "./src/generator/c_gen.am"
+                    #line 3580 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_LocalTypeSet(self, vn, "i64");
-                    #line 3574 "./src/generator/c_gen.am"
+                    #line 3581 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_Indent_(self->Out);
-                    #line 3575 "./src/generator/c_gen.am"
+                    #line 3582 "./src/generator/c_gen.am"
                     if (stmt->Body != NULL) {
                         Amalgame_Compiler_CGen_EmitBlock(self, stmt->Body);
                     }
-                    #line 3576 "./src/generator/c_gen.am"
+                    #line 3583 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_Dedent(self->Out);
-                    #line 3577 "./src/generator/c_gen.am"
+                    #line 3584 "./src/generator/c_gen.am"
                     Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-                    #line 3578 "./src/generator/c_gen.am"
+                    #line 3585 "./src/generator/c_gen.am"
                     Amalgame_Compiler_CGen_LocalTypeSet(self, vn, "");
-                    #line 3579 "./src/generator/c_gen.am"
+                    #line 3586 "./src/generator/c_gen.am"
                     return;
                 }
             }
         }
-        #line 3595 "./src/generator/c_gen.am"
+        #line 3602 "./src/generator/c_gen.am"
         code_string elemC = "";
-        #line 3596 "./src/generator/c_gen.am"
+        #line 3603 "./src/generator/c_gen.am"
         if (stmt->Left != NULL) {
-            #line 3597 "./src/generator/c_gen.am"
+            #line 3604 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind ilk = stmt->Left->Kind;
-            #line 3598 "./src/generator/c_gen.am"
+            #line 3605 "./src/generator/c_gen.am"
             if (ilk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                #line 3599 "./src/generator/c_gen.am"
+                #line 3606 "./src/generator/c_gen.am"
                 elemC = Amalgame_Compiler_CGen_ListElemGet(self, "__local__", stmt->Left->Name);
             } else if (((ilk == Amalgame_Compiler_NodeKind_MEMBER) && (stmt->Left->Left != NULL)) && (stmt->Left->Left->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR)) {
-                #line 3601 "./src/generator/c_gen.am"
+                #line 3608 "./src/generator/c_gen.am"
                 elemC = Amalgame_Compiler_CGen_ListElemGet(self, self->CurrentClass, stmt->Left->Name);
             }
         }
-        #line 3604 "./src/generator/c_gen.am"
+        #line 3611 "./src/generator/c_gen.am"
         if (String_Length(elemC) == 0) {
             elemC = "void*";
         }
-        #line 3605 "./src/generator/c_gen.am"
-        code_string iter = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
-        #line 3606 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, "{");
-        #line 3607 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Indent_(self->Out);
-        #line 3608 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList* __it_", vn)), " = ")), iter)), ";"));
-        #line 3609 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("i64 __len_", vn)), " = AmalgameList_size(__it_")), vn)), ");"));
-        #line 3610 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("for (i64 __idx_", vn)), " = 0; __idx_")), vn)), " < __len_")), vn)), "; __idx_")), vn)), "++) {"));
-        #line 3611 "./src/generator/c_gen.am"
-        Amalgame_Compiler_Emitter_Indent_(self->Out);
         #line 3612 "./src/generator/c_gen.am"
-        code_string rawElem = code_string_concat((code_string_concat((code_string_concat((code_string_concat("__it_", vn)), "->data[__idx_")), vn)), "]");
+        code_string iter = Amalgame_Compiler_CGen_EmitExprStr(self, stmt->Left);
         #line 3613 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, "{");
+        #line 3614 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Indent_(self->Out);
+        #line 3615 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList* __it_", vn)), " = ")), iter)), ";"));
+        #line 3616 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("i64 __len_", vn)), " = AmalgameList_size(__it_")), vn)), ");"));
+        #line 3617 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("for (i64 __idx_", vn)), " = 0; __idx_")), vn)), " < __len_")), vn)), "; __idx_")), vn)), "++) {"));
+        #line 3618 "./src/generator/c_gen.am"
+        Amalgame_Compiler_Emitter_Indent_(self->Out);
+        #line 3619 "./src/generator/c_gen.am"
+        code_string rawElem = code_string_concat((code_string_concat((code_string_concat((code_string_concat("__it_", vn)), "->data[__idx_")), vn)), "]");
+        #line 3620 "./src/generator/c_gen.am"
         if (code_string_equals(elemC, "void*")) {
-            #line 3614 "./src/generator/c_gen.am"
+            #line 3621 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat("void* ", vn)), " = ")), rawElem)), ";"));
         } else if (Amalgame_Compiler_CGen_IsCPointerType(self, elemC)) {
-            #line 3616 "./src/generator/c_gen.am"
+            #line 3623 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(elemC, " ")), vn)), " = (")), elemC)), ")")), rawElem)), ";"));
         } else {
-            #line 3619 "./src/generator/c_gen.am"
+            #line 3626 "./src/generator/c_gen.am"
             Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(elemC, " ")), vn)), " = ")), Amalgame_Compiler_CGen_UnboxScalar(self, elemC, rawElem))), ";"));
         }
-        #line 3621 "./src/generator/c_gen.am"
+        #line 3628 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, vn, elemC);
-        #line 3622 "./src/generator/c_gen.am"
+        #line 3629 "./src/generator/c_gen.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_CGen_EmitBlock(self, stmt->Body);
         }
-        #line 3623 "./src/generator/c_gen.am"
+        #line 3630 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3624 "./src/generator/c_gen.am"
+        #line 3631 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3625 "./src/generator/c_gen.am"
+        #line 3632 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_Dedent(self->Out);
-        #line 3626 "./src/generator/c_gen.am"
+        #line 3633 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "}");
-        #line 3627 "./src/generator/c_gen.am"
+        #line 3634 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, vn, "");
     }
-    #line 3629 "./src/generator/c_gen.am"
+    #line 3636 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_BREAK_STMT) {
-        #line 3630 "./src/generator/c_gen.am"
+        #line 3637 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "break;");
     }
-    #line 3632 "./src/generator/c_gen.am"
+    #line 3639 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_CONTINUE_STMT) {
-        #line 3633 "./src/generator/c_gen.am"
+        #line 3640 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, "continue;");
     }
-    #line 3635 "./src/generator/c_gen.am"
+    #line 3642 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_BINARY) {
-        #line 3636 "./src/generator/c_gen.am"
+        #line 3643 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(Amalgame_Compiler_CGen_EmitExprStr(self, stmt), ";"));
     }
-    #line 3638 "./src/generator/c_gen.am"
+    #line 3645 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_CALL) {
-        #line 3639 "./src/generator/c_gen.am"
+        #line 3646 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(Amalgame_Compiler_CGen_EmitExprStr(self, stmt), ";"));
     }
-    #line 3641 "./src/generator/c_gen.am"
+    #line 3648 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 3642 "./src/generator/c_gen.am"
+        #line 3649 "./src/generator/c_gen.am"
         Amalgame_Compiler_Emitter_EmitLine(self->Out, code_string_concat(Amalgame_Compiler_CGen_EmitExprStr(self, stmt), ";"));
     }
 }
 
 static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* expr) {
-    #line 3649 "./src/generator/c_gen.am"
+    #line 3656 "./src/generator/c_gen.am"
     if (expr == NULL) {
         return "NULL";
     }
-    #line 3650 "./src/generator/c_gen.am"
+    #line 3657 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind k = expr->Kind;
-    #line 3664 "./src/generator/c_gen.am"
+    #line 3671 "./src/generator/c_gen.am"
     if ((k == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(expr->Name, "__lambda__"))) {
-        #line 3665 "./src/generator/c_gen.am"
+        #line 3672 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_EmitLambdaAsClosure(self, expr);
     }
-    #line 3668 "./src/generator/c_gen.am"
+    #line 3675 "./src/generator/c_gen.am"
     if ((k == Amalgame_Compiler_NodeKind_CALL) && (code_string_equals(expr->Name, "__tuple_literal__"))) {
-        #line 3671 "./src/generator/c_gen.am"
+        #line 3678 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(expr->Args);
-        #line 3672 "./src/generator/c_gen.am"
+        #line 3679 "./src/generator/c_gen.am"
         code_string result = "{";
-        #line 3673 "./src/generator/c_gen.am"
+        #line 3680 "./src/generator/c_gen.am"
         for (i64 i = 0; i < argc; i++) {
-            #line 3674 "./src/generator/c_gen.am"
+            #line 3681 "./src/generator/c_gen.am"
             if (i > 0) {
                 result = (code_string_concat(result, ", "));
             }
-            #line 3675 "./src/generator/c_gen.am"
+            #line 3682 "./src/generator/c_gen.am"
             result = (code_string_concat(result, Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i))));
         }
-        #line 3677 "./src/generator/c_gen.am"
+        #line 3684 "./src/generator/c_gen.am"
         result = (code_string_concat(result, "}"));
-        #line 3678 "./src/generator/c_gen.am"
+        #line 3685 "./src/generator/c_gen.am"
         return result;
     }
-    #line 3680 "./src/generator/c_gen.am"
+    #line 3687 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 3682 "./src/generator/c_gen.am"
+        #line 3689 "./src/generator/c_gen.am"
         if (code_string_equals(expr->Name, "__match__")) {
-            #line 3683 "./src/generator/c_gen.am"
+            #line 3690 "./src/generator/c_gen.am"
             return Amalgame_Compiler_CGen_EmitMatchExpr(self, expr);
         }
-        #line 3685 "./src/generator/c_gen.am"
+        #line 3692 "./src/generator/c_gen.am"
         code_string condStr = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Cond);
-        #line 3686 "./src/generator/c_gen.am"
+        #line 3693 "./src/generator/c_gen.am"
         code_string thenStr = Amalgame_Compiler_CGen_EmitIfBranch(self, expr->Body);
-        #line 3687 "./src/generator/c_gen.am"
+        #line 3694 "./src/generator/c_gen.am"
         code_string elseStr = Amalgame_Compiler_CGen_EmitIfBranch(self, expr->Else);
-        #line 3688 "./src/generator/c_gen.am"
+        #line 3695 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", condStr)), " ? ")), thenStr)), " : ")), elseStr)), ")");
     }
-    #line 3690 "./src/generator/c_gen.am"
+    #line 3697 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_INT) {
         return expr->Str;
     }
-    #line 3691 "./src/generator/c_gen.am"
+    #line 3698 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_FLOAT) {
         return expr->Str;
     }
-    #line 3692 "./src/generator/c_gen.am"
+    #line 3699 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-        #line 3693 "./src/generator/c_gen.am"
+        #line 3700 "./src/generator/c_gen.am"
         code_string raw = expr->Str;
-        #line 3694 "./src/generator/c_gen.am"
+        #line 3701 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_EmitInterpolatedString(self, raw);
     }
-    #line 3696 "./src/generator/c_gen.am"
+    #line 3703 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_BOOL) {
-        #line 3697 "./src/generator/c_gen.am"
+        #line 3704 "./src/generator/c_gen.am"
         if (expr->Flag) {
             return "1";
         }
-        #line 3698 "./src/generator/c_gen.am"
+        #line 3705 "./src/generator/c_gen.am"
         return "0";
     }
-    #line 3700 "./src/generator/c_gen.am"
+    #line 3707 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_NULL) {
         return "NULL";
     }
-    #line 3701 "./src/generator/c_gen.am"
+    #line 3708 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_THIS_EXPR) {
         return "self";
     }
-    #line 3702 "./src/generator/c_gen.am"
+    #line 3709 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 3711 "./src/generator/c_gen.am"
+        #line 3718 "./src/generator/c_gen.am"
         code_string name = expr->Name;
-        #line 3712 "./src/generator/c_gen.am"
+        #line 3719 "./src/generator/c_gen.am"
         if (String_Length(self->CurrentClass) > 0) {
-            #line 3713 "./src/generator/c_gen.am"
+            #line 3720 "./src/generator/c_gen.am"
             code_string asLocal = Amalgame_Compiler_CGen_LocalTypeGet(self, name);
-            #line 3714 "./src/generator/c_gen.am"
+            #line 3721 "./src/generator/c_gen.am"
             if (String_Length(asLocal) == 0) {
-                #line 3715 "./src/generator/c_gen.am"
+                #line 3722 "./src/generator/c_gen.am"
                 code_string asField = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, name);
-                #line 3716 "./src/generator/c_gen.am"
+                #line 3723 "./src/generator/c_gen.am"
                 if ((String_Length(asField) > 0) && (!code_string_equals(asField, "?"))) {
-                    #line 3717 "./src/generator/c_gen.am"
+                    #line 3724 "./src/generator/c_gen.am"
                     return code_string_concat("self->", name);
                 }
             }
         }
-        #line 3721 "./src/generator/c_gen.am"
+        #line 3728 "./src/generator/c_gen.am"
         return name;
     }
-    #line 3723 "./src/generator/c_gen.am"
+    #line 3730 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 3727 "./src/generator/c_gen.am"
+        #line 3734 "./src/generator/c_gen.am"
         if (expr->Flag) {
-            #line 3728 "./src/generator/c_gen.am"
+            #line 3735 "./src/generator/c_gen.am"
             code_string target = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
-            #line 3729 "./src/generator/c_gen.am"
+            #line 3736 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", target)), " ? ")), target)), "->")), expr->Name)), " : NULL)");
         }
-        #line 3731 "./src/generator/c_gen.am"
+        #line 3738 "./src/generator/c_gen.am"
         if (expr->Left != NULL) {
-            #line 3732 "./src/generator/c_gen.am"
+            #line 3739 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind lk = expr->Left->Kind;
-            #line 3733 "./src/generator/c_gen.am"
+            #line 3740 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                #line 3734 "./src/generator/c_gen.am"
+                #line 3741 "./src/generator/c_gen.am"
                 return code_string_concat("self->", expr->Name);
             }
-            #line 3736 "./src/generator/c_gen.am"
+            #line 3743 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                #line 3737 "./src/generator/c_gen.am"
+                #line 3744 "./src/generator/c_gen.am"
                 code_string tname = expr->Left->Name;
-                #line 3738 "./src/generator/c_gen.am"
+                #line 3745 "./src/generator/c_gen.am"
                 code_string firstChar = String_Substring(tname, 0, 1);
-                #line 3739 "./src/generator/c_gen.am"
+                #line 3746 "./src/generator/c_gen.am"
                 code_bool isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
-                #line 3740 "./src/generator/c_gen.am"
+                #line 3747 "./src/generator/c_gen.am"
                 if (isUpper) {
-                    #line 3747 "./src/generator/c_gen.am"
+                    #line 3754 "./src/generator/c_gen.am"
                     code_string externalEnumMangled = Amalgame_Compiler_CGen_ExternalEnumMangled(self, tname);
-                    #line 3748 "./src/generator/c_gen.am"
+                    #line 3755 "./src/generator/c_gen.am"
                     if (String_Length(externalEnumMangled) > 0) {
-                        #line 3749 "./src/generator/c_gen.am"
+                        #line 3756 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(externalEnumMangled, "_")), expr->Name);
                     }
-                    #line 3752 "./src/generator/c_gen.am"
+                    #line 3759 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_")), expr->Name);
                 }
-                #line 3754 "./src/generator/c_gen.am"
+                #line 3761 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat(tname, "->")), expr->Name);
             }
         }
-        #line 3757 "./src/generator/c_gen.am"
+        #line 3764 "./src/generator/c_gen.am"
         code_string target = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
-        #line 3758 "./src/generator/c_gen.am"
+        #line 3765 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat(target, "->")), expr->Name);
     }
-    #line 3760 "./src/generator/c_gen.am"
+    #line 3767 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_BINARY) {
-        #line 3761 "./src/generator/c_gen.am"
+        #line 3768 "./src/generator/c_gen.am"
         code_string left = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
-        #line 3762 "./src/generator/c_gen.am"
+        #line 3769 "./src/generator/c_gen.am"
         code_string op = expr->Str;
-        #line 3763 "./src/generator/c_gen.am"
+        #line 3770 "./src/generator/c_gen.am"
         code_string right = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Right);
-        #line 3771 "./src/generator/c_gen.am"
+        #line 3778 "./src/generator/c_gen.am"
         if ((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_BINARY)) {
-            #line 3772 "./src/generator/c_gen.am"
+            #line 3779 "./src/generator/c_gen.am"
             left = (code_string_concat((code_string_concat("(", left)), ")"));
         }
-        #line 3774 "./src/generator/c_gen.am"
+        #line 3781 "./src/generator/c_gen.am"
         if ((expr->Right != NULL) && (expr->Right->Kind == Amalgame_Compiler_NodeKind_BINARY)) {
-            #line 3775 "./src/generator/c_gen.am"
+            #line 3782 "./src/generator/c_gen.am"
             right = (code_string_concat((code_string_concat("(", right)), ")"));
         }
-        #line 3777 "./src/generator/c_gen.am"
+        #line 3784 "./src/generator/c_gen.am"
         if ((code_string_equals(op, "==")) || (code_string_equals(op, "!="))) {
-            #line 3779 "./src/generator/c_gen.am"
+            #line 3786 "./src/generator/c_gen.am"
             code_string ltype = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-            #line 3780 "./src/generator/c_gen.am"
+            #line 3787 "./src/generator/c_gen.am"
             code_bool useStrEq = 0;
-            #line 3781 "./src/generator/c_gen.am"
+            #line 3788 "./src/generator/c_gen.am"
             if (code_string_equals(ltype, "code_string")) {
                 useStrEq = 1;
             }
-            #line 3783 "./src/generator/c_gen.am"
+            #line 3790 "./src/generator/c_gen.am"
             if (String_Length(ltype) == 0) {
-                #line 3784 "./src/generator/c_gen.am"
+                #line 3791 "./src/generator/c_gen.am"
                 if (expr->Left != NULL) {
-                    #line 3785 "./src/generator/c_gen.am"
+                    #line 3792 "./src/generator/c_gen.am"
                     Amalgame_Compiler_NodeKind lk2 = expr->Left->Kind;
-                    #line 3786 "./src/generator/c_gen.am"
+                    #line 3793 "./src/generator/c_gen.am"
                     if (lk2 == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
                         useStrEq = 1;
                     }
-                    #line 3788 "./src/generator/c_gen.am"
+                    #line 3795 "./src/generator/c_gen.am"
                     if (lk2 == Amalgame_Compiler_NodeKind_CALL) {
-                        #line 3789 "./src/generator/c_gen.am"
+                        #line 3796 "./src/generator/c_gen.am"
                         if (expr->Left->Left != NULL) {
-                            #line 3790 "./src/generator/c_gen.am"
+                            #line 3797 "./src/generator/c_gen.am"
                             code_string calleeStr = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Left->Left);
-                            #line 3791 "./src/generator/c_gen.am"
+                            #line 3798 "./src/generator/c_gen.am"
                             if (String_StartsWith(calleeStr, "String_") || String_EndsWith(calleeStr, "_CharAt")) {
-                                #line 3792 "./src/generator/c_gen.am"
+                                #line 3799 "./src/generator/c_gen.am"
                                 useStrEq = 1;
                             }
                         }
                     }
-                    #line 3797 "./src/generator/c_gen.am"
+                    #line 3804 "./src/generator/c_gen.am"
                     if (lk2 == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 3798 "./src/generator/c_gen.am"
+                        #line 3805 "./src/generator/c_gen.am"
                         code_string lt2 = Amalgame_Compiler_CGen_LocalTypeGet(self, expr->Left->Name);
-                        #line 3799 "./src/generator/c_gen.am"
+                        #line 3806 "./src/generator/c_gen.am"
                         if (code_string_equals(lt2, "code_string")) {
                             useStrEq = 1;
                         }
                     }
-                    #line 3802 "./src/generator/c_gen.am"
+                    #line 3809 "./src/generator/c_gen.am"
                     if (lk2 == Amalgame_Compiler_NodeKind_MEMBER) {
-                        #line 3803 "./src/generator/c_gen.am"
+                        #line 3810 "./src/generator/c_gen.am"
                         code_string ft = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-                        #line 3804 "./src/generator/c_gen.am"
+                        #line 3811 "./src/generator/c_gen.am"
                         if (code_string_equals(ft, "code_string")) {
                             useStrEq = 1;
                         }
                     }
                 }
             }
-            #line 3809 "./src/generator/c_gen.am"
+            #line 3816 "./src/generator/c_gen.am"
             if (!useStrEq) {
-                #line 3810 "./src/generator/c_gen.am"
+                #line 3817 "./src/generator/c_gen.am"
                 if (expr->Right != NULL) {
-                    #line 3811 "./src/generator/c_gen.am"
+                    #line 3818 "./src/generator/c_gen.am"
                     if (expr->Right->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
                         useStrEq = 1;
                     }
                 }
             }
-            #line 3814 "./src/generator/c_gen.am"
+            #line 3821 "./src/generator/c_gen.am"
             if (useStrEq) {
-                #line 3815 "./src/generator/c_gen.am"
+                #line 3822 "./src/generator/c_gen.am"
                 if (code_string_equals(op, "==")) {
                     return code_string_concat((code_string_concat((code_string_concat((code_string_concat("code_string_equals(", left)), ", ")), right)), ")");
                 }
-                #line 3816 "./src/generator/c_gen.am"
+                #line 3823 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("!code_string_equals(", left)), ", ")), right)), ")");
             }
-            #line 3819 "./src/generator/c_gen.am"
+            #line 3826 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat((code_string_concat((code_string_concat(left, " ")), op)), " ")), right);
         }
-        #line 3822 "./src/generator/c_gen.am"
+        #line 3829 "./src/generator/c_gen.am"
         if (code_string_equals(op, "+")) {
-            #line 3823 "./src/generator/c_gen.am"
+            #line 3830 "./src/generator/c_gen.am"
             code_string ltype2 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-            #line 3824 "./src/generator/c_gen.am"
+            #line 3831 "./src/generator/c_gen.am"
             code_bool useConcat = 0;
-            #line 3825 "./src/generator/c_gen.am"
+            #line 3832 "./src/generator/c_gen.am"
             if (code_string_equals(ltype2, "code_string")) {
                 useConcat = 1;
             }
-            #line 3826 "./src/generator/c_gen.am"
+            #line 3833 "./src/generator/c_gen.am"
             if (!useConcat) {
-                #line 3827 "./src/generator/c_gen.am"
+                #line 3834 "./src/generator/c_gen.am"
                 if (expr->Left != NULL) {
-                    #line 3828 "./src/generator/c_gen.am"
+                    #line 3835 "./src/generator/c_gen.am"
                     Amalgame_Compiler_NodeKind lk3 = expr->Left->Kind;
-                    #line 3829 "./src/generator/c_gen.am"
+                    #line 3836 "./src/generator/c_gen.am"
                     if (lk3 == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
                         useConcat = 1;
                     }
-                    #line 3830 "./src/generator/c_gen.am"
+                    #line 3837 "./src/generator/c_gen.am"
                     if (lk3 == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 3831 "./src/generator/c_gen.am"
+                        #line 3838 "./src/generator/c_gen.am"
                         code_string lt3 = Amalgame_Compiler_CGen_LocalTypeGet(self, expr->Left->Name);
-                        #line 3832 "./src/generator/c_gen.am"
+                        #line 3839 "./src/generator/c_gen.am"
                         if (code_string_equals(lt3, "code_string")) {
                             useConcat = 1;
                         }
                     }
-                    #line 3842 "./src/generator/c_gen.am"
+                    #line 3849 "./src/generator/c_gen.am"
                     if (lk3 == Amalgame_Compiler_NodeKind_CALL) {
-                        #line 3843 "./src/generator/c_gen.am"
+                        #line 3850 "./src/generator/c_gen.am"
                         code_string ltype3 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-                        #line 3844 "./src/generator/c_gen.am"
+                        #line 3851 "./src/generator/c_gen.am"
                         if (code_string_equals(ltype3, "code_string")) {
                             useConcat = 1;
                         }
-                        #line 3845 "./src/generator/c_gen.am"
+                        #line 3852 "./src/generator/c_gen.am"
                         if (expr->Left->Left != NULL) {
-                            #line 3846 "./src/generator/c_gen.am"
+                            #line 3853 "./src/generator/c_gen.am"
                             code_string calleeL = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Left->Left);
-                            #line 3847 "./src/generator/c_gen.am"
+                            #line 3854 "./src/generator/c_gen.am"
                             if (code_string_equals(calleeL, "code_string_concat")) {
-                                #line 3848 "./src/generator/c_gen.am"
+                                #line 3855 "./src/generator/c_gen.am"
                                 useConcat = 1;
                             }
                         }
                     }
                 }
             }
-            #line 3854 "./src/generator/c_gen.am"
+            #line 3861 "./src/generator/c_gen.am"
             if (!useConcat) {
-                #line 3855 "./src/generator/c_gen.am"
+                #line 3862 "./src/generator/c_gen.am"
                 if (expr->Right != NULL) {
-                    #line 3856 "./src/generator/c_gen.am"
+                    #line 3863 "./src/generator/c_gen.am"
                     Amalgame_Compiler_NodeKind rk3 = expr->Right->Kind;
-                    #line 3857 "./src/generator/c_gen.am"
+                    #line 3864 "./src/generator/c_gen.am"
                     if (rk3 == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
                         useConcat = 1;
                     }
-                    #line 3858 "./src/generator/c_gen.am"
+                    #line 3865 "./src/generator/c_gen.am"
                     if (rk3 == Amalgame_Compiler_NodeKind_CALL) {
-                        #line 3864 "./src/generator/c_gen.am"
+                        #line 3871 "./src/generator/c_gen.am"
                         code_string rtype3 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Right);
-                        #line 3865 "./src/generator/c_gen.am"
+                        #line 3872 "./src/generator/c_gen.am"
                         if (code_string_equals(rtype3, "code_string")) {
                             useConcat = 1;
                         }
-                        #line 3866 "./src/generator/c_gen.am"
+                        #line 3873 "./src/generator/c_gen.am"
                         if (expr->Right->Left != NULL) {
-                            #line 3867 "./src/generator/c_gen.am"
+                            #line 3874 "./src/generator/c_gen.am"
                             code_string calleeR = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Right->Left);
-                            #line 3868 "./src/generator/c_gen.am"
+                            #line 3875 "./src/generator/c_gen.am"
                             if (code_string_equals(calleeR, "code_string_concat")) {
-                                #line 3869 "./src/generator/c_gen.am"
+                                #line 3876 "./src/generator/c_gen.am"
                                 useConcat = 1;
                             }
                         }
                     }
                 }
             }
-            #line 3875 "./src/generator/c_gen.am"
+            #line 3882 "./src/generator/c_gen.am"
             if (useConcat) {
-                #line 3876 "./src/generator/c_gen.am"
+                #line 3883 "./src/generator/c_gen.am"
                 code_string lcast = left;
-                #line 3877 "./src/generator/c_gen.am"
+                #line 3884 "./src/generator/c_gen.am"
                 code_string rcast = right;
-                #line 3878 "./src/generator/c_gen.am"
+                #line 3885 "./src/generator/c_gen.am"
                 code_string ltype4 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Left);
-                #line 3879 "./src/generator/c_gen.am"
+                #line 3886 "./src/generator/c_gen.am"
                 code_string rtype4 = Amalgame_Compiler_CGen_InferTypeFromExpr(self, expr->Right);
-                #line 3880 "./src/generator/c_gen.am"
+                #line 3887 "./src/generator/c_gen.am"
                 if (code_string_equals(ltype4, "void*")) {
                     lcast = (code_string_concat((code_string_concat("(code_string)(", left)), ")"));
                 }
-                #line 3881 "./src/generator/c_gen.am"
+                #line 3888 "./src/generator/c_gen.am"
                 if (code_string_equals(rtype4, "void*")) {
                     rcast = (code_string_concat((code_string_concat("(code_string)(", right)), ")"));
                 }
-                #line 3882 "./src/generator/c_gen.am"
+                #line 3889 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("code_string_concat(", lcast)), ", ")), rcast)), ")");
             }
         }
-        #line 3885 "./src/generator/c_gen.am"
+        #line 3892 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat(left, " ")), op)), " ")), right);
     }
-    #line 3887 "./src/generator/c_gen.am"
+    #line 3894 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_UNARY) {
-        #line 3888 "./src/generator/c_gen.am"
+        #line 3895 "./src/generator/c_gen.am"
         code_string operand = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
-        #line 3891 "./src/generator/c_gen.am"
+        #line 3898 "./src/generator/c_gen.am"
         if (expr->Left != NULL) {
-            #line 3892 "./src/generator/c_gen.am"
+            #line 3899 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind lk = expr->Left->Kind;
-            #line 3893 "./src/generator/c_gen.am"
+            #line 3900 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_BINARY) {
                 return code_string_concat((code_string_concat((code_string_concat(expr->Str, "(")), operand)), ")");
             }
         }
-        #line 3895 "./src/generator/c_gen.am"
+        #line 3902 "./src/generator/c_gen.am"
         return code_string_concat(expr->Str, operand);
     }
-    #line 3897 "./src/generator/c_gen.am"
+    #line 3904 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_CALL) {
-        #line 3914 "./src/generator/c_gen.am"
+        #line 3921 "./src/generator/c_gen.am"
         if ((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER)) {
-            #line 3915 "./src/generator/c_gen.am"
+            #line 3922 "./src/generator/c_gen.am"
             Amalgame_Compiler_AstNode* mem = expr->Left;
-            #line 3916 "./src/generator/c_gen.am"
+            #line 3923 "./src/generator/c_gen.am"
             if ((mem->Left != NULL) && (!code_string_equals(mem->Name, ""))) {
-                #line 3917 "./src/generator/c_gen.am"
+                #line 3924 "./src/generator/c_gen.am"
                 code_string recvCls = "";
-                #line 3918 "./src/generator/c_gen.am"
+                #line 3925 "./src/generator/c_gen.am"
                 code_string recvExpr = "";
-                #line 3919 "./src/generator/c_gen.am"
+                #line 3926 "./src/generator/c_gen.am"
                 if (mem->Left->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                    #line 3920 "./src/generator/c_gen.am"
+                    #line 3927 "./src/generator/c_gen.am"
                     recvCls = self->CurrentClass;
-                    #line 3921 "./src/generator/c_gen.am"
+                    #line 3928 "./src/generator/c_gen.am"
                     recvExpr = "self";
                 } else if (mem->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                    #line 3927 "./src/generator/c_gen.am"
+                    #line 3934 "./src/generator/c_gen.am"
                     code_string localType = Amalgame_Compiler_CGen_LocalTypeGet(self, mem->Left->Name);
-                    #line 3928 "./src/generator/c_gen.am"
+                    #line 3935 "./src/generator/c_gen.am"
                     recvCls = String_Replace(localType, "*", "");
-                    #line 3929 "./src/generator/c_gen.am"
+                    #line 3936 "./src/generator/c_gen.am"
                     recvExpr = mem->Left->Name;
                 } else if (mem->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
-                    #line 3936 "./src/generator/c_gen.am"
+                    #line 3943 "./src/generator/c_gen.am"
                     code_string nestedCls = Amalgame_Compiler_CGen_ResolveReceiverClass(self, mem->Left);
-                    #line 3937 "./src/generator/c_gen.am"
+                    #line 3944 "./src/generator/c_gen.am"
                     if (String_Length(nestedCls) > 0) {
-                        #line 3938 "./src/generator/c_gen.am"
+                        #line 3945 "./src/generator/c_gen.am"
                         recvCls = nestedCls;
-                        #line 3939 "./src/generator/c_gen.am"
+                        #line 3946 "./src/generator/c_gen.am"
                         recvExpr = Amalgame_Compiler_CGen_EmitExprStr(self, mem->Left);
                     }
                 }
-                #line 3942 "./src/generator/c_gen.am"
+                #line 3949 "./src/generator/c_gen.am"
                 if (String_Length(recvCls) > 0) {
-                    #line 3943 "./src/generator/c_gen.am"
+                    #line 3950 "./src/generator/c_gen.am"
                     code_string ft = Amalgame_Compiler_CGen_FieldTypeGet(self, recvCls, mem->Name);
-                    #line 3944 "./src/generator/c_gen.am"
+                    #line 3951 "./src/generator/c_gen.am"
                     if (code_string_equals(ft, "AmalgameClosure*")) {
-                        #line 3945 "./src/generator/c_gen.am"
-                        i64 argc = AmalgameList_count(expr->Args);
-                        #line 3946 "./src/generator/c_gen.am"
-                        code_string calleeName = code_string_concat((code_string_concat(recvExpr, "->")), mem->Name);
                         #line 3952 "./src/generator/c_gen.am"
-                        code_string retC0 = Amalgame_Compiler_CGen_ListElemGet(self, code_string_concat(recvCls, "__closure_ret__"), mem->Name);
+                        i64 argc = AmalgameList_count(expr->Args);
                         #line 3953 "./src/generator/c_gen.am"
+                        code_string calleeName = code_string_concat((code_string_concat(recvExpr, "->")), mem->Name);
+                        #line 3959 "./src/generator/c_gen.am"
+                        code_string retC0 = Amalgame_Compiler_CGen_ListElemGet(self, code_string_concat(recvCls, "__closure_ret__"), mem->Name);
+                        #line 3960 "./src/generator/c_gen.am"
                         code_string retC = retC0;
-                        #line 3954 "./src/generator/c_gen.am"
+                        #line 3961 "./src/generator/c_gen.am"
                         if (String_Length(retC) == 0) {
                             retC = "i64";
                         }
-                        #line 3955 "./src/generator/c_gen.am"
+                        #line 3962 "./src/generator/c_gen.am"
                         if (argc == 1) {
-                            #line 3956 "./src/generator/c_gen.am"
-                            code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
-                            #line 3957 "./src/generator/c_gen.am"
-                            code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call1(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
-                            #line 3958 "./src/generator/c_gen.am"
-                            if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
-                                return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
-                            }
-                            #line 3959 "./src/generator/c_gen.am"
-                            return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
-                        }
-                        #line 3961 "./src/generator/c_gen.am"
-                        if (argc == 2) {
-                            #line 3962 "./src/generator/c_gen.am"
-                            code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                             #line 3963 "./src/generator/c_gen.am"
-                            code_string arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
+                            code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                             #line 3964 "./src/generator/c_gen.am"
-                            code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call2(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ")");
+                            code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call1(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
                             #line 3965 "./src/generator/c_gen.am"
                             if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
                                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
@@ -13620,65 +13621,65 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                             return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
                         }
                         #line 3968 "./src/generator/c_gen.am"
-                        if (argc == 3) {
+                        if (argc == 2) {
                             #line 3969 "./src/generator/c_gen.am"
                             code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                             #line 3970 "./src/generator/c_gen.am"
                             code_string arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
                             #line 3971 "./src/generator/c_gen.am"
-                            code_string arg2 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 2));
+                            code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call2(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ")");
                             #line 3972 "./src/generator/c_gen.am"
-                            code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call3(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg2))), ")");
-                            #line 3973 "./src/generator/c_gen.am"
                             if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
                                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
                             }
-                            #line 3974 "./src/generator/c_gen.am"
+                            #line 3973 "./src/generator/c_gen.am"
+                            return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
+                        }
+                        #line 3975 "./src/generator/c_gen.am"
+                        if (argc == 3) {
+                            #line 3976 "./src/generator/c_gen.am"
+                            code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
+                            #line 3977 "./src/generator/c_gen.am"
+                            code_string arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
+                            #line 3978 "./src/generator/c_gen.am"
+                            code_string arg2 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 2));
+                            #line 3979 "./src/generator/c_gen.am"
+                            code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call3(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg2))), ")");
+                            #line 3980 "./src/generator/c_gen.am"
+                            if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
+                                return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
+                            }
+                            #line 3981 "./src/generator/c_gen.am"
                             return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
                         }
                     }
                 }
             }
         }
-        #line 3985 "./src/generator/c_gen.am"
+        #line 3992 "./src/generator/c_gen.am"
         if ((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER)) {
-            #line 3986 "./src/generator/c_gen.am"
+            #line 3993 "./src/generator/c_gen.am"
             code_string calleeName = expr->Left->Name;
-            #line 3987 "./src/generator/c_gen.am"
+            #line 3994 "./src/generator/c_gen.am"
             code_string calleeType = Amalgame_Compiler_CGen_LocalTypeGet(self, calleeName);
-            #line 3988 "./src/generator/c_gen.am"
+            #line 3995 "./src/generator/c_gen.am"
             if (code_string_equals(calleeType, "AmalgameClosure*")) {
-                #line 3989 "./src/generator/c_gen.am"
+                #line 3996 "./src/generator/c_gen.am"
                 i64 argc = AmalgameList_count(expr->Args);
-                #line 3999 "./src/generator/c_gen.am"
+                #line 4006 "./src/generator/c_gen.am"
                 code_string retC0 = Amalgame_Compiler_CGen_ListElemGet(self, "__closure_ret__", calleeName);
-                #line 4000 "./src/generator/c_gen.am"
+                #line 4007 "./src/generator/c_gen.am"
                 code_string retC = retC0;
-                #line 4001 "./src/generator/c_gen.am"
+                #line 4008 "./src/generator/c_gen.am"
                 if (String_Length(retC) == 0) {
                     retC = "i64";
                 }
-                #line 4002 "./src/generator/c_gen.am"
+                #line 4009 "./src/generator/c_gen.am"
                 if (argc == 1) {
-                    #line 4003 "./src/generator/c_gen.am"
-                    code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
-                    #line 4004 "./src/generator/c_gen.am"
-                    code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call1(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
-                    #line 4005 "./src/generator/c_gen.am"
-                    if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
-                        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
-                    }
-                    #line 4006 "./src/generator/c_gen.am"
-                    return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
-                }
-                #line 4008 "./src/generator/c_gen.am"
-                if (argc == 2) {
-                    #line 4009 "./src/generator/c_gen.am"
-                    code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                     #line 4010 "./src/generator/c_gen.am"
-                    code_string arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
+                    code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                     #line 4011 "./src/generator/c_gen.am"
-                    code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call2(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ")");
+                    code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call1(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
                     #line 4012 "./src/generator/c_gen.am"
                     if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
                         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
@@ -13687,865 +13688,868 @@ static code_string Amalgame_Compiler_CGen_EmitExprStr(Amalgame_Compiler_CGen* se
                     return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
                 }
                 #line 4015 "./src/generator/c_gen.am"
-                if (argc == 3) {
+                if (argc == 2) {
                     #line 4016 "./src/generator/c_gen.am"
                     code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
                     #line 4017 "./src/generator/c_gen.am"
                     code_string arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
                     #line 4018 "./src/generator/c_gen.am"
-                    code_string arg2 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 2));
+                    code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call2(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ")");
                     #line 4019 "./src/generator/c_gen.am"
-                    code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call3(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg2))), ")");
-                    #line 4020 "./src/generator/c_gen.am"
                     if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
                         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
                     }
-                    #line 4021 "./src/generator/c_gen.am"
+                    #line 4020 "./src/generator/c_gen.am"
+                    return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
+                }
+                #line 4022 "./src/generator/c_gen.am"
+                if (argc == 3) {
+                    #line 4023 "./src/generator/c_gen.am"
+                    code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 0));
+                    #line 4024 "./src/generator/c_gen.am"
+                    code_string arg1 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 1));
+                    #line 4025 "./src/generator/c_gen.am"
+                    code_string arg2 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, 2));
+                    #line 4026 "./src/generator/c_gen.am"
+                    code_string callC = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameClosure_call3(", calleeName)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg1))), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg2))), ")");
+                    #line 4027 "./src/generator/c_gen.am"
+                    if (Amalgame_Compiler_CGen_IsCPointerType(self, retC)) {
+                        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("((", retC)), ")")), callC)), ")");
+                    }
+                    #line 4028 "./src/generator/c_gen.am"
                     return Amalgame_Compiler_CGen_UnboxScalar(self, retC, callC);
                 }
             }
         }
-        #line 4026 "./src/generator/c_gen.am"
+        #line 4033 "./src/generator/c_gen.am"
         code_string listCall = Amalgame_Compiler_CGen_TryEmitListCall(self, expr);
-        #line 4027 "./src/generator/c_gen.am"
+        #line 4034 "./src/generator/c_gen.am"
         if (String_Length(listCall) > 0) {
             return listCall;
         }
-        #line 4029 "./src/generator/c_gen.am"
+        #line 4036 "./src/generator/c_gen.am"
         code_bool isSelfCall = 0;
-        #line 4030 "./src/generator/c_gen.am"
+        #line 4037 "./src/generator/c_gen.am"
         code_string selfExpr = "self";
-        #line 4031 "./src/generator/c_gen.am"
+        #line 4038 "./src/generator/c_gen.am"
         if (expr->Left != NULL) {
-            #line 4032 "./src/generator/c_gen.am"
+            #line 4039 "./src/generator/c_gen.am"
             if (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
-                #line 4033 "./src/generator/c_gen.am"
+                #line 4040 "./src/generator/c_gen.am"
                 if (expr->Left->Left != NULL) {
-                    #line 4034 "./src/generator/c_gen.am"
+                    #line 4041 "./src/generator/c_gen.am"
                     Amalgame_Compiler_AstNode* ll = expr->Left->Left;
-                    #line 4036 "./src/generator/c_gen.am"
+                    #line 4043 "./src/generator/c_gen.am"
                     if (ll->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                        #line 4037 "./src/generator/c_gen.am"
+                        #line 4044 "./src/generator/c_gen.am"
                         isSelfCall = 1;
-                        #line 4038 "./src/generator/c_gen.am"
+                        #line 4045 "./src/generator/c_gen.am"
                         selfExpr = "self";
                     }
-                    #line 4042 "./src/generator/c_gen.am"
+                    #line 4049 "./src/generator/c_gen.am"
                     if (ll->Kind == Amalgame_Compiler_NodeKind_MEMBER) {
-                        #line 4043 "./src/generator/c_gen.am"
+                        #line 4050 "./src/generator/c_gen.am"
                         if (ll->Left != NULL) {
-                            #line 4044 "./src/generator/c_gen.am"
+                            #line 4051 "./src/generator/c_gen.am"
                             if (ll->Left->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                                #line 4045 "./src/generator/c_gen.am"
+                                #line 4052 "./src/generator/c_gen.am"
                                 isSelfCall = 1;
-                                #line 4046 "./src/generator/c_gen.am"
+                                #line 4053 "./src/generator/c_gen.am"
                                 selfExpr = (code_string_concat("self->", ll->Name));
                             }
-                            #line 4051 "./src/generator/c_gen.am"
+                            #line 4058 "./src/generator/c_gen.am"
                             if (ll->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                                #line 4052 "./src/generator/c_gen.am"
+                                #line 4059 "./src/generator/c_gen.am"
                                 code_string vt = Amalgame_Compiler_CGen_LocalTypeGet(self, ll->Left->Name);
-                                #line 4053 "./src/generator/c_gen.am"
+                                #line 4060 "./src/generator/c_gen.am"
                                 code_string vbare = String_Replace(vt, "*", "");
-                                #line 4054 "./src/generator/c_gen.am"
+                                #line 4061 "./src/generator/c_gen.am"
                                 if ((String_Length(vbare) > 0) && !Amalgame_Compiler_CGen_IsEnum(self, vbare)) {
-                                    #line 4055 "./src/generator/c_gen.am"
+                                    #line 4062 "./src/generator/c_gen.am"
                                     isSelfCall = 1;
-                                    #line 4056 "./src/generator/c_gen.am"
+                                    #line 4063 "./src/generator/c_gen.am"
                                     selfExpr = (code_string_concat((code_string_concat(ll->Left->Name, "->")), ll->Name));
                                 }
                             }
                         }
                     }
-                    #line 4062 "./src/generator/c_gen.am"
+                    #line 4069 "./src/generator/c_gen.am"
                     if (ll->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 4063 "./src/generator/c_gen.am"
+                        #line 4070 "./src/generator/c_gen.am"
                         code_string vt = Amalgame_Compiler_CGen_LocalTypeGet(self, ll->Name);
-                        #line 4064 "./src/generator/c_gen.am"
+                        #line 4071 "./src/generator/c_gen.am"
                         code_string bare = String_Replace(vt, "*", "");
-                        #line 4065 "./src/generator/c_gen.am"
+                        #line 4072 "./src/generator/c_gen.am"
                         if ((String_Length(bare) > 0) && !Amalgame_Compiler_CGen_IsEnum(self, bare)) {
-                            #line 4066 "./src/generator/c_gen.am"
+                            #line 4073 "./src/generator/c_gen.am"
                             isSelfCall = 1;
-                            #line 4067 "./src/generator/c_gen.am"
+                            #line 4074 "./src/generator/c_gen.am"
                             selfExpr = ll->Name;
                         }
                     }
-                    #line 4075 "./src/generator/c_gen.am"
+                    #line 4082 "./src/generator/c_gen.am"
                     if (ll->Kind == Amalgame_Compiler_NodeKind_CALL) {
-                        #line 4076 "./src/generator/c_gen.am"
+                        #line 4083 "./src/generator/c_gen.am"
                         code_string rt = Amalgame_Compiler_CGen_InferTypeFromExpr(self, ll);
-                        #line 4077 "./src/generator/c_gen.am"
+                        #line 4084 "./src/generator/c_gen.am"
                         code_string rbare = String_Replace(rt, "*", "");
-                        #line 4078 "./src/generator/c_gen.am"
+                        #line 4085 "./src/generator/c_gen.am"
                         if ((String_Length(rbare) > 0) && !Amalgame_Compiler_CGen_IsEnum(self, rbare)) {
-                            #line 4079 "./src/generator/c_gen.am"
+                            #line 4086 "./src/generator/c_gen.am"
                             isSelfCall = 1;
-                            #line 4080 "./src/generator/c_gen.am"
+                            #line 4087 "./src/generator/c_gen.am"
                             selfExpr = Amalgame_Compiler_CGen_EmitExprStr(self, ll);
                         }
                     }
-                    #line 4088 "./src/generator/c_gen.am"
+                    #line 4095 "./src/generator/c_gen.am"
                     if (ll->Kind == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-                        #line 4089 "./src/generator/c_gen.am"
+                        #line 4096 "./src/generator/c_gen.am"
                         isSelfCall = 1;
-                        #line 4090 "./src/generator/c_gen.am"
+                        #line 4097 "./src/generator/c_gen.am"
                         selfExpr = Amalgame_Compiler_CGen_EmitExprStr(self, ll);
                     }
-                    #line 4094 "./src/generator/c_gen.am"
+                    #line 4101 "./src/generator/c_gen.am"
                     if (ll->Kind == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-                        #line 4095 "./src/generator/c_gen.am"
+                        #line 4102 "./src/generator/c_gen.am"
                         isSelfCall = 1;
-                        #line 4096 "./src/generator/c_gen.am"
+                        #line 4103 "./src/generator/c_gen.am"
                         selfExpr = Amalgame_Compiler_CGen_EmitExprStr(self, ll);
                     }
                 }
             }
         }
-        #line 4101 "./src/generator/c_gen.am"
-        code_string callee = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Left);
-        #line 4102 "./src/generator/c_gen.am"
-        code_string callStr = code_string_concat(callee, "(");
-        #line 4103 "./src/generator/c_gen.am"
-        code_bool first = 1;
-        #line 4104 "./src/generator/c_gen.am"
-        if (isSelfCall) {
-            #line 4105 "./src/generator/c_gen.am"
-            callStr = (code_string_concat(callStr, selfExpr));
-            #line 4106 "./src/generator/c_gen.am"
-            first = 0;
-        }
         #line 4108 "./src/generator/c_gen.am"
-        i64 argc = AmalgameList_count(expr->Args);
+        code_string callee = Amalgame_Compiler_CGen_EmitCalleeStr(self, expr->Left);
         #line 4109 "./src/generator/c_gen.am"
-        for (i64 i = 0; i < argc; i++) {
-            #line 4110 "./src/generator/c_gen.am"
-            Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i);
-            #line 4111 "./src/generator/c_gen.am"
-            if (!first) {
-                callStr = (code_string_concat(callStr, ", "));
-            }
+        code_string callStr = code_string_concat(callee, "(");
+        #line 4110 "./src/generator/c_gen.am"
+        code_bool first = 1;
+        #line 4111 "./src/generator/c_gen.am"
+        if (isSelfCall) {
             #line 4112 "./src/generator/c_gen.am"
-            callStr = (code_string_concat(callStr, Amalgame_Compiler_CGen_EmitExprStr(self, arg)));
+            callStr = (code_string_concat(callStr, selfExpr));
             #line 4113 "./src/generator/c_gen.am"
             first = 0;
         }
         #line 4115 "./src/generator/c_gen.am"
-        callStr = (code_string_concat(callStr, ")"));
-        #line 4118 "./src/generator/c_gen.am"
-        if (((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER)) && expr->Left->Flag) {
+        i64 argc = AmalgameList_count(expr->Args);
+        #line 4116 "./src/generator/c_gen.am"
+        for (i64 i = 0; i < argc; i++) {
+            #line 4117 "./src/generator/c_gen.am"
+            Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i);
+            #line 4118 "./src/generator/c_gen.am"
+            if (!first) {
+                callStr = (code_string_concat(callStr, ", "));
+            }
             #line 4119 "./src/generator/c_gen.am"
-            code_string recv = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left->Left);
+            callStr = (code_string_concat(callStr, Amalgame_Compiler_CGen_EmitExprStr(self, arg)));
             #line 4120 "./src/generator/c_gen.am"
-            return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", recv)), " ? ")), callStr)), " : NULL)");
+            first = 0;
         }
         #line 4122 "./src/generator/c_gen.am"
+        callStr = (code_string_concat(callStr, ")"));
+        #line 4125 "./src/generator/c_gen.am"
+        if (((expr->Left != NULL) && (expr->Left->Kind == Amalgame_Compiler_NodeKind_MEMBER)) && expr->Left->Flag) {
+            #line 4126 "./src/generator/c_gen.am"
+            code_string recv = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left->Left);
+            #line 4127 "./src/generator/c_gen.am"
+            return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", recv)), " ? ")), callStr)), " : NULL)");
+        }
+        #line 4129 "./src/generator/c_gen.am"
         return callStr;
     }
-    #line 4124 "./src/generator/c_gen.am"
+    #line 4131 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-        #line 4125 "./src/generator/c_gen.am"
+        #line 4132 "./src/generator/c_gen.am"
         code_string tname = expr->Name;
-        #line 4126 "./src/generator/c_gen.am"
+        #line 4133 "./src/generator/c_gen.am"
         code_string newCall = "";
-        #line 4127 "./src/generator/c_gen.am"
+        #line 4134 "./src/generator/c_gen.am"
         if (String_StartsWith(tname, "List<") || (code_string_equals(tname, "List"))) {
-            #line 4128 "./src/generator/c_gen.am"
+            #line 4135 "./src/generator/c_gen.am"
             newCall = "AmalgameList_new()";
         } else {
-            #line 4130 "./src/generator/c_gen.am"
+            #line 4137 "./src/generator/c_gen.am"
             if (String_StartsWith(tname, "Map<") || (code_string_equals(tname, "Map"))) {
-                #line 4131 "./src/generator/c_gen.am"
+                #line 4138 "./src/generator/c_gen.am"
                 newCall = "AmalgameMap_new()";
             } else {
-                #line 4133 "./src/generator/c_gen.am"
+                #line 4140 "./src/generator/c_gen.am"
                 if (String_StartsWith(tname, "Set<") || (code_string_equals(tname, "Set"))) {
-                    #line 4134 "./src/generator/c_gen.am"
+                    #line 4141 "./src/generator/c_gen.am"
                     newCall = "AmalgameSet_new()";
                 } else if (code_string_equals(tname, "WebSocket")) {
-                    #line 4143 "./src/generator/c_gen.am"
+                    #line 4150 "./src/generator/c_gen.am"
                     newCall = (code_string_concat(tname, "_new("));
-                    #line 4144 "./src/generator/c_gen.am"
+                    #line 4151 "./src/generator/c_gen.am"
                     i64 argc = AmalgameList_count(expr->Args);
-                    #line 4145 "./src/generator/c_gen.am"
+                    #line 4152 "./src/generator/c_gen.am"
                     for (i64 i = 0; i < argc; i++) {
-                        #line 4146 "./src/generator/c_gen.am"
+                        #line 4153 "./src/generator/c_gen.am"
                         Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i);
-                        #line 4147 "./src/generator/c_gen.am"
+                        #line 4154 "./src/generator/c_gen.am"
                         if (i > 0) {
                             newCall = (code_string_concat(newCall, ", "));
                         }
-                        #line 4148 "./src/generator/c_gen.am"
+                        #line 4155 "./src/generator/c_gen.am"
                         newCall = (code_string_concat(newCall, Amalgame_Compiler_CGen_EmitExprStr(self, arg)));
                     }
-                    #line 4150 "./src/generator/c_gen.am"
+                    #line 4157 "./src/generator/c_gen.am"
                     newCall = (code_string_concat(newCall, ")"));
-                    #line 4151 "./src/generator/c_gen.am"
+                    #line 4158 "./src/generator/c_gen.am"
                     return newCall;
                 } else {
-                    #line 4159 "./src/generator/c_gen.am"
+                    #line 4166 "./src/generator/c_gen.am"
                     code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
-                    #line 4160 "./src/generator/c_gen.am"
+                    #line 4167 "./src/generator/c_gen.am"
                     code_string ctorPrefix = "";
-                    #line 4161 "./src/generator/c_gen.am"
+                    #line 4168 "./src/generator/c_gen.am"
                     if (String_Length(externalMangled) > 0) {
-                        #line 4162 "./src/generator/c_gen.am"
+                        #line 4169 "./src/generator/c_gen.am"
                         ctorPrefix = externalMangled;
                     } else {
-                        #line 4164 "./src/generator/c_gen.am"
+                        #line 4171 "./src/generator/c_gen.am"
                         ctorPrefix = Amalgame_Compiler_CGen_ClassMangledFor(self, tname);
                     }
-                    #line 4166 "./src/generator/c_gen.am"
+                    #line 4173 "./src/generator/c_gen.am"
                     newCall = (code_string_concat(ctorPrefix, "_new("));
-                    #line 4167 "./src/generator/c_gen.am"
+                    #line 4174 "./src/generator/c_gen.am"
                     i64 argc = AmalgameList_count(expr->Args);
-                    #line 4168 "./src/generator/c_gen.am"
+                    #line 4175 "./src/generator/c_gen.am"
                     for (i64 i = 0; i < argc; i++) {
-                        #line 4169 "./src/generator/c_gen.am"
+                        #line 4176 "./src/generator/c_gen.am"
                         Amalgame_Compiler_AstNode* arg = (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i);
-                        #line 4170 "./src/generator/c_gen.am"
+                        #line 4177 "./src/generator/c_gen.am"
                         if (i > 0) {
                             newCall = (code_string_concat(newCall, ", "));
                         }
-                        #line 4171 "./src/generator/c_gen.am"
+                        #line 4178 "./src/generator/c_gen.am"
                         newCall = (code_string_concat(newCall, Amalgame_Compiler_CGen_EmitExprStr(self, arg)));
                     }
-                    #line 4173 "./src/generator/c_gen.am"
+                    #line 4180 "./src/generator/c_gen.am"
                     newCall = (code_string_concat(newCall, ")"));
                 }
             }
         }
-        #line 4177 "./src/generator/c_gen.am"
+        #line 4184 "./src/generator/c_gen.am"
         return newCall;
     }
-    #line 4179 "./src/generator/c_gen.am"
+    #line 4186 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
-        #line 4180 "./src/generator/c_gen.am"
+        #line 4187 "./src/generator/c_gen.am"
         code_string base = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Left);
-        #line 4181 "./src/generator/c_gen.am"
+        #line 4188 "./src/generator/c_gen.am"
         code_string idx = Amalgame_Compiler_CGen_EmitExprStr(self, expr->Right);
-        #line 4182 "./src/generator/c_gen.am"
+        #line 4189 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat(base, "[")), idx)), "]");
     }
-    #line 4184 "./src/generator/c_gen.am"
+    #line 4191 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LIST_COMP) {
-        #line 4185 "./src/generator/c_gen.am"
+        #line 4192 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_EmitListComp(self, expr);
     }
-    #line 4187 "./src/generator/c_gen.am"
+    #line 4194 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_LIST_LITERAL) {
-        #line 4188 "./src/generator/c_gen.am"
+        #line 4195 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_EmitListLiteral(self, expr);
     }
-    #line 4190 "./src/generator/c_gen.am"
+    #line 4197 "./src/generator/c_gen.am"
     return "/* unknown expr */";
 }
 
 static code_string Amalgame_Compiler_CGen_EmitListLiteral(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* n) {
-    #line 4200 "./src/generator/c_gen.am"
+    #line 4207 "./src/generator/c_gen.am"
     code_string s = "({ AmalgameList* __ll = AmalgameList_new(); ";
-    #line 4201 "./src/generator/c_gen.am"
+    #line 4208 "./src/generator/c_gen.am"
     i64 nc = AmalgameList_count(n->Children);
-    #line 4202 "./src/generator/c_gen.am"
+    #line 4209 "./src/generator/c_gen.am"
     for (i64 i = 0; i < nc; i++) {
-        #line 4203 "./src/generator/c_gen.am"
+        #line 4210 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* child = (Amalgame_Compiler_AstNode*)AmalgameList_get(n->Children, i);
-        #line 4209 "./src/generator/c_gen.am"
+        #line 4216 "./src/generator/c_gen.am"
         if ((child->Kind == Amalgame_Compiler_NodeKind_UNARY) && (code_string_equals(child->Str, "..."))) {
-            #line 4210 "./src/generator/c_gen.am"
-            code_string src = Amalgame_Compiler_CGen_EmitExprStr(self, child->Left);
-            #line 4211 "./src/generator/c_gen.am"
-            code_string idx = String_FromInt(i);
-            #line 4212 "./src/generator/c_gen.am"
-            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "{ AmalgameList* __sp_")), idx)), " = ")), src)), "; "));
-            #line 4213 "./src/generator/c_gen.am"
-            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "i64 __spn_")), idx)), " = AmalgameList_size(__sp_")), idx)), "); "));
-            #line 4214 "./src/generator/c_gen.am"
-            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "for (i64 __spi_")), idx)), " = 0; __spi_")), idx)), " < __spn_")), idx)), "; __spi_")), idx)), "++) { "));
-            #line 4215 "./src/generator/c_gen.am"
-            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "AmalgameList_add(__ll, __sp_")), idx)), "->data[__spi_")), idx)), "]); "));
-            #line 4216 "./src/generator/c_gen.am"
-            s = (code_string_concat(s, "} } "));
             #line 4217 "./src/generator/c_gen.am"
+            code_string src = Amalgame_Compiler_CGen_EmitExprStr(self, child->Left);
+            #line 4218 "./src/generator/c_gen.am"
+            code_string idx = String_FromInt(i);
+            #line 4219 "./src/generator/c_gen.am"
+            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "{ AmalgameList* __sp_")), idx)), " = ")), src)), "; "));
+            #line 4220 "./src/generator/c_gen.am"
+            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "i64 __spn_")), idx)), " = AmalgameList_size(__sp_")), idx)), "); "));
+            #line 4221 "./src/generator/c_gen.am"
+            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "for (i64 __spi_")), idx)), " = 0; __spi_")), idx)), " < __spn_")), idx)), "; __spi_")), idx)), "++) { "));
+            #line 4222 "./src/generator/c_gen.am"
+            s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "AmalgameList_add(__ll, __sp_")), idx)), "->data[__spi_")), idx)), "]); "));
+            #line 4223 "./src/generator/c_gen.am"
+            s = (code_string_concat(s, "} } "));
+            #line 4224 "./src/generator/c_gen.am"
             continue;
         }
-        #line 4219 "./src/generator/c_gen.am"
+        #line 4226 "./src/generator/c_gen.am"
         code_string elem = Amalgame_Compiler_CGen_EmitExprStr(self, child);
-        #line 4220 "./src/generator/c_gen.am"
+        #line 4227 "./src/generator/c_gen.am"
         s = (code_string_concat((code_string_concat((code_string_concat(s, "AmalgameList_add(__ll, ")), Amalgame_Compiler_CGen_BoxAsVoid(self, elem))), "); "));
     }
-    #line 4222 "./src/generator/c_gen.am"
+    #line 4229 "./src/generator/c_gen.am"
     s = (code_string_concat(s, "__ll; })"));
-    #line 4223 "./src/generator/c_gen.am"
+    #line 4230 "./src/generator/c_gen.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_CGen_EmitMatchExpr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* n) {
-    #line 4238 "./src/generator/c_gen.am"
+    #line 4245 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* subject = n->Left;
-    #line 4239 "./src/generator/c_gen.am"
+    #line 4246 "./src/generator/c_gen.am"
     if (subject == NULL) {
         return "/* match-expr: missing subject */";
     }
-    #line 4240 "./src/generator/c_gen.am"
+    #line 4247 "./src/generator/c_gen.am"
     code_string subjectStr = Amalgame_Compiler_CGen_EmitExprStr(self, subject);
-    #line 4241 "./src/generator/c_gen.am"
+    #line 4248 "./src/generator/c_gen.am"
     i64 armCount = AmalgameList_count(n->Children);
-    #line 4242 "./src/generator/c_gen.am"
+    #line 4249 "./src/generator/c_gen.am"
     if (armCount == 0) {
         return "/* match-expr: no arms */";
     }
-    #line 4245 "./src/generator/c_gen.am"
+    #line 4252 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* firstArm = (Amalgame_Compiler_AstNode*)AmalgameList_get(n->Children, 0);
-    #line 4246 "./src/generator/c_gen.am"
+    #line 4253 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* firstBody = firstArm->Right;
-    #line 4247 "./src/generator/c_gen.am"
+    #line 4254 "./src/generator/c_gen.am"
     code_string resultType = Amalgame_Compiler_CGen_InferTypeFromExpr(self, firstBody);
-    #line 4248 "./src/generator/c_gen.am"
+    #line 4255 "./src/generator/c_gen.am"
     if (String_Length(resultType) == 0) {
         resultType = "i64";
     }
-    #line 4249 "./src/generator/c_gen.am"
+    #line 4256 "./src/generator/c_gen.am"
     code_string s = code_string_concat((code_string_concat("({ ", resultType)), " __mr; ");
-    #line 4250 "./src/generator/c_gen.am"
+    #line 4257 "./src/generator/c_gen.am"
     code_bool firstArmFlag = 1;
-    #line 4251 "./src/generator/c_gen.am"
+    #line 4258 "./src/generator/c_gen.am"
     for (i64 i = 0; i < armCount; i++) {
-        #line 4252 "./src/generator/c_gen.am"
+        #line 4259 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* arm = (Amalgame_Compiler_AstNode*)AmalgameList_get(n->Children, i);
-        #line 4253 "./src/generator/c_gen.am"
+        #line 4260 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* pat = arm->Left;
-        #line 4254 "./src/generator/c_gen.am"
+        #line 4261 "./src/generator/c_gen.am"
         Amalgame_Compiler_AstNode* body = arm->Right;
-        #line 4255 "./src/generator/c_gen.am"
+        #line 4262 "./src/generator/c_gen.am"
         if ((pat == NULL) || (body == NULL)) {
             continue;
         }
-        #line 4256 "./src/generator/c_gen.am"
+        #line 4263 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind pk = pat->Kind;
-        #line 4257 "./src/generator/c_gen.am"
+        #line 4264 "./src/generator/c_gen.am"
         code_string bodyStr = Amalgame_Compiler_CGen_EmitExprStr(self, body);
-        #line 4259 "./src/generator/c_gen.am"
+        #line 4266 "./src/generator/c_gen.am"
         if ((pk == Amalgame_Compiler_NodeKind_IDENTIFIER) && (code_string_equals(pat->Name, "_"))) {
-            #line 4260 "./src/generator/c_gen.am"
+            #line 4267 "./src/generator/c_gen.am"
             code_string prefix = (firstArmFlag ? "" : " else ");
-            #line 4261 "./src/generator/c_gen.am"
+            #line 4268 "./src/generator/c_gen.am"
             s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, prefix)), "{ __mr = (")), bodyStr)), "); }"));
-            #line 4262 "./src/generator/c_gen.am"
+            #line 4269 "./src/generator/c_gen.am"
             firstArmFlag = 0;
-            #line 4263 "./src/generator/c_gen.am"
+            #line 4270 "./src/generator/c_gen.am"
             continue;
         }
-        #line 4266 "./src/generator/c_gen.am"
+        #line 4273 "./src/generator/c_gen.am"
         code_string cond = "";
-        #line 4267 "./src/generator/c_gen.am"
+        #line 4274 "./src/generator/c_gen.am"
         if ((pk == Amalgame_Compiler_NodeKind_BINARY) && (code_string_equals(pat->Str, ".."))) {
-            #line 4268 "./src/generator/c_gen.am"
+            #line 4275 "./src/generator/c_gen.am"
             code_string lo = Amalgame_Compiler_CGen_EmitExprStr(self, pat->Left);
-            #line 4269 "./src/generator/c_gen.am"
+            #line 4276 "./src/generator/c_gen.am"
             code_string hi = Amalgame_Compiler_CGen_EmitExprStr(self, pat->Right);
-            #line 4270 "./src/generator/c_gen.am"
+            #line 4277 "./src/generator/c_gen.am"
             cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(subjectStr, " >= ")), lo)), " && ")), subjectStr)), " <= ")), hi));
         } else if (pk == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-            #line 4272 "./src/generator/c_gen.am"
+            #line 4279 "./src/generator/c_gen.am"
             code_string patStr = Amalgame_Compiler_CGen_EmitExprStr(self, pat);
-            #line 4273 "./src/generator/c_gen.am"
+            #line 4280 "./src/generator/c_gen.am"
             cond = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("strcmp(", subjectStr)), ", ")), patStr)), ") == 0"));
         } else {
-            #line 4275 "./src/generator/c_gen.am"
+            #line 4282 "./src/generator/c_gen.am"
             code_string patStr = Amalgame_Compiler_CGen_EmitExprStr(self, pat);
-            #line 4276 "./src/generator/c_gen.am"
+            #line 4283 "./src/generator/c_gen.am"
             cond = (code_string_concat((code_string_concat(subjectStr, " == ")), patStr));
         }
-        #line 4278 "./src/generator/c_gen.am"
+        #line 4285 "./src/generator/c_gen.am"
         code_string prefix = (firstArmFlag ? "" : " else ");
-        #line 4279 "./src/generator/c_gen.am"
+        #line 4286 "./src/generator/c_gen.am"
         s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, prefix)), "if (")), cond)), ") { __mr = (")), bodyStr)), "); }"));
-        #line 4280 "./src/generator/c_gen.am"
+        #line 4287 "./src/generator/c_gen.am"
         firstArmFlag = 0;
     }
-    #line 4282 "./src/generator/c_gen.am"
+    #line 4289 "./src/generator/c_gen.am"
     s = (code_string_concat(s, " __mr; })"));
-    #line 4283 "./src/generator/c_gen.am"
+    #line 4290 "./src/generator/c_gen.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_CGen_EmitListComp(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* n) {
-    #line 4296 "./src/generator/c_gen.am"
+    #line 4303 "./src/generator/c_gen.am"
     code_string vn = n->Str;
-    #line 4297 "./src/generator/c_gen.am"
+    #line 4304 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* iter = n->Right;
-    #line 4298 "./src/generator/c_gen.am"
+    #line 4305 "./src/generator/c_gen.am"
     code_bool isRange = 0;
-    #line 4299 "./src/generator/c_gen.am"
+    #line 4306 "./src/generator/c_gen.am"
     if (((iter != NULL) && (iter->Kind == Amalgame_Compiler_NodeKind_BINARY)) && (code_string_equals(iter->Str, ".."))) {
-        #line 4300 "./src/generator/c_gen.am"
+        #line 4307 "./src/generator/c_gen.am"
         isRange = 1;
     }
-    #line 4304 "./src/generator/c_gen.am"
+    #line 4311 "./src/generator/c_gen.am"
     code_string loopHeader = "";
-    #line 4305 "./src/generator/c_gen.am"
+    #line 4312 "./src/generator/c_gen.am"
     if (isRange) {
-        #line 4306 "./src/generator/c_gen.am"
+        #line 4313 "./src/generator/c_gen.am"
         code_string startStr = Amalgame_Compiler_CGen_EmitExprStr(self, iter->Left);
-        #line 4307 "./src/generator/c_gen.am"
+        #line 4314 "./src/generator/c_gen.am"
         code_string endStr = Amalgame_Compiler_CGen_EmitExprStr(self, iter->Right);
-        #line 4308 "./src/generator/c_gen.am"
+        #line 4315 "./src/generator/c_gen.am"
         loopHeader = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("for (i64 ", vn)), " = ")), startStr)), "; ")), vn)), " < ")), endStr)), "; ")), vn)), "++) { "));
-        #line 4309 "./src/generator/c_gen.am"
+        #line 4316 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, vn, "i64");
     } else {
-        #line 4311 "./src/generator/c_gen.am"
+        #line 4318 "./src/generator/c_gen.am"
         code_string iterStr = Amalgame_Compiler_CGen_EmitExprStr(self, iter);
-        #line 4312 "./src/generator/c_gen.am"
+        #line 4319 "./src/generator/c_gen.am"
         loopHeader = (code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList* __it_", vn)), " = ")), iterStr)), "; "));
-        #line 4313 "./src/generator/c_gen.am"
+        #line 4320 "./src/generator/c_gen.am"
         loopHeader = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(loopHeader, "i64 __n_")), vn)), " = AmalgameList_size(__it_")), vn)), "); "));
-        #line 4314 "./src/generator/c_gen.am"
+        #line 4321 "./src/generator/c_gen.am"
         loopHeader = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(loopHeader, "for (i64 __i_")), vn)), " = 0; __i_")), vn)), " < __n_")), vn)), "; __i_")), vn)), "++) { "));
-        #line 4315 "./src/generator/c_gen.am"
+        #line 4322 "./src/generator/c_gen.am"
         loopHeader = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(loopHeader, "void* ")), vn)), " = __it_")), vn)), "->data[__i_")), vn)), "]; "));
-        #line 4316 "./src/generator/c_gen.am"
+        #line 4323 "./src/generator/c_gen.am"
         Amalgame_Compiler_CGen_LocalTypeSet(self, vn, "void*");
     }
-    #line 4319 "./src/generator/c_gen.am"
+    #line 4326 "./src/generator/c_gen.am"
     code_string projStr = Amalgame_Compiler_CGen_EmitExprStr(self, n->Left);
-    #line 4320 "./src/generator/c_gen.am"
+    #line 4327 "./src/generator/c_gen.am"
     code_string guardStr = "";
-    #line 4321 "./src/generator/c_gen.am"
+    #line 4328 "./src/generator/c_gen.am"
     if (n->Cond != NULL) {
-        #line 4322 "./src/generator/c_gen.am"
+        #line 4329 "./src/generator/c_gen.am"
         guardStr = (code_string_concat((code_string_concat("if (", Amalgame_Compiler_CGen_EmitExprStr(self, n->Cond))), ") "));
     }
-    #line 4324 "./src/generator/c_gen.am"
+    #line 4331 "./src/generator/c_gen.am"
     Amalgame_Compiler_CGen_LocalTypeSet(self, vn, "");
-    #line 4325 "./src/generator/c_gen.am"
+    #line 4332 "./src/generator/c_gen.am"
     code_string s = code_string_concat((code_string_concat("({ AmalgameList* __lc_", vn)), " = AmalgameList_new(); ");
-    #line 4326 "./src/generator/c_gen.am"
+    #line 4333 "./src/generator/c_gen.am"
     s = (code_string_concat(s, loopHeader));
-    #line 4327 "./src/generator/c_gen.am"
+    #line 4334 "./src/generator/c_gen.am"
     s = (code_string_concat(s, guardStr));
-    #line 4328 "./src/generator/c_gen.am"
+    #line 4335 "./src/generator/c_gen.am"
     s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "AmalgameList_add(__lc_")), vn)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, projStr))), "); "));
-    #line 4329 "./src/generator/c_gen.am"
+    #line 4336 "./src/generator/c_gen.am"
     s = (code_string_concat((code_string_concat((code_string_concat(s, "} __lc_")), vn)), "; })"));
-    #line 4330 "./src/generator/c_gen.am"
+    #line 4337 "./src/generator/c_gen.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* callExpr) {
-    #line 4343 "./src/generator/c_gen.am"
+    #line 4350 "./src/generator/c_gen.am"
     if (callExpr->Left == NULL) {
         return "";
     }
-    #line 4344 "./src/generator/c_gen.am"
+    #line 4351 "./src/generator/c_gen.am"
     if (callExpr->Left->Kind != Amalgame_Compiler_NodeKind_MEMBER) {
         return "";
     }
-    #line 4345 "./src/generator/c_gen.am"
+    #line 4352 "./src/generator/c_gen.am"
     Amalgame_Compiler_AstNode* callee = callExpr->Left;
-    #line 4346 "./src/generator/c_gen.am"
+    #line 4353 "./src/generator/c_gen.am"
     code_string mname = callee->Name;
-    #line 4355 "./src/generator/c_gen.am"
+    #line 4362 "./src/generator/c_gen.am"
     code_string rxExpr = "";
-    #line 4356 "./src/generator/c_gen.am"
+    #line 4363 "./src/generator/c_gen.am"
     code_string rxType = "";
-    #line 4357 "./src/generator/c_gen.am"
+    #line 4364 "./src/generator/c_gen.am"
     code_string rxElem = "";
-    #line 4358 "./src/generator/c_gen.am"
+    #line 4365 "./src/generator/c_gen.am"
     if (callee->Left != NULL) {
-        #line 4359 "./src/generator/c_gen.am"
+        #line 4366 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind rk = callee->Left->Kind;
-        #line 4360 "./src/generator/c_gen.am"
+        #line 4367 "./src/generator/c_gen.am"
         if (rk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-            #line 4361 "./src/generator/c_gen.am"
+            #line 4368 "./src/generator/c_gen.am"
             rxExpr = callee->Left->Name;
-            #line 4362 "./src/generator/c_gen.am"
+            #line 4369 "./src/generator/c_gen.am"
             rxType = Amalgame_Compiler_CGen_LocalTypeGet(self, rxExpr);
-            #line 4363 "./src/generator/c_gen.am"
+            #line 4370 "./src/generator/c_gen.am"
             rxElem = (code_string_concat("__local_map__.", rxExpr));
         }
-        #line 4365 "./src/generator/c_gen.am"
+        #line 4372 "./src/generator/c_gen.am"
         if ((rk == Amalgame_Compiler_NodeKind_MEMBER) && (callee->Left->Left != NULL)) {
-            #line 4366 "./src/generator/c_gen.am"
+            #line 4373 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind pk = callee->Left->Left->Kind;
-            #line 4367 "./src/generator/c_gen.am"
+            #line 4374 "./src/generator/c_gen.am"
             if (pk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                #line 4368 "./src/generator/c_gen.am"
+                #line 4375 "./src/generator/c_gen.am"
                 code_string fn = callee->Left->Name;
-                #line 4369 "./src/generator/c_gen.am"
+                #line 4376 "./src/generator/c_gen.am"
                 rxExpr = (code_string_concat("self->", fn));
-                #line 4370 "./src/generator/c_gen.am"
+                #line 4377 "./src/generator/c_gen.am"
                 rxType = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, fn);
-                #line 4371 "./src/generator/c_gen.am"
+                #line 4378 "./src/generator/c_gen.am"
                 rxElem = (code_string_concat((code_string_concat(self->CurrentClass, ".")), fn));
             }
-            #line 4373 "./src/generator/c_gen.am"
+            #line 4380 "./src/generator/c_gen.am"
             if (pk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                #line 4374 "./src/generator/c_gen.am"
+                #line 4381 "./src/generator/c_gen.am"
                 code_string vn = callee->Left->Left->Name;
-                #line 4375 "./src/generator/c_gen.am"
+                #line 4382 "./src/generator/c_gen.am"
                 code_string vt = Amalgame_Compiler_CGen_LocalTypeGet(self, vn);
-                #line 4376 "./src/generator/c_gen.am"
+                #line 4383 "./src/generator/c_gen.am"
                 code_string bn = String_Replace(vt, "*", "");
-                #line 4377 "./src/generator/c_gen.am"
+                #line 4384 "./src/generator/c_gen.am"
                 code_string fn = callee->Left->Name;
-                #line 4378 "./src/generator/c_gen.am"
+                #line 4385 "./src/generator/c_gen.am"
                 if (String_Length(bn) > 0) {
-                    #line 4379 "./src/generator/c_gen.am"
+                    #line 4386 "./src/generator/c_gen.am"
                     rxExpr = (code_string_concat((code_string_concat(vn, "->")), fn));
-                    #line 4380 "./src/generator/c_gen.am"
+                    #line 4387 "./src/generator/c_gen.am"
                     rxType = Amalgame_Compiler_CGen_FieldTypeGet(self, bn, fn);
-                    #line 4381 "./src/generator/c_gen.am"
+                    #line 4388 "./src/generator/c_gen.am"
                     rxElem = (code_string_concat((code_string_concat(bn, ".")), fn));
                 }
             }
         }
     }
-    #line 4389 "./src/generator/c_gen.am"
+    #line 4396 "./src/generator/c_gen.am"
     if ((code_string_equals(mname, "Keys")) || (code_string_equals(mname, "Values"))) {
-        #line 4390 "./src/generator/c_gen.am"
+        #line 4397 "./src/generator/c_gen.am"
         if (code_string_equals(rxType, "AmalgameMap*")) {
-            #line 4391 "./src/generator/c_gen.am"
+            #line 4398 "./src/generator/c_gen.am"
             if (code_string_equals(mname, "Keys")) {
                 return code_string_concat((code_string_concat("AmalgameMap_keys(", rxExpr)), ")");
             }
-            #line 4392 "./src/generator/c_gen.am"
+            #line 4399 "./src/generator/c_gen.am"
             if (code_string_equals(mname, "Values")) {
                 return code_string_concat((code_string_concat("AmalgameMap_values(", rxExpr)), ")");
             }
         }
     }
-    #line 4395 "./src/generator/c_gen.am"
+    #line 4402 "./src/generator/c_gen.am"
     if (((((code_string_equals(mname, "Set")) || (code_string_equals(mname, "Has"))) || (code_string_equals(mname, "Size"))) || (code_string_equals(mname, "Remove"))) || (code_string_equals(mname, "Get"))) {
-        #line 4396 "./src/generator/c_gen.am"
+        #line 4403 "./src/generator/c_gen.am"
         if (code_string_equals(rxType, "AmalgameMap*")) {
-            #line 4397 "./src/generator/c_gen.am"
+            #line 4404 "./src/generator/c_gen.am"
             AmalgameList* args = callExpr->Args;
-            #line 4398 "./src/generator/c_gen.am"
+            #line 4405 "./src/generator/c_gen.am"
             i64 ac = AmalgameList_count(args);
-            #line 4399 "./src/generator/c_gen.am"
+            #line 4406 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Set")) && (ac >= 2)) {
-                #line 4400 "./src/generator/c_gen.am"
+                #line 4407 "./src/generator/c_gen.am"
                 code_string k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
-                #line 4401 "./src/generator/c_gen.am"
+                #line 4408 "./src/generator/c_gen.am"
                 code_string v2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 1));
-                #line 4402 "./src/generator/c_gen.am"
+                #line 4409 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameMap_set(", rxExpr)), ", ")), k2)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, v2))), ")");
             }
-            #line 4404 "./src/generator/c_gen.am"
+            #line 4411 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Has")) && (ac >= 1)) {
-                #line 4405 "./src/generator/c_gen.am"
+                #line 4412 "./src/generator/c_gen.am"
                 code_string k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
-                #line 4406 "./src/generator/c_gen.am"
+                #line 4413 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameMap_has(", rxExpr)), ", ")), k2)), ")");
             }
-            #line 4408 "./src/generator/c_gen.am"
+            #line 4415 "./src/generator/c_gen.am"
             if (code_string_equals(mname, "Size")) {
                 return code_string_concat((code_string_concat("AmalgameMap_size(", rxExpr)), ")");
             }
-            #line 4409 "./src/generator/c_gen.am"
+            #line 4416 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Remove")) && (ac >= 1)) {
-                #line 4410 "./src/generator/c_gen.am"
+                #line 4417 "./src/generator/c_gen.am"
                 code_string k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
-                #line 4411 "./src/generator/c_gen.am"
+                #line 4418 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameMap_remove(", rxExpr)), ", ")), k2)), ")");
             }
-            #line 4413 "./src/generator/c_gen.am"
+            #line 4420 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Get")) && (ac >= 1)) {
-                #line 4414 "./src/generator/c_gen.am"
-                code_string k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
-                #line 4419 "./src/generator/c_gen.am"
-                code_string castT = "";
-                #line 4420 "./src/generator/c_gen.am"
-                i64 dotPos = String_IndexOf(rxElem, ".");
                 #line 4421 "./src/generator/c_gen.am"
+                code_string k2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
+                #line 4426 "./src/generator/c_gen.am"
+                code_string castT = "";
+                #line 4427 "./src/generator/c_gen.am"
+                i64 dotPos = String_IndexOf(rxElem, ".");
+                #line 4428 "./src/generator/c_gen.am"
                 if (dotPos > 0) {
-                    #line 4422 "./src/generator/c_gen.am"
+                    #line 4429 "./src/generator/c_gen.am"
                     code_string nsPart = String_Substring(rxElem, 0, dotPos);
-                    #line 4423 "./src/generator/c_gen.am"
+                    #line 4430 "./src/generator/c_gen.am"
                     code_string kPart = String_Substring(rxElem, dotPos + 1, (String_Length(rxElem) - dotPos) - 1);
-                    #line 4424 "./src/generator/c_gen.am"
+                    #line 4431 "./src/generator/c_gen.am"
                     castT = Amalgame_Compiler_CGen_ListElemGet(self, nsPart, kPart);
                 }
-                #line 4426 "./src/generator/c_gen.am"
+                #line 4433 "./src/generator/c_gen.am"
                 if (String_Length(castT) == 0) {
                     castT = "void*";
                 }
-                #line 4427 "./src/generator/c_gen.am"
+                #line 4434 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", castT)), ")AmalgameMap_get(")), rxExpr)), ", ")), k2)), ")");
             }
         }
     }
-    #line 4432 "./src/generator/c_gen.am"
+    #line 4439 "./src/generator/c_gen.am"
     if ((code_string_equals(mname, "Contains")) || (code_string_equals(mname, "Size"))) {
-        #line 4433 "./src/generator/c_gen.am"
+        #line 4440 "./src/generator/c_gen.am"
         if (code_string_equals(rxType, "AmalgameSet*")) {
-            #line 4434 "./src/generator/c_gen.am"
+            #line 4441 "./src/generator/c_gen.am"
             AmalgameList* args = callExpr->Args;
-            #line 4435 "./src/generator/c_gen.am"
+            #line 4442 "./src/generator/c_gen.am"
             i64 ac = AmalgameList_count(args);
-            #line 4436 "./src/generator/c_gen.am"
+            #line 4443 "./src/generator/c_gen.am"
             if ((code_string_equals(mname, "Contains")) && (ac >= 1)) {
-                #line 4437 "./src/generator/c_gen.am"
+                #line 4444 "./src/generator/c_gen.am"
                 code_string v2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
-                #line 4438 "./src/generator/c_gen.am"
+                #line 4445 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameSet_contains(", rxExpr)), ", ")), v2)), ")");
             }
-            #line 4440 "./src/generator/c_gen.am"
+            #line 4447 "./src/generator/c_gen.am"
             if (code_string_equals(mname, "Size")) {
                 return code_string_concat((code_string_concat("AmalgameSet_size(", rxExpr)), ")");
             }
         }
     }
-    #line 4443 "./src/generator/c_gen.am"
+    #line 4450 "./src/generator/c_gen.am"
     if ((code_string_equals(mname, "Add")) || (code_string_equals(mname, "Remove"))) {
-        #line 4444 "./src/generator/c_gen.am"
+        #line 4451 "./src/generator/c_gen.am"
         if (code_string_equals(rxType, "AmalgameSet*")) {
-            #line 4445 "./src/generator/c_gen.am"
+            #line 4452 "./src/generator/c_gen.am"
             AmalgameList* args = callExpr->Args;
-            #line 4446 "./src/generator/c_gen.am"
+            #line 4453 "./src/generator/c_gen.am"
             i64 ac = AmalgameList_count(args);
-            #line 4447 "./src/generator/c_gen.am"
+            #line 4454 "./src/generator/c_gen.am"
             if (ac >= 1) {
-                #line 4448 "./src/generator/c_gen.am"
+                #line 4455 "./src/generator/c_gen.am"
                 code_string v2 = Amalgame_Compiler_CGen_EmitExprStr(self, (void*)AmalgameList_get(args, 0));
-                #line 4449 "./src/generator/c_gen.am"
+                #line 4456 "./src/generator/c_gen.am"
                 if (code_string_equals(mname, "Add")) {
                     return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameSet_add(", rxExpr)), ", ")), v2)), ")");
                 }
-                #line 4450 "./src/generator/c_gen.am"
+                #line 4457 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameSet_remove(", rxExpr)), ", ")), v2)), ")");
             }
         }
     }
-    #line 4455 "./src/generator/c_gen.am"
+    #line 4462 "./src/generator/c_gen.am"
     if ((((((((((((((((!code_string_equals(mname, "Add")) && (!code_string_equals(mname, "Set"))) && (!code_string_equals(mname, "Count"))) && (!code_string_equals(mname, "Get"))) && (!code_string_equals(mname, "IsEmpty"))) && (!code_string_equals(mname, "Remove"))) && (!code_string_equals(mname, "RemoveAt"))) && (!code_string_equals(mname, "Clear"))) && (!code_string_equals(mname, "Reserve"))) && (!code_string_equals(mname, "Filter"))) && (!code_string_equals(mname, "Map"))) && (!code_string_equals(mname, "Reduce"))) && (!code_string_equals(mname, "ForEach"))) && (!code_string_equals(mname, "Any"))) && (!code_string_equals(mname, "All"))) && (!code_string_equals(mname, "CountIf"))) {
         return "";
     }
-    #line 4458 "./src/generator/c_gen.am"
+    #line 4465 "./src/generator/c_gen.am"
     code_string listExpr = "";
-    #line 4459 "./src/generator/c_gen.am"
+    #line 4466 "./src/generator/c_gen.am"
     code_string listCType = "";
-    #line 4461 "./src/generator/c_gen.am"
+    #line 4468 "./src/generator/c_gen.am"
     if (callee->Left != NULL) {
-        #line 4462 "./src/generator/c_gen.am"
+        #line 4469 "./src/generator/c_gen.am"
         Amalgame_Compiler_NodeKind lk = callee->Left->Kind;
-        #line 4465 "./src/generator/c_gen.am"
+        #line 4472 "./src/generator/c_gen.am"
         if (lk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-            #line 4466 "./src/generator/c_gen.am"
+            #line 4473 "./src/generator/c_gen.am"
             code_string vname = callee->Left->Name;
-            #line 4467 "./src/generator/c_gen.am"
+            #line 4474 "./src/generator/c_gen.am"
             code_string vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vname);
-            #line 4468 "./src/generator/c_gen.am"
+            #line 4475 "./src/generator/c_gen.am"
             if (code_string_equals(vtype, "AmalgameList*")) {
-                #line 4469 "./src/generator/c_gen.am"
+                #line 4476 "./src/generator/c_gen.am"
                 listExpr = vname;
-                #line 4470 "./src/generator/c_gen.am"
+                #line 4477 "./src/generator/c_gen.am"
                 listCType = "AmalgameList*";
             }
         }
-        #line 4478 "./src/generator/c_gen.am"
+        #line 4485 "./src/generator/c_gen.am"
         if (lk == Amalgame_Compiler_NodeKind_CALL) {
-            #line 4479 "./src/generator/c_gen.am"
+            #line 4486 "./src/generator/c_gen.am"
             code_string innerStr = Amalgame_Compiler_CGen_TryEmitListCall(self, callee->Left);
-            #line 4480 "./src/generator/c_gen.am"
+            #line 4487 "./src/generator/c_gen.am"
             if (String_Length(innerStr) > 0) {
-                #line 4481 "./src/generator/c_gen.am"
+                #line 4488 "./src/generator/c_gen.am"
                 listExpr = innerStr;
-                #line 4482 "./src/generator/c_gen.am"
+                #line 4489 "./src/generator/c_gen.am"
                 listCType = "AmalgameList*";
             }
         }
-        #line 4487 "./src/generator/c_gen.am"
+        #line 4494 "./src/generator/c_gen.am"
         if (lk == Amalgame_Compiler_NodeKind_MEMBER) {
-            #line 4488 "./src/generator/c_gen.am"
+            #line 4495 "./src/generator/c_gen.am"
             if (callee->Left->Left != NULL) {
-                #line 4489 "./src/generator/c_gen.am"
+                #line 4496 "./src/generator/c_gen.am"
                 Amalgame_Compiler_NodeKind llk = callee->Left->Left->Kind;
-                #line 4490 "./src/generator/c_gen.am"
+                #line 4497 "./src/generator/c_gen.am"
                 if (llk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                    #line 4491 "./src/generator/c_gen.am"
+                    #line 4498 "./src/generator/c_gen.am"
                     code_string fname = callee->Left->Name;
-                    #line 4492 "./src/generator/c_gen.am"
+                    #line 4499 "./src/generator/c_gen.am"
                     code_string ftype = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, fname);
-                    #line 4493 "./src/generator/c_gen.am"
+                    #line 4500 "./src/generator/c_gen.am"
                     if (code_string_equals(ftype, "AmalgameList*")) {
-                        #line 4494 "./src/generator/c_gen.am"
+                        #line 4501 "./src/generator/c_gen.am"
                         listExpr = (code_string_concat("self->", fname));
-                        #line 4495 "./src/generator/c_gen.am"
+                        #line 4502 "./src/generator/c_gen.am"
                         listCType = "AmalgameList*";
                     }
                 }
-                #line 4499 "./src/generator/c_gen.am"
+                #line 4506 "./src/generator/c_gen.am"
                 if (llk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                    #line 4500 "./src/generator/c_gen.am"
+                    #line 4507 "./src/generator/c_gen.am"
                     code_string vname2 = callee->Left->Left->Name;
-                    #line 4501 "./src/generator/c_gen.am"
+                    #line 4508 "./src/generator/c_gen.am"
                     code_string vtype2 = Amalgame_Compiler_CGen_LocalTypeGet(self, vname2);
-                    #line 4502 "./src/generator/c_gen.am"
+                    #line 4509 "./src/generator/c_gen.am"
                     code_string fname2 = callee->Left->Name;
-                    #line 4504 "./src/generator/c_gen.am"
+                    #line 4511 "./src/generator/c_gen.am"
                     code_string vbare = String_Replace(vtype2, "*", "");
-                    #line 4505 "./src/generator/c_gen.am"
+                    #line 4512 "./src/generator/c_gen.am"
                     code_string ftype2 = Amalgame_Compiler_CGen_FieldTypeGet(self, vbare, fname2);
-                    #line 4506 "./src/generator/c_gen.am"
+                    #line 4513 "./src/generator/c_gen.am"
                     if (code_string_equals(ftype2, "AmalgameList*")) {
-                        #line 4507 "./src/generator/c_gen.am"
+                        #line 4514 "./src/generator/c_gen.am"
                         listExpr = (code_string_concat((code_string_concat(vname2, "->")), fname2));
-                        #line 4508 "./src/generator/c_gen.am"
+                        #line 4515 "./src/generator/c_gen.am"
                         listCType = "AmalgameList*";
                     }
                 }
             }
         }
     }
-    #line 4515 "./src/generator/c_gen.am"
+    #line 4522 "./src/generator/c_gen.am"
     if (String_Length(listExpr) == 0) {
         return "";
     }
-    #line 4518 "./src/generator/c_gen.am"
+    #line 4525 "./src/generator/c_gen.am"
     if (code_string_equals(mname, "Clear")) {
-        #line 4519 "./src/generator/c_gen.am"
+        #line 4526 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat("AmalgameList_clear(", listExpr)), ")");
     }
-    #line 4521 "./src/generator/c_gen.am"
+    #line 4528 "./src/generator/c_gen.am"
     if (code_string_equals(mname, "Reserve")) {
-        #line 4522 "./src/generator/c_gen.am"
+        #line 4529 "./src/generator/c_gen.am"
         code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-        #line 4523 "./src/generator/c_gen.am"
+        #line 4530 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_reserve(", listExpr)), ", ")), arg0)), ")");
     }
-    #line 4525 "./src/generator/c_gen.am"
+    #line 4532 "./src/generator/c_gen.am"
     if (code_string_equals(mname, "Count")) {
-        #line 4526 "./src/generator/c_gen.am"
+        #line 4533 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat("AmalgameList_count(", listExpr)), ")");
     }
-    #line 4528 "./src/generator/c_gen.am"
+    #line 4535 "./src/generator/c_gen.am"
     if (code_string_equals(mname, "Add")) {
-        #line 4529 "./src/generator/c_gen.am"
+        #line 4536 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
-        #line 4530 "./src/generator/c_gen.am"
+        #line 4537 "./src/generator/c_gen.am"
         if (argc == 0) {
             return code_string_concat((code_string_concat("AmalgameList_add(", listExpr)), ", NULL)");
         }
-        #line 4531 "./src/generator/c_gen.am"
+        #line 4538 "./src/generator/c_gen.am"
         code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-        #line 4532 "./src/generator/c_gen.am"
+        #line 4539 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_add(", listExpr)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
     }
-    #line 4534 "./src/generator/c_gen.am"
+    #line 4541 "./src/generator/c_gen.am"
     if (code_string_equals(mname, "Set")) {
-        #line 4537 "./src/generator/c_gen.am"
-        i64 argc = AmalgameList_count(callExpr->Args);
-        #line 4538 "./src/generator/c_gen.am"
-        if (argc < 2) {
-            return "";
-        }
-        #line 4539 "./src/generator/c_gen.am"
-        code_string idxArg = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-        #line 4540 "./src/generator/c_gen.am"
-        code_string valArg = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 1));
-        #line 4541 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_set(", listExpr)), ", ")), idxArg)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, valArg))), ")");
-    }
-    #line 4543 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "Get")) {
         #line 4544 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
         #line 4545 "./src/generator/c_gen.am"
-        code_string idx0 = "0";
+        if (argc < 2) {
+            return "";
+        }
         #line 4546 "./src/generator/c_gen.am"
+        code_string idxArg = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        #line 4547 "./src/generator/c_gen.am"
+        code_string valArg = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 1));
+        #line 4548 "./src/generator/c_gen.am"
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_set(", listExpr)), ", ")), idxArg)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, valArg))), ")");
+    }
+    #line 4550 "./src/generator/c_gen.am"
+    if (code_string_equals(mname, "Get")) {
+        #line 4551 "./src/generator/c_gen.am"
+        i64 argc = AmalgameList_count(callExpr->Args);
+        #line 4552 "./src/generator/c_gen.am"
+        code_string idx0 = "0";
+        #line 4553 "./src/generator/c_gen.am"
         if (argc > 0) {
             idx0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
         }
-        #line 4548 "./src/generator/c_gen.am"
+        #line 4555 "./src/generator/c_gen.am"
         code_string elemType = "";
-        #line 4549 "./src/generator/c_gen.am"
+        #line 4556 "./src/generator/c_gen.am"
         if (callee->Left != NULL) {
-            #line 4550 "./src/generator/c_gen.am"
+            #line 4557 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind lkG = callee->Left->Kind;
-            #line 4552 "./src/generator/c_gen.am"
+            #line 4559 "./src/generator/c_gen.am"
             if (lkG == Amalgame_Compiler_NodeKind_THIS_EXPR) {
             }
-            #line 4556 "./src/generator/c_gen.am"
+            #line 4563 "./src/generator/c_gen.am"
             if (lkG == Amalgame_Compiler_NodeKind_MEMBER) {
-                #line 4557 "./src/generator/c_gen.am"
+                #line 4564 "./src/generator/c_gen.am"
                 if (callee->Left->Left != NULL) {
-                    #line 4558 "./src/generator/c_gen.am"
+                    #line 4565 "./src/generator/c_gen.am"
                     Amalgame_Compiler_AstNode* lll = callee->Left->Left;
-                    #line 4560 "./src/generator/c_gen.am"
+                    #line 4567 "./src/generator/c_gen.am"
                     if (lll->Kind == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                        #line 4561 "./src/generator/c_gen.am"
+                        #line 4568 "./src/generator/c_gen.am"
                         code_string fn4 = callee->Left->Name;
-                        #line 4562 "./src/generator/c_gen.am"
+                        #line 4569 "./src/generator/c_gen.am"
                         elemType = Amalgame_Compiler_CGen_ListElemGet(self, self->CurrentClass, fn4);
                     }
-                    #line 4565 "./src/generator/c_gen.am"
+                    #line 4572 "./src/generator/c_gen.am"
                     if (lll->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 4566 "./src/generator/c_gen.am"
+                        #line 4573 "./src/generator/c_gen.am"
                         code_string vn4 = lll->Name;
-                        #line 4567 "./src/generator/c_gen.am"
+                        #line 4574 "./src/generator/c_gen.am"
                         code_string vt4 = Amalgame_Compiler_CGen_LocalTypeGet(self, vn4);
-                        #line 4568 "./src/generator/c_gen.am"
+                        #line 4575 "./src/generator/c_gen.am"
                         code_string bare4 = String_Replace(vt4, "*", "");
-                        #line 4569 "./src/generator/c_gen.am"
+                        #line 4576 "./src/generator/c_gen.am"
                         code_string fn4b = callee->Left->Name;
-                        #line 4570 "./src/generator/c_gen.am"
+                        #line 4577 "./src/generator/c_gen.am"
                         elemType = Amalgame_Compiler_CGen_ListElemGet(self, bare4, fn4b);
                     }
                 }
             }
-            #line 4576 "./src/generator/c_gen.am"
+            #line 4583 "./src/generator/c_gen.am"
             if (lkG == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                #line 4577 "./src/generator/c_gen.am"
+                #line 4584 "./src/generator/c_gen.am"
                 code_string vn5 = callee->Left->Name;
-                #line 4578 "./src/generator/c_gen.am"
+                #line 4585 "./src/generator/c_gen.am"
                 elemType = Amalgame_Compiler_CGen_ListElemGet(self, "__local__", vn5);
             }
-            #line 4585 "./src/generator/c_gen.am"
+            #line 4592 "./src/generator/c_gen.am"
             if ((lkG == Amalgame_Compiler_NodeKind_CALL) && (String_Length(elemType) == 0)) {
-                #line 4586 "./src/generator/c_gen.am"
+                #line 4593 "./src/generator/c_gen.am"
                 code_string chainedRaw = Amalgame_Compiler_CGen_RecoverChainedListElemRaw(self, callee->Left);
-                #line 4587 "./src/generator/c_gen.am"
+                #line 4594 "./src/generator/c_gen.am"
                 if (String_Length(chainedRaw) > 0) {
-                    #line 4588 "./src/generator/c_gen.am"
+                    #line 4595 "./src/generator/c_gen.am"
                     elemType = Amalgame_Compiler_CGen_TypeToC(self, chainedRaw);
                 }
             }
         }
-        #line 4592 "./src/generator/c_gen.am"
+        #line 4599 "./src/generator/c_gen.am"
         if (String_Length(elemType) > 0) {
-            #line 4599 "./src/generator/c_gen.am"
+            #line 4606 "./src/generator/c_gen.am"
             if (Amalgame_Compiler_CGen_IsCPointerType(self, elemType)) {
-                #line 4600 "./src/generator/c_gen.am"
+                #line 4607 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("(", elemType)), ")AmalgameList_get(")), listExpr)), ", ")), idx0)), ")");
             }
-            #line 4602 "./src/generator/c_gen.am"
+            #line 4609 "./src/generator/c_gen.am"
             return Amalgame_Compiler_CGen_UnboxScalar(self, elemType, code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_get(", listExpr)), ", ")), idx0)), ")"));
         }
-        #line 4604 "./src/generator/c_gen.am"
+        #line 4611 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat((code_string_concat((code_string_concat("(void*)AmalgameList_get(", listExpr)), ", ")), idx0)), ")");
     }
-    #line 4606 "./src/generator/c_gen.am"
+    #line 4613 "./src/generator/c_gen.am"
     if (code_string_equals(mname, "IsEmpty")) {
-        #line 4607 "./src/generator/c_gen.am"
+        #line 4614 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat("AmalgameList_isEmpty(", listExpr)), ")");
     }
-    #line 4609 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "Remove")) {
-        #line 4610 "./src/generator/c_gen.am"
-        i64 argc = AmalgameList_count(callExpr->Args);
-        #line 4611 "./src/generator/c_gen.am"
-        if (argc > 0) {
-            #line 4612 "./src/generator/c_gen.am"
-            code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-            #line 4613 "./src/generator/c_gen.am"
-            return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_remove(", listExpr)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
-        }
-    }
     #line 4616 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "RemoveAt")) {
+    if (code_string_equals(mname, "Remove")) {
         #line 4617 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
         #line 4618 "./src/generator/c_gen.am"
@@ -14553,28 +14557,23 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             #line 4619 "./src/generator/c_gen.am"
             code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
             #line 4620 "./src/generator/c_gen.am"
+            return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_remove(", listExpr)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, arg0))), ")");
+        }
+    }
+    #line 4623 "./src/generator/c_gen.am"
+    if (code_string_equals(mname, "RemoveAt")) {
+        #line 4624 "./src/generator/c_gen.am"
+        i64 argc = AmalgameList_count(callExpr->Args);
+        #line 4625 "./src/generator/c_gen.am"
+        if (argc > 0) {
+            #line 4626 "./src/generator/c_gen.am"
+            code_string arg0 = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+            #line 4627 "./src/generator/c_gen.am"
             return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_removeAt(", listExpr)), ", ")), arg0)), ")");
         }
     }
-    #line 4629 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "Filter")) {
-        #line 4630 "./src/generator/c_gen.am"
-        i64 argc = AmalgameList_count(callExpr->Args);
-        #line 4631 "./src/generator/c_gen.am"
-        if (argc != 1) {
-            return "";
-        }
-        #line 4632 "./src/generator/c_gen.am"
-        code_string lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-        #line 4633 "./src/generator/c_gen.am"
-        if (String_Length(lamStr) == 0) {
-            return "";
-        }
-        #line 4634 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_filter(", listExpr)), ", ")), lamStr)), ")");
-    }
     #line 4636 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "Map")) {
+    if (code_string_equals(mname, "Filter")) {
         #line 4637 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
         #line 4638 "./src/generator/c_gen.am"
@@ -14588,10 +14587,10 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             return "";
         }
         #line 4641 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_map(", listExpr)), ", ")), lamStr)), ")");
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_filter(", listExpr)), ", ")), lamStr)), ")");
     }
     #line 4643 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "ForEach")) {
+    if (code_string_equals(mname, "Map")) {
         #line 4644 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
         #line 4645 "./src/generator/c_gen.am"
@@ -14605,46 +14604,46 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             return "";
         }
         #line 4648 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_forEach(", listExpr)), ", ")), lamStr)), ")");
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_map(", listExpr)), ", ")), lamStr)), ")");
     }
     #line 4650 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "Reduce")) {
+    if (code_string_equals(mname, "ForEach")) {
+        #line 4651 "./src/generator/c_gen.am"
+        i64 argc = AmalgameList_count(callExpr->Args);
         #line 4652 "./src/generator/c_gen.am"
-        i64 argc = AmalgameList_count(callExpr->Args);
-        #line 4653 "./src/generator/c_gen.am"
-        if (argc != 2) {
-            return "";
-        }
-        #line 4654 "./src/generator/c_gen.am"
-        code_string initStr = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
-        #line 4655 "./src/generator/c_gen.am"
-        code_string lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 1));
-        #line 4656 "./src/generator/c_gen.am"
-        if (String_Length(lamStr) == 0) {
-            return "";
-        }
-        #line 4657 "./src/generator/c_gen.am"
-        return Amalgame_Compiler_CGen_UnboxScalar(self, "i64", code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_reduce(", listExpr)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, initStr))), ", ")), lamStr)), ")"));
-    }
-    #line 4659 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "Any")) {
-        #line 4660 "./src/generator/c_gen.am"
-        i64 argc = AmalgameList_count(callExpr->Args);
-        #line 4661 "./src/generator/c_gen.am"
         if (argc != 1) {
             return "";
         }
-        #line 4662 "./src/generator/c_gen.am"
+        #line 4653 "./src/generator/c_gen.am"
         code_string lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        #line 4654 "./src/generator/c_gen.am"
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        #line 4655 "./src/generator/c_gen.am"
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_forEach(", listExpr)), ", ")), lamStr)), ")");
+    }
+    #line 4657 "./src/generator/c_gen.am"
+    if (code_string_equals(mname, "Reduce")) {
+        #line 4659 "./src/generator/c_gen.am"
+        i64 argc = AmalgameList_count(callExpr->Args);
+        #line 4660 "./src/generator/c_gen.am"
+        if (argc != 2) {
+            return "";
+        }
+        #line 4661 "./src/generator/c_gen.am"
+        code_string initStr = Amalgame_Compiler_CGen_EmitExprStr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        #line 4662 "./src/generator/c_gen.am"
+        code_string lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 1));
         #line 4663 "./src/generator/c_gen.am"
         if (String_Length(lamStr) == 0) {
             return "";
         }
         #line 4664 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_any(", listExpr)), ", ")), lamStr)), ")");
+        return Amalgame_Compiler_CGen_UnboxScalar(self, "i64", code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_reduce(", listExpr)), ", ")), Amalgame_Compiler_CGen_BoxAsVoid(self, initStr))), ", ")), lamStr)), ")"));
     }
     #line 4666 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "All")) {
+    if (code_string_equals(mname, "Any")) {
         #line 4667 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
         #line 4668 "./src/generator/c_gen.am"
@@ -14658,10 +14657,10 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             return "";
         }
         #line 4671 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_all(", listExpr)), ", ")), lamStr)), ")");
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_any(", listExpr)), ", ")), lamStr)), ")");
     }
     #line 4673 "./src/generator/c_gen.am"
-    if (code_string_equals(mname, "CountIf")) {
+    if (code_string_equals(mname, "All")) {
         #line 4674 "./src/generator/c_gen.am"
         i64 argc = AmalgameList_count(callExpr->Args);
         #line 4675 "./src/generator/c_gen.am"
@@ -14675,297 +14674,314 @@ static code_string Amalgame_Compiler_CGen_TryEmitListCall(Amalgame_Compiler_CGen
             return "";
         }
         #line 4678 "./src/generator/c_gen.am"
-        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_countIf(", listExpr)), ", ")), lamStr)), ")");
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_all(", listExpr)), ", ")), lamStr)), ")");
     }
     #line 4680 "./src/generator/c_gen.am"
+    if (code_string_equals(mname, "CountIf")) {
+        #line 4681 "./src/generator/c_gen.am"
+        i64 argc = AmalgameList_count(callExpr->Args);
+        #line 4682 "./src/generator/c_gen.am"
+        if (argc != 1) {
+            return "";
+        }
+        #line 4683 "./src/generator/c_gen.am"
+        code_string lamStr = Amalgame_Compiler_CGen_EmitClosureArg(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(callExpr->Args, 0));
+        #line 4684 "./src/generator/c_gen.am"
+        if (String_Length(lamStr) == 0) {
+            return "";
+        }
+        #line 4685 "./src/generator/c_gen.am"
+        return code_string_concat((code_string_concat((code_string_concat((code_string_concat("AmalgameList_countIf(", listExpr)), ", ")), lamStr)), ")");
+    }
+    #line 4687 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_CGen_EmitClosureArg(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* arg) {
-    #line 4690 "./src/generator/c_gen.am"
+    #line 4697 "./src/generator/c_gen.am"
     if (arg == NULL) {
         return "";
     }
-    #line 4691 "./src/generator/c_gen.am"
+    #line 4698 "./src/generator/c_gen.am"
     if ((arg->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(arg->Name, "__lambda__"))) {
-        #line 4692 "./src/generator/c_gen.am"
+        #line 4699 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_EmitLambdaAsClosure(self, arg);
     }
-    #line 4694 "./src/generator/c_gen.am"
+    #line 4701 "./src/generator/c_gen.am"
     if (arg->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 4695 "./src/generator/c_gen.am"
+        #line 4702 "./src/generator/c_gen.am"
         code_string t = Amalgame_Compiler_CGen_LocalTypeGet(self, arg->Name);
-        #line 4696 "./src/generator/c_gen.am"
+        #line 4703 "./src/generator/c_gen.am"
         if (code_string_equals(t, "AmalgameClosure*")) {
             return arg->Name;
         }
     }
-    #line 4698 "./src/generator/c_gen.am"
+    #line 4705 "./src/generator/c_gen.am"
     return "";
 }
 
 static code_string Amalgame_Compiler_CGen_EmitLambdaAsClosure(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* lam) {
-    #line 4705 "./src/generator/c_gen.am"
+    #line 4712 "./src/generator/c_gen.am"
     code_string id = lam->Str2;
-    #line 4706 "./src/generator/c_gen.am"
+    #line 4713 "./src/generator/c_gen.am"
     code_string envName = code_string_concat("LamEnv_", id);
-    #line 4707 "./src/generator/c_gen.am"
+    #line 4714 "./src/generator/c_gen.am"
     code_string fnName = code_string_concat((code_string_concat("lam_", id)), "_fn");
-    #line 4708 "./src/generator/c_gen.am"
+    #line 4715 "./src/generator/c_gen.am"
     code_string envVar = code_string_concat("__env_", id);
-    #line 4709 "./src/generator/c_gen.am"
+    #line 4716 "./src/generator/c_gen.am"
     i64 cn = AmalgameList_count(lam->Args);
-    #line 4710 "./src/generator/c_gen.am"
+    #line 4717 "./src/generator/c_gen.am"
     code_string s = code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("({ ", envName)), "* ")), envVar)), " = (")), envName)), "*)code_alloc(sizeof(")), envName)), ")); ");
-    #line 4711 "./src/generator/c_gen.am"
+    #line 4718 "./src/generator/c_gen.am"
     for (i64 i = 0; i < cn; i++) {
-        #line 4712 "./src/generator/c_gen.am"
+        #line 4719 "./src/generator/c_gen.am"
         s = (code_string_concat(s, Amalgame_Compiler_CGen_EmitLambdaCaptureCopy(self, envVar, (Amalgame_Compiler_AstNode*)AmalgameList_get(lam->Args, i))));
     }
-    #line 4714 "./src/generator/c_gen.am"
+    #line 4721 "./src/generator/c_gen.am"
     s = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(s, "AmalgameClosure_new((void*)")), fnName)), ", ")), envVar)), "); })"));
-    #line 4715 "./src/generator/c_gen.am"
+    #line 4722 "./src/generator/c_gen.am"
     return s;
 }
 
 static code_string Amalgame_Compiler_CGen_EmitLambdaCaptureCopy(Amalgame_Compiler_CGen* self, code_string envVar, Amalgame_Compiler_AstNode* cap) {
-    #line 4722 "./src/generator/c_gen.am"
+    #line 4729 "./src/generator/c_gen.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(envVar, "->_")), cap->Name)), " = ")), cap->Name)), "; ");
 }
 
 static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* self, Amalgame_Compiler_AstNode* callee) {
-    #line 4726 "./src/generator/c_gen.am"
+    #line 4733 "./src/generator/c_gen.am"
     if (callee == NULL) {
         return "NULL";
     }
-    #line 4727 "./src/generator/c_gen.am"
+    #line 4734 "./src/generator/c_gen.am"
     Amalgame_Compiler_NodeKind k = callee->Kind;
-    #line 4728 "./src/generator/c_gen.am"
+    #line 4735 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
         return callee->Name;
     }
-    #line 4729 "./src/generator/c_gen.am"
+    #line 4736 "./src/generator/c_gen.am"
     if (k == Amalgame_Compiler_NodeKind_MEMBER) {
-        #line 4730 "./src/generator/c_gen.am"
+        #line 4737 "./src/generator/c_gen.am"
         code_string mname = callee->Name;
-        #line 4731 "./src/generator/c_gen.am"
+        #line 4738 "./src/generator/c_gen.am"
         if (callee->Left != NULL) {
-            #line 4732 "./src/generator/c_gen.am"
+            #line 4739 "./src/generator/c_gen.am"
             Amalgame_Compiler_NodeKind lk = callee->Left->Kind;
-            #line 4733 "./src/generator/c_gen.am"
+            #line 4740 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                #line 4735 "./src/generator/c_gen.am"
+                #line 4742 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat(self->CurrentClass, "_")), mname);
             }
-            #line 4738 "./src/generator/c_gen.am"
+            #line 4745 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
-                #line 4739 "./src/generator/c_gen.am"
+                #line 4746 "./src/generator/c_gen.am"
                 return code_string_concat("String_", mname);
             }
-            #line 4741 "./src/generator/c_gen.am"
+            #line 4748 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                #line 4742 "./src/generator/c_gen.am"
+                #line 4749 "./src/generator/c_gen.am"
                 code_string tname = callee->Left->Name;
-                #line 4743 "./src/generator/c_gen.am"
+                #line 4750 "./src/generator/c_gen.am"
                 code_string firstChar = String_Substring(tname, 0, 1);
-                #line 4744 "./src/generator/c_gen.am"
+                #line 4751 "./src/generator/c_gen.am"
                 code_bool isUpper = code_string_equals(firstChar, String_ToUpper(firstChar));
-                #line 4745 "./src/generator/c_gen.am"
+                #line 4752 "./src/generator/c_gen.am"
                 if (isUpper) {
-                    #line 4753 "./src/generator/c_gen.am"
+                    #line 4760 "./src/generator/c_gen.am"
                     if (code_string_equals(tname, "Path")) {
-                        #line 4754 "./src/generator/c_gen.am"
+                        #line 4761 "./src/generator/c_gen.am"
                         if ((((code_string_equals(mname, "Combine")) || (code_string_equals(mname, "Sep"))) || (code_string_equals(mname, "IsAbsolute"))) || (code_string_equals(mname, "Normalize"))) {
-                            #line 4755 "./src/generator/c_gen.am"
+                            #line 4762 "./src/generator/c_gen.am"
                             return code_string_concat("Path_", mname);
                         }
                     }
-                    #line 4763 "./src/generator/c_gen.am"
+                    #line 4770 "./src/generator/c_gen.am"
                     code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
-                    #line 4764 "./src/generator/c_gen.am"
+                    #line 4771 "./src/generator/c_gen.am"
                     if (String_Length(externalMangled) > 0) {
-                        #line 4765 "./src/generator/c_gen.am"
+                        #line 4772 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(externalMangled, "_")), mname);
                     }
-                    #line 4771 "./src/generator/c_gen.am"
+                    #line 4778 "./src/generator/c_gen.am"
                     code_string externalEnumMangled = Amalgame_Compiler_CGen_ExternalEnumMangled(self, tname);
-                    #line 4772 "./src/generator/c_gen.am"
+                    #line 4779 "./src/generator/c_gen.am"
                     if (String_Length(externalEnumMangled) > 0) {
-                        #line 4773 "./src/generator/c_gen.am"
+                        #line 4780 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(externalEnumMangled, "_")), mname);
                     }
-                    #line 4786 "./src/generator/c_gen.am"
+                    #line 4793 "./src/generator/c_gen.am"
                     code_bool isCoreStdlib = ((((((((code_string_equals(tname, "Console")) || (code_string_equals(tname, "File"))) || (code_string_equals(tname, "String"))) || (code_string_equals(tname, "List"))) || (code_string_equals(tname, "Env"))) || (code_string_equals(tname, "Process"))) || (code_string_equals(tname, "Regex"))) || (code_string_equals(tname, "Compress"))) || (code_string_equals(tname, "WebSocket"));
-                    #line 4787 "./src/generator/c_gen.am"
+                    #line 4794 "./src/generator/c_gen.am"
                     if (isCoreStdlib) {
-                        #line 4788 "./src/generator/c_gen.am"
+                        #line 4795 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(tname, "_")), mname);
                     }
-                    #line 4803 "./src/generator/c_gen.am"
+                    #line 4810 "./src/generator/c_gen.am"
                     if (Amalgame_Compiler_CGen_IsLocalClass(self, tname)) {
-                        #line 4804 "./src/generator/c_gen.am"
+                        #line 4811 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_")), mname);
                     }
-                    #line 4810 "./src/generator/c_gen.am"
+                    #line 4817 "./src/generator/c_gen.am"
                     code_string mangledPrefix = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, tname);
-                    #line 4811 "./src/generator/c_gen.am"
+                    #line 4818 "./src/generator/c_gen.am"
                     if (String_Length(mangledPrefix) > 0) {
-                        #line 4812 "./src/generator/c_gen.am"
+                        #line 4819 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(mangledPrefix, "_")), mname);
                     }
-                    #line 4815 "./src/generator/c_gen.am"
+                    #line 4822 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_")), mname);
                 }
-                #line 4818 "./src/generator/c_gen.am"
+                #line 4825 "./src/generator/c_gen.am"
                 code_string varType = Amalgame_Compiler_CGen_LocalTypeGet(self, tname);
-                #line 4819 "./src/generator/c_gen.am"
+                #line 4826 "./src/generator/c_gen.am"
                 code_string bareType = String_Replace(varType, "*", "");
-                #line 4820 "./src/generator/c_gen.am"
+                #line 4827 "./src/generator/c_gen.am"
                 if (String_Length(bareType) > 0) {
-                    #line 4831 "./src/generator/c_gen.am"
+                    #line 4838 "./src/generator/c_gen.am"
                     if (code_string_equals(bareType, "void")) {
-                        #line 4832 "./src/generator/c_gen.am"
+                        #line 4839 "./src/generator/c_gen.am"
                         code_bool isListM = (((((((code_string_equals(mname, "Get")) || (code_string_equals(mname, "Count"))) || (code_string_equals(mname, "Size"))) || (code_string_equals(mname, "Add"))) || (code_string_equals(mname, "Remove"))) || (code_string_equals(mname, "Clear"))) || (code_string_equals(mname, "IndexOf"))) || (code_string_equals(mname, "Contains"));
-                        #line 4833 "./src/generator/c_gen.am"
+                        #line 4840 "./src/generator/c_gen.am"
                         if (isListM) {
-                            #line 4834 "./src/generator/c_gen.am"
+                            #line 4841 "./src/generator/c_gen.am"
                             code_string mfirst = String_Substring(mname, 0, 1);
-                            #line 4835 "./src/generator/c_gen.am"
+                            #line 4842 "./src/generator/c_gen.am"
                             code_string mrest = String_Substring(mname, 1, String_Length(mname) - 1);
-                            #line 4836 "./src/generator/c_gen.am"
+                            #line 4843 "./src/generator/c_gen.am"
                             return code_string_concat((code_string_concat("AmalgameList_", String_ToLower(mfirst))), mrest);
                         }
                     }
-                    #line 4845 "./src/generator/c_gen.am"
+                    #line 4852 "./src/generator/c_gen.am"
                     if (code_string_equals(bareType, "AmalgameWebSocket")) {
-                        #line 4846 "./src/generator/c_gen.am"
+                        #line 4853 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat(String_Replace(bareType, "Amalgame", ""), "_")), mname);
                     }
-                    #line 4849 "./src/generator/c_gen.am"
+                    #line 4856 "./src/generator/c_gen.am"
                     if (code_string_equals(bareType, "AmalgameRegexMatch")) {
-                        #line 4850 "./src/generator/c_gen.am"
+                        #line 4857 "./src/generator/c_gen.am"
                         return code_string_concat("Match_", mname);
                     }
-                    #line 4858 "./src/generator/c_gen.am"
+                    #line 4865 "./src/generator/c_gen.am"
                     if (code_string_equals(bareType, "code_string")) {
-                        #line 4859 "./src/generator/c_gen.am"
+                        #line 4866 "./src/generator/c_gen.am"
                         return code_string_concat("String_", mname);
                     }
-                    #line 4861 "./src/generator/c_gen.am"
+                    #line 4868 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(bareType, "_")), mname);
                 }
-                #line 4864 "./src/generator/c_gen.am"
+                #line 4871 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat(tname, "_")), mname);
             }
-            #line 4871 "./src/generator/c_gen.am"
+            #line 4878 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_CALL) {
-                #line 4872 "./src/generator/c_gen.am"
+                #line 4879 "./src/generator/c_gen.am"
                 code_string retT = Amalgame_Compiler_CGen_InferTypeFromExpr(self, callee->Left);
-                #line 4873 "./src/generator/c_gen.am"
+                #line 4880 "./src/generator/c_gen.am"
                 code_string bareR = String_Replace(retT, "*", "");
-                #line 4874 "./src/generator/c_gen.am"
+                #line 4881 "./src/generator/c_gen.am"
                 if (String_Length(bareR) > 0) {
-                    #line 4880 "./src/generator/c_gen.am"
+                    #line 4887 "./src/generator/c_gen.am"
                     if (((code_string_equals(bareR, "AmalgameList")) || (code_string_equals(bareR, "AmalgameMap"))) || (code_string_equals(bareR, "AmalgameSet"))) {
-                        #line 4881 "./src/generator/c_gen.am"
+                        #line 4888 "./src/generator/c_gen.am"
                         code_string first = String_Substring(mname, 0, 1);
-                        #line 4882 "./src/generator/c_gen.am"
+                        #line 4889 "./src/generator/c_gen.am"
                         code_string rest = String_Substring(mname, 1, String_Length(mname) - 1);
-                        #line 4883 "./src/generator/c_gen.am"
+                        #line 4890 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat((code_string_concat(bareR, "_")), String_ToLower(first))), rest);
                     }
-                    #line 4885 "./src/generator/c_gen.am"
+                    #line 4892 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(bareR, "_")), mname);
                 }
             }
-            #line 4894 "./src/generator/c_gen.am"
+            #line 4901 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_CALL) {
-                #line 4895 "./src/generator/c_gen.am"
+                #line 4902 "./src/generator/c_gen.am"
                 code_string rt = Amalgame_Compiler_CGen_InferTypeFromExpr(self, callee->Left);
-                #line 4896 "./src/generator/c_gen.am"
+                #line 4903 "./src/generator/c_gen.am"
                 code_string bare = String_Replace(rt, "*", "");
-                #line 4897 "./src/generator/c_gen.am"
+                #line 4904 "./src/generator/c_gen.am"
                 if (String_Length(bare) > 0) {
-                    #line 4898 "./src/generator/c_gen.am"
+                    #line 4905 "./src/generator/c_gen.am"
                     if (((code_string_equals(bare, "AmalgameList")) || (code_string_equals(bare, "AmalgameMap"))) || (code_string_equals(bare, "AmalgameSet"))) {
-                        #line 4899 "./src/generator/c_gen.am"
+                        #line 4906 "./src/generator/c_gen.am"
                         code_string first = String_Substring(mname, 0, 1);
-                        #line 4900 "./src/generator/c_gen.am"
+                        #line 4907 "./src/generator/c_gen.am"
                         code_string rest = String_Substring(mname, 1, String_Length(mname) - 1);
-                        #line 4901 "./src/generator/c_gen.am"
+                        #line 4908 "./src/generator/c_gen.am"
                         return code_string_concat((code_string_concat((code_string_concat(bare, "_")), String_ToLower(first))), rest);
                     }
-                    #line 4903 "./src/generator/c_gen.am"
+                    #line 4910 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(bare, "_")), mname);
                 }
             }
-            #line 4914 "./src/generator/c_gen.am"
+            #line 4921 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-                #line 4915 "./src/generator/c_gen.am"
+                #line 4922 "./src/generator/c_gen.am"
                 code_string tname = callee->Left->Name;
-                #line 4916 "./src/generator/c_gen.am"
+                #line 4923 "./src/generator/c_gen.am"
                 code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, tname);
-                #line 4917 "./src/generator/c_gen.am"
+                #line 4924 "./src/generator/c_gen.am"
                 if (String_Length(externalMangled) > 0) {
-                    #line 4918 "./src/generator/c_gen.am"
+                    #line 4925 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(externalMangled, "_")), mname);
                 }
-                #line 4920 "./src/generator/c_gen.am"
+                #line 4927 "./src/generator/c_gen.am"
                 code_bool isCoreStdlib = ((((((((code_string_equals(tname, "Console")) || (code_string_equals(tname, "File"))) || (code_string_equals(tname, "String"))) || (code_string_equals(tname, "List"))) || (code_string_equals(tname, "Env"))) || (code_string_equals(tname, "Process"))) || (code_string_equals(tname, "Regex"))) || (code_string_equals(tname, "Compress"))) || (code_string_equals(tname, "WebSocket"));
-                #line 4921 "./src/generator/c_gen.am"
+                #line 4928 "./src/generator/c_gen.am"
                 if (isCoreStdlib) {
-                    #line 4922 "./src/generator/c_gen.am"
+                    #line 4929 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(tname, "_")), mname);
                 }
-                #line 4924 "./src/generator/c_gen.am"
+                #line 4931 "./src/generator/c_gen.am"
                 code_string mangledPrefix = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, tname);
-                #line 4925 "./src/generator/c_gen.am"
+                #line 4932 "./src/generator/c_gen.am"
                 if (String_Length(mangledPrefix) > 0) {
-                    #line 4926 "./src/generator/c_gen.am"
+                    #line 4933 "./src/generator/c_gen.am"
                     return code_string_concat((code_string_concat(mangledPrefix, "_")), mname);
                 }
-                #line 4928 "./src/generator/c_gen.am"
+                #line 4935 "./src/generator/c_gen.am"
                 return code_string_concat((code_string_concat(Amalgame_Compiler_CGen_SymName(self, tname), "_")), mname);
             }
-            #line 4934 "./src/generator/c_gen.am"
+            #line 4941 "./src/generator/c_gen.am"
             if (lk == Amalgame_Compiler_NodeKind_MEMBER) {
-                #line 4935 "./src/generator/c_gen.am"
+                #line 4942 "./src/generator/c_gen.am"
                 if (callee->Left->Left != NULL) {
-                    #line 4936 "./src/generator/c_gen.am"
+                    #line 4943 "./src/generator/c_gen.am"
                     Amalgame_Compiler_NodeKind llk = callee->Left->Left->Kind;
-                    #line 4937 "./src/generator/c_gen.am"
+                    #line 4944 "./src/generator/c_gen.am"
                     if (llk == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-                        #line 4938 "./src/generator/c_gen.am"
+                        #line 4945 "./src/generator/c_gen.am"
                         code_string fname = callee->Left->Name;
-                        #line 4939 "./src/generator/c_gen.am"
+                        #line 4946 "./src/generator/c_gen.am"
                         code_string ftype = Amalgame_Compiler_CGen_FieldTypeGet(self, self->CurrentClass, fname);
-                        #line 4940 "./src/generator/c_gen.am"
+                        #line 4947 "./src/generator/c_gen.am"
                         code_string bare = String_Replace(ftype, "*", "");
-                        #line 4941 "./src/generator/c_gen.am"
+                        #line 4948 "./src/generator/c_gen.am"
                         if (String_Length(bare) > 0) {
-                            #line 4942 "./src/generator/c_gen.am"
+                            #line 4949 "./src/generator/c_gen.am"
                             return code_string_concat((code_string_concat(bare, "_")), mname);
                         }
                     }
-                    #line 4945 "./src/generator/c_gen.am"
+                    #line 4952 "./src/generator/c_gen.am"
                     if (llk == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-                        #line 4954 "./src/generator/c_gen.am"
+                        #line 4961 "./src/generator/c_gen.am"
                         code_string vname = callee->Left->Left->Name;
-                        #line 4955 "./src/generator/c_gen.am"
+                        #line 4962 "./src/generator/c_gen.am"
                         code_string vtype = Amalgame_Compiler_CGen_LocalTypeGet(self, vname);
-                        #line 4956 "./src/generator/c_gen.am"
+                        #line 4963 "./src/generator/c_gen.am"
                         code_string vbare = String_Replace(vtype, "*", "");
-                        #line 4957 "./src/generator/c_gen.am"
+                        #line 4964 "./src/generator/c_gen.am"
                         if (String_Length(vbare) > 0) {
-                            #line 4958 "./src/generator/c_gen.am"
+                            #line 4965 "./src/generator/c_gen.am"
                             code_string fname = callee->Left->Name;
-                            #line 4959 "./src/generator/c_gen.am"
+                            #line 4966 "./src/generator/c_gen.am"
                             code_string ftype = Amalgame_Compiler_CGen_FieldTypeGet(self, vbare, fname);
-                            #line 4960 "./src/generator/c_gen.am"
+                            #line 4967 "./src/generator/c_gen.am"
                             code_string fbare = String_Replace(ftype, "*", "");
-                            #line 4961 "./src/generator/c_gen.am"
+                            #line 4968 "./src/generator/c_gen.am"
                             if (String_Length(fbare) > 0) {
-                                #line 4962 "./src/generator/c_gen.am"
+                                #line 4969 "./src/generator/c_gen.am"
                                 return code_string_concat((code_string_concat(fbare, "_")), mname);
                             }
                         }
@@ -14973,202 +14989,202 @@ static code_string Amalgame_Compiler_CGen_EmitCalleeStr(Amalgame_Compiler_CGen* 
                 }
             }
         }
-        #line 4969 "./src/generator/c_gen.am"
+        #line 4976 "./src/generator/c_gen.am"
         code_string target = Amalgame_Compiler_CGen_EmitExprStr(self, callee->Left);
-        #line 4970 "./src/generator/c_gen.am"
+        #line 4977 "./src/generator/c_gen.am"
         return code_string_concat((code_string_concat(target, "_")), mname);
     }
-    #line 4972 "./src/generator/c_gen.am"
+    #line 4979 "./src/generator/c_gen.am"
     return Amalgame_Compiler_CGen_EmitExprStr(self, callee);
 }
 
 static code_bool Amalgame_Compiler_CGen_IsEnum(Amalgame_Compiler_CGen* self, code_string t) {
-    #line 4978 "./src/generator/c_gen.am"
+    #line 4985 "./src/generator/c_gen.am"
     i64 n = AmalgameList_count(self->EnumNames);
-    #line 4979 "./src/generator/c_gen.am"
+    #line 4986 "./src/generator/c_gen.am"
     for (i64 i = 0; i < n; i++) {
-        #line 4980 "./src/generator/c_gen.am"
+        #line 4987 "./src/generator/c_gen.am"
         code_string e = (code_string)AmalgameList_get(self->EnumNames, i);
-        #line 4981 "./src/generator/c_gen.am"
+        #line 4988 "./src/generator/c_gen.am"
         if (code_string_equals(e, t)) {
             return 1;
         }
     }
-    #line 4983 "./src/generator/c_gen.am"
+    #line 4990 "./src/generator/c_gen.am"
     return 0;
 }
 
 static code_bool Amalgame_Compiler_CGen_IsCPointerType(Amalgame_Compiler_CGen* self, code_string ct) {
-    #line 4991 "./src/generator/c_gen.am"
+    #line 4998 "./src/generator/c_gen.am"
     if (code_string_equals(ct, "code_string")) {
         return 1;
     }
-    #line 4992 "./src/generator/c_gen.am"
+    #line 4999 "./src/generator/c_gen.am"
     if (String_EndsWith(ct, "*")) {
         return 1;
     }
-    #line 4993 "./src/generator/c_gen.am"
+    #line 5000 "./src/generator/c_gen.am"
     return 0;
 }
 
 static code_string Amalgame_Compiler_CGen_BoxAsVoid(Amalgame_Compiler_CGen* self, code_string expr) {
-    #line 5011 "./src/generator/c_gen.am"
+    #line 5018 "./src/generator/c_gen.am"
     return code_string_concat((code_string_concat("(void*)(intptr_t)(", expr)), ")");
 }
 
 static code_string Amalgame_Compiler_CGen_UnboxScalar(Amalgame_Compiler_CGen* self, code_string ctype, code_string expr) {
-    #line 5019 "./src/generator/c_gen.am"
+    #line 5026 "./src/generator/c_gen.am"
     return code_string_concat((code_string_concat((code_string_concat("(", ctype)), ")(intptr_t)")), expr);
 }
 
 static code_string Amalgame_Compiler_CGen_TypeToC(Amalgame_Compiler_CGen* self, code_string t) {
-    #line 5023 "./src/generator/c_gen.am"
+    #line 5030 "./src/generator/c_gen.am"
     if (code_string_equals(t, "int")) {
         return "i64";
     }
-    #line 5024 "./src/generator/c_gen.am"
+    #line 5031 "./src/generator/c_gen.am"
     if (code_string_equals(t, "float")) {
         return "double";
     }
-    #line 5025 "./src/generator/c_gen.am"
+    #line 5032 "./src/generator/c_gen.am"
     if (code_string_equals(t, "bool")) {
         return "code_bool";
     }
-    #line 5026 "./src/generator/c_gen.am"
+    #line 5033 "./src/generator/c_gen.am"
     if (code_string_equals(t, "string")) {
         return "code_string";
     }
-    #line 5027 "./src/generator/c_gen.am"
+    #line 5034 "./src/generator/c_gen.am"
     if (code_string_equals(t, "void")) {
         return "void";
     }
-    #line 5028 "./src/generator/c_gen.am"
+    #line 5035 "./src/generator/c_gen.am"
     if (code_string_equals(t, "")) {
         return "void";
     }
-    #line 5034 "./src/generator/c_gen.am"
+    #line 5041 "./src/generator/c_gen.am"
     if (code_string_equals(t, "Closure")) {
         return "AmalgameClosure*";
     }
-    #line 5039 "./src/generator/c_gen.am"
+    #line 5046 "./src/generator/c_gen.am"
     if (String_StartsWith(t, "Closure<")) {
         return "AmalgameClosure*";
     }
-    #line 5041 "./src/generator/c_gen.am"
+    #line 5048 "./src/generator/c_gen.am"
     if (String_EndsWith(t, "[]")) {
-        #line 5042 "./src/generator/c_gen.am"
+        #line 5049 "./src/generator/c_gen.am"
         code_string inner = String_Substring(t, 0, String_Length(t) - 2);
-        #line 5043 "./src/generator/c_gen.am"
+        #line 5050 "./src/generator/c_gen.am"
         return code_string_concat(Amalgame_Compiler_CGen_TypeToC(self, inner), "*");
     }
-    #line 5045 "./src/generator/c_gen.am"
+    #line 5052 "./src/generator/c_gen.am"
     if (String_EndsWith(t, "?")) {
-        #line 5051 "./src/generator/c_gen.am"
+        #line 5058 "./src/generator/c_gen.am"
         code_string inner = String_Substring(t, 0, String_Length(t) - 1);
-        #line 5052 "./src/generator/c_gen.am"
+        #line 5059 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_TypeToC(self, inner);
     }
-    #line 5054 "./src/generator/c_gen.am"
+    #line 5061 "./src/generator/c_gen.am"
     if (String_StartsWith(t, "List<")) {
-        #line 5055 "./src/generator/c_gen.am"
-        return "AmalgameList*";
-    }
-    #line 5057 "./src/generator/c_gen.am"
-    if (String_StartsWith(t, "Map<")) {
-        #line 5058 "./src/generator/c_gen.am"
-        return "AmalgameMap*";
-    }
-    #line 5060 "./src/generator/c_gen.am"
-    if (String_StartsWith(t, "Set<")) {
-        #line 5061 "./src/generator/c_gen.am"
-        return "AmalgameSet*";
-    }
-    #line 5063 "./src/generator/c_gen.am"
-    if (code_string_equals(t, "List")) {
+        #line 5062 "./src/generator/c_gen.am"
         return "AmalgameList*";
     }
     #line 5064 "./src/generator/c_gen.am"
+    if (String_StartsWith(t, "Map<")) {
+        #line 5065 "./src/generator/c_gen.am"
+        return "AmalgameMap*";
+    }
+    #line 5067 "./src/generator/c_gen.am"
+    if (String_StartsWith(t, "Set<")) {
+        #line 5068 "./src/generator/c_gen.am"
+        return "AmalgameSet*";
+    }
+    #line 5070 "./src/generator/c_gen.am"
+    if (code_string_equals(t, "List")) {
+        return "AmalgameList*";
+    }
+    #line 5071 "./src/generator/c_gen.am"
     if (code_string_equals(t, "Map")) {
         return "AmalgameMap*";
     }
-    #line 5065 "./src/generator/c_gen.am"
+    #line 5072 "./src/generator/c_gen.am"
     if (code_string_equals(t, "Set")) {
         return "AmalgameSet*";
     }
-    #line 5069 "./src/generator/c_gen.am"
+    #line 5076 "./src/generator/c_gen.am"
     if (code_string_equals(t, "Match")) {
         return "AmalgameRegexMatch*";
     }
-    #line 5070 "./src/generator/c_gen.am"
+    #line 5077 "./src/generator/c_gen.am"
     if (code_string_equals(t, "WebSocket")) {
         return "AmalgameWebSocket*";
     }
-    #line 5071 "./src/generator/c_gen.am"
+    #line 5078 "./src/generator/c_gen.am"
     if (Amalgame_Compiler_CGen_IsEnum(self, t)) {
-        #line 5072 "./src/generator/c_gen.am"
+        #line 5079 "./src/generator/c_gen.am"
         return Amalgame_Compiler_CGen_SymName(self, t);
     }
-    #line 5078 "./src/generator/c_gen.am"
+    #line 5085 "./src/generator/c_gen.am"
     code_string externalMangled = Amalgame_Compiler_CGen_ExternalClassMangled(self, t);
-    #line 5079 "./src/generator/c_gen.am"
+    #line 5086 "./src/generator/c_gen.am"
     if (String_Length(externalMangled) > 0) {
-        #line 5080 "./src/generator/c_gen.am"
+        #line 5087 "./src/generator/c_gen.am"
         return code_string_concat(externalMangled, "*");
     }
-    #line 5086 "./src/generator/c_gen.am"
+    #line 5093 "./src/generator/c_gen.am"
     code_string externalEnumMangled = Amalgame_Compiler_CGen_ExternalEnumMangled(self, t);
-    #line 5087 "./src/generator/c_gen.am"
+    #line 5094 "./src/generator/c_gen.am"
     if (String_Length(externalEnumMangled) > 0) {
-        #line 5088 "./src/generator/c_gen.am"
+        #line 5095 "./src/generator/c_gen.am"
         return externalEnumMangled;
     }
-    #line 5097 "./src/generator/c_gen.am"
+    #line 5104 "./src/generator/c_gen.am"
     i64 opaqueCount = AmalgameList_count(self->PkgOpaqueTypes);
-    #line 5098 "./src/generator/c_gen.am"
+    #line 5105 "./src/generator/c_gen.am"
     for (i64 oi = 0; oi < opaqueCount; oi++) {
-        #line 5099 "./src/generator/c_gen.am"
+        #line 5106 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->PkgOpaqueTypes, oi), t)) {
-            #line 5100 "./src/generator/c_gen.am"
+            #line 5107 "./src/generator/c_gen.am"
             return code_string_concat(t, "*");
         }
     }
-    #line 5111 "./src/generator/c_gen.am"
+    #line 5118 "./src/generator/c_gen.am"
     code_string pkgMangled = Amalgame_Compiler_CGen_PkgClassMangledPrefix(self, t);
-    #line 5112 "./src/generator/c_gen.am"
+    #line 5119 "./src/generator/c_gen.am"
     if ((String_Length(pkgMangled) > 0) && !Amalgame_Compiler_CGen_IsLocalClass(self, t)) {
-        #line 5113 "./src/generator/c_gen.am"
+        #line 5120 "./src/generator/c_gen.am"
         return code_string_concat(pkgMangled, "*");
     }
-    #line 5115 "./src/generator/c_gen.am"
+    #line 5122 "./src/generator/c_gen.am"
     code_string sym = Amalgame_Compiler_CGen_SymName(self, t);
-    #line 5117 "./src/generator/c_gen.am"
+    #line 5124 "./src/generator/c_gen.am"
     if (String_Length(t) == 1) {
-        #line 5118 "./src/generator/c_gen.am"
+        #line 5125 "./src/generator/c_gen.am"
         code_string fc = String_Substring(t, 0, 1);
-        #line 5119 "./src/generator/c_gen.am"
+        #line 5126 "./src/generator/c_gen.am"
         code_bool isUp = code_string_equals(fc, String_ToUpper(fc));
-        #line 5120 "./src/generator/c_gen.am"
+        #line 5127 "./src/generator/c_gen.am"
         if (isUp) {
             return "void*";
         }
     }
-    #line 5122 "./src/generator/c_gen.am"
+    #line 5129 "./src/generator/c_gen.am"
     if (Amalgame_Compiler_CGen_IsEnum(self, sym)) {
-        #line 5123 "./src/generator/c_gen.am"
+        #line 5130 "./src/generator/c_gen.am"
         return sym;
     }
-    #line 5126 "./src/generator/c_gen.am"
+    #line 5133 "./src/generator/c_gen.am"
     code_string algKey = code_string_concat("__alg__", sym);
-    #line 5127 "./src/generator/c_gen.am"
+    #line 5134 "./src/generator/c_gen.am"
     i64 en2 = AmalgameList_count(self->EnumNames);
-    #line 5128 "./src/generator/c_gen.am"
+    #line 5135 "./src/generator/c_gen.am"
     for (i64 ei2 = 0; ei2 < en2; ei2++) {
-        #line 5129 "./src/generator/c_gen.am"
+        #line 5136 "./src/generator/c_gen.am"
         if (code_string_equals((code_string)AmalgameList_get(self->EnumNames, ei2), algKey)) {
             return sym;
         }
     }
-    #line 5131 "./src/generator/c_gen.am"
+    #line 5138 "./src/generator/c_gen.am"
     return code_string_concat(sym, "*");
 }
 
@@ -24722,12 +24738,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "717b97ee";
+    return "817601bd";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-25T06:50:18Z";
+    return "2026-05-25T07:38:42Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
