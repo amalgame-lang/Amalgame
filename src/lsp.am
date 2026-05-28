@@ -437,6 +437,14 @@ public class LspServer {
         if (String_Length(pkgClass) > 0) {
             resolver.DeclareGlobal(pkgClass, "type", false)
         }
+        // Consumer-project support: declare the classes exported by
+        // every dependency in the project's amalgame.lock so that
+        // references to package types (WebApp, HttpResponse, Static, …)
+        // don't surface as false "Unknown symbol" diagnostics. The
+        // compiler resolves these via the lockfile; the LSP didn't,
+        // which lit up an entire Mosaic app red in the editor while
+        // the build was green.
+        LspServer.DeclareDependencyClasses(resolver, this.CachedRoot)
         resolver.ResolvePrograms()
         // Stash for subsequent requests at the same document version.
         this.CachedResolver     = resolver
@@ -487,6 +495,100 @@ public class LspServer {
             li = li + 1
         }
         return ""
+    }
+
+    // Walk the project's amalgame.lock and, for every locked dependency,
+    // declare the classes it exports (read from the cached package's
+    // amalgame.toml [stdlib] table) as known type-globals on `resolver`.
+    // Best-effort + line-based (no full TOML parse, bootstrap-friendly):
+    // any missing lockfile / manifest is silently skipped, so a project
+    // without deps behaves exactly as before.
+    private static void DeclareDependencyClasses(FullResolver resolver, string root) {
+        if (String_Length(root) == 0) { return }
+        let lockPath: string = root + "/amalgame.lock"
+        if (!File.Exists(lockPath)) { return }
+        let home: string = PackageRegistry.AmalgameHome()
+        let lines: List<string> = String_Split(File.ReadAll(lockPath), "\n")
+        let n: int = lines.Count()
+        var git: string = ""
+        var tag: string = ""
+        var rev: string = ""
+        var li: int = 0
+        while (li < n) {
+            let t: string = String_Trim(lines.Get(li))
+            if (String_StartsWith(t, "git")) {
+                git = LspServer.TomlFirstString(t)
+            } else if (String_StartsWith(t, "tag")) {
+                tag = LspServer.TomlFirstString(t)
+            } else if (String_StartsWith(t, "rev")) {
+                // rev is the last field of each [[package]] block.
+                rev = LspServer.TomlFirstString(t)
+                if (String_Length(git) > 0 && String_Length(tag) > 0 && String_Length(rev) > 0) {
+                    let manifest: string = home + "/.amalgame/packages/" + git + "/" + tag + "_" + rev + "/amalgame.toml"
+                    LspServer.DeclareManifestClasses(resolver, manifest)
+                }
+                git = ""
+                tag = ""
+                rev = ""
+            }
+            li = li + 1
+        }
+    }
+
+    // Pull the first double-quoted substring out of a TOML line, e.g.
+    // `git = "github.com/..."` → `github.com/...`. "" when none.
+    private static string TomlFirstString(string line) {
+        let q1: int = String_IndexOf(line, "\"")
+        if (q1 < 0) { return "" }
+        let after: string = String_From(line, q1 + 1)
+        let q2: int = String_IndexOf(after, "\"")
+        if (q2 < 0) { return "" }
+        return String_Substring(after, 0, q2)
+    }
+
+    // Read a cached package's amalgame.toml and declare every class in
+    // its [stdlib] `class = "X"` / `classes = [ ... ]` surface as a
+    // type-global. Handles both single-line and multi-line arrays.
+    private static void DeclareManifestClasses(FullResolver resolver, string manifestPath) {
+        if (!File.Exists(manifestPath)) { return }
+        let lines: List<string> = String_Split(File.ReadAll(manifestPath), "\n")
+        let n: int = lines.Count()
+        var inStdlib: bool = false
+        var inArray: bool = false
+        var li: int = 0
+        while (li < n) {
+            let t: string = String_TrimStart(lines.Get(li))
+            if (inArray) {
+                LspServer.DeclareQuotedNames(resolver, t)
+                if (String_IndexOf(t, "]") >= 0) { inArray = false }
+                li = li + 1
+                continue
+            }
+            if (String_StartsWith(t, "[")) {
+                inStdlib = String_StartsWith(t, "[stdlib]")
+            } else if (inStdlib && String_StartsWith(t, "classes")) {
+                LspServer.DeclareQuotedNames(resolver, t)
+                if (String_IndexOf(t, "]") < 0) { inArray = true }
+            } else if (inStdlib && String_StartsWith(t, "class")) {
+                LspServer.DeclareQuotedNames(resolver, t)
+            }
+            li = li + 1
+        }
+    }
+
+    // Declare every double-quoted token on `line` as a type-global.
+    private static void DeclareQuotedNames(FullResolver resolver, string line) {
+        var s: string = line
+        while (true) {
+            let q1: int = String_IndexOf(s, "\"")
+            if (q1 < 0) { return }
+            let after: string = String_From(s, q1 + 1)
+            let q2: int = String_IndexOf(after, "\"")
+            if (q2 < 0) { return }
+            let name: string = String_Substring(after, 0, q2)
+            if (String_Length(name) > 0) { resolver.DeclareGlobal(name, "type", false) }
+            s = String_From(after, q2 + 1)
+        }
     }
 
     // Linear lookup over the cached sibling paths. Used by the
