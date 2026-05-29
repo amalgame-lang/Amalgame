@@ -284,6 +284,28 @@ public class CGen {
             }
             this.SetImportedNamespaces(autoImports)
         }
+        // v0.8.59: always treat the source's OWN namespace as
+        // implicitly imported. Without this, compiling a package
+        // source file (e.g. amalgame-tls/acme.am, namespace
+        // `Amalgame.Tls`) drops its OWN runtime header `#include`
+        // AND every typedef forward-decl for sibling pkg-classes
+        // declared via manifest `classes = [...]` but without an
+        // AM `class` decl (e.g. AmalgameTlsAcmeHttpResponse, a
+        // pure C struct in the runtime header). You can't `import`
+        // yourself, so the import-extraction loop above misses it;
+        // we patch it up here once NsPrefix is known.
+        if (String_Length(ns) > 0) {
+            var alreadyPresent: bool = false
+            let existing: int = this.ImportedNs.Count()
+            for ei in 0..existing {
+                if (this.ImportedNs.Get(ei) == ns) {
+                    alreadyPresent = true
+                }
+            }
+            if (!alreadyPresent) {
+                this.ImportedNs.Add(ns)
+            }
+        }
         this.EmitHeader()
         let decls = prog.Children.Count()
         for i in 0..decls {
@@ -310,6 +332,28 @@ public class CGen {
     public void BeginMulti(string ns) {
         if (String_Length(ns) > 0) {
             this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+        // v0.8.59: always treat the compilation unit's own namespace
+        // as implicitly imported — same rationale as Generate(). A
+        // package compiling its own facade via `amc --lib` (e.g. the
+        // amc package-add precompile path) needs its OWN runtime
+        // header to be #included so manifest-declared pkg-classes
+        // (no AM source, just a C typedef in the header) reach gcc.
+        // ImportedNs stores DOTTED-form namespaces (matching what
+        // NamespaceImported compares against). main.am passes
+        // BeginMulti an underscored `nsPrefix`, so convert back.
+        if (String_Length(ns) > 0) {
+            let nsDot: string = String_Replace(ns, "_", ".")
+            var alreadyPresent: bool = false
+            let existing: int = this.ImportedNs.Count()
+            for ei in 0..existing {
+                if (this.ImportedNs.Get(ei) == nsDot) {
+                    alreadyPresent = true
+                }
+            }
+            if (!alreadyPresent) {
+                this.ImportedNs.Add(nsDot)
+            }
         }
         this.EmitHeader()
         // v0.8.38: emit forward-decl typedefs for every class
