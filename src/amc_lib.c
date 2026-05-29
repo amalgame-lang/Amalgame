@@ -76,6 +76,7 @@ typedef struct _Amalgame_Compiler_MigrateCommand Amalgame_Compiler_MigrateComman
 typedef struct _Amalgame_Compiler_GenerateCommand Amalgame_Compiler_GenerateCommand;
 typedef struct _Amalgame_Compiler_ExplainCommand Amalgame_Compiler_ExplainCommand;
 typedef struct _Amalgame_Compiler_NewCommand Amalgame_Compiler_NewCommand;
+typedef struct _Amalgame_Compiler_DocCommand Amalgame_Compiler_DocCommand;
 typedef struct _Amalgame_Compiler_ArgParser Amalgame_Compiler_ArgParser;
 typedef struct _Amalgame_Compiler_AddCommand Amalgame_Compiler_AddCommand;
 /* inline-C top-level */
@@ -1046,6 +1047,18 @@ static code_string Amalgame_Compiler_NewCommand_MainAmUiWebForm(code_string name
 static code_string Amalgame_Compiler_NewCommand_ManifestUiWebForm(code_string name);
 static code_string Amalgame_Compiler_NewCommand_BuildShUiWebForm(code_string name);
 static code_string Amalgame_Compiler_NewCommand_ReadmeUiWebForm(code_string name);
+Amalgame_Compiler_DocCommand* Amalgame_Compiler_DocCommand_new();
+i64 Amalgame_Compiler_DocCommand_Run(i64 argc);
+static void Amalgame_Compiler_DocCommand_PrintUsage();
+static code_string Amalgame_Compiler_DocCommand_EmitMarkdown(code_string path, Amalgame_Compiler_AstNode* prog, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitClass(Amalgame_Compiler_AstNode* cls, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitField(code_string clsName, Amalgame_Compiler_AstNode* field, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitMethod(code_string clsName, Amalgame_Compiler_AstNode* method, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitEnum(Amalgame_Compiler_AstNode* en, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_CollectCommentsBefore(AmalgameList* comments, i64 declLine, i64 indent);
+static code_string Amalgame_Compiler_DocCommand_RenderRange(AmalgameList* comments, i64 lastIdx, i64 declLine, i64 indent);
+static code_string Amalgame_Compiler_DocCommand_StripCommentMarker(code_string raw);
+static code_string Amalgame_Compiler_DocCommand_Basename(code_string path);
 Amalgame_Compiler_ArgParser* Amalgame_Compiler_ArgParser_new();
 Amalgame_Compiler_ArgParser* Amalgame_Compiler_ArgParser_Flag(Amalgame_Compiler_ArgParser* self, code_string name);
 Amalgame_Compiler_ArgParser* Amalgame_Compiler_ArgParser_Option(Amalgame_Compiler_ArgParser* self, code_string name);
@@ -7663,7 +7676,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.57";
+    return "0.8.58";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -24789,12 +24802,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "3c42f393";
+    return "98564e1c";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-29T07:30:41Z";
+    return "2026-05-29T07:44:50Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
@@ -38396,6 +38409,431 @@ static code_string Amalgame_Compiler_NewCommand_ReadmeUiWebForm(code_string name
     return s;
 }
 
+struct _Amalgame_Compiler_DocCommand {
+};
+
+i64 Amalgame_Compiler_DocCommand_Run(i64 argc);
+static void Amalgame_Compiler_DocCommand_PrintUsage();
+static code_string Amalgame_Compiler_DocCommand_EmitMarkdown(code_string path, Amalgame_Compiler_AstNode* prog, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitClass(Amalgame_Compiler_AstNode* cls, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitField(code_string clsName, Amalgame_Compiler_AstNode* field, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitMethod(code_string clsName, Amalgame_Compiler_AstNode* method, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_EmitEnum(Amalgame_Compiler_AstNode* en, AmalgameList* comments);
+static code_string Amalgame_Compiler_DocCommand_CollectCommentsBefore(AmalgameList* comments, i64 declLine, i64 indent);
+static code_string Amalgame_Compiler_DocCommand_RenderRange(AmalgameList* comments, i64 lastIdx, i64 declLine, i64 indent);
+static code_string Amalgame_Compiler_DocCommand_StripCommentMarker(code_string raw);
+static code_string Amalgame_Compiler_DocCommand_Basename(code_string path);
+
+Amalgame_Compiler_DocCommand* Amalgame_Compiler_DocCommand_new() {
+    Amalgame_Compiler_DocCommand* self = (Amalgame_Compiler_DocCommand*) GC_MALLOC(sizeof(Amalgame_Compiler_DocCommand));
+    return self;
+}
+
+i64 Amalgame_Compiler_DocCommand_Run(i64 argc) {
+    #line 33 "./src/doc_cmd.am"
+    Amalgame_Compiler_ArgParser* ap = Amalgame_Compiler_ArgParser_new();
+    #line 34 "./src/doc_cmd.am"
+    Amalgame_Compiler_ArgParser_Flag(ap, "-h");
+    #line 35 "./src/doc_cmd.am"
+    Amalgame_Compiler_ArgParser_Flag(ap, "--help");
+    #line 36 "./src/doc_cmd.am"
+    Amalgame_Compiler_ArgParser_Option(ap, "-o");
+    #line 37 "./src/doc_cmd.am"
+    Amalgame_Compiler_ArgParser_Parse(ap, argc, 2);
+    #line 38 "./src/doc_cmd.am"
+    if (Amalgame_Compiler_ArgParser_HelpRequested(ap)) {
+        #line 39 "./src/doc_cmd.am"
+        Amalgame_Compiler_DocCommand_PrintUsage();
+        #line 40 "./src/doc_cmd.am"
+        return 0;
+    }
+    #line 42 "./src/doc_cmd.am"
+    if (String_Length(Amalgame_Compiler_ArgParser_GetUnknown(ap)) > 0) {
+        #line 43 "./src/doc_cmd.am"
+        Console_WriteError(code_string_concat((code_string_concat("amc doc: unknown argument '", Amalgame_Compiler_ArgParser_GetUnknown(ap))), "'"));
+        #line 44 "./src/doc_cmd.am"
+        return 1;
+    }
+    #line 46 "./src/doc_cmd.am"
+    void* files = Amalgame_Compiler_ArgParser_GetPositionals(ap);
+    #line 47 "./src/doc_cmd.am"
+    if (AmalgameList_count(files) == 0) {
+        #line 48 "./src/doc_cmd.am"
+        Amalgame_Compiler_DocCommand_PrintUsage();
+        #line 49 "./src/doc_cmd.am"
+        return 1;
+    }
+    #line 51 "./src/doc_cmd.am"
+    if (AmalgameList_count(files) > 1) {
+        #line 52 "./src/doc_cmd.am"
+        Console_WriteError(code_string_concat((code_string_concat("amc doc: pass exactly one .am file (got ", String_FromInt(AmalgameList_count(files)))), ")"));
+        #line 53 "./src/doc_cmd.am"
+        return 1;
+    }
+    #line 55 "./src/doc_cmd.am"
+    code_string path = AmalgameList_get(files, 0);
+    #line 56 "./src/doc_cmd.am"
+    if (!String_EndsWith(path, ".am")) {
+        #line 57 "./src/doc_cmd.am"
+        Console_WriteError(code_string_concat((code_string_concat("amc doc: expected a .am file, got '", path)), "'"));
+        #line 58 "./src/doc_cmd.am"
+        return 1;
+    }
+    #line 60 "./src/doc_cmd.am"
+    if (!File_Exists(path)) {
+        #line 61 "./src/doc_cmd.am"
+        Console_WriteError(code_string_concat("amc doc: file not found: ", path));
+        #line 62 "./src/doc_cmd.am"
+        return 1;
+    }
+    #line 64 "./src/doc_cmd.am"
+    code_string src = File_ReadAll(path);
+    #line 65 "./src/doc_cmd.am"
+    Amalgame_Compiler_Lexer* lex = Amalgame_Compiler_Lexer_new(src, path);
+    #line 66 "./src/doc_cmd.am"
+    AmalgameList* toks = Amalgame_Compiler_Lexer_Tokenize(lex);
+    #line 67 "./src/doc_cmd.am"
+    Amalgame_Compiler_Parser* par = Amalgame_Compiler_Parser_new(toks);
+    #line 68 "./src/doc_cmd.am"
+    Amalgame_Compiler_AstNode* prog = Amalgame_Compiler_Parser_Parse(par);
+    #line 69 "./src/doc_cmd.am"
+    if (Amalgame_Compiler_Parser_HasErrors(par)) {
+        #line 70 "./src/doc_cmd.am"
+        Console_WriteError(code_string_concat("amc doc: parse errors in ", path));
+        #line 71 "./src/doc_cmd.am"
+        Console_WriteError(Amalgame_Compiler_Parser_GetErrors(par));
+        #line 72 "./src/doc_cmd.am"
+        return 1;
+    }
+    #line 74 "./src/doc_cmd.am"
+    code_string md = Amalgame_Compiler_DocCommand_EmitMarkdown(path, prog, par->Comments);
+    #line 75 "./src/doc_cmd.am"
+    code_string outPath = Amalgame_Compiler_ArgParser_GetOption(ap, "-o");
+    #line 76 "./src/doc_cmd.am"
+    if (String_Length(outPath) > 0) {
+        #line 77 "./src/doc_cmd.am"
+        File_WriteAll(outPath, md);
+        #line 78 "./src/doc_cmd.am"
+        Console_WriteError(code_string_concat("amc doc: wrote ", outPath));
+    } else {
+        #line 80 "./src/doc_cmd.am"
+        Console_Write(md);
+    }
+    #line 82 "./src/doc_cmd.am"
+    return 0;
+}
+
+static void Amalgame_Compiler_DocCommand_PrintUsage() {
+    #line 86 "./src/doc_cmd.am"
+    Console_WriteError("Usage: amc doc <file.am> [-o <out.md>]");
+    #line 87 "./src/doc_cmd.am"
+    Console_WriteError("");
+    #line 88 "./src/doc_cmd.am"
+    Console_WriteError("Extract doc comments (leading `//` blocks before classes,");
+    #line 89 "./src/doc_cmd.am"
+    Console_WriteError("enums, public methods + fields) and emit a Markdown reference.");
+    #line 90 "./src/doc_cmd.am"
+    Console_WriteError("Default: stdout. With -o <path>: write to that file.");
+}
+
+static code_string Amalgame_Compiler_DocCommand_EmitMarkdown(code_string path, Amalgame_Compiler_AstNode* prog, AmalgameList* comments) {
+    #line 96 "./src/doc_cmd.am"
+    code_string out = "";
+    #line 99 "./src/doc_cmd.am"
+    code_string ns = prog->Name;
+    #line 100 "./src/doc_cmd.am"
+    code_string heading = ns;
+    #line 101 "./src/doc_cmd.am"
+    if (String_Length(heading) == 0) {
+        #line 102 "./src/doc_cmd.am"
+        heading = Amalgame_Compiler_DocCommand_Basename(path);
+    }
+    #line 104 "./src/doc_cmd.am"
+    out = (code_string_concat((code_string_concat((code_string_concat(out, "# ")), heading)), "\n\n"));
+    #line 105 "./src/doc_cmd.am"
+    out = (code_string_concat((code_string_concat((code_string_concat(out, "_Source: `")), path)), "`_\n\n"));
+    #line 108 "./src/doc_cmd.am"
+    i64 firstDeclLine = 999999999;
+    #line 109 "./src/doc_cmd.am"
+    i64 nc = AmalgameList_count(prog->Children);
+    #line 110 "./src/doc_cmd.am"
+    for (i64 i = 0; i < nc; i++) {
+        #line 111 "./src/doc_cmd.am"
+        Amalgame_Compiler_AstNode* d = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i);
+        #line 112 "./src/doc_cmd.am"
+        if ((d->Line > 0) && (d->Line < firstDeclLine)) {
+            firstDeclLine = d->Line;
+        }
+    }
+    #line 114 "./src/doc_cmd.am"
+    code_string intro = Amalgame_Compiler_DocCommand_CollectCommentsBefore(comments, firstDeclLine, 0);
+    #line 115 "./src/doc_cmd.am"
+    if (String_Length(intro) > 0) {
+        #line 116 "./src/doc_cmd.am"
+        out = (code_string_concat((code_string_concat(out, intro)), "\n"));
+    }
+    #line 120 "./src/doc_cmd.am"
+    for (i64 j = 0; j < nc; j++) {
+        #line 121 "./src/doc_cmd.am"
+        Amalgame_Compiler_AstNode* decl = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, j);
+        #line 122 "./src/doc_cmd.am"
+        Amalgame_Compiler_NodeKind k = decl->Kind;
+        #line 123 "./src/doc_cmd.am"
+        if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
+            #line 124 "./src/doc_cmd.am"
+            out = (code_string_concat(out, Amalgame_Compiler_DocCommand_EmitClass(decl, comments)));
+        } else if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
+            #line 126 "./src/doc_cmd.am"
+            out = (code_string_concat(out, Amalgame_Compiler_DocCommand_EmitEnum(decl, comments)));
+        }
+    }
+    #line 130 "./src/doc_cmd.am"
+    return out;
+}
+
+static code_string Amalgame_Compiler_DocCommand_EmitClass(Amalgame_Compiler_AstNode* cls, AmalgameList* comments) {
+    #line 134 "./src/doc_cmd.am"
+    code_string out = code_string_concat((code_string_concat("## Class `", cls->Name)), "`\n\n");
+    #line 135 "./src/doc_cmd.am"
+    code_string lead = Amalgame_Compiler_DocCommand_CollectCommentsBefore(comments, cls->Line, 0);
+    #line 136 "./src/doc_cmd.am"
+    if (String_Length(lead) > 0) {
+        out = (code_string_concat((code_string_concat(out, lead)), "\n"));
+    }
+    #line 140 "./src/doc_cmd.am"
+    AmalgameList* kids = cls->Children;
+    #line 141 "./src/doc_cmd.am"
+    i64 mc = AmalgameList_count(kids);
+    #line 142 "./src/doc_cmd.am"
+    code_string fieldsOut = "";
+    #line 143 "./src/doc_cmd.am"
+    code_string methodsOut = "";
+    #line 144 "./src/doc_cmd.am"
+    for (i64 i = 0; i < mc; i++) {
+        #line 145 "./src/doc_cmd.am"
+        Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i);
+        #line 146 "./src/doc_cmd.am"
+        Amalgame_Compiler_NodeKind mk = m->Kind;
+        #line 149 "./src/doc_cmd.am"
+        if (m->Flag2) {
+            continue;
+        }
+        #line 150 "./src/doc_cmd.am"
+        if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
+            #line 151 "./src/doc_cmd.am"
+            fieldsOut = (code_string_concat(fieldsOut, Amalgame_Compiler_DocCommand_EmitField(cls->Name, m, comments)));
+        } else if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
+            #line 153 "./src/doc_cmd.am"
+            methodsOut = (code_string_concat(methodsOut, Amalgame_Compiler_DocCommand_EmitMethod(cls->Name, m, comments)));
+        }
+    }
+    #line 156 "./src/doc_cmd.am"
+    if (String_Length(fieldsOut) > 0) {
+        #line 157 "./src/doc_cmd.am"
+        out = (code_string_concat((code_string_concat(out, "### Fields\n\n")), fieldsOut));
+    }
+    #line 159 "./src/doc_cmd.am"
+    if (String_Length(methodsOut) > 0) {
+        #line 160 "./src/doc_cmd.am"
+        out = (code_string_concat((code_string_concat(out, "### Methods\n\n")), methodsOut));
+    }
+    #line 162 "./src/doc_cmd.am"
+    return code_string_concat(out, "\n");
+}
+
+static code_string Amalgame_Compiler_DocCommand_EmitField(code_string clsName, Amalgame_Compiler_AstNode* field, AmalgameList* comments) {
+    #line 166 "./src/doc_cmd.am"
+    code_string sig = code_string_concat((code_string_concat((code_string_concat((code_string_concat("- `", field->Name)), ": ")), field->Str)), "`");
+    #line 167 "./src/doc_cmd.am"
+    code_string out = code_string_concat(sig, "\n");
+    #line 168 "./src/doc_cmd.am"
+    code_string lead = Amalgame_Compiler_DocCommand_CollectCommentsBefore(comments, field->Line, 4);
+    #line 169 "./src/doc_cmd.am"
+    if (String_Length(lead) > 0) {
+        out = (code_string_concat(out, lead));
+    }
+    #line 170 "./src/doc_cmd.am"
+    out = (code_string_concat(out, "\n"));
+    #line 171 "./src/doc_cmd.am"
+    return out;
+}
+
+static code_string Amalgame_Compiler_DocCommand_EmitMethod(code_string clsName, Amalgame_Compiler_AstNode* method, AmalgameList* comments) {
+    #line 176 "./src/doc_cmd.am"
+    code_string sig = code_string_concat((code_string_concat((code_string_concat(clsName, ".")), method->Name)), "(");
+    #line 177 "./src/doc_cmd.am"
+    i64 pc = AmalgameList_count(method->Params);
+    #line 178 "./src/doc_cmd.am"
+    for (i64 pi = 0; pi < pc; pi++) {
+        #line 179 "./src/doc_cmd.am"
+        Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, pi);
+        #line 180 "./src/doc_cmd.am"
+        if (pi > 0) {
+            sig = (code_string_concat(sig, ", "));
+        }
+        #line 181 "./src/doc_cmd.am"
+        sig = (code_string_concat(sig, p->Name));
+        #line 182 "./src/doc_cmd.am"
+        if (String_Length(p->Str) > 0) {
+            #line 183 "./src/doc_cmd.am"
+            sig = (code_string_concat((code_string_concat(sig, ": ")), p->Str));
+        }
+    }
+    #line 186 "./src/doc_cmd.am"
+    sig = (code_string_concat(sig, ")"));
+    #line 187 "./src/doc_cmd.am"
+    if ((String_Length(method->Str) > 0) && (!code_string_equals(method->Str, "void"))) {
+        #line 188 "./src/doc_cmd.am"
+        sig = (code_string_concat((code_string_concat(sig, " → ")), method->Str));
+    }
+    #line 190 "./src/doc_cmd.am"
+    code_string out = code_string_concat((code_string_concat("#### `", sig)), "`\n\n");
+    #line 191 "./src/doc_cmd.am"
+    code_string lead = Amalgame_Compiler_DocCommand_CollectCommentsBefore(comments, method->Line, 0);
+    #line 192 "./src/doc_cmd.am"
+    if (String_Length(lead) > 0) {
+        out = (code_string_concat((code_string_concat(out, lead)), "\n"));
+    }
+    #line 193 "./src/doc_cmd.am"
+    return out;
+}
+
+static code_string Amalgame_Compiler_DocCommand_EmitEnum(Amalgame_Compiler_AstNode* en, AmalgameList* comments) {
+    #line 197 "./src/doc_cmd.am"
+    code_string out = code_string_concat((code_string_concat("## Enum `", en->Name)), "`\n\n");
+    #line 198 "./src/doc_cmd.am"
+    code_string lead = Amalgame_Compiler_DocCommand_CollectCommentsBefore(comments, en->Line, 0);
+    #line 199 "./src/doc_cmd.am"
+    if (String_Length(lead) > 0) {
+        out = (code_string_concat((code_string_concat(out, lead)), "\n"));
+    }
+    #line 200 "./src/doc_cmd.am"
+    AmalgameList* kids = en->Children;
+    #line 201 "./src/doc_cmd.am"
+    i64 n = AmalgameList_count(kids);
+    #line 202 "./src/doc_cmd.am"
+    if (n > 0) {
+        #line 203 "./src/doc_cmd.am"
+        out = (code_string_concat(out, "Variants:\n\n"));
+        #line 204 "./src/doc_cmd.am"
+        for (i64 i = 0; i < n; i++) {
+            #line 205 "./src/doc_cmd.am"
+            Amalgame_Compiler_AstNode* v = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, i);
+            #line 206 "./src/doc_cmd.am"
+            out = (code_string_concat((code_string_concat((code_string_concat(out, "- `")), v->Name)), "`\n"));
+        }
+        #line 208 "./src/doc_cmd.am"
+        out = (code_string_concat(out, "\n"));
+    }
+    #line 210 "./src/doc_cmd.am"
+    return out;
+}
+
+static code_string Amalgame_Compiler_DocCommand_CollectCommentsBefore(AmalgameList* comments, i64 declLine, i64 indent) {
+    #line 221 "./src/doc_cmd.am"
+    if (declLine <= 0) {
+        return "";
+    }
+    #line 222 "./src/doc_cmd.am"
+    i64 n = AmalgameList_count(comments);
+    #line 224 "./src/doc_cmd.am"
+    i64 lastIdx = -1;
+    #line 225 "./src/doc_cmd.am"
+    for (i64 i = 0; i < n; i++) {
+        #line 226 "./src/doc_cmd.am"
+        Amalgame_Compiler_Token* c = (Amalgame_Compiler_Token*)AmalgameList_get(comments, i);
+        #line 227 "./src/doc_cmd.am"
+        if (c->Line < declLine) {
+            lastIdx = i;
+        } else {
+            return Amalgame_Compiler_DocCommand_RenderRange(comments, lastIdx, declLine, indent);
+        }
+    }
+    #line 229 "./src/doc_cmd.am"
+    return Amalgame_Compiler_DocCommand_RenderRange(comments, lastIdx, declLine, indent);
+}
+
+static code_string Amalgame_Compiler_DocCommand_RenderRange(AmalgameList* comments, i64 lastIdx, i64 declLine, i64 indent) {
+    #line 236 "./src/doc_cmd.am"
+    if (lastIdx < 0) {
+        return "";
+    }
+    #line 237 "./src/doc_cmd.am"
+    Amalgame_Compiler_Token* last = (Amalgame_Compiler_Token*)AmalgameList_get(comments, lastIdx);
+    #line 241 "./src/doc_cmd.am"
+    if (last->Line != (declLine - 1)) {
+        return "";
+    }
+    #line 243 "./src/doc_cmd.am"
+    i64 startIdx = lastIdx;
+    #line 244 "./src/doc_cmd.am"
+    i64 prevLine = last->Line;
+    #line 245 "./src/doc_cmd.am"
+    i64 i = lastIdx - 1;
+    #line 246 "./src/doc_cmd.am"
+    while (i >= 0) {
+        #line 247 "./src/doc_cmd.am"
+        Amalgame_Compiler_Token* c = (Amalgame_Compiler_Token*)AmalgameList_get(comments, i);
+        #line 248 "./src/doc_cmd.am"
+        if (c->Line == (prevLine - 1)) {
+            #line 249 "./src/doc_cmd.am"
+            startIdx = i;
+            #line 250 "./src/doc_cmd.am"
+            prevLine = c->Line;
+            #line 251 "./src/doc_cmd.am"
+            i = (i - 1);
+        } else {
+            #line 253 "./src/doc_cmd.am"
+            i = -1;
+        }
+    }
+    #line 258 "./src/doc_cmd.am"
+    code_string out = "";
+    #line 259 "./src/doc_cmd.am"
+    code_string pad = "";
+    #line 260 "./src/doc_cmd.am"
+    i64 p = 0;
+    #line 261 "./src/doc_cmd.am"
+    while (p < indent) {
+        pad = (code_string_concat(pad, " "));
+        p = (p + 1);
+    }
+    #line 262 "./src/doc_cmd.am"
+    for (i64 k = startIdx; k < lastIdx + 1; k++) {
+        #line 263 "./src/doc_cmd.am"
+        Amalgame_Compiler_Token* c = (Amalgame_Compiler_Token*)AmalgameList_get(comments, k);
+        #line 264 "./src/doc_cmd.am"
+        code_string stripped = Amalgame_Compiler_DocCommand_StripCommentMarker(c->Value);
+        #line 265 "./src/doc_cmd.am"
+        out = (code_string_concat((code_string_concat((code_string_concat(out, pad)), stripped)), "\n"));
+    }
+    #line 267 "./src/doc_cmd.am"
+    return out;
+}
+
+static code_string Amalgame_Compiler_DocCommand_StripCommentMarker(code_string raw) {
+    #line 272 "./src/doc_cmd.am"
+    code_string s = raw;
+    #line 273 "./src/doc_cmd.am"
+    if (String_StartsWith(s, "//")) {
+        #line 274 "./src/doc_cmd.am"
+        s = String_Substring(s, 2, String_Length(s) - 2);
+    }
+    #line 276 "./src/doc_cmd.am"
+    return String_Trim(s);
+}
+
+static code_string Amalgame_Compiler_DocCommand_Basename(code_string path) {
+    #line 280 "./src/doc_cmd.am"
+    i64 sep = String_LastIndexOf(path, "/");
+    #line 281 "./src/doc_cmd.am"
+    if (sep < 0) {
+        return path;
+    }
+    #line 282 "./src/doc_cmd.am"
+    return String_Substring(path, sep + 1, (String_Length(path) - sep) - 1);
+}
+
 struct _Amalgame_Compiler_ArgParser {
     AmalgameList* RegisteredFlags;
     AmalgameList* SeenFlags;
@@ -45323,206 +45761,213 @@ void Amalgame_Compiler_Program_Main(code_string* args) {
         return;
     }
     #line 2006 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "test")) {
+    if (code_string_equals(Args_Get(1), "doc")) {
         #line 2007 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_Program_RunTest(argc));
+        Exit_Set(Amalgame_Compiler_DocCommand_Run(argc));
         #line 2008 "./src/main.am"
         return;
     }
     #line 2010 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "lsp")) {
+    if (code_string_equals(Args_Get(1), "test")) {
         #line 2011 "./src/main.am"
-        Amalgame_Compiler_LspServer* server = Amalgame_Compiler_LspServer_new();
+        Exit_Set(Amalgame_Compiler_Program_RunTest(argc));
         #line 2012 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_LspServer_Run(server));
-        #line 2013 "./src/main.am"
         return;
     }
-    #line 2015 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "dap")) {
+    #line 2014 "./src/main.am"
+    if (code_string_equals(Args_Get(1), "lsp")) {
+        #line 2015 "./src/main.am"
+        Amalgame_Compiler_LspServer* server = Amalgame_Compiler_LspServer_new();
         #line 2016 "./src/main.am"
-        Amalgame_Compiler_DapServer* dap = Amalgame_Compiler_DapServer_new();
+        Exit_Set(Amalgame_Compiler_LspServer_Run(server));
         #line 2017 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_DapServer_Run(dap));
-        #line 2018 "./src/main.am"
         return;
     }
-    #line 2020 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "migrate")) {
+    #line 2019 "./src/main.am"
+    if (code_string_equals(Args_Get(1), "dap")) {
+        #line 2020 "./src/main.am"
+        Amalgame_Compiler_DapServer* dap = Amalgame_Compiler_DapServer_new();
         #line 2021 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_MigrateCommand_Run(argc));
+        Exit_Set(Amalgame_Compiler_DapServer_Run(dap));
         #line 2022 "./src/main.am"
         return;
     }
     #line 2024 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "generate")) {
+    if (code_string_equals(Args_Get(1), "migrate")) {
         #line 2025 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_GenerateCommand_Run(argc));
+        Exit_Set(Amalgame_Compiler_MigrateCommand_Run(argc));
         #line 2026 "./src/main.am"
         return;
     }
     #line 2028 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "explain")) {
+    if (code_string_equals(Args_Get(1), "generate")) {
         #line 2029 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_ExplainCommand_Run(argc));
+        Exit_Set(Amalgame_Compiler_GenerateCommand_Run(argc));
         #line 2030 "./src/main.am"
         return;
     }
     #line 2032 "./src/main.am"
-    if (code_string_equals(Args_Get(1), "new")) {
+    if (code_string_equals(Args_Get(1), "explain")) {
         #line 2033 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_NewCommand_Run(argc));
+        Exit_Set(Amalgame_Compiler_ExplainCommand_Run(argc));
         #line 2034 "./src/main.am"
         return;
     }
-    #line 2042 "./src/main.am"
-    code_string v1 = Args_Get(1);
-    #line 2043 "./src/main.am"
-    if ((code_string_equals(v1, "package")) || (code_string_equals(v1, "pkg"))) {
-        #line 2044 "./src/main.am"
-        Exit_Set(Amalgame_Compiler_AddCommand_RunPackage(argc));
-        #line 2045 "./src/main.am"
+    #line 2036 "./src/main.am"
+    if (code_string_equals(Args_Get(1), "new")) {
+        #line 2037 "./src/main.am"
+        Exit_Set(Amalgame_Compiler_NewCommand_Run(argc));
+        #line 2038 "./src/main.am"
         return;
     }
-    #line 2048 "./src/main.am"
-    AmalgameList* inputFiles = AmalgameList_new();
-    #line 2049 "./src/main.am"
-    AmalgameList* externalFiles = AmalgameList_new();
-    #line 2050 "./src/main.am"
-    code_string outputName = "a.out";
-    #line 2051 "./src/main.am"
-    code_bool isLib = 0;
+    #line 2046 "./src/main.am"
+    code_string v1 = Args_Get(1);
+    #line 2047 "./src/main.am"
+    if ((code_string_equals(v1, "package")) || (code_string_equals(v1, "pkg"))) {
+        #line 2048 "./src/main.am"
+        Exit_Set(Amalgame_Compiler_AddCommand_RunPackage(argc));
+        #line 2049 "./src/main.am"
+        return;
+    }
     #line 2052 "./src/main.am"
-    code_bool checkOnly = 0;
+    AmalgameList* inputFiles = AmalgameList_new();
     #line 2053 "./src/main.am"
-    code_bool lintMode = 0;
+    AmalgameList* externalFiles = AmalgameList_new();
     #line 2054 "./src/main.am"
-    code_bool useColor = 0;
+    code_string outputName = "a.out";
     #line 2055 "./src/main.am"
-    code_bool verbose = 1;
+    code_bool isLib = 0;
+    #line 2056 "./src/main.am"
+    code_bool checkOnly = 0;
     #line 2057 "./src/main.am"
-    i64 i = 1;
+    code_bool lintMode = 0;
     #line 2058 "./src/main.am"
+    code_bool useColor = 0;
+    #line 2059 "./src/main.am"
+    code_bool verbose = 1;
+    #line 2061 "./src/main.am"
+    i64 i = 1;
+    #line 2062 "./src/main.am"
     while (i < argc) {
-        #line 2059 "./src/main.am"
+        #line 2063 "./src/main.am"
         code_string a = Args_Get(i);
-        #line 2060 "./src/main.am"
+        #line 2064 "./src/main.am"
         if ((code_string_equals(a, "-o")) && ((i + 1) < argc)) {
-            #line 2061 "./src/main.am"
+            #line 2065 "./src/main.am"
             i = (i + 1);
-            #line 2062 "./src/main.am"
+            #line 2066 "./src/main.am"
             outputName = Args_Get(i);
         } else if ((code_string_equals(a, "--external")) && ((i + 1) < argc)) {
-            #line 2070 "./src/main.am"
+            #line 2074 "./src/main.am"
             i = (i + 1);
-            #line 2071 "./src/main.am"
+            #line 2075 "./src/main.am"
             AmalgameList_add(externalFiles, (void*)(intptr_t)(Args_Get(i)));
         } else if (code_string_equals(a, "--lib")) {
-            #line 2073 "./src/main.am"
+            #line 2077 "./src/main.am"
             isLib = 1;
         } else if (code_string_equals(a, "--check")) {
-            #line 2075 "./src/main.am"
+            #line 2079 "./src/main.am"
             checkOnly = 1;
         } else if (code_string_equals(a, "--lint")) {
-            #line 2077 "./src/main.am"
+            #line 2081 "./src/main.am"
             lintMode = 1;
         } else if (code_string_equals(a, "--color")) {
-            #line 2079 "./src/main.am"
+            #line 2083 "./src/main.am"
             useColor = 1;
         } else if (code_string_equals(a, "--no-color")) {
-            #line 2081 "./src/main.am"
+            #line 2085 "./src/main.am"
             useColor = 0;
         } else if (code_string_equals(a, "--quiet")) {
-            #line 2083 "./src/main.am"
+            #line 2087 "./src/main.am"
             verbose = 0;
         } else if (code_string_equals(a, "--verbose")) {
-            #line 2085 "./src/main.am"
+            #line 2089 "./src/main.am"
             verbose = 1;
         } else if (code_string_equals(a, "--version")) {
-            #line 2092 "./src/main.am"
-            code_string rev = Amalgame_Compiler_BuildInfo_GitRev();
-            #line 2093 "./src/main.am"
-            code_string date = Amalgame_Compiler_BuildInfo_BuildDate();
-            #line 2094 "./src/main.am"
-            code_string head = code_string_concat("amc ", Amalgame_Compiler_PackageRegistry_AmcVersion());
-            #line 2095 "./src/main.am"
-            code_string prov = "";
             #line 2096 "./src/main.am"
+            code_string rev = Amalgame_Compiler_BuildInfo_GitRev();
+            #line 2097 "./src/main.am"
+            code_string date = Amalgame_Compiler_BuildInfo_BuildDate();
+            #line 2098 "./src/main.am"
+            code_string head = code_string_concat("amc ", Amalgame_Compiler_PackageRegistry_AmcVersion());
+            #line 2099 "./src/main.am"
+            code_string prov = "";
+            #line 2100 "./src/main.am"
             if ((String_Length(rev) > 0) && (String_Length(date) > 0)) {
-                #line 2097 "./src/main.am"
+                #line 2101 "./src/main.am"
                 prov = (code_string_concat((code_string_concat((code_string_concat((code_string_concat(" (commit ", rev)), ", built ")), date)), ")"));
             } else if (String_Length(rev) > 0) {
-                #line 2099 "./src/main.am"
+                #line 2103 "./src/main.am"
                 prov = (code_string_concat((code_string_concat(" (commit ", rev)), ")"));
             } else if (String_Length(date) > 0) {
-                #line 2101 "./src/main.am"
+                #line 2105 "./src/main.am"
                 prov = (code_string_concat((code_string_concat(" (built ", date)), ")"));
             }
-            #line 2103 "./src/main.am"
-            Console_WriteLine(code_string_concat(head, prov));
-            #line 2104 "./src/main.am"
-            Console_WriteLine("Self-hosted Amalgame compiler.");
-            #line 2105 "./src/main.am"
-            Console_WriteLine("Copyright (c) 2026 Bastien Mouget. License: Apache-2.0.");
-            #line 2106 "./src/main.am"
-            Console_WriteLine("Website:    https://amalgame.me");
             #line 2107 "./src/main.am"
-            Console_WriteLine("Repository: https://github.com/amalgame-lang/Amalgame");
+            Console_WriteLine(code_string_concat(head, prov));
             #line 2108 "./src/main.am"
-            Console_WriteLine("Issues:     https://github.com/amalgame-lang/Amalgame/issues");
+            Console_WriteLine("Self-hosted Amalgame compiler.");
             #line 2109 "./src/main.am"
-            Exit_Set(0);
+            Console_WriteLine("Copyright (c) 2026 Bastien Mouget. License: Apache-2.0.");
             #line 2110 "./src/main.am"
-            return;
-        } else if ((code_string_equals(a, "--help")) || (code_string_equals(a, "-h"))) {
+            Console_WriteLine("Website:    https://amalgame.me");
+            #line 2111 "./src/main.am"
+            Console_WriteLine("Repository: https://github.com/amalgame-lang/Amalgame");
             #line 2112 "./src/main.am"
-            Amalgame_Compiler_Program_PrintUsage();
+            Console_WriteLine("Issues:     https://github.com/amalgame-lang/Amalgame/issues");
             #line 2113 "./src/main.am"
             Exit_Set(0);
             #line 2114 "./src/main.am"
             return;
-        } else if (String_EndsWith(a, ".am")) {
+        } else if ((code_string_equals(a, "--help")) || (code_string_equals(a, "-h"))) {
             #line 2116 "./src/main.am"
+            Amalgame_Compiler_Program_PrintUsage();
+            #line 2117 "./src/main.am"
+            Exit_Set(0);
+            #line 2118 "./src/main.am"
+            return;
+        } else if (String_EndsWith(a, ".am")) {
+            #line 2120 "./src/main.am"
             AmalgameList_add(inputFiles, (void*)(intptr_t)(a));
         } else {
-            #line 2118 "./src/main.am"
+            #line 2122 "./src/main.am"
             Console_WriteError(code_string_concat((code_string_concat("amc: unknown option '", a)), "'"));
-            #line 2119 "./src/main.am"
+            #line 2123 "./src/main.am"
             Amalgame_Compiler_Program_PrintUsage();
-            #line 2120 "./src/main.am"
+            #line 2124 "./src/main.am"
             Exit_Set(1);
-            #line 2121 "./src/main.am"
+            #line 2125 "./src/main.am"
             return;
         }
-        #line 2123 "./src/main.am"
+        #line 2127 "./src/main.am"
         i = (i + 1);
     }
-    #line 2126 "./src/main.am"
+    #line 2130 "./src/main.am"
     if (AmalgameList_count(inputFiles) == 0) {
-        #line 2127 "./src/main.am"
+        #line 2131 "./src/main.am"
         Console_WriteError("amc: no input .am files");
-        #line 2128 "./src/main.am"
+        #line 2132 "./src/main.am"
         Exit_Set(1);
-        #line 2129 "./src/main.am"
+        #line 2133 "./src/main.am"
         return;
     }
-    #line 2132 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler* compiler = Amalgame_Compiler_AmalgameCompiler_new();
-    #line 2133 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_SetLib(compiler, isLib);
-    #line 2134 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(compiler, checkOnly);
-    #line 2135 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_SetLintMode(compiler, lintMode);
     #line 2136 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_SetColor(compiler, useColor);
+    Amalgame_Compiler_AmalgameCompiler* compiler = Amalgame_Compiler_AmalgameCompiler_new();
     #line 2137 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_SetVerbose(compiler, verbose);
+    Amalgame_Compiler_AmalgameCompiler_SetLib(compiler, isLib);
     #line 2138 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_SetExternalFiles(compiler, externalFiles);
+    Amalgame_Compiler_AmalgameCompiler_SetCheckOnly(compiler, checkOnly);
     #line 2139 "./src/main.am"
-    Amalgame_Compiler_AmalgameCompiler_Run(compiler, inputFiles, outputName);
+    Amalgame_Compiler_AmalgameCompiler_SetLintMode(compiler, lintMode);
     #line 2140 "./src/main.am"
+    Amalgame_Compiler_AmalgameCompiler_SetColor(compiler, useColor);
+    #line 2141 "./src/main.am"
+    Amalgame_Compiler_AmalgameCompiler_SetVerbose(compiler, verbose);
+    #line 2142 "./src/main.am"
+    Amalgame_Compiler_AmalgameCompiler_SetExternalFiles(compiler, externalFiles);
+    #line 2143 "./src/main.am"
+    Amalgame_Compiler_AmalgameCompiler_Run(compiler, inputFiles, outputName);
+    #line 2144 "./src/main.am"
     Exit_Set(Amalgame_Compiler_AmalgameCompiler_GetExitCode(compiler));
 }
 

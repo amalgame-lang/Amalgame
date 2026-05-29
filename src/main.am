@@ -2003,6 +2003,10 @@ public class Program {
             Exit_Set(Program.RunFmt(argc))
             return
         }
+        if (Args_Get(1) == "doc") {
+            Exit_Set(DocCommand.Run(argc))
+            return
+        }
         if (Args_Get(1) == "test") {
             Exit_Set(Program.RunTest(argc))
             return
