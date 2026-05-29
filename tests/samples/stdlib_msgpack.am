@@ -154,5 +154,45 @@ public class Program {
         } else {
             Console.WriteLine("[FAIL] decode fixmap kind")
         }
+
+        // ── int 64 (v0.8.54) — timestamps + INT64 edges ──
+        // No explicit `: JsonValue` annotations: amc would mis-
+        // namespace it as Tests_JsonValue (the consumer's
+        // namespace) and break every JsonValue reference in this
+        // file. Inferred types are fine — DecodeJson is well-typed.
+        let big = new JsonValue()
+        big.SetInt(1779666123456)
+        let bBig: List<int> = MsgPack.EncodeJson(big)
+        let nBig: int = bBig.Count()
+        let firstB: int = bBig.Get(0)
+        if (nBig == 9 && firstB == 211) {
+            Console.WriteLine("[PASS] encode int64 (9 bytes, 0xd3)")
+        } else {
+            Console.WriteLine("[FAIL] encode int64 wrong shape (n={nBig} b0={firstB})")
+        }
+        let backBig = MsgPack.DecodeJson(bBig)
+        if (backBig.AsInt() == 1779666123456) {
+            Console.WriteLine("[PASS] decode int64 positive")
+        } else {
+            Console.WriteLine("[FAIL] decode int64 positive")
+        }
+        let bigNeg = new JsonValue()
+        bigNeg.SetInt(-1779666123456)
+        let bBN: List<int> = MsgPack.EncodeJson(bigNeg)
+        let backBN = MsgPack.DecodeJson(bBN)
+        if (backBN.AsInt() == -1779666123456) {
+            Console.WriteLine("[PASS] decode int64 negative")
+        } else {
+            Console.WriteLine("[FAIL] decode int64 negative")
+        }
+        let edgeMax = new JsonValue()
+        edgeMax.SetInt(9223372036854775807)
+        let bMax: List<int> = MsgPack.EncodeJson(edgeMax)
+        let backMax = MsgPack.DecodeJson(bMax)
+        if (backMax.AsInt() == 9223372036854775807) {
+            Console.WriteLine("[PASS] decode int64 max")
+        } else {
+            Console.WriteLine("[FAIL] decode int64 max")
+        }
     }
 }

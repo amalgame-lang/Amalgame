@@ -384,6 +384,10 @@ class Program {
         g_msgpack.Add(new StdlibCase("MP: decode fixarray", "[PASS] decode fixarray"))
         g_msgpack.Add(new StdlibCase("MP: decode fixmap shape", "[PASS] decode fixmap shape"))
         g_msgpack.Add(new StdlibCase("MP: decode fixmap values", "[PASS] decode fixmap values"))
+        g_msgpack.Add(new StdlibCase("MP: encode int64 (0xd3)", "[PASS] encode int64 (9 bytes, 0xd3)"))
+        g_msgpack.Add(new StdlibCase("MP: decode int64 positive", "[PASS] decode int64 positive"))
+        g_msgpack.Add(new StdlibCase("MP: decode int64 negative", "[PASS] decode int64 negative"))
+        g_msgpack.Add(new StdlibCase("MP: decode int64 max", "[PASS] decode int64 max"))
         Program.RunGroup("./tests/samples/stdlib_msgpack.am", "src/stdlib/json.am src/stdlib/msgpack.am", "msgpack", g_msgpack)
 
         // ── path (21 cases) ──

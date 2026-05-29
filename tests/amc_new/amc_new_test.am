@@ -222,6 +222,16 @@ class Program {
             myd + "/install.ps1", "sc.exe create")
         Program.AssertFileLacks("service: install.ps1 lacks NSSM",
             myd + "/install.ps1", "nssm")
+        Program.AssertFile("service: install-macos.sh",         myd + "/install-macos.sh")
+        Program.AssertFile("service: com.amalgame.myd.plist",   myd + "/com.amalgame.myd.plist")
+        Program.AssertFileContains("service: plist Label baked",
+            myd + "/com.amalgame.myd.plist", "<string>com.amalgame.myd</string>")
+        Program.AssertFileContains("service: plist ProgramArguments baked",
+            myd + "/com.amalgame.myd.plist", "/usr/local/bin/myd")
+        Program.AssertFileContains("service: install-macos.sh bootstraps launchd",
+            myd + "/install-macos.sh", "launchctl bootstrap system")
+        Program.AssertFileContains("service: install-macos.sh writes correct plist path",
+            myd + "/install-macos.sh", "/Library/LaunchDaemons/")
 
         // ── Refusal on existing dir without --force ─
         Program.AssertCmdOutputContains("refusal: exists w/o --force",

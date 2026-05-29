@@ -542,6 +542,10 @@ public class FullResolver {
         // protocol where the sender of each packet matters
         // (ACK routing, request/response).
         this.DeclareGlobal("UdpSocket_ReceiveFrom", "?",      false)
+        // v0.8.53: tune SO_RCVBUF. Default is 8 MiB (set in
+        // UdpSocket_New); this overrides explicitly. Returns the
+        // kernel-granted size or -1.
+        this.DeclareGlobal("UdpSocket_SetRecvBuf",  "i64",    false)
         this.DeclareGlobal("UdpSocket_Close",       "void",   false)
     }
 
