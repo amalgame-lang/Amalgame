@@ -32,6 +32,10 @@ hack on the compiler itself, jump to chapter 7.
    over the OS webview (WebView2 / WKWebView / WebKitGTK). Five
    sub-chapters: getting started, widget catalogue, events +
    partial-DOM updates, layout + theming, escape hatches.
+10. [Cookbook](10-cookbook.md) — idiomatic snippets for the patterns
+    you'll need every day: strings, collections, files + JSON, CLI
+    arg parsing, processes, networking, pattern matching, threads,
+    inline-C primitives.
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
