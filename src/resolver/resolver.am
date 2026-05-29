@@ -162,6 +162,20 @@ public class FullResolver {
     // time on c_gen.am (~5k LoC, ~100 classes × 30+ methods) where
     // every CALL/NEW_EXPR triggered a full-AST sweep.
     private MethodNodeIndex: Map<string, AstNode>
+    // v0.8.57 perf — O(1) local lookups via a Map keyed on the
+    // identifier name → its LocalNames index. The parallel
+    // ShadowPrev list tracks, for every LocalNames entry, the
+    // LocalIndex value it shadowed at declaration time (or -1 when
+    // the name was previously unbound). PopScope walks the popped
+    // entries and restores ShadowPrev[i] into LocalIndex so the
+    // outer binding becomes visible again.
+    //
+    // Pre-fix, every identifier reference paid an O(N) walk over
+    // LocalNames in LookupInScopes/Type/IsLet/IndexOfLocal. On
+    // c_gen.am (5k LoC, dozens of locals per method) that pushed
+    // `amc --check` to 132s. The Map makes lookups O(1) hash hits.
+    private LocalIndex:    Map<string, int>
+    private ShadowPrev:    List<int>
     private LocalNames:    List<string>
     private LocalTypes:    List<string>
     private LocalIsLets:   List<bool>
@@ -210,6 +224,8 @@ public class FullResolver {
         this.GlobalTypes   = new List<string>()
         this.GlobalIndex   = new Map<string, int>()
         this.MethodNodeIndex = new Map<string, AstNode>()
+        this.LocalIndex    = new Map<string, int>()
+        this.ShadowPrev    = new List<int>()
         this.LocalNames    = new List<string>()
         this.LocalTypes    = new List<string>()
         this.LocalIsLets   = new List<bool>()
@@ -563,12 +579,23 @@ public class FullResolver {
         if (depth == 0) { return }
         let mark = this.ScopeStarts.Get(depth - 1)
         this.ScopeStarts.RemoveAt(depth - 1)
-        // Truncate LocalNames/Types/IsLets back to mark (drop entries declared in this scope)
+        // Truncate LocalNames/Types/IsLets back to mark (drop entries
+        // declared in this scope) and restore each name's shadowed
+        // binding in LocalIndex so the outer scope's binding (if any)
+        // becomes visible again.
         while (this.LocalNames.Count() > mark) {
             let last = this.LocalNames.Count() - 1
+            let lname: string = this.LocalNames.Get(last)
+            let prev:  int    = this.ShadowPrev.Get(last)
+            if (prev < 0) {
+                this.LocalIndex.Remove(lname)
+            } else {
+                this.LocalIndex.Set(lname, prev)
+            }
             this.LocalNames.RemoveAt(last)
             this.LocalTypes.RemoveAt(last)
             this.LocalIsLets.RemoveAt(last)
+            this.ShadowPrev.RemoveAt(last)
         }
     }
 
@@ -605,33 +632,36 @@ public class FullResolver {
     }
 
     private bool DeclareCurrent(string name, string typeName, bool isLet) {
-        // Duplicate check: only within the current scope (allow shadowing outer scopes)
+        // Duplicate check: only within the current scope (allow
+        // shadowing outer scopes). LocalIndex stores the latest
+        // binding for `name`; if it's >= the current scope's start
+        // it's a same-scope dup, otherwise it's an outer binding we
+        // legitimately shadow.
         let start = this.CurrentScopeStart()
-        let count = this.LocalNames.Count()
-        for i in start..count {
-            if (this.LocalNames.Get(i) == name) { return false }
+        if (this.LocalIndex.Has(name)) {
+            let existing: int = this.LocalIndex.Get(name)
+            if (existing >= start) { return false }
         }
+        let newIdx: int = this.LocalNames.Count()
+        var prev: int = -1
+        if (this.LocalIndex.Has(name)) { prev = this.LocalIndex.Get(name) }
         this.LocalNames.Add(name)
         this.LocalTypes.Add(typeName)
         this.LocalIsLets.Add(isLet)
+        this.ShadowPrev.Add(prev)
+        this.LocalIndex.Set(name, newIdx)
         return true
     }
 
     private bool LookupInScopes(string name) {
-        // Walk LocalNames backwards so inner (most recently pushed) scopes shadow outer ones
-        var i = this.LocalNames.Count() - 1
-        while (i >= 0) {
-            if (this.LocalNames.Get(i) == name) { return true }
-            i = i - 1
-        }
+        if (this.LocalIndex.Has(name)) { return true }
         return this.GlobalIndex.Has(name)
     }
 
     private string LookupType(string name) {
-        var i = this.LocalNames.Count() - 1
-        while (i >= 0) {
-            if (this.LocalNames.Get(i) == name) { return this.LocalTypes.Get(i) }
-            i = i - 1
+        if (this.LocalIndex.Has(name)) {
+            let idx: int = this.LocalIndex.Get(name)
+            return this.LocalTypes.Get(idx)
         }
         if (this.GlobalIndex.Has(name)) {
             let idx: int = this.GlobalIndex.Get(name)
@@ -641,10 +671,9 @@ public class FullResolver {
     }
 
     private bool LookupIsLet(string name) {
-        var i = this.LocalNames.Count() - 1
-        while (i >= 0) {
-            if (this.LocalNames.Get(i) == name) { return this.LocalIsLets.Get(i) }
-            i = i - 1
+        if (this.LocalIndex.Has(name)) {
+            let idx: int = this.LocalIndex.Get(name)
+            return this.LocalIsLets.Get(idx)
         }
         return false
     }
@@ -653,11 +682,7 @@ public class FullResolver {
     // Used by capture analysis to decide whether an identifier lives in
     // an enclosing scope (idx < LambdaBoundary) or in the lambda itself.
     private int IndexOfLocal(string name) {
-        var i = this.LocalNames.Count() - 1
-        while (i >= 0) {
-            if (this.LocalNames.Get(i) == name) { return i }
-            i = i - 1
-        }
+        if (this.LocalIndex.Has(name)) { return this.LocalIndex.Get(name) }
         return -1
     }
 
@@ -1177,6 +1202,22 @@ public class FullResolver {
     // Reduce takes (Acc, T) → Acc and is deferred to a follow-up
     // because the Acc type depends on the init argument, not the
     // receiver alone.
+    // Returns true if any of the call's args is a __lambda__
+    // METHOD_DECL node. Used as a cheap pre-check so the per-call
+    // type-inference / method lookup work in the lambda-patching
+    // path is skipped on the (very common) calls with no lambda args.
+    // On c_gen.am this trims resolve time from ~145s to ~25s.
+    private bool HasLambdaArg(AstNode call) {
+        let argc: int = call.Args.Count()
+        for i in 0..argc {
+            let arg: AstNode = call.Args.Get(i)
+            if (arg.Kind == NodeKind.METHOD_DECL && arg.Name == "__lambda__") {
+                return true
+            }
+        }
+        return false
+    }
+
     private void PatchLambdaParamTypes(AstNode call) {
         if (call.Left == null) { return }
         if (call.Left.Kind != NodeKind.MEMBER) { return }
@@ -1190,6 +1231,10 @@ public class FullResolver {
         else if (methodName == "CountIf") { isSingleT = true }
         if (!isSingleT) { return }
         if (call.Left.Left == null) { return }
+        // Skip the receiver-type inference unless the call actually has
+        // a lambda arg to patch. Without this every `xs.Map(x)` in the
+        // codebase paid for a recursive InferExprType walk.
+        if (!this.HasLambdaArg(call)) { return }
         let recvType = this.InferExprType(call.Left.Left)
         let elem: string = this.CollectionElemType(recvType)
         if (String_Length(elem) == 0) { return }
@@ -1291,6 +1336,12 @@ public class FullResolver {
     }
 
     private void PatchLambdaParamTypesGeneric(AstNode expr) {
+        // Cheap pre-check: skip both NEW_EXPR + CALL branches when
+        // the args carry no lambda. The receiver-type inference +
+        // FindMethodInPrograms lookup otherwise fire for every call
+        // in the AST (thousands per big method), which dominated
+        // resolve time on c_gen.am.
+        if (!this.HasLambdaArg(expr)) { return }
         // NEW_EXPR: ctor lookup on the class being constructed.
         if (expr.Kind == NodeKind.NEW_EXPR) {
             let methodDecl: AstNode = this.FindMethodInPrograms(expr.Name, expr.Name)
