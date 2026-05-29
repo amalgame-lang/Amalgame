@@ -1,7 +1,7 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-29T07:50:28+02:00
-Git rev:  a605a9b8e66f64395156074b2f315e3f30288f44
+Captured: 2026-05-29T09:32:35+02:00
+Git rev:  3c42f3936e003bd11f6cd2f5bb2e41164992ffe2
 Branch:   feat/udp-recvbuf-tunable
 Tests:    604 passed
 
