@@ -1,11 +1,23 @@
 (* ═══════════════════════════════════════════════════════ *)
 (*  Grammaire EBNF du langage Amalgame                    *)
-(*  Version : 0.3.6                                       *)
+(*  Version : 0.8.58 (re-validée 2026-05-29)              *)
 (*                                                        *)
-(*  Cette grammaire reflète exactement le parser          *)
-(*  self-hosted (src/parser/parser.am). Elle décrit la    *)
-(*  syntaxe acceptée aujourd'hui — les sucres syntaxiques *)
-(*  rejetés ou réservés pour plus tard sont absents.      *)
+(*  Cette grammaire reflète le parser self-hosted         *)
+(*  (src/parser/parser.am). Elle décrit la syntaxe        *)
+(*  acceptée aujourd'hui — les sucres rejetés ou          *)
+(*  réservés pour plus tard sont absents.                 *)
+(*                                                        *)
+(*  Re-validation contre parser self-hosted :             *)
+(*    - lambdas v2/v2.5 (multi-param, block body, typed)  *)
+(*    - list literals + spread `[a, ...xs, b]`            *)
+(*    - list comprehensions + match-as-expression         *)
+(*    - try / catch / throw + finally                     *)
+(*    - destructuring tuples + algebraic enums            *)
+(*    - inline-C `@c {...}` / `@c_include` / `@c_link`    *)
+(*    - triple-quoted strings + escape sequences          *)
+(*    - nullable types `T?` + `?.` + `??`                 *)
+(*    - guard clauses + match arm guards                  *)
+(*    - range `0..n` (binary op)                          *)
 (* ═══════════════════════════════════════════════════════ *)
 
 
@@ -48,7 +60,26 @@ TopLevelDecl
       ( ClassDecl
       | DataClassDecl
       | EnumDecl
-      | InterfaceDecl )
+      | InterfaceDecl
+      | InlineCDirective )
+    ;
+
+(* Inline-C primitives (v0.7.4+). File-scope and statement-level
+   `@c { ... }` blocks paste a C fragment verbatim into the
+   generated .c output. `@c_include "<path>"` adds a C `#include`
+   and `@c_link "<lib>"` adds a `-l<lib>` to the link flags. *)
+InlineCDirective
+    = InlineCBlock
+    | "@c_include" StringLit NEWLINE
+    | "@c_link"    StringLit NEWLINE
+    ;
+
+InlineCBlock
+    = "@c" "{" { ANY_CHAR_EXCEPT_RBRACE } "}"
+    ;
+
+InlineCExpr
+    = "@c" "{" { ANY_CHAR_EXCEPT_RBRACE } "}"
     ;
 
 
@@ -383,8 +414,21 @@ Primary
     | NewExpr
     | IfExpr
     | MatchExpr
-    | ListComp
+    | ListLiteral        (* [a, b, c] ; disambiguated from ListComp by lookahead *)
+    | ListComp           (* [x for x in xs if p] *)
     | StringInterp
+    | InlineCExpr        (* @c { ... } at expression position *)
+    ;
+
+(* List literal with optional spread elements (v0.8.19).
+   `[1, ...xs, 2, ...ys]` splices each spread operand's elements
+   at its position. *)
+ListLiteral
+    = "[" [ ListItem { "," ListItem } [ "," ] ] "]"
+    ;
+
+ListItem
+    = [ "..." ] Expression
     ;
 
 TupleOrParen
@@ -518,20 +562,23 @@ BlockComment
 (*  RÉSERVÉ POUR PLUS TARD                                *)
 (* ═══════════════════════════════════════════════════════ *)
 (* Constructions présentes dans la grammaire v0.1.0 (CODE)
-   mais NON reconnues par le parser v0.3.6 :
+   mais NON reconnues par le parser v0.8.58 :
 
    - Properties avec get/set accessors
    - Constructors syntaxe explicite (`init(...)`)
-   - `async` / `await` / coroutines
+   - `async` / `await` côté langage (l'écosystème runtime est
+     en place via amalgame-async ; le sucre amc reste à venir)
    - `with { ... }` expression
    - Traits (au-delà des interfaces)
    - Modificateurs `protected`, `internal`, `abstract`,
      `override`, `weak`, `pure`
    - Function types `(int) -> string` comme types nommés
-     (les lambdas en argument avec signatures non-int sont
-     prévues pour v2.5)
-   - Spread `...args` et `[...a, ...b]`
+     (utiliser `Closure<A, R>` à la place — v0.8.36+)
+   - Variadic call sites `f(...args)` et variadic param defs
+     `(...xs: T[])` (le spread est dispo en list literal mais
+     pas en call position)
    - Foreach C-style
-   - `func` keyword pour fonctions top-level
+   - `func` keyword pour fonctions top-level (amc rejette
+     explicitement depuis v0.6.x — tout vit dans une classe)
 
    Voir ROADMAP_COMPLET.md pour le tracking détaillé. *)

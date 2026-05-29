@@ -1119,7 +1119,21 @@ before the next big language addition.
       `amc dap`. **Approche A (MI bridge custom)** for pretty-printing
       `AmalgameList*` / `AmalgameMap*` + filtering runtime frames is
       tracked as v0.9.0+ work (see top-of-file backlog).
-- [ ] **Inlay hints + code actions** — once hover/completion is in.
+- [x] **Inlay hints + code actions** (shipped in an earlier
+      LSP push, verified 2026-05-29 against `src/lsp.am`).
+      `textDocument/inlayHint` walks every VAR_DECL whose
+      annotation is empty and emits a Type-kind hint right after
+      the variable name (`CollectInlayHints` +
+      `InlayHintJson`). `textDocument/codeAction` returns two
+      action families: "Add explicit type annotation" — same
+      inferred-type lookup as inlay hints, packaged as a
+      `WorkspaceEdit` that inserts `: <type>` after the var name
+      (`CollectAnnotationFixes`); and "Install package X" quick-
+      fixes that pair with the resolver's "Unknown symbol"
+      diagnostics on missing-package imports
+      (`CollectPackageInstallSuggestions` — part of the v0.5+
+      package-discovery story). Both capabilities advertised in
+      the `initialize` response.
 
 ### Stdlib — backlog
 
