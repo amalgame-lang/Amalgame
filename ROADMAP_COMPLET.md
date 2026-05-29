@@ -1538,6 +1538,94 @@ implementation effort.
       requirement on the caller (the Amalgame side stays
       synchronous; concurrency comes from running the consumer
       loop in a thread spawned by user code).
+- [ ] **`Amalgame.Industrial.OPC` — OPC UA client/server** —
+      industrial automation tier, parallèle à `Amalgame.Database.*`
+      / `Amalgame.Messaging.*`. Cible : PLC, SCADA, MES, IIoT, MQTT
+      Sparkplug-style brokers, jumeaux numériques. Le standard de
+      facto dans l'industrie 4.0 (IEC 62541), supplante OPC Classic
+      (DA/HDA/AE, DCOM Windows-only — explicitement hors scope).
+      Premier package du namespace `Amalgame.Industrial.*`.
+
+      **Binding** : dynamic-link à
+      [open62541](https://github.com/open62541/open62541) (MPL-2.0,
+      C99, le SDK open-source canonique ; alternatives écartées :
+      node-opcua trop lourd à wrapper, Eclipse Milo Java-only,
+      ASNeG-OPCUA C++ moins maintenu). Package
+      `amalgame-industrial-opc` avec
+      `runtime/Amalgame_Industrial_OPC.h` + facade `opc.am`,
+      `libs = ["open62541"]` au link.
+
+      **Surface v1 — Client** :
+        - `Opc.Connect(endpointUrl) → AmalgameOpcClient?`
+          (`opc.tcp://host:4840`, anonymous auth)
+        - `Opc.ConnectWithCreds(endpointUrl, username, password)`
+        - `client.Close()`, `client.IsConnected()`,
+          `client.LastError()`
+        - `client.ReadString(nodeId)` / `ReadInt(nodeId)` /
+          `ReadFloat(nodeId)` / `ReadBool(nodeId)` — nodeId au
+          format `ns=2;s=Temperature` ou `ns=2;i=1001`
+        - `client.WriteString/Int/Float/Bool(nodeId, value)`
+        - `client.BrowseRoot() → List<OpcNodeRef>`,
+          `client.Browse(nodeId) → List<OpcNodeRef>` (children
+          immédiats, `OpcNodeRef { Id, BrowseName, NodeClass }`)
+        - `client.CallMethod(objectId, methodId, args:
+          List<OpcValue>) → List<OpcValue>`
+        - `client.Subscribe(nodeId, samplingMs, handler:
+          (OpcValue) => void) → SubscriptionHandle` —
+          MonitoredItem + Publish loop dans un thread Amalgame
+          (cf. ergonomics Messaging)
+
+      **Surface v1 — Server** :
+        - `Opc.NewServer(port) → AmalgameOpcServer?` (port défaut
+          4840, anonymous auth)
+        - `server.AddVariable(nodeId, browseName, initialValue)` /
+          `AddObject` / `AddMethod(objectId, methodId, callback:
+          (List<OpcValue>) => List<OpcValue>)`
+        - `server.SetVariable(nodeId, value)` (push update aux
+          subscribers actifs)
+        - `server.Run()` blocking / `server.RunOneIter(timeoutMs)`
+          pour intégration boucle externe
+        - `server.Stop()`, `server.LastError()`
+
+      **Hors scope v1** (v2+ quand un consommateur réel pousse) :
+        - **Security** : Basic256Sha256, certificats X.509,
+          `SignAndEncrypt` — v1 fait `None` policy + anonymous
+          uniquement (suffit pour PoC + dev ; prod a besoin de
+          la v2)
+        - **PubSub** (UADP UDP multicast + MQTT mapping spec
+          partie 14) — différent du modèle Subscribe
+          client/serveur, gros chantier à part
+        - **Historical access** (HA) — query d'historique côté
+          serveur, nécessite un backend persistant (SQLite via
+          le sibling package par exemple)
+        - **Alarms & Conditions** (A&C) — modèle d'évènements
+          riche, gros code de modèle
+        - **Address-space loading** depuis NodeSet XML — bind à
+          `UA_Server_loadNodeset` ; utile pour les Companion
+          Specs (Robotics, Machine Tool, …)
+        - **GDS** (Global Discovery Server) + **LDS** — discovery
+          centralisé multi-serveur
+        - **Aggregation server** / **Reverse Connect**
+          (open62541 v1.4+) — patterns NAT-traversal
+
+      **CI** : Linux-only (cf. policy `Package release checklist`
+      §4) — open62541 disponible en Docker image officielle
+      (`open62541/open62541:latest` expose un serveur Demo sur
+      `opc.tcp://localhost:4840`) ; tests gate cleanly sur
+      `OPC_AVAILABLE=0` quand le serveur n'est pas joignable
+      (pattern amalgame-messaging-mqtt). open62541 lui-même est
+      cross-OS (Linux/macOS/Windows/embedded) — le package reste
+      multi-OS-compatible en code, on ne valide juste pas en CI.
+
+      **Dépendances système** :
+        - Build : `apt install libopen62541-dev` (Ubuntu 24.04+)
+          ou `brew install open62541` ou MSYS2
+          `mingw-w64-x86_64-open62541` ou vendoring du single-file
+          amalgamation (open62541 fournit un `open62541.c` +
+          `open62541.h` à la SQLite — option de fallback si la
+          distro ne package pas)
+        - Runtime : `libopen62541.so.1` (ou statique via
+          amalgamation)
 - [x] **`Amalgame.Path`** (v0.4.11) — cross-platform path
       manipulation in `src/stdlib/path.am`: `Path.Combine`,
       `Path.Extension`, `Path.Filename`, `Path.Directory`,
@@ -1836,11 +1924,24 @@ implementation effort.
       to native mode at the same time (sc.exe-based `install.ps1`,
       NSSM dependency dropped). Existing NSSM installs keep
       working since the binary stays console-compatible.
-- [ ] **`amc new --template service` v2 — macOS launchd plist.**
-      The binary already runs cleanly on macOS via `./build.sh
-      && ./<name>`; only the install scripting is missing. Ship
-      a `launchd.plist` template + `install-macos.sh` wrapper
-      that does `launchctl bootstrap gui/$(id -u) <plist>`.
+- [x] **`amc new --template service` v2 — macOS launchd plist**
+      (shipped 2026-05-29). Scaffolder now writes
+      `com.amalgame.<name>.plist` (system-domain LaunchDaemon
+      with `RunAtLoad` + `KeepAlive` + `ThrottleInterval=5` +
+      stdout/stderr routed to `/usr/local/var/log/<name>.{out,err}.log`)
+      plus `install-macos.sh` which builds the binary, installs it
+      to `/usr/local/bin/<name>`, drops the plist at
+      `/Library/LaunchDaemons/`, ensures `/usr/local/var/log`
+      exists, then `launchctl bootout`s any prior registration
+      and `launchctl bootstrap system <plist>` + `enable`s it.
+      Bash vars written as `$NAME` / `$LABEL` (no braces) to
+      sidestep collision with amc's `{ident}` string-interp
+      grammar. README's `## macOS — launchd` section rewritten
+      to drop the "Not scaffolded yet" stub and document the
+      kickstart / bootout / print ergonomics. New scaffolder
+      methods `PlistMacosService` + `InstallMacosShService` in
+      `src/new_cmd.am`; 6 new assertions in
+      `tests/amc_new/amc_new_test.am` (44 PASS, was 38).
 
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
@@ -2505,30 +2606,36 @@ fork+pipe2+poll loop that actually invokes gdb) is gated on
       now defaults to true and emits `--raw` when set to false);
       `docs/guide/06-build-and-tooling.md` debug section rewritten.
 
-- [ ] **AmalgameMap / AmalgameSet child drill-down.** Phase 5C
-      ships only the AmalgameList branch. Map and Set wrap a
-      tombstoned hash table — the child enumeration would emit
-      one DAP entry per OCCUPIED slot, skipping empties + tombs.
-      Defer until a real user-facing pain on Maps debugging
-      shows up.
+- [x] **AmalgameMap / AmalgameSet child drill-down** (shipped
+      2026-05-29). Two-stage discovery walker in `src/dap.am`:
+      stage 1 probes `->capacity` then per-slot `entries[i].used`
+      to find AMMAP_OCCUPIED (==1) slots; stage 2 reuses the
+      existing PendingVars follow-up walker, emitting `[i].k` +
+      `[i].v` per OCCUPIED slot for Map, `[i].k` only for Set
+      (value side is sentinel 1, meaningless). Set unwraps via
+      `((AmalgameSet*)addr)->map` so the same base-expr machinery
+      handles both. Empty maps / capacity probe failures degrade
+      to an empty children response rather than a DAP error so
+      the IDE doesn't toast on every expand. New
+      `MapDisc_{Seq,Kind,BaseExpr,Capacity,SlotIdx,Occupied}`
+      state on `DapServer`, two new MI dispatch kinds
+      (`mapDiscCap`, `mapDiscSlot`). Verified via
+      `tests/core_bundle/core_test.am` "dap: bridge map drill-down"
+      + "dap: bridge set drill-down".
 
-- [ ] **Per-frame variablesReference allocation.** Today the
-      Locals scope is keyed at `variablesReference=1` regardless
-      of which frame the client is inspecting. With multi-frame
-      stack traces (Phase 6 already filters runtime frames so the
-      user sees real call chains), expansion of locals in any
-      frame other than #0 needs `variablesReference=frameId+1`
-      or similar disambiguation, and the scopes response needs
-      to track which frame the request came from.
-- [ ] **Phase 5 — pretty-printer registry.** Default registrants
-      for `AmalgameList*` / `AmalgameMap*` / `AmalgameSet*` /
-      `AmalgameClosure*` / `code_string`.
-- [ ] **Phase 6 — frame filter + step-until-visible.** Hide
-      `^_runtime_` / `^Amalgame_` from stack traces; auto-step
-      out of hidden frames after `stepIn`, up to an 8-hop budget.
-- [ ] **Phase 7 — flip default + remove `--bridge`.** When the
-      bridge is robust, make it the default; `--raw` becomes the
-      opt-out.
+- [x] **Per-frame variablesReference allocation** (shipped
+      2026-05-29). `HandleScopes` reads `frameId` from the DAP
+      args and emits `variablesReference = 100 + frameId` (range
+      [100, 999] reserves 900 frames; ChildRef pool stays ≥ 1000).
+      `HandleVariables` decodes the frame and issues
+      `-stack-list-variables --thread 1 --frame <fid>
+      --simple-values` so gdb returns that frame's locals. The
+      legacy `varRef == 1` shortcut is preserved as "current
+      frame" for clients that skip the scopes round-trip. Verified
+      via `tests/core_bundle/core_test.am` "dap: bridge per-frame
+      locals" — main calls helper(), breakpoint inside helper,
+      asserts `local_h` exposed at varRef=100 and `main_a` at
+      varRef=101.
 
 **Pre-existing fallback unchanged** : `amc dap --raw` still
 `execvp`s the host's DAP backend (lldb-dap on macOS, gdb --dap on
