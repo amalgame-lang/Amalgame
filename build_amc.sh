@@ -35,6 +35,7 @@ AMC_SOURCES="src/lexer/token.am \
              src/generate.am \
              src/explain.am \
              src/new_cmd.am \
+             src/doc_cmd.am \
              src/argparser.am \
              src/add_cmd.am"
 
