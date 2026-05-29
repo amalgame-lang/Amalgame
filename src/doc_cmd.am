@@ -1,0 +1,284 @@
+namespace Amalgame.Compiler
+
+import Amalgame.Collections
+import Amalgame.String
+import Amalgame.IO
+
+// ── amc doc ────────────────────────────────────────────
+//
+// `amc doc <file.am> [-o out.md]` extracts doc comments
+// from a source file and emits a Markdown reference page.
+//
+// Doc comments are the contiguous block of `//`-prefixed
+// lines immediately above a top-level declaration (class,
+// enum, public method, public field). Inline comments
+// inside method bodies are ignored. Blank lines and `@c {`
+// blocks before a decl break the doc-comment association.
+//
+// Output:
+//   # <namespace>
+//   <file-level leading comment block>
+//
+//   ## Class <ClassName>
+//   <class-leading comment block>
+//
+//   ### `<Class>.<Method>(args) → ReturnType`
+//   <method-leading comment block>
+//
+// Default output goes to stdout; `-o <path>` redirects.
+//
+public class DocCommand {
+
+    public static int Run(int argc) {
+        let ap = new ArgParser()
+        ap.Flag("-h")
+        ap.Flag("--help")
+        ap.Option("-o")
+        ap.Parse(argc, 2)
+        if (ap.HelpRequested()) {
+            DocCommand.PrintUsage()
+            return 0
+        }
+        if (String_Length(ap.GetUnknown()) > 0) {
+            Console.WriteError("amc doc: unknown argument '" + ap.GetUnknown() + "'")
+            return 1
+        }
+        let files = ap.GetPositionals()
+        if (files.Count() == 0) {
+            DocCommand.PrintUsage()
+            return 1
+        }
+        if (files.Count() > 1) {
+            Console.WriteError("amc doc: pass exactly one .am file (got " + String_FromInt(files.Count()) + ")")
+            return 1
+        }
+        let path: string = files.Get(0)
+        if (!String_EndsWith(path, ".am")) {
+            Console.WriteError("amc doc: expected a .am file, got '" + path + "'")
+            return 1
+        }
+        if (!File.Exists(path)) {
+            Console.WriteError("amc doc: file not found: " + path)
+            return 1
+        }
+        let src: string = File.ReadAll(path)
+        let lex = new Lexer(src, path)
+        let toks = lex.Tokenize()
+        let par = new Parser(toks)
+        let prog: AstNode = par.Parse()
+        if (par.HasErrors()) {
+            Console.WriteError("amc doc: parse errors in " + path)
+            Console.WriteError(par.GetErrors())
+            return 1
+        }
+        let md: string = DocCommand.EmitMarkdown(path, prog, par.Comments)
+        let outPath: string = ap.GetOption("-o")
+        if (String_Length(outPath) > 0) {
+            File.WriteAll(outPath, md)
+            Console.WriteError("amc doc: wrote " + outPath)
+        } else {
+            Console.Write(md)
+        }
+        return 0
+    }
+
+    private static void PrintUsage() {
+        Console.WriteError("Usage: amc doc <file.am> [-o <out.md>]")
+        Console.WriteError("")
+        Console.WriteError("Extract doc comments (leading `//` blocks before classes,")
+        Console.WriteError("enums, public methods + fields) and emit a Markdown reference.")
+        Console.WriteError("Default: stdout. With -o <path>: write to that file.")
+    }
+
+    // ── Walk + emit ───────────────────────────────────
+
+    private static string EmitMarkdown(string path, AstNode prog, List<Token> comments) {
+        var out: string = ""
+        // File header: `# <namespace>` (or basename) + leading file-level
+        // comment block (the comments above the namespace declaration).
+        let ns: string = prog.Name
+        var heading: string = ns
+        if (String_Length(heading) == 0) {
+            heading = DocCommand.Basename(path)
+        }
+        out = out + "# " + heading + "\n\n"
+        out = out + "_Source: `" + path + "`_\n\n"
+
+        // File-level intro = comments whose line < first decl's line.
+        var firstDeclLine: int = 999999999
+        let nc: int = prog.Children.Count()
+        for i in 0..nc {
+            let d: AstNode = prog.Children.Get(i)
+            if (d.Line > 0 && d.Line < firstDeclLine) { firstDeclLine = d.Line }
+        }
+        let intro: string = DocCommand.CollectCommentsBefore(comments, firstDeclLine, 0)
+        if (String_Length(intro) > 0) {
+            out = out + intro + "\n"
+        }
+
+        // Walk top-level decls.
+        for j in 0..nc {
+            let decl: AstNode = prog.Children.Get(j)
+            let k: NodeKind = decl.Kind
+            if (k == NodeKind.CLASS_DECL) {
+                out = out + DocCommand.EmitClass(decl, comments)
+            } else if (k == NodeKind.ENUM_DECL) {
+                out = out + DocCommand.EmitEnum(decl, comments)
+            }
+            // Ignore other top-level kinds (import, namespace, @c blocks).
+        }
+        return out
+    }
+
+    private static string EmitClass(AstNode cls, List<Token> comments) {
+        var out: string = "## Class `" + cls.Name + "`\n\n"
+        let lead: string = DocCommand.CollectCommentsBefore(comments, cls.Line, 0)
+        if (String_Length(lead) > 0) { out = out + lead + "\n" }
+
+        // Iterate members in declaration order, grouping fields then
+        // methods. Skip non-public ones.
+        let kids = cls.Children
+        let mc: int = kids.Count()
+        var fieldsOut: string = ""
+        var methodsOut: string = ""
+        for i in 0..mc {
+            let m: AstNode = kids.Get(i)
+            let mk: NodeKind = m.Kind
+            // Skip non-public members. The parser sets Flag2=true on
+            // private decls (Flag2 mirrors the `private` keyword).
+            if (m.Flag2) { continue }
+            if (mk == NodeKind.VAR_DECL) {
+                fieldsOut = fieldsOut + DocCommand.EmitField(cls.Name, m, comments)
+            } else if (mk == NodeKind.METHOD_DECL) {
+                methodsOut = methodsOut + DocCommand.EmitMethod(cls.Name, m, comments)
+            }
+        }
+        if (String_Length(fieldsOut) > 0) {
+            out = out + "### Fields\n\n" + fieldsOut
+        }
+        if (String_Length(methodsOut) > 0) {
+            out = out + "### Methods\n\n" + methodsOut
+        }
+        return out + "\n"
+    }
+
+    private static string EmitField(string clsName, AstNode field, List<Token> comments) {
+        var sig: string = "- `" + field.Name + ": " + field.Str + "`"
+        var out: string = sig + "\n"
+        let lead: string = DocCommand.CollectCommentsBefore(comments, field.Line, 4)
+        if (String_Length(lead) > 0) { out = out + lead }
+        out = out + "\n"
+        return out
+    }
+
+    private static string EmitMethod(string clsName, AstNode method, List<Token> comments) {
+        // Signature: `Class.Method(p1: T1, p2: T2) → ReturnType`
+        var sig: string = clsName + "." + method.Name + "("
+        let pc: int = method.Params.Count()
+        for pi in 0..pc {
+            let p: AstNode = method.Params.Get(pi)
+            if (pi > 0) { sig = sig + ", " }
+            sig = sig + p.Name
+            if (String_Length(p.Str) > 0) {
+                sig = sig + ": " + p.Str
+            }
+        }
+        sig = sig + ")"
+        if (String_Length(method.Str) > 0 && method.Str != "void") {
+            sig = sig + " → " + method.Str
+        }
+        var out: string = "#### `" + sig + "`\n\n"
+        let lead: string = DocCommand.CollectCommentsBefore(comments, method.Line, 0)
+        if (String_Length(lead) > 0) { out = out + lead + "\n" }
+        return out
+    }
+
+    private static string EmitEnum(AstNode en, List<Token> comments) {
+        var out: string = "## Enum `" + en.Name + "`\n\n"
+        let lead: string = DocCommand.CollectCommentsBefore(comments, en.Line, 0)
+        if (String_Length(lead) > 0) { out = out + lead + "\n" }
+        let kids = en.Children
+        let n: int = kids.Count()
+        if (n > 0) {
+            out = out + "Variants:\n\n"
+            for i in 0..n {
+                let v: AstNode = kids.Get(i)
+                out = out + "- `" + v.Name + "`\n"
+            }
+            out = out + "\n"
+        }
+        return out
+    }
+
+    // ── Comment harvesting ────────────────────────────
+
+    // Collect the contiguous comment block immediately preceding
+    // `declLine`. Stops walking back at the first non-`//` source
+    // line (blank line, code, etc.) — only the directly-attached
+    // doc block is harvested. Indent is the number of leading
+    // spaces to prepend (for nested fields inside class).
+    private static string CollectCommentsBefore(List<Token> comments, int declLine, int indent) {
+        if (declLine <= 0) { return "" }
+        let n: int = comments.Count()
+        // Find the last comment whose line is < declLine.
+        var lastIdx: int = -1
+        for i in 0..n {
+            let c: Token = comments.Get(i)
+            if (c.Line < declLine) { lastIdx = i } else { return DocCommand.RenderRange(comments, lastIdx, declLine, indent) }
+        }
+        return DocCommand.RenderRange(comments, lastIdx, declLine, indent)
+    }
+
+    // Walk backwards from `lastIdx` collecting consecutive comment
+    // lines (line == previous - 1 OR previous - 0). Stops as soon
+    // as we hit a gap (blank line or code interleaved).
+    private static string RenderRange(List<Token> comments, int lastIdx, int declLine, int indent) {
+        if (lastIdx < 0) { return "" }
+        let last: Token = comments.Get(lastIdx)
+        // The directly-attached block must end on declLine-1; otherwise
+        // there's a blank line separating it from the decl and we treat
+        // the block as unrelated.
+        if (last.Line != declLine - 1) { return "" }
+        // Walk backward.
+        var startIdx: int = lastIdx
+        var prevLine: int = last.Line
+        var i: int = lastIdx - 1
+        while (i >= 0) {
+            let c: Token = comments.Get(i)
+            if (c.Line == prevLine - 1) {
+                startIdx = i
+                prevLine = c.Line
+                i = i - 1
+            } else {
+                i = -1   // break
+            }
+        }
+        // Emit lines startIdx..lastIdx, each as a plain markdown
+        // paragraph line with the leading `//` stripped.
+        var out: string = ""
+        var pad: string = ""
+        var p: int = 0
+        while (p < indent) { pad = pad + " "; p = p + 1 }
+        for k in startIdx..(lastIdx + 1) {
+            let c: Token = comments.Get(k)
+            let stripped: string = DocCommand.StripCommentMarker(c.Value)
+            out = out + pad + stripped + "\n"
+        }
+        return out
+    }
+
+    // `// foo` → `foo` ; `//foo` → `foo` ; leading/trailing whitespace trimmed.
+    private static string StripCommentMarker(string raw) {
+        var s: string = raw
+        if (String_StartsWith(s, "//")) {
+            s = String_Substring(s, 2, String_Length(s) - 2)
+        }
+        return String_Trim(s)
+    }
+
+    private static string Basename(string path) {
+        let sep: int = String_LastIndexOf(path, "/")
+        if (sep < 0) { return path }
+        return String_Substring(path, sep + 1, String_Length(path) - sep - 1)
+    }
+}
