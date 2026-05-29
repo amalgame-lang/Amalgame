@@ -180,6 +180,14 @@ public class Program {
         let newProg  = newPar.Parse()
         Console.WriteError("parsed: new_cmd.am")
 
+        let docPath  = "./src/doc_cmd.am"
+        let docSrc   = File.ReadAll(docPath)
+        let docLex   = new Lexer(docSrc, docPath)
+        let docToks  = docLex.Tokenize()
+        let docPar   = new Parser(docToks)
+        let docProg  = docPar.Parse()
+        Console.WriteError("parsed: doc_cmd.am")
+
         // ArgParser: shared arg-parsing helper used by main.am
         // (v0.6.3+). Parsed before main.am so the ArgParser class
         // is in scope at resolve time. Independent of toml/add_cmd.
@@ -264,6 +272,7 @@ public class Program {
         gen6.AddFilePass1(genProg)
         gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(newProg)
+        gen6.AddFilePass1(docProg)
         gen6.AddFilePass1(apProg)
         gen6.AddFilePass1(addProg)
         gen6.AddFilePass1(mainProg)
@@ -296,6 +305,7 @@ public class Program {
         gen6.AddFilePass2Forwards(genProg)
         gen6.AddFilePass2Forwards(expProg)
         gen6.AddFilePass2Forwards(newProg)
+        gen6.AddFilePass2Forwards(docProg)
         gen6.AddFilePass2Forwards(apProg)
         gen6.AddFilePass2Forwards(addProg)
         gen6.AddFilePass2Forwards(mainProg)
@@ -323,6 +333,7 @@ public class Program {
         gen6.AddFilePass2Bodies(genProg,  genPath)
         gen6.AddFilePass2Bodies(expProg,  expPath)
         gen6.AddFilePass2Bodies(newProg,  newPath)
+        gen6.AddFilePass2Bodies(docProg,  docPath)
         gen6.AddFilePass2Bodies(apProg,   apPath)
         gen6.AddFilePass2Bodies(addProg,  addPath)
         gen6.AddFilePass2Bodies(mainProg, mainPath)

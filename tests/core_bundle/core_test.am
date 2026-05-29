@@ -1215,6 +1215,44 @@ class Program {
             }
         }
 
+        // ── amc doc (v0.8.58) ──────────────────────────
+        //
+        // Smoke tests: write a tiny source file with a class +
+        // doc-commented methods/fields, run `amc doc`, assert the
+        // emitted Markdown carries the class heading, signatures, and
+        // doc-comment bodies.
+        let docSrc: string = "namespace Tests.Doc\n\n// Top-level intro comment for the class.\n// Spans two lines.\npublic class Greeter {\n    // Field doc.\n    public Name: string\n\n    // Method doc — appears under the method heading.\n    public string Greet(string who) {\n        return \"hello \" + who\n    }\n}\n"
+        let docFile: string = String_Trim(Program.ShellRead("mktemp --suffix=.am"))
+        File.WriteAll(docFile, docSrc)
+        let docOut = Process.RunCapture("./amc doc '" + docFile + "' 2>&1")
+        let docTxt: string = docOut.Stdout
+        if (String_Contains(docTxt, "## Class `Greeter`")
+            && String_Contains(docTxt, "Top-level intro comment for the class.")
+            && String_Contains(docTxt, "`Name: string`")
+            && String_Contains(docTxt, "Field doc.")
+            && String_Contains(docTxt, "Greeter.Greet(who: string)")
+            && String_Contains(docTxt, "Method doc")) {
+            Console.WriteLine("[PASS] amc doc: class + methods + fields")
+        } else {
+            Console.WriteLine("[FAIL] amc doc: class + methods + fields")
+        }
+        // -o writes to file.
+        let docMd: string = docFile + ".md"
+        let docOutW = Process.RunCapture("./amc doc '" + docFile + "' -o '" + docMd + "' 2>&1")
+        if (File.Exists(docMd) && String_Contains(File.ReadAll(docMd), "Greeter")) {
+            Console.WriteLine("[PASS] amc doc: -o writes file")
+        } else {
+            Console.WriteLine("[FAIL] amc doc: -o writes file")
+        }
+        // Missing arg → usage + non-zero exit.
+        let docUsage = Process.RunCapture("./amc doc 2>&1")
+        if (String_Contains(docUsage.Stdout, "Usage: amc doc") && docUsage.Exit != 0) {
+            Console.WriteLine("[PASS] amc doc: usage on no args")
+        } else {
+            Console.WriteLine("[FAIL] amc doc: usage on no args (exit=" + String_FromInt(docUsage.Exit) + ")")
+        }
+        Program.ShellExit("rm -f '" + docFile + "' '" + docMd + "'")
+
         // ── Phase 4: amc migrate / generate / explain (LLM, hermetic) ──
 
         // Set up fixtures
