@@ -1088,6 +1088,131 @@ class Program {
                 }
                 Program.ShellExit("rm -f '" + listProg + "' '" + listBin + "'")
             }
+
+            // Map drill-down: AmalgameMap with 2 entries → varRef expand
+            // walks capacity slots, emits one [.k, .v] pair per OCCUPIED
+            // slot. Asserts both keys land in the output.
+            let mapProg = String_Trim(Program.ShellRead("mktemp --suffix=.c"))
+            let mapBin  = String_Trim(Program.ShellRead("mktemp -u"))
+            let mapBody = "#include \"runtime/Amalgame_Collections.h\"\nint main() {\n    AmalgameMap* m = AmalgameMap_new();\n    AmalgameMap_set(m, \"foo\", (void*)(intptr_t)1);\n    AmalgameMap_set(m, \"bar\", (void*)(intptr_t)2);\n    return 0;\n}\n"
+            File.WriteAll(mapProg, mapBody)
+            let gccM = Program.ShellExit("gcc -g -O0 -I. '" + mapProg + "' -lgc -o '" + mapBin + "'")
+            if (gccM != 0) {
+                Console.WriteLine("[SKIP] dap: bridge map drill-down (libgc / runtime not available)")
+            } else {
+                let mLaunch = "{\"seq\":2,\"type\":\"request\",\"command\":\"launch\",\"arguments\":{\"program\":\"" + mapBin + "\"}}"
+                let mSetBp  = "{\"seq\":3,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"" + mapProg + "\"},\"breakpoints\":[{\"line\":6}]}}"
+                let mCfg    = "{\"seq\":4,\"type\":\"request\",\"command\":\"configurationDone\"}"
+                let mVars   = "{\"seq\":5,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1}}"
+                let mExp    = "{\"seq\":6,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1000}}"
+                let mDisc   = "{\"seq\":7,\"type\":\"request\",\"command\":\"disconnect\"}"
+                let mc1 = Program.LspFrame(dInit) + Program.LspFrame(mLaunch) + Program.LspFrame(mSetBp) + Program.LspFrame(mCfg)
+                let mc2 = Program.LspFrame(mVars)
+                let mc3 = Program.LspFrame(mExp)
+                let mc4 = Program.LspFrame(mDisc)
+                File.WriteAll("/tmp/amc_core_dap_mc1.bin", mc1)
+                File.WriteAll("/tmp/amc_core_dap_mc2.bin", mc2)
+                File.WriteAll("/tmp/amc_core_dap_mc3.bin", mc3)
+                File.WriteAll("/tmp/amc_core_dap_mc4.bin", mc4)
+                let mPipeline = "( cat /tmp/amc_core_dap_mc1.bin; sleep 0.8; cat /tmp/amc_core_dap_mc2.bin; sleep 0.5; cat /tmp/amc_core_dap_mc3.bin; sleep 0.5; cat /tmp/amc_core_dap_mc4.bin ) | timeout 10 ./amc dap --bridge 2>&1"
+                let mapOut = Process.RunCapture(mPipeline)
+                let mOut = mapOut.Stdout
+                if (String_Contains(mOut, "\"value\":\"Map[2]\"")
+                    && String_Contains(mOut, "\"variablesReference\":1000")
+                    && String_Contains(mOut, ".k\"")
+                    && String_Contains(mOut, ".v\"")
+                    && String_Contains(mOut, "foo")
+                    && String_Contains(mOut, "bar")) {
+                    Console.WriteLine("[PASS] dap: bridge map drill-down")
+                } else {
+                    Console.WriteLine("[FAIL] dap: bridge map drill-down")
+                }
+                Program.ShellExit("rm -f '" + mapProg + "' '" + mapBin + "'")
+            }
+
+            // Per-frame Locals: scopes(frameId=N) returns varRef
+            // (100+N), variables(varRef) issues -stack-list-variables
+            // --frame N so the IDE can inspect any frame's locals, not
+            // just frame 0.
+            let pfProg = String_Trim(Program.ShellRead("mktemp --suffix=.c"))
+            let pfBin  = String_Trim(Program.ShellRead("mktemp -u"))
+            let pfBody = "#include <stdio.h>\nint helper(int p) {\n    int local_h = p * 2;\n    return local_h;\n}\nint main() {\n    int main_a = 5;\n    int main_b = helper(main_a);\n    printf(\"%d\\n\", main_b);\n    return 0;\n}\n"
+            File.WriteAll(pfProg, pfBody)
+            let gccP = Program.ShellExit("gcc -g -O0 '" + pfProg + "' -o '" + pfBin + "'")
+            if (gccP != 0) {
+                Console.WriteLine("[SKIP] dap: bridge per-frame locals (gcc -g failed)")
+            } else {
+                let pLaunch = "{\"seq\":2,\"type\":\"request\",\"command\":\"launch\",\"arguments\":{\"program\":\"" + pfBin + "\"}}"
+                let pSetBp  = "{\"seq\":3,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"" + pfProg + "\"},\"breakpoints\":[{\"line\":4}]}}"
+                let pCfg    = "{\"seq\":4,\"type\":\"request\",\"command\":\"configurationDone\"}"
+                let pSt     = "{\"seq\":5,\"type\":\"request\",\"command\":\"stackTrace\",\"arguments\":{\"threadId\":1}}"
+                let pScF0   = "{\"seq\":6,\"type\":\"request\",\"command\":\"scopes\",\"arguments\":{\"frameId\":0}}"
+                let pScF1   = "{\"seq\":7,\"type\":\"request\",\"command\":\"scopes\",\"arguments\":{\"frameId\":1}}"
+                let pVarF0  = "{\"seq\":8,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":100}}"
+                let pVarF1  = "{\"seq\":9,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":101}}"
+                let pDisc   = "{\"seq\":10,\"type\":\"request\",\"command\":\"disconnect\"}"
+                let pc1 = Program.LspFrame(dInit) + Program.LspFrame(pLaunch) + Program.LspFrame(pSetBp) + Program.LspFrame(pCfg)
+                let pc2 = Program.LspFrame(pSt) + Program.LspFrame(pScF0) + Program.LspFrame(pScF1)
+                let pc3 = Program.LspFrame(pVarF0) + Program.LspFrame(pVarF1)
+                let pc4 = Program.LspFrame(pDisc)
+                File.WriteAll("/tmp/amc_core_dap_pc1.bin", pc1)
+                File.WriteAll("/tmp/amc_core_dap_pc2.bin", pc2)
+                File.WriteAll("/tmp/amc_core_dap_pc3.bin", pc3)
+                File.WriteAll("/tmp/amc_core_dap_pc4.bin", pc4)
+                let pPipeline = "( cat /tmp/amc_core_dap_pc1.bin; sleep 0.8; cat /tmp/amc_core_dap_pc2.bin; sleep 0.5; cat /tmp/amc_core_dap_pc3.bin; sleep 0.5; cat /tmp/amc_core_dap_pc4.bin ) | timeout 10 ./amc dap --bridge 2>&1"
+                let pfOut = Process.RunCapture(pPipeline)
+                let pOut = pfOut.Stdout
+                if (String_Contains(pOut, "\"variablesReference\":100,")
+                    && String_Contains(pOut, "\"variablesReference\":101,")
+                    && String_Contains(pOut, "\"name\":\"local_h\"")
+                    && String_Contains(pOut, "\"name\":\"main_a\"")
+                    && String_Contains(pOut, "\"value\":\"5\"")) {
+                    Console.WriteLine("[PASS] dap: bridge per-frame locals")
+                } else {
+                    Console.WriteLine("[FAIL] dap: bridge per-frame locals")
+                }
+                Program.ShellExit("rm -f '" + pfProg + "' '" + pfBin + "'")
+            }
+
+            // Set drill-down: AmalgameSet with 2 entries → varRef expand
+            // walks capacity slots through ->map and emits [.k] only
+            // (value side is sentinel 1 and meaningless).
+            let setProg = String_Trim(Program.ShellRead("mktemp --suffix=.c"))
+            let setBin  = String_Trim(Program.ShellRead("mktemp -u"))
+            let setBody = "#include \"runtime/Amalgame_Collections.h\"\nint main() {\n    AmalgameSet* s = AmalgameSet_new();\n    AmalgameSet_add(s, \"alpha\");\n    AmalgameSet_add(s, \"beta\");\n    return 0;\n}\n"
+            File.WriteAll(setProg, setBody)
+            let gccS = Program.ShellExit("gcc -g -O0 -I. '" + setProg + "' -lgc -o '" + setBin + "'")
+            if (gccS != 0) {
+                Console.WriteLine("[SKIP] dap: bridge set drill-down (libgc / runtime not available)")
+            } else {
+                let sLaunch = "{\"seq\":2,\"type\":\"request\",\"command\":\"launch\",\"arguments\":{\"program\":\"" + setBin + "\"}}"
+                let sSetBp  = "{\"seq\":3,\"type\":\"request\",\"command\":\"setBreakpoints\",\"arguments\":{\"source\":{\"path\":\"" + setProg + "\"},\"breakpoints\":[{\"line\":6}]}}"
+                let sCfg    = "{\"seq\":4,\"type\":\"request\",\"command\":\"configurationDone\"}"
+                let sVars   = "{\"seq\":5,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1}}"
+                let sExp    = "{\"seq\":6,\"type\":\"request\",\"command\":\"variables\",\"arguments\":{\"variablesReference\":1000}}"
+                let sDisc   = "{\"seq\":7,\"type\":\"request\",\"command\":\"disconnect\"}"
+                let sc1 = Program.LspFrame(dInit) + Program.LspFrame(sLaunch) + Program.LspFrame(sSetBp) + Program.LspFrame(sCfg)
+                let sc2 = Program.LspFrame(sVars)
+                let sc3 = Program.LspFrame(sExp)
+                let sc4 = Program.LspFrame(sDisc)
+                File.WriteAll("/tmp/amc_core_dap_sc1.bin", sc1)
+                File.WriteAll("/tmp/amc_core_dap_sc2.bin", sc2)
+                File.WriteAll("/tmp/amc_core_dap_sc3.bin", sc3)
+                File.WriteAll("/tmp/amc_core_dap_sc4.bin", sc4)
+                let sPipeline = "( cat /tmp/amc_core_dap_sc1.bin; sleep 0.8; cat /tmp/amc_core_dap_sc2.bin; sleep 0.5; cat /tmp/amc_core_dap_sc3.bin; sleep 0.5; cat /tmp/amc_core_dap_sc4.bin ) | timeout 10 ./amc dap --bridge 2>&1"
+                let setOut = Process.RunCapture(sPipeline)
+                let sOut = setOut.Stdout
+                if (String_Contains(sOut, "\"value\":\"Set[2]\"")
+                    && String_Contains(sOut, "\"variablesReference\":1000")
+                    && String_Contains(sOut, ".k\"")
+                    && String_Contains(sOut, "alpha")
+                    && String_Contains(sOut, "beta")) {
+                    Console.WriteLine("[PASS] dap: bridge set drill-down")
+                } else {
+                    Console.WriteLine("[FAIL] dap: bridge set drill-down")
+                }
+                Program.ShellExit("rm -f '" + setProg + "' '" + setBin + "'")
+            }
         }
 
         // ── Phase 4: amc migrate / generate / explain (LLM, hermetic) ──

@@ -232,7 +232,41 @@ static inline AmalgameUdpSocket* UdpSocket_New() {
         (AmalgameUdpSocket*) GC_MALLOC(sizeof(AmalgameUdpSocket));
     s->_fd = (int) socket(AF_INET, SOCK_DGRAM, 0);
     s->Bound = false; s->BoundPort = 0;
+    /* v0.8.53 — default SO_RCVBUF to 8 MiB. Linux's stock 208 KiB
+     * was good enough for client-style UDP but the moment any peer-
+     * to-peer protocol (Pollen, future SMTP-over-UDP, etc.) bursts
+     * datagrams faster than the receiver thread can drain them, the
+     * buffer overflows and the kernel silently drops. 8 MiB holds
+     * ~50 k typical datagrams — enough headroom for a single-thread
+     * receiver to catch up. Callers can still override with
+     * UdpSocket_SetRecvBuf if they need more (or less). */
+    if (s->_fd >= 0) {
+        int rcvbuf = 8 * 1024 * 1024;
+        setsockopt(s->_fd, SOL_SOCKET, SO_RCVBUF,
+                   (const char*)&rcvbuf, sizeof(rcvbuf));
+        /* Kernel may clamp to net.core.rmem_max — we don't error
+         * out on partial accept since the smaller window still
+         * works, just with less headroom. Tune sysctl if needed. */
+    }
     return s;
+}
+
+/* Explicit tuning hook. Returns the size the kernel actually granted
+ * (clamped to net.core.rmem_max on Linux), or -1 on error. Caller
+ * passes the desired total buffer in bytes. */
+static inline i64 UdpSocket_SetRecvBuf(AmalgameUdpSocket* s, i64 bytes) {
+    if (!s || s->_fd < 0) return -1;
+    int v = (int)(bytes > 0 ? bytes : 0);
+    if (setsockopt(s->_fd, SOL_SOCKET, SO_RCVBUF,
+                   (const char*)&v, sizeof(v)) < 0) return -1;
+    int actual = 0;
+    socklen_t alen = sizeof(actual);
+    if (getsockopt(s->_fd, SOL_SOCKET, SO_RCVBUF,
+                   (char*)&actual, &alen) < 0) return -1;
+    /* Linux returns 2× the requested value (one half for data, one
+     * for bookkeeping) — we report the kernel-reported value as-is
+     * so callers can correlate with sysctl values. */
+    return (i64) actual;
 }
 static inline code_bool UdpSocket_Bind(AmalgameUdpSocket* s, i64 port) {
     if (!s || s->_fd < 0) return false;

@@ -214,11 +214,14 @@ public class NewCommand {
             return 1
         }
 
-        // POSIX side — systemd unit + install/build .sh
-        let mainAm:    string = NewCommand.MainAmService(base)
-        let unit:      string = NewCommand.SystemdUnit(base)
-        let installSh: string = NewCommand.InstallShService(base)
-        let buildSh:   string = NewCommand.BuildShService(base)
+        // POSIX side — systemd unit + install/build .sh + macOS
+        // launchd plist + install-macos.sh
+        let mainAm:        string = NewCommand.MainAmService(base)
+        let unit:          string = NewCommand.SystemdUnit(base)
+        let installSh:     string = NewCommand.InstallShService(base)
+        let buildSh:       string = NewCommand.BuildShService(base)
+        let plistMacos:    string = NewCommand.PlistMacosService(base)
+        let installMacOs:  string = NewCommand.InstallMacosShService(base)
         // Windows side — native SCM install (sc.exe) + MinGW build,
         // PowerShell only (modern, available on every Windows 7+ host,
         // much cleaner UAC + service-management ergonomics than a
@@ -235,23 +238,28 @@ public class NewCommand {
         // lock + cache before first build.
         let manifest:   string = NewCommand.ManifestService(base)
 
-        if (!NewCommand.WriteFile(path + "/src/main.am",            mainAm))     { return 1 }
-        if (!NewCommand.WriteFile(path + "/amalgame.toml",          manifest))   { return 1 }
-        if (!NewCommand.WriteFile(path + "/" + base + ".service",   unit))       { return 1 }
-        if (!NewCommand.WriteFile(path + "/install.sh",             installSh))  { return 1 }
-        if (!NewCommand.WriteFile(path + "/build.sh",               buildSh))    { return 1 }
-        if (!NewCommand.WriteFile(path + "/install.ps1",            installPs1)) { return 1 }
-        if (!NewCommand.WriteFile(path + "/build.ps1",              buildPs1))   { return 1 }
-        if (!NewCommand.WriteFile(path + "/.gitignore",             gitignore))  { return 1 }
-        if (!NewCommand.WriteFile(path + "/README.md",              readme))     { return 1 }
+        if (!NewCommand.WriteFile(path + "/src/main.am",                  mainAm))         { return 1 }
+        if (!NewCommand.WriteFile(path + "/amalgame.toml",                manifest))       { return 1 }
+        if (!NewCommand.WriteFile(path + "/" + base + ".service",         unit))           { return 1 }
+        if (!NewCommand.WriteFile(path + "/install.sh",                   installSh))      { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.sh",                     buildSh))        { return 1 }
+        if (!NewCommand.WriteFile(path + "/com.amalgame." + base + ".plist", plistMacos))  { return 1 }
+        if (!NewCommand.WriteFile(path + "/install-macos.sh",             installMacOs))   { return 1 }
+        if (!NewCommand.WriteFile(path + "/install.ps1",                  installPs1))     { return 1 }
+        if (!NewCommand.WriteFile(path + "/build.ps1",                    buildPs1))       { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore",                   gitignore))      { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md",                    readme))         { return 1 }
         Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/build.sh"))
         Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/install.sh"))
+        Process.Run("chmod +x " + NewCommand.ShellEscape(path + "/install-macos.sh"))
 
         Console.WriteLine("Scaffolded '" + base + "' (service template).")
         Console.WriteLine("  cd " + path)
         Console.WriteLine("  amc package add logging service     # fetch external deps (one-off)")
         Console.WriteLine("  Linux:    ./build.sh && sudo ./install.sh")
         Console.WriteLine("            sudo journalctl -fu " + base)
+        Console.WriteLine("  macOS:    ./build.sh && sudo ./install-macos.sh")
+        Console.WriteLine("            tail -f /usr/local/var/log/" + base + ".err.log")
         Console.WriteLine("  Windows:  .\\build.ps1 ; Start-Process powershell -Verb runAs install.ps1")
         Console.WriteLine("            (registers as a native Windows service via sc.exe)")
         return 0
@@ -734,6 +742,102 @@ public class NewCommand {
         return s
     }
 
+    // ── macOS install (launchd) ──────────────────────
+    //
+    // System-domain LaunchDaemon (root) so the service survives logout
+    // and starts at boot — same lifecycle expectations as the Linux
+    // systemd unit. The bundle ID follows the Apple convention
+    // `com.amalgame.<name>` (the LaunchDaemons folder requires a
+    // reverse-DNS-ish Label; using our own org prefix keeps it
+    // collision-free without forcing the user to register a real
+    // domain). Logs go under /usr/local/var/log so `tail -f` mirrors
+    // the Linux `journalctl -fu` ergonomic; the install script creates
+    // the directory if missing.
+    private static string PlistMacosService(string name) {
+        var s: string = ""
+        s = s + "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        s = s + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+        s = s + "<plist version=\"1.0\">\n"
+        s = s + "<dict>\n"
+        s = s + "    <key>Label</key>\n"
+        s = s + "    <string>com.amalgame." + name + "</string>\n"
+        s = s + "    <key>ProgramArguments</key>\n"
+        s = s + "    <array>\n"
+        s = s + "        <string>/usr/local/bin/" + name + "</string>\n"
+        s = s + "    </array>\n"
+        s = s + "    <key>RunAtLoad</key>\n"
+        s = s + "    <true/>\n"
+        s = s + "    <key>KeepAlive</key>\n"
+        s = s + "    <true/>\n"
+        s = s + "    <key>ThrottleInterval</key>\n"
+        s = s + "    <integer>5</integer>\n"
+        s = s + "    <key>StandardOutPath</key>\n"
+        s = s + "    <string>/usr/local/var/log/" + name + ".out.log</string>\n"
+        s = s + "    <key>StandardErrorPath</key>\n"
+        s = s + "    <string>/usr/local/var/log/" + name + ".err.log</string>\n"
+        s = s + "</dict>\n"
+        s = s + "</plist>\n"
+        return s
+    }
+
+    private static string InstallMacosShService(string name) {
+        var s: string = ""
+        s = s + "#!/usr/bin/env bash\n"
+        s = s + "# install-macos.sh — build + install the " + name + " daemon under launchd.\n"
+        s = s + "# Re-run after a code change to deploy the new binary; launchd\n"
+        s = s + "# picks it up on the next bootstrap triggered by the install step.\n"
+        s = s + "set -euo pipefail\n"
+        s = s + "\n"
+        s = s + "if [ \"$(id -u)\" -ne 0 ]; then\n"
+        s = s + "    echo \"install-macos.sh: must run as root (try: sudo ./install-macos.sh)\" >&2\n"
+        s = s + "    exit 1\n"
+        s = s + "fi\n"
+        s = s + "\n"
+        // Shell vars are written without braces (`$NAME`, `$LABEL`)
+        // because Amalgame's string-interpolation grammar treats
+        // `{ident}` as a slot — `${NAME}` would resolve NAME at compile
+        // time. Bash's bare `$VAR` form is fine here: no adjacent
+        // identifier chars, `.` and `/` break the var name unambiguously.
+        s = s + "NAME=\"" + name + "\"\n"
+        s = s + "LABEL=\"com.amalgame.$NAME\"\n"
+        s = s + "PLIST=\"/Library/LaunchDaemons/$LABEL.plist\"\n"
+        s = s + "\n"
+        s = s + "echo \"==> Building $NAME\"\n"
+        s = s + "./build.sh\n"
+        s = s + "\n"
+        s = s + "echo \"==> Installing binary to /usr/local/bin/$NAME\"\n"
+        s = s + "install -m 0755 ./\"$NAME\" /usr/local/bin/\"$NAME\"\n"
+        s = s + "\n"
+        s = s + "echo \"==> Ensuring /usr/local/var/log exists\"\n"
+        s = s + "install -d -m 0755 /usr/local/var/log\n"
+        s = s + "\n"
+        s = s + "echo \"==> Installing launchd plist to $PLIST\"\n"
+        s = s + "install -m 0644 ./\"$LABEL.plist\" \"$PLIST\"\n"
+        s = s + "\n"
+        s = s + "# Unload any prior registration so we cleanly replace it.\n"
+        s = s + "# `bootout` exits non-zero when the service is absent — ignore.\n"
+        s = s + "echo \"==> Unloading previous registration (if any)\"\n"
+        s = s + "launchctl bootout system/\"$LABEL\" 2>/dev/null || true\n"
+        s = s + "\n"
+        s = s + "echo \"==> Bootstrapping $LABEL into launchd (system domain)\"\n"
+        s = s + "launchctl bootstrap system \"$PLIST\"\n"
+        s = s + "launchctl enable system/\"$LABEL\"\n"
+        s = s + "\n"
+        s = s + "echo \"==> Status\"\n"
+        s = s + "launchctl print system/\"$LABEL\" 2>/dev/null | grep -E 'state|pid' || true\n"
+        s = s + "\n"
+        s = s + "echo\n"
+        s = s + "echo \"Done. Tail the logs with:\"\n"
+        s = s + "echo \"  tail -f /usr/local/var/log/$NAME.err.log\"\n"
+        s = s + "echo \"  tail -f /usr/local/var/log/$NAME.out.log\"\n"
+        s = s + "echo\n"
+        s = s + "echo \"Operate the service via standard launchctl tooling:\"\n"
+        s = s + "echo \"  sudo launchctl kickstart -k system/$LABEL   # restart\"\n"
+        s = s + "echo \"  sudo launchctl bootout system/$LABEL        # unload (uninstall)\"\n"
+        s = s + "echo \"  launchctl print system/$LABEL                # detailed state\"\n"
+        return s
+    }
+
     private static string BuildShService(string name) {
         // `amc build` (v0.7.9+) handles runtime/, libamalgame.a, package
         // facades and the gcc link line on its own. The service template
@@ -944,24 +1048,46 @@ public class NewCommand {
         s = s + "binary falls through to the same `while (!ShouldStop)` loop, with\n"
         s = s + "`Ctrl+C` triggering clean shutdown via the console Ctrl handler.\n"
         s = s + "\n"
-        s = s + "## macOS — launchd\n"
+        s = s + "## macOS — install under launchd\n"
         s = s + "\n"
-        s = s + "Not scaffolded yet. The binary itself runs cleanly on macOS\n"
-        s = s + "(`./build.sh && ./" + name + "` works identically to Linux); only\n"
-        s = s + "the install scripting is Linux-specific. Write a `launchd.plist`\n"
-        s = s + "and `launchctl bootstrap` it — tracked for a future template revision.\n"
+        s = s + "```\n"
+        s = s + "sudo ./install-macos.sh\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "Installs the binary to `/usr/local/bin/" + name + "`, drops the plist at\n"
+        s = s + "`/Library/LaunchDaemons/com.amalgame." + name + ".plist`, ensures\n"
+        s = s + "`/usr/local/var/log` exists, then `launchctl bootstrap`s the\n"
+        s = s + "LaunchDaemon into the system domain so it survives logout and starts\n"
+        s = s + "at boot. Re-run after each code change to deploy.\n"
+        s = s + "\n"
+        s = s + "Inspect status / tail logs:\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "launchctl print system/com.amalgame." + name + "\n"
+        s = s + "tail -f /usr/local/var/log/" + name + ".err.log\n"
+        s = s + "tail -f /usr/local/var/log/" + name + ".out.log\n"
+        s = s + "```\n"
+        s = s + "\n"
+        s = s + "Operate the service:\n"
+        s = s + "\n"
+        s = s + "```\n"
+        s = s + "sudo launchctl kickstart -k system/com.amalgame." + name + "   # restart\n"
+        s = s + "sudo launchctl bootout    system/com.amalgame." + name + "   # uninstall\n"
+        s = s + "```\n"
         s = s + "\n"
         s = s + "## Project layout\n"
         s = s + "\n"
         s = s + "```\n"
         s = s + name + "/\n"
-        s = s + "├── amalgame.toml           # project manifest — declares logging + service deps\n"
-        s = s + "├── src/main.am             # daemon entry point — edit OnTick() here\n"
-        s = s + "├── " + name + ".service      # systemd unit (Linux)\n"
-        s = s + "├── install.sh              # build + deploy under systemd (Linux)\n"
-        s = s + "├── install.ps1             # native Windows service install (sc.exe)\n"
-        s = s + "├── build.sh                # POSIX compile: amc + gcc\n"
-        s = s + "├── build.ps1               # Windows compile: amc + MinGW gcc\n"
+        s = s + "├── amalgame.toml                  # project manifest — declares logging + service deps\n"
+        s = s + "├── src/main.am                    # daemon entry point — edit OnTick() here\n"
+        s = s + "├── " + name + ".service             # systemd unit (Linux)\n"
+        s = s + "├── install.sh                     # build + deploy under systemd (Linux)\n"
+        s = s + "├── com.amalgame." + name + ".plist   # launchd LaunchDaemon (macOS)\n"
+        s = s + "├── install-macos.sh               # build + deploy under launchd (macOS)\n"
+        s = s + "├── install.ps1                    # native Windows service install (sc.exe)\n"
+        s = s + "├── build.sh                       # POSIX compile: amc + gcc\n"
+        s = s + "├── build.ps1                      # Windows compile: amc + MinGW gcc\n"
         s = s + "├── .gitignore\n"
         s = s + "└── README.md\n"
         s = s + "```\n"

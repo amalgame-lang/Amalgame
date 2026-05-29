@@ -149,6 +149,21 @@ public class DapServer {
     public ChildRef_Sizes: List<int>
     public NextChildRef:   int            // varRef id pool, starts at 1000
 
+    // Map/Set drill-down discovery state. Map and Set are open-
+    // addressing hash tables — drill-down needs to walk capacity slots
+    // and filter on AMMAP_OCCUPIED (==1) to expose live entries only.
+    // Two-stage probe: (1) fetch capacity, (2) per-slot `used` probes
+    // chained serially, then (3) hand off to ProcessNextVarFollowup
+    // with proper key/value queries on OCCUPIED slots. Seq == -1 when
+    // inactive; BaseExpr is the pointer-arrow-prefixed gdb expression
+    // resolving to the AmalgameMap* (Set unwraps via `->map`).
+    public MapDisc_Seq:           int
+    public MapDisc_Kind:          string   // "" | "AmalgameMap" | "AmalgameSet"
+    public MapDisc_BaseExpr:      string
+    public MapDisc_Capacity:      int
+    public MapDisc_SlotIdx:       int      // next slot to probe (stage 2)
+    public MapDisc_Occupied:      List<int>
+
     public DapServer() {
         this.Raw           = false
         this.ShowRuntime   = false
@@ -183,6 +198,12 @@ public class DapServer {
         this.ChildRef_Addrs       = new List<string>()
         this.ChildRef_Sizes       = new List<int>()
         this.NextChildRef         = 1000
+        this.MapDisc_Seq          = -1
+        this.MapDisc_Kind         = ""
+        this.MapDisc_BaseExpr     = ""
+        this.MapDisc_Capacity     = 0
+        this.MapDisc_SlotIdx      = 0
+        this.MapDisc_Occupied     = new List<int>()
     }
 
     public int Run() {
@@ -781,6 +802,8 @@ public class DapServer {
         else if (kind == "stackTrace")        { this.RespondStackTrace(dapSeq, rec) }
         else if (kind == "variables")         { this.RespondVariables(dapSeq, rec) }
         else if (kind == "varFollowup")       { this.HandleVarFollowupResponse(rec) }
+        else if (kind == "mapDiscCap")        { this.HandleMapDiscCapResponse(rec) }
+        else if (kind == "mapDiscSlot")       { this.HandleMapDiscSlotResponse(rec) }
         else if (kind == "evaluate")          { this.RespondEvaluate(dapSeq, rec) }
         // The fire-and-forget verbs (continue/next/step/pause) don't
         // register a token — their DAP response was sent up-front and
@@ -1160,28 +1183,50 @@ public class DapServer {
     }
 
     private void HandleScopes(int seq, JsonValue args) {
-        // Synthetic single Locals scope keyed by frameId. variablesReference
-        // = frameId * 100 + 1 (Locals); frameId * 100 + 2 (Arguments) etc.
-        // Phase 4d shipped uses 1 for now.
+        // Locals scope keyed by frameId so the client can drill into
+        // ANY frame, not just frame 0. Encoding: variablesReference =
+        // 100 + frameId. Reserves [100, 999] for Locals refs (up to
+        // 900 stack frames) and keeps the ChildRef pool ≥ 1000 intact.
+        // varRef=1 still works in HandleVariables as a legacy "current
+        // frame" shortcut for clients that skip the scopes round-trip
+        // (used by tests since v0.8.0).
+        var frameId: int = 0
+        let fidV: JsonValue = args.Get("frameId")
+        if (fidV != null && fidV.IsInt()) { frameId = fidV.AsInt() }
+        if (frameId < 0)   { frameId = 0 }
+        if (frameId > 899) { frameId = 899 }
+        let vref: int = 100 + frameId
         let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
             ",\"type\":\"response\"" +
             ",\"request_seq\":" + String_FromInt(seq) +
             ",\"success\":true" +
             ",\"command\":\"scopes\"" +
-            ",\"body\":{\"scopes\":[{\"name\":\"Locals\",\"variablesReference\":1,\"expensive\":false}]}}"
+            ",\"body\":{\"scopes\":[{\"name\":\"Locals\",\"variablesReference\":" +
+                String_FromInt(vref) + ",\"expensive\":false}]}}"
         this.SendDapFrame(body)
     }
 
     private void HandleVariables(int seq, JsonValue args) {
         let vref: int = args.Get("variablesReference").AsInt()
         if (vref == 1) {
-            // Locals scope — query gdb for the current frame's vars,
-            // pretty-print arrives in RespondVariables.
+            // Legacy "current frame" shortcut. Kept for clients that
+            // never bothered with the scopes round-trip (tests since
+            // v0.8.0). New clients go through scopes → 100 + frameId.
             let _tok: int = this.IssueMiCommand(seq, "variables",
                 "-stack-list-variables --simple-values")
             return
         }
-        if (vref > 1) {
+        if (vref >= 100 && vref <= 999) {
+            // Locals scope for a specific frame. gdb's
+            // -stack-list-variables needs an explicit --thread when
+            // --frame is set; synthetic single thread is 1.
+            let frameId: int = vref - 100
+            let mi: string = "-stack-list-variables --thread 1 --frame " +
+                String_FromInt(frameId) + " --simple-values"
+            let _tok: int = this.IssueMiCommand(seq, "variables", mi)
+            return
+        }
+        if (vref >= 1000) {
             // Drill-down into a container we previously summarised.
             this.HandleChildVariables(seq, vref)
             return
@@ -1203,6 +1248,18 @@ public class DapServer {
         let typeS: string = this.ChildRef_Types.Get(cidx)
         let addr:  string = this.ChildRef_Addrs.Get(cidx)
         let size:  int    = this.ChildRef_Sizes.Get(cidx)
+        // AmalgameMap / AmalgameSet take the two-stage discovery path —
+        // walk the hash slots to filter AMMAP_OCCUPIED (==1), then
+        // re-enter the standard PendingVars walker once we know which
+        // slots are live. AmalgameList walks contiguous data[0..size-1].
+        if (typeS == "AmalgameMap") {
+            this.StartMapDiscovery(seq, "AmalgameMap", "((AmalgameMap*)" + addr + ")")
+            return
+        }
+        if (typeS == "AmalgameSet") {
+            this.StartMapDiscovery(seq, "AmalgameSet", "((AmalgameSet*)" + addr + ")->map")
+            return
+        }
         this.PendingVars_Seq     = seq
         this.PendingVars_Names   = new List<string>()
         this.PendingVars_Types   = new List<string>()
@@ -1210,9 +1267,6 @@ public class DapServer {
         this.PendingVars_Queries = new List<string>()
         this.PendingVars_Refs    = new List<int>()
         this.PendingVars_Idx     = 0
-        // AmalgameList* drill-down: data[0..size-1]. AmalgameMap/Set
-        // children are deferred (their internal layout walks a hash
-        // table with tombstones — different shape).
         if (typeS == "AmalgameList") {
             for i in 0..size {
                 this.PendingVars_Names.Add("[" + String_FromInt(i) + "]")
@@ -1223,6 +1277,142 @@ public class DapServer {
             }
         }
         this.ProcessNextVarFollowup()
+    }
+
+    // Stage 1 of Map/Set drill-down: stash drill context + probe the
+    // map's capacity. The capacity response routes to
+    // HandleMapDiscCapResponse, which kicks off stage 2 (per-slot
+    // `used` probes).
+    private void StartMapDiscovery(int seq, string kind, string baseExpr) {
+        this.MapDisc_Seq       = seq
+        this.MapDisc_Kind      = kind
+        this.MapDisc_BaseExpr  = baseExpr
+        this.MapDisc_Capacity  = 0
+        this.MapDisc_SlotIdx   = 0
+        this.MapDisc_Occupied  = new List<int>()
+        let mi: string = "-data-evaluate-expression \"" +
+            Json.EscapeString("(int)" + baseExpr + "->capacity") + "\""
+        let _tok: int = this.IssueMiCommand(seq, "mapDiscCap", mi)
+    }
+
+    private void HandleMapDiscCapResponse(MiRecord rec) {
+        if (rec.Class != "done") {
+            this.FailMapDiscovery("capacity probe failed")
+            return
+        }
+        let valWrap: MiValue = rec.ResultOrNull("value")
+        if (valWrap == null) {
+            this.FailMapDiscovery("capacity probe returned no value")
+            return
+        }
+        let cap: int = String_ToInt(valWrap.Str)
+        if (cap <= 0) {
+            // Empty map (capacity initialised to AMMAP_INITIAL_CAP > 0
+            // by the runtime, so 0 means we hit a NULL deref or stale
+            // address — surface as an empty children list rather than
+            // an error so the IDE doesn't toast on every expand).
+            this.FinishMapDiscoveryEmpty()
+            return
+        }
+        this.MapDisc_Capacity = cap
+        this.MapDisc_SlotIdx  = 0
+        this.FireNextSlotProbe()
+    }
+
+    private void FireNextSlotProbe() {
+        if (this.MapDisc_SlotIdx >= this.MapDisc_Capacity) {
+            this.EmitMapChildren()
+            return
+        }
+        let i: int = this.MapDisc_SlotIdx
+        let q: string = "(int)" + this.MapDisc_BaseExpr + "->entries[" +
+            String_FromInt(i) + "].used"
+        let mi: string = "-data-evaluate-expression \"" + Json.EscapeString(q) + "\""
+        let _tok: int = this.IssueMiCommand(this.MapDisc_Seq, "mapDiscSlot", mi)
+    }
+
+    private void HandleMapDiscSlotResponse(MiRecord rec) {
+        if (rec.Class == "done") {
+            let valWrap: MiValue = rec.ResultOrNull("value")
+            if (valWrap != null) {
+                let usedState: int = String_ToInt(valWrap.Str)
+                if (usedState == 1) { // AMMAP_OCCUPIED
+                    this.MapDisc_Occupied.Add(this.MapDisc_SlotIdx)
+                }
+            }
+        }
+        // On ^error or missing value we silently treat the slot as
+        // empty — better than aborting the whole expansion. A genuinely
+        // bad address would already have failed the capacity probe.
+        this.MapDisc_SlotIdx = this.MapDisc_SlotIdx + 1
+        this.FireNextSlotProbe()
+    }
+
+    // Stage 2: walk OCCUPIED slots and stage proper key/value queries
+    // into PendingVars, then hand off to ProcessNextVarFollowup which
+    // serialises the per-entry eval round-trips through the existing
+    // pretty-printer pipeline.
+    private void EmitMapChildren() {
+        let seq:      int    = this.MapDisc_Seq
+        let baseExpr: string = this.MapDisc_BaseExpr
+        let kind:     string = this.MapDisc_Kind
+        this.PendingVars_Seq     = seq
+        this.PendingVars_Names   = new List<string>()
+        this.PendingVars_Types   = new List<string>()
+        this.PendingVars_Values  = new List<string>()
+        this.PendingVars_Queries = new List<string>()
+        this.PendingVars_Refs    = new List<int>()
+        this.PendingVars_Idx     = 0
+        let n: int = this.MapDisc_Occupied.Count()
+        for j in 0..n {
+            let slot: int = this.MapDisc_Occupied.Get(j)
+            let slotS: string = String_FromInt(slot)
+            // Set is a Map<key, sentinel>; the value side is meaningless
+            // (always (void*)1), so we only surface the key. Map gets
+            // a paired (k, v) per OCCUPIED slot.
+            this.PendingVars_Names.Add("[" + slotS + "].k")
+            this.PendingVars_Types.Add("code_string")
+            this.PendingVars_Values.Add("?")
+            this.PendingVars_Queries.Add("(code_string)" + baseExpr + "->entries[" + slotS + "].key")
+            this.PendingVars_Refs.Add(0)
+            if (kind == "AmalgameMap") {
+                this.PendingVars_Names.Add("[" + slotS + "].v")
+                this.PendingVars_Types.Add("void*")
+                this.PendingVars_Values.Add("?")
+                this.PendingVars_Queries.Add("(void*)" + baseExpr + "->entries[" + slotS + "].value")
+                this.PendingVars_Refs.Add(0)
+            }
+        }
+        this.ResetMapDiscovery()
+        this.ProcessNextVarFollowup()
+    }
+
+    private void FinishMapDiscoveryEmpty() {
+        let seq: int = this.MapDisc_Seq
+        this.PendingVars_Seq     = seq
+        this.PendingVars_Names   = new List<string>()
+        this.PendingVars_Types   = new List<string>()
+        this.PendingVars_Values  = new List<string>()
+        this.PendingVars_Queries = new List<string>()
+        this.PendingVars_Refs    = new List<int>()
+        this.PendingVars_Idx     = 0
+        this.ResetMapDiscovery()
+        this.ProcessNextVarFollowup()
+    }
+
+    private void FailMapDiscovery(string msg) {
+        let seq: int = this.MapDisc_Seq
+        this.ResetMapDiscovery()
+        this.SendDapErrorResponse(seq, "variables", msg)
+    }
+
+    private void ResetMapDiscovery() {
+        this.MapDisc_Seq       = -1
+        this.MapDisc_Kind      = ""
+        this.MapDisc_BaseExpr  = ""
+        this.MapDisc_Capacity  = 0
+        this.MapDisc_SlotIdx   = 0
+        this.MapDisc_Occupied  = new List<int>()
     }
 
     private int FindChildRefIndex(int vref) {
