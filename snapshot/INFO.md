@@ -1,9 +1,9 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-25T09:40:21+02:00
-Git rev:  817601bd43006bb2803c0e668a8be8d50538c913
+Captured: 2026-05-29T07:50:28+02:00
+Git rev:  a605a9b8e66f64395156074b2f315e3f30288f44
 Branch:   feat/udp-recvbuf-tunable
-Tests:    595 passed
+Tests:    604 passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
 `./amc` if present, otherwise falls back to `./snapshot/amc`. From a
