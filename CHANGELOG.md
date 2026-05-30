@@ -7,6 +7,44 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.60] — 2026-05-30
+
+Compiler internals refactor + three parser fixes.
+
+### Refactored
+
+- All seven `NodeKind`/keyword dispatchers in the self-hosted compiler
+  moved from `if (k == NodeKind.X) … else if …` chains to `match`:
+  `ResolveStmt`, `ResolveExpr` (resolver); `EmitStmt`, `EmitExprStr`,
+  `InferTypeFromExprUncached` (cgen); `ParseStmt`, `ParseDecl` (parser).
+  Behaviour-preserving — compound branches became guarded arms; arms that
+  don't `return` fall through to the post-`match` default exactly as the
+  if-chains did. The roadmap's "blocked on algebraic-enum patterns /
+  match-arm guards" was a misdiagnosis: `NodeKind` is a simple enum.
+
+### Added
+
+- `match` now accepts **string-literal patterns** — `match v { "if" =>
+  …, "while" => … }` lowers via `strcmp`. This unblocked converting the
+  two keyword-string parser dispatchers above.
+
+### Fixed
+
+- Parser: a bare `;` statement separator no longer synthesises a spurious
+  `_unknown_` node (`a(); b()`, `let x = 5;`, `;`-separated blocks). It is
+  now treated as an optional statement terminator, equivalent to a
+  newline. `amc fmt` round-trips `;` cleanly again.
+- Parser: TS-style return-type signatures `Name(p): T { … }` no longer
+  silently drop the entire method body (and no longer report the return
+  type as `void`). `ParseMethod` consumes the trailing `: <type>`.
+
+### Note
+
+- The CHANGELOG was dormant between **v0.8.29 and v0.8.59**; those
+  releases (async/HTTP stack, package ecosystem, DAP bridge, native TLS,
+  resolver perf, `amc doc`, …) are catalogued in `ROADMAP_COMPLET.md` and
+  the git history. This entry resumes the log.
+
 ## [v0.8.28] — 2026-05-17
 
 Follow-up to v0.8.27 — AutoBUS Phase 4 (`subscription.am::FindByTopic`)
