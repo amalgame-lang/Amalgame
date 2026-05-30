@@ -284,6 +284,28 @@ public class CGen {
             }
             this.SetImportedNamespaces(autoImports)
         }
+        // v0.8.59: always treat the source's OWN namespace as
+        // implicitly imported. Without this, compiling a package
+        // source file (e.g. amalgame-tls/acme.am, namespace
+        // `Amalgame.Tls`) drops its OWN runtime header `#include`
+        // AND every typedef forward-decl for sibling pkg-classes
+        // declared via manifest `classes = [...]` but without an
+        // AM `class` decl (e.g. AmalgameTlsAcmeHttpResponse, a
+        // pure C struct in the runtime header). You can't `import`
+        // yourself, so the import-extraction loop above misses it;
+        // we patch it up here once NsPrefix is known.
+        if (String_Length(ns) > 0) {
+            var alreadyPresent: bool = false
+            let existing: int = this.ImportedNs.Count()
+            for ei in 0..existing {
+                if (this.ImportedNs.Get(ei) == ns) {
+                    alreadyPresent = true
+                }
+            }
+            if (!alreadyPresent) {
+                this.ImportedNs.Add(ns)
+            }
+        }
         this.EmitHeader()
         let decls = prog.Children.Count()
         for i in 0..decls {
@@ -310,6 +332,28 @@ public class CGen {
     public void BeginMulti(string ns) {
         if (String_Length(ns) > 0) {
             this.NsPrefix = String_Replace(ns, ".", "_")
+        }
+        // v0.8.59: always treat the compilation unit's own namespace
+        // as implicitly imported — same rationale as Generate(). A
+        // package compiling its own facade via `amc --lib` (e.g. the
+        // amc package-add precompile path) needs its OWN runtime
+        // header to be #included so manifest-declared pkg-classes
+        // (no AM source, just a C typedef in the header) reach gcc.
+        // ImportedNs stores DOTTED-form namespaces (matching what
+        // NamespaceImported compares against). main.am passes
+        // BeginMulti an underscored `nsPrefix`, so convert back.
+        if (String_Length(ns) > 0) {
+            let nsDot: string = String_Replace(ns, "_", ".")
+            var alreadyPresent: bool = false
+            let existing: int = this.ImportedNs.Count()
+            for ei in 0..existing {
+                if (this.ImportedNs.Get(ei) == nsDot) {
+                    alreadyPresent = true
+                }
+            }
+            if (!alreadyPresent) {
+                this.ImportedNs.Add(nsDot)
+            }
         }
         this.EmitHeader()
         // v0.8.38: emit forward-decl typedefs for every class
@@ -950,6 +994,7 @@ public class CGen {
     private string InferTypeFromExprUncached(AstNode expr) {
         if (expr == null) { return "" }
         let k = expr.Kind
+        match k {
         // v0.8.39 — `let app = this` picks up the enclosing class's
         // C type so the local is declared as `<Class>* app = self;`
         // instead of `void* app = self;`.  Closures capturing `app`
@@ -958,16 +1003,16 @@ public class CGen {
         // CurrentClass is the already-mangled symbol (e.g. Demo_Counter),
         // so we tack on `*` directly — running it through TypeToC would
         // double-prefix via SymName.
-        if (k == NodeKind.THIS_EXPR) {
+        NodeKind.THIS_EXPR => {
             if (String_Length(this.CurrentClass) > 0) {
                 return this.CurrentClass + "*"
             }
         }
-        if (k == NodeKind.LIST_COMP)      { return "AmalgameList*" }
-        if (k == NodeKind.LIST_LITERAL)   { return "AmalgameList*" }
+        NodeKind.LIST_COMP => { return "AmalgameList*" }
+        NodeKind.LIST_LITERAL => { return "AmalgameList*" }
         // match-as-expression: type is the type of the first arm body.
         // (All arms must agree at runtime; we trust the first as a hint.)
-        if (k == NodeKind.IF_STMT && expr.Name == "__match__") {
+        NodeKind.IF_STMT if expr.Name == "__match__" => {
             if (expr.Children.Count() > 0) {
                 let firstArm: AstNode = expr.Children.Get(0)
                 if (firstArm.Right != null) {
@@ -978,7 +1023,7 @@ public class CGen {
         }
         // if-as-expression: the type is the type of the then-branch.
         // The body is a BLOCK whose last child is the result expression.
-        if (k == NodeKind.IF_STMT) {
+        NodeKind.IF_STMT => {
             if (expr.Body != null) {
                 let body: AstNode = expr.Body
                 if (body.Kind == NodeKind.BLOCK && body.Children.Count() > 0) {
@@ -989,11 +1034,11 @@ public class CGen {
             }
             return ""
         }
-        if (k == NodeKind.LITERAL_INT)    { return "i64" }
-        if (k == NodeKind.LITERAL_FLOAT)  { return "double" }
-        if (k == NodeKind.LITERAL_STRING) { return "code_string" }
-        if (k == NodeKind.LITERAL_BOOL)   { return "code_bool" }
-        if (k == NodeKind.BINARY) {
+        NodeKind.LITERAL_INT => { return "i64" }
+        NodeKind.LITERAL_FLOAT => { return "double" }
+        NodeKind.LITERAL_STRING => { return "code_string" }
+        NodeKind.LITERAL_BOOL => { return "code_bool" }
+        NodeKind.BINARY => {
             let bop = expr.Str
             let isCmpOp = (bop == "&&" || bop == "||" || bop == "==" || bop == "!=")
             let isRelOp = (bop == "<" || bop == ">" || bop == "<=" || bop == ">=")
@@ -1017,14 +1062,14 @@ public class CGen {
                 if (lt == "double" || rt == "double") { return "double" }
             }
         }
-        if (k == NodeKind.UNARY) {
+        NodeKind.UNARY => {
             if (expr.Str == "!") { return "code_bool" }
         }
-        if (k == NodeKind.IDENTIFIER) {
+        NodeKind.IDENTIFIER => {
             // Could be a local var — look it up
             return this.LocalTypeGet(expr.Name)
         }
-        if (k == NodeKind.MEMBER) {
+        NodeKind.MEMBER => {
             // this.Field → look up field type
             if (expr.Left != null) {
                 let lk = expr.Left.Kind
@@ -1110,7 +1155,7 @@ public class CGen {
             }
             return ""
         }
-        if (k == NodeKind.NEW_EXPR) {
+        NodeKind.NEW_EXPR => {
             let tname = expr.Name
             if (String_StartsWith(tname, "List<") || tname == "List") { return "AmalgameList*" }
             if (String_StartsWith(tname, "Map<")  || tname == "Map")  { return "AmalgameMap*" }
@@ -1141,7 +1186,7 @@ public class CGen {
             return this.ClassMangledFor(tname) + "*"
         }
         // method call returning a known type — check callee
-        if (k == NodeKind.CALL) {
+        NodeKind.CALL => {
             // Higher-order list calls (Filter/Map return AmalgameList*).
             // Detect via the receiver method name on the MEMBER node so
             // we don't have to round-trip through EmitCalleeStr (which
@@ -1492,6 +1537,8 @@ public class CGen {
                     }
                 }
             }
+        }
+        _ => { }
         }
         return ""
     }
@@ -3184,7 +3231,8 @@ public class CGen {
     private void EmitStmt(AstNode stmt) {
         this.EmitLineDirective(stmt)
         let k = stmt.Kind
-        if (k == NodeKind.BLOCK) {
+        match k {
+        NodeKind.BLOCK => {
             // Bare `{ ... }` block at statement position. The resolver
             // already pushes a "block" scope around the children, so
             // emitting a C `{ ... }` here gives each `let` inside its
@@ -3198,7 +3246,7 @@ public class CGen {
             this.Out.EmitLine("}")
             return
         }
-        if (k == NodeKind.TRY_STMT) {
+        NodeKind.TRY_STMT => {
             // try { … } catch e { … } [finally { … }] — setjmp/longjmp pattern
             // (matches the Vala bootstrap's c_generator).
             //   {
@@ -3239,7 +3287,7 @@ public class CGen {
             this.Out.EmitLine("}")
             return
         }
-        if (k == NodeKind.INLINE_C) {
+        NodeKind.INLINE_C => {
             // `@c { … }` — splice the raw C body inside a compound statement
             // so any `int x = …;` declarations stay scoped to the block. The
             // body is emitted line-by-line; the lexer captured it verbatim,
@@ -3258,7 +3306,7 @@ public class CGen {
             this.Out.EmitLine("}")
             return
         }
-        if (k == NodeKind.THROW_STMT) {
+        NodeKind.THROW_STMT => {
             // `throw new SomeError(args)` → `_am_throw((void*)(SomeError_new(args)),
             //   "SomeError", first_string_arg_or_empty)`.
             // Falls back to a generic throw for other shapes.
@@ -3290,7 +3338,7 @@ public class CGen {
             this.Out.EmitLine("_am_throw((void*)" + valStr + ", \"Error\", \"\");")
             return
         }
-        if (k == NodeKind.VAR_DECL) {
+        NodeKind.VAR_DECL => {
             // Tuple destructuring: let (a, b) = expr
             if (stmt.Str == "__tuple_destructure__") {
                 let rhs = this.EmitExprStr(stmt.Left)
@@ -3526,7 +3574,7 @@ public class CGen {
             }
             this.Out.EmitLine(decl)
         }
-        if (k == NodeKind.RETURN_STMT) {
+        NodeKind.RETURN_STMT => {
             if (stmt.Left == null) {
                 if (this.InLambdaBody) {
                     // Bare `return` inside a lambda body — yield boxed 0.
@@ -3550,7 +3598,7 @@ public class CGen {
                 }
             }
         }
-        if (k == NodeKind.IF_STMT) {
+        NodeKind.IF_STMT => {
             // Check if this is a match statement
             if (stmt.Name == "__match__") {
                 this.EmitMatch(stmt)
@@ -3558,14 +3606,14 @@ public class CGen {
             }
             this.EmitIf(stmt)
         }
-        if (k == NodeKind.WHILE_STMT) {
+        NodeKind.WHILE_STMT => {
             this.Out.EmitLine("while (" + this.EmitExprStr(stmt.Cond) + ") {")
             this.Out.Indent_()
             if (stmt.Body != null) { this.EmitBlock(stmt.Body) }
             this.Out.Dedent()
             this.Out.EmitLine("}")
         }
-        if (k == NodeKind.FOR_IN_STMT) {
+        NodeKind.FOR_IN_STMT => {
             let vn = stmt.Name
             // iter is the range expression: BINARY("..", start, end) or a collection
             if (stmt.Left != null) {
@@ -3633,20 +3681,22 @@ public class CGen {
             this.Out.EmitLine("}")
             this.LocalTypeSet(vn, "")
         }
-        if (k == NodeKind.BREAK_STMT) {
+        NodeKind.BREAK_STMT => {
             this.Out.EmitLine("break;")
         }
-        if (k == NodeKind.CONTINUE_STMT) {
+        NodeKind.CONTINUE_STMT => {
             this.Out.EmitLine("continue;")
         }
-        if (k == NodeKind.BINARY) {
+        NodeKind.BINARY => {
             this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
         }
-        if (k == NodeKind.CALL) {
+        NodeKind.CALL => {
             this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
         }
-        if (k == NodeKind.MEMBER) {
+        NodeKind.MEMBER => {
             this.Out.EmitLine(this.EmitExprStr(stmt) + ";")
+        }
+        _ => { }
         }
     }
 
@@ -3655,6 +3705,7 @@ public class CGen {
     private string EmitExprStr(AstNode expr) {
         if (expr == null) { return "NULL" }
         let k = expr.Kind
+        match k {
         // Lambda: x => expr — emit as a real AmalgameClosure*.
         //
         // Higher-order list methods (Map/Filter/etc.) intercept the
@@ -3668,11 +3719,11 @@ public class CGen {
         // surfaced as garbage C tokens. Emitting an inline
         // `AmalgameClosure_new((void*)lam_N_fn, env)` is type-correct
         // and lifetime-safe (env is code_alloc'd, GC tracks both).
-        if (k == NodeKind.METHOD_DECL && expr.Name == "__lambda__") {
+        NodeKind.METHOD_DECL if expr.Name == "__lambda__" => {
             return this.EmitLambdaAsClosure(expr)
         }
         // Tuple literal: (val1, val2, ...)
-        if (k == NodeKind.CALL && expr.Name == "__tuple_literal__") {
+        NodeKind.CALL if expr.Name == "__tuple_literal__" => {
             // We don't know the struct name here without context,
             // use compound literal with positional initializers
             let argc = expr.Args.Count()
@@ -3684,7 +3735,7 @@ public class CGen {
             result = result + "}"
             return result
         }
-        if (k == NodeKind.IF_STMT) {
+        NodeKind.IF_STMT => {
             // match-as-expression: same NodeKind, distinguished by marker.
             if (expr.Name == "__match__") {
                 return this.EmitMatchExpr(expr)
@@ -3694,19 +3745,19 @@ public class CGen {
             let elseStr = this.EmitIfBranch(expr.Else)
             return "(" + condStr + " ? " + thenStr + " : " + elseStr + ")"
         }
-        if (k == NodeKind.LITERAL_INT)    { return expr.Str }
-        if (k == NodeKind.LITERAL_FLOAT)  { return expr.Str }
-        if (k == NodeKind.LITERAL_STRING) {
+        NodeKind.LITERAL_INT => { return expr.Str }
+        NodeKind.LITERAL_FLOAT => { return expr.Str }
+        NodeKind.LITERAL_STRING => {
             let raw = expr.Str
             return this.EmitInterpolatedString(raw)
         }
-        if (k == NodeKind.LITERAL_BOOL) {
+        NodeKind.LITERAL_BOOL => {
             if (expr.Flag) { return "1" }
             return "0"
         }
-        if (k == NodeKind.LITERAL_NULL) { return "NULL" }
-        if (k == NodeKind.THIS_EXPR)    { return "self" }
-        if (k == NodeKind.IDENTIFIER) {
+        NodeKind.LITERAL_NULL => { return "NULL" }
+        NodeKind.THIS_EXPR => { return "self" }
+        NodeKind.IDENTIFIER => {
             // Auto-qualify implicit field access in method bodies:
             // `Id = id` inside a method/constructor lowers to
             // `self->Id = id` when Id isn't a local (no shadow) but
@@ -3727,7 +3778,7 @@ public class CGen {
             }
             return name
         }
-        if (k == NodeKind.MEMBER) {
+        NodeKind.MEMBER => {
             // Null-safe access: `obj?.field` → `(obj ? obj->field : NULL)`.
             // Note: assumes `obj` has no side effects (we evaluate it twice).
             // Use a let-binding for complex receivers.
@@ -3764,7 +3815,7 @@ public class CGen {
             let target = this.EmitExprStr(expr.Left)
             return target + "->" + expr.Name
         }
-        if (k == NodeKind.BINARY) {
+        NodeKind.BINARY => {
             var left  = this.EmitExprStr(expr.Left)
             let op    = expr.Str
             var right = this.EmitExprStr(expr.Right)
@@ -3891,7 +3942,7 @@ public class CGen {
             }
             return left + " " + op + " " + right
         }
-        if (k == NodeKind.UNARY) {
+        NodeKind.UNARY => {
             let operand = this.EmitExprStr(expr.Left)
             // Wrap binary/ternary operands in parens so C precedence matches
             // the source (e.g. `!(x > 0)`, not `!x > 0`).
@@ -3901,7 +3952,7 @@ public class CGen {
             }
             return expr.Str + operand
         }
-        if (k == NodeKind.CALL) {
+        NodeKind.CALL => {
             // ── Closure call via MEMBER access (v0.8.30+) ─────────
             // `this.Fn(x)`, `obj.Handler(req)`, etc. — when the
             // referenced field has type `Closure` (lowered to
@@ -4128,7 +4179,7 @@ public class CGen {
             }
             return callStr
         }
-        if (k == NodeKind.NEW_EXPR) {
+        NodeKind.NEW_EXPR => {
             let tname = expr.Name
             var newCall = ""
             if (String_StartsWith(tname, "List<") || tname == "List") {
@@ -4183,16 +4234,18 @@ public class CGen {
             }
             return newCall
         }
-        if (k == NodeKind.INDEX_EXPR) {
+        NodeKind.INDEX_EXPR => {
             let base = this.EmitExprStr(expr.Left)
             let idx  = this.EmitExprStr(expr.Right)
             return base + "[" + idx + "]"
         }
-        if (k == NodeKind.LIST_COMP) {
+        NodeKind.LIST_COMP => {
             return this.EmitListComp(expr)
         }
-        if (k == NodeKind.LIST_LITERAL) {
+        NodeKind.LIST_LITERAL => {
             return this.EmitListLiteral(expr)
+        }
+        _ => { }
         }
         return "/* unknown expr */"
     }

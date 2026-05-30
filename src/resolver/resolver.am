@@ -1025,81 +1025,86 @@ public class FullResolver {
         if (stmt == null) { return }
         let k = stmt.Kind
 
-        if (k == NodeKind.VAR_DECL) {
-            // Resolve RHS first (can't see variable being declared)
-            if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
-            let isLet = stmt.Flag == false   // Flag = isMut; let = not mutable
-            // v2.5: when no annotation is given, infer the variable's
-            // type from the RHS so PatchLambdaParamTypes can later see
-            // it as `List<User>` (rather than ""). Falls back to the
-            // explicit annotation otherwise.
-            var declType: string = stmt.Str
-            if (String_Length(declType) == 0 && stmt.Left != null) {
-                declType = this.InferExprType(stmt.Left)
-            }
-            this.DeclareCurrent(stmt.Name, declType, isLet)
-            return
-        }
-        if (k == NodeKind.RETURN_STMT) {
-            if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
-            return
-        }
-        if (k == NodeKind.IF_STMT) {
-            this.ResolveIf(stmt)
-            return
-        }
-        if (k == NodeKind.WHILE_STMT) {
-            if (stmt.Cond != null) { this.ResolveExpr(stmt.Cond) }
-            this.LoopDepth = this.LoopDepth + 1
-            if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
-            this.LoopDepth = this.LoopDepth - 1
-            return
-        }
-        if (k == NodeKind.FOR_IN_STMT) {
-            this.ResolveForIn(stmt)
-            return
-        }
-        if (k == NodeKind.BREAK_STMT) {
-            if (this.LoopDepth == 0) { this.Error("'break' outside loop", stmt) }
-            return
-        }
-        if (k == NodeKind.CONTINUE_STMT) {
-            if (this.LoopDepth == 0) { this.Error("'continue' outside loop", stmt) }
-            return
-        }
-        if (k == NodeKind.TRY_STMT) {
-            if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
-            if (stmt.Else != null) {
-                this.PushScope("catch")
-                if (String_Length(stmt.Name) > 0) {
-                    this.DeclareCurrent(stmt.Name, "void*", true)
+        match k {
+            NodeKind.VAR_DECL => {
+                // Resolve RHS first (can't see variable being declared)
+                if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+                let isLet = stmt.Flag == false   // Flag = isMut; let = not mutable
+                // v2.5: when no annotation is given, infer the variable's
+                // type from the RHS so PatchLambdaParamTypes can later see
+                // it as `List<User>` (rather than ""). Falls back to the
+                // explicit annotation otherwise.
+                var declType: string = stmt.Str
+                if (String_Length(declType) == 0 && stmt.Left != null) {
+                    declType = this.InferExprType(stmt.Left)
                 }
-                this.ResolveBlock(stmt.Else)
-                this.PopScope()
+                this.DeclareCurrent(stmt.Name, declType, isLet)
+                return
             }
-            if (stmt.Cond != null) { this.ResolveBlock(stmt.Cond) }
-            return
+            NodeKind.RETURN_STMT => {
+                if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+                return
+            }
+            NodeKind.IF_STMT => {
+                this.ResolveIf(stmt)
+                return
+            }
+            NodeKind.WHILE_STMT => {
+                if (stmt.Cond != null) { this.ResolveExpr(stmt.Cond) }
+                this.LoopDepth = this.LoopDepth + 1
+                if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+                this.LoopDepth = this.LoopDepth - 1
+                return
+            }
+            NodeKind.FOR_IN_STMT => {
+                this.ResolveForIn(stmt)
+                return
+            }
+            NodeKind.BREAK_STMT => {
+                if (this.LoopDepth == 0) { this.Error("'break' outside loop", stmt) }
+                return
+            }
+            NodeKind.CONTINUE_STMT => {
+                if (this.LoopDepth == 0) { this.Error("'continue' outside loop", stmt) }
+                return
+            }
+            NodeKind.TRY_STMT => {
+                if (stmt.Body != null) { this.ResolveBlock(stmt.Body) }
+                if (stmt.Else != null) {
+                    this.PushScope("catch")
+                    if (String_Length(stmt.Name) > 0) {
+                        this.DeclareCurrent(stmt.Name, "void*", true)
+                    }
+                    this.ResolveBlock(stmt.Else)
+                    this.PopScope()
+                }
+                if (stmt.Cond != null) { this.ResolveBlock(stmt.Cond) }
+                return
+            }
+            NodeKind.THROW_STMT => {
+                if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
+                return
+            }
+            NodeKind.INLINE_C => {
+                // Raw C splice — opaque to the Amalgame frontend by design.
+                return
+            }
+            NodeKind.ASSIGN => {
+                this.ResolveAssign(stmt)
+                return
+            }
+            // Block (e.g. try/catch emitted as nested block)
+            NodeKind.BLOCK => {
+                this.ResolveBlock(stmt)
+                return
+            }
+            _ => { }
         }
-        if (k == NodeKind.THROW_STMT) {
-            if (stmt.Left != null) { this.ResolveExpr(stmt.Left) }
-            return
-        }
-        if (k == NodeKind.INLINE_C) {
-            // Raw C splice — opaque to the Amalgame frontend by design.
-            return
-        }
-        if (k == NodeKind.ASSIGN) {
-            this.ResolveAssign(stmt)
-            return
-        }
-        // Match
+        // Match nodes are stored as IF_STMT with Name="__match__" and are
+        // already handled by the IF_STMT arm above; this Name-keyed guard
+        // stays as a belt for any bare match arriving with another kind.
         if (stmt.Name == "__match__") {
             this.ResolveMatch(stmt)
-            return
-        }
-        // Block (e.g. try/catch emitted as nested block)
-        if (k == NodeKind.BLOCK) {
-            this.ResolveBlock(stmt)
             return
         }
         // Expression statement
@@ -1387,8 +1392,9 @@ public class FullResolver {
     private void ResolveExpr(AstNode expr) {
         if (expr == null) { return }
         let k = expr.Kind
+        match k {
 
-        if (k == NodeKind.IDENTIFIER) {
+        NodeKind.IDENTIFIER => {
             // Skip parser error-recovery placeholders — they already represent a parse error
             if (expr.Name == "_unknown_") { return }
             // Wildcard placeholder used in match patterns. Treated as "matches
@@ -1408,21 +1414,21 @@ public class FullResolver {
             this.TryCaptureLocalByName(expr.Name, expr.Line, expr.Column)
             return
         }
-        if (k == NodeKind.BINARY) {
+        NodeKind.BINARY => {
             if (expr.Left  != null) { this.ResolveExpr(expr.Left) }
             if (expr.Right != null) { this.ResolveExpr(expr.Right) }
             return
         }
-        if (k == NodeKind.UNARY) {
+        NodeKind.UNARY => {
             if (expr.Left != null) { this.ResolveExpr(expr.Left) }
             return
         }
-        if (k == NodeKind.MEMBER) {
+        NodeKind.MEMBER => {
             // Only resolve the target; member name validated by TypeChecker
             if (expr.Left != null) { this.ResolveExpr(expr.Left) }
             return
         }
-        if (k == NodeKind.CALL) {
+        NodeKind.CALL => {
             if (expr.Left != null) { this.ResolveExpr(expr.Left) }
             // v2.5: when the call is a higher-order list method
             // (xs.Map/Filter/...), patch the lambda arg's PARAM types
@@ -1441,7 +1447,7 @@ public class FullResolver {
             }
             return
         }
-        if (k == NodeKind.NEW_EXPR) {
+        NodeKind.NEW_EXPR => {
             // Same typed-Closure patching for `new T(c => …)` ctor args.
             this.PatchLambdaParamTypesGeneric(expr)
             let argc = expr.Args.Count()
@@ -1450,12 +1456,12 @@ public class FullResolver {
             }
             return
         }
-        if (k == NodeKind.INDEX_EXPR) {
+        NodeKind.INDEX_EXPR => {
             if (expr.Left  != null) { this.ResolveExpr(expr.Left) }
             if (expr.Right != null) { this.ResolveExpr(expr.Right) }
             return
         }
-        if (k == NodeKind.LIST_COMP) {
+        NodeKind.LIST_COMP => {
             // [proj for var in iter (if guard)?]: resolve iter in the
             // outer scope, then push a scope so var shadows whatever
             // outer binding has the same name while resolving the
@@ -1473,7 +1479,7 @@ public class FullResolver {
             this.PopScope()
             return
         }
-        if (k == NodeKind.LIST_LITERAL) {
+        NodeKind.LIST_LITERAL => {
             // [e1, e2, ...]: each element is resolved in the outer
             // scope. No new bindings introduced.
             let nc: int = expr.Children.Count()
@@ -1482,11 +1488,11 @@ public class FullResolver {
             }
             return
         }
-        if (k == NodeKind.ASSIGN) {
+        NodeKind.ASSIGN => {
             this.ResolveAssign(expr)
             return
         }
-        if (k == NodeKind.IF_STMT) {
+        NodeKind.IF_STMT => {
             // match-as-expression: parser reuses IF_STMT with Name=__match__,
             // arms in Children. Delegate to the existing match resolver so
             // the arm bodies see the correct binders.
@@ -1500,7 +1506,7 @@ public class FullResolver {
             if (expr.Else != null) { this.ResolveElseBranch(expr.Else) }
             return
         }
-        if (k == NodeKind.METHOD_DECL && expr.Name == "__lambda__") {
+        NodeKind.METHOD_DECL if expr.Name == "__lambda__" => {
             // Lambda body: open a fresh scope, declare every param at
             // the boundary, and resolve the body with capture tracking
             // on. Saving/restoring the previous LambdaInProgress lets
@@ -1528,7 +1534,7 @@ public class FullResolver {
             this.LambdaBoundary   = prevBoundary
             return
         }
-        if (k == NodeKind.LITERAL_STRING) {
+        NodeKind.LITERAL_STRING => {
             // String interpolations `"…{expr}…"` are kept as a raw
             // LITERAL_STRING by the parser and lowered later by
             // CGen's EmitInterpolatedString. The resolver therefore
@@ -1561,6 +1567,8 @@ public class FullResolver {
             return
         }
         // Literals, this, null — always valid
+        _ => { }
+        }
     }
 
     // ── Type inference (lightweight, for for-in) ──────
