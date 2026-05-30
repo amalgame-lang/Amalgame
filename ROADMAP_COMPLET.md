@@ -235,7 +235,8 @@ In rough order of usefulness × effort:
       Filter|Map). String interpolation `"x: {coll.Count()}"`
       already works since v0.8.16 (`new X(...).Method()` chain
       codegen).
-- [~] **Spread operator** — **MVP shipped 2026-05-19**:
+- [x] **Spread operator** — **list-literal MVP shipped 2026-05-19,
+      variadics shipped 2026-05-31 (v0.8.61)**:
       `[...a, ...b, c]` in list literals splices each operand's
       elements at its position. New `OP_SPREAD` token (`...`),
       `ParseListItem` wraps `...expr` in `UNARY(op="...")`,
@@ -243,10 +244,27 @@ In rough order of usefulness × effort:
       `AmalgameList_add` loop that binds the source to a fresh
       `__sp_<i>` local so side-effecting source expressions
       (e.g. `[...users.Map(u => u.Name)]`) only fire once.
-      Sample: `tests/samples/spread_list_literal.am`. Still
-      pending: variadic call sites `f(...args)` and variadic
-      param definitions `(...xs: T[])` — both need new
-      function-signature syntax (out of MVP scope).
+      Sample: `tests/samples/spread_list_literal.am`.
+- [x] **Variadic parameters + variadic call sites** — **shipped
+      2026-05-31 (v0.8.61)**. A method's trailing param may be
+      variadic: `Sum(...nums: int)`. The declared type is the
+      **element** type — inside the body the param is a `List<T>`
+      (lowers to one `AmalgameList*` C param, no `va_list`), so all
+      the list machinery works unchanged. Call sites gather trailing
+      args into a fresh list (`Sum(1, 2, 3)`), splice an existing
+      list (`Sum(...xs)`), or mix the two (`Sum(1, ...xs, 2)`).
+      Parser: `ParseParam` flags a leading `OP_SPREAD`,
+      `ParseCallArgs` reuses the `UNARY op="..."` shape. CGen: a
+      `MethodVariadic*` table (mangled-name → fixed arity, filled in
+      the forward-decl pass) drives `EmitVariadicTail` at the call
+      site; `MethodSig`/`EmitMethod` emit the param as
+      `AmalgameList*` + seed `List<T>` elem-type tracking. Formatter
+      re-emits the `...` marker idempotently. Sample:
+      `tests/samples/variadic_params.am` (8 cases, in the core
+      bundle). **Residual scope**: variadic params on *external
+      package* facade methods (`ExternalMethodSig` /
+      `RegisterExternalProg` don't register the variadic table yet —
+      only locally-defined classes are covered).
 - [~] **`async` / `await`** — **complete HTTP/1.1 async stack
       shipped 2026-05-22 → 2026-05-23 across three packages**.
       Linux-only (epoll); kqueue/IOCP planned but unshipped.
@@ -2433,7 +2451,8 @@ Top of the list, ordered by *unlocked-value* per *days-of-work*:
 7. ~~**Spread operator** — `[...a, ...b]` in list literals~~
    ✅ **MVP shipped 2026-05-19** (see the dedicated entry above
    in the language backlog). Variadic call / variadic param
-   syntax still pending — requires new function-sig grammar.
+   syntax ✅ **shipped 2026-05-31 (v0.8.61)** — `...name: ElemType`
+   params (body sees `List<T>`) + `f(...xs)` call-site splice.
 
 ## 📋 Next sessions (3 dedicated items)
 
