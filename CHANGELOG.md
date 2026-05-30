@@ -7,6 +7,48 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.61] — 2026-05-31
+
+Variadic parameters + variadic call sites — closes the last "still
+pending" item on the spread-operator backlog (the list-literal spread
+MVP shipped v0.8.36).
+
+### Added
+
+- **Variadic parameters** — a method's trailing parameter may be
+  variadic: `Sum(...nums: int)`. Callers pass zero or more `int` args
+  in that position; inside the body `nums` is a `List<int>`, so all
+  the usual list machinery (`for n in nums`, `nums.Get(i)`,
+  `nums.Count()`, `.Map`/`.Filter`, …) works unchanged. Lowers to a
+  single `AmalgameList*` C parameter — no `va_list`. Fixed params may
+  precede the variadic one (`SumFrom(base: int, ...nums: int)`).
+- **Variadic call sites** — `f(a, b, c)` gathers the trailing args
+  into a fresh list for the callee's variadic param, and `f(...xs)`
+  splices an existing `List` into that position (same AST shape as a
+  list-literal spread item). The two compose freely:
+  `Sum(1, ...xs, 2)`. Zero trailing args produce an empty (non-NULL)
+  list.
+
+### How it lowers
+
+- Parser: `ParseParam` consumes a leading `OP_SPREAD` and flags the
+  PARAM node; `ParseCallArgs` wraps a `...expr` argument in the
+  established `UNARY op="..."` node.
+- CGen: a new `MethodVariadic*` table records each variadic method's
+  mangled C name → fixed-param count (populated in the forward-decl
+  pass). At a CALL site the fixed args emit positionally, then
+  `EmitVariadicTail` gathers the rest into an `AmalgameList*` via the
+  same boxed-add / spread-splice loop the list-literal emitter uses.
+  `MethodSig`/`EmitMethod` emit the variadic param as `AmalgameList*`
+  and seed elem-type tracking (`List<T>`) so in-body access casts
+  correctly.
+- Formatter: variadic params re-emit with the `...` marker
+  (`...int nums`); round-trip is idempotent.
+
+Covered by `tests/samples/variadic_params.am` (8 cases: zero args,
+inline args, fixed+variadic, fixed+zero, spread, mixed inline+spread,
+fixed+spread, variadic strings), wired into the core bundle.
+
 ## [v0.8.60] — 2026-05-30
 
 Compiler internals refactor + three parser fixes.
