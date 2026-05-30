@@ -288,6 +288,8 @@ public class Formatter {
         for i in 0..count {
             let p: AstNode = params.Get(i)
             if (i > 0) { s = s + ", " }
+            // Variadic params carry the `...` spread marker (Flag).
+            if (p.Flag) { s = s + "..." }
             s = s + p.Str + " " + p.Name
         }
         return s

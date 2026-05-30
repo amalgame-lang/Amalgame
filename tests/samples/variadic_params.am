@@ -1,0 +1,91 @@
+namespace Demo
+
+// Variadic parameters `(...xs: T)` + variadic call sites (v0.8.61+).
+//
+// A method's trailing param may be variadic: `...name: ElemType`.
+// Callers pass zero or more `ElemType` args in that position (or
+// splice an existing list with `...expr`); inside the body the param
+// is a `List<ElemType>`. Lowers to a single `AmalgameList*` param;
+// the call site gathers the trailing args into a fresh list.
+
+public class Calc {
+    // Pure variadic (no fixed params).
+    public static int Sum(...nums: int) {
+        var total: int = 0
+        for n in nums { total = total + n }
+        return total
+    }
+
+    // Fixed param + variadic tail.
+    public static int SumFrom(int base, ...nums: int) {
+        var total: int = base
+        for n in nums { total = total + n }
+        return total
+    }
+
+    // Variadic of strings, returns count.
+    public static int CountWords(...words: string) {
+        return words.Count()
+    }
+}
+
+public class Program {
+    public static void Main() {
+        // Zero variadic args → empty list.
+        if (Calc.Sum() == 0) {
+            Console.WriteLine("[PASS] variadic zero args")
+        } else {
+            Console.WriteLine("[FAIL] zero args")
+        }
+
+        // Several inline args.
+        if (Calc.Sum(1, 2, 3, 4) == 10) {
+            Console.WriteLine("[PASS] variadic inline args")
+        } else {
+            Console.WriteLine("[FAIL] inline sum=" + String_FromInt(Calc.Sum(1, 2, 3, 4)))
+        }
+
+        // Fixed + variadic.
+        if (Calc.SumFrom(100, 1, 2, 3) == 106) {
+            Console.WriteLine("[PASS] fixed + variadic")
+        } else {
+            Console.WriteLine("[FAIL] fixed+var=" + String_FromInt(Calc.SumFrom(100, 1, 2, 3)))
+        }
+
+        // Fixed param, zero variadic args.
+        if (Calc.SumFrom(42) == 42) {
+            Console.WriteLine("[PASS] fixed + zero variadic")
+        } else {
+            Console.WriteLine("[FAIL] fixed+zero=" + String_FromInt(Calc.SumFrom(42)))
+        }
+
+        // Spread an existing list into the variadic position.
+        let xs: List<int> = [5, 6, 7]
+        if (Calc.Sum(...xs) == 18) {
+            Console.WriteLine("[PASS] spread list into variadic")
+        } else {
+            Console.WriteLine("[FAIL] spread sum=" + String_FromInt(Calc.Sum(...xs)))
+        }
+
+        // Mix inline args + spread.
+        if (Calc.Sum(1, ...xs, 1) == 20) {
+            Console.WriteLine("[PASS] mixed inline + spread")
+        } else {
+            Console.WriteLine("[FAIL] mixed=" + String_FromInt(Calc.Sum(1, ...xs, 1)))
+        }
+
+        // Fixed + spread tail.
+        if (Calc.SumFrom(10, ...xs) == 28) {
+            Console.WriteLine("[PASS] fixed + spread tail")
+        } else {
+            Console.WriteLine("[FAIL] fixed+spread=" + String_FromInt(Calc.SumFrom(10, ...xs)))
+        }
+
+        // Variadic strings.
+        if (Calc.CountWords("a", "b", "c") == 3) {
+            Console.WriteLine("[PASS] variadic strings count=3")
+        } else {
+            Console.WriteLine("[FAIL] strings=" + String_FromInt(Calc.CountWords("a", "b", "c")))
+        }
+    }
+}
