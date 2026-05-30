@@ -214,7 +214,15 @@ public class Parser {
     }
 
     private void SkipNewlines() {
-        while (!this.IsEnd() && this.CheckType(TokenType.NEWLINE)) {
+        // `;` is an optional statement terminator/separator, equivalent to a
+        // newline. The lexer emits it as its own token; the grammar never
+        // uses `;` for anything else (inline-C bodies arrive as a single
+        // INLINE_C token, so their internal `;` are invisible here). Folding
+        // it in lets `a(); b()` and `let x = 5;` parse cleanly instead of
+        // synthesising a spurious `_unknown_` statement at the bare `;`.
+        // Match on the SEMICOLON *token type*, never the value: a string
+        // literal `";"` also has value ";" and must NOT be skipped.
+        while (!this.IsEnd() && (this.CheckType(TokenType.NEWLINE) || this.CheckType(TokenType.SEMICOLON))) {
             this.Advance()
         }
     }
@@ -283,54 +291,53 @@ public class Parser {
         }
 
 
-        if (this.CheckKw("class")) {
-                return this.ParseClass(isPublic)
-        }
-        // data class: "data class Point(float X, float Y)" → class with fields + constructor
-        if (this.CheckKw("data")) {
-            this.Advance()
-            if (this.CheckKw("class")) {
-                return this.ParseDataClass(isPublic)
-            }
-        }
-        // record: "record Point(float X, float Y)" → same as data class
-        if (this.CheckKw("record")) {
-            this.Advance()
-            return this.ParseDataClass(isPublic)
-        }
-        if (this.CheckKw("enum")) {
-            return this.ParseEnum(isPublic)
-        }
-        if (this.CheckKw("interface")) {
-            return this.ParseInterface(isPublic)
-        }
-
-        // Top-level `fn` parses without complaint today but cgen
-        // emits no definition, so call sites link-fail later. We
-        // don't currently support free-standing functions — the
-        // language puts everything on a class — so emit a clear
-        // diagnostic now and skip past the body to avoid cascading
-        // parse errors.
-        if (this.CheckKw("fn")) {
-            let tok = this.Current()
-            var name: string = "<anonymous>"
-            let nextTok = this.Peek(1)
-            if (nextTok.Type == TokenType.IDENTIFIER) {
-                name = nextTok.Value
-            }
-            this.Errors.Add("Top-level functions aren't supported (got 'fn " + name + "' at " + String_FromInt(tok.Line) + ":" + String_FromInt(tok.Column) + "). Wrap it inside a class as `public static`.")
-            // Skip to the body's opening `{`, then to its matching `}`.
-            while (!this.IsEnd() && !this.CheckValue("{")) { this.Advance() }
-            if (this.CheckValue("{")) {
+        // `CheckKw(w)` is just `Current().Value == w`, so the keyword
+        // dispatch maps 1:1 onto a value-`match`.
+        let v = this.Current().Value
+        match v {
+            "class" => { return this.ParseClass(isPublic) }
+            // data class: "data class Point(float X, float Y)" → class with fields + constructor
+            "data" => {
                 this.Advance()
-                var depth: int = 1
-                while (!this.IsEnd() && depth > 0) {
-                    if (this.CheckValue("{")) { depth = depth + 1 }
-                    else if (this.CheckValue("}")) { depth = depth - 1 }
-                    this.Advance()
+                if (this.CheckKw("class")) {
+                    return this.ParseDataClass(isPublic)
                 }
             }
-            return this.Unknown()
+            // record: "record Point(float X, float Y)" → same as data class
+            "record" => {
+                this.Advance()
+                return this.ParseDataClass(isPublic)
+            }
+            "enum" => { return this.ParseEnum(isPublic) }
+            "interface" => { return this.ParseInterface(isPublic) }
+            // Top-level `fn` parses without complaint today but cgen
+            // emits no definition, so call sites link-fail later. We
+            // don't currently support free-standing functions — the
+            // language puts everything on a class — so emit a clear
+            // diagnostic now and skip past the body to avoid cascading
+            // parse errors.
+            "fn" => {
+                let tok = this.Current()
+                var name: string = "<anonymous>"
+                let nextTok = this.Peek(1)
+                if (nextTok.Type == TokenType.IDENTIFIER) {
+                    name = nextTok.Value
+                }
+                this.Errors.Add("Top-level functions aren't supported (got 'fn " + name + "' at " + String_FromInt(tok.Line) + ":" + String_FromInt(tok.Column) + "). Wrap it inside a class as `public static`.")
+                // Skip to the body's opening `{`, then to its matching `}`.
+                while (!this.IsEnd() && !this.CheckValue("{")) { this.Advance() }
+                if (this.CheckValue("{")) {
+                    this.Advance()
+                    var depth: int = 1
+                    while (!this.IsEnd() && depth > 0) {
+                        if (this.CheckValue("{")) { depth = depth + 1 }
+                        else if (this.CheckValue("}")) { depth = depth - 1 }
+                        this.Advance()
+                    }
+                }
+                return this.Unknown()
+            }
+            _ => { }
         }
 
         // TS/C-style free function at file scope:
@@ -642,6 +649,18 @@ public class Parser {
         }
         this.Expect(")")
 
+        // TS-style trailing return type: `Name(params): RetType { ... }`.
+        // ParseMember's `(`-first dispatch entered ParseMethod with
+        // retType="void"; the real return type follows the param list as
+        // `: <type>`. Without consuming it here the `:` is left dangling,
+        // the body never attaches (neither `=>` nor `{` matches), and the
+        // next member mis-parses — silently dropping this method's body
+        // and its real return type.
+        if (this.CheckValue(":")) {
+            this.Advance()
+            method.Str = this.ParseTypeName()
+        }
+
         if (this.CheckValue("=>")) {
             this.Advance()
             let body = Ast.Block(line, col)
@@ -820,26 +839,30 @@ public class Parser {
         // lexer; dispatch by type since the value carries the raw body.
         if (tok.Type == TokenType.INLINE_C) { return this.ParseInlineC() }
 
-        if (v == "let" || v == "var") { return this.ParseVarDecl() }
-        if (v == "return") { return this.ParseReturn() }
-        if (v == "if") { return this.ParseIf() }
-        if (v == "while") { return this.ParseWhile() }
-        if (v == "for") { return this.ParseForIn() }
-        if (v == "break") {
-            this.Advance()
-            let n = new AstNode(NodeKind.BREAK_STMT, tok.Line, tok.Column)
-            return n
+        match v {
+            "let" => { return this.ParseVarDecl() }
+            "var" => { return this.ParseVarDecl() }
+            "return" => { return this.ParseReturn() }
+            "if" => { return this.ParseIf() }
+            "while" => { return this.ParseWhile() }
+            "for" => { return this.ParseForIn() }
+            "break" => {
+                this.Advance()
+                let n = new AstNode(NodeKind.BREAK_STMT, tok.Line, tok.Column)
+                return n
+            }
+            "continue" => {
+                this.Advance()
+                let n = new AstNode(NodeKind.CONTINUE_STMT, tok.Line, tok.Column)
+                return n
+            }
+            "match" => { return this.ParseMatch() }
+            "guard" => { return this.ParseGuard() }
+            "try" => { return this.ParseTry() }
+            "throw" => { return this.ParseThrow() }
+            "{" => { return this.ParseBlock() }
+            _ => { }
         }
-        if (v == "continue") {
-            this.Advance()
-            let n = new AstNode(NodeKind.CONTINUE_STMT, tok.Line, tok.Column)
-            return n
-        }
-        if (v == "match") { return this.ParseMatch() }
-        if (v == "guard") { return this.ParseGuard() }
-        if (v == "try")   { return this.ParseTry() }
-        if (v == "throw") { return this.ParseThrow() }
-        if (v == "{") { return this.ParseBlock() }
         return this.ParseExpr()
     }
 
@@ -1867,6 +1890,15 @@ public class Parser {
             let wc = new AstNode(NodeKind.IDENTIFIER, tok.Line, tok.Column)
             wc.Name = "_"
             return wc
+        }
+        // String literal: "if", "while", … — both EmitMatch and
+        // EmitMatchExpr already lower a LITERAL_STRING pattern via
+        // strcmp, so dispatching on keyword strings (`match v { "if" =>
+        // … }`) just needs the pattern produced here instead of falling
+        // through to Unknown().
+        if (this.CheckType(TokenType.STRING)) {
+            let s = this.Advance()
+            return Ast.StrLit(s.Value, s.Line, s.Column)
         }
         // Range: 75..99
         if (this.CheckType(TokenType.INTEGER)) {
