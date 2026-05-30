@@ -554,18 +554,75 @@ itself*, not to the code it emits. The compiler grew quickly
 during v0.3 → v0.4 and now has technical debt worth paying down
 before the next big language addition.
 
-- [ ] **`if`/`else if` chains → `match` expressions** — the
-      compiler dispatches on `NodeKind` / token values via long
-      chains of `if (k == NodeKind.X) { ... } else if (k == NodeKind.Y)`
-      almost everywhere (`EmitStmt`, `EmitExprStr`, `ResolveExpr`,
-      `ResolveStmt`, `ParseDecl`, `ParseStmt`, `InferTypeFromExpr`).
-      Match expressions would be ~30% shorter, easier to read, and
-      catch missing cases at typecheck time. Blocked on:
-        - Algebraic-enum patterns in expression position (currently
-          partial — see `### Compiler — open bugs` above).
-        - Match-arm guards on enum patterns (also partial).
-      So the language work is partly already on the roadmap;
-      this refactor is the prize once it lands.
+- [x] **`if`/`else if` chains → `match` expressions** — **all 7 sites
+      converted 2026-05-30** (5 NodeKind-dispatch + the 2 string-keyword
+      parser dispatchers, once string-literal match patterns landed).
+      The listed
+      "blockers" (algebraic-enum patterns / match-arm guards) were a
+      **misdiagnosis**: `NodeKind` is a *simple* enum, so the dispatch
+      needs neither — `match k { NodeKind.X => {...} _ => {...} }`
+      compiles + runs (block bodies, wildcard, expression-form, `void`
+      methods with bare `return`, guards via `NodeKind.X if cond =>`).
+      Converted, each with its own `build_amc.sh` + full suite green
+      (606 PASS / 0 FAIL / 5 SKIP at every step):
+        - `ResolveStmt` (src/resolver/resolver.am)
+        - `ResolveExpr` (src/resolver/resolver.am) — `METHOD_DECL`
+          lambda branch became a guarded arm
+        - `EmitStmt` (src/generator/c_gen.am)
+        - `EmitExprStr` (src/generator/c_gen.am) — dual `CALL` /
+          `METHOD_DECL` compound branches → guarded arms before the
+          plain ones (match tries arms top-to-bottom, guard-fail falls
+          through, verified)
+        - `InferTypeFromExprUncached` (src/generator/c_gen.am)
+      Behaviour preserved exactly: arms that don't `return` fall to
+      the post-`match` default, same as the original fall-through;
+      `__match__` (Name-keyed, Kind==IF_STMT) stays handled by the
+      `IF_STMT` arm.
+      **The last 2 sites** — `ParseStmt` / `ParseDecl` — dispatch on
+      **string keyword values** (`v == "if"`, `CheckKw("class")` which
+      is itself value-only). They needed **string-literal match
+      patterns**, which were added the same day (see the `match` string
+      patterns item below); both now read as `match v { "if" => … }`.
+      `CheckKw(w)` being exactly `Current().Value == w` made the mapping
+      1:1.
+      Discovered + fixed in passing: TS-style return-type signatures
+      (`Name(p): T { … }`) silently dropped the whole method body, and
+      a bare `;` statement separator synthesised a spurious `_unknown_`
+      — both fixed (see "Compiler — open bugs"). Refactor work is
+      uncommitted on `main`.
+- [x] **`match` string-literal patterns** — **added 2026-05-30**.
+      `match v { "if" => …, "while" => … }` now parses: `ParseMatchPattern`
+      gained a `TokenType.STRING` branch producing a `LITERAL_STRING`
+      pattern. Both lowerers (`EmitMatch`, `EmitMatchExpr`) already
+      emitted `strcmp(subject, pat) == 0` for `LITERAL_STRING`, so only
+      the parser gap remained. Unblocked the `ParseStmt`/`ParseDecl`
+      conversion above. (Before: a string pattern fell through to
+      `Unknown()` → `subject == _unknown_` garbage.)
+- [x] **Parser: TS-style return-type signature dropped the method
+      body** — **fixed 2026-05-30**. `Name(p): RetType { … }` (TS-style
+      params with a *trailing* return-type annotation) silently lost the
+      entire body and reported the return type as `void`. `ParseMember`
+      dispatched `Name(` with `retType="void"` and `ParseMethod` never
+      consumed the `: RetType` after `)`, so the dangling `:` made the
+      body attach to nothing and the next member mis-parse (typically
+      surfacing as a bogus `Top-level functions aren't supported` on the
+      following method). `amc fmt` exposed it as a brace-less, bodyless
+      method. Fix: `ParseMethod` now consumes an optional `: <type>`
+      right after `)` and overrides `method.Str` (the return type). The
+      compiler's own source is unaffected (all C-style signatures), so
+      it was a user-facing footgun only.
+- [x] **Parser: `;` statement separator synthesised a spurious
+      `_unknown_`** — **fixed 2026-05-30**. `a(); b()`, `let x = 5;`,
+      and `;`-separated match arm bodies parsed the bare `;` as a
+      failed statement → `_unknown_` AST node (benign at codegen, but
+      `amc fmt` faithfully printed it, corrupting round-trips). General
+      pre-existing bug, surfaced while converting if-chains to `match`.
+      Fix: `SkipNewlines` (src/parser/parser.am) now also skips
+      `TokenType.SEMICOLON`. **Must match on the token TYPE, not the
+      value** — a string literal `";"` also has value `";"`, so the
+      first attempt (`CheckValue(";")`) ate string arguments like
+      `AddToken(TokenType.SEMICOLON, ";")` and broke the bootstrap.
+      With the type-based check, `amc fmt` round-trips `;` cleanly.
 - [x] **Extract repeated CGen helpers (resolved)** —
       `BoxAsVoid(expr)` and `UnboxScalar(ctype, expr)` live at
       the bottom of `src/generator/c_gen.am` and serve every
