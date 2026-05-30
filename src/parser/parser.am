@@ -690,6 +690,21 @@ public class Parser {
     // colon explicitly and emit an error so the user sees an
     // actionable diagnostic.
     private AstNode ParseParam() {
+        // Variadic parameter `...name: ElemType` (v0.8.61+). The `...`
+        // marks the trailing param as variadic: callers pass zero or
+        // more `ElemType` args (or splice a list with `...expr`) in
+        // that position, and inside the body the param is a
+        // `List<ElemType>`. We consume the spread token, parse the
+        // rest of the param exactly as usual, and flag the result.
+        // Only meaningful on the last param; cgen enforces nothing
+        // extra — a non-trailing variadic just collects greedily,
+        // which the call-site arity logic never produces.
+        if (this.CheckType(TokenType.OP_SPREAD)) {
+            this.Advance()
+            let inner = this.ParseParam()
+            inner.Flag = true
+            return inner
+        }
         let tok = this.Current()
         let v = tok.Value
         let isKeywordType = v == "int" || v == "string" || v == "bool" || v == "void" || v == "float"
@@ -1669,6 +1684,21 @@ public class Parser {
                     this.Advance()  // consume ':'
                     namedKey = nameTok.Value
                 }
+            }
+            // Spread argument `...expr` (v0.8.61+): splices an existing
+            // list's elements into a variadic call position. Same AST
+            // shape as a list-literal spread item (UNARY op="..."), so
+            // the cgen call-site collector reuses the splice loop.
+            if (this.CheckType(TokenType.OP_SPREAD)) {
+                let sptok = this.Advance()
+                let inner = this.ParseExpr()
+                let sn = new AstNode(NodeKind.UNARY, sptok.Line, sptok.Column)
+                sn.Str  = "..."
+                sn.Left = inner
+                if (String_Length(namedKey) > 0) { sn.Str2 = namedKey }
+                call.Args.Add(sn)
+                this.SkipNewlines()
+                continue
             }
             let arg = this.ParseExpr()
             if (String_Length(namedKey) > 0) { arg.Str2 = namedKey }

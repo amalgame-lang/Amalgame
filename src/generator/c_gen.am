@@ -92,6 +92,13 @@ public class CGen {
     // arguments and propagate them to local elem-type tracking.
     private MethodRetRawNames: List<string>
     private MethodRetRawTypes: List<string>
+    // Variadic methods: mangled C callee name ("ClassName_MethodName")
+    // → number of FIXED params preceding the trailing variadic one.
+    // Absence from this table means "not variadic". Populated in the
+    // forward-decl pass (EmitClass), consulted at every CALL site so
+    // trailing args get collected into a single `AmalgameList*`.
+    private MethodVariadicNames: List<string>
+    private MethodVariadicArity: List<int>
     // Lambda numbering — each lambda gets a unique id used to name the
     // generated env struct (LamEnv_N) and top-level function (lam_N_fn).
     // Phase A of pass 2 walks the AST, assigns ids, and emits the
@@ -222,6 +229,8 @@ public class CGen {
         this.MethodRetTypes = new List<string>()
         this.MethodRetRawNames = new List<string>()
         this.MethodRetRawTypes = new List<string>()
+        this.MethodVariadicNames = new List<string>()
+        this.MethodVariadicArity = new List<int>()
         this.LambdaCounter     = 0
         this.InLambdaBody      = false
         this.PkgClasses        = new List<string>()
@@ -962,6 +971,29 @@ public class CGen {
             let k = this.MethodRetNames.Get(i)
             if (k == key) {
                 result = this.MethodRetTypes.Get(i)
+            }
+        }
+        return result
+    }
+
+    // Record that the C function `cname` (already mangled,
+    // e.g. "App_Program_logAll") takes a trailing variadic param,
+    // preceded by `fixedArity` ordinary params.
+    private void MethodVariadicSet(string cname, int fixedArity) {
+        this.MethodVariadicNames.Add(cname)
+        this.MethodVariadicArity.Add(fixedArity)
+    }
+
+    // Fixed-param count for a variadic C function, or -1 if `cname`
+    // is not a known variadic method. The call-site collector uses
+    // this to decide how many leading args bind positionally before
+    // the rest are gathered into one `AmalgameList*`.
+    private int MethodVariadicGet(string cname) {
+        let n = this.MethodVariadicNames.Count()
+        var result = 0 - 1
+        for i in 0..n {
+            if (this.MethodVariadicNames.Get(i) == cname) {
+                result = this.MethodVariadicArity.Get(i)
             }
         }
         return result
@@ -2734,6 +2766,18 @@ public class CGen {
                     let retC = this.TypeToC(m.Str)
                     this.MethodRetSet(name, m.Name, retC)
                     this.MethodRetRawSet(name, m.Name, m.Str)
+                    // Variadic registration: if the last param carries the
+                    // variadic flag, record the mangled callee name with
+                    // the count of fixed params before it. The mangled
+                    // name matches what EmitCalleeStr produces for local /
+                    // static / instance dispatch (SymName(class)_method).
+                    let mpc: int = m.Params.Count()
+                    if (mpc > 0) {
+                        let lastP: AstNode = m.Params.Get(mpc - 1)
+                        if (lastP.Flag) {
+                            this.MethodVariadicSet(name + "_" + m.Name, mpc - 1)
+                        }
+                    }
                     // Decorators (Str2) → C attributes on the prototype.
                     var attrs = ""
                     let decos = m.Str2
@@ -2917,7 +2961,13 @@ public class CGen {
         for i in 0..pcount {
             let p  = method.Params.Get(i)
             if (!first) { sig = sig + ", " }
-            sig   = sig + this.TypeToC(p.Str) + " " + p.Name
+            // A variadic param `...xs: T` lowers to a single
+            // `AmalgameList*` holding the gathered T elements.
+            if (p.Flag) {
+                sig = sig + "AmalgameList* " + p.Name
+            } else {
+                sig = sig + this.TypeToC(p.Str) + " " + p.Name
+            }
             first = false
         }
         sig = sig + ")"
@@ -2965,8 +3015,16 @@ public class CGen {
         let pcount = method.Params.Count()
         for i in 0..pcount {
             let p = method.Params.Get(i)
-            this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
-            this.TrackGenericLocal(p.Name, p.Str)
+            // A variadic param is a `List<T>` inside the body: register
+            // it as an AmalgameList* local and seed elem-type tracking so
+            // `xs.Get(i)` / `for v in xs` lower with the right cast.
+            if (p.Flag) {
+                this.LocalTypeSet(p.Name, "AmalgameList*")
+                this.TrackGenericLocal(p.Name, "List<" + p.Str + ">")
+            } else {
+                this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
+                this.TrackGenericLocal(p.Name, p.Str)
+            }
         }
         if (method.Body != null) {
             this.EmitBlock(method.Body)
@@ -4164,11 +4222,30 @@ public class CGen {
                 first = false
             }
             let argc = expr.Args.Count()
-            for i in 0..argc {
-                let arg = expr.Args.Get(i)
+            // Variadic callee: emit `fixedArity` args positionally, then
+            // gather every remaining arg into one `AmalgameList*`. A
+            // non-variadic callee (fixedArity < 0) keeps the plain
+            // one-arg-per-param path below.
+            let fixedArity = this.MethodVariadicGet(callee)
+            if (fixedArity >= 0) {
+                for i in 0..argc {
+                    if (i < fixedArity) {
+                        let arg = expr.Args.Get(i)
+                        if (!first) { callStr = callStr + ", " }
+                        callStr = callStr + this.EmitExprStr(arg)
+                        first = false
+                    }
+                }
                 if (!first) { callStr = callStr + ", " }
-                callStr = callStr + this.EmitExprStr(arg)
+                callStr = callStr + this.EmitVariadicTail(expr, fixedArity)
                 first = false
+            } else {
+                for i in 0..argc {
+                    let arg = expr.Args.Get(i)
+                    if (!first) { callStr = callStr + ", " }
+                    callStr = callStr + this.EmitExprStr(arg)
+                    first = false
+                }
             }
             callStr = callStr + ")"
             // Null-safe call `obj?.method(...)`: wrap as `(obj ? call : NULL)`
@@ -4280,6 +4357,35 @@ public class CGen {
             s = s + "AmalgameList_add(__ll, " + this.BoxAsVoid(elem) + "); "
         }
         s = s + "__ll; })"
+        return s
+    }
+
+    // Gather a call's trailing arguments (those at index >= fixedArity)
+    // into a single fresh `AmalgameList*`, the value passed for a
+    // variadic parameter. Mirrors EmitListLiteral's element/spread
+    // handling: a plain arg is boxed and appended; a spread arg
+    // `...expr` splices the source list's elements one by one. The
+    // list is always built (possibly empty), so the callee's variadic
+    // param is never NULL.
+    private string EmitVariadicTail(AstNode call, int fixedArity) {
+        var s: string = "({ AmalgameList* __va = AmalgameList_new(); "
+        let argc: int = call.Args.Count()
+        for i in fixedArity..argc {
+            let arg: AstNode = call.Args.Get(i)
+            if (arg.Kind == NodeKind.UNARY && arg.Str == "...") {
+                let src: string = this.EmitExprStr(arg.Left)
+                let idx: string = String_FromInt(i)
+                s = s + "{ AmalgameList* __va_sp_" + idx + " = " + src + "; "
+                s = s + "i64 __va_spn_" + idx + " = AmalgameList_size(__va_sp_" + idx + "); "
+                s = s + "for (i64 __va_spi_" + idx + " = 0; __va_spi_" + idx + " < __va_spn_" + idx + "; __va_spi_" + idx + "++) { "
+                s = s + "AmalgameList_add(__va, __va_sp_" + idx + "->data[__va_spi_" + idx + "]); "
+                s = s + "} } "
+                continue
+            }
+            let elem: string = this.EmitExprStr(arg)
+            s = s + "AmalgameList_add(__va, " + this.BoxAsVoid(elem) + "); "
+        }
+        s = s + "__va; })"
         return s
     }
 

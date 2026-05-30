@@ -620,6 +620,18 @@ class Program {
         g_spread_list_literal.Add(new CoreCase("spread: empty source", "[PASS] spread empty count=2"))
         Program.RunGroup("./tests/samples/spread_list_literal.am", "spread_list_literal", g_spread_list_literal)
 
+        // ── variadic_params (8 cases) ──
+        let g_variadic_params: List<CoreCase> = new List<CoreCase>()
+        g_variadic_params.Add(new CoreCase("variadic: zero args", "[PASS] variadic zero args"))
+        g_variadic_params.Add(new CoreCase("variadic: inline args", "[PASS] variadic inline args"))
+        g_variadic_params.Add(new CoreCase("variadic: fixed + variadic", "[PASS] fixed + variadic"))
+        g_variadic_params.Add(new CoreCase("variadic: fixed + zero variadic", "[PASS] fixed + zero variadic"))
+        g_variadic_params.Add(new CoreCase("variadic: spread into variadic", "[PASS] spread list into variadic"))
+        g_variadic_params.Add(new CoreCase("variadic: mixed inline + spread", "[PASS] mixed inline + spread"))
+        g_variadic_params.Add(new CoreCase("variadic: fixed + spread tail", "[PASS] fixed + spread tail"))
+        g_variadic_params.Add(new CoreCase("variadic: strings count", "[PASS] variadic strings count=3"))
+        Program.RunGroup("./tests/samples/variadic_params.am", "variadic_params", g_variadic_params)
+
         // ── stdlib_env (3 cases) ──
         // Bash runner `export`s AMC_ENV_PROBE=hello before these three
         // run and `unset`s after. We inline the export via envPrefix.
