@@ -1194,9 +1194,25 @@ before the next big language addition.
       27s -> 3ms; snippet output byte-identical; TypeChecker (same
       `SourceMap`) benefits too. A clean full-workspace build never hit
       this (~0 errors), which is why `build_amc.sh` was always ~2s.
-      **Still open**: the parse phase is independently slow on large
-      files (~10s on c_gen.am) - separate root cause, separate
-      follow-up.
+      **Parse phase O(n^2) — also fixed, v0.8.68.** Same class of bug,
+      different place: `code_string` is a bare `char*`, so `String_Length`
+      is an strlen and `String_Substring` runs an internal strlen for
+      bounds. The lexer called `String_Length(this.Source)` in every
+      per-character loop condition and fetched each char via
+      `String_Substring(src, i, 1)`, so each of the ~n chars paid an O(n)
+      strlen -> O(n^2) lexing. Fix: cache `strlen(Source)` once into a
+      `SourceLen` field (source is immutable) + a new O(1) runtime
+      primitive `String_CharAtUnchecked` (reads `s[i]` via the 1-char
+      table, no strlen; the lexer's `CharAt` bound-checks against
+      `SourceLen` first, so it stays safe). Parse on c_gen.am
+      10.8s -> 0.10s, parser.am 1.0s -> 0.04s. Combined with the
+      diagnostics fix above, `amc --check c_gen.am` went from ~118s to
+      ~1.3s (now 100ms parse + 3ms resolve + ~1.15s typecheck). The
+      general `String_CharAt1` (typechecker / TOML parser callers) is
+      unchanged — same cached-length pattern can be applied there if a
+      profile flags it. **Now the largest --check phase is typecheck
+      (~1.15s on c_gen.am)** — a reasonable next target, not yet
+      investigated.
 - [x] **VS Code extension robustness on `serverPath`.** Already
       shipped — `editors/vscode/extension.js` has
       `resolveServerPath(raw)` doing both `trim()` and `~/`
