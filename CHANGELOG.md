@@ -7,6 +7,54 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.69] — 2026-05-31
+
+TypeChecker performance — the expression-type memo was a linearly
+scanned parallel-list pair (O(n²)); a hashed map makes it O(1). This is
+the third and final O(n²) in the `amc --check` pipeline: a full check of
+`c_gen.am` (5k LoC) now runs in **~0.2 s**, down from ~118 s at the
+start of the v0.8.67–v0.8.69 perf run.
+
+### Performance
+
+- **TypeChecker expression-type memo was O(n²).** `SetType`/`GetType`
+  stored each expression's inferred type in a pair of parallel lists
+  (`ExprTypeKeys`/`ExprTypeVals`) keyed by `NodeKey`, and both did a
+  **linear scan over every previously-recorded entry** on each call
+  (Set even appended duplicates). With one memo entry per typed
+  expression, that is O(typed-exprs) per access → O(n²) over a file —
+  the same anti-pattern the resolver's `MemberTable`/`GlobalNames`
+  shed in v0.6.x. Replaced the two lists with a single
+  `Map<string, string>` (`ExprTypeMap`); `Map.Set` overwrites in place,
+  preserving the original "last write wins" semantics, and both
+  accessors are now O(1).
+
+  Measured (typecheck phase, `amc --check`):
+
+  | File          | typecheck before | typecheck after |
+  |---------------|------------------|-----------------|
+  | `c_gen.am`    | ~1.12 s          | **28 ms**       |
+  | `parser.am`   | ~379 ms          | **14 ms**       |
+  | `token.am`    | ~33 ms           | **6 ms**        |
+
+- **Cumulative result of the perf run (v0.8.67 + v0.8.68 + v0.8.69).**
+  `amc --check src/generator/c_gen.am` end-to-end:
+
+  | Phase     | session start | now      |
+  |-----------|---------------|----------|
+  | parse     | ~12.8 s       | ~0.13 s  |
+  | resolve   | ~103 s        | ~5 ms    |
+  | typecheck | ~1.7 s        | ~35 ms   |
+  | **wall**  | **~118 s**    | **~0.2 s** |
+
+  All three were O(n²): diagnostics snippet formatting (v0.8.67), the
+  lexer's per-char strlen (v0.8.68), and the typecheck memo scan
+  (v0.8.69). The big-file LSP responsiveness this unlocks (hover /
+  on-edit checking) was the original motivation. Full suite green:
+  core 368 + stdlib 212 (+5 skip) + fmt 12 = 592 PASS / 0 FAIL.
+
+---
+
 ## [v0.8.68] — 2026-05-31
 
 Lexer performance — the parse phase was O(n²) in source size; large

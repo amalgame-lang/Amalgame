@@ -1210,9 +1210,24 @@ before the next big language addition.
       ~1.3s (now 100ms parse + 3ms resolve + ~1.15s typecheck). The
       general `String_CharAt1` (typechecker / TOML parser callers) is
       unchanged — same cached-length pattern can be applied there if a
-      profile flags it. **Now the largest --check phase is typecheck
-      (~1.15s on c_gen.am)** — a reasonable next target, not yet
-      investigated.
+      profile flags it.
+      **TypeChecker memo O(n^2) — also fixed, v0.8.69.** Third and last
+      O(n^2) in the pipeline. `SetType`/`GetType` stored each
+      expression's inferred type in parallel lists
+      (`ExprTypeKeys`/`ExprTypeVals`) keyed by NodeKey and linear-scanned
+      every entry per access (Set even appended dupes) — O(typed-exprs)
+      per call, O(n^2) over a file. Same anti-pattern the resolver's
+      MemberTable shed earlier. Replaced both lists with a single
+      `Map<string,string>` (`ExprTypeMap`); Map.Set overwrites in place
+      (last-write-wins preserved), accessors now O(1). typecheck on
+      c_gen.am 1.12s -> 28ms.
+      **Perf run complete (v0.8.67 + v0.8.68 + v0.8.69).** All three
+      phases were O(n^2): diagnostics snippet formatting, lexer per-char
+      strlen, typecheck memo scan. `amc --check c_gen.am` end-to-end
+      went from ~118s to ~0.2s (parse ~0.13s + resolve ~5ms + typecheck
+      ~35ms). That was the goal — big-file LSP responsiveness. No known
+      O(n^2) left in the check pipeline; the residual ~0.13s parse is
+      now the inherent linear lex+build cost.
 - [x] **VS Code extension robustness on `serverPath`.** Already
       shipped — `editors/vscode/extension.js` has
       `resolveServerPath(raw)` doing both `trim()` and `~/`
