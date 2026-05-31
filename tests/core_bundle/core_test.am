@@ -143,6 +143,25 @@ class Program {
         return dest
     }
 
+    // Build a self-contained documentHighlight fixture: a tiny doc
+    // where `Greet` appears twice (decl on line 1, call on line 6),
+    // then a documentHighlight request on the call site (line 6).
+    // Expect two highlight ranges back, both kind 1 (Text).
+    public static string BuildLspHighlightFixture() {
+        let uri = "file:///tmp/amc_hl_doc.am"
+        let text = "class Foo {\\n    public void Greet() {}\\n}\\n\\npublic class Program {\\n    public static void Main() {\\n        let f = new Foo()\\n        f.Greet()\\n    }\\n}\\n"
+        let init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}"
+        let open = "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"textDocument\":{\"uri\":\"" + uri + "\",\"languageId\":\"amalgame\",\"version\":1,\"text\":\"" + text + "\"}}}"
+        // line 7 (0-based) `        f.Greet()` — character 10 lands on Greet
+        let hl = "{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"textDocument/documentHighlight\",\"params\":{\"textDocument\":{\"uri\":\"" + uri + "\"},\"position\":{\"line\":7,\"character\":11}}}"
+        let shut = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\"}"
+        let exitMsg = "{\"jsonrpc\":\"2.0\",\"method\":\"exit\"}"
+        let seq = Program.LspFrame(init) + Program.LspFrame(open) + Program.LspFrame(hl) + Program.LspFrame(shut) + Program.LspFrame(exitMsg)
+        let dest = "/tmp/amc_core_lsp_hl.bin"
+        File.WriteAll(dest, seq)
+        return dest
+    }
+
     // ── Phase 2 helpers ─────────────────────────────
 
     public static int ShellExit(string cmd) {
@@ -1040,6 +1059,13 @@ class Program {
         Program.RunLspCheck("lsp: refs Greet has result", fNav, "\"id\":13,\"result\":[")
         Program.RunLspCheck("lsp: refs Greet decl line",  fNav, "\"line\":5")
         Program.RunLspCheck("lsp: refs Greet call line",  fNav, "\"line\":12")
+
+        // documentHighlight: occurrences of Greet in current file only
+        let fHl = Program.BuildLspHighlightFixture()
+        Program.RunLspCheck("lsp: highlight has result",  fHl, "\"id\":30,\"result\":[")
+        Program.RunLspCheck("lsp: highlight kind Text",    fHl, "\"kind\":1")
+        Program.RunLspCheck("lsp: highlight decl line",    fHl, "\"start\":{\"line\":1,")
+        Program.RunLspCheck("lsp: highlight call line",    fHl, "\"start\":{\"line\":7,")
 
         // Phase B navx (rename + workspace symbol + inlayHint + codeAction + callh prepare)
         Program.RunLspCheck("lsp: prepRename placeholder", fNavX, "\"placeholder\":\"Greet\"")
