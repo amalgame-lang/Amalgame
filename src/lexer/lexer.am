@@ -5,6 +5,13 @@ import Amalgame.String
 
 public class Lexer {
     private Source:   string
+    // strlen(Source) cached once. `code_string` is a bare char*, so
+    // String_Length is an O(n) strlen — calling it in the per-char loop
+    // conditions made lexing O(n^2) (≈10s on c_gen.am). Source is
+    // immutable after construction, so one cache makes every bound check
+    // O(1). Paired with String_CharAtUnchecked in CharAt (which skips
+    // String_Substring's internal strlen).
+    private SourceLen: int
     private Pos:      int
     private Line:     int
     private Column:   int
@@ -12,7 +19,8 @@ public class Lexer {
     private Tokens:   List<Token>
 
     public Lexer(string source, string filename) {
-        this.Source   = source
+        this.Source    = source
+        this.SourceLen = String_Length(source)
         this.Filename = filename
         this.Pos      = 0
         this.Line     = 1
@@ -46,8 +54,11 @@ public class Lexer {
     }
 
     private string CharAt(int i) {
-        if (i < 0 || i >= String_Length(this.Source)) { return "" }
-        return String_Substring(this.Source, i, 1)
+        if (i < 0 || i >= this.SourceLen) { return "" }
+        // i is guaranteed in [0, SourceLen) here, so the unchecked O(1)
+        // accessor is safe — avoids String_Substring's internal strlen,
+        // which (called per char) was half of the O(n^2) lex cost.
+        return String_CharAtUnchecked(this.Source, i)
     }
 
     private void AddToken(TokenType t, string value) {
@@ -63,7 +74,7 @@ public class Lexer {
     }
 
     private void SkipWhitespace() {
-        while (this.Pos < String_Length(this.Source)) {
+        while (this.Pos < this.SourceLen) {
             let c = this.CharAt(this.Pos)
             if (this.IsSpace(c)) {
                 this.Advance()
@@ -77,7 +88,7 @@ public class Lexer {
         let startLine = this.Line
         let startCol  = this.Column
         let start     = this.Pos
-        while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\n") {
+        while (this.Pos < this.SourceLen && this.CharAt(this.Pos) != "\n") {
             this.Advance()
         }
         let raw = String_Substring(this.Source, start, this.Pos - start)
@@ -86,9 +97,9 @@ public class Lexer {
     }
 
     public List<Token> Tokenize() {
-        while (this.Pos < String_Length(this.Source)) {
+        while (this.Pos < this.SourceLen) {
             this.SkipWhitespace()
-            if (this.Pos >= String_Length(this.Source)) { break }
+            if (this.Pos >= this.SourceLen) { break }
             let ch = this.CharAt(this.Pos)
             if (ch == "/" && this.CharAt(this.Pos + 1) == "/") {
                 this.ReadLineComment()
@@ -124,7 +135,7 @@ public class Lexer {
             return
         }
         var value = ""
-        while (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) != "\"") {
+        while (this.Pos < this.SourceLen && this.CharAt(this.Pos) != "\"") {
             let c = this.Advance()
             if (c == "\\") {
                 let esc = this.Advance()
@@ -159,7 +170,7 @@ public class Lexer {
                 value = value + c
             }
         }
-        if (this.Pos < String_Length(this.Source)) { this.Advance() }
+        if (this.Pos < this.SourceLen) { this.Advance() }
         this.AddToken(TokenType.STRING, value)
     }
 
@@ -168,7 +179,7 @@ public class Lexer {
     // run of one or two quotes in the body is content, not a delimiter.
     private void ReadTripleQuoted() {
         var value = ""
-        let len = String_Length(this.Source)
+        let len = this.SourceLen
         while (this.Pos < len) {
             // Detect closing """
             if (this.CharAt(this.Pos) == "\"" && this.CharAt(this.Pos + 1) == "\"" && this.CharAt(this.Pos + 2) == "\"") {
@@ -195,7 +206,7 @@ public class Lexer {
     // decorators). The rule: literally the letter `c`, then any number of
     // spaces/tabs, then `{`. Anything else falls back to emitting `@` alone.
     private void TryReadInlineCOrAt(int startCol) {
-        let len = String_Length(this.Source)
+        let len = this.SourceLen
         if (this.CharAt(this.Pos) == "c") {
             var look = this.Pos + 1
             while (look < len) {
@@ -224,7 +235,7 @@ public class Lexer {
         let startLine = this.Line
         var body = ""
         var depth = 1
-        let len = String_Length(this.Source)
+        let len = this.SourceLen
         while (this.Pos < len && depth > 0) {
             let c = this.CharAt(this.Pos)
             if (c == "\"") {
@@ -351,7 +362,7 @@ public class Lexer {
         if (this.CharAt(this.Pos) == "0" && (this.CharAt(this.Pos + 1) == "x" || this.CharAt(this.Pos + 1) == "X")) {
             var hex = this.Advance()
             hex = hex + this.Advance()
-            while (this.Pos < String_Length(this.Source) && this.IsHexDigit(this.CharAt(this.Pos))) {
+            while (this.Pos < this.SourceLen && this.IsHexDigit(this.CharAt(this.Pos))) {
                 hex = hex + this.Advance()
             }
             let htok = new Token(TokenType.INTEGER, hex, this.Line, startCol, this.Filename)
@@ -365,7 +376,7 @@ public class Lexer {
             this.Advance()
             this.Advance()
             var dec = 0
-            while (this.Pos < String_Length(this.Source) && this.IsBinDigit(this.CharAt(this.Pos))) {
+            while (this.Pos < this.SourceLen && this.IsBinDigit(this.CharAt(this.Pos))) {
                 let bch = this.Advance()
                 dec = dec * 2
                 if (bch == "1") { dec = dec + 1 }
@@ -377,13 +388,13 @@ public class Lexer {
 
         var value    = ""
         var isFloat  = false
-        while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {
+        while (this.Pos < this.SourceLen && this.IsDigit(this.CharAt(this.Pos))) {
             value = value + this.Advance()
         }
-        if (this.Pos < String_Length(this.Source) && this.CharAt(this.Pos) == "." && this.IsDigit(this.CharAt(this.Pos + 1))) {
+        if (this.Pos < this.SourceLen && this.CharAt(this.Pos) == "." && this.IsDigit(this.CharAt(this.Pos + 1))) {
             isFloat = true
             value   = value + this.Advance()
-            while (this.Pos < String_Length(this.Source) && this.IsDigit(this.CharAt(this.Pos))) {
+            while (this.Pos < this.SourceLen && this.IsDigit(this.CharAt(this.Pos))) {
                 value = value + this.Advance()
             }
         }
@@ -399,7 +410,7 @@ public class Lexer {
     private void ReadIdentifier() {
         var startCol = this.Column
         var value    = ""
-        while (this.Pos < String_Length(this.Source) && this.IsAlphaNum(this.CharAt(this.Pos))) {
+        while (this.Pos < this.SourceLen && this.IsAlphaNum(this.CharAt(this.Pos))) {
             value = value + this.Advance()
         }
         let tt  = this.LookupKeyword(value)

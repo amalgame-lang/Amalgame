@@ -198,6 +198,19 @@ static inline code_string String_CharAt1(code_string s, int i) {
     return __amc_char_table[(unsigned char)s[i]];
 }
 
+/* O(1) single-char read — NO strlen bounds check. The caller MUST
+ * guarantee 0 <= i <= strlen(s) (reading the null terminator at i==len
+ * is fine — char_table[0] is the empty string, so it returns ""). Used
+ * on hot char-scanning paths (the lexer) where the length is cached
+ * once and the index is bounds-checked against that cache, so the
+ * per-char strlen of String_CharAt1 (which makes a scan O(n^2)) is
+ * avoided. Do NOT use where the index may exceed the length. */
+static inline code_string String_CharAtUnchecked(code_string s, int i) {
+    if (!s || i < 0) return "";
+    __amc_init_char_table();
+    return __amc_char_table[(unsigned char)s[i]];
+}
+
 /* ── Streaming file output (for fast CGen output) ── */
 static FILE* __amc_stream_file = NULL;
 
