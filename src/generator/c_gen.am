@@ -2317,6 +2317,23 @@ public class CGen {
                     this.MethodVariadicSet(mangledClass + "_" + method.Name, mpc - 1)
                 }
             }
+        } else {
+            // Variadic constructor across a package boundary. Register
+            // under `<mangledClass>_new`, the exact key the NEW_EXPR
+            // call-site looks up (`ctorPrefix + "_new"` with ctorPrefix
+            // == ExternalClassMangled(tname) == mangledClass). Mirror of
+            // the in-bundle ctor registration in EmitConstructorForwards;
+            // the ctor signature below already lowers the variadic param
+            // to a single `AmalgameList*` (the `p.Flag` branch), so the
+            // facade body (compiled via MethodSig) and the consumer's
+            // call site agree on the ABI.
+            let cpc: int = method.Params.Count()
+            if (cpc > 0) {
+                let lastCp: AstNode = method.Params.Get(cpc - 1)
+                if (lastCp.Flag) {
+                    this.MethodVariadicSet(mangledClass + "_new", cpc - 1)
+                }
+            }
         }
         var sig: string = ""
         if (isCtor) {

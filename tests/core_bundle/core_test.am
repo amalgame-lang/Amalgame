@@ -903,6 +903,24 @@ class Program {
             "./tests/samples/variadic_external/main.am",
             "[PASS] ext fixed + mixed variadic")
 
+        // run_external_pair (4 cases) — variadic CONSTRUCTOR across a package boundary
+        Program.RunExternalPair("ext ctor variadic: inline",
+            "./tests/samples/variadic_ctor_external/facade.am",
+            "./tests/samples/variadic_ctor_external/main.am",
+            "[PASS] ext ctor inline")
+        Program.RunExternalPair("ext ctor variadic: mixed",
+            "./tests/samples/variadic_ctor_external/facade.am",
+            "./tests/samples/variadic_ctor_external/main.am",
+            "[PASS] ext ctor mixed")
+        Program.RunExternalPair("ext ctor variadic: zero",
+            "./tests/samples/variadic_ctor_external/facade.am",
+            "./tests/samples/variadic_ctor_external/main.am",
+            "[PASS] ext ctor zero")
+        Program.RunExternalPair("ext ctor variadic: fixed + variadic",
+            "./tests/samples/variadic_ctor_external/facade.am",
+            "./tests/samples/variadic_ctor_external/main.am",
+            "[PASS] ext ctor fixed + variadic")
+
         // run_amc_test_check (4 cases)
         Program.RunAmcTestCheck("amc test: discovers",  "./tests/fixtures/test_runner",  "arith_test.am")
         Program.RunAmcTestCheck("amc test: pass tally", "./tests/fixtures/test_runner",  "PASS: 4")
