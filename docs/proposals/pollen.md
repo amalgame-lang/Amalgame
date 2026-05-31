@@ -1,9 +1,26 @@
 # Proposal: `Pollen` — peer-to-peer data bus + declarative workflow orchestrator
 
-**Status:** not yet started. Captures the design of a new Amalgame
-package + companion CLI for distributed LAN messaging and workflow
-choreography. Direct port (then extension) of the working Node.js
-prototype [`BastienMOUGET/TARMeule`](https://github.com/BastienMOUGET/TARMeule).
+> ⚠️ **This proposal is now partly superseded by the shipped code.**
+> Pollen has shipped to **v0.2.0** (program repo `amalgame-lang/pollen`
+> + package `amalgame-pollen` + `pollen-manager`). Two design points in
+> this document are **out of date** vs what was actually built:
+> 1. **Transport is TCP, not UDP.** This proposal argues for UDP and
+>    that "the latency penalty [of TCP] is the point" — that decision
+>    was **reversed**. The canonical transport is now newline-framed
+>    JSON over **TCP** (reliable, ordered, simple framing). Treat the
+>    UDP sections below as historical.
+> 2. **"Fully decentralized" = broker-less, not infra-free.** Nodes
+>    coordinate via a **shared directory** (NFS/SMB), which is a real
+>    coordination point / SPOF — not the zero-infrastructure story the
+>    early framing implies.
+> The rest of this document remains the design rationale and roadmap.
+
+**Status:** shipped v0.2.0 (this design doc predates the build and is
+kept as rationale; see the program/package repos for current state).
+Original intent: a new Amalgame package + companion CLI for distributed
+LAN messaging and workflow choreography. Direct port (then extension)
+of the working Node.js prototype
+[`BastienMOUGET/TARMeule`](https://github.com/BastienMOUGET/TARMeule).
 
 **Author:** v0.8.x cycle, post `amalgame-web v0.2.1` ship. Driven by the
 desire to give Amalgame a **fully decentralized** messaging option

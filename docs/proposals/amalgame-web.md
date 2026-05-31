@@ -1,13 +1,31 @@
 # Proposal: `Amalgame.Web` — TLS, HTTP and the Mosaic web server
 
-**Status:** Foundation shipped 2026-05-18 to 2026-05-19. The full
-HTTPS+H2 + WebSocket + filesystem-routing + livereload stack now
-runs end-to-end. Section 21 below is the authoritative roadmap for
-the remaining work; it supersedes the original "v0.1 through v1.0
-versions" plan as the architecture evolved during implementation
-(notably: `mosaic` became its own repo, WebSocket landed in
-`amalgame-net-http` rather than `amalgame-web`, ACME shipped as a
-certbot wrapper with native impl deferred).
+**Status:** Foundation shipped 2026-05-18 onward. Router, sessions,
+security middlewares, filesystem routing, livereload, and a **native
+pure-AM ACME client (http-01)** are shipped.
+
+> ⚠️ **Shipped vs. roadmap — read before quoting this in marketing.**
+> **Shipped:** Router, Sessions, security headers (CSP/HSTS/CORS/CSRF/
+> rate-limit), static serving, filesystem routing, native ACME client
+> (`amalgame-tls/acme.am`, **http-01 only**), single-binary builds.
+> **NOT yet shipped / partial (do not claim as fact):**
+> - tls-alpn-01 and dns-01 ACME challenges.
+> - Native TLS termination **fully wired to the Mosaic HTTP/1.1
+>   router in production**. The reference live demo (`amalgame-live`)
+>   is currently fronted by an external Node/greenlock proxy — see its
+>   README. Until a real Mosaic instance serves its own public HTTPS,
+>   the "zero nginx / zero proxy, single binary" pitch is a goal, not
+>   a demonstrated fact.
+> - ACME auto-renew **without a restart** (the running TLS context
+>   still holds the old cert until the service restarts).
+> - HTTP/2 wired into the H1 `WebApp` handler, Phoenix-style pub/sub,
+>   `dlopen` hot-reload, multi-site supervisor — all roadmap.
+
+Section 21 below is the authoritative roadmap for the remaining work;
+it supersedes the original "v0.1 through v1.0 versions" plan as the
+architecture evolved during implementation (notably: `mosaic` became
+its own repo, WebSocket landed in `amalgame-net-http` rather than
+`amalgame-web`).
 
 This document remains the contract for `amalgame-tls`,
 `amalgame-net-http`, `amalgame-web` and `mosaic`.
