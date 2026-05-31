@@ -268,7 +268,16 @@ In rough order of usefulness × effort:
       calls collect correctly (consumer's call-site `AmalgameList*`
       matches the facade body compiled via `MethodSig`). Covered by
       `tests/samples/variadic_external/` (facade + consumer, 3 cases
-      via the new `RunExternalPair` core-bundle helper).
+      via the new `RunExternalPair` core-bundle helper). **Variadic
+      constructors** covered as of v0.8.63: `EmitConstructorForwards`
+      + the `_new` definition lower the variadic ctor param to
+      `AmalgameList*` and register `Name_new` in the `MethodVariadic`
+      table; the `NEW_EXPR` call site reuses `EmitVariadicTail`, and
+      `ParseNew` recognises the `...` spread arg. `new Bag(1, 2, 3)` /
+      `new Bag(...xs)` / `new Bag(1, ...xs, 2)` / `new Bag()` all work
+      for locally-defined classes. Sample:
+      `tests/samples/variadic_ctor.am` (6 cases). Residual: variadic
+      ctor across a package boundary (external-facade analog).
 - [~] **`async` / `await`** — **complete HTTP/1.1 async stack
       shipped 2026-05-22 → 2026-05-23 across three packages**.
       Linux-only (epoll); kqueue/IOCP planned but unshipped.

@@ -7,6 +7,40 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.63] — 2026-05-31
+
+Variadic **constructors** — extends v0.8.61/62's variadic params to the
+`new X(...)` path, the remaining gap in the variadic story.
+
+### Added
+
+- **Variadic constructor parameters.** A constructor's trailing
+  parameter may now be variadic — `public Bag(...nums: int)` — exactly
+  like a method's. The param lowers to a single `AmalgameList*` in both
+  the `Name_new` forward declaration (`EmitConstructorForwards`) and the
+  definition, mirroring `MethodSig`. The constructor is registered in the
+  `MethodVariadic` table under `Name_new` so call sites gather correctly.
+- **Variadic `new X(...)` call sites.** The `NEW_EXPR` codegen now
+  consults the `MethodVariadic` table and reuses `EmitVariadicTail`:
+  `new Bag(1, 2, 3)` gathers the trailing args into a fresh list,
+  `new Bag(...xs)` splices an existing list, `new Bag(1, ...xs, 2)` mixes
+  the two, and `new Bag()` yields an empty (non-NULL) list. Fixed params
+  may precede the variadic one (`new Tagged("hi", 7, 8, 9)`).
+- **Parser: spread in `new` argument lists.** `ParseNew` now recognises a
+  leading `...` argument (`TokenType.OP_SPREAD`) and wraps it in the same
+  `UNARY op="..."` shape as `ParseCallArgs`, so the cgen collector reuses
+  the splice loop. Previously `new X(...xs)` emitted `_unknown_`.
+- Covered by `tests/samples/variadic_ctor.am` (6 cases: zero, inline,
+  spread, mixed, fixed + variadic, fixed + zero). The formatter
+  round-trips the `...` marker on constructors for free (constructors are
+  methods). Full suite green: core 355, stdlib 212 (+5 skip), fmt 12.
+
+### Note
+
+Variadic constructors are covered for **locally-defined classes**; a
+variadic ctor exposed across a package boundary (the external-facade
+analog of v0.8.62) is the residual follow-up.
+
 ## [v0.8.62] — 2026-05-31
 
 Variadic parameters across a package boundary — follow-up to v0.8.61's
