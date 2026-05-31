@@ -350,6 +350,7 @@ public class FullResolver {
         this.DeclareGlobal("File",           "type", false)
         this.DeclareGlobal("Path",           "type", false)
         this.DeclareGlobal("String_CharAt1",  "string", false)
+        this.DeclareGlobal("String_CharAtUnchecked", "string", false)
         this.DeclareGlobal("File_ReadAll",    "string", false)
         this.DeclareGlobal("File_WriteAll",   "void",   false)
         this.DeclareGlobal("File_AppendAll",  "void",   false)
