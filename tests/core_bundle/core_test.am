@@ -676,6 +676,16 @@ class Program {
         g_variadic_ctor.Add(new CoreCase("ctor: fixed + zero variadic", "[PASS] ctor fixed + zero variadic"))
         Program.RunGroup("./tests/samples/variadic_ctor.am", "variadic_ctor", g_variadic_ctor)
 
+        // ── primitive_tostring (6 cases) ──
+        let g_primitive_tostring: List<CoreCase> = new List<CoreCase>()
+        g_primitive_tostring.Add(new CoreCase("tostring: int var", "[PASS] int var ToString"))
+        g_primitive_tostring.Add(new CoreCase("tostring: int chain", "[PASS] int chain ToString"))
+        g_primitive_tostring.Add(new CoreCase("tostring: float var", "[PASS] float var ToString"))
+        g_primitive_tostring.Add(new CoreCase("tostring: float chain", "[PASS] float chain ToString"))
+        g_primitive_tostring.Add(new CoreCase("tostring: bool var", "[PASS] bool var ToString"))
+        g_primitive_tostring.Add(new CoreCase("tostring: bool chain", "[PASS] bool chain ToString"))
+        Program.RunGroup("./tests/samples/primitive_tostring.am", "primitive_tostring", g_primitive_tostring)
+
         // ── stdlib_env (3 cases) ──
         // Bash runner `export`s AMC_ENV_PROBE=hello before these three
         // run and `unset`s after. We inline the export via envPrefix.
