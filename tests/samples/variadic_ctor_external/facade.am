@@ -1,0 +1,30 @@
+namespace Demo.VarargCtor
+
+// Variadic constructor on an external-package facade (v0.8.65).
+// Compiled standalone here (ctor body lowered via the in-bundle path);
+// the consumer in main.am imports it with `--external facade.am`,
+// exercising the ExternalMethodSig ctor-variadic registration path —
+// the `<mangledClass>_new` key the NEW_EXPR call site looks up.
+
+public class VBag {
+    items: List<int>
+    public VBag(...nums: int) { this.items = nums }
+    public int Count() { return this.items.Count() }
+    public int Sum() {
+        var t: int = 0
+        for n in this.items { t = t + n }
+        return t
+    }
+}
+
+// Fixed param before the variadic tail, across the boundary too.
+public class VTagged {
+    label: string
+    nums: List<int>
+    public VTagged(string label, ...nums: int) {
+        this.label = label
+        this.nums  = nums
+    }
+    public string Label() { return this.label }
+    public int Count() { return this.nums.Count() }
+}

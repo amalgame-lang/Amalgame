@@ -1,0 +1,45 @@
+namespace App
+
+import Demo.VarargCtor
+
+// Consumer of the variadic-constructor facade (see facade.am). Each
+// `new VBag(...)` builds an `AmalgameList*` at the call site that the
+// separately-compiled ctor body receives as its variadic param — the
+// cross-TU analog of the in-bundle variadic_ctor sample.
+
+public class Program {
+    public static void Main() {
+        // Inline variadic args.
+        let b: VBag = new VBag(1, 2, 3)
+        if (b.Count() == 3 && b.Sum() == 6) {
+            Console.WriteLine("[PASS] ext ctor inline")
+        } else {
+            Console.WriteLine("[FAIL] ext ctor inline sum=" + String_FromInt(b.Sum()))
+        }
+
+        // Spread a list, mix inline + spread + inline.
+        let xs: List<int> = [4, 5]
+        let e: VBag = new VBag(10, ...xs, 20)
+        if (e.Count() == 4 && e.Sum() == 39) {
+            Console.WriteLine("[PASS] ext ctor mixed")
+        } else {
+            Console.WriteLine("[FAIL] ext ctor mixed sum=" + String_FromInt(e.Sum()))
+        }
+
+        // Zero variadic args → empty (non-NULL) list.
+        let z: VBag = new VBag()
+        if (z.Count() == 0) {
+            Console.WriteLine("[PASS] ext ctor zero")
+        } else {
+            Console.WriteLine("[FAIL] ext ctor zero")
+        }
+
+        // Fixed param before the variadic tail.
+        let t: VTagged = new VTagged("hi", 7, 8, 9)
+        if (t.Label() == "hi" && t.Count() == 3) {
+            Console.WriteLine("[PASS] ext ctor fixed + variadic")
+        } else {
+            Console.WriteLine("[FAIL] ext ctor fixed count=" + String_FromInt(t.Count()))
+        }
+    }
+}
