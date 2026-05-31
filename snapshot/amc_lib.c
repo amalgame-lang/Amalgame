@@ -480,7 +480,6 @@ code_string Amalgame_Compiler_Ansi_BoldGreen();
 code_string Amalgame_Compiler_Ansi_BoldBlue();
 void Amalgame_Compiler_SourceMap_Add(Amalgame_Compiler_SourceMap* self, code_string path, code_string text);
 code_string Amalgame_Compiler_SourceMap_GetLine(Amalgame_Compiler_SourceMap* self, code_string path, i64 line);
-static code_string Amalgame_Compiler_SourceMap_NthLine(Amalgame_Compiler_SourceMap* self, code_string text, i64 line);
 code_string Amalgame_Compiler_SourceSnippet_Format(code_string lineText, i64 line, i64 col);
 static code_string Amalgame_Compiler_SourceSnippet_Spaces(i64 n);
 void Amalgame_Compiler_DiagnosticFormatter_EnableColor(Amalgame_Compiler_DiagnosticFormatter* self, code_bool v);
@@ -7739,7 +7738,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.66";
+    return "0.8.67";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -17193,84 +17192,71 @@ code_string Amalgame_Compiler_Ansi_BoldBlue() {
 struct _Amalgame_Compiler_SourceMap {
     AmalgameList* Paths;
     AmalgameList* Texts;
+    AmalgameList* LineCache;
+    AmalgameList* LineSplit;
 };
 
 void Amalgame_Compiler_SourceMap_Add(Amalgame_Compiler_SourceMap* self, code_string path, code_string text);
 code_string Amalgame_Compiler_SourceMap_GetLine(Amalgame_Compiler_SourceMap* self, code_string path, i64 line);
-static code_string Amalgame_Compiler_SourceMap_NthLine(Amalgame_Compiler_SourceMap* self, code_string text, i64 line);
 
 Amalgame_Compiler_SourceMap* Amalgame_Compiler_SourceMap_new() {
     Amalgame_Compiler_SourceMap* self = (Amalgame_Compiler_SourceMap*) GC_MALLOC(sizeof(Amalgame_Compiler_SourceMap));
-    #line 35 "./src/diagnostics.am"
+    #line 46 "./src/diagnostics.am"
     self->Paths = AmalgameList_new();
-    #line 36 "./src/diagnostics.am"
+    #line 47 "./src/diagnostics.am"
     self->Texts = AmalgameList_new();
+    #line 48 "./src/diagnostics.am"
+    self->LineCache = AmalgameList_new();
+    #line 49 "./src/diagnostics.am"
+    self->LineSplit = AmalgameList_new();
     return self;
 }
 
 void Amalgame_Compiler_SourceMap_Add(Amalgame_Compiler_SourceMap* self, code_string path, code_string text) {
-    #line 40 "./src/diagnostics.am"
+    #line 53 "./src/diagnostics.am"
     i64 count = AmalgameList_count(self->Paths);
-    #line 41 "./src/diagnostics.am"
+    #line 54 "./src/diagnostics.am"
     for (i64 i = 0; i < count; i++) {
-        #line 42 "./src/diagnostics.am"
+        #line 55 "./src/diagnostics.am"
         if (code_string_equals((code_string)AmalgameList_get(self->Paths, i), path)) {
             return;
         }
     }
-    #line 44 "./src/diagnostics.am"
+    #line 57 "./src/diagnostics.am"
     AmalgameList_add(self->Paths, (void*)(intptr_t)(path));
-    #line 45 "./src/diagnostics.am"
+    #line 58 "./src/diagnostics.am"
     AmalgameList_add(self->Texts, (void*)(intptr_t)(text));
+    #line 59 "./src/diagnostics.am"
+    AmalgameList_add(self->LineCache, (void*)(intptr_t)(AmalgameList_new()));
+    #line 60 "./src/diagnostics.am"
+    AmalgameList_add(self->LineSplit, (void*)(intptr_t)(0));
 }
 
 code_string Amalgame_Compiler_SourceMap_GetLine(Amalgame_Compiler_SourceMap* self, code_string path, i64 line) {
-    #line 50 "./src/diagnostics.am"
+    #line 65 "./src/diagnostics.am"
     i64 count = AmalgameList_count(self->Paths);
-    #line 51 "./src/diagnostics.am"
+    #line 66 "./src/diagnostics.am"
     for (i64 i = 0; i < count; i++) {
-        #line 52 "./src/diagnostics.am"
+        #line 67 "./src/diagnostics.am"
         if (code_string_equals((code_string)AmalgameList_get(self->Paths, i), path)) {
-            #line 53 "./src/diagnostics.am"
-            return Amalgame_Compiler_SourceMap_NthLine(self, (code_string)AmalgameList_get(self->Texts, i), line);
-        }
-    }
-    #line 56 "./src/diagnostics.am"
-    return "";
-}
-
-static code_string Amalgame_Compiler_SourceMap_NthLine(Amalgame_Compiler_SourceMap* self, code_string text, i64 line) {
-    #line 60 "./src/diagnostics.am"
-    i64 len = String_Length(text);
-    #line 61 "./src/diagnostics.am"
-    i64 current = 1;
-    #line 62 "./src/diagnostics.am"
-    i64 start = 0;
-    #line 63 "./src/diagnostics.am"
-    i64 i = 0;
-    #line 64 "./src/diagnostics.am"
-    while (i < len) {
-        #line 65 "./src/diagnostics.am"
-        code_string ch = String_Substring(text, i, 1);
-        #line 66 "./src/diagnostics.am"
-        if (code_string_equals(ch, "\n")) {
-            #line 67 "./src/diagnostics.am"
-            if (current == line) {
-                #line 68 "./src/diagnostics.am"
-                return String_Substring(text, start, i - start);
+            #line 68 "./src/diagnostics.am"
+            if (!(code_bool)(intptr_t)AmalgameList_get(self->LineSplit, i)) {
+                #line 69 "./src/diagnostics.am"
+                AmalgameList_set(self->LineCache, i, (void*)(intptr_t)(String_Split((code_string)AmalgameList_get(self->Texts, i), "\n")));
+                #line 70 "./src/diagnostics.am"
+                AmalgameList_set(self->LineSplit, i, (void*)(intptr_t)(1));
             }
-            #line 70 "./src/diagnostics.am"
-            current = (current + 1);
-            #line 71 "./src/diagnostics.am"
-            start = (i + 1);
+            #line 72 "./src/diagnostics.am"
+            AmalgameList* lines = (AmalgameList*)AmalgameList_get(self->LineCache, i);
+            #line 73 "./src/diagnostics.am"
+            i64 idx = line - 1;
+            #line 74 "./src/diagnostics.am"
+            if ((idx < 0) || (idx >= AmalgameList_count(lines))) {
+                return "";
+            }
+            #line 75 "./src/diagnostics.am"
+            return (code_string)AmalgameList_get(lines, idx);
         }
-        #line 73 "./src/diagnostics.am"
-        i = (i + 1);
-    }
-    #line 75 "./src/diagnostics.am"
-    if ((current == line) && (start < len)) {
-        #line 76 "./src/diagnostics.am"
-        return String_Substring(text, start, len - start);
     }
     #line 78 "./src/diagnostics.am"
     return "";
@@ -25062,12 +25048,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "b390ae7e";
+    return "ecbbdd8f";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-31T15:16:39Z";
+    return "2026-05-31T16:27:34Z";
 }
 
 struct _Amalgame_Compiler_LspServer {

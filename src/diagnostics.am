@@ -30,10 +30,23 @@ public class Ansi {
 public class SourceMap {
     private Paths: List<string>
     private Texts: List<string>
+    // Per-file line cache, parallel to Paths/Texts. Each entry is the
+    // file split into lines, computed lazily on the first GetLine for
+    // that file (LineSplit[i] flips to true once filled). Without this,
+    // GetLine walked the whole text char-by-char per call — O(filesize)
+    // each, allocating a 1-char string per character. Error formatting
+    // calls GetLine once per diagnostic, so an error-heavy resolve
+    // (a file checked in isolation, or mid-edit in the LSP) degraded to
+    // O(errors × filesize) — the dominant cost in `amc --check` on a
+    // big file. Splitting once makes GetLine O(1) amortised.
+    private LineCache: List<List<string>>
+    private LineSplit: List<bool>
 
     public SourceMap() {
         this.Paths = new List<string>()
         this.Texts = new List<string>()
+        this.LineCache = new List<List<string>>()
+        this.LineSplit = new List<bool>()
     }
 
     public void Add(string path, string text) {
@@ -43,6 +56,8 @@ public class SourceMap {
         }
         this.Paths.Add(path)
         this.Texts.Add(text)
+        this.LineCache.Add(new List<string>())
+        this.LineSplit.Add(false)
     }
 
     // Returns the Nth line (1-indexed) of the given file, or "" if not found.
@@ -50,30 +65,15 @@ public class SourceMap {
         let count = this.Paths.Count()
         for i in 0..count {
             if (this.Paths.Get(i) == path) {
-                return this.NthLine(this.Texts.Get(i), line)
-            }
-        }
-        return ""
-    }
-
-    private string NthLine(string text, int line) {
-        let len = String_Length(text)
-        var current = 1
-        var start = 0
-        var i = 0
-        while (i < len) {
-            let ch = String_Substring(text, i, 1)
-            if (ch == "\n") {
-                if (current == line) {
-                    return String_Substring(text, start, i - start)
+                if (!this.LineSplit.Get(i)) {
+                    this.LineCache.Set(i, String_Split(this.Texts.Get(i), "\n"))
+                    this.LineSplit.Set(i, true)
                 }
-                current = current + 1
-                start = i + 1
+                let lines: List<string> = this.LineCache.Get(i)
+                let idx: int = line - 1
+                if (idx < 0 || idx >= lines.Count()) { return "" }
+                return lines.Get(idx)
             }
-            i = i + 1
-        }
-        if (current == line && start < len) {
-            return String_Substring(text, start, len - start)
         }
         return ""
     }
