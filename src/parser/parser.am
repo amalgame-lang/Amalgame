@@ -2035,6 +2035,20 @@ public class Parser {
                         namedKey = nameTok.Value
                     }
                 }
+                // Spread argument `...expr` into a variadic constructor —
+                // same UNARY op="..." shape as ParseCallArgs, so the cgen
+                // NEW_EXPR collector reuses the splice loop.
+                if (this.CheckType(TokenType.OP_SPREAD)) {
+                    let sptok = this.Advance()
+                    let inner = this.ParseExpr()
+                    let sn = new AstNode(NodeKind.UNARY, sptok.Line, sptok.Column)
+                    sn.Str  = "..."
+                    sn.Left = inner
+                    if (String_Length(namedKey) > 0) { sn.Str2 = namedKey }
+                    node.Args.Add(sn)
+                    this.SkipNewlines()
+                    continue
+                }
                 let arg = this.ParseExpr()
                 if (String_Length(namedKey) > 0) { arg.Str2 = namedKey }
                 node.Args.Add(arg)
