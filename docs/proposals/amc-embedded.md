@@ -545,7 +545,61 @@ preflight) with an actionable per-arch install hint.
 
 ---
 
-## 11. Phasing
+## 11. Tooling — LSP & DAP
+
+amc already ships both an LSP ([`src/lsp.am`](../../src/lsp.am), ~3500
+LOC) and a DAP debugger ([`src/dap.am`](../../src/dap.am), ~1970 LOC) —
+the latter as a **gdb MI3 bridge** (`fork` + `--interpreter=mi3` +
+pretty-printers + frame filter, per
+[`docs/proposals/dap-strategy.md`](dap-strategy.md)). cgen emits
+`#line N "foo.am"` directives, so the backend's DWARF reader maps `.am`
+source lines natively — source-level stepping/breakpoints already work.
+The embedded story extends both with **little new architecture**.
+
+### 11.1 DAP on-chip — ~free, because it is already gdb
+
+On-chip debugging *is* gdb + a GDB server (OpenOCD / probe-rs /
+J-Link / pyOCD) over SWD/JTAG. The existing bridge already speaks gdb
+MI3; the deltas:
+
+| Delta | What |
+|---|---|
+| **Cross gdb** | Target-descriptor field: `arm-none-eabi-gdb`, `riscv-none-elf-gdb`, `avr-gdb`, or `gdb-multiarch`. |
+| **Remote connect** (*the one real addition*) | Today the bridge runs gdb on a local ELF. For an MCU it must (a) launch the GDB server (`openocd -f <board>.cfg` / `probe-rs`), then (b) issue the MI sequence `target extended-remote :3333` → `load` (= flash) → `monitor reset halt`. Pure MI sequencing — no new architecture. (Confirmed absent today: no `extended-remote` in `dap.am`.) |
+| **DWARF** | `-g` in the embedded compile flags; the existing `#line` directives make source stepping identical to hosted. |
+| **Pretty-printers + frame filter** | Registry is keyed on C type name → carries over unchanged. An arena pointer is just a pointer into a static buffer; HAL/runtime frames are hidden like `Amalgame_*`/`_runtime_*` already are. |
+
+Later polish (Phase 4): route **semihosting** output (`Console.WriteLine`
+via `code_putc`) to the debug console; **SVD** → peripheral/register
+view (à la cortex-debug); **FreeRTOS task view** (ESP32) via gdb/OpenOCD
+RTOS awareness.
+
+### 11.2 LSP — same engine, made target-aware
+
+The LSP is source analysis — mostly unchanged, but it must know the
+**active target** to apply the right feature gates and type defaults.
+Deltas:
+
+- **Know the new constructs** (`setup`/`loop`/`region`/`task`/`@isr`/
+  `persist`): completion, hover, semantic tokens.
+- **Surface embedded diagnostics as live squiggles** — the big UX win,
+  catching footguns *while typing* rather than at flash time:
+  - escape-check violations (`arena ↛ persistent`),
+  - `f64` on no-FPU targets (warn) / AVR (error),
+  - allocation inside an `@isr`,
+  - feature-gated imports (`import Amalgame.Net` under `--target=avr`
+    → error).
+- **Board pin completion**: resolve `Amalgame.Mcu.Board` → `Board.<pin>`
+  from the pinned board package.
+
+The required wiring: the LSP must read `amalgame.toml [target]`. This is
+the **same root cause** as the known gap where the LSP doesn't load the
+lockfile (false "Unknown symbol" on package types) — making the LSP
+*project-config-aware* fixes both and unlocks `Board` symbol resolution.
+
+---
+
+## 12. Phasing
 
 **Phase 0 — spike (proof it links).** Hand-write a freestanding
 `_runtime.h` (arena alloc, `code_putc` over semihosting); compile a
@@ -558,8 +612,10 @@ driver plumbing; `runtime/embedded/` with arena (Cortex-M) and malloc
 (ESP32); `setup`/`loop`/`region` + `persist` + the conservative escape
 check; `@isr` + allocation-free check; `Amalgame.Mcu` core HAL with a
 first board package; `--target`, `--alloc`, `.bin`/`.hex` output; the
-golden-C hosted regression test. Deliverable: blink + serial-print on
-real or QEMU'd hardware.
+golden-C hosted regression test; **LSP target-awareness** (read
+`[target]`, surface escape-check / f64 / feature-gate diagnostics as
+squiggles). Deliverable: blink + serial-print on real or QEMU'd
+hardware.
 
 **Phase 2 — refcount + RISC-V.** cgen refcount insertion for
 long-running programs; RISC-V descriptor (reuses the Cortex-M path);
@@ -568,13 +624,16 @@ optional escape-check upgrade (`@stores`/`@borrow`).
 **Phase 3 — AVR.** Static pools, `i16` int default, hard `f64` ban,
 avr-libc. The port that validates every constraint.
 
-**Phase 4 — HAL breadth + tasks + flashing.** Per-board `amalgame-mcu-*`
-packages (GPIO/timer/ADC/I2C/SPI), the `task` concurrency model,
-`--flash` integration, examples.
+**Phase 4 — HAL breadth + tasks + flashing + on-chip debug.** Per-board
+`amalgame-mcu-*` packages (GPIO/timer/ADC/I2C/SPI), the `task`
+concurrency model, `--flash` integration, **DAP remote-connect**
+(OpenOCD/probe-rs launch + `target extended-remote`/`load`/`reset`
+sequence, cross-gdb), semihosting→debug-console, SVD register view,
+examples.
 
 ---
 
-## 12. Decisions log (frozen 2026-05-31)
+## 13. Decisions log (frozen 2026-05-31)
 
 | Topic | Decision |
 |---|---|
@@ -592,8 +651,9 @@ packages (GPIO/timer/ADC/I2C/SPI), the `task` concurrency model,
 | Floats | target-driven: FPU ✅ / no-FPU warn / AVR hard error. |
 | HAL | portable `Mcu` facade + opaque typed `Pin`; named pin constants from per-board package; core declares / board implements. |
 | `_runtime.h` | single tree, `#if` arms default to hosted. |
+| Tooling | reuse the existing gdb-MI3 DAP bridge (+remote-connect) and LSP; LSP made target-aware to surface embedded diagnostics. |
 
-## 13. Remaining (plumbing only — no open conceptual decisions)
+## 14. Remaining (plumbing only — no open conceptual decisions)
 
 - `amalgame.toml [target]` parsing + per-board linker scripts.
 - `--flash` integration (openocd / esptool / avrdude).
@@ -601,10 +661,12 @@ packages (GPIO/timer/ADC/I2C/SPI), the `task` concurrency model,
 - Opaque `Pin` C-representation detail (`typedef code_Pin` per target).
 - ISR↔main shared-state concurrency story (`volatile`/`@shared`, critical
   sections) — later add, documented now.
+- DAP remote-connect MI sequence + cross-gdb selection (Phase 4); LSP
+  `[target]`/lockfile config-awareness (Phase 1).
 
 ---
 
-## 14. Why this is *not* a new code generator
+## 15. Why this is *not* a new code generator
 
 amc's gen already produces portable C99; the C cross-toolchains for all
 four target classes are mature. The leverage is entirely in the
