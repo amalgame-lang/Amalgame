@@ -4630,6 +4630,24 @@ public class CGen {
             }
         }
 
+        // General deep-chain fallback (v0.8.66): the hand-coded shapes
+        // above only reach a single field hop (`this.F` / `ident.F`).
+        // For a 2+-level receiver chain (`w.Inner.Vals.Method()`,
+        // where callee.Left.Left is itself a MEMBER), resolve the
+        // receiver generically — InferTypeFromExpr walks the field
+        // chain to its C type and EmitExprStr lowers the MEMBER node to
+        // the `a->b->c` accessor. Without this, such calls fell through
+        // to the broken `recv->Field_Method()` generic dispatch (the
+        // `obj.X.Y.Method()` collapse bug). Covers Map/Set here via
+        // rxExpr/rxType; the List path picks it up in Case 5 below.
+        if (String_Length(rxExpr) == 0 && callee.Left != null && callee.Left.Kind == NodeKind.MEMBER) {
+            let deepT = this.InferTypeFromExpr(callee.Left)
+            if (deepT == "AmalgameMap*" || deepT == "AmalgameSet*" || deepT == "AmalgameList*") {
+                rxExpr = this.EmitExprStr(callee.Left)
+                rxType = deepT
+            }
+        }
+
         // Map methods
         // Map iteration helpers — Keys() / Values() return List<K>/List<V>.
         if (mname == "Keys" || mname == "Values") {
@@ -4756,6 +4774,17 @@ public class CGen {
                     }
                 }
             }
+        }
+
+        // Case 5 (v0.8.66): general deep member chain for List methods.
+        // Reuses the rxExpr/rxType deep-chain fallback resolved above
+        // (Cases 2/3 only reach a single field hop, leaving listExpr
+        // empty for `w.Inner.Vals.Count()`). The guard means this fires
+        // only when the hand-coded cases missed, so it never double-
+        // handles the simpler shapes.
+        if (String_Length(listExpr) == 0 && rxType == "AmalgameList*" && String_Length(rxExpr) > 0) {
+            listExpr  = rxExpr
+            listCType = "AmalgameList*"
         }
 
         if (String_Length(listExpr) == 0) { return "" }
