@@ -2287,6 +2287,18 @@ public class CGen {
         if (!isCtor) {
             this.MethodRetSet(mangledClass, method.Name, retType)
             this.MethodRetRawSet(mangledClass, method.Name, retTypeRaw)
+            // Variadic registration for facade methods, symmetric to the
+            // in-bundle path in EmitClass. The mangled callee name here
+            // (`mangledClass_method`) matches what EmitCalleeStr emits
+            // for package-class dispatch, so the call-site collector
+            // fires for cross-package variadic calls too.
+            let mpc: int = method.Params.Count()
+            if (mpc > 0) {
+                let lastP: AstNode = method.Params.Get(mpc - 1)
+                if (lastP.Flag) {
+                    this.MethodVariadicSet(mangledClass + "_" + method.Name, mpc - 1)
+                }
+            }
         }
         var sig: string = ""
         if (isCtor) {
@@ -2304,7 +2316,13 @@ public class CGen {
         for i in 0..pcount {
             let p: AstNode = method.Params.Get(i)
             if (!first) { sig = sig + ", " }
-            sig   = sig + this.TypeToC(p.Str) + " " + p.Name
+            // Variadic facade param lowers to a single `AmalgameList*`,
+            // matching the in-bundle MethodSig lowering.
+            if (p.Flag) {
+                sig = sig + "AmalgameList* " + p.Name
+            } else {
+                sig = sig + this.TypeToC(p.Str) + " " + p.Name
+            }
             first = false
         }
         sig = sig + ")"

@@ -1,0 +1,20 @@
+namespace Demo.Vararg
+
+// Variadic params on an external-package facade method (v0.8.61).
+// Compiled standalone here (body lowered via MethodSig); the consumer
+// in main.am imports it with `--external facade.am`, exercising the
+// ExternalMethodSig forward-decl + variadic-table registration path.
+
+public class VBox {
+    public static int Sum(...nums: int) {
+        var t: int = 0
+        for n in nums { t = t + n }
+        return t
+    }
+
+    public static int SumFrom(int base, ...nums: int) {
+        var t: int = base
+        for n in nums { t = t + n }
+        return t
+    }
+}
