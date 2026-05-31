@@ -260,6 +260,7 @@ public class Formatter {
         var head = ""
         if (n.Flag)  { head = head + "public " }
         if (n.Flag2) { head = head + "static " }
+        if (n.Flag3) { head = head + "async " }
         let isCtor = String_Length(className) > 0 && n.Name == className
         if (isCtor) {
             head = head + n.Name + "("
@@ -707,6 +708,11 @@ public class Formatter {
     }
 
     private string EmitUnary(AstNode n) {
+        // `await expr` — keyword form needs a separating space, unlike
+        // the symbolic prefixes (`!x`, `-x`, `...xs`).
+        if (n.Str == "await") {
+            return "await " + this.EmitExpr(n.Left)
+        }
         return n.Str + this.EmitExpr(n.Left)
     }
 

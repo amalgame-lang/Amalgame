@@ -79,6 +79,9 @@ public class AstNode {
     // Bool flags
     public Flag:   bool
     public Flag2:  bool
+    // METHOD_DECL: isAsync (async fn — desugars to fiber + channel).
+    // PARAM/other kinds leave it false.
+    public Flag3:  bool
 
     // Child nodes (nullable)
     public Left:   AstNode?
@@ -103,6 +106,7 @@ public class AstNode {
         this.Str4     = ""
         this.Flag     = false
         this.Flag2    = false
+        this.Flag3    = false
         this.Left     = null
         this.Right    = null
         this.Cond     = null

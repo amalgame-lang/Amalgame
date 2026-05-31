@@ -42,7 +42,7 @@
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-31 · `amc 0.8.69` · **`amc --check` perf run — 3 O(n²) eliminated, `c_gen.am` (5k LoC) ~118s → ~0.2s**: v0.8.67 diagnostics snippet `SourceMap.GetLine` (cached split-lines), v0.8.68 lexer per-char strlen (`SourceLen` cache + `String_CharAtUnchecked`), v0.8.69 typecheck expr-type memo (parallel-list scan → `Map`) · **variadic saga complete**: v0.8.61 params/call-sites → v0.8.62 external-facade methods → v0.8.63 local ctors → v0.8.65 cross-package ctors (`Sum(...xs)`, `new Bag(...xs)`) · v0.8.66 deep member chain `obj.F1.F2.CollectionMethod()` · v0.8.64 primitive `.ToString()` · v0.8.60 if→match self-host refactor (7/7 sites)
+> Updated 2026-05-31 · `amc 0.8.70` · **`async fn` / `await` language sugar** — desugars to fiber-spawn + future-channel receive (impl/fiber/wrapper cgen split), future model with real concurrency, contextual keywords, `import Amalgame.Async` enforced via `#error` guard; 636 PASS / 0 FAIL · `amc 0.8.69` · **`amc --check` perf run — 3 O(n²) eliminated, `c_gen.am` (5k LoC) ~118s → ~0.2s**: v0.8.67 diagnostics snippet `SourceMap.GetLine` (cached split-lines), v0.8.68 lexer per-char strlen (`SourceLen` cache + `String_CharAtUnchecked`), v0.8.69 typecheck expr-type memo (parallel-list scan → `Map`) · **variadic saga complete**: v0.8.61 params/call-sites → v0.8.62 external-facade methods → v0.8.63 local ctors → v0.8.65 cross-package ctors (`Sum(...xs)`, `new Bag(...xs)`) · v0.8.66 deep member chain `obj.F1.F2.CollectionMethod()` · v0.8.64 primitive `.ToString()` · v0.8.60 if→match self-host refactor (7/7 sites)
 >
 > Updated 2026-05-23 · `amc 0.8.45+` · **HTTP/1.1 fiber-driven async stack landed across 16 versions in 2 sessions** (amalgame-async v0.1→v0.2.3, amalgame-net-http v0.9→v0.9.5, amalgame-web v0.12→v0.12.4; full bench + cancellation + graceful shutdown + WithTimeout) · `amc 0.8.40+` · self-hosted · **test suite migrated to AM bundles via `amc test`**: 325 core + 196 stdlib + 38 amc-new + 12 fmt = **571 PASS + 5 SKIP in ~42s (was ~4m35s)** · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
 
@@ -288,13 +288,35 @@ In rough order of usefulness × effort:
       the external-facade analog of v0.8.62. Sample:
       `tests/samples/variadic_ctor_external/` (facade + consumer, 4 cases
       via `RunExternalPair`). The variadic saga is now closed end-to-end.
-- [~] **`async` / `await`** — **complete HTTP/1.1 async stack
-      shipped 2026-05-22 → 2026-05-23 across three packages**.
+- [x] **`async` / `await`** — **language sugar shipped 2026-05-31
+      (amc v0.8.70)**; complete HTTP/1.1 async stack shipped
+      2026-05-22 → 2026-05-23 across three packages.
       Linux-only (epoll); kqueue/IOCP planned but unshipped.
-      Async sugar in amc itself stays a v0.5+ desugaring pass
-      (trivial because the runtime is stackful — no CPS
-      state-machine to generate). `amc package add web` now
-      pulls everything in transitively.
+      `amc package add web` now pulls everything in transitively.
+
+      **amc-side `async fn` / `await` sugar (v0.8.70)** — the last
+      open piece, now closed. `async fn Foo(p): R` on class C lowers
+      to THREE C functions (cgen, not a source rewrite): `C_Foo__impl`
+      (the real body), `C_Foo__fiber` (closure trampoline that runs
+      impl + `ChannelSend`s the boxed result), and the public
+      `C_Foo` wrapper (keeps the normal mangled name, `ChannelNew(1)`
+      + `FiberSpawn` + returns the future channel). So a call site is
+      unchanged — `let f = obj.Foo(p)` types `f` as a future
+      (`AmalgameAsyncChannel*`), and `await f` lowers to
+      `ChannelReceive` unboxed to R (R recovered via the
+      `__async_ret__` / `__async_future__` tracking tables). Calling
+      an async fn spawns immediately, so `let a = f(); let b = g();
+      await a; await b` runs f and g concurrently (future model, like
+      JS/Python/C#). From the main context (`FiberCurrentId()==0`) the
+      first `await` pumps `SchedulerRun()`; inside a fiber it parks.
+      `async`/`fn`/`await` are contextual keywords (no lexer reserve);
+      `fn` is optional sugar after `async`. cgen emits a
+      `#ifndef AMALGAME_ASYNC_H #error` guard so forgetting
+      `import Amalgame.Async` gives a readable message. Parser flag
+      `Flag3` on METHOD_DECL, `await` is a `UNARY` with `Str="await"`,
+      formatter round-trips both. Verified end-to-end (instance +
+      static async fns, future form, inline await, 3 concurrent
+      futures summed); full suite 636 PASS / 0 FAIL / 5 SKIP.
 
       **amalgame-async** (5 versions): Fiber/Channel/Scheduler
       on POSIX ucontext (v0.1.0) → epoll I/O parking (v0.2.0)
@@ -367,10 +389,8 @@ In rough order of usefulness × effort:
       Fibers / IOCP backends (need platform validation), timer wheel
       for >1k sleepers, M:N (per-thread scheduler via TLS),
       Async H2 / Https / Ws / Wss (gated on amalgame-tls
-      fiber-aware I/O), amc-side `async fn` / `await expr`
-      sugar (trivial desugaring to `FiberSpawn` + channel
-      receive; landed as language work when a real Mosaic
-      consumer pushes for it).
+      fiber-aware I/O). The amc-side `async fn` / `await` sugar
+      **shipped in v0.8.70** (see the language entry above).
 
 ---
 
