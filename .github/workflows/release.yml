@@ -121,7 +121,11 @@ jobs:
           # fall back to an inline conventions block — still functional
           # but the model loses access to the canonical grammar.
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
-          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          # Ship the whole user guide (all chapters + 09-ui-web/) so it
+          # can be read offline at <prefix>/share/amalgame/docs/guide/.
+          # 02-language-tour.md is included in the copy, so the LLM
+          # commands still find it here too.
+          cp -r docs/guide/.                  "dist/$NAME/share/amalgame/docs/guide/"
           # Latest VS Code extension .vsix — install.sh /
           # postinstall.ps1 auto-install it on detected editors so users
           # land on a working LSP + debug setup without extra steps.
@@ -217,7 +221,11 @@ jobs:
           cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
-          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          # Ship the whole user guide (all chapters + 09-ui-web/) so it
+          # can be read offline at <prefix>/share/amalgame/docs/guide/.
+          # 02-language-tour.md is included in the copy, so the LLM
+          # commands still find it here too.
+          cp -r docs/guide/.                  "dist/$NAME/share/amalgame/docs/guide/"
           LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
           cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
           tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
@@ -343,7 +351,11 @@ jobs:
           cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
-          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          # Ship the whole user guide (all chapters + 09-ui-web/) so it
+          # can be read offline at <prefix>/share/amalgame/docs/guide/.
+          # 02-language-tour.md is included in the copy, so the LLM
+          # commands still find it here too.
+          cp -r docs/guide/.                  "dist/$NAME/share/amalgame/docs/guide/"
           LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
           cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
           # Bundle every MinGW DLL the binary transitively links against,
