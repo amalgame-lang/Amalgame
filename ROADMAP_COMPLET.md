@@ -1178,13 +1178,25 @@ before the next big language addition.
       both used parallel-list linear scans for Has/Get/Set — O(N)
       per lookup, hit on every AST identifier reference and member
       access. Added hashed `Map<string, int>` companions in
-      `38931f7` (151s → 132s on c_gen, ~13%). The remaining cost
-      lives somewhere else in Pass-2 traversal — parse itself is
-      also surprisingly slow (7s on c_gen). Reasonable target:
-      under 1s for a workspace file. **Follow-up needed**: instrument
-      with per-pass timing markers, identify the actual hotspot
-      (suspects: LocalNames linear scan in deeply-nested scopes,
-      AST traversal allocations, or a yet-undiscovered loop).
+      `38931f7` (151s → 132s on c_gen, ~13%). **Root cause found +
+      fixed v0.8.67.** The remaining cost was NOT in the resolver
+      traversal — the lookups were already O(1). It was in the
+      **diagnostic snippet formatter**: every `Error()` rendered a
+      source caret via `SourceMap.GetLine`, whose `NthLine` walked the
+      whole file text character-by-character (one 1-char
+      `String_Substring` allocation per char) to find the offending
+      line. One `GetLine` per diagnostic gives O(errors x filesize).
+      `amc --check` on a file in isolation produces an unknown-symbol
+      error per cross-file reference (parser.am alone = 152 errors), so
+      the cost scaled quadratically. `GetLine` now splits each file into
+      lines once (lazily) and caches them, O(1) amortised. Result:
+      c_gen.am resolve 103-168s -> 3ms, parser.am 15s -> 4ms, lexer.am
+      27s -> 3ms; snippet output byte-identical; TypeChecker (same
+      `SourceMap`) benefits too. A clean full-workspace build never hit
+      this (~0 errors), which is why `build_amc.sh` was always ~2s.
+      **Still open**: the parse phase is independently slow on large
+      files (~10s on c_gen.am) - separate root cause, separate
+      follow-up.
 - [x] **VS Code extension robustness on `serverPath`.** Already
       shipped — `editors/vscode/extension.js` has
       `resolveServerPath(raw)` doing both `trim()` and `~/`
