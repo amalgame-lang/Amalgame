@@ -261,10 +261,14 @@ In rough order of usefulness × effort:
       `AmalgameList*` + seed `List<T>` elem-type tracking. Formatter
       re-emits the `...` marker idempotently. Sample:
       `tests/samples/variadic_params.am` (8 cases, in the core
-      bundle). **Residual scope**: variadic params on *external
-      package* facade methods (`ExternalMethodSig` /
-      `RegisterExternalProg` don't register the variadic table yet —
-      only locally-defined classes are covered).
+      bundle). **External-package facade methods** covered as of
+      v0.8.62: `ExternalMethodSig` emits the variadic param as
+      `AmalgameList*` and registers the `MethodVariadic` table under
+      the package-mangled callee name, so cross-package variadic
+      calls collect correctly (consumer's call-site `AmalgameList*`
+      matches the facade body compiled via `MethodSig`). Covered by
+      `tests/samples/variadic_external/` (facade + consumer, 3 cases
+      via the new `RunExternalPair` core-bundle helper).
 - [~] **`async` / `await`** — **complete HTTP/1.1 async stack
       shipped 2026-05-22 → 2026-05-23 across three packages**.
       Linux-only (epoll); kqueue/IOCP planned but unshipped.

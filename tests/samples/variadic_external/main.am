@@ -1,0 +1,33 @@
+namespace App
+
+import Demo.Vararg
+
+// Consumer of the variadic facade (see facade.am). Each call exercises
+// the cross-TU ABI: the call site builds an `AmalgameList*` that the
+// separately-compiled facade body receives as its variadic param.
+
+public class Program {
+    public static void Main() {
+        // Inline variadic args.
+        if (VBox.Sum(1, 2, 3, 4) == 10) {
+            Console.WriteLine("[PASS] ext variadic inline")
+        } else {
+            Console.WriteLine("[FAIL] ext inline=" + String_FromInt(VBox.Sum(1, 2, 3, 4)))
+        }
+
+        // Spread a list into the variadic position.
+        let xs: List<int> = [10, 20, 30]
+        if (VBox.Sum(...xs) == 60) {
+            Console.WriteLine("[PASS] ext variadic spread")
+        } else {
+            Console.WriteLine("[FAIL] ext spread=" + String_FromInt(VBox.Sum(...xs)))
+        }
+
+        // Fixed param + mixed inline/spread tail.
+        if (VBox.SumFrom(100, 1, ...xs, 2) == 163) {
+            Console.WriteLine("[PASS] ext fixed + mixed variadic")
+        } else {
+            Console.WriteLine("[FAIL] ext mixed=" + String_FromInt(VBox.SumFrom(100, 1, ...xs, 2)))
+        }
+    }
+}
