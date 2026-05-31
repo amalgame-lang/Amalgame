@@ -666,6 +666,16 @@ class Program {
         g_variadic_params.Add(new CoreCase("variadic: strings count", "[PASS] variadic strings count=3"))
         Program.RunGroup("./tests/samples/variadic_params.am", "variadic_params", g_variadic_params)
 
+        // ── variadic_ctor (6 cases) ──
+        let g_variadic_ctor: List<CoreCase> = new List<CoreCase>()
+        g_variadic_ctor.Add(new CoreCase("ctor: zero args", "[PASS] ctor zero args"))
+        g_variadic_ctor.Add(new CoreCase("ctor: inline args", "[PASS] ctor inline args"))
+        g_variadic_ctor.Add(new CoreCase("ctor: spread list", "[PASS] ctor spread list"))
+        g_variadic_ctor.Add(new CoreCase("ctor: mixed inline + spread", "[PASS] ctor mixed inline + spread"))
+        g_variadic_ctor.Add(new CoreCase("ctor: fixed + variadic", "[PASS] ctor fixed + variadic"))
+        g_variadic_ctor.Add(new CoreCase("ctor: fixed + zero variadic", "[PASS] ctor fixed + zero variadic"))
+        Program.RunGroup("./tests/samples/variadic_ctor.am", "variadic_ctor", g_variadic_ctor)
+
         // ── stdlib_env (3 cases) ──
         // Bash runner `export`s AMC_ENV_PROBE=hello before these three
         // run and `unset`s after. We inline the export via envPrefix.
