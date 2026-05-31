@@ -5087,6 +5087,17 @@ public class CGen {
                         if (bareType == "code_string") {
                             return "String_" + mname
                         }
+                        // Primitive `.ToString()` — the receiver is passed
+                        // as the first arg (selfExpr), so returning the
+                        // matching runtime converter lowers `n.ToString()`
+                        // to `String_FromInt(n)` etc. Without this the
+                        // fallback emits a non-existent `i64_ToString(n)`
+                        // that only fails at link time (passes --check).
+                        if (mname == "ToString") {
+                            if (bareType == "i64")       { return "String_FromInt" }
+                            if (bareType == "double")    { return "String_FromFloat" }
+                            if (bareType == "code_bool") { return "String_FromBool" }
+                        }
                         return bareType + "_" + mname
                     }
                     // Fallback: obj_Method (simplified)
@@ -5110,6 +5121,14 @@ public class CGen {
                             let first: string = String_Substring(mname, 0, 1)
                             let rest:  string = String_Substring(mname, 1, String_Length(mname) - 1)
                             return bareR + "_" + String_ToLower(first) + rest
+                        }
+                        // Primitive `.ToString()` on a chained call result
+                        // (`f(x).ToString()`) — same converter lowering as
+                        // the identifier-receiver branch above.
+                        if (mname == "ToString") {
+                            if (bareR == "i64")       { return "String_FromInt" }
+                            if (bareR == "double")    { return "String_FromFloat" }
+                            if (bareR == "code_bool") { return "String_FromBool" }
                         }
                         return bareR + "_" + mname
                     }

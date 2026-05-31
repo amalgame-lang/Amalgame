@@ -7,6 +7,27 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.64] — 2026-05-31
+
+Primitive `.ToString()` — `n.ToString()` on an `int` / `float` / `bool`
+now works instead of failing at link time.
+
+### Fixed
+
+- **`<primitive>.ToString()` lowering.** Calling `.ToString()` on a
+  primitive receiver previously emitted a non-existent `i64_ToString(n)`
+  (resp. `double_`/`code_bool_`) — code that passed `amc --check` but
+  failed at the link step with `undefined reference to 'i64_ToString'`.
+  `EmitCalleeStr` now special-cases `ToString` on a primitive receiver
+  and returns the matching runtime converter, so `n.ToString()` lowers
+  to `String_FromInt(n)` (the receiver is passed as the converter's
+  first argument). Covers `int → String_FromInt`,
+  `float → String_FromFloat`, `bool → String_FromBool`, for both a typed
+  variable receiver (`s.ToString()`) and a chained-call receiver
+  (`f(x).ToString()`). The idiomatic `String_FromInt(n)` still works.
+- Covered by `tests/samples/primitive_tostring.am` (6 cases: int/float/
+  bool × variable/chain). Full suite green: combined 629 PASS / 0 FAIL.
+
 ## [v0.8.63] — 2026-05-31
 
 Variadic **constructors** — extends v0.8.61/62's variadic params to the
