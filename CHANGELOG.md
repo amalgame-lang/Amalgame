@@ -7,6 +7,29 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.62] — 2026-05-31
+
+Variadic parameters across a package boundary — follow-up to v0.8.61's
+residual scope.
+
+### Added
+
+- **Variadic params on external-package facade methods.**
+  `ExternalMethodSig` now lowers a variadic facade param to a single
+  `AmalgameList*` (matching the in-bundle `MethodSig` lowering) and
+  registers the `MethodVariadic` table under the package-mangled
+  callee name (`Ns_Class_Method`). A consumer calling
+  `Pkg.Foo(1, ...xs, 2)` therefore builds the gathered `AmalgameList*`
+  at the call site, which matches the facade body compiled separately
+  via `MethodSig`. Previously only locally-defined classes were
+  covered.
+- New core-bundle test helper `RunExternalPair`: compiles a facade and
+  its consumer in two separate amc invocations (consumer with
+  `--external`), links both `.c` files, and greps the output — so an
+  ad-hoc facade can be tested without precompiling it into
+  `libamalgame.a`. Covered by `tests/samples/variadic_external/`
+  (3 cases: inline, spread, fixed + mixed).
+
 ## [v0.8.61] — 2026-05-31
 
 Variadic parameters + variadic call sites — closes the last "still
