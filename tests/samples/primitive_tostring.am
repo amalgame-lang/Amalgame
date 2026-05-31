@@ -1,0 +1,62 @@
+namespace Demo
+
+// Primitive `.ToString()` (v0.8.64+).
+//
+// `n.ToString()` on a primitive receiver lowers to the matching runtime
+// converter — `String_FromInt` / `String_FromFloat` / `String_FromBool`
+// — because the receiver is passed as the converter's first argument.
+// Works for both a typed variable receiver (`s.ToString()`) and a
+// chained-call receiver (`f(x).ToString()`). Previously these emitted a
+// non-existent `i64_ToString(...)` that passed `--check` but failed at
+// link time.
+
+public class Probe {
+    public static int  PlusOne(int n)  { return n + 1 }
+    public static float Half()         { return 2.5 }
+    public static bool  Truthy()       { return true }
+}
+
+public class Program {
+    public static void Main() {
+        // int — variable receiver.
+        let s: int = 42
+        if (s.ToString() == "42") {
+            Console.WriteLine("[PASS] int var ToString")
+        } else {
+            Console.WriteLine("[FAIL] int var ToString=" + s.ToString())
+        }
+
+        // int — chained-call receiver.
+        if (Probe.PlusOne(40).ToString() == "41") {
+            Console.WriteLine("[PASS] int chain ToString")
+        } else {
+            Console.WriteLine("[FAIL] int chain ToString")
+        }
+
+        // float — variable + chain.
+        let f: float = 3.5
+        if (f.ToString() == "3.5") {
+            Console.WriteLine("[PASS] float var ToString")
+        } else {
+            Console.WriteLine("[FAIL] float var ToString=" + f.ToString())
+        }
+        if (Probe.Half().ToString() == "2.5") {
+            Console.WriteLine("[PASS] float chain ToString")
+        } else {
+            Console.WriteLine("[FAIL] float chain ToString")
+        }
+
+        // bool — variable + chain.
+        let b: bool = false
+        if (b.ToString() == "false") {
+            Console.WriteLine("[PASS] bool var ToString")
+        } else {
+            Console.WriteLine("[FAIL] bool var ToString=" + b.ToString())
+        }
+        if (Probe.Truthy().ToString() == "true") {
+            Console.WriteLine("[PASS] bool chain ToString")
+        } else {
+            Console.WriteLine("[FAIL] bool chain ToString")
+        }
+    }
+}
