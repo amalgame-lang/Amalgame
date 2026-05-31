@@ -1,0 +1,77 @@
+namespace Demo
+
+// Deep member-chain dispatch: `obj.Field1.Field2.CollectionMethod()`
+// (v0.8.66). Before the fix, a 2+-level field chain ending in a
+// collection method collapsed the last field name into the method name
+// — `app.Routes.Routes.Count()` emitted `app->Routes->Routes_Count()`
+// (an undefined symbol) instead of `AmalgameList_count(app->Routes->
+// Routes)`. TryEmitListCall only resolved single-hop receivers
+// (`this.F` / `ident.F`); a chain whose `callee.Left.Left` is itself a
+// MEMBER fell through. The fix resolves the receiver generically via
+// InferTypeFromExpr (C type of the chain) + EmitExprStr (the `a->b->c`
+// accessor), covering List/Map/Set.
+
+public class Holder {
+    public Vals: List<int>
+    public Holder() { this.Vals = [1, 2, 3] }
+}
+
+public class Wrapper {
+    public Inner: Holder
+    public Wrapper() { this.Inner = new Holder() }
+}
+
+// Same field name at both hops — the original `app.Routes.Routes`
+// symptom that read as a "name collapse" but was the general deep-chain
+// bug.
+public class Router {
+    public Routes: List<int>
+    public Router() { this.Routes = [1, 2, 3, 4] }
+}
+public class WebApp {
+    public Routes: Router
+    public WebApp() { this.Routes = new Router() }
+}
+
+// Deep Map chain.
+public class Store {
+    public Items: Map<string, int>
+    public Store() {
+        this.Items = new Map<string, int>()
+        this.Items.Set("a", 10)
+    }
+}
+public class Hub {
+    public Backend: Store
+    public Hub() { this.Backend = new Store() }
+}
+
+public class Program {
+    public static void Main() {
+        // 2-level List chain, distinct field names.
+        let w: Wrapper = new Wrapper()
+        if (w.Inner.Vals.Count() == 3) {
+            Console.WriteLine("[PASS] deep list distinct names")
+        } else {
+            Console.WriteLine("[FAIL] deep list distinct names")
+        }
+
+        // 2-level List chain, identical field names (the memory's
+        // `app.Routes.Routes.Count()`).
+        let app: WebApp = new WebApp()
+        if (app.Routes.Routes.Count() == 4) {
+            Console.WriteLine("[PASS] deep list identical names")
+        } else {
+            Console.WriteLine("[FAIL] deep list identical names")
+        }
+
+        // 2-level Map chain — Has + Get dispatch through the deep
+        // receiver too.
+        let h: Hub = new Hub()
+        if (h.Backend.Items.Has("a") && h.Backend.Items.Get("a") == 10) {
+            Console.WriteLine("[PASS] deep map chain")
+        } else {
+            Console.WriteLine("[FAIL] deep map chain")
+        }
+    }
+}
