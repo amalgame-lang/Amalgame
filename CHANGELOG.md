@@ -7,6 +7,47 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.68] — 2026-05-31
+
+Lexer performance — the parse phase was O(n²) in source size; large
+files now lex in milliseconds. With v0.8.67 (resolve) this takes a full
+`amc --check` of `c_gen.am` (5k LoC) from ~118 s to ~1.3 s.
+
+### Performance
+
+- **Lexer was O(n²) in file size.** `code_string` is a bare `char*`, so
+  `String_Length` is an `strlen` (O(n)) and `String_Substring` runs an
+  internal `strlen` for bounds. The lexer called `String_Length(
+  this.Source)` in every per-character loop condition, and `CharAt`
+  fetched each character via `String_Substring(src, i, 1)` — so every
+  one of the ~n characters paid an O(n) strlen, making tokenisation
+  O(n²). Two fixes:
+  - The lexer caches `strlen(Source)` once into `SourceLen` (the source
+    is immutable after construction) and uses it for all bound checks.
+  - New runtime primitive `String_CharAtUnchecked(s, i)` reads `s[i]` in
+    O(1) (via the pre-allocated 1-char table, no strlen); `CharAt` uses
+    it after its own `i < SourceLen` bound check, so it stays safe.
+
+  Measured (parse phase, `amc --check`):
+
+  | File          | parse before | parse after |
+  |---------------|--------------|-------------|
+  | `c_gen.am`    | ~10.8 s      | **0.10 s**  |
+  | `parser.am`   | ~1.0 s       | **0.04 s**  |
+  | `token.am`    | ~95 ms       | **17 ms**   |
+
+  Combined with the v0.8.67 diagnostics fix, `amc --check c_gen.am` now
+  spends 100 ms parse + 3 ms resolve + ~1.15 s typecheck (≈1.3 s total,
+  was ~118 s). Full suite green: core 368 + stdlib 212 (+5 skip) +
+  fmt 12 = 592 PASS / 0 FAIL.
+- `String_CharAtUnchecked` trusts the caller for bounds (it skips the
+  strlen), so it is intentionally scoped to the lexer's checked `CharAt`.
+  The general-purpose `String_CharAt1` (used by the typechecker, TOML
+  parser, etc.) is unchanged; those call sites can adopt the cached-
+  length pattern in a follow-up if they show up in a profile.
+
+---
+
 ## [v0.8.67] — 2026-05-31
 
 Resolver/diagnostics performance — error-heavy `amc --check` (and LSP
