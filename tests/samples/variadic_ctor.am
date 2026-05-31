@@ -1,0 +1,87 @@
+namespace Demo
+
+// Variadic constructors `Bag(...xs: T)` (v0.8.63+).
+//
+// A constructor's trailing parameter may be variadic, exactly like a
+// method's. The declared type is the element type; inside the body the
+// param is a `List<T>` (lowers to one `AmalgameList*` C param). Call
+// sites — `new Bag(1, 2, 3)`, `new Bag(...xs)`, `new Bag(1, ...xs, 2)`,
+// `new Bag()` — gather their trailing args into a fresh list, mirroring
+// the existing variadic-method call-site path. Fixed params may precede
+// the variadic one.
+
+public class Bag {
+    items: List<int>
+    public Bag(...nums: int) { this.items = nums }
+    public int Count() { return this.items.Count() }
+    public int Sum() {
+        var t: int = 0
+        for n in this.items { t = t + n }
+        return t
+    }
+}
+
+// Fixed param before the variadic one.
+public class Tagged {
+    label: string
+    nums: List<int>
+    public Tagged(string label, ...nums: int) {
+        this.label = label
+        this.nums  = nums
+    }
+    public string Label() { return this.label }
+    public int Count() { return this.nums.Count() }
+}
+
+public class Program {
+    public static void Main() {
+        // Zero variadic args → empty (non-NULL) list.
+        let z: Bag = new Bag()
+        if (z.Count() == 0) {
+            Console.WriteLine("[PASS] ctor zero args")
+        } else {
+            Console.WriteLine("[FAIL] ctor zero args")
+        }
+
+        // Several inline args.
+        let b: Bag = new Bag(1, 2, 3)
+        if (b.Count() == 3 && b.Sum() == 6) {
+            Console.WriteLine("[PASS] ctor inline args")
+        } else {
+            Console.WriteLine("[FAIL] ctor inline sum=" + String_FromInt(b.Sum()))
+        }
+
+        // Spread an existing list.
+        let xs: List<int> = [4, 5]
+        let c: Bag = new Bag(...xs)
+        if (c.Count() == 2 && c.Sum() == 9) {
+            Console.WriteLine("[PASS] ctor spread list")
+        } else {
+            Console.WriteLine("[FAIL] ctor spread sum=" + String_FromInt(c.Sum()))
+        }
+
+        // Mix inline + spread + inline.
+        let e: Bag = new Bag(10, ...xs, 20)
+        if (e.Count() == 4 && e.Sum() == 39) {
+            Console.WriteLine("[PASS] ctor mixed inline + spread")
+        } else {
+            Console.WriteLine("[FAIL] ctor mixed sum=" + String_FromInt(e.Sum()))
+        }
+
+        // Fixed param before the variadic tail.
+        let t: Tagged = new Tagged("hi", 7, 8, 9)
+        if (t.Label() == "hi" && t.Count() == 3) {
+            Console.WriteLine("[PASS] ctor fixed + variadic")
+        } else {
+            Console.WriteLine("[FAIL] ctor fixed + variadic count=" + String_FromInt(t.Count()))
+        }
+
+        // Fixed param + zero variadic args.
+        let t0: Tagged = new Tagged("solo")
+        if (t0.Label() == "solo" && t0.Count() == 0) {
+            Console.WriteLine("[PASS] ctor fixed + zero variadic")
+        } else {
+            Console.WriteLine("[FAIL] ctor fixed + zero variadic")
+        }
+    }
+}

@@ -501,11 +501,29 @@ public class CGen {
                         for pi in 0..pcount {
                             let p = m.Params.Get(pi)
                             if (!first) { sig = sig + ", " }
-                            sig = sig + this.TypeToC(p.Str) + " " + p.Name
+                            // A variadic ctor param `...xs: T` lowers to a
+                            // single `AmalgameList*`, mirroring MethodSig.
+                            if (p.Flag) {
+                                sig = sig + "AmalgameList* " + p.Name
+                            } else {
+                                sig = sig + this.TypeToC(p.Str) + " " + p.Name
+                            }
                             first = false
                         }
                         sig = sig + ");"
                         this.Out.EmitLine(sig)
+                        // Variadic constructor: register `Name_new` with the
+                        // fixed-param count so the NEW_EXPR call site gathers
+                        // trailing args into one AmalgameList*, matching the
+                        // lowered param above. Done in this forward-decl pass
+                        // so the table is populated before any body emits a
+                        // `new Name(...)`.
+                        if (pcount > 0) {
+                            let lastP = m.Params.Get(pcount - 1)
+                            if (lastP.Flag) {
+                                this.MethodVariadicSet(name + "_new", pcount - 1)
+                            }
+                        }
                     }
                 }
                 // Class without an explicit constructor still gets a
@@ -2830,7 +2848,13 @@ public class CGen {
                     for pi in 0..pcount {
                         let p = m.Params.Get(pi)
                         if (!first) { ctorSig = ctorSig + ", " }
-                        ctorSig = ctorSig + this.TypeToC(p.Str) + " " + p.Name
+                        // Variadic ctor param → single `AmalgameList*`
+                        // (must match EmitConstructorForwards + MethodSig).
+                        if (p.Flag) {
+                            ctorSig = ctorSig + "AmalgameList* " + p.Name
+                        } else {
+                            ctorSig = ctorSig + this.TypeToC(p.Str) + " " + p.Name
+                        }
                         first = false
                     }
                     ctorSig = ctorSig + ")"
@@ -4317,11 +4341,32 @@ public class CGen {
                             ctorPrefix = this.ClassMangledFor(tname)
                         }
                         newCall = ctorPrefix + "_new("
+                        // Variadic constructor: emit `fixedArity` args
+                        // positionally, then gather every remaining arg
+                        // (plain or `...spread`) into one AmalgameList*,
+                        // mirroring the CALL-site path. A non-variadic ctor
+                        // (fixedArity < 0) keeps the plain one-arg-per-param
+                        // path below.
+                        let ctorArity = this.MethodVariadicGet(ctorPrefix + "_new")
                         let argc = expr.Args.Count()
-                        for i in 0..argc {
-                            let arg = expr.Args.Get(i)
-                            if (i > 0) { newCall = newCall + ", " }
-                            newCall = newCall + this.EmitExprStr(arg)
+                        if (ctorArity >= 0) {
+                            var cfirst = true
+                            for i in 0..argc {
+                                if (i < ctorArity) {
+                                    let arg = expr.Args.Get(i)
+                                    if (!cfirst) { newCall = newCall + ", " }
+                                    newCall = newCall + this.EmitExprStr(arg)
+                                    cfirst = false
+                                }
+                            }
+                            if (!cfirst) { newCall = newCall + ", " }
+                            newCall = newCall + this.EmitVariadicTail(expr, ctorArity)
+                        } else {
+                            for i in 0..argc {
+                                let arg = expr.Args.Get(i)
+                                if (i > 0) { newCall = newCall + ", " }
+                                newCall = newCall + this.EmitExprStr(arg)
+                            }
                         }
                         newCall = newCall + ")"
                     }
