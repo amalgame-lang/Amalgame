@@ -262,6 +262,40 @@ class Program {
         }
     }
 
+    // run_external_pair: compile a facade and its consumer in TWO separate
+    // amc invocations (the consumer with `--external <facade>`), then link
+    // both generated .c files together. Unlike RunExternalTest this does
+    // not need the facade precompiled into libamalgame.a, so it can cover
+    // an ad-hoc facade — used to exercise the cross-TU variadic ABI
+    // (consumer's ExternalMethodSig forward-decl vs facade's MethodSig body).
+    public static void RunExternalPair(string label, string facade, string consumer, string needle) {
+        let outBase = "/tmp/amc_core_extpair_" + label
+        let facadeC = outBase + "_facade"
+        let mainC   = outBase + "_main"
+        let fr = Process.RunCapture("./amc -o '" + facadeC + "' '" + facade + "' 2>&1")
+        if (fr.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (facade amc exit=" + String_FromInt(fr.Exit) + ")")
+            return
+        }
+        let cr = Process.RunCapture("./amc -o '" + mainC + "' --external '" + facade + "' '" + consumer + "' 2>&1")
+        if (cr.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (consumer amc exit=" + String_FromInt(cr.Exit) + ")")
+            return
+        }
+        let gccCmd = "gcc -O2 -Iruntime '" + mainC + ".c' '" + facadeC + ".c' -lgc -lm -lz -o '" + outBase + "' 2>&1"
+        let gc = Process.RunCapture(gccCmd)
+        if (gc.Exit != 0) {
+            Console.WriteLine("[FAIL] " + label + " (gcc link failed)")
+            return
+        }
+        let rr = Process.RunCapture("'" + outBase + "' 2>&1")
+        if (String_Contains(rr.Stdout, needle)) {
+            Console.WriteLine("[PASS] " + label)
+        } else {
+            Console.WriteLine("[FAIL] " + label + " (output mismatch — wanted: " + needle + ")")
+        }
+    }
+
     // run_multifile_test / run_multi_test: amc with multiple .am files, link, run, grep stdout.
     public static void RunMultiFile(string label, string needle, string files) {
         let outBase = "/tmp/amc_core_multi_" + label
@@ -834,6 +868,20 @@ class Program {
             "./tests/samples/bug9_external_struct_fields.am",
             "[PASS] external field access — JsonError.Line",
             "")
+
+        // run_external_pair (3 cases) — variadic params across a package boundary
+        Program.RunExternalPair("ext variadic: inline",
+            "./tests/samples/variadic_external/facade.am",
+            "./tests/samples/variadic_external/main.am",
+            "[PASS] ext variadic inline")
+        Program.RunExternalPair("ext variadic: spread",
+            "./tests/samples/variadic_external/facade.am",
+            "./tests/samples/variadic_external/main.am",
+            "[PASS] ext variadic spread")
+        Program.RunExternalPair("ext variadic: fixed + mixed",
+            "./tests/samples/variadic_external/facade.am",
+            "./tests/samples/variadic_external/main.am",
+            "[PASS] ext fixed + mixed variadic")
 
         // run_amc_test_check (4 cases)
         Program.RunAmcTestCheck("amc test: discovers",  "./tests/fixtures/test_runner",  "arith_test.am")
