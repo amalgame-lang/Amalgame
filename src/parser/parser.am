@@ -534,6 +534,26 @@ public class Parser {
             isStatic = true
             this.Advance()
         }
+        // `async` modifier (contextual keyword). Guard: only treat it as
+        // the modifier when it's NOT immediately a member name/field —
+        // `async(` (method named async) and `async:` (field named async)
+        // still parse as ordinary members.
+        var isAsync = false
+        if (this.CheckKw("async")) {
+            let pkA = this.Peek(1)
+            if (pkA.Value != "(" && pkA.Value != ":") {
+                isAsync = true
+                this.Advance()
+                // Optional `fn` keyword: `async fn Name(p): R` reads
+                // naturally for users from JS/Rust. amc methods are
+                // otherwise `<ret> Name(...)`, so `fn` is purely sugar —
+                // consume it when present and rely on the trailing
+                // `: R` (or a leading ret type) for the actual type.
+                if (this.CheckKw("fn")) {
+                    this.Advance()
+                }
+            }
+        }
 
         let tok = this.Current()
 
@@ -543,18 +563,18 @@ public class Parser {
                 return this.ParseField(isPublic)
             }
             if (peek.Value == "(") {
-                return this.ParseMethod("void", isPublic, isStatic, tok.Line, tok.Column)
+                return this.ParseMethod("void", isPublic, isStatic, isAsync, tok.Line, tok.Column)
             }
             let typeName = this.ParseTypeName()
             let nameTok = this.Current()
             if (this.CheckType(TokenType.IDENTIFIER)) {
-                return this.ParseMethod(typeName, isPublic, isStatic, tok.Line, tok.Column)
+                return this.ParseMethod(typeName, isPublic, isStatic, isAsync, tok.Line, tok.Column)
             }
         } else if (tok.Value == "int" || tok.Value == "string" || tok.Value == "bool" || tok.Value == "void" || tok.Value == "float") {
             // Keyword return type: int Foo(), string Bar(), etc.
             let typeName = this.ParseTypeName()
             if (this.CheckType(TokenType.IDENTIFIER)) {
-                return this.ParseMethod(typeName, isPublic, isStatic, tok.Line, tok.Column)
+                return this.ParseMethod(typeName, isPublic, isStatic, isAsync, tok.Line, tok.Column)
             }
         } else if (tok.Value == "(") {
             // Tuple return type: (int, string) Foo() { ... }
@@ -575,7 +595,7 @@ public class Parser {
             // Now expect method name
             if (this.CheckType(TokenType.IDENTIFIER)) {
                 let retType = "(" + tupleTypes + ")"
-                let method = this.ParseMethod(retType, isPublic, isStatic, tok.Line, tok.Column)
+                let method = this.ParseMethod(retType, isPublic, isStatic, isAsync, tok.Line, tok.Column)
                 return method
             }
             return this.Unknown()
@@ -605,7 +625,7 @@ public class Parser {
 
     // ── Method ────────────────────────────────────────
 
-    private AstNode ParseMethod(string retType, bool isPublic, bool isStatic, int line, int col) {
+    private AstNode ParseMethod(string retType, bool isPublic, bool isStatic, bool isAsync, int line, int col) {
         let nameTok = this.ExpectIdent()
         // Position the METHOD_DECL on the method name itself so LSP
         // navigation (definition/references at the click on the name)
@@ -614,6 +634,7 @@ public class Parser {
         let method = Ast.Method(nameTok.Value, retType, nameTok.Line, nameTok.Column)
         method.Flag  = isPublic
         method.Flag2 = isStatic
+        method.Flag3 = isAsync
         // Decorators stashed by ParseMember/ParseDecoratorList — store on Str2.
         method.Str2  = this.TakeDecorators()
         let mname = nameTok.Value
@@ -1572,6 +1593,27 @@ public class Parser {
             node.Str  = tok.Value
             node.Left = operand
             return node
+        }
+        // `await <expr>` (contextual keyword). Modelled as a UNARY with
+        // Str="await"; cgen lowers it to Async.ChannelReceive on the
+        // awaited future-channel. Guard: only when `await` is followed by
+        // something that starts an expression, so a bare identifier named
+        // `await` still works as a value (e.g. `let x = await`). We treat
+        // it as the operator when the next token is NOT an operator/term-
+        // ender (`)`, `,`, `]`, `}`, newline, `=`, etc.).
+        if (this.CheckKw("await") && !this.CheckType(TokenType.STRING)) {
+            let nx = this.Peek(1)
+            let nv = nx.Value
+            let blocks = nv == ")" || nv == "," || nv == "]" || nv == "}"
+                || nv == "=" || nv == ";" || nv == "" || nx.Type == TokenType.NEWLINE
+            if (!blocks) {
+                let tok = this.Advance()
+                let operand = this.ParseUnary()
+                let node = new AstNode(NodeKind.UNARY, tok.Line, tok.Column)
+                node.Str  = "await"
+                node.Left = operand
+                return node
+            }
         }
         return this.ParsePostfix()
     }
