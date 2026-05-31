@@ -25512,12 +25512,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "40af1c9c";
+    return "92f24d8d";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-31T21:22:27Z";
+    return "2026-06-01T07:41:19Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
