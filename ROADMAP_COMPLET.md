@@ -1146,8 +1146,19 @@ before the next big language addition.
       consecutive `import …` statements. Filters one- and two-line
       blocks so the gutter stays uncluttered. Capability advertised
       as `foldingRangeProvider: true`.
-- [ ] **`amc lsp` navigation (v2)** — the next-tier features users
-      hit fastest after diagnostics + completion are working:
+- [x] **`amc lsp` navigation (v2)** — ✅ **all shipped.** Every
+      sub-feature below is implemented, advertised in the `initialize`
+      capabilities, and covered by green tests in
+      `tests/core_bundle/core_test.am` (definition/declaration/
+      typeDefinition #227/#238, documentSymbol/references/rename/
+      workspaceSymbol/inlayHint/codeAction/callHierarchy via #246/#247
+      + coverage commits 6e800e6/620cb0c, foldingRange slice 5). The
+      final gap — **`textDocument/documentHighlight`** — landed
+      2026-05-31 (HandleDocumentHighlight + CollectHighlights, scoped
+      reuse of the references walker; 4 coverage tests; capability
+      advertised). 372 PASS / 0 FAIL in the core bundle.
+      The next-tier features users hit fastest after diagnostics +
+      completion:
         - **`textDocument/definition`** — jump to where a symbol is
           declared. Reuses the resolver's symbol table; pos→token →
           symbol → `(file, line, col)`. Probably the highest-value
@@ -1162,9 +1173,12 @@ before the next big language addition.
           enumerate every use of a symbol across the workspace. Needs
           a reverse index; cheap to build during resolve since we
           already walk every reference site.
-        - **`textDocument/documentHighlight`** — highlight other
-          occurrences of the symbol under the cursor in the current
-          file. Subset of references, scope-limited.
+        - **`textDocument/documentHighlight`** — **DONE 2026-05-31.**
+          Highlights other occurrences of the symbol under the cursor
+          in the current file. Subset of references, scope-limited to
+          the open document; emits `DocumentHighlight[]` (`{range,
+          kind:1}`) via `CollectHighlights` (mirror of the references
+          walker).
         - **`textDocument/documentSymbol`** — outline view (classes,
           methods, top-level decls). Walks the AST top-level + class
           children, emits SymbolKind.{Class,Method,Field,Enum}.
@@ -1195,7 +1209,7 @@ before the next big language addition.
           consecutive `import` statements. Multi-line `if`/`while`/
           `for` blocks are covered by the brace-pair logic;
           multi-line `match` arms remain a v2 polish.
-- [~] **`amc lsp` performance — workspace resolver caching.**
+- [x] **`amc lsp` performance — workspace resolver caching.**
       Partially shipped 2026-05-22. The CachedResolver +
       CachedSiblingProgs path was already in place; the gap was
       cache invalidation on new files — fixed via:
