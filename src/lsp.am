@@ -194,6 +194,11 @@ public class LspServer {
                 let line: int   = pos.Get("line").AsInt()
                 let chr: int    = pos.Get("character").AsInt()
                 this.HandleReferences(id, uri, line, chr)
+            } else if (method == "textDocument/documentHighlight") {
+                let uri: string = td.Get("uri").AsString()
+                let line: int   = pos.Get("line").AsInt()
+                let chr: int    = pos.Get("character").AsInt()
+                this.HandleDocumentHighlight(id, uri, line, chr)
             } else if (method == "textDocument/rename") {
                 let uri: string     = td.Get("uri").AsString()
                 let line: int       = pos.Get("line").AsInt()
@@ -368,7 +373,7 @@ public class LspServer {
         // External creations (terminal, git pull) still bypass this
         // — for those, the didOpen handler invalidates the cache
         // when the opened path isn't already cached.
-        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]},\"workspace\":{\"fileOperations\":{\"didCreate\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]},\"didDelete\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]},\"didRename\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]}}}}}}"
+        let body = "{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":{\"capabilities\":{\"textDocumentSync\":1,\"hoverProvider\":true,\"definitionProvider\":true,\"declarationProvider\":true,\"typeDefinitionProvider\":true,\"documentSymbolProvider\":true,\"workspaceSymbolProvider\":true,\"referencesProvider\":true,\"documentHighlightProvider\":true,\"renameProvider\":{\"prepareProvider\":true},\"callHierarchyProvider\":true,\"inlayHintProvider\":true,\"codeActionProvider\":true,\"foldingRangeProvider\":true,\"completionProvider\":{\"triggerCharacters\":[\".\"]},\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\",\",\"]},\"workspace\":{\"fileOperations\":{\"didCreate\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]},\"didDelete\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]},\"didRename\":{\"filters\":[{\"pattern\":{\"glob\":\"**/*.am\"}}]}}}}}}"
         this.Send(body)
     }
 
@@ -1349,6 +1354,100 @@ public class LspServer {
         let uri:     string = "file://" + LspServer.PercentEncodePath(filePath)
         let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
         return "{\"uri\":\"" + Json.EscapeString(uri) + "\",\"range\":" + range + "}"
+    }
+
+    // ── Document highlight (occurrences in current file) ──
+    //
+    // Same symbol-under-cursor lookup as `references`, but scoped to
+    // the OPEN document only and returned as DocumentHighlight[]
+    // (`{range, kind}`) rather than Location[]. VS Code uses this to
+    // softly highlight every other occurrence of the identifier the
+    // cursor sits on, without a "Find All References" panel. kind 1 =
+    // Text (we don't distinguish read/write yet).
+    private void HandleDocumentHighlight(int id, string uri, int line, int character) {
+        let source = this.LookupDoc(uri)
+        if (String_Length(source) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let path = LspServer.UriToPath(uri)
+        let lex  = new Lexer(source, path)
+        let toks = lex.Tokenize()
+        let par  = new Parser(toks)
+        let prog = par.Parse()
+        prog.Str2 = path
+
+        let targetLine: int = line + 1
+        let targetCol:  int = character + 1
+        let node = LspServer.FindNodeAtPosition(prog, targetLine, targetCol)
+        if (node == null) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+        let target: string = node.Name
+        if (String_Length(target) == 0) {
+            this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":[]}")
+            return
+        }
+
+        let entries: List<string> = new List<string>()
+        LspServer.CollectHighlights(prog, target, entries)
+        var json: string = "["
+        var first: bool = true
+        let ec: int = entries.Count()
+        for j in 0..ec {
+            if (!first) { json = json + "," }
+            json = json + entries.Get(j)
+            first = false
+        }
+        json = json + "]"
+        this.Send("{\"jsonrpc\":\"2.0\",\"id\":" + String_FromInt(id) + ",\"result\":" + json + "}")
+    }
+
+    // Recursive walker mirroring `CollectReferences` (keep the two in
+    // sync — same Left/Right/Cond/Body/Else/Children/Params/Args
+    // sweep), but emitting DocumentHighlight JSON (`{range, kind}`)
+    // and with no per-file uri since the caller scopes to one file.
+    private static void CollectHighlights(AstNode node, string target, List<string> out) {
+        if (node == null) { return }
+        let k = node.Kind
+        if (k == NodeKind.IDENTIFIER || k == NodeKind.MEMBER) {
+            if (node.Name == target) {
+                out.Add(LspServer.HighlightJson(node.Line, node.Column, target))
+            }
+        }
+        if (k == NodeKind.CLASS_DECL || k == NodeKind.ENUM_DECL || k == NodeKind.METHOD_DECL || k == NodeKind.VAR_DECL) {
+            if (node.Name == target) {
+                out.Add(LspServer.HighlightJson(node.Line, node.Column, target))
+            }
+        }
+        if (node.Left  != null) { LspServer.CollectHighlights(node.Left,  target, out) }
+        if (node.Right != null) { LspServer.CollectHighlights(node.Right, target, out) }
+        if (node.Cond  != null) { LspServer.CollectHighlights(node.Cond,  target, out) }
+        if (node.Body  != null) { LspServer.CollectHighlights(node.Body,  target, out) }
+        if (node.Else  != null) { LspServer.CollectHighlights(node.Else,  target, out) }
+        let cn: int = node.Children.Count()
+        for i in 0..cn {
+            LspServer.CollectHighlights(node.Children.Get(i), target, out)
+        }
+        let pn: int = node.Params.Count()
+        for j in 0..pn {
+            LspServer.CollectHighlights(node.Params.Get(j), target, out)
+        }
+        let an: int = node.Args.Count()
+        for k2 in 0..an {
+            LspServer.CollectHighlights(node.Args.Get(k2), target, out)
+        }
+    }
+
+    // DocumentHighlight JSON object: `{range, kind}`, kind 1 = Text.
+    // Same range math as LocationJson but without the uri wrapper.
+    private static string HighlightJson(int line, int col, string name) {
+        let lineLsp: int = line - 1
+        let colLsp:  int = col - 1
+        let endCol:  int = colLsp + String_Length(name)
+        let range: string = "{\"start\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(colLsp) + "},\"end\":{\"line\":" + String_FromInt(lineLsp) + ",\"character\":" + String_FromInt(endCol) + "}}"
+        return "{\"range\":" + range + ",\"kind\":1}"
     }
 
     // ── Rename (F2) ───────────────────────────────────
