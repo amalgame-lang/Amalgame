@@ -194,7 +194,7 @@ sketches, we factored it. Net: users see one function, not five.
 
 | Item | Reason |
 |---|---|
-| `Async.Select(channels)` | Naïve implementation (spawn N readers, race a result channel) has a subtle bug: losing readers have already done `ChannelReceive` and consumed values that get silently discarded. A correct implementation needs runtime-integrated multi-channel wait queues — each fiber registers on N queues simultaneously, channel wake-one tags the woken fiber with which channel won, the Select code peeks and `ChannelReceive`s atomically before splicing out of the other N-1 queues. ~200 LoC, deserves a dedicated session with a real consumer to validate the API |
+| ~~`Async.Select(channels)`~~ | **Shipped v0.3.0 (2026-05-31).** The correct runtime-integrated design landed: each fiber registers a waiter node on every channel at once (per-fiber `select_parked` flag + a `select_recv` list per channel), a sender wakes at most one consumer per value via `_amasync_chan_signal_recv` (plain receivers first, else a select waiter), and the woken fiber re-scans + pulls atomically before unlinking its nodes — so no value is consumed-then-discarded. Round-robin start offset for fairness; `FiberCancel` unparks select-parked fibers (→ returns -1). Exposed as `SelectReceive` / `SelectTryReceive` / `SelectValue`, 5 tests green. Multi-*fd* select still deferred. |
 | kqueue backend (BSD + macOS) | I'd be shipping code I can't test on the target platform |
 | Windows Fibers + IOCP backend | Same — no Windows to dry-run on, and Windows Fibers API is non-trivial to get right |
 | Timer wheel | Optimization for >1k concurrent sleepers; current sorted-insertion list is O(N) per `Sleep`. No bench yet shows this matters |

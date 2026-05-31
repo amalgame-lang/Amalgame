@@ -346,12 +346,25 @@ In rough order of usefulness × effort:
       amalgame-net-http, amalgame-web}. Design rationale +
       cross-cutting roadmap in `docs/proposals/amalgame-async.md`.
 
-      **What's still deferred**: `Async.Select` (needs runtime-
-      integrated multi-channel wait queues to avoid the naïve
-      "loser readers consume + discard values" bug — design
-      doc complete, implementation deferred to v0.4 alongside
-      M:N scheduling), kqueue (BSD + macOS) + Windows Fibers /
-      IOCP backends (need platform validation), timer wheel
+      **`Async.Select` shipped 2026-05-31 (amalgame-async
+      v0.3.0)**: the runtime-integrated multi-channel design that
+      avoids the naïve "loser readers consume + discard values"
+      bug. Each fiber registers a waiter node on every channel at
+      once (per-fiber `select_parked` flag + `select_recv` list
+      per channel); a sender wakes at most one consumer per value
+      (plain receivers first, else a select waiter via
+      `_amasync_chan_signal_recv`); the woken fiber re-scans +
+      pulls atomically before unlinking its nodes. Round-robin
+      fairness; `FiberCancel` unparks select-parked fibers.
+      Exposed as `SelectReceive` / `SelectTryReceive` /
+      `SelectValue`; 5 tests green (21/21 suite). **Shipped end-to-end**:
+      PR #4 merged → tag `v0.3.0` + GitHub release + CI green (amc
+      v0.8.45) → registered on `packages-index` (PR #179, merged).
+      `amc package add async` now resolves v0.3.0. Multi-*fd* select
+      still deferred.
+
+      **What's still deferred**: kqueue (BSD + macOS) + Windows
+      Fibers / IOCP backends (need platform validation), timer wheel
       for >1k sleepers, M:N (per-thread scheduler via TLS),
       Async H2 / Https / Ws / Wss (gated on amalgame-tls
       fiber-aware I/O), amc-side `async fn` / `await expr`
