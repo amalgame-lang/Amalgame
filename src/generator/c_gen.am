@@ -472,12 +472,14 @@ public class CGen {
                 let members = decl.Children.Count()
                 for j in 0..members {
                     let m = decl.Children.Get(j)
-                    if (m.Kind == NodeKind.METHOD_DECL && m.Name != decl.Name) {
+                    if (m.Kind == NodeKind.METHOD_DECL && m.Name != decl.Name && !m.Flag3) {
                         let isPublic = m.Flag
                         var prefix   = ""
                         if (!isPublic) { prefix = "static " }
                         this.Out.EmitLine(prefix + this.MethodSig(m, cname) + ";")
                     }
+                    // async methods are forward-declared (impl+fiber+
+                    // wrapper) by EmitAsyncForwards in EmitClassForwards.
                 }
             }
         }
@@ -1114,6 +1116,13 @@ public class CGen {
         }
         NodeKind.UNARY => {
             if (expr.Str == "!") { return "code_bool" }
+            // `await <future>` yields R, the async fn's declared return
+            // type (recovered from the __async_ret__/__async_future__
+            // tables). Lets `let a = await f` type `a` as R, not void*.
+            if (expr.Str == "await") {
+                let ar = this.ResolveAwaitRetC(expr.Left)
+                if (String_Length(ar) > 0) { return ar }
+            }
         }
         NodeKind.IDENTIFIER => {
             // Could be a local var — look it up
@@ -2809,7 +2818,11 @@ public class CGen {
             let m  = cls.Children.Get(i)
             let mk = m.Kind
             if (mk == NodeKind.METHOD_DECL) {
-                if (m.Name != cls.Name) {
+                if (m.Name != cls.Name && m.Flag3) {
+                    // async fn → env struct + fiber + wrapper forwards,
+                    // and registers the future-channel return type.
+                    this.EmitAsyncForwards(m, name)
+                } else if (m.Name != cls.Name) {
                     let sig     = this.MethodSig(m, name)
                     let isPublic = m.Flag
                     // Register return type for inference (both the C
@@ -2933,7 +2946,10 @@ public class CGen {
             let m2  = cls.Children.Get(j)
             let mk2 = m2.Kind
             if (mk2 == NodeKind.METHOD_DECL) {
-                if (m2.Name != cls.Name) {
+                if (m2.Name != cls.Name && m2.Flag3) {
+                    // async fn → impl + fiber trampoline + wrapper bodies.
+                    this.EmitAsyncMethod(m2, name)
+                } else if (m2.Name != cls.Name) {
                     this.EmitMethod(m2, name)
                 }
             }
@@ -3031,6 +3047,262 @@ public class CGen {
         }
         sig = sig + ")"
         return sig
+    }
+
+    // ── async fn lowering (v0.8.70) ───────────────────
+    //
+    // `async fn Foo(p): R` on class C (mangled `name`) lowers to THREE
+    // C functions so a call site stays a plain call:
+    //   R    name_Foo__impl(C* self, P p)   — the real body
+    //   void* name_Foo__fiber(envRaw, arg)  — closure trampoline: runs
+    //         impl, ChannelSend's the (boxed) result into the future
+    //   chan name_Foo(C* self, P p)         — the PUBLIC wrapper, keeps
+    //         the normal mangled name, spawns the fiber, returns the
+    //         future channel
+    // The wrapper's registered return type is `AmalgameAsyncChannel*`, so
+    // `let f = obj.Foo(p)` types `f` as a future; `await f` lowers to a
+    // ChannelReceive unboxed to R (R recovered via the __async_ret__ /
+    // __async_future__ tracking tables).
+    private string AsyncEnvName(string mangledClass, string mname) {
+        return "AsyncEnv_" + mangledClass + "_" + mname
+    }
+
+    // Signature of the real-body `__impl` function: identical to a normal
+    // method sig but the C name gains the `__impl` suffix and it keeps the
+    // declared return type R.
+    private string AsyncImplSig(AstNode method, string className) {
+        let retTypeRaw = method.Str
+        var retType    = ""
+        if (String_StartsWith(retTypeRaw, "(")) {
+            this.EnsureTupleStruct(retTypeRaw)
+            retType = this.TupleStructName(retTypeRaw)
+        } else {
+            retType = this.TypeToC(retTypeRaw)
+        }
+        if (retType == "void") { retType = "void" }
+        var sig   = retType + " " + className + "_" + method.Name + "__impl("
+        var first = true
+        if (!method.Flag2) {
+            sig   = sig + className + "* self"
+            first = false
+        }
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            if (!first) { sig = sig + ", " }
+            if (p.Flag) {
+                sig = sig + "AmalgameList* " + p.Name
+            } else {
+                sig = sig + this.TypeToC(p.Str) + " " + p.Name
+            }
+            first = false
+        }
+        sig = sig + ")"
+        return sig
+    }
+
+    // Signature of the public wrapper: same params as the method, but the
+    // return type is forced to the future channel.
+    private string AsyncWrapperSig(AstNode method, string className) {
+        var sig   = "AmalgameAsyncChannel* " + className + "_" + method.Name + "("
+        var first = true
+        if (!method.Flag2) {
+            sig   = sig + className + "* self"
+            first = false
+        }
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            if (!first) { sig = sig + ", " }
+            if (p.Flag) {
+                sig = sig + "AmalgameList* " + p.Name
+            } else {
+                sig = sig + this.TypeToC(p.Str) + " " + p.Name
+            }
+            first = false
+        }
+        sig = sig + ")"
+        return sig
+    }
+
+    // C type of the awaited result R for an async method (used to unbox
+    // ChannelReceive). Empty string for void async fns.
+    private string AsyncRetCType(AstNode method) {
+        let retTypeRaw = method.Str
+        if (String_StartsWith(retTypeRaw, "(")) {
+            return this.TupleStructName(retTypeRaw)
+        }
+        return this.TypeToC(retTypeRaw)
+    }
+
+    // Emit the env-struct typedef + fiber-trampoline + wrapper forward
+    // decls for one async method, and register its return type as the
+    // future channel (plus __async_ret__ = R for await unboxing).
+    // Called from EmitClassForwards so it runs before any body.
+    private void EmitAsyncForwards(AstNode method, string mangledClass) {
+        let mname   = method.Name
+        let envName = this.AsyncEnvName(mangledClass, mname)
+        let retC    = this.AsyncRetCType(method)
+        // Diagnostic: `async fn` / `await` desugar to Amalgame.Async
+        // runtime calls. If the user forgot `import Amalgame.Async`, the
+        // package header (which defines AMALGAME_ASYNC_H) isn't included,
+        // so this fires a readable compile error instead of a wall of
+        // "unknown type AmalgameAsyncChannel" noise. Harmless to repeat.
+        this.Out.EmitLine("#ifndef AMALGAME_ASYNC_H")
+        this.Out.EmitLine("#error \"async/await requires: import Amalgame.Async  (amc package add async)\"")
+        this.Out.EmitLine("#endif")
+        // env struct: self (if instance) + each param + the future channel
+        this.Out.EmitLine("typedef struct " + envName + " {")
+        this.Out.Indent_()
+        if (!method.Flag2) {
+            this.Out.EmitLine(mangledClass + "* self;")
+        }
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            if (p.Flag) {
+                this.Out.EmitLine("AmalgameList* " + p.Name + ";")
+            } else {
+                this.Out.EmitLine(this.TypeToC(p.Str) + " " + p.Name + ";")
+            }
+        }
+        this.Out.EmitLine("AmalgameAsyncChannel* __ch;")
+        this.Out.Dedent()
+        this.Out.EmitLine("} " + envName + ";")
+        // forward decls: impl, fiber, wrapper
+        let isPublic = method.Flag
+        var implPrefix = "static "
+        if (isPublic) { implPrefix = "" }
+        this.Out.EmitLine(implPrefix + this.AsyncImplSig(method, mangledClass) + ";")
+        this.Out.EmitLine("static void* " + mangledClass + "_" + mname + "__fiber(void* __envRaw, void* __arg);")
+        if (isPublic) {
+            this.Out.EmitLine(this.AsyncWrapperSig(method, mangledClass) + ";")
+        } else {
+            this.Out.EmitLine("static " + this.AsyncWrapperSig(method, mangledClass) + ";")
+        }
+        // Registration: the public name returns a future channel; await
+        // recovers R from __async_ret__ keyed by the mangled C function
+        // name (exactly what EmitCalleeStr produces for the call site).
+        this.MethodRetSet(mangledClass, mname, "AmalgameAsyncChannel*")
+        this.MethodRetRawSet(mangledClass, mname, "AmalgameAsyncChannel*")
+        this.ListElemSet("__async_ret__", mangledClass + "_" + mname, retC)
+    }
+
+    // Emit the three function BODIES for one async method. Called from
+    // EmitClass (bodies pass) in place of EmitMethod.
+    private void EmitAsyncMethod(AstNode method, string mangledClass) {
+        let mname   = method.Name
+        let envName = this.AsyncEnvName(mangledClass, mname)
+        let retC    = this.AsyncRetCType(method)
+        let isVoid  = (retC == "void" || String_Length(retC) == 0)
+        let isPublic = method.Flag
+        var implPrefix = "static "
+        if (isPublic) { implPrefix = "" }
+
+        // 1. impl — the real body, lowered exactly like a normal method.
+        if (String_StartsWith(method.Str, "(")) {
+            this.CurrentRetType = this.TupleStructName(method.Str)
+        } else {
+            this.CurrentRetType = ""
+        }
+        this.Out.EmitLine(implPrefix + this.AsyncImplSig(method, mangledClass) + " {")
+        this.Out.Indent_()
+        this.LocalTypeClear()
+        if (!method.Flag2) {
+            this.LocalTypeSet("self", mangledClass + "*")
+        }
+        let pcount = method.Params.Count()
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            if (p.Flag) {
+                this.LocalTypeSet(p.Name, "AmalgameList*")
+                this.TrackGenericLocal(p.Name, "List<" + p.Str + ">")
+            } else {
+                this.LocalTypeSet(p.Name, this.TypeToC(p.Str))
+                this.TrackGenericLocal(p.Name, p.Str)
+            }
+        }
+        if (method.Body != null) {
+            this.EmitBlock(method.Body)
+        }
+        this.LocalTypeClear()
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+
+        // 2. fiber trampoline — closure ABI (envRaw, arg) → void*.
+        this.Out.EmitLine("static void* " + mangledClass + "_" + mname + "__fiber(void* __envRaw, void* __arg) {")
+        this.Out.Indent_()
+        this.Out.EmitLine("(void)__arg;")
+        this.Out.EmitLine(envName + "* __e = (" + envName + "*)__envRaw;")
+        var callArgs = ""
+        var firstA = true
+        if (!method.Flag2) {
+            callArgs = "__e->self"
+            firstA = false
+        }
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            if (!firstA) { callArgs = callArgs + ", " }
+            callArgs = callArgs + "__e->" + p.Name
+            firstA = false
+        }
+        let implCall = mangledClass + "_" + mname + "__impl(" + callArgs + ")"
+        if (isVoid) {
+            this.Out.EmitLine(implCall + ";")
+            this.Out.EmitLine("Amalgame_Async_ChannelSend(__e->__ch, 0);")
+        } else {
+            this.Out.EmitLine(retC + " __r = " + implCall + ";")
+            this.Out.EmitLine("Amalgame_Async_ChannelSend(__e->__ch, " + this.BoxAsVoidI64("__r") + ");")
+        }
+        this.Out.EmitLine("return (void*)0;")
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+
+        // 3. wrapper — spawns the fiber, returns the future channel.
+        this.Out.EmitLine(implPrefix + this.AsyncWrapperSig(method, mangledClass) + " {")
+        this.Out.Indent_()
+        this.Out.EmitLine("AmalgameAsyncChannel* __ch = Amalgame_Async_ChannelNew(1);")
+        this.Out.EmitLine(envName + "* __e = (" + envName + "*)code_alloc(sizeof(" + envName + "));")
+        if (!method.Flag2) {
+            this.Out.EmitLine("__e->self = self;")
+        }
+        for i in 0..pcount {
+            let p = method.Params.Get(i)
+            this.Out.EmitLine("__e->" + p.Name + " = " + p.Name + ";")
+        }
+        this.Out.EmitLine("__e->__ch = __ch;")
+        this.Out.EmitLine("Amalgame_Async_FiberSpawn(AmalgameClosure_new((void*)" + mangledClass + "_" + mname + "__fiber, __e), 0);")
+        this.Out.EmitLine("return __ch;")
+        this.Out.Dedent()
+        this.Out.EmitLine("}")
+        this.Out.EmitBlank()
+    }
+
+    // Box a value as the i64 expected by ChannelSend. Pointers and
+    // scalars both round-trip through intptr_t.
+    private string BoxAsVoidI64(string expr) {
+        return "(i64)(intptr_t)(" + expr + ")"
+    }
+
+    // Recover the awaited result type R for `await <operand>`.
+    //   - operand is a CALL → the callee mangles to an async wrapper name;
+    //     look it up in __async_ret__ (keyed by that C function name).
+    //   - operand is an IDENTIFIER → a future local tracked at its `let`;
+    //     look it up in __async_future__.
+    // Empty string when unknown (caller falls back to a raw i64 receive).
+    private string ResolveAwaitRetC(AstNode operand) {
+        if (operand == null) { return "" }
+        let k = operand.Kind
+        if (k == NodeKind.CALL) {
+            let cs = this.EmitCalleeStr(operand.Left)
+            return this.ListElemGet("__async_ret__", cs)
+        }
+        if (k == NodeKind.IDENTIFIER) {
+            return this.ListElemGet("__async_future__", operand.Name)
+        }
+        return ""
     }
 
     private void EmitMethod(AstNode method, string className) {
@@ -3599,6 +3871,18 @@ public class CGen {
                     this.TrackGenericLocal(stmt.Name, synth)
                 }
             }
+            // Future-local tracking: `let f = <async-fn call>` records the
+            // awaited result type R under __async_future__[f] so a later
+            // `await f` unboxes the ChannelReceive to R. The RHS callee is
+            // mangled and probed against __async_ret__ (set by
+            // EmitAsyncForwards).
+            if (stmt.Left != null && stmt.Left.Kind == NodeKind.CALL) {
+                let af_cs = this.EmitCalleeStr(stmt.Left.Left)
+                let af_ret = this.ListElemGet("__async_ret__", af_cs)
+                if (String_Length(af_ret) > 0) {
+                    this.ListElemSet("__async_future__", stmt.Name, af_ret)
+                }
+            }
             if (stmt.Left != null && stmt.Left.Kind == NodeKind.CALL) {
                 // Recover ClassName + MethodName for `obj.Method()` and
                 // `Program.Method()` so we can read the raw return type.
@@ -4060,6 +4344,29 @@ public class CGen {
             return left + " " + op + " " + right
         }
         NodeKind.UNARY => {
+            // `await <future>` → block on the result channel + unbox to R.
+            // The awaited expr already lowers to an AmalgameAsyncChannel*
+            // (an async-fn call returns the future, or a tracked future
+            // local). R is recovered via __async_ret__ (call) /
+            // __async_future__ (identifier); fall back to i64.
+            if (expr.Str == "await") {
+                let futExpr = this.EmitExprStr(expr.Left)
+                let retC = this.ResolveAwaitRetC(expr.Left)
+                // The future channel is filled by a fiber that only runs
+                // when the scheduler is pumped. From the main context
+                // (FiberCurrentId()==0) ChannelReceive would return 0
+                // immediately without ever running the fiber, so we pump
+                // the scheduler to completion first. From inside a fiber
+                // the receive parks and the already-running scheduler
+                // resumes us when the value lands.
+                var recv = "Amalgame_Async_ChannelReceive(__af)"
+                if (!(String_Length(retC) == 0 || retC == "void" || retC == "i64")) {
+                    recv = this.UnboxScalar(retC, "Amalgame_Async_ChannelReceive(__af)")
+                }
+                return "({ AmalgameAsyncChannel* __af = (" + futExpr + "); "
+                    + "if (Amalgame_Async_FiberCurrentId() == 0) { Amalgame_Async_SchedulerRun(); } "
+                    + recv + "; })"
+            }
             let operand = this.EmitExprStr(expr.Left)
             // Wrap binary/ternary operands in parens so C precedence matches
             // the source (e.g. `!(x > 0)`, not `!x > 0`).
