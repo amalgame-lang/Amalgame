@@ -7,6 +7,42 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.67] — 2026-05-31
+
+Resolver/diagnostics performance — error-heavy `amc --check` (and LSP
+mid-edit) goes from tens of seconds to milliseconds.
+
+### Performance
+
+- **`SourceMap.GetLine` was O(filesize) per call → O(errors × filesize)
+  overall.** Every diagnostic renders a source snippet, which fetched
+  the offending line via `NthLine` — a character-by-character walk of
+  the whole file text that allocated a fresh 1-char string per
+  character. With one `GetLine` per diagnostic, an error-heavy resolve
+  (a file `--check`ed in isolation without its imports, or a file with
+  genuine errors open in the LSP) degraded quadratically. `GetLine` now
+  splits each file into lines once (lazily, on first use) and caches the
+  result, so it is O(1) amortised. Measured on the compiler's own
+  sources (`amc --check`, isolation → many unknown-symbol errors):
+
+  | File          | resolve before | resolve after |
+  |---------------|-----------------|---------------|
+  | `c_gen.am`    | ~103–168 s      | **3 ms**      |
+  | `parser.am`   | ~15 s           | **4 ms**      |
+  | `lexer.am`    | ~27 s           | **3 ms**      |
+
+  The resolver algorithm itself was already O(1)-lookup throughout; the
+  cost was entirely in the diagnostic snippet formatter. Error output
+  (the rustc-style caret snippet) is byte-for-byte unchanged; the
+  TypeChecker shares the same `SourceMap` and benefits identically. Full
+  suite green: core 368 + stdlib 212 (+5 skip) + fmt 12 = 592 PASS /
+  0 FAIL.
+- Not addressed here: the parse phase is independently slow on very
+  large files (~10 s on `c_gen.am`); that has a separate root cause and
+  is tracked for a follow-up.
+
+---
+
 ## [v0.8.66] — 2026-05-31
 
 Deep member-chain dispatch — `obj.Field1.Field2.CollectionMethod()` now
