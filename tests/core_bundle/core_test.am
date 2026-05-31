@@ -676,6 +676,13 @@ class Program {
         g_variadic_ctor.Add(new CoreCase("ctor: fixed + zero variadic", "[PASS] ctor fixed + zero variadic"))
         Program.RunGroup("./tests/samples/variadic_ctor.am", "variadic_ctor", g_variadic_ctor)
 
+        // ── deep_member_chain (3 cases) ──
+        let g_deep_member_chain: List<CoreCase> = new List<CoreCase>()
+        g_deep_member_chain.Add(new CoreCase("deep chain: list distinct names", "[PASS] deep list distinct names"))
+        g_deep_member_chain.Add(new CoreCase("deep chain: list identical names", "[PASS] deep list identical names"))
+        g_deep_member_chain.Add(new CoreCase("deep chain: map", "[PASS] deep map chain"))
+        Program.RunGroup("./tests/samples/deep_member_chain.am", "deep_member_chain", g_deep_member_chain)
+
         // ── primitive_tostring (6 cases) ──
         let g_primitive_tostring: List<CoreCase> = new List<CoreCase>()
         g_primitive_tostring.Add(new CoreCase("tostring: int var", "[PASS] int var ToString"))

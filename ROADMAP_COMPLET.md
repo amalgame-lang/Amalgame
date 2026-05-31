@@ -738,6 +738,31 @@ before the next big language addition.
       intermediate-local workarounds in `lsp.am` / `migrate.am`
       could be inlined now but the indirection costs nothing
       and helps readability, so leaving them.
+- [x] **CGen: deep member chain `obj.F1.F2.CollectionMethod()`
+      (resolved v0.8.66)** — a 2+-level field chain ending in a
+      List/Map/Set method collapsed the last field name into the
+      method name: `app.Routes.Routes.Count()` emitted
+      `app->Routes->Routes_Count()` (an undefined symbol) instead of
+      `AmalgameList_count(app->Routes->Routes)`. `TryEmitListCall`
+      only resolved single-hop receivers (`this.F` / `ident.F`); a
+      chain whose `callee.Left.Left` is itself a `MEMBER` fell
+      through to the broken generic dispatch. Fix: a general
+      deep-chain fallback resolves the receiver via
+      `InferTypeFromExpr` (C type of the chain) + `EmitExprStr` (the
+      `a->b->c` accessor) — covers List (Case 5) and Map/Set
+      (rxExpr/rxType). The original "identical names collapse"
+      diagnosis (`.Routes.Routes`) was a misdiagnosis: distinct
+      names (`w.Inner.Vals`) failed identically; the real cause was
+      depth, not name equality. Map.Get on a deep chain still
+      degrades the value cast to `(void*)` (the rxElem tracking key
+      isn't reconstructed for deep chains — pre-existing fallback,
+      correct at runtime). Sample:
+      `tests/samples/deep_member_chain.am` (3 cases: list distinct,
+      list identical, map). The `r.Routes.Count()` local-binding
+      workaround in the Mosaic demo `server.am` can be unwound.
+      **Caveat unchanged**: a single-uppercase-letter class name
+      (`class B`) still lowers to `void*` via the generic-type-param
+      heuristic in `TypeToC` — orthogonal, pathological, out of scope.
 - [x] **Parser: `expr >> N` inside a `let` (resolved)** —
       `let x: int = r >> 8` now lowers correctly to a C
       `i64 x = r >> 8;`, repro from the original `Amalgame.Random`

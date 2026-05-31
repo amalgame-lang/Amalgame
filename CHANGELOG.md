@@ -7,6 +7,37 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.66] — 2026-05-31
+
+Deep member-chain dispatch — `obj.Field1.Field2.CollectionMethod()` now
+lowers correctly instead of emitting an undefined symbol.
+
+### Fixed
+
+- **Deep member chain `obj.F1.F2.CollectionMethod()`.** A 2+-level field
+  chain ending in a List/Map/Set method collapsed the last field name
+  into the method name: `app.Routes.Routes.Count()` emitted
+  `app->Routes->Routes_Count()` (undefined → link/compile failure)
+  instead of `AmalgameList_count(app->Routes->Routes)`.
+  `TryEmitListCall` only resolved single-hop receivers (`this.F` /
+  `ident.F`); a chain whose `callee.Left.Left` is itself a `MEMBER` fell
+  through to the broken generic dispatch. The fix resolves such
+  receivers generically via `InferTypeFromExpr` (the chain's C type) and
+  `EmitExprStr` (the `a->b->c` accessor), covering List (Case 5) and
+  Map/Set (rxExpr/rxType). The earlier "identical-names collapse"
+  diagnosis (`.Routes.Routes`) was a misdiagnosis — distinct names
+  (`w.Inner.Vals`) failed identically; the cause was chain *depth*, not
+  name equality.
+- Covered by `tests/samples/deep_member_chain.am` (3 cases: list with
+  distinct field names, list with identical field names, deep Map
+  chain). Full suite green: core 368 + stdlib 212 (+5 skip) + fmt 12 =
+  592 PASS / 0 FAIL.
+- Known limitation (orthogonal, out of scope): a single-uppercase-letter
+  class name (`class B`) still lowers to `void*` via the
+  generic-type-parameter heuristic in `TypeToC`.
+
+---
+
 ## [v0.8.65] — 2026-05-31
 
 Variadic constructors across a package boundary — the residual that
