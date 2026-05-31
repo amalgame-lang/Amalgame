@@ -276,8 +276,16 @@ In rough order of usefulness × effort:
       `ParseNew` recognises the `...` spread arg. `new Bag(1, 2, 3)` /
       `new Bag(...xs)` / `new Bag(1, ...xs, 2)` / `new Bag()` all work
       for locally-defined classes. Sample:
-      `tests/samples/variadic_ctor.am` (6 cases). Residual: variadic
-      ctor across a package boundary (external-facade analog).
+      `tests/samples/variadic_ctor.am` (6 cases). **Variadic ctor
+      across a package boundary** covered as of v0.8.65: `ExternalMethodSig`
+      no longer guards the `MethodVariadic` registration behind
+      `if (!isCtor)` — a variadic ctor on an `--external` facade now
+      registers under `<mangledClass>_new`, the exact key the `NEW_EXPR`
+      call site looks up (`ctorPrefix + "_new"` with `ctorPrefix ==
+      ExternalClassMangled(tname)`). Mirror of the in-bundle ctor path;
+      the external-facade analog of v0.8.62. Sample:
+      `tests/samples/variadic_ctor_external/` (facade + consumer, 4 cases
+      via `RunExternalPair`). The variadic saga is now closed end-to-end.
 - [~] **`async` / `await`** — **complete HTTP/1.1 async stack
       shipped 2026-05-22 → 2026-05-23 across three packages**.
       Linux-only (epoll); kqueue/IOCP planned but unshipped.

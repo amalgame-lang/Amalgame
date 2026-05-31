@@ -7,6 +7,36 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.65] — 2026-05-31
+
+Variadic constructors across a package boundary — the residual that
+closes the variadic saga (v0.8.61 params/call-sites → v0.8.62 external
+methods → v0.8.63 local constructors → **v0.8.65 external constructors**).
+
+### Fixed
+
+- **Variadic constructor cross-package registration.** A class shipped
+  by an `--external` facade with a variadic constructor
+  (`public VBag(...nums: int)`) was not registered in the
+  `MethodVariadic` table on the consumer side: `ExternalMethodSig`
+  guarded the registration behind `if (!isCtor)`, so consumer call sites
+  (`new VBag(1, ...xs, 2)`) emitted each argument positionally instead of
+  gathering the variadic tail into one `AmalgameList*` — producing
+  broken C against the facade's single-`AmalgameList*` ctor parameter.
+  `ExternalMethodSig` now registers the variadic ctor under
+  `<mangledClass>_new` (the exact key the `NEW_EXPR` call site already
+  looks up via `ctorPrefix + "_new"`), mirroring the in-bundle ctor
+  registration in `EmitConstructorForwards`. Local-class variadic ctors
+  (v0.8.63) were already covered; this extends them across the package
+  boundary, the external-facade analog of v0.8.62.
+- Covered by `tests/samples/variadic_ctor_external/` (facade + consumer,
+  4 cases via the `RunExternalPair` core-bundle helper: inline, mixed
+  inline/spread/inline, zero args, fixed param before the variadic
+  tail). Full suite green: core 365 + stdlib 212 (+5 skip) + fmt 12 =
+  589 PASS / 0 FAIL.
+
+---
+
 ## [v0.8.64] — 2026-05-31
 
 Primitive `.ToString()` — `n.ToString()` on an `int` / `float` / `bool`
