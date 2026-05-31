@@ -61,8 +61,12 @@ public class TypeChecker {
     // Parallel map: AstNode pointer (as string key) → TypeKey
     // We use AstNode.Line + AstNode.Column + AstNode.Name as a
     // lightweight identity key (good enough for a single-file pass).
-    private ExprTypeKeys:  List<string>   // keys  (node identity)
-    private ExprTypeVals:  List<string>   // values (TypeKey)
+    // Expression-type memo: NodeKey → TypeKey. Was a pair of parallel
+    // lists scanned linearly on every Get/Set — O(typed-exprs) per call,
+    // O(n^2) over a whole file (the dominant typecheck cost on big files;
+    // ~1.1s on c_gen.am). A hashed Map makes Get/Set O(1); Map.Set
+    // overwrites, preserving the original "last write wins" semantics.
+    private ExprTypeMap:   Map<string, string>
 
     // Current method return type
     private CurrentReturn: string
@@ -90,8 +94,7 @@ public class TypeChecker {
     public  Sources:       SourceMap
 
     public TypeChecker(FullResolver symbols, string filename) {
-        this.ExprTypeKeys  = new List<string>()
-        this.ExprTypeVals  = new List<string>()
+        this.ExprTypeMap   = new Map<string, string>()
         this.CurrentReturn = "void"
         this.CurrentClass  = ""
         this.Errors        = new List<TypeError>()
@@ -160,31 +163,17 @@ public class TypeChecker {
     }
 
     private void SetType(AstNode node, string typeKey) {
-        let key = this.NodeKey(node)
-        let count = this.ExprTypeKeys.Count()
-        for i in 0..count {
-            if (this.ExprTypeKeys.Get(i) == key) {
-                // Update existing
-                // (List doesn't support Set, so we rebuild — use a marker)
-                this.ExprTypeVals.Add(typeKey)   // last one wins in GetType
-                return
-            }
-        }
-        this.ExprTypeKeys.Add(key)
-        this.ExprTypeVals.Add(typeKey)
+        // Map.Set overwrites in place, so the last write for a given
+        // NodeKey wins — same semantics as the old append-and-scan.
+        this.ExprTypeMap.Set(this.NodeKey(node), typeKey)
     }
 
     private string GetType(AstNode node) {
         let key = this.NodeKey(node)
-        let count = this.ExprTypeKeys.Count()
-        // Walk backwards — last write wins
-        var result = "?"
-        for i in 0..count {
-            if (this.ExprTypeKeys.Get(i) == key) {
-                result = this.ExprTypeVals.Get(i)
-            }
+        if (this.ExprTypeMap.Has(key)) {
+            return this.ExprTypeMap.Get(key)
         }
-        return result
+        return "?"
     }
 
     // Public wrapper for LSP hover. Same lookup as GetType but
@@ -441,8 +430,7 @@ public class TypeChecker {
         // and is not file-qualified, so distinct files can collide on
         // ExprType. Local scopes can also leak when a method body
         // exits via `return` / `throw` without a balancing `PopScope`.
-        this.ExprTypeKeys = new List<string>()
-        this.ExprTypeVals = new List<string>()
+        this.ExprTypeMap  = new Map<string, string>()
         this.LocalNames   = new List<string>()
         this.LocalTypes   = new List<string>()
         this.ScopeStarts  = new List<int>()

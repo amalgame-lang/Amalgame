@@ -7741,7 +7741,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 611 "./src/package_registry.am"
-    return "0.8.68";
+    return "0.8.69";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -20488,8 +20488,7 @@ Amalgame_Compiler_TypeCheckResult* Amalgame_Compiler_TypeCheckResult_new() {
 }
 
 struct _Amalgame_Compiler_TypeChecker {
-    AmalgameList* ExprTypeKeys;
-    AmalgameList* ExprTypeVals;
+    AmalgameMap* ExprTypeMap;
     code_string CurrentReturn;
     code_string CurrentClass;
     AmalgameList* Errors;
@@ -20563,611 +20562,584 @@ code_string Amalgame_Compiler_TypeChecker_FormatErrors(Amalgame_Compiler_TypeChe
 
 Amalgame_Compiler_TypeChecker* Amalgame_Compiler_TypeChecker_new(Amalgame_Compiler_FullResolver* symbols, code_string filename) {
     Amalgame_Compiler_TypeChecker* self = (Amalgame_Compiler_TypeChecker*) GC_MALLOC(sizeof(Amalgame_Compiler_TypeChecker));
-    #line 93 "./src/typechecker.am"
-    self->ExprTypeKeys = AmalgameList_new();
-    #line 94 "./src/typechecker.am"
-    self->ExprTypeVals = AmalgameList_new();
-    #line 95 "./src/typechecker.am"
-    self->CurrentReturn = "void";
-    #line 96 "./src/typechecker.am"
-    self->CurrentClass = "";
     #line 97 "./src/typechecker.am"
-    self->Errors = AmalgameList_new();
+    self->ExprTypeMap = AmalgameMap_new();
     #line 98 "./src/typechecker.am"
-    self->Filename = filename;
+    self->CurrentReturn = "void";
     #line 99 "./src/typechecker.am"
-    self->Symbols = symbols;
+    self->CurrentClass = "";
     #line 100 "./src/typechecker.am"
-    self->LocalNames = AmalgameList_new();
+    self->Errors = AmalgameList_new();
     #line 101 "./src/typechecker.am"
-    self->LocalTypes = AmalgameList_new();
+    self->Filename = filename;
     #line 102 "./src/typechecker.am"
-    self->ScopeStarts = AmalgameList_new();
+    self->Symbols = symbols;
     #line 103 "./src/typechecker.am"
-    self->SubstParams = AmalgameList_new();
+    self->LocalNames = AmalgameList_new();
     #line 104 "./src/typechecker.am"
-    self->SubstArgs = AmalgameList_new();
+    self->LocalTypes = AmalgameList_new();
     #line 105 "./src/typechecker.am"
+    self->ScopeStarts = AmalgameList_new();
+    #line 106 "./src/typechecker.am"
+    self->SubstParams = AmalgameList_new();
+    #line 107 "./src/typechecker.am"
+    self->SubstArgs = AmalgameList_new();
+    #line 108 "./src/typechecker.am"
     self->Sources = Amalgame_Compiler_SourceMap_new();
     return self;
 }
 
 static void Amalgame_Compiler_TypeChecker_PushScope(Amalgame_Compiler_TypeChecker* self) {
-    #line 111 "./src/typechecker.am"
+    #line 114 "./src/typechecker.am"
     AmalgameList_add(self->ScopeStarts, (void*)(intptr_t)(AmalgameList_count(self->LocalNames)));
 }
 
 static void Amalgame_Compiler_TypeChecker_PopScope(Amalgame_Compiler_TypeChecker* self) {
-    #line 115 "./src/typechecker.am"
+    #line 118 "./src/typechecker.am"
     i64 depth = AmalgameList_count(self->ScopeStarts);
-    #line 116 "./src/typechecker.am"
+    #line 119 "./src/typechecker.am"
     if (depth == 0) {
         return;
     }
-    #line 117 "./src/typechecker.am"
+    #line 120 "./src/typechecker.am"
     i64 mark = (i64)(intptr_t)AmalgameList_get(self->ScopeStarts, depth - 1);
-    #line 118 "./src/typechecker.am"
+    #line 121 "./src/typechecker.am"
     AmalgameList_removeAt(self->ScopeStarts, depth - 1);
-    #line 119 "./src/typechecker.am"
+    #line 122 "./src/typechecker.am"
     while (AmalgameList_count(self->LocalNames) > mark) {
-        #line 120 "./src/typechecker.am"
+        #line 123 "./src/typechecker.am"
         i64 last = AmalgameList_count(self->LocalNames) - 1;
-        #line 121 "./src/typechecker.am"
+        #line 124 "./src/typechecker.am"
         AmalgameList_removeAt(self->LocalNames, last);
-        #line 122 "./src/typechecker.am"
+        #line 125 "./src/typechecker.am"
         AmalgameList_removeAt(self->LocalTypes, last);
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_DeclareLocal(Amalgame_Compiler_TypeChecker* self, code_string name, code_string typeName) {
-    #line 127 "./src/typechecker.am"
+    #line 130 "./src/typechecker.am"
     AmalgameList_add(self->LocalNames, (void*)(intptr_t)(name));
-    #line 128 "./src/typechecker.am"
+    #line 131 "./src/typechecker.am"
     AmalgameList_add(self->LocalTypes, (void*)(intptr_t)(typeName));
 }
 
 static code_string Amalgame_Compiler_TypeChecker_LookupLocal(Amalgame_Compiler_TypeChecker* self, code_string name) {
-    #line 132 "./src/typechecker.am"
+    #line 135 "./src/typechecker.am"
     i64 i = AmalgameList_count(self->LocalNames) - 1;
-    #line 133 "./src/typechecker.am"
+    #line 136 "./src/typechecker.am"
     while (i >= 0) {
-        #line 134 "./src/typechecker.am"
+        #line 137 "./src/typechecker.am"
         if (code_string_equals((code_string)AmalgameList_get(self->LocalNames, i), name)) {
             return (code_string)AmalgameList_get(self->LocalTypes, i);
         }
-        #line 135 "./src/typechecker.am"
+        #line 138 "./src/typechecker.am"
         i = (i - 1);
     }
-    #line 137 "./src/typechecker.am"
+    #line 140 "./src/typechecker.am"
     return "";
 }
 
 Amalgame_Compiler_TypeCheckResult* Amalgame_Compiler_TypeChecker_Check(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* program) {
-    #line 143 "./src/typechecker.am"
-    Amalgame_Compiler_TypeChecker_CheckProgram(self, program);
-    #line 144 "./src/typechecker.am"
-    Amalgame_Compiler_TypeCheckResult* result = Amalgame_Compiler_TypeCheckResult_new();
-    #line 145 "./src/typechecker.am"
-    i64 ec = AmalgameList_count(self->Errors);
     #line 146 "./src/typechecker.am"
-    result->Success = (ec == 0);
+    Amalgame_Compiler_TypeChecker_CheckProgram(self, program);
     #line 147 "./src/typechecker.am"
+    Amalgame_Compiler_TypeCheckResult* result = Amalgame_Compiler_TypeCheckResult_new();
+    #line 148 "./src/typechecker.am"
+    i64 ec = AmalgameList_count(self->Errors);
+    #line 149 "./src/typechecker.am"
+    result->Success = (ec == 0);
+    #line 150 "./src/typechecker.am"
     for (i64 i = 0; i < ec; i++) {
-        #line 148 "./src/typechecker.am"
+        #line 151 "./src/typechecker.am"
         AmalgameList_add(result->Errors, (void*)(intptr_t)((Amalgame_Compiler_TypeError*)AmalgameList_get(self->Errors, i)));
     }
-    #line 150 "./src/typechecker.am"
+    #line 153 "./src/typechecker.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_TypeChecker_NodeKey(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node) {
-    #line 156 "./src/typechecker.am"
-    code_string ln = String_FromInt(node->Line);
-    #line 157 "./src/typechecker.am"
-    code_string col = String_FromInt(node->Column);
-    #line 158 "./src/typechecker.am"
-    code_string knd = String_FromInt(node->Kind);
     #line 159 "./src/typechecker.am"
+    code_string ln = String_FromInt(node->Line);
+    #line 160 "./src/typechecker.am"
+    code_string col = String_FromInt(node->Column);
+    #line 161 "./src/typechecker.am"
+    code_string knd = String_FromInt(node->Kind);
+    #line 162 "./src/typechecker.am"
     return code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(knd, ":")), ln)), ":")), col)), ":")), node->Name)), ":")), node->Str);
 }
 
 static void Amalgame_Compiler_TypeChecker_SetType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node, code_string typeKey) {
-    #line 163 "./src/typechecker.am"
-    code_string key = Amalgame_Compiler_TypeChecker_NodeKey(self, node);
-    #line 164 "./src/typechecker.am"
-    i64 count = AmalgameList_count(self->ExprTypeKeys);
-    #line 165 "./src/typechecker.am"
-    for (i64 i = 0; i < count; i++) {
-        #line 166 "./src/typechecker.am"
-        if (code_string_equals((code_string)AmalgameList_get(self->ExprTypeKeys, i), key)) {
-            #line 169 "./src/typechecker.am"
-            AmalgameList_add(self->ExprTypeVals, (void*)(intptr_t)(typeKey));
-            #line 170 "./src/typechecker.am"
-            return;
-        }
-    }
-    #line 173 "./src/typechecker.am"
-    AmalgameList_add(self->ExprTypeKeys, (void*)(intptr_t)(key));
-    #line 174 "./src/typechecker.am"
-    AmalgameList_add(self->ExprTypeVals, (void*)(intptr_t)(typeKey));
+    #line 168 "./src/typechecker.am"
+    AmalgameMap_set(self->ExprTypeMap, Amalgame_Compiler_TypeChecker_NodeKey(self, node), (void*)(intptr_t)(typeKey));
 }
 
 static code_string Amalgame_Compiler_TypeChecker_GetType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node) {
-    #line 178 "./src/typechecker.am"
+    #line 172 "./src/typechecker.am"
     code_string key = Amalgame_Compiler_TypeChecker_NodeKey(self, node);
-    #line 179 "./src/typechecker.am"
-    i64 count = AmalgameList_count(self->ExprTypeKeys);
-    #line 181 "./src/typechecker.am"
-    code_string result = "?";
-    #line 182 "./src/typechecker.am"
-    for (i64 i = 0; i < count; i++) {
-        #line 183 "./src/typechecker.am"
-        if (code_string_equals((code_string)AmalgameList_get(self->ExprTypeKeys, i), key)) {
-            #line 184 "./src/typechecker.am"
-            result = (code_string)AmalgameList_get(self->ExprTypeVals, i);
-        }
+    #line 173 "./src/typechecker.am"
+    if (AmalgameMap_has(self->ExprTypeMap, key)) {
+        #line 174 "./src/typechecker.am"
+        return (code_string)AmalgameMap_get(self->ExprTypeMap, key);
     }
-    #line 187 "./src/typechecker.am"
-    return result;
+    #line 176 "./src/typechecker.am"
+    return "?";
 }
 
 code_string Amalgame_Compiler_TypeChecker_LookupNodeType(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node) {
-    #line 195 "./src/typechecker.am"
+    #line 184 "./src/typechecker.am"
     return Amalgame_Compiler_TypeChecker_GetType(self, node);
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsAssignable(Amalgame_Compiler_TypeChecker* self, code_string expected, code_string actual) {
-    #line 201 "./src/typechecker.am"
+    #line 190 "./src/typechecker.am"
     if ((code_string_equals(expected, "?")) || (code_string_equals(actual, "?"))) {
         return 1;
     }
-    #line 202 "./src/typechecker.am"
+    #line 191 "./src/typechecker.am"
     if (code_string_equals(expected, actual)) {
         return 1;
     }
-    #line 203 "./src/typechecker.am"
+    #line 192 "./src/typechecker.am"
     if (code_string_equals(expected, "object")) {
         return 1;
     }
-    #line 205 "./src/typechecker.am"
+    #line 194 "./src/typechecker.am"
     code_string eBase = expected;
-    #line 206 "./src/typechecker.am"
+    #line 195 "./src/typechecker.am"
     code_string aBase = actual;
-    #line 207 "./src/typechecker.am"
+    #line 196 "./src/typechecker.am"
     if (String_EndsWith(expected, "?")) {
-        #line 208 "./src/typechecker.am"
+        #line 197 "./src/typechecker.am"
         eBase = String_Substring(expected, 0, String_Length(expected) - 1);
     }
-    #line 210 "./src/typechecker.am"
+    #line 199 "./src/typechecker.am"
     if (String_EndsWith(actual, "?")) {
-        #line 211 "./src/typechecker.am"
+        #line 200 "./src/typechecker.am"
         aBase = String_Substring(actual, 0, String_Length(actual) - 1);
     }
-    #line 213 "./src/typechecker.am"
+    #line 202 "./src/typechecker.am"
     if (code_string_equals(eBase, aBase)) {
         return 1;
     }
-    #line 218 "./src/typechecker.am"
+    #line 207 "./src/typechecker.am"
     if (code_string_equals(Amalgame_Compiler_TypeChecker_GenericBase(self, eBase), Amalgame_Compiler_TypeChecker_GenericBase(self, aBase))) {
         return 1;
     }
-    #line 220 "./src/typechecker.am"
+    #line 209 "./src/typechecker.am"
     if ((code_string_equals(actual, "null")) && String_EndsWith(expected, "?")) {
         return 1;
     }
-    #line 225 "./src/typechecker.am"
+    #line 214 "./src/typechecker.am"
     if ((code_string_equals(actual, "null")) && !Amalgame_Compiler_TypeChecker_IsPrimitiveValue(self, eBase)) {
         return 1;
     }
-    #line 227 "./src/typechecker.am"
+    #line 216 "./src/typechecker.am"
     if (Amalgame_Compiler_TypeChecker_IsNumericWiden(self, eBase, aBase)) {
         return 1;
     }
-    #line 228 "./src/typechecker.am"
+    #line 217 "./src/typechecker.am"
     return 0;
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsPrimitiveValue(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 236 "./src/typechecker.am"
+    #line 225 "./src/typechecker.am"
     if (code_string_equals(t, "int")) {
         return 1;
     }
-    #line 237 "./src/typechecker.am"
+    #line 226 "./src/typechecker.am"
     if (code_string_equals(t, "i64")) {
         return 1;
     }
-    #line 238 "./src/typechecker.am"
+    #line 227 "./src/typechecker.am"
     if (code_string_equals(t, "i32")) {
         return 1;
     }
-    #line 239 "./src/typechecker.am"
+    #line 228 "./src/typechecker.am"
     if (code_string_equals(t, "i16")) {
         return 1;
     }
-    #line 240 "./src/typechecker.am"
+    #line 229 "./src/typechecker.am"
     if (code_string_equals(t, "i8")) {
         return 1;
     }
-    #line 241 "./src/typechecker.am"
+    #line 230 "./src/typechecker.am"
     if (code_string_equals(t, "u64")) {
         return 1;
     }
-    #line 242 "./src/typechecker.am"
+    #line 231 "./src/typechecker.am"
     if (code_string_equals(t, "u32")) {
         return 1;
     }
-    #line 243 "./src/typechecker.am"
+    #line 232 "./src/typechecker.am"
     if (code_string_equals(t, "u16")) {
         return 1;
     }
-    #line 244 "./src/typechecker.am"
+    #line 233 "./src/typechecker.am"
     if (code_string_equals(t, "u8")) {
         return 1;
     }
-    #line 245 "./src/typechecker.am"
+    #line 234 "./src/typechecker.am"
     if (code_string_equals(t, "float")) {
         return 1;
     }
-    #line 246 "./src/typechecker.am"
+    #line 235 "./src/typechecker.am"
     if (code_string_equals(t, "double")) {
         return 1;
     }
-    #line 247 "./src/typechecker.am"
+    #line 236 "./src/typechecker.am"
     if (code_string_equals(t, "f32")) {
         return 1;
     }
-    #line 248 "./src/typechecker.am"
+    #line 237 "./src/typechecker.am"
     if (code_string_equals(t, "f64")) {
         return 1;
     }
-    #line 249 "./src/typechecker.am"
+    #line 238 "./src/typechecker.am"
     if (code_string_equals(t, "bool")) {
         return 1;
     }
-    #line 250 "./src/typechecker.am"
+    #line 239 "./src/typechecker.am"
     if (code_string_equals(t, "char")) {
         return 1;
     }
-    #line 251 "./src/typechecker.am"
+    #line 240 "./src/typechecker.am"
     if (code_string_equals(t, "void")) {
         return 1;
     }
-    #line 252 "./src/typechecker.am"
+    #line 241 "./src/typechecker.am"
     return 0;
 }
 
 static code_string Amalgame_Compiler_TypeChecker_GenericBase(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 256 "./src/typechecker.am"
+    #line 245 "./src/typechecker.am"
     i64 lt = String_IndexOf(t, "<");
-    #line 257 "./src/typechecker.am"
+    #line 246 "./src/typechecker.am"
     if (lt > 0) {
-        #line 258 "./src/typechecker.am"
+        #line 247 "./src/typechecker.am"
         return String_Substring(t, 0, lt);
     }
-    #line 260 "./src/typechecker.am"
+    #line 249 "./src/typechecker.am"
     return t;
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsNumericWiden(Amalgame_Compiler_TypeChecker* self, code_string to, code_string from) {
-    #line 264 "./src/typechecker.am"
+    #line 253 "./src/typechecker.am"
     if (code_string_equals(to, "double")) {
-        #line 265 "./src/typechecker.am"
+        #line 254 "./src/typechecker.am"
         if (((((code_string_equals(from, "float")) || (code_string_equals(from, "int"))) || (code_string_equals(from, "i64"))) || (code_string_equals(from, "i32"))) || (code_string_equals(from, "f32"))) {
-            #line 266 "./src/typechecker.am"
+            #line 255 "./src/typechecker.am"
             return 1;
         }
     }
-    #line 269 "./src/typechecker.am"
+    #line 258 "./src/typechecker.am"
     if (code_string_equals(to, "float")) {
-        #line 270 "./src/typechecker.am"
+        #line 259 "./src/typechecker.am"
         if (((code_string_equals(from, "int")) || (code_string_equals(from, "i32"))) || (code_string_equals(from, "f32"))) {
-            #line 271 "./src/typechecker.am"
+            #line 260 "./src/typechecker.am"
             return 1;
         }
     }
-    #line 274 "./src/typechecker.am"
+    #line 263 "./src/typechecker.am"
     return 0;
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsBool(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 278 "./src/typechecker.am"
+    #line 267 "./src/typechecker.am"
     return (code_string_equals(t, "bool")) || (code_string_equals(t, "?"));
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsNumeric(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 282 "./src/typechecker.am"
+    #line 271 "./src/typechecker.am"
     if (code_string_equals(t, "int")) {
         return 1;
     }
-    #line 283 "./src/typechecker.am"
+    #line 272 "./src/typechecker.am"
     if (code_string_equals(t, "float")) {
         return 1;
     }
-    #line 284 "./src/typechecker.am"
+    #line 273 "./src/typechecker.am"
     if (code_string_equals(t, "double")) {
         return 1;
     }
-    #line 285 "./src/typechecker.am"
+    #line 274 "./src/typechecker.am"
     if (code_string_equals(t, "i8")) {
         return 1;
     }
-    #line 286 "./src/typechecker.am"
+    #line 275 "./src/typechecker.am"
     if (code_string_equals(t, "i16")) {
         return 1;
     }
-    #line 287 "./src/typechecker.am"
+    #line 276 "./src/typechecker.am"
     if (code_string_equals(t, "i32")) {
         return 1;
     }
-    #line 288 "./src/typechecker.am"
+    #line 277 "./src/typechecker.am"
     if (code_string_equals(t, "i64")) {
         return 1;
     }
-    #line 289 "./src/typechecker.am"
+    #line 278 "./src/typechecker.am"
     if (code_string_equals(t, "u8")) {
         return 1;
     }
-    #line 290 "./src/typechecker.am"
+    #line 279 "./src/typechecker.am"
     if (code_string_equals(t, "u16")) {
         return 1;
     }
-    #line 291 "./src/typechecker.am"
+    #line 280 "./src/typechecker.am"
     if (code_string_equals(t, "u32")) {
         return 1;
     }
-    #line 292 "./src/typechecker.am"
+    #line 281 "./src/typechecker.am"
     if (code_string_equals(t, "u64")) {
         return 1;
     }
-    #line 293 "./src/typechecker.am"
+    #line 282 "./src/typechecker.am"
     if (code_string_equals(t, "f32")) {
         return 1;
     }
-    #line 294 "./src/typechecker.am"
+    #line 283 "./src/typechecker.am"
     if (code_string_equals(t, "f64")) {
         return 1;
     }
-    #line 295 "./src/typechecker.am"
+    #line 284 "./src/typechecker.am"
     return 0;
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_IsNullable(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 299 "./src/typechecker.am"
+    #line 288 "./src/typechecker.am"
     return String_EndsWith(t, "?");
 }
 
 static code_string Amalgame_Compiler_TypeChecker_BinaryResultType(Amalgame_Compiler_TypeChecker* self, code_string op, code_string left, code_string right) {
-    #line 304 "./src/typechecker.am"
+    #line 293 "./src/typechecker.am"
     if ((((((code_string_equals(op, "==")) || (code_string_equals(op, "!="))) || (code_string_equals(op, "<"))) || (code_string_equals(op, ">"))) || (code_string_equals(op, "<="))) || (code_string_equals(op, ">="))) {
-        #line 305 "./src/typechecker.am"
+        #line 294 "./src/typechecker.am"
         return "bool";
     }
-    #line 308 "./src/typechecker.am"
+    #line 297 "./src/typechecker.am"
     if ((code_string_equals(op, "&&")) || (code_string_equals(op, "||"))) {
         return "bool";
     }
-    #line 310 "./src/typechecker.am"
+    #line 299 "./src/typechecker.am"
     if (code_string_equals(op, "??")) {
-        #line 311 "./src/typechecker.am"
+        #line 300 "./src/typechecker.am"
         if (String_EndsWith(left, "?")) {
-            #line 312 "./src/typechecker.am"
+            #line 301 "./src/typechecker.am"
             return String_Substring(left, 0, String_Length(left) - 1);
+        }
+        #line 303 "./src/typechecker.am"
+        return left;
+    }
+    #line 306 "./src/typechecker.am"
+    if ((code_string_equals(op, "..")) || (code_string_equals(op, "..."))) {
+        return "range";
+    }
+    #line 308 "./src/typechecker.am"
+    if (code_string_equals(op, "|>")) {
+        return right;
+    }
+    #line 310 "./src/typechecker.am"
+    if ((((((code_string_equals(op, "+")) || (code_string_equals(op, "-"))) || (code_string_equals(op, "*"))) || (code_string_equals(op, "/"))) || (code_string_equals(op, "%"))) || (code_string_equals(op, "^"))) {
+        #line 311 "./src/typechecker.am"
+        if ((code_string_equals(left, "double")) || (code_string_equals(right, "double"))) {
+            return "double";
+        }
+        #line 312 "./src/typechecker.am"
+        if ((code_string_equals(left, "float")) || (code_string_equals(right, "float"))) {
+            return "float";
+        }
+        #line 313 "./src/typechecker.am"
+        if ((code_string_equals(left, "string")) || (code_string_equals(right, "string"))) {
+            return "string";
         }
         #line 314 "./src/typechecker.am"
         return left;
     }
-    #line 317 "./src/typechecker.am"
-    if ((code_string_equals(op, "..")) || (code_string_equals(op, "..."))) {
-        return "range";
-    }
-    #line 319 "./src/typechecker.am"
-    if (code_string_equals(op, "|>")) {
-        return right;
-    }
-    #line 321 "./src/typechecker.am"
-    if ((((((code_string_equals(op, "+")) || (code_string_equals(op, "-"))) || (code_string_equals(op, "*"))) || (code_string_equals(op, "/"))) || (code_string_equals(op, "%"))) || (code_string_equals(op, "^"))) {
-        #line 322 "./src/typechecker.am"
-        if ((code_string_equals(left, "double")) || (code_string_equals(right, "double"))) {
-            return "double";
-        }
-        #line 323 "./src/typechecker.am"
-        if ((code_string_equals(left, "float")) || (code_string_equals(right, "float"))) {
-            return "float";
-        }
-        #line 324 "./src/typechecker.am"
-        if ((code_string_equals(left, "string")) || (code_string_equals(right, "string"))) {
-            return "string";
-        }
-        #line 325 "./src/typechecker.am"
-        return left;
-    }
-    #line 327 "./src/typechecker.am"
+    #line 316 "./src/typechecker.am"
     return "?";
 }
 
 static code_string Amalgame_Compiler_TypeChecker_CollectionElementType(Amalgame_Compiler_TypeChecker* self, code_string typeKey) {
-    #line 331 "./src/typechecker.am"
+    #line 320 "./src/typechecker.am"
     if ((code_string_equals(typeKey, "?")) || (code_string_equals(typeKey, ""))) {
         return "?";
     }
-    #line 333 "./src/typechecker.am"
+    #line 322 "./src/typechecker.am"
     if (String_StartsWith(typeKey, "List<") && String_EndsWith(typeKey, ">")) {
-        #line 334 "./src/typechecker.am"
+        #line 323 "./src/typechecker.am"
         code_string inner = String_Substring(typeKey, 5, String_Length(typeKey) - 6);
-        #line 335 "./src/typechecker.am"
+        #line 324 "./src/typechecker.am"
         return inner;
     }
-    #line 338 "./src/typechecker.am"
+    #line 327 "./src/typechecker.am"
     if (String_StartsWith(typeKey, "Set<") && String_EndsWith(typeKey, ">")) {
-        #line 339 "./src/typechecker.am"
+        #line 328 "./src/typechecker.am"
         code_string inner = String_Substring(typeKey, 4, String_Length(typeKey) - 5);
-        #line 340 "./src/typechecker.am"
+        #line 329 "./src/typechecker.am"
         return inner;
     }
-    #line 343 "./src/typechecker.am"
+    #line 332 "./src/typechecker.am"
     if (String_StartsWith(typeKey, "Map<") && String_EndsWith(typeKey, ">")) {
-        #line 344 "./src/typechecker.am"
+        #line 333 "./src/typechecker.am"
         code_string inner = String_Substring(typeKey, 4, String_Length(typeKey) - 5);
-        #line 345 "./src/typechecker.am"
+        #line 334 "./src/typechecker.am"
         i64 comma = String_IndexOf(inner, ",");
-        #line 346 "./src/typechecker.am"
+        #line 335 "./src/typechecker.am"
         if (comma >= 0) {
-            #line 347 "./src/typechecker.am"
+            #line 336 "./src/typechecker.am"
             code_string vt = String_Substring(inner, comma + 1, (String_Length(inner) - comma) - 1);
-            #line 348 "./src/typechecker.am"
+            #line 337 "./src/typechecker.am"
             return String_Trim(vt);
         }
     }
-    #line 352 "./src/typechecker.am"
+    #line 341 "./src/typechecker.am"
     if (String_EndsWith(typeKey, "[]")) {
-        #line 353 "./src/typechecker.am"
+        #line 342 "./src/typechecker.am"
         return String_Substring(typeKey, 0, String_Length(typeKey) - 2);
     }
-    #line 355 "./src/typechecker.am"
+    #line 344 "./src/typechecker.am"
     return "?";
 }
 
 static code_bool Amalgame_Compiler_TypeChecker_SymbolFound(Amalgame_Compiler_TypeChecker* self, code_string name) {
-    #line 364 "./src/typechecker.am"
+    #line 353 "./src/typechecker.am"
     return Amalgame_Compiler_FullResolver_HasSymbol(self->Symbols, name);
 }
 
 static code_string Amalgame_Compiler_TypeChecker_SymbolTypeName(Amalgame_Compiler_TypeChecker* self, code_string name) {
-    #line 368 "./src/typechecker.am"
+    #line 357 "./src/typechecker.am"
     return Amalgame_Compiler_FullResolver_GetTypeName(self->Symbols, name);
 }
 
 static void Amalgame_Compiler_TypeChecker_Error(Amalgame_Compiler_TypeChecker* self, code_string msg, Amalgame_Compiler_AstNode* node) {
-    #line 374 "./src/typechecker.am"
+    #line 363 "./src/typechecker.am"
     code_string file = self->Filename;
-    #line 375 "./src/typechecker.am"
+    #line 364 "./src/typechecker.am"
     i64 line = 0;
-    #line 376 "./src/typechecker.am"
+    #line 365 "./src/typechecker.am"
     i64 col = 0;
-    #line 377 "./src/typechecker.am"
+    #line 366 "./src/typechecker.am"
     if (node != NULL) {
-        #line 378 "./src/typechecker.am"
+        #line 367 "./src/typechecker.am"
         line = node->Line;
-        #line 379 "./src/typechecker.am"
+        #line 368 "./src/typechecker.am"
         col = node->Column;
     }
-    #line 381 "./src/typechecker.am"
+    #line 370 "./src/typechecker.am"
     Amalgame_Compiler_TypeError* err = Amalgame_Compiler_TypeError_new(msg, file, line, col);
-    #line 382 "./src/typechecker.am"
+    #line 371 "./src/typechecker.am"
     err->Snippet = Amalgame_Compiler_SourceMap_GetLine(self->Sources, file, line);
-    #line 383 "./src/typechecker.am"
+    #line 372 "./src/typechecker.am"
     AmalgameList_add(self->Errors, (void*)(intptr_t)(err));
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckBool(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* node, code_string context) {
-    #line 387 "./src/typechecker.am"
+    #line 376 "./src/typechecker.am"
     code_string t = Amalgame_Compiler_TypeChecker_GetType(self, node);
-    #line 388 "./src/typechecker.am"
+    #line 377 "./src/typechecker.am"
     if (!Amalgame_Compiler_TypeChecker_IsBool(self, t)) {
-        #line 389 "./src/typechecker.am"
+        #line 378 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("'", context)), "' must be bool, got '")), t)), "'"), node);
     }
 }
 
 static code_string Amalgame_Compiler_TypeChecker_SymbolType(Amalgame_Compiler_TypeChecker* self, code_string name) {
-    #line 396 "./src/typechecker.am"
+    #line 385 "./src/typechecker.am"
     return Amalgame_Compiler_TypeChecker_SymbolTypeName(self, name);
 }
 
 static code_string Amalgame_Compiler_TypeChecker_MemberTypeOf(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* classDecl, code_string memberName) {
-    #line 401 "./src/typechecker.am"
+    #line 390 "./src/typechecker.am"
     if (classDecl == NULL) {
         return "?";
     }
-    #line 402 "./src/typechecker.am"
+    #line 391 "./src/typechecker.am"
     Amalgame_Compiler_NodeKind k = classDecl->Kind;
-    #line 404 "./src/typechecker.am"
+    #line 393 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 405 "./src/typechecker.am"
+        #line 394 "./src/typechecker.am"
         i64 members = AmalgameList_count(classDecl->Children);
-        #line 406 "./src/typechecker.am"
+        #line 395 "./src/typechecker.am"
         for (i64 i = 0; i < members; i++) {
-            #line 407 "./src/typechecker.am"
+            #line 396 "./src/typechecker.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(classDecl->Children, i);
-            #line 408 "./src/typechecker.am"
+            #line 397 "./src/typechecker.am"
             if (code_string_equals(m->Name, memberName)) {
                 return classDecl->Name;
             }
         }
-        #line 410 "./src/typechecker.am"
+        #line 399 "./src/typechecker.am"
         return classDecl->Name;
     }
-    #line 413 "./src/typechecker.am"
+    #line 402 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 414 "./src/typechecker.am"
+        #line 403 "./src/typechecker.am"
         i64 members = AmalgameList_count(classDecl->Children);
-        #line 415 "./src/typechecker.am"
+        #line 404 "./src/typechecker.am"
         for (i64 i = 0; i < members; i++) {
-            #line 416 "./src/typechecker.am"
+            #line 405 "./src/typechecker.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(classDecl->Children, i);
-            #line 417 "./src/typechecker.am"
+            #line 406 "./src/typechecker.am"
             Amalgame_Compiler_NodeKind mk = m->Kind;
-            #line 418 "./src/typechecker.am"
+            #line 407 "./src/typechecker.am"
             if (code_string_equals(m->Name, memberName)) {
-                #line 419 "./src/typechecker.am"
+                #line 408 "./src/typechecker.am"
                 if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
                     return m->Str;
                 }
-                #line 420 "./src/typechecker.am"
+                #line 409 "./src/typechecker.am"
                 if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
                     return m->Str;
                 }
             }
         }
     }
-    #line 424 "./src/typechecker.am"
+    #line 413 "./src/typechecker.am"
     return "?";
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckProgram(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* prog) {
-    #line 434 "./src/typechecker.am"
+    #line 423 "./src/typechecker.am"
     if (String_Length(prog->Str2) > 0) {
-        #line 435 "./src/typechecker.am"
+        #line 424 "./src/typechecker.am"
         self->Filename = prog->Str2;
     }
-    #line 444 "./src/typechecker.am"
-    self->ExprTypeKeys = AmalgameList_new();
-    #line 445 "./src/typechecker.am"
-    self->ExprTypeVals = AmalgameList_new();
-    #line 446 "./src/typechecker.am"
+    #line 433 "./src/typechecker.am"
+    self->ExprTypeMap = AmalgameMap_new();
+    #line 434 "./src/typechecker.am"
     self->LocalNames = AmalgameList_new();
-    #line 447 "./src/typechecker.am"
+    #line 435 "./src/typechecker.am"
     self->LocalTypes = AmalgameList_new();
-    #line 448 "./src/typechecker.am"
+    #line 436 "./src/typechecker.am"
     self->ScopeStarts = AmalgameList_new();
-    #line 449 "./src/typechecker.am"
+    #line 437 "./src/typechecker.am"
     i64 count = AmalgameList_count(prog->Children);
-    #line 450 "./src/typechecker.am"
+    #line 438 "./src/typechecker.am"
     for (i64 i = 0; i < count; i++) {
-        #line 451 "./src/typechecker.am"
+        #line 439 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckDecl(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, i));
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckDecl(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* decl) {
-    #line 456 "./src/typechecker.am"
+    #line 444 "./src/typechecker.am"
     Amalgame_Compiler_NodeKind k = decl->Kind;
-    #line 457 "./src/typechecker.am"
+    #line 445 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_CLASS_DECL) {
-        #line 458 "./src/typechecker.am"
+        #line 446 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckClass(self, decl);
     }
-    #line 460 "./src/typechecker.am"
+    #line 448 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_ENUM_DECL) {
-        #line 462 "./src/typechecker.am"
+        #line 450 "./src/typechecker.am"
         i64 methods = AmalgameList_count(decl->Children);
-        #line 463 "./src/typechecker.am"
+        #line 451 "./src/typechecker.am"
         for (i64 i = 0; i < methods; i++) {
-            #line 464 "./src/typechecker.am"
+            #line 452 "./src/typechecker.am"
             Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(decl->Children, i);
-            #line 465 "./src/typechecker.am"
+            #line 453 "./src/typechecker.am"
             if (m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-                #line 466 "./src/typechecker.am"
+                #line 454 "./src/typechecker.am"
                 Amalgame_Compiler_TypeChecker_CheckMethod(self, m);
             }
         }
@@ -21175,1102 +21147,1102 @@ static void Amalgame_Compiler_TypeChecker_CheckDecl(Amalgame_Compiler_TypeChecke
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckClass(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls) {
-    #line 475 "./src/typechecker.am"
+    #line 463 "./src/typechecker.am"
     code_string prevClass = self->CurrentClass;
-    #line 476 "./src/typechecker.am"
+    #line 464 "./src/typechecker.am"
     self->CurrentClass = cls->Name;
-    #line 477 "./src/typechecker.am"
+    #line 465 "./src/typechecker.am"
     i64 members = AmalgameList_count(cls->Children);
-    #line 479 "./src/typechecker.am"
+    #line 467 "./src/typechecker.am"
     for (i64 i = 0; i < members; i++) {
-        #line 480 "./src/typechecker.am"
+        #line 468 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, i);
-        #line 481 "./src/typechecker.am"
+        #line 469 "./src/typechecker.am"
         Amalgame_Compiler_NodeKind mk = m->Kind;
-        #line 482 "./src/typechecker.am"
+        #line 470 "./src/typechecker.am"
         if (mk == Amalgame_Compiler_NodeKind_VAR_DECL) {
-            #line 483 "./src/typechecker.am"
+            #line 471 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_CheckFieldDecl(self, m);
         }
-        #line 485 "./src/typechecker.am"
+        #line 473 "./src/typechecker.am"
         if (mk == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 486 "./src/typechecker.am"
+            #line 474 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_CheckMethod(self, m);
         }
     }
-    #line 492 "./src/typechecker.am"
+    #line 480 "./src/typechecker.am"
     if (!cls->Flag2 && (String_Length(cls->Str4) > 0)) {
-        #line 493 "./src/typechecker.am"
+        #line 481 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckImplementsContract(self, cls);
     }
-    #line 495 "./src/typechecker.am"
+    #line 483 "./src/typechecker.am"
     self->CurrentClass = prevClass;
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckImplementsContract(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls) {
-    #line 501 "./src/typechecker.am"
+    #line 489 "./src/typechecker.am"
     AmalgameList* entries = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, cls->Str4);
-    #line 502 "./src/typechecker.am"
+    #line 490 "./src/typechecker.am"
     i64 nEntries = AmalgameList_count(entries);
-    #line 503 "./src/typechecker.am"
+    #line 491 "./src/typechecker.am"
     for (i64 ie = 0; ie < nEntries; ie++) {
-        #line 504 "./src/typechecker.am"
+        #line 492 "./src/typechecker.am"
         void* iref = (void*)AmalgameList_get(entries, ie);
-        #line 505 "./src/typechecker.am"
+        #line 493 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckOneInterface(self, cls, iref);
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckOneInterface(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls, code_string iref) {
-    #line 510 "./src/typechecker.am"
+    #line 498 "./src/typechecker.am"
     code_string ibase = iref;
-    #line 512 "./src/typechecker.am"
+    #line 500 "./src/typechecker.am"
     self->SubstParams = AmalgameList_new();
-    #line 513 "./src/typechecker.am"
+    #line 501 "./src/typechecker.am"
     self->SubstArgs = AmalgameList_new();
-    #line 514 "./src/typechecker.am"
+    #line 502 "./src/typechecker.am"
     i64 lt = String_IndexOf(iref, "<");
-    #line 515 "./src/typechecker.am"
+    #line 503 "./src/typechecker.am"
     if (lt > 0) {
-        #line 516 "./src/typechecker.am"
+        #line 504 "./src/typechecker.am"
         ibase = String_Substring(iref, 0, lt);
-        #line 517 "./src/typechecker.am"
+        #line 505 "./src/typechecker.am"
         code_string inner = String_Substring(iref, lt + 1, (String_Length(iref) - lt) - 2);
-        #line 518 "./src/typechecker.am"
+        #line 506 "./src/typechecker.am"
         AmalgameList* parts = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, inner);
-        #line 519 "./src/typechecker.am"
+        #line 507 "./src/typechecker.am"
         i64 np = AmalgameList_count(parts);
-        #line 520 "./src/typechecker.am"
+        #line 508 "./src/typechecker.am"
         for (i64 ia = 0; ia < np; ia++) {
             AmalgameList_add(self->SubstArgs, (void*)(intptr_t)((code_string)AmalgameList_get(parts, ia)));
         }
     }
-    #line 522 "./src/typechecker.am"
+    #line 510 "./src/typechecker.am"
     Amalgame_Compiler_AstNode* iface = Amalgame_Compiler_TypeChecker_FindInterface(self, ibase);
-    #line 523 "./src/typechecker.am"
+    #line 511 "./src/typechecker.am"
     if (iface == NULL) {
-        #line 524 "./src/typechecker.am"
+        #line 512 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' implements unknown interface '")), ibase)), "'"), cls);
-        #line 525 "./src/typechecker.am"
+        #line 513 "./src/typechecker.am"
         return;
     }
-    #line 527 "./src/typechecker.am"
+    #line 515 "./src/typechecker.am"
     if (String_Length(iface->Str3) > 0) {
-        #line 528 "./src/typechecker.am"
+        #line 516 "./src/typechecker.am"
         AmalgameList* pp = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, iface->Str3);
-        #line 529 "./src/typechecker.am"
+        #line 517 "./src/typechecker.am"
         i64 pn = AmalgameList_count(pp);
-        #line 530 "./src/typechecker.am"
+        #line 518 "./src/typechecker.am"
         for (i64 ip = 0; ip < pn; ip++) {
             AmalgameList_add(self->SubstParams, (void*)(intptr_t)((void*)AmalgameList_get(pp, ip)));
         }
     }
-    #line 532 "./src/typechecker.am"
+    #line 520 "./src/typechecker.am"
     if (AmalgameList_count(self->SubstParams) != AmalgameList_count(self->SubstArgs)) {
-        #line 533 "./src/typechecker.am"
+        #line 521 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("interface '", ibase)), "' expects ")), String_FromInt(AmalgameList_count(self->SubstParams)))), " type argument(s), got ")), String_FromInt(AmalgameList_count(self->SubstArgs))), cls);
-        #line 534 "./src/typechecker.am"
+        #line 522 "./src/typechecker.am"
         return;
     }
-    #line 536 "./src/typechecker.am"
+    #line 524 "./src/typechecker.am"
     i64 imethods = AmalgameList_count(iface->Children);
-    #line 537 "./src/typechecker.am"
+    #line 525 "./src/typechecker.am"
     for (i64 im = 0; im < imethods; im++) {
-        #line 538 "./src/typechecker.am"
+        #line 526 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* imethod = (Amalgame_Compiler_AstNode*)AmalgameList_get(iface->Children, im);
-        #line 539 "./src/typechecker.am"
+        #line 527 "./src/typechecker.am"
         if (imethod->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) {
-            #line 540 "./src/typechecker.am"
+            #line 528 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_CheckOneInterfaceMethod(self, cls, iref, imethod);
         }
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckOneInterfaceMethod(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* cls, code_string ifaceLabel, Amalgame_Compiler_AstNode* imethod) {
-    #line 546 "./src/typechecker.am"
+    #line 534 "./src/typechecker.am"
     i64 cmems = AmalgameList_count(cls->Children);
-    #line 547 "./src/typechecker.am"
+    #line 535 "./src/typechecker.am"
     Amalgame_Compiler_AstNode* found = NULL;
-    #line 548 "./src/typechecker.am"
+    #line 536 "./src/typechecker.am"
     for (i64 ic = 0; ic < cmems; ic++) {
-        #line 549 "./src/typechecker.am"
+        #line 537 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* m = (Amalgame_Compiler_AstNode*)AmalgameList_get(cls->Children, ic);
-        #line 550 "./src/typechecker.am"
+        #line 538 "./src/typechecker.am"
         if ((m->Kind == Amalgame_Compiler_NodeKind_METHOD_DECL) && (code_string_equals(m->Name, imethod->Name))) {
-            #line 551 "./src/typechecker.am"
+            #line 539 "./src/typechecker.am"
             found = m;
         }
     }
-    #line 554 "./src/typechecker.am"
+    #line 542 "./src/typechecker.am"
     if (found == NULL) {
-        #line 555 "./src/typechecker.am"
+        #line 543 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' does not implement interface '")), ifaceLabel)), "': missing method '")), imethod->Name)), "'"), cls);
+        #line 544 "./src/typechecker.am"
+        return;
+    }
+    #line 546 "./src/typechecker.am"
+    Amalgame_Compiler_AstNode* cmethod = found;
+    #line 547 "./src/typechecker.am"
+    code_string expectedRet = Amalgame_Compiler_TypeChecker_SubstType(self, imethod->Str);
+    #line 548 "./src/typechecker.am"
+    if (!code_string_equals(cmethod->Str, expectedRet)) {
+        #line 549 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' method '")), imethod->Name)), "': expected return type '")), expectedRet)), "' (from interface '")), ifaceLabel)), "'), got '")), cmethod->Str)), "'"), cmethod);
+        #line 550 "./src/typechecker.am"
+        return;
+    }
+    #line 552 "./src/typechecker.am"
+    i64 iN = AmalgameList_count(imethod->Params);
+    #line 553 "./src/typechecker.am"
+    i64 cN = AmalgameList_count(cmethod->Params);
+    #line 554 "./src/typechecker.am"
+    if (iN != cN) {
+        #line 555 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' method '")), imethod->Name)), "': expected ")), String_FromInt(iN))), " param(s), got ")), String_FromInt(cN)), cmethod);
         #line 556 "./src/typechecker.am"
         return;
     }
     #line 558 "./src/typechecker.am"
-    Amalgame_Compiler_AstNode* cmethod = found;
-    #line 559 "./src/typechecker.am"
-    code_string expectedRet = Amalgame_Compiler_TypeChecker_SubstType(self, imethod->Str);
-    #line 560 "./src/typechecker.am"
-    if (!code_string_equals(cmethod->Str, expectedRet)) {
-        #line 561 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' method '")), imethod->Name)), "': expected return type '")), expectedRet)), "' (from interface '")), ifaceLabel)), "'), got '")), cmethod->Str)), "'"), cmethod);
-        #line 562 "./src/typechecker.am"
-        return;
-    }
-    #line 564 "./src/typechecker.am"
-    i64 iN = AmalgameList_count(imethod->Params);
-    #line 565 "./src/typechecker.am"
-    i64 cN = AmalgameList_count(cmethod->Params);
-    #line 566 "./src/typechecker.am"
-    if (iN != cN) {
-        #line 567 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' method '")), imethod->Name)), "': expected ")), String_FromInt(iN))), " param(s), got ")), String_FromInt(cN)), cmethod);
-        #line 568 "./src/typechecker.am"
-        return;
-    }
-    #line 570 "./src/typechecker.am"
     for (i64 ip = 0; ip < iN; ip++) {
-        #line 571 "./src/typechecker.am"
+        #line 559 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* ipar = (Amalgame_Compiler_AstNode*)AmalgameList_get(imethod->Params, ip);
-        #line 572 "./src/typechecker.am"
+        #line 560 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* cpar = (Amalgame_Compiler_AstNode*)AmalgameList_get(cmethod->Params, ip);
-        #line 573 "./src/typechecker.am"
+        #line 561 "./src/typechecker.am"
         code_string expectedType = Amalgame_Compiler_TypeChecker_SubstType(self, ipar->Str);
-        #line 574 "./src/typechecker.am"
+        #line 562 "./src/typechecker.am"
         if (!code_string_equals(cpar->Str, expectedType)) {
-            #line 575 "./src/typechecker.am"
+            #line 563 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("class '", cls->Name)), "' method '")), imethod->Name)), "' param '")), cpar->Name)), "': expected type '")), expectedType)), "' (from interface '")), ifaceLabel)), "'), got '")), cpar->Str)), "'"), cpar);
-            #line 576 "./src/typechecker.am"
+            #line 564 "./src/typechecker.am"
             return;
         }
     }
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterface(Amalgame_Compiler_TypeChecker* self, code_string name) {
-    #line 586 "./src/typechecker.am"
+    #line 574 "./src/typechecker.am"
     i64 pn = Amalgame_Compiler_FullResolver_ProgramCount(self->Symbols);
-    #line 587 "./src/typechecker.am"
+    #line 575 "./src/typechecker.am"
     for (i64 ip = 0; ip < pn; ip++) {
-        #line 588 "./src/typechecker.am"
+        #line 576 "./src/typechecker.am"
         void* prog = Amalgame_Compiler_FullResolver_ProgramAt(self->Symbols, ip);
-        #line 589 "./src/typechecker.am"
+        #line 577 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* hit = Amalgame_Compiler_TypeChecker_FindInterfaceInProgram(self, prog, name);
-        #line 590 "./src/typechecker.am"
+        #line 578 "./src/typechecker.am"
         if (hit != NULL) {
             return hit;
         }
     }
-    #line 592 "./src/typechecker.am"
+    #line 580 "./src/typechecker.am"
     return NULL;
 }
 
 static Amalgame_Compiler_AstNode* Amalgame_Compiler_TypeChecker_FindInterfaceInProgram(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* prog, code_string name) {
-    #line 596 "./src/typechecker.am"
+    #line 584 "./src/typechecker.am"
     i64 cn = AmalgameList_count(prog->Children);
-    #line 597 "./src/typechecker.am"
+    #line 585 "./src/typechecker.am"
     for (i64 ic = 0; ic < cn; ic++) {
-        #line 598 "./src/typechecker.am"
+        #line 586 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* d = (Amalgame_Compiler_AstNode*)AmalgameList_get(prog->Children, ic);
-        #line 599 "./src/typechecker.am"
+        #line 587 "./src/typechecker.am"
         if (((d->Kind == Amalgame_Compiler_NodeKind_CLASS_DECL) && d->Flag2) && (code_string_equals(d->Name, name))) {
-            #line 600 "./src/typechecker.am"
+            #line 588 "./src/typechecker.am"
             return d;
         }
     }
-    #line 603 "./src/typechecker.am"
+    #line 591 "./src/typechecker.am"
     return NULL;
 }
 
 static AmalgameList* Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(Amalgame_Compiler_TypeChecker* self, code_string s) {
-    #line 609 "./src/typechecker.am"
+    #line 597 "./src/typechecker.am"
     AmalgameList* result = AmalgameList_new();
-    #line 610 "./src/typechecker.am"
+    #line 598 "./src/typechecker.am"
     i64 len = String_Length(s);
-    #line 611 "./src/typechecker.am"
+    #line 599 "./src/typechecker.am"
     if (len == 0) {
         return result;
     }
-    #line 612 "./src/typechecker.am"
+    #line 600 "./src/typechecker.am"
     i64 depth = 0;
-    #line 613 "./src/typechecker.am"
+    #line 601 "./src/typechecker.am"
     i64 start = 0;
-    #line 614 "./src/typechecker.am"
+    #line 602 "./src/typechecker.am"
     for (i64 i = 0; i < len; i++) {
-        #line 615 "./src/typechecker.am"
+        #line 603 "./src/typechecker.am"
         code_string c = String_CharAt1(s, i);
-        #line 616 "./src/typechecker.am"
+        #line 604 "./src/typechecker.am"
         if (code_string_equals(c, "<")) {
-            #line 617 "./src/typechecker.am"
+            #line 605 "./src/typechecker.am"
             depth = (depth + 1);
         } else if (code_string_equals(c, ">")) {
-            #line 619 "./src/typechecker.am"
+            #line 607 "./src/typechecker.am"
             depth = (depth - 1);
         } else if ((code_string_equals(c, ",")) && (depth == 0)) {
-            #line 621 "./src/typechecker.am"
+            #line 609 "./src/typechecker.am"
             code_string part = String_Trim(String_Substring(s, start, i - start));
-            #line 622 "./src/typechecker.am"
+            #line 610 "./src/typechecker.am"
             if (String_Length(part) > 0) {
                 AmalgameList_add(result, (void*)(intptr_t)(part));
             }
-            #line 623 "./src/typechecker.am"
+            #line 611 "./src/typechecker.am"
             start = (i + 1);
         }
     }
-    #line 626 "./src/typechecker.am"
+    #line 614 "./src/typechecker.am"
     code_string last = String_Trim(String_Substring(s, start, len - start));
-    #line 627 "./src/typechecker.am"
+    #line 615 "./src/typechecker.am"
     if (String_Length(last) > 0) {
         AmalgameList_add(result, (void*)(intptr_t)(last));
     }
-    #line 628 "./src/typechecker.am"
+    #line 616 "./src/typechecker.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_TypeChecker_SubstType(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 636 "./src/typechecker.am"
+    #line 624 "./src/typechecker.am"
     if (String_Length(t) == 0) {
         return t;
     }
-    #line 637 "./src/typechecker.am"
+    #line 625 "./src/typechecker.am"
     code_bool nullable = 0;
-    #line 638 "./src/typechecker.am"
+    #line 626 "./src/typechecker.am"
     code_string core = t;
-    #line 639 "./src/typechecker.am"
+    #line 627 "./src/typechecker.am"
     if (String_EndsWith(t, "?")) {
-        #line 640 "./src/typechecker.am"
+        #line 628 "./src/typechecker.am"
         nullable = 1;
-        #line 641 "./src/typechecker.am"
+        #line 629 "./src/typechecker.am"
         core = String_Substring(t, 0, String_Length(t) - 1);
     }
-    #line 643 "./src/typechecker.am"
+    #line 631 "./src/typechecker.am"
     i64 lt = String_IndexOf(core, "<");
-    #line 644 "./src/typechecker.am"
+    #line 632 "./src/typechecker.am"
     if (lt < 0) {
-        #line 645 "./src/typechecker.am"
+        #line 633 "./src/typechecker.am"
         code_string resolved = Amalgame_Compiler_TypeChecker_LookupParam(self, core);
-        #line 646 "./src/typechecker.am"
+        #line 634 "./src/typechecker.am"
         if (nullable) {
             return code_string_concat(resolved, "?");
         }
-        #line 647 "./src/typechecker.am"
+        #line 635 "./src/typechecker.am"
         return resolved;
     }
-    #line 649 "./src/typechecker.am"
+    #line 637 "./src/typechecker.am"
     code_string base = String_Substring(core, 0, lt);
-    #line 650 "./src/typechecker.am"
+    #line 638 "./src/typechecker.am"
     code_string inner = String_Substring(core, lt + 1, (String_Length(core) - lt) - 2);
-    #line 651 "./src/typechecker.am"
+    #line 639 "./src/typechecker.am"
     AmalgameList* parts = Amalgame_Compiler_TypeChecker_SplitTopLevelCommas(self, inner);
-    #line 652 "./src/typechecker.am"
+    #line 640 "./src/typechecker.am"
     code_string newInner = "";
-    #line 653 "./src/typechecker.am"
+    #line 641 "./src/typechecker.am"
     i64 n = AmalgameList_count(parts);
-    #line 654 "./src/typechecker.am"
+    #line 642 "./src/typechecker.am"
     for (i64 i = 0; i < n; i++) {
-        #line 655 "./src/typechecker.am"
+        #line 643 "./src/typechecker.am"
         if (i > 0) {
             newInner = (code_string_concat(newInner, ","));
         }
-        #line 656 "./src/typechecker.am"
+        #line 644 "./src/typechecker.am"
         newInner = (code_string_concat(newInner, Amalgame_Compiler_TypeChecker_SubstType(self, (code_string)AmalgameList_get(parts, i))));
     }
-    #line 658 "./src/typechecker.am"
+    #line 646 "./src/typechecker.am"
     code_string result = code_string_concat((code_string_concat((code_string_concat(base, "<")), newInner)), ">");
-    #line 659 "./src/typechecker.am"
+    #line 647 "./src/typechecker.am"
     if (nullable) {
         return code_string_concat(result, "?");
     }
-    #line 660 "./src/typechecker.am"
+    #line 648 "./src/typechecker.am"
     return result;
 }
 
 static code_string Amalgame_Compiler_TypeChecker_LookupParam(Amalgame_Compiler_TypeChecker* self, code_string t) {
-    #line 664 "./src/typechecker.am"
+    #line 652 "./src/typechecker.am"
     i64 n = AmalgameList_count(self->SubstParams);
-    #line 665 "./src/typechecker.am"
+    #line 653 "./src/typechecker.am"
     for (i64 i = 0; i < n; i++) {
-        #line 666 "./src/typechecker.am"
+        #line 654 "./src/typechecker.am"
         if (code_string_equals((code_string)AmalgameList_get(self->SubstParams, i), t)) {
             return (code_string)AmalgameList_get(self->SubstArgs, i);
         }
     }
-    #line 668 "./src/typechecker.am"
+    #line 656 "./src/typechecker.am"
     return t;
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckFieldDecl(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* field) {
-    #line 672 "./src/typechecker.am"
+    #line 660 "./src/typechecker.am"
     code_string fieldType = field->Str;
-    #line 673 "./src/typechecker.am"
+    #line 661 "./src/typechecker.am"
     if (field->Left != NULL) {
-        #line 674 "./src/typechecker.am"
+        #line 662 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, field->Left);
-        #line 675 "./src/typechecker.am"
+        #line 663 "./src/typechecker.am"
         code_string initType = Amalgame_Compiler_TypeChecker_GetType(self, field->Left);
-        #line 676 "./src/typechecker.am"
+        #line 664 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, fieldType, initType)) {
-            #line 677 "./src/typechecker.am"
+            #line 665 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("Field '", field->Name)), "' declared as '")), fieldType)), "' but initialised with '")), initType)), "'"), field->Left);
         }
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckMethod(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* method) {
-    #line 685 "./src/typechecker.am"
+    #line 673 "./src/typechecker.am"
     code_string retType = method->Str;
-    #line 686 "./src/typechecker.am"
+    #line 674 "./src/typechecker.am"
     code_string prevReturn = self->CurrentReturn;
-    #line 687 "./src/typechecker.am"
+    #line 675 "./src/typechecker.am"
     self->CurrentReturn = retType;
-    #line 689 "./src/typechecker.am"
+    #line 677 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_PushScope(self);
-    #line 692 "./src/typechecker.am"
+    #line 680 "./src/typechecker.am"
     i64 params = AmalgameList_count(method->Params);
-    #line 693 "./src/typechecker.am"
+    #line 681 "./src/typechecker.am"
     for (i64 i = 0; i < params; i++) {
-        #line 694 "./src/typechecker.am"
+        #line 682 "./src/typechecker.am"
         Amalgame_Compiler_AstNode* p = (Amalgame_Compiler_AstNode*)AmalgameList_get(method->Params, i);
-        #line 695 "./src/typechecker.am"
+        #line 683 "./src/typechecker.am"
         if (p->Left != NULL) {
-            #line 696 "./src/typechecker.am"
+            #line 684 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_CheckExpr(self, p->Left);
-            #line 697 "./src/typechecker.am"
+            #line 685 "./src/typechecker.am"
             code_string defType = Amalgame_Compiler_TypeChecker_GetType(self, p->Left);
-            #line 698 "./src/typechecker.am"
+            #line 686 "./src/typechecker.am"
             if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, p->Str, defType)) {
-                #line 699 "./src/typechecker.am"
+                #line 687 "./src/typechecker.am"
                 Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("Parameter '", p->Name)), "' is '")), p->Str)), "' but default is '")), defType)), "'"), p->Left);
             }
         }
-        #line 702 "./src/typechecker.am"
+        #line 690 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_DeclareLocal(self, p->Name, p->Str);
     }
-    #line 706 "./src/typechecker.am"
+    #line 694 "./src/typechecker.am"
     if (method->Body != NULL) {
-        #line 707 "./src/typechecker.am"
+        #line 695 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckBlock(self, method->Body);
     }
-    #line 710 "./src/typechecker.am"
+    #line 698 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_PopScope(self);
-    #line 711 "./src/typechecker.am"
+    #line 699 "./src/typechecker.am"
     self->CurrentReturn = prevReturn;
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckBlock(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* block) {
-    #line 717 "./src/typechecker.am"
+    #line 705 "./src/typechecker.am"
     i64 stmts = AmalgameList_count(block->Children);
-    #line 718 "./src/typechecker.am"
+    #line 706 "./src/typechecker.am"
     for (i64 i = 0; i < stmts; i++) {
-        #line 719 "./src/typechecker.am"
+        #line 707 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckStmt(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(block->Children, i));
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckStmt(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 724 "./src/typechecker.am"
+    #line 712 "./src/typechecker.am"
     Amalgame_Compiler_NodeKind k = stmt->Kind;
-    #line 725 "./src/typechecker.am"
+    #line 713 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_VAR_DECL) {
-        #line 726 "./src/typechecker.am"
+        #line 714 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckVarDecl(self, stmt);
-        #line 727 "./src/typechecker.am"
+        #line 715 "./src/typechecker.am"
         return;
     }
-    #line 729 "./src/typechecker.am"
+    #line 717 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_RETURN_STMT) {
-        #line 730 "./src/typechecker.am"
+        #line 718 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckReturn(self, stmt);
+        #line 719 "./src/typechecker.am"
+        return;
+    }
+    #line 721 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
+        #line 722 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_CheckIf(self, stmt);
+        #line 723 "./src/typechecker.am"
+        return;
+    }
+    #line 725 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_WHILE_STMT) {
+        #line 726 "./src/typechecker.am"
+        if (stmt->Cond != NULL) {
+            #line 727 "./src/typechecker.am"
+            Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Cond);
+            #line 728 "./src/typechecker.am"
+            Amalgame_Compiler_TypeChecker_CheckBool(self, stmt->Cond, "while condition");
+        }
+        #line 730 "./src/typechecker.am"
+        if (stmt->Body != NULL) {
+            Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Body);
+        }
         #line 731 "./src/typechecker.am"
         return;
     }
     #line 733 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
+    if (k == Amalgame_Compiler_NodeKind_FOR_IN_STMT) {
         #line 734 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckIf(self, stmt);
+        Amalgame_Compiler_TypeChecker_CheckForIn(self, stmt);
         #line 735 "./src/typechecker.am"
         return;
     }
     #line 737 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_WHILE_STMT) {
-        #line 738 "./src/typechecker.am"
-        if (stmt->Cond != NULL) {
-            #line 739 "./src/typechecker.am"
-            Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Cond);
-            #line 740 "./src/typechecker.am"
-            Amalgame_Compiler_TypeChecker_CheckBool(self, stmt->Cond, "while condition");
-        }
-        #line 742 "./src/typechecker.am"
-        if (stmt->Body != NULL) {
-            Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Body);
-        }
-        #line 743 "./src/typechecker.am"
-        return;
-    }
-    #line 745 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_FOR_IN_STMT) {
-        #line 746 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckForIn(self, stmt);
-        #line 747 "./src/typechecker.am"
-        return;
-    }
-    #line 749 "./src/typechecker.am"
     if ((k == Amalgame_Compiler_NodeKind_BREAK_STMT) || (k == Amalgame_Compiler_NodeKind_CONTINUE_STMT)) {
         return;
     }
-    #line 750 "./src/typechecker.am"
+    #line 738 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_INLINE_C) {
-        #line 752 "./src/typechecker.am"
+        #line 740 "./src/typechecker.am"
         return;
     }
-    #line 754 "./src/typechecker.am"
+    #line 742 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_TRY_STMT) {
-        #line 755 "./src/typechecker.am"
+        #line 743 "./src/typechecker.am"
         if (stmt->Body != NULL) {
             Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Body);
         }
-        #line 756 "./src/typechecker.am"
+        #line 744 "./src/typechecker.am"
         if (stmt->Else != NULL) {
-            #line 757 "./src/typechecker.am"
+            #line 745 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_PushScope(self);
-            #line 758 "./src/typechecker.am"
+            #line 746 "./src/typechecker.am"
             if (String_Length(stmt->Name) > 0) {
-                #line 759 "./src/typechecker.am"
+                #line 747 "./src/typechecker.am"
                 Amalgame_Compiler_TypeChecker_DeclareLocal(self, stmt->Name, "void*");
             }
-            #line 761 "./src/typechecker.am"
+            #line 749 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Else);
-            #line 762 "./src/typechecker.am"
+            #line 750 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_PopScope(self);
         }
-        #line 764 "./src/typechecker.am"
+        #line 752 "./src/typechecker.am"
         if (stmt->Cond != NULL) {
             Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Cond);
         }
-        #line 765 "./src/typechecker.am"
+        #line 753 "./src/typechecker.am"
         return;
     }
-    #line 767 "./src/typechecker.am"
+    #line 755 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_THROW_STMT) {
-        #line 768 "./src/typechecker.am"
+        #line 756 "./src/typechecker.am"
         if (stmt->Left != NULL) {
             Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
         }
-        #line 769 "./src/typechecker.am"
+        #line 757 "./src/typechecker.am"
         return;
     }
-    #line 772 "./src/typechecker.am"
+    #line 760 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
-        #line 773 "./src/typechecker.am"
+        #line 761 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckAssign(self, stmt);
-        #line 774 "./src/typechecker.am"
+        #line 762 "./src/typechecker.am"
         return;
     }
-    #line 777 "./src/typechecker.am"
+    #line 765 "./src/typechecker.am"
     if (code_string_equals(stmt->Name, "__match__")) {
-        #line 778 "./src/typechecker.am"
+        #line 766 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckMatch(self, stmt);
-        #line 779 "./src/typechecker.am"
+        #line 767 "./src/typechecker.am"
         return;
     }
-    #line 782 "./src/typechecker.am"
+    #line 770 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckVarDecl(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 786 "./src/typechecker.am"
+    #line 774 "./src/typechecker.am"
     code_string declaredType = stmt->Str;
-    #line 787 "./src/typechecker.am"
+    #line 775 "./src/typechecker.am"
     code_string inferredType = "?";
-    #line 788 "./src/typechecker.am"
+    #line 776 "./src/typechecker.am"
     if (stmt->Left != NULL) {
-        #line 789 "./src/typechecker.am"
+        #line 777 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
-        #line 790 "./src/typechecker.am"
+        #line 778 "./src/typechecker.am"
         inferredType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
     }
-    #line 796 "./src/typechecker.am"
+    #line 784 "./src/typechecker.am"
     if (code_string_equals(declaredType, "__tuple_destructure__")) {
-        #line 797 "./src/typechecker.am"
+        #line 785 "./src/typechecker.am"
         return;
     }
-    #line 799 "./src/typechecker.am"
+    #line 787 "./src/typechecker.am"
     code_string finalType = (String_Length(declaredType) > 0 ? declaredType : inferredType);
-    #line 800 "./src/typechecker.am"
+    #line 788 "./src/typechecker.am"
     if ((String_Length(declaredType) > 0) && (!code_string_equals(inferredType, "?"))) {
-        #line 801 "./src/typechecker.am"
+        #line 789 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, declaredType, inferredType)) {
-            #line 802 "./src/typechecker.am"
+            #line 790 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("Cannot assign '", inferredType)), "' to '")), stmt->Name)), "' of type '")), declaredType)), "'"), stmt);
         }
     }
-    #line 806 "./src/typechecker.am"
+    #line 794 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_DeclareLocal(self, stmt->Name, finalType);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckReturn(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 813 "./src/typechecker.am"
+    #line 801 "./src/typechecker.am"
     code_bool isBare = stmt->Left == NULL;
-    #line 814 "./src/typechecker.am"
+    #line 802 "./src/typechecker.am"
     if (!isBare && (stmt->Left != NULL)) {
-        #line 815 "./src/typechecker.am"
+        #line 803 "./src/typechecker.am"
         if ((stmt->Left->Kind == Amalgame_Compiler_NodeKind_IDENTIFIER) && (code_string_equals(stmt->Left->Name, "_unknown_"))) {
-            #line 816 "./src/typechecker.am"
+            #line 804 "./src/typechecker.am"
             isBare = 1;
         }
     }
-    #line 819 "./src/typechecker.am"
+    #line 807 "./src/typechecker.am"
     if (isBare) {
-        #line 821 "./src/typechecker.am"
+        #line 809 "./src/typechecker.am"
         if ((!code_string_equals(self->CurrentReturn, "void")) && (!code_string_equals(self->CurrentReturn, "?"))) {
-            #line 822 "./src/typechecker.am"
+            #line 810 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat("Empty return in method expecting '", self->CurrentReturn)), "'"), stmt);
         }
-        #line 824 "./src/typechecker.am"
+        #line 812 "./src/typechecker.am"
         return;
     }
-    #line 826 "./src/typechecker.am"
+    #line 814 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
-    #line 827 "./src/typechecker.am"
+    #line 815 "./src/typechecker.am"
     code_string valType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
-    #line 828 "./src/typechecker.am"
+    #line 816 "./src/typechecker.am"
     if (code_string_equals(self->CurrentReturn, "void")) {
-        #line 829 "./src/typechecker.am"
+        #line 817 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_Error(self, "Cannot return a value from a void method", stmt);
     } else if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, self->CurrentReturn, valType)) {
-        #line 831 "./src/typechecker.am"
+        #line 819 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("Return type mismatch: expected '", self->CurrentReturn)), "', got '")), valType)), "'"), stmt);
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckIf(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 836 "./src/typechecker.am"
+    #line 824 "./src/typechecker.am"
     if (stmt->Cond != NULL) {
-        #line 837 "./src/typechecker.am"
+        #line 825 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Cond);
-        #line 838 "./src/typechecker.am"
+        #line 826 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckBool(self, stmt->Cond, "if condition");
     }
-    #line 840 "./src/typechecker.am"
+    #line 828 "./src/typechecker.am"
     if (stmt->Body != NULL) {
         Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Body);
     }
-    #line 841 "./src/typechecker.am"
+    #line 829 "./src/typechecker.am"
     if (stmt->Else != NULL) {
-        #line 842 "./src/typechecker.am"
+        #line 830 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckElseBranch(self, stmt->Else);
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckElseBranch(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* branch) {
-    #line 847 "./src/typechecker.am"
+    #line 835 "./src/typechecker.am"
     if (branch == NULL) {
         return;
     }
-    #line 848 "./src/typechecker.am"
+    #line 836 "./src/typechecker.am"
     Amalgame_Compiler_NodeKind bk = branch->Kind;
-    #line 849 "./src/typechecker.am"
+    #line 837 "./src/typechecker.am"
     if (bk == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 850 "./src/typechecker.am"
+        #line 838 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckIf(self, branch);
     } else {
-        #line 852 "./src/typechecker.am"
+        #line 840 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckBlock(self, branch);
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckForIn(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 859 "./src/typechecker.am"
+    #line 847 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_PushScope(self);
-    #line 860 "./src/typechecker.am"
+    #line 848 "./src/typechecker.am"
     if (stmt->Left != NULL) {
-        #line 861 "./src/typechecker.am"
+        #line 849 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
-        #line 862 "./src/typechecker.am"
+        #line 850 "./src/typechecker.am"
         code_string colType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
-        #line 863 "./src/typechecker.am"
+        #line 851 "./src/typechecker.am"
         code_string elemType = Amalgame_Compiler_TypeChecker_CollectionElementType(self, colType);
-        #line 864 "./src/typechecker.am"
+        #line 852 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_DeclareLocal(self, stmt->Name, elemType);
     }
-    #line 866 "./src/typechecker.am"
+    #line 854 "./src/typechecker.am"
     if (stmt->Body != NULL) {
         Amalgame_Compiler_TypeChecker_CheckBlock(self, stmt->Body);
     }
-    #line 867 "./src/typechecker.am"
+    #line 855 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_PopScope(self);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckAssign(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 871 "./src/typechecker.am"
+    #line 859 "./src/typechecker.am"
     if (stmt->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
     }
-    #line 872 "./src/typechecker.am"
+    #line 860 "./src/typechecker.am"
     if (stmt->Right != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Right);
     }
-    #line 873 "./src/typechecker.am"
+    #line 861 "./src/typechecker.am"
     if ((stmt->Left != NULL) && (stmt->Right != NULL)) {
-        #line 874 "./src/typechecker.am"
+        #line 862 "./src/typechecker.am"
         code_string targetType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Left);
-        #line 875 "./src/typechecker.am"
+        #line 863 "./src/typechecker.am"
         code_string valueType = Amalgame_Compiler_TypeChecker_GetType(self, stmt->Right);
-        #line 876 "./src/typechecker.am"
+        #line 864 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsAssignable(self, targetType, valueType)) {
-            #line 877 "./src/typechecker.am"
+            #line 865 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("Cannot assign '", valueType)), "' to '")), targetType)), "'"), stmt);
         }
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckMatch(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* stmt) {
-    #line 884 "./src/typechecker.am"
+    #line 872 "./src/typechecker.am"
     if (stmt->Left != NULL) {
-        #line 885 "./src/typechecker.am"
+        #line 873 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, stmt->Left);
     }
-    #line 887 "./src/typechecker.am"
+    #line 875 "./src/typechecker.am"
     i64 armCount = AmalgameList_count(stmt->Children);
-    #line 888 "./src/typechecker.am"
+    #line 876 "./src/typechecker.am"
     for (i64 i = 0; i < armCount; i++) {
-        #line 889 "./src/typechecker.am"
+        #line 877 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckMatchArm(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(stmt->Children, i));
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckMatchArm(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* arm) {
-    #line 896 "./src/typechecker.am"
+    #line 884 "./src/typechecker.am"
     if (arm == NULL) {
         return;
     }
-    #line 897 "./src/typechecker.am"
+    #line 885 "./src/typechecker.am"
     Amalgame_Compiler_AstNode* body = arm->Right;
-    #line 898 "./src/typechecker.am"
+    #line 886 "./src/typechecker.am"
     if (body == NULL) {
         return;
     }
-    #line 899 "./src/typechecker.am"
+    #line 887 "./src/typechecker.am"
     Amalgame_Compiler_NodeKind bk = body->Kind;
-    #line 900 "./src/typechecker.am"
+    #line 888 "./src/typechecker.am"
     if (bk == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 901 "./src/typechecker.am"
+        #line 889 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckBlock(self, body);
     } else {
-        #line 903 "./src/typechecker.am"
+        #line 891 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckStmt(self, body);
     }
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 908 "./src/typechecker.am"
+    #line 896 "./src/typechecker.am"
     if (expr == NULL) {
         return;
     }
-    #line 909 "./src/typechecker.am"
+    #line 897 "./src/typechecker.am"
     Amalgame_Compiler_NodeKind k = expr->Kind;
-    #line 911 "./src/typechecker.am"
+    #line 899 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_LITERAL_INT) {
-        #line 912 "./src/typechecker.am"
+        #line 900 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_SetType(self, expr, "int");
+        #line 901 "./src/typechecker.am"
+        return;
+    }
+    #line 903 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_LITERAL_FLOAT) {
+        #line 904 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_SetType(self, expr, "float");
+        #line 905 "./src/typechecker.am"
+        return;
+    }
+    #line 907 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
+        #line 908 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_SetType(self, expr, "string");
+        #line 909 "./src/typechecker.am"
+        return;
+    }
+    #line 911 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_LITERAL_BOOL) {
+        #line 912 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_SetType(self, expr, "bool");
         #line 913 "./src/typechecker.am"
         return;
     }
     #line 915 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_LITERAL_FLOAT) {
+    if (k == Amalgame_Compiler_NodeKind_LITERAL_NULL) {
         #line 916 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_SetType(self, expr, "float");
+        Amalgame_Compiler_TypeChecker_SetType(self, expr, "null");
         #line 917 "./src/typechecker.am"
         return;
     }
     #line 919 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_LITERAL_STRING) {
+    if (k == Amalgame_Compiler_NodeKind_THIS_EXPR) {
         #line 920 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_SetType(self, expr, "string");
+        Amalgame_Compiler_TypeChecker_SetType(self, expr, self->CurrentClass);
         #line 921 "./src/typechecker.am"
         return;
     }
     #line 923 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_LITERAL_BOOL) {
-        #line 924 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_SetType(self, expr, "bool");
-        #line 925 "./src/typechecker.am"
-        return;
-    }
-    #line 927 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_LITERAL_NULL) {
-        #line 928 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_SetType(self, expr, "null");
-        #line 929 "./src/typechecker.am"
-        return;
-    }
-    #line 931 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_THIS_EXPR) {
-        #line 932 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_SetType(self, expr, self->CurrentClass);
-        #line 933 "./src/typechecker.am"
-        return;
-    }
-    #line 935 "./src/typechecker.am"
     if (k == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-        #line 937 "./src/typechecker.am"
+        #line 925 "./src/typechecker.am"
         code_string t = Amalgame_Compiler_TypeChecker_LookupLocal(self, expr->Name);
-        #line 938 "./src/typechecker.am"
+        #line 926 "./src/typechecker.am"
         if (String_Length(t) == 0) {
-            #line 939 "./src/typechecker.am"
+            #line 927 "./src/typechecker.am"
             t = Amalgame_Compiler_TypeChecker_SymbolTypeName(self, expr->Name);
         }
-        #line 941 "./src/typechecker.am"
+        #line 929 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_SetType(self, expr, t);
+        #line 930 "./src/typechecker.am"
+        return;
+    }
+    #line 932 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_BINARY) {
+        #line 933 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_CheckBinaryExpr(self, expr);
+        #line 934 "./src/typechecker.am"
+        return;
+    }
+    #line 936 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_UNARY) {
+        #line 937 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_CheckUnaryExpr(self, expr);
+        #line 938 "./src/typechecker.am"
+        return;
+    }
+    #line 940 "./src/typechecker.am"
+    if (k == Amalgame_Compiler_NodeKind_MEMBER) {
+        #line 941 "./src/typechecker.am"
+        Amalgame_Compiler_TypeChecker_CheckMemberExpr(self, expr);
         #line 942 "./src/typechecker.am"
         return;
     }
     #line 944 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_BINARY) {
+    if (k == Amalgame_Compiler_NodeKind_CALL) {
         #line 945 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckBinaryExpr(self, expr);
+        Amalgame_Compiler_TypeChecker_CheckCallExpr(self, expr);
         #line 946 "./src/typechecker.am"
         return;
     }
     #line 948 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_UNARY) {
+    if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
         #line 949 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckUnaryExpr(self, expr);
+        Amalgame_Compiler_TypeChecker_CheckNewExpr(self, expr);
         #line 950 "./src/typechecker.am"
         return;
     }
     #line 952 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_MEMBER) {
+    if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
         #line 953 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckMemberExpr(self, expr);
+        Amalgame_Compiler_TypeChecker_CheckIndexExpr(self, expr);
         #line 954 "./src/typechecker.am"
         return;
     }
     #line 956 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_CALL) {
+    if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
         #line 957 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckCallExpr(self, expr);
+        Amalgame_Compiler_TypeChecker_CheckAssign(self, expr);
         #line 958 "./src/typechecker.am"
         return;
     }
     #line 960 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_NEW_EXPR) {
-        #line 961 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckNewExpr(self, expr);
+    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
         #line 962 "./src/typechecker.am"
-        return;
-    }
-    #line 964 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_INDEX_EXPR) {
-        #line 965 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckIndexExpr(self, expr);
+        if (expr->Cond != NULL) {
+            #line 963 "./src/typechecker.am"
+            Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Cond);
+            #line 964 "./src/typechecker.am"
+            Amalgame_Compiler_TypeChecker_CheckBool(self, expr->Cond, "if condition");
+        }
         #line 966 "./src/typechecker.am"
-        return;
-    }
-    #line 968 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_ASSIGN) {
+        code_string thenType = Amalgame_Compiler_TypeChecker_CheckIfBranch(self, expr->Body);
+        #line 967 "./src/typechecker.am"
+        code_string elseType = Amalgame_Compiler_TypeChecker_CheckIfBranch(self, expr->Else);
+        #line 968 "./src/typechecker.am"
+        code_string ifType = (!code_string_equals(thenType, "?") ? thenType : elseType);
         #line 969 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_CheckAssign(self, expr);
+        Amalgame_Compiler_TypeChecker_SetType(self, expr, ifType);
         #line 970 "./src/typechecker.am"
         return;
     }
-    #line 972 "./src/typechecker.am"
-    if (k == Amalgame_Compiler_NodeKind_IF_STMT) {
-        #line 974 "./src/typechecker.am"
-        if (expr->Cond != NULL) {
-            #line 975 "./src/typechecker.am"
-            Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Cond);
-            #line 976 "./src/typechecker.am"
-            Amalgame_Compiler_TypeChecker_CheckBool(self, expr->Cond, "if condition");
-        }
-        #line 978 "./src/typechecker.am"
-        code_string thenType = Amalgame_Compiler_TypeChecker_CheckIfBranch(self, expr->Body);
-        #line 979 "./src/typechecker.am"
-        code_string elseType = Amalgame_Compiler_TypeChecker_CheckIfBranch(self, expr->Else);
-        #line 980 "./src/typechecker.am"
-        code_string ifType = (!code_string_equals(thenType, "?") ? thenType : elseType);
-        #line 981 "./src/typechecker.am"
-        Amalgame_Compiler_TypeChecker_SetType(self, expr, ifType);
-        #line 982 "./src/typechecker.am"
-        return;
-    }
-    #line 985 "./src/typechecker.am"
+    #line 973 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, "?");
 }
 
 static code_string Amalgame_Compiler_TypeChecker_CheckIfBranch(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* block) {
-    #line 991 "./src/typechecker.am"
+    #line 979 "./src/typechecker.am"
     if (block == NULL) {
         return "?";
     }
-    #line 992 "./src/typechecker.am"
+    #line 980 "./src/typechecker.am"
     if (block->Kind == Amalgame_Compiler_NodeKind_BLOCK) {
-        #line 993 "./src/typechecker.am"
+        #line 981 "./src/typechecker.am"
         AmalgameList* kids = block->Children;
-        #line 994 "./src/typechecker.am"
+        #line 982 "./src/typechecker.am"
         if (AmalgameList_count(kids) > 0) {
-            #line 995 "./src/typechecker.am"
+            #line 983 "./src/typechecker.am"
             Amalgame_Compiler_AstNode* first = (Amalgame_Compiler_AstNode*)AmalgameList_get(kids, 0);
-            #line 996 "./src/typechecker.am"
+            #line 984 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_CheckExpr(self, first);
-            #line 997 "./src/typechecker.am"
+            #line 985 "./src/typechecker.am"
             return Amalgame_Compiler_TypeChecker_GetType(self, first);
         }
-        #line 999 "./src/typechecker.am"
+        #line 987 "./src/typechecker.am"
         return "?";
     }
-    #line 1001 "./src/typechecker.am"
+    #line 989 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_CheckExpr(self, block);
-    #line 1002 "./src/typechecker.am"
+    #line 990 "./src/typechecker.am"
     return Amalgame_Compiler_TypeChecker_GetType(self, block);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckBinaryExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1006 "./src/typechecker.am"
+    #line 994 "./src/typechecker.am"
     code_string op = expr->Str;
-    #line 1007 "./src/typechecker.am"
+    #line 995 "./src/typechecker.am"
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    #line 1008 "./src/typechecker.am"
+    #line 996 "./src/typechecker.am"
     if (expr->Right != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Right);
     }
-    #line 1009 "./src/typechecker.am"
+    #line 997 "./src/typechecker.am"
     code_string lt = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
-    #line 1010 "./src/typechecker.am"
+    #line 998 "./src/typechecker.am"
     code_string rt = (expr->Right != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Right) : "?");
-    #line 1013 "./src/typechecker.am"
+    #line 1001 "./src/typechecker.am"
     if ((code_string_equals(op, "&&")) || (code_string_equals(op, "||"))) {
-        #line 1014 "./src/typechecker.am"
+        #line 1002 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsBool(self, lt)) {
-            #line 1015 "./src/typechecker.am"
+            #line 1003 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("Left operand of '", op)), "' must be bool, got '")), lt)), "'"), expr->Left);
         }
-        #line 1017 "./src/typechecker.am"
+        #line 1005 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsBool(self, rt)) {
-            #line 1018 "./src/typechecker.am"
+            #line 1006 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("Right operand of '", op)), "' must be bool, got '")), rt)), "'"), expr->Right);
         }
     }
-    #line 1022 "./src/typechecker.am"
+    #line 1010 "./src/typechecker.am"
     if (((((code_string_equals(op, "-")) || (code_string_equals(op, "*"))) || (code_string_equals(op, "/"))) || (code_string_equals(op, "%"))) || (code_string_equals(op, "^"))) {
-        #line 1023 "./src/typechecker.am"
+        #line 1011 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsNumeric(self, lt) && (!code_string_equals(lt, "?"))) {
-            #line 1024 "./src/typechecker.am"
+            #line 1012 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("Operator '", op)), "' requires numeric operands, got '")), lt)), "'"), expr->Left);
         }
-        #line 1026 "./src/typechecker.am"
+        #line 1014 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsNumeric(self, rt) && (!code_string_equals(rt, "?"))) {
-            #line 1027 "./src/typechecker.am"
+            #line 1015 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat("Operator '", op)), "' requires numeric operands, got '")), rt)), "'"), expr->Right);
         }
     }
-    #line 1031 "./src/typechecker.am"
+    #line 1019 "./src/typechecker.am"
     if (code_string_equals(op, "??")) {
-        #line 1032 "./src/typechecker.am"
+        #line 1020 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsNullable(self, lt) && (!code_string_equals(lt, "?"))) {
-            #line 1033 "./src/typechecker.am"
+            #line 1021 "./src/typechecker.am"
             code_string qqOp = "?";
-            #line 1034 "./src/typechecker.am"
+            #line 1022 "./src/typechecker.am"
             code_string qqOp2 = "?";
-            #line 1035 "./src/typechecker.am"
+            #line 1023 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat("Left operand of '", qqOp)), qqOp2)), "' must be nullable, got '")), lt)), "'"), expr->Left);
         }
     }
-    #line 1038 "./src/typechecker.am"
+    #line 1026 "./src/typechecker.am"
     code_string result = Amalgame_Compiler_TypeChecker_BinaryResultType(self, op, lt, rt);
-    #line 1039 "./src/typechecker.am"
+    #line 1027 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, result);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckUnaryExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1043 "./src/typechecker.am"
+    #line 1031 "./src/typechecker.am"
     code_string op = expr->Str;
-    #line 1044 "./src/typechecker.am"
+    #line 1032 "./src/typechecker.am"
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    #line 1045 "./src/typechecker.am"
+    #line 1033 "./src/typechecker.am"
     code_string ot = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
-    #line 1046 "./src/typechecker.am"
+    #line 1034 "./src/typechecker.am"
     if (code_string_equals(op, "!")) {
-        #line 1047 "./src/typechecker.am"
+        #line 1035 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsBool(self, ot)) {
-            #line 1048 "./src/typechecker.am"
+            #line 1036 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat("Operator '!' requires bool, got '", ot)), "'"), expr->Left);
         }
-        #line 1050 "./src/typechecker.am"
+        #line 1038 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_SetType(self, expr, "bool");
-        #line 1051 "./src/typechecker.am"
+        #line 1039 "./src/typechecker.am"
         return;
     }
-    #line 1053 "./src/typechecker.am"
+    #line 1041 "./src/typechecker.am"
     if (code_string_equals(op, "-")) {
-        #line 1054 "./src/typechecker.am"
+        #line 1042 "./src/typechecker.am"
         if (!Amalgame_Compiler_TypeChecker_IsNumeric(self, ot) && (!code_string_equals(ot, "?"))) {
-            #line 1055 "./src/typechecker.am"
+            #line 1043 "./src/typechecker.am"
             Amalgame_Compiler_TypeChecker_Error(self, code_string_concat((code_string_concat("Unary '-' requires numeric, got '", ot)), "'"), expr->Left);
         }
-        #line 1057 "./src/typechecker.am"
+        #line 1045 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_SetType(self, expr, ot);
-        #line 1058 "./src/typechecker.am"
+        #line 1046 "./src/typechecker.am"
         return;
     }
-    #line 1060 "./src/typechecker.am"
+    #line 1048 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, ot);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckMemberExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1065 "./src/typechecker.am"
+    #line 1053 "./src/typechecker.am"
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    #line 1066 "./src/typechecker.am"
+    #line 1054 "./src/typechecker.am"
     code_string targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
-    #line 1067 "./src/typechecker.am"
+    #line 1055 "./src/typechecker.am"
     code_string baseType = targetType;
-    #line 1069 "./src/typechecker.am"
+    #line 1057 "./src/typechecker.am"
     if (String_EndsWith(baseType, "?")) {
-        #line 1070 "./src/typechecker.am"
+        #line 1058 "./src/typechecker.am"
         baseType = String_Substring(baseType, 0, String_Length(baseType) - 1);
     }
-    #line 1073 "./src/typechecker.am"
+    #line 1061 "./src/typechecker.am"
     if (String_EndsWith(baseType, "*")) {
-        #line 1074 "./src/typechecker.am"
+        #line 1062 "./src/typechecker.am"
         baseType = String_Substring(baseType, 0, String_Length(baseType) - 1);
     }
-    #line 1076 "./src/typechecker.am"
+    #line 1064 "./src/typechecker.am"
     code_string memberType = "?";
-    #line 1077 "./src/typechecker.am"
+    #line 1065 "./src/typechecker.am"
     if ((String_Length(baseType) > 0) && (!code_string_equals(baseType, "?"))) {
-        #line 1078 "./src/typechecker.am"
+        #line 1066 "./src/typechecker.am"
         memberType = Amalgame_Compiler_FullResolver_GetMemberType(self->Symbols, baseType, expr->Name);
     }
-    #line 1080 "./src/typechecker.am"
+    #line 1068 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, memberType);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckCallExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1085 "./src/typechecker.am"
+    #line 1073 "./src/typechecker.am"
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    #line 1086 "./src/typechecker.am"
+    #line 1074 "./src/typechecker.am"
     i64 argc = AmalgameList_count(expr->Args);
-    #line 1087 "./src/typechecker.am"
+    #line 1075 "./src/typechecker.am"
     for (i64 i = 0; i < argc; i++) {
-        #line 1088 "./src/typechecker.am"
+        #line 1076 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
     }
-    #line 1091 "./src/typechecker.am"
+    #line 1079 "./src/typechecker.am"
     code_string calleeType = "?";
-    #line 1092 "./src/typechecker.am"
+    #line 1080 "./src/typechecker.am"
     Amalgame_Compiler_AstNode* callee = expr->Left;
-    #line 1093 "./src/typechecker.am"
+    #line 1081 "./src/typechecker.am"
     if (callee != NULL) {
-        #line 1094 "./src/typechecker.am"
+        #line 1082 "./src/typechecker.am"
         Amalgame_Compiler_NodeKind calleeKind = callee->Kind;
-        #line 1095 "./src/typechecker.am"
+        #line 1083 "./src/typechecker.am"
         if (calleeKind == Amalgame_Compiler_NodeKind_IDENTIFIER) {
-            #line 1096 "./src/typechecker.am"
+            #line 1084 "./src/typechecker.am"
             calleeType = Amalgame_Compiler_TypeChecker_SymbolTypeName(self, callee->Name);
         } else if (calleeKind == Amalgame_Compiler_NodeKind_MEMBER) {
-            #line 1098 "./src/typechecker.am"
+            #line 1086 "./src/typechecker.am"
             calleeType = Amalgame_Compiler_TypeChecker_GetType(self, callee);
         }
     }
-    #line 1110 "./src/typechecker.am"
+    #line 1098 "./src/typechecker.am"
     if ((code_string_equals(calleeType, "Closure")) || (code_string_equals(calleeType, "AmalgameClosure*"))) {
-        #line 1111 "./src/typechecker.am"
+        #line 1099 "./src/typechecker.am"
         calleeType = "?";
     } else if (String_StartsWith(calleeType, "Closure<") && String_EndsWith(calleeType, ">")) {
-        #line 1113 "./src/typechecker.am"
+        #line 1101 "./src/typechecker.am"
         code_string inner = String_Substring(calleeType, 8, String_Length(calleeType) - 9);
-        #line 1117 "./src/typechecker.am"
+        #line 1105 "./src/typechecker.am"
         i64 nin = String_Length(inner);
-        #line 1118 "./src/typechecker.am"
+        #line 1106 "./src/typechecker.am"
         i64 depth = 0;
-        #line 1119 "./src/typechecker.am"
+        #line 1107 "./src/typechecker.am"
         i64 lastComma = -1;
-        #line 1120 "./src/typechecker.am"
+        #line 1108 "./src/typechecker.am"
         for (i64 i = 0; i < nin; i++) {
-            #line 1121 "./src/typechecker.am"
+            #line 1109 "./src/typechecker.am"
             code_string ch = String_Substring(inner, i, 1);
-            #line 1122 "./src/typechecker.am"
+            #line 1110 "./src/typechecker.am"
             if (code_string_equals(ch, "<")) {
                 depth = (depth + 1);
             } else if (code_string_equals(ch, ">")) {
-                #line 1123 "./src/typechecker.am"
+                #line 1111 "./src/typechecker.am"
                 depth = (depth - 1);
             } else if ((code_string_equals(ch, ",")) && (depth == 0)) {
-                #line 1124 "./src/typechecker.am"
+                #line 1112 "./src/typechecker.am"
                 lastComma = i;
             }
         }
-        #line 1126 "./src/typechecker.am"
+        #line 1114 "./src/typechecker.am"
         if (lastComma >= 0) {
-            #line 1127 "./src/typechecker.am"
+            #line 1115 "./src/typechecker.am"
             code_string rRaw = String_Substring(inner, lastComma + 1, (nin - lastComma) - 1);
-            #line 1128 "./src/typechecker.am"
+            #line 1116 "./src/typechecker.am"
             calleeType = String_Trim(rRaw);
         } else {
-            #line 1131 "./src/typechecker.am"
+            #line 1119 "./src/typechecker.am"
             calleeType = String_Trim(inner);
         }
     }
-    #line 1134 "./src/typechecker.am"
+    #line 1122 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, calleeType);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckNewExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1139 "./src/typechecker.am"
+    #line 1127 "./src/typechecker.am"
     i64 argc = AmalgameList_count(expr->Args);
-    #line 1140 "./src/typechecker.am"
+    #line 1128 "./src/typechecker.am"
     for (i64 i = 0; i < argc; i++) {
-        #line 1141 "./src/typechecker.am"
+        #line 1129 "./src/typechecker.am"
         Amalgame_Compiler_TypeChecker_CheckExpr(self, (Amalgame_Compiler_AstNode*)AmalgameList_get(expr->Args, i));
     }
-    #line 1143 "./src/typechecker.am"
+    #line 1131 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, expr->Name);
 }
 
 static void Amalgame_Compiler_TypeChecker_CheckIndexExpr(Amalgame_Compiler_TypeChecker* self, Amalgame_Compiler_AstNode* expr) {
-    #line 1147 "./src/typechecker.am"
+    #line 1135 "./src/typechecker.am"
     if (expr->Left != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Left);
     }
-    #line 1148 "./src/typechecker.am"
+    #line 1136 "./src/typechecker.am"
     if (expr->Right != NULL) {
         Amalgame_Compiler_TypeChecker_CheckExpr(self, expr->Right);
     }
-    #line 1149 "./src/typechecker.am"
+    #line 1137 "./src/typechecker.am"
     code_string targetType = (expr->Left != NULL ? Amalgame_Compiler_TypeChecker_GetType(self, expr->Left) : "?");
-    #line 1150 "./src/typechecker.am"
+    #line 1138 "./src/typechecker.am"
     code_string elemType = Amalgame_Compiler_TypeChecker_CollectionElementType(self, targetType);
-    #line 1151 "./src/typechecker.am"
+    #line 1139 "./src/typechecker.am"
     Amalgame_Compiler_TypeChecker_SetType(self, expr, elemType);
 }
 
 code_bool Amalgame_Compiler_TypeChecker_HasErrors(Amalgame_Compiler_TypeChecker* self) {
-    #line 1157 "./src/typechecker.am"
+    #line 1145 "./src/typechecker.am"
     return AmalgameList_count(self->Errors) > 0;
 }
 
 code_string Amalgame_Compiler_TypeChecker_FormatErrors(Amalgame_Compiler_TypeChecker* self) {
-    #line 1161 "./src/typechecker.am"
+    #line 1149 "./src/typechecker.am"
     code_string result = "";
-    #line 1162 "./src/typechecker.am"
+    #line 1150 "./src/typechecker.am"
     i64 count = AmalgameList_count(self->Errors);
-    #line 1163 "./src/typechecker.am"
+    #line 1151 "./src/typechecker.am"
     for (i64 i = 0; i < count; i++) {
-        #line 1164 "./src/typechecker.am"
+        #line 1152 "./src/typechecker.am"
         Amalgame_Compiler_TypeError* e = (Amalgame_Compiler_TypeError*)AmalgameList_get(self->Errors, i);
-        #line 1165 "./src/typechecker.am"
+        #line 1153 "./src/typechecker.am"
         result = (code_string_concat(result, Amalgame_Compiler_TypeError_ToString(e)));
     }
-    #line 1167 "./src/typechecker.am"
+    #line 1155 "./src/typechecker.am"
     return result;
 }
 
@@ -25053,12 +25025,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "f0cae90c";
+    return "4e445a4d";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-05-31T16:56:38Z";
+    return "2026-05-31T17:33:14Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
