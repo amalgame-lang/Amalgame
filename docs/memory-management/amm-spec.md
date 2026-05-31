@@ -1,11 +1,24 @@
 # AMM — Amalgame Memory Model
-## Spécification v0.4
+## Spécification v0.4 (DESIGN / ROADMAP — non implémenté)
 
-> AMM est le modèle mémoire natif d'Amalgame. Il repose sur un système de **lifetimes automatiques** inférés par le compilateur, complétés par des lifetimes déclarables et des lambdas de libération pour les cas métier complexes. Zéro GC, zéro annotation obligatoire, zéro dépendance externe.
+> ⚠️ **Statut : proposition de design, PAS encore implémentée.**
+> AMM décrit le modèle mémoire *cible* d'Amalgame. À ce jour le
+> compilateur `amc` n'implémente **aucun** de ces mécanismes
+> (lifetimes inférés, régions, move semantics) : le runtime actuel
+> utilise le **Boehm GC** (`runtime/_runtime.h`). AMM est planifié
+> pour une version future (voir `amm-roadmap.md`). Tout ce qui suit
+> est un objectif de conception, pas une fonctionnalité disponible.
+
+> AMM *vise* à être le modèle mémoire natif d'Amalgame, reposant sur un système de **lifetimes automatiques** inférés par le compilateur, complétés par des lifetimes déclarables et des lambdas de libération pour les cas métier complexes : zéro GC, zéro annotation obligatoire, zéro dépendance externe.
 
 ---
 
-## Tableau comparatif
+## Tableau comparatif (objectifs de conception, non mesurés)
+
+> ⚠️ Ce tableau compare les **objectifs visés** d'AMM aux modèles
+> existants. Les colonnes AMM sont des cibles de design, pas des
+> résultats mesurés sur une implémentation — celle-ci n'existe pas
+> encore.
 
 | Critère | GC classique | Vala | Go | Swift | Nim | Zig | Rust | **AMM** |
 |---------|:-----------:|:----:|:--:|:-----:|:---:|:---:|:----:|:-------:|
