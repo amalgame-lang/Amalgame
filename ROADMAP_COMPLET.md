@@ -2272,11 +2272,32 @@ même jour sur ces repos.
 ### Documentation
 - [x] User guide (`docs/guide/`)
 - [x] README that doesn't lie about features
-- [ ] Static site (docs.amalgame-lang.org)
+- [x] Cookbook of idiomatic snippets (`docs/guide/10-cookbook.md`)
+- [x] **Offline guide delivery (overhaul Phase 0, 2026-06-01)** — the
+      full `docs/guide/**` now ships in the release tarball (was: only
+      `02-language-tour.md`, staged for the LLM commands), readable
+      offline at `<prefix>/share/amalgame/docs/guide/` (terminal/SSH/
+      Pi-friendly). PDF release now includes ch. 09-ui-web + 10-cookbook
+      (was `cat 0*.md`, i.e. 01-08 only) and stays attached to the
+      GitHub Release. `install.sh` epilogue points at the local guide
+      dir + amalgame.me. (A dedicated `amc guide` subcommand was
+      considered and dropped: it needed a hard-coded chapter list — no
+      readdir in the AM stdlib — and the shipped `.md` + PDF cover the
+      need without that maintenance burden.)
+- [ ] **Guide content refresh (overhaul Phase 1)** — guide ~25
+      releases behind amc; 5 missing chapters to write (packages /
+      async / web-Mosaic / testing / debugging) + fix the tour's
+      stale "async/variadics not yet supported" claims. Bilingual
+      EN+FR. See [[project_docs_overhaul]].
+- [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
+      with **Mosaic** (dogfooding), published to `docs.amalgame.me`.
+      Deferred. Depends on: an email-sending package (gap) + a
+      coexistence plan that preserves the existing Node sites on the
+      web server (cf. ACME Phase 3 node→Mosaic migration).
+      (Supersedes the old `docs.amalgame-lang.org` target.)
 - [ ] Tour interactif à la go.dev/tour
 - [ ] EBNF grammar (file exists at `docs/language/grammar.ebnf` — to
       be re-validated against the current self-hosted parser)
-- [ ] Cookbook of idiomatic snippets
 
 ---
 
