@@ -40,6 +40,9 @@ hack on the compiler itself, jump to chapter 7.
     server framework: routing, `WebContext`/`HttpResponse`, middleware
     (security headers, CORS, CSRF, rate limit), sessions, static
     files, HTTP/1.1 + HTTPS. (Distinct from chapter 9's desktop GUI.)
+12. [Using packages](12-packages.md) — the external-package workflow:
+    find, add, use, update, lockfile + reproducible CI builds, and
+    troubleshooting. (Reference lives in chapter 3.)
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
