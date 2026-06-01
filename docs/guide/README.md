@@ -4,6 +4,9 @@ A complete reference for users and contributors. If you just want to
 write Amalgame, start at chapter 1 and keep going. If you're here to
 hack on the compiler itself, jump to chapter 7.
 
+> 🇫🇷 Chapters 11–15 are also available in French — see the matching
+> `*.fr.md` file next to each (e.g. [11-web-mosaic.fr.md](11-web-mosaic.fr.md)).
+
 ## Table of contents
 
 1. [Getting started](01-getting-started.md) — install, hello world, the
@@ -36,6 +39,22 @@ hack on the compiler itself, jump to chapter 7.
     you'll need every day: strings, collections, files + JSON, CLI
     arg parsing, processes, networking, pattern matching, threads,
     inline-C primitives.
+11. [Web framework (Mosaic)](11-web-mosaic.md) — the `amalgame-web`
+    server framework: routing, `WebContext`/`HttpResponse`, middleware
+    (security headers, CORS, CSRF, rate limit), sessions, static
+    files, HTTP/1.1 + HTTPS. (Distinct from chapter 9's desktop GUI.)
+12. [Using packages](12-packages.md) — the external-package workflow:
+    find, add, use, update, lockfile + reproducible CI builds, and
+    troubleshooting. (Reference lives in chapter 3.)
+13. [Async & concurrency](13-async.md) — `async fn`/`await` sugar
+    (v0.8.70) and the `amalgame-async` runtime: fibers, channels, the
+    cooperative scheduler, non-blocking I/O.
+14. [Testing](14-testing.md) — the framework-free `*_test.am` /
+    `[PASS]`/`[FAIL]`/`[SKIP]` convention, running `amc test`, and how
+    to organise suites.
+15. [Editor tooling & debugging](15-debugging.md) — `amc lsp` (the
+    language-server feature set + editor setup) and `amc dap`
+    (breakpoints/stepping in `.am` source, the bridge, `-g`).
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.

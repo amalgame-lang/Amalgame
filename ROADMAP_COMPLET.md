@@ -2298,11 +2298,41 @@ même jour sur ces repos.
       considered and dropped: it needed a hard-coded chapter list — no
       readdir in the AM stdlib — and the shipped `.md` + PDF cover the
       need without that maintenance burden.)
-- [ ] **Guide content refresh (overhaul Phase 1)** — guide ~25
-      releases behind amc; 5 missing chapters to write (packages /
-      async / web-Mosaic / testing / debugging) + fix the tour's
-      stale "async/variadics not yet supported" claims. Bilingual
-      EN+FR. See [[project_docs_overhaul]].
+- [x] **Guide content refresh (overhaul Phase 1) — COMPLETE 2026-06-01.**
+      guide ~25 releases behind amc. 5 missing chapters, one PR each, English
+      first then FR. Each example compiled against the shipped package
+      facades before commit (GTM rule: document only what ships).
+      - [x] `11-web-mosaic.md` — Mosaic web framework (2026-06-01).
+            Verified against `amalgame-web v0.17.1`; the full example
+            builds + links through the package's own test chain.
+      - [x] `12-packages.md` — find / add / use / update an external
+            package end-to-end (2026-06-01). Workflow-oriented;
+            defers the command/manifest reference to chapter 3.
+      - [x] `13-async.md` — `async fn`/`await` (v0.8.70) + the
+            `amalgame-async` runtime (2026-06-01). Both examples
+            compiled + run-verified; documents the key trap that the
+            sugar lowers to `Amalgame.Async` calls so the package is a
+            hard dependency.
+      - [x] `14-testing.md` — writing `*_test.am`, `amc test`
+            (2026-06-01). Convention + flags captured from real
+            `amc test --help` and run output; assertion-helper example
+            compiled + run-verified.
+      - [x] `15-debugging.md` — LSP feature set + editor setup, `amc dap`
+            bridge, `-g`, gdb≥14 note (2026-06-01). LSP capability list
+            confirmed against a live `initialize` reply; defers DAP
+            internals to chapter 6.
+      - [x] Fix the tour's stale "async / variadics not yet supported"
+            claims (2026-06-01). `02-language-tour.md` now documents
+            variadic params/ctors (`...name: T`, v0.8.61+) and
+            `async fn`/`await` (v0.8.70, → ch. 13) with compiled +
+            run-verified examples; removed the false "not in the
+            language yet" bullet.
+      - [x] FR translations of chapters 11–15 (`*.fr.md`), 2026-06-01.
+            Prose translated, code blocks left intact (only inline
+            comments translated), internal links repointed to `.fr.md`,
+            index notes the FR versions. Phase 1 complete.
+      All five new chapters (11–15) shipped 2026-06-01; tour corrected.
+      See [[project_docs_overhaul]].
 - [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
       with **Mosaic** (dogfooding), published to `docs.amalgame.me`.
       Deferred. Depends on: an email-sending package (gap) + a
