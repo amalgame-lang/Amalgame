@@ -1146,8 +1146,19 @@ before the next big language addition.
       consecutive `import …` statements. Filters one- and two-line
       blocks so the gutter stays uncluttered. Capability advertised
       as `foldingRangeProvider: true`.
-- [ ] **`amc lsp` navigation (v2)** — the next-tier features users
-      hit fastest after diagnostics + completion are working:
+- [x] **`amc lsp` navigation (v2)** — ✅ **all shipped.** Every
+      sub-feature below is implemented, advertised in the `initialize`
+      capabilities, and covered by green tests in
+      `tests/core_bundle/core_test.am` (definition/declaration/
+      typeDefinition #227/#238, documentSymbol/references/rename/
+      workspaceSymbol/inlayHint/codeAction/callHierarchy via #246/#247
+      + coverage commits 6e800e6/620cb0c, foldingRange slice 5). The
+      final gap — **`textDocument/documentHighlight`** — landed
+      2026-05-31 (HandleDocumentHighlight + CollectHighlights, scoped
+      reuse of the references walker; 4 coverage tests; capability
+      advertised). 372 PASS / 0 FAIL in the core bundle.
+      The next-tier features users hit fastest after diagnostics +
+      completion:
         - **`textDocument/definition`** — jump to where a symbol is
           declared. Reuses the resolver's symbol table; pos→token →
           symbol → `(file, line, col)`. Probably the highest-value
@@ -1162,9 +1173,12 @@ before the next big language addition.
           enumerate every use of a symbol across the workspace. Needs
           a reverse index; cheap to build during resolve since we
           already walk every reference site.
-        - **`textDocument/documentHighlight`** — highlight other
-          occurrences of the symbol under the cursor in the current
-          file. Subset of references, scope-limited.
+        - **`textDocument/documentHighlight`** — **DONE 2026-05-31.**
+          Highlights other occurrences of the symbol under the cursor
+          in the current file. Subset of references, scope-limited to
+          the open document; emits `DocumentHighlight[]` (`{range,
+          kind:1}`) via `CollectHighlights` (mirror of the references
+          walker).
         - **`textDocument/documentSymbol`** — outline view (classes,
           methods, top-level decls). Walks the AST top-level + class
           children, emits SymbolKind.{Class,Method,Field,Enum}.
@@ -1195,7 +1209,7 @@ before the next big language addition.
           consecutive `import` statements. Multi-line `if`/`while`/
           `for` blocks are covered by the brace-pair logic;
           multi-line `match` arms remain a v2 polish.
-- [~] **`amc lsp` performance — workspace resolver caching.**
+- [x] **`amc lsp` performance — workspace resolver caching.**
       Partially shipped 2026-05-22. The CachedResolver +
       CachedSiblingProgs path was already in place; the gap was
       cache invalidation on new files — fixed via:
@@ -2159,6 +2173,20 @@ implementation effort.
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
 - [x] GitHub Releases automation (tag-triggered)
+- [x] **Linux ARM64 (Raspberry Pi OS 64-bit) — added 2026-06-01.**
+      CI gains a `linux-arm64` job and release gains a
+      `build-linux-arm64` job, both on GitHub's free native
+      `ubuntu-24.04-arm` runner (no QEMU). Produces the
+      `amc-<ver>-linux-arm64.tar.gz` tarball `install.sh` already
+      expected for `uname -m = aarch64` (Pi 3/4/5 on a 64-bit OS).
+      The snapshot bootstrap is portable C, so the ARM job mirrors the
+      x86_64 job step-for-step. `install.sh` now fails 32-bit ARM
+      (`armv7l`/`armv6l`) with an honest "no prebuilt yet, use a 64-bit
+      OS or build from source" message instead of a 404.
+- [ ] **Linux 32-bit ARM (armhf / older Pis)** — needs a QEMU
+      cross-build (`uraimo/run-on-arch-action`) or an armhf runner;
+      deferred until there's demand. Guards a different bug class
+      (32-bit pointers, int64 alignment).
 
 ### Package release checklist (mandatory for every new external package)
 
@@ -2258,11 +2286,32 @@ même jour sur ces repos.
 ### Documentation
 - [x] User guide (`docs/guide/`)
 - [x] README that doesn't lie about features
-- [ ] Static site (docs.amalgame-lang.org)
+- [x] Cookbook of idiomatic snippets (`docs/guide/10-cookbook.md`)
+- [x] **Offline guide delivery (overhaul Phase 0, 2026-06-01)** — the
+      full `docs/guide/**` now ships in the release tarball (was: only
+      `02-language-tour.md`, staged for the LLM commands), readable
+      offline at `<prefix>/share/amalgame/docs/guide/` (terminal/SSH/
+      Pi-friendly). PDF release now includes ch. 09-ui-web + 10-cookbook
+      (was `cat 0*.md`, i.e. 01-08 only) and stays attached to the
+      GitHub Release. `install.sh` epilogue points at the local guide
+      dir + amalgame.me. (A dedicated `amc guide` subcommand was
+      considered and dropped: it needed a hard-coded chapter list — no
+      readdir in the AM stdlib — and the shipped `.md` + PDF cover the
+      need without that maintenance burden.)
+- [ ] **Guide content refresh (overhaul Phase 1)** — guide ~25
+      releases behind amc; 5 missing chapters to write (packages /
+      async / web-Mosaic / testing / debugging) + fix the tour's
+      stale "async/variadics not yet supported" claims. Bilingual
+      EN+FR. See [[project_docs_overhaul]].
+- [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
+      with **Mosaic** (dogfooding), published to `docs.amalgame.me`.
+      Deferred. Depends on: an email-sending package (gap) + a
+      coexistence plan that preserves the existing Node sites on the
+      web server (cf. ACME Phase 3 node→Mosaic migration).
+      (Supersedes the old `docs.amalgame-lang.org` target.)
 - [ ] Tour interactif à la go.dev/tour
 - [ ] EBNF grammar (file exists at `docs/language/grammar.ebnf` — to
       be re-validated against the current self-hosted parser)
-- [ ] Cookbook of idiomatic snippets
 
 ---
 

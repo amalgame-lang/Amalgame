@@ -57,6 +57,55 @@ jobs:
             src/amc_lib.c
           retention-days: 3
 
+  # ── Linux ARM64: same self-hosted pipeline on a native aarch64 runner
+  #    (GitHub-hosted `ubuntu-24.04-arm`, free for public repos). This is
+  #    the same triple as Raspberry Pi OS 64-bit (Linux/glibc/aarch64), so
+  #    it guards the generated C + runtime against pointer-width /
+  #    alignment / GC-on-ARM regressions that x86_64 and macOS can't catch.
+  #    Native run, no QEMU. ──
+  linux-arm64:
+    name: Build & test (Ubuntu ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            gcc \
+            libgc-dev \
+            libcurl4-openssl-dev
+
+      - name: Compile snapshot/amc from tracked snapshot/amc_lib.c
+        run: |
+          gcc -O2 -Iruntime \
+              snapshot/amc_lib.c \
+              -lgc -lm -lcurl -o snapshot/amc
+
+      - name: Build self-hosted amc via build_amc.sh (uses snapshot)
+        run: ./build_amc.sh
+
+      - name: Verify amc reports its version
+        run: ./amc --version
+
+      - name: Run AM test suite
+        run: ./tests/run_all_tests.sh
+
+      - name: Upload generated artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amc-debug-linux-arm64
+          path: |
+            amc
+            gen_test
+            src/amc_lib.c
+          retention-days: 3
+
   # ── macOS: build amc directly from the tracked amc_lib.c — proves the
   #    snapshot is portable. ──
   macos:

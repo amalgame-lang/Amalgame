@@ -77,7 +77,13 @@ case "$OS" in
         case "$ARCH" in
             x86_64)  TARGET="linux-x86_64"  ;;
             aarch64) TARGET="linux-arm64"   ;;
-            armv7l)  TARGET="linux-armv7"   ;;
+            # 32-bit ARM (older Pis / Raspberry Pi OS 32-bit). No
+            # prebuilt tarball is published yet — fail with an honest
+            # message instead of a confusing 404 on the download. Use
+            # a 64-bit OS on Pi 3/4/5, or build from source. Tracked in
+            # ROADMAP "Distribution".
+            armv7l|armv6l|arm)
+                error "32-bit ARM ($ARCH) has no prebuilt release yet. On a Pi 3/4/5 install a 64-bit OS (uname -m → aarch64), or build from source: https://github.com/$REPO" ;;
             *)       error "Unsupported architecture: $ARCH" ;;
         esac
         PKG_MGR=""
@@ -393,7 +399,7 @@ if [ -d "$EXTRACT_DIR/share/amalgame/stdlib" ]; then
 fi
 if [ -d "$EXTRACT_DIR/share/amalgame/docs" ]; then
     $SUDO cp -r "$EXTRACT_DIR/share/amalgame/docs"/* "$DOCS_DIR/"
-    success "LLM prompt docs → $DOCS_DIR/"
+    success "User guide + LLM docs → $DOCS_DIR/ (offline: $DOCS_DIR/guide/)"
 fi
 
 # Clean up the legacy <prefix>/lib/amalgame layout produced by
@@ -591,8 +597,9 @@ echo "  Build a GUI app (SDL2 already installed above):"
 echo -e "    ${CYAN}amc new myapp --template forms${NC}"
 echo -e "    ${CYAN}cd myapp && amc package add ui-sdl ui-forms && ./build.sh${NC}"
 echo ""
-echo "  Online documentation (full user guide):"
-echo -e "    ${CYAN}https://github.com/$REPO/tree/main/docs/guide${NC}"
+echo "  Documentation (full user guide):"
+echo -e "    ${CYAN}$DOCS_DIR/guide/${NC}   (offline — shipped with this install; a PDF is on each GitHub Release)"
+echo -e "    ${CYAN}https://amalgame.me${NC}    (online — always the latest)"
 echo ""
 if [ ":$PATH:" != *":$BIN_DIR:"* ]; then
     echo -e "  ${YELLOW}Restart your shell or run: source ~/.bashrc${NC}\n"

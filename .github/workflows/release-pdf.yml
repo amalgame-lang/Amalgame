@@ -66,9 +66,23 @@ jobs:
         env:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
-          # Glob docs/guide/0*.md picks chapters 01..08 in lexicographic
-          # order and skips README.md (the chapter index TOC).
-          cat docs/guide/0*.md | pandoc \
+          # Walk every numbered guide chapter in filename order. We
+          # iterate docs/guide/* (not just 0*.md) so 09-ui-web/ (a
+          # sub-folder), 10-cookbook and any later chapters (11+) are
+          # included; README.md (the bare TOC) is skipped. Directory
+          # chapters are spliced in at their numbered slot.
+          {
+            for entry in $(ls -1d docs/guide/* | sort); do
+              base=$(basename "$entry")
+              if [ -d "$entry" ]; then
+                for sub in $(ls -1 "$entry"/*.md | sort); do
+                  cat "$sub"; printf '\n\n'
+                done
+              elif [ "${base##*.}" = "md" ] && [ "$base" != "README.md" ]; then
+                cat "$entry"; printf '\n\n'
+              fi
+            done
+          } | pandoc \
             --from gfm \
             --pdf-engine=xelatex \
             --toc --toc-depth=2 \
