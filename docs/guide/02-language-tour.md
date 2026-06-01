@@ -594,9 +594,38 @@ let all   = ["zero", ...names, "tail"]
 let doubled = [...nums.Map(x => x * 2), 999]
 ```
 
-Variadic call sites (`f(...args)`) and variadic param definitions
-(`(...xs: T[])`) need a new function-signature grammar and are
-not yet supported.
+**Variadic parameters** `...name: ElemType` (v0.8.61+). A method's
+trailing parameter may be variadic; inside the body it's a
+`List<ElemType>`. Callers pass zero or more args in that position, or
+splice an existing list with `...expr`:
+
+```amalgame
+public static int Sum(...nums: int) {
+    var total: int = 0
+    for n in nums { total = total + n }     // nums is a List<int>
+    return total
+}
+
+public static int SumFrom(int base, ...nums: int) { ... }   // fixed + variadic tail
+
+Sum()                  // 0   — zero args → empty list
+Sum(1, 2, 3, 4)        // 10  — inline args
+let xs = new List<int>()
+Sum(...xs)             // splice a list into the variadic slot
+```
+
+Constructors can be variadic too (`Bag(...nums: int)`, v0.8.63+).
+
+**Async / await** `async fn` + `await` (v0.8.70). An `async fn` returns
+a future; `await` unwraps it. The sugar lowers onto the `amalgame-async`
+runtime (so a program using it depends on that package). Full coverage —
+fibers, channels, the scheduler — is in
+[13-async.md](13-async.md):
+
+```amalgame
+public async fn Compute(int n): int { return n * 2 }
+// let f = w.Compute(21);  let r: int = await f   // r == 42
+```
 
 **Nested generics** `List<List<T>>` (v0.8.36+). Chained
 `.Get(i).Get(j)` peels one generic layer per hop, so each level
@@ -721,12 +750,6 @@ non-zero when any error was reported.
   the element type `int` isn't propagated through every method call —
   see [04-stdlib.md](04-stdlib.md#listt) for which methods preserve
   the element type).
-- Spread / rest (`...args`). (Async / await isn't a *language* feature
-  but the [`amalgame-async`](https://github.com/amalgame-lang/amalgame-async)
-  package gives you the same patterns — `Async.FiberSpawn`,
-  `Async.WithTimeout`, `Async.FiberCancel`. amc-side syntactic sugar
-  is a future desugaring pass; the runtime is stackful so it doesn't
-  need the CPS state-machine transform Rust / C# need.)
 - Same-name list-comprehension nesting (use distinct loop vars).
 
 See [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md) for the full
