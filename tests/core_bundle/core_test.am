@@ -404,6 +404,14 @@ class Program {
         g_control_flow.Add(new CoreCase("control flow", "Grade: B"))
         Program.RunGroup("./tests/samples/control_flow.am", "control_flow", g_control_flow)
 
+        // ── ternary (4 cases) ──
+        let g_ternary: List<CoreCase> = new List<CoreCase>()
+        g_ternary.Add(new CoreCase("ternary string branch", "label: big"))
+        g_ternary.Add(new CoreCase("ternary numeric branch", "n: 100"))
+        g_ternary.Add(new CoreCase("ternary nested right-assoc", "grade: B"))
+        g_ternary.Add(new CoreCase("ternary as argument", "eq: five"))
+        Program.RunGroup("./tests/samples/ternary.am", "ternary", g_ternary)
+
         // ── classes (1 cases) ──
         let g_classes: List<CoreCase> = new List<CoreCase>()
         g_classes.Add(new CoreCase("classes", "Cat says hello!"))

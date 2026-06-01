@@ -1,0 +1,26 @@
+// Ternary conditional operator `cond ? a : b`.
+// Parsed as a desugaring to the if-as-expression node, so it reuses
+// the `(cond ? a : b)` C lowering and then-branch type inference.
+// Regression guard: before the parser learned `?`, `let x = c ? a : b`
+// silently parsed as `let x = c` and dropped both branches.
+
+class Program {
+    public static void Main(string[] args) {
+        let a = 5
+
+        // string branches — type inferred as string (not bool)
+        let label = a > 3 ? "big" : "small"
+        Console.WriteLine("label: " + label)
+
+        // numeric branches
+        let n = a > 3 ? 100 : 1
+        Console.WriteLine("n: " + String_FromInt(n))
+
+        // nested / right-associative: a ? b : (c ? d : e)
+        let grade = a > 9 ? "A" : a > 4 ? "B" : "C"
+        Console.WriteLine("grade: " + grade)
+
+        // as a call argument
+        Console.WriteLine("eq: " + (a == 5 ? "five" : "other"))
+    }
+}
