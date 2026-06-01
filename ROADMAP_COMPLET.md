@@ -2298,11 +2298,23 @@ même jour sur ces repos.
       considered and dropped: it needed a hard-coded chapter list — no
       readdir in the AM stdlib — and the shipped `.md` + PDF cover the
       need without that maintenance burden.)
-- [ ] **Guide content refresh (overhaul Phase 1)** — guide ~25
-      releases behind amc; 5 missing chapters to write (packages /
-      async / web-Mosaic / testing / debugging) + fix the tour's
-      stale "async/variadics not yet supported" claims. Bilingual
-      EN+FR. See [[project_docs_overhaul]].
+- [ ] **Guide content refresh (overhaul Phase 1, in progress)** — guide
+      ~25 releases behind amc. 5 missing chapters, one PR each, English
+      first then FR. Each example compiled against the shipped package
+      facades before commit (GTM rule: document only what ships).
+      - [x] `11-web-mosaic.md` — Mosaic web framework (2026-06-01).
+            Verified against `amalgame-web v0.17.1`; the full example
+            builds + links through the package's own test chain.
+      - [ ] `12-packages.md` — find / add / use / update an external
+            package end-to-end.
+      - [ ] `13-async.md` — `async fn`/`await` (v0.8.70) + the
+            `amalgame-async` runtime.
+      - [ ] `14-testing.md` — writing `*_test.am`, `amc test`.
+      - [ ] `15-debugging.md` — LSP + DAP bridge, gdb≥14 note.
+      - [ ] Fix the tour's stale "async / variadics not yet supported"
+            claims (false since v0.8.61–v0.8.70).
+      - [ ] FR translations once the EN set stabilises.
+      See [[project_docs_overhaul]].
 - [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
       with **Mosaic** (dogfooding), published to `docs.amalgame.me`.
       Deferred. Depends on: an email-sending package (gap) + a
