@@ -2305,8 +2305,9 @@ même jour sur ces repos.
       - [x] `11-web-mosaic.md` — Mosaic web framework (2026-06-01).
             Verified against `amalgame-web v0.17.1`; the full example
             builds + links through the package's own test chain.
-      - [ ] `12-packages.md` — find / add / use / update an external
-            package end-to-end.
+      - [x] `12-packages.md` — find / add / use / update an external
+            package end-to-end (2026-06-01). Workflow-oriented;
+            defers the command/manifest reference to chapter 3.
       - [ ] `13-async.md` — `async fn`/`await` (v0.8.70) + the
             `amalgame-async` runtime.
       - [ ] `14-testing.md` — writing `*_test.am`, `amc test`.
