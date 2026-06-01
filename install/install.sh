@@ -393,7 +393,7 @@ if [ -d "$EXTRACT_DIR/share/amalgame/stdlib" ]; then
 fi
 if [ -d "$EXTRACT_DIR/share/amalgame/docs" ]; then
     $SUDO cp -r "$EXTRACT_DIR/share/amalgame/docs"/* "$DOCS_DIR/"
-    success "LLM prompt docs → $DOCS_DIR/"
+    success "User guide + LLM docs → $DOCS_DIR/ (offline: $DOCS_DIR/guide/)"
 fi
 
 # Clean up the legacy <prefix>/lib/amalgame layout produced by
@@ -591,8 +591,9 @@ echo "  Build a GUI app (SDL2 already installed above):"
 echo -e "    ${CYAN}amc new myapp --template forms${NC}"
 echo -e "    ${CYAN}cd myapp && amc package add ui-sdl ui-forms && ./build.sh${NC}"
 echo ""
-echo "  Online documentation (full user guide):"
-echo -e "    ${CYAN}https://github.com/$REPO/tree/main/docs/guide${NC}"
+echo "  Documentation (full user guide):"
+echo -e "    ${CYAN}$DOCS_DIR/guide/${NC}   (offline — shipped with this install; a PDF is on each GitHub Release)"
+echo -e "    ${CYAN}https://amalgame.me${NC}    (online — always the latest)"
 echo ""
 if [ ":$PATH:" != *":$BIN_DIR:"* ]; then
     echo -e "  ${YELLOW}Restart your shell or run: source ~/.bashrc${NC}\n"
