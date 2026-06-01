@@ -139,6 +139,85 @@ jobs:
             dist/*.sha256
           retention-days: 7
 
+  # Native aarch64 build on GitHub's free `ubuntu-24.04-arm` runner.
+  # Produces the `linux-arm64` tarball that install.sh already expects
+  # for Raspberry Pi OS 64-bit / other aarch64 Linux (uname -m =
+  # aarch64). Mirrors build-linux step-for-step — the snapshot bootstrap
+  # is portable C, so no QEMU and no per-arch source changes.
+  build-linux-arm64:
+    name: Build (Linux ARM64)
+    runs-on: ubuntu-24.04-arm
+    needs: build-vsix
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download VS Code extension .vsix
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-extension-vsix
+          path: editors/vscode/
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            gcc libgc-dev
+
+      - name: Build amc (snapshot-driven bootstrap)
+        run: |
+          # libcurl dropped in v0.8.31 — amc links only libgc + libc now.
+          gcc -O2 -Iruntime snapshot/amc_lib.c \
+              -lgc -lm -o snapshot/amc
+          ./build_amc.sh
+
+      - name: Determine version
+        id: ver
+        run: |
+          REF="${GITHUB_REF#refs/tags/}"
+          if [ -z "${REF#refs/*}" ] || [ "$REF" = "$GITHUB_REF" ]; then
+            REF="${{ github.event.inputs.tag }}"
+          fi
+          VERSION="${REF#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building amc-$VERSION-linux-arm64"
+
+      - name: Stage release artifacts
+        run: |
+          NAME="amc-${{ steps.ver.outputs.version }}-linux-arm64"
+          # XDG-style layout — see build-linux for the rationale.
+          mkdir -p "dist/$NAME/bin"
+          mkdir -p "dist/$NAME/share/amalgame/runtime"
+          mkdir -p "dist/$NAME/share/amalgame/lib"
+          mkdir -p "dist/$NAME/share/amalgame/stdlib"
+          mkdir -p "dist/$NAME/share/amalgame/docs/language"
+          mkdir -p "dist/$NAME/share/amalgame/docs/guide"
+          mkdir -p "dist/$NAME/share/amalgame/editors/vscode"
+          cp amc                              "dist/$NAME/bin/"
+          cp runtime/*.h                      "dist/$NAME/share/amalgame/runtime/"
+          cp lib/libamalgame.a                "dist/$NAME/share/amalgame/lib/"
+          cp src/stdlib/json.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
+          cp README.md LICENSE                "dist/$NAME/"
+          cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
+          cp docs/guide/02-language-tour.md   "dist/$NAME/share/amalgame/docs/guide/"
+          LATEST_VSIX=$(ls -1 editors/vscode/amalgame-*.vsix | sort -V | tail -n1)
+          cp "$LATEST_VSIX" "dist/$NAME/share/amalgame/editors/vscode/"
+          tar -czf "dist/$NAME.tar.gz" -C dist "$NAME"
+          (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-arm64
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          retention-days: 7
+
   build-macos:
     name: Build (macOS arm64)
     runs-on: macos-latest
@@ -524,7 +603,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [build-linux, build-macos, build-windows, build-windows-installer]
+    needs: [build-linux, build-linux-arm64, build-macos, build-windows, build-windows-installer]
     runs-on: ubuntu-latest
     permissions:
       contents: write

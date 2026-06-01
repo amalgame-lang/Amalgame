@@ -2173,6 +2173,20 @@ implementation effort.
 ### Distribution
 - [x] GitHub Actions CI (Linux/macOS/Windows)
 - [x] GitHub Releases automation (tag-triggered)
+- [x] **Linux ARM64 (Raspberry Pi OS 64-bit) — added 2026-06-01.**
+      CI gains a `linux-arm64` job and release gains a
+      `build-linux-arm64` job, both on GitHub's free native
+      `ubuntu-24.04-arm` runner (no QEMU). Produces the
+      `amc-<ver>-linux-arm64.tar.gz` tarball `install.sh` already
+      expected for `uname -m = aarch64` (Pi 3/4/5 on a 64-bit OS).
+      The snapshot bootstrap is portable C, so the ARM job mirrors the
+      x86_64 job step-for-step. `install.sh` now fails 32-bit ARM
+      (`armv7l`/`armv6l`) with an honest "no prebuilt yet, use a 64-bit
+      OS or build from source" message instead of a 404.
+- [ ] **Linux 32-bit ARM (armhf / older Pis)** — needs a QEMU
+      cross-build (`uraimo/run-on-arch-action`) or an armhf runner;
+      deferred until there's demand. Guards a different bug class
+      (32-bit pointers, int64 alignment).
 
 ### Package release checklist (mandatory for every new external package)
 
