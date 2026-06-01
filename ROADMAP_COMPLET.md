@@ -2298,8 +2298,8 @@ même jour sur ces repos.
       considered and dropped: it needed a hard-coded chapter list — no
       readdir in the AM stdlib — and the shipped `.md` + PDF cover the
       need without that maintenance burden.)
-- [ ] **Guide content refresh (overhaul Phase 1, in progress)** — guide
-      ~25 releases behind amc. 5 missing chapters, one PR each, English
+- [x] **Guide content refresh (overhaul Phase 1) — COMPLETE 2026-06-01.**
+      guide ~25 releases behind amc. 5 missing chapters, one PR each, English
       first then FR. Each example compiled against the shipped package
       facades before commit (GTM rule: document only what ships).
       - [x] `11-web-mosaic.md` — Mosaic web framework (2026-06-01).
@@ -2327,8 +2327,10 @@ même jour sur ces repos.
             `async fn`/`await` (v0.8.70, → ch. 13) with compiled +
             run-verified examples; removed the false "not in the
             language yet" bullet.
-      - [ ] FR translations once the EN set stabilises. **Next Phase-1
-            item** (then Phase 1 is complete).
+      - [x] FR translations of chapters 11–15 (`*.fr.md`), 2026-06-01.
+            Prose translated, code blocks left intact (only inline
+            comments translated), internal links repointed to `.fr.md`,
+            index notes the FR versions. Phase 1 complete.
       All five new chapters (11–15) shipped 2026-06-01; tour corrected.
       See [[project_docs_overhaul]].
 - [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
