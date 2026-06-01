@@ -43,6 +43,9 @@ hack on the compiler itself, jump to chapter 7.
 12. [Using packages](12-packages.md) — the external-package workflow:
     find, add, use, update, lockfile + reproducible CI builds, and
     troubleshooting. (Reference lives in chapter 3.)
+13. [Async & concurrency](13-async.md) — `async fn`/`await` sugar
+    (v0.8.70) and the `amalgame-async` runtime: fibers, channels, the
+    cooperative scheduler, non-blocking I/O.
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
