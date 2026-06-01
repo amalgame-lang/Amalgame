@@ -2313,7 +2313,10 @@ même jour sur ces repos.
             compiled + run-verified; documents the key trap that the
             sugar lowers to `Amalgame.Async` calls so the package is a
             hard dependency.
-      - [ ] `14-testing.md` — writing `*_test.am`, `amc test`.
+      - [x] `14-testing.md` — writing `*_test.am`, `amc test`
+            (2026-06-01). Convention + flags captured from real
+            `amc test --help` and run output; assertion-helper example
+            compiled + run-verified.
       - [ ] `15-debugging.md` — LSP + DAP bridge, gdb≥14 note.
       - [ ] Fix the tour's stale "async / variadics not yet supported"
             claims (false since v0.8.61–v0.8.70).
