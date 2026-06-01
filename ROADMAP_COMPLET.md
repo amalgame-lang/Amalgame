@@ -2321,10 +2321,15 @@ même jour sur ces repos.
             bridge, `-g`, gdb≥14 note (2026-06-01). LSP capability list
             confirmed against a live `initialize` reply; defers DAP
             internals to chapter 6.
-      - [ ] Fix the tour's stale "async / variadics not yet supported"
-            claims (false since v0.8.61–v0.8.70). **Next Phase-1 item.**
-      - [ ] FR translations once the EN set stabilises.
-      All five new chapters (11–15) shipped 2026-06-01.
+      - [x] Fix the tour's stale "async / variadics not yet supported"
+            claims (2026-06-01). `02-language-tour.md` now documents
+            variadic params/ctors (`...name: T`, v0.8.61+) and
+            `async fn`/`await` (v0.8.70, → ch. 13) with compiled +
+            run-verified examples; removed the false "not in the
+            language yet" bullet.
+      - [ ] FR translations once the EN set stabilises. **Next Phase-1
+            item** (then Phase 1 is complete).
+      All five new chapters (11–15) shipped 2026-06-01; tour corrected.
       See [[project_docs_overhaul]].
 - [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
       with **Mosaic** (dogfooding), published to `docs.amalgame.me`.
