@@ -2308,8 +2308,11 @@ même jour sur ces repos.
       - [x] `12-packages.md` — find / add / use / update an external
             package end-to-end (2026-06-01). Workflow-oriented;
             defers the command/manifest reference to chapter 3.
-      - [ ] `13-async.md` — `async fn`/`await` (v0.8.70) + the
-            `amalgame-async` runtime.
+      - [x] `13-async.md` — `async fn`/`await` (v0.8.70) + the
+            `amalgame-async` runtime (2026-06-01). Both examples
+            compiled + run-verified; documents the key trap that the
+            sugar lowers to `Amalgame.Async` calls so the package is a
+            hard dependency.
       - [ ] `14-testing.md` — writing `*_test.am`, `amc test`.
       - [ ] `15-debugging.md` — LSP + DAP bridge, gdb≥14 note.
       - [ ] Fix the tour's stale "async / variadics not yet supported"
