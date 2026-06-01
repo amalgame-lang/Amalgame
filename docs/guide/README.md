@@ -49,6 +49,9 @@ hack on the compiler itself, jump to chapter 7.
 14. [Testing](14-testing.md) — the framework-free `*_test.am` /
     `[PASS]`/`[FAIL]`/`[SKIP]` convention, running `amc test`, and how
     to organise suites.
+15. [Editor tooling & debugging](15-debugging.md) — `amc lsp` (the
+    language-server feature set + editor setup) and `amc dap`
+    (breakpoints/stepping in `.am` source, the bridge, `-g`).
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.

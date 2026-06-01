@@ -2317,10 +2317,14 @@ même jour sur ces repos.
             (2026-06-01). Convention + flags captured from real
             `amc test --help` and run output; assertion-helper example
             compiled + run-verified.
-      - [ ] `15-debugging.md` — LSP + DAP bridge, gdb≥14 note.
+      - [x] `15-debugging.md` — LSP feature set + editor setup, `amc dap`
+            bridge, `-g`, gdb≥14 note (2026-06-01). LSP capability list
+            confirmed against a live `initialize` reply; defers DAP
+            internals to chapter 6.
       - [ ] Fix the tour's stale "async / variadics not yet supported"
-            claims (false since v0.8.61–v0.8.70).
+            claims (false since v0.8.61–v0.8.70). **Next Phase-1 item.**
       - [ ] FR translations once the EN set stabilises.
+      All five new chapters (11–15) shipped 2026-06-01.
       See [[project_docs_overhaul]].
 - [ ] **Static site (overhaul Phase 2)** — decided 2026-06-01: built
       with **Mosaic** (dogfooding), published to `docs.amalgame.me`.
