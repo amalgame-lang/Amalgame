@@ -4,6 +4,9 @@ A complete reference for users and contributors. If you just want to
 write Amalgame, start at chapter 1 and keep going. If you're here to
 hack on the compiler itself, jump to chapter 7.
 
+> 🇫🇷 Chapters 11–15 are also available in French — see the matching
+> `*.fr.md` file next to each (e.g. [11-web-mosaic.fr.md](11-web-mosaic.fr.md)).
+
 ## Table of contents
 
 1. [Getting started](01-getting-started.md) — install, hello world, the
