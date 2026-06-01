@@ -1384,7 +1384,7 @@ public class Parser {
     }
 
     private AstNode ParseAssign() {
-        let left = this.ParseRange()
+        let left = this.ParseTernary()
         let isAssign = this.CheckValue("=") || this.CheckValue("+=") || this.CheckValue("-=") || this.CheckValue("*=") || this.CheckValue("/=") || this.CheckValue("%=")
         let isBitAssign = this.CheckValue("&=") || this.CheckValue("|=") || this.CheckValue("^=") || this.CheckValue("<<=") || this.CheckValue(">>=")
         if (isAssign || isBitAssign) {
@@ -1393,6 +1393,42 @@ public class Parser {
             return Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
         }
         return left
+    }
+
+    // ParseTernary — the conditional operator `cond ? thenExpr : elseExpr`.
+    // Sits between ParseAssign and ParseRange in the precedence ladder
+    // (just above assignment, below everything else), matching C/JS/TS.
+    //
+    // Rather than introduce a dedicated TERNARY node + new resolver /
+    // typechecker / cgen cases, it desugars to the exact same node shape
+    // an `if cond { a } else { b }` expression produces: an IF_STMT with
+    // BLOCK branches and Flag=true. That node already lowers to the C
+    // `(cond ? a : b)` operator and infers its type from the then-branch,
+    // so this is purely a parser-level rewrite.
+    //
+    // Right-associative: the branches pull ParseAssign, so
+    // `a ? b : c ? d : e` nests as `a ? b : (c ? d : e)` and an
+    // assignment inside a branch still parses. Without this method `?`
+    // (OP_QMARK) was never consumed — `let x = c ? a : b` silently
+    // parsed as `let x = c` and dropped the branches.
+    private AstNode ParseTernary() {
+        let cond = this.ParseRange()
+        if (!this.CheckValue("?")) { return cond }
+        let q = this.Advance()        // consume '?'
+        this.SkipNewlines()
+        let thenExpr = this.ParseAssign()
+        this.SkipNewlines()
+        this.Expect(":")              // consume ':'
+        this.SkipNewlines()
+        let elseExpr = this.ParseAssign()
+        let thenBlk = Ast.Block(thenExpr.Line, thenExpr.Column)
+        thenBlk.Children.Add(thenExpr)
+        let elseBlk = Ast.Block(elseExpr.Line, elseExpr.Column)
+        elseBlk.Children.Add(elseExpr)
+        let node = Ast.If(cond, thenBlk, q.Line, q.Column)
+        node.Flag = true
+        node.Else = elseBlk
+        return node
     }
 
     // ParseRange — `..` as a proper binary operator (v0.8.25). Sits
