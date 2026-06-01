@@ -77,7 +77,13 @@ case "$OS" in
         case "$ARCH" in
             x86_64)  TARGET="linux-x86_64"  ;;
             aarch64) TARGET="linux-arm64"   ;;
-            armv7l)  TARGET="linux-armv7"   ;;
+            # 32-bit ARM (older Pis / Raspberry Pi OS 32-bit). No
+            # prebuilt tarball is published yet — fail with an honest
+            # message instead of a confusing 404 on the download. Use
+            # a 64-bit OS on Pi 3/4/5, or build from source. Tracked in
+            # ROADMAP "Distribution".
+            armv7l|armv6l|arm)
+                error "32-bit ARM ($ARCH) has no prebuilt release yet. On a Pi 3/4/5 install a 64-bit OS (uname -m → aarch64), or build from source: https://github.com/$REPO" ;;
             *)       error "Unsupported architecture: $ARCH" ;;
         esac
         PKG_MGR=""
