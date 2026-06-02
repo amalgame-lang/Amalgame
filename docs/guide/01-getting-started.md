@@ -91,6 +91,41 @@ amc --version
 > The `linux-arm64` archive is built natively in CI on a real aarch64
 > runner, not cross-compiled.
 
+## Develop in VS Code (the easy path)
+
+`install.sh` auto-installs the **Amalgame VS Code extension** if it detects
+VS Code (the release bundles the `.vsix`; set `AMC_NO_EDITORS=1` to skip).
+If you installed amc some other way, install it by hand once:
+
+```bash
+code --install-extension <amalgame-X.Y.Z.vsix>   # from share/amalgame/editors/vscode/
+```
+
+Now just **open any `.am` file** — the extension starts `amc lsp` and you
+get a real IDE, no configuration:
+
+- **Live diagnostics** — the same errors `amc --check` reports, as you type.
+- **Completion** — symbols, methods, and `import Amalgame.<cursor>` listing
+  the stdlib + your installed packages.
+- **Navigation & search** — go-to-definition (**F12**), **Find All
+  References** (**Shift+F12**), project-wide **symbol search** (**Ctrl+T**),
+  file **outline** (**Ctrl+Shift+O**), and same-symbol highlight. Call
+  hierarchy, code actions, inlay hints, and folding are advertised too.
+- **Hover, rename** (**F2**), and **format** (`amc fmt`).
+- **Run** — from the integrated terminal: `amc run hello.am` (build + exec),
+  or `amc build hello.am` then `./hello`.
+- **Debug** — press **F5** with a `launch.json` of type `amc`: real
+  breakpoints and stepping in your `.am` source.
+
+A good first session: `mkdir hello && cd hello`, open the folder in VS
+Code, create `hello.am` (next section), and `amc run hello.am` in the
+terminal. Diagnostics, completion, and search work immediately.
+
+> The extension is LSP/DAP-based and configuration-free for the common
+> case. For the full feature list, editor settings, other editors (Neovim,
+> …), and the debugger internals, see chapter 15,
+> [Editor tooling & debugging](15-debugging.md).
+
 ## Hello, World
 
 Save as `hello.am`:
