@@ -51,7 +51,7 @@ the drivers below don't care which.
 
 | Package | Install | Supported components |
 |---|---|---|
-| **hardware-input** ([repo](https://github.com/amalgame-lang/amalgame-hardware-input)) | `amc package add hardware-input` | Debounced push-button, rotary encoder. *(A matrix keypad lands in v0.2.0, which needs amc ≥ 0.8.73.)* |
+| **hardware-input** ([repo](https://github.com/amalgame-lang/amalgame-hardware-input)) | `amc package add hardware-input` | Debounced push-button, rotary encoder, **matrix keypad** (rows × cols). |
 
 ## Sensing
 
