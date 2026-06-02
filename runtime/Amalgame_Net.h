@@ -84,11 +84,19 @@ static inline AmalgameTcpClient* TcpClient_Connect(
     struct addrinfo* res = NULL;
     if (getaddrinfo(host, portStr, &hints, &res) != 0) return c;
 
-    int fd = (int) socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (fd >= 0 && connect(fd, res->ai_addr, (int) res->ai_addrlen) == 0) {
-        c->_fd       = fd;
-        c->Connected = true;
-    } else if (fd >= 0) {
+    /* Try every resolved address, not just the first. getaddrinfo often
+     * returns IPv6 first (e.g. www.google.com); on a host with broken or
+     * partial IPv6, connect() to that address hangs until the TCP
+     * timeout. Iterating to the IPv4 fallback (like curl's happy
+     * eyeballs, minus the parallelism) avoids the hang. */
+    for (struct addrinfo* rp = res; rp != NULL; rp = rp->ai_next) {
+        int fd = (int) socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (fd < 0) continue;
+        if (connect(fd, rp->ai_addr, (int) rp->ai_addrlen) == 0) {
+            c->_fd       = fd;
+            c->Connected = true;
+            break;
+        }
         _amnet_close_socket(fd);
     }
     freeaddrinfo(res);
