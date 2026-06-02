@@ -4,8 +4,10 @@ A complete reference for users and contributors. If you just want to
 write Amalgame, start at chapter 1 and keep going. If you're here to
 hack on the compiler itself, jump to chapter 7.
 
-> 🇫🇷 Chapters 11–16 are also available in French — see the matching
-> `*.fr.md` file next to each (e.g. [11-web-mosaic.fr.md](11-web-mosaic.fr.md)).
+> 🇬🇧 🇫🇷 The whole guide is bilingual: every chapter exists in English
+> (`NN-….md`) and French (`NN-….fr.md`). On
+> [docs.amalgame.me](https://docs.amalgame.me) the language is picked
+> automatically, with a toggle on every page.
 
 ## Table of contents
 
