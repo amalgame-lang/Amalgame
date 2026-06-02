@@ -4,7 +4,7 @@ A complete reference for users and contributors. If you just want to
 write Amalgame, start at chapter 1 and keep going. If you're here to
 hack on the compiler itself, jump to chapter 7.
 
-> 🇫🇷 Chapters 11–15 are also available in French — see the matching
+> 🇫🇷 Chapters 11–16 are also available in French — see the matching
 > `*.fr.md` file next to each (e.g. [11-web-mosaic.fr.md](11-web-mosaic.fr.md)).
 
 ## Table of contents
@@ -55,6 +55,10 @@ hack on the compiler itself, jump to chapter 7.
 15. [Editor tooling & debugging](15-debugging.md) — `amc lsp` (the
     language-server feature set + editor setup) and `amc dap`
     (breakpoints/stepping in `.am` source, the bridge, `-g`).
+16. [Hosting with Mosaic](16-hosting.md) — taking a Mosaic server to
+    production: many sites on one host (dispatch by `Host`), Let's
+    Encrypt certs + SNI, running under systemd, and cert renewal that
+    actually works.
 
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
