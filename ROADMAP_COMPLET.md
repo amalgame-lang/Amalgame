@@ -1064,6 +1064,33 @@ before the next big language addition.
       `^namespace track_d_test$` in the scaffolded main.am and
       that the project compiles + runs end-to-end.
 - [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
+- [ ] **Remote debugger (`amc dap --remote`)** — extend the
+      existing DAP proxy/bridge (the v0.8.0 proxy + v0.8.22 MI
+      bridge) to attach to a debuggee on another host. Two
+      layers: (1) a thin `amc dap --connect host:port` that
+      forwards the DAP↔MI stream over a TCP (TLS) tunnel to a
+      `gdbserver` / `lldb-server` running next to the deployed
+      binary, with the same `#line`-driven `.c`↔`.am` source
+      mapping working remotely (ship the `.am` sources or map by
+      path); (2) `amc dap --remote <ssh-target>` that bootstraps
+      the server side over SSH (upload binary + `gdbserver`,
+      open the tunnel, wire `launch.json`). Pairs naturally with
+      `amc deploy` below — debug what you just shipped. Reuses
+      `amalgame-tls` for the encrypted channel; no custom wire
+      protocol. Design doc TBD.
+- [ ] **Remote deploy (`amc deploy`)** — one-command ship of a
+      built binary (or Mosaic app) to a remote host. Driven by a
+      `[deploy]` table in `amalgame.toml` (target host/user/port,
+      remote path, optional systemd unit name, pre/post hooks).
+      Flow: `amc build --release` → SCP/rsync the artifact +
+      vendored runtime libs over SSH → restart the systemd
+      service → health-check. Built on the `Process` v3 streaming
+      API (live remote logs) + `amalgame-tls`; an `amalgame-ssh`
+      package (libssh2 or shelling out to `ssh`/`scp`) is the
+      likely dependency — decide build-dep vs shell-out first.
+      Should cover the `belfort`/`musicall` Mosaic-on-prod
+      workflow (currently manual, see
+      `project_sites_mosaic_migration`). Design doc TBD.
 - [x] **`amc package <action>`** (v0.5.0 → v0.6.x) — full package
       manager. `add <git-url>@<tag>` clones + validates + records,
       `remove` / `list` / `search` / `versions` / `info` / `update`
