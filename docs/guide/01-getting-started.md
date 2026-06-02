@@ -64,7 +64,32 @@ see `install/windows/amalgame.iss` (Inno Setup script).
 
 Each tagged release in
 [GitHub Releases](https://github.com/amalgame-lang/Amalgame/releases)
-ships `amc-X.Y.Z-{linux,macos,windows}-...` archives.
+ships `amc-X.Y.Z-{linux,macos,windows}-...` archives. The one-liner picks
+the right one for your OS/architecture:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | sh
+```
+
+### Raspberry Pi (and other ARM64 Linux)
+
+`amc` ships a native **`linux-arm64`** build, so the one-liner above works
+on a Raspberry Pi running a **64-bit OS** (Raspberry Pi OS 64-bit, Ubuntu
+for Pi, …) — i.e. `uname -m` reports `aarch64`. Install the runtime deps
+first, same as any Debian/Ubuntu box:
+
+```bash
+sudo apt-get install -y build-essential libgc-dev libssl-dev curl
+curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | sh
+amc --version
+```
+
+> **32-bit is not supported.** On a Pi 3/4/5 running a 32-bit OS,
+> `uname -m` shows `armv7l`/`armv6l` and the installer stops with a clear
+> message — reflash a 64-bit OS, or build from source (the
+> `amc_lib.c` snapshot compiles anywhere with a C toolchain + Boehm GC).
+> The `linux-arm64` archive is built natively in CI on a real aarch64
+> runner, not cross-compiled.
 
 ## Hello, World
 
