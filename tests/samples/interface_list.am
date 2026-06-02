@@ -1,0 +1,40 @@
+// Interface values stored in a generic List<I> — v0.8.73.
+//
+// A fat interface value is two words; a List slot is one void*. The
+// compiler heap-boxes the {itab,data} pair on Add/Set and derefs it on
+// Get, so dispatch through a List<Speaker> routes to the right concrete
+// method. Discriminating: "woof"/"meow" are only reachable via the
+// interface element, so a broken List<I> path prints blanks.
+
+namespace Tests
+
+public interface Speaker {
+    Say() -> string
+}
+
+public class Dog implements Speaker {
+    public string Say() { return "woof" }
+}
+
+public class Cat implements Speaker {
+    public string Say() { return "meow" }
+}
+
+public class Program {
+    public static void Main(string[] args) {
+        let zoo: List<Speaker> = new List<Speaker>()
+        zoo.Add(new Dog())
+        zoo.Add(new Cat())
+        zoo.Add(new Dog())
+        // Overwrite slot 2 to exercise Set as well.
+        zoo.Set(2, new Cat())
+
+        var out: string = ""
+        var i: int = 0
+        while (i < zoo.Count()) {
+            out = out + zoo.Get(i).Say()
+            i = i + 1
+        }
+        Console.WriteLine(out)            // "woofmeowmeow"
+    }
+}
