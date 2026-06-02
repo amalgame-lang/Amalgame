@@ -16,66 +16,79 @@ répartissent proprement en trois couches :
 
 > 🧩 **Le Pi aujourd'hui, le MCU demain — même code driver.** Comme
 > les drivers visent le HAL et jamais une carte précise, le même code
-> `amalgame-hardware-led` / `-motor` / `-sensor` qui tourne sur un
-> Raspberry Pi (alimenté par les broches de `hardware-gpio`) tournera
-> sur un microcontrôleur dès qu'un backend MCU existera (voir la
+> driver qui tourne sur un Raspberry Pi (alimenté par les broches de
+> `hardware-gpio`) tournera sur un microcontrôleur dès qu'un backend
+> MCU existera (voir la
 > [proposition amc-embedded](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amc-embedded.md)).
 > Rien ici n'est spécifique au Raspberry Pi, sauf le backend GPIO
 > lui-même.
 
 Tous les packages s'installent via l'index curé — `amc package add <nom>`
-— et requièrent **amc ≥ 0.8.72** (dispatch d'interface).
+— et requièrent **amc ≥ 0.8.72** (dispatch d'interface). La colonne
+**Composants pris en charge** liste les puces/dispositifs concrets
+pilotés par chaque package.
 
 ## Fondation
 
-| Package | Installation | Description |
+| Package | Installation | Fournit |
 |---|---|---|
-| **hal** ([repo](https://github.com/amalgame-lang/amalgame-hal)) | `amc package add hal` | Interfaces d'abstraction matérielle portables : `DigitalOut`/`DigitalIn`, `PwmOut`, `I2cBus`, `SpiBus`, `Clock`, `SerialPort`. Le contrat que vise chaque driver. |
+| **hal** ([repo](https://github.com/amalgame-lang/amalgame-hal)) | `amc package add hal` | Les interfaces portables visées par chaque driver : `DigitalOut`, `DigitalIn`, `PwmOut`, `I2cBus`, `SpiBus`, `Clock`, `SerialPort`. |
 
 ## Backends de carte
 
 Ils fournissent le HAL sur du vrai matériel. Choisissez celui de votre
 carte ; les drivers ci-dessous ne s'en soucient pas.
 
-| Package | Installation | Description |
+| Package | Installation | Périphériques pris en charge |
 |---|---|---|
-| **hardware-gpio** ([repo](https://github.com/amalgame-lang/amalgame-hardware-gpio)) | `amc package add hardware-gpio` | Backend Raspberry Pi 1→5 / SBC Linux via **libgpiod v2** : E/S numériques GPIO + fronts, I²C, SPI, PWM matériel, UART. Fournit les broches/bus HAL aux drivers. Voir le [how-to Raspberry Pi](raspberry-pi/README.md). |
-| *Backend MCU* | — | Sur la feuille de route ([amc-embedded](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amc-embedded.md)). Exposera le même HAL sur microcontrôleurs nus. |
+| **hardware-gpio** ([repo](https://github.com/amalgame-lang/amalgame-hardware-gpio)) | `amc package add hardware-gpio` | Raspberry Pi 1→5 / SBC Linux via **libgpiod v2** : E/S numériques GPIO + fronts, I²C, SPI, PWM matériel, UART. Fournit les broches/bus HAL à tous les drivers. Voir le [how-to Raspberry Pi](raspberry-pi/README.md). |
+| *Backend MCU* | *(roadmap)* | Exposera le même HAL sur microcontrôleurs nus — [amc-embedded](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amc-embedded.md). |
 
 ## Sortie & actionneurs
 
-| Package | Installation | Composants |
+| Package | Installation | Composants pris en charge |
 |---|---|---|
-| **hardware-led** ([repo](https://github.com/amalgame-lang/amalgame-hardware-led)) | `amc package add hardware-led` | Drivers LED simple (tout-ou-rien) + LED RGB-PWM, par-dessus le HAL. |
-| **hardware-motor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-motor)) | `amc package add hardware-motor` | Servo / ESC, moteur CC (pont en H), moteur pas-à-pas 28BYJ-48, et relais. |
+| **hardware-led** ([repo](https://github.com/amalgame-lang/amalgame-hardware-led)) | `amc package add hardware-led` | LED simple (tout-ou-rien), LED RGB (PWM), ruban **APA102 / DotStar**, ruban **WS2812 / NeoPixel**. |
+| **hardware-motor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-motor)) | `amc package add hardware-motor` | Servo / ESC, moteur CC (pont en H), moteur pas-à-pas 28BYJ-48, driver pas-à-pas **A4988**, relais, driver PWM 16 canaux **PCA9685**, buzzer piézo. |
 
-## Entrée & capteurs
+## Entrée
 
-| Package | Installation | Composants |
+| Package | Installation | Composants pris en charge |
 |---|---|---|
-| **hardware-input** ([repo](https://github.com/amalgame-lang/amalgame-hardware-input)) | `amc package add hardware-input` | Bouton-poussoir anti-rebond, encodeur rotatif. |
-| **hardware-sensor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-sensor)) | `amc package add hardware-sensor` | Distance ultrason HC-SR04, ADC MCP3008, BME280 température / pression / humidité. |
-| **hardware-comms** ([repo](https://github.com/amalgame-lang/amalgame-hardware-comms)) | `amc package add hardware-comms` | Drivers de comms série — GPS NMEA via un `SerialPort` HAL. |
+| **hardware-input** ([repo](https://github.com/amalgame-lang/amalgame-hardware-input)) | `amc package add hardware-input` | Bouton-poussoir anti-rebond, encodeur rotatif. *(Un clavier matriciel arrive en v0.2.0, qui requiert amc ≥ 0.8.73.)* |
+
+## Capteurs
+
+| Package | Installation | Composants pris en charge |
+|---|---|---|
+| **hardware-sensor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-sensor)) | `amc package add hardware-sensor` | Distance **HC-SR04**, ADC SPI 8 canaux **MCP3008**, **BME280** température/pression/humidité, IMU 6 axes **MPU-6050**, lumière ambiante **BH1750**, courant/puissance **INA219**, ADC I²C 16 bits **ADS1115**, ADC cellule de charge **HX711**, thermocouple type K **MAX6675**. |
+| **hardware-comms** ([repo](https://github.com/amalgame-lang/amalgame-hardware-comms)) | `amc package add hardware-comms` | Récepteur **GPS** NMEA via un `SerialPort` HAL. |
 
 ## Afficheurs
 
-| Package | Installation | Composants |
+| Package | Installation | Composants pris en charge |
 |---|---|---|
-| **hardware-display** ([repo](https://github.com/amalgame-lang/amalgame-hardware-display)) | `amc package add hardware-display` | OLED SSD1306 128×64 (framebuffer + rendu texte) en I²C. |
+| **hardware-display** ([repo](https://github.com/amalgame-lang/amalgame-hardware-display)) | `amc package add hardware-display` | OLED **SSD1306** 128×64 (framebuffer + texte 5×7), LCD caractères **LCD1602** 16×2, driver 7-seg / matrice LED **MAX7219**, afficheur 4 digits 7-seg **TM1637**. |
 
 ## Expandeurs & I/O
 
-| Package | Installation | Composants |
+| Package | Installation | Composants pris en charge |
 |---|---|---|
-| **hardware-io** ([repo](https://github.com/amalgame-lang/amalgame-hardware-io)) | `amc package add hardware-io` | Expandeur d'E/S I²C 8 bits PCF8574 — chaque broche de l'expandeur est exposée comme un `DigitalOut` + `DigitalIn` HAL, donc les drivers existants pilotent ses broches de façon transparente. |
+| **hardware-io** ([repo](https://github.com/amalgame-lang/amalgame-hardware-io)) | `amc package add hardware-io` | Expandeur I²C 8 bits **PCF8574**, registre à décalage 8 bits **SN74HC595**, expandeur I²C 16 bits **MCP23017**. Chacun expose ses broches comme des `DigitalOut` + `DigitalIn` HAL, donc les drivers existants pilotent ses broches de façon transparente. |
+
+## Horloge temps réel (RTC)
+
+| Package | Installation | Composants pris en charge |
+|---|---|---|
+| **hardware-rtc** ([repo](https://github.com/amalgame-lang/amalgame-hardware-rtc)) | `amc package add hardware-rtc` | Horloge temps réel TCXO **DS3231**, horloge temps réel **DS1307** (en I²C), avec un helper `DateTime` lecture/écriture. |
 
 ## Contrôle & maths (Amalgame pur)
 
 Pas de matériel propre — des briques pour les boucles de contrôle, indépendantes de la carte.
 
-| Package | Installation | Composants |
+| Package | Installation | Fournit |
 |---|---|---|
-| **hardware-control** ([repo](https://github.com/amalgame-lang/amalgame-hardware-control)) | `amc package add hardware-control` | Régulateur PID, filtre complémentaire IMU, moyenne glissante, helpers `map` / `clamp`. |
+| **hardware-control** ([repo](https://github.com/amalgame-lang/amalgame-hardware-control)) | `amc package add hardware-control` | Régulateur PID, filtre complémentaire IMU, moyenne glissante, helpers de plage `map` / `clamp`. |
 
 ---
 
