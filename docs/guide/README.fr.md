@@ -66,5 +66,14 @@ au chapitre 7.
     certificats Let's Encrypt + SNI, tourner sous systemd, et un
     renouvellement de cert qui marche vraiment.
 
+## Guides pratiques
+
+Des pas-à-pas orientés tâches, à côté des chapitres de référence
+ci-dessus :
+
+- [Raspberry Pi](howto/raspberry-pi/README.md) — de la carte SD vierge
+  jusqu'au pilotage de vrai matériel (GPIO, boutons, capteurs I²C,
+  barre de LEDs) avec le package `amalgame-hardware-gpio`.
+
 Le [README](../../README.md) du dépôt a le pitch et les captures d'écran.
 La [ROADMAP](../../ROADMAP_COMPLET.md) suit ce qui est prévu ensuite.

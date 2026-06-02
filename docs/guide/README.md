@@ -62,5 +62,14 @@ hack on the compiler itself, jump to chapter 7.
     Encrypt certs + SNI, running under systemd, and cert renewal that
     actually works.
 
+## How-to guides
+
+Task-oriented walkthroughs that sit alongside the reference chapters
+above:
+
+- [Raspberry Pi](howto/raspberry-pi/README.md) — from a blank SD card
+  to driving real hardware (GPIO, buttons, I²C sensors, an LED bar)
+  with the `amalgame-hardware-gpio` package.
+
 The repo's [README](../../README.md) has the elevator pitch and screenshots.
 The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
