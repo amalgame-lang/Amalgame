@@ -779,6 +779,11 @@ class Program {
         g_iface_dispatch.Add(new CoreCase("iface dispatch cat", "meow"))
         Program.RunGroup("./tests/samples/interface_dispatch.am", "iface_dispatch", g_iface_dispatch)
 
+        // ── interface values in a List<I> (v0.8.73 heap-boxing) ──
+        let g_iface_list: List<CoreCase> = new List<CoreCase>()
+        g_iface_list.Add(new CoreCase("iface list dispatch", "woofmeowmeow"))
+        Program.RunGroup("./tests/samples/interface_list.am", "iface_list", g_iface_list)
+
         // ── generic_interfaces (2 cases) ──
         let g_generic_interfaces: List<CoreCase> = new List<CoreCase>()
         g_generic_interfaces.Add(new CoreCase("generic iface T", "compare: 4"))
