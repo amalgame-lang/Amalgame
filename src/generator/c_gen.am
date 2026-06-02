@@ -212,6 +212,23 @@ public class CGen {
     // (`Amalgame_Formats_MsgPack_MsgPack_DecodeOne`), producing an
     // implicit-int decl + segfault on first dereference.
     public LocalClasses: List<string>
+    // Interface dispatch (Go-style itab+data, v0.8.72). Mangled names of
+    // every interface (local + external) so TypeToC / call sites know a
+    // type is an interface (a 2-word {itab,data} value, not a pointer).
+    // IfaceNodes holds the decl nodes so we can recover each interface's
+    // ordered method set (for the itab struct + per-implementor itabs).
+    // Parallel registries (same index): an interface's short name, its
+    // C-mangled name (consumer ns for local, package ns for external),
+    // and its decl node (for the ordered method set).
+    public IfaceShortNames:   List<string>
+    public IfaceMangledNames: List<string>
+    public IfaceNodes:        List<AstNode>
+    // Which callee params are interface-typed: key "calleeMangled#idx"
+    // → interface mangled name. Lets a call site pack a concrete arg
+    // into a {itab,data} value only where the param actually is an
+    // interface (non-interface calls are untouched → no overhead).
+    public ParamIfaceKeys: List<string>
+    public ParamIfaceVals: List<string>
 
     public CGen() {
         this.Out            = new Emitter()
@@ -247,6 +264,11 @@ public class CGen {
         this.ExternalEnumNsArr = new List<string>()
         this.PkgOpaqueTypes    = new List<string>()
         this.LocalClasses      = new List<string>()
+        this.IfaceShortNames   = new List<string>()
+        this.IfaceMangledNames = new List<string>()
+        this.IfaceNodes        = new List<AstNode>()
+        this.ParamIfaceKeys    = new List<string>()
+        this.ParamIfaceVals    = new List<string>()
         this.CurrentSource     = ""
         this.LastLineEmitted   = -1
         this.InferCacheKeys    = new List<int>()
@@ -392,6 +414,11 @@ public class CGen {
             if (this.ImportsFiltered) {
                 if (!this.NamespaceImported(cns)) { continue }
             }
+            // Interfaces lower to a fat-value typedef emitted by
+            // RegisterExternalProgPass1 — skip the opaque pkg-class
+            // typedef here (it would clash). Requires the external
+            // pre-scan (PreNoteInterfaces) to have run before BeginMulti.
+            if (this.IsInterface(cname)) { continue }
             let mangled: string = this.PkgClassMangledPrefix(cname)
             if (String_Length(mangled) > 0) {
                 this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* pkg-class */")
@@ -467,7 +494,7 @@ public class CGen {
         let decls = prog.Children.Count()
         for i in 0..decls {
             let decl = prog.Children.Get(i)
-            if (decl.Kind == NodeKind.CLASS_DECL) {
+            if (decl.Kind == NodeKind.CLASS_DECL && !decl.Flag2) {
                 let cname = this.SymName(decl.Name)
                 let members = decl.Children.Count()
                 for j in 0..members {
@@ -477,6 +504,7 @@ public class CGen {
                         var prefix   = ""
                         if (!isPublic) { prefix = "static " }
                         this.Out.EmitLine(prefix + this.MethodSig(m, cname) + ";")
+                        this.RegisterParamIfaces(cname + "_" + m.Name, m)
                     }
                     // async methods are forward-declared (impl+fiber+
                     // wrapper) by EmitAsyncForwards in EmitClassForwards.
@@ -489,7 +517,7 @@ public class CGen {
         let decls = prog.Children.Count()
         for i in 0..decls {
             let decl = prog.Children.Get(i)
-            if (decl.Kind == NodeKind.CLASS_DECL) {
+            if (decl.Kind == NodeKind.CLASS_DECL && !decl.Flag2) {
                 let name = this.SymName(decl.Name)
                 var ctorFound = false
                 let members = decl.Children.Count()
@@ -514,6 +542,7 @@ public class CGen {
                         }
                         sig = sig + ");"
                         this.Out.EmitLine(sig)
+                        this.RegisterParamIfaces(name + "_new", m)
                         // Variadic constructor: register `Name_new` with the
                         // fixed-param count so the NEW_EXPR call site gathers
                         // trailing args into one AmalgameList*, matching the
@@ -2112,10 +2141,20 @@ public class CGen {
         for i in 0..n {
             let decl: AstNode = kids.Get(i)
             if (decl.Kind == NodeKind.CLASS_DECL) {
-                this.ExternalClasses.Add(decl.Name)
-                this.ExternalClassNsArr.Add(nsPrefix)
                 let mangled: string = nsPrefix + "_" + decl.Name
-                this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* external */")
+                if (decl.Flag2) {
+                    // External interface: same fat-value lowering as a
+                    // local one, but mangled with the package ns. The
+                    // itab struct body is emitted in Pass 2.
+                    this.RegisterIface(decl.Name, mangled, decl)
+                    this.Out.EmitLine("struct " + mangled + "_itab;")
+                    this.Out.EmitLine("typedef struct { const struct " + mangled +
+                                      "_itab* itab; void* data; } " + mangled + "; /* external iface */")
+                } else {
+                    this.ExternalClasses.Add(decl.Name)
+                    this.ExternalClassNsArr.Add(nsPrefix)
+                    this.Out.EmitLine("typedef struct _" + mangled + " " + mangled + "; /* external */")
+                }
             }
             if (decl.Kind == NodeKind.ENUM_DECL) {
                 var isAlg: bool = false
@@ -2190,6 +2229,22 @@ public class CGen {
             let decl: AstNode = kids.Get(i)
             if (decl.Kind != NodeKind.CLASS_DECL) { continue }
             let mangled: string = nsPrefix + "_" + decl.Name
+            // External interface: emit the itab struct body so consumer
+            // code can dispatch through it; no object struct / methods.
+            if (decl.Flag2) {
+                this.Out.EmitLine("struct " + mangled + "_itab {")
+                this.Out.Indent_()
+                let imc: int = decl.Children.Count()
+                for imi in 0..imc {
+                    let im: AstNode = decl.Children.Get(imi)
+                    if (im.Kind == NodeKind.METHOD_DECL) {
+                        this.Out.EmitLine(this.IfaceFnPtrField(im) + ";")
+                    }
+                }
+                this.Out.Dedent()
+                this.Out.EmitLine("};")
+                continue
+            }
             let members: List<AstNode> = decl.Children
             let mc: int = members.Count()
             // Pre-scan: register field C types before emitting the
@@ -2273,7 +2328,7 @@ public class CGen {
         // to the correct mangled name.
         for i in 0..n {
             let decl: AstNode = kids.Get(i)
-            if (decl.Kind == NodeKind.CLASS_DECL) {
+            if (decl.Kind == NodeKind.CLASS_DECL && !decl.Flag2) {
                 let mangled: string = nsPrefix + "_" + decl.Name
                 let members: List<AstNode> = decl.Children
                 let mc: int = members.Count()
@@ -2282,6 +2337,32 @@ public class CGen {
                     if (m.Kind == NodeKind.METHOD_DECL) {
                         let sig: string = this.ExternalMethodSig(m, mangled, decl.Name)
                         this.Out.EmitLine(sig + ";")
+                        // Record interface-typed params so the consumer
+                        // packs concrete args when calling this external
+                        // method / constructor across the package line.
+                        if (m.Name == decl.Name) {
+                            this.RegisterParamIfaces(mangled + "_new", m)
+                        } else {
+                            this.RegisterParamIfaces(mangled + "_" + m.Name, m)
+                        }
+                    }
+                }
+                // For each interface this external class implements, the
+                // itab const lives in the package's own object; declare it
+                // extern so a consumer can reference it when packing.
+                let impl: string = decl.Str4
+                if (String_Length(impl) > 0) {
+                    let parts: List<string> = this.SplitTopLevelCommas(impl)
+                    let pcI: int = parts.Count()
+                    for pii in 0..pcI {
+                        var iface: string = String_Trim(parts.Get(pii))
+                        let lt: int = String_IndexOf(iface, "<")
+                        if (lt >= 0) { iface = String_Substring(iface, 0, lt) }
+                        let im2: string = this.IfaceMangledFor(iface)
+                        if (String_Length(im2) > 0) {
+                            this.Out.EmitLine("extern const struct " + im2 + "_itab " +
+                                              this.IfaceItabSym(mangled, im2) + ";")
+                        }
                     }
                 }
             }
@@ -2459,6 +2540,152 @@ public class CGen {
         return false
     }
 
+    // ── Interface dispatch helpers (Go-style itab+data) ────
+    // An interface-typed value lowers to a 2-word C struct
+    // { const <Iface>_itab* itab; void* data; } passed BY VALUE, so
+    // objects stay headerless (no per-object cost — non-interface code
+    // is byte-identical). A method call `x.m(a)` on an interface value
+    // becomes `x.itab->m(x.data, a)`; converting a concrete `c` to the
+    // interface packs `(<Iface>){ &<C>__as__<Iface>, (void*)c }`.
+
+    // Register an interface in the parallel registries (idempotent —
+    // the external pre-scan and RegisterExternalProgPass1 may both see
+    // the same facade).
+    private void RegisterIface(string shortName, string mangled, AstNode node) {
+        let n: int = this.IfaceMangledNames.Count()
+        for i in 0..n {
+            if (this.IfaceMangledNames.Get(i) == mangled) { return }
+        }
+        this.IfaceShortNames.Add(shortName)
+        this.IfaceMangledNames.Add(mangled)
+        this.IfaceNodes.Add(node)
+    }
+
+    // Pre-scan an external program for interface decls and register
+    // them (no emission). Called BEFORE BeginMulti so the pkg-class
+    // typedef loop can skip interface names (which need the fat-value
+    // typedef from RegisterExternalProgPass1, not an opaque struct).
+    public void PreNoteInterfaces(AstNode prog) {
+        let ns: string = prog.Str
+        if (String_Length(ns) == 0) { return }
+        let nsPrefix: string = String_Replace(ns, ".", "_")
+        let kids: List<AstNode> = prog.Children
+        let n: int = kids.Count()
+        for i in 0..n {
+            let decl: AstNode = kids.Get(i)
+            if (decl.Kind == NodeKind.CLASS_DECL && decl.Flag2) {
+                this.RegisterIface(decl.Name, nsPrefix + "_" + decl.Name, decl)
+            }
+        }
+    }
+
+    // True if `tname` (raw short or mangled) names a known interface.
+    private bool IsInterface(string tname) {
+        let n: int = this.IfaceShortNames.Count()
+        for i in 0..n {
+            if (this.IfaceShortNames.Get(i) == tname) { return true }
+            if (this.IfaceMangledNames.Get(i) == tname) { return true }
+        }
+        return false
+    }
+
+    // The C-mangled name of interface `tname` (short or mangled in);
+    // "" if not an interface. Lets TypeToC honour the package ns for
+    // external interfaces instead of re-applying the consumer's.
+    private string IfaceMangledFor(string tname) {
+        let n: int = this.IfaceShortNames.Count()
+        for i in 0..n {
+            if (this.IfaceShortNames.Get(i) == tname) { return this.IfaceMangledNames.Get(i) }
+            if (this.IfaceMangledNames.Get(i) == tname) { return this.IfaceMangledNames.Get(i) }
+        }
+        return ""
+    }
+
+    // Find the interface decl node by short or mangled name; null if
+    // unknown (e.g. an external interface whose node we didn't capture).
+    private AstNode IfaceNodeFor(string nameOrMangled) {
+        let n: int = this.IfaceShortNames.Count()
+        for i in 0..n {
+            if (this.IfaceShortNames.Get(i) == nameOrMangled ||
+                this.IfaceMangledNames.Get(i) == nameOrMangled) {
+                return this.IfaceNodes.Get(i)
+            }
+        }
+        return null
+    }
+
+    // Stable, unit-independent symbol for the itab of (class C, iface I):
+    // both the defining unit and any consumer compute the same name from
+    // the namespace-qualified mangled class + interface names.
+    private string IfaceItabSym(string classMangled, string ifaceMangled) {
+        return classMangled + "__as__" + ifaceMangled
+    }
+
+    // C function-pointer field for one interface method in the itab
+    // struct: `<retC> (*<Name>)(void* self, <paramCs...>)`.
+    private string IfaceFnPtrField(AstNode m) {
+        var retC: string = this.TypeToC(m.Str)
+        var ptr: string = retC + " (*" + m.Name + ")(void* self"
+        let pc: int = m.Params.Count()
+        for pi in 0..pc {
+            let p: AstNode = m.Params.Get(pi)
+            ptr = ptr + ", " + this.TypeToC(p.Str)
+        }
+        ptr = ptr + ")"
+        return ptr
+    }
+
+    // The cast applied to a concrete method when storing it in an itab
+    // slot: `(<retC> (*)(void* self, <paramCs...>))`.
+    private string IfaceFnPtrCast(AstNode m) {
+        var retC: string = this.TypeToC(m.Str)
+        var cast: string = "(" + retC + " (*)(void* self"
+        let pc: int = m.Params.Count()
+        for pi in 0..pc {
+            let p: AstNode = m.Params.Get(pi)
+            cast = cast + ", " + this.TypeToC(p.Str)
+        }
+        cast = cast + "))"
+        return cast
+    }
+
+    // Record which params of callee `mangled` are interface-typed, so a
+    // call site can pack a concrete arg into a fat value. Indexed by AM
+    // param position (self excluded), matching expr.Args at call sites.
+    private void RegisterParamIfaces(string mangled, AstNode m) {
+        let pc: int = m.Params.Count()
+        for pi in 0..pc {
+            let p: AstNode = m.Params.Get(pi)
+            if (this.IsInterface(p.Str)) {
+                this.ParamIfaceKeys.Add(mangled + "#" + String_FromInt(pi))
+                this.ParamIfaceVals.Add(this.IfaceMangledFor(p.Str))
+            }
+        }
+    }
+
+    // Emit one positional call argument, packing a concrete value into a
+    // {itab,data} fat value when the callee's param at `idx` is an
+    // interface (and the arg isn't already that interface). Otherwise
+    // identical to a plain EmitExprStr — so non-interface args are
+    // byte-for-byte unchanged.
+    private string CoerceArg(string callee, int idx, AstNode argExpr) {
+        let key: string = callee + "#" + String_FromInt(idx)
+        let n: int = this.ParamIfaceKeys.Count()
+        for i in 0..n {
+            if (this.ParamIfaceKeys.Get(i) == key) {
+                let ifaceMangled: string = this.ParamIfaceVals.Get(i)
+                let argC: string = this.EmitExprStr(argExpr)
+                let argT: string = this.InferTypeFromExpr(argExpr)
+                // Already an interface value (same or other) → pass through.
+                if (this.IsInterface(argT)) { return argC }
+                let argClass: string = String_Replace(argT, "*", "")
+                let itab: string = this.IfaceItabSym(argClass, ifaceMangled)
+                return "(" + ifaceMangled + "){ &" + itab + ", (void*)(" + argC + ") }"
+            }
+        }
+        return this.EmitExprStr(argExpr)
+    }
+
     private string PkgClassMangledPrefix(string tname) {
         let n: int = this.PkgClasses.Count()
         for i in 0..n {
@@ -2527,10 +2754,22 @@ public class CGen {
         }
         if (k == NodeKind.CLASS_DECL) {
             let name = this.SymName(decl.Name)
-            this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
-            // Track the short class name so IsLocalClass can give it
-            // precedence over a same-named PkgClass (facade-ABI bug).
-            this.LocalClasses.Add(decl.Name)
+            if (decl.Flag2) {
+                // Interface: lower to a Go-style fat value. Register it,
+                // forward-declare the (incomplete) itab struct, and emit
+                // the 2-word value typedef. The full itab struct body is
+                // emitted in pass 2 (EmitClass), once every class typedef
+                // it might reference exists.
+                this.RegisterIface(decl.Name, name, decl)
+                this.Out.EmitLine("struct " + name + "_itab;")
+                this.Out.EmitLine("typedef struct { const struct " + name +
+                                  "_itab* itab; void* data; } " + name + ";")
+            } else {
+                this.Out.EmitLine("typedef struct _" + name + " " + name + ";")
+                // Track the short class name so IsLocalClass can give it
+                // precedence over a same-named PkgClass (facade-ABI bug).
+                this.LocalClasses.Add(decl.Name)
+            }
         }
         if (k == NodeKind.INLINE_C) {
             // File-scope `@c { … }` raw block. Emit the body verbatim
@@ -2728,6 +2967,25 @@ public class CGen {
     private void EmitClass(AstNode cls) {
         let name    = this.SymName(cls.Name)
         let members = cls.Children.Count()
+
+        // Interface: emit the itab struct body (one fn-ptr per method, in
+        // declaration order = stable slot numbering) and nothing else —
+        // no object struct, no _new(), no method stubs. Dispatch happens
+        // through the itab at call sites.
+        if (cls.Flag2) {
+            this.Out.EmitLine("struct " + name + "_itab {")
+            this.Out.Indent_()
+            for i in 0..members {
+                let im = cls.Children.Get(i)
+                if (im.Kind == NodeKind.METHOD_DECL) {
+                    this.Out.EmitLine(this.IfaceFnPtrField(im) + ";")
+                }
+            }
+            this.Out.Dedent()
+            this.Out.EmitLine("};")
+            this.Out.EmitBlank()
+            return
+        }
 
         // Track current class for field-type lookups inside methods
         this.CurrentClass = name
@@ -2954,6 +3212,46 @@ public class CGen {
                 }
             }
         }
+
+        // Interface dispatch tables: for each interface this class
+        // implements (Str4 CSV), emit a const itab wiring the interface's
+        // ordered methods to this class's concrete methods. const → lands
+        // in .rodata (flash on MCU); exported so a consumer in another
+        // unit can reference it when packing a value.
+        this.EmitClassItabs(cls, name)
+    }
+
+    // Emit `const struct <I>_itab <C>__as__<I> = { &C_m, … };` for every
+    // interface C implements. Skips interfaces whose node we can't see.
+    private void EmitClassItabs(AstNode cls, string name) {
+        let impl: string = cls.Str4
+        if (String_Length(impl) == 0) { return }
+        let parts: List<string> = this.SplitTopLevelCommas(impl)
+        let pc: int = parts.Count()
+        for ii in 0..pc {
+            var iface: string = String_Trim(parts.Get(ii))
+            // Strip any generic args ("IComparable<int>" → "IComparable").
+            let lt: int = String_IndexOf(iface, "<")
+            if (lt >= 0) { iface = String_Substring(iface, 0, lt) }
+            if (String_Length(iface) == 0) { continue }
+            let inode: AstNode = this.IfaceNodeFor(iface)
+            if (inode == null) { continue }
+            let imangled: string = this.IfaceMangledFor(iface)
+            let sym: string = this.IfaceItabSym(name, imangled)
+            var line: string = "const struct " + imangled + "_itab " + sym + " = { "
+            let mc: int = inode.Children.Count()
+            var first: bool = true
+            for mi in 0..mc {
+                let m: AstNode = inode.Children.Get(mi)
+                if (m.Kind != NodeKind.METHOD_DECL) { continue }
+                if (!first) { line = line + ", " }
+                line = line + this.IfaceFnPtrCast(m) + " " + name + "_" + m.Name
+                first = false
+            }
+            line = line + " };"
+            this.Out.EmitLine(line)
+        }
+        this.Out.EmitBlank()
     }
 
     // Generate a C struct name for a tuple type like "(int,string)"
@@ -4580,6 +4878,25 @@ public class CGen {
                     }
                 }
             }
+            // Interface dispatch (Go-style itab): when the receiver's
+            // static type is an interface value, route through the itab
+            // (`recv.itab->m(recv.data, …)`) instead of a concrete
+            // symbol. Gated on IsInterface → concrete calls unaffected.
+            if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER && expr.Left.Left != null) {
+                let recvT0: string = this.InferTypeFromExpr(expr.Left.Left)
+                if (this.IsInterface(recvT0)) {
+                    let recvC: string = this.EmitExprStr(expr.Left.Left)
+                    let mname: string = expr.Left.Name
+                    let icallee: string = recvC + ".itab->" + mname
+                    var ic: string = icallee + "(" + recvC + ".data"
+                    let argcI: int = expr.Args.Count()
+                    for ai in 0..argcI {
+                        ic = ic + ", " + this.CoerceArg(icallee, ai, expr.Args.Get(ai))
+                    }
+                    ic = ic + ")"
+                    return ic
+                }
+            }
             let callee = this.EmitCalleeStr(expr.Left)
             var callStr = callee + "("
             var first = true
@@ -4609,7 +4926,7 @@ public class CGen {
                 for i in 0..argc {
                     let arg = expr.Args.Get(i)
                     if (!first) { callStr = callStr + ", " }
-                    callStr = callStr + this.EmitExprStr(arg)
+                    callStr = callStr + this.CoerceArg(callee, i, arg)
                     first = false
                 }
             }
@@ -4689,7 +5006,7 @@ public class CGen {
                             for i in 0..argc {
                                 let arg = expr.Args.Get(i)
                                 if (i > 0) { newCall = newCall + ", " }
-                                newCall = newCall + this.EmitExprStr(arg)
+                                newCall = newCall + this.CoerceArg(ctorPrefix + "_new", i, arg)
                             }
                         }
                         newCall = newCall + ")"
@@ -5671,6 +5988,13 @@ public class CGen {
         if (t == "WebSocket") { return "AmalgameWebSocket*" }
         if (this.IsEnum(t)) {
             return this.SymName(t)
+        }
+        // Interface types lower to the 2-word value typedef (no `*`):
+        // they're passed by value (itab+data), like Go interfaces. Use
+        // the registered mangled name (package ns for external ones).
+        let ifaceM: string = this.IfaceMangledFor(t)
+        if (String_Length(ifaceM) > 0) {
+            return ifaceM
         }
         // Project F: external classes use their own ns-mangled name
         // so `let r: Random = …` lowers to `Amalgame_Random_Random* r`,
