@@ -49,7 +49,7 @@ carte ; les drivers ci-dessous ne s'en soucient pas.
 | Package | Installation | Composants pris en charge |
 |---|---|---|
 | **hardware-led** ([repo](https://github.com/amalgame-lang/amalgame-hardware-led)) | `amc package add hardware-led` | LED simple (tout-ou-rien), LED RGB (PWM), ruban **APA102 / DotStar**, ruban **WS2812 / NeoPixel**. |
-| **hardware-motor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-motor)) | `amc package add hardware-motor` | Servo / ESC, moteur CC (pont en H), moteur pas-à-pas 28BYJ-48, driver pas-à-pas **A4988**, relais, driver PWM 16 canaux **PCA9685**, buzzer piézo. |
+| **hardware-motor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-motor)) | `amc package add hardware-motor` | Servo / ESC, moteur CC (pont en H), moteur pas-à-pas 28BYJ-48, driver pas-à-pas **A4988**, **AccelStepper** (accél./décél. trapézoïdale pour tout driver step/dir), relais, driver PWM 16 canaux **PCA9685**, buzzer piézo. |
 
 ## Entrée
 
@@ -61,7 +61,7 @@ carte ; les drivers ci-dessous ne s'en soucient pas.
 
 | Package | Installation | Composants pris en charge |
 |---|---|---|
-| **hardware-sensor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-sensor)) | `amc package add hardware-sensor` | Distance **HC-SR04**, ADC SPI 8 canaux **MCP3008**, **BME280** température/pression/humidité, IMU 6 axes **MPU-6050**, lumière ambiante **BH1750**, courant/puissance **INA219**, ADC I²C 16 bits **ADS1115**, ADC cellule de charge **HX711**, thermocouple type K **MAX6675**. |
+| **hardware-sensor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-sensor)) | `amc package add hardware-sensor` | Distance **HC-SR04**, ADC SPI 8 canaux **MCP3008**, **BME280** température/pression/humidité, IMU 6 axes **MPU-6050**, lumière ambiante **BH1750**, courant/puissance **INA219**, ADC I²C 16 bits **ADS1115**, ADC cellule de charge **HX711**, thermocouple type K **MAX6675**, température/humidité **SHT31** & **AHT20**, température 1-Wire **DS18B20** (Pi/Linux). |
 | **hardware-comms** ([repo](https://github.com/amalgame-lang/amalgame-hardware-comms)) | `amc package add hardware-comms` | Récepteur **GPS** NMEA via un `SerialPort` HAL. |
 
 ## Afficheurs

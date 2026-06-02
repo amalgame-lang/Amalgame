@@ -45,7 +45,7 @@ the drivers below don't care which.
 | Package | Install | Supported components |
 |---|---|---|
 | **hardware-led** ([repo](https://github.com/amalgame-lang/amalgame-hardware-led)) | `amc package add hardware-led` | Plain LED (on/off), RGB LED (PWM), **APA102 / DotStar** strip, **WS2812 / NeoPixel** strip. |
-| **hardware-motor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-motor)) | `amc package add hardware-motor` | Servo / ESC, DC motor (H-bridge), 28BYJ-48 stepper, **A4988** stepper driver, relay, **PCA9685** 16-channel PWM driver, piezo buzzer. |
+| **hardware-motor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-motor)) | `amc package add hardware-motor` | Servo / ESC, DC motor (H-bridge), 28BYJ-48 stepper, **A4988** stepper driver, **AccelStepper** (trapezoidal accel/decel for any step/dir driver), relay, **PCA9685** 16-channel PWM driver, piezo buzzer. |
 
 ## Input
 
@@ -57,7 +57,7 @@ the drivers below don't care which.
 
 | Package | Install | Supported components |
 |---|---|---|
-| **hardware-sensor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-sensor)) | `amc package add hardware-sensor` | **HC-SR04** distance, **MCP3008** 8-ch SPI ADC, **BME280** temp/pressure/humidity, **MPU-6050** 6-axis IMU, **BH1750** ambient light, **INA219** current/power, **ADS1115** 16-bit I²C ADC, **HX711** load-cell ADC, **MAX6675** K-type thermocouple. |
+| **hardware-sensor** ([repo](https://github.com/amalgame-lang/amalgame-hardware-sensor)) | `amc package add hardware-sensor` | **HC-SR04** distance, **MCP3008** 8-ch SPI ADC, **BME280** temp/pressure/humidity, **MPU-6050** 6-axis IMU, **BH1750** ambient light, **INA219** current/power, **ADS1115** 16-bit I²C ADC, **HX711** load-cell ADC, **MAX6675** K-type thermocouple, **SHT31** & **AHT20** temperature/humidity, **DS18B20** 1-Wire temperature (Pi/Linux). |
 | **hardware-comms** ([repo](https://github.com/amalgame-lang/amalgame-hardware-comms)) | `amc package add hardware-comms` | NMEA **GPS** receiver over a HAL `SerialPort`. |
 
 ## Displays
