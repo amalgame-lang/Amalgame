@@ -1,0 +1,35 @@
+// Interface DISPATCH — a discriminating test for runtime polymorphism.
+//
+// Unlike interfaces.am (where the expected strings also appear from
+// direct calls, so a broken dispatch still "passes"), here the only
+// source of "woof" / "meow" is a call through the `Speaker` interface
+// type. Before the v0.8.72 itab+data fix this printed empty lines.
+
+namespace Tests
+
+public interface Speaker {
+    Say() -> string
+}
+
+public class Dog implements Speaker {
+    public string Say() { return "woof" }
+}
+
+public class Cat implements Speaker {
+    public string Say() { return "meow" }
+}
+
+public class Program {
+    // Receives the interface value, dispatches through its itab.
+    private static string Ask(s: Speaker) {
+        return s.Say()
+    }
+
+    public static void Main(string[] args) {
+        let d: Dog = new Dog()
+        let c: Cat = new Cat()
+        // Concrete → interface coercion at the call site, then dispatch.
+        Console.WriteLine(Program.Ask(d))
+        Console.WriteLine(Program.Ask(c))
+    }
+}
