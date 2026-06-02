@@ -2673,17 +2673,54 @@ public class CGen {
         let n: int = this.ParamIfaceKeys.Count()
         for i in 0..n {
             if (this.ParamIfaceKeys.Get(i) == key) {
-                let ifaceMangled: string = this.ParamIfaceVals.Get(i)
-                let argC: string = this.EmitExprStr(argExpr)
-                let argT: string = this.InferTypeFromExpr(argExpr)
-                // Already an interface value (same or other) → pass through.
-                if (this.IsInterface(argT)) { return argC }
-                let argClass: string = String_Replace(argT, "*", "")
-                let itab: string = this.IfaceItabSym(argClass, ifaceMangled)
-                return "(" + ifaceMangled + "){ &" + itab + ", (void*)(" + argC + ") }"
+                return this.CoerceToIface(this.ParamIfaceVals.Get(i), argExpr)
             }
         }
         return this.EmitExprStr(argExpr)
+    }
+
+    // Pack an expression into a {itab,data} fat value of interface
+    // `ifaceMangled`. If the expression is already that (or another)
+    // interface value, it passes straight through.
+    private string CoerceToIface(string ifaceMangled, AstNode argExpr) {
+        let argC: string = this.EmitExprStr(argExpr)
+        let argT: string = this.InferTypeFromExpr(argExpr)
+        if (this.IsInterface(argT)) { return argC }
+        let argClass: string = String_Replace(argT, "*", "")
+        let itab: string = this.IfaceItabSym(argClass, ifaceMangled)
+        return "(" + ifaceMangled + "){ &" + itab + ", (void*)(" + argC + ") }"
+    }
+
+    // A fat interface value is two words, but a generic List/Map slot is
+    // a single `void*`. So when an interface value is stored in a generic
+    // collection we heap-box it (copy the {itab,data} pair onto the GC
+    // heap) and store the pointer; reads deref it back to a fat value.
+    private string BoxIface(string ifaceMangled, string fatExpr) {
+        return "({ " + ifaceMangled + "* __bx = (" + ifaceMangled
+             + "*) code_alloc(sizeof(" + ifaceMangled + ")); *__bx = " + fatExpr
+             + "; (void*) __bx; })"
+    }
+
+    // Resolve the element C-type of the List a `X.Add/Set/Get` call
+    // targets, mirroring the receiver shapes the Get lowering handles
+    // (this.Field / var.Field / local var). "" when unknown.
+    private string ResolveListElemC(AstNode callee) {
+        if (callee.Left == null) { return "" }
+        let lkG = callee.Left.Kind
+        if (lkG == NodeKind.MEMBER && callee.Left.Left != null) {
+            let lll: AstNode = callee.Left.Left
+            if (lll.Kind == NodeKind.THIS_EXPR) {
+                return this.ListElemGet(this.CurrentClass, callee.Left.Name)
+            }
+            if (lll.Kind == NodeKind.IDENTIFIER) {
+                let bare4: string = String_Replace(this.LocalTypeGet(lll.Name), "*", "")
+                return this.ListElemGet(bare4, callee.Left.Name)
+            }
+        }
+        if (lkG == NodeKind.IDENTIFIER) {
+            return this.ListElemGet("__local__", callee.Left.Name)
+        }
+        return ""
     }
 
     private string PkgClassMangledPrefix(string tname) {
@@ -5427,6 +5464,14 @@ public class CGen {
         if (mname == "Add") {
             let argc = callExpr.Args.Count()
             if (argc == 0) { return "AmalgameList_add(" + listExpr + ", NULL)" }
+            // List<I> of an interface: coerce the concrete element to a
+            // fat value and heap-box it into the void* slot.
+            let elemA: string = this.ResolveListElemC(callee)
+            if (String_Length(elemA) > 0 && this.IsInterface(elemA)) {
+                let im: string = this.IfaceMangledFor(elemA)
+                let fat: string = this.CoerceToIface(im, callExpr.Args.Get(0))
+                return "AmalgameList_add(" + listExpr + ", " + this.BoxIface(im, fat) + ")"
+            }
             let arg0 = this.EmitExprStr(callExpr.Args.Get(0))
             return "AmalgameList_add(" + listExpr + ", " + this.BoxAsVoid(arg0) + ")"
         }
@@ -5436,6 +5481,12 @@ public class CGen {
             let argc = callExpr.Args.Count()
             if (argc < 2) { return "" }
             let idxArg = this.EmitExprStr(callExpr.Args.Get(0))
+            let elemS: string = this.ResolveListElemC(callee)
+            if (String_Length(elemS) > 0 && this.IsInterface(elemS)) {
+                let im: string = this.IfaceMangledFor(elemS)
+                let fat: string = this.CoerceToIface(im, callExpr.Args.Get(1))
+                return "AmalgameList_set(" + listExpr + ", " + idxArg + ", " + this.BoxIface(im, fat) + ")"
+            }
             let valArg = this.EmitExprStr(callExpr.Args.Get(1))
             return "AmalgameList_set(" + listExpr + ", " + idxArg + ", " + this.BoxAsVoid(valArg) + ")"
         }
@@ -5489,6 +5540,11 @@ public class CGen {
                 }
             }
             if (String_Length(elemType) > 0) {
+                // List<I> of an interface: the slot holds a heap pointer
+                // to a {itab,data} fat value (see BoxIface) — deref it.
+                if (this.IsInterface(elemType)) {
+                    return "(*(" + elemType + "*)AmalgameList_get(" + listExpr + ", " + idx0 + "))"
+                }
                 // For pointer-shaped elems (anything ending in `*`,
                 // including code_string), the direct cast suffices.
                 // For scalar elems (i64, double, code_bool), the
