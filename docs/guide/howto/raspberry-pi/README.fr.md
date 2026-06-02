@@ -54,4 +54,8 @@ plus).
 > code écrit ici se lira presque à l'identique plus tard sur un
 > microcontrôleur nu. (Une section `How To → MCU` suivra.)
 
+`hardware-gpio` est le **backend Raspberry Pi**. Par-dessus vit toute
+une famille de drivers de composants portables (LEDs, moteurs,
+capteurs, afficheurs, …) — voir le **[catalogue des composants matériels](../hardware-components.md)**.
+
 Commencez par **[Préparer le Pi](01-setup.md)**.

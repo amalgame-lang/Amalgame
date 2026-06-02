@@ -49,4 +49,8 @@ chip, where the old `/dev/gpiomem` trick no longer works).
 > you write here will later read almost identically on a bare-metal
 > microcontroller. (A `How To → MCU` section will follow.)
 
+`hardware-gpio` is the **Raspberry Pi backend**. On top of it sits a
+whole family of portable component drivers (LEDs, motors, sensors,
+displays, …) — see the full **[Hardware components catalogue](../hardware-components.md)**.
+
 Start with **[Set up your Pi](01-setup.md)**.
