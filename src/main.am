@@ -463,11 +463,36 @@ public class AmalgameCompiler {
         // to every .c — gcc preprocessed 10MB+ of C++ headers for a
         // trivial path.c that only imported Amalgame.Collections.
         gen.SetImportedNamespaces(requiredNs)
+
+        // Parse external facades up-front (before BeginMulti) so the
+        // cgen can pre-note their interfaces: BeginMulti emits pkg-class
+        // typedefs and must skip interface names (which get a fat-value
+        // typedef from RegisterExternalProgPass1, not an opaque struct).
+        let externalProgs  = new List<AstNode>()
+        let externalCount  = this.ExternalFiles.Count()
+        var parseOk = true
+        for ei in 0..externalCount {
+            let epath = this.ExternalFiles.Get(ei)
+            let esrc  = File.ReadAll(epath)
+            this.Diag.LoadSource(epath, esrc)
+            let elex  = new Lexer(esrc, epath)
+            let etoks = elex.Tokenize()
+            let epar  = new Parser(etoks)
+            let eprog = epar.Parse()
+            externalProgs.Add(eprog)
+            gen.PreNoteInterfaces(eprog)
+            if (epar.HasErrors()) {
+                Console.WriteError("amc: parse errors in external " + epath)
+                Console.WriteError(epar.GetErrors())
+                this.ExitCode = 1
+                parseOk = false
+            }
+        }
+
         gen.BeginMulti(nsPrefix)
 
         // ── Parse all files & Pass 1 ──────────────────
         let progs = new List<AstNode>()
-        var parseOk = true
         for i in 0..inputCount {
             let path = inputFiles.Get(i)
             let src  = File.ReadAll(path)
@@ -485,31 +510,8 @@ public class AmalgameCompiler {
             }
             gen.AddFilePass1(prog)
         }
-        // Project F (v0.7.5+): external files (passed via `--external
-        // <file.am>`) are parsed for resolver + typechecker visibility,
-        // but the cgen emits forward declarations only — definitions
-        // land at link time from libamalgame.a. The cgen tracks each
-        // file's namespace so call sites in the primary files lower
-        // through the file's own mangled prefix rather than the
-        // bundle's global NsPrefix.
-        let externalProgs  = new List<AstNode>()
-        let externalCount  = this.ExternalFiles.Count()
-        for ei in 0..externalCount {
-            let epath = this.ExternalFiles.Get(ei)
-            let esrc  = File.ReadAll(epath)
-            this.Diag.LoadSource(epath, esrc)
-            let elex  = new Lexer(esrc, epath)
-            let etoks = elex.Tokenize()
-            let epar  = new Parser(etoks)
-            let eprog = epar.Parse()
-            externalProgs.Add(eprog)
-            if (epar.HasErrors()) {
-                Console.WriteError("amc: parse errors in external " + epath)
-                Console.WriteError(epar.GetErrors())
-                this.ExitCode = 1
-                parseOk = false
-            }
-        }
+        // External facades were parsed up-front (before BeginMulti) into
+        // externalProgs; their decls are registered with the cgen below.
         // RegisterExternalProg is split into two passes (v0.8.36):
         //   - Pass 1 across every external first — populates
         //     ExternalClasses / ExternalEnums + emits the matching
