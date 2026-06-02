@@ -55,7 +55,7 @@ carte ; les drivers ci-dessous ne s'en soucient pas.
 
 | Package | Installation | Composants pris en charge |
 |---|---|---|
-| **hardware-input** ([repo](https://github.com/amalgame-lang/amalgame-hardware-input)) | `amc package add hardware-input` | Bouton-poussoir anti-rebond, encodeur rotatif. *(Un clavier matriciel arrive en v0.2.0, qui requiert amc ≥ 0.8.73.)* |
+| **hardware-input** ([repo](https://github.com/amalgame-lang/amalgame-hardware-input)) | `amc package add hardware-input` | Bouton-poussoir anti-rebond, encodeur rotatif, **clavier matriciel** (lignes × colonnes). |
 
 ## Capteurs
 
