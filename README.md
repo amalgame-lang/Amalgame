@@ -293,7 +293,7 @@ stdlib/               Stdlib API reference (.am declarations)
 snapshot/             Tracked amc_lib.c known-good bootstrap
 tools/                save-snapshot.sh, release.sh
 tests/                Sample programs + run_*.sh runners
-docs/guide/           User guide chapters 1–15 (FR translations for 11–15)
+docs/guide/           User guide chapters 1–16 (FR translations for 11–16)
 docs/proposals/       Design RFCs (amc-migrate.md tracks LLM roadmap)
 editors/vscode/       Syntax highlighting extension
 .github/workflows/    CI + tag-driven Release automation
