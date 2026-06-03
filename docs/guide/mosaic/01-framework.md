@@ -6,7 +6,7 @@
 > [`amalgame-ui-web`](09-ui-web/README.md), which is a desktop GUI
 > binding over an OS webview. Different package, different use case.
 >
-> Everything below is from `amalgame-web v0.17.1` and its dependencies
+> Everything below is from `amalgame-web v0.28.0` and its dependencies
 > as shipped. Method signatures are quoted from the package facades.
 
 Mosaic is a small, explicit web framework: you create a `WebApp`,
@@ -100,6 +100,8 @@ The handler receives a `WebContext`. The fields and methods you'll use:
 | `ctx.Path` | field `string` | path without the query string |
 | `ctx.State` | field `Map<string,string>` | app-level shared state (read) |
 | `ctx.Session` | field `Session` | the session, or null if none |
+| `ctx.IsMultipart()` | method | true for a `multipart/form-data` body |
+| `ctx.Multipart()` | method | parse uploads → a `Multipart` |
 
 ```amalgame
 app.Post("/echo", ctx => {
@@ -108,8 +110,28 @@ app.Post("/echo", ctx => {
 })
 ```
 
-> The request body is **text** in v0.17.1. Binary uploads (a streaming
-> API) are not shipped yet — don't document or rely on them.
+`ctx.Body` is the raw text body — handy for JSON / form posts. For
+**file uploads** (`multipart/form-data`), use `ctx.Multipart()`, which
+parses the raw bytes (binary-safe, unlike `ctx.Body` which stops at the
+first NUL):
+
+```amalgame
+app.Post("/upload", ctx => {
+    let mp = ctx.Multipart()
+    let avatar = mp.File("avatar")          // an UploadedFile, or null
+    if (avatar != null) {
+        avatar.SaveTo("/var/uploads/" + avatar.Filename)
+    }
+    let caption: string = mp.Field("caption")   // a non-file text field
+    return HttpResponse.New().Text("got " + String_FromInt(mp.AllFiles().Count()) + " file(s)")
+})
+```
+
+An `UploadedFile` exposes `Name` / `Filename` / `ContentType` /
+`Size()` / `Bytes()` (a `List<int>`) / `Text()` / `SaveTo(path)`. The
+parser comes from `amalgame-net-http` (`Multipart` / `UploadedFile`) and
+honours the server's `max_body_bytes` cap, so oversized uploads are
+rejected before they reach the handler.
 
 ---
 
@@ -126,6 +148,7 @@ public HttpResponse Header(string name, string value)   // add/override (CR/LF-s
 public HttpResponse Redirect(string url, bool permanent) // 302, or 308 if permanent
 public HttpResponse SetCookie(Cookie cookie)      // Set-Cookie header
 public HttpResponse File(string path)             // binary-safe file body
+public HttpResponse Bytes(List<int> data, string ct)  // in-memory binary body
 ```
 
 ```amalgame
@@ -139,6 +162,47 @@ app.Get("/teapot", ctx =>
 `Json` takes a string — Mosaic does not impose a JSON encoder, so build
 the payload with the `Amalgame.Formats.Json` stdlib (see
 [04-stdlib.md](04-stdlib.md)) or string-build small literals as above.
+
+`Bytes(data, ct)` ships an in-memory binary body (a `List<int>`) with an
+explicit length — for dynamically generated images, gzip output, etc.;
+all custom headers are preserved on the wire.
+
+---
+
+## Templates — `Template` (auto-escaping)
+
+`HttpResponse.Html(s)` stores `s` verbatim, so hand-built HTML that
+interpolates user data is an XSS hole. The `Template` engine
+(`Amalgame.Web`, pure-Amalgame) closes it by **escaping every value by
+default**. Render straight from the context:
+
+```amalgame
+app.Get("/users/:id", ctx => {
+    var data = new Map<string, string>()
+    data.Set("name", ctx.Param("id"))     // even if it contains <script>, it's escaped
+    data.Set("admin", "true")
+    return ctx.Render("views/user.html", data)
+})
+```
+
+`ctx.Render(path, data)` reads the template file and returns a ready
+`text/html` response; `ctx.RenderString(src, data)` renders an inline
+string. The Mustache-like syntax:
+
+| Tag | Effect |
+|-----|--------|
+| `{{x}}` | value of `x`, **HTML-escaped** (`& < > " ' /`) |
+| `{{{x}}}` / `{{&x}}` | value of `x`, **raw** (opt out of escaping) |
+| `{{#x}}…{{/x}}` | section: rendered once if `x` is truthy |
+| `{{^x}}…{{/x}}` | inverted section: rendered if `x` is falsy |
+| `{{>name}}` | a registered partial |
+| `{{! … }}` | comment (dropped) |
+
+Over a `Map<string,string>`, a key is *truthy* when present and not in
+`{ "", "false", "0" }`. `Template.HtmlEscape(s)` is also available
+directly for escaping a value in hand-built markup. (List iteration —
+repeating a section per row — needs a richer context and is on the
+roadmap; sections are boolean for now.)
 
 ---
 
@@ -154,6 +218,7 @@ let app = new WebApp()
     .WithCsrf(Csrf.Default())
     .WithRateLimit(RateLimit.PerIp(100, 60))   // 100 req / 60 s / IP
     .WithStatic(Static.New("/assets", "./public"))
+    .WithCompress(Compression.Default())       // gzip eligible text responses
     .WithLogging(new LogConfig().WithAccessLog(true))
     .WithState("appName", "demo")
 ```
@@ -186,6 +251,18 @@ skipped on GET/HEAD/OPTIONS. `Csrf.Disabled()` turns it off.
 IP, returning `429` with `Retry-After` when exceeded. `.WithBackend("redis")`
 + `.WithRedisHost(...)` shares the limit across instances; the default
 `"memory"` backend is per-process.
+
+### Compression (gzip)
+
+`Compression.Default()` gzip-compresses eligible text responses when the
+client sends `Accept-Encoding: gzip`, setting `Content-Encoding: gzip` +
+`Vary: Accept-Encoding`. It's the **last** response step and only fires
+for compressible types (`text/*`, JSON, JS, SVG, XML) above a size
+threshold (1 KB) — small bodies, already-encoded responses, and `.File`
+responses are left untouched (serve a pre-compressed `.gz` next to the
+asset for those — see *Static files*). `Compression.Strict()` lowers the
+threshold and adds `application/wasm`; tune with `.WithMinSize(n)` /
+`.WithType(mime)`. Backed by the `amalgame-compress` (zlib) package.
 
 ---
 
@@ -242,9 +319,20 @@ app.WithStatic(Static.New("/assets", "./public").WithCacheMaxAge(3600))
 
 Serves `./public/app.css` at `/assets/app.css`. Path-traversal is
 blocked, directories return `403` (no auto-index), misses fall through
-to the router, and `If-None-Match` is honoured (`304`). MIME type is set
-by extension. Range requests are not supported yet (the whole file is
-sent), so keep it to reasonably small assets.
+to the router. MIME type is set by extension.
+
+Caching + delivery (v0.27.0):
+
+- **Conditional GET** — `ETag` + `Last-Modified` are emitted; a matching
+  `If-None-Match` or `If-Modified-Since` returns `304 Not Modified`.
+- **Range requests** — `Accept-Ranges: bytes` is advertised; a `Range:`
+  header is served as `206 Partial Content` (single range: `0-1023`,
+  `1024-`, or suffix `-512`), with `416` + `Content-Range: bytes */N`
+  when unsatisfiable. Good for video / large-file resume.
+- **Pre-compressed variants** — when the client accepts gzip and a
+  `<file>.gz` sits next to the asset, it's served with
+  `Content-Encoding: gzip` (skipped for Range requests). This is the
+  file complement to the in-memory `Compression` middleware.
 
 Register specific prefixes before general ones if they overlap.
 
@@ -274,6 +362,40 @@ public int ServeHttpsMt(int port, string certPath, string keyPath)
 
 These need OpenSSL 3.x (or LibreSSL) on the system. For automatic
 Let's Encrypt certificates, pair with `amalgame-tls`'s ACME support.
+
+---
+
+## Server-Sent Events (SSE)
+
+For one-way live push (progress, notifications, tickers) without the
+weight of WebSocket, register an SSE route. The handler holds the
+connection and pushes frames until the client disconnects:
+
+```amalgame
+app.Sse("/events", sc => {
+    var n: int = 0
+    while (sc.Send("tick " + String_FromInt(n))) {   // false when the peer is gone
+        n = n + 1
+        DateTime.SleepSeconds(1)
+    }
+    return 0
+})
+```
+
+The handler gets an `SseConn` (from `amalgame-net-http`):
+`Send(data)` (a `data:` event; false signals the client left),
+`SendEvent(event, data, id)`, `Comment(s)` (a `: …` heartbeat),
+`Retry(ms)`, and `Close()`. The browser side is one line:
+
+```js
+new EventSource("/events").onmessage = e => console.log(e.data)
+```
+
+SSE routes are matched (GET + exact path) **before** the normal
+request → response pipeline, so they bypass the response middlewares
+(they own the connection). Under `ServeMt` each stream holds its worker
+thread for its lifetime — fine for tens/hundreds of clients; use
+`ServeAsync` for high fan-out.
 
 ---
 
@@ -322,8 +444,8 @@ public class Program {
   floor; don't pin an older net-http by hand.
 - **Route order is significant** — static before parameterized, specific
   static-file prefixes before general ones.
-- **Request body is text only** in v0.17.1; binary upload streaming is
-  not shipped.
+- **`ctx.Body` is text** (truncates at a NUL) — for binary uploads use
+  `ctx.Multipart()`, which walks the raw bytes.
 - **`Cors.AllowAll()` is for development.** In production list explicit
   origins with `Cors.Strict().WithAllowedOrigins([...])`.
 - **HTTPS needs system OpenSSL 3.x.** The `ServeHttps*` entry points
