@@ -377,5 +377,5 @@ public class Program {
   link against it.
 
 For configuration patterns (toml/env/flag layering) see
-[mosaic-configuration.md](../mosaic-configuration.md). For the HTTP
-types themselves, see the `amalgame-net-http` package README.
+[mosaic-configuration.md](https://github.com/amalgame-lang/Amalgame/blob/main/docs/mosaic-configuration.md).
+For the HTTP types themselves, see the `amalgame-net-http` package README.
