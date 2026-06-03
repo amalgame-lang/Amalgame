@@ -73,6 +73,73 @@ my-app/
 A missing `mosaic.toml` is equivalent to an empty one — every
 feature falls back to its library default.
 
+## 2b. The `mosaic serve` file schema
+
+This is what the prebuilt **`mosaic serve`** binary actually reads (no
+Amalgame code). It assembles a `MosaicServer` from the file: N static
+`[[site]]` blocks + N reverse-proxy `[[proxy]]` blocks, all sharing one
+HTTPS front (Host dispatch + SNI + ACME + `:80`→`:443` redirect). The
+per-feature [Reference](#3-reference) below documents every middleware
+key in depth; this section is the top-level file layout.
+
+```toml
+[server]
+port = 443            # default: 443 when tls, else 8080
+tls  = true
+
+[tls]
+acme     = true
+email    = "admin@example.com"
+cert_dir = "/var/mosaic/certs"   # <cert_dir>/<domain>/{fullchain,privkey}.pem
+
+# ── A static site by Host ───────────────────────────────
+[[site]]
+hosts = ["example.com", "www.example.com"]   # www folds to the apex
+root  = "/srv/example/public"
+  [site.security.headers]                     # → SecurityHeaders.FromMap
+  preset = "strict_html"
+  [site.security.cors]                        # → Cors.FromMap
+  preset = "strict"
+  [site.logging]                              # → LogConfig.FromMap
+  access_log = true
+
+# ── A reverse-proxy / load-balanced host ────────────────
+[[proxy]]
+hosts  = ["api.example.com"]
+routes = [
+  { prefix = "/",      upstream  = "http://127.0.0.1:8080" },
+  { prefix = "/heavy", upstreams = ["http://127.0.0.1:9001", "http://127.0.0.1:9002"], strategy = "round_robin" },
+]
+```
+
+**`[[site]]`** — a static site. `hosts` = the domains it answers (each
+non-`www.` host joins the SNI/ACME set); `root` = directory of static
+files (`/` → `index.html`, `/<slug>` → `<slug>.html`, assets by MIME).
+The `[site.security.*]` / `[site.logging]` sub-tables are flattened and
+fed to the matching `FromMap` middleware factory — same keys as the
+[Reference](#3-reference) sections below.
+
+**`[[proxy]]`** — a reverse proxy / load balancer (via
+`amalgame-net-proxy`). `hosts` join the same TLS/SNI/ACME front as
+sites. `routes` is an array of **inline tables** (one per line), matched
+by longest `prefix`:
+
+| Route key | Type | Notes |
+|---|---|---|
+| `prefix` | `string` | Path prefix to match. Default `"/"`. Longest match wins. |
+| `upstream` | `string` | Single backend, e.g. `"http://127.0.0.1:8080"`. |
+| `upstreams` | `[string]` | Load-balanced pool (mutually exclusive with `upstream`). |
+| `strategy` | `string` | Pool policy: `round_robin` (default) / `ip_hash` / `least_conn`. |
+
+A single-route proxy can drop `routes` and put `upstream` / `upstreams`
+(+ optional `strategy`) directly on the `[[proxy]]` block. A config with
+only `[[proxy]]` blocks and no `[[site]]` is valid.
+
+> **TOML gotcha.** Each route is a *single-line* inline table; the
+> `routes = [ … ]` array may wrap across lines, but a `{ … }` may not.
+> Don't use a nested `[[proxy.route]]` array-of-tables — the bundled
+> TOML parser mishandles array-of-tables nested inside another.
+
 ## 3. Reference
 
 Each section below maps a TOML table to the library/middleware that
