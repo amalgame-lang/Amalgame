@@ -445,7 +445,76 @@ are ignored (forward-compat).
 
 ---
 
-## 4. Composing config in code (no `mosaic.toml`)
+## 4. Running as a service
+
+A foreground `mosaic serve` dies with your SSH session and won't come
+back after a reboot. `mosaic service` registers it with the host's
+native service manager — no hand-written unit file:
+
+```bash
+cd /srv/my-site            # the dir holding mosaic.toml
+sudo mosaic service install        # generate unit + enable + start
+mosaic service status
+mosaic service logs -f
+```
+
+`install` wraps `mosaic serve <config>` (default `./mosaic.toml`) and
+pins the unit's working directory to the config's directory, so the
+relative paths in `mosaic.toml` (`cert_dir`, a site `root`, …) resolve
+exactly as they do in the foreground.
+
+### Actions
+
+| Action | Effect |
+|---|---|
+| `install [CONFIG]` | Generate the unit for `mosaic serve CONFIG`, then enable + start it. |
+| `uninstall` | Stop, disable, and remove the unit. |
+| `start` / `stop` / `restart` | Lifecycle control. |
+| `status` | Service status (no root). |
+| `logs [-f]` | Tail the service logs (`-f` follows; no root). |
+
+### Flags
+
+| Flag | Meaning |
+|---|---|
+| `--name NAME` | Service name. Default: `mosaic-<config-dir-basename>`. |
+| `--user USER` | OS user the service runs *as* (systemd/launchd `User=`). Default: the invoking user. |
+| `--user-scope` | Install a *per-user* service (systemd `--user`, `~/.config/systemd/user/`) instead of a system one — no root, but no start at boot without lingering. |
+| `--no-enable` | Register but don't enable at boot. |
+| `--no-start` | Register but don't start now. |
+
+`--user` (run-*as* an account) and `--user-scope` (per-user systemd)
+are different knobs — don't confuse them.
+
+### Platforms
+
+System scope is the default; registration writes system paths, so
+`install`/`uninstall`/`start`/`stop` need root (`sudo`, or Administrator
+on Windows). `status`/`logs` don't.
+
+| OS | Backend | Unit written |
+|---|---|---|
+| Linux | systemd | `/etc/systemd/system/<name>.service` |
+| macOS | launchd | `/Library/LaunchDaemons/<name>.plist` |
+| Windows | SCM | `sc create <name> binPath= "mosaic serve <config>"` (run from Git Bash / MSYS2) |
+
+The systemd unit gets `AmbientCapabilities=CAP_NET_BIND_SERVICE`, so it
+can bind `:80`/`:443` without running as full root, and a
+`SIGTERM`/`TimeoutStopSec` stop that the server shuts down cleanly on.
+On Windows the served binary connects to the SCM dispatcher itself (via
+`amalgame-service`), so `sc stop` is clean.
+
+> Linux/systemd is the primary, end-to-end CI-tested path. launchd and
+> Windows SCM are supported but less battle-tested — try them in staging
+> before relying on them.
+
+Certificate renewal is unchanged by running as a service: it still
+follows the restart-to-renew pattern — pair it with the cert-check timer
+from [Hosting → Certificate renewal](../16-hosting.md). For a custom
+`./server` binary (not `mosaic serve`), write the unit by hand as shown
+there; `mosaic service` only drives the config-driven `mosaic serve`.
+
+## 5. Composing config in code (no `mosaic.toml`)
 
 Apps that don't use the `mosaic` CLI can build the same config in
 pure AM — bypassing TOML, env vars, and flags entirely. Every
@@ -469,7 +538,7 @@ The library knows nothing about TOML — the CLI flattens the TOML
 table and calls `FromMap`. This keeps `amalgame-web`, `amalgame-tls`,
 `amalgame-net-http` decoupled from any one config format.
 
-## 5. Versioning the config schema
+## 6. Versioning the config schema
 
 This file is the schema. When a key is added, removed, or renamed,
 the entry here MUST be updated in the same PR. The `mosaic` CLI
@@ -477,7 +546,7 @@ treats unknown keys as a soft warning (forward-compat) but produces
 no validation error — the consuming `FromMap` ignores them. Apps
 get a `mosaic config --check` lint that grep-validates known keys.
 
-## 6. Cross-references
+## 7. Cross-references
 
 - Design rationale + section skeleton: [`proposals/amalgame-web.md` §18](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amalgame-web.md)
 - Security roadmap: [`proposals/amalgame-web.md` §21.2 (Phase 1)](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amalgame-web.md)

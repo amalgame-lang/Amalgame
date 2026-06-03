@@ -466,7 +466,78 @@ inconnues sont ignorées (compat ascendante).
 
 ---
 
-## 4. Composer la config en code (sans `mosaic.toml`)
+## 4. Tourner en service
+
+Un `mosaic serve` au premier plan meurt avec ta session SSH et ne
+revient pas après un reboot. `mosaic service` l'enregistre auprès du
+gestionnaire de services natif de l'hôte — sans fichier unit écrit à la
+main :
+
+```bash
+cd /srv/mon-site           # le dossier qui contient mosaic.toml
+sudo mosaic service install        # génère l'unit + enable + start
+mosaic service status
+mosaic service logs -f
+```
+
+`install` enveloppe `mosaic serve <config>` (défaut `./mosaic.toml`) et
+épingle le répertoire de travail de l'unit sur celui du fichier de
+config : les chemins relatifs du `mosaic.toml` (`cert_dir`, le `root`
+d'un site, …) résolvent donc exactement comme au premier plan.
+
+### Actions
+
+| Action | Effet |
+|---|---|
+| `install [CONFIG]` | Génère l'unit pour `mosaic serve CONFIG`, puis enable + start. |
+| `uninstall` | Stoppe, désactive et supprime l'unit. |
+| `start` / `stop` / `restart` | Contrôle du cycle de vie. |
+| `status` | État du service (pas besoin de root). |
+| `logs [-f]` | Suit les logs du service (`-f` = follow ; pas de root). |
+
+### Drapeaux
+
+| Drapeau | Sens |
+|---|---|
+| `--name NAME` | Nom du service. Défaut : `mosaic-<basename-du-dossier-config>`. |
+| `--user USER` | Compte OS sous lequel le service tourne (`User=` systemd/launchd). Défaut : l'utilisateur appelant. |
+| `--user-scope` | Installe un service *par utilisateur* (systemd `--user`, `~/.config/systemd/user/`) au lieu d'un service système — pas de root, mais pas de démarrage au boot sans lingering. |
+| `--no-enable` | Enregistre sans activer au boot. |
+| `--no-start` | Enregistre sans démarrer maintenant. |
+
+`--user` (tourner *en tant que* tel compte) et `--user-scope` (systemd
+par utilisateur) sont deux réglages différents — à ne pas confondre.
+
+### Plateformes
+
+Le scope système est le défaut ; l'enregistrement écrit dans des chemins
+système, donc `install`/`uninstall`/`start`/`stop` exigent root (`sudo`,
+ou Administrateur sous Windows). `status`/`logs` non.
+
+| OS | Backend | Unit écrite |
+|---|---|---|
+| Linux | systemd | `/etc/systemd/system/<name>.service` |
+| macOS | launchd | `/Library/LaunchDaemons/<name>.plist` |
+| Windows | SCM | `sc create <name> binPath= "mosaic serve <config>"` (depuis Git Bash / MSYS2) |
+
+L'unit systemd reçoit `AmbientCapabilities=CAP_NET_BIND_SERVICE` (bind
+`:80`/`:443` sans tourner en root complet) et un arrêt
+`SIGTERM`/`TimeoutStopSec` sur lequel le serveur s'éteint proprement.
+Sous Windows, le binaire servi se connecte lui-même au dispatcher SCM
+(via `amalgame-service`), donc `sc stop` est propre.
+
+> Linux/systemd est le chemin principal, testé end-to-end en CI. launchd
+> et le SCM Windows sont supportés mais moins éprouvés — teste-les en
+> staging avant de t'y fier.
+
+Le renouvellement des certificats n'est pas changé par le passage en
+service : il suit toujours le motif restart-to-renew — couple-le au timer
+de vérification des certs de [Hébergement → Renouvellement des
+certificats](../16-hosting.fr.md). Pour un binaire `./server` custom (pas
+`mosaic serve`), écris l'unit à la main comme montré là-bas ; `mosaic
+service` ne pilote que le `mosaic serve` config-driven.
+
+## 5. Composer la config en code (sans `mosaic.toml`)
 
 Les apps qui n'utilisent pas le CLI `mosaic` peuvent construire la même
 config en AM pur — en contournant entièrement TOML, variables d'env et
@@ -491,7 +562,7 @@ La bibliothèque ne connaît rien à TOML — le CLI aplatit la table TOML et
 appelle `FromMap`. Cela garde `amalgame-web`, `amalgame-tls`,
 `amalgame-net-http` découplés de tout format de config particulier.
 
-## 5. Versionnage du schéma de config
+## 6. Versionnage du schéma de config
 
 Ce fichier EST le schéma. Quand une clé est ajoutée, retirée ou renommée,
 l'entrée ici DOIT être mise à jour dans la même PR. Le CLI `mosaic`
@@ -500,7 +571,7 @@ mais ne produit pas d'erreur de validation — le `FromMap` consommateur
 les ignore. Les apps ont un lint `mosaic config --check` qui grep-valide
 les clés connues.
 
-## 6. Renvois
+## 7. Renvois
 
 - Rationnel de conception + squelette de sections : [`proposals/amalgame-web.md` §18](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amalgame-web.md)
 - Roadmap sécurité : [`proposals/amalgame-web.md` §21.2 (Phase 1)](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amalgame-web.md)
