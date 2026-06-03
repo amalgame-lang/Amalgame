@@ -116,8 +116,9 @@ Zero install — a full VS Code with the compiler, extension (syntax/LSP/
 DAP), a sample project and the docs, all pre-wired:
 
 ```bash
-docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide
+docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide:edge
 # open http://localhost:8080 and press F5
+# (:latest + :X.Y.Z are published on tagged releases; :edge tracks main)
 ```
 
 See [docker/README.md](docker/README.md) for build, auth and persistence
