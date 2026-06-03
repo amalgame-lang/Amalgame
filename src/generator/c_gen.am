@@ -4873,6 +4873,18 @@ public class CGen {
                                         selfExpr   = ll.Left.Name + "->" + ll.Name
                                     }
                                 }
+                                // Deeper chain: ll is itself this.A.B... (its
+                                // Left is a MEMBER). Resolve the leaf class
+                                // and pass the whole inner chain expression
+                                // as self; EmitCalleeStr's ResolveReceiverClass
+                                // branch emits the matching method symbol.
+                                if (ll.Left.Kind == NodeKind.MEMBER) {
+                                    let deepCls: string = this.ResolveReceiverClass(ll)
+                                    if (String_Length(deepCls) > 0 && !this.IsEnum(deepCls)) {
+                                        isSelfCall = true
+                                        selfExpr   = this.EmitExprStr(ll)
+                                    }
+                                }
                             }
                         }
                         // varName.Method(...) where varName is a known instance type
@@ -5901,10 +5913,12 @@ public class CGen {
                     }
                     return this.SymName(tname) + "_" + mname
                 }
-                // Chained-member call: this.Field.Method() or
-                // varName.Field.Method(). Look up the inner-receiver
-                // class's field type and emit `FieldType_Method` so the
-                // call lands on the right struct's method.
+                // Chained-member call: this.Field.Method(),
+                // varName.Field.Method(), or any deeper chain
+                // (this.A.B.C.Method()). The two depth-2 branches are
+                // kept as explicit fast paths; the ResolveReceiverClass
+                // fallback below walks the receiver to its leaf class at
+                // arbitrary depth and subsumes them.
                 if (lk == NodeKind.MEMBER) {
                     if (callee.Left.Left != null) {
                         let llk = callee.Left.Left.Kind
@@ -5937,6 +5951,22 @@ public class CGen {
                                 }
                             }
                         }
+                    }
+                    // Deep chain (receiver is itself a member chain, e.g.
+                    // `this.A.B.C.Method()` — llk above is MEMBER and the
+                    // fast paths don't fire). Resolve the leaf class of
+                    // the whole receiver expression. Without this such a
+                    // call used to fall through to the EmitExprStr
+                    // fallback and mash the last field into the method
+                    // name (`Mid has no member named 'L_Hit'`).
+                    let recvClass: string = this.ResolveReceiverClass(callee.Left)
+                    if (String_Length(recvClass) > 0) {
+                        if (recvClass == "AmalgameList" || recvClass == "AmalgameMap" || recvClass == "AmalgameSet") {
+                            let cf: string = String_Substring(mname, 0, 1)
+                            let cr: string = String_Substring(mname, 1, String_Length(mname) - 1)
+                            return recvClass + "_" + String_ToLower(cf) + cr
+                        }
+                        return recvClass + "_" + mname
                     }
                 }
             }
