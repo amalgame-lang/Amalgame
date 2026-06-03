@@ -386,6 +386,21 @@ sliding-window / token-bucket in v2 if you need strict guarantees.
 
 ---
 
+### `[compress]` — gzip response compression
+
+**Lib:** `Amalgame.Web.Compression.FromMap(...)` + `WebApp.WithCompress(...)`.
+**Status:** *shipped* (web v0.26.0; wired into `mosaic serve` per-site). gzips eligible text responses when the client sends `Accept-Encoding: gzip`, setting `Content-Encoding: gzip` + `Vary: Accept-Encoding`. Runs last in the response chain; skips already-encoded, binary (`.Bytes`) and file (`.File`) responses. Uses the `amalgame-compress` (zlib) package.
+
+| Key | Type | Default | Env | Notes |
+|---|---|---|---|---|
+| `enabled` | `bool` | `true` | `MOSAIC_COMPRESS_ENABLED` | Set `false` to disable even when the block is present. |
+| `min_size` | `int` | `1024` | `MOSAIC_COMPRESS_MIN_SIZE` | Bodies smaller than this aren't compressed. |
+| `types` | `string` (CSV of Content-Type prefixes) | `text/,application/json,application/javascript,application/manifest+json,image/svg+xml,application/xml` | `MOSAIC_COMPRESS_TYPES` | A response is compressed when its Content-Type starts with one of these. |
+
+For static assets, prefer shipping a pre-compressed `<file>.gz` (the Static middleware serves it directly) over compressing on every request.
+
+---
+
 ### `[limits]` — server-side resource ceilings
 
 **Lib:** `Amalgame.Net.Http.HttpServerConfig` (C-struct + builders + getters) — fed by the Mosaic CLI to `Http1.ServeWith(port, config, handler)` / `Http2.ServeWith` / `Https.ServeWith` / `Ws.ServeWith` / `Wss.ServeWith`.
