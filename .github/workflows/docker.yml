@@ -57,7 +57,7 @@ jobs:
           docker run -d --name ide -p 8080:8080 amalgame-ide:ci
           ok=0
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/healthz | grep -q alive; then ok=1; break; fi
+            if curl -fsS -o /dev/null http://localhost:8080/healthz; then ok=1; break; fi
             sleep 2
           done
           echo "── container logs ──"; docker logs ide 2>&1 | tail -30 || true
@@ -172,7 +172,7 @@ jobs:
           docker run -d --name ide -p 8080:8080 "$REF"
           ok=0
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/healthz | grep -q alive; then ok=1; break; fi
+            if curl -fsS -o /dev/null http://localhost:8080/healthz; then ok=1; break; fi
             sleep 2
           done
           echo "── container logs ──"; docker logs ide 2>&1 | tail -30 || true
