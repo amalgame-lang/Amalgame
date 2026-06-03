@@ -1,8 +1,8 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-06-03T00:26:18+02:00
-Git rev:  3e91109309c0c97e5a18752899ee93dd560c80ee
-Branch:   feat/list-iface-boxing
+Captured: 2026-06-03T10:11:55+02:00
+Git rev:  41696d49a9c2e9a9e381dcf909bb1a5ebc92cc31
+Branch:   main
 Tests:    648 passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses

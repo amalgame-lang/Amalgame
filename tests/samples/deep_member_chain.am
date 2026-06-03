@@ -46,6 +46,31 @@ public class Hub {
     public Hub() { this.Backend = new Store() }
 }
 
+// Deep chain ending in a USER-CLASS METHOD, not a collection verb
+// (v0.8.74). `this.A.B.Method()` and `ident.A.B.Method()` used to mash
+// the last field into the method name (`Mid has no member named
+// 'L_Hit'`) — EmitCalleeStr and the self-arg detection only resolved
+// depth-2 receivers (THIS / IDENT), so a MEMBER-rooted receiver chain
+// fell through to the raw-expression fallback. The fix resolves the
+// leaf class via ResolveReceiverClass at arbitrary depth.
+public class Leaf {
+    public Leaf() {}
+    public string Hit() { return "hit" }
+    public int Plus(int a, int b) { return a + b }
+}
+public class Mid {
+    public L: Leaf
+    public Mid() { this.L = new Leaf() }
+}
+public class Root {
+    public M: Mid
+    public Root() { this.M = new Mid() }
+    // this.field.field.method() — the exact regression site.
+    public string ChainThis() { return this.M.L.Hit() }
+    // …with args, to exercise CoerceArg through the deep receiver.
+    public int ChainThisArgs() { return this.M.L.Plus(2, 3) }
+}
+
 public class Program {
     public static void Main() {
         // 2-level List chain, distinct field names.
@@ -72,6 +97,27 @@ public class Program {
             Console.WriteLine("[PASS] deep map chain")
         } else {
             Console.WriteLine("[FAIL] deep map chain")
+        }
+
+        // Deep chain → user-class method, this-rooted (the v0.8.74 bug).
+        let r: Root = new Root()
+        if (r.ChainThis() == "hit") {
+            Console.WriteLine("[PASS] deep chain this.A.B.method()")
+        } else {
+            Console.WriteLine("[FAIL] deep chain this.A.B.method()")
+        }
+        if (r.ChainThisArgs() == 5) {
+            Console.WriteLine("[PASS] deep chain this.A.B.method(args)")
+        } else {
+            Console.WriteLine("[FAIL] deep chain this.A.B.method(args)")
+        }
+
+        // Same, ident-rooted: ident.A.B.method().
+        let rt: Root = new Root()
+        if (rt.M.L.Hit() == "hit") {
+            Console.WriteLine("[PASS] deep chain ident.A.B.method()")
+        } else {
+            Console.WriteLine("[FAIL] deep chain ident.A.B.method()")
         }
     }
 }
