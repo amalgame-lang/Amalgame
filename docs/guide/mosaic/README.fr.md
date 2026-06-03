@@ -1,17 +1,22 @@
 # Mosaic
 
-**Mosaic** est le framework web côté serveur d'Amalgame — le package
+**Mosaic** est la stack web d'Amalgame — et on peut la faire tourner de
+deux façons. Comme **serveur** : on installe le binaire `mosaic`
+pré-compilé, on écrit un `mosaic.toml`, et `mosaic serve` — N sites,
+HTTPS / ACME automatique, middlewares, et un reverse proxy / load
+balancer, sans aucun code Amalgame (façon nginx/Caddy). Ou comme
+**bibliothèque** : le package
 [`amalgame-web`](https://github.com/amalgame-lang/amalgame-web) plus la
-couche HTTP / TLS sur laquelle il s'appuie. Un binaire, N sites, HTTPS /
-ACME automatique, sessions, auth, et une « porte d'entrée » reverse
-proxy.
+couche HTTP / TLS, quand on veut écrire ses propres handlers.
 
 - [**Framework web**](01-framework.md) — routing, middlewares (security
   headers, CORS, CSRF, rate limiting), sessions, auth (`Protected()`),
   fichiers statiques, et les points d'entrée serveur HTTP / HTTPS.
-- [**Installation**](02-installation.md) — `amc package add` de la stack,
-  plus la porte d'entrée reverse proxy optionnelle.
-- [**Configuration**](03-configuration.md) — la référence complète
+- [**Installation**](02-installation.md) — le binaire `mosaic serve` et
+  les quatre façons de déployer, plus `amc package add` pour la
+  bibliothèque.
+- [**Configuration**](03-configuration.md) — le schéma de fichier
+  `mosaic serve` (`[[site]]` / `[[proxy]]`) et la référence complète
   `mosaic.toml` / `MOSAIC_*` : chaque section, clé, défaut et statut.
 
 ```amalgame
