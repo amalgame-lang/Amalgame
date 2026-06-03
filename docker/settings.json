@@ -1,0 +1,16 @@
+{
+  "amalgame.enableLsp": true,
+  "amalgame.serverPath": "amc",
+  "amalgame.dapBridge": true,
+
+  "security.workspace.trust.enabled": false,
+  "workbench.startupEditor": "none",
+  "telemetry.telemetryLevel": "off",
+  "extensions.autoCheckUpdates": false,
+  "extensions.autoUpdate": false,
+  "update.mode": "none",
+
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "files.eol": "\n"
+}
