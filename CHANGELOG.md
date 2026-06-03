@@ -7,6 +7,33 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.75] — 2026-06-03
+
+Tooling + distribution release. The compiler is functionally unchanged
+since v0.8.74; this cuts a versioned release for the new batteries-
+included Docker IDE image and the Mosaic documentation work.
+
+### Added
+
+- **Docker IDE image** (`ghcr.io/amalgame-lang/amalgame-ide`). One
+  command — `docker run -p 8080:8080 …` — boots a browser VS Code
+  (code-server) that opens straight into a working Amalgame setup: the
+  extension pre-installed (syntax highlighting, LSP via `amc lsp`, DAP
+  via `amc dap`), an F5-ready `MyFirstApp` sample (pre-built release +
+  debug), the full user guide pinned in the sidebar, and `amc` + gcc +
+  gdb on `PATH` so build/run/debug all work offline. Built and published
+  by `.github/workflows/docker.yml` as a multi-arch manifest
+  (linux/amd64 + linux/arm64, the arm64 leg native on `ubuntu-24.04-arm`,
+  no QEMU). PRs touching `docker/**` build and runtime-smoke the image
+  (entrypoint + code-server health) before merge.
+
+### Docs
+
+- Mosaic web-framework documentation: a dedicated guide sub-section
+  (`mosaic serve`, deploy models, `[[proxy]]` schema), a full FR
+  translation of the Configuration reference, and the `mosaic service`
+  command (install a site as a systemd/launchd/SCM service).
+
 ## [v0.8.69] — 2026-05-31
 
 TypeChecker performance — the expression-type memo was a linearly
@@ -5469,6 +5496,7 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 - `tests/run_all_tests.sh` completes end-to-end for the first time
   (its `set -e` no longer trips on a half-failing suite).
 
+[v0.8.75]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.75
 [v0.5.0]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.0
 [v0.5.2]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.2
 [v0.5.3]:  https://github.com/amalgame-lang/Amalgame/releases/tag/v0.5.3
