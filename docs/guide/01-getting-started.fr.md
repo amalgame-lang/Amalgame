@@ -13,6 +13,33 @@ pipeline appliqué aux sources du compilateur dans `src/`.
 
 ## Installation
 
+### Docker — l'IDE complet, zéro installation
+
+La façon la plus rapide d'essayer Amalgame : un conteneur clé en main qui
+démarre un VS Code dans le navigateur avec le compilateur, l'extension
+(coloration syntaxique, LSP, débogueur), un projet d'exemple prêt à
+lancer et la documentation — tout est pré-câblé, rien à configurer.
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide:latest
+```
+
+Ouvre ensuite <http://localhost:8080>. Tu arrives sur l'exemple
+`MyFirstApp` avec le guide épinglé dans la barre latérale — appuie sur
+**F5** pour le compiler et le déboguer immédiatement.
+
+- **Port déjà occupé ?** Mappe n'importe quel port hôte libre, par ex.
+  `-p 8888:8080`, puis ouvre <http://localhost:8888>.
+- **Multi-arch :** tourne nativement sur Intel/AMD (`amd64`) et sur Apple
+  Silicon / Raspberry Pi 64-bit (`arm64`).
+- **Conserver ton travail :** monte un dossier, par ex.
+  `-v "$PWD/work:/home/coder/work"`.
+- **Exposer au-delà de localhost ?** Définis un mot de passe avec
+  `-e PASSWORD=…` (l'authentification est désactivée par défaut pour un
+  usage local).
+
+Tu préfères une installation native ? Choisis ta plateforme ci-dessous.
+
 ### Linux (Debian/Ubuntu)
 
 ```bash
