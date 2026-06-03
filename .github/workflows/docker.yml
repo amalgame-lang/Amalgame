@@ -37,16 +37,33 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build (amd64, no push)
+      - name: Build (amd64, load locally)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           platforms: linux/amd64
           push: false
-          load: false
+          load: true
+          tags: amalgame-ide:ci
           cache-from: type=gha,scope=ide-amd64
           cache-to: type=gha,scope=ide-amd64,mode=max
+
+      - name: Smoke — amc runs inside the image
+        run: docker run --rm --entrypoint amc amalgame-ide:ci --version
+
+      - name: Smoke — code-server serves HTTP
+        run: |
+          docker run -d --name ide -p 8080:8080 amalgame-ide:ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz | grep -q alive; then ok=1; break; fi
+            sleep 2
+          done
+          echo "── container logs ──"; docker logs ide 2>&1 | tail -30 || true
+          docker rm -f ide >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "::error::code-server never reported healthy on :8080"; exit 1; }
+          echo "code-server healthy ✓"
 
   build:
     name: Build (${{ matrix.arch }})
@@ -147,3 +164,18 @@ jobs:
       - name: Inspect
         run: |
           docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+
+      - name: Smoke — pull & run the published image
+        run: |
+          REF="${{ env.IMAGE }}:${{ steps.meta.outputs.version }}"
+          docker run --rm --entrypoint amc "$REF" --version
+          docker run -d --name ide -p 8080:8080 "$REF"
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/healthz | grep -q alive; then ok=1; break; fi
+            sleep 2
+          done
+          echo "── container logs ──"; docker logs ide 2>&1 | tail -30 || true
+          docker rm -f ide >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "::error::published image unhealthy on :8080"; exit 1; }
+          echo "published image healthy ✓"
