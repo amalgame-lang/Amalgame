@@ -1223,14 +1223,14 @@ into something that runs real apps.
 | 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | 2 d | 2.2 |
 | 2.4 | **WebAuthn / passkeys** — passwordless auth | 3-4 d | 2.1 |
 | 2.5 | **TOTP / 2FA** — RFC 6238 (HMAC-SHA1 over time counter) | 0.5 d | 2.1 |
-| 2.6 | **`amalgame-database-sqlite`** — start small with file-based DB | 2 d | — |
-| 2.7 | **`amalgame-database-postgres`** — libpq binding for prod | 3-4 d | — |
+| 2.6 | ✅ **`amalgame-database-sqlite`** (v0.4.0 — prepared stmts + transactions) | 2 d | — |
+| 2.7 | ✅ **`amalgame-database-postgres`** (v0.2.0, libpq) — + mssql/mysql/oracle/duckdb/mongodb/redis shipped | 3-4 d | — |
 | 2.8 | **Migration framework** — schema versioning + apply/rollback | 1 d | 2.6 / 2.7 |
-| 2.9 | **`amalgame-template`** — HTML template engine with **auto-escape** (closes the default-XSS hole) | 2-3 d | — |
+| 2.9 | ✅ **HTML template engine with auto-escape** (closes the default-XSS hole) — shipped IN amalgame-web v0.24.0 as `Template` + `WebContext.Render` (not a separate `amalgame-template` package; pure-AM, no FFI) | 2-3 d | — |
 | 2.10 | **`amalgame-validation`** — typed input schemas | 1-2 d | — |
 | 2.11 | **`JsonFileSessionStore` / `RedisSessionStore`** in `amalgame-web` | 1 d | 2.7 (Redis) |
 | 2.12 | **`router.Ws(path, handler)`** — register WS routes through the Router instead of side-binding | 1 d | — |
-| 2.13 | **Multipart parser** — `HttpRequest.File("avatar")` for upload | 1.5 d | — |
+| 2.13 | ✅ **Multipart parser** — net-http v0.14.1 `Multipart`/`UploadedFile` (binary-safe) + web v0.25.0 `ctx.Multipart()` / `mp.File("avatar")` | 1.5 d | — |
 
 #### Phase 3 — UX + ops (~1-2 weeks)
 
@@ -1263,13 +1263,13 @@ Phase 4 fills in the long tail.
 | 4.4 | **mTLS client cert auth** in `TlsConfig` + surfaced as `WebContext.ClientCert` | 1 d | — |
 | 4.5 | **OCSP stapling** — TLS server attaches cached OCSP responses | 1 d | — |
 | 4.6 | **HTTP/1.1 fallback in `Https.Serve`** — ALPN advertises both `h2` and `http/1.1`, dispatch by negotiated proto | 1 d | — |
-| 4.7 | **Static file middleware** — `sendfile(2)` + built-in MIME DB + `Cache-Control` + `ETag` / `If-None-Match` | 1-2 d | — |
-| 4.8 | **gzip / brotli compression** — output negotiated via `Accept-Encoding` | 1 d | — |
-| 4.9 | **Range requests (206 Partial Content)** — video / big-file resume | 1 d | — |
-| 4.10 | **Server-Sent Events (SSE)** — lightweight unidirectional push | 1 d | — |
+| 4.7 | ✅ **Static file middleware** — MIME DB + `Cache-Control` + `ETag`/`If-None-Match` (web v0.13.0) + `Last-Modified`/`If-Modified-Since` + `.gz` selection (v0.27.0). (`sendfile(2)` still TODO) | 1-2 d | — |
+| 4.8 | ✅ **gzip compression** — web v0.26.0 `Compression` middleware (`Accept-Encoding`-negotiated, via amalgame-compress). Brotli still TODO | 1 d | — |
+| 4.9 | ✅ **Range requests (206 Partial Content)** — web v0.27.0 Static + net-http v0.15.0 `RespondFileRange` (single range; 416 on unsatisfiable) | 1 d | — |
+| 4.10 | ✅ **Server-Sent Events (SSE)** — net-http v0.16.0 `SseConn` + web v0.28.0 `WebApp.Sse` | 1 d | — |
 | 4.11 | **WebSocket binary frames** — AM-side `WsConn.SendBinary` / `ReceiveBinary` (List<int>) | 0.5 d | — |
 | 4.12 | **WebSocket fragmentation** — multi-frame messages (currently rejected) | 1 d | — |
-| 4.13 | **WebSocket subprotocol negotiation** — `Sec-WebSocket-Protocol` | 0.5 d | — |
+| 4.13 | ✅ **WebSocket subprotocol negotiation** — net-http v0.17.0 `Ws.ServeWithProtocols` + `WsConn.Subprotocol` | 0.5 d | — |
 | 4.14 | **HTTP/3 / QUIC** — likely via ngtcp2 or msquic when implementations stabilise | future | — |
 | 4.15 | **`amalgame-email`** — SMTP client (transactional mail) | 1-2 d | — |
 | 4.16 | **`amalgame-queue`** — background jobs over DB / Redis | 2 d | 2.6 |
