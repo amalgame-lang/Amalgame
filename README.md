@@ -110,6 +110,19 @@ A more thorough tour is in [docs/guide/02-language-tour.md](docs/guide/02-langua
 
 ## Getting started
 
+### Try it in your browser (Docker)
+
+Zero install — a full VS Code with the compiler, extension (syntax/LSP/
+DAP), a sample project and the docs, all pre-wired:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide
+# open http://localhost:8080 and press F5
+```
+
+See [docker/README.md](docker/README.md) for build, auth and persistence
+options.
+
 ### Linux
 
 ```bash
