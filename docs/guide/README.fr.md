@@ -44,7 +44,7 @@ au chapitre 7.
     vous aurez besoin tous les jours : chaînes, collections, fichiers +
     JSON, parsing d'arguments CLI, processus, réseau, pattern matching,
     threads, primitives C en ligne.
-11. [Framework web (Mosaic)](11-web-mosaic.md) — le framework serveur
+11. [Framework web (Mosaic)](mosaic/README.md) — le framework serveur
     `amalgame-web` : routage, `WebContext`/`HttpResponse`, middleware
     (en-têtes de sécurité, CORS, CSRF, limitation de débit), sessions,
     fichiers statiques, HTTP/1.1 + HTTPS. (Distinct du GUI desktop du
