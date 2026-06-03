@@ -20,60 +20,10 @@ réflexion cachée — un handler n'est qu'une `Closure<WebContext, HttpResponse
 
 ---
 
-## Installation
-
-Mosaic est un package externe. Ajoutez-le (ainsi que la couche HTTP sur
-laquelle il s'appuie) à votre projet :
-
-```bash
-amc package add web
-```
-
-`amalgame-web v0.20.0` tire notamment :
-
-- `amalgame-net-http >= 0.11.1` — requête/réponse HTTP/1.1 (**0.11.1 est
-  un plancher obligatoire** : avant cette version, les en-têtes de
-  réponse personnalisés — `Set-Cookie`, CSP, CORS — étaient
-  silencieusement perdus sur le réseau).
-- `amalgame-tls >= 0.3.1` — terminaison TLS + ACME, pour HTTPS.
-- `amalgame-crypto`, `amalgame-random`, `amalgame-datetime`,
-  `amalgame-logging` — utilisés respectivement par les sessions à cookie
-  signé, l'entropie CSRF, l'horloge de limitation de débit et les logs
-  d'accès.
-
-Extras « front door » (optionnels) :
-
-```bash
-amc package add net-proxy      # reverse proxy HTTP/1.1 (devant N upstreams)
-```
-
-Nécessite le compilateur `amc` `>= 0.8.58`.
-
-Depuis la v0.20.0, la stack fournit l'**auth** first-class
-(`WithBasicAuth` / `WithJwt` + un groupe de routes `Protected()`) et les
-**sessions automatiques** (`WithSession(store)` charge/persiste
-`ctx.Session`), en plus des middlewares défensifs (security headers,
-CORS, CSRF, rate limiting, fichiers statiques) — tous détaillés
-ci-dessous.
-
----
-
-## Configuration
-
-Chaque fonctionnalité de Mosaic est configurable de trois façons, en
-couches : defaults sains du constructeur < une `[section]` dans
-`mosaic.toml` < une variable d'environnement (`MOSAIC_*`) < un appel
-explicite `WithX(...)` dans le code. En code, on compose les middlewares
-avec les builders fluides ; pour un déploiement piloté par TOML/env,
-chaque middleware expose une fabrique `FromMap(...)` que la CLI Mosaic
-alimente depuis la config aplatie.
-
-La référence complète — chaque clé `[server]`, `[tls]`, `[sessions]`,
-`[security.*]`, `[limits]`, `[logging]`, son défaut, sa variable d'env et
-son statut shipped/planned — vit dans
-[**`docs/mosaic-configuration.md`**](https://github.com/amalgame-lang/Amalgame/blob/main/docs/mosaic-configuration.md).
-L'auth est la seule famille câblée en code plutôt qu'en TOML (ses
-verifiers sont des closures), avec les secrets pris dans l'environnement.
+> **Installer / configurer.** Cette page est le tour du framework.
+> Pour la mise en place voir [**Installation**](02-installation.md) ;
+> pour la référence TOML / env complète voir
+> [**Configuration**](03-configuration.md).
 
 ---
 
