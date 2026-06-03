@@ -26,7 +26,7 @@ to your project:
 amc package add web
 ```
 
-`amalgame-web v0.17.1` pulls in, among others:
+`amalgame-web v0.20.0` pulls in, among others:
 
 - `amalgame-net-http >= 0.11.1` — HTTP/1.1 request/response (**0.11.1 is
   a hard floor**: before it, custom response headers — `Set-Cookie`,
@@ -36,7 +36,37 @@ amc package add web
   `amalgame-logging` — used by signed-cookie sessions, CSRF entropy,
   rate-limit clock, and access logs respectively.
 
+Front-door extras (optional):
+
+```bash
+amc package add net-proxy      # HTTP/1.1 reverse proxy (front of N upstreams)
+```
+
 Requires the `amc` compiler `>= 0.8.58`.
+
+As of v0.20.0 the stack ships first-class **auth** (`WithBasicAuth` /
+`WithJwt` + a `Protected()` route group) and **automatic sessions**
+(`WithSession(store)` loads/persists `ctx.Session`), on top of the
+defensive middleware (security headers, CORS, CSRF, rate limiting,
+static files) — all detailed below.
+
+---
+
+## Configuration
+
+Every Mosaic feature is configurable three ways, layered: sane
+constructor defaults < a `[section]` in `mosaic.toml` < an environment
+variable (`MOSAIC_*`) < an explicit `WithX(...)` call in code. In code
+you compose middleware with the fluent builders; for TOML/env-driven
+deployments each middleware exposes a `FromMap(...)` factory the Mosaic
+CLI feeds from the flattened config.
+
+The full reference — every `[server]`, `[tls]`, `[sessions]`,
+`[security.*]`, `[limits]`, `[logging]` key, its default, env var, and
+shipped/planned status — lives in
+[**`docs/mosaic-configuration.md`**](https://github.com/amalgame-lang/Amalgame/blob/main/docs/mosaic-configuration.md).
+Auth is the one family wired in code rather than TOML (its verifiers
+are closures), with secrets sourced from the environment.
 
 ---
 
