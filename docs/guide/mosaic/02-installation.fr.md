@@ -55,6 +55,11 @@ hosts = ["example.com", "www.example.com"]
 root  = "/srv/example/public"
 ```
 
+Pour le faire tourner au fil des reboots et des crashs, enregistre-le
+comme service en une commande — `mosaic service install` écrit une unit
+systemd/launchd/SCM qui lance `mosaic serve` pour toi. Voir
+[Configuration → Tourner en service](03-configuration.fr.md#4-tourner-en-service).
+
 > Sur les plateformes sans `mosaic-serve` pré-compilé (macOS / Windows
 > aujourd'hui), `mosaic serve` retombe sur un build depuis les sources —
 > ce qui nécessite `amc` plus les packages de la stack ci-dessous.
