@@ -1,0 +1,23 @@
+# Disambiguation to add to github-linguist/linguist's lib/linguist/heuristics.yml
+#
+# `.am` was previously unambiguous (Automake only). Adding Amalgame makes
+# the extension shared, so Linguist needs a rule to tell them apart.
+#
+# Strategy: Amalgame source has very distinctive top-of-file markers that
+# Automake never has (`namespace`, `import Foo.Bar`, `public class`,
+# `public record`, `fn `). Anything that doesn't look like Amalgame falls
+# through to Automake (the historical default), so existing Automake
+# detection does not regress.
+#
+# Merge this block under the top-level `disambiguations:` list. If an
+# `.am` entry already exists upstream, add the Amalgame rule as the FIRST
+# rule of that entry (most specific first).
+
+disambiguations:
+  - extensions: ['.am']
+    rules:
+      - language: Amalgame
+        pattern: '(?m)^\s*(?:namespace\s+[A-Z][\w.]*|import\s+[A-Z][\w.]+|public\s+(?:class|record|static)\b|fn\s+[A-Za-z_])'
+      - language: Automake
+        pattern: '(?m)^\s*(?:[\w-]+\s*[:+]?=|AM_[A-Z]|AUTOMAKE_OPTIONS|\w+_(?:SOURCES|PROGRAMS|LIBRARIES|LDADD)\b|include\s+\$)'
+      - language: Automake   # fallback: preserve historical .am -> Automake default

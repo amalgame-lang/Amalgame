@@ -1,0 +1,733 @@
+namespace Amalgame.Formats.Json
+
+import Amalgame.Collections
+import Amalgame.String
+
+// ── JsonKind ──────────────────────────────────────────
+//
+// One tag per JSON document type. Int and Float are split so the
+// parser preserves round-trip fidelity (`1` re-encodes to `1`,
+// not `1.0`). Decided 2026-05-09 in design review — see
+// docs/proposals/amalgame-json.md.
+
+public enum JsonKind {
+    Null
+    Bool
+    Int
+    Float
+    String
+    Array
+    Object
+}
+
+// ── JsonValue ─────────────────────────────────────────
+//
+// Class-with-tag rather than an algebraic enum. The public API
+// (Is*, As*, Get, At) is the same as a tagged union would expose;
+// the indirection lets us ship before stress-testing algebraic
+// enum payloads with generic collections.
+//
+// Object storage uses two parallel Lists (Keys + Vals) instead of
+// a Map<string, JsonValue> so the encoder can emit keys in
+// insertion order — Map iteration order isn't guaranteed.
+
+public class JsonValue {
+    public  Kind:    JsonKind
+    private B:       bool
+    private I:       int
+    private F:       float
+    private S:       string
+    private Items:   List<JsonValue>
+    private ObjKeys: List<string>
+    private ObjVals: List<JsonValue>
+
+    public JsonValue() {
+        this.Kind    = JsonKind.Null
+        this.B       = false
+        this.I       = 0
+        this.F       = 0.0
+        this.S       = ""
+        this.Items   = new List<JsonValue>()
+        this.ObjKeys = new List<string>()
+        this.ObjVals = new List<JsonValue>()
+    }
+
+    // ── Kind guards ──────────────────────────────────
+    public bool IsNull()   { return this.Kind == JsonKind.Null }
+    public bool IsBool()   { return this.Kind == JsonKind.Bool }
+    public bool IsInt()    { return this.Kind == JsonKind.Int }
+    public bool IsFloat()  { return this.Kind == JsonKind.Float }
+    public bool IsNumber() { return this.IsInt() || this.IsFloat() }
+    public bool IsString() { return this.Kind == JsonKind.String }
+    public bool IsArray()  { return this.Kind == JsonKind.Array }
+    public bool IsObject() { return this.Kind == JsonKind.Object }
+
+    // ── Primitive accessors ──────────────────────────
+    //
+    // Each accessor returns the underlying primitive when the
+    // Kind matches, or the zero value otherwise. Use Is*() guards
+    // when the receiver could be either Int or Float — Amalgame
+    // doesn't yet expose cross-numeric casts at the language
+    // level, so we don't attempt the documented Int↔Float coerce
+    // in v1. (Tracked in the design doc; will land once the cast
+    // syntax is in.)
+    public bool AsBool() {
+        if (this.Kind == JsonKind.Bool) { return this.B }
+        return false
+    }
+
+    public int AsInt() {
+        if (this.Kind == JsonKind.Int) { return this.I }
+        return 0
+    }
+
+    public float AsFloat() {
+        if (this.Kind == JsonKind.Float) { return this.F }
+        return 0.0
+    }
+
+    public string AsString() {
+        if (this.Kind == JsonKind.String) { return this.S }
+        return ""
+    }
+
+    public List<JsonValue> AsArray() {
+        return this.Items
+    }
+
+    // ── Object access ─────────────────────────────────
+    //
+    // Returns Null-kind JsonValue for missing keys so chains like
+    // `v.Get("a").Get("b").AsString()` are safe.
+    public JsonValue Get(string key) {
+        if (this.Kind != JsonKind.Object) { return new JsonValue() }
+        let n: int = this.ObjKeys.Count()
+        for i in 0..n {
+            if (this.ObjKeys.Get(i) == key) {
+                return this.ObjVals.Get(i)
+            }
+        }
+        return new JsonValue()
+    }
+
+    public bool Has(string key) {
+        if (this.Kind != JsonKind.Object) { return false }
+        let n: int = this.ObjKeys.Count()
+        for i in 0..n {
+            if (this.ObjKeys.Get(i) == key) { return true }
+        }
+        return false
+    }
+
+    public List<string> Keys() {
+        return this.ObjKeys
+    }
+
+    // ── Array access ──────────────────────────────────
+    //
+    // Out-of-range returns Null-kind for the same reason as Get.
+    public JsonValue At(int i) {
+        if (this.Kind != JsonKind.Array) { return new JsonValue() }
+        if (i < 0)                       { return new JsonValue() }
+        if (i >= this.Items.Count())     { return new JsonValue() }
+        return this.Items.Get(i)
+    }
+
+    public int Length() {
+        if (this.Kind == JsonKind.Array)  { return this.Items.Count() }
+        if (this.Kind == JsonKind.Object) { return this.ObjKeys.Count() }
+        if (this.Kind == JsonKind.String) { return String_Length(this.S) }
+        return 0
+    }
+
+    // ── Internal mutators ─────────────────────────────
+    //
+    // Used by the parser and the static factory methods on Json.
+    // Keeping them on JsonValue (rather than Json.Of*) keeps the
+    // codegen path simple — no factory cross-class casts.
+    public void SetNull() {
+        this.Kind = JsonKind.Null
+    }
+
+    public void SetBool(bool b) {
+        this.Kind = JsonKind.Bool
+        this.B    = b
+    }
+
+    public void SetInt(int n) {
+        this.Kind = JsonKind.Int
+        this.I    = n
+    }
+
+    public void SetFloat(float f) {
+        this.Kind = JsonKind.Float
+        this.F    = f
+    }
+
+    public void SetString(string s) {
+        this.Kind = JsonKind.String
+        this.S    = s
+    }
+
+    public void SetArray(List<JsonValue> xs) {
+        this.Kind  = JsonKind.Array
+        this.Items = xs
+    }
+
+    public void SetObject(List<string> keys, List<JsonValue> vals) {
+        this.Kind    = JsonKind.Object
+        this.ObjKeys = keys
+        this.ObjVals = vals
+    }
+
+    public void AppendItem(JsonValue v) {
+        this.Items.Add(v)
+    }
+
+    public void AppendEntry(string key, JsonValue v) {
+        this.ObjKeys.Add(key)
+        this.ObjVals.Add(v)
+    }
+}
+
+// ── JsonError ─────────────────────────────────────────
+
+public class JsonError {
+    public Message: string
+    public Line:    int
+    public Column:  int
+
+    public JsonError(string msg, int line, int col) {
+        this.Message = msg
+        this.Line    = line
+        this.Column  = col
+    }
+}
+
+// ── JsonResult ────────────────────────────────────────
+
+public class JsonResult {
+    public Ok:    bool
+    public Value: JsonValue
+    public Error: JsonError
+
+    public JsonResult() {
+        this.Ok    = true
+        this.Value = new JsonValue()
+        this.Error = new JsonError("", 0, 0)
+    }
+}
+
+// ── JsonParser ────────────────────────────────────────
+//
+// Recursive-descent. Tracks 1-based line/column for error
+// reporting. On failure, sets Failed + ErrMsg/Line/Col and
+// every subsequent ParseValue short-circuits to a Null value
+// so call chains don't blow up before the error is read.
+
+public class JsonParser {
+    private Source:  string
+    private Pos:     int
+    private Line:    int
+    private Column:  int
+    private Failed:  bool
+    private ErrMsg:  string
+    private ErrLine: int
+    private ErrCol:  int
+
+    public JsonParser(string source) {
+        this.Source  = source
+        this.Pos     = 0
+        this.Line    = 1
+        this.Column  = 1
+        this.Failed  = false
+        this.ErrMsg  = ""
+        this.ErrLine = 0
+        this.ErrCol  = 0
+    }
+
+    public bool   HasFailed() { return this.Failed }
+    public string ErrorMsg()  { return this.ErrMsg }
+    public int    ErrorLine() { return this.ErrLine }
+    public int    ErrorCol()  { return this.ErrCol }
+
+    private void Fail(string msg) {
+        if (this.Failed) { return }
+        this.Failed  = true
+        this.ErrMsg  = msg
+        this.ErrLine = this.Line
+        this.ErrCol  = this.Column
+    }
+
+    private bool AtEnd() {
+        return this.Pos >= String_Length(this.Source)
+    }
+
+    private string Peek() {
+        if (this.AtEnd()) { return "" }
+        return String_CharAt1(this.Source, this.Pos)
+    }
+
+    private string PeekAt(int offset) {
+        let idx: int = this.Pos + offset
+        if (idx < 0)                          { return "" }
+        if (idx >= String_Length(this.Source)) { return "" }
+        return String_CharAt1(this.Source, idx)
+    }
+
+    private string Advance() {
+        if (this.AtEnd()) { return "" }
+        let ch: string = String_CharAt1(this.Source, this.Pos)
+        this.Pos = this.Pos + 1
+        if (ch == "\n") {
+            this.Line   = this.Line + 1
+            this.Column = 1
+        } else {
+            this.Column = this.Column + 1
+        }
+        return ch
+    }
+
+    private void SkipWs() {
+        while (!this.AtEnd()) {
+            let c: string = this.Peek()
+            if (c == " " || c == "\t" || c == "\n" || c == "\r") {
+                this.Advance()
+            } else { return }
+        }
+    }
+
+    private bool MatchLit(string lit) {
+        // Compare lit byte-by-byte starting at Pos, advance on success.
+        let n: int = String_Length(lit)
+        if (this.Pos + n > String_Length(this.Source)) { return false }
+        for i in 0..n {
+            let want: string = String_CharAt1(lit, i)
+            let got: string  = String_CharAt1(this.Source, this.Pos + i)
+            if (want != got) { return false }
+        }
+        for j in 0..n {
+            this.Advance()
+        }
+        return true
+    }
+
+    // ── Top-level entry ──────────────────────────────
+    //
+    // Parses one value, then expects EOF. Trailing content is a
+    // parse error (so callers can't accidentally accept "1 garbage").
+    public JsonValue ParseTopLevel() {
+        this.SkipWs()
+        let v: JsonValue = this.ParseValue()
+        if (this.Failed) { return new JsonValue() }
+        this.SkipWs()
+        if (!this.AtEnd()) {
+            this.Fail("trailing characters after JSON value")
+            return new JsonValue()
+        }
+        return v
+    }
+
+    public JsonValue ParseValue() {
+        if (this.Failed) { return new JsonValue() }
+        this.SkipWs()
+        if (this.AtEnd()) {
+            this.Fail("unexpected end of input")
+            return new JsonValue()
+        }
+        let c: string = this.Peek()
+        if (c == "{")  { return this.ParseObject() }
+        if (c == "[")  { return this.ParseArray() }
+        if (c == "\"") { return this.ParseString() }
+        if (c == "t" || c == "f") { return this.ParseBool() }
+        if (c == "n")  { return this.ParseNull() }
+        if (c == "-" || JsonParser.IsDigit(c)) { return this.ParseNumber() }
+        this.Fail("unexpected character '" + c + "'")
+        return new JsonValue()
+    }
+
+    // Cgen lowers `c >= "0" && c <= "9"` to a pointer comparison
+    // (Amalgame strings are char* under the hood and the codegen
+    // doesn't yet route relational ops through strcmp). Use a
+    // membership test against the digit charset instead — same
+    // pattern lexer.am uses (line 28-29).
+    private static bool IsDigit(string c) {
+        if (String_Length(c) == 0) { return false }
+        return String_IndexOf("0123456789", c) >= 0
+    }
+
+    private JsonValue ParseObject() {
+        this.Advance() // consume '{'
+        let out = new JsonValue()
+        let keys = new List<string>()
+        let vals = new List<JsonValue>()
+        out.SetObject(keys, vals)
+        this.SkipWs()
+        if (this.Peek() == "}") { this.Advance(); return out }
+        while (true) {
+            this.SkipWs()
+            if (this.Peek() != "\"") {
+                this.Fail("expected string key in object")
+                return new JsonValue()
+            }
+            let keyVal: JsonValue = this.ParseString()
+            if (this.Failed) { return new JsonValue() }
+            let key: string = keyVal.AsString()
+            this.SkipWs()
+            if (this.Peek() != ":") {
+                this.Fail("expected ':' after object key")
+                return new JsonValue()
+            }
+            this.Advance()
+            let v: JsonValue = this.ParseValue()
+            if (this.Failed) { return new JsonValue() }
+            out.AppendEntry(key, v)
+            this.SkipWs()
+            let nx: string = this.Peek()
+            if (nx == ",") { this.Advance(); continue }
+            if (nx == "}") { this.Advance(); return out }
+            this.Fail("expected ',' or '}' in object")
+            return new JsonValue()
+        }
+        return out
+    }
+
+    private JsonValue ParseArray() {
+        this.Advance() // consume '['
+        let out = new JsonValue()
+        let xs = new List<JsonValue>()
+        out.SetArray(xs)
+        this.SkipWs()
+        if (this.Peek() == "]") { this.Advance(); return out }
+        while (true) {
+            let v: JsonValue = this.ParseValue()
+            if (this.Failed) { return new JsonValue() }
+            out.AppendItem(v)
+            this.SkipWs()
+            let nx: string = this.Peek()
+            if (nx == ",") { this.Advance(); continue }
+            if (nx == "]") { this.Advance(); return out }
+            this.Fail("expected ',' or ']' in array")
+            return new JsonValue()
+        }
+        return out
+    }
+
+    private JsonValue ParseString() {
+        this.Advance() // consume opening '"'
+        var out: string = ""
+        while (!this.AtEnd()) {
+            let c: string = this.Peek()
+            if (c == "\"") {
+                this.Advance()
+                let v = new JsonValue()
+                v.SetString(out)
+                return v
+            }
+            if (c == "\\") {
+                this.Advance()
+                if (this.AtEnd()) {
+                    this.Fail("unterminated escape in string")
+                    return new JsonValue()
+                }
+                let esc: string = this.Advance()
+                if      (esc == "\"") { out = out + "\"" }
+                else if (esc == "\\") { out = out + "\\" }
+                else if (esc == "/")  { out = out + "/" }
+                else if (esc == "b")  { out = out + JsonParser.Bs() }
+                else if (esc == "f")  { out = out + JsonParser.Ff() }
+                else if (esc == "n")  { out = out + "\n" }
+                else if (esc == "r")  { out = out + "\r" }
+                else if (esc == "t")  { out = out + "\t" }
+                else if (esc == "u")  {
+                    let cp: int = this.ParseHex4()
+                    if (this.Failed) { return new JsonValue() }
+                    // Surrogate pair handling: a high surrogate must
+                    // be followed by `\uXXXX` low surrogate. We decode
+                    // the pair into a single code point so the caller
+                    // sees the intended character (e.g. emoji).
+                    if (cp >= 55296 && cp <= 56319) {
+                        if (this.Peek() == "\\" && this.PeekAt(1) == "u") {
+                            this.Advance()
+                            this.Advance()
+                            let lo: int = this.ParseHex4()
+                            if (this.Failed) { return new JsonValue() }
+                            if (lo >= 56320 && lo <= 57343) {
+                                let combined: int = 65536 + ((cp - 55296) * 1024) + (lo - 56320)
+                                out = out + String_FromCodepoint(combined)
+                            } else {
+                                // Lone high + non-low: emit each as-is
+                                // and let the caller deal with it (most
+                                // consumers tolerate broken surrogates
+                                // better than a parse error here).
+                                out = out + String_FromCodepoint(cp)
+                                out = out + String_FromCodepoint(lo)
+                            }
+                        } else {
+                            out = out + String_FromCodepoint(cp)
+                        }
+                    } else {
+                        out = out + String_FromCodepoint(cp)
+                    }
+                }
+                else {
+                    this.Fail("invalid escape '\\" + esc + "'")
+                    return new JsonValue()
+                }
+            } else if (c == "\n") {
+                this.Fail("unescaped newline in string")
+                return new JsonValue()
+            } else {
+                out = out + this.Advance()
+            }
+        }
+        this.Fail("unterminated string")
+        return new JsonValue()
+    }
+
+    private int ParseHex4() {
+        var n: int = 0
+        for i in 0..4 {
+            if (this.AtEnd()) {
+                this.Fail("incomplete \\u escape")
+                return 0
+            }
+            let ch: string = this.Advance()
+            let d: int = JsonParser.HexDigit(ch)
+            if (d < 0) {
+                this.Fail("invalid hex digit '" + ch + "' in \\u escape")
+                return 0
+            }
+            n = (n * 16) + d
+        }
+        return n
+    }
+
+    private static int HexDigit(string c) {
+        if (JsonParser.IsDigit(c)) { return String_ToInt(c) }
+        if (c == "a" || c == "A") { return 10 }
+        if (c == "b" || c == "B") { return 11 }
+        if (c == "c" || c == "C") { return 12 }
+        if (c == "d" || c == "D") { return 13 }
+        if (c == "e" || c == "E") { return 14 }
+        if (c == "f" || c == "F") { return 15 }
+        return -1
+    }
+
+    // Backspace and form-feed lookups dodge Amalgame's lexer not
+    // recognising `\b` / `\f` literals. Implemented as static
+    // methods that build the one-byte string at runtime.
+    private static string Bs() { return String_FromCodepoint(8) }
+    private static string Ff() { return String_FromCodepoint(12) }
+
+    private JsonValue ParseNumber() {
+        let start: int = this.Pos
+        var isFloat: bool = false
+        if (this.Peek() == "-") { this.Advance() }
+        // Integer part
+        if (this.Peek() == "0") {
+            this.Advance()
+        } else {
+            let c: string = this.Peek()
+            if (!JsonParser.IsDigit(c) || c == "0") {
+                // c == "0" handled above; reaching here with c == "0"
+                // shouldn't happen, but guard anyway for clarity.
+                this.Fail("expected digit in number")
+                return new JsonValue()
+            }
+            while (true) {
+                let d: string = this.Peek()
+                if (JsonParser.IsDigit(d)) { this.Advance() }
+                else                        { break }
+            }
+        }
+        // Fractional part
+        if (this.Peek() == ".") {
+            isFloat = true
+            this.Advance()
+            let c: string = this.Peek()
+            if (!JsonParser.IsDigit(c)) {
+                this.Fail("expected digit after '.'")
+                return new JsonValue()
+            }
+            while (true) {
+                let d: string = this.Peek()
+                if (JsonParser.IsDigit(d)) { this.Advance() }
+                else                        { break }
+            }
+        }
+        // Exponent part
+        let e: string = this.Peek()
+        if (e == "e" || e == "E") {
+            isFloat = true
+            this.Advance()
+            let s: string = this.Peek()
+            if (s == "+" || s == "-") { this.Advance() }
+            let c2: string = this.Peek()
+            if (!JsonParser.IsDigit(c2)) {
+                this.Fail("expected digit in exponent")
+                return new JsonValue()
+            }
+            while (true) {
+                let d: string = this.Peek()
+                if (JsonParser.IsDigit(d)) { this.Advance() }
+                else                        { break }
+            }
+        }
+        let raw: string = String_Substring(this.Source, start, this.Pos - start)
+        let out = new JsonValue()
+        if (isFloat) {
+            out.SetFloat(String_ToFloat(raw))
+        } else {
+            out.SetInt(String_ToInt(raw))
+        }
+        return out
+    }
+
+    private JsonValue ParseBool() {
+        if (this.MatchLit("true")) {
+            let v = new JsonValue()
+            v.SetBool(true)
+            return v
+        }
+        if (this.MatchLit("false")) {
+            let v = new JsonValue()
+            v.SetBool(false)
+            return v
+        }
+        this.Fail("invalid literal (expected true / false)")
+        return new JsonValue()
+    }
+
+    private JsonValue ParseNull() {
+        if (this.MatchLit("null")) {
+            return new JsonValue()
+        }
+        this.Fail("invalid literal (expected null)")
+        return new JsonValue()
+    }
+}
+
+// ── Json (static facade) ──────────────────────────────
+
+public class Json {
+    // Construct so the codegen has a class instance to hang the
+    // static methods on. No state needed.
+    public Json() {}
+
+    public static JsonResult Parse(string source) {
+        let res = new JsonResult()
+        let p   = new JsonParser(source)
+        let v   = p.ParseTopLevel()
+        if (p.HasFailed()) {
+            res.Ok    = false
+            res.Value = new JsonValue()
+            res.Error = new JsonError(p.ErrorMsg(), p.ErrorLine(), p.ErrorCol())
+            return res
+        }
+        res.Ok    = true
+        res.Value = v
+        return res
+    }
+
+    // ── Encoder ──────────────────────────────────────
+    //
+    // Compact output: no spaces, no trailing newline. Object key
+    // order = insertion order (preserved by parallel-list storage).
+    public static string Encode(JsonValue v) {
+        let k: JsonKind = v.Kind
+        if (k == JsonKind.Null)   { return "null" }
+        if (k == JsonKind.Bool)   {
+            if (v.AsBool()) { return "true" }
+            return "false"
+        }
+        if (k == JsonKind.Int)    { return String_FromInt(v.AsInt()) }
+        if (k == JsonKind.Float)  { return String_FromFloat(v.AsFloat()) }
+        if (k == JsonKind.String) { return "\"" + Json.EscapeString(v.AsString()) + "\"" }
+        if (k == JsonKind.Array)  { return Json.EncodeArray(v) }
+        if (k == JsonKind.Object) { return Json.EncodeObject(v) }
+        return "null"
+    }
+
+    private static string EncodeArray(JsonValue v) {
+        let xs: List<JsonValue> = v.AsArray()
+        let n: int = xs.Count()
+        var out: string = "["
+        for i in 0..n {
+            if (i > 0) { out = out + "," }
+            out = out + Json.Encode(xs.Get(i))
+        }
+        out = out + "]"
+        return out
+    }
+
+    private static string EncodeObject(JsonValue v) {
+        let keys: List<string> = v.Keys()
+        let n: int = keys.Count()
+        var out: string = "{"
+        for i in 0..n {
+            if (i > 0) { out = out + "," }
+            let key: string = keys.Get(i)
+            out = out + "\"" + Json.EscapeString(key) + "\":"
+            out = out + Json.Encode(v.Get(key))
+        }
+        out = out + "}"
+        return out
+    }
+
+    // Escape a string for embedding in a JSON string literal. Does
+    // NOT add surrounding quotes — Encode does that. Handles the
+    // RFC 8259 mandatory escapes (\" \\ \b \f \n \r \t) plus
+    // \u-escapes for any other ASCII control (0x00-0x1F).
+    public static string EscapeString(string s) {
+        let n: int = String_Length(s)
+        var out: string = ""
+        for i in 0..n {
+            let c: string = String_CharAt1(s, i)
+            if      (c == "\"") { out = out + "\\\"" }
+            else if (c == "\\") { out = out + "\\\\" }
+            else if (c == "\n") { out = out + "\\n" }
+            else if (c == String_FromByte(13)) { out = out + "\\r" }  // see lexer.am "\r" workaround
+            else if (c == "\t") { out = out + "\\t" }
+            else if (c == String_FromCodepoint(8))  { out = out + "\\b" }
+            else if (c == String_FromCodepoint(12)) { out = out + "\\f" }
+            else { out = out + c }
+        }
+        return out
+    }
+
+    // ── Factories ────────────────────────────────────
+    public static JsonValue NullValue() {
+        return new JsonValue()
+    }
+
+    public static JsonValue OfBool(bool b) {
+        let v = new JsonValue()
+        v.SetBool(b)
+        return v
+    }
+
+    public static JsonValue OfInt(int n) {
+        let v = new JsonValue()
+        v.SetInt(n)
+        return v
+    }
+
+    public static JsonValue OfFloat(float f) {
+        let v = new JsonValue()
+        v.SetFloat(f)
+        return v
+    }
+
+    public static JsonValue OfString(string s) {
+        let v = new JsonValue()
+        v.SetString(s)
+        return v
+    }
+
+    public static JsonValue OfArray(List<JsonValue> xs) {
+        let v = new JsonValue()
+        v.SetArray(xs)
+        return v
+    }
+}

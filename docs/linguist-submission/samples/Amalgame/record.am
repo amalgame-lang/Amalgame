@@ -1,0 +1,15 @@
+namespace Tests
+
+public record Point(float X, float Y)
+
+public record Color(int R, int G, int B)
+
+public class Program {
+    public static void Main(string[] args) {
+        let p = new Point(3.0, 4.0)
+        Console.WriteLine("Point: ({p.X}, {p.Y})")
+
+        let red = new Color(255, 0, 0)
+        Console.WriteLine("Color: ({red.R}, {red.G}, {red.B})")
+    }
+}

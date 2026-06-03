@@ -2301,14 +2301,29 @@ même jour sur ces repos.
 ### Marketing / discoverability
 - [ ] **Submit Amalgame to GitHub Linguist** — until accepted,
       ` ```amalgame ` markdown fences render as plain text and
-      `.am` files don't get a language badge on the repo. Linguist
-      uses a stars/usage heuristic (~200 repos) and requires a
-      TextMate grammar — we already have one in
+      `.am` files don't get a language badge on the repo. Worse:
+      `.am` is already owned by **Automake** in Linguist, so the
+      159 `.am` files are simply dropped — the repo's Languages bar
+      shows only build scripts (Shell/PowerShell/JS). Linguist
+      uses a stars/usage heuristic (~hundreds of repos) and requires
+      a TextMate grammar — we already have one in
       `editors/vscode/syntaxes/amalgame.tmLanguage.json`. Until we
       cross the threshold, README + docs/guide use ` ```kotlin `
       as a syntax-highlight fallback (closest visual match: shared
       `let` / `var` / `class` / `null` keywords, mismatches on
       `fn` and lowercase type names).
+      - [x] **Submission kit prepared (2026-06-03)** — everything
+            we control is staged in `docs/linguist-submission/`:
+            `languages.yml` entry (color `#8B5CF6`, `tm_scope:
+            source.amalgame`, C# ace/codemirror modes), an `.am`
+            Automake-vs-Amalgame `heuristics.yml` rule, curated
+            classifier samples + `collect-samples.sh`, and a
+            step-by-step README. **Still blocked on the usage
+            threshold** — do not open the PR until "namespace
+            Amalgame"/"import Amalgame" `.am` repos are in the
+            hundreds, else it gets closed.
+      - [ ] Reach the public-adoption threshold, then open the PR
+            against `github-linguist/linguist`.
 
 ### Documentation
 - [x] User guide (`docs/guide/`)

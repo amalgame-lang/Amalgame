@@ -1,0 +1,23 @@
+# Entry to insert into github-linguist/linguist's lib/linguist/languages.yml
+# Keep the file alphabetically sorted by language name: "Amalgame" goes
+# between "AmbientTalk" predecessors (AGS Script, AIDL, AL, AMPL, ANTLR ...)
+# — place it right after the existing "AL" / before "AMPL" block, wherever
+# the A-run lands case-insensitively in the current file.
+#
+# NOTE: `.am` is already claimed by Automake. Sharing the extension is
+# allowed, but REQUIRES the disambiguation rule in heuristics.yml.snippet.
+#
+# language_id: leave as-is, then run `script/update-ids` (or
+# `bin/update-ids`) in your linguist checkout — it assigns/validates a
+# unique id and fails CI on collision. Do NOT hand-pick one.
+
+Amalgame:
+  type: programming
+  color: "#8B5CF6"
+  extensions:
+    - ".am"
+  tm_scope: source.amalgame
+  ace_mode: csharp
+  codemirror_mode: clike
+  codemirror_mime_type: text/x-csharp
+  language_id: 0   # placeholder — run script/update-ids to fill
