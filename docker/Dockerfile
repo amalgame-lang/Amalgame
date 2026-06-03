@@ -15,15 +15,28 @@
 # ═══════════════════════════════════════════════════════════════════════
 
 # ─────────────────────────────────────────────────────────────────────
-# Stage 1 — bootstrap amc from the tracked snapshot (same path as ci.yml)
-#           and package the VS Code extension into a .vsix.
+# Stage 1a — package the VS Code extension into a .vsix. Kept on a
+#            node:20 base because recent @vscode/vsce (via undici) needs
+#            the global `File` from Node 20+; Debian bookworm ships 18.
+#            `vsce package` bundles non-dev deps (vscode-languageclient),
+#            so the .vsix is self-contained.
+# ─────────────────────────────────────────────────────────────────────
+FROM node:20-bookworm-slim AS vsix
+
+WORKDIR /ext
+COPY editors/vscode/ ./
+RUN npm install --no-audit --no-fund --loglevel=error \
+    && npx --yes @vscode/vsce package --out /tmp/amalgame.vsix
+
+# ─────────────────────────────────────────────────────────────────────
+# Stage 1b — bootstrap amc from the tracked snapshot (same path as
+#            ci.yml) and assemble the XDG install tree.
 # ─────────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS builder
 
-# Build deps mirror ci.yml's Linux job + Node for `vsce package`.
+# Build deps mirror ci.yml's Linux job.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc libc6-dev libgc-dev libcurl4-openssl-dev zlib1g-dev \
-        ca-certificates nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -36,11 +49,8 @@ RUN gcc -O2 -Iruntime snapshot/amc_lib.c -lgc -lm -lcurl -o snapshot/amc \
     && ./build_amc.sh \
     && ./amc --version
 
-# Package the extension. `vsce package` bundles non-dev deps
-# (vscode-languageclient), so the .vsix is self-contained.
-RUN cd editors/vscode \
-    && npm install --no-audit --no-fund --loglevel=error \
-    && npx --yes @vscode/vsce package --out /tmp/amalgame.vsix
+# Pull the packaged extension in from the node stage.
+COPY --from=vsix /tmp/amalgame.vsix /tmp/amalgame.vsix
 
 # Stage the XDG-style install tree under /opt/amalgame — this mirrors the
 # layout release.yml ships and that amc's ResolveRuntimeDir probes for at
