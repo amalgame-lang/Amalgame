@@ -1,0 +1,15 @@
+# Build context hygiene for docker/Dockerfile. The image bootstraps amc
+# from snapshot/amc_lib.c and re-installs node_modules in the builder
+# stage, so none of these need to ship into the context.
+.git
+**/node_modules
+dist
+*.vsix
+# The tracked snapshot/amc binary is rebuilt from snapshot/amc_lib.c in
+# the builder stage — keep the .c, drop the (often-stale, wrong-arch) ELF.
+snapshot/amc
+# Local build artifacts that would otherwise bloat the context.
+amc
+gen_test
+*.o
+*.a
