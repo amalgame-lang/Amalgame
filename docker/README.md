@@ -22,7 +22,12 @@ docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide
 
 Open <http://localhost:8080>. The window lands on the sample project with
 the docs alongside. Press **F5** to build (debug) and step through
-`MyFirstApp/app/main.am`.
+`MyFirstApp/src/main.am`.
+
+> **Tags.** `:latest` and `:X.Y.Z` are published on each tagged release.
+> `:edge` always tracks the latest `main` build — use it before the first
+> tagged release, or to live on the bleeding edge:
+> `docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide:edge`
 
 ### Persist your work
 
