@@ -345,6 +345,38 @@ response. Shipped in `amalgame-net-http v0.4.2`.
 
 ---
 
+### `[powered_by]` — server-identity advertisement
+
+**Lib:** `Amalgame.Web.PoweredBy.FromMap(...)` + `WebApp.WithPoweredBy(...)` / `WithoutPoweredBy()` (since v0.21.0).
+**Status:** *shipped (v0.21.0)*.
+
+Stamps two server-identity headers onto **every** response:
+
+```
+X-Powered-By: Mosaic (Amalgame)    (framework convention — Express-style)
+Server:       Mosaic (Amalgame)    (server convention — nginx/apache-style)
+```
+
+**This is the one feature that is ON by default** — a bare `WebApp.New()`
+already advertises the stack (free, passive promotion). Every other
+middleware here is opt-in; this one you opt *out* of. Because
+`X-Powered-By` is mild fingerprinting (OWASP / helmet recommend dropping
+it), set `enabled = false` if you'd rather not disclose the stack to
+clients.
+
+| Key | Type | Default | Env | Notes |
+|---|---|---|---|---|
+| `enabled` | `bool` | `true` | `MOSAIC_POWERED_BY_ENABLED` | Master switch. `false` → emits nothing (equivalent to `WithoutPoweredBy()`). |
+| `value` | `string` | `"Mosaic (Amalgame)"` | `MOSAIC_POWERED_BY_VALUE` | Advertised identity for both headers. |
+| `x_powered_by` | `bool` | `true` | `MOSAIC_POWERED_BY_X_POWERED_BY` | Toggle the `X-Powered-By` header alone. |
+| `server` | `bool` | `true` | `MOSAIC_POWERED_BY_SERVER` | Toggle the `Server` header alone. |
+
+Like `SecurityHeaders`, `Apply` never overwrites a header the handler
+already set — a handler that sets its own `Server:` wins. Unknown keys
+are ignored (forward-compat).
+
+---
+
 ## 4. Composing config in code (no `mosaic.toml`)
 
 Apps that don't use the `mosaic` CLI can build the same config in
