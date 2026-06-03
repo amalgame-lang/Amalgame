@@ -403,5 +403,5 @@ public class Program {
   `ServeHttps*` s'y lient.
 
 Pour les patterns de configuration (superposition toml/env/flag) voir
-[mosaic-configuration.md](../mosaic-configuration.md). Pour les types
-HTTP eux-mêmes, voir le README du package `amalgame-net-http`.
+[mosaic-configuration.md](https://github.com/amalgame-lang/Amalgame/blob/main/docs/mosaic-configuration.md).
+Pour les types HTTP eux-mêmes, voir le README du package `amalgame-net-http`.
