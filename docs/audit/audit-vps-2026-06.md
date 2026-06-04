@@ -114,7 +114,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MB10 | OCSP stapling | Stapled OCSP response in handshake | PLANNED | | record absence |
 | MB11 | dns-01 challenge (wildcards) | Wildcard cert via DNS provider | PLANNED | | record absence |
 | MB12 | tls-alpn-01 challenge | In-process challenge, no port-80 | PLANNED | | record absence (http-01 is the real path) |
-| MB13 | **ACME Phase 3 migration** (node site → Mosaic) | A real site fully served by Mosaic, node fallback removable | SHIPPED | | Deadline ~2026-07-27 (day-30); expiry ~2026-08-27 |
+| MB13 | **ACME Phase 3 migration** (node site → Mosaic) | A real site fully served by Mosaic, node fallback removable | PREPPED | ⏳ awaiting supervised execution | Capability shipped (tls v0.3.3 + net-http v0.21.0 + web v0.33.0). **Runbook: [`acme-cutover-runbook.md`](./acme-cutover-runbook.md)** (pre-flight + staging dry-run + cutover + verify + rollback). NOT auto-executed — touches prod/DNS/real LE. Deadline ~2026-07-27 (day-30); expiry ~2026-08-27 |
 
 ### 4.C — Response middleware & headers
 
