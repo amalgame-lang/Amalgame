@@ -437,7 +437,17 @@ or Fastly in front and skip writing this. But for sovereign /
 self-hosted / air-gapped scenarios, having a first-class CDN
 package matters. ~6-8 days for v0.1.
 
-### 9. gRPC server
+### 9. gRPC server — 🟡 foundation shipped (protobuf codec)
+
+> 🟡 **Foundation shipped:** `amalgame-formats-protobuf` v0.1.0 — the
+> proto3 **wire-format codec** (ProtoWriter/ProtoReader: varint, zigzag,
+> length-delimited string/bytes/embedded-message, fixed32/64, bool, tag,
+> unknown-field skip), binary-safe on `List<int>`, 7/7 tests green incl. a
+> NUL+0xFF byte-exact round-trip. **Still to build:** the `.proto` IDL
+> parser + codegen, and the gRPC HTTP/2 framing (length-prefixed messages,
+> `grpc-status`/`grpc-message` trailers) + streaming — that's the
+> `amalgame-net-grpc` package, which composes this codec with the
+> nghttp2 transport already in `amalgame-net-http`.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
@@ -643,9 +653,9 @@ Year-1 priority for the web stack (✅ = done as of 2026-06-04):
 2. ~~**Reverse proxy** in `amalgame-net-proxy`~~ ✅ **shipped v0.2.x**.
 3. ~~**Load balancing** in `amalgame-net-proxy`~~ ✅ **shipped v0.2.1**
    (RR / IP-hash / least-conn; health checks + outlier detection TODO).
-4. **gRPC server** in `amalgame-net-grpc` (#9; impact: modern
-   microservice gap closed — pairs with the nghttp2 transport
-   already shipped).  ~3-4 days. ⬅️ **next big-ticket Year-1 item.**
+4. **gRPC server** in `amalgame-net-grpc` (#9). 🟡 **Foundation
+   shipped**: `amalgame-formats-protobuf` v0.1.0 (proto3 wire codec).
+   Remaining: `.proto` codegen + gRPC H2 framing/streaming.
 5. ~~**Server-Sent Events (SSE)**~~ ✅ **shipped** (net-http v0.16.0 +
    web v0.28.0).
 6. **TCP/UDP raw proxy** in `amalgame-net-stream` — 🟢 **TCP shipped

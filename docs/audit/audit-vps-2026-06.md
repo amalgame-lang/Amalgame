@@ -201,7 +201,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MI1 | Reverse proxy (`amalgame-net-proxy`) | Path-based dispatch, X-Forwarded-* injected | PARTIAL | | verify current state of net-proxy |
 | MI2 | Load balancing (round-robin / least-conn / health) | Backend pool, health checks, circuit breaker | PLANNED | | record state |
 | MI3 | TCP/UDP raw pass-through proxy | Stream proxy for DB/broker | TCP SHIPPED | ✅ PASS | `amalgame-net-stream` v0.1.0 `TcpProxy`. Local audit 2026-06-05 all green: **binary-safety** (all 256 byte values + embedded NULs round-trip byte-exact — the bundled `Amalgame.Net` TcpConn would `strlen`-truncate), **per-source-IP cap** (over-cap conn dropped, admitted conn served), **graceful SIGTERM**. Security by default: SIGPIPE-safe, idle+connect timeouts, global+per-IP caps. SSRF guard intentionally N-A (upstream operator-fixed). TODO: UDP/LB/IPv6/TLS (v0.2-v0.3). Re-run on VPS once provisioned. |
-| MI4 | gRPC server (HTTP/2 + protobuf) | grpc-gen + serve | PLANNED | | record absence |
+| MI4 | gRPC server (HTTP/2 + protobuf) | grpc-gen + serve | FOUNDATION | 🟡 partial | `amalgame-formats-protobuf` v0.1.0 wire codec shipped (7/7 tests, binary-safe NUL+0xFF round-trip, local audit 2026-06-05). Remaining: `.proto` codegen + gRPC H2 framing/streaming (amalgame-net-grpc). Not yet servable end-to-end |
 
 ---
 
