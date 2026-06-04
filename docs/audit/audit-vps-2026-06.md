@@ -95,7 +95,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MA7 | Programmatic routing (`:param`, `*splat`, methods) | Params + splat captured, first-match-wins | SHIPPED | | |
 | MA8 | Filesystem routing (`app/` `[id]` / `[...slug]`) | `mosaic build` wires routes from `app/` tree | SHIPPED | | |
 | MA9 | HTTP/1.1 keep-alive (persistent connections) | Multiple requests on one connection | PARTIAL | | Phase-1 hardening item — verify |
-| MA10 | IPv6 dual-stack (`AF_INET6`, `IPV6_V6ONLY=0`) | Serves over IPv6 + IPv4 | PARTIAL | | Phase-1 hardening item — verify |
+| MA10 | IPv6 dual-stack (`AF_INET6`, `IPV6_V6ONLY=0`) | Serves over IPv6 + IPv4 | SHIPPED | ✅ PASS | net-http v0.21.0: H1 + HTTPS-H1 (incl. async) bind dual-stack, AF_INET fallback. Live audit 2026-06-05 (`ipv6_smoke.c` vs real header): `::1` IPv6 client accepted + `127.0.0.1` IPv4 client normalized to plain `127.0.0.1` (not `::ffff:`) so RemoteAddr/rate-limit/Host-guard semantics preserved. WS/H2 listeners still IPv4 (tracked). Re-run over public IPv6 on VPS |
 | MA11 | Graceful shutdown (SIGTERM drains in-flight) | In-flight requests complete, then exit | PARTIAL | | Verify vs. hard kill |
 
 ### 4.B — TLS / certificates / ACME
