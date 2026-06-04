@@ -1389,6 +1389,12 @@ public class Parser {
         let isBitAssign = this.CheckValue("&=") || this.CheckValue("|=") || this.CheckValue("^=") || this.CheckValue("<<=") || this.CheckValue(">>=")
         if (isAssign || isBitAssign) {
             let tok = this.Advance()
+            // Allow the right-hand side to begin on the next line: an
+            // assignment operator at end-of-line is unambiguously a
+            // continuation (a dangling `x =` is never a complete
+            // statement). Without this, `x =\n  expr` parsed the RHS as
+            // empty and cgen emitted `_unknown_`.
+            this.SkipNewlines()
             let right = this.ParseAssign()
             return Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
         }
