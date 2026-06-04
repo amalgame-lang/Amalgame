@@ -95,7 +95,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MA7 | Programmatic routing (`:param`, `*splat`, methods) | Params + splat captured, first-match-wins | SHIPPED | | |
 | MA8 | Filesystem routing (`app/` `[id]` / `[...slug]`) | `mosaic build` wires routes from `app/` tree | SHIPPED | | |
 | MA9 | HTTP/1.1 keep-alive (persistent connections) | Multiple requests on one connection | PARTIAL | | Phase-1 hardening item — verify |
-| MA10 | IPv6 dual-stack (`AF_INET6`, `IPV6_V6ONLY=0`) | Serves over IPv6 + IPv4 | PARTIAL | | Phase-1 hardening item — verify |
+| MA10 | IPv6 dual-stack (`AF_INET6`, `IPV6_V6ONLY=0`) | Serves over IPv6 + IPv4 | SHIPPED | ✅ PASS | net-http v0.21.0: H1 + HTTPS-H1 (incl. async) bind dual-stack, AF_INET fallback. Live audit 2026-06-05 (`ipv6_smoke.c` vs real header): `::1` IPv6 client accepted + `127.0.0.1` IPv4 client normalized to plain `127.0.0.1` (not `::ffff:`) so RemoteAddr/rate-limit/Host-guard semantics preserved. WS/H2 listeners still IPv4 (tracked). Re-run over public IPv6 on VPS |
 | MA11 | Graceful shutdown (SIGTERM drains in-flight) | In-flight requests complete, then exit | PARTIAL | | Verify vs. hard kill |
 
 ### 4.B — TLS / certificates / ACME
@@ -114,7 +114,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MB10 | OCSP stapling | Stapled OCSP response in handshake | PLANNED | | record absence |
 | MB11 | dns-01 challenge (wildcards) | Wildcard cert via DNS provider | PLANNED | | record absence |
 | MB12 | tls-alpn-01 challenge | In-process challenge, no port-80 | PLANNED | | record absence (http-01 is the real path) |
-| MB13 | **ACME Phase 3 migration** (node site → Mosaic) | A real site fully served by Mosaic, node fallback removable | SHIPPED | | Deadline ~2026-07-27 (day-30); expiry ~2026-08-27 |
+| MB13 | **ACME Phase 3 migration** (node site → Mosaic) | A real site fully served by Mosaic, node fallback removable | PREPPED | ⏳ awaiting supervised execution | Capability shipped (tls v0.3.3 + net-http v0.21.0 + web v0.33.0). **Runbook: [`acme-cutover-runbook.md`](./acme-cutover-runbook.md)** (pre-flight + staging dry-run + cutover + verify + rollback). NOT auto-executed — touches prod/DNS/real LE. Deadline ~2026-07-27 (day-30); expiry ~2026-08-27 |
 
 ### 4.C — Response middleware & headers
 
@@ -178,10 +178,10 @@ net-smtp `v____`, net-proxy `v____`.
 |---|---|---|---|---|---|
 | MG1 | Access log (enriched, one line/request) | method/path/status/duration/remote/UA logged | SHIPPED | | `/var/log/mosaic-sites.log` |
 | MG2 | Request-ID generation + `X-Request-ID` propagation | Stable id per request through chain | PARTIAL | | wiring TODO — verify |
-| MG3 | JSON log format | Structured JSON lines | PARTIAL | | prepared, not exposed — verify |
+| MG3 | JSON log format | Structured JSON lines | SHIPPED | ✅ PASS | web v0.33.0 `LogConfig.WithFormat("json")` → one JSON object/line via `Log.Raw` (logging v0.2.0). Local audit 2026-06-05: fields JSON-escaped — **CR/LF/quote log-injection neutralized** (unit test on `jsonEsc`). Re-run on VPS log pipeline once provisioned |
 | MG4 | TOML 3-layer config (toml < env < flag) via `FromMap` | Each layer overrides correctly | PARTIAL | | TOML→FromMap wiring partly doc-only — verify |
-| MG5 | `/healthz` + `/readyz` probes | Liveness/readiness endpoints | PLANNED | | record absence (Phase 3) |
-| MG6 | Prometheus `/metrics` | Request histograms, in-flight, queue depth | PLANNED | | record absence (Phase 3) |
+| MG5 | `/healthz` + `/readyz` probes | Liveness/readiness endpoints | SHIPPED | ✅ PASS | web v0.33.0 `WithObservability` — public 200 liveness/readiness. Unit test green |
+| MG6 | Prometheus `/metrics` | Request histograms, in-flight, queue depth | SHIPPED | ✅ PASS | web v0.33.0 — requests by status class + total + in-flight gauge + duration sum, ServeMt-safe counters. **SECURITY: private-by-default** — served only to loopback/RFC1918/ULA or with bearer token; public caller → 404 (endpoint not disclosed). Abuse test green (public→404, token→200, wrong-token→404) |
 | MG7 | OpenTelemetry tracing | Spans propagated through middleware | PLANNED | | record absence (Phase 3) |
 
 ### 4.H — CLI, build & deploy
@@ -200,8 +200,8 @@ net-smtp `v____`, net-proxy `v____`.
 |---|---|---|---|---|---|
 | MI1 | Reverse proxy (`amalgame-net-proxy`) | Path-based dispatch, X-Forwarded-* injected | PARTIAL | | verify current state of net-proxy |
 | MI2 | Load balancing (round-robin / least-conn / health) | Backend pool, health checks, circuit breaker | PLANNED | | record state |
-| MI3 | TCP/UDP raw pass-through proxy | Stream proxy for DB/broker | PLANNED | | record absence |
-| MI4 | gRPC server (HTTP/2 + protobuf) | grpc-gen + serve | PLANNED | | record absence |
+| MI3 | TCP/UDP raw pass-through proxy | Stream proxy for DB/broker | TCP SHIPPED | ✅ PASS | `amalgame-net-stream` v0.1.0 `TcpProxy`. Local audit 2026-06-05 all green: **binary-safety** (all 256 byte values + embedded NULs round-trip byte-exact — the bundled `Amalgame.Net` TcpConn would `strlen`-truncate), **per-source-IP cap** (over-cap conn dropped, admitted conn served), **graceful SIGTERM**. Security by default: SIGPIPE-safe, idle+connect timeouts, global+per-IP caps. SSRF guard intentionally N-A (upstream operator-fixed). TODO: UDP/LB/IPv6/TLS (v0.2-v0.3). Re-run on VPS once provisioned. |
+| MI4 | gRPC server (HTTP/2 + protobuf) | grpc-gen + serve | FOUNDATION | 🟡 partial | `amalgame-formats-protobuf` v0.1.0 wire codec shipped (7/7 tests, binary-safe NUL+0xFF round-trip, local audit 2026-06-05). Remaining: `.proto` codegen + gRPC H2 framing/streaming (amalgame-net-grpc). Not yet servable end-to-end |
 
 ---
 
