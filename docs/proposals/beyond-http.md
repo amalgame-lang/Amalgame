@@ -1,10 +1,17 @@
 # Beyond HTTP — nginx/apache-equivalent capabilities
 
-**Status:** in-progress. **#6 Static file serving shipped
-2026-05-24** in amalgame-web v0.13.0 — see [#6 entry below](#6-static-file-serving-shipped-v0130-2026-05-24).
-The remaining inventory captures features the Amalgame web
-stack still needs to match nginx / apache / HAProxy / Postfix
-territory.
+**Status:** in-progress. Verified against the repos **2026-06-04**.
+**Shipped:** #6 Static file serving (web v0.13.0, + Range / Last-Modified
+/ `.gz` follow-ups), #11 SSE (net-http v0.16.0 + web v0.28.0), #1 Reverse
+proxy + #2 Load balancing (`amalgame-net-proxy` v0.2.1: path routing +
+round-robin / IP-hash / least-connections). #4's **outbound** SMTP client
+shipped separately as `amalgame-net-smtp` v0.2.4 (the inbound relay /
+IMAP / POP3 server described here is still roadmap).
+**Still roadmap:** #3 TCP/UDP raw proxy, #4 SMTP *server*/IMAP/POP3, #5
+SFTP, #7 VPN/WireGuard, #8 CDN, #9 gRPC, #10 DNS/DoH, #12 WebDAV; plus
+proxy follow-ups (health checks, circuit breaker) and static `sendfile(2)`.
+The inventory below captures what the stack still needs to match nginx /
+apache / HAProxy / Postfix territory.
 
 ## Why this doc
 
@@ -24,7 +31,13 @@ minimum viable surface, and orders them by impact.
 
 ## Inventory
 
-### 1. Reverse proxy (HTTP/HTTPS)
+### 1. Reverse proxy (HTTP/HTTPS) — ✅ SHIPPED (net-proxy v0.2.x)
+
+> ✅ Shipped as `amalgame-net-proxy` v0.2.1: longest-prefix path
+> routing, `X-Forwarded-For` injection, hop-by-hop header stripping,
+> wired into Mosaic via `mosaic_server.am` (`AddHandler()`). TODO:
+> active health checks, circuit breaker, WS transparent forwarding,
+> caching proxy.
 
 The "proxy in front of N app servers" pattern.  nginx + Apache
 both ship this as their #1 use case in 2026 — pure-web-server
@@ -62,7 +75,11 @@ front side).
 
 **Priority:** HIGH — biggest user-facing gap vs nginx today.
 
-### 2. Load balancing
+### 2. Load balancing — 🟢 mostly SHIPPED (net-proxy v0.2.1)
+
+> 🟢 Shipped in `amalgame-net-proxy` v0.2.1: round-robin, IP-hash
+> (sticky / weighted), least-connections. TODO: active health checks
+> (`/healthz` probe) and outlier detection (auto-eject on N×5xx).
 
 Often a feature OF the reverse proxy (above), but worth calling
 out because the policy choices are non-trivial:
@@ -86,7 +103,19 @@ p.Forward("/api", pool)
 
 **Priority:** HIGH — pairs naturally with reverse proxy.
 
-### 3. TCP/UDP raw proxy
+### 3. TCP/UDP raw proxy — 🟢 TCP SHIPPED (net-stream v0.1.0)
+
+> 🟢 **TCP shipped** as `amalgame-net-stream` v0.1.0 (`TcpProxy`): binary-safe
+> byte splice to a fixed upstream, with security wired in by default —
+> SIGPIPE-safe, idle + connect timeouts, global + per-source-IP connection
+> caps (over-cap dropped immediately), graceful SIGINT/SIGTERM shutdown,
+> bounded splice buffer. The byte pump is C (explicit recv/send lengths)
+> because the bundled `Amalgame.Net` TcpConn primitives `strlen()` the
+> buffer and truncate at the first NUL — corrupting any binary stream.
+> Audit (all green): binary-safety round-trip (all 256 byte values +
+> embedded NULs, byte-exact), per-IP cap enforcement, graceful shutdown.
+> **TODO v0.2:** UDP forwarding, load-balancing across N upstreams, IPv6
+> listener; **v0.3:** TLS edge.
 
 The "stream4" / `stream {}` block in nginx, or HAProxy's TCP
 mode.  Forwards arbitrary TCP / UDP without parsing the payload.
@@ -119,7 +148,12 @@ a per-port loop.  ~250 LoC total.
 **Priority:** MEDIUM — useful for production deployments but
 not as universally required as HTTP reverse proxy.
 
-### 4. SMTP relay + IMAP/POP3 server
+### 4. SMTP relay + IMAP/POP3 server — 🟡 outbound client only
+
+> 🟡 The **outbound** half shipped as `amalgame-net-smtp` v0.2.4 (a
+> TLS SMTP *client* + `Mail` builder for transactional mail, RFC 2047
+> subjects — used by Mosaic contact forms). The **inbound** relay /
+> IMAP / POP3 *server* described below is still roadmap.
 
 The mail proxy / server slice.  Three sub-protocols, each
 non-trivial.
@@ -403,7 +437,17 @@ or Fastly in front and skip writing this. But for sovereign /
 self-hosted / air-gapped scenarios, having a first-class CDN
 package matters. ~6-8 days for v0.1.
 
-### 9. gRPC server
+### 9. gRPC server — 🟡 foundation shipped (protobuf codec)
+
+> 🟡 **Foundation shipped:** `amalgame-formats-protobuf` v0.1.0 — the
+> proto3 **wire-format codec** (ProtoWriter/ProtoReader: varint, zigzag,
+> length-delimited string/bytes/embedded-message, fixed32/64, bool, tag,
+> unknown-field skip), binary-safe on `List<int>`, 7/7 tests green incl. a
+> NUL+0xFF byte-exact round-trip. **Still to build:** the `.proto` IDL
+> parser + codegen, and the gRPC HTTP/2 framing (length-prefixed messages,
+> `grpc-status`/`grpc-message` trailers) + streaming — that's the
+> `amalgame-net-grpc` package, which composes this codec with the
+> nghttp2 transport already in `amalgame-net-http`.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
@@ -525,7 +569,11 @@ already (`UdpSocket` since v0.6.x).
 ~3 days for v0.1 (authoritative + DoH); +2 days for DNSSEC
 signing if needed.
 
-### 11. Server-Sent Events (SSE)
+### 11. Server-Sent Events (SSE) — ✅ SHIPPED
+
+> ✅ Shipped: `SseConn` in `amalgame-net-http` v0.16.0 + `WebApp.Sse(path,
+> handler)` in `amalgame-web` v0.28.0. The sketch below predates the
+> final API (`WebApp.Sse` rather than `Sse.NewStream`).
 
 One-way push channel from server to browser over a long-lived
 HTTP/1.1 or HTTP/2 connection. Way simpler than WebSocket — no
@@ -597,26 +645,22 @@ generic file shares).
 
 ## Ordering proposal
 
-Year-1 priority for the web stack:
+Year-1 priority for the web stack (✅ = done as of 2026-06-04):
 
 1. ~~**Static file serving** in `amalgame-web`~~ ✅ **shipped
-   v0.13.0 (2026-05-24)**. Took 1.5 days end-to-end across 3
-   PRs (runtime helpers + binary-safe net-http pipeline +
-   middleware) — the extra 0.5 day was buying out `strlen()`
-   from the wire-out path so PNG/JPEG don't truncate at NULs.
-2. **Reverse proxy** in `amalgame-net-proxy` v0.1 (impact:
-   unblocks "front of N upstreams" deploys).  ~2-3 days.
-3. **Load balancing** in `amalgame-net-proxy` v0.2 (extends 2).
-   ~1-2 days.
-4. **gRPC server** in `amalgame-net-grpc` (#9; impact: modern
-   microservice gap closed — pairs with the nghttp2 transport
-   already shipped).  ~3-4 days.
-5. **Server-Sent Events (SSE)** as middleware in
-   `amalgame-net-http` (#11; impact: any app gets a push channel
-   in half a day).  Should land as the next net-http patch
-   release, not its own slot.
-6. **TCP/UDP raw proxy** in `amalgame-net-stream` (impact: DB +
-   broker fronts).  ~1 day.
+   v0.13.0 (2026-05-24)** (+ Range / Last-Modified / `.gz`
+   follow-ups since; `sendfile(2)` still TODO).
+2. ~~**Reverse proxy** in `amalgame-net-proxy`~~ ✅ **shipped v0.2.x**.
+3. ~~**Load balancing** in `amalgame-net-proxy`~~ ✅ **shipped v0.2.1**
+   (RR / IP-hash / least-conn; health checks + outlier detection TODO).
+4. **gRPC server** in `amalgame-net-grpc` (#9). 🟡 **Foundation
+   shipped**: `amalgame-formats-protobuf` v0.1.0 (proto3 wire codec).
+   Remaining: `.proto` codegen + gRPC H2 framing/streaming.
+5. ~~**Server-Sent Events (SSE)**~~ ✅ **shipped** (net-http v0.16.0 +
+   web v0.28.0).
+6. **TCP/UDP raw proxy** in `amalgame-net-stream` — 🟢 **TCP shipped
+   v0.1.0** (binary-safe splice + caps/timeouts/graceful shutdown).
+   UDP + load-balancing across N upstreams = v0.2.
 
 Year-2 (or punt to "if someone wants it"):
 
