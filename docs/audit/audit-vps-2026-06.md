@@ -178,10 +178,10 @@ net-smtp `v____`, net-proxy `v____`.
 |---|---|---|---|---|---|
 | MG1 | Access log (enriched, one line/request) | method/path/status/duration/remote/UA logged | SHIPPED | | `/var/log/mosaic-sites.log` |
 | MG2 | Request-ID generation + `X-Request-ID` propagation | Stable id per request through chain | PARTIAL | | wiring TODO — verify |
-| MG3 | JSON log format | Structured JSON lines | PARTIAL | | prepared, not exposed — verify |
+| MG3 | JSON log format | Structured JSON lines | SHIPPED | ✅ PASS | web v0.33.0 `LogConfig.WithFormat("json")` → one JSON object/line via `Log.Raw` (logging v0.2.0). Local audit 2026-06-05: fields JSON-escaped — **CR/LF/quote log-injection neutralized** (unit test on `jsonEsc`). Re-run on VPS log pipeline once provisioned |
 | MG4 | TOML 3-layer config (toml < env < flag) via `FromMap` | Each layer overrides correctly | PARTIAL | | TOML→FromMap wiring partly doc-only — verify |
-| MG5 | `/healthz` + `/readyz` probes | Liveness/readiness endpoints | PLANNED | | record absence (Phase 3) |
-| MG6 | Prometheus `/metrics` | Request histograms, in-flight, queue depth | PLANNED | | record absence (Phase 3) |
+| MG5 | `/healthz` + `/readyz` probes | Liveness/readiness endpoints | SHIPPED | ✅ PASS | web v0.33.0 `WithObservability` — public 200 liveness/readiness. Unit test green |
+| MG6 | Prometheus `/metrics` | Request histograms, in-flight, queue depth | SHIPPED | ✅ PASS | web v0.33.0 — requests by status class + total + in-flight gauge + duration sum, ServeMt-safe counters. **SECURITY: private-by-default** — served only to loopback/RFC1918/ULA or with bearer token; public caller → 404 (endpoint not disclosed). Abuse test green (public→404, token→200, wrong-token→404) |
 | MG7 | OpenTelemetry tracing | Spans propagated through middleware | PLANNED | | record absence (Phase 3) |
 
 ### 4.H — CLI, build & deploy

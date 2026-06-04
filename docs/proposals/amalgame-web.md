@@ -1294,19 +1294,20 @@ started (WebAuthn, TOTP, migrations, validation, router.Ws).**
 | 2.12 | **`router.Ws(path, handler)`** — WS routes through the Router | ⬜ not started | WS still side-bound via `Ws.Serve(port, handler)`; only `.Sse(path, handler)` is a first-class WebApp route |
 | 2.13 | **Multipart parser** | ✅ shipped | net-http v0.14.1 `Multipart`/`UploadedFile` + web v0.25.0 `ctx.Multipart()` / `mp.File(...)` + `SafeFilename`/`SaveToDir` (v0.19.0) |
 
-#### Phase 3 — UX + ops (~1-2 weeks) — 🟠 the bulk of what's left
+#### Phase 3 — UX + ops (~1-2 weeks) — 🟢 observability done; DX remains
 
 Quality of life. Better dev experience, smoother prod deploys.
-**This is now the lowest-hanging cluster of remaining work:
-observability (`/metrics`, OTel, `/healthz` as middleware) and the
-all-Amalgame `mosaic` toolchain.**
+**Observability shipped in web v0.33.0 (`/metrics` private-by-default +
+`/healthz`/`/readyz` + JSON access logs); OpenTelemetry (3.3) is the
+only observability item left. The remaining cluster is the all-Amalgame
+`mosaic` toolchain (3.7–3.10).**
 
 | # | Item | Status | Evidence (2026-06-04) |
 |---|---|---|---|
-| 3.1 | **Structured access logs** — JSON or Common Log Format | 🟡 partial | `LogConfig.AccessLog` ships **text** format; JSON still planned (`log_config.am`, web v0.8.2) |
-| 3.2 | **`/metrics` endpoint** — Prometheus exposition format | ⬜ not started | no `prometheus`/`metrics` symbols anywhere |
-| 3.3 | **OpenTelemetry tracing** — request spans through middleware | ⬜ not started | no `opentelemetry`/`tracing` symbols |
-| 3.4 | **`/healthz` + `/readyz`** middleware | 🟡 partial | only documented as an example user route; not a built-in middleware |
+| 3.1 | **Structured access logs** — JSON or Common Log Format | ✅ shipped | `LogConfig.WithFormat("json")` → one JSON object per line via `Log.Raw` (logging v0.2.0), fields JSON-escaped (web v0.33.0). Text remains default |
+| 3.2 | **`/metrics` endpoint** — Prometheus exposition format | ✅ shipped | `WithObservability` → `/metrics` (requests by status class, total, in-flight gauge, duration sum), counters mutex-guarded for ServeMt (web v0.33.0). **Private-by-default** (loopback/RFC1918 or bearer token; else 404) |
+| 3.3 | **OpenTelemetry tracing** — request spans through middleware | ⬜ not started | no `opentelemetry`/`tracing` symbols — the remaining Phase-3 observability item |
+| 3.4 | **`/healthz` + `/readyz`** middleware | ✅ shipped | built-in via `WithObservability` — public liveness/readiness 200s (web v0.33.0) |
 | 3.5 | **systemd `Type=notify` + watchdog** integration | 🟡 partial | `mosaic-service.sh` emits `Type=simple`; no `notify`/`WatchdogSec` |
 | 3.6 | **`mosaic new <template>`** — scaffolding | ✅ shipped | `mosaic new` → `mosaic-new.sh` (mosaic v0.7.0) |
 | 3.7 | **dlopen hot-swap** in `mosaic dev` — in-flight WS survive reload | ⬜ not started | `docs/proposals/hot-reload.md` chose SO_REUSEPORT worker-swap (dlopen rejected: amc lacks `--shared` + GC complexity); **proposal only** |
@@ -1377,9 +1378,10 @@ single-node apps today**. Remaining work, in suggested priority order:
 
 1. **1.9** — IPv6 dual-stack listener binding (finish the last Phase-1
    item; small).
-2. **3.2 + 3.4** — `/metrics` (Prometheus) + `/healthz`/`/readyz` as
-   real middleware (observability gap; recoups the §12 promise).
-3. **3.1** — JSON access logs (the text format ships; add JSON).
+2. ~~**3.2 + 3.4** — `/metrics` + `/healthz`/`/readyz` middleware~~ ✅
+   **shipped web v0.33.0** (metrics private-by-default).
+3. ~~**3.1** — JSON access logs~~ ✅ **shipped web v0.33.0**
+   (`WithFormat("json")` + `Log.Raw`).
 4. **ACME Phase-3 production cutover** — migrate the live sites off the
    external Node/greenlock proxy onto Mosaic-native HTTPS before
    ~2026-07-27 (cert day-30 threshold; see [[roadmap-acme-autorenew-timer]]).
