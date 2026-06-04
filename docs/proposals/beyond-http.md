@@ -103,7 +103,19 @@ p.Forward("/api", pool)
 
 **Priority:** HIGH — pairs naturally with reverse proxy.
 
-### 3. TCP/UDP raw proxy
+### 3. TCP/UDP raw proxy — 🟢 TCP SHIPPED (net-stream v0.1.0)
+
+> 🟢 **TCP shipped** as `amalgame-net-stream` v0.1.0 (`TcpProxy`): binary-safe
+> byte splice to a fixed upstream, with security wired in by default —
+> SIGPIPE-safe, idle + connect timeouts, global + per-source-IP connection
+> caps (over-cap dropped immediately), graceful SIGINT/SIGTERM shutdown,
+> bounded splice buffer. The byte pump is C (explicit recv/send lengths)
+> because the bundled `Amalgame.Net` TcpConn primitives `strlen()` the
+> buffer and truncate at the first NUL — corrupting any binary stream.
+> Audit (all green): binary-safety round-trip (all 256 byte values +
+> embedded NULs, byte-exact), per-IP cap enforcement, graceful shutdown.
+> **TODO v0.2:** UDP forwarding, load-balancing across N upstreams, IPv6
+> listener; **v0.3:** TLS edge.
 
 The "stream4" / `stream {}` block in nginx, or HAProxy's TCP
 mode.  Forwards arbitrary TCP / UDP without parsing the payload.
@@ -636,8 +648,9 @@ Year-1 priority for the web stack (✅ = done as of 2026-06-04):
    already shipped).  ~3-4 days. ⬅️ **next big-ticket Year-1 item.**
 5. ~~**Server-Sent Events (SSE)**~~ ✅ **shipped** (net-http v0.16.0 +
    web v0.28.0).
-6. **TCP/UDP raw proxy** in `amalgame-net-stream` (impact: DB +
-   broker fronts).  ~1 day. ⬅️ **cheapest remaining Year-1 item.**
+6. **TCP/UDP raw proxy** in `amalgame-net-stream` — 🟢 **TCP shipped
+   v0.1.0** (binary-safe splice + caps/timeouts/graceful shutdown).
+   UDP + load-balancing across N upstreams = v0.2.
 
 Year-2 (or punt to "if someone wants it"):
 
