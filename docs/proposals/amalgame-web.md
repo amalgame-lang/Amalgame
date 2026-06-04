@@ -1253,11 +1253,11 @@ to reach feature parity with mainstream web stacks
 (Rails / Django / Phoenix / SvelteKit) **plus** production-grade
 security.
 
-#### Phase 1 — Production hardening (~2-3 weeks) — ✅ essentially DONE
+#### Phase 1 — Production hardening (~2-3 weeks) — ✅ DONE
 
 Blocking for any real prod use. Without these, security audits
-fail and throughput is misery. **9/10 shipped; only IPv6 dual-stack
-listener binding is partial.**
+fail and throughput is misery. **10/10 shipped** (IPv6 dual-stack
+listener landed in net-http v0.21.0).
 
 | # | Item | Status | Evidence (2026-06-04) |
 |---|---|---|---|
@@ -1269,7 +1269,7 @@ listener binding is partial.**
 | 1.6 | **`amalgame-threading`** package — mutex, cond var, thread create/join | ✅ shipped | v0.1.0 — Mutex, Channel, Thread (Spawn/Join/Sleep) |
 | 1.7 | **Worker pool** — N concurrent connections instead of 1 | ✅ shipped | `Http1.ServeMt` (threads, net-http v0.6.0) + `Http1.ServeAsync` (fibers, v0.9.1, on `amalgame-async` v0.3.0) |
 | 1.8 | **HTTP/1.1 keep-alive** in `Http1.Serve` | ✅ shipped | `keep_alive` + `ResetForReuse()` in H1Conn (net-http v0.5.0+) |
-| 1.9 | **IPv6 (dual-stack)** — bind `AF_INET6` with `IPV6_V6ONLY=0` everywhere | 🟡 partial | IPv6 address classification done in `HostIsPublic()`; listener not explicitly dual-stack bound yet |
+| 1.9 | **IPv6 (dual-stack)** — bind `AF_INET6` with `IPV6_V6ONLY=0` everywhere | ✅ shipped | net-http v0.21.0: H1 + HTTPS-H1 listeners (incl. async) bind dual-stack, AF_INET fallback; v4-mapped peers normalized to plain IPv4 (RemoteAddr semantics preserved). Live audit: `::1` accepted + `127.0.0.1` normalized. WS/H2 listeners still IPv4 (tracked) |
 | 1.10 | **Graceful shutdown** — SIGTERM drains in-flight requests | ✅ shipped | `Http1_InstallShutdownSignals()` + `Http1_IsStopping()` + per-conn fiber drain (net-http v0.8.0+, v0.13.3 handshake fix) |
 
 #### Phase 2 — Real-world apps (~3-4 weeks) — 🟢 mostly DONE
@@ -1376,8 +1376,8 @@ JWT), sessions, DB, templates, security middleware, HTTPS auto-renew,
 native ACME, concurrency — all shipped. The stack is **prod-ready for
 single-node apps today**. Remaining work, in suggested priority order:
 
-1. **1.9** — IPv6 dual-stack listener binding (finish the last Phase-1
-   item; small).
+1. ~~**1.9** — IPv6 dual-stack listener binding~~ ✅ **shipped
+   net-http v0.21.0** (H1 + HTTPS dual-stack; Phase 1 now complete).
 2. ~~**3.2 + 3.4** — `/metrics` + `/healthz`/`/readyz` middleware~~ ✅
    **shipped web v0.33.0** (metrics private-by-default).
 3. ~~**3.1** — JSON access logs~~ ✅ **shipped web v0.33.0**
