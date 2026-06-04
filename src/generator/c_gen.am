@@ -4481,7 +4481,13 @@ public class CGen {
             let elseStr = this.EmitIfBranch(expr.Else)
             return "(" + condStr + " ? " + thenStr + " : " + elseStr + ")"
         }
-        NodeKind.LITERAL_INT => { return expr.Str }
+        // Emit integer literals as `long long` (LL suffix) so arithmetic
+        // on two literals happens in 64-bit, not C's default `int`.
+        // Without this, `900 * 1000000000` overflows int (→ negative)
+        // even when assigned to an i64. The lexer stores the value as a
+        // canonical decimal string (String_FromInt), so appending LL is
+        // always valid C (no hex / underscores to worry about).
+        NodeKind.LITERAL_INT => { return expr.Str + "LL" }
         NodeKind.LITERAL_FLOAT => { return expr.Str }
         NodeKind.LITERAL_STRING => {
             let raw = expr.Str
