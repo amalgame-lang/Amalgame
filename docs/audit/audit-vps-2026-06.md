@@ -144,7 +144,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MD9 | JWT RS256 / JWKS (multi-issuer) | RS256 verified per issuer | PLANNED | | record absence (v0.17) |
 | MD10 | OAuth2 PKCE + OIDC id_token | PKCE challenge + id_token validated | PLANNED | | record absence (v0.18) |
 | MD11 | WebAuthn / passkeys | Passwordless registration + assertion | PLANNED | | record absence (Phase 2) |
-| MD12 | TOTP / 2FA (RFC 6238) | Time-based OTP verified | PLANNED | | record absence (Phase 2) |
+| MD12 | TOTP / 2FA (RFC 6238) | Time-based OTP verified | SHIPPED | ✅ PASS | `amalgame-crypto` v0.5.0 `Totp.At/Now/Verify` (HMAC-SHA-1 + Base32). Local audit 2026-06-05: **RFC 6238 SHA-1 vectors** (94287082/07081804/89005924), 6-digit zero-pad, Base32 decode, and `Verify` with constant-time compare (no early exit / no which-window leak) + ±skew window — accepts current code, rejects 000000. Wire to an app login flow on VPS |
 
 ### 4.E — Content, streaming & uploads
 
