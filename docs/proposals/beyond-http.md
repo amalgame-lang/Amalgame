@@ -455,13 +455,15 @@ package matters. ~6-8 days for v0.1.
 > → dispatch → `RespondGrpc`. **Proven end-to-end:** a compiled Amalgame
 > gRPC server answers a real `nghttp2` client over TCP — `:status 200` +
 > `content-type application/grpc` + `grpc-status 0` + a framed echo body
-> byte-exact (`examples/grpc_h2c_server.am`). **Message codegen shipped**
-> in `amalgame-formats-protobuf` v0.2.0 (`tools/proto-gen.js`: proto3
-> `.proto` → AM message classes with `Encode`/`Decode` — scalars,
-> `repeated`, nested messages, binary `bytes`, round-trip tested).
-> **Remaining:** gRPC *service*-stub codegen (the `.proto` `service {}`
-> blocks → typed `GrpcServer` registration), client stubs, streaming,
-> compression, a `grpcurl` interop pass, TLS-fronted (h2) endpoints.
+> byte-exact (`examples/grpc_h2c_server.am`). **Full `.proto` → typed
+> server codegen shipped** in `amalgame-formats-protobuf` v0.2.1
+> (`tools/proto-gen.js`): proto3 messages → AM classes with
+> `Encode`/`Decode` (scalars, `repeated`, nested, binary `bytes`), AND
+> `service {}` blocks → a typed `<Name>Service` (`On<Method>` handler
+> setters + `RegisterOn(GrpcServer)` that decodes → calls the typed
+> `Closure<Req,Resp>` → encodes). Round-trip + typed-dispatch tested.
+> **Remaining:** client stubs, streaming, compression, a `grpcurl`
+> interop pass, TLS-fronted (h2) endpoints.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
