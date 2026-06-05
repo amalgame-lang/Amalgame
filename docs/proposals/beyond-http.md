@@ -466,8 +466,11 @@ package matters. ~6-8 days for v0.1.
 > `amalgame-net-grpc` v0.3.0 added `GrpcClient.Dial(host,port).Call(path,
 > message)`. **Proven 100%-Amalgame end-to-end:** an AM `GrpcClient`
 > talks to an AM `ServeH2c` server over TCP (echo incl. NUL + grpc-status
-> 0). **Remaining:** streaming (server/bidi), compression, a `grpcurl`
-> interop pass, TLS-fronted (h2) endpoints, generated client stubs.
+> 0). **Server streaming shipped** (net-grpc v0.4.0): `RegisterStream`
+> (1 request → N reply frames) + `CallStream` (collect all), e2e proven
+> (3 binary-safe messages). **Remaining:** client/bidi streaming, true
+> incremental flush, compression, a `grpcurl` interop pass, TLS-fronted
+> (h2) endpoints, generated client/stream stubs.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
