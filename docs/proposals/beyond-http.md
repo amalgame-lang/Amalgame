@@ -471,9 +471,12 @@ package matters. ~6-8 days for v0.1.
 > (3 binary-safe messages). **grpcurl interop integrated** (net-grpc
 > v0.4.1): the reference gRPC client (`grpcurl`) calls a typed `Greeter`
 > server and gets `{"message":"Hello, Ada"}` — our server speaks real,
-> standard gRPC, asserted in the suite + CI. **Remaining:** client/bidi
-> streaming + true incremental flush, compression, TLS-fronted (h2)
-> endpoints, generated client/stream stubs, gRPC reflection.
+> standard gRPC, asserted in the suite + CI. **Typed client stubs**
+> shipped (proto-gen v0.2.2): `<Name>Client.Dial().Method(req)` — a
+> fully typed `.proto → client + server` round-trip is tested
+> (`GreeterClient.SayHello` ↔ `GreeterService`). **Remaining:**
+> client/bidi streaming + true incremental flush, compression,
+> TLS-fronted (h2) endpoints, streaming-rpc codegen, gRPC reflection.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
