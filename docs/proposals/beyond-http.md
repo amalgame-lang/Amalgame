@@ -448,14 +448,16 @@ package matters. ~6-8 days for v0.1.
 >   routing, unary dispatch (`GrpcServer.Register/Dispatch/ResponseFrame`,
 >   unknown→UNIMPLEMENTED), 7/7 tests.
 >
-> **Blocking gap for end-to-end serving:** `amalgame-net-http`'s nghttp2
-> binding exposes neither HTTP/2 **trailers** (`grpc-status`/`grpc-message`
-> live there) nor a binary-safe H2 request body (`H2Conn_Respond` sends
-> fixed headers + no trailers; `H2Conn_Body` is a NUL-truncating string).
-> **Next milestone:** extend net-http H2 (trailer submission via
-> `nghttp2_submit_trailer` + binary body), then a minimal unary
-> `grpcurl`-tested server. After that: `.proto` codegen, client stubs,
-> streaming, compression.
+> **Transport gap CLOSED** in `amalgame-net-http` v0.22.0:
+> `H2Conn.RespondGrpc(body, grpcStatus, grpcMessage)` submits `:status 200`
+> + `content-type application/grpc` + a binary-safe body + the mandatory
+> `grpc-status`/`grpc-message` HTTP/2 **trailers** (`nghttp2_submit_trailer`);
+> `H2Conn.BodyByteAt(i)` gives binary-safe request-body access.
+> **Proven on the wire** by a real nghttp2 client smoke (trailers received
+> + NUL/0xFF body byte-exact). **Remaining:** the `amalgame-net-grpc`
+> serve loop wiring those primitives (`GrpcServer.ServeH2c`), a `grpcurl`
+> end-to-end test, then `.proto` codegen, client stubs, streaming,
+> compression.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
