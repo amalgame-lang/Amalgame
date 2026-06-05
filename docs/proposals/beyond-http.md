@@ -437,17 +437,25 @@ or Fastly in front and skip writing this. But for sovereign /
 self-hosted / air-gapped scenarios, having a first-class CDN
 package matters. ~6-8 days for v0.1.
 
-### 9. gRPC server — 🟡 foundation shipped (protobuf codec)
+### 9. gRPC server — 🟡 codec + server core shipped; H2 serving next
 
-> 🟡 **Foundation shipped:** `amalgame-formats-protobuf` v0.1.0 — the
-> proto3 **wire-format codec** (ProtoWriter/ProtoReader: varint, zigzag,
-> length-delimited string/bytes/embedded-message, fixed32/64, bool, tag,
-> unknown-field skip), binary-safe on `List<int>`, 7/7 tests green incl. a
-> NUL+0xFF byte-exact round-trip. **Still to build:** the `.proto` IDL
-> parser + codegen, and the gRPC HTTP/2 framing (length-prefixed messages,
-> `grpc-status`/`grpc-message` trailers) + streaming — that's the
-> `amalgame-net-grpc` package, which composes this codec with the
-> nghttp2 transport already in `amalgame-net-http`.
+> 🟡 **Two layers shipped:**
+> - `amalgame-formats-protobuf` v0.1.0 — proto3 **wire-format codec**
+>   (varint, zigzag, length-delimited, fixed32/64, bool, tag, skip),
+>   binary-safe on `List<int>`, 7/7 tests (NUL+0xFF byte-exact).
+> - `amalgame-net-grpc` v0.1.0 — **gRPC server core** (transport-agnostic):
+>   length-prefixed message framing (`GrpcFrame`), status codes, method-path
+>   routing, unary dispatch (`GrpcServer.Register/Dispatch/ResponseFrame`,
+>   unknown→UNIMPLEMENTED), 7/7 tests.
+>
+> **Blocking gap for end-to-end serving:** `amalgame-net-http`'s nghttp2
+> binding exposes neither HTTP/2 **trailers** (`grpc-status`/`grpc-message`
+> live there) nor a binary-safe H2 request body (`H2Conn_Respond` sends
+> fixed headers + no trailers; `H2Conn_Body` is a NUL-truncating string).
+> **Next milestone:** extend net-http H2 (trailer submission via
+> `nghttp2_submit_trailer` + binary body), then a minimal unary
+> `grpcurl`-tested server. After that: `.proto` codegen, client stubs,
+> streaming, compression.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
@@ -653,9 +661,10 @@ Year-1 priority for the web stack (✅ = done as of 2026-06-04):
 2. ~~**Reverse proxy** in `amalgame-net-proxy`~~ ✅ **shipped v0.2.x**.
 3. ~~**Load balancing** in `amalgame-net-proxy`~~ ✅ **shipped v0.2.1**
    (RR / IP-hash / least-conn; health checks + outlier detection TODO).
-4. **gRPC server** in `amalgame-net-grpc` (#9). 🟡 **Foundation
-   shipped**: `amalgame-formats-protobuf` v0.1.0 (proto3 wire codec).
-   Remaining: `.proto` codegen + gRPC H2 framing/streaming.
+4. **gRPC server** in `amalgame-net-grpc` (#9). 🟡 **codec + server
+   core shipped** (`amalgame-formats-protobuf` v0.1.0 + `amalgame-net-grpc`
+   v0.1.0). Remaining: net-http H2 trailers + binary body (the blocking
+   gap), then `grpcurl`-tested serving, `.proto` codegen, streaming.
 5. ~~**Server-Sent Events (SSE)**~~ ✅ **shipped** (net-http v0.16.0 +
    web v0.28.0).
 6. **TCP/UDP raw proxy** in `amalgame-net-stream` — 🟢 **TCP shipped
