@@ -31,9 +31,9 @@ v0.4.0, `amalgame-net-proxy` v0.2.1, `amalgame-net-smtp` v0.2.4.
 >   (deadline ~2026-07-27, see [[roadmap-acme-autorenew-timer]]).
 > - Argon2id password hashing (crypto v0.4.0 ships **scrypt** + ES256/
 >   RS256/AES-GCM/HMAC-SHA256/CSPRNG, not Argon2id, Ed25519, HS384/512).
-> - WebAuthn/passkeys — not started; DB migrations + input validation —
->   not started. (TOTP/2FA ✅ crypto v0.5.0; PKCE ✅ web v0.34.0;
->   OIDC ✅ web v0.35.0.)
+> - WebAuthn/passkeys — not started; DB migrations — not started.
+>   (TOTP/2FA ✅ crypto v0.5.0; PKCE ✅ web v0.34.0; OIDC ✅ web v0.35.0;
+>   typed input validation ✅ web v0.36.0.)
 > - `router.Ws()` (WebSocket still side-bound via `Ws.Serve`, not a
 >   first-class route), WebSocket binary frames + fragmentation.
 > - `/metrics`, OpenTelemetry, `/healthz` middleware, hot-reload,
@@ -1276,8 +1276,9 @@ listener landed in net-http v0.21.0).
 #### Phase 2 — Real-world apps (~3-4 weeks) — 🟢 mostly DONE
 
 Past phase 1, the stack can serve traffic safely. Phase 2 turns it
-into something that runs real apps. **8 shipped, 2 partial, 3 not
-started (WebAuthn, TOTP, migrations, validation, router.Ws).**
+into something that runs real apps. **Most shipped; still open:
+WebAuthn/passkeys, DB migrations, `router.Ws`.** (TOTP/2FA, OAuth PKCE +
+OIDC, and typed input validation all landed 2026-06-05.)
 
 | # | Item | Status | Evidence (2026-06-04) |
 |---|---|---|---|
@@ -1290,7 +1291,7 @@ started (WebAuthn, TOTP, migrations, validation, router.Ws).**
 | 2.7 | **`amalgame-database-postgresql`** (libpq) — + mssql/mysql/oracle/duckdb/mongodb/redis | ✅ shipped | postgresql v0.3.0 (`$1` PQexecParams, transactions); siblings shipped |
 | 2.8 | **Migration framework** — schema versioning + apply/rollback | ⬜ not started | no `Migrate`/migration package; schemas managed manually via `Exec()` |
 | 2.9 | **HTML template engine with auto-escape** | ✅ shipped | `template.am` (web v0.24.0; `{{x}}` escaped, `{{{x}}}` raw) + context-aware filters `\|js \|attr \|url` (v0.29.0) + `WebContext.Render`/`RenderString`. Pure-AM, no FFI |
-| 2.10 | **`amalgame-validation`** — typed input schemas | ⬜ not started | no package/namespace |
+| 2.10 | **Typed input validation** — request-field schemas | ✅ shipped | `Validator` / `FieldRule` / `ValidationResult` (`validation.am`, web v0.36.0) — Required/Optional, Int/Float/Bool/Email (strict), Range, Min/MaxLen, OneOf allow-lists, Alnum/Alpha/Numeric, AllowMultiline; `v.Check(map)` → typed accessors + `ErrorJson()` 422. Security: 8 KiB default length cap (anti-DoS), control-char rejection (anti header/log injection + NUL), strict typing, allow-lists. Folded into `amalgame-web` (no separate `-validation` pkg, like auth) |
 | 2.11 | **Session stores** beyond memory | ✅ shipped (variant) | `SignedCookieSessionStore` (signed+encrypted cookie, web v0.8.5) + `RedisSessionStore` (v0.8.4). **NB:** shipped a signed-cookie store instead of the planned `JsonFileSessionStore` — see [[project-sessions-signed-cookie]] |
 | 2.12 | **`router.Ws(path, handler)`** — WS routes through the Router | ⬜ not started | WS still side-bound via `Ws.Serve(port, handler)`; only `.Sse(path, handler)` is a first-class WebApp route |
 | 2.13 | **Multipart parser** | ✅ shipped | net-http v0.14.1 `Multipart`/`UploadedFile` + web v0.25.0 `ctx.Multipart()` / `mp.File(...)` + `SafeFilename`/`SaveToDir` (v0.19.0) |
@@ -1388,7 +1389,8 @@ single-node apps today**. Remaining work, in suggested priority order:
    ~2026-07-27 (cert day-30 threshold; see [[roadmap-acme-autorenew-timer]]).
 5. ~~**2.3** — finish OAuth2 (PKCE + OIDC id_token verification).~~ ✅
    done (PKCE web v0.34.0, OIDC web v0.35.0).
-6. **2.8 + 2.10** — DB migrations + input validation (real-app gaps).
+6. **2.8** — DB migrations (real-app gap). (~~2.10 input validation~~ ✅
+   done, web v0.36.0.)
 7. **2.12** — `router.Ws()` first-class WebSocket routes.
 8. **2.1 (Argon2id), 2.4, 2.5** — Argon2id, WebAuthn, TOTP (auth depth).
 9. **3.7 / 3.8 / 3.9** — hot-reload, all-Amalgame `mosaic` toolchain,
