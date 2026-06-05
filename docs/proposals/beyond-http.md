@@ -468,9 +468,12 @@ package matters. ~6-8 days for v0.1.
 > talks to an AM `ServeH2c` server over TCP (echo incl. NUL + grpc-status
 > 0). **Server streaming shipped** (net-grpc v0.4.0): `RegisterStream`
 > (1 request → N reply frames) + `CallStream` (collect all), e2e proven
-> (3 binary-safe messages). **Remaining:** client/bidi streaming, true
-> incremental flush, compression, a `grpcurl` interop pass, TLS-fronted
-> (h2) endpoints, generated client/stream stubs.
+> (3 binary-safe messages). **grpcurl interop integrated** (net-grpc
+> v0.4.1): the reference gRPC client (`grpcurl`) calls a typed `Greeter`
+> server and gets `{"message":"Hello, Ada"}` — our server speaks real,
+> standard gRPC, asserted in the suite + CI. **Remaining:** client/bidi
+> streaming + true incremental flush, compression, TLS-fronted (h2)
+> endpoints, generated client/stream stubs, gRPC reflection.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
