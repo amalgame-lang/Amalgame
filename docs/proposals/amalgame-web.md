@@ -1284,7 +1284,7 @@ started (WebAuthn, TOTP, migrations, validation, router.Ws).**
 | 2.2 | **Auth middlewares** — Basic + Bearer/JWT + API key + session login | ✅ shipped | `basic_auth.am` (RFC 7617, web v0.15.0) + `jwt_auth.am` (HS256, v0.16.0) + route `.Protected()` gate. (folded into `amalgame-web`, no separate `-auth` pkg) |
 | 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | 🟡 partial | OAuth2 auth-code client + GitHub/Google presets (`oauth2.am`, web v0.17.0). **Missing:** PKCE, OIDC id_token verification, JWKS rotation |
 | 2.4 | **WebAuthn / passkeys** — passwordless auth | ⬜ not started | no source |
-| 2.5 | **TOTP / 2FA** — RFC 6238 | ⬜ not started | no source (HMAC-SHA1 base primitive available in crypto) |
+| 2.5 | **TOTP / 2FA** — RFC 6238 | ✅ shipped | `amalgame-crypto` v0.5.0: `Totp.At/Now/Verify` (HMAC-SHA-1 + Base32), constant-time compare + skew window, validated vs the RFC 6238 vectors |
 | 2.6 | **`amalgame-database-sqlite`** — prepared stmts + transactions | ✅ shipped | v0.4.0 (ExecBind/QueryBindAll `?`, Begin/Commit/Rollback) |
 | 2.7 | **`amalgame-database-postgresql`** (libpq) — + mssql/mysql/oracle/duckdb/mongodb/redis | ✅ shipped | postgresql v0.3.0 (`$1` PQexecParams, transactions); siblings shipped |
 | 2.8 | **Migration framework** — schema versioning + apply/rollback | ⬜ not started | no `Migrate`/migration package; schemas managed manually via `Exec()` |
