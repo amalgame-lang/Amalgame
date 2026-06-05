@@ -1282,7 +1282,7 @@ started (WebAuthn, TOTP, migrations, validation, router.Ws).**
 |---|---|---|---|
 | 2.1 | **`amalgame-crypto`** — Argon2id, HMAC (HS256/384/512), RSA, ECDSA, Ed25519, CSPRNG | 🟡 partial | v0.4.0 ships SHA-256, HMAC-SHA-256, AES-256-GCM, ES256, RS256, **scrypt** (password hashing), CSPRNG. **Missing:** Argon2id, Ed25519, HS384/512, ECDSA P-384/P-521 |
 | 2.2 | **Auth middlewares** — Basic + Bearer/JWT + API key + session login | ✅ shipped | `basic_auth.am` (RFC 7617, web v0.15.0) + `jwt_auth.am` (HS256, v0.16.0) + route `.Protected()` gate. (folded into `amalgame-web`, no separate `-auth` pkg) |
-| 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | 🟡 partial | OAuth2 auth-code client + GitHub/Google presets (`oauth2.am`, web v0.17.0). **Missing:** PKCE, OIDC id_token verification, JWKS rotation |
+| 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | 🟡 partial | OAuth2 auth-code client + GitHub/Google presets (`oauth2.am`, web v0.17.0); **PKCE (RFC 7636, S256)** via `OAuth2Client.WithPkce()` — code_challenge in StartLogin + verifier replayed in HandleCallback, validated vs the RFC 7636 Appendix B vector (web v0.34.0). **Missing:** OIDC id_token verification (JWKS/RS256) |
 | 2.4 | **WebAuthn / passkeys** — passwordless auth | ⬜ not started | no source |
 | 2.5 | **TOTP / 2FA** — RFC 6238 | ✅ shipped | `amalgame-crypto` v0.5.0: `Totp.At/Now/Verify` (HMAC-SHA-1 + Base32), constant-time compare + skew window, validated vs the RFC 6238 vectors |
 | 2.6 | **`amalgame-database-sqlite`** — prepared stmts + transactions | ✅ shipped | v0.4.0 (ExecBind/QueryBindAll `?`, Begin/Commit/Rollback) |
