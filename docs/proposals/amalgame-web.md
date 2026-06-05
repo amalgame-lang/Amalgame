@@ -31,8 +31,9 @@ v0.4.0, `amalgame-net-proxy` v0.2.1, `amalgame-net-smtp` v0.2.4.
 >   (deadline ~2026-07-27, see [[roadmap-acme-autorenew-timer]]).
 > - Argon2id password hashing (crypto v0.4.0 ships **scrypt** + ES256/
 >   RS256/AES-GCM/HMAC-SHA256/CSPRNG, not Argon2id, Ed25519, HS384/512).
-> - WebAuthn/passkeys, TOTP/2FA, OIDC (PKCE), DB migrations, input
->   validation — not started.
+> - WebAuthn/passkeys — not started; DB migrations + input validation —
+>   not started. (TOTP/2FA ✅ crypto v0.5.0; PKCE ✅ web v0.34.0;
+>   OIDC ✅ web v0.35.0.)
 > - `router.Ws()` (WebSocket still side-bound via `Ws.Serve`, not a
 >   first-class route), WebSocket binary frames + fragmentation.
 > - `/metrics`, OpenTelemetry, `/healthz` middleware, hot-reload,
@@ -1282,7 +1283,7 @@ started (WebAuthn, TOTP, migrations, validation, router.Ws).**
 |---|---|---|---|
 | 2.1 | **`amalgame-crypto`** — Argon2id, HMAC (HS256/384/512), RSA, ECDSA, Ed25519, CSPRNG | 🟡 partial | v0.4.0 ships SHA-256, HMAC-SHA-256, AES-256-GCM, ES256, RS256, **scrypt** (password hashing), CSPRNG. **Missing:** Argon2id, Ed25519, HS384/512, ECDSA P-384/P-521 |
 | 2.2 | **Auth middlewares** — Basic + Bearer/JWT + API key + session login | ✅ shipped | `basic_auth.am` (RFC 7617, web v0.15.0) + `jwt_auth.am` (HS256, v0.16.0) + route `.Protected()` gate. (folded into `amalgame-web`, no separate `-auth` pkg) |
-| 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | 🟡 partial | OAuth2 auth-code client + GitHub/Google presets (`oauth2.am`, web v0.17.0); **PKCE (RFC 7636, S256)** via `OAuth2Client.WithPkce()` — code_challenge in StartLogin + verifier replayed in HandleCallback, validated vs the RFC 7636 Appendix B vector (web v0.34.0). **Missing:** OIDC id_token verification (JWKS/RS256) |
+| 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | ✅ shipped | OAuth2 auth-code client + GitHub/Google presets (`oauth2.am`, web v0.17.0); **PKCE** (RFC 7636 S256) via `WithPkce()` (web v0.34.0); **OpenID Connect** via `WithOidc(issuer)` (web v0.35.0) — HandleCallback verifies the id_token: RS256 sig vs the IdP's JWKS (pinned `jwks_uri` or discovery), alg hard-pinned to RS256 (rejects `none`/`HS*` → no algorithm-confusion), `iss`/`aud`/`exp` + one-time `nonce` (replay), fails closed, verify-only JWKS key (crypto v0.6.0 `JwsKey.FromJwkRsa`). Validated by a self-signed round-trip + negative tests |
 | 2.4 | **WebAuthn / passkeys** — passwordless auth | ⬜ not started | no source |
 | 2.5 | **TOTP / 2FA** — RFC 6238 | ✅ shipped | `amalgame-crypto` v0.5.0: `Totp.At/Now/Verify` (HMAC-SHA-1 + Base32), constant-time compare + skew window, validated vs the RFC 6238 vectors |
 | 2.6 | **`amalgame-database-sqlite`** — prepared stmts + transactions | ✅ shipped | v0.4.0 (ExecBind/QueryBindAll `?`, Begin/Commit/Rollback) |
@@ -1385,7 +1386,8 @@ single-node apps today**. Remaining work, in suggested priority order:
 4. **ACME Phase-3 production cutover** — migrate the live sites off the
    external Node/greenlock proxy onto Mosaic-native HTTPS before
    ~2026-07-27 (cert day-30 threshold; see [[roadmap-acme-autorenew-timer]]).
-5. **2.3** — finish OAuth2 (PKCE + OIDC id_token verification).
+5. ~~**2.3** — finish OAuth2 (PKCE + OIDC id_token verification).~~ ✅
+   done (PKCE web v0.34.0, OIDC web v0.35.0).
 6. **2.8 + 2.10** — DB migrations + input validation (real-app gaps).
 7. **2.12** — `router.Ws()` first-class WebSocket routes.
 8. **2.1 (Argon2id), 2.4, 2.5** — Argon2id, WebAuthn, TOTP (auth depth).
