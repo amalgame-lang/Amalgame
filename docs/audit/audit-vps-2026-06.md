@@ -142,7 +142,7 @@ net-smtp `v____`, net-proxy `v____`.
 | MD7 | Session — Encrypted cookie (AES-256-GCM) | Confidential, AEAD tag verified, nonce unique per write | SHIPPED | | |
 | MD8 | Session — RedisSessionStore | Shared session across instances | SHIPPED | | |
 | MD9 | JWT RS256 / JWKS (multi-issuer) | RS256 verified per issuer | PLANNED | | record absence (v0.17) |
-| MD10 | OAuth2 PKCE + OIDC id_token | PKCE challenge + id_token validated | PLANNED | | record absence (v0.18) |
+| MD10 | OAuth2 PKCE + OIDC id_token | PKCE challenge + id_token validated | PARTIAL | 🟡 PKCE PASS / OIDC pending | **PKCE (RFC 7636, S256)** shipped in `amalgame-web` v0.34.0 (`OAuth2Client.WithPkce()`). Local audit 2026-06-05: challenge = base64url(SHA-256(verifier)) matches the **RFC 7636 Appendix B vector** (`E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM`); StartLogin sends `code_challenge` + `code_challenge_method=S256` and stashes the verifier in the state cookie (after `~`), HandleCallback splits + replays `code_verifier` in the token exchange — closes the auth-code interception hole. **Still PLANNED:** OIDC id_token signature verification via JWKS/RS256 (`crypto` already has RS256/JwsKey — needs JWKS fetch+rotate) |
 | MD11 | WebAuthn / passkeys | Passwordless registration + assertion | PLANNED | | record absence (Phase 2) |
 | MD12 | TOTP / 2FA (RFC 6238) | Time-based OTP verified | SHIPPED | ✅ PASS | `amalgame-crypto` v0.5.0 `Totp.At/Now/Verify` (HMAC-SHA-1 + Base32). Local audit 2026-06-05: **RFC 6238 SHA-1 vectors** (94287082/07081804/89005924), 6-digit zero-pad, Base32 decode, and `Verify` with constant-time compare (no early exit / no which-window leak) + ±skew window — accepts current code, rejects 000000. Wire to an app login flow on VPS |
 
