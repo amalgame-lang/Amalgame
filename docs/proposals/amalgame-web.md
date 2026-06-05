@@ -1391,9 +1391,10 @@ single-node apps today**. Remaining work, in suggested priority order:
    multi-site front holds 80/443 — amalgame.me/belfort/musicall/docs/demo
    all answer `Server: Mosaic (Amalgame)` over HTTPS with valid LE **prod**
    certs (SNI per domain, native ACME, 80→443 redirect). Node is no longer
-   the front. Minor residue: HEAD returns 404 (cosmetic; GET 200), and the
-   dormant Node/pm2 fallback can be decommissioned. See
-   [[roadmap-acme-autorenew-timer]].
+   the front. ~~Minor residue: HEAD returns 404 (cosmetic; GET 200)~~ ✅
+   fixed (web v0.36.1 — HEAD falls back to the GET route + strips the
+   body, RFC 7231). Remaining: the dormant Node/pm2 fallback can be
+   decommissioned. See [[roadmap-acme-autorenew-timer]].
 5. ~~**2.3** — finish OAuth2 (PKCE + OIDC id_token verification).~~ ✅
    done (PKCE web v0.34.0, OIDC web v0.35.0).
 6. ~~**2.8** — DB migrations.~~ ✅ done (`amalgame-database-migrate`
