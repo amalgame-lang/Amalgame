@@ -477,9 +477,11 @@ package matters. ~6-8 days for v0.1.
 > (`GreeterClient.SayHello` ↔ `GreeterService`). **Server-streaming
 > codegen** too (proto-gen v0.2.3): a `returns (stream X)` rpc generates
 > a typed `List<Resp>` handler/method on both sides (e2e
-> `GreeterClient.SayHellos` → `List<HelloReply>`). **Remaining:**
-> client/bidi streaming + true incremental flush, compression,
-> TLS-fronted (h2) endpoints, gRPC reflection.
+> `GreeterClient.SayHellos` → `List<HelloReply>`). **gRPC over TLS**
+> shipped (net-grpc v0.5.0): `GrpcServer.ServeHttps(port, cert, key)`
+> serves h2 over OpenSSL — validated by `grpcurl` over TLS. **Remaining:**
+> TLS client, client/bidi streaming + true incremental flush,
+> compression, gRPC reflection.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
