@@ -479,9 +479,12 @@ package matters. ~6-8 days for v0.1.
 > a typed `List<Resp>` handler/method on both sides (e2e
 > `GreeterClient.SayHellos` → `List<HelloReply>`). **gRPC over TLS**
 > shipped (net-grpc v0.5.0): `GrpcServer.ServeHttps(port, cert, key)`
-> serves h2 over OpenSSL — validated by `grpcurl` over TLS. **Remaining:**
-> TLS client, client/bidi streaming + true incremental flush,
-> compression, gRPC reflection.
+> serves h2 over OpenSSL — validated by `grpcurl` over TLS. **TLS client**
+> too (net-http v0.24.0 `H2Client.ConnectTls` + net-grpc v0.6.0
+> `GrpcClient.DialTls` / `<Name>Client.DialTls`): a typed Amalgame client
+> talks to a TLS server (unary + streaming), tested. **Remaining:**
+> client/bidi streaming + true incremental flush, compression, gRPC
+> reflection.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
