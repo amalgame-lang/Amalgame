@@ -461,9 +461,13 @@ package matters. ~6-8 days for v0.1.
 > `Encode`/`Decode` (scalars, `repeated`, nested, binary `bytes`), AND
 > `service {}` blocks → a typed `<Name>Service` (`On<Method>` handler
 > setters + `RegisterOn(GrpcServer)` that decodes → calls the typed
-> `Closure<Req,Resp>` → encodes). Round-trip + typed-dispatch tested.
-> **Remaining:** client stubs, streaming, compression, a `grpcurl`
-> interop pass, TLS-fronted (h2) endpoints.
+> `Closure<Req,Resp>` → encodes). **Unary client shipped** too:
+> `amalgame-net-http` v0.23.0 added an HTTP/2 client (`H2Client`), and
+> `amalgame-net-grpc` v0.3.0 added `GrpcClient.Dial(host,port).Call(path,
+> message)`. **Proven 100%-Amalgame end-to-end:** an AM `GrpcClient`
+> talks to an AM `ServeH2c` server over TCP (echo incl. NUL + grpc-status
+> 0). **Remaining:** streaming (server/bidi), compression, a `grpcurl`
+> interop pass, TLS-fronted (h2) endpoints, generated client stubs.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
