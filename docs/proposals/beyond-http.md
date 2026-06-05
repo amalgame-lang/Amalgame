@@ -482,9 +482,12 @@ package matters. ~6-8 days for v0.1.
 > serves h2 over OpenSSL — validated by `grpcurl` over TLS. **TLS client**
 > too (net-http v0.24.0 `H2Client.ConnectTls` + net-grpc v0.6.0
 > `GrpcClient.DialTls` / `<Name>Client.DialTls`): a typed Amalgame client
-> talks to a TLS server (unary + streaming), tested. **Remaining:**
-> client/bidi streaming + true incremental flush, compression, gRPC
-> reflection.
+> talks to a TLS server (unary + streaming), tested. **All four method
+> types** now work (net-grpc v0.7.0): unary, server-streaming,
+> **client-streaming** (`RegisterClientStream`/`CallClientStream`) and
+> **bidi** (`RegisterBidi`/`CallBidi`) — collect model (wire-valid;
+> streaming is buffered, not incrementally flushed). **Remaining:** true
+> incremental flush, compression, gRPC reflection.
 
 The other half of "modern microservice 2026". HTTP/2 + protobuf,
 strongly typed, streaming-capable. amc + nghttp2 already ship the
