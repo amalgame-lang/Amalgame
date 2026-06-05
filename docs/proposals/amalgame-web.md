@@ -31,9 +31,10 @@ v0.4.0, `amalgame-net-proxy` v0.2.1, `amalgame-net-smtp` v0.2.4.
 >   (deadline ~2026-07-27, see [[roadmap-acme-autorenew-timer]]).
 > - Argon2id password hashing (crypto v0.4.0 ships **scrypt** + ES256/
 >   RS256/AES-GCM/HMAC-SHA256/CSPRNG, not Argon2id, Ed25519, HS384/512).
-> - WebAuthn/passkeys — not started. (TOTP/2FA ✅ crypto v0.5.0; PKCE ✅
->   web v0.34.0; OIDC ✅ web v0.35.0; typed input validation ✅ web
->   v0.36.0; DB migrations ✅ amalgame-database-migrate v0.1.0.)
+> - Phase 2 auth/data depth shipped 2026-06-05: TOTP/2FA ✅ crypto
+>   v0.5.0; PKCE ✅ web v0.34.0; OIDC ✅ web v0.35.0; typed input
+>   validation ✅ web v0.36.0; DB migrations ✅ database-migrate v0.1.0;
+>   WebAuthn/passkeys ✅ amalgame-webauthn v0.1.0.
 > - `router.Ws()` (WebSocket still side-bound via `Ws.Serve`, not a
 >   first-class route), WebSocket binary frames + fragmentation.
 > - `/metrics`, OpenTelemetry, `/healthz` middleware, hot-reload,
@@ -1277,15 +1278,15 @@ listener landed in net-http v0.21.0).
 
 Past phase 1, the stack can serve traffic safely. Phase 2 turns it
 into something that runs real apps. **Most shipped; still open:
-WebAuthn/passkeys, `router.Ws`.** (TOTP/2FA, OAuth PKCE + OIDC, typed
-input validation, and DB migrations all landed 2026-06-05.)
+`router.Ws`.** (TOTP/2FA, OAuth PKCE + OIDC, typed input validation, DB
+migrations, and WebAuthn/passkeys all landed 2026-06-05.)
 
 | # | Item | Status | Evidence (2026-06-04) |
 |---|---|---|---|
 | 2.1 | **`amalgame-crypto`** — Argon2id, HMAC (HS256/384/512), RSA, ECDSA, Ed25519, CSPRNG | 🟡 partial | v0.4.0 ships SHA-256, HMAC-SHA-256, AES-256-GCM, ES256, RS256, **scrypt** (password hashing), CSPRNG. **Missing:** Argon2id, Ed25519, HS384/512, ECDSA P-384/P-521 |
 | 2.2 | **Auth middlewares** — Basic + Bearer/JWT + API key + session login | ✅ shipped | `basic_auth.am` (RFC 7617, web v0.15.0) + `jwt_auth.am` (HS256, v0.16.0) + route `.Protected()` gate. (folded into `amalgame-web`, no separate `-auth` pkg) |
 | 2.3 | **OAuth 2.0 / OIDC client** — Google / GitHub / etc. SSO | ✅ shipped | OAuth2 auth-code client + GitHub/Google presets (`oauth2.am`, web v0.17.0); **PKCE** (RFC 7636 S256) via `WithPkce()` (web v0.34.0); **OpenID Connect** via `WithOidc(issuer)` (web v0.35.0) — HandleCallback verifies the id_token: RS256 sig vs the IdP's JWKS (pinned `jwks_uri` or discovery), alg hard-pinned to RS256 (rejects `none`/`HS*` → no algorithm-confusion), `iss`/`aud`/`exp` + one-time `nonce` (replay), fails closed, verify-only JWKS key (crypto v0.6.0 `JwsKey.FromJwkRsa`). Validated by a self-signed round-trip + negative tests |
-| 2.4 | **WebAuthn / passkeys** — passwordless auth | ⬜ not started | no source |
+| 2.4 | **WebAuthn / passkeys** — passwordless auth | ✅ shipped | `amalgame-webauthn` v0.1.0 (`WebAuthn` RP + `CborReader`/`CborValue` + result types) — server-side registration (attestationObject CBOR + clientDataJSON → extract COSE EC2 key + credId) and authentication (assertion **signature verification** over authData‖SHA-256(clientData) + strictly-increasing counter). Built on crypto v0.7.0 `FromCoseEc2`/`VerifyDer`. Scope: ES256 + attestation `none` (cert-chain attestation = future). 8 tests incl. a real ES256-signed assertion end-to-end |
 | 2.5 | **TOTP / 2FA** — RFC 6238 | ✅ shipped | `amalgame-crypto` v0.5.0: `Totp.At/Now/Verify` (HMAC-SHA-1 + Base32), constant-time compare + skew window, validated vs the RFC 6238 vectors |
 | 2.6 | **`amalgame-database-sqlite`** — prepared stmts + transactions | ✅ shipped | v0.4.0 (ExecBind/QueryBindAll `?`, Begin/Commit/Rollback) |
 | 2.7 | **`amalgame-database-postgresql`** (libpq) — + mssql/mysql/oracle/duckdb/mongodb/redis | ✅ shipped | postgresql v0.3.0 (`$1` PQexecParams, transactions); siblings shipped |
