@@ -1385,9 +1385,15 @@ single-node apps today**. Remaining work, in suggested priority order:
    **shipped web v0.33.0** (metrics private-by-default).
 3. ~~**3.1** — JSON access logs~~ ✅ **shipped web v0.33.0**
    (`WithFormat("json")` + `Log.Raw`).
-4. **ACME Phase-3 production cutover** — migrate the live sites off the
-   external Node/greenlock proxy onto Mosaic-native HTTPS before
-   ~2026-07-27 (cert day-30 threshold; see [[roadmap-acme-autorenew-timer]]).
+4. ~~**ACME Phase-3 production cutover** — migrate the live sites off the
+   external Node/greenlock proxy onto Mosaic-native HTTPS.~~ ✅ **done**
+   (verified live 2026-06-05): `~/Développement/Sites` `server.am`
+   multi-site front holds 80/443 — amalgame.me/belfort/musicall/docs/demo
+   all answer `Server: Mosaic (Amalgame)` over HTTPS with valid LE **prod**
+   certs (SNI per domain, native ACME, 80→443 redirect). Node is no longer
+   the front. Minor residue: HEAD returns 404 (cosmetic; GET 200), and the
+   dormant Node/pm2 fallback can be decommissioned. See
+   [[roadmap-acme-autorenew-timer]].
 5. ~~**2.3** — finish OAuth2 (PKCE + OIDC id_token verification).~~ ✅
    done (PKCE web v0.34.0, OIDC web v0.35.0).
 6. ~~**2.8** — DB migrations.~~ ✅ done (`amalgame-database-migrate`
