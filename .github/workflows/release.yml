@@ -580,6 +580,64 @@ jobs:
           if (-not (Test-Path "$bundle\bin\gcc.exe")) { throw "trim ate gcc.exe!" }
           if (-not (Test-Path "$bundle\bin\ld.exe"))  { throw "trim ate ld.exe!" }
 
+      - name: Bundle Boehm GC into gcc-bundle (so `amc build` links out of the box)
+        shell: pwsh
+        run: |
+          # amc emits C that #include <gc.h> and links -lgc (Boehm GC). The
+          # vanilla winlibs toolchain ships no GC, so a freshly-installed amc
+          # could compile but not LINK on Windows. We graft the *static*
+          # libgc.a + headers from MSYS2's UCRT64 build (ABI-compatible with
+          # the winlibs ucrt GCC) straight into the bundle's own include/lib,
+          # where the bundled gcc finds them automatically. Static (not the
+          # DLL) keeps amc-built .exe self-sufficient — paired with the
+          # GC_NOT_DLL define in runtime/_runtime.h.
+          $bundle = "install\windows\gcc-bundle"
+          $bash = "C:\msys64\usr\bin\bash.exe"
+          if (-not (Test-Path $bash)) { throw "MSYS2 bash not found at $bash" }
+          # libatomic_ops too: some bdwgc builds reference its symbols.
+          & $bash -lc "pacman -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-gc mingw-w64-ucrt-x86_64-libatomic_ops" 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "pacman install of gc failed" }
+          $inc = "C:\msys64\ucrt64\include"
+          $lib = "C:\msys64\ucrt64\lib"
+          if (-not (Test-Path "$inc\gc.h"))    { throw "gc.h not found under $inc" }
+          if (-not (Test-Path "$lib\libgc.a")) { throw "libgc.a not found under $lib" }
+          # Headers: gc.h + the gc/ subdir it pulls in, plus atomic_ops.
+          Copy-Item "$inc\gc.h" "$bundle\include\gc.h" -Force
+          if (Test-Path "$inc\gc")          { Copy-Item "$inc\gc" "$bundle\include\gc" -Recurse -Force }
+          Get-ChildItem "$inc" -Filter 'gc_*.h' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName "$bundle\include\" -Force }
+          if (Test-Path "$inc\atomic_ops.h") { Copy-Item "$inc\atomic_ops.h" "$bundle\include\" -Force }
+          if (Test-Path "$inc\atomic_ops")  { Copy-Item "$inc\atomic_ops" "$bundle\include\atomic_ops" -Recurse -Force }
+          # Static libs only (no *.dll.a) → -lgc resolves to libgc.a.
+          Copy-Item "$lib\libgc.a" "$bundle\lib\libgc.a" -Force
+          if (Test-Path "$lib\libatomic_ops.a") { Copy-Item "$lib\libatomic_ops.a" "$bundle\lib\" -Force }
+          Write-Host "✓ GC grafted: $(Get-Item "$bundle\include\gc.h" | Select -Expand Length) bytes gc.h, libgc.a $((Get-Item "$bundle\lib\libgc.a").Length) bytes"
+
+      - name: Smoke-test the bundled GC (static link + run)
+        shell: pwsh
+        run: |
+          # Prove the grafted GC actually links and runs with the bundled
+          # gcc — fail the release here rather than ship a broken toolchain.
+          $bundle = "install\windows\gcc-bundle"
+          $gcc = "$bundle\bin\gcc.exe"
+          @'
+          #include <gc.h>
+          #include <stdio.h>
+          int main(void) {
+              GC_INIT();
+              for (int i = 0; i < 1000; i++) { (void) GC_MALLOC(64); }
+              void* p = GC_MALLOC(64);
+              printf("%s\n", p ? "GC_OK" : "GC_FAIL");
+              return p ? 0 : 1;
+          }
+          '@ | Set-Content -Encoding ascii smoke_gc.c
+          # GC_NOT_DLL mirrors runtime/_runtime.h: link the static libgc.a.
+          & $gcc -DGC_NOT_DLL smoke_gc.c -lgc -lpthread -o smoke_gc.exe 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "GC static link failed (gcc)" }
+          $out = (& .\smoke_gc.exe) 2>&1
+          Write-Host "smoke output: $out"
+          if ($out -ne "GC_OK") { throw "GC smoke test did not print GC_OK (got: $out)" }
+          Write-Host "✓ Boehm GC links statically and runs with the bundled gcc"
+
       - name: Build amalgame-<ver>.msi (pure-PowerShell)
         shell: pwsh
         working-directory: install\windows

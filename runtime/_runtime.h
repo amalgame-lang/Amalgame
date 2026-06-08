@@ -14,6 +14,13 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <math.h>
+/* On Windows, gc.h declares GC_API as __declspec(dllimport) by default,
+ * which only works when linking the GC *DLL*. We bundle the *static*
+ * libgc.a in the gcc-bundle (self-sufficient .exe, no gc.dll alongside),
+ * so we must tell gc.h not to expect a DLL. No-op on POSIX. */
+#if defined(_WIN32) && !defined(GC_NOT_DLL)
+  #define GC_NOT_DLL
+#endif
 #include <gc.h>
 
 /* Types de base */
