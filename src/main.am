@@ -764,6 +764,19 @@ public class AmalgameCompiler {
 
 // ── CLI entry point — replaces the old amc_main.c ──────────
 public class Program {
+    // True on Windows. Used to drop POSIX-only linker flags (-ldl has
+    // no equivalent on mingw) from the `amc build` / `amc test` gcc
+    // command. No-op cost: a single compile-time #ifdef.
+    public static bool IsWindows() {
+        @c {
+        #ifdef _WIN32
+            return 1;
+        #else
+            return 0;
+        #endif
+        }
+    }
+
     // Resolve amc's own executable path through the kernel so commands
     // that need a sibling runtime/ or lib/ directory (`amc build`,
     // `amc run`) keep working when the binary is invoked through PATH
@@ -1120,14 +1133,14 @@ public class Program {
             let pkgIncN: int = pkgIncDirs.Count()
             var pkgIncFlags: string = ""
             for pii in 0..pkgIncN {
-                pkgIncFlags = pkgIncFlags + " -I'" + pkgIncDirs.Get(pii) + "'"
+                pkgIncFlags = pkgIncFlags + " -I\"" + pkgIncDirs.Get(pii) + "\""
             }
             var gccCmd: string = ""
             if (hasCxx) {
                 // Stage (a): gcc -c to .o
                 var compileCmd: string = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
                 if (String_Length(amcRuntime) > 0) {
-                    compileCmd = compileCmd + " -I'" + amcRuntime + "'"
+                    compileCmd = compileCmd + " -I\"" + amcRuntime + "\""
                 }
                 compileCmd = compileCmd + pkgIncFlags
                 let objOut: string = outBin + ".o"
@@ -1145,13 +1158,13 @@ public class Program {
             } else {
                 gccCmd = "gcc -O2 -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
                 if (String_Length(amcRuntime) > 0) {
-                    gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+                    gccCmd = gccCmd + " -I\"" + amcRuntime + "\""
                 }
                 gccCmd = gccCmd + pkgIncFlags + " " + outC
             }
             let nObjs: int = pkgObjs.Count()
             for poi in 0..nObjs {
-                gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
+                gccCmd = gccCmd + " \"" + pkgObjs.Get(poi) + "\""
             }
             // Splice per-package facade archives. Each ar archive
             // contributes one .o whose symbols satisfy the forward
@@ -1160,7 +1173,7 @@ public class Program {
             // AmalgameCompiler.Run).
             let nFAr: int = facadeArs.Count()
             for fai in 0..nFAr {
-                gccCmd = gccCmd + " '" + facadeArs.Get(fai) + "'"
+                gccCmd = gccCmd + " \"" + facadeArs.Get(fai) + "\""
             }
             // v0.8.49: link libamalgame.a too. Without it, package
             // facades that reference bundled stdlib symbols (e.g.
@@ -1170,9 +1183,10 @@ public class Program {
             // (line 1511).
             let libATest: string = Program.ResolveLibAmalgameA(AddCommand.ResolveSelfPath())
             if (String_Length(libATest) > 0) {
-                gccCmd = gccCmd + " '" + libATest + "'"
+                gccCmd = gccCmd + " \"" + libATest + "\""
             }
-            gccCmd = gccCmd + " -lgc -lm -lz -ldl -lpthread"
+            gccCmd = gccCmd + " -lgc -lm -lz -lpthread"
+        if (!Program.IsWindows()) { gccCmd = gccCmd + " -ldl" }
             // Splice per-package libs (-l<name>). Each loaded
             // package contributes zero or more bare names via
             // its manifest's [stdlib].libs array.
@@ -1305,10 +1319,10 @@ public class Program {
                 if (!skipAm) {
                     let amCsrc: string = amObj + ".c"
                     let amcSelf: string = Program.ResolveSelfPath()
-                    var amcCmd: string = "'" + amcSelf + "' --lib --quiet -o '" + amObj + "'"
+                    var amcCmd: string = "\"" + amcSelf + "\" --lib --quiet -o \"" + amObj + "\""
                     let amCount: int = amSources.Count()
                     for ai in 0..amCount {
-                        amcCmd = amcCmd + " '" + amSources.Get(ai) + "'"
+                        amcCmd = amcCmd + " \"" + amSources.Get(ai) + "\""
                     }
                     let amcRes = Process.RunCapture(amcCmd)
                     if (amcRes.Exit != 0) {
@@ -1317,7 +1331,7 @@ public class Program {
                     } else {
                         var cmd: string = "gcc -O2"
                         if (String_Length(amcRuntime) > 0) {
-                            cmd = cmd + " -I'" + amcRuntime + "'"
+                            cmd = cmd + " -I\"" + amcRuntime + "\""
                         }
                         // The package's own runtime/ dir hosts the C
                         // header named in [stdlib].header — every
@@ -1326,7 +1340,7 @@ public class Program {
                         // the classic "Amalgame_X.h not found" fatal
                         // error at the precompile gcc step.
                         let pkgRuntime: string = p.PkgDir + "/runtime"
-                        cmd = cmd + " -I'" + pkgRuntime + "' -I'" + p.PkgDir + "'"
+                        cmd = cmd + " -I\"" + pkgRuntime + "\" -I\"" + p.PkgDir + "\""
                         // v0.8.49 — also -I every cached package's
                         // runtime/. amc auto-emits #include lines for
                         // every cached header in the generated .c (the
@@ -1338,12 +1352,12 @@ public class Program {
                         let allCachedDirs: List<string> = AddCommand.AllCachedRuntimeDirs()
                         let acn: int = allCachedDirs.Count()
                         for aci in 0..acn {
-                            cmd = cmd + " -I'" + allCachedDirs.Get(aci) + "'"
+                            cmd = cmd + " -I\"" + allCachedDirs.Get(aci) + "\""
                         }
                         if (String_Length(p.CFlags) > 0) {
                             cmd = cmd + " " + p.CFlags
                         }
-                        cmd = cmd + " -w -c '" + amCsrc + "' -o '" + amObj + "'"
+                        cmd = cmd + " -w -c \"" + amCsrc + "\" -o \"" + amObj + "\""
                         let gccRes = Process.RunCapture(cmd)
                         if (gccRes.Exit != 0) {
                             Console.WriteError("amc precompile: gcc failed for " + p.ClassName)
@@ -1383,14 +1397,14 @@ public class Program {
                     cmd = "gcc -O2"
                 }
                 if (String_Length(amcRuntime) > 0) {
-                    cmd = cmd + " -I'" + amcRuntime + "'"
+                    cmd = cmd + " -I\"" + amcRuntime + "\""
                 }
                 // v0.8.49 — same -I-cache-walk rationale as
                 // the AM pre-compile path above.
                 let cachedNativeDirs: List<string> = AddCommand.AllCachedRuntimeDirs()
                 let cndN: int = cachedNativeDirs.Count()
                 for cndI in 0..cndN {
-                    cmd = cmd + " -I'" + cachedNativeDirs.Get(cndI) + "'"
+                    cmd = cmd + " -I\"" + cachedNativeDirs.Get(cndI) + "\""
                 }
                 if (isCxx && String_Length(p.CxxFlags) > 0) {
                     cmd = cmd + " " + p.CxxFlags
@@ -1398,7 +1412,7 @@ public class Program {
                 if (!isCxx && String_Length(p.CFlags) > 0) {
                     cmd = cmd + " " + p.CFlags
                 }
-                cmd = cmd + " -w -c '" + srcPath + "' -o '" + objPath + "'"
+                cmd = cmd + " -w -c \"" + srcPath + "\" -o \"" + objPath + "\""
                 let res = Process.RunCapture(cmd)
                 if (res.Exit != 0) {
                     Console.WriteError("amc test: failed to pre-compile " + srcPath)
@@ -1534,7 +1548,7 @@ public class Program {
         let pkgIncN2: int = pkgIncDirs2.Count()
         var pkgIncFlags2: string = ""
         for pi2 in 0..pkgIncN2 {
-            pkgIncFlags2 = pkgIncFlags2 + " -I'" + pkgIncDirs2.Get(pi2) + "'"
+            pkgIncFlags2 = pkgIncFlags2 + " -I\"" + pkgIncDirs2.Get(pi2) + "\""
         }
         var gccCmd: string = ""
         if (hasCxx) {
@@ -1545,7 +1559,7 @@ public class Program {
             // we compile as C first.
             var compileCmd: string = "gcc " + optFlag + " -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
             if (String_Length(amcRuntime) > 0) {
-                compileCmd = compileCmd + " -I'" + amcRuntime + "'"
+                compileCmd = compileCmd + " -I\"" + amcRuntime + "\""
             }
             compileCmd = compileCmd + pkgIncFlags2
             let objOut: string = outBin + ".o"
@@ -1560,19 +1574,19 @@ public class Program {
         } else {
             gccCmd = "gcc " + optFlag + " -Wno-unused-variable -Wno-unused-parameter -Wno-unused-but-set-variable -Iruntime"
             if (String_Length(amcRuntime) > 0) {
-                gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+                gccCmd = gccCmd + " -I\"" + amcRuntime + "\""
             }
             gccCmd = gccCmd + pkgIncFlags2 + " " + outC
         }
         // Per-package vendored .o (SQLite, DuckDB).
         let nObjs: int = pkgObjs.Count()
         for poi in 0..nObjs {
-            gccCmd = gccCmd + " '" + pkgObjs.Get(poi) + "'"
+            gccCmd = gccCmd + " \"" + pkgObjs.Get(poi) + "\""
         }
         // Per-package facade archives (libamalgame-pkg-<class>.a).
         let nFAr: int = facadeArs.Count()
         for fai in 0..nFAr {
-            gccCmd = gccCmd + " '" + facadeArs.Get(fai) + "'"
+            gccCmd = gccCmd + " \"" + facadeArs.Get(fai) + "\""
         }
         // Bundled stdlib archive — only link when it's actually
         // shipped alongside amc (source-tree build OR installed
@@ -1581,9 +1595,10 @@ public class Program {
         // future packages that reference Json / Toml symbols may
         // fail to link without it.
         if (String_Length(libamalgameA) > 0) {
-            gccCmd = gccCmd + " '" + libamalgameA + "'"
+            gccCmd = gccCmd + " \"" + libamalgameA + "\""
         }
-        gccCmd = gccCmd + " -lgc -lm -lz -ldl -lpthread"
+        gccCmd = gccCmd + " -lgc -lm -lz -lpthread"
+        if (!Program.IsWindows()) { gccCmd = gccCmd + " -ldl" }
         let nLibs: int = pkgLibs.Count()
         for plj in 0..nLibs {
             gccCmd = gccCmd + " -l" + pkgLibs.Get(plj)
@@ -1800,7 +1815,7 @@ public class Program {
             // pair of single quotes. Doesn't handle embedded
             // single quotes; consumers needing that should script
             // around amc run directly.
-            runCmd = runCmd + " '" + ua + "'"
+            runCmd = runCmd + " \"" + ua + "\""
         }
         return Process.Run(runCmd)
     }

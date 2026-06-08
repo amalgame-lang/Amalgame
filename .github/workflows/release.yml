@@ -599,27 +599,24 @@ jobs:
           $gcVer = "8.2.8"
           Invoke-WebRequest "https://github.com/ivmai/bdwgc/releases/download/v$gcVer/gc-$gcVer.tar.gz" -OutFile gc.tar.gz -UseBasicParsing
           tar -xzf gc.tar.gz
-          $src = "gc-$gcVer"
-          cmake -S $src -B gc-build -G Ninja `
-            -DCMAKE_C_COMPILER=gcc `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DBUILD_SHARED_LIBS=OFF `
-            -Denable_threads=ON `
-            -Denable_cplusplus=OFF `
-            -Dwithout_libatomic_ops=ON `
-            -DCMAKE_INSTALL_PREFIX=gc-inst 2>&1 | Write-Host
-          if ($LASTEXITCODE -ne 0) { throw "cmake configure (bdwgc) failed" }
-          cmake --build gc-build --config Release 2>&1 | Write-Host
-          if ($LASTEXITCODE -ne 0) { throw "cmake build (bdwgc) failed" }
-          cmake --install gc-build 2>&1 | Write-Host
-          if ($LASTEXITCODE -ne 0) { throw "cmake install (bdwgc) failed" }
-          $libgc = Get-ChildItem gc-inst, gc-build -Recurse -Filter 'libgc.a' -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $libgc) { throw "libgc.a not produced by bdwgc build" }
-          Copy-Item $libgc.FullName "$bundle\lib\libgc.a" -Force
-          # Headers: prefer the installed include tree (canonical gc.h + gc/).
-          if (Test-Path "gc-inst\include") { Copy-Item "gc-inst\include\*" "$bundle\include\" -Recurse -Force }
-          else { Copy-Item "$src\include\*" "$bundle\include\" -Recurse -Force }
-          if (-not (Test-Path "$bundle\include\gc.h")) { throw "gc.h missing after install" }
+          $src = (Resolve-Path "gc-$gcVer").Path
+          if (-not (Test-Path "$src\extra\gc.c")) { throw "bdwgc amalgamation $src\extra\gc.c missing" }
+          # Single-TU amalgamation: extra/gc.c #includes every GC source.
+          # No CMake/Ninja — just the bundled gcc + ar, deterministic.
+          #   GC_WIN32_PTHREADS : pthread (winpthread) thread model, so the
+          #                       lib exports GC_pthread_create/_join that
+          #                       amalgame-threading's header extern-declares.
+          #   GC_NOT_DLL        : static lib (no gc.dll), matches _runtime.h.
+          $defs = @(
+            "-DGC_BUILD","-DGC_NOT_DLL","-DGC_THREADS","-DGC_WIN32_PTHREADS",
+            "-DALL_INTERIOR_POINTERS","-DNO_EXECUTE_PERMISSION"
+          )
+          & gcc -O2 -w -c @defs "-I$src\include" "$src\extra\gc.c" -o gc.o 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "gcc compile of bdwgc amalgamation failed" }
+          & ar rcs "$bundle\lib\libgc.a" gc.o 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "ar of libgc.a failed" }
+          Copy-Item "$src\include\*" "$bundle\include\" -Recurse -Force
+          if (-not (Test-Path "$bundle\include\gc.h")) { throw "gc.h missing after copy" }
           Write-Host "✓ built+grafted static libgc.a ($((Get-Item "$bundle\lib\libgc.a").Length) bytes), gc.h present"
 
       - name: Smoke-test the bundled GC (static link + run)
@@ -631,13 +628,23 @@ jobs:
           $gcc = "$bundle\bin\gcc.exe"
           @'
           #include <gc.h>
+          #include <pthread.h>
           #include <stdio.h>
+          /* amalgame-threading extern-declares these; the lib must export
+           * them, which only a pthread-threaded GC build does. */
+          extern int GC_pthread_create(pthread_t*, const pthread_attr_t*,
+                                        void* (*)(void*), void*);
+          extern int GC_pthread_join(pthread_t, void**);
           int main(void) {
               GC_INIT();
               for (int i = 0; i < 1000; i++) { (void) GC_MALLOC(64); }
               void* p = GC_MALLOC(64);
-              printf("%s\n", p ? "GC_OK" : "GC_FAIL");
-              return p ? 0 : 1;
+              /* Force the linker to resolve the threading symbols FF-TAROT
+               * needs — a non-threaded GC build would fail to link here. */
+              volatile void* s1 = (void*) &GC_pthread_create;
+              volatile void* s2 = (void*) &GC_pthread_join;
+              printf("%s\n", (p && s1 && s2) ? "GC_OK" : "GC_FAIL");
+              return (p && s1 && s2) ? 0 : 1;
           }
           '@ | Set-Content -Encoding ascii smoke_gc.c
           # GC_NOT_DLL mirrors runtime/_runtime.h: link the static libgc.a.
