@@ -81,10 +81,28 @@ static inline i64 _am_decode_status(int rc) {
 #endif
 }
 
+/* Sur Windows, system()/popen() passent par cmd.exe, qui ne comprend pas les
+ * idiomes POSIX qu'amc shelle (package add : rm -rf, mv, mkdir -p, git -C,
+ * guillemets simples, chemins /tmp). On route donc la commande via `sh`
+ * (fourni par Git for Windows, sur le PATH). Hors Windows : identité.
+ * Les commandes amc n'utilisent que des guillemets simples, donc le
+ * `sh -c "..."` les reparse correctement. Retourne une string GC. */
+static inline char* _am_shellify(code_string cmd) {
+#ifdef _WIN32
+    size_t n = strlen(cmd);
+    size_t lw = n + 10;            /* sh -c "" + NUL */
+    char* w = (char*) GC_MALLOC(lw);
+    snprintf(w, lw, "sh -c \"%s\"", cmd);
+    return w;
+#else
+    return (char*) cmd;
+#endif
+}
+
 /* Run a shell command, streaming its stdio to the parent's. */
 static inline i64 Process_Run(code_string cmd) {
     if (!cmd) return -1;
-    int rc = system(cmd);
+    int rc = system(_am_shellify(cmd));
     return _am_decode_status(rc);
 }
 
@@ -104,7 +122,7 @@ static inline AmalgameProcessResult* Process_RunCapture(code_string cmd) {
     char* wrapped = (char*) GC_MALLOC(lw);
     snprintf(wrapped, lw, "(%s) 2>&1", cmd);
 
-    FILE* fp = _AM_POPEN(wrapped, "r");
+    FILE* fp = _AM_POPEN(_am_shellify(wrapped), "r");
     if (!fp) {
         r->Exit   = -1;
         r->Stdout = code_strdup("");
