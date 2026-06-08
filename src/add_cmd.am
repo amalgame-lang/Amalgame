@@ -100,7 +100,16 @@ import Amalgame.Formats.Toml
         if (!path || !*path) return 0;
         struct stat st;
         if (stat(path, &st) != 0) return 1; /* already gone */
-        if (!S_ISDIR(st.st_mode)) return remove(path) == 0 ? 1 : 0;
+        if (!S_ISDIR(st.st_mode)) {
+    #ifdef _WIN32
+            /* git leaves pack files read-only; remove()/DeleteFile fail on
+             * those unless we clear the attribute first — otherwise the
+             * parent dir stays non-empty and RemoveDirectory fails, leaving
+             * a half-deleted cache entry. */
+            SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
+    #endif
+            return remove(path) == 0 ? 1 : 0;
+        }
         size_t plen = strlen(path);
     #ifdef _WIN32
         {
@@ -122,6 +131,7 @@ import Amalgame.Formats.Toml
                 } while (FindNextFileA(h, &fd));
                 FindClose(h);
             }
+            SetFileAttributesA(path, FILE_ATTRIBUTE_NORMAL);
             return RemoveDirectoryA(path) ? 1 : 0;
         }
     #else
@@ -1180,6 +1190,13 @@ public class AddCommand {
         let home: string = Env_Get("HOME")
         if (String_Length(home) > 0) {
             return home + "/.amalgame/cache/packages-index.toml"
+        }
+        // Windows has no HOME; use USERPROFILE so the index cache lands
+        // next to the package cache (CacheRoot uses the same fallback)
+        // instead of a broken POSIX /tmp path.
+        let userProfile: string = Env_Get("USERPROFILE")
+        if (String_Length(userProfile) > 0) {
+            return String_Replace(userProfile, "\\", "/") + "/.amalgame/cache/packages-index.toml"
         }
         return "/tmp/amalgame-index.toml"
     }
