@@ -40,10 +40,208 @@ import Amalgame.Formats.Toml
 //   - Path deps `{ path = "../foo" }` (PR 2e)
 //   - sha256 tarball verification (post-v0.5; not needed for git
 //     deps since the commit SHA is already content-addressable)
+//
+// ── Filesystem frontier ──────────────────────────────────
+// The package manager mutates the cache (create/move/delete dirs,
+// enumerate entries). It used to shell out to `mkdir -p`/`rm -rf`/
+// `mv`/`ls`, which don't exist on Windows' cmd.exe. The rich,
+// public home for filesystem ops is the `amalgame-io-filesystem`
+// package — but amc's own source can't import a package (that would
+// be a bootstrap cycle: `amc package add` needs FS ops, and the
+// package providing them is fetched *by* `amc package add`). So the
+// compiler carries its own private @c frontier here, mirroring the
+// package's POSIX opendir / Windows FindFirstFile implementation.
+@c {
+    #include <string.h>
+    #include <stdlib.h>
+    #include <sys/stat.h>
+    #include <errno.h>
+    #ifdef _WIN32
+        #include <windows.h>
+        #include <direct.h>
+    #else
+        #include <dirent.h>
+        #include <unistd.h>
+    #endif
+
+    /* Recursive mkdir — POSIX `mkdir -p`. Walks each prefix segment,
+     * ignoring EEXIST. Returns 1 on success, 0 on a hard error. */
+    static int amalgame_pm_mkdirp(const char* path) {
+        if (!path || !*path) return 0;
+        size_t len = strlen(path);
+        char* buf = (char*) GC_MALLOC(len + 1);
+        memcpy(buf, path, len + 1);
+        size_t start = 1;
+    #ifdef _WIN32
+        if (len >= 2 && buf[1] == ':') {
+            start = (len >= 3 && (buf[2] == '\\' || buf[2] == '/')) ? 3 : 2;
+        }
+    #endif
+        for (size_t i = start; i <= len; i++) {
+            char c = (i < len) ? buf[i] : '\0';
+            if (i == len || c == '/' || c == '\\') {
+                buf[i] = '\0';
+                int rc;
+    #ifdef _WIN32
+                rc = _mkdir(buf);
+    #else
+                rc = mkdir(buf, 0755);
+    #endif
+                buf[i] = c;
+                if (rc != 0 && errno != EEXIST) return 0;
+            }
+        }
+        return 1;
+    }
+
+    /* Recursive delete — POSIX `rm -rf`. Missing path = success
+     * (idempotent). Returns 1 on success, 0 on a hard error. */
+    static int amalgame_pm_rmrf(const char* path) {
+        if (!path || !*path) return 0;
+        struct stat st;
+        if (stat(path, &st) != 0) return 1; /* already gone */
+        if (!S_ISDIR(st.st_mode)) return remove(path) == 0 ? 1 : 0;
+        size_t plen = strlen(path);
+    #ifdef _WIN32
+        {
+            char* pattern = (char*) GC_MALLOC(plen + 3);
+            memcpy(pattern, path, plen);
+            pattern[plen] = '\\'; pattern[plen+1] = '*'; pattern[plen+2] = '\0';
+            WIN32_FIND_DATAA fd;
+            HANDLE h = FindFirstFileA(pattern, &fd);
+            if (h != INVALID_HANDLE_VALUE) {
+                do {
+                    if (strcmp(fd.cFileName, ".") == 0)  continue;
+                    if (strcmp(fd.cFileName, "..") == 0) continue;
+                    size_t nl = strlen(fd.cFileName);
+                    char* child = (char*) GC_MALLOC(plen + 1 + nl + 1);
+                    memcpy(child, path, plen);
+                    child[plen] = '\\';
+                    memcpy(child + plen + 1, fd.cFileName, nl + 1);
+                    amalgame_pm_rmrf(child);
+                } while (FindNextFileA(h, &fd));
+                FindClose(h);
+            }
+            return RemoveDirectoryA(path) ? 1 : 0;
+        }
+    #else
+        {
+            DIR* d = opendir(path);
+            if (d) {
+                struct dirent* e;
+                while ((e = readdir(d)) != NULL) {
+                    if (strcmp(e->d_name, ".") == 0)  continue;
+                    if (strcmp(e->d_name, "..") == 0) continue;
+                    size_t nl = strlen(e->d_name);
+                    char* child = (char*) GC_MALLOC(plen + 1 + nl + 1);
+                    memcpy(child, path, plen);
+                    child[plen] = '/';
+                    memcpy(child + plen + 1, e->d_name, nl + 1);
+                    amalgame_pm_rmrf(child);
+                }
+                closedir(d);
+            }
+            return rmdir(path) == 0 ? 1 : 0;
+        }
+    #endif
+    }
+
+    /* Rename/move within a volume — `mv`. 1 on success, 0 on error. */
+    static int amalgame_pm_rename(const char* from, const char* to) {
+        if (!from || !to) return 0;
+        return rename(from, to) == 0 ? 1 : 0;
+    }
+
+    /* Directory entry names (excluding "." / ".."), one per line with a
+     * trailing newline — like `ls -1`. "" for a missing/unreadable dir.
+     * Order is filesystem-native; callers sort if needed. */
+    static char* amalgame_pm_listdir(const char* path) {
+        size_t cap = 256, len = 0;
+        char* out = (char*) GC_MALLOC(cap);
+        out[0] = '\0';
+        if (!path || !*path) return out;
+    #ifdef _WIN32
+        {
+            size_t plen = strlen(path);
+            char* pattern = (char*) GC_MALLOC(plen + 3);
+            memcpy(pattern, path, plen);
+            pattern[plen] = '\\'; pattern[plen+1] = '*'; pattern[plen+2] = '\0';
+            WIN32_FIND_DATAA fd;
+            HANDLE h = FindFirstFileA(pattern, &fd);
+            if (h == INVALID_HANDLE_VALUE) return out;
+            do {
+                if (strcmp(fd.cFileName, ".") == 0)  continue;
+                if (strcmp(fd.cFileName, "..") == 0) continue;
+                size_t nl = strlen(fd.cFileName);
+                if (len + nl + 2 > cap) {
+                    while (len + nl + 2 > cap) cap *= 2;
+                    char* n2 = (char*) GC_MALLOC(cap);
+                    memcpy(n2, out, len + 1); out = n2;
+                }
+                memcpy(out + len, fd.cFileName, nl); len += nl;
+                out[len++] = '\n'; out[len] = '\0';
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        }
+    #else
+        {
+            DIR* d = opendir(path);
+            if (!d) return out;
+            struct dirent* e;
+            while ((e = readdir(d)) != NULL) {
+                if (strcmp(e->d_name, ".") == 0)  continue;
+                if (strcmp(e->d_name, "..") == 0) continue;
+                size_t nl = strlen(e->d_name);
+                if (len + nl + 2 > cap) {
+                    while (len + nl + 2 > cap) cap *= 2;
+                    char* n2 = (char*) GC_MALLOC(cap);
+                    memcpy(n2, out, len + 1); out = n2;
+                }
+                memcpy(out + len, e->d_name, nl); len += nl;
+                out[len++] = '\n'; out[len] = '\0';
+            }
+            closedir(d);
+        }
+    #endif
+        return out;
+    }
+}
 
 public class AddCommand {
 
     public AddCommand() {}
+
+    // ── Private filesystem helpers (see the @c frontier above) ──
+    // Native, shell-free FS ops the package manager needs. The public
+    // FS API lives in the amalgame-io-filesystem package; these are the
+    // compiler's bootstrap-safe equivalents.
+
+    // Recursive mkdir (`mkdir -p`). True on success.
+    static bool MkdirP(path: string) {
+        var r: int = 0
+        @c { r = (i64) amalgame_pm_mkdirp(path); }
+        return r != 0
+    }
+
+    // Recursive delete (`rm -rf`). Missing path = success. True on success.
+    static bool RmRf(path: string) {
+        var r: int = 0
+        @c { r = (i64) amalgame_pm_rmrf(path); }
+        return r != 0
+    }
+
+    // Rename/move within a volume (`mv`). True on success.
+    static bool RenamePath(from: string, to: string) {
+        var r: int = 0
+        @c { r = (i64) amalgame_pm_rename(from, to); }
+        return r != 0
+    }
+
+    // Directory entry names (excluding "."/".."), newline-joined like
+    // `ls -1`. Callers String_Split(out, "\n") + Trim.
+    static string ListDir(path: string) {
+        @c { return amalgame_pm_listdir(path); }
+    }
 
     public static void PrintUsage() {
         Console.WriteError("Usage: amc package add <spec>... [--no-precompile]")
@@ -204,9 +402,9 @@ public class AddCommand {
         // ── 2. Cache path (before clone, sha unknown yet) ──
         let cacheRoot: string = AddCommand.CacheRoot()
         let baseDir: string = cacheRoot + "/" + url
-        // Ensure the parent path exists (mkdir -p is the most
-        // portable option — no MkdirAll in the runtime IO surface).
-        let _mkdirExit: int = Process_Run("mkdir -p '" + baseDir + "'")
+        // Ensure the parent path exists. Native recursive mkdir — no
+        // shelling out to `mkdir -p` (cmd.exe has no such flag).
+        let _mk: bool = AddCommand.MkdirP(baseDir)
 
         // ── 3. Clone if not yet cached ────────────────────
         // We tag the directory by `<tag>_<short_sha>` once we know the
@@ -223,38 +421,39 @@ public class AddCommand {
         } else {
             let tmpDir: string = baseDir + "/" + tag + "_clone"
             // Wipe any stale tmp from a previous failed run.
-            let _wipe: int = Process_Run("rm -rf '" + tmpDir + "'")
+            let _wipe: bool = AddCommand.RmRf(tmpDir)
             Console.WriteLine("Cloning into " + tmpDir + "...")
-            let cloneCmd: string = "git clone --depth 1 --branch '" + tag + "' 'https://" + url + ".git' '" + tmpDir + "' 2>&1"
+            // git is a real program on every platform; only the quoting
+            // must be portable — double quotes work in both cmd.exe and sh.
+            let cloneCmd: string = "git clone --depth 1 --branch \"" + tag + "\" \"https://" + url + ".git\" \"" + tmpDir + "\" 2>&1"
             let cloneExit: int = Process_Run(cloneCmd)
             if (cloneExit != 0) {
                 Console.WriteError("git clone failed (exit " + String_FromInt(cloneExit) + ")")
-                let _wipe2: int = Process_Run("rm -rf '" + tmpDir + "'")
+                let _wipe2: bool = AddCommand.RmRf(tmpDir)
                 return 1
             }
             // Resolve the SHA of the cloned tip.
-            let revRes = Process_RunCapture("git -C '" + tmpDir + "' rev-parse HEAD 2>&1")
+            let revRes = Process_RunCapture("git -C \"" + tmpDir + "\" rev-parse HEAD 2>&1")
             if (revRes.Exit != 0) {
                 Console.WriteError("git rev-parse failed: " + revRes.Stdout)
-                let _wipe3: int = Process_Run("rm -rf '" + tmpDir + "'")
+                let _wipe3: bool = AddCommand.RmRf(tmpDir)
                 return 1
             }
             rev = String_Trim(revRes.Stdout)
             if (String_Length(rev) < 7) {
                 Console.WriteError("invalid HEAD sha: '" + rev + "'")
-                let _wipe4: int = Process_Run("rm -rf '" + tmpDir + "'")
+                let _wipe4: bool = AddCommand.RmRf(tmpDir)
                 return 1
             }
             let shortSha: string = String_Substring(rev, 0, 8)
             pkgDir = baseDir + "/" + tag + "_" + shortSha
-            // Move tmp → final
-            let mvExit: int = Process_Run("mv '" + tmpDir + "' '" + pkgDir + "'")
-            if (mvExit != 0) {
+            // Move tmp → final — native rename, no `mv`.
+            if (!AddCommand.RenamePath(tmpDir, pkgDir)) {
                 Console.WriteError("could not finalize cache directory")
                 return 1
             }
             // Drop the .git dir — we don't need it past validation.
-            let _gitWipe: int = Process_Run("rm -rf '" + pkgDir + "/.git'")
+            let _gitWipe: bool = AddCommand.RmRf(pkgDir + "/.git")
         }
 
         // ── 4. Read + validate package manifest ────────────
@@ -493,8 +692,7 @@ public class AddCommand {
 
         // Build the persistent cache dir.
         let buildDir: string = PackageRegistry.PrecompileCacheDir(pkgDir)
-        let mkdirRes = Process.RunCapture("mkdir -p '" + buildDir + "'")
-        if (mkdirRes.Exit != 0) {
+        if (!AddCommand.MkdirP(buildDir)) {
             Console.WriteError("amc package add: could not create " + buildDir)
             return
         }
@@ -675,8 +873,7 @@ public class AddCommand {
         // Persistent cache dir — same shape as PrecompilePackage so
         // both artefacts live side-by-side under <pkgDir>/build/<plat>.
         let buildDir: string = PackageRegistry.PrecompileCacheDir(pkgDir)
-        let mkdirRes = Process.RunCapture("mkdir -p '" + buildDir + "'")
-        if (mkdirRes.Exit != 0) {
+        if (!AddCommand.MkdirP(buildDir)) {
             Console.WriteError("amc package add: could not create " + buildDir)
             return
         }
@@ -735,12 +932,12 @@ public class AddCommand {
                 // Skip the facade.am itself if it's also listed
                 // in `sources` (shouldn't be, but defensive).
                 if (srcRel == facadeRel) { continue }
-                facadeSourcesAbs = facadeSourcesAbs + " '" + srcAbs + "'"
+                facadeSourcesAbs = facadeSourcesAbs + " \"" + srcAbs + "\""
             }
         }
 
         // Step 1 — amc --lib --quiet
-        let amcCmd: string = amcPath + " --lib --quiet " + facadeSourcesAbs + " -o '" + baseOut + "' 2>&1"
+        let amcCmd: string = amcPath + " --lib --quiet " + facadeSourcesAbs + " -o \"" + baseOut + "\" 2>&1"
         let amcRes = Process.RunCapture(amcCmd)
         if (amcRes.Exit != 0) {
             Console.WriteError("  FAILED to compile facade (amc):")
@@ -761,9 +958,9 @@ public class AddCommand {
         // Plus any system -I supplied by `[stdlib].cflags` in the
         // package manifest (used by SDL-based packages to splice
         // `$(pkg-config --cflags sdl2 SDL2_ttf)`).
-        var gccCmd: string = "gcc -O2 -Iruntime -I'" + pkgDir + "/runtime'"
+        var gccCmd: string = "gcc -O2 -Iruntime -I\"" + pkgDir + "/runtime\""
         if (String_Length(amcRuntime) > 0) {
-            gccCmd = gccCmd + " -I'" + amcRuntime + "'"
+            gccCmd = gccCmd + " -I\"" + amcRuntime + "\""
         }
         // v0.8.49: propagate -I for EVERY cached package's runtime/.
         // Two reasons:
@@ -782,14 +979,14 @@ public class AddCommand {
         let cachedDirs: List<string> = AddCommand.AllCachedRuntimeDirs()
         let cdn: int = cachedDirs.Count()
         for ci in 0..cdn {
-            gccCmd = gccCmd + " -I'" + cachedDirs.Get(ci) + "'"
+            gccCmd = gccCmd + " -I\"" + cachedDirs.Get(ci) + "\""
         }
         let cflagsVal: TomlValue = stdlibTbl.Get("cflags")
         let cflagsStr: string = cflagsVal.AsString()
         if (String_Length(cflagsStr) > 0) {
             gccCmd = gccCmd + " " + cflagsStr
         }
-        gccCmd = gccCmd + " -w -c '" + cFile + "' -o '" + oFile + "' 2>&1"
+        gccCmd = gccCmd + " -w -c \"" + cFile + "\" -o \"" + oFile + "\" 2>&1"
         let gccRes = Process.RunCapture(gccCmd)
         if (gccRes.Exit != 0) {
             Console.WriteError("  FAILED to compile facade (gcc):")
@@ -800,11 +997,10 @@ public class AddCommand {
         // Step 3 — ar rcs (clobber any stale archive first; ar's
         // default rcs adds to an existing archive, which would
         // accumulate stale members across reinstalls).
-        let rmRes = Process.RunCapture("rm -f '" + archive + "' 2>&1")
-        if (rmRes.Exit != 0) {
+        if (File.Exists(archive) && !File.Delete(archive)) {
             Console.WriteError("  warning: could not remove stale archive " + archive)
         }
-        let arCmd: string = "ar rcs '" + archive + "' '" + oFile + "' 2>&1"
+        let arCmd: string = "ar rcs \"" + archive + "\" \"" + oFile + "\" 2>&1"
         let arRes = Process.RunCapture(arCmd)
         if (arRes.Exit != 0) {
             Console.WriteError("  FAILED to archive facade (ar):")
@@ -847,9 +1043,10 @@ public class AddCommand {
     }
 
     public static int NowSeconds() {
-        let res = Process.RunCapture("date +%s")
-        let raw: string = String_Trim(res.Stdout)
-        return String_ToInt(raw)
+        // Native epoch seconds — no shelling to `date +%s` (cmd.exe's
+        // `date` is interactive and has no `+%s`). time() needs no
+        // explicit include: the runtime prelude already pulls <time.h>.
+        @c { return (i64) time(NULL); }
     }
 
     // Render a duration in seconds as `MmSSs` (e.g. `2m47s`) or
@@ -1012,10 +1209,10 @@ public class AddCommand {
         }
         // Make sure ~/.amalgame/cache exists.
         let cacheDir: string = String_Substring(cachePath, 0, String_LastIndexOf(cachePath, "/"))
-        let _mkdir: int = Process_Run("mkdir -p '" + cacheDir + "'")
+        let _mkdir: bool = AddCommand.MkdirP(cacheDir)
         // Fetch via raw.githubusercontent.com.
         let indexUrl: string = "https://raw.githubusercontent.com/amalgame-lang/packages-index/main/packages.toml"
-        let cmd: string = "curl -fsSL '" + indexUrl + "' -o '" + cachePath + "' 2>&1"
+        let cmd: string = "curl -fsSL \"" + indexUrl + "\" -o \"" + cachePath + "\" 2>&1"
         let exit: int = Process_Run(cmd)
         if (exit != 0 || !File.Exists(cachePath)) {
             // Network failure: serve the stale cache if any. Better
@@ -1031,18 +1228,13 @@ public class AddCommand {
     }
 
     // True if the cached index file is younger than INDEX_TTL_SECS.
-    // Uses `date -r <file> +%s` to read mtime — POSIX-portable
-    // (Linux, macOS, MSYS2). On Windows native, the underlying
-    // stat works through the WSL-style POSIX layer that amc's
-    // git-bash runtime already requires. Returns true on any error
-    // (treat as "freshness unknown, don't re-fetch unnecessarily").
+    // Reads mtime via the native File.Mtime primitive (stat) — no
+    // shelling to `date -r` (absent on cmd.exe, format differs on BSD).
+    // Returns true on any error (treat as "freshness unknown, don't
+    // re-fetch unnecessarily").
     public static bool IndexCacheIsFresh(string cachePath) {
         let ttlSecs: int = 1800   // 30 minutes
-        let cmd: string = "date -r '" + cachePath + "' +%s"
-        let res = Process.RunCapture(cmd)
-        if (res.Exit != 0) { return true }
-        let mtimeStr: string = String_Trim(res.Stdout)
-        let mtime: int = String_ToInt(mtimeStr)
+        let mtime: int = File.Mtime(cachePath)
         if (mtime <= 0) { return true }
         let now: int = AddCommand.NowSeconds()
         if (now <= 0) { return true }
@@ -1169,7 +1361,7 @@ public class AddCommand {
         if (refresh) {
             let cachePath: string = AddCommand.IndexCachePath()
             if (File.Exists(cachePath)) {
-                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+                let _rm: bool = File.Delete(cachePath)
             }
         }
         let indexSrc: string = AddCommand.FetchIndex()
@@ -1260,7 +1452,7 @@ public class AddCommand {
             let amcPath0: string = Args_Get(0)
             var amcExe: string = amcPath0
             if (String_Length(amcExe) == 0) { amcExe = "amc" }
-            let exit: int = Process_Run("'" + amcExe + "' package add '" + gitS + "@" + tagS + "'")
+            let exit: int = Process_Run("\"" + amcExe + "\" package add \"" + gitS + "@" + tagS + "\"")
             if (exit != 0) {
                 Console.WriteError("amc package add failed for " + gitS + "@" + tagS)
                 return -1
@@ -1307,11 +1499,11 @@ public class AddCommand {
             }
             // Always nuke the index cache file.
             let idxPath: string = AddCommand.IndexCachePath()
-            let _idxRm: int = Process_Run("rm -f '" + idxPath + "'")
+            let _idxRm: bool = File.Delete(idxPath)
             Console.WriteLine("Cleared packages-index cache (" + idxPath + ")")
             if (alsoPackages) {
                 let pkgRoot: string = AddCommand.CacheRoot()
-                let _pkgRm: int = Process_Run("rm -rf '" + pkgRoot + "'")
+                let _pkgRm: bool = AddCommand.RmRf(pkgRoot)
                 Console.WriteLine("Cleared package cache (" + pkgRoot + ")")
                 Console.WriteLine("Run `amc add` again to reinstall each dep.")
             }
@@ -1427,7 +1619,7 @@ public class AddCommand {
         // cross-platform (no /proc dependency).
         let amcPath: string = Args_Get(0)
         if (String_Length(amcPath) == 0) { amcPath = "amc" }
-        return Process_Run("'" + amcPath + "' package add '" + url + "@" + tag + "'")
+        return Process_Run("\"" + amcPath + "\" package add \"" + url + "@" + tag + "\"")
     }
 
     // ── amc list ──────────────────────────────────────
@@ -1680,7 +1872,7 @@ public class AddCommand {
         if (refresh) {
             let cachePath: string = AddCommand.IndexCachePath()
             if (File.Exists(cachePath)) {
-                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+                let _rm: bool = File.Delete(cachePath)
             }
         }
         let indexSrc: string = AddCommand.FetchIndex()
@@ -1955,7 +2147,7 @@ public class AddCommand {
         if (refresh) {
             let cachePath: string = AddCommand.IndexCachePath()
             if (File.Exists(cachePath)) {
-                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+                let _rm: bool = File.Delete(cachePath)
             }
         }
         let indexSrc: string = AddCommand.FetchIndex()
@@ -2181,7 +2373,7 @@ public class AddCommand {
         if (refresh) {
             let cachePath: string = AddCommand.IndexCachePath()
             if (File.Exists(cachePath)) {
-                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+                let _rm: bool = File.Delete(cachePath)
             }
         }
         let indexSrc: string = AddCommand.FetchIndex()
@@ -2312,7 +2504,7 @@ public class AddCommand {
         if (refresh) {
             let cachePath: string = AddCommand.IndexCachePath()
             if (File.Exists(cachePath)) {
-                let _rm: int = Process_Run("rm -f '" + cachePath + "'")
+                let _rm: bool = File.Delete(cachePath)
             }
         }
         let indexSrc: string = AddCommand.FetchIndex()
@@ -2773,10 +2965,8 @@ public class AddCommand {
         let cacheRoot: string = AddCommand.CacheRoot()
         let orgRoot: string = cacheRoot + "/github.com/amalgame-lang"
         if (!File.Exists(orgRoot)) { return out }
-        let listCmd: string = "ls -1 '" + orgRoot + "' 2>/dev/null"
-        let res = Process_RunCapture(listCmd)
-        if (res.Exit != 0) { return out }
-        let lines: List<string> = String_Split(res.Stdout, "\n")
+        // Native readdir — no shelling to `ls` (absent on cmd.exe).
+        let lines: List<string> = String_Split(AddCommand.ListDir(orgRoot), "\n")
         let n: int = lines.Count()
         for i in 0..n {
             let repo: string = String_Trim(lines.Get(i))
@@ -2816,14 +3006,25 @@ public class AddCommand {
         if (!File.Exists(pkgCacheParent)) {
             return ""
         }
-        // sort -V honors semver; lex sort would pick v0.3.0 over
-        // v0.13.0. The cache entry suffix `_<sha>` doesn't interfere
-        // with -V because everything before the underscore (the tag)
-        // already disambiguates.
-        let listCmd: string = "ls -1 '" + pkgCacheParent + "' 2>/dev/null | sort -V | tail -1"
-        let res = Process_RunCapture(listCmd)
-        if (res.Exit != 0) { return "" }
-        let entry: string = String_Trim(res.Stdout)
+        // Pick the highest semver among cached `<tag>_<sha>` dirs.
+        // Native readdir + semver compare — replaces `ls | sort -V |
+        // tail -1` (no `ls`/`sort` on cmd.exe). We compare on the
+        // tag portion (before the `_<sha>` suffix) so trailing sha
+        // hex never leaks into the patch component.
+        let entries: List<string> = String_Split(AddCommand.ListDir(pkgCacheParent), "\n")
+        var entry: string = ""
+        var bestTag: string = ""
+        let ne: int = entries.Count()
+        for i in 0..ne {
+            let cand: string = String_Trim(entries.Get(i))
+            if (String_Length(cand) == 0) { continue }
+            let candParts: List<string> = String_Split(cand, "_")
+            let candTag: string = candParts.Get(0)
+            if (String_Length(entry) == 0 || PackageRegistry.CompareCmp(candTag, bestTag) > 0) {
+                entry = cand
+                bestTag = candTag
+            }
+        }
         if (String_Length(entry) == 0) { return "" }
         let runtimeDir: string = pkgCacheParent + "/" + entry + "/runtime"
         if (!File.Exists(runtimeDir)) { return "" }
@@ -2883,12 +3084,9 @@ public class AddCommand {
     // Returns the absolute path if found, "" otherwise.
     public static string FindExistingForTag(string baseDir, string tag) {
         let prefix: string = tag + "_"
-        // Use shell to enumerate — Amalgame.IO doesn't expose readdir
-        // in v0.4 land.
-        let listCmd: string = "ls -1 '" + baseDir + "' 2>/dev/null"
-        let res = Process_RunCapture(listCmd)
-        if (res.Exit != 0) { return "" }
-        let lines: List<string> = String_Split(res.Stdout, "\n")
+        // Native readdir via the PM's private @c frontier — no `ls`
+        // shell-out (cmd.exe has none).
+        let lines: List<string> = String_Split(AddCommand.ListDir(baseDir), "\n")
         let n: int = lines.Count()
         for i in 0..n {
             let line: string = lines.Get(i)
