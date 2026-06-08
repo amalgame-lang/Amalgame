@@ -580,37 +580,47 @@ jobs:
           if (-not (Test-Path "$bundle\bin\gcc.exe")) { throw "trim ate gcc.exe!" }
           if (-not (Test-Path "$bundle\bin\ld.exe"))  { throw "trim ate ld.exe!" }
 
-      - name: Bundle Boehm GC into gcc-bundle (so `amc build` links out of the box)
+      - name: Build + bundle Boehm GC into gcc-bundle (so `amc build` links out of the box)
         shell: pwsh
         run: |
           # amc emits C that #include <gc.h> and links -lgc (Boehm GC). The
           # vanilla winlibs toolchain ships no GC, so a freshly-installed amc
-          # could compile but not LINK on Windows. We graft the *static*
-          # libgc.a + headers from MSYS2's UCRT64 build (ABI-compatible with
-          # the winlibs ucrt GCC) straight into the bundle's own include/lib,
-          # where the bundled gcc finds them automatically. Static (not the
-          # DLL) keeps amc-built .exe self-sufficient — paired with the
+          # could compile but not LINK on Windows. Prebuilt MSYS2 libgc.a is
+          # NOT ABI-compatible with the winlibs CRT (undefined __imp__setjmp:
+          # a different mingw-w64 runtime). So we BUILD bdwgc from source with
+          # *the bundled winlibs gcc itself* — guaranteed ABI match — as a
+          # static lib using GCC's builtin atomics (no libatomic_ops). Static
+          # keeps amc-built .exe self-sufficient (no gc.dll), paired with the
           # GC_NOT_DLL define in runtime/_runtime.h.
-          $bundle = "install\windows\gcc-bundle"
-          $bash = "C:\msys64\usr\bin\bash.exe"
-          if (-not (Test-Path $bash)) { throw "MSYS2 bash not found at $bash" }
-          # libatomic_ops too: some bdwgc builds reference its symbols.
-          & $bash -lc "pacman -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-gc mingw-w64-ucrt-x86_64-libatomic_ops" 2>&1 | Write-Host
-          if ($LASTEXITCODE -ne 0) { throw "pacman install of gc failed" }
-          $inc = "C:\msys64\ucrt64\include"
-          $lib = "C:\msys64\ucrt64\lib"
-          if (-not (Test-Path "$inc\gc.h"))    { throw "gc.h not found under $inc" }
-          if (-not (Test-Path "$lib\libgc.a")) { throw "libgc.a not found under $lib" }
-          # Headers: gc.h + the gc/ subdir it pulls in, plus atomic_ops.
-          Copy-Item "$inc\gc.h" "$bundle\include\gc.h" -Force
-          if (Test-Path "$inc\gc")          { Copy-Item "$inc\gc" "$bundle\include\gc" -Recurse -Force }
-          Get-ChildItem "$inc" -Filter 'gc_*.h' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName "$bundle\include\" -Force }
-          if (Test-Path "$inc\atomic_ops.h") { Copy-Item "$inc\atomic_ops.h" "$bundle\include\" -Force }
-          if (Test-Path "$inc\atomic_ops")  { Copy-Item "$inc\atomic_ops" "$bundle\include\atomic_ops" -Recurse -Force }
-          # Static libs only (no *.dll.a) → -lgc resolves to libgc.a.
-          Copy-Item "$lib\libgc.a" "$bundle\lib\libgc.a" -Force
-          if (Test-Path "$lib\libatomic_ops.a") { Copy-Item "$lib\libatomic_ops.a" "$bundle\lib\" -Force }
-          Write-Host "✓ GC grafted: $(Get-Item "$bundle\include\gc.h" | Select -Expand Length) bytes gc.h, libgc.a $((Get-Item "$bundle\lib\libgc.a").Length) bytes"
+          $ErrorActionPreference = "Stop"
+          $bundle = (Resolve-Path "install\windows\gcc-bundle").Path
+          $env:PATH = "$bundle\bin;$env:PATH"   # use the bundled gcc, not any other
+          gcc --version | Select-Object -First 1 | Write-Host
+          $gcVer = "8.2.8"
+          Invoke-WebRequest "https://github.com/ivmai/bdwgc/releases/download/v$gcVer/gc-$gcVer.tar.gz" -OutFile gc.tar.gz -UseBasicParsing
+          tar -xzf gc.tar.gz
+          $src = "gc-$gcVer"
+          cmake -S $src -B gc-build -G Ninja `
+            -DCMAKE_C_COMPILER=gcc `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=OFF `
+            -Denable_threads=ON `
+            -Denable_cplusplus=OFF `
+            -Dwithout_libatomic_ops=ON `
+            -DCMAKE_INSTALL_PREFIX=gc-inst 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure (bdwgc) failed" }
+          cmake --build gc-build --config Release 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "cmake build (bdwgc) failed" }
+          cmake --install gc-build 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "cmake install (bdwgc) failed" }
+          $libgc = Get-ChildItem gc-inst, gc-build -Recurse -Filter 'libgc.a' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $libgc) { throw "libgc.a not produced by bdwgc build" }
+          Copy-Item $libgc.FullName "$bundle\lib\libgc.a" -Force
+          # Headers: prefer the installed include tree (canonical gc.h + gc/).
+          if (Test-Path "gc-inst\include") { Copy-Item "gc-inst\include\*" "$bundle\include\" -Recurse -Force }
+          else { Copy-Item "$src\include\*" "$bundle\include\" -Recurse -Force }
+          if (-not (Test-Path "$bundle\include\gc.h")) { throw "gc.h missing after install" }
+          Write-Host "✓ built+grafted static libgc.a ($((Get-Item "$bundle\lib\libgc.a").Length) bytes), gc.h present"
 
       - name: Smoke-test the bundled GC (static link + run)
         shell: pwsh
