@@ -956,9 +956,21 @@ public class AddCommand {
     // ── Cache path management ─────────────────────────
 
     public static string CacheRoot() {
+        let override: string = Env_Get("AMALGAME_PACKAGES_DIR")
+        if (String_Length(override) > 0) {
+            return override
+        }
         let home: string = Env_Get("HOME")
         if (String_Length(home) > 0) {
             return home + "/.amalgame/packages"
+        }
+        // Windows : HOME souvent absent → USERPROFILE. Slashes AVANT pour que
+        // sh (MSYS/git, qui fait le clone/mv) ET le runtime C (qui fait les
+        // checks fopen) résolvent le MÊME chemin. Avec "/tmp" ils divergeaient
+        // (sh → AppData\Temp, C → C:\tmp) → "missing amalgame.toml".
+        let userProfile: string = Env_Get("USERPROFILE")
+        if (String_Length(userProfile) > 0) {
+            return String_Replace(userProfile, "\\", "/") + "/.amalgame/packages"
         }
         return "/tmp/amalgame-packages"
     }
