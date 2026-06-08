@@ -946,8 +946,10 @@ public class AddCommand {
             }
         }
 
-        // Step 1 — amc --lib --quiet
-        let amcCmd: string = amcPath + " --lib --quiet " + facadeSourcesAbs + " -o \"" + baseOut + "\" 2>&1"
+        // Step 1 — amc --lib --quiet. Quote amcPath: on Windows it's
+        // "C:/Program Files/Amalgame/bin/amc.exe" and cmd.exe splits the
+        // unquoted path on the space ('C:/Program' is not recognized).
+        let amcCmd: string = "\"" + amcPath + "\" --lib --quiet " + facadeSourcesAbs + " -o \"" + baseOut + "\" 2>&1"
         let amcRes = Process.RunCapture(amcCmd)
         if (amcRes.Exit != 0) {
             Console.WriteError("  FAILED to compile facade (amc):")
