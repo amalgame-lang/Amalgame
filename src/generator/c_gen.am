@@ -2015,6 +2015,22 @@ public class CGen {
         let n: int = reg.Packages.Count()
         for i in 0..n {
             let p: LoadedPackage = reg.Packages.Get(i)
+            // Dedup by namespace — a TU must reference exactly ONE version
+            // of each package. Diamond deps (web pins net-http v0.24.0 while
+            // the app resolves v0.25.0) otherwise load BOTH, emitting two
+            // `#include`s for the same class — duplicate definitions, or a
+            // stale header (e.g. a pre-Windows-port one) breaking the build.
+            // Keep the highest version; among equal versions keep the first.
+            var skipDup: bool = false
+            for k in 0..n {
+                if (k == i) { continue }
+                let q: LoadedPackage = reg.Packages.Get(k)
+                if (q.Ns != p.Ns) { continue }
+                let cmp: int = PackageRegistry.CompareCmp(q.Tag, p.Tag)
+                if (cmp > 0)               { skipDup = true }
+                else if (cmp == 0 && k < i) { skipDup = true }
+            }
+            if (skipDup) { continue }
             // Add every class the package exposes. Multi-class packages
             // (classes = [...]) get one entry per class, all sharing the
             // same namespace so PkgClassMangledPrefix resolves correctly.
