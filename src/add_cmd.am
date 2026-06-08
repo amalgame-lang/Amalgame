@@ -1210,9 +1210,13 @@ public class AddCommand {
         // Make sure ~/.amalgame/cache exists.
         let cacheDir: string = String_Substring(cachePath, 0, String_LastIndexOf(cachePath, "/"))
         let _mkdir: bool = AddCommand.MkdirP(cacheDir)
-        // Fetch via raw.githubusercontent.com.
+        // Fetch via raw.githubusercontent.com. --ssl-no-revoke: Windows'
+        // curl uses the schannel TLS backend, which fails the fetch with
+        // CRYPT_E_NO_REVOCATION_CHECK when it can't reach the CA's
+        // revocation endpoint (corporate proxies, offline OCSP). The flag
+        // skips that soft check; harmless no-op on OpenSSL/macOS curl.
         let indexUrl: string = "https://raw.githubusercontent.com/amalgame-lang/packages-index/main/packages.toml"
-        let cmd: string = "curl -fsSL \"" + indexUrl + "\" -o \"" + cachePath + "\" 2>&1"
+        let cmd: string = "curl -fsSL --ssl-no-revoke \"" + indexUrl + "\" -o \"" + cachePath + "\" 2>&1"
         let exit: int = Process_Run(cmd)
         if (exit != 0 || !File.Exists(cachePath)) {
             // Network failure: serve the stale cache if any. Better
