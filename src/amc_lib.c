@@ -8036,7 +8036,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 620 "./src/package_registry.am"
-    return "0.8.86";
+    return "0.8.87";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -26306,12 +26306,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "76173ec2";
+    return "0689f4dc";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-06-08T19:09:25Z";
+    return "2026-06-08T19:23:01Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
@@ -41444,7 +41444,7 @@ void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame
         #line 783 "./src/add_cmd.am"
         if (String_Length(amcRuntime) > 0LL) {
             #line 784 "./src/add_cmd.am"
-            cmd = (code_string_concat((code_string_concat((code_string_concat(cmd, " -I'")), amcRuntime)), "'"));
+            cmd = (code_string_concat((code_string_concat((code_string_concat(cmd, " -I\"")), amcRuntime)), "\""));
         }
         #line 789 "./src/add_cmd.am"
         AmalgameList* cachedPkgDirs = Amalgame_Compiler_AddCommand_AllCachedRuntimeDirs();
@@ -41453,7 +41453,7 @@ void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame
         #line 791 "./src/add_cmd.am"
         for (i64 cpi = 0LL; cpi < cpn; cpi++) {
             #line 792 "./src/add_cmd.am"
-            cmd = (code_string_concat((code_string_concat((code_string_concat(cmd, " -I'")), (code_string)AmalgameList_get(cachedPkgDirs, cpi))), "'"));
+            cmd = (code_string_concat((code_string_concat((code_string_concat(cmd, " -I\"")), (code_string)AmalgameList_get(cachedPkgDirs, cpi))), "\""));
         }
         #line 794 "./src/add_cmd.am"
         if (isCxx && (String_Length(cxxflags) > 0LL)) {
@@ -41466,7 +41466,7 @@ void Amalgame_Compiler_AddCommand_PrecompilePackage(code_string pkgDir, Amalgame
             cmd = (code_string_concat((code_string_concat(cmd, " ")), cflags));
         }
         #line 800 "./src/add_cmd.am"
-        cmd = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(cmd, " -w -c '")), srcAbs)), "' -o '")), objPath)), "' 2>&1"));
+        cmd = (code_string_concat((code_string_concat((code_string_concat((code_string_concat((code_string_concat(cmd, " -w -c \"")), srcAbs)), "\" -o \"")), objPath)), "\" 2>&1"));
         #line 803 "./src/add_cmd.am"
         i64 t0 = Amalgame_Compiler_AddCommand_NowSeconds();
         #line 804 "./src/add_cmd.am"
@@ -41601,7 +41601,7 @@ void Amalgame_Compiler_AddCommand_PrecompileFacade(code_string pkgDir, Amalgame_
     #line 924 "./src/add_cmd.am"
     Console_WriteLine(code_string_concat((code_string_concat((code_string_concat((code_string_concat("  Compiling facade ", facadeRel)), " → libamalgame-pkg-")), className)), ".a"));
     #line 933 "./src/add_cmd.am"
-    code_string facadeSourcesAbs = code_string_concat((code_string_concat("'", facadeAbs)), "'");
+    code_string facadeSourcesAbs = code_string_concat((code_string_concat("\"", facadeAbs)), "\"");
     #line 934 "./src/add_cmd.am"
     Amalgame_Compiler_TomlValue* srcArr = Amalgame_Compiler_TomlValue_Get(stdlibTbl, "sources");
     #line 935 "./src/add_cmd.am"
