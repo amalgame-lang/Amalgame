@@ -610,6 +610,17 @@ public class AddCommand {
                     Console.WriteError("[" + mfNameStr + "]: unrecognised dependency entry: " + depKey)
                     return 1
                 }
+                // If this dep is already installed (e.g. the app added a
+                // newer version explicitly before this parent), reuse it
+                // instead of resolving the spec — which can pull an OLDER
+                // version via a stale packages-index, then get auto-included
+                // alongside the newer one (two versions of the same header,
+                // and on Windows the older, unported one breaks the build).
+                let depCached: string = AddCommand.LatestCacheRuntimeDir(depKey)
+                if (String_Length(depCached) > 0) {
+                    Console.WriteLine("── " + mfNameStr + " depends on " + depKey + " — already cached, reusing ──")
+                    continue
+                }
                 Console.WriteLine("── " + mfNameStr + " depends on " + depKey + " — auto-installing ──")
                 let trc: int = AddCommand.RunOne(transSpec, noPrecompile)
                 if (trc != 0) {
