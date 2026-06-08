@@ -781,7 +781,7 @@ public class AddCommand {
                 cmd = "gcc -O2"
             }
             if (String_Length(amcRuntime) > 0) {
-                cmd = cmd + " -I'" + amcRuntime + "'"
+                cmd = cmd + " -I\"" + amcRuntime + "\""
             }
             // v0.8.49: same -I-walks-the-cache rationale as
             // PrecompileFacade and build_amc.sh — amc auto-emits
@@ -789,7 +789,7 @@ public class AddCommand {
             let cachedPkgDirs: List<string> = AddCommand.AllCachedRuntimeDirs()
             let cpn: int = cachedPkgDirs.Count()
             for cpi in 0..cpn {
-                cmd = cmd + " -I'" + cachedPkgDirs.Get(cpi) + "'"
+                cmd = cmd + " -I\"" + cachedPkgDirs.Get(cpi) + "\""
             }
             if (isCxx && String_Length(cxxflags) > 0) {
                 cmd = cmd + " " + cxxflags
@@ -797,7 +797,7 @@ public class AddCommand {
             if (!isCxx && String_Length(cflags) > 0) {
                 cmd = cmd + " " + cflags
             }
-            cmd = cmd + " -w -c '" + srcAbs + "' -o '" + objPath + "' 2>&1"
+            cmd = cmd + " -w -c \"" + srcAbs + "\" -o \"" + objPath + "\" 2>&1"
 
             // Time the compile.
             let t0: int = AddCommand.NowSeconds()
@@ -930,7 +930,7 @@ public class AddCommand {
         // .a only contains the facade.am classes (Router for web,
         // HttpRequest for net-http) and consumer links fail with
         // undefined `Amalgame_Web_WebApp_New` / `_Static_New` etc.
-        var facadeSourcesAbs: string = "'" + facadeAbs + "'"
+        var facadeSourcesAbs: string = "\"" + facadeAbs + "\""
         let srcArr: TomlValue = stdlibTbl.Get("sources")
         if (srcArr.IsArray()) {
             let srcN: int = srcArr.Count()
