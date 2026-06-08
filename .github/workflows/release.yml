@@ -658,6 +658,68 @@ jobs:
           if ($out -ne "GC_OK") { throw "GC smoke test did not print GC_OK (got: $out)" }
           Write-Host "✓ Boehm GC links statically and runs with the bundled gcc"
 
+      - name: Bundle OpenSSL + zlib into gcc-bundle (crypto/tls/net-http/compress)
+        shell: pwsh
+        run: |
+          # amc packages link OpenSSL (crypto's scrypt, tls/net-http's HTTPS)
+          # and zlib (compress), expecting system dev libs as on Linux. The
+          # winlibs toolchain ships neither, so we graft MSYS2's UCRT64 build
+          # (ABI-compatible with the bundled ucrt GCC) into the bundle. We use
+          # the DLLs + import libs (dynamic): unlike a static GC, dynamic
+          # linking resolves OpenSSL's own runtime symbols inside the DLL, so
+          # there's no __imp__setjmp-style mismatch with winlibs. The DLLs ride
+          # in gcc\bin (on PATH at build time) so an app's objdump pass bundles
+          # them next to its .exe.
+          $ErrorActionPreference = "Stop"
+          $bundle = (Resolve-Path "install\windows\gcc-bundle").Path
+          $bash = "C:\msys64\usr\bin\bash.exe"
+          if (-not (Test-Path $bash)) { throw "MSYS2 bash not found at $bash" }
+          & $bash -lc "pacman -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-zlib" 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "pacman install of openssl/zlib failed" }
+          $inc = "C:\msys64\ucrt64\include"
+          $lib = "C:\msys64\ucrt64\lib"
+          $bin = "C:\msys64\ucrt64\bin"
+          if (-not (Test-Path "$inc\openssl\ssl.h")) { throw "openssl headers not found under $inc" }
+          if (-not (Test-Path "$inc\zlib.h"))        { throw "zlib.h not found under $inc" }
+          # Headers
+          Copy-Item "$inc\openssl" "$bundle\include\openssl" -Recurse -Force
+          Copy-Item "$inc\zlib.h"  "$bundle\include\" -Force
+          Copy-Item "$inc\zconf.h" "$bundle\include\" -Force
+          # Import libs (dynamic): -lssl / -lcrypto / -lz resolve here.
+          Copy-Item "$lib\libssl.dll.a"    "$bundle\lib\" -Force
+          Copy-Item "$lib\libcrypto.dll.a" "$bundle\lib\" -Force
+          Copy-Item "$lib\libz.dll.a"      "$bundle\lib\" -Force
+          # Runtime DLLs → gcc\bin (on PATH at app-build time, objdump-bundled).
+          Get-ChildItem "$bin" -Filter 'libssl-*.dll'    | ForEach-Object { Copy-Item $_.FullName "$bundle\bin\" -Force }
+          Get-ChildItem "$bin" -Filter 'libcrypto-*.dll' | ForEach-Object { Copy-Item $_.FullName "$bundle\bin\" -Force }
+          if (Test-Path "$bin\zlib1.dll") { Copy-Item "$bin\zlib1.dll" "$bundle\bin\" -Force }
+          Get-ChildItem "$bin" -Filter 'libz*.dll' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName "$bundle\bin\" -Force }
+          Write-Host "✓ grafted OpenSSL + zlib (headers + import libs + DLLs)"
+
+      - name: Smoke-test bundled OpenSSL + zlib (compile + link + run)
+        shell: pwsh
+        run: |
+          $bundle = "install\windows\gcc-bundle"
+          $gcc = "$bundle\bin\gcc.exe"
+          @'
+          #include <openssl/evp.h>
+          #include <zlib.h>
+          #include <stdio.h>
+          int main(void) {
+              const EVP_MD* md = EVP_sha256();
+              uLong a = adler32(0L, (const Bytef*)"hi", 2);
+              printf("%s\n", (md && a) ? "SSLZ_OK" : "SSLZ_FAIL");
+              return (md && a) ? 0 : 1;
+          }
+          '@ | Set-Content -Encoding ascii smoke_sslz.c
+          & $gcc smoke_sslz.c -lssl -lcrypto -lz -o smoke_sslz.exe 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL/zlib link failed (gcc)" }
+          $env:PATH = "$((Resolve-Path "$bundle\bin").Path);$env:PATH"
+          $out = (& .\smoke_sslz.exe) 2>&1
+          Write-Host "smoke output: $out"
+          if ($out -ne "SSLZ_OK") { throw "OpenSSL/zlib smoke did not print SSLZ_OK (got: $out)" }
+          Write-Host "✓ OpenSSL + zlib link and run with the bundled gcc"
+
       - name: Build amalgame-<ver>.msi (pure-PowerShell)
         shell: pwsh
         working-directory: install\windows
