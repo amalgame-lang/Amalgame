@@ -7,6 +7,35 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.88] — 2026-06-08
+
+Two Windows-native build fixes uncovered porting FF-TAROT.
+
+### Fixed
+
+- **Bundled stdlib `math` facades were never shipped.** The release
+  staging copied `json/toml/msgpack/path/amc_buildinfo` into
+  `share/amalgame/stdlib/` but omitted `math.am` and `math_vec.am`,
+  even though the bundled-stdlib auto-`--external` catalog
+  (`Amalgame.Math|math.am`) lists them. Result: user code doing
+  `import Amalgame.Math; Math.Floor(x)` resolved `Math` against the
+  caller's own namespace (`App_Math_Floor`) instead of
+  `Amalgame_Math_Math_Floor`, and the link failed with an undefined
+  reference. Local dev builds masked it because `build_amc.sh` installs
+  the full `src/stdlib/` tree. Now all four staging blocks ship math.
+
+- **Transitive deps could pull an older version over a cached newer
+  one.** When a parent package's `[dependencies]` lists a dep by short
+  form (`amalgame-tls = ">=0.3.1"`), `amc package add` auto-resolved and
+  installed it via the packages-index — even when a newer, already-added
+  version satisfied the constraint. A stale index then dragged in an
+  older facade alongside the newer one (two versions of the same runtime
+  header; on Windows the older, un-ported one broke the build).
+  Transitive resolution now reuses an already-cached version of the dep
+  instead of re-resolving.
+
+---
+
 ## [v0.8.75] — 2026-06-03
 
 Tooling + distribution release. The compiler is functionally unchanged
