@@ -81,28 +81,17 @@ static inline i64 _am_decode_status(int rc) {
 #endif
 }
 
-/* Sur Windows, system()/popen() passent par cmd.exe, qui ne comprend pas les
- * idiomes POSIX qu'amc shelle (package add : rm -rf, mv, mkdir -p, git -C,
- * guillemets simples, chemins /tmp). On route donc la commande via `sh`
- * (fourni par Git for Windows, sur le PATH). Hors Windows : identité.
- * Les commandes amc n'utilisent que des guillemets simples, donc le
- * `sh -c "..."` les reparse correctement. Retourne une string GC. */
-static inline char* _am_shellify(code_string cmd) {
-#ifdef _WIN32
-    size_t n = strlen(cmd);
-    size_t lw = n + 10;            /* sh -c "" + NUL */
-    char* w = (char*) GC_MALLOC(lw);
-    snprintf(w, lw, "sh -c \"%s\"", cmd);
-    return w;
-#else
-    return (char*) cmd;
-#endif
-}
-
-/* Run a shell command, streaming its stdio to the parent's. */
+/* Run a shell command, streaming its stdio to the parent's.
+ *
+ * Commands are run by the platform shell directly (sh on POSIX, cmd.exe
+ * on Windows) — no `sh -c` wrapping. amc no longer shells out POSIX-only
+ * utilities (rm/mv/mkdir/ls/date are native @c now), and the external
+ * tools it does invoke (git, gcc, ar, curl, amc) are quoted with double
+ * quotes, which cmd.exe and sh both honour. So cmd.exe never sees an
+ * idiom it can't parse, and we don't depend on `sh` being on PATH. */
 static inline i64 Process_Run(code_string cmd) {
     if (!cmd) return -1;
-    int rc = system(_am_shellify(cmd));
+    int rc = system(cmd);
     return _am_decode_status(rc);
 }
 
@@ -122,7 +111,7 @@ static inline AmalgameProcessResult* Process_RunCapture(code_string cmd) {
     char* wrapped = (char*) GC_MALLOC(lw);
     snprintf(wrapped, lw, "(%s) 2>&1", cmd);
 
-    FILE* fp = _AM_POPEN(_am_shellify(wrapped), "r");
+    FILE* fp = _AM_POPEN(wrapped, "r");
     if (!fp) {
         r->Exit   = -1;
         r->Stdout = code_strdup("");
