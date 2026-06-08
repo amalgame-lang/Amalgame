@@ -607,9 +607,12 @@ jobs:
           #                       lib exports GC_pthread_create/_join that
           #                       amalgame-threading's header extern-declares.
           #   GC_NOT_DLL        : static lib (no gc.dll), matches _runtime.h.
+          #   GC_BUILTIN_ATOMIC : use GCC's __atomic builtins instead of the
+          #                       external libatomic_ops (which the gc-X.Y.Z
+          #                       tarball doesn't bundle → atomic_ops.h missing).
           $defs = @(
             "-DGC_BUILD","-DGC_NOT_DLL","-DGC_THREADS","-DGC_WIN32_PTHREADS",
-            "-DALL_INTERIOR_POINTERS","-DNO_EXECUTE_PERMISSION"
+            "-DGC_BUILTIN_ATOMIC","-DALL_INTERIOR_POINTERS","-DNO_EXECUTE_PERMISSION"
           )
           & gcc -O2 -w -c @defs "-I$src\include" "$src\extra\gc.c" -o gc.o 2>&1 | Write-Host
           if ($LASTEXITCODE -ne 0) { throw "gcc compile of bdwgc amalgamation failed" }
