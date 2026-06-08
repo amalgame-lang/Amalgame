@@ -3964,7 +3964,12 @@ public class CGen {
         if (stmt.Line <= 0) { return }
         if (String_Length(this.CurrentSource) == 0) { return }
         if (stmt.Line == this.LastLineEmitted) { return }
-        this.Out.EmitLine("#line " + String_FromInt(stmt.Line) + " \"" + this.CurrentSource + "\"")
+        // Escape backslashes so a Windows source path (D:\…\FF-TAROT\…)
+        // in the #line filename string doesn't read as C escape
+        // sequences (\F, \m, …) — gcc floods "unknown escape sequence"
+        // warnings otherwise.
+        let escaped: string = String_Replace(this.CurrentSource, "\\", "\\\\")
+        this.Out.EmitLine("#line " + String_FromInt(stmt.Line) + " \"" + escaped + "\"")
         this.LastLineEmitted = stmt.Line
     }
 
