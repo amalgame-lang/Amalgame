@@ -180,6 +180,14 @@ public class Program {
         let newProg  = newPar.Parse()
         Console.WriteError("parsed: new_cmd.am")
 
+        let mcuPath  = "./src/mcu_cmd.am"
+        let mcuSrc   = File.ReadAll(mcuPath)
+        let mcuLex   = new Lexer(mcuSrc, mcuPath)
+        let mcuToks  = mcuLex.Tokenize()
+        let mcuPar   = new Parser(mcuToks)
+        let mcuProg  = mcuPar.Parse()
+        Console.WriteError("parsed: mcu_cmd.am")
+
         let docPath  = "./src/doc_cmd.am"
         let docSrc   = File.ReadAll(docPath)
         let docLex   = new Lexer(docSrc, docPath)
@@ -272,6 +280,7 @@ public class Program {
         gen6.AddFilePass1(genProg)
         gen6.AddFilePass1(expProg)
         gen6.AddFilePass1(newProg)
+        gen6.AddFilePass1(mcuProg)
         gen6.AddFilePass1(docProg)
         gen6.AddFilePass1(apProg)
         gen6.AddFilePass1(addProg)
@@ -305,6 +314,7 @@ public class Program {
         gen6.AddFilePass2Forwards(genProg)
         gen6.AddFilePass2Forwards(expProg)
         gen6.AddFilePass2Forwards(newProg)
+        gen6.AddFilePass2Forwards(mcuProg)
         gen6.AddFilePass2Forwards(docProg)
         gen6.AddFilePass2Forwards(apProg)
         gen6.AddFilePass2Forwards(addProg)
@@ -333,6 +343,7 @@ public class Program {
         gen6.AddFilePass2Bodies(genProg,  genPath)
         gen6.AddFilePass2Bodies(expProg,  expPath)
         gen6.AddFilePass2Bodies(newProg,  newPath)
+        gen6.AddFilePass2Bodies(mcuProg,  mcuPath)
         gen6.AddFilePass2Bodies(docProg,  docPath)
         gen6.AddFilePass2Bodies(apProg,   apPath)
         gen6.AddFilePass2Bodies(addProg,  addPath)

@@ -93,6 +93,11 @@ public class AmalgameCompiler {
     private Verbose: bool
     private ExitCode: int
     private ExternalFiles: List<string>
+    // MCU work (docs/proposals/amc-embedded.md §3). Empty string = the
+    // default HOSTED target (POSIX/Windows) — every embedded branch below
+    // is gated on Target != "" and is a strict no-op when it is empty, so
+    // hosted codegen stays byte-identical (guarded by tools/golden-c).
+    private Target: string
 
     public AmalgameCompiler() {
         this.Diag          = new DiagnosticFormatter()
@@ -102,6 +107,7 @@ public class AmalgameCompiler {
         this.Verbose       = false
         this.ExitCode      = 0
         this.ExternalFiles = new List<string>()
+        this.Target        = ""
     }
 
     public void SetLib(bool v)       { this.IsLib     = v }
@@ -110,6 +116,8 @@ public class AmalgameCompiler {
     public void SetVerbose(bool v)   { this.Verbose   = v }
     public void SetColor(bool v)     { this.Diag.EnableColor(v) }
     public void SetExternalFiles(List<string> files) { this.ExternalFiles = files }
+    public void SetTarget(string t)  { this.Target    = t }
+    public bool IsEmbedded()         { return String_Length(this.Target) > 0 }
     public int  GetExitCode()        { return this.ExitCode }
 
     // ── Main compile pipeline ─────────────────────────
@@ -278,7 +286,12 @@ public class AmalgameCompiler {
         let importedNs: List<string> = new List<string>()
         let amcPathForStdlib: string = Program.ResolveSelfPath()
         let stdlibDir: string = Program.ResolveStdlibSrcDir(amcPathForStdlib)
-        if (String_Length(stdlibDir) > 0) {
+        // MCU: the freestanding profile (§8) has no Json/Toml/MsgPack —
+        // those facades pull Collections (AmalgameList*) into the .c and
+        // won't compile freestanding. Skipping auto-attach entirely under
+        // an embedded target keeps the emitted .c minimal. Hosted is
+        // unaffected (IsEmbedded() is false → original behavior).
+        if (!this.IsEmbedded() && String_Length(stdlibDir) > 0) {
             // Each entry: "<namespace>|<filename>" — kept as a flat list
             // because the bootstrap lacks Map<string,string>.
             //
@@ -456,6 +469,9 @@ public class AmalgameCompiler {
         // ── CGen init ─────────────────────────────────
         let gen = new CGen()
         gen.RegisterPackages(pkgReg)
+        // MCU: switch the prelude to the freestanding profile (§4). No-op
+        // on hosted (false → EmitHeader emits today's hosted includes).
+        gen.SetEmbedded(this.IsEmbedded())
         // v0.8.51: feed the source's actual imports BEFORE BeginMulti
         // so EmitHeader skips `#include` lines for cached packages the
         // source doesn't use. Pre-fix, every package in amalgame.lock
@@ -582,6 +598,7 @@ public class AmalgameCompiler {
         // errors in `this.Errors`, so a single `tc` instance is fine.
         let tc     = new TypeChecker(resolver, firstPath)
         tc.Sources = this.Diag.Sources
+        tc.Embedded = this.IsEmbedded()   // MCU: enables @isr allocation-free check
         for ti in 0..progCount {
             tc.Check(progs.Get(ti))
         }
@@ -667,7 +684,18 @@ public class AmalgameCompiler {
         let genSrc   = File.ReadAll(outC)
         let hasMain  = String_Contains(genSrc, mainFunc)
         let isLibrary = this.IsLib || !hasMain
-        if (!isLibrary) {
+        if (!isLibrary && this.IsEmbedded()) {
+            // MCU entry (§6): no hosted libc main(), no GC_INIT, no argv.
+            // startup.c's Reset_Handler calls amc_main() after .data/.bss
+            // setup. Phase 1 requires the embedded entry to be `Main()`
+            // (no args) — soft-keyword setup/loop come in slice 3; for now
+            // the user's Main() body is the program. The arena is reset by
+            // the runtime, not here.
+            File.AppendAll(outC, "\nint amc_main(void) {\n")
+            File.AppendAll(outC, "    " + mainFunc + "();\n")
+            File.AppendAll(outC, "    return 0;\n")
+            File.AppendAll(outC, "}\n")
+        } else if (!isLibrary) {
             // Pick the argv-conversion expression matching Main's
             // declared parameter type. The generated signature is the
             // grep cue: `Main(AmalgameList*` for `List<string> args`,
@@ -775,6 +803,34 @@ public class Program {
             return 0;
         #endif
         }
+    }
+
+
+    // ── MCU target descriptors (docs/proposals/amc-embedded.md §3) ──
+    // Phase 1 keeps the table tiny and hardcoded; it moves next to the
+    // stdlib/link-flag logic and gains amalgame.toml [target] override
+    // in later slices. Every entry here is a freestanding (embedded)
+    // target — the absence of --target is the hosted default and never
+    // consults this table.
+    public static bool IsKnownTarget(string name) {
+        return name == "cortex-m3"
+            || name == "cortex-m4"
+            || name == "cortex-m7"
+    }
+    public static string KnownTargets() {
+        return "cortex-m3, cortex-m4, cortex-m7"
+    }
+    // Cross compiler for a target. ARM Cortex-M → arm-none-eabi-gcc.
+    public static string TargetCC(string name) {
+        return "arm-none-eabi-gcc"
+    }
+    // -mcpu/-mthumb (+ -mfloat-abi where an FPU exists). M3 has no FPU;
+    // M4F/M7 do, so f64 stays cheap there (§7).
+    public static string TargetCpuFlags(string name) {
+        if (name == "cortex-m3") { return "-mcpu=cortex-m3 -mthumb" }
+        if (name == "cortex-m4") { return "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16" }
+        if (name == "cortex-m7") { return "-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16" }
+        return "-mthumb"
     }
 
     // Resolve amc's own executable path through the kernel so commands
@@ -1508,6 +1564,285 @@ public class Program {
         }
     }
 
+    // ── Minimal amalgame.toml line-scan (no full TOML parser needed) ──
+    // Returns the raw text after `key =` on its line ("" if absent).
+    private static string TomlRawValue(List<string> lines, string key) {
+        let n: int = lines.Count()
+        for i in 0..n {
+            let t: string = String_TrimStart(lines.Get(i))
+            if (String_StartsWith(t, "#")) { continue }
+            if (String_StartsWith(t, key)) {
+                let after: string = String_TrimStart(String_From(t, String_Length(key)))
+                if (String_StartsWith(after, "=")) {
+                    return String_Trim(String_From(after, 1))
+                }
+            }
+        }
+        return ""
+    }
+    private static string TomlScalar(List<string> lines, string key) {
+        // Strip only the SURROUNDING quotes — inner quotes are significant
+        // (e.g. flash_cmd = "openocd ... -c \"program ...\"").
+        var v: string = Program.TomlRawValue(lines, key)
+        let n: int = String_Length(v)
+        if (n >= 2 && String_StartsWith(v, "\"") && String_EndsWith(v, "\"")) {
+            v = String_Substring(v, 1, n - 2)
+        }
+        return v
+    }
+    private static List<string> TomlArray(List<string> lines, string key) {
+        let out: List<string> = new List<string>()
+        var raw: string = Program.TomlRawValue(lines, key)
+        if (String_Length(raw) == 0) { return out }
+        raw = String_Replace(raw, "[", "")
+        raw = String_Replace(raw, "]", "")
+        raw = String_Replace(raw, "\"", "")
+        let parts: List<string> = String_Split(raw, ",")
+        let pn: int = parts.Count()
+        for i in 0..pn {
+            let v: string = String_Trim(parts.Get(i))
+            if (String_Length(v) > 0) { out.Add(v) }
+        }
+        return out
+    }
+    // Expand a colon-separated env var into repeated `<flag>"dir"` tokens.
+    private static string EnvDirFlags(string envName, string flag) {
+        let v: string = Env.Get(envName)
+        if (String_Length(v) == 0) { return "" }
+        var s: string = ""
+        let parts: List<string> = String_Split(v, ":")
+        let pn: int = parts.Count()
+        for i in 0..pn {
+            let d: string = String_Trim(parts.Get(i))
+            if (String_Length(d) > 0) { s = s + " " + flag + "\"" + d + "\"" }
+        }
+        return s
+    }
+
+    // MCU: cross-compile + link a freestanding .c into a runnable ELF
+    // (+ .bin/.hex). No host libc, no -lgc.
+    //   - boardPath == ""  → the bundled QEMU lm3s6965 (Cortex-M3) board.
+    //   - boardPath != ""  → an external board package (amalgame-mcu-<board>):
+    //       startup = <board>/boards/startup.c, linker from its amalgame.toml,
+    //       runtime header in <board>/runtime/, libs+defines from the manifest.
+    //       Machine-specific lib search paths come from env (a board's native
+    //       deps like libopencm3 live wherever the user built them):
+    //         AMC_EMBED_INC  (colon-sep include dirs → -I)
+    //         AMC_EMBED_LIB  (colon-sep library dirs → -L)
+    public static int LinkEmbedded(
+        string target, string outC, string outBin, string amcRuntime,
+        string boardPath, bool verbose, bool debug
+    ) {
+        let embDir: string = amcRuntime + "/embedded"
+        var startup: string = ""
+        var ld: string = ""
+        var cpu: string = Program.TargetCpuFlags(target)
+        var defines: List<string> = new List<string>()
+        var libs: List<string> = new List<string>()
+        var incBoard: string = " -I\"" + embDir + "\""
+
+        if (String_Length(boardPath) > 0) {
+            // External board package.
+            let manifest: string = boardPath + "/amalgame.toml"
+            if (!File.Exists(manifest)) {
+                Console.WriteError("amc build --board: no amalgame.toml at " + boardPath)
+                return 1
+            }
+            let mlines: List<string> = String_Split(File.ReadAll(manifest), "\n")
+            startup = boardPath + "/boards/startup.c"
+            let linkerRel: string = Program.TomlScalar(mlines, "linker")
+            if (String_Length(linkerRel) == 0) {
+                Console.WriteError("amc build --board: [target].linker missing in " + manifest)
+                return 1
+            }
+            ld = boardPath + "/" + linkerRel
+            let cf: string = Program.TomlScalar(mlines, "cpu_flags")
+            if (String_Length(cf) > 0) { cpu = cf }
+            defines = Program.TomlArray(mlines, "defines")
+            libs = Program.TomlArray(mlines, "libs")
+            incBoard = incBoard + " -I\"" + boardPath + "/runtime\""
+            var embInc: string = Program.EnvDirFlags("AMC_EMBED_INC", "-I")
+            if (String_Length(embInc) == 0) {
+                // Auto-detect the libopencm3 built by `amc mcu setup` (~/libopencm3)
+                // so users don't have to export AMC_EMBED_INC/LIB by hand.
+                let home: string = Env.Get("HOME")
+                if (String_Length(home) > 0 && File.Exists(home + "/libopencm3/include")) {
+                    embInc = " -I\"" + home + "/libopencm3/include\""
+                }
+            }
+            incBoard = incBoard + embInc
+            // Force-define AMC_BOARD_HEADER so the embedded runtime pulls in the
+            // board's real Mcu_* (libopencm3) instead of the QEMU semihosting
+            // default — without this the firmware hangs on a semihosting bkpt
+            // on real silicon. Basename of the manifest's [stdlib].header.
+            let hdr: string = Program.TomlScalar(mlines, "header")
+            if (String_Length(hdr) > 0) {
+                var base: string = hdr
+                let sl: int = String_LastIndexOf(hdr, "/")
+                if (sl >= 0) { base = String_Substring(hdr, sl + 1, String_Length(hdr) - sl - 1) }
+                incBoard = incBoard + " -DAMC_BOARD_HEADER='\"" + base + "\"'"
+            }
+        } else {
+            // Bundled board (Phase 1 ships QEMU lm3s6965 for cortex-m3).
+            var board: string = ""
+            if (target == "cortex-m3") { board = "qemu-lm3s6965" }
+            if (String_Length(board) == 0) {
+                Console.WriteError("amc build --target=" + target + ": no bundled board asset.")
+                Console.WriteError("  cortex-m3 ships the QEMU lm3s6965 board; for other targets")
+                Console.WriteError("  pass --board=<amalgame-mcu-pkg> (startup + linker + libs).")
+                return 1
+            }
+            let boardDir: string = embDir + "/boards/" + board
+            startup = boardDir + "/startup.c"
+            ld = boardDir + "/board.ld"
+        }
+        if (!File.Exists(startup) || !File.Exists(ld)) {
+            Console.WriteError("amc build: board startup/linker missing (" + startup + " / " + ld + ")")
+            return 1
+        }
+
+        let cc: string  = Program.TargetCC(target)
+        if (!Program.RequireTool(cc, "sudo apt install gcc-arm-none-eabi  (Debian/Ubuntu)")) {
+            return 1
+        }
+        var optFlag: string = "-Os"
+        if (debug) { optFlag = "-O0 -g" }
+        var cmd: string = cc + " " + cpu + " " + optFlag
+        cmd = cmd + " -ffreestanding -nostartfiles -ffunction-sections -fdata-sections -Wl,--gc-sections"
+        let dn: int = defines.Count()
+        for di in 0..dn { cmd = cmd + " -D" + defines.Get(di) }
+        cmd = cmd + incBoard
+        cmd = cmd + " -T \"" + ld + "\""
+        cmd = cmd + " \"" + startup + "\" \"" + outC + "\""
+        var embLib: string = Program.EnvDirFlags("AMC_EMBED_LIB", "-L")
+        if (String_Length(embLib) == 0) {
+            let homeL: string = Env.Get("HOME")
+            if (String_Length(homeL) > 0 && File.Exists(homeL + "/libopencm3/lib")) {
+                embLib = " -L\"" + homeL + "/libopencm3/lib\""
+            }
+        }
+        cmd = cmd + embLib
+        let ln: int = libs.Count()
+        for li in 0..ln { cmd = cmd + " -l" + libs.Get(li) }
+        cmd = cmd + " -o \"" + outBin + "\" 2>&1"
+        if (verbose) { Console.WriteLine("  " + cc + ": " + cmd) }
+        let r = Process.RunCapture(cmd)
+        if (r.Exit != 0) {
+            Console.WriteError("  [LINK-FAIL] " + cc + " exited " + String_FromInt(r.Exit))
+            Console.Write(r.Stdout)
+            return 1
+        }
+        // objcopy → raw .bin + Intel .hex for flashers (st-flash/esptool/avrdude).
+        let oc: string = "arm-none-eabi-objcopy"
+        let cBin = Process.RunCapture(oc + " -O binary \"" + outBin + "\" \"" + outBin + ".bin\" 2>&1")
+        if (cBin.Exit != 0) { Console.Write(cBin.Stdout) }
+        let cHex = Process.RunCapture(oc + " -O ihex \"" + outBin + "\" \"" + outBin + ".hex\" 2>&1")
+        if (cHex.Exit != 0) { Console.Write(cHex.Stdout) }
+        if (verbose) {
+            let sz = Process.RunCapture("arm-none-eabi-size \"" + outBin + "\" 2>&1")
+            Console.Write(sz.Stdout)
+        }
+        return 0
+    }
+
+    // MCU toolchain preflight: is `tool` on PATH? On a miss, print an
+    // actionable install hint and return false (the caller aborts). Keeps the
+    // failure mode "amc tells you exactly what to apt-install" instead of a
+    // cryptic gcc/openocd error. See tools/mcu-setup.sh for one-shot install.
+    public static bool RequireTool(string tool, string hint) {
+        let p = Process.RunCapture("command -v '" + tool + "' 2>/dev/null")
+        if (p.Exit == 0 && String_Length(String_Trim(p.Stdout)) > 0) { return true }
+        Console.WriteError("amc: required tool '" + tool + "' not found on PATH.")
+        Console.WriteError("     install: " + hint)
+        Console.WriteError("     or run:  tools/mcu-setup.sh  (installs the full MCU toolchain)")
+        return false
+    }
+
+    // MCU: flash a freshly-built firmware onto the chip. Reads the board's
+    // [target].flash_cmd template (e.g. "st-flash write {bin} 0x08000000")
+    // and substitutes {bin}/{elf}/{hex}. The flasher (st-flash/openocd/
+    // esptool/avrdude) must be installed and the board connected.
+    public static int FlashEmbedded(string boardPath, string outBin) {
+        if (String_Length(boardPath) == 0) {
+            Console.WriteError("amc build --flash: needs --board=<pkg> declaring [target].flash_cmd")
+            return 1
+        }
+        let manifest: string = boardPath + "/amalgame.toml"
+        if (!File.Exists(manifest)) {
+            Console.WriteError("amc build --flash: no amalgame.toml at " + boardPath)
+            return 1
+        }
+        let lines: List<string> = String_Split(File.ReadAll(manifest), "\n")
+        var cmd: string = ""
+        let tool: string = Program.TomlScalar(lines, "flash_tool")
+        if (tool == "openocd") {
+            if (!Program.RequireTool("openocd", "sudo apt install openocd")) { return 1 }
+            // amc owns the quoting of the multi-word -c command (OpenOCD is the
+            // reliable path on Nucleo; st-flash 1.7 has an F76x loader bug).
+            let cfg: string = Program.TomlScalar(lines, "openocd_cfg")
+            var addr: string = Program.TomlScalar(lines, "flash_addr")
+            if (String_Length(addr) == 0) { addr = "0x08000000" }
+            cmd = "openocd -f " + cfg + " -c \"program " + outBin + ".bin " + addr + " verify reset exit\""
+        } else {
+            // Custom template (e.g. st-flash/esptool/avrdude). {bin}/{elf}/{hex}
+            // placeholders — built by concatenation so amc's "{ident}" string
+            // interpolation leaves them literal (the template is in the TOML).
+            cmd = Program.TomlScalar(lines, "flash_cmd")
+            if (String_Length(cmd) == 0) {
+                Console.WriteError("amc build --flash: no [target].flash_tool/flash_cmd in " + manifest)
+                return 1
+            }
+            cmd = String_Replace(cmd, "{" + "bin}", outBin + ".bin")
+            cmd = String_Replace(cmd, "{" + "elf}", outBin)
+            cmd = String_Replace(cmd, "{" + "hex}", outBin + ".hex")
+        }
+        Console.WriteLine("  flash: " + cmd)
+        let r = Process.RunCapture(cmd + " 2>&1")
+        Console.Write(r.Stdout)
+        if (r.Exit != 0) {
+            Console.WriteError("  [FLASH-FAIL] flasher exited " + String_FromInt(r.Exit))
+            return 1
+        }
+        Console.WriteLine("✓ Flashed " + outBin + ".bin")
+        return 0
+    }
+
+    // `amc monitor [--port <dev>] [--baud <rate>]` — stream a serial port to
+    // the terminal (the board's UART; on a Nucleo that's the ST-LINK virtual
+    // COM port /dev/ttyACM0). Sets raw 8N1 via stty then cats the device;
+    // Ctrl-C stops. Pairs with the board's Console-over-UART override so you
+    // can watch Console.WriteLine output from the chip.
+    public static int RunMonitor(int argc) {
+        var port: string = "/dev/ttyACM0"
+        var baud: string = "115200"
+        var i: int = 2
+        while (i < argc) {
+            let a: string = Args_Get(i)
+            if ((a == "--port" || a == "-p") && i + 1 < argc) {
+                i = i + 1
+                port = Args_Get(i)
+            } else if ((a == "--baud" || a == "-b") && i + 1 < argc) {
+                i = i + 1
+                baud = Args_Get(i)
+            } else if (a == "-h" || a == "--help") {
+                Console.WriteError("Usage: amc monitor [--port /dev/ttyACM0] [--baud 115200]")
+                Console.WriteError("  Stream a serial port (board UART / ST-LINK VCP) to the terminal.")
+                return 0
+            }
+            i = i + 1
+        }
+        if (!File.Exists(port)) {
+            Console.WriteError("amc monitor: serial port '" + port + "' not found")
+            Console.WriteError("  plug the board in (Nucleo ST-LINK VCP is usually /dev/ttyACM0),")
+            Console.WriteError("  or pass --port <dev>. List with: ls /dev/ttyACM* /dev/ttyUSB*")
+            return 1
+        }
+        Console.WriteLine("amc monitor: " + port + " @ " + baud + " baud  (Ctrl-C to stop)")
+        let cmd: string = "stty -F '" + port + "' " + baud + " raw -echo 2>/dev/null; exec cat '" + port + "'"
+        let rc: int = Process.Run(cmd)
+        return rc
+    }
+
     public static int BuildOneBinary(
         string amcPath,
         string entryAm,
@@ -1519,12 +1854,18 @@ public class Program {
         List<string> pkgLibs,
         bool hasCxx,
         bool verbose,
-        bool debug
+        bool debug,
+        string target,
+        string board
     ) {
         let outC: string = outBin + ".c"
         var quietFlag: string = " --quiet"
         if (verbose) { quietFlag = " --verbose" }
-        let amcCmd: string = amcPath + " " + entryAm + " -o " + outBin + quietFlag
+        // MCU: forward --target to the transpile sub-invocation so it emits
+        // the freestanding C (§4). Empty target → hosted, unchanged.
+        var targetFlag: string = ""
+        if (String_Length(target) > 0) { targetFlag = " --target=" + target }
+        let amcCmd: string = amcPath + " " + entryAm + " -o " + outBin + quietFlag + targetFlag
         let cr = Process.RunCapture(amcCmd)
         if (cr.Exit != 0) {
             Console.WriteError("  [COMPILE-FAIL] amc exited " + String_FromInt(cr.Exit))
@@ -1534,6 +1875,13 @@ public class Program {
         }
         if (verbose) {
             Console.WriteLine("  amc → " + outC)
+        }
+
+        // MCU: cross-compile + link the freestanding .c against the board
+        // startup + linker script, then objcopy to .bin/.hex. No host libc,
+        // no -lgc. Bypasses the entire hosted gcc chain below.
+        if (String_Length(target) > 0) {
+            return Program.LinkEmbedded(target, outC, outBin, amcRuntime, board, verbose, debug)
         }
 
         // v0.8.0+: --debug swaps -O2 for -O0 -g so gcc emits DWARF
@@ -1621,21 +1969,10 @@ public class Program {
     // vendored package sources, then delegates to BuildOneBinary.
     // Returns the exit code from BuildOneBinary; the caller decides
     // whether to chain a subsequent `Process.Run` (amc run).
-    public static int BuildEntry(string entryAm, string outBin, bool verbose, bool debug) {
+    public static int BuildEntry(string entryAm, string outBin, bool verbose, bool debug, string target, string board) {
         if (!File.Exists(entryAm)) {
             Console.WriteError("amc build: entry file not found: " + entryAm)
             return 2
-        }
-
-        // v0.5.1: auto-install lock-listed packages missing from the
-        // cache. Same behaviour as `amc test`.
-        let installed: int = AddCommand.EnsureInstalled()
-        if (installed < 0) {
-            Console.WriteError("amc build: package install failed; aborting")
-            return 1
-        }
-        if (installed > 0 && verbose) {
-            Console.WriteLine("amc build: installed " + String_FromInt(installed) + " missing dep(s)")
         }
 
         // Resolve amc's own absolute path. Args_Get(0) carries whatever
@@ -1649,17 +1986,38 @@ public class Program {
             amcPath = Args_Get(0)
         }
         let amcRuntime: string = Program.ResolveRuntimeDir(amcPath)
-        let libamalgameA: string = Program.ResolveLibAmalgameA(amcPath)
 
-        let registry = PackageRegistry.Load()
-        let pkgObjs: List<string> = Program.PreCompilePackageSources(registry, amcRuntime)
-        let hasCxx: bool = registry.HasCxxSources()
-        let pkgLibs: List<string> = registry.CollectLibs()
-        let facadeArs: List<string> = registry.CollectFacadeArchives()
+        // MCU builds have NO packages and no host link chain — skip the
+        // install + pre-compile machinery entirely (it would try to build
+        // host-only cached packages, which both wastes work and spews
+        // unrelated errors). Embedded links only against the board startup
+        // + the freestanding runtime (see LinkEmbedded).
+        var libamalgameA: string = ""
+        var pkgObjs: List<string> = new List<string>()
+        var pkgLibs: List<string> = new List<string>()
+        var facadeArs: List<string> = new List<string>()
+        var hasCxx: bool = false
+        if (String_Length(target) == 0) {
+            // v0.5.1: auto-install lock-listed packages missing from cache.
+            let installed: int = AddCommand.EnsureInstalled()
+            if (installed < 0) {
+                Console.WriteError("amc build: package install failed; aborting")
+                return 1
+            }
+            if (installed > 0 && verbose) {
+                Console.WriteLine("amc build: installed " + String_FromInt(installed) + " missing dep(s)")
+            }
+            libamalgameA = Program.ResolveLibAmalgameA(amcPath)
+            let registry = PackageRegistry.Load()
+            pkgObjs = Program.PreCompilePackageSources(registry, amcRuntime)
+            hasCxx = registry.HasCxxSources()
+            pkgLibs = registry.CollectLibs()
+            facadeArs = registry.CollectFacadeArchives()
+        }
 
         let rc: int = Program.BuildOneBinary(
             amcPath, entryAm, outBin, amcRuntime, libamalgameA,
-            pkgObjs, facadeArs, pkgLibs, hasCxx, verbose, debug
+            pkgObjs, facadeArs, pkgLibs, hasCxx, verbose, debug, target, board
         )
         return rc
     }
@@ -1676,17 +2034,26 @@ public class Program {
         var outBin: string = ""
         var verbose: bool = false
         var debug: bool = false
+        var target: string = ""
+        var board: string = ""
+        var flash: bool = false
         var i: int = 2
         while (i < argc) {
             let a: string = Args_Get(i)
             if (a == "-h" || a == "--help") {
-                Console.WriteError("Usage: amc build [-o <out>] [-g|--debug] [--verbose] <entry.am>")
+                Console.WriteError("Usage: amc build [-o <out>] [-g|--debug] [--target=<mcu>] [--verbose] <entry.am>")
                 Console.WriteError("")
                 Console.WriteError("Compile + link a runnable binary in one step.")
                 Console.WriteError("Equivalent to `amc -o out entry.am` plus the gcc invocation")
                 Console.WriteError("(runtime headers, libamalgame.a, installed packages, libs).")
                 Console.WriteError("")
-                Console.WriteError("  -g, --debug    swap -O2 for -O0 -g (DWARF for amc dap)")
+                Console.WriteError("  -g, --debug      swap -O2 for -O0 -g (DWARF for amc dap)")
+                Console.WriteError("  --target=<mcu>   cross-compile freestanding for an MCU")
+                Console.WriteError("                   (" + Program.KnownTargets() + "); produces .elf + .bin/.hex")
+                Console.WriteError("  --board=<path>   board package (amalgame-mcu-<board>) for startup +")
+                Console.WriteError("                   linker + libs. cortex-m3 defaults to bundled QEMU board.")
+                Console.WriteError("                   Native lib paths via env AMC_EMBED_INC / AMC_EMBED_LIB.")
+                Console.WriteError("  --flash          after building, flash via the board's [target].flash_cmd")
                 return 0
             }
             if (a == "-o" && i + 1 < argc) {
@@ -1697,6 +2064,20 @@ public class Program {
                 i = i + 1
             } else if (a == "-g" || a == "--debug") {
                 debug = true
+                i = i + 1
+            } else if (String_StartsWith(a, "--target=")) {
+                target = String_From(a, 9)
+                if (!Program.IsKnownTarget(target)) {
+                    Console.WriteError("amc build: unknown --target '" + target + "'")
+                    Console.WriteError("     known: " + Program.KnownTargets())
+                    return 1
+                }
+                i = i + 1
+            } else if (String_StartsWith(a, "--board=")) {
+                board = String_From(a, 8)
+                i = i + 1
+            } else if (a == "--flash") {
+                flash = true
                 i = i + 1
             } else if (String_StartsWith(a, "-")) {
                 Console.WriteError("amc build: unknown option '" + a + "'")
@@ -1727,9 +2108,13 @@ public class Program {
             }
             outBin = "./" + outBin
         }
-        let rc: int = Program.BuildEntry(entryAm, outBin, verbose, debug)
+        var rc: int = Program.BuildEntry(entryAm, outBin, verbose, debug, target, board)
         if (rc == 0) {
             Console.WriteLine("✓ Built " + outBin)
+            // MCU: --flash runs the board's flash command on the fresh binary.
+            if (flash && String_Length(target) > 0) {
+                rc = Program.FlashEmbedded(board, outBin)
+            }
         }
         return rc
     }
@@ -1802,7 +2187,7 @@ public class Program {
             }
             outBin = "./" + outBin
         }
-        let buildRc: int = Program.BuildEntry(entryAm, outBin, verbose, debug)
+        let buildRc: int = Program.BuildEntry(entryAm, outBin, verbose, debug, "", "")
         if (buildRc != 0) {
             return buildRc
         }
@@ -1900,7 +2285,7 @@ public class Program {
     }
 
     private static int BuildAndMaybeRun(string entryAm, string outBin, bool verbose, bool runAfter) {
-        let rc: int = Program.BuildEntry(entryAm, outBin, verbose, false)
+        let rc: int = Program.BuildEntry(entryAm, outBin, verbose, false, "", "")
         if (rc != 0) { return rc }
         Console.WriteLine("✓ Built " + outBin)
         if (runAfter) {
@@ -2054,6 +2439,14 @@ public class Program {
             Exit_Set(NewCommand.Run(argc))
             return
         }
+        if (Args_Get(1) == "monitor") {
+            Exit_Set(Program.RunMonitor(argc))
+            return
+        }
+        if (Args_Get(1) == "mcu") {
+            Exit_Set(McuCommand.Run(argc))
+            return
+        }
         // Package-manager commands live under `amc package <X>`
         // (also accepts the short alias `amc pkg <X>`). Centralising
         // every PM verb under one umbrella keeps the top-level
@@ -2074,6 +2467,9 @@ public class Program {
         var lintMode      = false
         var useColor      = false
         var verbose       = true
+        // MCU: --target=<mcu> opts into the freestanding embedded profile
+        // (docs/proposals/amc-embedded.md). Empty = hosted, unchanged.
+        var target        = ""
 
         var i = 1
         while (i < argc) {
@@ -2092,6 +2488,14 @@ public class Program {
                 externalFiles.Add(Args_Get(i))
             } else if (a == "--lib") {
                 isLib = true
+            } else if (String_StartsWith(a, "--target=")) {
+                target = String_From(a, 9)
+                if (!Program.IsKnownTarget(target)) {
+                    Console.WriteError("amc: unknown --target '" + target + "'")
+                    Console.WriteError("     known: " + Program.KnownTargets())
+                    Exit_Set(1)
+                    return
+                }
             } else if (a == "--check") {
                 checkOnly = true
             } else if (a == "--lint") {
@@ -2157,6 +2561,7 @@ public class Program {
         compiler.SetColor(useColor)
         compiler.SetVerbose(verbose)
         compiler.SetExternalFiles(externalFiles)
+        compiler.SetTarget(target)
         compiler.Run(inputFiles, outputName)
         Exit_Set(compiler.GetExitCode())
     }

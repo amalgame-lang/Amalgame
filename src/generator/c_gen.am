@@ -168,6 +168,12 @@ public class CGen {
     public ImportedNs:       List<string>
     public ImportsFiltered:  bool
 
+    // MCU (docs/proposals/amc-embedded.md §4). When true, EmitHeader emits
+    // the freestanding prelude (embedded _runtime.h only) instead of the
+    // hosted includes. Default false → hosted output byte-identical
+    // (guarded by tools/golden-c). Set by the driver from --target.
+    public Embedded:         bool
+
     // Project F (v0.7.5+): external files registered via --external.
     // Short class names + their own mangled-ns prefix. Call sites
     // route through ExternalClassMangled() before the regular
@@ -258,6 +264,7 @@ public class CGen {
         this.PkgClassNs        = new List<string>()
         this.ImportedNs        = new List<string>()
         this.ImportsFiltered   = false
+        this.Embedded          = false
         this.ExternalClasses   = new List<string>()
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
@@ -1275,6 +1282,13 @@ public class CGen {
         }
         // method call returning a known type — check callee
         NodeKind.CALL => {
+            // MCU (§5.3): persist(x) is type-transparent — the persistent
+            // copy keeps x's C type, so `let c = persist(new T())` declares
+            // `T* c` and member access lowers correctly.
+            if (expr.Left != null && expr.Left.Kind == NodeKind.IDENTIFIER
+                && expr.Left.Name == "persist" && expr.Args.Count() == 1) {
+                return this.InferTypeFromExpr(expr.Args.Get(0))
+            }
             // Higher-order list calls (Filter/Map return AmalgameList*).
             // Detect via the receiver method name on the MEMBER node so
             // we don't have to round-trip through EmitCalleeStr (which
@@ -1883,6 +1897,17 @@ public class CGen {
     }
 
     private void EmitHeader() {
+        // MCU (§4): freestanding prelude. The embedded _runtime.h (found
+        // first via -Iruntime/embedded) bundles the whole surface a bare
+        // program needs — arena alloc, code_string helpers, Console via
+        // semihosting — with NO <gc.h>, NO <stdio.h>, NO host stdlib
+        // headers. We emit nothing else: the Amalgame_*.h core headers and
+        // package headers below are hosted-only (they pull libc/sockets).
+        if (this.Embedded) {
+            this.Out.EmitLine("#include \"_runtime.h\"")
+            this.Out.EmitBlank()
+            return
+        }
         this.Out.EmitLine("#include <stdio.h>")
         this.Out.EmitLine("#include <stdlib.h>")
         this.Out.EmitLine("#include <string.h>")
@@ -1982,6 +2007,17 @@ public class CGen {
     public void SetImportedNamespaces(List<string> imports) {
         this.ImportedNs = imports
         this.ImportsFiltered = true
+    }
+
+    public void SetEmbedded(bool v) { this.Embedded = v }
+
+    // Allocation primitive for `new`/ctor object construction. Hosted keeps
+    // GC_MALLOC verbatim (byte-identical, guarded by golden-c). Embedded
+    // routes through code_alloc → the region-per-tick arena (§5), so there
+    // is NO garbage collector and NO malloc on the MCU.
+    private string AllocFn() {
+        if (this.Embedded) { return "code_alloc" }
+        return "GC_MALLOC"
     }
 
     public void EmitNetHeader() {
@@ -3201,7 +3237,7 @@ public class CGen {
                     ctorSig = ctorSig + ")"
                     this.Out.EmitLine(ctorSig + " {")
                     this.Out.Indent_()
-                    this.Out.EmitLine(name + "* self = (" + name + "*) GC_MALLOC(sizeof(" + name + "));")
+                    this.Out.EmitLine(name + "* self = (" + name + "*) " + this.AllocFn() + "(sizeof(" + name + "));")
                     // Emit constructor body with param types tracked
                     this.LocalTypeClear()
                     this.LocalTypeSet("self", name + "*")
@@ -3245,7 +3281,7 @@ public class CGen {
         if (!ctorFound) {
             this.Out.EmitLine(name + "* " + name + "_new() {")
             this.Out.Indent_()
-            this.Out.EmitLine(name + "* self = (" + name + "*) GC_MALLOC(sizeof(" + name + "));")
+            this.Out.EmitLine(name + "* self = (" + name + "*) " + this.AllocFn() + "(sizeof(" + name + "));")
             this.Out.EmitLine("return self;")
             this.Out.Dedent()
             this.Out.EmitLine("}")
@@ -5777,7 +5813,7 @@ public class CGen {
                         // Log is the next migration (post-v0.7.5) — it
                         // lives in src/stdlib/logging.am with `@c { … }`
                         // bodies, same namespace-mangled dispatch.
-                        let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                        let isCoreStdlib: bool = tname == "Console" || tname == "Mcu" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                         if (isCoreStdlib) {
                             return tname + "_" + mname
                         }
@@ -5930,7 +5966,7 @@ public class CGen {
                     if (String_Length(externalMangled) > 0) {
                         return externalMangled + "_" + mname
                     }
-                    let isCoreStdlib: bool = tname == "Console" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
+                    let isCoreStdlib: bool = tname == "Console" || tname == "Mcu" || tname == "File" || tname == "String" || tname == "List" || tname == "Env" || tname == "Process" || tname == "Regex" || tname == "Compress" || tname == "WebSocket"
                     if (isCoreStdlib) {
                         return tname + "_" + mname
                     }

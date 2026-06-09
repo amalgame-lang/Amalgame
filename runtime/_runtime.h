@@ -80,6 +80,22 @@ static inline code_string code_float_to_string(f64 n) {
     return buf;
 }
 
+/* MCU execution-model intrinsics (docs/proposals/amc-embedded.md §6).
+ * No-ops on the hosted target — the GC manages memory, so `loop`/`region`/
+ * `setup` desugar to a plain while/block and these calls compile away. This
+ * lets embedded logic be written and tested on a PC before flashing. The
+ * embedded profile (runtime/embedded/_runtime.h) gives them real bodies
+ * (arena reset / sub-arena mark+release / persistent-alloc bracket). */
+static inline void amc_arena_reset(void) {}
+static inline void amc_arena_push_mark(void) {}
+static inline void amc_arena_pop_mark(void) {}
+static inline void amc_persist_begin(void) {}
+static inline void amc_persist_end(void) {}
+/* persist(x): identity on hosted — the GC keeps x alive regardless (§5.3). */
+#ifndef persist
+#define persist(x) (x)
+#endif
+
 /* Console */
 static inline void Console_WriteLine(code_string s) {
     printf("%s\n", s ? s : "");
