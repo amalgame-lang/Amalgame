@@ -115,6 +115,7 @@ public class Resolver {
         let builtins = new List<string>()
         // Builtin classes
         builtins.Add("Console")
+        builtins.Add("Mcu")        // MCU HAL (embedded-only impl; §9)
         builtins.Add("File")
         builtins.Add("Path")
         builtins.Add("Math")

@@ -1,0 +1,10 @@
+[package]
+name = "amc-mcu-examples"
+version = "0.1.0"
+description = "Bare-metal Amalgame examples (Cortex-M / QEMU)"
+
+# Marks this as an MCU project: the LSP reads [target] and surfaces the
+# embedded-only diagnostics (e.g. @isr allocation) as editor squiggles.
+[target]
+mcu   = "cortex-m3"
+board = "qemu-lm3s6965"

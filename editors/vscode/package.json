@@ -2,7 +2,7 @@
   "name": "amalgame",
   "displayName": "Amalgame",
   "description": "Syntax highlighting + LSP client + DAP debugger for the Amalgame programming language (.am files).",
-  "version": "0.4.1",
+  "version": "0.5.2",
   "publisher": "BastienMOUGET",
   "license": "MIT",
   "icon": "icon.png",
@@ -21,6 +21,11 @@
     "onDebugDynamicConfigurations:amc"
   ],
   "contributes": {
+    "commands": [
+      { "command": "amalgame.flash",   "title": "Amalgame: Flash to MCU",        "category": "Amalgame" },
+      { "command": "amalgame.debug",   "title": "Amalgame: Debug on MCU",        "category": "Amalgame" },
+      { "command": "amalgame.monitor", "title": "Amalgame: Serial Monitor",      "category": "Amalgame" }
+    ],
     "languages": [
       {
         "id": "amalgame",
@@ -100,6 +105,16 @@
                 "type": "boolean",
                 "description": "Pause on the program's first statement.",
                 "default": false
+              },
+              "target": {
+                "type": "string",
+                "description": "MCU target for on-chip debugging (e.g. cortex-m7). Empty = host debugging. Requires arm-none-eabi-gdb or gdb-multiarch + openocd.",
+                "default": ""
+              },
+              "openocd": {
+                "type": "string",
+                "description": "OpenOCD config for the board (e.g. board/st_nucleo_f7.cfg). Used with `target` to connect to the chip and flash on launch.",
+                "default": ""
               }
             }
           }
@@ -127,6 +142,21 @@
               "args": [],
               "cwd": "^\"\\${workspaceFolder}\"",
               "stopOnEntry": false
+            }
+          },
+          {
+            "label": "Amalgame: Debug on MCU (on-chip)",
+            "description": "Flash + debug on a microcontroller via OpenOCD (build first with `amc build --debug --target=... --board=...`).",
+            "body": {
+              "type": "amc",
+              "request": "launch",
+              "name": "${1:Debug on MCU}",
+              "program": "^\"\\${workspaceFolder}/${2:firmware}\"",
+              "target": "${3:cortex-m7}",
+              "openocd": "${4:board/st_nucleo_f7.cfg}",
+              "cwd": "^\"\\${workspaceFolder}\"",
+              "stopOnEntry": true,
+              "preLaunchTask": "amc: build (mcu, debug)"
             }
           }
         ]

@@ -134,6 +134,16 @@
           "match": "\\b(if|else|for|while|return|match|in|is|as|break|continue|try|catch|throw|finally|guard)\\b"
         },
         {
+          "comment": "MCU soft keywords (amc-embedded §6) — contextual: only highlighted when they open a block, so a variable named loop/setup/region is untouched.",
+          "name": "keyword.control.mcu.amalgame",
+          "match": "\\b(setup|loop|region)\\b(?=\\s*\\{)"
+        },
+        {
+          "comment": "persist(...) escape valve (amc-embedded §5.3)",
+          "name": "keyword.other.persist.amalgame",
+          "match": "\\bpersist\\b(?=\\s*\\()"
+        },
+        {
           "name": "keyword.declaration.amalgame",
           "match": "\\b(let|var|class|interface|enum|record|data|func|extends|implements|namespace|import)\\b"
         },
@@ -163,7 +173,7 @@
         },
         {
           "name": "support.class.stdlib.amalgame",
-          "match": "\\b(Console|File|Path|Math|String|Env|Http|TcpServer|TcpConn)\\b"
+          "match": "\\b(Console|File|Path|Math|String|Env|Http|TcpServer|TcpConn|Mcu|Board)\\b"
         },
         {
           "comment": "User-defined type names start with uppercase letter",
