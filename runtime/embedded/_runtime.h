@@ -121,6 +121,57 @@ static inline void amc_arena_pop_mark(void) {
 static inline void amc_persist_begin(void) { amc_alloc_persistent++; }
 static inline void amc_persist_end(void) { amc_alloc_persistent--; }
 
+/* ── List<T> on the arena ────────────────────────────────────────────────────
+ * Same ABI as the hosted AmalgameList (runtime/_runtime.h) so the cgen emits
+ * identical New/Add/Get/Set/Count calls on both targets. Backing memory comes
+ * from code_alloc, i.e. it follows the active region: a list built inside loop{}
+ * is reclaimed at the next arena reset (transient frame/byte buffers); a list
+ * built under setup{} / persist(...) lives in the persistent region (the jitter
+ * ring). Growth abandons the old buffer — fine for transient lists (reset wipes
+ * the waste) and for persistent lists that are pre-sized once in a constructor.
+ * No <string.h> dependency here (the embedded prelude pulls only stdint/stddef),
+ * so the grow copy is an explicit loop. Tune AMC_ARENA_SIZE / AMC_PERSIST_SIZE in
+ * the board [target] config to fit the buffers (the 8K/4K defaults are blink-sized).
+ */
+typedef struct {
+    void** data;
+    int    size;
+    int    capacity;
+} AmalgameList;
+
+static inline AmalgameList* AmalgameList_new(void) {
+    AmalgameList* l = (AmalgameList*) code_alloc(sizeof(AmalgameList));
+    l->capacity = 8;
+    l->size     = 0;
+    l->data     = (void**) code_alloc(sizeof(void*) * 8);
+    return l;
+}
+
+static inline void AmalgameList_add(AmalgameList* l, void* item) {
+    if (l->size >= l->capacity) {
+        int nc = l->capacity * 2;
+        void** nd = (void**) code_alloc(sizeof(void*) * (size_t) nc);
+        for (int k = 0; k < l->size; k++) nd[k] = l->data[k];
+        l->data     = nd;
+        l->capacity = nc;
+    }
+    l->data[l->size++] = item;
+}
+
+static inline void* AmalgameList_get(AmalgameList* l, int i) {
+    if (i < 0 || i >= l->size) return (void*) 0;
+    return l->data[i];
+}
+
+static inline void AmalgameList_set(AmalgameList* l, int index, void* item) {
+    if (!l || index < 0 || index >= l->size) return;
+    l->data[index] = item;
+}
+
+static inline int AmalgameList_count(AmalgameList* l) {
+    return l->size;
+}
+
 static inline code_string code_strdup(const char* s) {
     if (!s) return NULL;
     size_t n = amc_strlen(s) + 1;
