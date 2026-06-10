@@ -84,7 +84,9 @@ jobs:
       - name: Generate docs
         run: |
           set -euo pipefail
-          GUIDE_DIR="$GITHUB_WORKSPACE/docs/guide" OUT_DIR="$GITHUB_WORKSPACE/docs-out" \
+          GUIDE_DIR="$GITHUB_WORKSPACE/docs/guide" \
+          OUT_DIR="$GITHUB_WORKSPACE/docs-out" \
+          ASSETS_DIR="$GITHUB_WORKSPACE/sites-repo/tools/gendocs-assets" \
             sites-repo/tools/gen-docs
 
       - name: Gate — internal links & anchors
