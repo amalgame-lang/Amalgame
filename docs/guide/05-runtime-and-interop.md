@@ -324,7 +324,7 @@ around pthread / ucontext:
   `FiberCancel` / `IsCancelled`, and an ergonomic
   `WithTimeout(closure, arg, ms)` helper. Right tool for
   I/O-bound work — see the bench in
-  [docs/proposals/amalgame-async.md](../proposals/amalgame-async.md)
+  [docs/proposals/amalgame-async.md](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amalgame-async.md)
   showing 1.5×–9× throughput vs thread-per-conn on HTTP/1.1
   workloads.
 

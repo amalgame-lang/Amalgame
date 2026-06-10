@@ -62,5 +62,5 @@ hack on the compiler itself, jump to chapter 7.
     Encrypt certs + SNI, running under systemd, and cert renewal that
     actually works.
 
-The repo's [README](../../README.md) has the elevator pitch and screenshots.
-The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
+The repo's [README](https://github.com/amalgame-lang/Amalgame/blob/main/README.md) has the elevator pitch and screenshots.
+The [ROADMAP](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md) tracks what's planned next.

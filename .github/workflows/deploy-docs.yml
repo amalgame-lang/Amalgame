@@ -1,0 +1,111 @@
+name: Deploy docs
+
+# Régénère et publie docs.amalgame.me automatiquement quand le guide change.
+#
+# Pipeline 100% Amalgame (zéro Node) :
+#   guide .md  →  gen-docs.am (amalgame-markdown + amalgame-io-filesystem)
+#             →  HTML statique  →  gate liens/ancres  →  scp sur le serveur.
+#
+# Le déploiement d'une doc ne touche PAS le binaire Mosaic ni les certs : on
+# remplace juste le dossier public/ servi en statique (live immédiatement,
+# sans redémarrage du serveur).
+#
+# ── Secrets requis (Settings → Secrets and variables → Actions) ──────────
+#   SITES_PAT       : PAT (repo:read) pour checkout BastienMOUGET/Sites
+#                     (générateur + assets + baseline de liens).
+#   DEPLOY_SSH_KEY  : contenu de ~/.ssh/amalgame_deploy (clé privée SSH).
+#
+# Déclencheurs : push sur main touchant docs/guide/**, ou lancement manuel.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/guide/**'
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
+
+# Versions figées des packages runtime du générateur.
+env:
+  MARKDOWN_TAG: v0.1.0
+  IOFS_TAG: v0.5.0
+  SERVER: sites.neitsab.fr
+  SSH_PORT: '55'
+  SSH_USER: neitsab
+  REMOTE_DIR: /var/mosaic/sites/sites/docs.amalgame.me
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Amalgame (guide + runtime)
+        uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc libgc-dev
+
+      - name: Download amc release binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download --repo amalgame-lang/Amalgame \
+            --pattern 'amc-*-linux-x86_64.tar.gz' --dir /tmp/amc-dl
+          mkdir -p /tmp/amc && tar -xzf /tmp/amc-dl/*.tar.gz -C /tmp/amc
+          AMC="$(find /tmp/amc -type f -name amc | head -1)"
+          chmod +x "$AMC"
+          echo "AMC=$AMC" >> "$GITHUB_ENV"
+          echo "RT=$GITHUB_WORKSPACE/runtime" >> "$GITHUB_ENV"
+          "$AMC" --version
+
+      - name: Clone runtime packages (markdown + io-filesystem)
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$MARKDOWN_TAG" \
+            https://github.com/amalgame-lang/amalgame-markdown /tmp/amalgame-markdown
+          git clone --depth 1 --branch "$IOFS_TAG" \
+            https://github.com/amalgame-lang/amalgame-io-filesystem /tmp/amalgame-io-filesystem
+          echo "MD=/tmp/amalgame-markdown" >> "$GITHUB_ENV"
+          echo "FS=/tmp/amalgame-io-filesystem" >> "$GITHUB_ENV"
+
+      - name: Checkout Sites (generator + assets + baseline)
+        uses: actions/checkout@v4
+        with:
+          repository: BastienMOUGET/Sites
+          token: ${{ secrets.SITES_PAT }}
+          path: sites-repo
+
+      - name: Build gen-docs
+        run: sites-repo/tools/build-gen-docs.sh
+
+      - name: Generate docs
+        run: |
+          set -euo pipefail
+          GUIDE_DIR="$GITHUB_WORKSPACE/docs/guide" OUT_DIR="$GITHUB_WORKSPACE/docs-out" \
+            sites-repo/tools/gen-docs
+
+      - name: Gate — internal links & anchors
+        # Mode strict : échoue si un seul lien interne .html ou une seule
+        # ancre #section ne résout pas. (Le guide est à 0 lien cassé ; pour
+        # tolérer un pré-existant, passer une baseline en 2e argument —
+        # cf. l'en-tête du script.)
+        run: sites-repo/tools/check-docs-links.sh "$GITHUB_WORKSPACE/docs-out"
+
+      - name: Deploy to docs.amalgame.me
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$SSH_PORT" "$SERVER" >> ~/.ssh/known_hosts 2>/dev/null
+          SSH="ssh -i $HOME/.ssh/id_deploy -p $SSH_PORT $SSH_USER@$SERVER"
+          SCP="scp -i $HOME/.ssh/id_deploy -P $SSH_PORT -r"
+          # Upload sous public.new puis swap atomique (sudo NOPASSWD côté
+          # serveur) — remplace proprement, gère aussi les pages supprimées.
+          $SSH "sudo rm -rf $REMOTE_DIR/public.new"
+          $SCP "$GITHUB_WORKSPACE/docs-out" "$SSH_USER@$SERVER:/tmp/docs-out-ci"
+          $SSH "sudo rm -rf $REMOTE_DIR/public.new && sudo mv /tmp/docs-out-ci $REMOTE_DIR/public.new && sudo rm -rf $REMOTE_DIR/public && sudo mv $REMOTE_DIR/public.new $REMOTE_DIR/public"
+          echo "✓ docs.amalgame.me mis à jour"

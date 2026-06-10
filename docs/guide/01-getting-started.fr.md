@@ -56,7 +56,7 @@ gcc -O2 -Iruntime snapshot/amc_lib.c \
 Les suites de tests individuelles peuvent être lancées via
 `./amc test ./tests/<bundle>/` où `<bundle>` est l'un des suivants :
 `fmt`, `amc_new`, `stdlib_bundle` ou `core_bundle` — voir
-[06-build-and-tooling.md](06-build-and-tooling.md#tests).
+[06-build-and-tooling.md](06-build-and-tooling.md#tests--bundles-am-via-amc-test).
 
 ### macOS (Apple Silicon ou Intel)
 

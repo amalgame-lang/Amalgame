@@ -3,7 +3,7 @@
 > **Portée.** Ce chapitre couvre **Mosaic**, le framework web côté
 > serveur livré sous forme du package `amalgame-web` (routage HTTP,
 > middleware, sessions, fichiers statiques, HTTPS). Il ne s'agit *pas*
-> de [`amalgame-ui-web`](09-ui-web/README.fr.md), qui est un binding
+> de [`amalgame-ui-web`](../09-ui-web/README.fr.md), qui est un binding
 > d'interface graphique de bureau au-dessus d'une webview de l'OS.
 > Package différent, cas d'usage différent.
 >
@@ -169,7 +169,7 @@ app.Get("/teapot", ctx =>
 
 `Json` prend une chaîne — Mosaic n'impose pas d'encodeur JSON, donc
 construisez le payload avec la stdlib `Amalgame.Formats.Json` (voir
-[04-stdlib.fr.md](04-stdlib.fr.md)) ou assemblez de petits littéraux par
+[04-stdlib.fr.md](../04-stdlib.fr.md)) ou assemblez de petits littéraux par
 concaténation de chaînes comme ci-dessus.
 
 `Bytes(data, ct)` envoie un corps binaire en mémoire (un `List<int>`)
