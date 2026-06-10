@@ -328,7 +328,7 @@ manuels autour de pthread / ucontext :
   piloté par epoll (Linux), `FiberCancel` / `IsCancelled` coopératif,
   et un helper ergonomique `WithTimeout(closure, arg, ms)`. L'outil idéal
   pour le travail I/O-bound — voir le benchmark dans
-  [docs/proposals/amalgame-async.md](../proposals/amalgame-async.md)
+  [docs/proposals/amalgame-async.md](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amalgame-async.md)
   montrant 1,5×–9× de débit vs thread-par-connexion sur des charges
   HTTP/1.1.
 

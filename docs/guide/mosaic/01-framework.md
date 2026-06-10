@@ -3,7 +3,7 @@
 > **Scope.** This chapter covers **Mosaic**, the server-side web
 > framework shipped as the `amalgame-web` package (HTTP routing,
 > middleware, sessions, static files, HTTPS). It is *not* the same as
-> [`amalgame-ui-web`](09-ui-web/README.md), which is a desktop GUI
+> [`amalgame-ui-web`](../09-ui-web/README.md), which is a desktop GUI
 > binding over an OS webview. Different package, different use case.
 >
 > Everything below is from `amalgame-web v0.28.0` and its dependencies
@@ -161,7 +161,7 @@ app.Get("/teapot", ctx =>
 
 `Json` takes a string — Mosaic does not impose a JSON encoder, so build
 the payload with the `Amalgame.Formats.Json` stdlib (see
-[04-stdlib.md](04-stdlib.md)) or string-build small literals as above.
+[04-stdlib.md](../04-stdlib.md)) or string-build small literals as above.
 
 `Bytes(data, ct)` ships an in-memory binary body (a `List<int>`) with an
 explicit length — for dynamically generated images, gzip output, etc.;

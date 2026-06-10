@@ -96,7 +96,7 @@ termine et le noyau récupère la ligne.
 
 Si vous voyez `impossible d'ouvrir GPIO17`, c'est presque toujours une
 question de permissions — relisez
-[l'étape 5 de la préparation](01-setup.md#5--permissions-les-groupes-gpioi2cspi)
+[l'étape 5 de la préparation](01-setup.md#5--permissions--les-groupes-gpioi2cspi)
 ou lancez simplement avec `sudo`.
 
 ---

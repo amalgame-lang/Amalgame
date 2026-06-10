@@ -221,7 +221,7 @@ manuscrit. Pas de JS à moins que vous ne le souhaitiez délibérément
   liens et plus. Corrigé dans amc v0.8.16 — mais décomposer en
   intermédiaires `let header: Element = …` reste le style recommandé pour
   la lisibilité. Voir
-  [`04-layout-and-theme.md`](04-layout-and-theme.md#fluent-chain-limits).
+  [`04-layout-and-theme.md`](04-layout-and-theme.md#limites-des-chaînes-fluentes).
 - **Les chaînes `new X(...).Method()`** étaient abaissées incorrectement
   par amc avant la v0.8.16 ; si vous ciblez un compilateur plus ancien,
   décomposez via `let x = new X(...)` puis appelez `x.Method()`.
