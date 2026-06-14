@@ -309,6 +309,12 @@ public class FullResolver {
         this.DeclareGlobal("false",  "bool", false)
         this.DeclareGlobal("this",   "?",    false)
         this.DeclareGlobal("args",   "string[]", false)
+        // MCU escape valve (docs/proposals/amc-embedded.md §5.3). persist(x)
+        // forces x into the persistent region so it outlives the per-tick
+        // arena reset. Type-transparent (handled in the typechecker); on the
+        // hosted target it's the identity (a runtime macro). Declared here so
+        // the bare call resolves instead of raising "Unknown symbol".
+        this.DeclareGlobal("persist", "?", false)
         // Stdlib namespaces / static classes — declared as types so calls like
         // String.Method(s) or List.<Util>(...) don't raise "Unknown symbol".
         // The CGen maps `Foo.Method(...)` to `Foo_Method(...)` via the isStdlib
@@ -338,6 +344,20 @@ public class FullResolver {
         this.DeclareGlobal("Process_ReadLine",              "string",                false)
         this.DeclareGlobal("Process_ReadErrLine",           "string",                false)
         // Console
+        // MCU HAL (docs/proposals/amc-embedded.md §9). Static facade; the
+        // bodies live in the board runtime header (embedded-only). Pins and
+        // levels are plain int for now (the opaque typed Pin is a follow-up).
+        this.DeclareGlobal("Mcu",            "type", false)
+        this.DeclareGlobal("Mcu_PinMode",      "void", false)
+        this.DeclareGlobal("Mcu_DigitalWrite", "void", false)
+        this.DeclareGlobal("Mcu_DigitalRead",  "int",  false)
+        this.DeclareGlobal("Mcu_Toggle",       "void", false)
+        this.DeclareGlobal("Mcu_DelayMs",      "void", false)
+        this.DeclareGlobal("Mcu_Millis",       "int",  false)
+        this.DeclareGlobal("Mcu_High",         "int",  false)
+        this.DeclareGlobal("Mcu_Low",          "int",  false)
+        this.DeclareGlobal("Mcu_Output",       "int",  false)
+        this.DeclareGlobal("Mcu_Input",        "int",  false)
         this.DeclareGlobal("Console",        "type", false)
         this.DeclareGlobal("Console_WriteLine",  "void",   false)
         this.DeclareGlobal("Console_WriteError", "void",   false)

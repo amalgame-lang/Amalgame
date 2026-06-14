@@ -1,0 +1,31 @@
+// Regression sample: assignment RHS on the next line, and 64-bit
+// literal arithmetic (literals must compute in i64, not C `int`).
+// Guards two compiler fixes:
+//   - parser: `x =\n  expr` continues onto the next line (was → _unknown_)
+//   - cgen:   integer literals carry an LL suffix so `a * b` on two
+//             literals doesn't overflow int (was → negative)
+
+namespace Demo
+
+public class Program {
+    public static void Main(string[] args) {
+        // Assignment with the RHS beginning on the next line.
+        var msg: string = ""
+        msg =
+            "ml: " + "ok"
+        Console.WriteLine(msg)
+
+        // 64-bit literal arithmetic — overflows int32 without the LL fix.
+        let big: int = 900 * 1000000000
+        Console.WriteLine("big=" + String_FromInt(big))
+
+        // Both at once: a large product whose RHS is on the next line.
+        var n: int = 0
+        n =
+            1000000 * 1000000
+        Console.WriteLine("n=" + String_FromInt(n))
+
+        // Sanity: precedence + normal arithmetic unaffected.
+        Console.WriteLine("sum=" + String_FromInt(5 + 3 * 2))
+    }
+}

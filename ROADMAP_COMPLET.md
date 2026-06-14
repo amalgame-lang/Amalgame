@@ -1,6 +1,10 @@
 # Amalgame — Roadmap
 
-> **Upcoming priority sequence (2026-05-14 decision):**
+> **Historical priority sequence (2026-05-14 decision; all shipped).**
+> Current amc is **v0.8.88** + bare-metal Cortex-M target (HEAD
+> `ffb2e7c`) — far past the v0.8.25 tail below. Kept for archaeology.
+>
+> **Original sequence:**
 > `v0.7.4` → `v0.7.5` → `v0.7.6` → `v0.7.7` → `v0.7.8` → `v0.7.9` → `v0.7.10` → `v0.8.0` (DAP proxy lldb-dap) → `v0.8.1` → `v0.8.2` → `v0.8.3` → `v0.8.4` → `v0.8.5` → `v0.8.6` → `v0.8.7` (`amc --lib` cross-pkg facade deps) → `v0.8.8` (`amc new --template forms` scaffolder + multi-spec `amc package add`) → `v0.8.9` (tag-fix in forms scaffold + SDL install hints) → `v0.8.10` (close 2 of 6 ui-forms cgen bugs: parens lost in mixed `*/+`, `return null` typecheck; install.sh installs SDL2 by default) → `v0.8.11` (cgen brace-literal-in-strings fix + typed-param lambdas + return-type-aware closure calls + Closure type) → `v0.8.12` (cross-package chained method calls + inline lambda as argument outside list dispatch) → `v0.8.13` (`amc new --template ui-web-form` scaffolder for amalgame-ui-web + `amc package add` tolerates `-dev` manifest suffix + macOS canonical path via `_NSGetExecutablePath`+`realpath` + `gdb --dap` fallback in `amc dap`) → `v0.8.14` (list literals `[a, b, c]` + `.Size()` short-circuit fix + multi-line `+/-/*///%` continuation + ui-web-form scaffolder uses `OnResult` + docs/guide/09-ui-web/ chapter) → `v0.8.15` (`InferTypeFromExpr` memoization — long fluent chains no longer hang) → `v0.8.16` (chained method calls on `new X(...)` receivers — codegen fix) → `v0.8.17` (macOS CI clang `<mach-o/dyld.h>` hoist to file scope) → **native Windows Service** (drops NSSM, switch service template to native `sc.exe` + `Service.RunAsService`) → `v0.8.18` (`Process` v2: `RunCaptureBoth` real stderr split via fork+execvp+2 pipes / CreateProcess+CreatePipe×2; `RunCaptureBothTimeout` + `RunTimeout` with SIGKILL/TerminateProcess deadline, sentinel exit 124) → `v0.8.19` (lexer: `//`-comments containing the `namespace` keyword no longer leak into `nsPrefix` ; cgen: `.Get()` on a `void*` opaque collection-cell dispatches through `AmalgameList_get` instead of emitting `void_Get`) → `v0.8.20` (LSP: when editing inside a package repo, `BuildWorkspaceResolver` reads the local `amalgame.toml`'s `[stdlib].class` and declares it as a type-global — no more `Unknown symbol 'PostgreSQL'` / `Image` / `NATS` / `Audio` false-positives in VSCode/Neovim) → `v0.8.21` (parser: multi-line `&&` / `||` continuation — `ParseAnd` and `ParseOr` now skip NEWLINE tokens before the operator when the next non-blank token matches, mirroring v0.8.14's `+/-/*/%` fix; surfaced repeatedly during the v0.2 + Kafka + RabbitMQ test fixtures) → `v0.8.22` (`Process` v3: streaming `Spawn(cmd, captureStreams)` → `AmalgameProcessHandle*` with persistent handle + line-by-line `ReadLine` / `WriteLine` + `IsAlive` / `Wait` / `Kill` / `KillForce` / `ExitCode`; POSIX `fork+pipe+select+waitpid`, Windows `CreateProcess+NamedPipes` stub for v3.1) → `v0.8.23` (Bug 1: cgen multi-file forward decls — split `AddFilePass2` into `Forwards` + `Bodies`, hoist method-forward sweep across all files before any body. Bug 2: `this.field.Set/Get` collection dispatch — receiver resolution factored to handle IDENTIFIER + MEMBER-of-THIS + MEMBER-of-IDENTIFIER, with Map<K,V> field elem-type tracking for proper Get casts. Bug 3: `AmalgameMap_remove` — 3-state slot EMPTY/OCCUPIED/TOMBSTONE so colliding keys inserted before the remove stay reachable. Bug 4: `Map.Keys/Values` — `== AMMAP_OCCUPIED` instead of truthy `if (used)` so tombstones don't leak into results) → `v0.8.24` (Bug 5: parser `for i in 0..xs.Method()` — RHS of `..` now `ParsePostfix` so the `.method/(args)/[idx]` suffix chain is consumed before the BINARY is built) → `v0.8.25` (Bug 5 mirror: `..` becomes a real binary-op in a new `ParseRange` between `ParseAssign` and `ParseOr` — `xs.Count()..N` and both-sides-call ranges parse uniformly. Bug 6: LSP `FindWorkspaceRoot` now recognises `amalgame.toml` as a workspace marker — no more "Unknown symbol" diagnostics on cross-dir class references in manifest-only projects without `.git`) ✅ all shipped through v0.8.25.
 >
 > **Backlog post-v0.8.13:** Approche A DAP migration (pretty-print AmalgameList* / AmalgameMap*, filter runtime frames) + msgpack extraction (gated on cgen facade ABI fix) + LSP package discovery code action + cgen bug #6 (`let` scope flattened to function level — workaround: rename locals; fix: per-block C scope).
@@ -42,7 +46,7 @@
 > bounded because we stopped adding to that pile in v0.7.3. See "Open design questions"
 > for F details and "Runtime → AM migrations" for the rétro candidates.
 
-> Updated 2026-05-31 · `amc 0.8.70` · **`async fn` / `await` language sugar** — desugars to fiber-spawn + future-channel receive (impl/fiber/wrapper cgen split), future model with real concurrency, contextual keywords, `import Amalgame.Async` enforced via `#error` guard; 636 PASS / 0 FAIL · `amc 0.8.69` · **`amc --check` perf run — 3 O(n²) eliminated, `c_gen.am` (5k LoC) ~118s → ~0.2s**: v0.8.67 diagnostics snippet `SourceMap.GetLine` (cached split-lines), v0.8.68 lexer per-char strlen (`SourceLen` cache + `String_CharAtUnchecked`), v0.8.69 typecheck expr-type memo (parallel-list scan → `Map`) · **variadic saga complete**: v0.8.61 params/call-sites → v0.8.62 external-facade methods → v0.8.63 local ctors → v0.8.65 cross-package ctors (`Sum(...xs)`, `new Bag(...xs)`) · v0.8.66 deep member chain `obj.F1.F2.CollectionMethod()` · v0.8.64 primitive `.ToString()` · v0.8.60 if→match self-host refactor (7/7 sites)
+> Updated 2026-06-05 · `amc 0.8.75` · **Mosaic Phase 2 security campaign complete** — 6 deliveries closing the auth/data depth of the web stack, each shipped with security-from-first-commit + an executed VPS-audit entry (`docs/audit/audit-vps-2026-06.md` MD10–MD14): **OAuth PKCE** (RFC 7636 S256, web v0.34.0) + **OpenID Connect** id_token verification (web v0.35.0, RS256-vs-JWKS, alg hard-pin anti-confusion, iss/aud/exp/nonce, fail-closed) on **crypto v0.6.0 `JwsKey.FromJwkRsa`**; **TOTP/2FA** (crypto v0.5.0, RFC 6238); **typed input validation** (`Validator`, web v0.36.0 — 8 KiB cap, control-char/injection rejection, allow-lists); **DB migrations** (new pkg **`amalgame-database-migrate` v0.1.0** — ordered Up/Down, transactional fail-stop, idempotent, irreversible-refusal); **WebAuthn/passkeys** (new pkg **`amalgame-webauthn` v0.1.0** — ES256 registration + assertion signature verification + clone-counter, on **crypto v0.7.0 `FromCoseEc2`/`VerifyDer`**). Roadmap items 2.3/2.4/2.5/2.8/2.10 ✅. Remaining Mosaic Phase-2: 2.12 `router.Ws()` + 2.1 Argon2id (blocked: no libargon2 / OpenSSL < 3.2). · `amc 0.8.72`–`0.8.73` · **interface dispatch** (Go-style itab+data) + `List<I>` heap-boxing → portable hardware ecosystem (12 pkgs / ~40 drivers, Pi + future MCU) · `amc 0.8.70` · **`async fn` / `await` language sugar** — desugars to fiber-spawn + future-channel receive (impl/fiber/wrapper cgen split), future model with real concurrency, contextual keywords, `import Amalgame.Async` enforced via `#error` guard; 636 PASS / 0 FAIL · `amc 0.8.69` · **`amc --check` perf run — 3 O(n²) eliminated, `c_gen.am` (5k LoC) ~118s → ~0.2s**: v0.8.67 diagnostics snippet `SourceMap.GetLine` (cached split-lines), v0.8.68 lexer per-char strlen (`SourceLen` cache + `String_CharAtUnchecked`), v0.8.69 typecheck expr-type memo (parallel-list scan → `Map`) · **variadic saga complete**: v0.8.61 params/call-sites → v0.8.62 external-facade methods → v0.8.63 local ctors → v0.8.65 cross-package ctors (`Sum(...xs)`, `new Bag(...xs)`) · v0.8.66 deep member chain `obj.F1.F2.CollectionMethod()` · v0.8.64 primitive `.ToString()` · v0.8.60 if→match self-host refactor (7/7 sites)
 >
 > Updated 2026-05-23 · `amc 0.8.45+` · **HTTP/1.1 fiber-driven async stack landed across 16 versions in 2 sessions** (amalgame-async v0.1→v0.2.3, amalgame-net-http v0.9→v0.9.5, amalgame-web v0.12→v0.12.4; full bench + cancellation + graceful shutdown + WithTimeout) · `amc 0.8.40+` · self-hosted · **test suite migrated to AM bundles via `amc test`**: 325 core + 196 stdlib + 38 amc-new + 12 fmt = **571 PASS + 5 SKIP in ~42s (was ~4m35s)** · multi-OS CI · GitHub Releases automation · package manager + **15-package ecosystem** (math, math-vec, random, encoding, crypto, datetime, logging, service v2 native Windows SCM, io-filewatcher, yaml, regex, compress, net-websocket, **ui-sdl**, **ui-web v0.0.10**; ui-forms sunset 2026-05-15) · framework split (`libamalgame.a` 215 KB → 91 KB) · `amc build / run / watch` first-class compile verbs · `amc dap` DAP proxy (lldb-dap → gdb --dap fallback) · `amc build --debug` (-O0 -g) + cgen `#line` directives → native `.am` breakpoints via DWARF · `amc new --template <exe|lib|test|service(native Win sc.exe)|forms(sunset)|ui-web-form>` scaffolders · canonical-path resolution on Linux (`/proc/self/exe`) / Windows (`GetModuleFileNameA`) / macOS (`_NSGetExecutablePath`+`realpath`) → `amc build` works via PATH install on every OS · VS Code extension v0.3.0 (`amc` debug type + DebugAdapterDescriptorFactory + `amc new --vscode` opt-in scaffold) · `build_amc.sh --install` opt-in user-bin layout · LSP signatureHelp + full-signature hover · C++ pipeline + precompile-on-install + calibration ETA + `search`/`versions`/`info`/`outdated`/`notice`/`check`/`suggest --json` with compat status + index cache TTL + auto-resolve add-without-tag + semver operators (^/~/>=/>/<=/</=) + `-dev` manifest-suffix tolerance + `--version` with baked git rev + build date + ArgParser fluent framework + `--verbose` phase profiling + inline-C blocks (`@c { ... }`, `@c_include`, `@c_link`) + file-scope `@c { ... }` + per-package facade pipeline (`[stdlib].facade`) + **list literals `[a, b, c]`** (v0.8.14) + `InferTypeFromExpr` memoization (v0.8.15) + `new X(...).Method()` chain codegen (v0.8.16) + **`Process` v2** (real stderr split + timeout-aware `RunCaptureBoth` / `RunCaptureBothTimeout` / `RunTimeout`, sentinel exit 124, v0.8.18)
 
@@ -1063,7 +1067,12 @@ before the next big language addition.
       regression added 2026-05-22 — asserts
       `^namespace track_d_test$` in the scaffolded main.am and
       that the project compiles + runs end-to-end.
-- [ ] **`amc doc`** — extract doc-comments and emit Markdown / HTML.
+- [x] **`amc doc`** — extract doc-comments and emit Markdown. Shipped:
+      `src/doc_cmd.am` (~284 LoC), wired in `main.am`
+      (`amc doc <file.am> [-o <out.md>]`, default stdout). Extracts
+      leading `//` blocks before classes, enums, public methods +
+      fields. *Residual:* HTML emit not done (Markdown only) — pairs
+      with the `gen-docs.am` port (`Sites/tools/gen-docs.js`).
 - [ ] **Remote debugger (`amc dap --remote`)** — extend the
       existing DAP proxy/bridge (the v0.8.0 proxy + v0.8.22 MI
       bridge) to attach to a debuggee on another host. Two
@@ -1689,11 +1698,13 @@ implementation effort.
              complexity; skipped.
           Default to ODBC for parity with the .NET ecosystem;
           FreeTDS as a fallback for fully-FOSS deployments.
-- [ ] **`Amalgame.Database.SQLite` v2** — parameter binding
-      (`db.ExecBind(sql, params)` / `db.QueryBindAll(sql, params)`),
-      typed column accessors (`row.AsInt(0)` / `row.AsBytes(2)`),
-      prepared-statement reuse, transactions (`db.Begin` / `Commit`
-      / `Rollback`). Same pattern applies to sibling engines.
+- [x] **`Amalgame.Database.SQLite` v2** (shipped, package v0.4.0) —
+      parameter binding via `?` placeholders (`ExecBind(sql, params)`
+      / `QueryBindAll(sql, params)`) + transactions (`Begin` /
+      `Commit`). Confirmed in `amalgame.toml [stdlib.functions]`.
+      *Residual:* typed column accessors (`row.AsInt`/`AsBytes`) +
+      prepared-statement reuse not yet exposed. Same pattern applies
+      to sibling engines (postgresql/mysql also at v0.3.0).
 - [ ] **`Amalgame.Database.NoSQL.<Engine>` — document / KV /
       column stores.** Different surface from the SQL family:
       no `Exec(sql)` / `QueryAll(sql)`, instead JSON-document
@@ -1701,9 +1712,11 @@ implementation effort.
       Shared namespace prefix `Amalgame.Database.NoSQL.*` to keep
       it discoverable next to the SQL siblings; types and
       patterns deliberately diverge.
-      **Status**: **Redis shipped** as v0.2.0 (package
-      `amalgame-database-nosql-redis`, protocol-only). Mongo,
-      DynamoDB, Cassandra still pending — see sub-bullets below.
+      **Status** (2026-06-10 audit): **Redis** at v0.3.0
+      (`amalgame-database-nosql-redis`, protocol-only) **and MongoDB
+      foundation shipped** as v0.1.0
+      (`amalgame-database-nosql-mongodb`). DynamoDB, Cassandra still
+      pending — see sub-bullets below.
         - **MongoDB** — link to `libmongoc` + `libbson`
           (Apache-2.0). Surface: `Mongo.Connect(uri)`,
           `Mongo.InsertOne(collection, json)`,
@@ -1734,10 +1747,13 @@ implementation effort.
       streams, the patterns that decouple services. Two families
       based on protocol complexity:
 
-      **Status**: **MQTT v3.1.1 shipped** as v0.2.0 (package
-      `amalgame-messaging-mqtt`, protocol-only, Connect / Publish
-      / Subscribe / Loop, QoS 0). Kafka, RabbitMQ, NATS, AMQP
-      still pending — see sub-bullets below.
+      **Status** (2026-06-10 audit): **all four broker packages now
+      ship** — MQTT v0.2.0 (`amalgame-messaging-mqtt`, protocol-only,
+      Connect/Publish/Subscribe/Loop, QoS 0), NATS v0.2.0
+      (`amalgame-messaging-nats`), Kafka v0.1.0
+      (`amalgame-messaging-kafka`, librdkafka), RabbitMQ v0.1.0
+      (`amalgame-messaging-rabbitmq`, AMQP 0.9.1). Box left open until
+      the surfaces are fleshed out past their foundation releases.
 
       **Pure-Amalgame implementations** — implement the wire
       protocol in `.am`, no vendored library, no system package.
@@ -2382,26 +2398,34 @@ This is a backlog of the ones that *could* migrate once project F
 (`libamalgame.a` pre-compile, v0.7.5) lands and makes the
 ergonomics painless for users.
 
+> **⚠️ Section superseded (2026-06-10 audit).** These were *not*
+> rétro-migrated as bundled AM facades — instead the functionality was
+> **externalized into standalone packages**, and the bundled C headers
+> no longer ship in `runtime/` (all six `Amalgame_*.h` below are absent
+> from the tree). The boxes are checked as *resolved/closed* (the
+> "what do we do with these" question is settled), not as "migrated to
+> facade". See the package versions noted inline.
+
 Candidates ranked by migration value × low risk:
 
-- [ ] **`Amalgame_DateTime.h`** — small, mostly wraps `clock()` /
-      `time()` / `gmtime_r()`. ~120 LoC of glue → AM with 1-2 `@c {}`
-      blocks per helper. Good warm-up candidate.
-- [ ] **`Amalgame_Logging.h`** — log levels + optional file output.
-      No third-party dep. ~80 LoC C, trivial to migrate.
-- [ ] **`Amalgame_Crypto.h`** — SHA-256 + HMAC-SHA-256, pure-C
-      implementation already (no OpenSSL). ~300 LoC but mechanical;
-      the bit-twiddling stays inside one big `@c {}` per primitive.
-- [ ] **`Amalgame_Random.h`** — PCG-32 + `getentropy` / `BCryptGenRandom`
-      wrapper. The PCG step could even move to pure Amalgame (the
-      `src/stdlib/random.am` facade already does most of it); only
-      the OS-entropy syscall needs `@c_include` + `@c {}`.
-- [ ] **`Amalgame_Service.h`** — daemon primitives (POSIX fork/setsid +
-      Windows SCM stub). Touches `@c_include "<unistd.h>"` /
-      `"<windows.h>"`; manageable.
-- [ ] **`Amalgame_FileWatch.h`** — inotify (Linux) / FSEvents (macOS) /
-      ReadDirectoryChangesW (Windows) bindings. Useful real-world test
-      of `@c_include` cross-platform conditional compilation.
+- [x] ~~**`Amalgame_DateTime.h`**~~ → externalized as
+      **`amalgame-datetime`** (v0.2.2). Header no longer bundled.
+- [x] ~~**`Amalgame_Logging.h`**~~ → externalized as
+      **`amalgame-logging`** (v0.2.0). Header no longer bundled.
+- [x] ~~**`Amalgame_Crypto.h`**~~ → externalized as
+      **`amalgame-crypto`** (v0.7.0, now OpenSSL-backed:
+      JWS/COSE/ES256/RS256, well past SHA-256/HMAC). Header no longer
+      bundled.
+- [x] ~~**`Amalgame_Random.h`**~~ → externalized as
+      **`amalgame-random`** (v0.1.0). Header no longer bundled.
+- [x] ~~**`Amalgame_Service.h`**~~ → externalized as
+      **`amalgame-service`** (v0.2.0, systemd/launchd/SCM install).
+      Header no longer bundled.
+- [x] ~~**`Amalgame_FileWatch.h`**~~ → externalized as
+      **`amalgame-io-filewatcher`** (v0.5.0, inotify + polling, typed
+      `WatchEvent`, rename pairing). Header no longer bundled. macOS
+      FSEvents / Windows RDCW still deferred to its v0.6 (see the
+      FileWatcher entry above).
 
 Non-candidates (stay in C):
 

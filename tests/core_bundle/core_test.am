@@ -399,6 +399,14 @@ class Program {
         g_hexbin.Add(new CoreCase("hex+bin sum","sum=281"))
         Program.RunGroup("./tests/samples/hex_bin_literals.am", "hex_bin_literals", g_hexbin)
 
+        // multi-line assignment + 64-bit literal arithmetic (regression)
+        let g_mli: List<CoreCase> = new List<CoreCase>()
+        g_mli.Add(new CoreCase("multi-line string assign", "ml: ok"))
+        g_mli.Add(new CoreCase("i64 literal product",      "big=900000000000"))
+        g_mli.Add(new CoreCase("multi-line i64 product",   "n=1000000000000"))
+        g_mli.Add(new CoreCase("precedence intact",        "sum=11"))
+        Program.RunGroup("./tests/samples/multiline_assign_i64.am", "multiline_assign_i64", g_mli)
+
         // ── control_flow (1 cases) ──
         let g_control_flow: List<CoreCase> = new List<CoreCase>()
         g_control_flow.Add(new CoreCase("control flow", "Grade: B"))
@@ -772,6 +780,17 @@ class Program {
         g_interfaces.Add(new CoreCase("interface scale", "Circle(r=10)"))
         g_interfaces.Add(new CoreCase("interface dispatch", "Circle(r=10)"))
         Program.RunGroup("./tests/samples/interfaces.am", "interfaces", g_interfaces)
+
+        // ── interface dispatch (discriminating: output only via itab) ──
+        let g_iface_dispatch: List<CoreCase> = new List<CoreCase>()
+        g_iface_dispatch.Add(new CoreCase("iface dispatch dog", "woof"))
+        g_iface_dispatch.Add(new CoreCase("iface dispatch cat", "meow"))
+        Program.RunGroup("./tests/samples/interface_dispatch.am", "iface_dispatch", g_iface_dispatch)
+
+        // ── interface values in a List<I> (v0.8.73 heap-boxing) ──
+        let g_iface_list: List<CoreCase> = new List<CoreCase>()
+        g_iface_list.Add(new CoreCase("iface list dispatch", "woofmeowmeow"))
+        Program.RunGroup("./tests/samples/interface_list.am", "iface_list", g_iface_list)
 
         // ── generic_interfaces (2 cases) ──
         let g_generic_interfaces: List<CoreCase> = new List<CoreCase>()

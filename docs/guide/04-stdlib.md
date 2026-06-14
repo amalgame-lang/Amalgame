@@ -67,7 +67,7 @@ Console.WriteLine("Hello, " + name + "!")
 
 ## String — text manipulation
 
-`runtime/Amalgame_String.h` · canonical declarations in [stdlib/strings.am](../../stdlib/strings.am)
+`runtime/Amalgame_String.h` · canonical declarations in [stdlib/strings.am](https://github.com/amalgame-lang/Amalgame/blob/main/stdlib/strings.am)
 
 ### Inspection
 
@@ -785,4 +785,4 @@ vs `Amalgame_Database_DuckDB_Open`) with no link collision.
   bound ones (Postgres / MySQL).
 - A package manager and ecosystem
 
-These are tracked in [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).
+These are tracked in [ROADMAP_COMPLET.md](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md).

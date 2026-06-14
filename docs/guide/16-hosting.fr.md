@@ -106,6 +106,14 @@ après un reboot. Reliez-le à systemd pour qu'il démarre au boot, redémarre
 en cas de crash, et logue durablement. Les ports < 1024 et le challenge
 ACME demandent root.
 
+> **Les déploiements config-driven sautent cette étape.** Si vous lancez
+> le binaire `mosaic serve` depuis un `mosaic.toml` (pas un `./server`
+> bâti à la main), `mosaic service install` génère et enregistre l'unit
+> ci-dessous pour vous en une commande — voir [Mosaic → Configuration →
+> Tourner en service](mosaic/03-configuration.fr.md#4-tourner-en-service).
+> L'unit manuelle ici est pour un `./server` custom que vous avez compilé
+> vous-même.
+
 ```ini
 # /etc/systemd/system/mosaic-sites.service
 [Unit]

@@ -1,12 +1,170 @@
 # amc on bare metal — compiling Amalgame for MCUs
 
-**Status:** design **frozen** (2026-05-31). No code yet. The conceptual
-design — backend strategy, memory model, execution model, escape
-checking, and the hardware-access (HAL) surface — is settled (decided
-with Bastien over the 2026-05-31 design session). What remains is
-**plumbing** (toolchain config, linker scripts, flashing) and a
-**Phase 0 spike** to prove the runtime bet in QEMU. No open conceptual
-decisions.
+**Status:** design **frozen** (2026-05-31). **Phase 0 COMPLETE
+(2026-06-08): link-proof PASS + runs green in QEMU. Phase 1 IN PROGRESS
+(slice-by-slice, hard rule = zero hosted regression).** The conceptual design — backend
+strategy, memory model, execution model, escape checking, and the
+hardware-access (HAL) surface — is settled (decided with Bastien over the
+2026-05-31 design session). What remains is **plumbing** (toolchain
+config, linker scripts, flashing) and the Phase 1 compiler wiring below.
+No open conceptual decisions.
+
+### Phase 1 progress
+
+- **Slice 1 — golden-C regression net (2026-06-08).** `tools/golden-c/`
+  snapshots the C amc emits for a 15-sample corpus on hosted and fails on
+  any byte drift. This is the trip-wire enforcing §0 as `--target` threads
+  through cgen. Trip-wire verified (drift → exit 1 + diff).
+- **Slice 2 — `--target` + freestanding transpile (2026-06-08).**
+  `amc --target=cortex-m3|cortex-m4|cortex-m7 foo.am` emits freestanding C:
+  minimal prelude (`#include "_runtime.h"` only), `amc_main()` entry (no
+  `GC_INIT`/argv), `new`/ctor via `code_alloc` (arena, **no GC**), stdlib
+  auto-attach (Json/Toml/…) disabled. Unknown targets rejected. amc-emitted
+  C (not hand-written) cross-compiles via `examples/mcu/` + the board asset
+  `runtime/embedded/boards/qemu-lm3s6965/` and **runs green in QEMU**
+  (`Hello bare metal`, 171 B `.text`, 0 `GC_*`/stdio/malloc). Hosted
+  unchanged: golden-c PASS 15/15, core bundle 383/0, build+run OK. All
+  embedded behavior gated on `IsEmbedded()` / `CGen.Embedded` (no-op on
+  hosted).
+- **Slice 2b — `amc build --target=` one-step (2026-06-09).**
+  `amc build --target=cortex-m3 hello.am -o hello` now transpiles +
+  cross-compiles + links + objcopies in one command → `hello` (ELF) +
+  `.bin` + `.hex`, runs in QEMU. `Program.LinkEmbedded` resolves the board
+  asset (`runtime/embedded/boards/<board>`), invokes `TargetCC`/`TargetCpuFlags`
+  + startup + linker script; `BuildEntry` skips the package/install/host-link
+  machinery entirely under a target (no packages on MCU). `cortex-m3` maps
+  to the bundled QEMU lm3s6965 board; `cortex-m4/m7` report they need a
+  board package (slice 6). Hosted build/run/test unchanged (golden-c 15/15,
+  core bundle 383/0, hosted build+run OK).
+- **Slice 3 — `setup`/`loop`/`region` soft keywords (2026-06-09).**
+  Contextual keywords (only a construct when followed by `{`; otherwise
+  ordinary identifiers) parsed by **desugaring to existing nodes** —
+  `loop {B}` → `while(1){ amc_arena_reset(); B }`, `region {B}` → a block
+  bracketed by `amc_arena_push_mark()`/`amc_arena_pop_mark()` (runtime mark
+  stack), `setup {B}` → a block bracketed by `amc_persist_begin/end()`. No
+  new AST kinds → resolver/typechecker/cgen untouched. The arena ops are
+  no-ops on hosted (`runtime/_runtime.h`) and real on embedded, so the same
+  tree runs on a PC and on the MCU. Verified in QEMU: a 2000-tick loop with
+  per-tick string churn survives with **no arena overflow** (reset bounds
+  memory; 8 KB arena would overflow ~500 ticks without it); `setup` runs
+  once; `region` reclaims its sub-arena. Hosted: golden-c 15/15, core bundle
+  383/0, `loop`/`setup`/`region` run on PC. **Deferred to slice 4:**
+  `persist(expr)` expression form (touches the resolver — natural to land
+  with the escape check); `setup {}` already covers run-once persistent state.
+- **Slice 4 — `persist(expr)` escape valve (2026-06-09).** `persist(x)`
+  forces x's allocations into the persistent region so the value outlives
+  the per-tick reset. Type-transparent: whitelisted in the resolver, the
+  typechecker + cgen both infer `persist(x)` as `type(x)` (so
+  `let c = persist(new T())` declares `T* c` and `c.field` lowers cleanly).
+  A runtime macro — identity on hosted (GC owns it), a statement-expression
+  bracketing the persistent flag on embedded. Verified in QEMU and hosted: a
+  persistent counter object survives per-tick arena churn (`persistent
+  c.N=3`). Hosted golden-c 15/15.
+  - **Escape check (`arena ↛ persistent`) DONE (2026-06-09).** Sound by
+    construction: the typechecker (embedded-only) tracks each local's origin
+    — `persist(...)` → persistent, fresh `new`/list/concat → arena — plus a
+    `setup{}`-depth counter (allocations there are persistent). It flags two
+    store sites where a *known-arena* value lands in a *known-persistent*
+    destination: `persistentObj.field = new T()` and
+    `persistentColl.Add/Set/Push(new T())`. Either side uncertain → not
+    flagged, so **≈zero false positives** (verified: `persist`-wrapped,
+    inside `setup`, on hosted, and plain int field mutation all stay clean;
+    both footguns error with a "wrap it with persist(...)" diagnostic).
+    Misses (interprocedural flow, user storing-methods, static fields) are
+    the documented upgrade path. (Pre-existing, unrelated: `obj.field.ToString()`
+    on an int member emits `i64_ToString` — fails on hosted too; not MCU.)
+- **Slice 5 — `@isr` allocation-free check (2026-06-09).** `@isr` parses
+  for free via the existing flag-decorator mechanism (stored in
+  `method.Str2`). The typechecker, embedded-only (`TypeChecker.Embedded` set
+  from `--target`), scans every `@isr`-decorated method body and errors on
+  any allocation — `new`, list literals/comprehensions, string concatenation
+  (sound markers, no false positives). Verified: an ISR doing `new`/concat is
+  rejected with a precise diagnostic; an allocation-free ISR compiles and
+  cross-builds; on hosted `@isr` is ignored (the check never runs). Hosted
+  golden-c 15/15, core bundle 383/0. **Follow-up:** transitive reachability
+  (flag allocations in functions an ISR *calls*) — today the check is the
+  direct ISR body, which catches the common footgun.
+- **Slice 6 — `Amalgame.Mcu` HAL + board scaffold (2026-06-09).** `Mcu` is
+  a builtin static facade (registered in the resolver/symbol table + cgen
+  `isCoreStdlib`, so `Mcu.Method(...)` lowers to `Mcu_Method(...)` like
+  `Console`): `PinMode`, `DigitalWrite`, `DigitalRead`, `Toggle`, `DelayMs`,
+  `Millis`, and `High/Low/Output/Input` constants. The embedded runtime ships
+  a default **virtual board** impl (semihosting-logging, pin-state tracking)
+  so a blink is observable under QEMU; a real board overrides via
+  `AMC_HAVE_MCU_BOARD`. Verified in QEMU: `Mcu.Toggle(led)` alternates pin
+  state across loop ticks. Pins are `int` for now (opaque typed `Pin` is a
+  follow-up). Hosted golden-c 15/15, core 383/0, stdlib 212/0. The real-silicon
+  board package **`amalgame-mcu-nucleo-f767zi`** (sibling repo) is scaffolded —
+  libopencm3 `Mcu_*`, STM32F767 startup/linker, `amalgame.toml`, README —
+  **but NOT yet built/flashed** (no board/libopencm3 on the dev machine; marked
+  clearly). **Follow-up:** `amc build --target=cortex-m7 --board=…` driver
+  discovery so the real link is one command (today only the bundled QEMU M3
+  board auto-resolves).
+- **Slice 7 — LSP target-awareness (2026-06-09).** The shared
+  parser/resolver/typechecker already make `setup`/`loop`/`region`/`persist`/
+  `Mcu` resolve (`amc --check` is clean) — the editor's earlier false
+  "Unknown symbol" was a *stale LSP server* (started before the rebuild) and
+  clears on restart. Added target-awareness: `LspServer.ProjectIsEmbedded`
+  reads `[target]` from the project `amalgame.toml` and sets
+  `TypeChecker.Embedded` on the diagnostics path, so embedded-only checks
+  (e.g. `@isr` allocation) surface as editor squiggles for MCU projects.
+  `examples/mcu/amalgame.toml` marks that tree as a `cortex-m3` project.
+  Hosted golden-c 15/15, core 383/0. **Follow-up:** board-pin completion and
+  surfacing `f64`-on-no-FPU as squiggles (the LSP↔lockfile config-awareness
+  noted in §11.2).
+
+### Phase 1 status (2026-06-09)
+
+Slices 1–7 **complete** (slice 6 = HAL core + QEMU board; the real-silicon
+F767ZI board package is scaffolded/untested). End to end: `amc build
+--target=cortex-m3 foo.am` produces a freestanding ELF (no GC/stdio/malloc)
+that runs on emulated Cortex-M; `setup`/`loop`/`region`/`persist` + the
+`Amalgame.Mcu` HAL work and are demonstrated by `examples/mcu/`. **Every
+slice held the §0 line: hosted golden-c 15/15 + core bundle 383/0 throughout.**
+**Real-silicon link-proof DONE (2026-06-09):** libopencm3 built for stm32f7;
+the `amalgame-mcu-nucleo-f767zi` blink **cross-compiles + links clean** against
+it (firmware.elf/.bin/.hex, 0 undefined symbols, M7 vector table). And
+**`amc build --target=cortex-m7 --board=<pkg>` works in one command** — it
+reads the board manifest (linker / cpu_flags / defines / libs) and wires the
+cross-link; native lib search paths come from env `AMC_EMBED_INC`/`AMC_EMBED_LIB`.
+Only the physical `st-flash write firmware.bin 0x08000000` is pending (no board
+on the dev machine).
+
+**Driving use-case (revealed 2026-06-09):** port **MusiCall-Box** (private repo,
+PlatformIO/mbed on Nucleo-F767ZI) to Amalgame — a real-time networked audio
+device (RTP/RTPStream audio over UDP, jitter buffer, NTP, Opus codec). That's
+the north star; it implies large future subsystems (Ethernet/UDP on MCU, audio
+I2S, RTOS tasks, fixed-point DSP). **Per Bastien (2026-06-09): finish the amc
+MCU *tooling* first (flash, on-chip DAP, LSP polish) before starting the port.**
+
+(stale note retained below for history:) Real-silicon bring-up on the
+Nucleo-F767ZI awaits building the scaffolded
+`amalgame-mcu-nucleo-f767zi` package against libopencm3 (untested here).
+Remaining for "100%": escape-check *upgrades* (interprocedural / user
+storing-methods / static fields), ISR transitive reachability, opaque typed
+`Pin`, `amc build --target=cortex-m7 --board=…` driver integration, SysTick
+timing.
+
+**Phase 0 spike** lives in [`experiments/mcu-spike/`](../../experiments/mcu-spike/)
+with the durable freestanding runtime at
+[`runtime/embedded/_runtime.h`](../../runtime/embedded/_runtime.h)
+(region-per-tick arena + `persist` + semihosting `Console`/`code_putc`,
+same symbol names as hosted). A hand-written stand-in for cgen output
+cross-compiles for Cortex-M3 and **links clean**: `.text` 1.5 KB, **zero
+`GC_*`/stdio/malloc symbols**, no undefined symbols (arm-none-eabi-gcc
+12.2.1). It **runs green under `qemu-system-arm -M lm3s6965evb`**
+(semihosting): 8 `loop` ticks, the persistent counter survives all 8
+arena resets, and the arena high-water stays bounded to ~one tick (reset
+proven). The runtime bet — Boehm GC (no bare-metal port, blocker #1) →
+region-per-tick arena — is proven end to end.
+
+**Hardware on hand for Phase 1:** ST **Nucleo-F767ZI** (STM32F767ZI,
+Cortex-**M7F** w/ FPU, 2 MB flash / 512 KB RAM, on-board ST-LINK/V2-1 →
+SWD flash via OpenOCD/st-flash). This makes **Cortex-M/STM32 the first
+real-silicon port** (the proposal's ESP32-first ordering was about ease,
+not hardware availability). M7F has an FPU, so `f64` is allowed (no
+soft-float warning). Board package: `amalgame-mcu-nucleo-f767zi` wrapping
+libopencm3 (`opencm3_stm32f7`) or the STM32 HAL.
 
 ## TL;DR
 

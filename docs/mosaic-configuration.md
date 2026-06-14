@@ -140,8 +140,8 @@ L'appel `Acme.EnsureCertEx` reste côté user pour qu'il puisse séquencer le pr
 
 ### `[sessions]` — server-side session storage
 
-**Lib:** `Amalgame.Web.MemorySessionStore` / `SignedCookieSessionStore` (today) — `RedisSessionStore` (planned, uses amalgame-database-nosql-redis) — `shm` backend planned (needs amalgame-threading).
-**Status:** *partial* — `memory` (v0.8.1) + `signed_cookie` strategy (v0.8.3) ship; `redis` and `shm` are *planned*.
+**Lib:** `Amalgame.Web.MemorySessionStore` / `SignedCookieSessionStore` / `RedisSessionStore` (the last uses amalgame-database-nosql-redis) — `shm` backend planned (needs amalgame-threading).
+**Status:** *shipped* — `memory` (v0.8.1) + `signed_cookie` strategy (v0.8.3) + `redis` backend all ship; `shm` is *planned*. Since **v0.20.0** the three stores implement a common `SessionStore` interface and the pipeline wires them automatically: `WebApp.WithSession(store)` loads `ctx.Session` from the cookie before the handler and persists it (backend write + Set-Cookie) afterwards — handlers just read/write `ctx.Session`.
 
 The schema has **two orthogonal dimensions**:
 
@@ -152,13 +152,13 @@ The schema has **two orthogonal dimensions**:
 - **`backend`** — *which* server-side store (when `strategy = "server_side"`):
   - `memory` (default) — in-process Map; single-worker only
   - `shm` (planned) — shared memory between workers of the same node
-  - `redis` (planned) — multi-worker, multi-node
+  - `redis` (shipped) — multi-worker, multi-node (`RedisSessionStore`)
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
 | `strategy` | `"server_side"\|"encrypted_cookie"` | `"server_side"` | `MOSAIC_SESSIONS_STRATEGY` | When `encrypted_cookie`, the cookie value IS the signed session payload (Flask/Rails pattern). v0.1 is signed-only (visible but tamper-proof); AEAD encryption comes with amalgame-crypto v0.2. |
 | `secret` | `string` | — | `MOSAIC_SESSIONS_SECRET` | **Required** when `strategy = "encrypted_cookie"`. HMAC-SHA-256 key. Keep stable across deploys; rotation invalidates all signed cookies. |
-| `backend` | `"memory"\|"shm"\|"redis"` | `"memory"` | `MOSAIC_SESSIONS_BACKEND` | Ignored when `strategy = "encrypted_cookie"`. |
+| `backend` | `"memory"\|"shm"\|"redis"` | `"memory"` | `MOSAIC_SESSIONS_BACKEND` | Ignored when `strategy = "encrypted_cookie"`. `memory` + `redis` shipped; `shm` planned. |
 | `dir` | `string` | `"./data/sessions"` | `MOSAIC_SESSIONS_DIR` | For future `file` backend (not in the 3-tier triplet). |
 | `url` | `string` | — | `MOSAIC_SESSIONS_URL` | For `redis` (`redis://host:port/db`). |
 | `max_age_sec` | `int` | `86400` | `MOSAIC_SESSIONS_MAX_AGE_SEC` | Per-session TTL (server-side stores). |
@@ -206,8 +206,8 @@ Unknown keys are ignored (forward-compat with future fields).
 
 ### `[security.cors]` — Cross-Origin Resource Sharing
 
-**Lib:** `Amalgame.Web.Cors.FromMap(...)` (*planned*).
-**Status:** *planned* — design locked in via this section.
+**Lib:** `Amalgame.Web.Cors.FromMap(...)` + `WebApp.WithCors(...)`.
+**Status:** *shipped* — `Cors.FromMap` composes the keys below (covered by `cors_test`); the pipeline handles OPTIONS preflight + stamps `Access-Control-*` on responses.
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
@@ -254,6 +254,30 @@ Today the validation reads the configured header only; the
 
 ---
 
+### `[security.auth]` — Basic / JWT authentication
+
+**Lib:** `Amalgame.Web.BasicAuth` / `JwtAuth` + `WebApp.WithBasicAuth(...)` / `WithJwt(...)` + the `Protected()` route group.
+**Status:** *shipped (v0.19.0)* — **code-wired, not a TOML table.** Auth has no `FromMap`: a `BasicAuth` verifier is a closure `(user, pwd) -> bool` (it maps to *your* credential store — env, DB, hash compare), which TOML can't express. Only the *secrets* belong in config (env), read in code.
+
+```amalgame
+// secrets from the environment; logic in code
+let app = WebApp.New()
+    .WithJwt(new JwtAuth(Env_Get("JWT_SECRET")))                // HS256 Bearer
+    .WithBasicAuth(new BasicAuth("Admin")
+        .WithVerifier((u, p) => u == "admin" && p == Env_Get("ADMIN_PASSWORD")))
+    .Get("/", home)                                             // public
+app.Protected()                                                 // gated group:
+    .Get("/admin", dashboard)                                   //   401 unless a
+    .Post("/api/x", create)                                     //   configured scheme verifies
+```
+
+- Routes registered via `Protected()` carry `Route.Protected = true`; auth runs **after match / before handler**, so public routes and 404s pay nothing.
+- A protected route accepts the request if **any** configured scheme verifies, and **fails closed (401)** if none is configured.
+- `OAuth2Client` (authorization-code login flow, Github/Google presets) is wired as ordinary route handlers (`StartLogin` / `HandleCallback`), not pipeline middleware.
+- **MUST run over TLS** — Basic puts the password and Bearer the token on every request. Pair with `WebApp.ServeHttps` / `ServeHttpsMt`.
+
+---
+
 ### `[security.rate_limit]` — per-IP / per-key throttling
 
 **Lib:** `Amalgame.Web.RateLimit.FromMap(...)` (v0.6.0).
@@ -282,8 +306,8 @@ sliding-window / token-bucket in v2 if you need strict guarantees.
 
 ### `[logging]` — access log + structured runtime log
 
-**Lib:** `Amalgame.Web.Logger.FromMap(...)` (*planned*).
-**Status:** *planned*.
+**Lib:** `Amalgame.Web.LogConfig.FromMap(...)` + `WebApp.WithLogging(...)`.
+**Status:** *shipped* — `WithLogging` applies level + file sink on the amalgame-logging facade and emits one access-log line per request on every path (static hit, middleware reject, route, 404), enriched in v0.18.0 with host + status + duration + client IP.
 
 | Key | Type | Default | Env | Notes |
 |---|---|---|---|---|
@@ -318,6 +342,38 @@ value contains CR/LF, and the cost of leaving it on is a CVE-class
 injection vector. Power-users who need a value verbatim (test fixtures,
 trusted internal builders) can call `HeaderUnsafe(name, value)` per
 response. Shipped in `amalgame-net-http v0.4.2`.
+
+---
+
+### `[powered_by]` — server-identity advertisement
+
+**Lib:** `Amalgame.Web.PoweredBy.FromMap(...)` + `WebApp.WithPoweredBy(...)` / `WithoutPoweredBy()` (since v0.21.0).
+**Status:** *shipped (v0.21.0)*.
+
+Stamps two server-identity headers onto **every** response:
+
+```
+X-Powered-By: Mosaic (Amalgame)    (framework convention — Express-style)
+Server:       Mosaic (Amalgame)    (server convention — nginx/apache-style)
+```
+
+**This is the one feature that is ON by default** — a bare `WebApp.New()`
+already advertises the stack (free, passive promotion). Every other
+middleware here is opt-in; this one you opt *out* of. Because
+`X-Powered-By` is mild fingerprinting (OWASP / helmet recommend dropping
+it), set `enabled = false` if you'd rather not disclose the stack to
+clients.
+
+| Key | Type | Default | Env | Notes |
+|---|---|---|---|---|
+| `enabled` | `bool` | `true` | `MOSAIC_POWERED_BY_ENABLED` | Master switch. `false` → emits nothing (equivalent to `WithoutPoweredBy()`). |
+| `value` | `string` | `"Mosaic (Amalgame)"` | `MOSAIC_POWERED_BY_VALUE` | Advertised identity for both headers. |
+| `x_powered_by` | `bool` | `true` | `MOSAIC_POWERED_BY_X_POWERED_BY` | Toggle the `X-Powered-By` header alone. |
+| `server` | `bool` | `true` | `MOSAIC_POWERED_BY_SERVER` | Toggle the `Server` header alone. |
+
+Like `SecurityHeaders`, `Apply` never overwrites a header the handler
+already set — a handler that sets its own `Server:` wins. Unknown keys
+are ignored (forward-compat).
 
 ---
 

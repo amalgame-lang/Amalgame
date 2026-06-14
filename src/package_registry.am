@@ -550,6 +550,15 @@ public class PackageRegistry {
     // inside each package's cache so cross-platform users sharing
     // a $HOME don't link the wrong .o.
     public static string PlatformTag() {
+        // Native detection first — cmd.exe has no `uname`, so the POSIX
+        // probe below yields "unknown-unknown" on Windows and the
+        // precompiled facade lands in build/unknown-unknown/ where no
+        // caller (which filter on "windows"/"win") can find it.
+        @c {
+        #ifdef _WIN32
+            return (code_string) "windows-x86_64";
+        #endif
+        }
         // `uname -s` returns Linux / Darwin / MINGW64_NT-... etc.
         // Normalise to short names matching the GitHub Releases
         // artefact convention: linux / macos / windows.
@@ -608,7 +617,7 @@ public class PackageRegistry {
     // one edit (this constant + tools/release.sh which already
     // handles --version).
     public static string AmcVersion() {
-        return "0.8.71"
+        return "0.8.88"
     }
 
     // Highest [package].schema-version this amc knows how to
