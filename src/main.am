@@ -3,6 +3,7 @@ namespace Amalgame.Compiler
 import Amalgame.Collections
 import Amalgame.IO
 import Amalgame.String
+import Amalgame.Process
 
 // Minimal monotonic-clock timer kept in amc itself. The full
 // `Stopwatch` class moved out of the bundled stdlib into the
@@ -787,6 +788,75 @@ public class AmalgameCompiler {
             }
         }
         return false
+    }
+}
+
+// ── Télémétrie d'usage ANONYME (étage 1) ──────────────────────────────
+// Au build/run, amc envoie un ping anonyme à tel.amalgame.me {kind,version,
+// os,arch} — pour savoir ce qui est réellement utilisé. AUCUN identifiant,
+// AUCUNE donnée perso ; le serveur dérive le pays de l'IP puis la jette.
+//
+// Garde-fous : best-effort et NON BLOQUANT (curl lancé en arrière-plan `&`,
+// --max-time 3) ; jamais d'erreur remontée ; throttlé 1×/jour (timestamp
+// dans ~/.amalgame/.tel_last, PAS un identifiant) ; opt-out via les variables
+// d'env AMALGAME_NO_TELEMETRY ou DO_NOT_TRACK. Si curl est absent, le shell
+// échoue silencieusement et amc continue normalement (zéro dépendance dure).
+public class Telemetry {
+    private static bool optedOut() {
+        if (String_Length(Env_Get("AMALGAME_NO_TELEMETRY")) > 0) { return true }
+        if (String_Length(Env_Get("DO_NOT_TRACK")) > 0) { return true }
+        return false
+    }
+
+    private static string throttlePath() {
+        let dir: string = PackageRegistry.AmalgameStateDir()
+        if (String_Length(dir) == 0) { return "" }
+        return Path_Combine(dir, ".tel_last")
+    }
+
+    // true si un ping a déjà été envoyé il y a < 24 h (ou si pas de HOME).
+    private static bool throttled(int now) {
+        let path: string = Telemetry.throttlePath()
+        if (String_Length(path) == 0) { return true }
+        if (!File.Exists(path)) { return false }
+        let last: int = String_ToInt(String_Trim(File.ReadAll(path)))
+        return (now - last) < 86400
+    }
+
+    // Ping best-effort. Ne lève jamais, ne bloque jamais.
+    public static void Ping() {
+        if (Telemetry.optedOut()) { return }
+        let now: int = AddCommand.NowSeconds()
+        if (now <= 0) { return }
+        if (Telemetry.throttled(now)) { return }
+
+        // os/arch depuis le tag plateforme "os-arch" (uname, normalisé).
+        let plat: string = PackageRegistry.PlatformTag()
+        var os: string = plat
+        var arch: string = "unknown"
+        let dash: int = String_IndexOf(plat, "-")
+        if (dash > 0) {
+            os = String_Substring(plat, 0, dash)
+            arch = String_Substring(plat, dash + 1, String_Length(plat) - dash - 1)
+        }
+        let version: string = PackageRegistry.AmcVersion()
+
+        // Corps JSON minimal et anonyme. Champs issus de constantes/uname
+        // (pas d'entrée utilisateur) → pas de risque d'injection shell.
+        let body: string = "{\"kind\":\"amc\",\"version\":\"" + version
+            + "\",\"os\":\"" + os + "\",\"arch\":\"" + arch + "\"}"
+
+        // curl en ARRIÈRE-PLAN (`&`) → amc ne bloque pas. --max-time 3 borne
+        // curl. Tout en /dev/null : silencieux. Si curl absent → shell échoue,
+        // ignoré. RunCapture rend la main immédiatement (le shell backgroundé sort).
+        let cmd: string = "curl -sS -X POST -H 'Content-Type: application/json'"
+            + " --max-time 3 --data '" + body + "'"
+            + " https://tel.amalgame.me/ping >/dev/null 2>&1 &"
+        Process.RunCapture(cmd)
+
+        // Marque le throttle même si curl échoue (pas de re-tentative avant 24 h).
+        let path: string = Telemetry.throttlePath()
+        if (String_Length(path) > 0) { File.WriteAll(path, String_FromInt(now)) }
     }
 }
 
@@ -1974,6 +2044,10 @@ public class Program {
             Console.WriteError("amc build: entry file not found: " + entryAm)
             return 2
         }
+
+        // Télémétrie d'usage anonyme (best-effort, non bloquant, opt-out env).
+        // Couvre build + run (chemin partagé). Throttlé 1×/jour.
+        Telemetry.Ping()
 
         // Resolve amc's own absolute path. Args_Get(0) carries whatever
         // the shell put in argv[0] — when amc is launched via PATH that's
