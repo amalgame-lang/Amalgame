@@ -404,7 +404,7 @@ not by textual substitution. The runtime exposes
 `Closure_call1` / `_call2` / `_call3` for arities 1–3.
 
 Higher-order `List<T>` methods accept a lambda directly (since
-v0.3.6 — see [04-stdlib.md](04-stdlib.md#listt) for the full
+v0.3.6 — see [04-stdlib.md](04-stdlib.md#listlttgt) for the full
 list):
 
 ```kotlin
@@ -702,7 +702,7 @@ Math2.Clamp(x: 50, lo: 0, hi: 10)
 
 > Names are **documentation-only** at the call site for now: values
 > are passed in source order regardless of the names. Tracked in
-> [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).
+> [ROADMAP_COMPLET.md](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md).
 
 ## Library mode
 
@@ -748,9 +748,9 @@ non-zero when any error was reported.
 
 - Generic type inference (`let xs = new List<int>()` does compile but
   the element type `int` isn't propagated through every method call —
-  see [04-stdlib.md](04-stdlib.md#listt) for which methods preserve
+  see [04-stdlib.md](04-stdlib.md#listlttgt) for which methods preserve
   the element type).
 - Same-name list-comprehension nesting (use distinct loop vars).
 
-See [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md) for the full
+See [ROADMAP_COMPLET.md](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md) for the full
 backlog.

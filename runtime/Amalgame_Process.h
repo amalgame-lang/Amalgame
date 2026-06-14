@@ -81,7 +81,14 @@ static inline i64 _am_decode_status(int rc) {
 #endif
 }
 
-/* Run a shell command, streaming its stdio to the parent's. */
+/* Run a shell command, streaming its stdio to the parent's.
+ *
+ * Commands are run by the platform shell directly (sh on POSIX, cmd.exe
+ * on Windows) — no `sh -c` wrapping. amc no longer shells out POSIX-only
+ * utilities (rm/mv/mkdir/ls/date are native @c now), and the external
+ * tools it does invoke (git, gcc, ar, curl, amc) are quoted with double
+ * quotes, which cmd.exe and sh both honour. So cmd.exe never sees an
+ * idiom it can't parse, and we don't depend on `sh` being on PATH. */
 static inline i64 Process_Run(code_string cmd) {
     if (!cmd) return -1;
     int rc = system(cmd);

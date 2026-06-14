@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "name": "MyFirstApp (sample)",
+      "path": "MyFirstApp"
+    },
+    {
+      "name": "📚 Amalgame Docs",
+      "path": "/usr/local/share/amalgame/docs/guide"
+    }
+  ],
+  "settings": {
+    "amalgame.enableLsp": true,
+    "amalgame.serverPath": "amc",
+    "files.associations": {
+      "*.am": "amalgame"
+    }
+  }
+}

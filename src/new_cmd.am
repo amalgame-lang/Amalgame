@@ -47,7 +47,8 @@ public class NewCommand {
         Console.WriteError("               (macOS / Windows 11 ship the engine with the OS).")
         Console.WriteError("")
         Console.WriteError("Flags:")
-        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service, forms, ui-web-form.")
+        Console.WriteError("  --template <kind>    One of: exe (default), lib, test, service, forms, ui-web-form, mcu.")
+        Console.WriteError("  --board <board>      For --template mcu: qemu-lm3s6965 (default) or nucleo-f767zi.")
         Console.WriteError("  --no-vscode          Skip the .vscode/ scaffold (launch.json + settings.json")
         Console.WriteError("                       + tasks.json). On by default so F5 in VS Code launches")
         Console.WriteError("                       the binary under `amc dap` with .am-level breakpoints.")
@@ -62,6 +63,7 @@ public class NewCommand {
         var template:   string = "exe"
         var force:      bool   = false
         var wantVscode: bool   = true
+        var board:      string = ""   // MCU template: target board (e.g. nucleo-f767zi)
 
         var i: int = 2
         while (i < argc) {
@@ -84,6 +86,13 @@ public class NewCommand {
                 }
                 i = i + 1
                 template = Args_Get(i)
+            } else if (a == "--board") {
+                if (i + 1 >= argc) {
+                    Console.WriteError("amc new: --board needs a value")
+                    return 1
+                }
+                i = i + 1
+                board = Args_Get(i)
             } else if (String_StartsWith(a, "-")) {
                 Console.WriteError("amc new: unknown flag '" + a + "'")
                 NewCommand.PrintUsage()
@@ -104,9 +113,19 @@ public class NewCommand {
             NewCommand.PrintUsage()
             return 1
         }
-        if (template != "exe" && template != "lib" && template != "test" && template != "service" && template != "forms" && template != "ui-web-form") {
-            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service / forms / ui-web-form)")
+        if (template != "exe" && template != "lib" && template != "test" && template != "service" && template != "forms" && template != "ui-web-form" && template != "mcu") {
+            Console.WriteError("amc new: unknown template '" + template + "' (try exe / lib / test / service / forms / ui-web-form / mcu)")
             return 1
+        }
+        // MCU template: default board is the QEMU lm3s6965 (cortex-m3) — fully
+        // self-contained, runs in the emulator with no hardware. --board picks
+        // real silicon (e.g. nucleo-f767zi).
+        if (template == "mcu") {
+            if (String_Length(board) == 0) { board = "qemu-lm3s6965" }
+            if (board != "qemu-lm3s6965" && board != "nucleo-f767zi") {
+                Console.WriteError("amc new: unknown --board '" + board + "' (try qemu-lm3s6965 / nucleo-f767zi)")
+                return 1
+            }
         }
         // Accept a path like `path/to/myproj` — IsSafeName only
         // validates the last segment, which is what we use as the
@@ -145,6 +164,10 @@ public class NewCommand {
             rc = NewCommand.ScaffoldForms(name, baseName)
         } else if (template == "ui-web-form") {
             rc = NewCommand.ScaffoldUiWebForm(name, baseName)
+        } else if (template == "mcu") {
+            // MCU scaffold writes its own MCU-specific .vscode (flash + on-chip
+            // debug), so it returns directly and skips the generic wiring.
+            return NewCommand.ScaffoldMcu(name, baseName, board)
         } else {
             rc = NewCommand.ScaffoldTest(name, baseName)
         }
@@ -310,6 +333,335 @@ public class NewCommand {
         Console.WriteLine("  cd " + path)
         Console.WriteLine("  amc test tests/")
         return 0
+    }
+
+    // ── MCU template (docs/proposals/amc-embedded.md) ───────
+    // `amc new <name> --template mcu [--board <board>]`. Default board is the
+    // QEMU lm3s6965 (cortex-m3): fully self-contained, runs in the emulator
+    // with no hardware. `--board nucleo-f767zi` emits a real-silicon project
+    // (board startup + linker + libopencm3 HAL header + flash/debug .vscode).
+    private static int ScaffoldMcu(string path, string base, string board) {
+        let isQemu: bool = (board == "qemu-lm3s6965")
+        var target: string = "cortex-m7"
+        if (isQemu) { target = "cortex-m3" }
+
+        if (!File.Mkdir(path + "/.vscode")) {
+            Console.WriteError("amc new: failed to create .vscode/")
+            return 1
+        }
+        if (!NewCommand.WriteFile(path + "/app.am", NewCommand.McuAppAm(base, isQemu))) { return 1 }
+        if (!NewCommand.WriteFile(path + "/README.md", NewCommand.McuReadme(base, board, target, isQemu))) { return 1 }
+        if (!NewCommand.WriteFile(path + "/.gitignore", NewCommand.McuGitignore())) { return 1 }
+        if (!NewCommand.WriteFile(path + "/amalgame.toml", NewCommand.McuToml(base, board, target, isQemu))) { return 1 }
+        if (!NewCommand.WriteFile(path + "/.vscode/tasks.json", NewCommand.McuTasksJson(target, isQemu))) { return 1 }
+        if (!NewCommand.WriteFile(path + "/.vscode/launch.json", NewCommand.McuLaunchJson(isQemu))) { return 1 }
+
+        if (!isQemu) {
+            // Real-silicon board needs its own startup + linker + HAL header.
+            if (!File.Mkdir(path + "/boards") || !File.Mkdir(path + "/runtime")) {
+                Console.WriteError("amc new: failed to create boards/ or runtime/")
+                return 1
+            }
+            if (!NewCommand.WriteFile(path + "/boards/startup.c", NewCommand.McuStartupF767())) { return 1 }
+            if (!NewCommand.WriteFile(path + "/boards/stm32f767zi.ld", NewCommand.McuLinkerF767())) { return 1 }
+            if (!NewCommand.WriteFile(path + "/runtime/Amalgame_Mcu_Board.h", NewCommand.McuHeaderF767())) { return 1 }
+        }
+
+        Console.WriteLine("Scaffolded '" + base + "' (mcu template, board=" + board + ").")
+        Console.WriteLine("  cd " + path)
+        if (isQemu) {
+            Console.WriteLine("  amc build --target=cortex-m3 app.am -o firmware")
+            Console.WriteLine("  qemu-system-arm -M lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel firmware")
+            Console.WriteLine("  (or just press F5 in VS Code — runs in QEMU)")
+        } else {
+            Console.WriteLine("  amc mcu setup        # one-time: toolchain + libopencm3 (auto-detected)")
+            Console.WriteLine("  amc build --target=cortex-m7 --board=. --flash app.am -o firmware")
+            Console.WriteLine("  (or in VS Code: Ctrl-Shift-B = flash, F5 = debug on chip)")
+        }
+        // First MCU project: if the cross toolchain isn't installed and we're
+        // at an interactive terminal, offer to set it up now (amc mcu setup
+        // asks its own consent). Never prompts in a script/CI (IsInteractive).
+        if (McuCommand.IsInteractive() && !McuCommand.Has("arm-none-eabi-gcc")) {
+            Console.WriteLine("")
+            Console.WriteLine("MCU toolchain not detected.")
+            let _sr: int = McuCommand.Setup(false)
+        }
+        return 0
+    }
+
+    private static string McuAppAm(string base, bool isQemu) {
+        var led: string = "16"   // PB0 (LD1 green) on Nucleo-F767ZI
+        if (isQemu) { led = "13" }
+        var s: string = ""
+        s = s + "namespace " + base + "\n\n"
+        s = s + "// Bare-metal blink via the Amalgame.Mcu HAL + the embedded\n"
+        s = s + "// execution model (setup / loop / region). See README.md.\n"
+        s = s + "public class Program {\n"
+        s = s + "    public static void Main() {\n"
+        s = s + "        let led = " + led + "\n"
+        s = s + "        Mcu.PinMode(led, Mcu.Output())\n"
+        s = s + "        var i = 0\n"
+        s = s + "        loop {\n"
+        s = s + "            i = i + 1\n"
+        s = s + "            Mcu.Toggle(led)\n"
+        s = s + "            Mcu.DelayMs(500)\n"
+        if (isQemu) {
+            s = s + "            if (i >= 6) { break }   // bounded so QEMU returns\n"
+        }
+        s = s + "        }\n"
+        if (isQemu) { s = s + "        Console.WriteLine(\"blink done\")\n" }
+        s = s + "    }\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string McuToml(string base, string board, string target, bool isQemu) {
+        var s: string = ""
+        s = s + "[package]\n"
+        s = s + "name = \"" + base + "\"\n"
+        s = s + "version = \"0.1.0\"\n"
+        s = s + "description = \"Amalgame MCU project (" + board + ")\"\n\n"
+        s = s + "[target]\n"
+        s = s + "mcu   = \"" + target + "\"\n"
+        s = s + "board = \"" + board + "\"\n"
+        if (!isQemu) {
+            s = s + "cpu_flags   = \"-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16\"\n"
+            s = s + "defines     = [\"STM32F7\"]\n"
+            s = s + "linker      = \"boards/stm32f767zi.ld\"\n"
+            s = s + "flash_tool  = \"openocd\"\n"
+            s = s + "openocd_cfg = \"board/st_nucleo_f7.cfg\"\n"
+            s = s + "flash_addr  = \"0x08000000\"\n\n"
+            s = s + "[stdlib]\n"
+            s = s + "classes   = [\"Mcu\"]\n"
+            s = s + "namespace = \"Amalgame.Mcu\"\n"
+            s = s + "header    = \"runtime/Amalgame_Mcu_Board.h\"\n"
+            s = s + "libs      = [\"opencm3_stm32f7\"]\n"
+        }
+        return s
+    }
+
+    private static string McuTasksJson(string target, bool isQemu) {
+        let lb: string = "{"
+        let rb: string = "}"
+        let wsf: string = "$" + lb + "workspaceFolder" + rb
+        let home: string = "$" + lb + "env:HOME" + rb
+        var s: string = ""
+        s = s + "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n"
+        if (isQemu) {
+            s = s + "    {\n"
+            s = s + "      \"label\": \"amc: build (mcu, debug)\",\n"
+            s = s + "      \"type\": \"shell\", \"command\": \"amc\",\n"
+            s = s + "      \"args\": [\"build\", \"--debug\", \"--target=" + target + "\", \"app.am\", \"-o\", \"firmware\"],\n"
+            s = s + "      \"group\": \"build\", \"problemMatcher\": [\"$gcc\"]\n"
+            s = s + "    },\n"
+            s = s + "    {\n"
+            s = s + "      \"label\": \"amc: run (qemu)\",\n"
+            s = s + "      \"type\": \"shell\",\n"
+            s = s + "      \"command\": \"amc build --target=" + target + " app.am -o firmware && qemu-system-arm -M lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel firmware\",\n"
+            s = s + "      \"group\": " + lb + " \"kind\": \"build\", \"isDefault\": true " + rb + ",\n"
+            s = s + "      \"problemMatcher\": [\"$gcc\"]\n"
+            s = s + "    }\n"
+        } else {
+            s = s + "    {\n"
+            s = s + "      \"label\": \"amc: build (mcu, debug)\",\n"
+            s = s + "      \"type\": \"shell\", \"command\": \"amc\",\n"
+            s = s + "      \"args\": [\"build\", \"--debug\", \"--target=" + target + "\", \"--board=" + wsf + "\", \"app.am\", \"-o\", \"firmware\"],\n"
+            s = s + "      \"options\": " + lb + " \"env\": " + lb + " \"AMC_EMBED_INC\": \"" + home + "/libopencm3/include\", \"AMC_EMBED_LIB\": \"" + home + "/libopencm3/lib\" " + rb + " " + rb + ",\n"
+            s = s + "      \"group\": \"build\", \"problemMatcher\": [\"$gcc\"]\n"
+            s = s + "    },\n"
+            s = s + "    {\n"
+            s = s + "      \"label\": \"amc: flash (mcu)\",\n"
+            s = s + "      \"type\": \"shell\", \"command\": \"amc\",\n"
+            s = s + "      \"args\": [\"build\", \"--target=" + target + "\", \"--board=" + wsf + "\", \"--flash\", \"app.am\", \"-o\", \"firmware\"],\n"
+            s = s + "      \"options\": " + lb + " \"env\": " + lb + " \"AMC_EMBED_INC\": \"" + home + "/libopencm3/include\", \"AMC_EMBED_LIB\": \"" + home + "/libopencm3/lib\" " + rb + " " + rb + ",\n"
+            s = s + "      \"group\": " + lb + " \"kind\": \"build\", \"isDefault\": true " + rb + ",\n"
+            s = s + "      \"problemMatcher\": [\"$gcc\"]\n"
+            s = s + "    }\n"
+        }
+        s = s + "  ]\n}\n"
+        return s
+    }
+
+    private static string McuLaunchJson(bool isQemu) {
+        let lb: string = "{"
+        let rb: string = "}"
+        let wsf: string = "$" + lb + "workspaceFolder" + rb
+        var s: string = ""
+        s = s + "{\n  \"version\": \"0.2.0\",\n  \"configurations\": [\n"
+        if (isQemu) {
+            // Host-side QEMU debug is out of scope for the bundled board; F5
+            // runs the emulator via the default task. Provide a hosted-style
+            // placeholder pointing at the firmware for future gdb+QEMU wiring.
+            s = s + "    {\n"
+            s = s + "      \"type\": \"amc\", \"request\": \"launch\",\n"
+            s = s + "      \"name\": \"Run in QEMU\",\n"
+            s = s + "      \"program\": \"" + wsf + "/firmware\",\n"
+            s = s + "      \"preLaunchTask\": \"amc: run (qemu)\",\n"
+            s = s + "      \"cwd\": \"" + wsf + "\"\n"
+            s = s + "    }\n"
+        } else {
+            s = s + "    {\n"
+            s = s + "      \"type\": \"amc\", \"request\": \"launch\",\n"
+            s = s + "      \"name\": \"Debug on MCU\",\n"
+            s = s + "      \"program\": \"" + wsf + "/firmware\",\n"
+            s = s + "      \"target\": \"cortex-m7\",\n"
+            s = s + "      \"openocd\": \"board/st_nucleo_f7.cfg\",\n"
+            s = s + "      \"cwd\": \"" + wsf + "\",\n"
+            s = s + "      \"stopOnEntry\": false,\n"
+            s = s + "      \"preLaunchTask\": \"amc: build (mcu, debug)\"\n"
+            s = s + "    }\n"
+        }
+        s = s + "  ]\n}\n"
+        return s
+    }
+
+    private static string McuGitignore() {
+        return "firmware\nfirmware.c\n*.elf\n*.bin\n*.hex\n*.o\n"
+    }
+
+    // F767ZI board files (kept brace-safe: every `{` is followed by a space or
+    // newline so amc's "{ident}" string interpolation never triggers).
+    private static string McuStartupF767() {
+        var s: string = ""
+        s = s + "/* Cortex-M7 startup for STM32F767ZI. Owns reset; calls amc_main(). */\n"
+        s = s + "#include <stdint.h>\n"
+        s = s + "extern uint32_t _sidata, _sdata, _edata, _sbss, _ebss, _estack;\n"
+        s = s + "extern int amc_main(void);\n"
+        s = s + "void Reset_Handler(void);\n"
+        s = s + "void Default_Handler(void) { for (;;) " + "{" + "} }\n"
+        s = s + "__attribute__((section(\".isr_vector\"), used))\n"
+        s = s + "uint32_t *const vector_table[] = {\n"
+        s = s + "    (uint32_t *)&_estack,\n"
+        s = s + "    (uint32_t *)Reset_Handler,\n"
+        s = s + "    (uint32_t *)Default_Handler,\n"
+        s = s + "    (uint32_t *)Default_Handler,\n"
+        s = s + "    (uint32_t *)Default_Handler,\n"
+        s = s + "    (uint32_t *)Default_Handler,\n"
+        s = s + "    (uint32_t *)Default_Handler,\n"
+        s = s + "};\n"
+        s = s + "void Reset_Handler(void) {\n"
+        s = s + "    uint32_t *src = &_sidata, *dst = &_sdata;\n"
+        s = s + "    while (dst < &_edata) *dst++ = *src++;\n"
+        s = s + "    for (dst = &_sbss; dst < &_ebss; ) *dst++ = 0;\n"
+        s = s + "    amc_main();\n"
+        s = s + "    for (;;) " + "{" + "}\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string McuLinkerF767() {
+        var s: string = ""
+        s = s + "/* STM32F767ZI: 2 MB flash @ 0x08000000, 512 KB SRAM @ 0x20000000. */\n"
+        s = s + "MEMORY\n{\n"
+        s = s + "  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 2048K\n"
+        s = s + "  RAM  (rwx) : ORIGIN = 0x20000000, LENGTH = 512K\n"
+        s = s + "}\n"
+        s = s + "_estack = ORIGIN(RAM) + LENGTH(RAM);\n"
+        s = s + "SECTIONS\n{\n"
+        s = s + "  .isr_vector : { KEEP(*(.isr_vector)) } > FLASH\n"
+        s = s + "  .text       : { *(.text*) *(.rodata*) } > FLASH\n"
+        s = s + "  _sidata = LOADADDR(.data);\n"
+        s = s + "  .data : { _sdata = .; *(.data*) _edata = .; } > RAM AT > FLASH\n"
+        s = s + "  .bss  : { _sbss = .; *(.bss*) *(COMMON) _ebss = .; } > RAM\n"
+        s = s + "}\n"
+        return s
+    }
+
+    private static string McuHeaderF767() {
+        var s: string = ""
+        s = s + "/* Amalgame.Mcu HAL for Nucleo-F767ZI via libopencm3. */\n"
+        s = s + "#ifndef AMALGAME_MCU_BOARD_F767ZI_H\n#define AMALGAME_MCU_BOARD_F767ZI_H\n"
+        s = s + "#define AMC_HAVE_MCU_BOARD 1\n"
+        s = s + "#include <stdint.h>\n"
+        s = s + "#include <libopencm3/stm32/rcc.h>\n"
+        s = s + "#include <libopencm3/stm32/gpio.h>\n"
+        s = s + "#include <libopencm3/stm32/usart.h>\n"
+        s = s + "/* pin = port*16 + bit; port 0=A,1=B,... PB0 (green LD1) = 16 */\n"
+        s = s + "#define Board_LedGreen ((i64)(1*16 + 0))\n"
+        s = s + "#define Board_LedBlue  ((i64)(1*16 + 7))\n"
+        s = s + "#define Board_LedRed   ((i64)(1*16 + 14))\n"
+        s = s + "#define Board_LedBuiltin Board_LedGreen\n"
+        s = s + "static const uint32_t amc_gpio_ports[11] = {\n"
+        s = s + "    GPIOA, GPIOB, GPIOC, GPIOD, GPIOE, GPIOF, GPIOG, GPIOH, GPIOI, GPIOJ, GPIOK };\n"
+        s = s + "static const enum rcc_periph_clken amc_gpio_clk[11] = {\n"
+        s = s + "    RCC_GPIOA, RCC_GPIOB, RCC_GPIOC, RCC_GPIOD, RCC_GPIOE, RCC_GPIOF,\n"
+        s = s + "    RCC_GPIOG, RCC_GPIOH, RCC_GPIOI, RCC_GPIOJ, RCC_GPIOK };\n"
+        s = s + "static inline uint32_t amc_port_of(i64 pin) { return amc_gpio_ports[(pin >> 4) & 0xF]; }\n"
+        s = s + "static inline uint16_t amc_bit_of(i64 pin)  { return (uint16_t)(1u << (pin & 0xF)); }\n"
+        s = s + "static inline int  Mcu_High(void)   { return 1; }\n"
+        s = s + "static inline int  Mcu_Low(void)    { return 0; }\n"
+        s = s + "static inline int  Mcu_Output(void) { return 1; }\n"
+        s = s + "static inline int  Mcu_Input(void)  { return 0; }\n"
+        s = s + "static inline void Mcu_PinMode(i64 pin, i64 mode) {\n"
+        s = s + "    rcc_periph_clock_enable(amc_gpio_clk[(pin >> 4) & 0xF]);\n"
+        s = s + "    gpio_mode_setup(amc_port_of(pin), mode ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT, GPIO_PUPD_NONE, amc_bit_of(pin)); }\n"
+        s = s + "static inline void Mcu_DigitalWrite(i64 pin, i64 level) {\n"
+        s = s + "    if (level) " + "{" + " gpio_set(amc_port_of(pin), amc_bit_of(pin)); } else { gpio_clear(amc_port_of(pin), amc_bit_of(pin)); } }\n"
+        s = s + "static inline i64 Mcu_DigitalRead(i64 pin) { return gpio_get(amc_port_of(pin), amc_bit_of(pin)) ? 1 : 0; }\n"
+        s = s + "static inline void Mcu_Toggle(i64 pin) { gpio_toggle(amc_port_of(pin), amc_bit_of(pin)); }\n"
+        s = s + "static inline void Mcu_DelayMs(i64 ms) { for (volatile i64 i = 0; i < ms * 4000; i++) " + "{" + " __asm__ volatile(\"nop\"); } }\n"
+        s = s + "static inline i64 Mcu_Millis(void) { return 0; }\n"
+        s = s + "/* Console over USART3 (PD8/PD9) = ST-LINK VCP /dev/ttyACM0 @115200. */\n"
+        s = s + "#define AMC_HAVE_CONSOLE 1\n"
+        s = s + "static int amc_uart_inited = 0;\n"
+        s = s + "static void amc_uart_init(void) {\n"
+        s = s + "    rcc_periph_clock_enable(RCC_GPIOD);\n"
+        s = s + "    rcc_periph_clock_enable(RCC_USART3);\n"
+        s = s + "    gpio_mode_setup(GPIOD, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO8 | GPIO9);\n"
+        s = s + "    gpio_set_af(GPIOD, GPIO_AF7, GPIO8 | GPIO9);\n"
+        s = s + "    rcc_apb1_frequency = 16000000;\n"
+        s = s + "    usart_set_baudrate(USART3, 115200);\n"
+        s = s + "    usart_set_databits(USART3, 8);\n"
+        s = s + "    usart_set_stopbits(USART3, USART_STOPBITS_1);\n"
+        s = s + "    usart_set_mode(USART3, USART_MODE_TX);\n"
+        s = s + "    usart_set_parity(USART3, USART_PARITY_NONE);\n"
+        s = s + "    usart_set_flow_control(USART3, USART_FLOWCONTROL_NONE);\n"
+        s = s + "    usart_enable(USART3);\n"
+        s = s + "    amc_uart_inited = 1;\n"
+        s = s + "}\n"
+        s = s + "static inline void code_putc(char c) {\n"
+        s = s + "    if (!amc_uart_inited) " + "{" + " amc_uart_init(); }\n"
+        s = s + "    usart_send_blocking(USART3, (uint8_t)c);\n"
+        s = s + "}\n"
+        s = s + "static inline void Console_Write(code_string s) {\n"
+        s = s + "    if (!s) " + "{" + " return; }\n"
+        s = s + "    if (!amc_uart_inited) " + "{" + " amc_uart_init(); }\n"
+        s = s + "    for (const char* p = s; *p; p++) " + "{" + " usart_send_blocking(USART3, (uint8_t)*p); }\n"
+        s = s + "}\n"
+        s = s + "static inline void Console_WriteLine(code_string s) {\n"
+        s = s + "    Console_Write(s);\n"
+        s = s + "    usart_send_blocking(USART3, (uint8_t)13);\n"
+        s = s + "    usart_send_blocking(USART3, (uint8_t)10);\n"
+        s = s + "}\n"
+        s = s + "#endif\n"
+        return s
+    }
+
+    private static string McuReadme(string base, string board, string target, bool isQemu) {
+        var s: string = ""
+        s = s + "# " + base + " — Amalgame on bare metal (" + board + ")\n\n"
+        if (isQemu) {
+            s = s + "A blink for the QEMU `lm3s6965evb` (Cortex-M3). No hardware needed.\n\n"
+            s = s + "```\namc build --target=cortex-m3 app.am -o firmware\n"
+            s = s + "qemu-system-arm -M lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel firmware\n```\n\n"
+            s = s + "VS Code: press **F5** (or Ctrl-Shift-B) to build + run in QEMU.\n\n"
+            s = s + "The `Amalgame.Mcu` HAL here is the bundled QEMU virtual board (pin ops\n"
+            s = s + "logged over semihosting). Re-scaffold with `--board nucleo-f767zi` to\n"
+            s = s + "target real STM32 silicon.\n"
+        } else {
+            s = s + "A blink for the ST **Nucleo-F767ZI** (Cortex-M7), via libopencm3.\n\n"
+            s = s + "## Setup (one-time)\n```\n"
+            s = s + "amc mcu setup        # installs arm gcc, openocd, gdb-multiarch + builds libopencm3\n"
+            s = s + "amc mcu doctor       # check what's installed\n```\n"
+            s = s + "(amc auto-detects libopencm3 at ~/libopencm3 — no env vars needed.)\n\n"
+            s = s + "## Build + flash\n```\n"
+            s = s + "amc build --target=cortex-m7 --board=. --flash app.am -o firmware\n```\n\n"
+            s = s + "## VS Code (real MCU IDE)\n"
+            s = s + "- **Ctrl-Shift-B** = flash to the board (on-board ST-LINK).\n"
+            s = s + "- **F5** = build (debug) + flash + breakpoints in your `.am`, on the chip.\n\n"
+            s = s + "`amc` preflight-checks each tool and prints what to install if missing.\n"
+        }
+        return s
     }
 
     // ── VS Code wiring (default-on, --no-vscode opts out) ────

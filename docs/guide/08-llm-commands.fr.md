@@ -15,7 +15,7 @@ sont arrivées ensemble avec la version v0.4.0.
 Si vous ne les avez jamais utilisées : parcourez les sections **Démarrage
 rapide** et **Sélection du provider**, puis revenez quand vous avez besoin
 des détails. La justification complète du design se trouve dans
-[`docs/proposals/amc-migrate.md`](../proposals/amc-migrate.md).
+[`docs/proposals/amc-migrate.md`](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amc-migrate.md).
 
 ## Démarrage rapide
 
@@ -211,13 +211,13 @@ amc generate "implement quicksort with pivot tuning" --stream
 
 ## Où regarder dans le code
 
-- [`src/migrate.am`](../../src/migrate.am) — `MigrateCommand`. Héberge
+- [`src/migrate.am`](https://github.com/amalgame-lang/Amalgame/blob/main/src/migrate.am) — `MigrateCommand`. Héberge
   la table de dispatch des providers, les helpers JSON, le cache,
   l'estimateur de coût.
-- [`src/generate.am`](../../src/generate.am) — `GenerateCommand`.
+- [`src/generate.am`](https://github.com/amalgame-lang/Amalgame/blob/main/src/generate.am) — `GenerateCommand`.
   Réutilise `MigrateCommand.CallProviderRaw` + `LoadDocsHeader` +
   `AutoSelectProvider`.
-- [`src/explain.am`](../../src/explain.am) — `ExplainCommand`. Même
+- [`src/explain.am`](https://github.com/amalgame-lang/Amalgame/blob/main/src/explain.am) — `ExplainCommand`. Même
   pattern de réutilisation.
-- [`docs/proposals/amc-migrate.md`](../proposals/amc-migrate.md) —
+- [`docs/proposals/amc-migrate.md`](https://github.com/amalgame-lang/Amalgame/blob/main/docs/proposals/amc-migrate.md) —
   document de design complet avec la roadmap v0/v1/v2.

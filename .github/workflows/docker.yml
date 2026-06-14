@@ -1,0 +1,181 @@
+name: Docker IDE image
+
+# Builds the batteries-included browser-IDE image (code-server + amc +
+# extension + sample + docs) and pushes a multi-arch manifest to GHCR.
+#
+# linux/amd64 builds on ubuntu-latest, linux/arm64 builds NATIVELY on the
+# free ubuntu-24.04-arm runner (no QEMU — the amc snapshot bootstrap under
+# emulation is slow and flaky). Each arch is pushed by digest, then a
+# merge job stitches them into one tag.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker.yml'
+      - '.dockerignore'
+
+env:
+  IMAGE: ghcr.io/amalgame-lang/amalgame-ide
+
+jobs:
+  # PR gate: prove the image builds end-to-end (amc bootstrap → vsce
+  # package → code-server + extension + sample build) WITHOUT pushing
+  # anything to the registry. Single arch keeps it fast.
+  validate:
+    name: Validate build (no push)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (amd64, load locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: amalgame-ide:ci
+          cache-from: type=gha,scope=ide-amd64
+          cache-to: type=gha,scope=ide-amd64,mode=max
+
+      - name: Smoke — amc runs inside the image
+        run: docker run --rm --entrypoint amc amalgame-ide:ci --version
+
+      - name: Smoke — code-server serves HTTP
+        run: |
+          docker run -d --name ide -p 8080:8080 amalgame-ide:ci
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:8080/healthz; then ok=1; break; fi
+            sleep 2
+          done
+          echo "── container logs ──"; docker logs ide 2>&1 | tail -30 || true
+          docker rm -f ide >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "::error::code-server never reported healthy on :8080"; exit 1; }
+          echo "code-server healthy ✓"
+
+  build:
+    name: Build (${{ matrix.arch }})
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=ide-${{ matrix.arch }}
+          cache-to: type=gha,scope=ide-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge multi-arch manifest
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=edge,enable=${{ github.ref_type != 'tag' }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+
+      - name: Smoke — pull & run the published image
+        run: |
+          REF="${{ env.IMAGE }}:${{ steps.meta.outputs.version }}"
+          docker run --rm --entrypoint amc "$REF" --version
+          docker run -d --name ide -p 8080:8080 "$REF"
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:8080/healthz; then ok=1; break; fi
+            sleep 2
+          done
+          echo "── container logs ──"; docker logs ide 2>&1 | tail -30 || true
+          docker rm -f ide >/dev/null 2>&1 || true
+          [ "$ok" = 1 ] || { echo "::error::published image unhealthy on :8080"; exit 1; }
+          echo "published image healthy ✓"

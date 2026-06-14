@@ -66,7 +66,7 @@ Console.WriteLine("Hello, " + name + "!")
 
 ## String — manipulation de texte
 
-`runtime/Amalgame_String.h` · déclarations canoniques dans [stdlib/strings.am](../../stdlib/strings.am)
+`runtime/Amalgame_String.h` · déclarations canoniques dans [stdlib/strings.am](https://github.com/amalgame-lang/Amalgame/blob/main/stdlib/strings.am)
 
 ### Inspection
 
@@ -803,4 +803,4 @@ distincts (`Amalgame_Database_SQLite_Open` vs
   backends réseau (Postgres / MySQL).
 - Un gestionnaire de packages et un écosystème
 
-Ces points sont suivis dans [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).
+Ces points sont suivis dans [ROADMAP_COMPLET.md](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md).

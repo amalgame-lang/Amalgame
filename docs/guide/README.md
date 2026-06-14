@@ -41,7 +41,7 @@ hack on the compiler itself, jump to chapter 7.
     you'll need every day: strings, collections, files + JSON, CLI
     arg parsing, processes, networking, pattern matching, threads,
     inline-C primitives.
-11. [Web framework (Mosaic)](11-web-mosaic.md) — the `amalgame-web`
+11. [Web framework (Mosaic)](mosaic/README.md) — the `amalgame-web`
     server framework: routing, `WebContext`/`HttpResponse`, middleware
     (security headers, CORS, CSRF, rate limit), sessions, static
     files, HTTP/1.1 + HTTPS. (Distinct from chapter 9's desktop GUI.)
@@ -62,5 +62,5 @@ hack on the compiler itself, jump to chapter 7.
     Encrypt certs + SNI, running under systemd, and cert renewal that
     actually works.
 
-The repo's [README](../../README.md) has the elevator pitch and screenshots.
-The [ROADMAP](../../ROADMAP_COMPLET.md) tracks what's planned next.
+The repo's [README](https://github.com/amalgame-lang/Amalgame/blob/main/README.md) has the elevator pitch and screenshots.
+The [ROADMAP](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md) tracks what's planned next.

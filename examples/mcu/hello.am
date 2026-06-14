@@ -1,0 +1,13 @@
+namespace Bare
+
+// Smallest amc-on-bare-metal program (slice 2 milestone). Compiled with
+//   amc --target=cortex-m3 hello.am -o hello
+// the emitted C is freestanding: no GC, no stdio, no malloc. Console.WriteLine
+// retargets to ARM semihosting via runtime/embedded/_runtime.h.
+//
+// setup/loop soft keywords land in slice 3; for now Main() is the program.
+public class Program {
+    public static void Main() {
+        Console.WriteLine("Hello bare metal")
+    }
+}

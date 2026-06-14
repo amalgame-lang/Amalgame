@@ -1,0 +1,19 @@
+# Curated cgen-coverage corpus for the golden-C hosted-regression test.
+# One sample basename per line (resolved under tests/samples/<name>.am).
+# Chosen to exercise broad codegen paths while building deterministically.
+# Keep this list stable; add a sample only with its golden in the same commit.
+hello
+classes
+control_flow
+closures
+enums
+generics
+inheritance
+foreach
+data_classes
+interface_dispatch
+if_expr
+hex_bin_literals
+deep_member_chain
+guard
+generic_inference

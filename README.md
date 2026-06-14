@@ -53,7 +53,7 @@ header-only layer over libc and libgc (Boehm GC).
   on every `v*` tag. Windows is supported via MinGW (Winsock under
   `#ifdef _WIN32` in the runtime).
 
-Current version: **v0.8.69**.
+Current version: **v0.8.75**.
 
 ## Language at a glance
 
@@ -109,6 +109,20 @@ public class Program {
 A more thorough tour is in [docs/guide/02-language-tour.md](docs/guide/02-language-tour.md).
 
 ## Getting started
+
+### Try it in your browser (Docker)
+
+Zero install — a full VS Code with the compiler, extension (syntax/LSP/
+DAP), a sample project and the docs, all pre-wired:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/amalgame-lang/amalgame-ide:edge
+# open http://localhost:8080 and press F5
+# (:latest + :X.Y.Z are published on tagged releases; :edge tracks main)
+```
+
+See [docker/README.md](docker/README.md) for build, auth and persistence
+options.
 
 ### Linux
 

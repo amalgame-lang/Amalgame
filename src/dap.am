@@ -67,6 +67,19 @@ public class DapServer {
     // runtime-level issues without having to drop into `--raw`.
     public ShowRuntime: bool
 
+    // MCU on-chip debug (docs/proposals/amc-embedded.md §11.1). When McuTarget
+    // is set (via `amc dap --target=<mcu> [--openocd=<cfg>]`), the bridge picks
+    // a cross-gdb (arm-none-eabi-gdb / gdb-multiarch) and connects to the chip
+    // through OpenOCD in pipe mode at spawn, then `load`s on configurationDone
+    // instead of `-exec-run`. Empty → ordinary hosted debugging, unchanged.
+    public McuTarget: string
+    public OpenocdCfg: string
+    public ConnectCmd: string
+    // True from spawn until the configurationDone continue: swallow the
+    // intermediate *stopped events (target halts from connect + `monitor
+    // reset halt`) so the editor only sees the real breakpoint stop.
+    public McuSettling: bool
+
     // Bridge state — populated by SpawnGdb, drained by PollLoop and
     // closed during cleanup. Field types match the C pid_t (signed
     // 32-bit on every platform amc targets) and the int FDs returned
@@ -167,6 +180,10 @@ public class DapServer {
     public DapServer() {
         this.Raw           = false
         this.ShowRuntime   = false
+        this.McuTarget     = ""
+        this.OpenocdCfg    = ""
+        this.ConnectCmd    = ""
+        this.McuSettling   = false
         this.GdbInFd       = -1
         this.GdbOutFd      = -1
         this.GdbPid        = -1
@@ -411,6 +428,10 @@ public class DapServer {
                     self->Raw = 1;
                 } else if (strcmp(a, "--show-runtime") == 0) {
                     self->ShowRuntime = 1;
+                } else if (strncmp(a, "--target=", 9) == 0) {
+                    self->McuTarget = code_strdup(a + 9);   /* MCU on-chip debug */
+                } else if (strncmp(a, "--openocd=", 10) == 0) {
+                    self->OpenocdCfg = code_strdup(a + 10);
                 }
                 // `--bridge` is recognised in the argv scan below
                 // (so it's stripped from the backend's view) — it's
@@ -439,12 +460,32 @@ public class DapServer {
     // `amc dap --raw` is the explicit opt-out for users hitting a
     // bridge regression.
     public int RunBridge() {
-        let gdbPath: string = DapServer.Probe("gdb")
-        if (String_Length(gdbPath) == 0) {
-            // No gdb available → fall through to the lldb-dap /
-            // gdb-dap proxy. Silent (no warning) since this is the
-            // expected path on a stock macOS install.
-            return this.RunRaw()
+        var gdbPath: string = ""
+        if (String_Length(this.McuTarget) > 0) {
+            // MCU: need an ARM-capable gdb + an OpenOCD config. The bridge
+            // connects to the chip via OpenOCD pipe mode at spawn (§11.1).
+            gdbPath = DapServer.Probe("arm-none-eabi-gdb")
+            if (String_Length(gdbPath) == 0) { gdbPath = DapServer.Probe("gdb-multiarch") }
+            if (String_Length(gdbPath) == 0) {
+                Console.WriteError("amc dap --target: need an ARM gdb on PATH.")
+                Console.WriteError("     install: sudo apt install gdb-multiarch  (also: openocd)")
+                Console.WriteError("     or run:  tools/mcu-setup.sh")
+                return 1
+            }
+            if (String_Length(this.OpenocdCfg) == 0) {
+                Console.WriteError("amc dap --target: need --openocd=<cfg> (e.g. board/st_nucleo_f7.cfg)")
+                return 1
+            }
+            this.ConnectCmd = "target extended-remote | openocd -f " + this.OpenocdCfg + " -c \"gdb_port pipe\""
+            this.McuSettling = true   // swallow connect/reset stops until we continue
+        } else {
+            gdbPath = DapServer.Probe("gdb")
+            if (String_Length(gdbPath) == 0) {
+                // No gdb available → fall through to the lldb-dap /
+                // gdb-dap proxy. Silent (no warning) since this is the
+                // expected path on a stock macOS install.
+                return this.RunRaw()
+            }
         }
         let spawnRc: int = this.SpawnGdb(gdbPath)
         if (spawnRc != 0) {
@@ -501,9 +542,30 @@ public class DapServer {
                     if (dup2(childToParent[1], 1) < 0) { perror("dup2 stdout"); _exit(127); }
                     close(parentToChild[0]); close(parentToChild[1]);
                     close(childToParent[0]); close(childToParent[1]);
-                    execlp((const char*) gdbPath,
-                           "gdb", "--interpreter=mi3", "--nx", "--quiet",
-                           (char*) NULL);
+                    /* Own process group so cleanup can kill gdb AND its
+                     * children (e.g. an OpenOCD spawned via `| openocd` pipe
+                     * mode) in one shot, freeing the ST-LINK for the next
+                     * session. Without this, an orphaned openocd holds the
+                     * probe and the next launch fails to flash. */
+                    setpgid(0, 0);
+                    /* MCU: extra -ex connects to the chip via OpenOCD pipe mode
+                     * at startup (gdb spawns openocd; inner quotes handled by
+                     * the shell gdb runs after the `|`). */
+                    if (self->ConnectCmd != NULL && self->ConnectCmd[0] != '\0') {
+                        // Connect to the chip at startup (a single -ex; NO
+                        // `define` macro — in MI mode a multi-line define-via-ex
+                        // wedges gdb in command-definition mode and it stops
+                        // answering MI). load + reset + continue are issued as
+                        // separate MI commands at configurationDone instead.
+                        execlp((const char*) gdbPath,
+                               "gdb", "--interpreter=mi3", "--nx", "--quiet",
+                               "-ex", (const char*) self->ConnectCmd,
+                               (char*) NULL);
+                    } else {
+                        execlp((const char*) gdbPath,
+                               "gdb", "--interpreter=mi3", "--nx", "--quiet",
+                               (char*) NULL);
+                    }
                     perror("amc dap --bridge: execlp gdb");
                     _exit(127);
                 }
@@ -816,11 +878,18 @@ public class DapServer {
     // programs, the silent state transition is fine.
     private void HandleMiExecAsync(MiRecord rec) {
         if (rec.Class == "stopped") {
+            // MCU: swallow the intermediate halts (connect, `monitor reset
+            // halt`) that occur while settling — only the real stop after the
+            // run (breakpoint) should reach the editor.
+            if (this.McuSettling) { return }
             this.EmitStoppedEvent(rec)
+        } else if (rec.Class == "running") {
+            // The configurationDone continue started the program — from here
+            // the next *stopped is a genuine breakpoint/pause for the editor.
+            if (this.McuSettling) { this.McuSettling = false }
         }
-        // *running, *connected, *exited, *signal-received: skipped
-        // for the MVP. *exited could optionally fire DAP `terminated`
-        // but `=thread-group-exited` already does that.
+        // *connected, *exited, *signal-received: skipped for the MVP.
+        // *exited could fire DAP `terminated` but `=thread-group-exited` does.
     }
 
     // Async notify event from gdb: `=thread-group-exited`,
@@ -981,11 +1050,43 @@ public class DapServer {
         else if (command == "launch")            { this.HandleLaunch(seq, args) }
         else if (command == "setBreakpoints")    { this.HandleSetBreakpoints(seq, args) }
         else if (command == "configurationDone") { this.HandleConfigurationDone(seq, args) }
+        else if (command == "setExceptionBreakpoints") { this.HandleSetExceptionBreakpoints(seq) }
+        else if (command == "setFunctionBreakpoints") { this.HandleSetFunctionBreakpoints(seq) }
         else if (command == "stackTrace")        { this.HandleStackTrace(seq, args) }
         else if (command == "scopes")            { this.HandleScopes(seq, args) }
         else if (command == "variables")         { this.HandleVariables(seq, args) }
         else if (command == "evaluate")          { this.HandleEvaluate(seq, args) }
-        else                                     { this.SendDapErrorResponse(seq, command, "not implemented in --bridge yet") }
+        else if (command == "terminate")         { this.HandleTerminate(seq) }
+        // Any other request (setDataBreakpoints, source, restart, locale-y
+        // config verbs VS Code sends during launch, …): ACK with success
+        // instead of erroring. An error response to an optional request makes
+        // VS Code abort the whole session (breakpoints go unverified — red dot
+        // vanishes — and never bind). A benign ack keeps debugging alive.
+        else                                     { this.SendDapAck(seq, command) }
+    }
+
+    // Generic success ack for an optional/unhandled request.
+    private void SendDapAck(int seq, string command) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"" + Json.EscapeString(command) + "\"}"
+        this.SendDapFrame(body)
+    }
+
+    // terminate (advertised via supportsTerminateRequest): end gracefully —
+    // same teardown as disconnect, but reply with the matching command.
+    private void HandleTerminate(int seq) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"terminate\"}"
+        this.SendDapFrame(body)
+        this.WriteToFd(1, "-gdb-exit\n")
+        this.CloseGdbStdin()
+        this.StopRequested = true
     }
 
     // ── Immediate-response handlers ─────────────────────
@@ -1162,7 +1263,44 @@ public class DapServer {
         this.SendDapFrame(body)
     }
 
+    // VS Code sends setFunctionBreakpoints during the launch handshake too.
+    // We don't support function breakpoints; acknowledge with an empty array
+    // (erroring it makes VS Code abort config → breakpoints go unverified
+    // (red dot vanishes) and never bind).
+    private void HandleSetFunctionBreakpoints(int seq) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"setFunctionBreakpoints\"" +
+            ",\"body\":{\"breakpoints\":[]}}"
+        this.SendDapFrame(body)
+    }
+
+    // VS Code sends setExceptionBreakpoints during the launch handshake.
+    // Amalgame exposes no exception-breakpoint filters, so acknowledge with an
+    // empty breakpoints array — erroring it aborts the whole debug session.
+    private void HandleSetExceptionBreakpoints(int seq) {
+        let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
+            ",\"type\":\"response\"" +
+            ",\"request_seq\":" + String_FromInt(seq) +
+            ",\"success\":true" +
+            ",\"command\":\"setExceptionBreakpoints\"" +
+            ",\"body\":{\"breakpoints\":[]}}"
+        this.SendDapFrame(body)
+    }
+
     private void HandleConfigurationDone(int seq, JsonValue args) {
+        // MCU on-chip: flash the freshly-built program to the target (gdb
+        // `load` over the OpenOCD connection), leaving it halted at entry —
+        // the editor's continue runs it. `-exec-run` is host-only.
+        if (String_Length(this.McuTarget) > 0) {
+            // Flash the freshly-built program (gdb `load`). On its ^done,
+            // RespondConfigurationDone issues `monitor reset halt` + continue
+            // (reset reloads SP from the vector table, then run to breakpoints).
+            let _t: int = this.IssueMiCommand(seq, "configurationDone", "-interpreter-exec console \"load\"")
+            return
+        }
         // Start the program. Reply when ^running comes back.
         let _tok: int = this.IssueMiCommand(seq, "configurationDone", "-exec-run")
     }
@@ -1477,7 +1615,11 @@ public class DapServer {
         // program hits a breakpoint or signals.
         let ok: bool = (rec.Class == "running" || rec.Class == "done")
         if (!ok) {
-            this.SendDapErrorResponse(dapSeq, "configurationDone", "-exec-run failed")
+            var why: string = "-exec-run failed"
+            if (String_Length(this.McuTarget) > 0) {
+                why = "flash/load failed — is the board connected and free? (a stale openocd/gdb from a previous session can hold the ST-LINK; unplug/replug or close other debug sessions)"
+            }
+            this.SendDapErrorResponse(dapSeq, "configurationDone", why)
             return
         }
         let body: string = "{\"seq\":" + String_FromInt(this.NextOutSeq()) +
@@ -1486,6 +1628,17 @@ public class DapServer {
             ",\"success\":true" +
             ",\"command\":\"configurationDone\"}"
         this.SendDapFrame(body)
+        // MCU: `load` just flashed the program. Now reset-halt (so SP is
+        // reloaded from the vector table) and continue, so the program runs
+        // to the user's breakpoints; gdb's *stopped surfaces as a DAP stopped
+        // event via the normal async path. (Host -exec-run already runs.)
+        if (String_Length(this.McuTarget) > 0) {
+            this.WriteToFd(1, "-interpreter-exec console \"monitor reset halt\"\n")
+            this.WriteToFd(1, "-exec-continue\n")
+            // McuSettling is cleared on the *running this continue produces (see
+            // HandleMiExecAsync) — NOT here: the reset-halt *stopped is still
+            // in flight and must be swallowed first.
+        }
     }
 
     private void RespondStackTrace(int dapSeq, MiRecord rec) {
@@ -1804,7 +1957,18 @@ public class DapServer {
                 if (self->GdbInFd  >= 0) { close((int) self->GdbInFd);  self->GdbInFd  = -1; }
                 if (self->GdbOutFd >= 0) { close((int) self->GdbOutFd); self->GdbOutFd = -1; }
                 int status = 0;
-                if (self->GdbPid > 0) { waitpid((pid_t) self->GdbPid, &status, 0); }
+                if (self->GdbPid > 0) {
+                    /* Kill the whole gdb process group (gdb + any OpenOCD it
+                     * spawned in pipe mode) so the ST-LINK is freed for the
+                     * next session. SIGTERM first; if it lingers, SIGKILL. */
+                    kill(-(pid_t) self->GdbPid, SIGTERM);
+                    for (int i = 0; i < 50; i++) {
+                        if (waitpid((pid_t) self->GdbPid, &status, WNOHANG) != 0) break;
+                        usleep(20000);
+                    }
+                    kill(-(pid_t) self->GdbPid, SIGKILL);
+                    waitpid((pid_t) self->GdbPid, &status, 0);
+                }
             #endif
         }
     }
