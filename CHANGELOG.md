@@ -7,6 +7,22 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.89] — 2026-06-15
+
+### Added
+- MCU bare-metal target — build/flash/debug Amalgame sur Cortex-M.
+- Runtime MCU : `List<T>` adossé à une arena (embedded).
+- Télémétrie d'usage anonyme : amc envoie au build/run un ping
+  {version, os, arch} à tel.amalgame.me. Aucun identifiant, aucune IP
+  stockée. Opt-out : `AMALGAME_NO_TELEMETRY=1` ou `DO_NOT_TRACK=1`.
+
+### Changed
+- `install.sh` télécharge les assets via get.amalgame.me (miroir
+  souverain, compté) avec repli GitHub.
+- Docs : auto-déploiement zéro-Node, sync ROADMAP, liens corrigés.
+
+---
+
 ## [v0.8.88] — 2026-06-08
 
 Two Windows-native build fixes uncovered porting FF-TAROT.
@@ -5576,3 +5592,4 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.8.16]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.16
 [v0.8.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.15
 [v0.8.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.14
+[v0.8.89]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.89
