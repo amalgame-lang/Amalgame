@@ -1,8 +1,6 @@
 # 02 — Widget catalogue
 
 Every `Element.<Name>(...)` static builder, grouped by purpose.
-WinForms-toolbox cross-reference lives at
-[`../winforms-mapping.md`](../winforms-mapping.md).
 
 Convention: every builder returns an `Element` so the fluent
 chain composes — `.AddChild(...)`, `.Attr(...)`, `.Style(...)`,

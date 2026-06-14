@@ -207,8 +207,7 @@ extension point. We deliberately picked a flat class with a
 `Render()` method rather than an `abstract class Component` base:
 AM's static dispatch makes virtual overrides on a parent
 unreliable, so a convention reads better and runs more
-predictably. See [`../architecture.md`](../architecture.md) for
-the full three-level model (Element / Component / Form).
+predictably. The full model has three levels: Element / Component / Form.
 
 ## Replacing the baseline stylesheet
 

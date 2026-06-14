@@ -113,6 +113,8 @@ jobs:
           cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math_vec.am           "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           # Bundle the LLM-prompt source docs so `amc migrate / generate /
@@ -204,6 +206,8 @@ jobs:
           cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math_vec.am           "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
@@ -297,6 +301,8 @@ jobs:
           cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math_vec.am           "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
@@ -427,6 +433,8 @@ jobs:
           cp src/stdlib/toml.am               "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/msgpack.am            "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/path.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math.am               "dist/$NAME/share/amalgame/stdlib/"
+          cp src/stdlib/math_vec.am           "dist/$NAME/share/amalgame/stdlib/"
           cp src/stdlib/amc_buildinfo.am      "dist/$NAME/share/amalgame/stdlib/"
           cp README.md LICENSE                "dist/$NAME/"
           cp docs/language/grammar.ebnf       "dist/$NAME/share/amalgame/docs/language/"
@@ -579,6 +587,146 @@ jobs:
           # Sanity check: gcc.exe and ld.exe must survive.
           if (-not (Test-Path "$bundle\bin\gcc.exe")) { throw "trim ate gcc.exe!" }
           if (-not (Test-Path "$bundle\bin\ld.exe"))  { throw "trim ate ld.exe!" }
+
+      - name: Build + bundle Boehm GC into gcc-bundle (so `amc build` links out of the box)
+        shell: pwsh
+        run: |
+          # amc emits C that #include <gc.h> and links -lgc (Boehm GC). The
+          # vanilla winlibs toolchain ships no GC, so a freshly-installed amc
+          # could compile but not LINK on Windows. Prebuilt MSYS2 libgc.a is
+          # NOT ABI-compatible with the winlibs CRT (undefined __imp__setjmp:
+          # a different mingw-w64 runtime). So we BUILD bdwgc from source with
+          # *the bundled winlibs gcc itself* — guaranteed ABI match — as a
+          # static lib using GCC's builtin atomics (no libatomic_ops). Static
+          # keeps amc-built .exe self-sufficient (no gc.dll), paired with the
+          # GC_NOT_DLL define in runtime/_runtime.h.
+          $ErrorActionPreference = "Stop"
+          $bundle = (Resolve-Path "install\windows\gcc-bundle").Path
+          $env:PATH = "$bundle\bin;$env:PATH"   # use the bundled gcc, not any other
+          gcc --version | Select-Object -First 1 | Write-Host
+          $gcVer = "8.2.8"
+          Invoke-WebRequest "https://github.com/ivmai/bdwgc/releases/download/v$gcVer/gc-$gcVer.tar.gz" -OutFile gc.tar.gz -UseBasicParsing
+          tar -xzf gc.tar.gz
+          $src = (Resolve-Path "gc-$gcVer").Path
+          if (-not (Test-Path "$src\extra\gc.c")) { throw "bdwgc amalgamation $src\extra\gc.c missing" }
+          # Single-TU amalgamation: extra/gc.c #includes every GC source.
+          # No CMake/Ninja — just the bundled gcc + ar, deterministic.
+          #   GC_WIN32_PTHREADS : pthread (winpthread) thread model, so the
+          #                       lib exports GC_pthread_create/_join that
+          #                       amalgame-threading's header extern-declares.
+          #   GC_NOT_DLL        : static lib (no gc.dll), matches _runtime.h.
+          #   GC_BUILTIN_ATOMIC : use GCC's __atomic builtins instead of the
+          #                       external libatomic_ops (which the gc-X.Y.Z
+          #                       tarball doesn't bundle → atomic_ops.h missing).
+          $defs = @(
+            "-DGC_BUILD","-DGC_NOT_DLL","-DGC_THREADS","-DGC_WIN32_PTHREADS",
+            "-DGC_BUILTIN_ATOMIC","-DALL_INTERIOR_POINTERS","-DNO_EXECUTE_PERMISSION"
+          )
+          & gcc -O2 -w -c @defs "-I$src\include" "$src\extra\gc.c" -o gc.o 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "gcc compile of bdwgc amalgamation failed" }
+          & ar rcs "$bundle\lib\libgc.a" gc.o 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "ar of libgc.a failed" }
+          Copy-Item "$src\include\*" "$bundle\include\" -Recurse -Force
+          if (-not (Test-Path "$bundle\include\gc.h")) { throw "gc.h missing after copy" }
+          Write-Host "✓ built+grafted static libgc.a ($((Get-Item "$bundle\lib\libgc.a").Length) bytes), gc.h present"
+
+      - name: Smoke-test the bundled GC (static link + run)
+        shell: pwsh
+        run: |
+          # Prove the grafted GC actually links and runs with the bundled
+          # gcc — fail the release here rather than ship a broken toolchain.
+          $bundle = "install\windows\gcc-bundle"
+          $gcc = "$bundle\bin\gcc.exe"
+          @'
+          #include <gc.h>
+          #include <pthread.h>
+          #include <stdio.h>
+          /* amalgame-threading extern-declares these; the lib must export
+           * them, which only a pthread-threaded GC build does. */
+          extern int GC_pthread_create(pthread_t*, const pthread_attr_t*,
+                                        void* (*)(void*), void*);
+          extern int GC_pthread_join(pthread_t, void**);
+          int main(void) {
+              GC_INIT();
+              for (int i = 0; i < 1000; i++) { (void) GC_MALLOC(64); }
+              void* p = GC_MALLOC(64);
+              /* Force the linker to resolve the threading symbols FF-TAROT
+               * needs — a non-threaded GC build would fail to link here. */
+              volatile void* s1 = (void*) &GC_pthread_create;
+              volatile void* s2 = (void*) &GC_pthread_join;
+              printf("%s\n", (p && s1 && s2) ? "GC_OK" : "GC_FAIL");
+              return (p && s1 && s2) ? 0 : 1;
+          }
+          '@ | Set-Content -Encoding ascii smoke_gc.c
+          # GC_NOT_DLL mirrors runtime/_runtime.h: link the static libgc.a.
+          & $gcc -DGC_NOT_DLL smoke_gc.c -lgc -lpthread -o smoke_gc.exe 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "GC static link failed (gcc)" }
+          $out = (& .\smoke_gc.exe) 2>&1
+          Write-Host "smoke output: $out"
+          if ($out -ne "GC_OK") { throw "GC smoke test did not print GC_OK (got: $out)" }
+          Write-Host "✓ Boehm GC links statically and runs with the bundled gcc"
+
+      - name: Bundle OpenSSL + zlib into gcc-bundle (crypto/tls/net-http/compress)
+        shell: pwsh
+        run: |
+          # amc packages link OpenSSL (crypto's scrypt, tls/net-http's HTTPS)
+          # and zlib (compress), expecting system dev libs as on Linux. The
+          # winlibs toolchain ships neither, so we graft MSYS2's UCRT64 build
+          # (ABI-compatible with the bundled ucrt GCC) into the bundle. We use
+          # the DLLs + import libs (dynamic): unlike a static GC, dynamic
+          # linking resolves OpenSSL's own runtime symbols inside the DLL, so
+          # there's no __imp__setjmp-style mismatch with winlibs. The DLLs ride
+          # in gcc\bin (on PATH at build time) so an app's objdump pass bundles
+          # them next to its .exe.
+          $ErrorActionPreference = "Stop"
+          $bundle = (Resolve-Path "install\windows\gcc-bundle").Path
+          $bash = "C:\msys64\usr\bin\bash.exe"
+          if (-not (Test-Path $bash)) { throw "MSYS2 bash not found at $bash" }
+          & $bash -lc "pacman -Sy --noconfirm --needed mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-zlib" 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "pacman install of openssl/zlib failed" }
+          $inc = "C:\msys64\ucrt64\include"
+          $lib = "C:\msys64\ucrt64\lib"
+          $bin = "C:\msys64\ucrt64\bin"
+          if (-not (Test-Path "$inc\openssl\ssl.h")) { throw "openssl headers not found under $inc" }
+          if (-not (Test-Path "$inc\zlib.h"))        { throw "zlib.h not found under $inc" }
+          # Headers
+          Copy-Item "$inc\openssl" "$bundle\include\openssl" -Recurse -Force
+          Copy-Item "$inc\zlib.h"  "$bundle\include\" -Force
+          Copy-Item "$inc\zconf.h" "$bundle\include\" -Force
+          # Import libs (dynamic): -lssl / -lcrypto / -lz resolve here.
+          Copy-Item "$lib\libssl.dll.a"    "$bundle\lib\" -Force
+          Copy-Item "$lib\libcrypto.dll.a" "$bundle\lib\" -Force
+          Copy-Item "$lib\libz.dll.a"      "$bundle\lib\" -Force
+          # Runtime DLLs → gcc\bin (on PATH at app-build time, objdump-bundled).
+          Get-ChildItem "$bin" -Filter 'libssl-*.dll'    | ForEach-Object { Copy-Item $_.FullName "$bundle\bin\" -Force }
+          Get-ChildItem "$bin" -Filter 'libcrypto-*.dll' | ForEach-Object { Copy-Item $_.FullName "$bundle\bin\" -Force }
+          if (Test-Path "$bin\zlib1.dll") { Copy-Item "$bin\zlib1.dll" "$bundle\bin\" -Force }
+          Get-ChildItem "$bin" -Filter 'libz*.dll' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName "$bundle\bin\" -Force }
+          Write-Host "✓ grafted OpenSSL + zlib (headers + import libs + DLLs)"
+
+      - name: Smoke-test bundled OpenSSL + zlib (compile + link + run)
+        shell: pwsh
+        run: |
+          $bundle = "install\windows\gcc-bundle"
+          $gcc = "$bundle\bin\gcc.exe"
+          @'
+          #include <openssl/evp.h>
+          #include <zlib.h>
+          #include <stdio.h>
+          int main(void) {
+              const EVP_MD* md = EVP_sha256();
+              uLong a = adler32(0L, (const Bytef*)"hi", 2);
+              printf("%s\n", (md && a) ? "SSLZ_OK" : "SSLZ_FAIL");
+              return (md && a) ? 0 : 1;
+          }
+          '@ | Set-Content -Encoding ascii smoke_sslz.c
+          & $gcc smoke_sslz.c -lssl -lcrypto -lz -o smoke_sslz.exe 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL/zlib link failed (gcc)" }
+          $env:PATH = "$((Resolve-Path "$bundle\bin").Path);$env:PATH"
+          $out = (& .\smoke_sslz.exe) 2>&1
+          Write-Host "smoke output: $out"
+          if ($out -ne "SSLZ_OK") { throw "OpenSSL/zlib smoke did not print SSLZ_OK (got: $out)" }
+          Write-Host "✓ OpenSSL + zlib link and run with the bundled gcc"
 
       - name: Build amalgame-<ver>.msi (pure-PowerShell)
         shell: pwsh

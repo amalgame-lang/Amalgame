@@ -65,6 +65,12 @@ function activate(context) {
             const args = ['dap'];
             if (!useBridge) { args.push('--raw'); }
             if (showRuntime) { args.push('--show-runtime'); }
+            // MCU on-chip debug: forward `target`/`openocd` from launch.json so
+            // `amc dap` picks a cross-gdb and connects to the chip via OpenOCD
+            // (docs/proposals/amc-embedded.md §11.1). Absent → hosted debug.
+            const lc = (_session && _session.configuration) || {};
+            if (lc.target)  { args.push(`--target=${lc.target}`); }
+            if (lc.openocd) { args.push(`--openocd=${lc.openocd}`); }
             dapChannel.appendLine(`[dap] launching adapter: ${resolved} ${args.join(' ')}`);
             return new vscode.DebugAdapterExecutable(resolved, args);
         }
@@ -73,6 +79,30 @@ function activate(context) {
         vscode.debug.registerDebugAdapterDescriptorFactory('amc', factory)
     );
     dapChannel.appendLine('[dap] DebugAdapterDescriptorFactory registered for type "amc"');
+
+    // ── MCU action buttons (status bar) ───────────────────
+    // Clickable Flash / Debug / Serial buttons so MCU work doesn't need the
+    // task picker or shortcuts. Flash runs the project's "amc: flash (mcu)"
+    // task; Debug starts F5; Serial opens `amc monitor` in a terminal.
+    context.subscriptions.push(
+        vscode.commands.registerCommand('amalgame.flash', () =>
+            vscode.commands.executeCommand('workbench.action.tasks.runTask', 'amc: flash (mcu)')),
+        vscode.commands.registerCommand('amalgame.debug', () =>
+            vscode.commands.executeCommand('workbench.action.debug.start')),
+        vscode.commands.registerCommand('amalgame.monitor', () => {
+            const term = window.createTerminal('amc monitor');
+            term.show();
+            term.sendText('amc monitor');
+        })
+    );
+    const mkBtn = (text, tooltip, cmd, prio) => {
+        const b = window.createStatusBarItem(vscode.StatusBarAlignment.Left, prio);
+        b.text = text; b.tooltip = tooltip; b.command = cmd; b.show();
+        context.subscriptions.push(b);
+    };
+    mkBtn('$(zap) Flash',       'amc: build + flash to the MCU',          'amalgame.flash',   100);
+    mkBtn('$(debug-alt) Debug', 'Debug on the MCU (F5)',                  'amalgame.debug',    99);
+    mkBtn('$(plug) Serial',     'amc monitor — read the device serial',   'amalgame.monitor',  98);
 
     // ── LSP client startup ────────────────────────────────
     if (!config.get('enableLsp', true)) {

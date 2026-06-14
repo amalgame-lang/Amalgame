@@ -1,0 +1,172 @@
+namespace Amalgame.Compiler
+
+import Amalgame.IO
+
+//  mcu_cmd.am  —  `amc mcu <setup|doctor>` subcommand
+//
+//  Step 1 of the MCU-toolchain UX (docs/proposals/amc-embedded.md):
+//   - `amc mcu doctor` : report which MCU tools are present / missing.
+//   - `amc mcu setup`  : OS-aware install of the cross toolchain (arm gcc,
+//                        openocd, gdb, stlink, qemu) + a user-local libopencm3
+//                        build (~/libopencm3). Uses the platform's own package
+//                        manager (apt/dnf/pacman/brew/winget) — never silent,
+//                        the user runs it and owns the sudo.
+//
+//  (Step 2 — vendored prebuilt toolchains under ~/.amalgame/mcu, PlatformIO
+//   style, zero-sudo + identical POSIX/Windows — is a later add.)
+public class McuCommand {
+    public McuCommand() {}
+
+    public static int Run(int argc) {
+        let sub: string = Args_Get(2)
+        if (sub == "doctor") { return McuCommand.Doctor() }
+        if (sub == "setup")  { return McuCommand.Setup(false) }
+        if (sub == "setup-yes") { return McuCommand.Setup(true) }
+        Console.WriteError("Usage: amc mcu <doctor|setup>")
+        Console.WriteError("  doctor   report installed / missing MCU tools")
+        Console.WriteError("  setup    install the MCU toolchain + libopencm3 (uses your package manager)")
+        if (sub == "-h" || sub == "--help" || String_Length(sub) == 0) { return 0 }
+        return 1
+    }
+
+    // Local OS/tty checks (kept in this AMC_SOURCES class rather than calling
+    // Program.* — main.am is excluded from the gen_test bootstrap link).
+    public static bool IsWin() {
+        @c {
+        #ifdef _WIN32
+            return 1;
+        #else
+            return 0;
+        #endif
+        }
+    }
+    public static bool IsInteractive() {
+        @c {
+        #ifdef _WIN32
+            return _isatty(0) ? 1 : 0;
+        #else
+            return isatty(0) ? 1 : 0;
+        #endif
+        }
+    }
+
+    // ── OS detection ──────────────────────────────────
+    public static string DetectOs() {
+        if (McuCommand.IsWin()) { return "windows" }
+        let uname = Process.RunCapture("uname -s 2>/dev/null")
+        if (String_Contains(uname.Stdout, "Darwin")) { return "macos" }
+        if (File.Exists("/etc/os-release")) {
+            let osr: string = File.ReadAll("/etc/os-release")
+            if (String_Contains(osr, "ID=ubuntu") || String_Contains(osr, "ID=debian") || String_Contains(osr, "ID_LIKE=debian") || String_Contains(osr, "ID_LIKE=ubuntu")) { return "debian" }
+            if (String_Contains(osr, "ID=fedora") || String_Contains(osr, "ID=rhel") || String_Contains(osr, "rhel fedora") || String_Contains(osr, "ID_LIKE=\"fedora")) { return "fedora" }
+            if (String_Contains(osr, "ID=arch") || String_Contains(osr, "ID_LIKE=arch")) { return "arch" }
+        }
+        return "linux"
+    }
+
+    // ── doctor: tool presence report ──────────────────
+    public static bool Has(string tool) {
+        let p = Process.RunCapture("command -v '" + tool + "' >/dev/null 2>&1; echo $?")
+        return String_Contains(p.Stdout, "0")
+    }
+
+    private static void Report(string tool, string role) {
+        var mark: string = "  [x] "
+        if (!McuCommand.Has(tool)) { mark = "  [ ] " }
+        Console.WriteLine(mark + tool + "  — " + role)
+    }
+
+    public static int Doctor() {
+        Console.WriteLine("amc mcu doctor — MCU toolchain status (" + McuCommand.DetectOs() + ")")
+        McuCommand.Report("arm-none-eabi-gcc", "cross-compiler")
+        McuCommand.Report("arm-none-eabi-objcopy", "binutils (.bin/.hex)")
+        McuCommand.Report("openocd", "flash + on-chip gdb server")
+        McuCommand.Report("gdb-multiarch", "debugger (or arm-none-eabi-gdb)")
+        McuCommand.Report("st-info", "ST-LINK tools (optional)")
+        McuCommand.Report("qemu-system-arm", "emulator (no-hardware testing)")
+        let lib: string = McuCommand.Libopencm3Dir()
+        if (String_Length(lib) > 0) {
+            Console.WriteLine("  [x] libopencm3 — STM32 HAL (" + lib + ")")
+        } else {
+            Console.WriteLine("  [ ] libopencm3 — STM32 HAL (run `amc mcu setup`)")
+        }
+        Console.WriteLine("")
+        Console.WriteLine("Missing tools? Run:  amc mcu setup")
+        return 0
+    }
+
+    // Returns the built libopencm3 dir (~/libopencm3 by default), or "".
+    public static string Libopencm3Dir() {
+        let envDir: string = Env.Get("LIBOPENCM3")
+        if (String_Length(envDir) > 0 && File.Exists(envDir + "/lib/libopencm3_stm32f7.a")) { return envDir }
+        let home: string = Env.Get("HOME")
+        if (String_Length(home) > 0 && File.Exists(home + "/libopencm3/lib/libopencm3_stm32f7.a")) {
+            return home + "/libopencm3"
+        }
+        return ""
+    }
+
+    // ── setup: OS-aware install ───────────────────────
+    public static int Setup(bool assumeYes) {
+        let os: string = McuCommand.DetectOs()
+        Console.WriteLine("amc mcu setup — detected OS: " + os)
+
+        var installCmd: string = ""
+        if (os == "debian") {
+            installCmd = "sudo apt-get update -qq && sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi openocd gdb-multiarch stlink-tools qemu-system-arm git make"
+        } else if (os == "fedora") {
+            installCmd = "sudo dnf install -y arm-none-eabi-gcc-cs arm-none-eabi-newlib arm-none-eabi-gdb openocd stlink qemu-system-arm git make"
+        } else if (os == "arch") {
+            installCmd = "sudo pacman -S --needed --noconfirm arm-none-eabi-gcc arm-none-eabi-newlib arm-none-eabi-gdb openocd stlink qemu-arch-extra git make"
+        } else if (os == "macos") {
+            installCmd = "brew install --cask gcc-arm-embedded ; brew install openocd stlink"
+        } else if (os == "windows") {
+            installCmd = "winget install -e --id Arm.GnuArmEmbeddedToolchain && winget install -e --id xpack.openocd"
+        } else {
+            Console.WriteError("amc mcu setup: unsupported OS. Install manually: arm-none-eabi-gcc, openocd, gdb-multiarch, qemu-system-arm, git, make")
+            return 1
+        }
+
+        Console.WriteLine("This will run:")
+        Console.WriteLine("  " + installCmd)
+        if (!assumeYes) {
+            Console.Write("Proceed? [Y/n] ")
+            let ans: string = Console.ReadLine()
+            let a: string = String_ToLower(String_Trim(ans))
+            if (a == "n" || a == "no") {
+                Console.WriteLine("aborted.")
+                return 1
+            }
+        }
+        let r = Process.Run(installCmd)
+        if (r != 0) {
+            Console.WriteError("amc mcu setup: toolchain install failed (rc " + String_FromInt(r) + ")")
+            return 1
+        }
+
+        // libopencm3 — user-local, no sudo (POSIX). Windows needs MSYS2 make;
+        // skip the build there and point the user at it.
+        if (os != "windows") {
+            let home: string = Env.Get("HOME")
+            let dir: string = home + "/libopencm3"
+            if (File.Exists(dir + "/lib/libopencm3_stm32f7.a")) {
+                Console.WriteLine("libopencm3 already built at " + dir)
+            } else {
+                Console.WriteLine("building libopencm3 (stm32/f7) at " + dir + " …")
+                let bc: string = "if [ ! -d '" + dir + "/.git' ]; then git clone --depth 1 https://github.com/libopencm3/libopencm3 '" + dir + "'; fi && make -C '" + dir + "' TARGETS=stm32/f7"
+                let br = Process.Run(bc)
+                if (br != 0) {
+                    Console.WriteError("amc mcu setup: libopencm3 build failed")
+                    return 1
+                }
+            }
+        } else {
+            Console.WriteLine("On Windows, build libopencm3 under MSYS2 (`make TARGETS=stm32/f7`), then set LIBOPENCM3.")
+        }
+
+        Console.WriteLine("")
+        Console.WriteLine("✓ MCU toolchain ready. amc auto-detects ~/libopencm3 — just build:")
+        Console.WriteLine("    amc build --target=cortex-m7 --board=<pkg> --flash app.am -o fw")
+        return 0
+    }
+}

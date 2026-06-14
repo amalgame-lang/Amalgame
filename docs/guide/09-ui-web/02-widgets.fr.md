@@ -1,8 +1,7 @@
 # 02 — Catalogue de widgets
 
 Tous les constructeurs statiques `Element.<Nom>(...)`, regroupés par
-catégorie. Le tableau croisé avec la boîte à outils WinForms se trouve dans
-[`../winforms-mapping.md`](../winforms-mapping.md).
+catégorie.
 
 Convention : chaque constructeur retourne un `Element`, ce qui permet
 de composer des chaînes fluentes — `.AddChild(...)`, `.Attr(...)`, `.Style(...)`,
@@ -63,7 +62,7 @@ ajoute une infobulle native de l'OS via l'attribut HTML `title`.
 
 Chaque `name` est collecté automatiquement par le pont d'état du formulaire —
 les handlers reçoivent un objet JSON dont les clés sont ces noms. Voir
-[`03-events-and-state.md`](03-events-and-state.md#form-payload).
+[`03-events-and-state.md`](03-events-and-state.md#charge-utile-du-formulaire).
 
 ```amalgame
 Element.Row()
@@ -149,7 +148,7 @@ Element.ListView(cols, "files-body")
 
 Le paramètre `bodyId` est l'id du `<tbody>` — passez-le lorsque vous utiliserez
 `Page.AppendInner(win, bodyId, …)` pour faire grandir le tableau au
-moment de l'exécution (voir [`03-events-and-state.md`](03-events-and-state.md#partial-dom-updates)).
+moment de l'exécution (voir [`03-events-and-state.md`](03-events-and-state.md#mises-à-jour-partielles-du-dom)).
 Passez `""` pour omettre l'id.
 
 ## Arborescence (v0.0.7)

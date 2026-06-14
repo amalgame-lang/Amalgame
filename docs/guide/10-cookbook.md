@@ -387,5 +387,5 @@ amc new myapp --template test              # standalone test bundle
 
 - [docs/guide/02-language-tour.md](02-language-tour.md) — syntaxe complète
 - [docs/guide/04-stdlib.md](04-stdlib.md) — référence stdlib bundled
-- [docs/language/grammar.ebnf](../language/grammar.ebnf) — grammaire formelle
+- [docs/language/grammar.ebnf](https://github.com/amalgame-lang/Amalgame/blob/main/docs/language/grammar.ebnf) — grammaire formelle
 - `amc doc <file.am>` — extraire les doc-comments d'un fichier en Markdown

@@ -44,7 +44,7 @@ au chapitre 7.
     vous aurez besoin tous les jours : chaînes, collections, fichiers +
     JSON, parsing d'arguments CLI, processus, réseau, pattern matching,
     threads, primitives C en ligne.
-11. [Framework web (Mosaic)](11-web-mosaic.md) — le framework serveur
+11. [Framework web (Mosaic)](mosaic/README.md) — le framework serveur
     `amalgame-web` : routage, `WebContext`/`HttpResponse`, middleware
     (en-têtes de sécurité, CORS, CSRF, limitation de débit), sessions,
     fichiers statiques, HTTP/1.1 + HTTPS. (Distinct du GUI desktop du
@@ -66,5 +66,5 @@ au chapitre 7.
     certificats Let's Encrypt + SNI, tourner sous systemd, et un
     renouvellement de cert qui marche vraiment.
 
-Le [README](../../README.md) du dépôt a le pitch et les captures d'écran.
-La [ROADMAP](../../ROADMAP_COMPLET.md) suit ce qui est prévu ensuite.
+Le [README](https://github.com/amalgame-lang/Amalgame/blob/main/README.md) du dépôt a le pitch et les captures d'écran.
+La [ROADMAP](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md) suit ce qui est prévu ensuite.

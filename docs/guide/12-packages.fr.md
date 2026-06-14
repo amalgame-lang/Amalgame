@@ -199,7 +199,7 @@ tag compatible plus ancien.
 **Les contraintes de version dans les `[dependencies]` propres à un
 package** utilisent des opérateurs de style npm (`>=`, `^`, `~`, `=`,
 nu = `>=`) ; voir la
-[référence CLI](03-cli-reference.fr.md#amalgametoml-manifest-reference).
+[référence CLI](03-cli-reference.fr.md#référence-du-manifeste-amalgametoml).
 
 **Index ou cache périmé.** `amc package search --refresh` récupère à
 nouveau l'index ; `amc package cache clear` le supprime (`--all` efface
@@ -213,6 +213,6 @@ Si vous *créez* un package plutôt que d'en consommer un, la forme
 d'`amalgame.toml` (les blocs `[package]` + `[stdlib]` :
 `class`/`classes`, `namespace`, `header`, `facade`, `sources`, `libs`)
 est documentée dans la
-[section manifeste de la référence CLI](03-cli-reference.fr.md#amalgametoml-manifest-reference).
+[section manifeste de la référence CLI](03-cli-reference.fr.md#référence-du-manifeste-amalgametoml).
 La convention pour figurer dans l'index se trouve dans le dépôt
 `amalgame-lang/packages-index`.

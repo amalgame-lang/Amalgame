@@ -897,9 +897,67 @@ public class Parser {
             "try" => { return this.ParseTry() }
             "throw" => { return this.ParseThrow() }
             "{" => { return this.ParseBlock() }
+            // MCU soft keywords (docs/proposals/amc-embedded.md §6). CONTEXTUAL:
+            // only a construct when immediately followed by `{`, so `loop`,
+            // `setup`, `region` stay usable as ordinary identifiers (e.g.
+            // `loop = 0`, `region.x`) — those fall through to ParseExpr below.
+            "loop"   => { if (this.Peek(1).Value == "{") { return this.ParseLoop() } }
+            "setup"  => { if (this.Peek(1).Value == "{") { return this.ParseSetup() } }
+            "region" => { if (this.Peek(1).Value == "{") { return this.ParseRegion() } }
             _ => { }
         }
         return this.ParseExpr()
+    }
+
+    // ── MCU execution model (§6) — desugar to existing nodes ──────
+    //
+    // These lower entirely to WHILE_STMT / BLOCK plus INLINE_C arena ops, so
+    // the resolver/typechecker/cgen need no new node kinds. The arena ops are
+    // no-ops on hosted (runtime/_runtime.h), real on embedded — so the SAME
+    // desugared tree compiles for both, and a `loop` program runs on a PC.
+
+    // loop { B }  ≡  while (true) { amc_arena_reset(); B }   (reset each tick)
+    private AstNode ParseLoop() {
+        let tok = this.Advance()      // 'loop'
+        this.SkipNewlines()
+        let body = this.ParseBlock()
+        let nb = Ast.Block(body.Line, body.Column)
+        nb.Children.Add(Ast.InlineC("amc_arena_reset();", tok.Line, tok.Column))
+        let n = body.Children.Count()
+        for ci in 0..n { nb.Children.Add(body.Children.Get(ci)) }
+        let node = new AstNode(NodeKind.WHILE_STMT, tok.Line, tok.Column)
+        node.Cond = Ast.BoolLit(true, tok.Line, tok.Column)
+        node.Body = nb
+        return node
+    }
+
+    // region { B }  ≡  { push_mark; B; pop_mark }   (lexical sub-arena, §6.1)
+    // Uses a runtime mark stack rather than a C local, because each INLINE_C
+    // node is spliced inside its OWN compound statement (so a local declared
+    // in one isn't visible in another).
+    private AstNode ParseRegion() {
+        let tok = this.Advance()      // 'region'
+        this.SkipNewlines()
+        let body = this.ParseBlock()
+        let nb = Ast.Block(body.Line, body.Column)
+        nb.Children.Add(Ast.InlineC("amc_arena_push_mark();", tok.Line, tok.Column))
+        let n = body.Children.Count()
+        for ci in 0..n { nb.Children.Add(body.Children.Get(ci)) }
+        nb.Children.Add(Ast.InlineC("amc_arena_pop_mark();", tok.Line, tok.Column))
+        return nb
+    }
+
+    // setup { B }  ≡  { persist_begin; B; persist_end }   (run-once state, §5.2)
+    private AstNode ParseSetup() {
+        let tok = this.Advance()      // 'setup'
+        this.SkipNewlines()
+        let body = this.ParseBlock()
+        let nb = Ast.Block(body.Line, body.Column)
+        nb.Children.Add(Ast.InlineC("amc_persist_begin();", tok.Line, tok.Column))
+        let n = body.Children.Count()
+        for ci in 0..n { nb.Children.Add(body.Children.Get(ci)) }
+        nb.Children.Add(Ast.InlineC("amc_persist_end();", tok.Line, tok.Column))
+        return nb
     }
 
     // ── Try / Throw ──────────────────────────────────
@@ -1389,6 +1447,12 @@ public class Parser {
         let isBitAssign = this.CheckValue("&=") || this.CheckValue("|=") || this.CheckValue("^=") || this.CheckValue("<<=") || this.CheckValue(">>=")
         if (isAssign || isBitAssign) {
             let tok = this.Advance()
+            // Allow the right-hand side to begin on the next line: an
+            // assignment operator at end-of-line is unambiguously a
+            // continuation (a dangling `x =` is never a complete
+            // statement). Without this, `x =\n  expr` parsed the RHS as
+            // empty and cgen emitted `_unknown_`.
+            this.SkipNewlines()
             let right = this.ParseAssign()
             return Ast.Binary(left, tok.Value, right, tok.Line, tok.Column)
         }
