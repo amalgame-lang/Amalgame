@@ -210,8 +210,7 @@ documenté. Nous avons délibérément choisi une classe plate avec une
 méthode `Render()` plutôt qu'une classe de base `abstract class
 Component` : la résolution statique d'AM rend les surcharges virtuelles
 sur un parent peu fiables ; une convention se lit mieux et s'exécute de
-façon plus prévisible. Voir [`../architecture.md`](../architecture.md)
-pour le modèle complet à trois niveaux (Element / Component / Form).
+façon plus prévisible. Le modèle complet a trois niveaux (Element / Component / Form).
 
 ## Remplacer la feuille de style de base
 
@@ -253,7 +252,7 @@ Champs publics et mutables plutôt que classe de base abstraite avec
 surcharges, car la résolution statique d'AM ne résout pas de façon
 fiable la méthode virtuelle d'un parent via une référence de sous-
 classe — maintenir `Form` plate évite le piège. Voir
-[`01-getting-started.md`](01-getting-started.md#shorter-entry-point--form--applicationrun-v007).
+[`01-getting-started.md`](01-getting-started.md).
 
 ## Conseils de débogage
 

@@ -1,9 +1,9 @@
 # Amalgame compiler snapshot
 
-Captured: 2026-05-31T22:57:00+02:00
-Git rev:  bbb4bccb1df60218989f5a7ef88518de58021e68
-Branch:   feat/async-await-sugar
-Tests:    637 passed
+Captured: 2026-06-04T22:33:28+02:00
+Git rev:  7523c98c3b0122925b161d0205d56db649c6e641
+Branch:   main
+Tests:    652 passed
 
 This snapshot is the canonical bootstrap binary. `build_amc.sh` uses
 `./amc` if present, otherwise falls back to `./snapshot/amc`. From a

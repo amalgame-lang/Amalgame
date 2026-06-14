@@ -92,6 +92,17 @@ public class TypeChecker {
     private SubstArgs:     List<string>
     // Source map for snippet rendering in error messages — optional, set by main
     public  Sources:       SourceMap
+    // MCU: set from --target. Enables the @isr allocation-free check (§6.2)
+    // and the arena↛persistent escape check (§6.4). No-op when false → hosted
+    // behavior unchanged.
+    public  Embedded:      bool
+    // Escape-check origin tracking (per method, embedded-only). PersistLocals
+    // = locals bound via persist(...); ArenaLocals = locals bound to a fresh
+    // arena allocation. PersistDepth > 0 inside a setup{} block, where
+    // allocations are persistent (so they're not treated as arena-origin).
+    private PersistLocals: List<string>
+    private ArenaLocals:   List<string>
+    private PersistDepth:  int
 
     public TypeChecker(FullResolver symbols, string filename) {
         this.ExprTypeMap   = new Map<string, string>()
@@ -106,6 +117,10 @@ public class TypeChecker {
         this.SubstParams   = new List<string>()
         this.SubstArgs     = new List<string>()
         this.Sources       = new SourceMap()
+        this.Embedded      = false
+        this.PersistLocals = new List<string>()
+        this.ArenaLocals   = new List<string>()
+        this.PersistDepth  = 0
     }
 
     // ── Local scope stack (mirrors Resolver) ──────────
@@ -673,6 +688,10 @@ public class TypeChecker {
         let retType        = method.Str   // return type stored in Str by parser
         let prevReturn     = this.CurrentReturn
         this.CurrentReturn = retType
+        // MCU escape-check: fresh origin tracking per method (§6.4).
+        this.PersistLocals = new List<string>()
+        this.ArenaLocals   = new List<string>()
+        this.PersistDepth  = 0
 
         this.PushScope()
 
@@ -695,8 +714,102 @@ public class TypeChecker {
             this.CheckBlock(method.Body)
         }
 
+        // MCU §6.2: an @isr handler must be allocation-free — it can preempt
+        // mid-tick (even mid-reset), owns no arena, and may touch only
+        // persistent/static state. Scan the body (after typing, so string
+        // concats are visible) and error on any allocation. Embedded-only, so
+        // hosted is untouched. (Transitive reachability through callees is a
+        // documented follow-up; this catches allocation directly in the ISR.)
+        if (this.Embedded && method.Body != null
+            && this.HasDecorator(method.Str2, "isr")) {
+            this.IsrCheckNoAlloc(method.Body)
+        }
+
         this.PopScope()
         this.CurrentReturn = prevReturn
+    }
+
+    // True if `name` appears in a comma-separated decorator list.
+    private bool HasDecorator(string list, string name) {
+        if (String_Length(list) == 0) { return false }
+        let parts: List<string> = String_Split(list, ",")
+        let n = parts.Count()
+        for i in 0..n {
+            if (parts.Get(i) == name) { return true }
+        }
+        return false
+    }
+
+    // Recursively flag allocations inside an @isr body (§6.2). Sound markers
+    // only (no false positives): `new`, list literals/comprehensions, and
+    // string concatenation (which allocates a fresh code_string).
+    private void IsrCheckNoAlloc(AstNode node) {
+        if (node == null) { return }
+        let k = node.Kind
+        if (k == NodeKind.NEW_EXPR) {
+            this.Error("@isr handler must be allocation-free: 'new' allocates on the arena (keep ISR state persistent/static)", node)
+        }
+        if (k == NodeKind.LIST_LITERAL || k == NodeKind.LIST_COMP) {
+            this.Error("@isr handler must be allocation-free: list literal allocates", node)
+        }
+        if (k == NodeKind.BINARY && this.GetType(node) == "code_string") {
+            this.Error("@isr handler must be allocation-free: string concatenation allocates", node)
+        }
+        if (node.Left  != null) { this.IsrCheckNoAlloc(node.Left) }
+        if (node.Right != null) { this.IsrCheckNoAlloc(node.Right) }
+        if (node.Cond  != null) { this.IsrCheckNoAlloc(node.Cond) }
+        if (node.Body  != null) { this.IsrCheckNoAlloc(node.Body) }
+        if (node.Else  != null) { this.IsrCheckNoAlloc(node.Else) }
+        let na = node.Args.Count()
+        for ai in 0..na { this.IsrCheckNoAlloc(node.Args.Get(ai)) }
+        let nc = node.Children.Count()
+        for ci in 0..nc { this.IsrCheckNoAlloc(node.Children.Get(ci)) }
+    }
+
+    // ── MCU escape check: arena ↛ persistent (§6.4) ──────────────────
+    // Sound by construction: only flags when BOTH sides are KNOWN — a
+    // known-persistent destination receiving a known-arena value. Anything
+    // uncertain is left alone, so there are ≈zero false positives (the
+    // documented trade-off is missed cases, upgradeable later).
+
+    private bool NameIn(List<string> xs, string n) {
+        let c = xs.Count()
+        for i in 0..c { if (xs.Get(i) == n) { return true } }
+        return false
+    }
+
+    // A value freshly allocated on the per-tick arena: `new`, a list
+    // literal/comprehension, a string concat, or a local known to hold one.
+    // (Inside setup{}, PersistDepth>0, allocations are persistent — callers
+    // gate on PersistDepth==0 so those don't count.)
+    private bool IsArenaOrigin(AstNode e) {
+        if (e == null) { return false }
+        let k = e.Kind
+        if (k == NodeKind.NEW_EXPR) { return true }
+        if (k == NodeKind.LIST_LITERAL || k == NodeKind.LIST_COMP) { return true }
+        if (k == NodeKind.BINARY && this.GetType(e) == "code_string") { return true }
+        if (k == NodeKind.IDENTIFIER) { return this.NameIn(this.ArenaLocals, e.Name) }
+        return false
+    }
+
+    // A value known to live in the persistent region: a persist(...) call or
+    // a local bound from one.
+    private bool IsPersistOrigin(AstNode e) {
+        if (e == null) { return false }
+        let k = e.Kind
+        if (k == NodeKind.CALL && e.Left != null
+            && e.Left.Kind == NodeKind.IDENTIFIER && e.Left.Name == "persist") {
+            return true
+        }
+        if (k == NodeKind.IDENTIFIER) { return this.NameIn(this.PersistLocals, e.Name) }
+        return false
+    }
+
+    // Record a local's origin from its initializer (called from CheckVarDecl).
+    private void TrackLocalOrigin(string name, AstNode init) {
+        if (!this.Embedded || init == null) { return }
+        if (this.IsPersistOrigin(init)) { this.PersistLocals.Add(name) }
+        else if (this.PersistDepth == 0 && this.IsArenaOrigin(init)) { this.ArenaLocals.Add(name) }
     }
 
     // ── Statements ───────────────────────────────────
@@ -736,7 +849,13 @@ public class TypeChecker {
         }
         if (k == NodeKind.BREAK_STMT || k == NodeKind.CONTINUE_STMT) { return }
         if (k == NodeKind.INLINE_C) {
-            // Inline-C is unchecked by design — body is raw C.
+            // Inline-C is unchecked by design — body is raw C. But the setup{}
+            // desugar brackets its block with amc_persist_begin/end markers;
+            // track the depth so allocations inside setup count as persistent.
+            if (this.Embedded) {
+                if (String_Contains(stmt.Str, "amc_persist_begin")) { this.PersistDepth = this.PersistDepth + 1 }
+                if (String_Contains(stmt.Str, "amc_persist_end"))   { this.PersistDepth = this.PersistDepth - 1 }
+            }
             return
         }
         if (k == NodeKind.TRY_STMT) {
@@ -792,6 +911,9 @@ public class TypeChecker {
         }
         // Register in local scope
         this.DeclareLocal(stmt.Name, finalType)
+        // MCU escape check: remember whether this local holds an arena or a
+        // persistent value, for later store-site checks (§6.4).
+        this.TrackLocalOrigin(stmt.Name, stmt.Left)
     }
 
     private void CheckReturn(AstNode stmt) {
@@ -863,6 +985,15 @@ public class TypeChecker {
             let valueType  = this.GetType(stmt.Right)
             if (!this.IsAssignable(targetType, valueType)) {
                 this.Error("Cannot assign '" + valueType + "' to '" + targetType + "'", stmt)
+            }
+            // MCU §6.4: storing an arena value into a field of a persistent
+            // object outlives the tick reset → dangling. e.g.
+            // `persistentObj.field = new T()`. Wrap the value in persist(...).
+            if (this.Embedded && this.PersistDepth == 0
+                && stmt.Left.Kind == NodeKind.MEMBER && stmt.Left.Left != null
+                && this.IsPersistOrigin(stmt.Left.Left)
+                && this.IsArenaOrigin(stmt.Right) && !this.IsPersistOrigin(stmt.Right)) {
+                this.Error("arena value escapes into persistent state (it dies at the next loop tick) — wrap it with persist(...)", stmt)
             }
         }
     }
@@ -997,6 +1128,16 @@ public class TypeChecker {
         let lt = if (expr.Left  != null) { this.GetType(expr.Left)  } else { "?" }
         let rt = if (expr.Right != null) { this.GetType(expr.Right) } else { "?" }
 
+        // MCU §6.4: assignment is a BINARY with op "=". Flag a field store of
+        // an arena value into a persistent object —
+        // `persistentObj.field = new T()` — which dangles after the tick reset.
+        if (this.Embedded && this.PersistDepth == 0 && op == "="
+            && expr.Left != null && expr.Left.Kind == NodeKind.MEMBER
+            && expr.Left.Left != null && this.IsPersistOrigin(expr.Left.Left)
+            && this.IsArenaOrigin(expr.Right) && !this.IsPersistOrigin(expr.Right)) {
+            this.Error("arena value escapes into persistent state (it dies at the next loop tick) — wrap it with persist(...)", expr)
+        }
+
         // Logical operators require bool operands
         if (op == "&&" || op == "||") {
             if (!this.IsBool(lt)) {
@@ -1069,11 +1210,35 @@ public class TypeChecker {
     }
 
     private void CheckCallExpr(AstNode expr) {
+        // MCU (§5.3): persist(x) is type-transparent — the persistent copy
+        // has exactly x's type, so member access on the result still checks.
+        if (expr.Left != null && expr.Left.Kind == NodeKind.IDENTIFIER
+            && expr.Left.Name == "persist" && expr.Args.Count() == 1) {
+            this.CheckExpr(expr.Args.Get(0))
+            this.SetType(expr, this.GetType(expr.Args.Get(0)))
+            return
+        }
         // expr.Left = callee, expr.Args = arguments
         if (expr.Left != null) { this.CheckExpr(expr.Left) }
         let argc = expr.Args.Count()
         for i in 0..argc {
             this.CheckExpr(expr.Args.Get(i))
+        }
+        // MCU §6.4: a collection mutator on a persistent receiver storing an
+        // arena value — `persistentList.Add(new T())` — leaves a dangling
+        // reference after the tick reset. The stored value is the LAST arg
+        // (List.Add(v) / Set.Add(v) / Map.Set(k, v)). Wrap it with persist(...).
+        if (this.Embedded && this.PersistDepth == 0
+            && expr.Left != null && expr.Left.Kind == NodeKind.MEMBER
+            && this.IsPersistOrigin(expr.Left.Left) && argc > 0) {
+            let mname = expr.Left.Name
+            if (mname == "Add" || mname == "Set" || mname == "Push"
+                || mname == "Append" || mname == "Insert") {
+                let stored = expr.Args.Get(argc - 1)
+                if (this.IsArenaOrigin(stored) && !this.IsPersistOrigin(stored)) {
+                    this.Error("arena value escapes into a persistent collection (it dies at the next loop tick) — wrap it with persist(...)", expr)
+                }
+            }
         }
         // Return type: look up callee symbol if it's a simple identifier
         var calleeType = "?"

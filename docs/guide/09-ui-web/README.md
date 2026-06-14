@@ -9,15 +9,6 @@ app — installation, the widget catalogue, event model, layout,
 theming, partial-DOM updates, and the escape hatches for custom
 HTML/CSS/JS.
 
-For the WinForms widget cross-reference and the architectural
-overview, see the sibling docs:
-
-- [`../winforms-mapping.md`](../winforms-mapping.md) — every
-  WinForms toolbox control, where it stands in `ui-web`, and
-  what's deferred / out of scope.
-- [`../architecture.md`](../architecture.md) — the three-level
-  Element / Component / Form model and the runtime injection layout.
-
 ## Reading order
 
 | File | Topic |
@@ -117,9 +108,7 @@ authored by hand.
   render as HTML/CSS, not OS chrome. An opt-in native MenuBar
   is planned for v0.1.0 (the AM API won't change). DataGridView,
   system tray, ToolTip-as-widget, NotifyIcon and the printing
-  stack are not in scope before v0.1+. See
-  [`../winforms-mapping.md`](../winforms-mapping.md) for the
-  per-control status.
+  stack are not in scope before v0.1+.
 - A browser. URLs in `<a href>` route through the OS browser via
   `Element.Link`; the webview only renders your app's own HTML.
 

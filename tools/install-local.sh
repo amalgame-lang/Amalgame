@@ -48,6 +48,14 @@ mkdir -p "$BIN_DIR" "$SHARE_DIR/runtime" "$SHARE_DIR/lib" "$SHARE_DIR/stdlib"
 install -m 755 ./amc "$BIN_DIR/amc"
 cp runtime/*.h "$SHARE_DIR/runtime/"
 
+# MCU: ship the freestanding embedded runtime tree (runtime/embedded/ +
+# bundled board assets) so `amc build --target=` works from an installed
+# amc, not just the source tree. Mirror-refresh so removed files don't linger.
+if [ -d runtime/embedded ]; then
+    rm -rf "$SHARE_DIR/runtime/embedded"
+    cp -r runtime/embedded "$SHARE_DIR/runtime/embedded"
+fi
+
 if [ -f lib/libamalgame.a ]; then
     cp lib/libamalgame.a "$SHARE_DIR/lib/libamalgame.a"
 fi

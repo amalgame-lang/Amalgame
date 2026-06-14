@@ -298,6 +298,28 @@ download() {
     else                          wget -qO "$dest" "$url"
     fi
 }
+# Release assets are pulled through get.amalgame.me first — the sovereign
+# cache+stream mirror, where every download is counted in Amalgame's own
+# analytics — with a transparent fall back to GitHub Releases if the mirror
+# is unreachable. `-f` makes curl fail on HTTP errors so the fallback fires.
+# GET_BASE / GH_BASE are assigned below, once VTAG/REPO are resolved.
+dl_asset() {   # dl_asset <asset> <dest> — download an asset to a file
+    local asset="$1" dest="$2"
+    info "Downloading $asset..."
+    if [ $HAS_CURL -eq 1 ]; then
+        curl -fsSL -o "$dest" "$GET_BASE/$asset" || curl -fsSL -o "$dest" "$GH_BASE/$asset"
+    else
+        wget -qO "$dest" "$GET_BASE/$asset" || wget -qO "$dest" "$GH_BASE/$asset"
+    fi
+}
+fetch_asset() {   # fetch_asset <asset> — download an asset to stdout
+    local asset="$1"
+    if [ $HAS_CURL -eq 1 ]; then
+        curl -fsSL "$GET_BASE/$asset" || curl -fsSL "$GH_BASE/$asset"
+    else
+        wget -qO- "$GET_BASE/$asset" || wget -qO- "$GH_BASE/$asset"
+    fi
+}
 
 # ── Resolve version ───────────────────────────────────────
 header "Fetching release info..."
@@ -313,23 +335,22 @@ VTAG="$VERSION"
 VNUM="${VTAG#v}"
 info "Version  : $VTAG"
 
-BASE_URL="https://github.com/$REPO/releases/download/$VTAG"
+GET_BASE="https://get.amalgame.me/amc/$VTAG"
+GH_BASE="https://github.com/$REPO/releases/download/$VTAG"
 ARCHIVE="amc-$VNUM-$TARGET.tar.gz"
-URL="$BASE_URL/$ARCHIVE"
 
 # ── Download & verify ─────────────────────────────────────
 header "Downloading Amalgame $VTAG..."
 ARCHIVE_PATH="$TMP_DIR/$ARCHIVE"
-download "$URL" "$ARCHIVE_PATH"
+dl_asset "$ARCHIVE" "$ARCHIVE_PATH"
 
 # Verify checksum if the release ships one. Releases since v0.8.32
 # bundle every per-OS artifact in a single `checksums.sha256` (one
 # line per asset), not a per-archive `.sha256`. Extract our row out
 # of it before feeding `sha256sum -c`.
-CHECKSUM_URL="$BASE_URL/checksums.sha256"
 CHECKSUM_ALL="$TMP_DIR/checksums.sha256"
 CHECKSUM_FILE="$TMP_DIR/$ARCHIVE.sha256"
-if fetch_url "$CHECKSUM_URL" > "$CHECKSUM_ALL" 2>/dev/null && \
+if fetch_asset "checksums.sha256" > "$CHECKSUM_ALL" 2>/dev/null && \
    grep -qE "[[:space:]]\*?$ARCHIVE\$" "$CHECKSUM_ALL"; then
     grep -E "[[:space:]]\*?$ARCHIVE\$" "$CHECKSUM_ALL" > "$CHECKSUM_FILE"
     info "Verifying checksum..."

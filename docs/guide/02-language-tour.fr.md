@@ -410,7 +410,7 @@ substitution textuelle. Le runtime expose `Closure_call1` / `_call2` /
 `_call3` pour les arités 1 à 3.
 
 Les méthodes d'ordre supérieur de `List<T>` acceptent un lambda
-directement (depuis la v0.3.6 — voir [04-stdlib.md](04-stdlib.md#listt)
+directement (depuis la v0.3.6 — voir [04-stdlib.md](04-stdlib.md#listlttgt)
 pour la liste complète) :
 
 ```kotlin
@@ -716,7 +716,7 @@ Math2.Clamp(x: 50, lo: 0, hi: 10)
 > Les noms sont **uniquement documentaires** au site d'appel pour
 > l'instant : les valeurs sont passées dans l'ordre de la source
 > indépendamment des noms. Suivi dans
-> [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md).
+> [ROADMAP_COMPLET.md](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md).
 
 ## Mode bibliothèque
 
@@ -764,10 +764,10 @@ qu'une erreur a été signalée.
 
 - Inférence de type générique (`let xs = new List<int>()` compile bien
   mais le type d'élément `int` n'est pas propagé à travers chaque appel
-  de méthode — voir [04-stdlib.md](04-stdlib.md#listt) pour les méthodes
+  de méthode — voir [04-stdlib.md](04-stdlib.md#listlttgt) pour les méthodes
   qui préservent le type d'élément).
 - L'imbrication de compréhensions de liste avec le même nom (utilisez
   des variables de boucle distinctes).
 
-Voir [ROADMAP_COMPLET.md](../../ROADMAP_COMPLET.md) pour le backlog
+Voir [ROADMAP_COMPLET.md](https://github.com/amalgame-lang/Amalgame/blob/main/ROADMAP_COMPLET.md) pour le backlog
 complet.

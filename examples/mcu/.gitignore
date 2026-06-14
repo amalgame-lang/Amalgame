@@ -1,0 +1,6 @@
+hello
+hello.c
+*.elf
+*.bin
+*.hex
+*.o

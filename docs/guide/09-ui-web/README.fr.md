@@ -9,16 +9,6 @@ livrer une application — installation, catalogue de widgets, modèle
 d'événements, mise en page, thématisation, mises à jour partielles du
 DOM, et les échappatoires pour HTML/CSS/JS personnalisés.
 
-Pour la correspondance des contrôles WinForms et la vue d'ensemble
-architecturale, consultez les docs associées :
-
-- [`../winforms-mapping.md`](../winforms-mapping.md) — chaque
-  contrôle de la boîte à outils WinForms, son état dans `ui-web`, et
-  ce qui est différé / hors périmètre.
-- [`../architecture.md`](../architecture.md) — le modèle à trois
-  niveaux Element / Component / Form et la disposition de l'injection
-  au runtime.
-
 ## Ordre de lecture
 
 | Fichier | Sujet |
@@ -123,9 +113,7 @@ la closure AM, retour JSON affiché formaté dans `#out`. Aucun HTML
   opt-in est prévue pour la v0.1.0 (l'API AM ne changera pas).
   DataGridView, la zone de notification système, ToolTip en tant que
   widget, NotifyIcon et la pile d'impression ne sont pas dans le
-  périmètre avant la v0.1+. Voir
-  [`../winforms-mapping.md`](../winforms-mapping.md) pour le statut
-  par contrôle.
+  périmètre avant la v0.1+.
 - Un navigateur. Les URLs dans `<a href>` sont routées vers le
   navigateur du système via `Element.Link` ; la webview ne rend que
   le propre HTML de votre application.

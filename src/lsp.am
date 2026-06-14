@@ -689,6 +689,18 @@ public class LspServer {
         return String_Substring(path, 0, last)
     }
 
+    // MCU (docs/proposals/amc-embedded.md §11.2): a project targets an MCU
+    // when its amalgame.toml carries a [target] section. We surface the
+    // embedded-only diagnostics (e.g. @isr allocation) as editor squiggles
+    // for such projects by setting TypeChecker.Embedded. Non-MCU projects
+    // are unaffected (no [target] → false → hosted behavior).
+    public static bool ProjectIsEmbedded(string startPath) {
+        let root: string = LspServer.FindWorkspaceRoot(startPath)
+        let manifest: string = root + "/amalgame.toml"
+        if (!File.Exists(manifest)) { return false }
+        return String_Contains(File.ReadAll(manifest), "[target]")
+    }
+
     // Run the same lex+parse+resolve+typecheck pipeline `main.am`
     // does for one file, then turn the collected errors into a
     // JSON array of LSP Diagnostic objects. Sibling files are loaded
@@ -706,6 +718,7 @@ public class LspServer {
         let resolver = this.BuildWorkspaceResolver(path, prog)
 
         let tc = new TypeChecker(resolver, path)
+        tc.Embedded = LspServer.ProjectIsEmbedded(path)   // MCU: enable @isr squiggles
         tc.Check(prog)
 
         var arr   = "["
@@ -2964,6 +2977,15 @@ public class LspServer {
     private void SendGlobalCompletion(int id, FullResolver resolver) {
         var items = ""
         var first = true
+        // MCU execution-model soft keywords (amc-embedded §6). Not resolver
+        // globals, so offer them here as snippets. Kind 15 = Snippet,
+        // insertTextFormat 2 = snippet syntax. Harmless in host code (loop/
+        // region/setup also work hosted; persist is identity there).
+        items = items + "{\"label\":\"loop\",\"kind\":15,\"detail\":\"MCU: per-tick loop (arena reset each tick)\",\"insertText\":\"loop {\\n\\t$0\\n}\",\"insertTextFormat\":2}"
+        items = items + ",{\"label\":\"setup\",\"kind\":15,\"detail\":\"MCU: run-once / persistent setup block\",\"insertText\":\"setup {\\n\\t$0\\n}\",\"insertTextFormat\":2}"
+        items = items + ",{\"label\":\"region\",\"kind\":15,\"detail\":\"MCU: lexical sub-arena\",\"insertText\":\"region {\\n\\t$0\\n}\",\"insertTextFormat\":2}"
+        items = items + ",{\"label\":\"persist\",\"kind\":15,\"detail\":\"MCU: keep a value past the tick reset\",\"insertText\":\"persist($0)\",\"insertTextFormat\":2}"
+        first = false
         let gn: int = resolver.GlobalCount()
         for gi in 0..gn {
             let name  = resolver.GlobalNameAt(gi)

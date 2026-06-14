@@ -1,0 +1,25 @@
+namespace Blink
+
+// Bare-metal blink via the Amalgame.Mcu HAL (slice 6) + the execution model
+// (slice 3). Build + run in QEMU:
+//   amc build --target=cortex-m3 blink.am -o blink && qemu-system-arm \
+//     -M lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel blink
+//
+// On the QEMU "virtual board" the HAL logs pin operations over semihosting,
+// so you SEE the toggles. On real silicon (e.g. amalgame-mcu-nucleo-f767zi)
+// the same source drives an actual LED — the board package supplies the Mcu_*
+// bodies (libopencm3) and the real pin number.
+public class Program {
+    public static void Main() {
+        let led = 13
+        Mcu.PinMode(led, Mcu.Output())
+        var i = 0
+        loop {                          // arena reset each tick (slice 3)
+            i = i + 1
+            Mcu.Toggle(led)             // HAL (slice 6)
+            Mcu.DelayMs(500)
+            if (i >= 6) { break }       // bounded so QEMU returns; real firmware loops forever
+        }
+        Console.WriteLine("blink done")
+    }
+}
