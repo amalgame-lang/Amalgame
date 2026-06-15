@@ -796,16 +796,26 @@ public class AmalgameCompiler {
 // os,arch} — pour savoir ce qui est réellement utilisé. AUCUN identifiant,
 // AUCUNE donnée perso ; le serveur dérive le pays de l'IP puis la jette.
 //
-// Garde-fous : best-effort et NON BLOQUANT (curl lancé en arrière-plan `&`,
-// --max-time 3) ; jamais d'erreur remontée ; throttlé 1×/jour (timestamp
+// Garde-fous : best-effort et NON BLOQUANT (curl/wget lancé en arrière-plan
+// `&`, timeout 3 s) ; jamais d'erreur remontée ; throttlé 1×/jour (timestamp
 // dans ~/.amalgame/.tel_last, PAS un identifiant) ; opt-out via les variables
-// d'env AMALGAME_NO_TELEMETRY ou DO_NOT_TRACK. Si curl est absent, le shell
-// échoue silencieusement et amc continue normalement (zéro dépendance dure).
+// d'env AMALGAME_NO_TELEMETRY ou DO_NOT_TRACK. On VÉRIFIE qu'un transport est
+// présent avant d'appeler : curl en premier, repli sur wget, et si aucun des
+// deux n'est installé on saute le ping en silence — amc compile quand même
+// (zéro dépendance dure, un compilateur ne doit jamais souffrir de sa télémétrie).
 public class Telemetry {
     private static bool optedOut() {
         if (String_Length(Env_Get("AMALGAME_NO_TELEMETRY")) > 0) { return true }
         if (String_Length(Env_Get("DO_NOT_TRACK")) > 0) { return true }
         return false
+    }
+
+    // True si `tool` est sur le PATH. `command -v` est un builtin POSIX
+    // (marche aussi sous MSYS2), silencieux via la redirection. Ne lève
+    // jamais : RunCapture rend toujours un résultat, on lit juste l'exit.
+    private static bool commandExists(string tool) {
+        let rr = Process.RunCapture("command -v " + tool + " >/dev/null 2>&1")
+        return rr.Exit == 0
     }
 
     private static string throttlePath() {
@@ -846,15 +856,30 @@ public class Telemetry {
         let body: string = "{\"kind\":\"amc\",\"version\":\"" + version
             + "\",\"os\":\"" + os + "\",\"arch\":\"" + arch + "\"}"
 
-        // curl en ARRIÈRE-PLAN (`&`) → amc ne bloque pas. --max-time 3 borne
-        // curl. Tout en /dev/null : silencieux. Si curl absent → shell échoue,
-        // ignoré. RunCapture rend la main immédiatement (le shell backgroundé sort).
-        let cmd: string = "curl -sS -X POST -H 'Content-Type: application/json'"
-            + " --max-time 3 --data '" + body + "'"
-            + " https://tel.amalgame.me/ping >/dev/null 2>&1 &"
-        Process.RunCapture(cmd)
+        // Transport best-effort : on vérifie d'abord qu'un client HTTP est
+        // installé. curl en priorité, repli sur wget. Les deux sont lancés en
+        // ARRIÈRE-PLAN (`&`, timeout 3 s) et toute sortie en /dev/null → amc ne
+        // bloque jamais et reste silencieux. Si NI curl NI wget n'est présent,
+        // `cmd` reste vide : on ne lance rien, amc compile normalement.
+        var cmd: string = ""
+        if (Telemetry.commandExists("curl")) {
+            cmd = "curl -sS -X POST -H 'Content-Type: application/json'"
+                + " --max-time 3 --data '" + body + "'"
+                + " https://tel.amalgame.me/ping >/dev/null 2>&1 &"
+        } else if (Telemetry.commandExists("wget")) {
+            cmd = "wget -q -O /dev/null --timeout=3 --tries=1"
+                + " --header='Content-Type: application/json'"
+                + " --post-data='" + body + "'"
+                + " https://tel.amalgame.me/ping >/dev/null 2>&1 &"
+        }
+        if (String_Length(cmd) > 0) {
+            // RunCapture rend la main immédiatement (le shell backgroundé sort).
+            Process.RunCapture(cmd)
+        }
 
-        // Marque le throttle même si curl échoue (pas de re-tentative avant 24 h).
+        // Marque le throttle dès qu'on a décidé (ping lancé OU sauté faute
+        // d'outil) : ça borne tout le travail de télémétrie — y compris les
+        // sondes `command -v` — à 1×/jour, qu'un transport ait été trouvé ou non.
         let path: string = Telemetry.throttlePath()
         if (String_Length(path) > 0) { File.WriteAll(path, String_FromInt(now)) }
     }
