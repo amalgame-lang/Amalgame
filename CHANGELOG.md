@@ -7,6 +7,15 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.90] — 2026-06-15
+
+### Changed
+- Télémétrie : le ping d'usage détecte désormais le client HTTP
+  disponible avant d'appeler — `curl` en priorité, repli sur `wget`,
+  et si aucun des deux n'est installé le ping est sauté en silence.
+  amc compile toujours normalement (best-effort, non bloquant, sans
+  libcurl). Opt-out inchangé : `AMALGAME_NO_TELEMETRY=1` / `DO_NOT_TRACK=1`.
+
 ## [v0.8.89] — 2026-06-15
 
 ### Added
@@ -5593,3 +5602,4 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.8.15]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.15
 [v0.8.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.14
 [v0.8.89]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.89
+[v0.8.90]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.90
