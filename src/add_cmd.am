@@ -957,11 +957,36 @@ public class AddCommand {
             }
         }
 
-        // Step 1 — amc --lib --quiet. Quote amcPath: on Windows it's
-        // "C:/Program Files/Amalgame/bin/amc.exe" and cmd.exe splits the
-        // unquoted path on the space ('C:/Program' is not recognized).
-        let amcCmd: string = "\"" + amcPath + "\" --lib --quiet " + facadeSourcesAbs + " -o \"" + baseOut + "\" 2>&1"
+        // v0.8.92: a facade that imports sibling-package classes (e.g.
+        // net-webdav's facade uses HttpResponse from net-http, Filesystem
+        // from io-filesystem, BasicAuth from auth) used to fail precompile
+        // with "Unknown symbol HttpResponse" — PrecompileFacade compiled
+        // the facade with NO dependency scope. Fix: drop a transient
+        // amalgame.lock listing every OTHER cached package next to the
+        // facade and run amc from pkgDir, so the PkgRegistry auto-attaches
+        // each dep's MANIFEST (class names) — the same path consumer
+        // builds take. Manifest attach (not --external of sources) is key:
+        // it registers class names without re-parsing bodies, so it also
+        // covers runtime-only classes (tls's Acme) and multi-file packages
+        // (net-http) without dragging their own unmet imports into scope.
+        var selfRepo: string = ""
+        let pdParts: List<string> = String_Split(pkgDir, "/")
+        if (pdParts.Count() >= 2) { selfRepo = pdParts.Get(pdParts.Count() - 2) }
+        let lockPath: string = pkgDir + "/amalgame.lock"
+        var lockBackup: string = ""
+        if (File.Exists(lockPath)) { lockBackup = File.ReadAll(lockPath) }
+        let lockText: string = AddCommand.AllCachedLockText(selfRepo)
+        let wroteLock: bool = (String_Length(lockText) > 0) && File.WriteAll(lockPath, lockText)
+
+        // Step 1 — amc --lib --quiet, run from pkgDir so amc picks up the
+        // transient lock above. Quote amcPath (Windows spaces).
+        let amcCmd: string = "cd \"" + pkgDir + "\" && \"" + amcPath + "\" --lib --quiet " + facadeSourcesAbs + " -o \"" + baseOut + "\" 2>&1"
         let amcRes = Process.RunCapture(amcCmd)
+        // Restore/remove the transient lock immediately (success or not).
+        if (wroteLock) {
+            if (String_Length(lockBackup) > 0) { File.WriteAll(lockPath, lockBackup) }
+            else { File.Delete(lockPath) }
+        }
         if (amcRes.Exit != 0) {
             Console.WriteError("  FAILED to compile facade (amc):")
             Console.WriteError(amcRes.Stdout)
@@ -3009,6 +3034,69 @@ public class AddCommand {
             if (String_Length(dir) > 0) {
                 out.Add(dir)
             }
+        }
+        return out
+    }
+
+    // Latest cached <tag>_<sha> version dir for a repo (parent of its
+    // runtime/ dir). "" if the repo isn't cached. Mirrors the semver
+    // pick in LatestCacheRuntimeDir but returns the package root.
+    public static string LatestCacheVersionDir(string depKey) {
+        if (!String_StartsWith(depKey, "amalgame-")) { return "" }
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let pkgCacheParent: string = cacheRoot + "/github.com/amalgame-lang/" + depKey
+        if (!File.Exists(pkgCacheParent)) { return "" }
+        let entries: List<string> = String_Split(AddCommand.ListDir(pkgCacheParent), "\n")
+        var entry: string = ""
+        var bestTag: string = ""
+        let ne: int = entries.Count()
+        for i in 0..ne {
+            let cand: string = String_Trim(entries.Get(i))
+            if (String_Length(cand) == 0) { continue }
+            if (String_EndsWith(cand, "_clone")) { continue }
+            let candParts: List<string> = String_Split(cand, "_")
+            let candTag: string = candParts.Get(0)
+            if (String_Length(entry) == 0 || PackageRegistry.CompareCmp(candTag, bestTag) > 0) {
+                entry = cand
+                bestTag = candTag
+            }
+        }
+        if (String_Length(entry) == 0) { return "" }
+        return pkgCacheParent + "/" + entry
+    }
+
+    // A transient amalgame.lock body listing every cached package
+    // (one version per repo) EXCEPT excludeRepo. Dropped next to a
+    // facade being precompiled so amc's PkgRegistry auto-attaches each
+    // dep's manifest (class names) — letting the facade resolve
+    // cross-package symbols (HttpResponse, Filesystem, BasicAuth, …)
+    // without parsing their bodies. "" if the cache is empty.
+    public static string AllCachedLockText(string excludeRepo) {
+        let cacheRoot: string = AddCommand.CacheRoot()
+        let orgRoot: string = cacheRoot + "/github.com/amalgame-lang"
+        if (!File.Exists(orgRoot)) { return "" }
+        let repos: List<string> = String_Split(AddCommand.ListDir(orgRoot), "\n")
+        var out: string = ""
+        let n: int = repos.Count()
+        for i in 0..n {
+            let repo: string = String_Trim(repos.Get(i))
+            if (String_Length(repo) == 0) { continue }
+            if (repo == excludeRepo) { continue }
+            if (!String_StartsWith(repo, "amalgame-")) { continue }
+            let verDir: string = AddCommand.LatestCacheVersionDir(repo)
+            if (String_Length(verDir) == 0) { continue }
+            // verDir basename is "<tag>_<sha>" — split on the LAST "_".
+            let slash: int = String_LastIndexOf(verDir, "/")
+            let entry: string = String_Substring(verDir, slash + 1, String_Length(verDir) - slash - 1)
+            let us: int = String_LastIndexOf(entry, "_")
+            if (us < 0) { continue }
+            let tag: string = String_Substring(entry, 0, us)
+            let rev: string = String_Substring(entry, us + 1, String_Length(entry) - us - 1)
+            out = out + "[[package]]\n"
+            out = out + "name = \"" + repo + "\"\n"
+            out = out + "git  = \"github.com/amalgame-lang/" + repo + "\"\n"
+            out = out + "tag  = \"" + tag + "\"\n"
+            out = out + "rev  = \"" + rev + "\"\n\n"
         }
         return out
     }
