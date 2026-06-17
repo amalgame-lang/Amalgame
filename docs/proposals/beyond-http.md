@@ -9,9 +9,11 @@ round-robin / IP-hash / least-connections), #3 **TCP + UDP raw proxy**
 load-balancing + IPv6 dual-stack). #4's **outbound** SMTP client shipped
 separately as `amalgame-net-smtp` v0.2.4 (the inbound relay / IMAP / POP3
 server described here is still roadmap).
+#12 **WebDAV** (`amalgame-net-webdav` v0.1.0: Class 1 + opt-in Class 2
+locks, filesystem share).
 **Still roadmap:** #4 SMTP *server*/IMAP/POP3, #5 SFTP, #7 VPN/WireGuard,
-#8 CDN, #9 gRPC, #10 DNS/DoH, #12 WebDAV; plus stream/proxy follow-ups
-(active health checks, circuit breaker) and static `sendfile(2)`.
+#8 CDN, #9 gRPC, #10 DNS/DoH; plus stream/proxy follow-ups (active health
+checks, circuit breaker), static `sendfile(2)`, and WebDAV CalDAV/CardDAV.
 The inventory below captures what the stack still needs to match nginx /
 apache / HAProxy / Postfix territory.
 
@@ -696,16 +698,34 @@ links. No new package.
 new deps. Should ship with the next `amalgame-net-http` patch
 release rather than a separate proposal slot.
 
-### 12. WebDAV server
+### 12. WebDAV server — 🟢 SHIPPED (net-webdav v0.1.0)
+
+> 🟢 **Shipped** as `amalgame-net-webdav` v0.1.0 (`WebDav`). Exposes a
+> filesystem directory over HTTP/WebDAV — the Apache mod_dav slice.
+> `WebDav.Dispatch` is a pure `HttpRequest -> HttpResponse`, mountable on
+> a Mosaic host (`MosaicServer.AddHandler`) or a `WebApp` catch-all
+> route, and unit-testable without a socket. **Class 1** (always on):
+> OPTIONS, PROPFIND (Depth 0/1, 207 multistatus XML), GET, HEAD, PUT,
+> DELETE, MKCOL, COPY, MOVE (Destination + Overwrite). **Class 2**
+> (opt-in `.WithLocks()`): exclusive write LOCK / UNLOCK with If-header /
+> 423 enforcement. Security: operator-fixed root, `..` traversal rejected
+> (403) before disk, `.ReadOnly()` mode, locks fail closed. Binary-safe:
+> GET via net-http File mode, PUT writes the raw body buffer, COPY streams
+> via libc. Directory enumeration via `amalgame-io-filesystem`. Audit (24
+> green): every verb, PROPFIND XML, Overwrite:F 412, traversal 403,
+> read-only 403, full lock lifecycle. **TODO:** explicit PROPFIND `<prop>`
+> parsing + Depth infinity; PROPPATCH dead-property persistence; full RFC
+> 4918 If-header grammar + lock sweeping; CalDAV / CardDAV.
 
 The Apache mod_dav equivalent.  Used for shared filesystems
 exposed over HTTP (calendars via CalDAV, contacts via CardDAV,
 generic file shares).
 
-**Package:** `amalgame-net-webdav` (new) or middleware in
-`amalgame-web`.
+**Package:** `amalgame-net-webdav` — built on `amalgame-net-http` +
+`amalgame-io-filesystem` + `amalgame-datetime`.
 
-**Priority:** LOWEST — niche.  Skip for v0.x.
+**Priority:** was LOWEST — pulled forward on demand (real projects need
+a file-share endpoint). CalDAV / CardDAV remain the niche follow-up.
 
 ## Ordering proposal
 
@@ -743,7 +763,8 @@ Year-2 (or punt to "if someone wants it"):
     ~6-8 days.
 10. **SFTP** via `amalgame-net-ssh` (libssh2 binding).
 11. **SMTP relay** via `amalgame-net-smtp`.
-12. **WebDAV** (lowest).
+12. ~~**WebDAV**~~ ✅ **shipped** (`amalgame-net-webdav` v0.1.0 — Class 1
+    + opt-in Class 2 locks; CalDAV/CardDAV still the niche follow-up).
 
 ### Static follow-ups (à la carte, not blocking the next item above)
 
