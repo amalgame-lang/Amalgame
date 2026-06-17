@@ -1,15 +1,18 @@
 # Beyond HTTP — nginx/apache-equivalent capabilities
 
-**Status:** in-progress. Verified against the repos **2026-06-04**.
+**Status:** in-progress. Verified against the repos **2026-06-17**.
 **Shipped:** #6 Static file serving (web v0.13.0, + Range / Last-Modified
 / `.gz` follow-ups), #11 SSE (net-http v0.16.0 + web v0.28.0), #1 Reverse
 proxy + #2 Load balancing (`amalgame-net-proxy` v0.2.1: path routing +
-round-robin / IP-hash / least-connections). #4's **outbound** SMTP client
-shipped separately as `amalgame-net-smtp` v0.2.4 (the inbound relay /
-IMAP / POP3 server described here is still roadmap).
-**Still roadmap:** #3 TCP/UDP raw proxy, #4 SMTP *server*/IMAP/POP3, #5
-SFTP, #7 VPN/WireGuard, #8 CDN, #9 gRPC, #10 DNS/DoH, #12 WebDAV; plus
-proxy follow-ups (health checks, circuit breaker) and static `sendfile(2)`.
+round-robin / IP-hash / least-connections), #3 **TCP + UDP raw proxy**
+(`amalgame-net-stream` v0.2.0: `TcpProxy` + `UdpProxy`, fixed upstream).
+#4's **outbound** SMTP client shipped separately as `amalgame-net-smtp`
+v0.2.4 (the inbound relay / IMAP / POP3 server described here is still
+roadmap).
+**Still roadmap:** #4 SMTP *server*/IMAP/POP3, #5 SFTP, #7 VPN/WireGuard,
+#8 CDN, #9 gRPC, #10 DNS/DoH, #12 WebDAV; plus stream/proxy follow-ups
+(multi-upstream LB for #3, health checks, circuit breaker) and static
+`sendfile(2)`.
 The inventory below captures what the stack still needs to match nginx /
 apache / HAProxy / Postfix territory.
 
@@ -103,19 +106,24 @@ p.Forward("/api", pool)
 
 **Priority:** HIGH — pairs naturally with reverse proxy.
 
-### 3. TCP/UDP raw proxy — 🟢 TCP SHIPPED (net-stream v0.1.0)
+### 3. TCP/UDP raw proxy — 🟢 TCP + UDP SHIPPED (net-stream v0.2.0)
 
-> 🟢 **TCP shipped** as `amalgame-net-stream` v0.1.0 (`TcpProxy`): binary-safe
-> byte splice to a fixed upstream, with security wired in by default —
-> SIGPIPE-safe, idle + connect timeouts, global + per-source-IP connection
-> caps (over-cap dropped immediately), graceful SIGINT/SIGTERM shutdown,
-> bounded splice buffer. The byte pump is C (explicit recv/send lengths)
-> because the bundled `Amalgame.Net` TcpConn primitives `strlen()` the
-> buffer and truncate at the first NUL — corrupting any binary stream.
-> Audit (all green): binary-safety round-trip (all 256 byte values +
-> embedded NULs, byte-exact), per-IP cap enforcement, graceful shutdown.
-> **TODO v0.2:** UDP forwarding, load-balancing across N upstreams, IPv6
-> listener; **v0.3:** TLS edge.
+> 🟢 **TCP + UDP shipped** as `amalgame-net-stream` v0.2.0 (`TcpProxy`,
+> `UdpProxy`): binary-safe forwarding to a fixed upstream, with security
+> wired in by default — SIGPIPE-safe, idle (+ connect, TCP) timeouts,
+> global + per-source-IP caps (over-cap dropped immediately, fail-closed),
+> graceful SIGINT/SIGTERM shutdown, bounded buffer. The byte/datagram pump
+> is C (explicit recv/send lengths) because the bundled `Amalgame.Net`
+> TcpConn primitives `strlen()` the buffer and truncate at the first NUL —
+> corrupting any binary stream. **UDP** (v0.2.0) is connectionless, so the
+> engine keeps a per-client *session* table (keyed by source addr:port),
+> each session owning a dedicated upstream socket, driven by a single
+> `poll()` event loop; datagram boundaries are preserved and the idle
+> timeout is mandatory (no FIN). Audit (all green, 16 checks): binary-safety
+> round-trip TCP + UDP (all 256 byte values + embedded NULs, byte-exact),
+> per-IP cap enforcement TCP + UDP, graceful shutdown TCP + UDP.
+> **TODO:** load-balancing across N upstreams, IPv6 listener; **later:**
+> TLS edge (DTLS for UDP).
 
 The "stream4" / `stream {}` block in nginx, or HAProxy's TCP
 mode.  Forwards arbitrary TCP / UDP without parsing the payload.
@@ -128,20 +136,28 @@ Use cases:
 
 **Package:** `amalgame-net-stream` (new).
 
+Shipped API (one listener → one fixed upstream per proxy; run several
+for several ports):
+
 ```amalgame
 import Amalgame.Net.Stream
 
-let s = new StreamProxy()
-s.Tcp(5432, "pg-primary.internal:5432")
-s.Tcp(6379, "redis-primary.internal:6379")
-s.Udp(53, ["dns1.internal:53", "dns2.internal:53"])
-s.Serve()
+// TCP — binary-safe byte splice
+TcpProxy.New().Listen(5432).Forward("pg-primary.internal", 5432).Serve()
+
+// UDP — per-client session forwarding (datagram boundaries preserved)
+UdpProxy.New().Listen(53).Forward("dns1.internal", 53).Serve()
 ```
 
-Implementation: `accept()` on the listen socket, `connect()` to
-the upstream, splice bytes via two threads (one each direction)
-until either side closes.  UDP variant uses recvfrom/sendto in
-a per-port loop.  ~250 LoC total.
+Implementation (shipped): TCP does `accept()` → `connect()` → a poll-driven
+bidirectional splice (thread-per-connection) until either side closes.
+UDP keeps a per-client session table (source addr:port → connected
+upstream socket), driven by a single `poll()` event loop with recvfrom/
+sendto and a mandatory idle reaper. ~600 LoC total across both.
+
+Multi-upstream load-balancing (the `Udp(53, [a, b])` pool shape) is the
+next increment — it joins TCP and UDP under one strategy layer, mirroring
+the `amalgame-net-proxy` v0.1 → v0.2 cadence.
 
 **Dependencies:** none (pure socket I/O).
 
@@ -700,9 +716,10 @@ Year-1 priority for the web stack (✅ = done as of 2026-06-04):
    stubs, streaming, grpcurl interop.
 5. ~~**Server-Sent Events (SSE)**~~ ✅ **shipped** (net-http v0.16.0 +
    web v0.28.0).
-6. **TCP/UDP raw proxy** in `amalgame-net-stream` — 🟢 **TCP shipped
-   v0.1.0** (binary-safe splice + caps/timeouts/graceful shutdown).
-   UDP + load-balancing across N upstreams = v0.2.
+6. ~~**TCP/UDP raw proxy** in `amalgame-net-stream`~~ — 🟢 **TCP + UDP
+   shipped v0.2.0** (`TcpProxy` binary-safe splice; `UdpProxy` per-client
+   session forwarding; both with caps/timeouts/graceful shutdown).
+   Multi-upstream load-balancing across N upstreams is the next increment.
 
 Year-2 (or punt to "if someone wants it"):
 
