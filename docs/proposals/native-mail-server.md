@@ -190,7 +190,10 @@ All development happens with **no public port open** (loopback only).
    FETCH/STORE/SEARCH/EXPUNGE) + ImapServer TCP+STARTTLS loop. The
    protocol that actually lets a mail client read the mailbox. 14/14 unit
    + loopback smoke (real Python imaplib: STARTTLS→LOGIN→SELECT→FETCH).
-5. **`amalgame-net-pop3`** — POP3, smaller, optional/legacy.
+5. ✅ **`amalgame-net-pop3`** v0.1.0 **SHIPPED** — POP3 (RFC 1939 + STLS):
+   Pop3Session (USER/PASS/STAT/LIST/UIDL/RETR/TOP/DELE/RSET/QUIT) +
+   Pop3Server TCP+STLS loop. Legacy download-and-go access. 12/12 unit +
+   loopback smoke (real Python poplib: STLS→USER/PASS→STAT→RETR).
 6. **DKIM signing + outbound path.**
 7. **🔒 Security audit gate** — full review of the parser, the :25 relay
    logic (no open relay), auth, and resource limits. *Nothing exposed
