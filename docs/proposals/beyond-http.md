@@ -9,16 +9,18 @@ round-robin / IP-hash / least-connections), #3 **TCP + UDP raw proxy**
 load-balancing + IPv6 dual-stack). #4's **outbound** SMTP client shipped
 separately as `amalgame-net-smtp` v0.2.4 (the inbound relay / IMAP / POP3
 server described here is still roadmap).
-#12 **WebDAV + multi-user NAS** (`amalgame-net-webdav` v0.6.1: `WebDav`
-Class 1 + opt-in Class 2 locks, plus `WebDavNas` — per-user `/home` +
-shared `/shared`, streaming PUT to disk, live `oc:size` directory sizes,
-RFC 3986 href encoding; proven in production by the `family` NAS deploy).
+#12 **WebDAV + multi-user NAS + CalDAV/CardDAV** (`amalgame-net-webdav`
+v0.7.0: `WebDav` Class 1 + opt-in Class 2 locks, plus `WebDavNas` —
+per-user `/home` + shared `/shared`, streaming PUT to disk, live `oc:size`
+directory sizes, RFC 3986 href encoding; proven in production by the
+`family` NAS deploy; CalDAV/CardDAV Phase 1 incl. per-account discovery).
 **HTTP Basic auth** as a reusable building block: `amalgame-auth` v0.2.0
 (`BasicAuth` RFC 7617, multi-user scrypt `Credentials`, private-LAN
 bypass, anti-bruteforce `LoginGuard` → 429).
 **Still roadmap:** #4 SMTP *server*/IMAP/POP3, #5 SFTP, #7 VPN/WireGuard,
 #8 CDN, #9 gRPC, #10 DNS/DoH; plus stream/proxy follow-ups (active health
-checks, circuit breaker), static `sendfile(2)`, and WebDAV CalDAV/CardDAV.
+checks, circuit breaker), static `sendfile(2)`, and WebDAV CalDAV
+`calendar-query` time-range filtering + `sync-collection`.
 The inventory below captures what the stack still needs to match nginx /
 apache / HAProxy / Postfix territory.
 
@@ -703,9 +705,9 @@ links. No new package.
 new deps. Should ship with the next `amalgame-net-http` patch
 release rather than a separate proposal slot.
 
-### 12. WebDAV server — 🟢 SHIPPED + multi-user NAS (net-webdav v0.6.1)
+### 12. WebDAV server — 🟢 SHIPPED + multi-user NAS + CalDAV/CardDAV (net-webdav v0.7.0)
 
-> 🟢 **Shipped** as `amalgame-net-webdav` v0.6.1. Two layers:
+> 🟢 **Shipped** as `amalgame-net-webdav` v0.7.0. Two layers:
 >
 > **`WebDav`** — exposes a single filesystem directory over HTTP/WebDAV,
 > the Apache mod_dav slice. `WebDav.Dispatch` is a pure
@@ -729,9 +731,25 @@ release rather than a separate proposal slot.
 > the layer the `family` NAS runs in production** (Mosaic + ACME +
 > `WebDavNas`, multi-user scrypt via `amalgame-auth`).
 >
-> **TODO:** explicit PROPFIND `<prop>` parsing + Depth infinity; PROPPATCH
-> dead-property persistence; full RFC 4918 If-header grammar + lock
-> sweeping; CalDAV / CardDAV.
+> **CalDAV (RFC 4791) + CardDAV (RFC 6352) — 🟢 Phase 1 shipped (v0.7.0):**
+> ETags + `getctag`, MKCALENDAR, `.well-known/{caldav,carddav}` → 301 +
+> `current-user-principal` / `calendar-home-set` / `addressbook-home-set`
+> discovery, `calendar-multiget` / `addressbook-multiget` REPORT (+
+> `calendar-query` / `addressbook-query` returning the full member set),
+> `<C:calendar/>` / `<CARD:addressbook/>` resourcetypes — request bodies
+> parsed with `amalgame-formats-xml` (matched by `{namespace}local`, so the
+> client's prefix choice is irrelevant). `WebDavNas` emits **per-account
+> discovery** (principal + both home-sets resolve to each authenticated
+> user's `/home/`), so a client syncs via the account URL, not just a
+> direct calendar URL. Verified end-to-end by a wire-replay suite that
+> feeds verbatim DAVx5/iOS bytes through the real parser + serializer
+> (Content-Length on UTF-8 bodies checked against an independent byte
+> count). **TODO:** real `calendar-query` time-range filtering (iCalendar
+> parse), `sync-collection` (RFC 6578).
+>
+> **WebDAV-core TODO:** explicit PROPFIND `<prop>` parsing + Depth
+> infinity; PROPPATCH dead-property persistence; full RFC 4918 If-header
+> grammar + lock sweeping.
 
 The Apache mod_dav equivalent.  Used for shared filesystems
 exposed over HTTP (calendars via CalDAV, contacts via CardDAV,
@@ -741,7 +759,8 @@ generic file shares).
 `amalgame-io-filesystem` + `amalgame-datetime`.
 
 **Priority:** was LOWEST — pulled forward on demand (real projects need
-a file-share endpoint). CalDAV / CardDAV remain the niche follow-up.
+a file-share endpoint). CalDAV / CardDAV Phase 1 shipped (v0.7.0); only
+real `calendar-query` time-range filtering + `sync-collection` remain.
 
 ## Ordering proposal
 
@@ -779,10 +798,11 @@ Year-2 (or punt to "if someone wants it"):
     ~6-8 days.
 10. **SFTP** via `amalgame-net-ssh` (libssh2 binding).
 11. **SMTP relay** via `amalgame-net-smtp`.
-12. ~~**WebDAV**~~ ✅ **shipped** (`amalgame-net-webdav` v0.6.1 — `WebDav`
+12. ~~**WebDAV**~~ ✅ **shipped** (`amalgame-net-webdav` v0.7.0 — `WebDav`
     Class 1 + opt-in Class 2 locks, plus `WebDavNas` multi-user NAS;
-    `amalgame-auth` v0.2.0 supplies HTTP Basic auth; CalDAV/CardDAV still
-    the niche follow-up).
+    `amalgame-auth` v0.2.0 supplies HTTP Basic auth; CalDAV/CardDAV Phase 1
+    shipped incl. per-account discovery — real query-filtering +
+    sync-collection remain).
 
 ### Static follow-ups (à la carte, not blocking the next item above)
 
