@@ -52,11 +52,12 @@ three protocol servers (open decision — naming is yours):
 | Concern | Candidate home | Rationale |
 |---|---|---|
 | RFC 5322 / MIME **parsing** | `amalgame-formats-mime` (new) | mirrors `amalgame-formats-xml`, built for CalDAV. net-smtp already *assembles* MIME; parsing is the inbound dual and a clean reusable unit. |
-| **Maildir** store (read by IMAP+POP3, written by SMTP) | small `amalgame-mail-store` lib, or fold into net-smtp | POP3 and IMAP both read the store without needing the SMTP server; a standalone store avoids a net-imap→net-smtp dependency. |
+| **Maildir** store (read by IMAP+POP3, written by SMTP) | ✅ `amalgame-net-mail-store` (shipped) — Maildir bodies + a SQLite index | POP3 and IMAP both read the store without needing the SMTP server; a standalone store avoids a net-imap→net-smtp dependency. |
 | Auth | reuse `amalgame-auth` kernel (see below) | the unified-account payoff. |
 
-**Recommendation:** `amalgame-formats-mime` (parser) + `amalgame-mail-store`
-(Maildir) as the two shared foundations, then `net-imap` / `net-pop3` /
+**Recommendation (both now shipped):** `amalgame-formats-mime` (parser) +
+`amalgame-net-mail-store` (Maildir bodies + SQLite index for UID/flags)
+as the two shared foundations, then `net-imap` / `net-pop3` /
 `net-smtp`-server on top. This keeps each protocol package thin and lets
 the MIME parser be reused outside mail (e.g. parsing `.eml`, multipart
 HTTP uploads).
@@ -171,9 +172,12 @@ All development happens with **no public port open** (loopback only).
 
 0. **Deliverability prep (non-exposing)** — PTR request, blocklist
    check, draft DNS records. Runs in parallel; no code, no exposure.
-1. **`amalgame-formats-mime`** — RFC 5322 + MIME parser (inverse of the
-   net-smtp assembler). Unit-testable in isolation, no network.
-2. **`amalgame-mail-store`** — Maildir read/write, mailbox enumeration.
+1. ✅ **`amalgame-formats-mime`** v0.1.0 **SHIPPED** — RFC 5322 + MIME
+   parser (inverse of the net-smtp assembler). Pure-Amalgame, 15/15 tests.
+2. ✅ **`amalgame-net-mail-store`** v0.1.0 **SHIPPED** — Maildir store +
+   **SQLite index** (per-mailbox UID/UIDVALIDITY/flags/size; atomic
+   tmp→new delivery). No `@c`; deps io-filesystem + database-sqlite.
+   13/13 tests.
 3. **`amalgame-net-smtp` server** — receive + submission → store; auth
    via the extracted `amalgame-auth` kernel. Tested on a local port.
 4. **`amalgame-net-imap`** — IMAP4rev1 over the store; the protocol that
