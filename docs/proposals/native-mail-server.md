@@ -194,7 +194,12 @@ All development happens with **no public port open** (loopback only).
    Pop3Session (USER/PASS/STAT/LIST/UIDL/RETR/TOP/DELE/RSET/QUIT) +
    Pop3Server TCP+STLS loop. Legacy download-and-go access. 12/12 unit +
    loopback smoke (real Python poplib: STLS→USER/PASS→STAT→RETR).
-6. **DKIM signing + outbound path.**
+6. 🟡 **Deliverability — DKIM signer SHIPPED** (`amalgame-mail-dkim`
+   v0.1.0: RFC 6376 rsa-sha256 relaxed/relaxed, `Dkim.Sign`/`Verify`,
+   6/6 round-trip tests). Remaining (DNS / infra, non-exposing): publish
+   the DKIM public key TXT (`<sel>._domainkey`), SPF (`v=spf1 a mx -all`),
+   DMARC; request PTR/rDNS at IONOS; the outbound send path. See the
+   mail-dkim README for the openssl keygen + record runbook.
 7. **🔒 Security audit gate** — full review of the parser, the :25 relay
    logic (no open relay), auth, and resource limits. *Nothing exposed
    before this passes.*

@@ -195,8 +195,10 @@ not as universally required as HTTP reverse proxy.
 > `amalgame-net-smtp-server` v0.1.0 (receiving ESMTP) +
 > `amalgame-net-imap` v0.1.0 (IMAP4rev1) + `amalgame-net-pop3` v0.1.0
 > (POP3 + STLS) — all loopback smoke-tested with real clients (smtplib /
-> imaplib / poplib). SMTP-in + IMAP/POP3-out work end to end. Remaining:
-> DKIM/SPF, the security-audit gate, then :25 exposure + go-live.
+> imaplib / poplib). SMTP-in + IMAP/POP3-out work end to end. Phase 6
+> started: `amalgame-mail-dkim` v0.1.0 (RFC 6376 rsa-sha256 signer +
+> verify). Remaining: publish SPF/DKIM/DMARC + PTR (DNS at IONOS), the
+> security-audit gate, then :25 exposure + go-live.
 
 The mail proxy / server slice.  Three sub-protocols, each
 non-trivial.
