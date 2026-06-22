@@ -886,20 +886,44 @@ public class Program {
         return name == "cortex-m3"
             || name == "cortex-m4"
             || name == "cortex-m7"
+            || name == "esp32s3"
     }
     public static string KnownTargets() {
-        return "cortex-m3, cortex-m4, cortex-m7"
+        return "cortex-m3, cortex-m4, cortex-m7, esp32s3"
     }
-    // Cross compiler for a target. ARM Cortex-M → arm-none-eabi-gcc.
+    // True for the Xtensa family (ESP32-S3). Gates the non-ARM toolchain
+    // (xtensa-esp32s3-elf-*) and the esptool image-packaging path: unlike
+    // Cortex-M, the ESP32-S3 ROM boots a header-wrapped image, not a raw
+    // vector-table .bin, so the post-link step differs (see LinkEmbedded).
+    public static bool TargetIsXtensa(string name) {
+        return name == "esp32s3"
+    }
+    // Cross compiler for a target. ARM Cortex-M → arm-none-eabi-gcc;
+    // ESP32-S3 (Xtensa LX7) → xtensa-esp32s3-elf-gcc (ESP-IDF toolchain).
     public static string TargetCC(string name) {
+        if (Program.TargetIsXtensa(name)) { return "xtensa-esp32s3-elf-gcc" }
         return "arm-none-eabi-gcc"
     }
+    // binutils prefix for objcopy/size. ESP32-S3 packaging uses esptool for
+    // the final image, but size reporting still goes through the Xtensa
+    // binutils.
+    public static string TargetObjcopy(string name) {
+        if (Program.TargetIsXtensa(name)) { return "xtensa-esp32s3-elf-objcopy" }
+        return "arm-none-eabi-objcopy"
+    }
+    public static string TargetSize(string name) {
+        if (Program.TargetIsXtensa(name)) { return "xtensa-esp32s3-elf-size" }
+        return "arm-none-eabi-size"
+    }
     // -mcpu/-mthumb (+ -mfloat-abi where an FPU exists). M3 has no FPU;
-    // M4F/M7 do, so f64 stays cheap there (§7).
+    // M4F/M7 do, so f64 stays cheap there (§7). Xtensa LX7 (ESP32-S3) wants
+    // -mlongcalls so the assembler relaxes out-of-range CALL targets via the
+    // literal pool — required once .text spans more than a CALL8's reach.
     public static string TargetCpuFlags(string name) {
         if (name == "cortex-m3") { return "-mcpu=cortex-m3 -mthumb" }
         if (name == "cortex-m4") { return "-mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16" }
         if (name == "cortex-m7") { return "-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16" }
+        if (name == "esp32s3")   { return "-mlongcalls" }
         return "-mthumb"
     }
 
@@ -1753,13 +1777,17 @@ public class Program {
                 incBoard = incBoard + " -DAMC_BOARD_HEADER='\"" + base + "\"'"
             }
         } else {
-            // Bundled board (Phase 1 ships QEMU lm3s6965 for cortex-m3).
+            // Bundled board: QEMU lm3s6965 for cortex-m3, and a RAM-loaded
+            // image for esp32s3 (the ESP32-S3 ROM loads a header-wrapped
+            // image whose segments live in internal SRAM — no flash cache /
+            // 2nd-stage bootloader needed for a console "hello").
             var board: string = ""
             if (target == "cortex-m3") { board = "qemu-lm3s6965" }
+            if (target == "esp32s3")   { board = "esp32s3-ramload" }
             if (String_Length(board) == 0) {
                 Console.WriteError("amc build --target=" + target + ": no bundled board asset.")
-                Console.WriteError("  cortex-m3 ships the QEMU lm3s6965 board; for other targets")
-                Console.WriteError("  pass --board=<amalgame-mcu-pkg> (startup + linker + libs).")
+                Console.WriteError("  cortex-m3 ships the QEMU lm3s6965 board; esp32s3 ships a")
+                Console.WriteError("  RAM-loaded board; for other targets pass --board=<pkg>.")
                 return 1
             }
             let boardDir: string = embDir + "/boards/" + board
@@ -1772,7 +1800,11 @@ public class Program {
         }
 
         let cc: string  = Program.TargetCC(target)
-        if (!Program.RequireTool(cc, "sudo apt install gcc-arm-none-eabi  (Debian/Ubuntu)")) {
+        var ccHint: string = "sudo apt install gcc-arm-none-eabi  (Debian/Ubuntu)"
+        if (Program.TargetIsXtensa(target)) {
+            ccHint = "install the ESP-IDF Xtensa toolchain (xtensa-esp32s3-elf-gcc), e.g. via esp-idf or PlatformIO; put its bin/ on PATH"
+        }
+        if (!Program.RequireTool(cc, ccHint)) {
             return 1
         }
         var optFlag: string = "-Os"
@@ -1802,14 +1834,36 @@ public class Program {
             Console.Write(r.Stdout)
             return 1
         }
-        // objcopy → raw .bin + Intel .hex for flashers (st-flash/esptool/avrdude).
-        let oc: string = "arm-none-eabi-objcopy"
-        let cBin = Process.RunCapture(oc + " -O binary \"" + outBin + "\" \"" + outBin + ".bin\" 2>&1")
-        if (cBin.Exit != 0) { Console.Write(cBin.Stdout) }
-        let cHex = Process.RunCapture(oc + " -O ihex \"" + outBin + "\" \"" + outBin + ".hex\" 2>&1")
-        if (cHex.Exit != 0) { Console.Write(cHex.Stdout) }
+        // Packaging differs by ROM boot contract:
+        //   ESP32-S3 → esptool elf2image wraps the ELF in an esp_image header
+        //     (magic 0xE9 + segment table + entry); the ROM validates and
+        //     RAM-loads it. Flash at offset 0x0 with `esptool write_flash`.
+        //   Cortex-M → raw .bin + Intel .hex (vector table at flash base).
+        if (Program.TargetIsXtensa(target)) {
+            if (!Program.RequireTool("esptool", "pip install esptool  (or use the ESP-IDF / PlatformIO copy)")) {
+                return 1
+            }
+            let img: string = outBin + ".bin"
+            let elf2 = Process.RunCapture(
+                "esptool --chip esp32s3 elf2image --flash_mode dio --flash_freq 80m --flash_size 2MB -o \""
+                + img + "\" \"" + outBin + "\" 2>&1")
+            if (elf2.Exit != 0) {
+                Console.WriteError("  [IMAGE-FAIL] esptool elf2image exited " + String_FromInt(elf2.Exit))
+                Console.Write(elf2.Stdout)
+                return 1
+            }
+            if (verbose) { Console.Write(elf2.Stdout) }
+            Console.WriteLine("  image: " + img + "  (flash with: esptool --chip esp32s3 write_flash 0x0 " + img + ")")
+        } else {
+            // objcopy → raw .bin + Intel .hex for flashers (st-flash/avrdude).
+            let oc: string = Program.TargetObjcopy(target)
+            let cBin = Process.RunCapture(oc + " -O binary \"" + outBin + "\" \"" + outBin + ".bin\" 2>&1")
+            if (cBin.Exit != 0) { Console.Write(cBin.Stdout) }
+            let cHex = Process.RunCapture(oc + " -O ihex \"" + outBin + "\" \"" + outBin + ".hex\" 2>&1")
+            if (cHex.Exit != 0) { Console.Write(cHex.Stdout) }
+        }
         if (verbose) {
-            let sz = Process.RunCapture("arm-none-eabi-size \"" + outBin + "\" 2>&1")
+            let sz = Process.RunCapture(Program.TargetSize(target) + " \"" + outBin + "\" 2>&1")
             Console.Write(sz.Stdout)
         }
         return 0
