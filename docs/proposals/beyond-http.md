@@ -189,9 +189,11 @@ not as universally required as HTTP reverse proxy.
 > IMAP / POP3 *server* described below is still roadmap — now spec'd in
 > detail in [`native-mail-server.md`](native-mail-server.md) (net-smtp
 > server side + net-imap + net-pop3, unified `amalgame-auth` account,
-> deliverability + security-audit gating). Phases 1-2 shipped:
+> deliverability + security-audit gating). Phases 1-3 shipped:
 > `amalgame-formats-mime` v0.1.0 (RFC 5322/MIME reader) +
-> `amalgame-net-mail-store` v0.1.0 (Maildir + SQLite index).
+> `amalgame-net-mail-store` v0.1.0 (Maildir + SQLite index) +
+> `amalgame-net-smtp-server` v0.1.0 (receiving ESMTP: EHLO/STARTTLS/AUTH/
+> DATA → store; loopback smoke-tested). Still roadmap: net-imap, net-pop3.
 
 The mail proxy / server slice.  Three sub-protocols, each
 non-trivial.

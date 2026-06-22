@@ -178,8 +178,13 @@ All development happens with **no public port open** (loopback only).
    **SQLite index** (per-mailbox UID/UIDVALIDITY/flags/size; atomic
    tmp→new delivery). No `@c`; deps io-filesystem + database-sqlite.
    13/13 tests.
-3. **`amalgame-net-smtp` server** — receive + submission → store; auth
-   via the extracted `amalgame-auth` kernel. Tested on a local port.
+3. ✅ **`amalgame-net-smtp-server`** v0.1.0 **SHIPPED** — receiving ESMTP
+   server (dedicated package, keeps the net-smtp client lean): SmtpSession
+   state machine (EHLO/STARTTLS/AUTH PLAIN+LOGIN/MAIL/RCPT/DATA) +
+   SmtpServer TCP+STARTTLS loop → delivers to the store. AUTH verifies
+   scrypt hashes via amalgame-crypto Password.Verify (same unified-account
+   hashes, no net-http drag). 11/11 unit + loopback smoke (real smtplib
+   client, EHLO→STARTTLS→AUTH→delivered).
 4. **`amalgame-net-imap`** — IMAP4rev1 over the store; the protocol that
    actually lets a mail client connect. Largest surface. Local testing.
 5. **`amalgame-net-pop3`** — POP3, smaller, optional/legacy.
