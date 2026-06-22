@@ -185,8 +185,11 @@ All development happens with **no public port open** (loopback only).
    scrypt hashes via amalgame-crypto Password.Verify (same unified-account
    hashes, no net-http drag). 11/11 unit + loopback smoke (real smtplib
    client, EHLO→STARTTLS→AUTH→delivered).
-4. **`amalgame-net-imap`** — IMAP4rev1 over the store; the protocol that
-   actually lets a mail client connect. Largest surface. Local testing.
+4. ✅ **`amalgame-net-imap`** v0.1.0 **SHIPPED** — IMAP4rev1 over the
+   store: ImapSession (CAPABILITY/STARTTLS/LOGIN/LIST/SELECT/FETCH+UID
+   FETCH/STORE/SEARCH/EXPUNGE) + ImapServer TCP+STARTTLS loop. The
+   protocol that actually lets a mail client read the mailbox. 14/14 unit
+   + loopback smoke (real Python imaplib: STARTTLS→LOGIN→SELECT→FETCH).
 5. **`amalgame-net-pop3`** — POP3, smaller, optional/legacy.
 6. **DKIM signing + outbound path.**
 7. **🔒 Security audit gate** — full review of the parser, the :25 relay
