@@ -260,9 +260,64 @@ static inline code_string String_FromFloat(f64 n) {
 }
 
 /* ------------------------------------------------------------------ *
- *  §4 / §8 Console + code_putc via ARM semihosting.
- *  bkpt 0xAB is the semihosting trap; op in r0, arg in r1.
+ *  §4 / §8 Console + code_putc.
+ *    ARM Cortex-M    → semihosting (bkpt 0xAB; op in r0, arg in r1).
+ *    Xtensa/ESP32-S3 → UART0 via the ROM's uart_tx_one_char (the ROM has
+ *      already configured UART0 for the boot log; the function addresses
+ *      are supplied by the board linker script, board.ld).
+ *  The board header (AMC_BOARD_HEADER, external --board builds) is pulled
+ *  in before the defaults so it can define AMC_HAVE_CONSOLE + its own
+ *  Console_Write/WriteLine and/or AMC_HAVE_MCU_BOARD, suppressing them.
  * ------------------------------------------------------------------ */
+#if defined(__XTENSA__)
+
+extern int  uart_tx_one_char(unsigned char c);     /* ROM — addr from board.ld */
+extern void uart_tx_wait_idle(unsigned char uart_no);
+
+/* ESP32-S3 systimer — 52-bit up-counter (XTAL-clocked, CPU-freq-independent),
+ * enabled by the board startup. Read: pulse UPDATE, poll VALID, read HI:LO.
+ * Gives Mcu_Millis/DelayMs a real timebase. AMC_SYSTIMER_HZ = count rate
+ * (calibrated on hardware). */
+#ifndef AMC_SYSTIMER_HZ
+#define AMC_SYSTIMER_HZ 16000000u
+#endif
+static inline uint64_t amc_systimer_ticks(void) {
+    volatile uint32_t *op = (volatile uint32_t *)(uintptr_t)0x60023004u;
+    *op = (1u << 30);                              /* UPDATE  */
+    while ((*op & (1u << 29)) == 0u) { }           /* VALID   */
+    uint32_t hi = *(volatile uint32_t *)(uintptr_t)0x60023040u;
+    uint32_t lo = *(volatile uint32_t *)(uintptr_t)0x60023044u;
+    return ((uint64_t)hi << 32) | (uint64_t)lo;
+}
+
+#ifdef AMC_BOARD_HEADER
+#include AMC_BOARD_HEADER
+#endif
+
+#ifndef AMC_HAVE_CONSOLE
+static inline void code_putc(char c) {
+    if (c == '\n') { uart_tx_one_char((unsigned char)'\r'); }  /* CRLF for terminals */
+    uart_tx_one_char((unsigned char)c);
+}
+static inline void Console_Write(code_string s) {
+    if (!s) return;
+    for (const char* p = (const char*)s; *p; ++p) { uart_tx_one_char((unsigned char)*p); }
+}
+static inline void Console_WriteLine(code_string s) {
+    Console_Write(s);
+    code_putc('\n');
+}
+#endif
+
+/* No semihosting exit on real silicon: drain the UART and spin forever. */
+static inline void amc_exit(int code) {
+    (void)code;
+    uart_tx_wait_idle(0);
+    for (;;) {}
+}
+
+#else  /* ARM Cortex-M — semihosting */
+
 #define AMC_SYS_WRITEC 0x03
 #define AMC_SYS_WRITE0 0x04
 #define AMC_SYS_EXIT   0x18
@@ -308,6 +363,8 @@ static inline void amc_exit(int code) {
     amc_semihost(AMC_SYS_EXIT, block);
     for (;;) {}
 }
+
+#endif  /* arch console */
 static inline void amc_oom(void) {
     Console_WriteLine("!! arena/persist overflow");
     amc_exit(1);
@@ -361,10 +418,22 @@ static inline void Mcu_Toggle(i64 pin) {
     if (pin >= 0 && pin < AMC_MCU_MAX_PINS) { nv = amc_pin_level[pin] ? 0 : 1; amc_pin_level[pin] = (u8)nv; }
     amc_mcu_log("TOGGLE", pin, nv);
 }
+#if defined(__XTENSA__)
+/* ESP32-S3: real wall-clock timebase from the systimer (see amc_systimer_ticks). */
+static inline void Mcu_DelayMs(i64 ms) {
+    if (ms <= 0) return;
+    uint64_t target = amc_systimer_ticks() + (uint64_t)ms * (uint64_t)(AMC_SYSTIMER_HZ / 1000u);
+    while (amc_systimer_ticks() < target) { }
+}
+static inline i64  Mcu_Millis(void) {
+    return (i64)(amc_systimer_ticks() / (uint64_t)(AMC_SYSTIMER_HZ / 1000u));
+}
+#else
 /* On the virtual board DelayMs is a no-op (QEMU has no wall clock here);
  * Millis returns a monotonically increasing tick so timing code progresses. */
 static inline void Mcu_DelayMs(i64 ms) { (void)ms; amc_millis_counter += (uint32_t)ms; }
 static inline i64  Mcu_Millis(void)    { return (i64)(amc_millis_counter++); }
+#endif
 
 #endif /* AMC_HAVE_MCU_BOARD */
 
