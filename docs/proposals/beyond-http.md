@@ -186,7 +186,11 @@ not as universally required as HTTP reverse proxy.
 > 🟡 The **outbound** half shipped as `amalgame-net-smtp` v0.2.4 (a
 > TLS SMTP *client* + `Mail` builder for transactional mail, RFC 2047
 > subjects — used by Mosaic contact forms). The **inbound** relay /
-> IMAP / POP3 *server* described below is still roadmap.
+> IMAP / POP3 *server* described below is still roadmap — now spec'd in
+> detail in [`native-mail-server.md`](native-mail-server.md) (net-smtp
+> server side + net-imap + net-pop3, unified `amalgame-auth` account,
+> deliverability + security-audit gating). Phase 1 shipped:
+> `amalgame-formats-mime` v0.1.0 (RFC 5322/MIME reader).
 
 The mail proxy / server slice.  Three sub-protocols, each
 non-trivial.
