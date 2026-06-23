@@ -2,10 +2,12 @@
 
 **Status:** B0 substrate in progress. Slice 1 + B0a + B0b-1 + **B0b-2 (Xtensa
 interrupts)** + **B0b-3 (DRAM heap)** done and verified on real silicon
-(ESP32-S3-DevKitM). **B0c flash-XIP works on silicon** via a self-contained cache/
-MMU bring-up (ESPHome-free, observable over the ROM UART; branch
-`esp32s3-flash-xip`, `_xip-bringup-reference/`). Next: finish B0c (map DROM for
-.rodata + fold the runtime in + wire into amc), then B1 (PHY).
+(ESP32-S3-DevKitM). **B0c solved on silicon — the real amc runtime runs from
+flash XIP** (`amalgame heartbeat` streams after a full erase; self-contained
+cache/MMU bring-up, IROM `.text` + DROM `.rodata` + DRAM `.bss`, ESPHome-free,
+observable over the ROM UART; branch `esp32s3-flash-xip`, `_xip-bringup-reference/`).
+The size wall is gone. Next: productise (an `esp32s3-flash` amc target that
+builds+flashes stub+payload, fold back B0a/b1/b2/b3, merge), then B1 (PHY).
 
 Sibling of [`amc-embedded.md`](amc-embedded.md) (which brought up Cortex-M /
 STM32 first). This line targets the **ESP32-S3 (Xtensa LX7)** and aims at the
@@ -272,6 +274,23 @@ __asm__("jx %0" :: "r"(0x42000000));               // (0x42000000 -> flash 0x800
 Remaining to finish B0c: add a **DROM** mapping for `.rodata` (vaddr `0x3C000000`;
 D-cache already on), put the real amc runtime in the XIP blob, fold back
 B0a/b1/b2/b3 (board-agnostic), wire into amc target selection, merge.
+
+#### ✅✅ DONE on silicon — real amc runtime from flash XIP
+
+Both flash buses proven, then the **whole amc heartbeat** wired up: `.text`+
+`.literal`→IROM (`0x42000000`, page 8), `.rodata`→DROM (`0x3C010000`, page 9),
+`.bss`→DRAM SRAM (amc programs have **empty `.data`**, so no copy — just zero
+`.bss`; crt0 reuses the SP the stub leaves). After a full `erase_flash`,
+`stub.bin@0x0` + `payload.bin@0x80000` → **`amalgame heartbeat` streams from flash
+XIP** (`Console.WriteLine` + `Mcu.DelayMs`, all executing from flash via cache).
+Confirms `l32r`-from-IROM works on the S3. **The size wall is gone.** Files:
+`_xip-bringup-reference/{payload.ld,pcrt0.S,pstartup.c,stub.c,stub.ld}`.
+
+What's left is **productisation only** (no unknowns): an `esp32s3-flash` amc
+target that builds the stub + payload and flashes both (`stub@0x0`,
+`payload@0x80000`), then fold back B0a/B0b-1/2/3 — note **B0b-2's vectors must go
+in an IRAM section copied from flash by crt0** (interrupt vectors can't be XIP) —
+and merge the branch.
 
 ### B0b-2 reference notes (for when interrupts need extending)
 
