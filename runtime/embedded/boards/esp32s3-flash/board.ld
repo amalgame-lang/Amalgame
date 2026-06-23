@@ -11,6 +11,13 @@ SECTIONS {
     KEEP(*(.text.start))
     *(.literal .text)
     *(.literal.* .text.*)
+    /* B0b-2 in XIP: the Xtensa vector table runs from flash (IROM, I-cache).
+     * VECBASE needs 1 KB alignment; _amc_vecbase (vectors.S) is the table base.
+     * The level-1 dispatch's call4 to amc_isr_level1 stays in-range (same IROM).
+     * (IRAM-resident vectors/ISR — needed once ISRs must run with cache off, e.g.
+     * during flash writes / WiFi — is a later refinement.) */
+    . = ALIGN(0x400);
+    KEEP(*(.exc_vectors.text))
   } > iram_flash
   .rodata 0x3C010000 : AT(0x10000) {
     *(.rodata .rodata.*)
