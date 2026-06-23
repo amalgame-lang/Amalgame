@@ -68,8 +68,26 @@ pages, give them distinct entries via vaddr offset — here DROM lives at
 `0x3C010000` (entry 1). Real apps (and the IDF) do the same with per-segment vaddr
 offsets.
 
-So the full cache/MMU foundation is done. The remaining B0c work is pure
-integration: a payload linker that lays the real amc runtime as
-`.text`→IROM / `.rodata`→DROM / `.data`+`.bss`→DRAM-SRAM (with `.data` init copied
-from its flash LMA by the payload crt0), the stub mapping enough IROM/DROM pages,
-fold B0a/b1/b2/b3, wire into amc, merge.
+So the full cache/MMU foundation is done.
+
+## ✅✅ DONE — the real amc runtime runs from flash XIP (`payload.*`)
+
+`payload.ld` + `pcrt0.S` + `pstartup.c` build the **actual amc heartbeat** as an
+XIP payload: `.text`+`.literal`→IROM (`0x42000000`, flash page 8), `.rodata`→DROM
+(`0x3C010000`, flash page 9), `.bss`→DRAM SRAM (`.data` is empty for amc programs,
+so no copy — just zero `.bss`; the payload crt0 reuses the SP the stub leaves).
+Flashed `stub.bin@0x0` + `payload.bin@0x80000` (stub also enables the systimer for
+`Mcu.DelayMs`). **On silicon, after a full `erase_flash`, `amalgame heartbeat`
+streams from flash XIP** — the real amc runtime (`Console.WriteLine` +
+`Mcu.DelayMs`) executes entirely from flash via cache. The size wall is gone:
+programs run from flash (MBs), not the ~40 KB RAM image.
+
+Confirms `l32r` from IROM works on the S3 (amc code loads the string pointer +
+`Console_WriteLine` address via literals kept with `.text` in IROM) and DROM
+string reads work. **B0c is solved end-to-end.**
+
+Remaining = productisation only (no unknowns): a new `esp32s3-flash` amc target
+that builds the stub + payload and flashes all (bootloader-less: stub@0x0 /
+payload@0x80000), then fold back B0a/B0b-1/2/3 (note: B0b-2 vectors must live in
+an IRAM section copied from flash by crt0 — interrupt vectors can't be XIP), and
+merge.

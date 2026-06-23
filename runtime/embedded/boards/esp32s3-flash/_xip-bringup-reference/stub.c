@@ -23,6 +23,7 @@ int amc_main(void){
   Cache_Invalidate_ICache_All();
   Cache_Invalidate_DCache_All();                      /* D-cache already enabled by ROM */
   Cache_Enable_ICache(0u);
+  REG32(0x60023000u) |= (1u<<31)|(1u<<30);   /* systimer CLK_EN + UNIT0_WORK_EN */
   m('g');m('o');m('>');
   __asm__ volatile("jx %0" :: "r"(0x42000000u));
   for(;;){}
