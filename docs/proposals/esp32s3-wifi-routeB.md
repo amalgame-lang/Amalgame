@@ -131,7 +131,7 @@ board ships no `vectors.S`/`interrupts.c`.
 | ~~B0b-3~~ | ~~DRAM heap (malloc/free) for the blobs~~ ✅ done | `soc.h` (DRAM bounds), `bootloader.ld` (free ranges) |
 | **B0b-4** | 240 MHz clocks + WiFi clock-gating | `clk_tree_ll.h`, `system_reg.h` (recon below ↓) |
 | B0c | Flash XIP + cache (room for blobs+lwIP) | `bootloader`, MMU/cache regs |
-| B1 | PHY/RF init + calibration | `esp_phy/src/phy_init.c`, NVS |
+| **B1** | PHY/RF init + calibration (recon done ↓) | `esp_phy/lib/esp32s3/libphy.a`, `esp_phy/src/phy_init.c` |
 | B2 | `wifi_osi_funcs_t` + minimal blocking scheduler | `esp_wifi/.../esp_adapter.c` |
 | B3 | `esp_wifi_init/start/connect` (STA) → got-IP | `esp_wifi.h`, `esp_private/wifi.h` |
 | B4 | lwIP `NO_SYS=1` on WiFi RX/TX hooks | `esp_private/wifi.h` (tx/rx) |
@@ -154,6 +154,35 @@ BLE only if a hard requirement appears (phone app, no USB, headless).
 Config storage (any channel): a small key-value in a flash sector (we have flash
 + heap). Applied at B3 (STA connect reads the creds); field re-config is a B5-era
 add-on.
+
+### B1 recon — linking the PHY blob is small (done; ready to implement)
+
+`nm` analysis of `esp_phy/lib/esp32s3/libphy.a` (255 KB): of its 136 undefined
+symbols, **290 are defined inside the archive itself and 2367 are in the ESP32-S3
+ROM** (`esp_rom/esp32s3/ld/*.ld` — all the `chip_v7_set_chan` / `ram_*` / `rf*` /
+`set_chan*` PHY ROM funcs). After subtracting both, **only 6 truly-external
+symbols** remain to provide — plus libgcc float helpers (`__divdf3`…) and
+`memcpy`/`memset` (ROM has them):
+```
+phy_enter_critical / phy_exit_critical   -> our interrupt mask (single-core: rsil/restore)
+phy_printf                               -> route to ROM UART (or stub)
+coex_pti_print                           -> stub (no BT coexistence)
+sprintf                                  -> minimal (or ROM); phy_printf can stub to avoid it
+chip7_phy_init_ctrl                      -> data symbol (from phy_init; resolve when linking)
+```
+Init sequence (from `esp_phy/src/phy_init.c::esp_phy_enable`):
+1. **enable the modem/WiFi clock** — `wifi_bt_common_module_enable()`
+   (`esp_hw_support/periph_ctrl.c`; the exact `SYSTEM_WIFI_CLK_EN`/modem-clock
+   bits are the one remaining register detail to pin down) — **prerequisite**.
+2. `register_chipv7_phy(init_data, cal_data, cal_mode)` — the blob entry
+   (`esp_private/phy.h`). **`register_chipv7_phy(NULL, NULL, PHY_RF_CAL_FULL)` is
+   a valid call** (the hxx port uses exactly that) → no init/cal buffers needed
+   for a first calibration.
+
+So B1 implementation = provide the ~6-symbol adapter (mostly stubs + the
+interrupt mask) + enable the modem clock + `register_chipv7_phy(NULL,NULL,FULL)`,
+linked into the XIP payload; acceptance = it runs/returns without faulting (and a
+PHY version/print). Then B2 builds the full `wifi_osi_funcs_t` on top.
 
 ## NEXT SESSION starts here — B0b-4 (240 MHz clocks), then B0c
 
