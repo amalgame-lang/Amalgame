@@ -26,14 +26,34 @@ First real WiFi blob bring-up. **The hard part is solved: `libphy.a` links and
     unlike the hxx port) — `esp_phy_calibration_data_t` = version[4]+mac[6]+
     opaque[1894] = **1904 bytes**; passing NULL faults StoreProhibited @ vaddr 0.
 
-## Remaining (calibration hangs in `register_chipv7_phy`)
-Even with power-domain-on + clock + de-isolate, the call doesn't return. Likely
-still missing (compare `esp_phy_enable`/`esp_phy_load_cal_and_init` in the IDF):
-- proper **init_data** (the default 128-byte `esp_phy_init_data_t` from
-  `phy_init_data.bin`) — try a real one instead of NULL;
-- `phy_module_enable()` specifics / `phy_module_has_clock_bits` requirements;
-- RF regulator / BBPLL state the calibration polls on;
-- possibly running PHY calibration from **IRAM** (timing) rather than flash XIP.
+## Real default init_data — solved (compile `phy_init_data.c` in isolation)
+`esp_phy_get_init_data()` reads from a flash partition/embed; the *default* bytes
+come from `esp_phy/esp32s3/phy_init_data.c`. Compile it standalone to get the
+`phy_init_data` symbol (no need to hunt the `.bin`):
+```bash
+xtensa-esp32s3-elf-gcc -c -DCONFIG_ESP_PHY_MAX_TX_POWER=20 \
+  -I<esp_phy/include> -I<esp_phy/esp32s3/include> -I<esp_common/include> \
+  -I<esp_rom/include> -I<esp_hw_support/include> \
+  $IDF/components/esp_phy/esp32s3/phy_init_data.c -o phy_init_data.o
+```
+Then link `phy_init_data.o` and pass `phy_init_data` (a `const
+esp_phy_init_data_t`, 128 B) as the first arg. The 128 bytes (MAX_TX_POWER=20):
+`00 00 50 50 50 4c 4c 48 4c 48 48 44 4a 46 46 42 00 00 00 ff×45 00×46 74`.
+
+## Remaining — calibration still hangs even with real init_data + cal_data
+With init_data (real) + cal_data (1904 B) + power-domain-on + clock + de-isolate,
+`register_chipv7_phy` **still doesn't return**. So it's not init/cal buffers — the
+RF calibration is polling on hardware that isn't ready. Most likely **the clock
+tree / RF PLL**: our stub leaves the CPU at 40 MHz XTAL (APB 40 MHz); the PHY
+calibration expects the modem clock tree (APB 80 MHz / the modem PLL source) up.
+That's essentially **B0b-4** (240 MHz / PLL clock bring-up), now a prerequisite
+for B1. Also possible: extra analog-i2c (`phy_i2c_init`) setup the IDF does, and
+`get_phy_version_str()` returns empty until the PHY is registered.
+
+**Next:** bring up the clock tree (CPU→PLL, APB 80 MHz, modem clock source) per
+`esp_hw_support/.../rtc_clk.c` + `modem_clock.c`, then retry the calibration. This
+is finicky RF/clock work — iterate on silicon, watching `phy_printf` (routed to
+the ROM UART here).
 
 ## Build (manual, for iteration)
 ```bash
