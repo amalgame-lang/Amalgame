@@ -35,8 +35,10 @@ echo "=== amc: $SRC -> C ==="
 "$AMC" build --target=esp32s3 "$SRC" -o "$name" >/dev/null    # emits $name.c (ramload .bin ignored)
 
 echo "=== payload: $name.c -> flash-XIP blob (.text=IROM, .rodata=DROM) ==="
+# heap.c (amc_malloc/free/calloc) is linked in; --gc-sections drops it when the
+# program doesn't use it (e.g. the heartbeat), keeps it for the WiFi blobs (B2).
 "$CC" -mlongcalls -Os -ffreestanding -nostartfiles -ffunction-sections -fdata-sections -Wl,--gc-sections \
-  -I"$RT" -T "$BD/board.ld" "$BD/crt0.S" "$BD/startup.c" "$name.c" -o "$name-payload.elf"
+  -I"$RT" -T "$BD/board.ld" "$BD/crt0.S" "$BD/startup.c" "$BD/heap.c" "$name.c" -o "$name-payload.elf"
 "$OBJCOPY" -O binary "$name-payload.elf" "$name-payload.bin"
 # guard the one-page-each layout limit
 tsz=$("$CC" -E -P -x c /dev/null >/dev/null 2>&1; xtensa-esp32s3-elf-size -A "$name-payload.elf" | awk '/\.text/{print $2}')
