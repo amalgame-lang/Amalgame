@@ -212,6 +212,43 @@ After clean console: fold back B0a/B0b-1/2/3 (watchdogs, systimer, vectors, heap
 selection, and merge `esp32s3-flash-xip`. Only then does B1 (PHY) become
 possible.
 
+### B0c ROUTE CORRECTION — drop the reused bootloader, do XIP ourselves (ESPHome-free)
+
+Both ESPHome bootloaders on this machine disable the UART console
+(`CONFIG_ESP_CONSOLE_UART_NUM=-1`; vmc-controller uses USB-Serial-JTAG, CPU
+240 MHz) — so reusing them leaves UART0 in a state we can neither read nor
+reconfigure (any `CLK_CONF` write silences TX; no ttyACM for USB-JTAG). Dead end
+for observability.
+
+**New route (better, and removes the ESPHome dependency entirely):** keep the
+**RAM-loaded stub** (ROM loads it at flash `0x0` → IRAM, ROM UART stays at
+115200, *observable*), and have the stub **set up the flash cache/MMU itself**
+then jump to XIP code. The ROM already exports everything needed (no 2nd-stage
+bootloader, no FreeRTOS, no ESPHome):
+```
+Cache_MMU_Init        0x40001998
+Cache_Ibus_MMU_Set    0x400019a4   (ext_ram, vaddr, paddr, psize, num, fixed)  -> IROM
+Cache_Dbus_MMU_Set    0x400019b0   (...) -> DROM
+Cache_Enable_ICache   0x40001878   Cache_Enable_DCache 0x40001890
+Cache_Invalidate_ICache_All 0x400016d4   Cache_Set_IDROM_MMU_Size 0x40001914
+```
+Reference sequence: `bootloader_utility.c` (`mmu_hal_map_region` +
+`cache_ll_l1_enable_bus` + cache enable) and `bootloader_esp32s3.c`
+(`cache_hal_init`).
+
+**Image shape (hybrid):** the ROM RAM-load path only loads SRAM-addressed
+segments, so the XIP code can't ride in the same 0x0 image. Two flash regions:
+- `0x0`   — RAM-load stub image (cache/MMU setup + crt0), ROM-loaded to IRAM/DRAM.
+- `0x80000` (64 KB-aligned) — raw XIP blob (`.text`→map to `0x42000000`,
+  `.rodata`→`0x3C000000`). The stub maps it (paddr `0x80000…`, psize 64 KB,
+  num = ceil(size/64 KB)), enables the buses+cache, then jumps to the XIP entry.
+
+First increment: stub maps a tiny XIP `.text` that just prints "hello from flash
+XIP" over the **ROM UART** (115200, readable) → proves cache/MMU under our own
+control. Then move the bulk of the runtime to XIP, fold back B0a/b1/b2/b3, wire
+into amc, merge. (`esp32s3-flash` board on the branch keeps the linker/crt0 work;
+the bootloader-reuse path there is superseded by this.)
+
 ### B0b-2 reference notes (for when interrupts need extending)
 
 - The level-1 dispatch handles exactly one source today. To generalize: read the
