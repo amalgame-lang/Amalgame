@@ -6,8 +6,9 @@ interrupts)** + **B0b-3 (DRAM heap)** done and verified on real silicon
 flash XIP** (`amalgame heartbeat` streams after a full erase; self-contained
 cache/MMU bring-up, IROM `.text` + DROM `.rodata` + DRAM `.bss`, ESPHome-free,
 observable over the ROM UART; branch `esp32s3-flash-xip`, `_xip-bringup-reference/`).
-The size wall is gone. Next: productise (an `esp32s3-flash` amc target that
-builds+flashes stub+payload, fold back B0a/b1/b2/b3, merge), then B1 (PHY).
+The size wall is gone; the whole B0 substrate runs from flash. **B1 done: the
+WiFi PHY/RF is calibrated on silicon** (CPU->PLL/APB-80 + power-domain + real
+init_data -> register_chipv7_phy returns). Next: B2 (wifi_osi_funcs_t + scheduler).
 
 Sibling of [`amc-embedded.md`](amc-embedded.md) (which brought up Cortex-M /
 STM32 first). This line targets the **ESP32-S3 (Xtensa LX7)** and aims at the
@@ -131,8 +132,8 @@ board ships no `vectors.S`/`interrupts.c`.
 | ~~B0b-3~~ | ~~DRAM heap (malloc/free) for the blobs~~ ✅ done | `soc.h` (DRAM bounds), `bootloader.ld` (free ranges) |
 | **B0b-4** | 240 MHz clocks + WiFi clock-gating | `clk_tree_ll.h`, `system_reg.h` (recon below ↓) |
 | B0c | Flash XIP + cache (room for blobs+lwIP) | `bootloader`, MMU/cache regs |
-| **B1** | PHY/RF init + calibration (recon done ↓) | `esp_phy/lib/esp32s3/libphy.a`, `esp_phy/src/phy_init.c` |
-| B2 | `wifi_osi_funcs_t` + minimal blocking scheduler | `esp_wifi/.../esp_adapter.c` |
+| ~~B1~~ | ~~PHY/RF init + calibration~~ ✅ done (libphy linked w/ 5-sym adapter; CPU→PLL/APB-80 was the key; cal returns) | `libphy.a`, `phy_init.c`, `phy_init_data.c` |
+| **B2** | `wifi_osi_funcs_t` + minimal blocking scheduler | `esp_wifi/.../esp_adapter.c` |
 | B3 | `esp_wifi_init/start/connect` (STA) → got-IP | `esp_wifi.h`, `esp_private/wifi.h` |
 | B4 | lwIP `NO_SYS=1` on WiFi RX/TX hooks | `esp_private/wifi.h` (tx/rx) |
 | B5 | MQTT → Home Assistant; reimplement the VMC controller | — |
