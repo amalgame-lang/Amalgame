@@ -156,6 +156,35 @@ Config storage (any channel): a small key-value in a flash sector (we have flash
 + heap). Applied at B3 (STA connect reads the creds); field re-config is a B5-era
 add-on.
 
+### B2 recon — osi_funcs surface scoped (the Route-B core)
+
+`nm` on the WiFi MAC blobs (`libpp` 709 KB + `libnet80211` 1.4 MB + `libcore`):
+1207 undefined, but all resolve via the blobs + `libphy` + ROM **except 25**:
+mostly **mesh** (`mesh_*`, `ieee80211_vnd_mesh_*`, `g_mt`, `mt_get_peer_info`) +
+espnow (`g_espnow_user_oui`) — all **stubbable** (not used for STA) — plus libc-ish
+(`free`/`sprintf`/`puts`/`hexstr2bin`), debug (`pp_printf`/`net80211_printf` →
+stub/UART), `regdomain_table`/`regulatory_data` (regulatory data, provide), and
+`WIFI_EVENT` (event base). So **linking the MAC blobs ≈ as small as PHY**.
+
+The real work is **`g_wifi_osi_funcs`** (`esp_private/wifi_os_adapter.h`, version
+`0x8`, magic `0xDEADBEAF`) — **122 function pointers**, reference impl =
+`esp_wifi/esp32s3/esp_adapter.c`. Categorised: ~40 are **scheduler-critical** and
+need a real cooperative/blocking mini-RTOS on top of our substrate (IT + heap +
+systimer, all ready):
+- tasks ×8 (`task_create`/`delete`/`delay`/`yield_from_isr`/`get_current`…)
+- semaphores ×5 (blocking `take`/`give` with timeout)
+- recursive mutexes ×5, queues ×10 (`send`/`recv` + `*_from_isr`, blocking),
+  event-groups ×7 (`set`/`clear`/`wait_bits`), timers ×6, `wifi_int` ×2.
+The other ~80 are trivial (malloc→our heap, log, clock, nvs-get/set, random…).
+
+**B2 plan:** (1) scaffold `g_wifi_osi_funcs` with the trivial members + stubs;
+(2) build the **mini-scheduler** — tasks with their own stacks, `yield`, blocking
+sem/queue/event with timeouts off the systimer tick, ISR-safe variants (the WiFi
+blob spins internal tasks that block — the esp-wifi crate proves a cooperative
+scheduler suffices); (3) link `libpp`+`libnet80211`+`libcore` + the 25 stubs;
+(4) call `esp_wifi_init` → first milestone. This is the central, multi-session
+chunk of Route B. Then B3 = `esp_wifi_start`/`connect` (STA, compile-time creds).
+
 ### B1 recon — linking the PHY blob is small (done; ready to implement)
 
 `nm` analysis of `esp_phy/lib/esp32s3/libphy.a` (255 KB): of its 136 undefined
