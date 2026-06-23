@@ -52,3 +52,24 @@ MMU: `DR_REG_MMU_TABLE=0x600C5000`, `SOC_MMU_VADDR_MASK=0x1FFFFFF`, page size
 - Replace this reference with `crt0.S`/`startup.c`/`board.ld` that put the *real*
   amc runtime in the XIP blob, fold back B0a/B0b-1/2/3, and wire into the amc
   target selection. Then merge.
+
+## ✅ Update — IROM + DROM both work (`xip2.S`/`xip2.ld`)
+
+`xip2.S`/`xip2.ld` extend the proof to **both flash buses**: `.text`→IROM (entry 0,
+`0x42000000`) and a `.rodata` string→**DROM** (entry 1, `0x3C010000`). The XIP code
+reads the string from DROM and prints it — confirmed on silicon
+("hello from flash XIP (.text=IROM, this string=DROM) ok" streams). `stub.c` here
+is the IROM+DROM version (maps `MMU[0]=8` for .text@flash-page-8 and `MMU[1]=9`
+for .rodata@flash-page-9; D-cache was already enabled by the ROM).
+
+**MMU entry collision gotcha:** IROM `0x42000000` and DROM `0x3C000000` both yield
+entry 0 (`(vaddr & 0x1FFFFFF)>>16`). To map .text and .rodata to *different* flash
+pages, give them distinct entries via vaddr offset — here DROM lives at
+`0x3C010000` (entry 1). Real apps (and the IDF) do the same with per-segment vaddr
+offsets.
+
+So the full cache/MMU foundation is done. The remaining B0c work is pure
+integration: a payload linker that lays the real amc runtime as
+`.text`→IROM / `.rodata`→DROM / `.data`+`.bss`→DRAM-SRAM (with `.data` init copied
+from its flash LMA by the payload crt0), the stub mapping enough IROM/DROM pages,
+fold B0a/b1/b2/b3, wire into amc, merge.

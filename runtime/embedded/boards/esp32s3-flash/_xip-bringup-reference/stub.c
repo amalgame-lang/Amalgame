@@ -3,6 +3,7 @@
 extern uint32_t _sbss, _ebss;
 extern int  uart_tx_one_char(unsigned char c);
 extern void Cache_Invalidate_ICache_All(void);
+extern void Cache_Invalidate_DCache_All(void);
 extern void Cache_Enable_ICache(uint32_t autoload);
 extern void rom_config_instruction_cache_mode(uint32_t size, uint8_t ways, uint8_t line);
 #define MMU_TABLE   0x600C5000u
@@ -14,11 +15,13 @@ static void wdt_off(void){
 }
 static void m(char c){ uart_tx_one_char((unsigned char)c); }
 int amc_main(void){
-  m('\r');m('\n');m('X');m('2');m('\r');m('\n');
-  rom_config_instruction_cache_mode(16384u, 8, 32);   /* set up I-cache (mode+memory) — ROM left it off */
-  REG32(MMU_TABLE+0) = 8u;                             /* 0x42000000 -> flash page 8 */
+  m('\r');m('\n');m('X');m('3');m('\r');m('\n');
+  rom_config_instruction_cache_mode(16384u, 8, 32);   /* I-cache on (ROM left it off) */
+  REG32(MMU_TABLE + 0*4) = 8u;       /* IROM entry0 (0x42000000) -> flash page 8 (.text)   */
+  REG32(MMU_TABLE + 1*4) = 9u;       /* DROM entry1 (0x3C010000) -> flash page 9 (.rodata)  */
   REG32(EXTMEM_ICACHE_CTRL1) &= ~1u;                  /* I-bus0 on */
   Cache_Invalidate_ICache_All();
+  Cache_Invalidate_DCache_All();                      /* D-cache already enabled by ROM */
   Cache_Enable_ICache(0u);
   m('g');m('o');m('>');
   __asm__ volatile("jx %0" :: "r"(0x42000000u));
