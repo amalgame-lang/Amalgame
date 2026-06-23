@@ -35,7 +35,34 @@ a sem+queue prints `got=10…50`, and a `sem_take(200ms)` with no give returns
 TIMEOUT → "PRIMS PASS". (ISR-variant `*_from_isr` = same wake, deferred — to add
 with the WiFi ISR wiring.)
 
-## Remaining for B2 (multi-session)
+## ✅✅ Full WiFi blob set LINKS against our OS adapter
+`osi.c` provides **`g_wifi_osi_funcs`** (all 122 fn ptrs, designated initializers
+→ our scheduler/prims/heap/systimer/phy + stubs) + **`g_osi_funcs_p`** (the
+pointer the blobs read). `wifi_osi_struct.h` is the esp32s3 struct layout
+(re-declared to avoid the IDF include chain; esp32-only & C6 blocks omitted,
+`_slowclk_cal_get` kept; version 0x8, magic 0xDEADBEAF). `linkstubs.c` covers the
+25 externals (mesh/espnow/`g_mt`/regdomain/`WIFI_EVENT`/`pp_printf`/`net80211_printf`
+/`puts`/`hexstr2bin`). A **`--whole-archive`** link of `libnet80211 + libpp +
+libcore + libphy` resolves with **zero undefined symbols** → our bare-metal OS
+adapter fully satisfies the closed WiFi stack. Full footprint ≈ **345 KB .text,
+5 KB .rodata, 15 KB .data, 15 KB .bss** (the STA path pulls less via gc-sections).
+
+Notable osi mappings: `_phy_enable` runs the B1 calibration; `_malloc*`/`_wifi_*`
+→ `amc_malloc`; `_esp_timer_get_time` → systimer µs; `_rand`/`_random` →
+`WDEV_RND_REG` (0x600260B0); `_read_mac` → efuse; nvs → not-found stubs (forces
+full PHY cal); coex → stubs. **Still stubbed** (wire in B3): `_set_isr`/`_set_intr`
+(WiFi MAC ISR → our interrupt matrix), the software **timers**, `_event_post`.
+
+## Remaining (B3 — drive the blobs)
+- Board needs **multi-page IROM/DROM mapping** (.text 345 KB ≫ 64 KB) + a real
+  **`.data` section** (15 KB, LMA in flash, copied by crt0).
+- Wire `_set_isr`/`_set_intr` (the WiFi MAC level-1 ISR) + implement the software
+  timers (off the systimer).
+- Drive the blobs (esp-wifi style, no IDF C `esp_wifi_init`): the init/start/
+  connect sequence (`wifi_init_process`/`ieee80211_ifattach`/… or the documented
+  esp-wifi call order) with compile-time STA creds → got-IP.
+
+## (older notes)
 1. ~~Blocking primitives~~ ✅ done (`prims.c`).
 2. **`g_wifi_osi_funcs`** (122 ptrs, v0.8 magic 0xDEADBEAF) — map to the scheduler
    + trivial ones (malloc→`amc_malloc`, log, clock, random, nvs stubs). Ref:

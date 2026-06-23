@@ -51,3 +51,5 @@ void sched_yield(void){
 }
 void sched_start(void){ cur=-1; sched_yield(); for(;;){} }
 uint32_t sched_ms_to_ticks(uint32_t ms){ return ms*16000u; }   /* 16 MHz systimer */
+void* sched_self(void){ return &tasks[cur]; }
+void  sched_delay_ticks(uint32_t t){ sched_block((void*)0, sched_now()+t); }
