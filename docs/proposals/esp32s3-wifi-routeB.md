@@ -2,9 +2,10 @@
 
 **Status:** B0 substrate in progress. Slice 1 + B0a + B0b-1 + **B0b-2 (Xtensa
 interrupts)** + **B0b-3 (DRAM heap)** done and verified on real silicon
-(ESP32-S3-DevKitM). **B0c flash-XIP boot proven on silicon** (branch
-`esp32s3-flash-xip`) — only a clean console (UART re-pin, = B0b-4) remains. Next:
-finish the B0c console, then B1 (PHY).
+(ESP32-S3-DevKitM). **B0c flash-XIP works on silicon** via a self-contained cache/
+MMU bring-up (ESPHome-free, observable over the ROM UART; branch
+`esp32s3-flash-xip`, `_xip-bringup-reference/`). Next: finish B0c (map DROM for
+.rodata + fold the runtime in + wire into amc), then B1 (PHY).
 
 Sibling of [`amc-embedded.md`](amc-embedded.md) (which brought up Cortex-M /
 STM32 first). This line targets the **ESP32-S3 (Xtensa LX7)** and aims at the
@@ -248,6 +249,29 @@ XIP" over the **ROM UART** (115200, readable) → proves cache/MMU under our own
 control. Then move the bulk of the runtime to XIP, fold back B0a/b1/b2/b3, wire
 into amc, merge. (`esp32s3-flash` board on the branch keeps the linker/crt0 work;
 the bootloader-reuse path there is superseded by this.)
+
+#### ✅ DONE — flash-XIP works on silicon (branch `esp32s3-flash-xip`, `_xip-bringup-reference/`)
+
+A RAM-loaded stub sets up the cache/MMU itself and jumps to flash-resident code
+that **runs from flash via the I-cache and streams "OK" over the ROM UART at
+115200** — fully observable, ESPHome-free, no 2nd-stage bootloader, no FreeRTOS.
+
+The crux (real on-silicon debugging): after a RAM-load boot the ROM **leaves the
+I-cache disabled** (`EXTMEM_ICACHE_CTRL` @ `0x600C4060` == 0) while the D-cache is
+on — so flash *data* reads succeed but instruction fetches from `0x42000000`
+fault `IllegalInstruction`. Proven by a **DBUS data read** of the mapped page
+(`l32i 0x3C000000` returned the exact blob bytes). Winning stub sequence:
+```c
+rom_config_instruction_cache_mode(16384, 8, 32);  // ROM 0x40001a1c: size/ways/line + alloc I-cache SRAM
+*(uint32_t*)(0x600C5000 + entry*4) = page;         // MMU: entry=(vaddr&0x1FFFFFF)>>16, page=paddr>>16,
+                                                   //   value = page | VALID(0) | FLASH(0)  [INVALID=BIT(14)]
+*(uint32_t*)0x600C4064 &= ~1u;                     // EXTMEM_ICACHE_CTRL1: clear ICACHE_SHUT_CORE0_BUS
+Cache_Invalidate_ICache_All();  Cache_Enable_ICache(0);   // ROM 0x400016d4 / 0x40001878
+__asm__("jx %0" :: "r"(0x42000000));               // (0x42000000 -> flash 0x80000 = entry 0, page 8)
+```
+Remaining to finish B0c: add a **DROM** mapping for `.rodata` (vaddr `0x3C000000`;
+D-cache already on), put the real amc runtime in the XIP blob, fold back
+B0a/b1/b2/b3 (board-agnostic), wire into amc target selection, merge.
 
 ### B0b-2 reference notes (for when interrupts need extending)
 
