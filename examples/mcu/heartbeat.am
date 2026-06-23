@@ -1,0 +1,13 @@
+namespace Heartbeat
+
+// B0b-1 — real timebase. Mcu.DelayMs now uses the ESP32-S3 systimer (board
+// startup enabled it). We "delay 1000ms" assuming AMC_SYSTIMER_HZ; the host
+// measures the true spacing between lines to calibrate the real systimer rate.
+public class Program {
+    public static void Main() {
+        loop {
+            Console.WriteLine("amalgame heartbeat")
+            Mcu.DelayMs(1000)
+        }
+    }
+}
