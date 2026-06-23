@@ -1,8 +1,28 @@
-# B1 (PHY) bring-up — WIP reference
+# B1 (PHY) bring-up — ✅ DONE on silicon
 
-First real WiFi blob bring-up. **The hard part is solved: `libphy.a` links and
-`register_chipv7_phy` executes on silicon.** Calibration doesn't complete yet
-(needs more of the IDF pre-init sequence) — this dir captures the working pieces.
+First real WiFi blob bring-up — **the WiFi PHY/RF is initialised and calibrated**
+on bare-metal, ESPHome-free, from flash XIP. `register_chipv7_phy` returns `0x1`
+(= `ESP_CAL_DATA_CHECK_FAIL`, the normal "save new calibration" result of a first
+full calibration) → "PHY CALIBRATED". `clk_test.c` is the B0b-4 clock test.
+
+## The winning sequence (`phy_test.c`)
+```c
+/* B0b-4: CPU -> PLL 80 MHz so APB = 80 MHz (the PHY needs the modem clock tree up;
+   the missing piece — at 40 MHz XTAL the RF calibration hung forever). */
+REG(0x600C0010) &= ~0x3;                       // SYSTEM_CPU_PER_CONF: CPUPERIOD_SEL=0 (80 MHz)
+REG(0x600C0060) = (REG(0x600C0060)&~(3<<10))|(1<<10);  // SYSTEM_SYSCLK_CONF: SOC_CLK_SEL=PLL
+ets_update_cpu_frequency(80);                  // ROM 0x40001a4c (fix ticks/us for ets_delay_us)
+/* power up RF + clock + reset + de-isolate (esp_wifi_bt_power_domain_on) */
+REG(0x60008090) &= ~(1<<17); delay;           // RTC_CNTL_DIG_PWC: clear WIFI_FORCE_PD
+REG(0x60026014) |= 0x78078F;                   // SYSTEM_WIFI_CLK_EN: WiFi/BT common clock
+REG(0x60026018) |= 0x2A1F; REG(0x60026018) &= ~0x2A1F;  // SYSCON_WIFI_RST_EN: modem reset pulse
+REG(0x60008094) &= ~(1<<28); delay;           // RTC_CNTL_DIG_ISO: clear WIFI_FORCE_ISO
+register_chipv7_phy(phy_init_data, cal_data /*1904B*/, PHY_RF_CAL_FULL=2);  // -> returns
+```
+UART stays readable across the clock switch (the ROM UART is XTAL-sourced, so the
+APB 40→80 change doesn't move its baud).
+
+## Adapter + linking (still the small surface)
 
 ## Done
 - **Linking the PHY blob is tiny.** `nm` on `esp_phy/lib/esp32s3/libphy.a`: of 136
