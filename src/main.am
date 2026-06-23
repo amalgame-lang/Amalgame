@@ -1824,6 +1824,25 @@ public class Program {
             return 1
         }
 
+        // Extra board sources beyond startup.c, compiled+linked alongside it and
+        // the program. Lets a board ship e.g. an Xtensa vector table + interrupt
+        // bring-up (esp32s3-ramload: vectors.S + interrupts.c, B0b-2). Picked up
+        // from the same dir as startup.c, by convention, if present.
+        var extraSrc: string = ""
+        let sdir: int = String_LastIndexOf(startup, "/")
+        if (sdir >= 0) {
+            let bdir: string = String_Substring(startup, 0, sdir)
+            var cands: List<string> = new List<string>()
+            cands.Add("vectors.S")
+            cands.Add("interrupts.c")
+            cands.Add("heap.c")
+            let cn: int = cands.Count()
+            for ci in 0..cn {
+                let f: string = bdir + "/" + cands.Get(ci)
+                if (File.Exists(f)) { extraSrc = extraSrc + " \"" + f + "\"" }
+            }
+        }
+
         let cc: string  = Program.TargetCC(target)
         var ccHint: string = "sudo apt install gcc-arm-none-eabi  (Debian/Ubuntu)"
         if (Program.TargetIsXtensa(target)) {
@@ -1840,7 +1859,7 @@ public class Program {
         for di in 0..dn { cmd = cmd + " -D" + defines.Get(di) }
         cmd = cmd + incBoard
         cmd = cmd + " -T \"" + ld + "\""
-        cmd = cmd + " \"" + startup + "\" \"" + outC + "\""
+        cmd = cmd + " \"" + startup + "\"" + extraSrc + " \"" + outC + "\""
         var embLib: string = Program.EnvDirFlags("AMC_EMBED_LIB", "-L")
         if (String_Length(embLib) == 0) {
             let homeL: string = Env.Get("HOME")

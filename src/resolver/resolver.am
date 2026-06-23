@@ -354,6 +354,8 @@ public class FullResolver {
         this.DeclareGlobal("Mcu_Toggle",       "void", false)
         this.DeclareGlobal("Mcu_DelayMs",      "void", false)
         this.DeclareGlobal("Mcu_Millis",       "int",  false)
+        this.DeclareGlobal("Mcu_WaitTick",     "void", false)
+        this.DeclareGlobal("Mcu_Ticks",        "int",  false)
         this.DeclareGlobal("Mcu_High",         "int",  false)
         this.DeclareGlobal("Mcu_Low",          "int",  false)
         this.DeclareGlobal("Mcu_Output",       "int",  false)

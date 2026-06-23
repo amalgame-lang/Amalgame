@@ -1,0 +1,17 @@
+namespace HeartbeatIrq
+
+// B0b-2 — heartbeat driven by the ESP32-S3 systimer INTERRUPT, not a busy-wait.
+// The board (startup.c -> amc_intr_init) installs our Xtensa vector table,
+// programs a periodic 1 Hz systimer alarm, and routes it through the interrupt
+// matrix to a level-1 CPU interrupt whose ISR bumps a tick counter. Mcu.WaitTick
+// sleeps the CPU in `waiti` until the next tick — so the cadence here comes
+// entirely from the timer interrupt.
+public class Program {
+    public static void Main() {
+        Console.WriteLine("irq-heartbeat: waiting for timer interrupts")
+        loop {
+            Mcu.WaitTick()
+            Console.WriteLine("amalgame heartbeat (IRQ)")
+        }
+    }
+}
