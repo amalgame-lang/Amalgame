@@ -156,6 +156,30 @@ Config storage (any channel): a small key-value in a flash sector (we have flash
 + heap). Applied at B3 (STA connect reads the creds); field re-config is a B5-era
 add-on.
 
+### B3 recon — driving the blobs (the connect sequence)
+
+The high-level `esp_wifi_init/set_mode/set_config/start/connect` are **IDF C**
+(`esp_wifi.c`/`wifi_init.c`, heavy deps: event loop, netif, NVS, PM) — we don't
+port those. The **blob exposes the real entry `esp_wifi_init_internal`** (+
+`wifi_init_process`, `esp_wifi_internal_*`, `ic_set_*`). Route B drives the blob
+directly (esp-wifi-style): `esp_wifi_init` (C) is mostly optional PM/sleep/coex
+around a single `esp_wifi_init_internal(cfg)` call. The MAC ISR is registered via
+**`ic_set_interrupt_handler`** (wire it to our level-1 matrix; `_set_isr`/
+`_set_intr` osi stubs feed this).
+
+Planned B3 sequence (all on `g_wifi_osi_funcs`, which already links):
+`esp_phy_enable` (our B1) → `esp_wifi_init_internal(&cfg)` → set mode STA + config
+(SSID/pass, compile-time) via the thin C wrappers or the internal setters →
+`esp_wifi_start` → `esp_wifi_connect` → WiFi-connected event. **`got-IP` itself
+needs DHCP = B4 (lwIP `NO_SYS=1`).**
+
+**Board prerequisites for B3** (the blobs are big): the `esp32s3-flash` board needs
+**multi-page IROM/DROM mapping** (WiFi `.text` ≈ 345 KB ≫ the current single
+64 KB page) and a real **`.data` section** (≈15 KB, LMA in flash, copied to SRAM
+by `crt0`). Then wire `_set_isr`/`_set_intr` (MAC level-1 ISR) + the software
+timers (off the systimer). This is the heaviest, most iteration-heavy integration
+of Route B — drive it incrementally on silicon (init → start → assoc → B4 IP).
+
 ### B2 recon — osi_funcs surface scoped (the Route-B core)
 
 `nm` on the WiFi MAC blobs (`libpp` 709 KB + `libnet80211` 1.4 MB + `libcore`):
