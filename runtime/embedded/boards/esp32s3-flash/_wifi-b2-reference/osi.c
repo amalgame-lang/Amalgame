@@ -13,11 +13,21 @@ extern void* queue_create(uint32_t,uint32_t); extern int queue_send(void*,const 
 extern void* mutex_create(void); extern int mutex_lock(void*); extern int mutex_unlock(void*);
 extern void* eg_create(void); extern uint32_t eg_set(void*,uint32_t); extern uint32_t eg_clear(void*,uint32_t); extern uint32_t eg_wait(void*,uint32_t,uint32_t);
 extern void* amc_malloc(size_t); extern void amc_free(void*); extern void* amc_calloc(size_t,size_t); extern uint32_t amc_heap_free(void);
+/* interrupts (ours, interrupts.c): generic level-1 dispatch table (B3). */
+extern void amc_set_isr(int n, void *fn, void *arg);
+extern void amc_route_intr(uint32_t source, uint32_t num);
 /* osi struct (from the IDF header — re-declared minimally to avoid include chain) */
 #include "wifi_osi_struct.h"
 /* ---- impls ---- */
 static int   m1(void){return 1;}
 static bool  env_is_chip(void){return 1;}
+/* MAC ISR wiring (B3): route the matrix + register the blob's handler on our
+ * generic level-1 dispatch. set_intr(cpu_no,source,num,prio) ignores cpu_no
+ * (single core) and prio (all level-1); set_isr(n,fn,arg) registers by CPU int. */
+static void  set_intr_w(int32_t cpu_no, uint32_t source, uint32_t num, int32_t prio){
+    (void)cpu_no; (void)prio; amc_route_intr(source, num);
+}
+static void  set_isr_w(int32_t n, void *fn, void *arg){ amc_set_isr((int)n, fn, arg); }
 static void  v_u32(uint32_t x){(void)x;}
 static void  noop(void){}
 static bool  is_from_isr(void){ uint32_t ps; __asm__ volatile("rsr.ps %0":"=r"(ps)); return ((ps>>0)&0xF)!=0; } /* INTLEVEL!=0 ~ in isr/crit */
@@ -113,7 +123,7 @@ static void* coex_phase_idx(int i){(void)i;return 0;}
 
 wifi_osi_funcs_t g_wifi_osi_funcs = {
   ._version=ESP_WIFI_OS_ADAPTER_VERSION,
-  ._env_is_chip=env_is_chip, ._set_intr=(void*)noop, ._clear_intr=(void*)noop, ._set_isr=(void*)noop,
+  ._env_is_chip=env_is_chip, ._set_intr=(void*)set_intr_w, ._clear_intr=(void*)noop, ._set_isr=(void*)set_isr_w,
   ._ints_on=v_u32, ._ints_off=v_u32, ._is_from_isr=(void*)is_from_isr,
   ._spin_lock_create=spin_create, ._spin_lock_delete=spin_del,
   ._wifi_int_disable=wint_dis, ._wifi_int_restore=wint_res, ._task_yield_from_isr=yield_isr,

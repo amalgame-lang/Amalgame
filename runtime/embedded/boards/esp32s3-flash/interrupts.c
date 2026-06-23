@@ -53,6 +53,29 @@ volatile uint32_t g_amc_ticks = 0;
 
 extern uint32_t _amc_vecbase;        /* vectors.S (0x400-aligned IRAM table) */
 
+/* ── level-1 handler table (B3: the WiFi MAC ISR rides this) ─────────────
+ * The CPU has 32 interrupt lines. We dispatch every enabled+pending level-1
+ * line to a registered handler. The systimer registers a built-in handler;
+ * the WiFi blobs register theirs via osi `_set_isr` -> amc_set_isr(). The
+ * table lives in DRAM (handlers may sit in flash); the dispatcher + the
+ * systimer handler live in IRAM (reachable by the copied vector table). */
+typedef void (*amc_isr_fn)(void *arg);
+static amc_isr_fn g_isr_fn[32];
+static void      *g_isr_arg[32];
+
+/* Register/route a CPU interrupt for a peripheral source. osi `_set_isr` calls
+ * amc_set_isr(n,fn,arg); osi `_set_intr` calls amc_route_intr(source,num) which
+ * programs the matrix map register and unmasks the CPU int. */
+void amc_set_isr(int n, void *fn, void *arg) {
+    if ((unsigned)n < 32u) { g_isr_fn[n] = (amc_isr_fn)fn; g_isr_arg[n] = arg; }
+}
+void amc_route_intr(uint32_t source, uint32_t num) {
+    REG32(INTMTX_BASE + source * 4u) = num;              /* source -> CPU int `num` */
+    uint32_t ie; __asm__ volatile ("rsr.intenable %0" : "=r"(ie));
+    ie |= (1u << num);
+    __asm__ volatile ("wsr.intenable %0\n rsync\n" :: "r"(ie) : "memory");
+}
+
 static inline void amc_set_vecbase(void *base) {
     __asm__ volatile ("wsr.vecbase %0\n rsync\n" :: "r"(base) : "memory");
 }
@@ -65,19 +88,39 @@ static inline void amc_enable_interrupts(void) {
     (void)old;
 }
 
-/* Called from the level-1 dispatch in vectors.S. Keep it minimal: clear the
- * (level-triggered) systimer source so the CPU interrupt line deasserts, then
- * record the tick. No UART here — the application owns the heartbeat output.
+/* Built-in systimer handler: clear the level-triggered source (so the CPU line
+ * deasserts) and record the tick. Runs from IRAM. No UART — the application
+ * owns the heartbeat output. */
+__attribute__((section(".iram.text")))
+static void amc_systimer_isr(void *arg) {
+    (void)arg;
+    REG32(SYS_INT_CLR) = SYS_TARGET0_INT_BIT;
+    g_amc_ticks++;
+}
+
+/* Level-1 dispatch, called from vectors.S. Reads the pending CPU interrupts,
+ * masks to the enabled set, and calls each line's registered handler. The WiFi
+ * MAC ISR (a blob, in flash) is dispatched here exactly like the systimer.
  *
  * Lives in IRAM (.iram.text): the vector table is copied to internal SRAM and
  * VECBASE points at its instruction-bus alias, so the dispatch's PC-relative
- * `call4` must reach the ISR in the same SRAM block — not in flash (out of
- * range). Compile this TU with -mtext-section-literals so the 32-bit constants
- * (SYS_INT_CLR, &g_amc_ticks) are pooled inline in IRAM, reachable by l32r. */
+ * `call4` must reach this in the same SRAM block — not in flash (out of range).
+ * Compile this TU with -mtext-section-literals so the 32-bit constants and the
+ * g_isr_* base addresses are pooled inline in IRAM, reachable by l32r. The
+ * handler pointers themselves are loaded from DRAM and called indirectly
+ * (callx), so flash-resident handlers are reached fine. */
 __attribute__((section(".iram.text")))
 void amc_isr_level1(void) {
-    REG32(SYS_INT_CLR) = SYS_TARGET0_INT_BIT;
-    g_amc_ticks++;
+    uint32_t pend, ena;
+    __asm__ volatile ("rsr.interrupt %0" : "=r"(pend));
+    __asm__ volatile ("rsr.intenable %0" : "=r"(ena));
+    pend &= ena;
+    while (pend) {
+        int n = __builtin_ctz(pend);
+        pend &= ~(1u << n);
+        amc_isr_fn fn = g_isr_fn[n];
+        if (fn) fn(g_isr_arg[n]);
+    }
 }
 
 static void amc_systimer_alarm_init(uint32_t period_ticks) {
@@ -96,6 +139,8 @@ void amc_intr_init(void) {
 
     amc_systimer_alarm_init(SYS_HZ);                      /* 1 Hz */
 
+    g_isr_fn[CPU_INT_NUM]  = amc_systimer_isr;            /* register the systimer */
+    g_isr_arg[CPU_INT_NUM] = 0;
     REG32(INTMTX_SYSTIMER_T0) = CPU_INT_NUM;             /* route source -> CPU int */
     amc_set_intenable(1u << CPU_INT_NUM);                /* enable just that CPU int */
     amc_enable_interrupts();                             /* PS.INTLEVEL = 0 */
