@@ -137,6 +137,24 @@ board ships no `vectors.S`/`interrupts.c`.
 | B4 | lwIP `NO_SYS=1` on WiFi RX/TX hooks | `esp_private/wifi.h` (tx/rx) |
 | B5 | MQTT → Home Assistant; reimplement the VMC controller | — |
 
+### Provisioning decision — compile-time first, then serial/SoftAP; **no Bluetooth**
+
+How WiFi credentials (+ other device config) get onto the ESP. Decided: **bake
+them at compile time** to get WiFi up fast (B3), then add field re-config later
+via **serial (improv-wifi)** or **SoftAP + a tiny web page** — both **reuse the
+WiFi stack we're already building** (the blobs expose `WIFI_MODE_AP`).
+
+**Bluetooth provisioning was considered and rejected:** on bare-metal-no-FreeRTOS
+it's a *second* large blob bring-up — BT controller blob (`libbtdm_app.a`, 1.5 MB)
++ its own OS adapter + a BLE host stack (NimBLE/Bluedroid, large, needs NPL/osi
+over our scheduler) + WiFi/BT radio coexistence. Roughly **doubles the WiFi
+effort** for a provisioning convenience that SoftAP/serial cover for ~free. Keep
+BLE only if a hard requirement appears (phone app, no USB, headless).
+
+Config storage (any channel): a small key-value in a flash sector (we have flash
++ heap). Applied at B3 (STA connect reads the creds); field re-config is a B5-era
+add-on.
+
 ## NEXT SESSION starts here — B0b-4 (240 MHz clocks), then B0c
 
 B0b-2 and B0b-3 are done (see "Done"). The substrate now has: valid IRAM vector
