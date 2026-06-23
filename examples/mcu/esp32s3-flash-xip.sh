@@ -34,17 +34,31 @@ mkdir -p "$BUILD"; cp "$here/$SRC" "$BUILD/"; cd "$BUILD"
 echo "=== amc: $SRC -> C ==="
 "$AMC" build --target=esp32s3 "$SRC" -o "$name" >/dev/null    # emits $name.c (ramload .bin ignored)
 
-echo "=== payload: $name.c -> flash-XIP blob (.text=IROM, .rodata=DROM) ==="
-# Board sources folded in: crt0 + startup, vectors.S + interrupts.c (B0b-2: the
-# vector table + ISR run from IROM/flash via the I-cache; KEEP'd by board.ld so
-# --gc-sections won't drop the table), heap.c (B0b-3; dropped if unused).
-"$CC" -mlongcalls -Os -ffreestanding -nostartfiles -ffunction-sections -fdata-sections -Wl,--gc-sections \
-  -I"$RT" -T "$BD/board.ld" "$BD/crt0.S" "$BD/startup.c" "$BD/vectors.S" "$BD/interrupts.c" "$BD/heap.c" "$name.c" \
+echo "=== payload: $name.c -> flash-XIP blob (.text=IROM, .rodata+.data=DROM, vectors=IRAM) ==="
+# Board sources folded in: crt0 (sets SP/PS, copies .data + the IRAM vector table)
+# + startup, vectors.S + interrupts.c (B0b-2: the vector table runs from internal
+# SRAM — crt0 copies it there and VECBASE points at its instruction-bus alias, so
+# window/level-1 exceptions don't fault on flash), heap.c (B0b-3; dropped if unused).
+#
+# Compiled per-TU, not in one shot, because interrupts.c needs
+# -mtext-section-literals (so amc_isr_level1's 32-bit constants are pooled INLINE in
+# its .iram.text block, reachable by l32r from the copied IRAM vectors) while
+# vectors.S must NOT have that flag (it would inject literals into the fixed-offset
+# .org vector table → "attempt to move .org backwards"). board.ld KEEPs the table.
+CF="-mlongcalls -Os -ffreestanding -ffunction-sections -fdata-sections -I$RT"
+"$CC" $CF -c "$BD/crt0.S"                          -o "$name-crt0.o"
+"$CC" $CF -c "$BD/vectors.S"                       -o "$name-vectors.o"   # no text-section-literals
+"$CC" $CF -mtext-section-literals -c "$BD/interrupts.c" -o "$name-interrupts.o"
+"$CC" $CF -c "$BD/startup.c"                       -o "$name-startup.o"
+"$CC" $CF -c "$BD/heap.c"                          -o "$name-heap.o"
+"$CC" $CF -c "$name.c"                             -o "$name-app.o"
+"$CC" -mlongcalls -nostartfiles -Wl,--gc-sections -T "$BD/board.ld" \
+  "$name-crt0.o" "$name-vectors.o" "$name-interrupts.o" "$name-startup.o" "$name-heap.o" "$name-app.o" \
   -o "$name-payload.elf"
 "$OBJCOPY" -O binary "$name-payload.elf" "$name-payload.bin"
-# guard the one-page-each layout limit
-tsz=$("$CC" -E -P -x c /dev/null >/dev/null 2>&1; xtensa-esp32s3-elf-size -A "$name-payload.elf" | awk '/\.text/{print $2}')
-echo "  .text=${tsz}B (must be <= 65536 for the current 1-page IROM mapping)"
+# guard the multi-page layout limit (8 IROM pages = 512 KB; 8 DROM pages = 512 KB)
+tsz=$(xtensa-esp32s3-elf-size -A "$name-payload.elf" | awk '/^\.text/{print $2}')
+echo "  .text=${tsz}B (must be <= 524288 for the 8-page IROM mapping)"
 
 echo "=== stub: cache/MMU bring-up -> RAM-load image @0x0 ==="
 "$CC" -mlongcalls -Os -ffreestanding -nostartfiles -ffunction-sections -fdata-sections -Wl,--gc-sections \

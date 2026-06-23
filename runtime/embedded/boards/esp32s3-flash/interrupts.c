@@ -67,7 +67,14 @@ static inline void amc_enable_interrupts(void) {
 
 /* Called from the level-1 dispatch in vectors.S. Keep it minimal: clear the
  * (level-triggered) systimer source so the CPU interrupt line deasserts, then
- * record the tick. No UART here — the application owns the heartbeat output. */
+ * record the tick. No UART here — the application owns the heartbeat output.
+ *
+ * Lives in IRAM (.iram.text): the vector table is copied to internal SRAM and
+ * VECBASE points at its instruction-bus alias, so the dispatch's PC-relative
+ * `call4` must reach the ISR in the same SRAM block — not in flash (out of
+ * range). Compile this TU with -mtext-section-literals so the 32-bit constants
+ * (SYS_INT_CLR, &g_amc_ticks) are pooled inline in IRAM, reachable by l32r. */
+__attribute__((section(".iram.text")))
 void amc_isr_level1(void) {
     REG32(SYS_INT_CLR) = SYS_TARGET0_INT_BIT;
     g_amc_ticks++;

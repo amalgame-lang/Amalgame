@@ -32,8 +32,13 @@ extern void rom_config_instruction_cache_mode(uint32_t size, uint8_t ways, uint8
 #define EXTMEM_ICACHE_CTRL1  0x600C4064u   /* bit0 = ICACHE_SHUT_CORE0_BUS (1 = shut)           */
 #define SYSTIMER_CONF        0x60023000u   /* CLK_EN[31], UNIT0_WORK_EN[30]                      */
 #define XIP_ENTRY            0x42000000u   /* payload vaddr (IROM)                               */
-#define XIP_TEXT_PAGE        8u            /* flash 0x80000 >> 16 = .text page                   */
-#define XIP_RODATA_PAGE      9u            /* flash 0x90000 >> 16 = .rodata page                 */
+/* Multi-page (B3): IROM entries 0..7 -> flash pages 8..15 (.text, up to 512 KB);
+ * DROM entries 8..15 -> flash pages 16..23 (.rodata + .data init, vaddr 0x3C080000). */
+#define XIP_IROM_ENTRY0      0u            /* 0x42000000 >> 16 & ... = entry 0 */
+#define XIP_DROM_ENTRY0      8u            /* 0x3C080000 -> entry 8            */
+#define XIP_TEXT_PAGE0       8u            /* .text   at flash 0x80000  (page 8)  */
+#define XIP_RODATA_PAGE0     16u           /* .rodata at flash 0x100000 (page 16) */
+#define XIP_NPAGES           8u
 
 static void wdt_off(void) {
     REG32(0x6001F064) = 0x50D83AA1u; REG32(0x6001F048) = 0; REG32(0x6001F064) = 0;
@@ -45,8 +50,10 @@ static void puts_(const char* s) { for (; *s; ++s) uart_tx_one_char((unsigned ch
 int amc_main(void) {
     puts_("\r\n[xip-stub] cache+mmu -> flash payload\r\n");
     rom_config_instruction_cache_mode(16384u, 8, 32);     /* the ROM left the I-cache off */
-    REG32(MMU_TABLE + 0*4) = XIP_TEXT_PAGE;               /* IROM  entry 0 (0x42000000) -> .text   */
-    REG32(MMU_TABLE + 1*4) = XIP_RODATA_PAGE;             /* DROM  entry 1 (0x3C010000) -> .rodata */
+    for (uint32_t i = 0; i < XIP_NPAGES; ++i) {
+        REG32(MMU_TABLE + (XIP_IROM_ENTRY0 + i)*4) = XIP_TEXT_PAGE0 + i;   /* IROM .text   */
+        REG32(MMU_TABLE + (XIP_DROM_ENTRY0 + i)*4) = XIP_RODATA_PAGE0 + i; /* DROM .rodata+.data */
+    }
     REG32(EXTMEM_ICACHE_CTRL1) &= ~1u;                    /* unshut I-bus0 */
     Cache_Invalidate_ICache_All();
     Cache_Invalidate_DCache_All();                        /* D-cache already enabled by the ROM */

@@ -173,12 +173,34 @@ Planned B3 sequence (all on `g_wifi_osi_funcs`, which already links):
 `esp_wifi_start` → `esp_wifi_connect` → WiFi-connected event. **`got-IP` itself
 needs DHCP = B4 (lwIP `NO_SYS=1`).**
 
-**Board prerequisites for B3** (the blobs are big): the `esp32s3-flash` board needs
-**multi-page IROM/DROM mapping** (WiFi `.text` ≈ 345 KB ≫ the current single
-64 KB page) and a real **`.data` section** (≈15 KB, LMA in flash, copied to SRAM
-by `crt0`). Then wire `_set_isr`/`_set_intr` (MAC level-1 ISR) + the software
-timers (off the systimer). This is the heaviest, most iteration-heavy integration
-of Route B — drive it incrementally on silicon (init → start → assoc → B4 IP).
+**Board prerequisites for B3 — ✅ DONE on silicon.** The `esp32s3-flash` board now
+has everything the big blobs need:
+- **Multi-page IROM/DROM mapping**: the stub maps 8 IROM pages (entries 0..7 →
+  flash pages 8..15, `.text` up to 512 KB at `0x42000000`) + 8 DROM pages
+  (entries 8..15 → flash pages 16..23, `.rodata`+`.data`-init+vectors at
+  `0x3C080000`). `board.ld` lays it out; `stub.c` writes the 16 MMU entries.
+- **Real `.data` section**: VMA in SRAM, image in flash right after `.rodata`
+  (compact `objcopy`), `crt0` copies it from the DROM-readable LMA. Validated
+  (`DATA PASS`: initialised globals read back correctly).
+- **IRAM-resident vector table** (the subtle one): VECBASE **must not** point at
+  flash — a window over/underflow fires on any windowed `call` and faults from
+  flash. The table + the level-1 ISR (`amc_isr_level1`, `.iram.text`) are copied
+  by `crt0` into the dual-ported DIRAM (DRAM-view `0x3FC88000` ⇄ instruction-view
+  `0x40378000`, `SOC_I_D_OFFSET = 0x6F0000`); VECBASE is set to the I-view alias.
+  `interrupts.c` is compiled `-mtext-section-literals` so the ISR's 32-bit
+  constants are pooled inline-and-reachable (vectors.S must NOT have that flag —
+  it would corrupt the fixed-offset `.org` table).
+- **crt0 `PS.UM` = 1**: the ROM hands ramload `_start` a ready PS; our flash crt0
+  builds it by hand and **must set PS.UM** (user-vector mode) or level-1
+  interrupts take the *Kernel* vector (`0x300` = panic), not the *User* vector
+  (`0x340` = our dispatch). This was the bug behind a silent IRQ hang.
+
+Validated: polling **and** IRQ heartbeat both run from flash XIP via the production
+`examples/mcu/esp32s3-flash-xip.sh` (now per-TU compiled for the literal-flag split).
+
+Remaining for B3: wire `_set_isr`/`_set_intr` (MAC level-1 ISR via the matrix) +
+the software timers (off the systimer), then drive the blobs (init → start →
+assoc → B4 IP). This is the heaviest, most iteration-heavy integration of Route B.
 
 ### B2 recon — osi_funcs surface scoped (the Route-B core)
 
