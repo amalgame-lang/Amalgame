@@ -19,14 +19,27 @@ Verified on an ESP32-S3-DevKitM:
   and the ROM banner appears exactly once (no reset loop) → IROM code execution
   + DRAM load + C stack all work.
 
-**Remaining (the only blocker for a readable "hello"):** the reused bootloader
-changes the clock (console UART is disabled in that build, `CONFIG_ESP_CONSOLE_
-UART_NUM=-1`, so it doesn't restore the UART divider), leaving UART0 at a
-non-115200 baud. The app must re-pin UART0 to a known clock/divider — the **same
-fix as B0b-4** (force UART0 SCLK to XTAL + set CLKDIV for 115200). First attempts
-silenced the UART (`SCLK_DIV_NUM`/field-semantics need confirming on silicon by
-reading back the bootloader's `UART0_CLK_CONF`/`CLKDIV`). Once clean, fold back
-B0a/B0b-1/B0b-2/B0b-3 (they're board-agnostic).
+**Remaining (the only blocker for a readable console):** the reused bootloader
+has its console UART disabled (`CONFIG_ESP_CONSOLE_UART_NUM=-1`), so it changes
+the clock but never restores the UART0 divider/framing — leaving UART0 in a state
+our app can neither **read** nor **reconfigure**:
+
+- *Can't read it:* output streams continuously (ROM banner once, no reset loop),
+  but a clean continuous `'X'` (0x58) never decodes to 0x58 at **any** baud from
+  9600→2,000,000 under 8N1 → non-standard baud **and/or non-8N1 frame**.
+- *Can't reconfigure it:* **any** write to `UART0_CLK_CONF` (`0x60000078`) — XTAL
+  (`SCLK_SEL=3`) or PLL-80M (`SCLK_SEL=1`), ±`RST_CORE` — **silences TX** (even
+  raw FIFO writes). The chosen source clock isn't routed/ungated to UART0 without
+  a system/PCR clock-gate we haven't wired (clock-tree task, TRM + PCR regs).
+
+**Recommended next step — use a clean bootloader with the console enabled**
+(sidesteps all the above): an ESP-IDF esp32s3 bootloader built with
+`CONFIG_ESP_CONSOLE_UART_NUM=0` + `BOOTLOADER_LOG_LEVEL=INFO`; then boot is
+observable and UART0 is in a known 115200 8N1 state, so the existing flash-XIP
+app prints directly. (Check the other ESPHome build `vmc-controller`'s sdkconfig;
+else build one with idf.py.) Then re-pin UART (= B0b-4) only if a clock change is
+wanted. After clean console: fold back B0a/B0b-1/B0b-2/B0b-3 (board-agnostic) and
+wire into the amc target selection.
 
 ## Files
 - **`board.ld`** — XIP layout: IROM/DROM flash regions + DRAM SRAM; `_stack_top`
