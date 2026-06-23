@@ -156,10 +156,49 @@ working 320 KB DRAM heap (`amc_malloc`/`free`/`calloc`).
   XTAL clock source so its baud is APB-independent. Do this in the same change,
   or the board *looks* dead. Recoverable by reflash, but not worth doing blind.
 
-**B0c — the real gate (flash XIP + cache).** The size wall: WiFi blobs + lwIP
-don't fit the ~40 KB RAM-load image. Need to boot from flash with the cache
-(XIP): either a minimal 2nd-stage bootloader or reuse the ESP-IDF bootloader
-binary (still no FreeRTOS). This is the big one before B1+.
+**B0c — the real gate (flash XIP + cache). Recon done; route chosen.** The size
+wall: WiFi blobs + lwIP don't fit the ~40 KB RAM-load image. We must boot from
+flash with the cache (XIP). **Decision: reuse a prebuilt ESP-IDF 2nd-stage
+bootloader** (no FreeRTOS in the *bootloader*; it only sets up cache + loads the
+app) rather than hand-roll cache/MMU init. We already have working esp32s3
+bootloaders on this machine from the ESPHome VMC builds, e.g.
+`/home/neitsab/vmc-build/.esphome/build/vmc-loopback-test/.pioenvs/vmc-loopback-test/bootloader.bin`
+(esptool `image_info`: ESP32-S3, 4 MB, DIO, 80 MHz, entry `0x403c8914`).
+
+Flash contract (from the ESPHome `flasher_args.json`, our target too):
+```
+0x0000  bootloader.bin            (reuse ESPHome's)
+0x8000  partition-table.bin       (minimal: nvs + phy_init + factory @0x10000)
+0x10000 amc app (flash-XIP image)  ← the new work
+```
+A minimal **factory**-app partition table (so the bootloader boots it directly,
+no OTA/otadata needed) builds cleanly with the IDF tool — generated + verified:
+`gen_esp32part.py` on `nvs(0x9000,24K) / phy_init(0xf000,4K) / factory(0x10000,3M)`.
+
+The one substantial piece left = **the flash-XIP app linker** (a new bundled
+board, say `esp32s3-flash`). The app image must carry, like ESPHome's
+`firmware.bin` does (its `image_info`, our template):
+```
+DROM  @0x3C000000+  flash-mapped .rodata   (64 KB MMU-page aligned)
+IROM  @0x42000000+  flash-mapped .text     (64 KB MMU-page aligned)
+DRAM  @0x3FC8xxxx   .data/.bss in SRAM
+IRAM  @0x4037xxxx   vectors + ISR/hot code in SRAM
+```
+References on disk: `components/esp_system/ld/esp32s3/{memory,sections}.ld.in`,
+`components/soc/esp32s3/include/soc/soc.h` (DROM/IROM bounds above), and
+`esptool elf2image` (writes the esp_image header + segment table the bootloader
+validates). The fiddly bits: 64 KB alignment of the IROM/DROM segments in both
+vaddr and flash file offset (MMU page size), and putting anything touched before
+cache-init (none, for us — the bootloader enables cache before jumping) plus the
+ISR/vectors in IRAM. This is **iteration-heavy and wants a supervised run**
+(can't be silicon-validated until both halves exist — there's no "it still
+boots" checkpoint mid-way like B0b had).
+
+First increment when we sit down: build a flash-XIP **"hello"** (Console over ROM
+UART, no interrupts) with the new linker; flash bootloader+parttable+app; confirm
+the boot log shows our app running from flash. Then fold back in B0a/B0b-1/2/3
+(watchdogs, systimer, vectors, heap) — they're already written and
+board-agnostic. Only after B0c does B1 (PHY) become possible.
 
 ### B0b-2 reference notes (for when interrupts need extending)
 
