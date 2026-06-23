@@ -4,8 +4,9 @@ Bare-metal **ESP32-S3** (Xtensa LX7), no ESP-IDF app framework, no FreeRTOS.
 The image is **RAM-loaded**: the first-stage ROM loader reads the image at
 flash offset `0x0`, copies its segments into internal SRAM, and jumps to
 `_start` — no flash XIP / cache setup / 2nd-stage bootloader needed for a
-console-and-timer "hello". This is slice 1 + B0a/B0b-1 of the
-[amc-embedded](../../../../docs/proposals/amc-embedded.md) ESP32-S3 line.
+console-and-timer "hello". This is slice 1 + B0a/B0b-1/B0b-2 of the
+[esp32s3-wifi-routeB](../../../../docs/proposals/esp32s3-wifi-routeB.md)
+ESP32-S3 line.
 
 ## Files
 - **`board.ld`** — RAM-load linker script. SRAM regions mirror the ESP-IDF
@@ -15,11 +16,26 @@ console-and-timer "hello". This is slice 1 + B0a/B0b-1 of the
   (`uart_tx_one_char`, `uart_tx_wait_idle`) used by the runtime Console.
 - **`startup.c`** — `_start`: disables the 3 watchdogs (TG0 MWDT, RTC RWDT in
   flash-boot mode, RTC super-WDT), enables the systimer clock, zeroes `.bss`,
-  calls `amc_main()`. Register addresses are from the ESP-IDF esp32s3 SoC
-  headers (`soc/{timer_group,rtc_cntl,systimer}_reg.h`).
+  calls `amc_intr_init()` then `amc_main()`. Register addresses are from the
+  ESP-IDF esp32s3 SoC headers (`soc/{timer_group,rtc_cntl,systimer}_reg.h`).
+- **`vectors.S`** (B0b-2) — Xtensa LX7 exception/interrupt vector table for IRAM,
+  `.org`-laid-out from a 0x400-aligned base (`_amc_vecbase`). Window
+  over/underflow handlers verbatim from the Xtensa standard; level-1 dispatch
+  saves the interrupted window + SAR/loop/PS/EPC1, calls the C ISR, `rfe`s;
+  other vectors panic-spin.
+- **`interrupts.c`** (B0b-2) — `amc_intr_init()`: sets `VECBASE`, programs a
+  periodic 1 Hz systimer alarm (comparator 0 / unit 0), routes it through the
+  interrupt matrix to CPU level-1 int 13, enables it, unmasks interrupts. The
+  ISR `amc_isr_level1()` clears the source and bumps `g_amc_ticks`.
+- **`heap.c`** (B0b-3) — first-fit `amc_malloc`/`amc_free`/`amc_calloc` (+
+  `amc_heap_total/used/free`) over a 320 KB free low-SRAM bank carved in
+  `board.ld` (`_heap_start.._heap_end` @ `0x3FC88000`). Lazy-init, 16-aligned,
+  coalescing. For the WiFi blobs' osi_funcs malloc/free (B2).
 
-Console + a real `Mcu_DelayMs`/`Mcu_Millis` timebase (systimer @ 16 MHz) live
-in `runtime/embedded/_runtime.h` behind `#if defined(__XTENSA__)`.
+`amc build` auto-compiles any `vectors.S`/`interrupts.c` found beside
+`startup.c`. Console + a real `Mcu_DelayMs`/`Mcu_Millis` timebase (systimer
+@ 16 MHz) plus `Mcu_WaitTick`/`Mcu_Ticks` (IRQ-driven) live in
+`runtime/embedded/_runtime.h` behind `#if defined(__XTENSA__)`.
 
 ## Build + flash
 > ⚠️ The Xtensa toolchain truncates **non-ASCII paths** (the `é` in
@@ -40,6 +56,9 @@ esptool --chip esp32s3 -p /dev/ttyUSB0 write_flash 0x0 heartbeat.bin
 - [x] slice 1 — target, `esptool elf2image`, hello over ROM UART
 - [x] B0a — watchdogs off, sustained loop
 - [x] B0b-1 — systimer timebase (`Mcu.DelayMs`/`Millis`), 1 Hz heartbeat
-- [ ] B0b-2 — interrupts: VECBASE in IRAM + interrupt matrix + systimer alarm IRQ
-- [ ] B0b-3 — DRAM heap (malloc/free) ; B0b-4 — 240 MHz clocks
+- [x] B0b-2 — interrupts: VECBASE in IRAM + interrupt matrix + systimer alarm IRQ
+      (`examples/mcu/heartbeat-irq.am`, `Mcu.WaitTick()`)
+- [x] B0b-3 — DRAM heap (`amc_malloc`/`free`/`calloc`, `heap.c`, 320 KB)
+- [ ] B0b-4 — 240 MHz clocks (recon done: CPU=40 MHz XTAL now; mind the UART baud
+      when APB goes 40→80, see the routeB proposal)
 - [ ] B0c flash XIP/cache ; B1 PHY ; B2 osi_funcs+scheduler ; B3 esp_wifi ; B4 lwIP NO_SYS ; B5 MQTT

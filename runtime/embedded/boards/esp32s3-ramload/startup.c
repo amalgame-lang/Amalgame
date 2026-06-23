@@ -21,6 +21,7 @@
 extern uint32_t _sbss, _ebss;
 extern int  amc_main(void);
 extern void uart_tx_wait_idle(unsigned char uart_no);   /* ROM, addr from board.ld */
+extern void amc_intr_init(void);                        /* interrupts.c (B0b-2)   */
 
 /* ── Watchdogs ──────────────────────────────────────────────────────────
  * The ROM leaves three watchdogs armed; with no app feeding them the chip
@@ -75,6 +76,8 @@ void _start(void) {
     esp32s3_enable_systimer();
 
     for (uint32_t *p = &_sbss; p < &_ebss; ++p) { *p = 0u; }
+
+    amc_intr_init();          /* B0b-2: relocate VECBASE to our IRAM table */
 
     (void) amc_main();
 

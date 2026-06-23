@@ -30,10 +30,25 @@ MEMORY
 {
   iram (RWX) : ORIGIN = 0x403C8700, LENGTH = 0xA000   /* instruction SRAM — .text/.literal */
   dram (RW)  : ORIGIN = 0x3FCE2700, LENGTH = 0x5000   /* data SRAM — .rodata/.data/.bss     */
+  /* Free low internal SRAM for the runtime heap (B0b-3). The ESP32-S3 DRAM bank
+   * is 0x3FC88000..0x3FCF0000; our image (text+data, DIRAM-aliased) sits at
+   * 0x3FCD8700..0x3FCE7700, the ROM stack near 0x3FCE9700, ROM .bss/.data above
+   * 0x3FCED710. So 0x3FC88000..0x3FCD8000 is free — ~320 KB. (Real sizing comes
+   * with B0c flash-XIP; this is room enough to bring up malloc/free now.) */
+  heap (RW)  : ORIGIN = 0x3FC88000, LENGTH = 0x50000   /* 320 KB runtime heap   */
 }
 
 SECTIONS
 {
+  /* Exception/interrupt vector table (B0b-2). VECBASE must be 1 KB-aligned, so
+   * place this first in IRAM on a 0x400 boundary; interrupts.c points VECBASE
+   * at _amc_vecbase. The .org offsets inside vectors.S lay out the fixed Xtensa
+   * vector slots relative to that base. */
+  .exc_vectors : ALIGN(0x400)
+  {
+    KEEP(*(.exc_vectors.text))
+  } > iram
+
   /* Xtensa literals must sit with the code. */
   .text : ALIGN(4)
   {
@@ -65,4 +80,13 @@ SECTIONS
     . = ALIGN(16);
     _ebss = .;
   } > dram
+
+  /* Runtime heap (B0b-3) — own free SRAM bank, not loaded, not zeroed by
+   * startup (the allocator initialises its own free list lazily). */
+  .heap (NOLOAD) : ALIGN(16)
+  {
+    _heap_start = .;
+    . = . + LENGTH(heap);
+    _heap_end = .;
+  } > heap
 }

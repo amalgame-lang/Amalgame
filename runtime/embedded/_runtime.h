@@ -428,11 +428,23 @@ static inline void Mcu_DelayMs(i64 ms) {
 static inline i64  Mcu_Millis(void) {
     return (i64)(amc_systimer_ticks() / (uint64_t)(AMC_SYSTIMER_HZ / 1000u));
 }
+/* B0b-2: tick counter bumped by the systimer interrupt (board interrupts.c). */
+extern volatile uint32_t g_amc_ticks;
+/* Block until the next timer-interrupt tick, sleeping the CPU in `waiti`. The
+ * IRQ-driven counterpart to DelayMs's busy-wait: the cadence comes from the
+ * systimer alarm interrupt (1 Hz), not from polling the counter. */
+static inline void Mcu_WaitTick(void) {
+    uint32_t last = g_amc_ticks;
+    while (g_amc_ticks == last) { __asm__ volatile("waiti 0"); }
+}
+static inline i64  Mcu_Ticks(void) { return (i64)g_amc_ticks; }
 #else
 /* On the virtual board DelayMs is a no-op (QEMU has no wall clock here);
  * Millis returns a monotonically increasing tick so timing code progresses. */
 static inline void Mcu_DelayMs(i64 ms) { (void)ms; amc_millis_counter += (uint32_t)ms; }
 static inline i64  Mcu_Millis(void)    { return (i64)(amc_millis_counter++); }
+static inline void Mcu_WaitTick(void)  { amc_millis_counter += 1000u; }
+static inline i64  Mcu_Ticks(void)     { return (i64)amc_millis_counter; }
 #endif
 
 #endif /* AMC_HAVE_MCU_BOARD */
