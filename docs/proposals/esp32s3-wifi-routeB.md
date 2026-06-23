@@ -2,7 +2,9 @@
 
 **Status:** B0 substrate in progress. Slice 1 + B0a + B0b-1 + **B0b-2 (Xtensa
 interrupts)** + **B0b-3 (DRAM heap)** done and verified on real silicon
-(ESP32-S3-DevKitM). Next: B0b-4 (240 MHz clocks — recon done, see below).
+(ESP32-S3-DevKitM). **B0c flash-XIP boot proven on silicon** (branch
+`esp32s3-flash-xip`) — only a clean console (UART re-pin, = B0b-4) remains. Next:
+finish the B0c console, then B1 (PHY).
 
 Sibling of [`amc-embedded.md`](amc-embedded.md) (which brought up Cortex-M /
 STM32 first). This line targets the **ESP32-S3 (Xtensa LX7)** and aims at the
@@ -156,12 +158,12 @@ working 320 KB DRAM heap (`amc_malloc`/`free`/`calloc`).
   XTAL clock source so its baud is APB-independent. Do this in the same change,
   or the board *looks* dead. Recoverable by reflash, but not worth doing blind.
 
-**B0c — the real gate (flash XIP + cache). Recon done; route chosen.** The size
-wall: WiFi blobs + lwIP don't fit the ~40 KB RAM-load image. We must boot from
-flash with the cache (XIP). **Decision: reuse a prebuilt ESP-IDF 2nd-stage
-bootloader** (no FreeRTOS in the *bootloader*; it only sets up cache + loads the
-app) rather than hand-roll cache/MMU init. We already have working esp32s3
-bootloaders on this machine from the ESPHome VMC builds, e.g.
+**B0c — the real gate (flash XIP + cache). Boot PROVEN on silicon; clean console
+WIP.** The size wall: WiFi blobs + lwIP don't fit the ~40 KB RAM-load image. We
+must boot from flash with the cache (XIP). **Decision: reuse a prebuilt ESP-IDF
+2nd-stage bootloader** (no FreeRTOS in the *bootloader*; it only sets up cache +
+loads the app) rather than hand-roll cache/MMU init. We already have working
+esp32s3 bootloaders on this machine from the ESPHome VMC builds, e.g.
 `/home/neitsab/vmc-build/.esphome/build/vmc-loopback-test/.pioenvs/vmc-loopback-test/bootloader.bin`
 (esptool `image_info`: ESP32-S3, 4 MB, DIO, 80 MHz, entry `0x403c8914`).
 
@@ -175,30 +177,40 @@ A minimal **factory**-app partition table (so the bootloader boots it directly,
 no OTA/otadata needed) builds cleanly with the IDF tool — generated + verified:
 `gen_esp32part.py` on `nvs(0x9000,24K) / phy_init(0xf000,4K) / factory(0x10000,3M)`.
 
-The one substantial piece left = **the flash-XIP app linker** (a new bundled
-board, say `esp32s3-flash`). The app image must carry, like ESPHome's
-`firmware.bin` does (its `image_info`, our template):
+**Done (branch `esp32s3-flash-xip`):** the new bundled board
+`runtime/embedded/boards/esp32s3-flash/` (`board.ld` + `crt0.S` + `startup.c`).
+Layout (matches ESPHome's `firmware.bin` `image_info`):
 ```
-DROM  @0x3C000000+  flash-mapped .rodata   (64 KB MMU-page aligned)
-IROM  @0x42000000+  flash-mapped .text     (64 KB MMU-page aligned)
-DRAM  @0x3FC8xxxx   .data/.bss in SRAM
-IRAM  @0x4037xxxx   vectors + ISR/hot code in SRAM
+DROM  @0x3C000020  flash-mapped .rodata   (esptool 64 KB MMU-page aligns the file)
+IROM  @0x42000020  flash-mapped .text
+DRAM  @0x3FC88000  .data/.bss in SRAM (+ stack at top of the bank)
 ```
-References on disk: `components/esp_system/ld/esp32s3/{memory,sections}.ld.in`,
-`components/soc/esp32s3/include/soc/soc.h` (DROM/IROM bounds above), and
-`esptool elf2image` (writes the esp_image header + segment table the bootloader
-validates). The fiddly bits: 64 KB alignment of the IROM/DROM segments in both
-vaddr and flash file offset (MMU page size), and putting anything touched before
-cache-init (none, for us — the bootloader enables cache before jumping) plus the
-ISR/vectors in IRAM. This is **iteration-heavy and wants a supervised run**
-(can't be silicon-validated until both halves exist — there's no "it still
-boots" checkpoint mid-way like B0b had).
+**Validated on an ESP32-S3-DevKitM:** flashed the reused bootloader@0x0 + a
+factory partition table@0x8000 + our app@0x10000. The app **runs from flash** —
+an asm-only smoke test and the full C runtime both stream continuous UART output
+and the ROM banner appears exactly once (no reset loop) → IROM code executes via
+cache, DROM/DRAM load, and `crt0.S` sets up the stack the bootloader does *not*
+leave reliably (a plain-C entry crashes; `crt0` sets SP + windowed PS then
+`call4 _start_c`). esp_image is valid (checksum + SHA256). **The size wall is
+breakable.**
 
-First increment when we sit down: build a flash-XIP **"hello"** (Console over ROM
-UART, no interrupts) with the new linker; flash bootloader+parttable+app; confirm
-the boot log shows our app running from flash. Then fold back in B0a/B0b-1/2/3
-(watchdogs, systimer, vectors, heap) — they're already written and
-board-agnostic. Only after B0c does B1 (PHY) become possible.
+**The one remaining nut — clean console (same as B0b-4).** The reused bootloader
+has its console UART disabled (`CONFIG_ESP_CONSOLE_UART_NUM=-1`), so it changes
+the clock but does *not* restore the UART divider → UART0 ends up at a
+non-115200 baud (output streams but is unreadable at standard bauds; identical
+garbage at 230400/234375 ⇒ a non-standard rate). The app must re-pin UART0 to a
+known clock: set `UART0_CLK_CONF` (`0x60000078`) `SCLK_SEL=3` (XTAL) + a valid
+`SCLK_DIV_NUM`, and `UART0_CLKDIV` (`0x60000014`) for 115200. First attempts
+**silenced** the UART — likely `SCLK_DIV_NUM=0` is invalid (field semantics: the
+IDF LL writes `div-1`, so 0 ⇒ divide-by-1, but the silence suggests otherwise).
+Next session: on silicon, **read back** the bootloader's `UART0_CLK_CONF` +
+`CLKDIV`, compute the actual source freq, then set the divider — or force XTAL
+with `SCLK_DIV_NUM=1`. This is the identical fix B0b-4 needs.
+
+After clean console: fold back B0a/B0b-1/2/3 (watchdogs, systimer, vectors, heap
+— all board-agnostic) into the flash board, wire it into the amc target
+selection, and merge `esp32s3-flash-xip`. Only then does B1 (PHY) become
+possible.
 
 ### B0b-2 reference notes (for when interrupts need extending)
 
