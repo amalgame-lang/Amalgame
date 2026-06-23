@@ -8,6 +8,7 @@ typedef struct { void(*entry)(void*); void* arg; void* sp_top; int started; int 
 #define MAXT 8
 static task_t tasks[MAXT]; static int ntask; static int cur;
 void sched_yield(void);
+extern void amc_timers_check(void);   /* timers.c — fire expired ETS software timers */
 /* systimer (16 MHz) read */
 #define REG32(a) (*(volatile uint32_t *)(uintptr_t)(a))
 uint64_t sched_now(void){ REG32(0x60023004)=(1u<<30); while(!(REG32(0x60023004)&(1u<<29))){} return ((uint64_t)REG32(0x60023040)<<32)|REG32(0x60023044); }
@@ -41,6 +42,7 @@ void sched_yield(void){
   int start=(cur<0)?(ntask-1):cur;
   for(;;){
     check_timeouts();
+    amc_timers_check();   /* fire any expired ETS software timers (B3, timers.c) */
     int n=-1; for(int i=1;i<=ntask;i++){ int k=(start+i)%ntask; if(tasks[k].state==ST_READY){ n=k; break; } }
     if(n>=0){ cur=n; task_t* t=&tasks[n];
       if(!t->started){ t->started=1; _sched_bootstrap(t->sp_top, trampoline, t); }

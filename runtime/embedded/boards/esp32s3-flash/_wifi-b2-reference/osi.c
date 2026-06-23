@@ -96,12 +96,15 @@ static uint32_t slowclk(void){return 28639;} /* ~ RTC slow clk cal default */
 static void logw(unsigned l,const char*t,const char*f,...){(void)l;(void)t;(void)f;}
 static void logwv(unsigned l,const char*t,const char*f,va_list a){(void)l;(void)t;(void)f;(void)a;}
 static uint32_t logts(void){return (uint32_t)now_us()/1000u;}
-/* timers: minimal software timer (stub arm/disarm for link; real impl later) */
-static void tmr_arm(void*t,uint32_t ms,bool rp){(void)t;(void)ms;(void)rp;}
-static void tmr_disarm(void*t){(void)t;}
-static void tmr_done(void*t){(void)t;}
-static void tmr_setfn(void*t,void*fn,void*arg){(void)t;(void)fn;(void)arg;}
-static void tmr_arm_us(void*t,uint32_t us,bool rp){(void)t;(void)us;(void)rp;}
+/* timers: ETS software timers, real impl in timers.c (driven from sched yield). */
+extern void amc_timer_arm(void*,uint32_t,bool); extern void amc_timer_disarm(void*);
+extern void amc_timer_done(void*); extern void amc_timer_setfn(void*,void*,void*);
+extern void amc_timer_arm_us(void*,uint32_t,bool);
+static void tmr_arm(void*t,uint32_t ms,bool rp){ amc_timer_arm(t,ms,rp); }
+static void tmr_disarm(void*t){ amc_timer_disarm(t); }
+static void tmr_done(void*t){ amc_timer_done(t); }
+static void tmr_setfn(void*t,void*fn,void*arg){ amc_timer_setfn(t,fn,arg); }
+static void tmr_arm_us(void*t,uint32_t us,bool rp){ amc_timer_arm_us(t,us,rp); }
 static void* wifi_create_q(int len,int isz){ return queue_create(len,isz); }
 static void wifi_del_q(void*q){(void)q;}
 /* coex: all stubs */
