@@ -26,6 +26,7 @@
  */
 
 /* EXCCAUSE values (Xtensa ISA, from xtensa/corebits.h). */
+#define EXCCAUSE_SYSCALL    1       /* SYSCALL instruction = "spill all windows" */
 #define EXCCAUSE_LEVEL1INT  4       /* a level-1 interrupt, not a real exception */
 #define EXCCAUSE_ALLOCA     5       /* movsp (alloca) — needs the window fixup   */
 
@@ -182,7 +183,53 @@ _amc_UserExceptionVector:
 _amc_user_dispatch:
     rsr.exccause a0
     beqi    a0, EXCCAUSE_LEVEL1INT, _amc_level1_int
+    beqi    a0, EXCCAUSE_SYSCALL,   _amc_syscall_spill
     j       _amc_panic
+
+/* Xtensa SYSCALL (EXCCAUSE=1): the windowed-ABI "spill all register windows"
+ * request used by ROM setjmp/longjmp (and any blob spill). The OS must spill the
+ * live windows to their stack save areas, skip the 3-byte `syscall`, and rfe.
+ * a0 is already in EXCSAVE1 (saved by the user vector). We carve a tiny scratch
+ * frame BELOW the ABI spill save area for PS/EPC1, run the spill with WOE set and
+ * EXCM cleared (the macro relies on window-overflow exceptions firing), restore,
+ * and return 0 in a2 (the spill is syscall 0). */
+    .align  4
+_amc_syscall_spill:
+    addi    a1, a1, -32             /* scratch frame, clear of the [sp-16] save area */
+    rsr.ps  a0
+    s32i    a0, a1, 0               /* save PS  */
+    rsr.epc1 a0
+    s32i    a0, a1, 4               /* save EPC1 */
+    movi    a0, 4
+    slli    a0, a0, 16              /* 0x40000 (WOE) */
+    addi    a0, a0, 0x23           /* | UM(0x20) | INTLEVEL=3 (EXCM cleared) -> 0x40023 */
+    wsr.ps  a0
+    rsync
+    rsr.excsave1 a0                 /* restore REAL a0 so the spill captures it */
+    addi    a1, a1, 32              /* sp = interruptee sp for correct spill targets */
+    /* SPILL_ALL_WINDOWS (XCHAL_NUM_AREGS==64): noop writes + full window rotation */
+    and     a12, a12, a12
+    rotw    3
+    and     a12, a12, a12
+    rotw    3
+    and     a12, a12, a12
+    rotw    3
+    and     a12, a12, a12
+    rotw    3
+    and     a12, a12, a12
+    rotw    4
+    addi    a1, a1, -32             /* back to the scratch frame */
+    wsr.excsave1 a0                 /* stash real a0 while we reuse a0 as scratch */
+    l32i    a0, a1, 0
+    wsr.ps  a0                      /* restore PS (EXCM set again) */
+    rsync
+    l32i    a0, a1, 4
+    addi    a0, a0, 3              /* skip the 3-byte syscall instruction */
+    wsr.epc1 a0
+    addi    a1, a1, 32             /* restore sp */
+    movi    a2, 0                  /* spill is syscall 0 -> return 0 */
+    rsr.excsave1 a0                /* real a0 back */
+    rfe
 
 /* Minimal level-1 interrupt handler. A call4 to the (windowed) C ISR would
  * clobber the interruptee's a4 (CALL4 writes the return address there), and the
@@ -270,5 +317,19 @@ _amc_level1_int:
 
     .global _amc_panic
     .align  4
+/* Observable panic: capture cause/epc/vaddr, build a clean PS (WOE|UM,
+ * INTLEVEL=15, EXCM=0) so a windowed call is safe, then call4 the C printer
+ * (amc_panic_c, in the same IRAM block -> call4 in range). It spins after. */
 _amc_panic:
-    j       _amc_panic              /* spin — stuck heartbeat = something faulted */
+    rsr.exccause a6                 /* call4 args: a6/a7/a8 -> callee a2/a3/a4 */
+    rsr.epc1     a7
+    rsr.excvaddr a8
+    movi    a5, 4
+    slli    a5, a5, 16              /* 0x40000 (WOE) */
+    addi    a5, a5, 0x2f           /* | UM(0x20) | INTLEVEL=15(0xf) -> 0x4002f */
+    wsr.ps  a5
+    rsync
+    .begin  no-longcalls
+    call4   amc_panic_c
+    .end    no-longcalls
+1:  j       1b

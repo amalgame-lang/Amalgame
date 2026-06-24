@@ -29,11 +29,24 @@ SECTIONS {
     KEEP(*(.text.start))            /* _start must sit at 0x42000000 (stub jx target) */
     *(.literal .text)
     *(.literal.* .text.*)
+    /* WiFi blobs mark their hot paths IRAM_ATTR (RX/TX/sleep). In IDF that is
+     * because the cache is disabled during flash writes; we never write flash
+     * while WiFi runs, so they execute fine from flash IROM via the I-cache.
+     * Fold all the blob IRAM sections (+ their literal pools) in here. */
+    *(.iram1 .iram1.*)
+    *(.wifi0iram .wifi0iram.*)
+    *(.wifirxiram .wifirxiram.*)
+    *(.wifiextrairam .wifiextrairam.*)
+    *(.wifislpiram .wifislpiram.*)
+    *(.wifislprxiram .wifislprxiram.*)
+    *(.wifiorslpiram .wifiorslpiram.*)
   } > iram_flash
 
   .rodata 0x3C080000 : AT(0x80000) {  /* blob offset 0x80000 -> flash page 16 -> DROM entry 8 */
     *(.rodata .rodata.*)
     *(.srodata .srodata.*)
+    *(.rodata_wlog_*)               /* blob WiFi-log strings (.rodata_wlog_error/info/...) */
+    *(.sdata2 .sdata2.* .srodata2 .srodata2.*)
     . = ALIGN(16);
   } > drom
 
@@ -44,6 +57,7 @@ SECTIONS {
     _data_vma = ABSOLUTE(.);
     *(.data .data.*)
     *(.sdata .sdata.*)
+    *(.dram1 .dram1.*)              /* blob initialised DRAM data */
     . = ALIGN(16);
     _data_end = ABSOLUTE(.);
   } > dram

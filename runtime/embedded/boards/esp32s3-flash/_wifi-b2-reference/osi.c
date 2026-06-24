@@ -46,6 +46,7 @@ static int32_t q_send_isr(void*q,void*i,void*hp){(void)hp; return queue_send(q,i
 static int32_t q_recv(void*q,void*i,uint32_t t){return queue_recv(q,i,t);}
 static uint32_t eg_wait_(void*e,uint32_t b,int c,int a,uint32_t t){(void)a; uint32_t r=eg_wait(e,b,t); if(c) eg_clear(e,b); return r;}
 typedef void (*taskfn)(void*);
+extern int wlog_printf(const char*,...);
 static int32_t task_create(void*fn,const char*nm,uint32_t depth,void*p,uint32_t prio,void*handle){(void)nm;(void)prio;
   void* stk=amc_malloc(depth?depth:4096); int id=sched_task_create((taskfn)fn,p,stk,depth?depth:4096);
   if(handle)*(void**)handle=(void*)(intptr_t)(id+1); return id>=0;}
@@ -93,8 +94,9 @@ static int nvs_getblob(uint32_t h,const char*k,void*v,size_t*l){(void)h;(void)k;
 static int nvs_erase(uint32_t h,const char*k){(void)h;(void)k;return 0;}
 static int get_time(void*t){(void)t;return 0;}
 static uint32_t slowclk(void){return 28639;} /* ~ RTC slow clk cal default */
-static void logw(unsigned l,const char*t,const char*f,...){(void)l;(void)t;(void)f;}
-static void logwv(unsigned l,const char*t,const char*f,va_list a){(void)l;(void)t;(void)f;(void)a;}
+extern int wlog_vprintf(const char*,va_list); extern int wlog_printf(const char*,...);
+static void logw(unsigned l,const char*t,const char*f,...){(void)l;(void)t; va_list a; va_start(a,f); wlog_vprintf(f,a); va_end(a);}
+static void logwv(unsigned l,const char*t,const char*f,va_list a){(void)l;(void)t; wlog_vprintf(f,a);}
 static uint32_t logts(void){return (uint32_t)now_us()/1000u;}
 /* timers: ETS software timers, real impl in timers.c (driven from sched yield). */
 extern void amc_timer_arm(void*,uint32_t,bool); extern void amc_timer_disarm(void*);

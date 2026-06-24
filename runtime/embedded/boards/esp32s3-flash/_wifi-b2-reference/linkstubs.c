@@ -14,8 +14,10 @@ void mesh_set_parent_monitor_config(void){} void mesh_set_rssi_threshold(void){}
 uint8_t regdomain_table[512]; uint8_t regulatory_data[512];
 /* event base symbol the blobs reference */
 const char* WIFI_EVENT = "WIFI_EVENT";
-/* debug printf -> drop */
-int pp_printf(const char*f,...){(void)f;return 0;}
-int net80211_printf(const char*f,...){(void)f;return 0;}
+/* debug printf -> UART (B3 bring-up: surface the blobs' diagnostics) */
+#include <stdarg.h>
+extern int wlog_vprintf(const char*,va_list);
+int pp_printf(const char*f,...){ va_list a; va_start(a,f); wlog_vprintf(f,a); va_end(a); return 0; }
+int net80211_printf(const char*f,...){ va_list a; va_start(a,f); wlog_vprintf(f,a); va_end(a); return 0; }
 int puts(const char*s){(void)s;return 0;}
 int hexstr2bin(const char*hex,uint8_t*buf,size_t len){(void)hex;(void)buf;(void)len;return 0;}
