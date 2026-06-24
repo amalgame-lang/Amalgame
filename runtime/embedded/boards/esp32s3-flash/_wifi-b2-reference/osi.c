@@ -107,7 +107,11 @@ static void tmr_disarm(void*t){ amc_timer_disarm(t); }
 static void tmr_done(void*t){ amc_timer_done(t); }
 static void tmr_setfn(void*t,void*fn,void*arg){ amc_timer_setfn(t,fn,arg); }
 static void tmr_arm_us(void*t,uint32_t us,bool rp){ amc_timer_arm_us(t,us,rp); }
-static void* wifi_create_q(int len,int isz){ return queue_create(len,isz); }
+/* _wifi_create_queue must return a wifi_static_queue_t* {void* handle; void* storage;}
+ * (esp_private/wifi.h); the blob uses ->handle as the real queue. Returning the raw
+ * queue makes the blob treat our queue_t's first field as the handle -> crash. */
+typedef struct { void* handle; void* storage; } wifi_sq_t;
+static void* wifi_create_q(int len,int isz){ wifi_sq_t* w=amc_malloc(sizeof *w); w->handle=queue_create(len,isz); w->storage=0; return w; }
 static void wifi_del_q(void*q){(void)q;}
 /* coex: all stubs */
 static int ci(void){return 0;} static void cv(void){} static uint32_t cu(void){return 0;}
