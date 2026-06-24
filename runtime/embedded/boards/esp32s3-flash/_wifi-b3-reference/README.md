@@ -32,11 +32,32 @@ drive `esp_wifi_init_internal` → set mode/config STA → start → connect.
   `wifi` task (3584 B stack), blocks on its init sem, and the scheduler correctly
   switches to the other tasks and **runs the wifi task**.
 
-## ▶ Next
-- The `wifi` task runs its own MAC/PHY HW bring-up and then stalls (no panic) —
-  next: trace its osi calls (`_phy_enable`/B1 calib, `ic_set_interrupt_handler`,
-  the init handshake sem/queue) to find where it spins, get init to return
-  ESP_OK, then `esp_wifi_set_mode(STA)` / `set_config` / `esp_wifi_start` /
-  `esp_wifi_connect_internal` → connected event. Then B4 (lwIP NO_SYS) for IP.
-- Provide the real `g_wifi_default_wpa_crypto_funcs` (libwpa_supplicant) for the
-  WPA2 handshake at connect.
+## ✅✅ esp_wifi_init_internal -> ESP_OK, set_mode(STA) -> ESP_OK, start in progress
+The fix to get init to ESP_OK was `_wifi_create_queue`: it must return a
+`wifi_static_queue_t* {handle, storage}` (the blob uses `->handle`), not the raw
+queue. With that, the full IDF init log prints and `esp_wifi_init_internal`
+returns 0. Then `esp_wifi_set_mode(WIFI_MODE_STA=1)` returns 0, and
+`esp_wifi_start()` runs: **PHY enabled + calibrated** (`phy calib done`) and the
+radio sets the channel (`ht20 freq=2412, chan=1`).
+
+## ▶ Next — esp_wifi_start hangs in MAC bring-up
+After the channel set, `esp_wifi_start` busy-waits in blob/ROM code (no osi call
+in between — sem/queue/delay are all traced and none fire, so it's a hardware
+poll or a ROM `ets_delay_us`-style spin), before registering the MAC ISR
+(`_set_isr`/`_set_intr` not yet called). Next debugging step: PC-sampling from
+the systimer ISR (store the interrupted EPC1 to a global, print it) or disassemble
+to find the spin, then continue: register/enable the MAC interrupt, get
+`esp_wifi_start` to return, `esp_wifi_set_config` (SSID/pass), and
+`esp_wifi_connect_internal` -> connected. Then B4 (lwIP NO_SYS) for DHCP/IP.
+
+Also still needed for the WPA2 handshake at connect: the real
+`g_wifi_default_wpa_crypto_funcs` (libwpa_supplicant) — currently size/version
+set, fn-ptrs null (fine until connect).
+
+## Debug aids in place
+- Observable panic (vectors.S `_amc_panic` -> `amc_panic_c`): prints
+  EXCCAUSE/EPC1/EXCVADDR. Diagnosed the queue crash (LoadProhibited) and the
+  syscall-spill (EXCCAUSE=1) this way.
+- `wlog.c` routes the blob log path to UART (the IDF `I (..) wifi:` lines).
+- osi.c can be patched with `[osi] ...` traces (set_isr/set_intr/phy/sem/queue)
+  for bring-up; keep them out of committed osi.c.

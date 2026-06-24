@@ -92,8 +92,11 @@ static inline void amc_enable_interrupts(void) {
  * EXCCAUSE/EPC1/EXCVADDR. In IRAM (.iram.text) so the vector's PC-relative call4
  * reaches it; prints via wlog_printf (flash, reached by inline-literal longcall). */
 extern int wlog_printf(const char*, ...);
+static volatile int g_in_panic;
 __attribute__((section(".iram.text")))
 void amc_panic_c(uint32_t cause, uint32_t epc, uint32_t vaddr) {
+    if (g_in_panic) { for (;;) {} }     /* re-entrant fault: spin, don't garble */
+    g_in_panic = 1;
     wlog_printf("\n*** PANIC exccause=%u epc=0x%x excvaddr=0x%x ***\n", cause, epc, vaddr);
     for (;;) {}
 }

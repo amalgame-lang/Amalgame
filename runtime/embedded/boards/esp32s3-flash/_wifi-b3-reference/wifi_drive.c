@@ -6,6 +6,8 @@ extern int  sched_task_create(void(*)(void*),void*,void*,uint32_t);
 extern void sched_start(void); extern void sched_yield(void);
 extern void ets_update_cpu_frequency(uint32_t);
 extern int  esp_wifi_init_internal(const void* cfg);
+extern int  esp_wifi_set_mode(int mode);
+extern int  esp_wifi_start(void);
 struct wifi_osi_funcs_t; extern struct wifi_osi_funcs_t g_wifi_osi_funcs;
 
 typedef struct { uint32_t w[11]; } wpa_crypto_funcs_t;   /* 44 bytes (2 u32 + 9 ptrs) */
@@ -44,6 +46,12 @@ static void init_task(void* a){ (void)a;
   p("off(feat)="); hx(__builtin_offsetof(wifi_init_config_t,feature_caps)); p(" off(magic)="); hx(__builtin_offsetof(wifi_init_config_t,magic)); p("\n");
   int r=esp_wifi_init_internal(&cfg);
   p("init r="); hx((uint32_t)r); p(r?"  (nonzero)\n":"  (ESP_OK)\n");
+  if(r==0){
+    int r2=esp_wifi_set_mode(1);   /* WIFI_MODE_STA */
+    p("set_mode(STA) r="); hx((uint32_t)r2); p("\n");
+    int r3=esp_wifi_start();
+    p("start r="); hx((uint32_t)r3); p("\n");
+  }
   for(;;) sched_yield();
 }
 static uint8_t istk[49152];
