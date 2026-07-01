@@ -239,6 +239,11 @@ _amc_syscall_spill:
  * ISR clears the peripheral (level-triggered) source before returning. */
     .align  4
 _amc_level1_int:
+    /* Reserve the interruptee's 16-byte ABI base save area [sp-16..sp-1] FIRST:
+     * if the interruptee's window was spilled (window pressure), its a0-a3 live
+     * there and a later underflow (retw) restores from it. Carving the IFR over
+     * it would corrupt the resumed frame — the root of the post-start crash. */
+    addi    a1, a1, -16
     addi    a1, a1, -IFR_SZ
     s32i    a2,  a1, IFR_A2          /* save live window a2-a15 */
     s32i    a3,  a1, IFR_A3
@@ -325,6 +330,7 @@ _amc_level1_int:
     l32i    a15, a1, IFR_A15
     l32i    a0,  a1, IFR_A0         /* interruptee a0 last (was scratch) */
     addi    a1,  a1, IFR_SZ
+    addi    a1,  a1, 16             /* undo the base-save-area reserve */
     rsync
     rfe
 
