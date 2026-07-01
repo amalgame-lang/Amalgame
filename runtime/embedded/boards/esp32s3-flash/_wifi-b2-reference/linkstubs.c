@@ -1,6 +1,11 @@
 #include <stdint.h>
 #include <stddef.h>
-/* mesh / espnow / mt — not used in STA: stubs */
+/* newlib per-context reentrancy: the ROM libc functions the blob calls
+ * (printf/sprintf/itoa/strtok/rand...) fetch their _reent via __getreent. The
+ * toolchain leaves it unimplemented ("will always fail") -> a garbage/NULL reent
+ * -> corruption. Return one zeroed static struct (oversized to cover _reent). */
+static uint8_t s_reent[1024] __attribute__((aligned(16)));
+void* __getreent(void){ return s_reent; }
 int  g_mt; void* mt_get_peer_info(void){return 0;}
 int  g_espnow_user_oui;
 void ieee80211_init_mesh_assoc_ie(void){}

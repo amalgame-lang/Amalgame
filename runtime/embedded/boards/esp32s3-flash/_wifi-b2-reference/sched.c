@@ -21,21 +21,29 @@ int  sched_task_create(void(*e)(void*), void* arg, void* stk, uint32_t sz){
   if(ntask>=MAXT) return -1; task_t* t=&tasks[ntask]; t->entry=e; t->arg=arg; t->started=0;
   t->state=ST_READY; t->blocked_on=0; t->deadline=0; t->sp_top=(void*)(((uintptr_t)stk+sz)&~15u); return ntask++;
 }
+/* tasks[] is shared between tasks (block/yield) and the WiFi MAC ISR (sched_wake
+ * via _queue_send_from_isr). Every mutation runs in a critical section — without
+ * it the scheduler state races and a task can be resumed with a bad context. */
 /* block current task on obj until deadline (0=forever); returns woke_ok (1 event, 0 timeout) */
 int sched_block(void* obj, uint64_t deadline){
+  uint32_t l=sched_int_disable();
   tasks[cur].blocked_on=obj; tasks[cur].deadline=deadline; tasks[cur].woke_ok=0; tasks[cur].state=ST_BLOCKED;
+  sched_int_restore(l);
   sched_yield(); return tasks[cur].woke_ok;
 }
-/* wake (at most one) task blocked on obj; returns 1 if woke someone */
+/* wake (at most one) task blocked on obj; returns 1 if woke someone. Called from ISRs. */
 int sched_wake(void* obj){
+  uint32_t l=sched_int_disable(); int r=0;
   for(int i=0;i<ntask;i++) if(tasks[i].state==ST_BLOCKED && tasks[i].blocked_on==obj){
-    tasks[i].state=ST_READY; tasks[i].woke_ok=1; tasks[i].blocked_on=0; tasks[i].deadline=0; return 1; }
-  return 0;
+    tasks[i].state=ST_READY; tasks[i].woke_ok=1; tasks[i].blocked_on=0; tasks[i].deadline=0; r=1; break; }
+  sched_int_restore(l); return r;
 }
 static void check_timeouts(void){
+  uint32_t l=sched_int_disable();
   uint64_t now=sched_now();
   for(int i=0;i<ntask;i++) if(tasks[i].state==ST_BLOCKED && tasks[i].deadline && now>=tasks[i].deadline){
     tasks[i].state=ST_READY; tasks[i].woke_ok=0; tasks[i].blocked_on=0; tasks[i].deadline=0; }
+  sched_int_restore(l);
 }
 void sched_yield(void){
   if(cur>=0 && setjmp(tasks[cur].ctx)) return;
