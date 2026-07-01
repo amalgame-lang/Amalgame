@@ -55,17 +55,34 @@ start r=0x00000000 (ESP_OK)
 So init -> set_mode(STA) -> start all return ESP_OK, PHY calibrated, MAC ISR wired
 on our generic level-1 dispatch, radio on channel 1.
 
-## ▶ Next — post-start stability, then connect
-After start, the system idles a few seconds then faults: `IllegalInstruction` at
-`sched_yield`'s `retw` (a window underflow restoring a corrupt frame). It is
-stack/timing sensitive — more task stack survives longer (1 tick @3584 -> 6 @12K),
-and adding an unrelated print shifts when it hits. Our cooperative switch spills
-register windows to the task stack on every setjmp (heavier than a FreeRTOS
-context save), so the wifi task's 3584 B is too tight under bursty blob load;
-`task_create` now enforces a 12 KB minimum (helps but the root stability of the
-wifi task under beacon-reception load still needs nailing — likely a stack
-high-water or a subtle spill-handler edge). Then: `esp_wifi_set_config`
-(SSID/pass — **need the SSID from the user**; password is "8uckf@stVSH") and
+## ▶ Next — post-start stability (ROOT CAUSE FOUND), then connect
+After start, the system faults within ~2 s: `IllegalInstruction` at `sched_yield`'s
+`retw` (a resumed task's window/frame is corrupt). **Reproduced blob-free** with
+`sched_stress.c` (two tasks tight-loop `sched_yield`): crashes after ~18K switches
+with the systimer IRQ on, ~300K without. Isolation proved:
+- Pure deep recursion (2.4M window over/underflow cycles, no setjmp) is CLEAN →
+  the window overflow/underflow handlers in vectors.S are sound.
+- So the bug is the `syscall`-spill path (`_amc_syscall_spill`).
+
+**Root cause (confirmed by dumping the ROM setjmp helper off-chip, base ~0x4002e23c):**
+the helper does `movi a2,0; syscall` then reads the CURRENT window's registers
+back from the spill areas — `[sp-16..sp-4]` for a0-a3, plus the caller-relative
+extra-save area for a4-a11 — to build the jmp_buf. But our `SPILL_ALL_WINDOWS`
+spills every window EXCEPT the current one (you can't spill the window you run in),
+so those slots hold **stale** data → setjmp captures garbage → longjmp restores a
+corrupt frame → the rare `retw` crash. It's "rare" only because the stale slots
+usually still hold the right values from a previous spill of the reused frame.
+
+**Fix direction (next):** `_amc_syscall_spill` must also spill the *current*
+window before rfe. A hand-rolled a0-a3(+extra) store got the exact Xtensa
+extra-save-area layout wrong (crashed worse). The robust path is the IDF
+reference: `components/xtensa/xtensa_vectors.S` `_xt_syscall_exc` +
+`xtensa_context.S` `_xt_context_save` (full XT_STK frame + SPILL_ALL_WINDOWS at
+the interruptee sp + proper current-window handling). Validate against
+`sched_stress.c` (fast) before rebuilding the full WiFi image.
+
+Then: `esp_wifi_set_config` (SSID **TP-Link_0122** — a HIDDEN network, so set the
+SSID explicitly + connect directly; password "8uckf@stVSH") and
 `esp_wifi_connect_internal` -> connected, wiring the real
 `g_wifi_default_wpa_crypto_funcs` (libwpa_supplicant) for the WPA2 handshake.
 Then B4 (lwIP NO_SYS) for DHCP/IP.
