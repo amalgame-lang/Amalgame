@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "wifi_creds.h"   /* WIFI_SSID / WIFI_PASS — local, gitignored */
 #define REG32(a) (*(volatile uint32_t*)(uintptr_t)(a))
 extern int uart_tx_one_char(unsigned char);
 extern void amc_intr_init(void);
@@ -50,8 +51,8 @@ static void init_task(void* a){ (void)a;
     p("start r="); hx((uint32_t)r3); p("\n");
     if(r3==0){
       static uint8_t cfg2[256];                 /* wifi_config_t (STA), zeroed */
-      const char* ss="TP-Link_0122"; for(int i=0;ss[i];i++) cfg2[i]=(uint8_t)ss[i];
-      const char* pw="8uckf@stVSH";  for(int i=0;pw[i];i++) cfg2[32+i]=(uint8_t)pw[i];
+      const char* ss=WIFI_SSID; for(int i=0;ss[i];i++) cfg2[i]=(uint8_t)ss[i];
+      const char* pw=WIFI_PASS;  for(int i=0;pw[i];i++) cfg2[32+i]=(uint8_t)pw[i];
       cfg2[96]=1;                                /* scan_method = ALL_CHANNEL (hidden AP) */
       int rc=esp_wifi_set_config(0, cfg2);       /* WIFI_IF_STA=0 */
       p("set_config r="); hx((uint32_t)rc); p("\n");
