@@ -8,6 +8,8 @@ extern void ets_update_cpu_frequency(uint32_t);
 extern int  esp_wifi_init_internal(const void* cfg);
 extern int  esp_wifi_set_mode(int mode);
 extern int  esp_wifi_start(void);
+extern int  esp_wifi_set_config(int ifx, void* conf);
+extern int  esp_wifi_connect_internal(void);
 struct wifi_osi_funcs_t; extern struct wifi_osi_funcs_t g_wifi_osi_funcs;
 
 typedef struct { uint32_t w[11]; } wpa_crypto_funcs_t;   /* 44 bytes (2 u32 + 9 ptrs) */
@@ -46,6 +48,16 @@ static void init_task(void* a){ (void)a;
     p("set_mode(STA) r="); hx((uint32_t)r2); p("\n");
     int r3=esp_wifi_start();
     p("start r="); hx((uint32_t)r3); p("\n");
+    if(r3==0){
+      static uint8_t cfg2[256];                 /* wifi_config_t (STA), zeroed */
+      const char* ss="TP-Link_0122"; for(int i=0;ss[i];i++) cfg2[i]=(uint8_t)ss[i];
+      const char* pw="8uckf@stVSH";  for(int i=0;pw[i];i++) cfg2[32+i]=(uint8_t)pw[i];
+      cfg2[96]=1;                                /* scan_method = ALL_CHANNEL (hidden AP) */
+      int rc=esp_wifi_set_config(0, cfg2);       /* WIFI_IF_STA=0 */
+      p("set_config r="); hx((uint32_t)rc); p("\n");
+      int rk=esp_wifi_connect_internal();
+      p("connect r="); hx((uint32_t)rk); p("\n");
+    }
   }
   { extern volatile unsigned g_amc_ticks; unsigned last=0;
     for(;;){ if(g_amc_ticks!=last){ last=g_amc_ticks; uint32_t sp; __asm__ volatile("mov %0,a1":"=r"(sp)); p("alive t="); hx(last); p(" sp="); hx(sp); p("\n"); } sched_yield(); } }

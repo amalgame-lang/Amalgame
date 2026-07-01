@@ -348,6 +348,16 @@ _amc_panic:
     addi    a5, a5, 0x2f           /* | UM(0x20) | INTLEVEL=15(0xf) -> 0x4002f */
     wsr.ps  a5
     rsync
+    /* Switch to a dedicated panic stack (0x3FC88E00, free gap in the vec_iram
+     * DRAM bank) so amc_panic_c's entry/spill doesn't fault on a corrupt sp —
+     * built with in-range movis (a2/a3 are free; the args live in a6/a7/a8). */
+    movi    a2, 0x1FE
+    slli    a2, a2, 5               /* 0x3FC0 */
+    addi    a2, a2, 8               /* 0x3FC8 */
+    slli    a2, a2, 16              /* 0x3FC80000 */
+    movi    a3, 0xE0
+    slli    a3, a3, 4               /* 0xE00 */
+    add     a1, a2, a3              /* a1 = 0x3FC88E00 (panic stack top) */
     .begin  no-longcalls
     call4   amc_panic_c
     .end    no-longcalls
