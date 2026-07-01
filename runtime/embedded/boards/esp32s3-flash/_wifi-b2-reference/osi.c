@@ -67,7 +67,7 @@ static unsigned long rnd_ul(void){return REG32(0x600260B0u);}
 /* phy (B1) */
 extern int register_chipv7_phy(const void*,void*,int); extern const uint8_t phy_init_data[]; static uint8_t s_cal[1904]; static int s_phy_done;
 static void phy_en(void){ if(s_phy_done)return; s_phy_done=1;
-  REG32(0x60008090)&=~(1u<<17); for(volatile int i=0;i<8000;i++); REG32(0x60026014)|=0x78078Fu;
+  REG32(0x60008090)&=~(1u<<17); for(volatile int i=0;i<8000;i++); REG32(0x60026014)|=0x00FB9FCFu;
   REG32(0x60026018)|=0x2A1Fu; REG32(0x60026018)&=~0x2A1Fu; REG32(0x60008094)&=~(1u<<28); for(volatile int i=0;i<8000;i++);
   register_chipv7_phy(phy_init_data,s_cal,2); }
 static void phy_dis(void){}
@@ -75,7 +75,7 @@ static int  country(const char*c){(void)c;return 0;}
 static int  read_mac(uint8_t*mac,unsigned t){(void)t; /* base MAC from efuse BLK1 (ROM layout) */ uint32_t l=REG32(0x60007044),h=REG32(0x60007048);
   mac[0]=h>>8; mac[1]=h; mac[2]=l>>24; mac[3]=l>>16; mac[4]=l>>8; mac[5]=l; return 0;}
 static void wifi_reset_mac(void){ REG32(0x60026018)|=0x7; REG32(0x60026018)&=~0x7; }
-static void wifi_clk_en(void){ REG32(0x60026014)|=0x78078Fu; }
+static void wifi_clk_en(void){ REG32(0x60026014)|=0x00FB9FCFu; }
 static void wifi_clk_dis(void){}
 static void rtc_iso_en(void){} static void rtc_iso_dis(void){}
 static int64_t now_us(void){return (int64_t)(sched_now()/16ull);}
