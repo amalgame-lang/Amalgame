@@ -22,6 +22,11 @@ static void cp(uint8_t* d, const uint8_t* s, uint32_t n){ while(n--) *d++=*s++; 
 int  queue_send(void* h, const void* item, uint32_t ticks){ queue_t* q=h; uint64_t dl=deadline(ticks);
   for(;;){ uint32_t l=sched_int_disable(); if(q->cnt<q->len){ cp(q->buf+q->tail*q->isz, item, q->isz); q->tail=(q->tail+1)%q->len; q->cnt++; sched_int_restore(l); sched_wake(q); return 1; } sched_int_restore(l);
     if(!sched_block(q, dl)) return 0; } }
+/* Non-blocking send for ISR context: try once, wake a waiter, never sched_block/
+ * yield. Blocking from an interrupt would context-switch mid-ISR and corrupt. */
+int  queue_send_nb(void* h, const void* item){ queue_t* q=h; uint32_t l=sched_int_disable();
+  int ok=0; if(q->cnt<q->len){ cp(q->buf+q->tail*q->isz, item, q->isz); q->tail=(q->tail+1)%q->len; q->cnt++; ok=1; } sched_int_restore(l);
+  if(ok) sched_wake(q); return ok; }
 int  queue_recv(void* h, void* out, uint32_t ticks){ queue_t* q=h; uint64_t dl=deadline(ticks);
   for(;;){ uint32_t l=sched_int_disable(); if(q->cnt>0){ cp(out, q->buf+q->head*q->isz, q->isz); q->head=(q->head+1)%q->len; q->cnt--; sched_int_restore(l); sched_wake(q); return 1; } sched_int_restore(l);
     if(!sched_block(q, dl)) return 0; } }

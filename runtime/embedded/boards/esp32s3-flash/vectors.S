@@ -299,42 +299,12 @@ _amc_level1_int:
     wsr.ps  a0
     rsync
 
-    /* Run the C ISR on a DEDICATED interrupt stack, not the interruptee's task
-     * stack: the WiFi MAC ISR (a blob) is stack-heavy, and under scan/RX load it
-     * would overflow a small task stack and corrupt memory. Save the IFR pointer
-     * to a fixed word (no nested level-1 int: INTLEVEL=1 here), switch sp to the
-     * ISR stack top (0x3FCD0000), call the C ISR, then restore the IFR pointer.
-     * a2/a3 are already saved in the IFR, so we clobber them freely; addresses
-     * are built with in-range movis (this .org section has no reachable literal). */
-    movi    a2, 0x1FE
-    slli    a2, a2, 5
-    addi    a2, a2, 8
-    slli    a2, a2, 16              /* a2 = 0x3FC80000 */
-    movi    a3, 0x8F
-    slli    a3, a3, 8
-    addi    a3, a3, 8               /* a3 = 0x8F08 */
-    add     a3, a2, a3              /* a3 = 0x3FC88F08 (IFR-pointer save word) */
-    s32i    a1, a3, 0               /* save IFR pointer (on the task stack) */
-    movi    a2, 0x1FE
-    slli    a2, a2, 5
-    addi    a2, a2, 0xD
-    slli    a2, a2, 16              /* a2 = 0x3FCD0000 */
-    mov     a1, a2                  /* sp = ISR stack top */
     /* Direct PC-relative call4 (the ISR is a few KB away, well within range).
      * Disable longcalls locally so -mlongcalls does not turn this into an
      * l32r+callx4 needing a literal pool we have no place for in this section. */
     .begin  no-longcalls
     call4   amc_isr_level1
     .end    no-longcalls
-    movi    a2, 0x1FE
-    slli    a2, a2, 5
-    addi    a2, a2, 8
-    slli    a2, a2, 16              /* 0x3FC80000 */
-    movi    a3, 0x8F
-    slli    a3, a3, 8
-    addi    a3, a3, 8               /* 0x8F08 */
-    add     a3, a2, a3              /* 0x3FC88F08 */
-    l32i    a1, a3, 0               /* restore IFR pointer (back to the task stack) */
 
     l32i    a0,  a1, IFR_LCOUNT     /* restore */
     wsr.lcount a0

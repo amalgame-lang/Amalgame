@@ -42,7 +42,8 @@ static int32_t sem_give_(void*s){return sem_give(s);}
 static int32_t mtx_lock(void*m){return mutex_lock(m);}
 static int32_t mtx_unlock(void*m){return mutex_unlock(m);}
 static int32_t q_send(void*q,void*i,uint32_t t){return queue_send(q,i,t);}
-static int32_t q_send_isr(void*q,void*i,void*hp){(void)hp; return queue_send(q,i,0);}
+extern int queue_send_nb(void*,const void*);
+static int32_t q_send_isr(void*q,void*i,void*hp){(void)hp; return queue_send_nb(q,i);}  /* never blocks in ISR */
 static int32_t q_recv(void*q,void*i,uint32_t t){return queue_recv(q,i,t);}
 static uint32_t eg_wait_(void*e,uint32_t b,int c,int a,uint32_t t){(void)a; uint32_t r=eg_wait(e,b,t); if(c) eg_clear(e,b); return r;}
 typedef void (*taskfn)(void*);
