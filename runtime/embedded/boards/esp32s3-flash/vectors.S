@@ -344,6 +344,35 @@ _amc_level1_int:
  * INTLEVEL=15, EXCM=0) so a windowed call is safe, then call4 the C printer
  * (amc_panic_c, in the same IRAM block -> call4 in range). It spins after. */
 _amc_panic:
+    /* Snapshot the faulting window's a0-a15 to a fixed array at 0x3FC88F20 so the
+     * C printer can show which register holds a bad value + a mini backtrace.
+     * a0 is free (real a0 in EXCSAVE1); build the base in a0 with shifts (no 2nd
+     * reg needed), store a1-a15, then store real a0 from EXCSAVE1. a1 is saved to
+     * the array before we clobber it (the panic overwrites a1 with its stack). */
+    movi    a0, 0x1FE
+    slli    a0, a0, 5               /* 0x3FC0 */
+    addi    a0, a0, 8               /* 0x3FC8 */
+    slli    a0, a0, 8               /* 0x3FC800 */
+    addi    a0, a0, 0x8F            /* 0x3FC88F */
+    slli    a0, a0, 8               /* 0x3FC88F00 */
+    addi    a0, a0, 0x20            /* a0 = 0x3FC88F20 */
+    s32i    a1,  a0, 4
+    s32i    a2,  a0, 8
+    s32i    a3,  a0, 12
+    s32i    a4,  a0, 16
+    s32i    a5,  a0, 20
+    s32i    a6,  a0, 24
+    s32i    a7,  a0, 28
+    s32i    a8,  a0, 32
+    s32i    a9,  a0, 36
+    s32i    a10, a0, 40
+    s32i    a11, a0, 44
+    s32i    a12, a0, 48
+    s32i    a13, a0, 52
+    s32i    a14, a0, 56
+    s32i    a15, a0, 60
+    rsr.excsave1 a1                 /* real a0 (a1's value already stored above) */
+    s32i    a1,  a0, 0
     rsr.exccause a6                 /* call4 args: a6/a7/a8 -> callee a2/a3/a4 */
     rsr.epc1     a7
     rsr.excvaddr a8

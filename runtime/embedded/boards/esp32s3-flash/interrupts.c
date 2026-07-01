@@ -118,6 +118,16 @@ void amc_panic_c(uint32_t cause, uint32_t epc, uint32_t vaddr) {
     pstr(" va=");           phex(vaddr);
     pstr(" lastpc=");       phex(REG32(0x3FC88F00u));
     pstr(" ***\n");
+    /* Faulting-window register snapshot (a0..a15) from 0x3FC88F20 — shows which
+     * register holds a bad value (e.g. 0x4002e213) and gives a mini backtrace. */
+    volatile uint32_t *r = (volatile uint32_t *)0x3FC88F20u;
+    pstr("a0-3  "); phex(r[0]);  pstr(" "); phex(r[1]);  pstr(" "); phex(r[2]);  pstr(" "); phex(r[3]);  pstr("\n");
+    pstr("a4-7  "); phex(r[4]);  pstr(" "); phex(r[5]);  pstr(" "); phex(r[6]);  pstr(" "); phex(r[7]);  pstr("\n");
+    pstr("a8-11 "); phex(r[8]);  pstr(" "); phex(r[9]);  pstr(" "); phex(r[10]); pstr(" "); phex(r[11]); pstr("\n");
+    pstr("a12-15 ");phex(r[12]); pstr(" "); phex(r[13]); pstr(" "); phex(r[14]); pstr(" "); phex(r[15]); pstr("\n");
+    /* stack dump at the faulting sp (a1) — helps trace where a bad value came from */
+    volatile uint32_t *sp = (volatile uint32_t *)r[1];
+    pstr("stk "); for (int i = 0; i < 8; i++) { phex(sp[i]); pstr(" "); } pstr("\n");
     for (;;) {}
 }
 
