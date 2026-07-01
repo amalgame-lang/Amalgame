@@ -26,10 +26,6 @@ typedef struct {
 
 static void p(const char*s){for(;*s;++s){if(*s=='\n')uart_tx_one_char('\r');uart_tx_one_char((unsigned char)*s);} }
 static void hx(uint32_t v){p("0x");for(int i=28;i>=0;i-=4){uint32_t n=(v>>i)&0xF;uart_tx_one_char(n<10?'0'+n:'a'+n-10);}}
-
-static uint8_t mstk[4096];
-static void mon_task(void* a){ (void)a; extern uint64_t sched_now(); uint64_t t=sched_now();
-  for(int i=0;;){ if(sched_now()-t > 16000000ULL){ t=sched_now(); uart_tx_one_char('.'); i++; } sched_yield(); } }
 static void init_task(void* a){ (void)a;
   p("init_task: esp_wifi_init_internal...\n");
   static wifi_init_config_t cfg;
@@ -43,7 +39,6 @@ static void init_task(void* a){ (void)a;
   cfg.beacon_max_len=752; cfg.mgmt_sbuf_num=32; cfg.feature_caps=0;
   cfg.sta_disconnected_pm=0; cfg.espnow_max_encrypt_num=7; cfg.tx_hetb_queue_num=1;
   cfg.dump_hesigb_enable=0; cfg.magic=0x1F2F3F4F;
-  p("off(feat)="); hx(__builtin_offsetof(wifi_init_config_t,feature_caps)); p(" off(magic)="); hx(__builtin_offsetof(wifi_init_config_t,magic)); p("\n");
   int r=esp_wifi_init_internal(&cfg);
   p("init r="); hx((uint32_t)r); p(r?"  (nonzero)\n":"  (ESP_OK)\n");
   if(r==0){
@@ -52,7 +47,8 @@ static void init_task(void* a){ (void)a;
     int r3=esp_wifi_start();
     p("start r="); hx((uint32_t)r3); p("\n");
   }
-  for(;;) sched_yield();
+  { extern volatile unsigned g_amc_ticks; unsigned last=0;
+    for(;;){ if(g_amc_ticks!=last){ last=g_amc_ticks; uint32_t sp; __asm__ volatile("mov %0,a1":"=r"(sp)); p("alive t="); hx(last); p(" sp="); hx(sp); p("\n"); } sched_yield(); } }
 }
 static uint8_t istk[49152];
 int amc_main(void){
@@ -64,13 +60,12 @@ int amc_main(void){
   /* WiFi/RF power domain + clock on, BEFORE init (the blob touches MAC regs in init) */
   REG32(0x60008090)&=~(1u<<17);                                /* RTC_CNTL_DIG_PWC: power on WiFi */
   for(volatile int i=0;i<8000;i++);
-  REG32(0x60026014)|=0x78078Fu;                                /* SYSTEM_WIFI_CLK_EN */
+  REG32(0x60026014)|=0x00FB9FCFu;                                /* SYSTEM_WIFI_CLK_EN */
   REG32(0x60026018)|=0x2A1Fu; REG32(0x60026018)&=~0x2A1Fu;     /* SYSCON_WIFI_RST_EN pulse */
   REG32(0x60008094)&=~(1u<<28);                                /* RTC_CNTL_DIG_ISO: de-isolate */
   for(volatile int i=0;i<8000;i++);
   amc_intr_init();
   sched_task_create(init_task,0,istk,sizeof istk);
-  sched_task_create(mon_task,0,mstk,sizeof mstk);
   sched_start();
   for(;;){}
 }

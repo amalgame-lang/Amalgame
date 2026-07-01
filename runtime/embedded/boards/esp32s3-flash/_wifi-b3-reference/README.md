@@ -40,24 +40,44 @@ returns 0. Then `esp_wifi_set_mode(WIFI_MODE_STA=1)` returns 0, and
 `esp_wifi_start()` runs: **PHY enabled + calibrated** (`phy calib done`) and the
 radio sets the channel (`ht20 freq=2412, chan=1`).
 
-## ▶ Next — esp_wifi_start hangs in MAC bring-up
-After the channel set, `esp_wifi_start` busy-waits in blob/ROM code (no osi call
-in between — sem/queue/delay are all traced and none fire, so it's a hardware
-poll or a ROM `ets_delay_us`-style spin), before registering the MAC ISR
-(`_set_isr`/`_set_intr` not yet called). Next debugging step: PC-sampling from
-the systimer ISR (store the interrupted EPC1 to a global, print it) or disassemble
-to find the spin, then continue: register/enable the MAC interrupt, get
-`esp_wifi_start` to return, `esp_wifi_set_config` (SSID/pass), and
-`esp_wifi_connect_internal` -> connected. Then B4 (lwIP NO_SYS) for DHCP/IP.
+## ✅✅✅ esp_wifi_start() -> ESP_OK
+`esp_wifi_start` had spun in `hal_init` (0x42025302) polling MAC reg 0x60033d14 —
+the WiFi clock enable value 0x78078F (enough for the PHY) was missing the WiFiMAC
+clock bit, so the MAC peripheral was gated off (reads return 0). Using the full
+`SYSTEM_WIFI_CLK_EN` mask **0x00FB9FCF** (in osi.c `phy_en`/`wifi_clk_en`) fixed
+it. Now on silicon:
+```
+set_intr src=2/0 num=0 ; set_isr n=0        <- MAC ISR registered on CPU int 0
+mode : sta (3c:0f:02:d2:09:54)              <- real efuse MAC
+enable tsf
+start r=0x00000000 (ESP_OK)
+```
+So init -> set_mode(STA) -> start all return ESP_OK, PHY calibrated, MAC ISR wired
+on our generic level-1 dispatch, radio on channel 1.
 
-Also still needed for the WPA2 handshake at connect: the real
-`g_wifi_default_wpa_crypto_funcs` (libwpa_supplicant) — currently size/version
-set, fn-ptrs null (fine until connect).
+## ▶ Next — post-start stability, then connect
+After start, the system idles a few seconds then faults: `IllegalInstruction` at
+`sched_yield`'s `retw` (a window underflow restoring a corrupt frame). It is
+stack/timing sensitive — more task stack survives longer (1 tick @3584 -> 6 @12K),
+and adding an unrelated print shifts when it hits. Our cooperative switch spills
+register windows to the task stack on every setjmp (heavier than a FreeRTOS
+context save), so the wifi task's 3584 B is too tight under bursty blob load;
+`task_create` now enforces a 12 KB minimum (helps but the root stability of the
+wifi task under beacon-reception load still needs nailing — likely a stack
+high-water or a subtle spill-handler edge). Then: `esp_wifi_set_config`
+(SSID/pass — **need the SSID from the user**; password is "8uckf@stVSH") and
+`esp_wifi_connect_internal` -> connected, wiring the real
+`g_wifi_default_wpa_crypto_funcs` (libwpa_supplicant) for the WPA2 handshake.
+Then B4 (lwIP NO_SYS) for DHCP/IP.
 
-## Debug aids in place
+## Debug aids in place (durable)
 - Observable panic (vectors.S `_amc_panic` -> `amc_panic_c`): prints
-  EXCCAUSE/EPC1/EXCVADDR. Diagnosed the queue crash (LoadProhibited) and the
-  syscall-spill (EXCCAUSE=1) this way.
+  EXCCAUSE/EPC1/EXCVADDR + the last sampled PC, using **non-variadic** manual
+  UART output (a variadic call from the panic's window context drops its
+  stack-spilled args). Diagnosed every blob crash this way.
+- **PC sampler**: the level-1 dispatch stores the interrupted PC to scratch word
+  `0x3FC88F00`; any task (or the panic) can read it to locate a busy-wait. This
+  pinpointed the `hal_init` spin.
 - `wlog.c` routes the blob log path to UART (the IDF `I (..) wifi:` lines).
 - osi.c can be patched with `[osi] ...` traces (set_isr/set_intr/phy/sem/queue)
   for bring-up; keep them out of committed osi.c.

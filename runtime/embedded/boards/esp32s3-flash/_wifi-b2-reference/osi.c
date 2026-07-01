@@ -48,7 +48,12 @@ static uint32_t eg_wait_(void*e,uint32_t b,int c,int a,uint32_t t){(void)a; uint
 typedef void (*taskfn)(void*);
 extern int wlog_printf(const char*,...);
 static int32_t task_create(void*fn,const char*nm,uint32_t depth,void*p,uint32_t prio,void*handle){(void)nm;(void)prio;
-  void* stk=amc_malloc(depth?depth:4096); int id=sched_task_create((taskfn)fn,p,stk,depth?depth:4096);
+  /* Our cooperative switch spills register windows to the task stack on every
+   * setjmp (Xtensa windowed ABI) — heavier than a FreeRTOS context save — so the
+   * blob's requested depth (e.g. 3584 for the wifi task) is too tight under bursty
+   * load. Enforce a safe minimum. */
+  uint32_t sz = depth < 12288u ? 12288u : depth;
+  void* stk=amc_malloc(sz); int id=sched_task_create((taskfn)fn,p,stk,sz);
   if(handle)*(void**)handle=(void*)(intptr_t)(id+1); return id>=0;}
 static int32_t task_create_pin(void*fn,const char*nm,uint32_t d,void*p,uint32_t pr,void*h,uint32_t core){(void)core; return task_create(fn,nm,d,p,pr,h);}
 static void  task_delete(void*h){(void)h;}

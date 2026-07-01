@@ -92,12 +92,26 @@ static inline void amc_enable_interrupts(void) {
  * EXCCAUSE/EPC1/EXCVADDR. In IRAM (.iram.text) so the vector's PC-relative call4
  * reaches it; prints via wlog_printf (flash, reached by inline-literal longcall). */
 extern int wlog_printf(const char*, ...);
+extern int uart_tx_one_char(unsigned char c);
 static volatile int g_in_panic;
+/* Manual (non-variadic) output — a variadic call from the panic's window context
+ * drops its stack-spilled args, so print via single-arg uart_tx_one_char only. */
+__attribute__((section(".iram.text")))
+static void pstr(const char *s) { for (; *s; ++s) uart_tx_one_char((unsigned char)*s); }
+__attribute__((section(".iram.text")))
+static void phex(uint32_t v) {
+    pstr("0x");
+    for (int i = 28; i >= 0; i -= 4) { uint32_t n = (v >> i) & 0xF; uart_tx_one_char(n < 10 ? '0' + n : 'a' + n - 10); }
+}
 __attribute__((section(".iram.text")))
 void amc_panic_c(uint32_t cause, uint32_t epc, uint32_t vaddr) {
     if (g_in_panic) { for (;;) {} }     /* re-entrant fault: spin, don't garble */
     g_in_panic = 1;
-    wlog_printf("\n*** PANIC exccause=%u epc=0x%x excvaddr=0x%x ***\n", cause, epc, vaddr);
+    pstr("\n*** PANIC c="); phex(cause);
+    pstr(" epc=");          phex(epc);
+    pstr(" va=");           phex(vaddr);
+    pstr(" lastpc=");       phex(REG32(0x3FC88F00u));
+    pstr(" ***\n");
     for (;;) {}
 }
 

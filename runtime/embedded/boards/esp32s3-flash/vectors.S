@@ -260,6 +260,19 @@ _amc_level1_int:
     s32i    a0,  a1, IFR_PS
     rsr.epc1 a0
     s32i    a0,  a1, IFR_PC
+    /* PC sample (debug): store the interrupted PC to the fixed scratch word
+     * 0x3FC88F00 (free gap in the vec_iram DRAM bank) so a task can read where a
+     * busy-wait is spinning. a2/a3 already saved above -> free to clobber. Build
+     * the address with in-range movis + shifts (no l32r: this .org section can't
+     * hold a reachable literal pool). */
+    movi    a2, 0x1FE
+    slli    a2, a2, 5               /* 0x3FC0 */
+    addi    a2, a2, 8               /* 0x3FC8 */
+    slli    a2, a2, 16              /* 0x3FC80000 */
+    movi    a3, 0x8F
+    slli    a3, a3, 8               /* 0x8F00 */
+    add     a2, a2, a3              /* 0x3FC88F00 */
+    s32i    a0, a2, 0               /* [0x3FC88F00] = interrupted PC */
     rsr.sar a0
     s32i    a0,  a1, IFR_SAR
     rsr.lbeg a0
