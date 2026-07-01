@@ -28,6 +28,13 @@ typedef struct blk {
 
 static blk_t*   g_free;                  /* address-ordered free list */
 static int      g_init;
+
+/* The free list is shared between tasks and the WiFi MAC ISR (which allocates RX
+ * buffers via osi _malloc). Guard every mutation with a critical section — raise
+ * PS.INTLEVEL to mask level-1 interrupts (systimer + MAC), restore on exit.
+ * Without this the list corrupts and hands out wild pointers. */
+static inline uint32_t heap_lock(void)   { uint32_t ps; __asm__ volatile("rsil %0, 3" : "=r"(ps)); return ps; }
+static inline void heap_unlock(uint32_t ps) { __asm__ volatile("wsr.ps %0\n rsync\n" :: "r"(ps) : "memory"); }
 static uint32_t g_total, g_used;
 
 static inline uint32_t align_up(uint32_t v) {
@@ -51,6 +58,7 @@ void* amc_malloc(size_t want) {
     if (want == 0) return NULL;
     uint32_t need = align_up((uint32_t)want) + HDR_SZ;
 
+    uint32_t lock = heap_lock();
     blk_t* prev = NULL;
     blk_t* cur  = g_free;
     while (cur) {
@@ -66,17 +74,20 @@ void* amc_malloc(size_t want) {
                 if (prev) prev->next = cur->next; else g_free = cur->next;
             }
             g_used += cur->size;
+            heap_unlock(lock);
             return (uint8_t*)cur + HDR_SZ;
         }
         prev = cur;
         cur  = cur->next;
     }
+    heap_unlock(lock);
     return NULL;                          /* out of memory */
 }
 
 void amc_free(void* p) {
     if (!p) return;
     blk_t* b = (blk_t*)((uint8_t*)p - HDR_SZ);
+    uint32_t lock = heap_lock();
     g_used -= b->size;
 
     /* insert address-ordered, then coalesce with neighbours */
@@ -96,6 +107,7 @@ void amc_free(void* p) {
         prev->size += b->size;
         prev->next  = b->next;
     }
+    heap_unlock(lock);
 }
 
 void* amc_calloc(size_t n, size_t sz) {
