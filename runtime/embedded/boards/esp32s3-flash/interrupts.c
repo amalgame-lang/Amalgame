@@ -93,9 +93,10 @@ static inline void amc_enable_interrupts(void) {
  * reaches it; prints via wlog_printf (flash, reached by inline-literal longcall). */
 extern int wlog_printf(const char*, ...);
 extern int uart_tx_one_char(unsigned char c);
-static volatile int g_in_panic;
 /* Manual (non-variadic) output — a variadic call from the panic's window context
- * drops its stack-spilled args, so print via single-arg uart_tx_one_char only. */
+ * drops its stack-spilled args, so print via single-arg uart_tx_one_char only.
+ * No static re-entrancy guard: its .bss literal wasn't reliable in the copied
+ * IRAM block and the guard's own store re-faulted, masking the real fault. */
 __attribute__((section(".iram.text")))
 static void pstr(const char *s) { for (; *s; ++s) uart_tx_one_char((unsigned char)*s); }
 __attribute__((section(".iram.text")))
@@ -105,8 +106,13 @@ static void phex(uint32_t v) {
 }
 __attribute__((section(".iram.text")))
 void amc_panic_c(uint32_t cause, uint32_t epc, uint32_t vaddr) {
-    if (g_in_panic) { for (;;) {} }     /* re-entrant fault: spin, don't garble */
-    g_in_panic = 1;
+    /* Fixed-address re-entry guard (0x3FC88F10, vec_iram scratch — not .bss, so it
+     * survives whatever corrupted the fault). If amc_panic_c faults while printing,
+     * the re-entrant panic hits the guard and just spins, so the FIRST fault's line
+     * is never garbled by a second one. */
+    volatile uint32_t *g = (volatile uint32_t *)0x3FC88F10u;
+    if (g[0] == 0x50414E43u) { for (;;) {} }   /* 'PANC' already set */
+    g[0] = 0x50414E43u; g[1] = cause; g[2] = epc; g[3] = vaddr;
     pstr("\n*** PANIC c="); phex(cause);
     pstr(" epc=");          phex(epc);
     pstr(" va=");           phex(vaddr);

@@ -239,11 +239,15 @@ _amc_syscall_spill:
  * ISR clears the peripheral (level-triggered) source before returning. */
     .align  4
 _amc_level1_int:
-    /* Reserve the interruptee's 16-byte ABI base save area [sp-16..sp-1] FIRST:
-     * if the interruptee's window was spilled (window pressure), its a0-a3 live
-     * there and a later underflow (retw) restores from it. Carving the IFR over
-     * it would corrupt the resumed frame — the root of the post-start crash. */
-    addi    a1, a1, -16
+    /* Reserve the interruptee's ABI spill save areas BELOW sp before carving the
+     * IFR. Two regions live there and a later window under/overflow restores from
+     * them, so clobbering them corrupts the resumed frame (the post-start crash):
+     *   [sp-16..sp-1]   base save area — the interruptee's own a0-a3 if its window
+     *                   was spilled (e.g. the ROM setjmp helper reads it back).
+     *   [sp-48..sp-20]  extra save area — a4-a11 of a call8/call12 function the
+     *                   interruptee had called, if that callee was spilled
+     *                   (see _amc_WindowOverflow8/12). Reserve 64 (16-aligned). */
+    addi    a1, a1, -64
     addi    a1, a1, -IFR_SZ
     s32i    a2,  a1, IFR_A2          /* save live window a2-a15 */
     s32i    a3,  a1, IFR_A3
@@ -295,12 +299,42 @@ _amc_level1_int:
     wsr.ps  a0
     rsync
 
+    /* Run the C ISR on a DEDICATED interrupt stack, not the interruptee's task
+     * stack: the WiFi MAC ISR (a blob) is stack-heavy, and under scan/RX load it
+     * would overflow a small task stack and corrupt memory. Save the IFR pointer
+     * to a fixed word (no nested level-1 int: INTLEVEL=1 here), switch sp to the
+     * ISR stack top (0x3FCD0000), call the C ISR, then restore the IFR pointer.
+     * a2/a3 are already saved in the IFR, so we clobber them freely; addresses
+     * are built with in-range movis (this .org section has no reachable literal). */
+    movi    a2, 0x1FE
+    slli    a2, a2, 5
+    addi    a2, a2, 8
+    slli    a2, a2, 16              /* a2 = 0x3FC80000 */
+    movi    a3, 0x8F
+    slli    a3, a3, 8
+    addi    a3, a3, 8               /* a3 = 0x8F08 */
+    add     a3, a2, a3              /* a3 = 0x3FC88F08 (IFR-pointer save word) */
+    s32i    a1, a3, 0               /* save IFR pointer (on the task stack) */
+    movi    a2, 0x1FE
+    slli    a2, a2, 5
+    addi    a2, a2, 0xD
+    slli    a2, a2, 16              /* a2 = 0x3FCD0000 */
+    mov     a1, a2                  /* sp = ISR stack top */
     /* Direct PC-relative call4 (the ISR is a few KB away, well within range).
      * Disable longcalls locally so -mlongcalls does not turn this into an
      * l32r+callx4 needing a literal pool we have no place for in this section. */
     .begin  no-longcalls
     call4   amc_isr_level1
     .end    no-longcalls
+    movi    a2, 0x1FE
+    slli    a2, a2, 5
+    addi    a2, a2, 8
+    slli    a2, a2, 16              /* 0x3FC80000 */
+    movi    a3, 0x8F
+    slli    a3, a3, 8
+    addi    a3, a3, 8               /* 0x8F08 */
+    add     a3, a2, a3              /* 0x3FC88F08 */
+    l32i    a1, a3, 0               /* restore IFR pointer (back to the task stack) */
 
     l32i    a0,  a1, IFR_LCOUNT     /* restore */
     wsr.lcount a0
@@ -330,7 +364,7 @@ _amc_level1_int:
     l32i    a15, a1, IFR_A15
     l32i    a0,  a1, IFR_A0         /* interruptee a0 last (was scratch) */
     addi    a1,  a1, IFR_SZ
-    addi    a1,  a1, 16             /* undo the base-save-area reserve */
+    addi    a1,  a1, 64             /* undo the save-area reserve */
     rsync
     rfe
 
@@ -355,8 +389,8 @@ _amc_panic:
     slli    a2, a2, 5               /* 0x3FC0 */
     addi    a2, a2, 8               /* 0x3FC8 */
     slli    a2, a2, 16              /* 0x3FC80000 */
-    movi    a3, 0xE0
-    slli    a3, a3, 4               /* 0xE00 */
+    movi    a3, 0x8E
+    slli    a3, a3, 8               /* 0x8E00 */
     add     a1, a2, a3              /* a1 = 0x3FC88E00 (panic stack top) */
     .begin  no-longcalls
     call4   amc_panic_c
