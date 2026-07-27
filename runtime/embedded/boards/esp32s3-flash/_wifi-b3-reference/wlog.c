@@ -3,8 +3,8 @@
  * surface the blobs' diagnostics (which explain INVALID_ARG etc.). */
 #include <stdint.h>
 #include <stdarg.h>
-extern int uart_tx_one_char(unsigned char c);
-static void oc(char c){ if(c=='\n') uart_tx_one_char('\r'); uart_tx_one_char((unsigned char)c); }
+extern void amc_usj_putc(char c);   /* USB-Serial-JTAG CDC (interrupts.c) -> /dev/ttyACM0 */
+static void oc(char c){ if(c=='\n') amc_usj_putc('\r'); amc_usj_putc(c); }
 static void os(const char*s){ if(!s)s="(null)"; while(*s) oc(*s++); }
 static void onum(uint32_t v,uint32_t base,int up,int sgn,int width,char pad){
   char b[32]; int n=0; int neg=0; if(sgn && (int32_t)v<0){neg=1; v=(uint32_t)(-(int32_t)v);}

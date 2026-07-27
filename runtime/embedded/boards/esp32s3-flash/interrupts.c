@@ -93,16 +93,34 @@ static inline void amc_enable_interrupts(void) {
  * reaches it; prints via wlog_printf (flash, reached by inline-literal longcall). */
 extern int wlog_printf(const char*, ...);
 extern int uart_tx_one_char(unsigned char c);
-/* Manual (non-variadic) output — a variadic call from the panic's window context
- * drops its stack-spilled args, so print via single-arg uart_tx_one_char only.
- * No static re-entrancy guard: its .bss literal wasn't reliable in the copied
- * IRAM block and the guard's own store re-faulted, masking the real fault. */
+
+/* Console output. Writes BOTH channels so it's visible whichever cable is
+ * plugged: (1) the ROM UART0 (the FT232/"COM" port) — the proven, always-working
+ * path; (2) the built-in USB-Serial-JTAG CDC (/dev/ttyACM0 on the native USB
+ * port) as a bonus. NB: once our firmware reprograms the clocks (PLL80 + WiFi),
+ * the USB-Serial-JTAG CDC gets disturbed (host sees EPROTO), so the USB write is
+ * best-effort with a SHORT bounded spin and we rely on UART0/COM for capture.
+ * In IRAM so the panic path (also IRAM) can call it. */
+#define USJ_EP1   0x60038000u   /* USB_SERIAL_JTAG_EP1_REG: RDWR_BYTE[7:0]      */
+#define USJ_CONF  0x60038004u   /* EP1_CONF: bit0 WR_DONE(flush) bit1 IN_DATA_FREE */
 __attribute__((section(".iram.text")))
-static void pstr(const char *s) { for (; *s; ++s) uart_tx_one_char((unsigned char)*s); }
+void amc_usj_putc(char c) {
+    uart_tx_one_char((unsigned char)c);              /* UART0 / COM — reliable */
+    if (REG32(USJ_CONF) & 2u) {                      /* USB-JTAG only if space now */
+        REG32(USJ_EP1)  = (uint8_t)c;
+        REG32(USJ_CONF) = 1u;
+    }
+}
+/* Manual (non-variadic) output — a variadic call from the panic's window context
+ * drops its stack-spilled args, so print one char at a time. The re-entry that
+ * used to garble this is now prevented in _amc_panic (window-state reset before
+ * the C call), so the FIRST fault's line prints cleanly. */
+__attribute__((section(".iram.text")))
+static void pstr(const char *s) { for (; *s; ++s) amc_usj_putc(*s); }
 __attribute__((section(".iram.text")))
 static void phex(uint32_t v) {
     pstr("0x");
-    for (int i = 28; i >= 0; i -= 4) { uint32_t n = (v >> i) & 0xF; uart_tx_one_char(n < 10 ? '0' + n : 'a' + n - 10); }
+    for (int i = 28; i >= 0; i -= 4) { uint32_t n = (v >> i) & 0xF; amc_usj_putc(n < 10 ? '0' + n : 'a' + n - 10); }
 }
 __attribute__((section(".iram.text")))
 void amc_panic_c(uint32_t cause, uint32_t epc, uint32_t vaddr) {
@@ -113,22 +131,25 @@ void amc_panic_c(uint32_t cause, uint32_t epc, uint32_t vaddr) {
     volatile uint32_t *g = (volatile uint32_t *)0x3FC88F10u;
     if (g[0] == 0x50414E43u) { for (;;) {} }   /* 'PANC' already set */
     g[0] = 0x50414E43u; g[1] = cause; g[2] = epc; g[3] = vaddr;
-    pstr("\n*** PANIC c="); phex(cause);
-    pstr(" epc=");          phex(epc);
-    pstr(" va=");           phex(vaddr);
-    pstr(" lastpc=");       phex(REG32(0x3FC88F00u));
-    pstr(" ***\n");
-    /* Faulting-window register snapshot (a0..a15) from 0x3FC88F20 — shows which
-     * register holds a bad value (e.g. 0x4002e213) and gives a mini backtrace. */
-    volatile uint32_t *r = (volatile uint32_t *)0x3FC88F20u;
-    pstr("a0-3  "); phex(r[0]);  pstr(" "); phex(r[1]);  pstr(" "); phex(r[2]);  pstr(" "); phex(r[3]);  pstr("\n");
-    pstr("a4-7  "); phex(r[4]);  pstr(" "); phex(r[5]);  pstr(" "); phex(r[6]);  pstr(" "); phex(r[7]);  pstr("\n");
-    pstr("a8-11 "); phex(r[8]);  pstr(" "); phex(r[9]);  pstr(" "); phex(r[10]); pstr(" "); phex(r[11]); pstr("\n");
-    pstr("a12-15 ");phex(r[12]); pstr(" "); phex(r[13]); pstr(" "); phex(r[14]); pstr(" "); phex(r[15]); pstr("\n");
-    /* stack dump at the faulting sp (a1) — helps trace where a bad value came from */
-    volatile uint32_t *sp = (volatile uint32_t *)r[1];
-    pstr("stk "); for (int i = 0; i < 8; i++) { phex(sp[i]); pstr(" "); } pstr("\n");
-    for (;;) {}
+    volatile uint32_t *r  = (volatile uint32_t *)0x3FC88F20u;   /* a0..a15 snapshot */
+    volatile uint32_t *sp = (volatile uint32_t *)r[1];          /* faulting sp (a1)  */
+    /* Re-print the whole dump forever. On the native USB-Serial-JTAG CDC a chip
+     * reset re-enumerates the port, so the host misses the first burst; looping
+     * guarantees a full dump is captured whenever the monitor (re)opens ttyACM0.
+     * 20 stack words give a usable backtrace (return addrs are 0x4200xxxx|0x8...). */
+    for (;;) {
+        pstr("\n*** PANIC c="); phex(cause);
+        pstr(" epc=");          phex(epc);
+        pstr(" va=");           phex(vaddr);
+        pstr(" lastpc=");       phex(REG32(0x3FC88F00u));
+        pstr(" ***\n");
+        pstr("a0-3  "); phex(r[0]);  pstr(" "); phex(r[1]);  pstr(" "); phex(r[2]);  pstr(" "); phex(r[3]);  pstr("\n");
+        pstr("a4-7  "); phex(r[4]);  pstr(" "); phex(r[5]);  pstr(" "); phex(r[6]);  pstr(" "); phex(r[7]);  pstr("\n");
+        pstr("a8-11 "); phex(r[8]);  pstr(" "); phex(r[9]);  pstr(" "); phex(r[10]); pstr(" "); phex(r[11]); pstr("\n");
+        pstr("a12-15 ");phex(r[12]); pstr(" "); phex(r[13]); pstr(" "); phex(r[14]); pstr(" "); phex(r[15]); pstr("\n");
+        pstr("stk "); for (int i = 0; i < 20; i++) { phex(sp[i]); pstr(" "); if ((i & 7) == 7) pstr("\n     "); } pstr("\n");
+        for (volatile int d = 0; d < 8000000; d++) { }   /* ~pause between passes */
+    }
 }
 
 /* Built-in systimer handler: clear the level-triggered source (so the CPU line

@@ -45,18 +45,34 @@ static void check_timeouts(void){
     tasks[i].state=ST_READY; tasks[i].woke_ok=0; tasks[i].blocked_on=0; tasks[i].deadline=0; }
   sched_int_restore(l);
 }
+/* Level-1 mask helpers for the context-switch critical region. */
+static inline void yld_mask(void)  { uint32_t t; __asm__ volatile("rsil %0,3":"=r"(t)::"memory"); }
+static inline void yld_unmask(void){ uint32_t t; __asm__ volatile("rsil %0,0":"=r"(t)::"memory"); }
 void sched_yield(void){
-  if(cur>=0 && setjmp(tasks[cur].ctx)) return;
+  /* The whole switch — setjmp's window spill+readback, the scheduling scan, and
+   * longjmp's window restore — MUST run with level-1 interrupts masked. Otherwise
+   * the MAC ISR (which calls sched_wake and does its own windowed calls) can fire
+   * between the ROM setjmp's `syscall`-spill and its readback of [sp-16..] and
+   * clobber those exact slots, so setjmp captures a corrupt a1/sp (a ROM address
+   * ~0x4002e2xx from the setjmp helper) -> a later longjmp resumes on a garbage
+   * stack -> retw faults (Unaligned). Masking closes that race. A resumed task
+   * (setjmp returns 1 via longjmp) inherits INTLEVEL=3 in the restored PS, so we
+   * drop back to 0 before returning to task code. */
+  yld_mask();
+  if(cur>=0 && setjmp(tasks[cur].ctx)){ yld_unmask(); return; }
   int start=(cur<0)?(ntask-1):cur;
   for(;;){
     check_timeouts();
     amc_timers_check();   /* fire any expired ETS software timers (B3, timers.c) */
     int n=-1; for(int i=1;i<=ntask;i++){ int k=(start+i)%ntask; if(tasks[k].state==ST_READY){ n=k; break; } }
     if(n>=0){ cur=n; task_t* t=&tasks[n];
-      if(!t->started){ t->started=1; _sched_bootstrap(t->sp_top, trampoline, t); }
-      else longjmp(t->ctx,1); return; }
-    /* nothing ready: idle until a timeout or ISR wakes someone */
+      if(!t->started){ t->started=1; yld_unmask(); _sched_bootstrap(t->sp_top, trampoline, t); }
+      else longjmp(t->ctx,1); /* resumes in target's setjmp-return, which unmasks */
+      return; }
+    /* nothing ready: idle until a timeout or ISR wakes someone. waiti drops to
+     * INTLEVEL 0 to receive the wake; re-mask before resuming the scan. */
     __asm__ volatile("waiti 0");
+    yld_mask();
   }
 }
 void sched_start(void){ cur=-1; sched_yield(); for(;;){} }

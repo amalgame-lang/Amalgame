@@ -373,6 +373,21 @@ _amc_panic:
     s32i    a15, a0, 60
     rsr.excsave1 a1                 /* real a0 (a1's value already stored above) */
     s32i    a1,  a0, 0
+    /* Reset the register-window state to a single clean frame BEFORE building the
+     * C call. On entry WindowStart still reflects the faulting context's live
+     * windows (the WiFi blob was many frames deep); amc_panic_c's `entry`/`call8`
+     * would then trigger a WindowOverflow whose handler spills to the corrupt
+     * faulting stacks and re-faults — that was the 0x4002e2xx alignment "second
+     * panic" masking the real fault. Everything we need is already snapshotted to
+     * 0x3FC88F20, so abandon the old windows: WindowBase=0, WindowStart=1 (only the
+     * current window live) means the upcoming call4/entry never overflows. WOE is
+     * still off here (EXCM from the exception), so these writes are safe. */
+    movi    a0, 0
+    wsr.windowbase  a0
+    rsync
+    movi    a0, 1
+    wsr.windowstart a0
+    rsync
     rsr.exccause a6                 /* call4 args: a6/a7/a8 -> callee a2/a3/a4 */
     rsr.epc1     a7
     rsr.excvaddr a8
