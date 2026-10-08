@@ -792,6 +792,13 @@ class Program {
         g_iface_list.Add(new CoreCase("iface list dispatch", "woofmeowmeow"))
         Program.RunGroup("./tests/samples/interface_list.am", "iface_list", g_iface_list)
 
+        // ── == on a string-returning interface method (strcmp, not pointers) ──
+        let g_iface_streq: List<CoreCase> = new List<CoreCase>()
+        g_iface_streq.Add(new CoreCase("iface string ==", "same"))
+        g_iface_streq.Add(new CoreCase("iface string !=", "ne-false"))
+        g_iface_streq.Add(new CoreCase("iface string == other", "different"))
+        Program.RunGroup("./tests/samples/interface_string_eq.am", "iface_streq", g_iface_streq)
+
         // ── generic_interfaces (2 cases) ──
         let g_generic_interfaces: List<CoreCase> = new List<CoreCase>()
         g_generic_interfaces.Add(new CoreCase("generic iface T", "compare: 4"))

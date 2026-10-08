@@ -3068,6 +3068,12 @@ public class CGen {
                 let im = cls.Children.Get(i)
                 if (im.Kind == NodeKind.METHOD_DECL) {
                     this.Out.EmitLine(this.IfaceFnPtrField(im) + ";")
+                    // Register the return type so InferTypeFromExpr can
+                    // type `iface.Method()` — without it, `x.Name() == s`
+                    // on a string-returning interface method lowered to a
+                    // pointer compare instead of code_string_equals.
+                    this.MethodRetSet(name, im.Name, this.TypeToC(im.Str))
+                    this.MethodRetRawSet(name, im.Name, im.Str)
                 }
             }
             this.Out.Dedent()
