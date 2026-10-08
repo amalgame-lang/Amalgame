@@ -10,6 +10,12 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 ## [Unreleased]
 
 ### Fixed
+- stdlib/json : `Json.Parse` était quadratique — chaque caractère lu
+  appelait `String_Length` et `String_CharAt1`, deux `strlen` sur toute la
+  source. Longueur mise en cache (`SourceLen`) et lectures via
+  `String_CharAtUnchecked` (toutes protégées par une vérification de
+  bornes), comme le lexer en v0.8.68. 1,4 Mo : 79 s → 0,15 s. Trouvé par
+  AIOS/Germe (jeu de données mledoze/countries).
 - cgen : `x.Methode() == s` (et `!=`), quand `Methode` est une méthode
   d'**interface** qui renvoie une `string`, comparait les adresses C
   (`x.itab->Methode(x.data) == s`) au lieu du texte. Les types de retour

@@ -228,6 +228,12 @@ public class JsonResult {
 public class JsonParser {
     private Source:  string
     private Pos:     int
+    // Length cached once, and per-char reads go through
+    // String_CharAtUnchecked: both String_Length and String_CharAt1 are a
+    // strlen, and AtEnd/Peek/Advance run per character — that made parsing
+    // O(n²) (1.4 MB took ~80 s). Every read below is bounds-checked against
+    // SourceLen first. Same fix as the lexer (v0.8.68).
+    private SourceLen: int
     private Line:    int
     private Column:  int
     private Failed:  bool
@@ -237,6 +243,7 @@ public class JsonParser {
 
     public JsonParser(string source) {
         this.Source  = source
+        this.SourceLen = String_Length(source)
         this.Pos     = 0
         this.Line    = 1
         this.Column  = 1
@@ -260,24 +267,24 @@ public class JsonParser {
     }
 
     private bool AtEnd() {
-        return this.Pos >= String_Length(this.Source)
+        return this.Pos >= this.SourceLen
     }
 
     private string Peek() {
         if (this.AtEnd()) { return "" }
-        return String_CharAt1(this.Source, this.Pos)
+        return String_CharAtUnchecked(this.Source, this.Pos)
     }
 
     private string PeekAt(int offset) {
         let idx: int = this.Pos + offset
         if (idx < 0)                          { return "" }
-        if (idx >= String_Length(this.Source)) { return "" }
-        return String_CharAt1(this.Source, idx)
+        if (idx >= this.SourceLen) { return "" }
+        return String_CharAtUnchecked(this.Source, idx)
     }
 
     private string Advance() {
         if (this.AtEnd()) { return "" }
-        let ch: string = String_CharAt1(this.Source, this.Pos)
+        let ch: string = String_CharAtUnchecked(this.Source, this.Pos)
         this.Pos = this.Pos + 1
         if (ch == "\n") {
             this.Line   = this.Line + 1
@@ -300,10 +307,10 @@ public class JsonParser {
     private bool MatchLit(string lit) {
         // Compare lit byte-by-byte starting at Pos, advance on success.
         let n: int = String_Length(lit)
-        if (this.Pos + n > String_Length(this.Source)) { return false }
+        if (this.Pos + n > this.SourceLen) { return false }
         for i in 0..n {
             let want: string = String_CharAt1(lit, i)
-            let got: string  = String_CharAt1(this.Source, this.Pos + i)
+            let got: string  = String_CharAtUnchecked(this.Source, this.Pos + i)
             if (want != got) { return false }
         }
         for j in 0..n {

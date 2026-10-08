@@ -25177,6 +25177,7 @@ Amalgame_Compiler_JsonResult* Amalgame_Compiler_JsonResult_new() {
 struct _Amalgame_Compiler_JsonParser {
     code_string Source;
     i64 Pos;
+    i64 SourceLen;
     i64 Line;
     i64 Column;
     code_bool Failed;
@@ -25212,703 +25213,705 @@ static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNull(Amalg
 
 Amalgame_Compiler_JsonParser* Amalgame_Compiler_JsonParser_new(code_string source) {
     Amalgame_Compiler_JsonParser* self = (Amalgame_Compiler_JsonParser*) GC_MALLOC(sizeof(Amalgame_Compiler_JsonParser));
-    #line 239 "./src/stdlib/json.am"
-    self->Source = source;
-    #line 240 "./src/stdlib/json.am"
-    self->Pos = 0LL;
-    #line 241 "./src/stdlib/json.am"
-    self->Line = 1LL;
-    #line 242 "./src/stdlib/json.am"
-    self->Column = 1LL;
-    #line 243 "./src/stdlib/json.am"
-    self->Failed = 0;
-    #line 244 "./src/stdlib/json.am"
-    self->ErrMsg = "";
     #line 245 "./src/stdlib/json.am"
-    self->ErrLine = 0LL;
+    self->Source = source;
     #line 246 "./src/stdlib/json.am"
+    self->SourceLen = String_Length(source);
+    #line 247 "./src/stdlib/json.am"
+    self->Pos = 0LL;
+    #line 248 "./src/stdlib/json.am"
+    self->Line = 1LL;
+    #line 249 "./src/stdlib/json.am"
+    self->Column = 1LL;
+    #line 250 "./src/stdlib/json.am"
+    self->Failed = 0;
+    #line 251 "./src/stdlib/json.am"
+    self->ErrMsg = "";
+    #line 252 "./src/stdlib/json.am"
+    self->ErrLine = 0LL;
+    #line 253 "./src/stdlib/json.am"
     self->ErrCol = 0LL;
     return self;
 }
 
 code_bool Amalgame_Compiler_JsonParser_HasFailed(Amalgame_Compiler_JsonParser* self) {
-    #line 249 "./src/stdlib/json.am"
+    #line 256 "./src/stdlib/json.am"
     return self->Failed;
 }
 
 code_string Amalgame_Compiler_JsonParser_ErrorMsg(Amalgame_Compiler_JsonParser* self) {
-    #line 250 "./src/stdlib/json.am"
+    #line 257 "./src/stdlib/json.am"
     return self->ErrMsg;
 }
 
 i64 Amalgame_Compiler_JsonParser_ErrorLine(Amalgame_Compiler_JsonParser* self) {
-    #line 251 "./src/stdlib/json.am"
+    #line 258 "./src/stdlib/json.am"
     return self->ErrLine;
 }
 
 i64 Amalgame_Compiler_JsonParser_ErrorCol(Amalgame_Compiler_JsonParser* self) {
-    #line 252 "./src/stdlib/json.am"
+    #line 259 "./src/stdlib/json.am"
     return self->ErrCol;
 }
 
 static void Amalgame_Compiler_JsonParser_Fail(Amalgame_Compiler_JsonParser* self, code_string msg) {
-    #line 255 "./src/stdlib/json.am"
+    #line 262 "./src/stdlib/json.am"
     if (self->Failed) {
         return;
     }
-    #line 256 "./src/stdlib/json.am"
+    #line 263 "./src/stdlib/json.am"
     self->Failed = 1;
-    #line 257 "./src/stdlib/json.am"
+    #line 264 "./src/stdlib/json.am"
     self->ErrMsg = msg;
-    #line 258 "./src/stdlib/json.am"
+    #line 265 "./src/stdlib/json.am"
     self->ErrLine = self->Line;
-    #line 259 "./src/stdlib/json.am"
+    #line 266 "./src/stdlib/json.am"
     self->ErrCol = self->Column;
 }
 
 static code_bool Amalgame_Compiler_JsonParser_AtEnd(Amalgame_Compiler_JsonParser* self) {
-    #line 263 "./src/stdlib/json.am"
-    return self->Pos >= String_Length(self->Source);
+    #line 270 "./src/stdlib/json.am"
+    return self->Pos >= self->SourceLen;
 }
 
 static code_string Amalgame_Compiler_JsonParser_Peek(Amalgame_Compiler_JsonParser* self) {
-    #line 267 "./src/stdlib/json.am"
-    if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
-        return "";
-    }
-    #line 268 "./src/stdlib/json.am"
-    return String_CharAt1(self->Source, self->Pos);
-}
-
-static code_string Amalgame_Compiler_JsonParser_PeekAt(Amalgame_Compiler_JsonParser* self, i64 offset) {
-    #line 272 "./src/stdlib/json.am"
-    i64 idx = self->Pos + offset;
-    #line 273 "./src/stdlib/json.am"
-    if (idx < 0LL) {
-        return "";
-    }
     #line 274 "./src/stdlib/json.am"
-    if (idx >= String_Length(self->Source)) {
+    if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
         return "";
     }
     #line 275 "./src/stdlib/json.am"
-    return String_CharAt1(self->Source, idx);
+    return String_CharAtUnchecked(self->Source, self->Pos);
+}
+
+static code_string Amalgame_Compiler_JsonParser_PeekAt(Amalgame_Compiler_JsonParser* self, i64 offset) {
+    #line 279 "./src/stdlib/json.am"
+    i64 idx = self->Pos + offset;
+    #line 280 "./src/stdlib/json.am"
+    if (idx < 0LL) {
+        return "";
+    }
+    #line 281 "./src/stdlib/json.am"
+    if (idx >= self->SourceLen) {
+        return "";
+    }
+    #line 282 "./src/stdlib/json.am"
+    return String_CharAtUnchecked(self->Source, idx);
 }
 
 static code_string Amalgame_Compiler_JsonParser_Advance(Amalgame_Compiler_JsonParser* self) {
-    #line 279 "./src/stdlib/json.am"
+    #line 286 "./src/stdlib/json.am"
     if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
         return "";
     }
-    #line 280 "./src/stdlib/json.am"
-    code_string ch = String_CharAt1(self->Source, self->Pos);
-    #line 281 "./src/stdlib/json.am"
+    #line 287 "./src/stdlib/json.am"
+    code_string ch = String_CharAtUnchecked(self->Source, self->Pos);
+    #line 288 "./src/stdlib/json.am"
     self->Pos = (self->Pos + 1LL);
-    #line 282 "./src/stdlib/json.am"
+    #line 289 "./src/stdlib/json.am"
     if (code_string_equals(ch, "\n")) {
-        #line 283 "./src/stdlib/json.am"
+        #line 290 "./src/stdlib/json.am"
         self->Line = (self->Line + 1LL);
-        #line 284 "./src/stdlib/json.am"
+        #line 291 "./src/stdlib/json.am"
         self->Column = 1LL;
     } else {
-        #line 286 "./src/stdlib/json.am"
+        #line 293 "./src/stdlib/json.am"
         self->Column = (self->Column + 1LL);
     }
-    #line 288 "./src/stdlib/json.am"
+    #line 295 "./src/stdlib/json.am"
     return ch;
 }
 
 static void Amalgame_Compiler_JsonParser_SkipWs(Amalgame_Compiler_JsonParser* self) {
-    #line 292 "./src/stdlib/json.am"
+    #line 299 "./src/stdlib/json.am"
     while (!Amalgame_Compiler_JsonParser_AtEnd(self)) {
-        #line 293 "./src/stdlib/json.am"
+        #line 300 "./src/stdlib/json.am"
         code_string c = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 294 "./src/stdlib/json.am"
+        #line 301 "./src/stdlib/json.am"
         if ((((code_string_equals(c, " ")) || (code_string_equals(c, "\t"))) || (code_string_equals(c, "\n"))) || (code_string_equals(c, "\r"))) {
-            #line 295 "./src/stdlib/json.am"
+            #line 302 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonParser_Advance(self);
         } else {
-            #line 296 "./src/stdlib/json.am"
+            #line 303 "./src/stdlib/json.am"
             return;
         }
     }
 }
 
 static code_bool Amalgame_Compiler_JsonParser_MatchLit(Amalgame_Compiler_JsonParser* self, code_string lit) {
-    #line 302 "./src/stdlib/json.am"
+    #line 309 "./src/stdlib/json.am"
     i64 n = String_Length(lit);
-    #line 303 "./src/stdlib/json.am"
-    if ((self->Pos + n) > String_Length(self->Source)) {
+    #line 310 "./src/stdlib/json.am"
+    if ((self->Pos + n) > self->SourceLen) {
         return 0;
     }
-    #line 304 "./src/stdlib/json.am"
+    #line 311 "./src/stdlib/json.am"
     for (i64 i = 0LL; i < n; i++) {
-        #line 305 "./src/stdlib/json.am"
+        #line 312 "./src/stdlib/json.am"
         code_string want = String_CharAt1(lit, i);
-        #line 306 "./src/stdlib/json.am"
-        code_string got = String_CharAt1(self->Source, self->Pos + i);
-        #line 307 "./src/stdlib/json.am"
+        #line 313 "./src/stdlib/json.am"
+        code_string got = String_CharAtUnchecked(self->Source, self->Pos + i);
+        #line 314 "./src/stdlib/json.am"
         if (!code_string_equals(want, got)) {
             return 0;
         }
     }
-    #line 309 "./src/stdlib/json.am"
+    #line 316 "./src/stdlib/json.am"
     for (i64 j = 0LL; j < n; j++) {
-        #line 310 "./src/stdlib/json.am"
+        #line 317 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Advance(self);
     }
-    #line 312 "./src/stdlib/json.am"
+    #line 319 "./src/stdlib/json.am"
     return 1;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseTopLevel(Amalgame_Compiler_JsonParser* self) {
-    #line 320 "./src/stdlib/json.am"
+    #line 327 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_SkipWs(self);
-    #line 321 "./src/stdlib/json.am"
+    #line 328 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonParser_ParseValue(self);
-    #line 322 "./src/stdlib/json.am"
+    #line 329 "./src/stdlib/json.am"
     if (self->Failed) {
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 323 "./src/stdlib/json.am"
+    #line 330 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_SkipWs(self);
-    #line 324 "./src/stdlib/json.am"
+    #line 331 "./src/stdlib/json.am"
     if (!Amalgame_Compiler_JsonParser_AtEnd(self)) {
-        #line 325 "./src/stdlib/json.am"
+        #line 332 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Fail(self, "trailing characters after JSON value");
-        #line 326 "./src/stdlib/json.am"
+        #line 333 "./src/stdlib/json.am"
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 328 "./src/stdlib/json.am"
+    #line 335 "./src/stdlib/json.am"
     return v;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseValue(Amalgame_Compiler_JsonParser* self) {
-    #line 332 "./src/stdlib/json.am"
+    #line 339 "./src/stdlib/json.am"
     if (self->Failed) {
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 333 "./src/stdlib/json.am"
+    #line 340 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_SkipWs(self);
-    #line 334 "./src/stdlib/json.am"
+    #line 341 "./src/stdlib/json.am"
     if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
-        #line 335 "./src/stdlib/json.am"
+        #line 342 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Fail(self, "unexpected end of input");
-        #line 336 "./src/stdlib/json.am"
+        #line 343 "./src/stdlib/json.am"
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 338 "./src/stdlib/json.am"
+    #line 345 "./src/stdlib/json.am"
     code_string c = Amalgame_Compiler_JsonParser_Peek(self);
-    #line 339 "./src/stdlib/json.am"
+    #line 346 "./src/stdlib/json.am"
     if (code_string_equals(c, "{")) {
         return Amalgame_Compiler_JsonParser_ParseObject(self);
     }
-    #line 340 "./src/stdlib/json.am"
+    #line 347 "./src/stdlib/json.am"
     if (code_string_equals(c, "[")) {
         return Amalgame_Compiler_JsonParser_ParseArray(self);
     }
-    #line 341 "./src/stdlib/json.am"
+    #line 348 "./src/stdlib/json.am"
     if (code_string_equals(c, "\"")) {
         return Amalgame_Compiler_JsonParser_ParseString(self);
     }
-    #line 342 "./src/stdlib/json.am"
+    #line 349 "./src/stdlib/json.am"
     if ((code_string_equals(c, "t")) || (code_string_equals(c, "f"))) {
         return Amalgame_Compiler_JsonParser_ParseBool(self);
     }
-    #line 343 "./src/stdlib/json.am"
+    #line 350 "./src/stdlib/json.am"
     if (code_string_equals(c, "n")) {
         return Amalgame_Compiler_JsonParser_ParseNull(self);
     }
-    #line 344 "./src/stdlib/json.am"
+    #line 351 "./src/stdlib/json.am"
     if ((code_string_equals(c, "-")) || Amalgame_Compiler_JsonParser_IsDigit(c)) {
         return Amalgame_Compiler_JsonParser_ParseNumber(self);
     }
-    #line 345 "./src/stdlib/json.am"
+    #line 352 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Fail(self, code_string_concat((code_string_concat("unexpected character '", c)), "'"));
-    #line 346 "./src/stdlib/json.am"
+    #line 353 "./src/stdlib/json.am"
     return Amalgame_Compiler_JsonValue_new();
 }
 
 static code_bool Amalgame_Compiler_JsonParser_IsDigit(code_string c) {
-    #line 355 "./src/stdlib/json.am"
+    #line 362 "./src/stdlib/json.am"
     if (String_Length(c) == 0LL) {
         return 0;
     }
-    #line 356 "./src/stdlib/json.am"
+    #line 363 "./src/stdlib/json.am"
     return String_IndexOf("0123456789", c) >= 0LL;
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseObject(Amalgame_Compiler_JsonParser* self) {
-    #line 360 "./src/stdlib/json.am"
+    #line 367 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Advance(self);
-    #line 361 "./src/stdlib/json.am"
+    #line 368 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* out = Amalgame_Compiler_JsonValue_new();
-    #line 362 "./src/stdlib/json.am"
+    #line 369 "./src/stdlib/json.am"
     AmalgameList* keys = AmalgameList_new();
-    #line 363 "./src/stdlib/json.am"
+    #line 370 "./src/stdlib/json.am"
     AmalgameList* vals = AmalgameList_new();
-    #line 364 "./src/stdlib/json.am"
+    #line 371 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetObject(out, keys, vals);
-    #line 365 "./src/stdlib/json.am"
+    #line 372 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_SkipWs(self);
-    #line 366 "./src/stdlib/json.am"
+    #line 373 "./src/stdlib/json.am"
     if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "}")) {
         Amalgame_Compiler_JsonParser_Advance(self);
         return out;
     }
-    #line 367 "./src/stdlib/json.am"
+    #line 374 "./src/stdlib/json.am"
     while (1) {
-        #line 368 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonParser_SkipWs(self);
-        #line 369 "./src/stdlib/json.am"
-        if (!code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "\"")) {
-            #line 370 "./src/stdlib/json.am"
-            Amalgame_Compiler_JsonParser_Fail(self, "expected string key in object");
-            #line 371 "./src/stdlib/json.am"
-            return Amalgame_Compiler_JsonValue_new();
-        }
-        #line 373 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue* keyVal = Amalgame_Compiler_JsonParser_ParseString(self);
-        #line 374 "./src/stdlib/json.am"
-        if (self->Failed) {
-            return Amalgame_Compiler_JsonValue_new();
-        }
         #line 375 "./src/stdlib/json.am"
-        code_string key = Amalgame_Compiler_JsonValue_AsString(keyVal);
-        #line 376 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_SkipWs(self);
-        #line 377 "./src/stdlib/json.am"
-        if (!code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), ":")) {
+        #line 376 "./src/stdlib/json.am"
+        if (!code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "\"")) {
+            #line 377 "./src/stdlib/json.am"
+            Amalgame_Compiler_JsonParser_Fail(self, "expected string key in object");
             #line 378 "./src/stdlib/json.am"
-            Amalgame_Compiler_JsonParser_Fail(self, "expected ':' after object key");
-            #line 379 "./src/stdlib/json.am"
             return Amalgame_Compiler_JsonValue_new();
         }
+        #line 380 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue* keyVal = Amalgame_Compiler_JsonParser_ParseString(self);
         #line 381 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonParser_Advance(self);
-        #line 382 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonParser_ParseValue(self);
-        #line 383 "./src/stdlib/json.am"
         if (self->Failed) {
             return Amalgame_Compiler_JsonValue_new();
         }
-        #line 384 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue_AppendEntry(out, key, v);
-        #line 385 "./src/stdlib/json.am"
+        #line 382 "./src/stdlib/json.am"
+        code_string key = Amalgame_Compiler_JsonValue_AsString(keyVal);
+        #line 383 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_SkipWs(self);
-        #line 386 "./src/stdlib/json.am"
+        #line 384 "./src/stdlib/json.am"
+        if (!code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), ":")) {
+            #line 385 "./src/stdlib/json.am"
+            Amalgame_Compiler_JsonParser_Fail(self, "expected ':' after object key");
+            #line 386 "./src/stdlib/json.am"
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        #line 388 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonParser_Advance(self);
+        #line 389 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonParser_ParseValue(self);
+        #line 390 "./src/stdlib/json.am"
+        if (self->Failed) {
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        #line 391 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue_AppendEntry(out, key, v);
+        #line 392 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonParser_SkipWs(self);
+        #line 393 "./src/stdlib/json.am"
         code_string nx = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 387 "./src/stdlib/json.am"
+        #line 394 "./src/stdlib/json.am"
         if (code_string_equals(nx, ",")) {
             Amalgame_Compiler_JsonParser_Advance(self);
             continue;
         }
-        #line 388 "./src/stdlib/json.am"
+        #line 395 "./src/stdlib/json.am"
         if (code_string_equals(nx, "}")) {
             Amalgame_Compiler_JsonParser_Advance(self);
             return out;
         }
-        #line 389 "./src/stdlib/json.am"
+        #line 396 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Fail(self, "expected ',' or '}' in object");
-        #line 390 "./src/stdlib/json.am"
+        #line 397 "./src/stdlib/json.am"
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 392 "./src/stdlib/json.am"
+    #line 399 "./src/stdlib/json.am"
     return out;
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseArray(Amalgame_Compiler_JsonParser* self) {
-    #line 396 "./src/stdlib/json.am"
+    #line 403 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Advance(self);
-    #line 397 "./src/stdlib/json.am"
+    #line 404 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* out = Amalgame_Compiler_JsonValue_new();
-    #line 398 "./src/stdlib/json.am"
+    #line 405 "./src/stdlib/json.am"
     AmalgameList* xs = AmalgameList_new();
-    #line 399 "./src/stdlib/json.am"
+    #line 406 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetArray(out, xs);
-    #line 400 "./src/stdlib/json.am"
+    #line 407 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_SkipWs(self);
-    #line 401 "./src/stdlib/json.am"
+    #line 408 "./src/stdlib/json.am"
     if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "]")) {
         Amalgame_Compiler_JsonParser_Advance(self);
         return out;
     }
-    #line 402 "./src/stdlib/json.am"
+    #line 409 "./src/stdlib/json.am"
     while (1) {
-        #line 403 "./src/stdlib/json.am"
+        #line 410 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonParser_ParseValue(self);
-        #line 404 "./src/stdlib/json.am"
+        #line 411 "./src/stdlib/json.am"
         if (self->Failed) {
             return Amalgame_Compiler_JsonValue_new();
         }
-        #line 405 "./src/stdlib/json.am"
+        #line 412 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonValue_AppendItem(out, v);
-        #line 406 "./src/stdlib/json.am"
+        #line 413 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_SkipWs(self);
-        #line 407 "./src/stdlib/json.am"
+        #line 414 "./src/stdlib/json.am"
         code_string nx = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 408 "./src/stdlib/json.am"
+        #line 415 "./src/stdlib/json.am"
         if (code_string_equals(nx, ",")) {
             Amalgame_Compiler_JsonParser_Advance(self);
             continue;
         }
-        #line 409 "./src/stdlib/json.am"
+        #line 416 "./src/stdlib/json.am"
         if (code_string_equals(nx, "]")) {
             Amalgame_Compiler_JsonParser_Advance(self);
             return out;
         }
-        #line 410 "./src/stdlib/json.am"
+        #line 417 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Fail(self, "expected ',' or ']' in array");
-        #line 411 "./src/stdlib/json.am"
+        #line 418 "./src/stdlib/json.am"
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 413 "./src/stdlib/json.am"
+    #line 420 "./src/stdlib/json.am"
     return out;
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseString(Amalgame_Compiler_JsonParser* self) {
-    #line 417 "./src/stdlib/json.am"
+    #line 424 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Advance(self);
-    #line 418 "./src/stdlib/json.am"
+    #line 425 "./src/stdlib/json.am"
     code_string out = "";
-    #line 419 "./src/stdlib/json.am"
+    #line 426 "./src/stdlib/json.am"
     while (!Amalgame_Compiler_JsonParser_AtEnd(self)) {
-        #line 420 "./src/stdlib/json.am"
+        #line 427 "./src/stdlib/json.am"
         code_string c = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 421 "./src/stdlib/json.am"
+        #line 428 "./src/stdlib/json.am"
         if (code_string_equals(c, "\"")) {
-            #line 422 "./src/stdlib/json.am"
+            #line 429 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonParser_Advance(self);
-            #line 423 "./src/stdlib/json.am"
+            #line 430 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-            #line 424 "./src/stdlib/json.am"
+            #line 431 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonValue_SetString(v, out);
-            #line 425 "./src/stdlib/json.am"
+            #line 432 "./src/stdlib/json.am"
             return v;
         }
-        #line 427 "./src/stdlib/json.am"
+        #line 434 "./src/stdlib/json.am"
         if (code_string_equals(c, "\\")) {
-            #line 428 "./src/stdlib/json.am"
+            #line 435 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonParser_Advance(self);
-            #line 429 "./src/stdlib/json.am"
+            #line 436 "./src/stdlib/json.am"
             if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
-                #line 430 "./src/stdlib/json.am"
+                #line 437 "./src/stdlib/json.am"
                 Amalgame_Compiler_JsonParser_Fail(self, "unterminated escape in string");
-                #line 431 "./src/stdlib/json.am"
+                #line 438 "./src/stdlib/json.am"
                 return Amalgame_Compiler_JsonValue_new();
             }
-            #line 433 "./src/stdlib/json.am"
+            #line 440 "./src/stdlib/json.am"
             code_string esc = Amalgame_Compiler_JsonParser_Advance(self);
-            #line 434 "./src/stdlib/json.am"
+            #line 441 "./src/stdlib/json.am"
             if (code_string_equals(esc, "\"")) {
                 out = (code_string_concat(out, "\""));
             } else if (code_string_equals(esc, "\\")) {
-                #line 435 "./src/stdlib/json.am"
+                #line 442 "./src/stdlib/json.am"
                 out = (code_string_concat(out, "\\"));
             } else if (code_string_equals(esc, "/")) {
-                #line 436 "./src/stdlib/json.am"
+                #line 443 "./src/stdlib/json.am"
                 out = (code_string_concat(out, "/"));
             } else if (code_string_equals(esc, "b")) {
-                #line 437 "./src/stdlib/json.am"
+                #line 444 "./src/stdlib/json.am"
                 out = (code_string_concat(out, Amalgame_Compiler_JsonParser_Bs()));
             } else if (code_string_equals(esc, "f")) {
-                #line 438 "./src/stdlib/json.am"
+                #line 445 "./src/stdlib/json.am"
                 out = (code_string_concat(out, Amalgame_Compiler_JsonParser_Ff()));
             } else if (code_string_equals(esc, "n")) {
-                #line 439 "./src/stdlib/json.am"
+                #line 446 "./src/stdlib/json.am"
                 out = (code_string_concat(out, "\n"));
             } else if (code_string_equals(esc, "r")) {
-                #line 440 "./src/stdlib/json.am"
+                #line 447 "./src/stdlib/json.am"
                 out = (code_string_concat(out, "\r"));
             } else if (code_string_equals(esc, "t")) {
-                #line 441 "./src/stdlib/json.am"
+                #line 448 "./src/stdlib/json.am"
                 out = (code_string_concat(out, "\t"));
             } else if (code_string_equals(esc, "u")) {
-                #line 443 "./src/stdlib/json.am"
+                #line 450 "./src/stdlib/json.am"
                 i64 cp = Amalgame_Compiler_JsonParser_ParseHex4(self);
-                #line 444 "./src/stdlib/json.am"
+                #line 451 "./src/stdlib/json.am"
                 if (self->Failed) {
                     return Amalgame_Compiler_JsonValue_new();
                 }
-                #line 449 "./src/stdlib/json.am"
+                #line 456 "./src/stdlib/json.am"
                 if ((cp >= 55296LL) && (cp <= 56319LL)) {
-                    #line 450 "./src/stdlib/json.am"
+                    #line 457 "./src/stdlib/json.am"
                     if ((code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "\\")) && (code_string_equals(Amalgame_Compiler_JsonParser_PeekAt(self, 1LL), "u"))) {
-                        #line 451 "./src/stdlib/json.am"
+                        #line 458 "./src/stdlib/json.am"
                         Amalgame_Compiler_JsonParser_Advance(self);
-                        #line 452 "./src/stdlib/json.am"
+                        #line 459 "./src/stdlib/json.am"
                         Amalgame_Compiler_JsonParser_Advance(self);
-                        #line 453 "./src/stdlib/json.am"
+                        #line 460 "./src/stdlib/json.am"
                         i64 lo = Amalgame_Compiler_JsonParser_ParseHex4(self);
-                        #line 454 "./src/stdlib/json.am"
+                        #line 461 "./src/stdlib/json.am"
                         if (self->Failed) {
                             return Amalgame_Compiler_JsonValue_new();
                         }
-                        #line 455 "./src/stdlib/json.am"
+                        #line 462 "./src/stdlib/json.am"
                         if ((lo >= 56320LL) && (lo <= 57343LL)) {
-                            #line 456 "./src/stdlib/json.am"
+                            #line 463 "./src/stdlib/json.am"
                             i64 combined = (65536LL + ((cp - 55296LL) * 1024LL)) + (lo - 56320LL);
-                            #line 457 "./src/stdlib/json.am"
+                            #line 464 "./src/stdlib/json.am"
                             out = (code_string_concat(out, String_FromCodepoint(combined)));
                         } else {
-                            #line 463 "./src/stdlib/json.am"
+                            #line 470 "./src/stdlib/json.am"
                             out = (code_string_concat(out, String_FromCodepoint(cp)));
-                            #line 464 "./src/stdlib/json.am"
+                            #line 471 "./src/stdlib/json.am"
                             out = (code_string_concat(out, String_FromCodepoint(lo)));
                         }
                     } else {
-                        #line 467 "./src/stdlib/json.am"
+                        #line 474 "./src/stdlib/json.am"
                         out = (code_string_concat(out, String_FromCodepoint(cp)));
                     }
                 } else {
-                    #line 470 "./src/stdlib/json.am"
+                    #line 477 "./src/stdlib/json.am"
                     out = (code_string_concat(out, String_FromCodepoint(cp)));
                 }
             } else {
-                #line 474 "./src/stdlib/json.am"
+                #line 481 "./src/stdlib/json.am"
                 Amalgame_Compiler_JsonParser_Fail(self, code_string_concat((code_string_concat("invalid escape '\\", esc)), "'"));
-                #line 475 "./src/stdlib/json.am"
+                #line 482 "./src/stdlib/json.am"
                 return Amalgame_Compiler_JsonValue_new();
             }
         } else if (code_string_equals(c, "\n")) {
-            #line 478 "./src/stdlib/json.am"
+            #line 485 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonParser_Fail(self, "unescaped newline in string");
-            #line 479 "./src/stdlib/json.am"
+            #line 486 "./src/stdlib/json.am"
             return Amalgame_Compiler_JsonValue_new();
         } else {
-            #line 481 "./src/stdlib/json.am"
+            #line 488 "./src/stdlib/json.am"
             out = (code_string_concat(out, Amalgame_Compiler_JsonParser_Advance(self)));
         }
     }
-    #line 484 "./src/stdlib/json.am"
+    #line 491 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Fail(self, "unterminated string");
-    #line 485 "./src/stdlib/json.am"
+    #line 492 "./src/stdlib/json.am"
     return Amalgame_Compiler_JsonValue_new();
 }
 
 static i64 Amalgame_Compiler_JsonParser_ParseHex4(Amalgame_Compiler_JsonParser* self) {
-    #line 489 "./src/stdlib/json.am"
+    #line 496 "./src/stdlib/json.am"
     i64 n = 0LL;
-    #line 490 "./src/stdlib/json.am"
+    #line 497 "./src/stdlib/json.am"
     for (i64 i = 0LL; i < 4LL; i++) {
-        #line 491 "./src/stdlib/json.am"
+        #line 498 "./src/stdlib/json.am"
         if (Amalgame_Compiler_JsonParser_AtEnd(self)) {
-            #line 492 "./src/stdlib/json.am"
-            Amalgame_Compiler_JsonParser_Fail(self, "incomplete \\u escape");
-            #line 493 "./src/stdlib/json.am"
-            return 0LL;
-        }
-        #line 495 "./src/stdlib/json.am"
-        code_string ch = Amalgame_Compiler_JsonParser_Advance(self);
-        #line 496 "./src/stdlib/json.am"
-        i64 d = Amalgame_Compiler_JsonParser_HexDigit(ch);
-        #line 497 "./src/stdlib/json.am"
-        if (d < 0LL) {
-            #line 498 "./src/stdlib/json.am"
-            Amalgame_Compiler_JsonParser_Fail(self, code_string_concat((code_string_concat("invalid hex digit '", ch)), "' in \\u escape"));
             #line 499 "./src/stdlib/json.am"
+            Amalgame_Compiler_JsonParser_Fail(self, "incomplete \\u escape");
+            #line 500 "./src/stdlib/json.am"
             return 0LL;
         }
-        #line 501 "./src/stdlib/json.am"
+        #line 502 "./src/stdlib/json.am"
+        code_string ch = Amalgame_Compiler_JsonParser_Advance(self);
+        #line 503 "./src/stdlib/json.am"
+        i64 d = Amalgame_Compiler_JsonParser_HexDigit(ch);
+        #line 504 "./src/stdlib/json.am"
+        if (d < 0LL) {
+            #line 505 "./src/stdlib/json.am"
+            Amalgame_Compiler_JsonParser_Fail(self, code_string_concat((code_string_concat("invalid hex digit '", ch)), "' in \\u escape"));
+            #line 506 "./src/stdlib/json.am"
+            return 0LL;
+        }
+        #line 508 "./src/stdlib/json.am"
         n = ((n * 16LL) + d);
     }
-    #line 503 "./src/stdlib/json.am"
+    #line 510 "./src/stdlib/json.am"
     return n;
 }
 
 static i64 Amalgame_Compiler_JsonParser_HexDigit(code_string c) {
-    #line 507 "./src/stdlib/json.am"
+    #line 514 "./src/stdlib/json.am"
     if (Amalgame_Compiler_JsonParser_IsDigit(c)) {
         return String_ToInt(c);
     }
-    #line 508 "./src/stdlib/json.am"
+    #line 515 "./src/stdlib/json.am"
     if ((code_string_equals(c, "a")) || (code_string_equals(c, "A"))) {
         return 10LL;
     }
-    #line 509 "./src/stdlib/json.am"
+    #line 516 "./src/stdlib/json.am"
     if ((code_string_equals(c, "b")) || (code_string_equals(c, "B"))) {
         return 11LL;
     }
-    #line 510 "./src/stdlib/json.am"
+    #line 517 "./src/stdlib/json.am"
     if ((code_string_equals(c, "c")) || (code_string_equals(c, "C"))) {
         return 12LL;
     }
-    #line 511 "./src/stdlib/json.am"
+    #line 518 "./src/stdlib/json.am"
     if ((code_string_equals(c, "d")) || (code_string_equals(c, "D"))) {
         return 13LL;
     }
-    #line 512 "./src/stdlib/json.am"
+    #line 519 "./src/stdlib/json.am"
     if ((code_string_equals(c, "e")) || (code_string_equals(c, "E"))) {
         return 14LL;
     }
-    #line 513 "./src/stdlib/json.am"
+    #line 520 "./src/stdlib/json.am"
     if ((code_string_equals(c, "f")) || (code_string_equals(c, "F"))) {
         return 15LL;
     }
-    #line 514 "./src/stdlib/json.am"
+    #line 521 "./src/stdlib/json.am"
     return -1LL;
 }
 
 static code_string Amalgame_Compiler_JsonParser_Bs() {
-    #line 520 "./src/stdlib/json.am"
+    #line 527 "./src/stdlib/json.am"
     return String_FromCodepoint(8LL);
 }
 
 static code_string Amalgame_Compiler_JsonParser_Ff() {
-    #line 521 "./src/stdlib/json.am"
+    #line 528 "./src/stdlib/json.am"
     return String_FromCodepoint(12LL);
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNumber(Amalgame_Compiler_JsonParser* self) {
-    #line 524 "./src/stdlib/json.am"
+    #line 531 "./src/stdlib/json.am"
     i64 start = self->Pos;
-    #line 525 "./src/stdlib/json.am"
+    #line 532 "./src/stdlib/json.am"
     code_bool isFloat = 0;
-    #line 526 "./src/stdlib/json.am"
+    #line 533 "./src/stdlib/json.am"
     if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "-")) {
         Amalgame_Compiler_JsonParser_Advance(self);
     }
-    #line 528 "./src/stdlib/json.am"
+    #line 535 "./src/stdlib/json.am"
     if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), "0")) {
-        #line 529 "./src/stdlib/json.am"
+        #line 536 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Advance(self);
     } else {
-        #line 531 "./src/stdlib/json.am"
-        code_string c = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 532 "./src/stdlib/json.am"
-        if (!Amalgame_Compiler_JsonParser_IsDigit(c) || (code_string_equals(c, "0"))) {
-            #line 535 "./src/stdlib/json.am"
-            Amalgame_Compiler_JsonParser_Fail(self, "expected digit in number");
-            #line 536 "./src/stdlib/json.am"
-            return Amalgame_Compiler_JsonValue_new();
-        }
         #line 538 "./src/stdlib/json.am"
-        while (1) {
-            #line 539 "./src/stdlib/json.am"
-            code_string d = Amalgame_Compiler_JsonParser_Peek(self);
-            #line 540 "./src/stdlib/json.am"
-            if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
-                Amalgame_Compiler_JsonParser_Advance(self);
-            } else {
-                #line 541 "./src/stdlib/json.am"
-                break;
-            }
-        }
-    }
-    #line 545 "./src/stdlib/json.am"
-    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), ".")) {
-        #line 546 "./src/stdlib/json.am"
-        isFloat = 1;
-        #line 547 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonParser_Advance(self);
-        #line 548 "./src/stdlib/json.am"
         code_string c = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 549 "./src/stdlib/json.am"
-        if (!Amalgame_Compiler_JsonParser_IsDigit(c)) {
-            #line 550 "./src/stdlib/json.am"
-            Amalgame_Compiler_JsonParser_Fail(self, "expected digit after '.'");
-            #line 551 "./src/stdlib/json.am"
+        #line 539 "./src/stdlib/json.am"
+        if (!Amalgame_Compiler_JsonParser_IsDigit(c) || (code_string_equals(c, "0"))) {
+            #line 542 "./src/stdlib/json.am"
+            Amalgame_Compiler_JsonParser_Fail(self, "expected digit in number");
+            #line 543 "./src/stdlib/json.am"
             return Amalgame_Compiler_JsonValue_new();
         }
-        #line 553 "./src/stdlib/json.am"
+        #line 545 "./src/stdlib/json.am"
         while (1) {
-            #line 554 "./src/stdlib/json.am"
+            #line 546 "./src/stdlib/json.am"
             code_string d = Amalgame_Compiler_JsonParser_Peek(self);
-            #line 555 "./src/stdlib/json.am"
+            #line 547 "./src/stdlib/json.am"
             if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
                 Amalgame_Compiler_JsonParser_Advance(self);
             } else {
-                #line 556 "./src/stdlib/json.am"
+                #line 548 "./src/stdlib/json.am"
                 break;
             }
         }
     }
-    #line 560 "./src/stdlib/json.am"
-    code_string e = Amalgame_Compiler_JsonParser_Peek(self);
-    #line 561 "./src/stdlib/json.am"
-    if ((code_string_equals(e, "e")) || (code_string_equals(e, "E"))) {
-        #line 562 "./src/stdlib/json.am"
+    #line 552 "./src/stdlib/json.am"
+    if (code_string_equals(Amalgame_Compiler_JsonParser_Peek(self), ".")) {
+        #line 553 "./src/stdlib/json.am"
         isFloat = 1;
-        #line 563 "./src/stdlib/json.am"
+        #line 554 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonParser_Advance(self);
-        #line 564 "./src/stdlib/json.am"
+        #line 555 "./src/stdlib/json.am"
+        code_string c = Amalgame_Compiler_JsonParser_Peek(self);
+        #line 556 "./src/stdlib/json.am"
+        if (!Amalgame_Compiler_JsonParser_IsDigit(c)) {
+            #line 557 "./src/stdlib/json.am"
+            Amalgame_Compiler_JsonParser_Fail(self, "expected digit after '.'");
+            #line 558 "./src/stdlib/json.am"
+            return Amalgame_Compiler_JsonValue_new();
+        }
+        #line 560 "./src/stdlib/json.am"
+        while (1) {
+            #line 561 "./src/stdlib/json.am"
+            code_string d = Amalgame_Compiler_JsonParser_Peek(self);
+            #line 562 "./src/stdlib/json.am"
+            if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
+                Amalgame_Compiler_JsonParser_Advance(self);
+            } else {
+                #line 563 "./src/stdlib/json.am"
+                break;
+            }
+        }
+    }
+    #line 567 "./src/stdlib/json.am"
+    code_string e = Amalgame_Compiler_JsonParser_Peek(self);
+    #line 568 "./src/stdlib/json.am"
+    if ((code_string_equals(e, "e")) || (code_string_equals(e, "E"))) {
+        #line 569 "./src/stdlib/json.am"
+        isFloat = 1;
+        #line 570 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonParser_Advance(self);
+        #line 571 "./src/stdlib/json.am"
         code_string s = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 565 "./src/stdlib/json.am"
+        #line 572 "./src/stdlib/json.am"
         if ((code_string_equals(s, "+")) || (code_string_equals(s, "-"))) {
             Amalgame_Compiler_JsonParser_Advance(self);
         }
-        #line 566 "./src/stdlib/json.am"
+        #line 573 "./src/stdlib/json.am"
         code_string c2 = Amalgame_Compiler_JsonParser_Peek(self);
-        #line 567 "./src/stdlib/json.am"
+        #line 574 "./src/stdlib/json.am"
         if (!Amalgame_Compiler_JsonParser_IsDigit(c2)) {
-            #line 568 "./src/stdlib/json.am"
+            #line 575 "./src/stdlib/json.am"
             Amalgame_Compiler_JsonParser_Fail(self, "expected digit in exponent");
-            #line 569 "./src/stdlib/json.am"
+            #line 576 "./src/stdlib/json.am"
             return Amalgame_Compiler_JsonValue_new();
         }
-        #line 571 "./src/stdlib/json.am"
+        #line 578 "./src/stdlib/json.am"
         while (1) {
-            #line 572 "./src/stdlib/json.am"
+            #line 579 "./src/stdlib/json.am"
             code_string d = Amalgame_Compiler_JsonParser_Peek(self);
-            #line 573 "./src/stdlib/json.am"
+            #line 580 "./src/stdlib/json.am"
             if (Amalgame_Compiler_JsonParser_IsDigit(d)) {
                 Amalgame_Compiler_JsonParser_Advance(self);
             } else {
-                #line 574 "./src/stdlib/json.am"
+                #line 581 "./src/stdlib/json.am"
                 break;
             }
         }
     }
-    #line 577 "./src/stdlib/json.am"
+    #line 584 "./src/stdlib/json.am"
     code_string raw = String_Substring(self->Source, start, self->Pos - start);
-    #line 578 "./src/stdlib/json.am"
+    #line 585 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* out = Amalgame_Compiler_JsonValue_new();
-    #line 579 "./src/stdlib/json.am"
+    #line 586 "./src/stdlib/json.am"
     if (isFloat) {
-        #line 580 "./src/stdlib/json.am"
+        #line 587 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonValue_SetFloat(out, String_ToFloat(raw));
     } else {
-        #line 582 "./src/stdlib/json.am"
+        #line 589 "./src/stdlib/json.am"
         Amalgame_Compiler_JsonValue_SetInt(out, String_ToInt(raw));
     }
-    #line 584 "./src/stdlib/json.am"
+    #line 591 "./src/stdlib/json.am"
     return out;
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseBool(Amalgame_Compiler_JsonParser* self) {
-    #line 588 "./src/stdlib/json.am"
+    #line 595 "./src/stdlib/json.am"
     if (Amalgame_Compiler_JsonParser_MatchLit(self, "true")) {
-        #line 589 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-        #line 590 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue_SetBool(v, 1);
-        #line 591 "./src/stdlib/json.am"
-        return v;
-    }
-    #line 593 "./src/stdlib/json.am"
-    if (Amalgame_Compiler_JsonParser_MatchLit(self, "false")) {
-        #line 594 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-        #line 595 "./src/stdlib/json.am"
-        Amalgame_Compiler_JsonValue_SetBool(v, 0);
         #line 596 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        #line 597 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue_SetBool(v, 1);
+        #line 598 "./src/stdlib/json.am"
         return v;
     }
-    #line 598 "./src/stdlib/json.am"
+    #line 600 "./src/stdlib/json.am"
+    if (Amalgame_Compiler_JsonParser_MatchLit(self, "false")) {
+        #line 601 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
+        #line 602 "./src/stdlib/json.am"
+        Amalgame_Compiler_JsonValue_SetBool(v, 0);
+        #line 603 "./src/stdlib/json.am"
+        return v;
+    }
+    #line 605 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Fail(self, "invalid literal (expected true / false)");
-    #line 599 "./src/stdlib/json.am"
+    #line 606 "./src/stdlib/json.am"
     return Amalgame_Compiler_JsonValue_new();
 }
 
 static Amalgame_Compiler_JsonValue* Amalgame_Compiler_JsonParser_ParseNull(Amalgame_Compiler_JsonParser* self) {
-    #line 603 "./src/stdlib/json.am"
+    #line 610 "./src/stdlib/json.am"
     if (Amalgame_Compiler_JsonParser_MatchLit(self, "null")) {
-        #line 604 "./src/stdlib/json.am"
+        #line 611 "./src/stdlib/json.am"
         return Amalgame_Compiler_JsonValue_new();
     }
-    #line 606 "./src/stdlib/json.am"
+    #line 613 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser_Fail(self, "invalid literal (expected null)");
-    #line 607 "./src/stdlib/json.am"
+    #line 614 "./src/stdlib/json.am"
     return Amalgame_Compiler_JsonValue_new();
 }
 
@@ -25933,205 +25936,205 @@ Amalgame_Compiler_Json* Amalgame_Compiler_Json_new() {
 }
 
 Amalgame_Compiler_JsonResult* Amalgame_Compiler_Json_Parse(code_string source) {
-    #line 619 "./src/stdlib/json.am"
+    #line 626 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonResult* res = Amalgame_Compiler_JsonResult_new();
-    #line 620 "./src/stdlib/json.am"
+    #line 627 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonParser* p = Amalgame_Compiler_JsonParser_new(source);
-    #line 621 "./src/stdlib/json.am"
+    #line 628 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonParser_ParseTopLevel(p);
-    #line 622 "./src/stdlib/json.am"
+    #line 629 "./src/stdlib/json.am"
     if (Amalgame_Compiler_JsonParser_HasFailed(p)) {
-        #line 623 "./src/stdlib/json.am"
+        #line 630 "./src/stdlib/json.am"
         res->Ok = 0;
-        #line 624 "./src/stdlib/json.am"
+        #line 631 "./src/stdlib/json.am"
         res->Value = Amalgame_Compiler_JsonValue_new();
-        #line 625 "./src/stdlib/json.am"
+        #line 632 "./src/stdlib/json.am"
         res->Error = Amalgame_Compiler_JsonError_new(Amalgame_Compiler_JsonParser_ErrorMsg(p), Amalgame_Compiler_JsonParser_ErrorLine(p), Amalgame_Compiler_JsonParser_ErrorCol(p));
-        #line 626 "./src/stdlib/json.am"
+        #line 633 "./src/stdlib/json.am"
         return res;
     }
-    #line 628 "./src/stdlib/json.am"
+    #line 635 "./src/stdlib/json.am"
     res->Ok = 1;
-    #line 629 "./src/stdlib/json.am"
+    #line 636 "./src/stdlib/json.am"
     res->Value = v;
-    #line 630 "./src/stdlib/json.am"
+    #line 637 "./src/stdlib/json.am"
     return res;
 }
 
 code_string Amalgame_Compiler_Json_Encode(Amalgame_Compiler_JsonValue* v) {
-    #line 638 "./src/stdlib/json.am"
+    #line 645 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonKind k = v->Kind;
-    #line 639 "./src/stdlib/json.am"
+    #line 646 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_Null) {
         return "null";
     }
-    #line 640 "./src/stdlib/json.am"
+    #line 647 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_Bool) {
-        #line 641 "./src/stdlib/json.am"
+        #line 648 "./src/stdlib/json.am"
         if (Amalgame_Compiler_JsonValue_AsBool(v)) {
             return "true";
         }
-        #line 642 "./src/stdlib/json.am"
+        #line 649 "./src/stdlib/json.am"
         return "false";
     }
-    #line 644 "./src/stdlib/json.am"
+    #line 651 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_Int) {
         return String_FromInt(Amalgame_Compiler_JsonValue_AsInt(v));
     }
-    #line 645 "./src/stdlib/json.am"
+    #line 652 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_Float) {
         return String_FromFloat(Amalgame_Compiler_JsonValue_AsFloat(v));
     }
-    #line 646 "./src/stdlib/json.am"
+    #line 653 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_String) {
         return code_string_concat((code_string_concat("\"", Amalgame_Compiler_Json_EscapeString(Amalgame_Compiler_JsonValue_AsString(v)))), "\"");
     }
-    #line 647 "./src/stdlib/json.am"
+    #line 654 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_Array) {
         return Amalgame_Compiler_Json_EncodeArray(v);
     }
-    #line 648 "./src/stdlib/json.am"
+    #line 655 "./src/stdlib/json.am"
     if (k == Amalgame_Compiler_JsonKind_Object) {
         return Amalgame_Compiler_Json_EncodeObject(v);
     }
-    #line 649 "./src/stdlib/json.am"
+    #line 656 "./src/stdlib/json.am"
     return "null";
 }
 
 static code_string Amalgame_Compiler_Json_EncodeArray(Amalgame_Compiler_JsonValue* v) {
-    #line 653 "./src/stdlib/json.am"
+    #line 660 "./src/stdlib/json.am"
     AmalgameList* xs = Amalgame_Compiler_JsonValue_AsArray(v);
-    #line 654 "./src/stdlib/json.am"
+    #line 661 "./src/stdlib/json.am"
     i64 n = AmalgameList_count(xs);
-    #line 655 "./src/stdlib/json.am"
+    #line 662 "./src/stdlib/json.am"
     code_string out = "[";
-    #line 656 "./src/stdlib/json.am"
+    #line 663 "./src/stdlib/json.am"
     for (i64 i = 0LL; i < n; i++) {
-        #line 657 "./src/stdlib/json.am"
+        #line 664 "./src/stdlib/json.am"
         if (i > 0LL) {
             out = (code_string_concat(out, ","));
         }
-        #line 658 "./src/stdlib/json.am"
+        #line 665 "./src/stdlib/json.am"
         out = (code_string_concat(out, Amalgame_Compiler_Json_Encode((Amalgame_Compiler_JsonValue*)AmalgameList_get(xs, i))));
     }
-    #line 660 "./src/stdlib/json.am"
+    #line 667 "./src/stdlib/json.am"
     out = (code_string_concat(out, "]"));
-    #line 661 "./src/stdlib/json.am"
+    #line 668 "./src/stdlib/json.am"
     return out;
 }
 
 static code_string Amalgame_Compiler_Json_EncodeObject(Amalgame_Compiler_JsonValue* v) {
-    #line 665 "./src/stdlib/json.am"
+    #line 672 "./src/stdlib/json.am"
     AmalgameList* keys = Amalgame_Compiler_JsonValue_Keys(v);
-    #line 666 "./src/stdlib/json.am"
+    #line 673 "./src/stdlib/json.am"
     i64 n = AmalgameList_count(keys);
-    #line 667 "./src/stdlib/json.am"
+    #line 674 "./src/stdlib/json.am"
     code_string out = "{";
-    #line 668 "./src/stdlib/json.am"
+    #line 675 "./src/stdlib/json.am"
     for (i64 i = 0LL; i < n; i++) {
-        #line 669 "./src/stdlib/json.am"
+        #line 676 "./src/stdlib/json.am"
         if (i > 0LL) {
             out = (code_string_concat(out, ","));
         }
-        #line 670 "./src/stdlib/json.am"
+        #line 677 "./src/stdlib/json.am"
         code_string key = (code_string)AmalgameList_get(keys, i);
-        #line 671 "./src/stdlib/json.am"
+        #line 678 "./src/stdlib/json.am"
         out = (code_string_concat((code_string_concat((code_string_concat(out, "\"")), Amalgame_Compiler_Json_EscapeString(key))), "\":"));
-        #line 672 "./src/stdlib/json.am"
+        #line 679 "./src/stdlib/json.am"
         out = (code_string_concat(out, Amalgame_Compiler_Json_Encode(Amalgame_Compiler_JsonValue_Get(v, key))));
     }
-    #line 674 "./src/stdlib/json.am"
+    #line 681 "./src/stdlib/json.am"
     out = (code_string_concat(out, "}"));
-    #line 675 "./src/stdlib/json.am"
+    #line 682 "./src/stdlib/json.am"
     return out;
 }
 
 code_string Amalgame_Compiler_Json_EscapeString(code_string s) {
-    #line 683 "./src/stdlib/json.am"
+    #line 690 "./src/stdlib/json.am"
     i64 n = String_Length(s);
-    #line 684 "./src/stdlib/json.am"
+    #line 691 "./src/stdlib/json.am"
     code_string out = "";
-    #line 685 "./src/stdlib/json.am"
+    #line 692 "./src/stdlib/json.am"
     for (i64 i = 0LL; i < n; i++) {
-        #line 686 "./src/stdlib/json.am"
+        #line 693 "./src/stdlib/json.am"
         code_string c = String_CharAt1(s, i);
-        #line 687 "./src/stdlib/json.am"
+        #line 694 "./src/stdlib/json.am"
         if (code_string_equals(c, "\"")) {
             out = (code_string_concat(out, "\\\""));
         } else if (code_string_equals(c, "\\")) {
-            #line 688 "./src/stdlib/json.am"
+            #line 695 "./src/stdlib/json.am"
             out = (code_string_concat(out, "\\\\"));
         } else if (code_string_equals(c, "\n")) {
-            #line 689 "./src/stdlib/json.am"
+            #line 696 "./src/stdlib/json.am"
             out = (code_string_concat(out, "\\n"));
         } else if (code_string_equals(c, String_FromByte(13LL))) {
-            #line 690 "./src/stdlib/json.am"
+            #line 697 "./src/stdlib/json.am"
             out = (code_string_concat(out, "\\r"));
         } else if (code_string_equals(c, "\t")) {
-            #line 691 "./src/stdlib/json.am"
+            #line 698 "./src/stdlib/json.am"
             out = (code_string_concat(out, "\\t"));
         } else if (code_string_equals(c, String_FromCodepoint(8LL))) {
-            #line 692 "./src/stdlib/json.am"
+            #line 699 "./src/stdlib/json.am"
             out = (code_string_concat(out, "\\b"));
         } else if (code_string_equals(c, String_FromCodepoint(12LL))) {
-            #line 693 "./src/stdlib/json.am"
+            #line 700 "./src/stdlib/json.am"
             out = (code_string_concat(out, "\\f"));
         } else {
-            #line 694 "./src/stdlib/json.am"
+            #line 701 "./src/stdlib/json.am"
             out = (code_string_concat(out, c));
         }
     }
-    #line 696 "./src/stdlib/json.am"
+    #line 703 "./src/stdlib/json.am"
     return out;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_NullValue() {
-    #line 701 "./src/stdlib/json.am"
+    #line 708 "./src/stdlib/json.am"
     return Amalgame_Compiler_JsonValue_new();
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfBool(code_bool b) {
-    #line 705 "./src/stdlib/json.am"
+    #line 712 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 706 "./src/stdlib/json.am"
+    #line 713 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetBool(v, b);
-    #line 707 "./src/stdlib/json.am"
+    #line 714 "./src/stdlib/json.am"
     return v;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfInt(i64 n) {
-    #line 711 "./src/stdlib/json.am"
+    #line 718 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 712 "./src/stdlib/json.am"
+    #line 719 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetInt(v, n);
-    #line 713 "./src/stdlib/json.am"
+    #line 720 "./src/stdlib/json.am"
     return v;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfFloat(double f) {
-    #line 717 "./src/stdlib/json.am"
+    #line 724 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 718 "./src/stdlib/json.am"
+    #line 725 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetFloat(v, f);
-    #line 719 "./src/stdlib/json.am"
+    #line 726 "./src/stdlib/json.am"
     return v;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfString(code_string s) {
-    #line 723 "./src/stdlib/json.am"
+    #line 730 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 724 "./src/stdlib/json.am"
+    #line 731 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetString(v, s);
-    #line 725 "./src/stdlib/json.am"
+    #line 732 "./src/stdlib/json.am"
     return v;
 }
 
 Amalgame_Compiler_JsonValue* Amalgame_Compiler_Json_OfArray(AmalgameList* xs) {
-    #line 729 "./src/stdlib/json.am"
+    #line 736 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue* v = Amalgame_Compiler_JsonValue_new();
-    #line 730 "./src/stdlib/json.am"
+    #line 737 "./src/stdlib/json.am"
     Amalgame_Compiler_JsonValue_SetArray(v, xs);
-    #line 731 "./src/stdlib/json.am"
+    #line 738 "./src/stdlib/json.am"
     return v;
 }
 
@@ -26751,12 +26754,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "fd64bff2";
+    return "809ef553";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-10-08T20:36:52Z";
+    return "2026-10-08T22:18:07Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
