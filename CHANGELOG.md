@@ -7,6 +7,18 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- cgen : `x.Methode() == s` (et `!=`), quand `Methode` est une méthode
+  d'**interface** qui renvoie une `string`, comparait les adresses C
+  (`x.itab->Methode(x.data) == s`) au lieu du texte. Les types de retour
+  des méthodes d'interface sont maintenant enregistrés (`MethodRetSet`)
+  comme ceux des classes, donc la comparaison passe par
+  `code_string_equals`. Bug silencieux trouvé par le prototype AIOS/Germe ;
+  test discriminant `tests/samples/interface_string_eq.am` (chaînes
+  construites à l'exécution).
+
 ## [v0.8.90] — 2026-06-15
 
 ### Changed
