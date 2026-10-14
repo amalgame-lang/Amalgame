@@ -619,6 +619,12 @@ public class AddCommand {
                 let depCached: string = AddCommand.LatestCacheRuntimeDir(depKey)
                 if (String_Length(depCached) > 0) {
                     Console.WriteLine("── " + mfNameStr + " depends on " + depKey + " — already cached, reusing ──")
+                    // Reusing the cached copy must still declare it in the
+                    // project: the facade precompile below and `amc build`
+                    // resolve symbols from the project's amalgame.toml, so a
+                    // skipped entry surfaced as "Unknown symbol 'Threading'"
+                    // when adding `web` with threading already cached.
+                    AddCommand.RegisterCachedDep(depKey, 0)
                     continue
                 }
                 Console.WriteLine("── " + mfNameStr + " depends on " + depKey + " — auto-installing ──")
@@ -627,6 +633,17 @@ public class AddCommand {
                     Console.WriteError("transitive dependency " + depKey + " failed (" + transSpec + ")")
                     return trc
                 }
+            }
+        }
+
+        // The facade precompile resolves symbols through the project's
+        // lock: refresh it now that the transitive deps are declared,
+        // not only at step 6.
+        if (File.Exists("amalgame.toml")) {
+            let docMid = Toml.Parse(File.ReadAll("amalgame.toml"))
+            if (!docMid.IsNull()) {
+                let depsMid: TomlValue = docMid.Get("dependencies")
+                if (depsMid.IsTable()) { AddCommand.RebuildLockFromTomlDeps(depsMid, "amalgame.lock") }
             }
         }
 
@@ -3031,6 +3048,43 @@ public class AddCommand {
     //     defensive — empty -I is harmless), or
     //   - the cache dir exists but has no runtime/ (header-less
     //     packages — pure-AM with no @c bindings).
+    // Declare an already-cached dependency (and, recursively, the deps
+    // of its cached manifest) in the project's amalgame.toml, using the
+    // cached tag. An entry the project already has is left untouched —
+    // the user may have pinned another version on purpose.
+    public static void RegisterCachedDep(string depKey, int depth) {
+        if (depth > 16) { return }
+        let runtimeDir: string = AddCommand.LatestCacheRuntimeDir(depKey)
+        if (String_Length(runtimeDir) == 0) { return }
+        let depName: string = AddCommand.ShortnameFromDepKey(depKey)
+        if (File.Exists("amalgame.toml")) {
+            let cur = Toml.Parse(File.ReadAll("amalgame.toml"))
+            if (!cur.IsNull()) {
+                let curDeps: TomlValue = cur.Get("dependencies")
+                if (curDeps.IsTable() && curDeps.Get(depName).IsTable()) { return }
+            }
+        }
+        // <cache>/github.com/amalgame-lang/<depKey>/<tag>_<sha>/runtime
+        let pkgDir: string = String_Substring(runtimeDir, 0, String_Length(runtimeDir) - 8)
+        let leafStart: int = String_LastIndexOf(pkgDir, "/") + 1
+        let leaf: string = String_Substring(pkgDir, leafStart, String_Length(pkgDir) - leafStart)
+        let leafParts: List<string> = String_Split(leaf, "_")
+        let tag: string = leafParts.Get(0)
+        if (!AddCommand.UpdateProjectManifest(depName, "github.com/amalgame-lang/" + depKey, tag)) { return }
+        let mfPath: string = pkgDir + "/amalgame.toml"
+        if (!File.Exists(mfPath)) { return }
+        let mf = Toml.Parse(File.ReadAll(mfPath))
+        if (mf.IsNull()) { return }
+        let deps: TomlValue = mf.Get("dependencies")
+        if (!deps.IsTable()) { return }
+        let keys: List<string> = deps.Keys()
+        let n: int = keys.Count()
+        for i in 0..n {
+            let k: string = keys.Get(i)
+            if (deps.Get(k).IsString()) { AddCommand.RegisterCachedDep(k, depth + 1) }
+        }
+    }
+
     public static string LatestCacheRuntimeDir(string depKey) {
         if (!String_StartsWith(depKey, "amalgame-")) {
             return ""

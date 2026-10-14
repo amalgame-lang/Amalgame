@@ -1439,6 +1439,23 @@ public class Program {
     // Compiler dispatch: gcc for .c (+ p.CFlags), g++ for
     // .cpp/.cc/.cxx (+ p.CxxFlags). Same dispatch as
     // AddCommand.PrecompilePackage so the two paths stay coherent.
+    // A volatile /tmp object is reused only when it is newer than its
+    // sources AND than the project's amalgame.lock: the generated C
+    // #include's every declared package header, so an object built
+    // before a dependency was declared (e.g. web before compress) lacks
+    // that header and fails at link time ("undefined reference to
+    // Compress_GzipString") until reboot.
+    public static bool VolatileObjFresh(string obj, List<string> sources) {
+        let t: int = File.Mtime(obj)
+        if (t <= 0) { return false }
+        if (File.Exists("amalgame.lock") && File.Mtime("amalgame.lock") > t) { return false }
+        let n: int = sources.Count()
+        for i in 0..n {
+            if (File.Mtime(sources.Get(i)) > t) { return false }
+        }
+        return true
+    }
+
     public static List<string> PreCompilePackageSources(PackageRegistry reg, string amcRuntime) {
         let out: List<string> = new List<string>()
         let n: int = reg.Packages.Count()
@@ -1488,7 +1505,7 @@ public class Program {
                 var skipAm: bool = false
                 if (File.Exists(amCacheObj)) {
                     out.Add(amCacheObj); skipAm = true
-                } else if (File.Exists(amObj)) {
+                } else if (File.Exists(amObj) && Program.VolatileObjFresh(amObj, amSources)) {
                     out.Add(amObj); skipAm = true
                 }
                 if (!skipAm) {
