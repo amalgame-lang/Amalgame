@@ -10,6 +10,21 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 ## [Unreleased]
 
 ### Fixed
+- package add : une dépendance transitive **déjà en cache** (« already
+  cached, reusing ») n'était pas déclarée dans l'`amalgame.toml` du projet.
+  La façade du paquet parent, puis `amc build`, ne la voyaient pas :
+  `amc package add web` avec threading/redis/compress déjà en cache →
+  « Unknown symbol 'Threading' ». Elle est maintenant déclarée (avec la
+  version en cache, ses propres dépendances aussi, sans toucher une entrée
+  que le projet a déjà), et le lock est reconstruit **avant** la
+  précompilation de la façade.
+- build : un objet de paquet volatil (`/tmp/amc-pkg-<Classe>.o`) était
+  réutilisé même périmé — compilé avant qu'une dépendance soit déclarée, il
+  ne contenait pas son en-tête (« undefined reference to
+  Compress_GzipString » jusqu'au redémarrage). Il n'est réutilisé que s'il
+  est plus récent que ses sources et que l'`amalgame.lock` du projet.
+  L'exemple « Hello, server » du guide Mosaic compile et répond. Trouvé par
+  AIOS/Germe (vérification des exemples de la doc).
 - stdlib/json : `Json.Parse` était quadratique — chaque caractère lu
   appelait `String_Length` et `String_CharAt1`, deux `strlen` sur toute la
   source. Longueur mise en cache (`SourceLen`) et lectures via
