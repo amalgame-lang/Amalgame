@@ -34,6 +34,7 @@ Mark a method `async fn`. It returns a *future* immediately; `await`
 unwraps the eventual result, typed as the method's declared return type:
 
 ```amalgame
+import Amalgame.Async
 import Amalgame.Collections
 import Amalgame.String
 
