@@ -39,6 +39,7 @@ Marquez une méthode `async fn`. Elle renvoie immédiatement un *future* ;
 de la méthode :
 
 ```amalgame
+import Amalgame.Async
 import Amalgame.Collections
 import Amalgame.String
 
