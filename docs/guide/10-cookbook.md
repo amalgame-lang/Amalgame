@@ -117,26 +117,34 @@ let content: string = File.ReadAll("/path/to/input.txt")
 File.WriteAll("/path/to/output.txt", content + "\nappendu\n")
 ```
 
-### Charger un JSON, lire un champ
+### Load JSON, read a field
 
 ```amalgame
 import Amalgame.Json
 
-let raw: string    = File.ReadAll("config.json")
-let jv:  JsonValue = Json.Parse(raw)
-if (jv.IsObject()) {
-    let host: string = jv.Get("host").AsString()
-    let port: int    = jv.Get("port").AsInt()
+let raw: string = File.ReadAll("config.json")
+let r = Json.Parse(raw)          // a JsonResult: .Ok, then .Value (or .Error)
+if (r.Ok) {
+    let jv: JsonValue = r.Value
+    if (jv.IsObject()) {
+        let h: JsonValue = jv.Get("host")   // one typed variable per step
+        let p: JsonValue = jv.Get("port")
+        let host: string = h.AsString()
+        let port: int    = p.AsInt()
+    }
 }
 ```
 
-### Sérialiser un map en JSON
+### Serialize an object to JSON
 
 ```amalgame
-let obj: JsonValue = JsonValue.NewObject()
-obj.Set("name", JsonValue.NewString(user.Name))
-obj.Set("age",  JsonValue.NewInt(user.Age))
-let serialized: string = Json.Stringify(obj)
+import Amalgame.Json
+
+let obj = new JsonValue()
+obj.SetObject(new List<string>(), new List<JsonValue>())   // an empty object
+obj.AppendEntry("name", Json.OfString(user.Name))
+obj.AppendEntry("age",  Json.OfInt(user.Age))
+let serialized: string = Json.Encode(obj)                    // {"name":"…","age":…}
 File.WriteAll("user.json", serialized)
 ```
 
