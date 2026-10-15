@@ -799,6 +799,12 @@ class Program {
         g_iface_streq.Add(new CoreCase("iface string == other", "different"))
         Program.RunGroup("./tests/samples/interface_string_eq.am", "iface_streq", g_iface_streq)
 
+        // ── a local's element type does not leak to another method ──
+        let g_local_scope: List<CoreCase> = new List<CoreCase>()
+        g_local_scope.Add(new CoreCase("typed local list", "typed: ok"))
+        g_local_scope.Add(new CoreCase("untyped local list in another method", "untyped: ok"))
+        Program.RunGroup("./tests/samples/local_elem_type_scope.am", "local_scope", g_local_scope)
+
         // ── generic_interfaces (2 cases) ──
         let g_generic_interfaces: List<CoreCase> = new List<CoreCase>()
         g_generic_interfaces.Add(new CoreCase("generic iface T", "compare: 4"))
