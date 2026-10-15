@@ -813,6 +813,25 @@ public class CGen {
     private void LocalTypeClear() {
         this.LocalTypeNames = new List<string>()
         this.LocalTypeCType = new List<string>()
+        // Also forget the element/value types recorded for locals
+        // (`__local__`, `__local_raw__`, `__local_map__`, `__local_map_raw__`,
+        // `__async_future__`). ListElemGet returns the LAST matching entry,
+        // so a `let r: List<string>` in one method used to leak into an
+        // untyped `let r = F()` (F returning List<int>) in a later method
+        // of the same class: `r.Get(0) == 3` lowered to code_string_equals
+        // and crashed. Locals must not outlive their function.
+        let keepNames = new List<string>()
+        let keepTypes = new List<string>()
+        let n = this.ListElemNames.Count()
+        for i in 0..n {
+            let k = this.ListElemNames.Get(i)
+            if (!String_StartsWith(k, "__local") && !String_StartsWith(k, "__async_future__.")) {
+                keepNames.Add(k)
+                keepTypes.Add(this.ListElemCTypes.Get(i))
+            }
+        }
+        this.ListElemNames = keepNames
+        this.ListElemCTypes = keepTypes
     }
 
     private void FieldTypeSet(string className, string fieldName, string ctype) {
@@ -4299,6 +4318,14 @@ public class CGen {
                     if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
                         let recvName = callee.Left.Name
                         var retRaw = this.MethodRetRawGet(recvName, callee.Name)
+                        // In-bundle classes register their return types under
+                        // the namespace-mangled name (`Tests_Program`), so a
+                        // bare `Program.Range()` inside `namespace Tests` must
+                        // also be looked up with the prefix. (This used to be
+                        // masked by a local's elem type leaking across methods.)
+                        if (String_Length(retRaw) == 0 && String_Length(this.NsPrefix) > 0) {
+                            retRaw = this.MethodRetRawGet(this.NsPrefix + "_" + recvName, callee.Name)
+                        }
                         if (String_Length(retRaw) == 0) {
                             let extMangled = this.ExternalClassMangled(recvName)
                             if (String_Length(extMangled) > 0) {

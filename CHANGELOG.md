@@ -10,6 +10,19 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 ## [Unreleased]
 
 ### Fixed
+- cgen : le type des éléments d'une liste (ou d'une map) **locale** fuyait
+  d'une méthode à l'autre. `let r: List<string>` dans une méthode, puis
+  `let r = F()` (F rend `List<int>`) dans une autre méthode de la même classe :
+  `r.Get(0) == 3` devenait `code_string_equals(…, 3)` et plantait.
+  `LocalTypeClear` efface désormais aussi les entrées `__local*` de la table
+  des types d'éléments. Cette fuite masquait un second défaut : le type de
+  retour d'une méthode appelée sous son nom court (`Program.Range()` dans
+  `namespace Tests`) n'était pas retrouvé, car enregistré sous le nom complet
+  (`Tests_Program`) — la recherche essaie maintenant aussi ce nom ; `r.Get(0)`
+  est donc typé `(i64)` au lieu de `(void*)`. Test discriminant
+  `tests/samples/local_elem_type_scope.am` (plante avant, passe après) ;
+  suite complète : 650 PASS / 0 FAIL / 8 SKIP. Trouvé par AIOS/Germe en
+  consolidant sa bibliothèque.
 - package add : une dépendance transitive **déjà en cache** (« already
   cached, reusing ») n'était pas déclarée dans l'`amalgame.toml` du projet.
   La façade du paquet parent, puis `amc build`, ne la voyaient pas :
