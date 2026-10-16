@@ -1299,7 +1299,7 @@ public class FullResolver {
     // call goes through a class via MEMBER (`Foo.Bar(c => …)`), which
     // the MEMBER branch already handles.
 
-    private AstNode FindMethodInPrograms(string className, string methodName) {
+    public AstNode FindMethodInPrograms(string className, string methodName) {
         // O(1) lookup via the index populated during CollectAll.
         // Falls back to null if the (class, method) pair wasn't seen
         // (external programs registered AFTER CollectAll, dynamic
