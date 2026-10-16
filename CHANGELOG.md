@@ -10,6 +10,15 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 ## [Unreleased]
 
 ### Fixed
+- typechecker : un **objet** passé là où un paramètre `string` est attendu
+  compilait (`new Lecteur(new Boite("x"))` avec `Lecteur(string chemin)`) :
+  le C ne faisait qu'avertir (incompatible pointer types) et, à l'exécution,
+  l'adresse de l'objet était lue comme du texte (octets aléatoires — chez
+  Germe, un dossier créé avec un nom binaire). C'est maintenant une erreur :
+  `argument 1 of new Lecteur: expected string, got Boite (an object is not a
+  string)`, pour `new` et pour les appels `obj.M(…)` / `Classe.M(…)` dont la
+  déclaration est connue. Volontairement étroit (string ← classe du programme) :
+  génériques, `null`, élargissements numériques et fermetures ne sont pas touchés.
 - cgen : le type des éléments d'une liste (ou d'une map) **locale** fuyait
   d'une méthode à l'autre. `let r: List<string>` dans une méthode, puis
   `let r = F()` (F rend `List<int>`) dans une autre méthode de la même classe :
