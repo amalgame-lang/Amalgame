@@ -3221,6 +3221,25 @@ public class AddCommand {
             doc.SetEntry("dependencies", deps)
         }
 
+        // The same package may already be declared under another name:
+        // `amc package add net-http@…` writes `net-http`, while adding a
+        // package that depends on it (web) registers it as `http`. Update
+        // that entry instead of adding a twin — two entries for one git
+        // URL made the package load twice (struct redefinitions in facades).
+        var key: string = depName
+        let existing: List<string> = deps.Keys()
+        let ne: int = existing.Count()
+        for ei in 0..ne {
+            let k: string = existing.Get(ei)
+            if (k != depName && String_Length(key) > 0 && key == depName) {
+                let v: TomlValue = deps.Get(k)
+                if (v.IsTable()) {
+                    let g: TomlValue = v.Get("git")
+                    if (g.IsString() && g.AsString() == url) { key = k }
+                }
+            }
+        }
+
         // Build the inline-table value: { git = "...", tag = "..." }
         let entry = new TomlValue()
         entry.BecomeTable()
@@ -3230,7 +3249,7 @@ public class AddCommand {
         tagVal.SetString(tag)
         entry.SetEntry("git", gitVal)
         entry.SetEntry("tag", tagVal)
-        deps.SetEntry(depName, entry)
+        deps.SetEntry(key, entry)
 
         let out: string = Toml.Serialize(doc)
         let ok: bool = File.WriteAll(path, out)
