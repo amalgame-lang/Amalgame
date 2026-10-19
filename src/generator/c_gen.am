@@ -192,6 +192,13 @@ public class CGen {
     // (`Amalgame_Formats_Json_JsonKind`, value not pointer) instead
     // of the consumer's NsPrefix.
     public ExternalEnums:      List<string>
+    // Signatures of the external programs already registered, per pass
+    // ("p1:" / "p2:" + namespace + declared names). The same package
+    // facade can reach the external list twice — e.g. amalgame-net-http,
+    // pulled in both by amalgame-tls and by amalgame-net-smtp — and its
+    // struct bodies must be emitted once, or gcc stops on
+    // `redefinition of 'struct _Amalgame_Net_Http_Cookie'`.
+    public ExternalProgsSeen:  List<string>
     public ExternalEnumNsArr:  List<string>
 
     // v0.8.37: opaque C types declared as return types in a
@@ -268,6 +275,7 @@ public class CGen {
         this.ExternalClasses   = new List<string>()
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
+        this.ExternalProgsSeen = new List<string>()
         this.ExternalEnumNsArr = new List<string>()
         this.PkgOpaqueTypes    = new List<string>()
         this.LocalClasses      = new List<string>()
@@ -2194,9 +2202,33 @@ public class CGen {
     // externals before any Pass 2, the registry is fully populated
     // before any TypeToC call fires — the `amalgame.lock` ordering
     // caveat that surfaced during the v0.3.0 web release goes away.
+    // "ns|Decl1,Decl2,…" — identifies one external program (one facade file).
+    public string ExternalProgKey(AstNode prog) {
+        var key: string = prog.Str + "|"
+        let kids: List<AstNode> = prog.Children
+        let n: int = kids.Count()
+        for i in 0..n {
+            let d: AstNode = kids.Get(i)
+            key = key + d.Name + ","
+        }
+        return key
+    }
+
+    // true the first time `pass + key` is seen, false afterwards.
+    public bool ExternalProgFirstTime(string pass, AstNode prog) {
+        let key: string = pass + ":" + this.ExternalProgKey(prog)
+        let c: int = this.ExternalProgsSeen.Count()
+        for i in 0..c {
+            if (this.ExternalProgsSeen.Get(i) == key) { return false }
+        }
+        this.ExternalProgsSeen.Add(key)
+        return true
+    }
+
     public void RegisterExternalProgPass1(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
+        if (!this.ExternalProgFirstTime("p1", prog)) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
@@ -2276,6 +2308,7 @@ public class CGen {
     public void RegisterExternalProgPass2(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
+        if (!this.ExternalProgFirstTime("p2", prog)) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
