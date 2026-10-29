@@ -11,7 +11,7 @@ so the first real Mosaic-native renewal happens with margin. See
 
 ## What this is
 
-Move the production sites (belfort, musicall) from the current topology —
+Move the production sites from the current topology —
 **Node/pm2 holds :80 + :443**, Mosaic runs behind it — to
 **Mosaic terminating its own public HTTPS** via the native ACME client
 (`AcmeNative.EnsureCert` + `WebApp.ServeHttps`/`MosaicServer` + the

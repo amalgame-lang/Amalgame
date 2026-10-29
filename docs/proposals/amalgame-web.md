@@ -1388,7 +1388,7 @@ single-node apps today**. Remaining work, in suggested priority order:
 4. ~~**ACME Phase-3 production cutover** — migrate the live sites off the
    external Node/greenlock proxy onto Mosaic-native HTTPS.~~ ✅ **done**
    (verified live 2026-06-05): `~/Développement/Sites` `server.am`
-   multi-site front holds 80/443 — amalgame.me/belfort/musicall/docs/demo
+   multi-site front holds 80/443 — amalgame.me, the hosted sites, docs and demo
    all answer `Server: Mosaic (Amalgame)` over HTTPS with valid LE **prod**
    certs (SNI per domain, native ACME, 80→443 redirect). Node is no longer
    the front. ~~Minor residue: HEAD returns 404 (cosmetic; GET 200)~~ ✅
