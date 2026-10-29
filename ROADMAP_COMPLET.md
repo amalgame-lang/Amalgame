@@ -1097,7 +1097,7 @@ before the next big language addition.
       API (live remote logs) + `amalgame-tls`; an `amalgame-ssh`
       package (libssh2 or shelling out to `ssh`/`scp`) is the
       likely dependency — decide build-dep vs shell-out first.
-      Should cover the `belfort`/`musicall` Mosaic-on-prod
+      Should cover the production sites' Mosaic-on-prod
       workflow (currently manual, see
       `project_sites_mosaic_migration`). Design doc TBD.
 - [x] **`amc package <action>`** (v0.5.0 → v0.6.x) — full package

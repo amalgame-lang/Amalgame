@@ -130,9 +130,9 @@ cross-link; native lib search paths come from env `AMC_EMBED_INC`/`AMC_EMBED_LIB
 Only the physical `st-flash write firmware.bin 0x08000000` is pending (no board
 on the dev machine).
 
-**Driving use-case (revealed 2026-06-09):** port **MusiCall-Box** (private repo,
-PlatformIO/mbed on Nucleo-F767ZI) to Amalgame — a real-time networked audio
-device (RTP/RTPStream audio over UDP, jitter buffer, NTP, Opus codec). That's
+**Driving use-case (revealed 2026-06-09):** port a private networked embedded
+application (PlatformIO/mbed on Nucleo-F767ZI) to Amalgame — real-time traffic
+over UDP. That's
 the north star; it implies large future subsystems (Ethernet/UDP on MCU, audio
 I2S, RTOS tasks, fixed-point DSP). **Per Bastien (2026-06-09): finish the amc
 MCU *tooling* first (flash, on-chip DAP, LSP polish) before starting the port.**
