@@ -1,15 +1,19 @@
 # Beyond HTTP — nginx/apache-equivalent capabilities
 
-**Status:** in-progress. Verified against the repos **2026-06-04**.
+**Status:** in-progress. Verified against the repos **2026-06-17**.
 **Shipped:** #6 Static file serving (web v0.13.0, + Range / Last-Modified
 / `.gz` follow-ups), #11 SSE (net-http v0.16.0 + web v0.28.0), #1 Reverse
 proxy + #2 Load balancing (`amalgame-net-proxy` v0.2.1: path routing +
-round-robin / IP-hash / least-connections). #4's **outbound** SMTP client
-shipped separately as `amalgame-net-smtp` v0.2.4 (the inbound relay /
-IMAP / POP3 server described here is still roadmap).
-**Still roadmap:** #3 TCP/UDP raw proxy, #4 SMTP *server*/IMAP/POP3, #5
-SFTP, #7 VPN/WireGuard, #8 CDN, #9 gRPC, #10 DNS/DoH, #12 WebDAV; plus
-proxy follow-ups (health checks, circuit breaker) and static `sendfile(2)`.
+round-robin / IP-hash / least-connections), #3 **TCP + UDP raw proxy**
+(`amalgame-net-stream` v0.3.0: `TcpProxy` + `UdpProxy`, multi-upstream
+load-balancing + IPv6 dual-stack). #4's **outbound** SMTP client shipped
+separately as `amalgame-net-smtp` v0.2.4 (the inbound relay / IMAP / POP3
+server described here is still roadmap).
+#12 **WebDAV** (`amalgame-net-webdav` v0.1.0: Class 1 + opt-in Class 2
+locks, filesystem share).
+**Still roadmap:** #4 SMTP *server*/IMAP/POP3, #5 SFTP, #7 VPN/WireGuard,
+#8 CDN, #9 gRPC, #10 DNS/DoH; plus stream/proxy follow-ups (active health
+checks, circuit breaker), static `sendfile(2)`, and WebDAV CalDAV/CardDAV.
 The inventory below captures what the stack still needs to match nginx /
 apache / HAProxy / Postfix territory.
 
@@ -103,19 +107,27 @@ p.Forward("/api", pool)
 
 **Priority:** HIGH — pairs naturally with reverse proxy.
 
-### 3. TCP/UDP raw proxy — 🟢 TCP SHIPPED (net-stream v0.1.0)
+### 3. TCP/UDP raw proxy — 🟢 TCP + UDP + LB SHIPPED (net-stream v0.3.0)
 
-> 🟢 **TCP shipped** as `amalgame-net-stream` v0.1.0 (`TcpProxy`): binary-safe
-> byte splice to a fixed upstream, with security wired in by default —
-> SIGPIPE-safe, idle + connect timeouts, global + per-source-IP connection
-> caps (over-cap dropped immediately), graceful SIGINT/SIGTERM shutdown,
-> bounded splice buffer. The byte pump is C (explicit recv/send lengths)
-> because the bundled `Amalgame.Net` TcpConn primitives `strlen()` the
-> buffer and truncate at the first NUL — corrupting any binary stream.
-> Audit (all green): binary-safety round-trip (all 256 byte values +
-> embedded NULs, byte-exact), per-IP cap enforcement, graceful shutdown.
-> **TODO v0.2:** UDP forwarding, load-balancing across N upstreams, IPv6
-> listener; **v0.3:** TLS edge.
+> 🟢 **TCP + UDP + load-balancing shipped** as `amalgame-net-stream`
+> v0.3.0 (`TcpProxy`, `UdpProxy`): binary-safe forwarding to one or more
+> upstreams, with security wired in by default — SIGPIPE-safe, idle
+> (+ connect, TCP) timeouts, global + per-source-IP caps (over-cap dropped
+> immediately, fail-closed), graceful SIGINT/SIGTERM shutdown, bounded
+> buffer. The byte/datagram pump is C (explicit recv/send lengths) because
+> the bundled `Amalgame.Net` TcpConn primitives `strlen()` the buffer and
+> truncate at the first NUL — corrupting any binary stream. **UDP** is
+> connectionless, so the engine keeps a per-client *session* table (keyed
+> by source addr:port), each session owning a dedicated upstream socket,
+> driven by a single `poll()` event loop; datagram boundaries are preserved
+> and the idle timeout is mandatory (no FIN). **Load-balancing** (v0.3.0):
+> round-robin / ip-hash / least-conn across an upstream pool, TCP with dial
+> failover; UDP picks an upstream per session (ip-hash sticky per client).
+> **IPv6 dual-stack** listener with IPv4 fallback. Audit (all green, 24
+> checks): binary-safety round-trip TCP + UDP (256 byte values + NULs,
+> byte-exact), per-IP cap enforcement TCP + UDP, round-robin distribution
+> TCP + UDP, graceful shutdown TCP + UDP. **TODO:** active health checks /
+> outlier ejection; **later:** TLS edge (DTLS for UDP).
 
 The "stream4" / `stream {}` block in nginx, or HAProxy's TCP
 mode.  Forwards arbitrary TCP / UDP without parsing the payload.
@@ -128,20 +140,34 @@ Use cases:
 
 **Package:** `amalgame-net-stream` (new).
 
+Shipped API (one listener per proxy → one or more upstreams; run several
+for several ports):
+
 ```amalgame
 import Amalgame.Net.Stream
 
-let s = new StreamProxy()
-s.Tcp(5432, "pg-primary.internal:5432")
-s.Tcp(6379, "redis-primary.internal:6379")
-s.Udp(53, ["dns1.internal:53", "dns2.internal:53"])
-s.Serve()
+// TCP — binary-safe byte splice, single upstream
+TcpProxy.New().Listen(5432).Forward("pg-primary.internal", 5432).Serve()
+
+// UDP — per-client session forwarding (datagram boundaries preserved)
+UdpProxy.New().Listen(53).Forward("dns1.internal", 53).Serve()
+
+// Load-balanced pool (round-robin default; ip_hash / least_conn too)
+TcpProxy.New().Listen(5432)
+    .Forward("db-a.internal", 5432).AddUpstream("db-b.internal", 5432)
+    .LeastConnections().Serve()
 ```
 
-Implementation: `accept()` on the listen socket, `connect()` to
-the upstream, splice bytes via two threads (one each direction)
-until either side closes.  UDP variant uses recvfrom/sendto in
-a per-port loop.  ~250 LoC total.
+Implementation (shipped): TCP does `accept()` → strategy-select upstream →
+`connect()` (with failover to the other upstreams) → a poll-driven
+bidirectional splice (thread-per-connection) until either side closes.
+UDP keeps a per-client session table (source addr:port → connected
+upstream socket, chosen per session by strategy), driven by a single
+`poll()` event loop with recvfrom/sendto and a mandatory idle reaper. The
+listener is IPv6 dual-stack with an IPv4 fallback. ~900 LoC total.
+
+Remaining: active health checks / outlier ejection (a dead upstream is
+skipped at TCP dial time today, but not pre-emptively probed).
 
 **Dependencies:** none (pure socket I/O).
 
@@ -672,16 +698,34 @@ links. No new package.
 new deps. Should ship with the next `amalgame-net-http` patch
 release rather than a separate proposal slot.
 
-### 12. WebDAV server
+### 12. WebDAV server — 🟢 SHIPPED (net-webdav v0.1.0)
+
+> 🟢 **Shipped** as `amalgame-net-webdav` v0.1.0 (`WebDav`). Exposes a
+> filesystem directory over HTTP/WebDAV — the Apache mod_dav slice.
+> `WebDav.Dispatch` is a pure `HttpRequest -> HttpResponse`, mountable on
+> a Mosaic host (`MosaicServer.AddHandler`) or a `WebApp` catch-all
+> route, and unit-testable without a socket. **Class 1** (always on):
+> OPTIONS, PROPFIND (Depth 0/1, 207 multistatus XML), GET, HEAD, PUT,
+> DELETE, MKCOL, COPY, MOVE (Destination + Overwrite). **Class 2**
+> (opt-in `.WithLocks()`): exclusive write LOCK / UNLOCK with If-header /
+> 423 enforcement. Security: operator-fixed root, `..` traversal rejected
+> (403) before disk, `.ReadOnly()` mode, locks fail closed. Binary-safe:
+> GET via net-http File mode, PUT writes the raw body buffer, COPY streams
+> via libc. Directory enumeration via `amalgame-io-filesystem`. Audit (24
+> green): every verb, PROPFIND XML, Overwrite:F 412, traversal 403,
+> read-only 403, full lock lifecycle. **TODO:** explicit PROPFIND `<prop>`
+> parsing + Depth infinity; PROPPATCH dead-property persistence; full RFC
+> 4918 If-header grammar + lock sweeping; CalDAV / CardDAV.
 
 The Apache mod_dav equivalent.  Used for shared filesystems
 exposed over HTTP (calendars via CalDAV, contacts via CardDAV,
 generic file shares).
 
-**Package:** `amalgame-net-webdav` (new) or middleware in
-`amalgame-web`.
+**Package:** `amalgame-net-webdav` — built on `amalgame-net-http` +
+`amalgame-io-filesystem` + `amalgame-datetime`.
 
-**Priority:** LOWEST — niche.  Skip for v0.x.
+**Priority:** was LOWEST — pulled forward on demand (real projects need
+a file-share endpoint). CalDAV / CardDAV remain the niche follow-up.
 
 ## Ordering proposal
 
@@ -700,9 +744,12 @@ Year-1 priority for the web stack (✅ = done as of 2026-06-04):
    stubs, streaming, grpcurl interop.
 5. ~~**Server-Sent Events (SSE)**~~ ✅ **shipped** (net-http v0.16.0 +
    web v0.28.0).
-6. **TCP/UDP raw proxy** in `amalgame-net-stream` — 🟢 **TCP shipped
-   v0.1.0** (binary-safe splice + caps/timeouts/graceful shutdown).
-   UDP + load-balancing across N upstreams = v0.2.
+6. ~~**TCP/UDP raw proxy** in `amalgame-net-stream`~~ — 🟢 **TCP + UDP +
+   load-balancing shipped v0.3.0** (`TcpProxy` binary-safe splice;
+   `UdpProxy` per-client session forwarding; round-robin / ip-hash /
+   least-conn across an upstream pool with TCP dial failover; IPv6
+   dual-stack; caps/timeouts/graceful shutdown). Active health checks are
+   the remaining follow-up.
 
 Year-2 (or punt to "if someone wants it"):
 
@@ -716,7 +763,8 @@ Year-2 (or punt to "if someone wants it"):
     ~6-8 days.
 10. **SFTP** via `amalgame-net-ssh` (libssh2 binding).
 11. **SMTP relay** via `amalgame-net-smtp`.
-12. **WebDAV** (lowest).
+12. ~~**WebDAV**~~ ✅ **shipped** (`amalgame-net-webdav` v0.1.0 — Class 1
+    + opt-in Class 2 locks; CalDAV/CardDAV still the niche follow-up).
 
 ### Static follow-ups (à la carte, not blocking the next item above)
 
