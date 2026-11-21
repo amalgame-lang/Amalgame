@@ -9,7 +9,26 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ## [Unreleased]
 
+## [v0.8.91] — 2026-11-21
+
+Compatible with gcc 14 and 15 (Ubuntu 26.04, the new `ubuntu-latest` of
+GitHub Actions), and the fixes published since v0.8.90.
+
 ### Fixed
+- cgen : une closure obtenue par un **appel** gardait mal son type de
+  retour. `let f = g.Greet()` (Greet rend `Closure<int, string>`) : `f(3)`
+  sortait en `(i64)(intptr_t)AmalgameClosure_call1(…)`, un entier passé là
+  où une chaîne est attendue. gcc 13 avertissait, gcc 14 et 15 refusent
+  (`-Werror=int-conversion` par défaut) : l'exemple
+  `interp_capture_in_lambda` ne se liait plus sur `ubuntu-latest`.
+  `TrackGenericLocal` enregistre maintenant `R` de `Closure<…, R>`, comme
+  pour une lambda locale. Suite complète : 656 PASS / 0 FAIL / 5 SKIP.
+- package add : la façade d'un paquet qui importe une classe d'un paquet
+  voisin ne se précompilait pas (« Unknown symbol HttpResponse », « Unknown
+  symbol 'Acme' » pour la classe d'exécution de tls). Un `amalgame.lock`
+  transitoire liste les autres paquets en cache et amc est lancé depuis le
+  dossier du paquet : les MANIFEST des dépendances sont attachés, comme
+  pour une construction de projet.
 - typechecker : un **objet** passé là où un paramètre `string` est attendu
   compilait (`new Lecteur(new Boite("x"))` avec `Lecteur(string chemin)`) :
   le C ne faisait qu'avertir (incompatible pointer types) et, à l'exécution,

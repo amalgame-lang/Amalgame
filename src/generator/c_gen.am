@@ -926,6 +926,22 @@ public class CGen {
     // RHS, explicit `: List<int>` annotations, and inferred return types
     // from method calls.
     private void TrackGenericLocal(string varName, string rawType) {
+        // A typed closure that is not a lambda literal (`let f = g.Greet()`
+        // where Greet returns Closure<int, string>, or an annotated local
+        // bound to a call) : record its return type R, as for a lambda
+        // local, so `f(3)` is cast to R. Without it the call lowered as
+        // `(i64)(intptr_t)AmalgameClosure_call1(...)`, an int passed where
+        // a pointer is expected : an error since gcc 14 (int-conversion).
+        if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
+            let cinner = String_Substring(rawType, 8, String_Length(rawType) - 9)
+            let cparts: List<string> = this.SplitTopLevelCommas(cinner)
+            let cpc: int = cparts.Count()
+            if (cpc >= 1) {
+                let cret = String_Trim(cparts.Get(cpc - 1))
+                if (String_Length(cret) > 0) { this.ListElemSet("__closure_ret__", varName, this.TypeToC(cret)) }
+            }
+            return
+        }
         if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
             let inner = String_Substring(rawType, 5, String_Length(rawType) - 6)
             if (String_Length(inner) > 0) {
