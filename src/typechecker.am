@@ -1240,6 +1240,16 @@ public class TypeChecker {
                 }
             }
         }
+        // object → string argument check on `recv.Method(...)` / `Class.Method(...)`
+        if (expr.Left != null && expr.Left.Kind == NodeKind.MEMBER && expr.Left.Left != null) {
+            let mem: AstNode = expr.Left
+            var recvClass: string = this.GetType(mem.Left)
+            if (String_EndsWith(recvClass, "?") || String_EndsWith(recvClass, "*")) { recvClass = String_Substring(recvClass, 0, String_Length(recvClass) - 1) }
+            if ((String_Length(recvClass) == 0 || recvClass == "?") && mem.Left.Kind == NodeKind.IDENTIFIER) { recvClass = mem.Left.Name }
+            if (String_Length(recvClass) > 0 && recvClass != "?") {
+                this.CheckObjectToStringArgs(this.Symbols.FindMethodInPrograms(recvClass, mem.Name), expr, recvClass + "." + mem.Name)
+            }
+        }
         // Return type: look up callee symbol if it's a simple identifier
         var calleeType = "?"
         let callee = expr.Left
@@ -1293,7 +1303,41 @@ public class TypeChecker {
         for i in 0..argc {
             this.CheckExpr(expr.Args.Get(i))
         }
+        this.CheckObjectToStringArgs(this.Symbols.FindMethodInPrograms(expr.Name, expr.Name), expr, "new " + expr.Name)
         this.SetType(expr, expr.Name)
+    }
+
+    // An object of a user class passed where a `string` parameter is
+    // expected used to compile: cgen emitted the call as-is, the C
+    // compiler only warned (incompatible pointer types), and at run time
+    // the object's address was read as text (garbage, e.g. a directory
+    // created with a binary name). Checked when the target declaration is
+    // known; deliberately narrow (string ← class) so generics, null,
+    // numeric widening and closures are untouched.
+    private void CheckObjectToStringArgs(AstNode decl, AstNode call, string what) {
+        if (decl == null) { return }
+        let argc = call.Args.Count()
+        if (decl.Params.Count() != argc) { return }
+        for i in 0..argc {
+            let pn: AstNode = decl.Params.Get(i)
+            let pt: string = pn.Str
+            if (pt == "string") {
+                let arg: AstNode = call.Args.Get(i)
+                let at: string = this.GetType(arg)
+                if (this.IsUserClassType(at)) {
+                    this.Error("argument " + String_FromInt(i + 1) + " of " + what + ": expected string, got " + at + " (an object is not a string)", arg)
+                }
+            }
+        }
+    }
+
+    private bool IsUserClassType(string t0) {
+        var t: string = t0
+        if (String_EndsWith(t, "?") || String_EndsWith(t, "*")) { t = String_Substring(t, 0, String_Length(t) - 1) }
+        if (String_Length(t) == 0 || t == "string" || t == "object" || t == "null") { return false }
+        if (String_Contains(t, "<")) { return false }
+        // a class declared in the program (it has a constructor)
+        return this.Symbols.FindMethodInPrograms(t, t) != null
     }
 
     private void CheckIndexExpr(AstNode expr) {

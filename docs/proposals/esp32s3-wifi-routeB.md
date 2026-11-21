@@ -2,9 +2,13 @@
 
 **Status:** B0 substrate in progress. Slice 1 + B0a + B0b-1 + **B0b-2 (Xtensa
 interrupts)** + **B0b-3 (DRAM heap)** done and verified on real silicon
-(ESP32-S3-DevKitM). **B0c flash-XIP boot proven on silicon** (branch
-`esp32s3-flash-xip`) — only a clean console (UART re-pin, = B0b-4) remains. Next:
-finish the B0c console, then B1 (PHY).
+(ESP32-S3-DevKitM). **B0c solved on silicon — the real amc runtime runs from
+flash XIP** (`amalgame heartbeat` streams after a full erase; self-contained
+cache/MMU bring-up, IROM `.text` + DROM `.rodata` + DRAM `.bss`, ESPHome-free,
+observable over the ROM UART; branch `esp32s3-flash-xip`, `_xip-bringup-reference/`).
+The size wall is gone; the whole B0 substrate runs from flash. **B1 done: the
+WiFi PHY/RF is calibrated on silicon** (CPU->PLL/APB-80 + power-domain + real
+init_data -> register_chipv7_phy returns). Next: B2 (wifi_osi_funcs_t + scheduler).
 
 Sibling of [`amc-embedded.md`](amc-embedded.md) (which brought up Cortex-M /
 STM32 first). This line targets the **ESP32-S3 (Xtensa LX7)** and aims at the
@@ -128,11 +132,133 @@ board ships no `vectors.S`/`interrupts.c`.
 | ~~B0b-3~~ | ~~DRAM heap (malloc/free) for the blobs~~ ✅ done | `soc.h` (DRAM bounds), `bootloader.ld` (free ranges) |
 | **B0b-4** | 240 MHz clocks + WiFi clock-gating | `clk_tree_ll.h`, `system_reg.h` (recon below ↓) |
 | B0c | Flash XIP + cache (room for blobs+lwIP) | `bootloader`, MMU/cache regs |
-| B1 | PHY/RF init + calibration | `esp_phy/src/phy_init.c`, NVS |
-| B2 | `wifi_osi_funcs_t` + minimal blocking scheduler | `esp_wifi/.../esp_adapter.c` |
+| ~~B1~~ | ~~PHY/RF init + calibration~~ ✅ done (libphy linked w/ 5-sym adapter; CPU→PLL/APB-80 was the key; cal returns) | `libphy.a`, `phy_init.c`, `phy_init_data.c` |
+| **B2** | `wifi_osi_funcs_t` + minimal blocking scheduler | `esp_wifi/.../esp_adapter.c` |
 | B3 | `esp_wifi_init/start/connect` (STA) → got-IP | `esp_wifi.h`, `esp_private/wifi.h` |
 | B4 | lwIP `NO_SYS=1` on WiFi RX/TX hooks | `esp_private/wifi.h` (tx/rx) |
 | B5 | MQTT → Home Assistant; reimplement the VMC controller | — |
+
+### Provisioning decision — compile-time first, then serial/SoftAP; **no Bluetooth**
+
+How WiFi credentials (+ other device config) get onto the ESP. Decided: **bake
+them at compile time** to get WiFi up fast (B3), then add field re-config later
+via **serial (improv-wifi)** or **SoftAP + a tiny web page** — both **reuse the
+WiFi stack we're already building** (the blobs expose `WIFI_MODE_AP`).
+
+**Bluetooth provisioning was considered and rejected:** on bare-metal-no-FreeRTOS
+it's a *second* large blob bring-up — BT controller blob (`libbtdm_app.a`, 1.5 MB)
++ its own OS adapter + a BLE host stack (NimBLE/Bluedroid, large, needs NPL/osi
+over our scheduler) + WiFi/BT radio coexistence. Roughly **doubles the WiFi
+effort** for a provisioning convenience that SoftAP/serial cover for ~free. Keep
+BLE only if a hard requirement appears (phone app, no USB, headless).
+
+Config storage (any channel): a small key-value in a flash sector (we have flash
++ heap). Applied at B3 (STA connect reads the creds); field re-config is a B5-era
+add-on.
+
+### B3 recon — driving the blobs (the connect sequence)
+
+The high-level `esp_wifi_init/set_mode/set_config/start/connect` are **IDF C**
+(`esp_wifi.c`/`wifi_init.c`, heavy deps: event loop, netif, NVS, PM) — we don't
+port those. The **blob exposes the real entry `esp_wifi_init_internal`** (+
+`wifi_init_process`, `esp_wifi_internal_*`, `ic_set_*`). Route B drives the blob
+directly (esp-wifi-style): `esp_wifi_init` (C) is mostly optional PM/sleep/coex
+around a single `esp_wifi_init_internal(cfg)` call. The MAC ISR is registered via
+**`ic_set_interrupt_handler`** (wire it to our level-1 matrix; `_set_isr`/
+`_set_intr` osi stubs feed this).
+
+Planned B3 sequence (all on `g_wifi_osi_funcs`, which already links):
+`esp_phy_enable` (our B1) → `esp_wifi_init_internal(&cfg)` → set mode STA + config
+(SSID/pass, compile-time) via the thin C wrappers or the internal setters →
+`esp_wifi_start` → `esp_wifi_connect` → WiFi-connected event. **`got-IP` itself
+needs DHCP = B4 (lwIP `NO_SYS=1`).**
+
+**Board prerequisites for B3 — ✅ DONE on silicon.** The `esp32s3-flash` board now
+has everything the big blobs need:
+- **Multi-page IROM/DROM mapping**: the stub maps 8 IROM pages (entries 0..7 →
+  flash pages 8..15, `.text` up to 512 KB at `0x42000000`) + 8 DROM pages
+  (entries 8..15 → flash pages 16..23, `.rodata`+`.data`-init+vectors at
+  `0x3C080000`). `board.ld` lays it out; `stub.c` writes the 16 MMU entries.
+- **Real `.data` section**: VMA in SRAM, image in flash right after `.rodata`
+  (compact `objcopy`), `crt0` copies it from the DROM-readable LMA. Validated
+  (`DATA PASS`: initialised globals read back correctly).
+- **IRAM-resident vector table** (the subtle one): VECBASE **must not** point at
+  flash — a window over/underflow fires on any windowed `call` and faults from
+  flash. The table + the level-1 ISR (`amc_isr_level1`, `.iram.text`) are copied
+  by `crt0` into the dual-ported DIRAM (DRAM-view `0x3FC88000` ⇄ instruction-view
+  `0x40378000`, `SOC_I_D_OFFSET = 0x6F0000`); VECBASE is set to the I-view alias.
+  `interrupts.c` is compiled `-mtext-section-literals` so the ISR's 32-bit
+  constants are pooled inline-and-reachable (vectors.S must NOT have that flag —
+  it would corrupt the fixed-offset `.org` table).
+- **crt0 `PS.UM` = 1**: the ROM hands ramload `_start` a ready PS; our flash crt0
+  builds it by hand and **must set PS.UM** (user-vector mode) or level-1
+  interrupts take the *Kernel* vector (`0x300` = panic), not the *User* vector
+  (`0x340` = our dispatch). This was the bug behind a silent IRQ hang.
+
+Validated: polling **and** IRQ heartbeat both run from flash XIP via the production
+`examples/mcu/esp32s3-flash-xip.sh` (now per-TU compiled for the literal-flag split).
+
+Remaining for B3: wire `_set_isr`/`_set_intr` (MAC level-1 ISR via the matrix) +
+the software timers (off the systimer), then drive the blobs (init → start →
+assoc → B4 IP). This is the heaviest, most iteration-heavy integration of Route B.
+
+### B2 recon — osi_funcs surface scoped (the Route-B core)
+
+`nm` on the WiFi MAC blobs (`libpp` 709 KB + `libnet80211` 1.4 MB + `libcore`):
+1207 undefined, but all resolve via the blobs + `libphy` + ROM **except 25**:
+mostly **mesh** (`mesh_*`, `ieee80211_vnd_mesh_*`, `g_mt`, `mt_get_peer_info`) +
+espnow (`g_espnow_user_oui`) — all **stubbable** (not used for STA) — plus libc-ish
+(`free`/`sprintf`/`puts`/`hexstr2bin`), debug (`pp_printf`/`net80211_printf` →
+stub/UART), `regdomain_table`/`regulatory_data` (regulatory data, provide), and
+`WIFI_EVENT` (event base). So **linking the MAC blobs ≈ as small as PHY**.
+
+The real work is **`g_wifi_osi_funcs`** (`esp_private/wifi_os_adapter.h`, version
+`0x8`, magic `0xDEADBEAF`) — **122 function pointers**, reference impl =
+`esp_wifi/esp32s3/esp_adapter.c`. Categorised: ~40 are **scheduler-critical** and
+need a real cooperative/blocking mini-RTOS on top of our substrate (IT + heap +
+systimer, all ready):
+- tasks ×8 (`task_create`/`delete`/`delay`/`yield_from_isr`/`get_current`…)
+- semaphores ×5 (blocking `take`/`give` with timeout)
+- recursive mutexes ×5, queues ×10 (`send`/`recv` + `*_from_isr`, blocking),
+  event-groups ×7 (`set`/`clear`/`wait_bits`), timers ×6, `wifi_int` ×2.
+The other ~80 are trivial (malloc→our heap, log, clock, nvs-get/set, random…).
+
+**B2 plan:** (1) scaffold `g_wifi_osi_funcs` with the trivial members + stubs;
+(2) build the **mini-scheduler** — tasks with their own stacks, `yield`, blocking
+sem/queue/event with timeouts off the systimer tick, ISR-safe variants (the WiFi
+blob spins internal tasks that block — the esp-wifi crate proves a cooperative
+scheduler suffices); (3) link `libpp`+`libnet80211`+`libcore` + the 25 stubs;
+(4) call `esp_wifi_init` → first milestone. This is the central, multi-session
+chunk of Route B. Then B3 = `esp_wifi_start`/`connect` (STA, compile-time creds).
+
+### B1 recon — linking the PHY blob is small (done; ready to implement)
+
+`nm` analysis of `esp_phy/lib/esp32s3/libphy.a` (255 KB): of its 136 undefined
+symbols, **290 are defined inside the archive itself and 2367 are in the ESP32-S3
+ROM** (`esp_rom/esp32s3/ld/*.ld` — all the `chip_v7_set_chan` / `ram_*` / `rf*` /
+`set_chan*` PHY ROM funcs). After subtracting both, **only 6 truly-external
+symbols** remain to provide — plus libgcc float helpers (`__divdf3`…) and
+`memcpy`/`memset` (ROM has them):
+```
+phy_enter_critical / phy_exit_critical   -> our interrupt mask (single-core: rsil/restore)
+phy_printf                               -> route to ROM UART (or stub)
+coex_pti_print                           -> stub (no BT coexistence)
+sprintf                                  -> minimal (or ROM); phy_printf can stub to avoid it
+chip7_phy_init_ctrl                      -> data symbol (from phy_init; resolve when linking)
+```
+Init sequence (from `esp_phy/src/phy_init.c::esp_phy_enable`):
+1. **enable the modem/WiFi clock** — `wifi_bt_common_module_enable()`
+   (`esp_hw_support/periph_ctrl.c`; the exact `SYSTEM_WIFI_CLK_EN`/modem-clock
+   bits are the one remaining register detail to pin down) — **prerequisite**.
+2. `register_chipv7_phy(init_data, cal_data, cal_mode)` — the blob entry
+   (`esp_private/phy.h`). **`register_chipv7_phy(NULL, NULL, PHY_RF_CAL_FULL)` is
+   a valid call** (the hxx port uses exactly that) → no init/cal buffers needed
+   for a first calibration.
+
+So B1 implementation = provide the ~6-symbol adapter (mostly stubs + the
+interrupt mask) + enable the modem clock + `register_chipv7_phy(NULL,NULL,FULL)`,
+linked into the XIP payload; acceptance = it runs/returns without faulting (and a
+PHY version/print). Then B2 builds the full `wifi_osi_funcs_t` on top.
 
 ## NEXT SESSION starts here — B0b-4 (240 MHz clocks), then B0c
 
@@ -211,6 +337,83 @@ After clean console: fold back B0a/B0b-1/2/3 (watchdogs, systimer, vectors, heap
 — all board-agnostic) into the flash board, wire it into the amc target
 selection, and merge `esp32s3-flash-xip`. Only then does B1 (PHY) become
 possible.
+
+### B0c ROUTE CORRECTION — drop the reused bootloader, do XIP ourselves (ESPHome-free)
+
+Both ESPHome bootloaders on this machine disable the UART console
+(`CONFIG_ESP_CONSOLE_UART_NUM=-1`; vmc-controller uses USB-Serial-JTAG, CPU
+240 MHz) — so reusing them leaves UART0 in a state we can neither read nor
+reconfigure (any `CLK_CONF` write silences TX; no ttyACM for USB-JTAG). Dead end
+for observability.
+
+**New route (better, and removes the ESPHome dependency entirely):** keep the
+**RAM-loaded stub** (ROM loads it at flash `0x0` → IRAM, ROM UART stays at
+115200, *observable*), and have the stub **set up the flash cache/MMU itself**
+then jump to XIP code. The ROM already exports everything needed (no 2nd-stage
+bootloader, no FreeRTOS, no ESPHome):
+```
+Cache_MMU_Init        0x40001998
+Cache_Ibus_MMU_Set    0x400019a4   (ext_ram, vaddr, paddr, psize, num, fixed)  -> IROM
+Cache_Dbus_MMU_Set    0x400019b0   (...) -> DROM
+Cache_Enable_ICache   0x40001878   Cache_Enable_DCache 0x40001890
+Cache_Invalidate_ICache_All 0x400016d4   Cache_Set_IDROM_MMU_Size 0x40001914
+```
+Reference sequence: `bootloader_utility.c` (`mmu_hal_map_region` +
+`cache_ll_l1_enable_bus` + cache enable) and `bootloader_esp32s3.c`
+(`cache_hal_init`).
+
+**Image shape (hybrid):** the ROM RAM-load path only loads SRAM-addressed
+segments, so the XIP code can't ride in the same 0x0 image. Two flash regions:
+- `0x0`   — RAM-load stub image (cache/MMU setup + crt0), ROM-loaded to IRAM/DRAM.
+- `0x80000` (64 KB-aligned) — raw XIP blob (`.text`→map to `0x42000000`,
+  `.rodata`→`0x3C000000`). The stub maps it (paddr `0x80000…`, psize 64 KB,
+  num = ceil(size/64 KB)), enables the buses+cache, then jumps to the XIP entry.
+
+First increment: stub maps a tiny XIP `.text` that just prints "hello from flash
+XIP" over the **ROM UART** (115200, readable) → proves cache/MMU under our own
+control. Then move the bulk of the runtime to XIP, fold back B0a/b1/b2/b3, wire
+into amc, merge. (`esp32s3-flash` board on the branch keeps the linker/crt0 work;
+the bootloader-reuse path there is superseded by this.)
+
+#### ✅ DONE — flash-XIP works on silicon (branch `esp32s3-flash-xip`, `_xip-bringup-reference/`)
+
+A RAM-loaded stub sets up the cache/MMU itself and jumps to flash-resident code
+that **runs from flash via the I-cache and streams "OK" over the ROM UART at
+115200** — fully observable, ESPHome-free, no 2nd-stage bootloader, no FreeRTOS.
+
+The crux (real on-silicon debugging): after a RAM-load boot the ROM **leaves the
+I-cache disabled** (`EXTMEM_ICACHE_CTRL` @ `0x600C4060` == 0) while the D-cache is
+on — so flash *data* reads succeed but instruction fetches from `0x42000000`
+fault `IllegalInstruction`. Proven by a **DBUS data read** of the mapped page
+(`l32i 0x3C000000` returned the exact blob bytes). Winning stub sequence:
+```c
+rom_config_instruction_cache_mode(16384, 8, 32);  // ROM 0x40001a1c: size/ways/line + alloc I-cache SRAM
+*(uint32_t*)(0x600C5000 + entry*4) = page;         // MMU: entry=(vaddr&0x1FFFFFF)>>16, page=paddr>>16,
+                                                   //   value = page | VALID(0) | FLASH(0)  [INVALID=BIT(14)]
+*(uint32_t*)0x600C4064 &= ~1u;                     // EXTMEM_ICACHE_CTRL1: clear ICACHE_SHUT_CORE0_BUS
+Cache_Invalidate_ICache_All();  Cache_Enable_ICache(0);   // ROM 0x400016d4 / 0x40001878
+__asm__("jx %0" :: "r"(0x42000000));               // (0x42000000 -> flash 0x80000 = entry 0, page 8)
+```
+Remaining to finish B0c: add a **DROM** mapping for `.rodata` (vaddr `0x3C000000`;
+D-cache already on), put the real amc runtime in the XIP blob, fold back
+B0a/b1/b2/b3 (board-agnostic), wire into amc target selection, merge.
+
+#### ✅✅ DONE on silicon — real amc runtime from flash XIP
+
+Both flash buses proven, then the **whole amc heartbeat** wired up: `.text`+
+`.literal`→IROM (`0x42000000`, page 8), `.rodata`→DROM (`0x3C010000`, page 9),
+`.bss`→DRAM SRAM (amc programs have **empty `.data`**, so no copy — just zero
+`.bss`; crt0 reuses the SP the stub leaves). After a full `erase_flash`,
+`stub.bin@0x0` + `payload.bin@0x80000` → **`amalgame heartbeat` streams from flash
+XIP** (`Console.WriteLine` + `Mcu.DelayMs`, all executing from flash via cache).
+Confirms `l32r`-from-IROM works on the S3. **The size wall is gone.** Files:
+`_xip-bringup-reference/{payload.ld,pcrt0.S,pstartup.c,stub.c,stub.ld}`.
+
+What's left is **productisation only** (no unknowns): an `esp32s3-flash` amc
+target that builds the stub + payload and flashes both (`stub@0x0`,
+`payload@0x80000`), then fold back B0a/B0b-1/2/3 — note **B0b-2's vectors must go
+in an IRAM section copied from flash by crt0** (interrupt vectors can't be XIP) —
+and merge the branch.
 
 ### B0b-2 reference notes (for when interrupts need extending)
 

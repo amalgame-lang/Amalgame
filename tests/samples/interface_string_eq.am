@@ -1,0 +1,39 @@
+// String equality on an interface method's result.
+//
+// `p.Name() == s` where Name() is a string-returning INTERFACE method
+// used to lower to a raw C pointer compare (`p.itab->Name(p.data) == s`)
+// because InferTypeFromExpr didn't know interface method return types.
+// Both strings here are built at runtime, so their addresses always
+// differ: only a real code_string_equals prints "same".
+
+namespace Tests
+
+public interface Named {
+    Name() -> string
+}
+
+public class Tag implements Named {
+    public N: int
+    public Tag(int n) { this.N = n }
+    public string Name() { return "tag-" + String.FromInt(this.N) }
+}
+
+public class Program {
+    private static string Check(p: Named, string s) {
+        if (p.Name() == s) { return "same" }
+        return "different"
+    }
+
+    private static string CheckNe(p: Named, string s) {
+        if (p.Name() != s) { return "ne-true" }
+        return "ne-false"
+    }
+
+    public static void Main(string[] args) {
+        let t: Tag = new Tag(7)
+        let s: string = "tag-" + String.FromInt(7)
+        Console.WriteLine(Program.Check(t, s))
+        Console.WriteLine(Program.CheckNe(t, s))
+        Console.WriteLine(Program.Check(t, "tag-8"))
+    }
+}

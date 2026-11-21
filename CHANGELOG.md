@@ -7,6 +7,80 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [Unreleased]
+
+## [v0.8.91] — 2026-11-21
+
+Compatible with gcc 14 and 15 (Ubuntu 26.04, the new `ubuntu-latest` of
+GitHub Actions), and the fixes published since v0.8.90.
+
+### Fixed
+- cgen : une closure obtenue par un **appel** gardait mal son type de
+  retour. `let f = g.Greet()` (Greet rend `Closure<int, string>`) : `f(3)`
+  sortait en `(i64)(intptr_t)AmalgameClosure_call1(…)`, un entier passé là
+  où une chaîne est attendue. gcc 13 avertissait, gcc 14 et 15 refusent
+  (`-Werror=int-conversion` par défaut) : l'exemple
+  `interp_capture_in_lambda` ne se liait plus sur `ubuntu-latest`.
+  `TrackGenericLocal` enregistre maintenant `R` de `Closure<…, R>`, comme
+  pour une lambda locale. Suite complète : 656 PASS / 0 FAIL / 5 SKIP.
+- package add : la façade d'un paquet qui importe une classe d'un paquet
+  voisin ne se précompilait pas (« Unknown symbol HttpResponse », « Unknown
+  symbol 'Acme' » pour la classe d'exécution de tls). Un `amalgame.lock`
+  transitoire liste les autres paquets en cache et amc est lancé depuis le
+  dossier du paquet : les MANIFEST des dépendances sont attachés, comme
+  pour une construction de projet.
+- typechecker : un **objet** passé là où un paramètre `string` est attendu
+  compilait (`new Lecteur(new Boite("x"))` avec `Lecteur(string chemin)`) :
+  le C ne faisait qu'avertir (incompatible pointer types) et, à l'exécution,
+  l'adresse de l'objet était lue comme du texte (octets aléatoires — chez
+  Germe, un dossier créé avec un nom binaire). C'est maintenant une erreur :
+  `argument 1 of new Lecteur: expected string, got Boite (an object is not a
+  string)`, pour `new` et pour les appels `obj.M(…)` / `Classe.M(…)` dont la
+  déclaration est connue. Volontairement étroit (string ← classe du programme) :
+  génériques, `null`, élargissements numériques et fermetures ne sont pas touchés.
+- cgen : le type des éléments d'une liste (ou d'une map) **locale** fuyait
+  d'une méthode à l'autre. `let r: List<string>` dans une méthode, puis
+  `let r = F()` (F rend `List<int>`) dans une autre méthode de la même classe :
+  `r.Get(0) == 3` devenait `code_string_equals(…, 3)` et plantait.
+  `LocalTypeClear` efface désormais aussi les entrées `__local*` de la table
+  des types d'éléments. Cette fuite masquait un second défaut : le type de
+  retour d'une méthode appelée sous son nom court (`Program.Range()` dans
+  `namespace Tests`) n'était pas retrouvé, car enregistré sous le nom complet
+  (`Tests_Program`) — la recherche essaie maintenant aussi ce nom ; `r.Get(0)`
+  est donc typé `(i64)` au lieu de `(void*)`. Test discriminant
+  `tests/samples/local_elem_type_scope.am` (plante avant, passe après) ;
+  suite complète : 650 PASS / 0 FAIL / 8 SKIP. Trouvé par AIOS/Germe en
+  consolidant sa bibliothèque.
+- package add : une dépendance transitive **déjà en cache** (« already
+  cached, reusing ») n'était pas déclarée dans l'`amalgame.toml` du projet.
+  La façade du paquet parent, puis `amc build`, ne la voyaient pas :
+  `amc package add web` avec threading/redis/compress déjà en cache →
+  « Unknown symbol 'Threading' ». Elle est maintenant déclarée (avec la
+  version en cache, ses propres dépendances aussi, sans toucher une entrée
+  que le projet a déjà), et le lock est reconstruit **avant** la
+  précompilation de la façade.
+- build : un objet de paquet volatil (`/tmp/amc-pkg-<Classe>.o`) était
+  réutilisé même périmé — compilé avant qu'une dépendance soit déclarée, il
+  ne contenait pas son en-tête (« undefined reference to
+  Compress_GzipString » jusqu'au redémarrage). Il n'est réutilisé que s'il
+  est plus récent que ses sources et que l'`amalgame.lock` du projet.
+  L'exemple « Hello, server » du guide Mosaic compile et répond. Trouvé par
+  AIOS/Germe (vérification des exemples de la doc).
+- stdlib/json : `Json.Parse` était quadratique — chaque caractère lu
+  appelait `String_Length` et `String_CharAt1`, deux `strlen` sur toute la
+  source. Longueur mise en cache (`SourceLen`) et lectures via
+  `String_CharAtUnchecked` (toutes protégées par une vérification de
+  bornes), comme le lexer en v0.8.68. 1,4 Mo : 79 s → 0,15 s. Trouvé par
+  AIOS/Germe (jeu de données mledoze/countries).
+- cgen : `x.Methode() == s` (et `!=`), quand `Methode` est une méthode
+  d'**interface** qui renvoie une `string`, comparait les adresses C
+  (`x.itab->Methode(x.data) == s`) au lieu du texte. Les types de retour
+  des méthodes d'interface sont maintenant enregistrés (`MethodRetSet`)
+  comme ceux des classes, donc la comparaison passe par
+  `code_string_equals`. Bug silencieux trouvé par le prototype AIOS/Germe ;
+  test discriminant `tests/samples/interface_string_eq.am` (chaînes
+  construites à l'exécution).
+
 ## [v0.8.90] — 2026-06-15
 
 ### Changed

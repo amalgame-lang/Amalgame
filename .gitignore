@@ -94,3 +94,7 @@ editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/*.vsix
 .claude/
+
+# WiFi credentials — never commit (Route B ESP32-S3 compile-time creds)
+wifi_creds.h
+**/wifi_creds.h

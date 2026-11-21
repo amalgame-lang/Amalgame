@@ -192,6 +192,13 @@ public class CGen {
     // (`Amalgame_Formats_Json_JsonKind`, value not pointer) instead
     // of the consumer's NsPrefix.
     public ExternalEnums:      List<string>
+    // Signatures of the external programs already registered, per pass
+    // ("p1:" / "p2:" + namespace + declared names). The same package
+    // facade can reach the external list twice — e.g. amalgame-net-http,
+    // pulled in both by amalgame-tls and by amalgame-net-smtp — and its
+    // struct bodies must be emitted once, or gcc stops on
+    // `redefinition of 'struct _Amalgame_Net_Http_Cookie'`.
+    public ExternalProgsSeen:  List<string>
     public ExternalEnumNsArr:  List<string>
 
     // v0.8.37: opaque C types declared as return types in a
@@ -268,6 +275,7 @@ public class CGen {
         this.ExternalClasses   = new List<string>()
         this.ExternalClassNsArr = new List<string>()
         this.ExternalEnums     = new List<string>()
+        this.ExternalProgsSeen = new List<string>()
         this.ExternalEnumNsArr = new List<string>()
         this.PkgOpaqueTypes    = new List<string>()
         this.LocalClasses      = new List<string>()
@@ -813,6 +821,25 @@ public class CGen {
     private void LocalTypeClear() {
         this.LocalTypeNames = new List<string>()
         this.LocalTypeCType = new List<string>()
+        // Also forget the element/value types recorded for locals
+        // (`__local__`, `__local_raw__`, `__local_map__`, `__local_map_raw__`,
+        // `__async_future__`). ListElemGet returns the LAST matching entry,
+        // so a `let r: List<string>` in one method used to leak into an
+        // untyped `let r = F()` (F returning List<int>) in a later method
+        // of the same class: `r.Get(0) == 3` lowered to code_string_equals
+        // and crashed. Locals must not outlive their function.
+        let keepNames = new List<string>()
+        let keepTypes = new List<string>()
+        let n = this.ListElemNames.Count()
+        for i in 0..n {
+            let k = this.ListElemNames.Get(i)
+            if (!String_StartsWith(k, "__local") && !String_StartsWith(k, "__async_future__.")) {
+                keepNames.Add(k)
+                keepTypes.Add(this.ListElemCTypes.Get(i))
+            }
+        }
+        this.ListElemNames = keepNames
+        this.ListElemCTypes = keepTypes
     }
 
     private void FieldTypeSet(string className, string fieldName, string ctype) {
@@ -899,6 +926,22 @@ public class CGen {
     // RHS, explicit `: List<int>` annotations, and inferred return types
     // from method calls.
     private void TrackGenericLocal(string varName, string rawType) {
+        // A typed closure that is not a lambda literal (`let f = g.Greet()`
+        // where Greet returns Closure<int, string>, or an annotated local
+        // bound to a call) : record its return type R, as for a lambda
+        // local, so `f(3)` is cast to R. Without it the call lowered as
+        // `(i64)(intptr_t)AmalgameClosure_call1(...)`, an int passed where
+        // a pointer is expected : an error since gcc 14 (int-conversion).
+        if (String_StartsWith(rawType, "Closure<") && String_EndsWith(rawType, ">")) {
+            let cinner = String_Substring(rawType, 8, String_Length(rawType) - 9)
+            let cparts: List<string> = this.SplitTopLevelCommas(cinner)
+            let cpc: int = cparts.Count()
+            if (cpc >= 1) {
+                let cret = String_Trim(cparts.Get(cpc - 1))
+                if (String_Length(cret) > 0) { this.ListElemSet("__closure_ret__", varName, this.TypeToC(cret)) }
+            }
+            return
+        }
         if (String_StartsWith(rawType, "List<") && String_EndsWith(rawType, ">")) {
             let inner = String_Substring(rawType, 5, String_Length(rawType) - 6)
             if (String_Length(inner) > 0) {
@@ -2175,9 +2218,33 @@ public class CGen {
     // externals before any Pass 2, the registry is fully populated
     // before any TypeToC call fires — the `amalgame.lock` ordering
     // caveat that surfaced during the v0.3.0 web release goes away.
+    // "ns|Decl1,Decl2,…" — identifies one external program (one facade file).
+    public string ExternalProgKey(AstNode prog) {
+        var key: string = prog.Str + "|"
+        let kids: List<AstNode> = prog.Children
+        let n: int = kids.Count()
+        for i in 0..n {
+            let d: AstNode = kids.Get(i)
+            key = key + d.Name + ","
+        }
+        return key
+    }
+
+    // true the first time `pass + key` is seen, false afterwards.
+    public bool ExternalProgFirstTime(string pass, AstNode prog) {
+        let key: string = pass + ":" + this.ExternalProgKey(prog)
+        let c: int = this.ExternalProgsSeen.Count()
+        for i in 0..c {
+            if (this.ExternalProgsSeen.Get(i) == key) { return false }
+        }
+        this.ExternalProgsSeen.Add(key)
+        return true
+    }
+
     public void RegisterExternalProgPass1(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
+        if (!this.ExternalProgFirstTime("p1", prog)) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
@@ -2257,6 +2324,7 @@ public class CGen {
     public void RegisterExternalProgPass2(AstNode prog) {
         let ns: string = prog.Str
         if (String_Length(ns) == 0) { return }
+        if (!this.ExternalProgFirstTime("p2", prog)) { return }
         let nsPrefix: string = String_Replace(ns, ".", "_")
         let kids: List<AstNode> = prog.Children
         let n: int = kids.Count()
@@ -3068,6 +3136,12 @@ public class CGen {
                 let im = cls.Children.Get(i)
                 if (im.Kind == NodeKind.METHOD_DECL) {
                     this.Out.EmitLine(this.IfaceFnPtrField(im) + ";")
+                    // Register the return type so InferTypeFromExpr can
+                    // type `iface.Method()` — without it, `x.Name() == s`
+                    // on a string-returning interface method lowered to a
+                    // pointer compare instead of code_string_equals.
+                    this.MethodRetSet(name, im.Name, this.TypeToC(im.Str))
+                    this.MethodRetRawSet(name, im.Name, im.Str)
                 }
             }
             this.Out.Dedent()
@@ -4293,6 +4367,14 @@ public class CGen {
                     if (callee.Left != null && callee.Left.Kind == NodeKind.IDENTIFIER) {
                         let recvName = callee.Left.Name
                         var retRaw = this.MethodRetRawGet(recvName, callee.Name)
+                        // In-bundle classes register their return types under
+                        // the namespace-mangled name (`Tests_Program`), so a
+                        // bare `Program.Range()` inside `namespace Tests` must
+                        // also be looked up with the prefix. (This used to be
+                        // masked by a local's elem type leaking across methods.)
+                        if (String_Length(retRaw) == 0 && String_Length(this.NsPrefix) > 0) {
+                            retRaw = this.MethodRetRawGet(this.NsPrefix + "_" + recvName, callee.Name)
+                        }
                         if (String_Length(retRaw) == 0) {
                             let extMangled = this.ExternalClassMangled(recvName)
                             if (String_Length(extMangled) > 0) {
