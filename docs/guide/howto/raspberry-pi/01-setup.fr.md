@@ -25,7 +25,7 @@ La commande unique installe le binaire ARM64 natif :
 
 ```sh
 sudo apt install -y build-essential libgc-dev libssl-dev curl
-curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | bash
 amc --version
 ```
 
