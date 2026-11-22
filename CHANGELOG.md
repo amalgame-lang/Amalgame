@@ -7,6 +7,10 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.92] — 2026-11-22
+
+- TODO: describe the changes
+
 ## [Unreleased]
 
 ## [v0.8.91] — 2026-11-21
@@ -5677,3 +5681,4 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.8.14]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.14
 [v0.8.89]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.89
 [v0.8.90]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.90
+[v0.8.92]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.92
