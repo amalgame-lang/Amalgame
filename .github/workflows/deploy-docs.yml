@@ -4,7 +4,7 @@ name: Deploy docs
 #
 # Pipeline 100% Amalgame (zéro Node) :
 #   guide .md  →  gen-docs.am (amalgame-markdown + amalgame-io-filesystem)
-#             →  HTML statique  →  gate liens/ancres  →  scp sur le serveur.
+#             →  HTML statique  →  gate liens/ancres  →  tar | ssh vers le serveur.
 #
 # Le déploiement d'une doc ne touche PAS le binaire Mosaic ni les certs : on
 # remplace juste le dossier public/ servi en statique (live immédiatement,
@@ -13,7 +13,15 @@ name: Deploy docs
 # ── Secrets requis (Settings → Secrets and variables → Actions) ──────────
 #   SITES_DEPLOY_KEY: clé SSH de déploiement (lecture seule) de BastienMOUGET/Sites
 #                     (générateur + assets + baseline de liens).
-#   DEPLOY_SSH_KEY  : contenu de ~/.ssh/amalgame_deploy (clé privée SSH).
+#   DEPLOY_SSH_KEY  : clé SSH de publication, bridée côté serveur à une seule
+#                     commande (authorized_keys : restrict,command=…) qui lit
+#                     une archive tar.gz sur l'entrée standard, la vérifie et
+#                     remplace le seul public/ de docs.amalgame.me. Elle n'ouvre
+#                     pas de shell.
+#
+# ── Variable requise ─────────────────────────────────────────────────────
+#   DEPLOY_KNOWN_HOSTS : clé d'hôte du serveur (pas de ssh-keyscan, qui
+#                        croirait n'importe quel serveur).
 #
 # Déclencheurs : push sur main touchant docs/guide/**, ou lancement manuel.
 
@@ -35,7 +43,6 @@ env:
   SERVER: sites.neitsab.fr
   SSH_PORT: '55'
   SSH_USER: neitsab
-  REMOTE_DIR: /var/mosaic/sites/sites/docs.amalgame.me
 
 jobs:
   deploy:
@@ -102,12 +109,10 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -p "$SSH_PORT" "$SERVER" >> ~/.ssh/known_hosts 2>/dev/null
-          SSH="ssh -i $HOME/.ssh/id_deploy -p $SSH_PORT $SSH_USER@$SERVER"
-          SCP="scp -i $HOME/.ssh/id_deploy -P $SSH_PORT -r"
-          # Upload sous public.new puis swap atomique (sudo NOPASSWD côté
-          # serveur) — remplace proprement, gère aussi les pages supprimées.
-          $SSH "sudo rm -rf $REMOTE_DIR/public.new"
-          $SCP "$GITHUB_WORKSPACE/docs-out" "$SSH_USER@$SERVER:/tmp/docs-out-ci"
-          $SSH "sudo rm -rf $REMOTE_DIR/public.new && sudo mv /tmp/docs-out-ci $REMOTE_DIR/public.new && sudo rm -rf $REMOTE_DIR/public && sudo mv $REMOTE_DIR/public.new $REMOTE_DIR/public"
-          echo "✓ docs.amalgame.me mis à jour"
+          printf '%s\n' "${{ vars.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          # La clé ne lance qu'une commande sur le serveur (forcée par
+          # authorized_keys) : elle lit l'archive sur l'entrée standard, la
+          # vérifie, remplace public/ et affiche elle-même le message de succès.
+          tar -czf - -C "$GITHUB_WORKSPACE/docs-out" . \
+            | ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                  -p "$SSH_PORT" "$SSH_USER@$SERVER"
