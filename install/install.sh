@@ -18,7 +18,18 @@
 #  needed for the standard layout.
 #
 #  Usage:
-#    curl -sSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | bash
+#    curl -sSL https://amalgame.me/install.sh | bash
+#
+#  Served by amalgame.me: copy of install/install.sh from
+#  amalgame-lang/Amalgame (main, 2bbb544), with these fixes:
+#    - mkdir of share/amalgame/* after the .bak moves (cp failed on
+#      every install: the fresh dirs were moved away first);
+#    - STDLIB_DIR follows the ~/.local fallback and the Homebrew
+#      prefix (stdlib went to /usr/local/share/amalgame/stdlib);
+#    - clear error when the release has no archive for this system
+#      (Intel Mac, FreeBSD) and when run by sh instead of bash;
+#    - the PATH test uses [[ ]] (the pattern never matched, so the
+#      rc files were edited even when bin was already on PATH).
 #
 #  Env vars:
 #    AMC_VERSION    — version to install             (default: latest)
@@ -28,6 +39,11 @@
 #    AMC_NO_EDITORS — skip editor extension install  (set to 1 to skip)
 #    AMC_NO_SAMPLE  — skip sample-project scaffold   (set to 1 to skip)
 # ═══════════════════════════════════════════════════════════
+
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "This installer needs bash:  curl -sSL https://amalgame.me/install.sh | bash" >&2
+    exit 1
+fi
 
 set -euo pipefail
 
@@ -110,6 +126,7 @@ case "$OS" in
             SHARE_DIR="$PREFIX/share/amalgame"
             RUNTIME_DIR="$SHARE_DIR/runtime"
             LIB_DIR="$SHARE_DIR/lib"
+            STDLIB_DIR="$SHARE_DIR/stdlib"
             DOCS_DIR="$SHARE_DIR/docs"
         fi
         ;;
@@ -118,7 +135,7 @@ case "$OS" in
         PKG_MGR="pkg"
         ;;
     *)
-        error "Unsupported OS: $OS (use the Inno Setup .exe installer for Windows)"
+        error "Unsupported OS: $OS (on Windows, use the .msi installer: https://amalgame.me/en/install)"
         ;;
 esac
 
@@ -127,13 +144,14 @@ esac
 # /usr/local when they didn't think to sudo. They can still pass
 # AMC_PREFIX=/usr/local explicitly with sudo if they want system-wide.
 if [ "${AMC_PREFIX:-}" = "" ] && [ "$EUID" -ne 0 ] && [ ! -w "$PREFIX" ]; then
+    warn "Not root and $PREFIX not writable — falling back to user-local install."
     PREFIX="$HOME/.local"
     BIN_DIR="$PREFIX/bin"
     SHARE_DIR="$PREFIX/share/amalgame"
     RUNTIME_DIR="$SHARE_DIR/runtime"
     LIB_DIR="$SHARE_DIR/lib"
+    STDLIB_DIR="$SHARE_DIR/stdlib"
     DOCS_DIR="$SHARE_DIR/docs"
-    warn "Not root and $PREFIX not writable — falling back to user-local install."
 fi
 
 info "OS       : $OS"
@@ -342,7 +360,7 @@ ARCHIVE="amc-$VNUM-$TARGET.tar.gz"
 # ── Download & verify ─────────────────────────────────────
 header "Downloading Amalgame $VTAG..."
 ARCHIVE_PATH="$TMP_DIR/$ARCHIVE"
-dl_asset "$ARCHIVE" "$ARCHIVE_PATH"
+dl_asset "$ARCHIVE" "$ARCHIVE_PATH" || error "No $ARCHIVE in release $VTAG: no prebuilt amc for $TARGET. Build from source: https://amalgame.me/en/install#source"
 
 # Verify checksum if the release ships one. Releases since v0.8.32
 # bundle every per-OS artifact in a single `checksums.sha256` (one
@@ -378,8 +396,6 @@ EXTRACT_DIR="$TMP_DIR/amc-$VNUM-$TARGET"
 # The tarball is already laid out the way amc expects (bin/ +
 # share/amalgame/{runtime,lib,docs}), produced by release.yml since
 # v0.8.1. We just copy the tree into $PREFIX — no per-file rewiring.
-$SUDO mkdir -p "$BIN_DIR" "$RUNTIME_DIR" "$LIB_DIR" "$STDLIB_DIR" "$DOCS_DIR"
-
 # Back up an existing share/amalgame/ install so users can roll back
 # without re-downloading. Skipped for bin/amc (atomic replace via cp).
 backup_dir() {
@@ -394,6 +410,7 @@ backup_dir "$RUNTIME_DIR"
 backup_dir "$LIB_DIR"
 backup_dir "$STDLIB_DIR"
 backup_dir "$DOCS_DIR"
+$SUDO mkdir -p "$BIN_DIR" "$RUNTIME_DIR" "$LIB_DIR" "$STDLIB_DIR" "$DOCS_DIR"
 
 # Binary (and Windows DLLs if any landed in bin/).
 $SUDO install -m 755 "$EXTRACT_DIR/bin/amc" "$BIN_DIR/amc"
@@ -452,7 +469,7 @@ add_to_path() {
 # Only edit shell rcs when the install prefix isn't already on PATH.
 # amc no longer needs AMC_RUNTIME — its built-in lookup chain finds
 # share/amalgame/{runtime,lib} relative to the resolved binary path.
-if [ ":$PATH:" != *":$BIN_DIR:"* ]; then
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     SHELL_NAME="$(basename "${SHELL:-/bin/sh}")"
     case "$SHELL_NAME" in
         bash) add_to_path "$HOME/.bashrc"; add_to_path "$HOME/.bash_profile" ;;
@@ -622,6 +639,6 @@ echo "  Documentation (full user guide):"
 echo -e "    ${CYAN}$DOCS_DIR/guide/${NC}   (offline — shipped with this install; a PDF is on each GitHub Release)"
 echo -e "    ${CYAN}https://amalgame.me${NC}    (online — always the latest)"
 echo ""
-if [ ":$PATH:" != *":$BIN_DIR:"* ]; then
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     echo -e "  ${YELLOW}Restart your shell or run: source ~/.bashrc${NC}\n"
 fi

@@ -361,10 +361,14 @@ pushing a `v*` tag — see `.github/workflows/release.yml`.
 
 ## Privacy
 
-The `amc` compiler runs entirely on the user's machine. It does not
-phone home, collect telemetry, log usage statistics, or transmit any
-data to external servers. The only network operations are initiated
-explicitly by the user:
+The `amc` compiler runs entirely on the user's machine. Its only
+automatic network call is a minimal usage ping: at most once a day,
+`amc build` and `amc run` send `tel.amalgame.me` the amc version, the
+operating system and the CPU architecture. No identifier, no file
+name, no code; the server derives the country from the IP address and
+does not keep the address. Set `AMALGAME_NO_TELEMETRY=1` (or
+`DO_NOT_TRACK=1`) to turn it off. All other network operations are
+initiated explicitly by the user:
 
 - `amc package add <name>` fetches a package + its index entry from
   `github.com/amalgame-lang/packages-index` and the package's
@@ -386,9 +390,10 @@ explicitly by the user:
   routes the request through a server we control — it's a direct
   HTTPS call from your machine to the provider.
 
-The `amalgame.me` website serves static documentation and does not
-set tracking cookies. No personal data is collected by Amalgame as
-a project.
+The `amalgame.me` website sets no cookies and measures its audience
+on its own server, without any third-party tracker. Its
+[legal notice](https://amalgame.me/en/imprint) lists everything it
+processes.
 
 ## License
 

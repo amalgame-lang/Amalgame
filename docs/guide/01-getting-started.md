@@ -94,7 +94,7 @@ ships `amc-X.Y.Z-{linux,macos,windows}-...` archives. The one-liner picks
 the right one for your OS/architecture:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | bash
 ```
 
 ### Raspberry Pi (and other ARM64 Linux)
@@ -106,7 +106,7 @@ first, same as any Debian/Ubuntu box:
 
 ```bash
 sudo apt-get install -y build-essential libgc-dev libssl-dev curl
-curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/amalgame-lang/Amalgame/main/install/install.sh | bash
 amc --version
 ```
 
@@ -116,6 +116,19 @@ amc --version
 > `amc_lib.c` snapshot compiles anywhere with a C toolchain + Boehm GC).
 > The `linux-arm64` archive is built natively in CI on a real aarch64
 > runner, not cross-compiled.
+
+### Telemetry
+
+At most once a day, `amc build` and `amc run` send `tel.amalgame.me` the amc
+version, the operating system and the CPU architecture (for example `linux`
+and `x86_64`). Nothing else: no identifier, no file name, no code. The server
+does not keep your IP address: it derives the country from it, then discards
+it. To turn it off, set `AMALGAME_NO_TELEMETRY=1` (or `DO_NOT_TRACK=1`) in
+your environment:
+
+```bash
+export AMALGAME_NO_TELEMETRY=1
+```
 
 ## Develop in VS Code (the easy path)
 
