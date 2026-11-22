@@ -7,9 +7,28 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
-## [v0.8.92] — 2026-11-22
+## [v0.8.92] — 2026-11-23
 
-- TODO: describe the changes
+Linux binaries start again on Debian 12, Ubuntu 22.04 and RHEL 9, and the
+installer works again.
+
+### Fixed
+- release : le binaire `linux-x86_64` de la v0.8.91 exigeait `GLIBC_2.38`
+  (`__isoc23_strtoll`) et ne démarrait pas sous Debian 12, Ubuntu 22.04 ni
+  RHEL 9 (`version 'GLIBC_2.38' not found`). Les binaires Linux (x86_64 et
+  arm64) sont désormais construits sur Ubuntu 22.04 (glibc 2.35).
+- install.sh : sans `AMC_PREFIX`, le repli sur `~/.local` ne s'appliquait pas
+  à la stdlib (erreur de permission), et les dossiers `share/amalgame` étaient
+  créés avant leur déplacement en `.bak` : chaque installation échouait sur
+  `cp`. Message clair quand la release n'a pas d'archive pour la plateforme,
+  ou quand le script est lancé avec `sh` (il demande `bash`).
+
+### Docs
+- README et guide (getting-started, FR et EN) : la télémétrie d'usage est
+  décrite (version, OS et architecture, au plus une fois par jour ; IP non
+  conservée) avec la façon de la couper : `AMALGAME_NO_TELEMETRY=1` ou
+  `DO_NOT_TRACK=1`.
+- Commandes d'installation en `| bash` au lieu de `| sh`.
 
 ## [Unreleased]
 
