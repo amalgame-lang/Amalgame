@@ -52,6 +52,19 @@ installer works again.
 
 ## [Unreleased]
 
+### Fixed
+- package add : depuis la v0.8.91, la façade d'un paquet qui se sert de ce
+  que déclare son propre manifeste ne se précompilait plus. tls : 14
+  « Unknown symbol 'Acme' » (classe qui n'existe que dans son en-tête C) ;
+  pdf : `kLiberationSansRegularLen` non déclaré (son en-tête n'était pas
+  inclus). Le `amalgame.lock` transitoire excluait le paquet lui-même ; il
+  l'inscrit maintenant en tête, à la version précompilée, comme le faisait le
+  lock du projet avant la v0.8.91. Sans archive tls déjà en cache, un projet
+  qui l'utilise ne se liait plus (`undefined reference to
+  Amalgame_Tls_AcmeNative_EnsureCert`). Vérifié sur 54 paquets du cache : tls
+  et pdf se précompilent de nouveau, aucun autre ne change. Suite complète :
+  650 PASS / 0 FAIL / 8 SKIP.
+
 ## [v0.8.91] — 2026-11-21
 
 Compatible with gcc 14 and 15 (Ubuntu 26.04, the new `ubuntu-latest` of
