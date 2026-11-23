@@ -8197,7 +8197,7 @@ code_string Amalgame_Compiler_PackageRegistry_AmalgameTypeFromC(code_string cTyp
 
 code_string Amalgame_Compiler_PackageRegistry_AmcVersion() {
     #line 620 "./src/package_registry.am"
-    return "0.8.92";
+    return "0.8.93";
 }
 
 i64 Amalgame_Compiler_PackageRegistry_SupportedManifestSchema() {
@@ -26934,12 +26934,12 @@ Amalgame_Compiler_BuildInfo* Amalgame_Compiler_BuildInfo_new() {
 
 code_string Amalgame_Compiler_BuildInfo_GitRev() {
     #line 26 "./src/stdlib/amc_buildinfo.am"
-    return "7e0a4b84";
+    return "edc580dd";
 }
 
 code_string Amalgame_Compiler_BuildInfo_BuildDate() {
     #line 30 "./src/stdlib/amc_buildinfo.am"
-    return "2026-11-23T11:36:48Z";
+    return "2026-11-23T12:06:02Z";
 }
 
 struct _Amalgame_Compiler_LspServer {
