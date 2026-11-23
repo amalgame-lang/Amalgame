@@ -993,7 +993,26 @@ public class AddCommand {
         let lockPath: string = pkgDir + "/amalgame.lock"
         var lockBackup: string = ""
         if (File.Exists(lockPath)) { lockBackup = File.ReadAll(lockPath) }
-        let lockText: string = AddCommand.DepClosureLockText(depsTbl, selfRepo)
+        // The package itself, at the version being precompiled, heads the
+        // lock: its facade relies on what only its own manifest declares —
+        // runtime-only classes (tls's acme.am calls Acme, which lives in
+        // runtime/Amalgame_Tls.h) and its header (pdf's font tables).
+        // main.am skips attaching a package's own facade (isSelf), so this
+        // registers its class names and header only — as the project lock,
+        // which listed the package, did before v0.8.91.
+        var selfLock: string = ""
+        if (String_Length(selfRepo) > 0) {
+            let selfLeaf: string = pdParts.Get(pdParts.Count() - 1)
+            let selfUs: int = String_LastIndexOf(selfLeaf, "_")
+            if (selfUs > 0) {
+                selfLock = "[[package]]\n"
+                selfLock = selfLock + "name = \"" + selfRepo + "\"\n"
+                selfLock = selfLock + "git  = \"github.com/amalgame-lang/" + selfRepo + "\"\n"
+                selfLock = selfLock + "tag  = \"" + String_Substring(selfLeaf, 0, selfUs) + "\"\n"
+                selfLock = selfLock + "rev  = \"" + String_Substring(selfLeaf, selfUs + 1, String_Length(selfLeaf) - selfUs - 1) + "\"\n\n"
+            }
+        }
+        let lockText: string = selfLock + AddCommand.DepClosureLockText(depsTbl, selfRepo)
         let wroteLock: bool = (String_Length(lockText) > 0) && File.WriteAll(lockPath, lockText)
 
         // Step 1 — amc --lib --quiet, run from pkgDir so amc picks up the
