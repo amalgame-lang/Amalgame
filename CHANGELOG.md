@@ -7,6 +7,10 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.93] — 2026-11-23
+
+- TODO: describe the changes
+
 ## [v0.8.92] — 2026-11-23
 
 Linux binaries start again on Debian 12, Ubuntu 22.04 and RHEL 9, and the
@@ -5719,3 +5723,4 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.8.89]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.89
 [v0.8.90]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.90
 [v0.8.92]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.92
+[v0.8.93]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.93
