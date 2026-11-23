@@ -7,6 +7,26 @@ For releases prior to v0.3.2, see the git log and `ROADMAP_COMPLET.md`.
 
 ---
 
+## [v0.8.93] — 2026-11-23
+
+### Fixed
+- package add : depuis la v0.8.91, l'archive précompilée d'amalgame-web
+  (v0.31.0 et suivantes) ne se liait plus dès qu'amalgame-auth était dans le
+  cache (`undefined reference to Amalgame_Auth_LoginGuard_new`,
+  `…_LoginAttempt_new`, `…_BasicAuth_Reject`). Le `amalgame.lock` transitoire
+  de la précompilation listait **tous** les paquets du cache : amalgame-auth,
+  atteint par net-webdav, y entrait, et ses classes `LoginGuard`,
+  `LoginAttempt` et `BasicAuth` l'emportaient sur celles, de même nom,
+  d'amalgame-web. Le lock ne liste plus que les dépendances déclarées du
+  paquet, puis les leurs. net-webdav, qui déclare amalgame-auth, se
+  précompile comme avant.
+- package add : un paquet déjà en cache, déclaré par le projet sous un autre
+  nom que son nom court du registre (`[dependencies.http]` pour net-http),
+  perdait son épinglage quand on ajoutait un paquet qui en dépend :
+  `amc package add web@v0.40.0` passait net-http de v0.29.6 à la version la
+  plus récente du cache. L'entrée existante est maintenant reconnue à son URL
+  git et laissée telle quelle. Suite complète : 650 PASS / 0 FAIL / 8 SKIP.
+
 ## [v0.8.92] — 2026-11-23
 
 Linux binaries start again on Debian 12, Ubuntu 22.04 and RHEL 9, and the
@@ -5701,3 +5721,4 @@ inference for `List<T>` and `Map<K,V>`. The full test suite is
 [v0.8.89]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.89
 [v0.8.90]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.90
 [v0.8.92]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.92
+[v0.8.93]: https://github.com/amalgame-lang/Amalgame/releases/tag/v0.8.93

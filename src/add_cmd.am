@@ -979,20 +979,21 @@ public class AddCommand {
         // from io-filesystem, BasicAuth from auth) used to fail precompile
         // with "Unknown symbol HttpResponse" — PrecompileFacade compiled
         // the facade with NO dependency scope. Fix: drop a transient
-        // amalgame.lock listing every OTHER cached package next to the
-        // facade and run amc from pkgDir, so the PkgRegistry auto-attaches
-        // each dep's MANIFEST (class names) — the same path consumer
-        // builds take. Manifest attach (not --external of sources) is key:
-        // it registers class names without re-parsing bodies, so it also
-        // covers runtime-only classes (tls's Acme) and multi-file packages
-        // (net-http) without dragging their own unmet imports into scope.
+        // amalgame.lock listing the package's declared dependencies (and
+        // theirs) next to the facade and run amc from pkgDir, so the
+        // PkgRegistry auto-attaches each dep's MANIFEST (class names) —
+        // the same path consumer builds take. Manifest attach (not
+        // --external of sources) is key: it registers class names without
+        // re-parsing bodies, so it also covers runtime-only classes (tls's
+        // Acme) and multi-file packages (net-http) without dragging their
+        // own unmet imports into scope.
         var selfRepo: string = ""
         let pdParts: List<string> = String_Split(pkgDir, "/")
         if (pdParts.Count() >= 2) { selfRepo = pdParts.Get(pdParts.Count() - 2) }
         let lockPath: string = pkgDir + "/amalgame.lock"
         var lockBackup: string = ""
         if (File.Exists(lockPath)) { lockBackup = File.ReadAll(lockPath) }
-        let lockText: string = AddCommand.AllCachedLockText(selfRepo)
+        let lockText: string = AddCommand.DepClosureLockText(depsTbl, selfRepo)
         let wroteLock: bool = (String_Length(lockText) > 0) && File.WriteAll(lockPath, lockText)
 
         // Step 1 — amc --lib --quiet, run from pkgDir so amc picks up the
@@ -3082,40 +3083,82 @@ public class AddCommand {
         return pkgCacheParent + "/" + entry
     }
 
-    // A transient amalgame.lock body listing every cached package
-    // (one version per repo) EXCEPT excludeRepo. Dropped next to a
+    // A transient amalgame.lock body listing the package's declared
+    // dependencies, then theirs (read from each cached manifest), one
+    // cached version per repo, EXCEPT excludeRepo. Dropped next to a
     // facade being precompiled so amc's PkgRegistry auto-attaches each
     // dep's manifest (class names) — letting the facade resolve
     // cross-package symbols (HttpResponse, Filesystem, BasicAuth, …)
-    // without parsing their bodies. "" if the cache is empty.
-    public static string AllCachedLockText(string excludeRepo) {
-        let cacheRoot: string = AddCommand.CacheRoot()
-        let orgRoot: string = cacheRoot + "/github.com/amalgame-lang"
-        if (!File.Exists(orgRoot)) { return "" }
-        let repos: List<string> = String_Split(AddCommand.ListDir(orgRoot), "\n")
+    // without parsing their bodies. Only the declared closure: listing
+    // every cached package (v0.8.91) put unrelated packages in scope,
+    // and their same-named classes won over the facade's own —
+    // amalgame-auth's LoginGuard (reached through net-webdav) made
+    // amalgame-web's archive call Amalgame_Auth_LoginGuard_new.
+    // "" if no declared dependency is cached.
+    public static string DepClosureLockText(TomlValue depsTbl, string excludeRepo) {
+        let queue: List<string> = new List<string>()
+        AddCommand.AppendDepRepos(depsTbl, queue)
+        let seen: List<string> = new List<string>()
         var out: string = ""
-        let n: int = repos.Count()
-        for i in 0..n {
-            let repo: string = String_Trim(repos.Get(i))
-            if (String_Length(repo) == 0) { continue }
-            if (repo == excludeRepo) { continue }
-            if (!String_StartsWith(repo, "amalgame-")) { continue }
-            let verDir: string = AddCommand.LatestCacheVersionDir(repo)
-            if (String_Length(verDir) == 0) { continue }
+        var qi: int = 0
+        while (qi < queue.Count()) {
+            let repo: string = queue.Get(qi)
+            qi = qi + 1
+            var skip: bool = repo == excludeRepo
+            let ns: int = seen.Count()
+            for si in 0..ns {
+                if (seen.Get(si) == repo) { skip = true }
+            }
+            var verDir: string = ""
+            if (!skip) {
+                seen.Add(repo)
+                verDir = AddCommand.LatestCacheVersionDir(repo)
+            }
             // verDir basename is "<tag>_<sha>" — split on the LAST "_".
             let slash: int = String_LastIndexOf(verDir, "/")
             let entry: string = String_Substring(verDir, slash + 1, String_Length(verDir) - slash - 1)
             let us: int = String_LastIndexOf(entry, "_")
-            if (us < 0) { continue }
-            let tag: string = String_Substring(entry, 0, us)
-            let rev: string = String_Substring(entry, us + 1, String_Length(entry) - us - 1)
-            out = out + "[[package]]\n"
-            out = out + "name = \"" + repo + "\"\n"
-            out = out + "git  = \"github.com/amalgame-lang/" + repo + "\"\n"
-            out = out + "tag  = \"" + tag + "\"\n"
-            out = out + "rev  = \"" + rev + "\"\n\n"
+            if (String_Length(verDir) > 0 && us > 0) {
+                let tag: string = String_Substring(entry, 0, us)
+                let rev: string = String_Substring(entry, us + 1, String_Length(entry) - us - 1)
+                out = out + "[[package]]\n"
+                out = out + "name = \"" + repo + "\"\n"
+                out = out + "git  = \"github.com/amalgame-lang/" + repo + "\"\n"
+                out = out + "tag  = \"" + tag + "\"\n"
+                out = out + "rev  = \"" + rev + "\"\n\n"
+                let mfPath: string = verDir + "/amalgame.toml"
+                if (File.Exists(mfPath)) {
+                    let mf = Toml.Parse(File.ReadAll(mfPath))
+                    if (!mf.IsNull()) { AddCommand.AppendDepRepos(mf.Get("dependencies"), queue) }
+                }
+            }
         }
         return out
+    }
+
+    // Repo names (`amalgame-net-http`) of a manifest [dependencies]
+    // table: the key of a short-form entry, the git URL's leaf of a
+    // long-form one. Deps outside amalgame-lang have no cache path we
+    // can guess, so they're skipped.
+    public static void AppendDepRepos(TomlValue depsTbl, List<string> repos) {
+        if (!depsTbl.IsTable()) { return }
+        let prefix: string = "github.com/amalgame-lang/"
+        let keys: List<string> = depsTbl.Keys()
+        let n: int = keys.Count()
+        for i in 0..n {
+            let k: string = keys.Get(i)
+            let v: TomlValue = depsTbl.Get(k)
+            var repo: string = ""
+            if (v.IsString()) {
+                repo = k
+            } else if (v.IsTable()) {
+                let git: string = v.Get("git").AsString()
+                if (String_StartsWith(git, prefix)) {
+                    repo = String_Substring(git, String_Length(prefix), String_Length(git) - String_Length(prefix))
+                }
+            }
+            if (String_StartsWith(repo, "amalgame-")) { repos.Add(repo) }
+        }
     }
 
     // v0.8.49 — Given a [dependencies] table key like `amalgame-async`,
@@ -3139,17 +3182,29 @@ public class AddCommand {
     // Declare an already-cached dependency (and, recursively, the deps
     // of its cached manifest) in the project's amalgame.toml, using the
     // cached tag. An entry the project already has is left untouched —
-    // the user may have pinned another version on purpose.
+    // the user may have pinned another version on purpose. It may sit
+    // under another name than the index shortname (`http` for net-http):
+    // match it by git URL too, or UpdateProjectManifest, which does,
+    // would overwrite the pin with the newest cached tag.
     public static void RegisterCachedDep(string depKey, int depth) {
         if (depth > 16) { return }
         let runtimeDir: string = AddCommand.LatestCacheRuntimeDir(depKey)
         if (String_Length(runtimeDir) == 0) { return }
         let depName: string = AddCommand.ShortnameFromDepKey(depKey)
+        let url: string = "github.com/amalgame-lang/" + depKey
         if (File.Exists("amalgame.toml")) {
             let cur = Toml.Parse(File.ReadAll("amalgame.toml"))
             if (!cur.IsNull()) {
                 let curDeps: TomlValue = cur.Get("dependencies")
-                if (curDeps.IsTable() && curDeps.Get(depName).IsTable()) { return }
+                if (curDeps.IsTable()) {
+                    if (curDeps.Get(depName).IsTable()) { return }
+                    let curKeys: List<string> = curDeps.Keys()
+                    let nk: int = curKeys.Count()
+                    for ki in 0..nk {
+                        let cv: TomlValue = curDeps.Get(curKeys.Get(ki))
+                        if (cv.IsTable() && cv.Get("git").AsString() == url) { return }
+                    }
+                }
             }
         }
         // <cache>/github.com/amalgame-lang/<depKey>/<tag>_<sha>/runtime
@@ -3158,7 +3213,7 @@ public class AddCommand {
         let leaf: string = String_Substring(pkgDir, leafStart, String_Length(pkgDir) - leafStart)
         let leafParts: List<string> = String_Split(leaf, "_")
         let tag: string = leafParts.Get(0)
-        if (!AddCommand.UpdateProjectManifest(depName, "github.com/amalgame-lang/" + depKey, tag)) { return }
+        if (!AddCommand.UpdateProjectManifest(depName, url, tag)) { return }
         let mfPath: string = pkgDir + "/amalgame.toml"
         if (!File.Exists(mfPath)) { return }
         let mf = Toml.Parse(File.ReadAll(mfPath))
